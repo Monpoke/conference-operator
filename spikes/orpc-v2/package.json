@@ -1,0 +1,24 @@
+{
+  "name": "@cloudnord/spike-orpc-v2",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Spike jetable : valide les 3 adapters oRPC v2 (HTTP/Fastify, WebSocket, MessagePort) avant d'ecrire packages/contract.",
+  "scripts": {
+    "spike": "tsx src/run.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@orpc/client": "2.0.0-beta.29",
+    "@orpc/contract": "2.0.0-beta.29",
+    "@orpc/server": "2.0.0-beta.29",
+    "fastify": "5.12.1",
+    "ws": "8.19.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/ws": "8.18.1",
+    "tsx": "4.23.12",
+    "typescript": "7.0.2"
+  }
+}

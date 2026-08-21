@@ -1,0 +1,231 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { WebSocket } from 'ws'
+import { createORPCClient } from '@orpc/client'
+import { RPCLink as FetchLink } from '@orpc/client/fetch'
+import { RPCLink as WsLink } from '@orpc/client/websocket'
+import type { ContractRouterClient } from '@orpc/contract'
+import { contract, type Command } from '@cloudnord/contract'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { createHub, type Hub } from '../src/server.js'
+import { provisionOperator } from '../src/operators.js'
+
+type Client = ContractRouterClient<typeof contract>
+
+const rawProgram = readFileSync(
+  fileURLToPath(new URL('../../../packages/program/test/fixtures/cloudnord-2026.json', import.meta.url)),
+  'utf8',
+)
+
+const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'motdepasse-regie-2026' }
+const CLIENT_ID = '01JB2ZK5T7QW9V0YHRXM3N4P6C'
+const TRACK_1 = 'track-1-teilhard-de-chardin'
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+let hub: Hub
+let origin: string
+let sockets: WebSocket[] = []
+
+beforeEach(async () => {
+  hub = await createHub({
+    port: 0,
+    host: '127.0.0.1',
+    databasePath: ':memory:',
+    publicUrl: 'http://127.0.0.1',
+    authSecret: 'test-secret-'.padEnd(48, 'x'),
+    logLevel: 'fatal',
+    devicePollInterval: '1s',
+  })
+  await hub.app.listen({ port: 0, host: '127.0.0.1' })
+  const address = hub.app.server.address()
+  const port = typeof address === 'object' && address != null ? address.port : 0
+  origin = `http://127.0.0.1:${port}`
+
+  await provisionOperator(hub.auth, OPERATOR)
+  hub.services.programs.importFromText(rawProgram, 'https://exemple/programme.json')
+  hub.services.rooms.upsert({
+    id: TRACK_1,
+    name: 'Track #1 - Teilhard de Chardin',
+    trackId: TRACK_1,
+    obs: {
+      A: { url: 'ws://127.0.0.1:4455', password: null },
+      B: { url: 'ws://127.0.0.1:4456', password: null },
+    },
+    sceneRoles: { A: { LIVE: 'Capture HDMI', HOLD: 'Habillage' }, B: { TALK: 'Talk' } },
+    displayPort: 7788,
+    recordingRoot: null,
+  })
+})
+
+afterEach(async () => {
+  for (const socket of sockets) socket.terminate()
+  sockets = []
+  await hub.close()
+})
+
+/** Client oRPC en HTTP, tel que l'utilise hub-admin. */
+function httpClient(headers: Record<string, string> = {}): Client {
+  return createORPCClient(
+    new FetchLink({
+      origin,
+      url: '/rpc',
+      headers: () => headers,
+    }),
+  )
+}
+
+/** Client oRPC en WebSocket, tel que l'utilise une machine de salle. */
+function wsClient(headers: Record<string, string>): Client {
+  return createORPCClient(
+    new WsLink({
+      connect: () => {
+        const socket = new WebSocket(`${origin.replace('http', 'ws')}/ws`, { headers })
+        sockets.push(socket)
+        socket.on('error', () => {})
+        return socket as unknown as globalThis.WebSocket
+      },
+      reconnect: { enabled: true, delay: () => 50, maxAttempt: 5 },
+    }),
+  )
+}
+
+async function signInOperator(): Promise<string> {
+  const response = await fetch(`${origin}/api/auth/sign-in/email`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: OPERATOR.email, password: OPERATOR.password }),
+  })
+  expect(response.ok).toBe(true)
+  const body = (await response.json()) as { token: string }
+  return body.token
+}
+
+/** Déroule l'appairage complet et renvoie les en-têtes de la machine. */
+async function pairRoomDevice(): Promise<Record<string, string>> {
+  const codeResponse = await fetch(`${origin}/api/auth/device/code`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ client_id: CLIENT_ID }),
+  })
+  const request = (await codeResponse.json()) as { device_code: string; user_code: string }
+
+  const operatorToken = await signInOperator()
+  const admin = httpClient({ authorization: `Bearer ${operatorToken}` })
+  await admin.devices.approve({
+    userCode: request.user_code,
+    clientId: CLIENT_ID,
+    roomId: TRACK_1,
+    label: 'PC régie salle 1',
+  })
+
+  // Respecte l'intervalle de polling imposé par le hub (RFC 8628 §3.5).
+  await sleep(1_100)
+  const tokenResponse = await fetch(`${origin}/api/auth/device/token`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+      device_code: request.device_code,
+      client_id: CLIENT_ID,
+    }),
+  })
+  const granted = (await tokenResponse.json()) as { access_token: string }
+  expect(granted.access_token).toBeTruthy()
+
+  /**
+   * Échange contre un jeton de salle.
+   *
+   * La session d'approbation porte les droits de l'opérateur ; une machine de
+   * régie n'a aucune raison de les conserver. Elle ne sert qu'à réclamer son
+   * propre jeton, à droits réduits.
+   */
+  const machine = httpClient({
+    authorization: `Bearer ${granted.access_token}`,
+    'x-room-client-id': CLIENT_ID,
+  })
+  const { token } = await machine.devices.claim()
+  expect(token.startsWith('rt_')).toBe(true)
+
+  return { authorization: `Bearer ${token}` }
+}
+
+describe('hub de bout en bout', () => {
+  it('répond au health check', async () => {
+    const response = await fetch(`${origin}/health`)
+    expect(response.ok).toBe(true)
+    expect((await response.json()) as { ok: boolean }).toMatchObject({ ok: true })
+  })
+
+  it('refuse toute procédure de salle sans appairage', async () => {
+    const anonymous = httpClient()
+    await expect(anonymous.rooms.sync({ since: null })).rejects.toBeDefined()
+  })
+
+  it('appaire une machine puis lui sert le programme de sa salle', async () => {
+    const deviceHeaders = await pairRoomDevice()
+    const room = wsClient(deviceHeaders)
+
+    const sync = await room.rooms.sync({ since: null })
+    expect(sync.room.id).toBe(TRACK_1)
+    expect(sync.program?.sessions).toHaveLength(27)
+    expect(sync.serverTime).toBeTruthy()
+
+    // Deuxième sync avec le même hash : le snapshot n'est pas renvoyé.
+    const again = await room.rooms.sync({ since: sync.contentHash })
+    expect(again.program).toBeNull()
+    expect(again.contentHash).toBe(sync.contentHash)
+  }, 20_000)
+
+  it('achemine les commandes descendantes et remonte les événements', async () => {
+    const deviceHeaders = await pairRoomDevice()
+    const room = wsClient(deviceHeaders)
+
+    const received: Command[] = []
+    const iterator = await room.rooms.commands()
+    const consumer = (async () => {
+      for await (const command of iterator) {
+        received.push(command)
+        if (received.length === 2) break
+      }
+    })()
+
+    await sleep(50)
+    hub.services.commands.publish(TRACK_1, { type: 'scene.force', role: 'HOLD' }, null)
+    hub.services.commands.publish(
+      null,
+      { type: 'message.broadcast', text: 'Ouverture des portes', level: 'info' },
+      600,
+    )
+    await consumer
+
+    expect(received.map((c) => c.payload.type)).toEqual(['scene.force', 'message.broadcast'])
+    expect(received[1]!.seq).toBeGreaterThan(received[0]!.seq)
+
+    // Remontée de l'outbox, puis rejeu du même lot.
+    const batch = [
+      {
+        id: '01AAAAAAAAAAAAAAAAAAAAAAAA',
+        roomId: TRACK_1,
+        seq: 1,
+        occurredAt: '2026-10-30T09:00:00.000+00:00',
+        monotonicMs: 1000,
+        delivery: 'required' as const,
+        payload: { type: 'recording.started' as const, obs: 'B' as const, sessionId: 'ses-1' },
+      },
+    ]
+    const first = await room.ingest.push({ batch })
+    expect(first.acked).toEqual(['01AAAAAAAAAAAAAAAAAAAAAAAA'])
+    const replay = await room.ingest.push({ batch })
+    expect(replay.acked).toEqual([])
+    expect(replay.duplicates).toEqual(['01AAAAAAAAAAAAAAAAAAAAAAAA'])
+  }, 20_000)
+
+  it('révoque une machine : son jeton ne donne plus accès à la salle', async () => {
+    const deviceHeaders = await pairRoomDevice()
+    const room = httpClient(deviceHeaders)
+    await expect(room.rooms.sync({ since: null })).resolves.toBeDefined()
+
+    hub.services.devices.revoke(CLIENT_ID)
+    await expect(room.rooms.sync({ since: null })).rejects.toBeDefined()
+  }, 20_000)
+})

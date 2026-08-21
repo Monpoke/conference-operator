@@ -1,0 +1,125 @@
+import { sql } from 'drizzle-orm'
+import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+
+/**
+ * Schéma local du client de salle (SQLite, dans `userData`).
+ *
+ * Tout ce qui doit survivre à un crash, un redémarrage ou une journée entière
+ * sans réseau vit ici. Une salle démarre et fonctionne à partir de cette base
+ * seule, sans jamais joindre le hub.
+ */
+
+const now = sql`(strftime('%Y-%m-%dT%H:%M:%fZ','now'))`
+
+/** Snapshots reçus du hub. Plusieurs versions coexistent pour permettre un retour arrière. */
+export const programCache = sqliteTable('program_cache', {
+  contentHash: text('content_hash').primaryKey(),
+  programJson: text('program_json').notNull(),
+  syncedAt: text('synced_at').notNull().default(now),
+  active: integer('active', { mode: 'boolean' }).notNull().default(false),
+})
+
+/** Réglages de la salle. Une seule ligne (`id = 1`), pour garder les lectures triviales. */
+export const roomSettings = sqliteTable('room_settings', {
+  id: integer('id').primaryKey().default(1),
+  roomId: text('room_id'),
+  token: text('token'),
+  configJson: text('config_json'),
+  activeContentHash: text('active_content_hash'),
+  /** Prochain `seq` à attribuer aux événements sortants. Monotone, jamais réinitialisé. */
+  nextSeq: integer('next_seq').notNull().default(1),
+  /** Dernier `seq` de commande appliqué : c'est le `lastEventId` renvoyé à la reprise. */
+  lastCommandSeq: integer('last_command_seq').notNull().default(0),
+  /** Offset d'horloge lissé vs le hub. Les timecodes VOD en dépendent. */
+  clockOffsetMs: integer('clock_offset_ms').notNull().default(0),
+  updatedAt: text('updated_at').notNull().default(now),
+})
+
+/**
+ * File d'attente durable des événements montants.
+ *
+ * `delivery = 'required'`     → rejoué jusqu'à `expires_at` (48 h par défaut)
+ * `delivery = 'best-effort'`  → abandonné dès `expires_at` (30 s), collapsé par `dedup_key`
+ */
+export const outbox = sqliteTable(
+  'outbox',
+  {
+    /** ULID généré côté client ; forme avec `roomId` la clé d'idempotence côté hub. */
+    id: text('id').primaryKey(),
+    roomId: text('room_id').notNull(),
+    seq: integer('seq').notNull(),
+    type: text('type').notNull(),
+    delivery: text('delivery').notNull(),
+    payloadJson: text('payload_json').notNull(),
+    occurredAt: text('occurred_at').notNull(),
+    monotonicMs: integer('monotonic_ms').notNull(),
+    /**
+     * Collapse : à `dedup_key` égale, seule la dernière occurrence non envoyée
+     * survit. Évite qu'une heure hors-ligne accumule 720 heartbeats.
+     */
+    dedupKey: text('dedup_key'),
+    expiresAt: text('expires_at'),
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: text('next_attempt_at').notNull().default(now),
+    lastError: text('last_error'),
+    createdAt: text('created_at').notNull().default(now),
+  },
+  (table) => [
+    /** Index d'élection du prochain lot : ordre d'émission strict par salle. */
+    index('outbox_ready_idx').on(table.nextAttemptAt, table.seq),
+    index('outbox_delivery_idx').on(table.delivery, table.expiresAt),
+    /**
+     * Un seul enregistrement en attente par `dedup_key` : le collapse est
+     * garanti par la base, pas seulement par le code appelant.
+     */
+    uniqueIndex('outbox_dedup_idx').on(table.roomId, table.dedupKey),
+  ],
+)
+
+/** Commandes déjà appliquées : protège du rejeu après reconnexion. */
+export const appliedCommand = sqliteTable('applied_command', {
+  seq: integer('seq').primaryKey(),
+  type: text('type').notNull(),
+  appliedAt: text('applied_at').notNull().default(now),
+})
+
+/**
+ * Cache d'assets adressé par contenu. Une fois rempli, aucune source navigateur
+ * d'OBS ne touche Internet pendant l'événement.
+ */
+export const assetCache = sqliteTable(
+  'asset_cache',
+  {
+    sha256: text('sha256').primaryKey(),
+    sourceUrl: text('source_url').notNull(),
+    contentType: text('content_type'),
+    byteSize: integer('byte_size').notNull(),
+    downloadedAt: text('downloaded_at').notNull().default(now),
+  },
+  (table) => [index('asset_cache_source_idx').on(table.sourceUrl)],
+)
+
+/**
+ * Journal local : événements rejetés définitivement par le hub, erreurs OBS,
+ * incidents. C'est la trace exploitable quand le réseau a été absent toute la journée.
+ */
+export const journal = sqliteTable(
+  'journal',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    level: text('level').notNull(),
+    message: text('message').notNull(),
+    contextJson: text('context_json'),
+    createdAt: text('created_at').notNull().default(now),
+  },
+  (table) => [index('journal_created_idx').on(table.createdAt)],
+)
+
+export const clientSchema = {
+  programCache,
+  roomSettings,
+  outbox,
+  appliedCommand,
+  assetCache,
+  journal,
+}

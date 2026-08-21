@@ -1,0 +1,99 @@
+import { z } from 'zod'
+
+/**
+ * Configuration lue une fois au démarrage et validée strictement.
+ *
+ * Un hub qui démarre avec une variable manquante le jour J est pire qu'un hub
+ * qui refuse de démarrer : on veut l'échec au déploiement, pas en salle.
+ */
+const configSchema = z.object({
+  /** `0` demande au système un port libre — utile en test et en développement. */
+  port: z.coerce.number().int().min(0).max(65535).default(8787),
+  host: z.string().default('0.0.0.0'),
+  databasePath: z.string().default('./data/hub.db'),
+  /** Base publique du hub, utilisée par Better Auth et l'URI de vérification device. */
+  publicUrl: z.url().default('http://localhost:8787'),
+  authSecret: z.string().min(32, 'BETTER_AUTH_SECRET doit faire au moins 32 caractères'),
+  /** URL de l'export « conference-center » importé par défaut. */
+  programSourceUrl: z.url().optional(),
+  logLevel: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+  /**
+   * Cadence de polling imposée aux machines pendant l'appairage (RFC 8628).
+   * Abaissée dans les tests pour ne pas attendre 5 s entre deux sondages.
+   */
+  devicePollInterval: z
+    .custom<`${number}${'s' | 'm'}`>((value) => typeof value === 'string' && /^\d+[sm]$/.test(value))
+    .default('5s'),
+
+  /** Hashtag suivi sur les réseaux. Vide = aucune ingestion sociale. */
+  socialHashtag: z.string().optional(),
+  /** Instance Mastodon interrogée pour la timeline publique du hashtag. */
+  mastodonInstance: z.url().optional(),
+  /**
+   * Clé X. Absente, l'adapter reste déclaré mais refuse explicitement : la
+   * recherche par hashtag nécessite un plan payant.
+   */
+  xBearerToken: z.string().optional(),
+  socialPollIntervalMs: z.coerce.number().int().positive().default(30_000),
+
+  /**
+   * Heure simulée du hub (ISO 8601). Développement uniquement.
+   *
+   * Déplace tout le système : les salles s'alignent sur l'heure du hub, donc
+   * il n'y a rien à régler de leur côté. Permet de dérouler une journée
+   * d'événement des mois avant qu'elle ait lieu.
+   */
+  simulatedTime: z.iso.datetime({ offset: true }).optional(),
+
+  /**
+   * Autorise le réglage de l'heure depuis la console.
+   *
+   * Fermé par défaut, et c'est délibéré : changer l'heure pendant l'événement
+   * fausserait les timecodes des enregistrements et déclencherait des clôtures
+   * automatiques à contretemps — deux erreurs qu'on ne rattrape pas après coup.
+   */
+  clockControl: z
+    // Accepte la chaîne venue de l'environnement comme le booléen déjà résolu :
+    // `createHub` reçoit parfois une config déjà normalisée.
+    .union([z.string(), z.boolean()])
+    .optional()
+    .transform((v) => v === true || v === '1' || v === 'true'),
+})
+
+export type Config = z.infer<typeof configSchema>
+
+/**
+ * Forme *avant* validation : les champs à valeur par défaut y sont facultatifs.
+ * C'est ce qu'accepte `createHub`, pour qu'un appelant n'ait pas à répéter des
+ * réglages que le schéma pose déjà.
+ */
+export type ConfigInput = z.input<typeof configSchema>
+
+export { configSchema }
+
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  const parsed = configSchema.safeParse({
+    port: env.PORT,
+    host: env.HOST,
+    databasePath: env.DATABASE_PATH,
+    publicUrl: env.PUBLIC_URL,
+    authSecret: env.BETTER_AUTH_SECRET,
+    programSourceUrl: env.PROGRAM_SOURCE_URL,
+    logLevel: env.LOG_LEVEL,
+    devicePollInterval: env.DEVICE_POLL_INTERVAL,
+    socialHashtag: env.SOCIAL_HASHTAG,
+    mastodonInstance: env.MASTODON_INSTANCE,
+    xBearerToken: env.X_BEARER_TOKEN,
+    socialPollIntervalMs: env.SOCIAL_POLL_INTERVAL_MS,
+    simulatedTime: env.SIMULATED_TIME,
+    clockControl: env.CLOCK_CONTROL,
+  })
+
+  if (!parsed.success) {
+    const details = parsed.error.issues
+      .map((issue) => `  ${issue.path.join('.') || '(racine)'} : ${issue.message}`)
+      .join('\n')
+    throw new Error(`Configuration du hub invalide :\n${details}`)
+  }
+  return parsed.data
+}

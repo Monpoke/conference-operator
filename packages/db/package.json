@@ -1,0 +1,29 @@
+{
+  "name": "@cloudnord/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./hub": "./src/hub/index.ts",
+    "./client": "./src/client/index.ts"
+  },
+  "scripts": {
+    "generate:hub": "drizzle-kit generate --config=drizzle.hub.config.ts",
+    "generate:client": "drizzle-kit generate --config=drizzle.client.config.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "sceller": "node scripts/sceller-migrations.mjs"
+  },
+  "dependencies": {
+    "@cloudnord/contract": "workspace:*",
+    "better-sqlite3": "13.0.3",
+    "drizzle-orm": "0.45.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "7.6.13",
+    "drizzle-kit": "0.31.10",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
+  }
+}

@@ -1,0 +1,39 @@
+appId: fr.cloudnord.roomclient
+productName: Cloud Nord — Régie de salle
+copyright: Cloud Nord
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**
+  - package.json
+  # Migrations du schéma local : lues au démarrage depuis le paquet.
+  - "!node_modules/**"
+  - node_modules/better-sqlite3/**
+
+extraResources:
+  # Le client migre sa base au lancement ; les fichiers SQL doivent voyager avec.
+  - from: ../../packages/db/migrations/client
+    to: migrations/client
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  # Sans signature, SmartScreen avertira au premier lancement : prévoir de
+  # l'installer avant le jour J, pas devant une salle qui attend.
+  signAndEditExecutable: false
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Régie Cloud Nord
+
+# Modules natifs : `better-sqlite3` doit être recompilé pour l'ABI d'Electron,
+# pas celui de Node. electron-builder s'en charge à l'empaquetage.
+npmRebuild: true
+nodeGypRebuild: false

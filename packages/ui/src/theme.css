@@ -1,0 +1,337 @@
+/*
+ * `source(none)` : détection automatique désactivée.
+ *
+ * Par défaut Tailwind v4 balaie tout le dépôt — y compris `src/generated/`, où
+ * il écrit lui-même la feuille compilée. Cette sortie contient tous les noms de
+ * classes en clair : elle se retrouvait donc rescannée au tour suivant, et la
+ * compilation n'était plus reproductible. Les sources sont déclarées à la main
+ * juste en dessous.
+ */
+@import "tailwindcss" source(none);
+
+/*
+ * Les pages sont servies sans étape de build : la feuille est compilée ici,
+ * puis inlinée dans chaque page. Tailwind doit donc être pointé explicitement
+ * sur les sources qui contiennent les classes — elles vivent dans des gabarits
+ * TypeScript, pas dans des fichiers HTML.
+ */
+@source "../../../apps/room-client/src/core";
+@source "../../../apps/hub-server/src/pages";
+
+/*
+ * Palette.
+ *
+ * Les trois couleurs de marque viennent du programme (`event.color`,
+ * `colorSecondary`, `colorBackground`) et changent donc d'un événement à
+ * l'autre. Les déclarer ici comme variables permet aux pages de les redéfinir
+ * en ligne sur `:root` : toutes les utilitaires `bg-marque`, `text-marque`…
+ * suivent sans qu'aucune classe ne soit recalculée.
+ */
+@theme {
+  --color-marque: #5b7cfa;
+  --color-marque2: #22d3ee;
+  --color-fond: #0b0d14;
+  --color-surface: #151a27;
+  --color-surface2: #1d2334;
+  --color-bord: #2b3348;
+  --color-texte: #e8ecf7;
+  --color-attenue: #97a1bd;
+  --color-ok: #34d399;
+  --color-attention: #fbbf24;
+  --color-alerte: #fb7185;
+
+  --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, monospace;
+}
+
+/*
+ * `[hidden]` doit gagner contre toute règle d'affichage.
+ *
+ * Une classe utilitaire `flex` ou `grid` bat la règle `[hidden]` de la feuille
+ * du navigateur, qui n'est pas marquée `!important` : sans cette ligne, les
+ * onglets s'empilent tous à l'écran. Le défaut a déjà été rencontré une fois.
+ */
+@layer base {
+  [hidden] {
+    display: none !important;
+  }
+
+  /*
+   * Styles d'éléments nus.
+   *
+   * Les deux consoles construisent beaucoup de markup en JavaScript, souvent
+   * sans y poser de classe (`document.createElement('button')`). Tailwind
+   * remet ces éléments à plat : sans ces règles, un bouton créé à l'exécution
+   * n'aurait aucun style — défaut invisible au typage, visible seulement à
+   * l'écran, et seulement dans la branche de code qui le crée.
+   *
+   * Les classes de la couche `components` (`.btn`, `.champ`…) restent
+   * prioritaires : elles servent à s'écarter de ces défauts, pas à les répéter.
+   */
+  button {
+    @apply cursor-pointer rounded-lg border border-bord bg-surface2 px-[15px] py-2.5
+           text-sm font-semibold whitespace-nowrap text-texte;
+  }
+  button:hover:not(:disabled) {
+    @apply border-marque;
+  }
+  button:disabled {
+    @apply cursor-not-allowed opacity-45;
+  }
+
+  input,
+  select {
+    @apply w-full rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte;
+  }
+  input:focus,
+  select:focus {
+    @apply border-marque outline-none;
+  }
+  input[type='checkbox'] {
+    @apply w-auto;
+  }
+
+  label {
+    @apply mb-[5px] block text-xs text-attenue;
+  }
+
+  table {
+    @apply w-full border-collapse text-[13px];
+  }
+  th {
+    @apply pr-2.5 pb-2 text-left text-[11px] font-semibold tracking-[.08em] text-attenue uppercase;
+  }
+  td {
+    @apply border-t border-bord py-[9px] pr-2.5 align-middle;
+  }
+}
+
+/*
+ * Couche « composants ».
+ *
+ * Ces classes sont basculées **depuis le JavaScript** des pages
+ * (`classList.toggle('actif')`, `className = 'badge ' + statut`). Les exprimer
+ * en utilitaires obligerait chaque bascule à réécrire une liste de classes, ce
+ * qui est fragile et illisible ; `@apply` garde le style dans Tailwind tout en
+ * laissant aux pages un nom stable à manipuler.
+ *
+ * Elles sont partagées entre la régie et la console : les deux surfaces sont
+ * utilisées par les mêmes personnes le même jour, et doivent se ressembler.
+ */
+@layer components {
+  /* — Surfaces — */
+  /*
+   * Panneau.
+   *
+   * Pas de `min-h-0` ici : dans une colonne défilante, il autorise le panneau à
+   * se comprimer sous la taille de son contenu, et les panneaux se chevauchent.
+   * Les rares panneaux qui doivent rétrécir pour défiler à l'intérieur le
+   * demandent explicitement.
+   */
+  .panneau {
+    @apply flex shrink-0 flex-col rounded-xl border border-bord bg-surface p-4;
+  }
+
+  /* Chronomètre au repos : la classe est basculée depuis le JavaScript. */
+  .inactif {
+    @apply text-attenue;
+  }
+
+  /*
+   * Rappel de raccourci clavier.
+   *
+   * Détaché du libellé et encadré : collé au texte, il se lisait comme une
+   * lettre de plus — « EnregistrerR ».
+   */
+  .touche {
+    @apply ml-2 rounded border border-current/30 px-1 py-px text-[10px] font-semibold opacity-60;
+  }
+  .titre-panneau {
+    @apply mb-2.5 text-[11px] font-semibold tracking-[.14em] text-attenue uppercase;
+  }
+
+  /* — Boutons — */
+  .btn {
+    @apply cursor-pointer rounded-lg border border-bord bg-surface2 px-2.5 py-3.5
+           text-sm font-semibold text-texte transition-colors;
+  }
+  .btn:hover:not(:disabled) {
+    @apply border-marque bg-bord;
+  }
+  .btn:disabled {
+    @apply cursor-not-allowed opacity-40;
+  }
+  .btn.actif {
+    @apply border-marque bg-marque text-[#05070d];
+  }
+  .btn.danger {
+    @apply border-[#6c2027] bg-[#3a1519];
+  }
+  .btn.danger.actif {
+    @apply border-alerte bg-alerte text-white;
+  }
+  /* Bouton de barre d'outils : même famille, densité réduite. */
+  .btn-petit {
+    @apply px-3 py-2 text-[13px];
+  }
+  /* Onglet : plat au repos, encadré une fois actif. */
+  .btn-onglet {
+    @apply border-transparent bg-transparent px-3 py-2 text-[13px] text-attenue;
+  }
+  .btn-onglet.actif {
+    @apply border-bord bg-surface2 text-texte;
+  }
+
+  /* — Saisies — */
+  .champ {
+    @apply min-w-0 rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte;
+  }
+  .champ:focus {
+    @apply border-marque outline-none;
+  }
+
+  /* — Étiquettes d'état — */
+  .badge {
+    @apply rounded-md bg-surface2 px-2.5 py-1 text-xs font-bold tracking-[.08em] text-attenue uppercase;
+  }
+  .badge.running {
+    @apply bg-ok text-[#05231a];
+  }
+  .badge.ended {
+    @apply bg-[#3a2a13] text-attention;
+  }
+
+  /* — Pastille de connectivité — */
+  .pastille {
+    @apply block size-2.5 shrink-0 rounded-full bg-ok;
+  }
+  .pastille.degraded {
+    @apply bg-attention;
+  }
+  .pastille.offline {
+    @apply bg-alerte;
+  }
+}
+
+/*
+ * Composants propres aux consoles (hub et régie).
+ *
+ * Mêmes raisons que plus haut : ces noms sont posés depuis le JavaScript sur du
+ * markup construit à la volée.
+ */
+@layer components {
+  /* Bouton d'action principale d'un formulaire. */
+  .btn.principal,
+  button.principal {
+    @apply border-marque bg-marque text-[#05070d];
+  }
+  button.danger {
+    @apply border-[#6c2027] bg-[#3a1519];
+  }
+  button.petit {
+    @apply px-[11px] py-[7px] text-[13px];
+  }
+
+  /* Carte d'un message en attente de modération. */
+  .message {
+    @apply mb-2.5 rounded-[9px] border border-bord p-3;
+  }
+  .message .meta {
+    @apply mb-1.5 flex gap-2 text-xs text-attenue;
+  }
+  .message .corps {
+    @apply mb-2.5 text-sm leading-snug break-words;
+  }
+  .message .actions {
+    @apply flex gap-2;
+  }
+  .source {
+    @apply rounded bg-surface2 px-1.5 py-0.5 text-[10px] tracking-[.08em] uppercase;
+  }
+
+  /* Ligne de réglage : libellé à gauche, contrôle à droite. */
+  .reglage {
+    @apply flex items-center gap-3 border-t border-bord py-3;
+  }
+  .reglage:first-of-type {
+    @apply border-t-0;
+  }
+  .reglage .libelle {
+    @apply flex-1;
+  }
+  .reglage .libelle strong {
+    @apply mb-[3px] block text-sm;
+  }
+  .reglage .libelle span {
+    @apply text-xs text-attenue;
+  }
+  .reglage input[type='number'] {
+    @apply w-[92px];
+  }
+
+  /* États et textes secondaires récurrents. */
+  .vide {
+    @apply py-3.5 text-[13px] text-attenue;
+  }
+  .aide {
+    @apply mt-2.5 text-[13px] leading-relaxed text-attenue;
+  }
+}
+
+/*
+ * Mur public : surface mobile, servie par le hub.
+ *
+ * Ces classes sont posées depuis le JavaScript de la page sur du markup
+ * construit à la volée (avis, questions, bouton de vote).
+ */
+@layer components {
+  .onglets button {
+    @apply flex-1 rounded-[10px] border border-bord bg-surface p-3 text-attenue;
+  }
+  .onglets button.actif {
+    @apply border-marque bg-marque text-[#05070d];
+  }
+
+  .carte {
+    @apply rounded-xl border border-bord bg-surface p-4;
+  }
+
+  .envoyer {
+    @apply w-full rounded-[10px] border-none bg-marque p-[15px] text-base font-semibold text-[#05070d];
+  }
+  .envoyer:disabled {
+    @apply opacity-50;
+  }
+
+  .question {
+    @apply flex items-start gap-3 rounded-xl border border-bord bg-surface p-3.5;
+  }
+  .question .texte {
+    @apply flex-1 text-[15px] leading-snug;
+  }
+  .question .auteur {
+    @apply mt-[5px] text-xs text-attenue;
+  }
+
+  .voter {
+    @apply flex min-w-[52px] cursor-pointer flex-col items-center gap-0.5 rounded-[10px]
+           border border-bord bg-fond px-1.5 py-[9px] text-texte;
+  }
+  .voter.vote {
+    @apply border-marque text-marque;
+  }
+
+  /* Avis de dépôt : caché tant qu'il n'y a rien à dire. */
+  .avis {
+    @apply mt-3.5 hidden rounded-[10px] p-[13px] text-sm;
+  }
+  .avis.visible {
+    @apply block;
+  }
+  .avis.ok {
+    @apply bg-[#102e22] text-ok;
+  }
+  .avis.ko {
+    @apply bg-[#35161a] text-alerte;
+  }
+}

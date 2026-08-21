@@ -1,0 +1,9 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "spikes/*"
+
+onlyBuiltDependencies:
+  - esbuild
+  - better-sqlite3
+  - electron

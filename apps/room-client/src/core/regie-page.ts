@@ -434,12 +434,95 @@ ${etatInitial}
     return Date.now() + (donnees.state.serverTimeOffsetMs || 0)
   }
 
+  /**
+   * Fin effective d'un créneau : fin explicite, sinon durée, sinon début du
+   * suivant.
+   *
+   * Même règle que effectiveEndMs côté programme. Un créneau sans dateEnd n'est
+   * pas un créneau de durée nulle : le lire ainsi ne mettait jamais rien « en
+   * cours » dans les salles dont l'export ne porte que les heures de début.
+   *
+   * Rend null pour un créneau qu'aucune des trois règles ne ferme — le dernier
+   * de la journée. On préfère ne rien surligner à surligner un talk fini depuis
+   * la veille.
+   */
+  function finEffective(sessions, index) {
+    const session = sessions[index]
+    if (session.endsAtMs != null) return session.endsAtMs
+    if (session.durationMinutes != null) return session.startsAtMs + session.durationMinutes * 60000
+    return sessions[index + 1] ? sessions[index + 1].startsAtMs : null
+  }
+
   function enCours(sessions, instant) {
-    return sessions.find((s) => s.startsAtMs <= instant && (s.endsAtMs ?? s.startsAtMs) > instant) ?? null
+    return sessions.find((s, i) => {
+      const fin = finEffective(sessions, i)
+      return fin != null && s.startsAtMs <= instant && fin > instant
+    }) ?? null
   }
 
   function apres(sessions, instant) {
     return sessions.find((s) => s.startsAtMs > instant) ?? null
+  }
+
+  /** Créneau au-delà duquel une fin proche se signale. */
+  const FIN_PROCHE_MS = 5 * 60000
+
+  /**
+   * État de la conférence d'une salle, pour la pastille et son libellé.
+   *
+   * Deux sources, dans cet ordre :
+   *
+   * - **le dépassement** vient de l'état remonté par la salle. Le programme ne
+   *   le dira jamais : passé l'heure de fin, il passe simplement au créneau
+   *   suivant. Une salle qui pilote encore un talk dont le créneau est clos est
+   *   précisément ce qu'on veut voir depuis la régie d'à côté ;
+   * - **le reste** se lit sur le programme mis en cache, à l'heure du hub. Il
+   *   répond pendant une coupure, et suit l'heure simulée.
+   *
+   * @param sessionPilotee Conférence que la salle pilote réellement, ou null.
+   */
+  function etatConference(sessions, instant, sessionPilotee) {
+    if (sessionPilotee != null) {
+      const index = sessions.findIndex((s) => s.id === sessionPilotee)
+      const fin = index === -1 ? null : finEffective(sessions, index)
+      if (fin != null && fin <= instant) {
+        return { classe: 'depassement', libelle: 'dépassement ' + duree(Math.round((instant - fin) / 60000)) }
+      }
+    }
+
+    const courante = enCours(sessions, instant)
+    if (courante == null) {
+      return { classe: 'hors', libelle: sessions.length === 0 ? 'programme inconnu' : 'hors créneau' }
+    }
+    if (courante.kind === 'break') return { classe: 'pause', libelle: 'pause' }
+
+    const fin = finEffective(sessions, sessions.indexOf(courante))
+    if (fin != null && fin - instant <= FIN_PROCHE_MS) {
+      // Le cas qui décide : on ne lance pas un talk quand la salle d'à côté
+      // s'apprête à déverser son public dans le couloir.
+      return { classe: 'fin-proche', libelle: 'vers la fin' }
+    }
+    return { classe: '', libelle: 'en cours' }
+  }
+
+  /**
+   * Ce que le contour de la pastille ajoute : la confiance, jamais la couleur.
+   *
+   * Une salle muette garde le remplissage que dit son programme, mais creux —
+   * on ne sait plus si elle le suit.
+   */
+  /** Ce que le hub sait d'une salle, ou null si sa vue ne l'a pas encore. */
+  function vueDuHub(roomId) {
+    return (donnees.diagnostics?.rooms ?? []).find((salle) => salle.roomId === roomId) ?? null
+  }
+
+  function sessionDe(sessions, sessionId) {
+    return sessionId == null ? null : sessions.find((s) => s.id === sessionId) ?? null
+  }
+
+  function confiance(connectivity) {
+    if (connectivity === 'DEGRADED') return ' doute'
+    return connectivity == null || connectivity === 'ONLINE' ? '' : ' muette'
   }
 
   /** Onglet affiché dans la modale de consultation. */
@@ -458,20 +541,29 @@ ${etatInitial}
     return (session?.speakers ?? []).map((p) => p.name).join(' · ')
   }
 
-  function creneaux(sessions, surlignerActuel) {
+  /**
+   * Rend une timeline de créneaux, celui en cours surligné.
+   *
+   * @param idActuel Créneau à surligner, ou null. La salle passe l'état réel
+   *   qu'elle pilote — un talk lancé en retard reste le talk en cours —, une
+   *   autre salle passe ce que dit le programme à l'heure du hub : on ne
+   *   connaît pas son état, mais on connaît son horaire.
+   */
+  function creneaux(sessions, idActuel) {
     if (sessions.length === 0) return '<div class="text-xs text-attenue">Aucune session.</div>'
     const instant = maintenant()
-    const actuel = surlignerActuel ? donnees.state.currentSession?.id : null
+    const actuel = idActuel ?? null
 
     const CRENEAU = 'grid grid-cols-[52px_1fr] items-baseline gap-2.5 rounded-md px-2.5 py-2'
     // "timeline" et "actuel" sont des accroches, pas du style : la première
     // sert aux tests, la seconde au défilement automatique vers la conférence.
-    return '<div class="timeline flex flex-col gap-1">' + sessions.map((s) => {
+    return '<div class="timeline flex flex-col gap-1">' + sessions.map((s, i) => {
       // "actuel" reste un nom de classe : rendreEncart s'en sert pour faire
       // défiler la timeline jusqu'à la conférence en cours.
+      const fin = finEffective(sessions, i)
       const etat = s.id === actuel
         ? 'actuel bg-[color-mix(in_srgb,var(--color-marque)_22%,transparent)] shadow-[inset_3px_0_0_var(--color-marque)]'
-        : (s.endsAtMs ?? s.startsAtMs) < instant ? 'opacity-35' : ''
+        : fin != null && fin < instant ? 'opacity-35' : ''
       const pause = s.kind === 'break' ? 'opacity-50' : ''
       const qui = intervenants(s)
       return '<div class="' + CRENEAU + ' ' + etat + ' ' + pause + '">' +
@@ -494,13 +586,27 @@ ${etatInitial}
       return
     }
     if (encart === 'autre') {
+      /**
+       * Ce qui se joue à côté, déduit du programme et de l'heure du hub.
+       *
+       * On ne reçoit pas l'état de l'autre salle ici — et on n'en veut pas :
+       * le programme mis en cache répond même pendant une coupure, et l'heure
+       * du hub porte le décalage, heure simulée comprise. Sans ce calcul, la
+       * modale déroulait une liste sans dire où on en était.
+       */
       conteneur.innerHTML = autreSalle == null
         ? '<div class="text-xs text-attenue">Choisissez une salle à suivre.</div>'
-        : creneaux(sessionsAutreSalle, false)
+        : creneaux(sessionsAutreSalle, enCours(sessionsAutreSalle, maintenant())?.id ?? null)
+      defilerVersActuel(conteneur)
       return
     }
 
-    conteneur.innerHTML = creneaux(donnees.sessions, true)
+    conteneur.innerHTML = creneaux(donnees.sessions, donnees.state.currentSession?.id ?? null)
+    defilerVersActuel(conteneur)
+  }
+
+  /** Amène la conférence en cours sous les yeux : la timeline fait une journée. */
+  function defilerVersActuel(conteneur) {
     const actuel = conteneur.querySelector('.actuel')
     if (actuel) actuel.scrollIntoView({ block: 'center' })
   }
@@ -597,29 +703,33 @@ ${etatInitial}
 
     const html = salles.map((salle) => {
       const sessions = programmesSalles.get(salle.id) ?? []
+      const vue = vueDuHub(salle.id)
       const courante = enCours(sessions, instant)
       const suivante = apres(sessions, instant)
+      const etat = etatConference(sessions, instant, vue?.currentSessionId ?? null)
 
       let libelle = ''
       let detail = 'programme inconnu'
       let teinte = 'text-attenue'
 
-      if (courante != null && courante.kind === 'break') {
+      if (etat.classe === 'depassement') {
+        // Le programme est passé au créneau suivant ; la salle, non. C'est
+        // elle qui a raison, et c'est ce qui décale toute la journée.
+        libelle = sessionDe(sessions, vue?.currentSessionId)?.title ?? ''
+        detail = etat.libelle
+        teinte = 'text-alerte'
+      } else if (courante != null && courante.kind === 'break') {
         libelle = courante.title
         detail = suivante == null ? 'pause' : 'reprise ' + heure(suivante.startsAt, donnees.timezone)
       } else if (courante != null) {
         libelle = courante.title
-        const restant = Math.round(((courante.endsAtMs ?? courante.startsAtMs) - instant) / 60000)
-        if (restant < 0) {
-          detail = 'dépassement ' + duree(-restant)
-          teinte = 'text-alerte'
-        } else if (restant <= 5) {
-          // Le cas qui décide : on ne lance pas un talk quand la salle d'à côté
-          // s'apprête à déverser son public dans le couloir.
-          detail = 'vers la fin · ' + duree(restant)
+        const fin = finEffective(sessions, sessions.indexOf(courante))
+        const restant = fin == null ? null : Math.round((fin - instant) / 60000)
+        if (etat.classe === 'fin-proche') {
+          detail = 'vers la fin · ' + duree(restant ?? 0)
           teinte = 'text-attention'
         } else {
-          detail = 'en cours · fin ' + heure(courante.endsAt, donnees.timezone)
+          detail = courante.endsAt ? 'en cours · fin ' + heure(courante.endsAt, donnees.timezone) : 'en cours'
         }
       } else if (suivante != null) {
         libelle = suivante.title
@@ -628,8 +738,7 @@ ${etatInitial}
         detail = 'programme terminé'
       }
 
-      const classe = salle.connectivity == null || salle.connectivity === 'ONLINE' ? ''
-        : salle.connectivity === 'DEGRADED' ? 'degraded' : 'offline'
+      const classe = etat.classe + confiance(vue?.connectivity ?? salle.connectivity)
       return '<button data-salle="' + echapper(salle.id) + '" ' +
         'class="flex shrink-0 items-center gap-2 rounded-md border border-bord bg-surface2 px-2.5 py-1 text-xs font-normal">' +
         '<span class="pastille ' + classe + '"></span>' +
@@ -1071,15 +1180,24 @@ ${etatInitial}
     const salles = donnees.diagnostics?.rooms ?? []
     if (salles.length === 0) return '<div class="text-xs text-attenue">Aucune salle connue du hub.</div>'
 
+    const instant = maintenant()
     const lignes = salles.map((salle) => {
-      const classe = salle.connectivity === 'ONLINE' ? '' : salle.connectivity === 'DEGRADED' ? 'degraded' : 'offline'
+      const sessions = programmesSalles.get(salle.roomId) ?? []
+      const etat = etatConference(sessions, instant, salle.currentSessionId)
+      const classe = etat.classe + confiance(salle.connectivity)
       const attente = salle.outboxDepth > 0 ? salle.outboxDepth + ' en attente' : ''
+      // Le libellé accompagne la pastille : une couleur seule ne se lit pas
+      // quand on ne les distingue pas, et rien ne dit ici ce qui se joue.
+      const coupee = salle.connectivity !== 'ONLINE'
       return '<div class="grid grid-cols-[1fr_auto_auto] items-center gap-2.5 border-t border-bord py-2 text-[13px] first:border-t-0">' +
         '<div><div class="font-semibold">' + echapper(salle.name) + '</div>' +
         '<div class="text-xs text-attenue">' + echapper(salle.sceneRole ?? 'scène inconnue') +
         (attente ? ' · ' + attente : '') + '</div></div>' +
         '<div>' + (salle.recording ? '<span class="badge running">rec</span>' : '') + '</div>' +
-        '<div><span class="pastille ' + classe + '"></span></div>' +
+        '<div class="flex items-center gap-1.5 text-xs ' +
+        (etat.classe === 'depassement' ? 'text-alerte' : etat.classe === 'fin-proche' ? 'text-attention' : 'text-attenue') +
+        '"><span>' + echapper(coupee ? 'salle muette' : etat.libelle) + '</span>' +
+        '<span class="pastille ' + classe + '"></span></div>' +
         '</div>'
     }).join('')
 

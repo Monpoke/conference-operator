@@ -15,11 +15,62 @@ export interface AdminPageOptions {
   mode?: ModeExecution
   /** Réglages trouvés dans l'environnement et laissés sans effet, avec pourquoi. */
   ignores?: IgnoreConfig[]
+  /**
+   * Connexion Google, si le hub en a les identifiants. `null` sinon.
+   *
+   * Le domaine est affiché sous le bouton : il dit qui peut entrer, et évite
+   * qu'on s'obstine avec une adresse personnelle que Google refusera.
+   */
+  google?: { domaine: string } | null
 }
+
+/**
+ * Échappe une valeur de configuration insérée dans le HTML rendu.
+ *
+ * Le domaine Google vient d'un `.env`, pas d'un formulaire : le risque est
+ * faible, mais une page qui construit du HTML par concaténation ne doit pas
+ * avoir d'exception — c'est l'exception qu'on oublie de rouvrir le jour où la
+ * valeur vient d'ailleurs.
+ */
+function echapperServeur(valeur: string): string {
+  return valeur.replace(/[&<>"']/g, (caractere) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[caractere]!)
+}
+
+/**
+ * Vues de la console, dans l'ordre des onglets.
+ *
+ * `developpement` n'existe qu'en mode dev — la console ne le rend pas, et le
+ * hub ne sert pas son adresse : une vue masquée reste à un `hidden` près de
+ * quelqu'un qui inspecte la page.
+ */
+export function vuesConsole(dev: boolean): string[] {
+  const vues = ['exploitation', 'appairage', 'conferences', 'moderation', 'messages', 'reglages']
+  return dev ? [...vues, 'developpement'] : vues
+}
+
+/**
+ * Adresse d'une vue.
+ *
+ * L'exploitation vit à la racine : c'est la vue par défaut, et `/admin` est
+ * l'adresse qu'on écrit de mémoire ou qu'on met en favori.
+ */
+export function cheminDeVue(vue: string): string {
+  return vue === 'exploitation' ? '/admin' : `/admin/${vue}`
+}
+
+/**
+ * Adresse de l'appairage imposée par Better Auth.
+ *
+ * C'est celle qu'il donne aux machines (`/admin/devices?user_code=…`) : elle ne
+ * se renomme pas, elle s'ajoute. Elle ouvre la même vue que `/admin/appairage`.
+ */
+export const ALIAS_APPAIRAGE = '/admin/devices'
 
 export function renderAdminPage(options: AdminPageOptions = {}): string {
   const mode = options.mode ?? 'production'
   const ignores = options.ignores ?? []
+  const google = options.google ?? null
 
   /**
    * Le menu Développement n'est pas *masqué* en production : il n'est pas rendu.
@@ -30,8 +81,13 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
    * mode dev ; la console dit la même chose en ne proposant rien.
    */
   const dev = mode === 'dev'
-  const vues = ['exploitation', 'appairage', 'conferences', 'moderation', 'messages', 'reglages']
-  if (dev) vues.push('developpement')
+  const vues = vuesConsole(dev)
+  /** Adresse de chaque vue, et vue de chaque adresse — alias d'appairage compris. */
+  const chemins = Object.fromEntries(vues.map((vue) => [vue, cheminDeVue(vue)]))
+  const vuesParChemin = {
+    ...Object.fromEntries(vues.map((vue) => [cheminDeVue(vue), vue])),
+    [ALIAS_APPAIRAGE]: 'appairage',
+  }
 
   /**
    * Deux avertissements, rendus côté serveur.
@@ -44,6 +100,22 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
     ? '<span class="rounded border border-attention/40 px-1.5 py-px text-[11px] font-semibold ' +
       'tracking-[.08em] text-attention uppercase">mode dev</span>'
     : ''
+  /**
+   * Connexion Google, rendue seulement si le hub sait s'en servir.
+   *
+   * Le mot de passe reste au-dessus, et n'est jamais retiré : Google exige
+   * internet au moment de la connexion, et tout ce système est bâti pour
+   * survivre à une coupure. Un compte de secours provisionné en CLI est la
+   * seule porte qui ne dépend de personne.
+   */
+  const boutonGoogle = google == null
+    ? ''
+    : '<div class="my-3.5 flex items-center gap-2 text-xs text-attenue">' +
+      '<span class="h-px flex-1 bg-bord"></span>ou<span class="h-px flex-1 bg-bord"></span></div>' +
+      '<button class="w-full" id="btn-google">Continuer avec Google</button>' +
+      '<div class="mt-2 text-center text-xs text-attenue">Comptes ' +
+      echapperServeur('@' + google.domaine) + ' uniquement</div>'
+
   const avisIgnores = ignores.length === 0
     ? ''
     : '<div class="mb-3.5 rounded-[10px] border border-[#6c2027] bg-[#3a1519] px-3.5 py-2.5 text-sm">' +
@@ -112,6 +184,14 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
   #avis { opacity: 0; }
   #avis.visible { opacity: 1; }
   #avis.erreur { border-color: var(--color-alerte); background: #35161a; }
+
+  /*
+   * Verdict d'un code d'appairage. Pilotée par un attribut, pas par l'attribut
+   * hidden : la règle display:flex qui la centre bat la feuille du navigateur,
+   * et la modale resterait affichée.
+   */
+  #verdict-code { display: none; }
+  body[data-verdict="ouvert"] #verdict-code { display: flex; }
 </style>
 </head>
 <body class="bg-fond font-sans text-texte">
@@ -123,6 +203,7 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
       <div class="mb-[11px]"><label for="motdepasse">Mot de passe</label><input id="motdepasse" type="password" required></div>
       <button class="principal w-full" type="submit">Se connecter</button>
     </form>
+    ${boutonGoogle}
   </section>
 </div>
 
@@ -141,7 +222,9 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
       <div class="hidden text-[13px] text-attenue sm:block" id="identite"></div>
       <a class="petit rounded-lg border border-bord bg-surface2 px-[11px] py-[7px] text-[13px] font-semibold text-texte no-underline"
          href="/mur" target="_blank" rel="noopener">Mur public</a>
+      <button class="petit" id="btn-notifs" hidden>Notifications</button>
       <button class="petit" id="btn-rafraichir">Rafraîchir</button>
+      <button class="petit" id="btn-deconnexion">Déconnexion</button>
     </div>
   </header>
 
@@ -426,6 +509,38 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
   ${vueDeveloppement}
 </div>
 
+<!--
+  Verdict du code passé dans l'URL.
+
+  Arriver par le lien de la régie et tomber sur une file de demandes ne dit
+  rien de *ce* code-là : il peut être expiré, déjà traité, ou n'avoir jamais
+  existé, pendant que trois autres machines attendent à l'écran. La modale
+  tranche avant qu'on cherche.
+-->
+<div class="fixed inset-0 z-50 items-center justify-center bg-black/65 p-4" id="verdict-code">
+  <div class="panneau w-full max-w-[440px]">
+    <h2 class="titre-panneau" id="verdict-titre">Code d'appairage</h2>
+    <div class="text-sm leading-relaxed" id="verdict-texte">Vérification…</div>
+    <!--
+      Décider sur place.
+
+      Le code qu'on tient est là, la machine qui le demande aussi : renvoyer
+      vers la liste derrière la modale faisait chercher la bonne ligne parmi
+      d'autres, pour refaire le geste qu'on venait de valider des yeux.
+    -->
+    <div class="mt-3.5" id="verdict-decision" hidden>
+      <label for="verdict-salle">Salle desservie</label>
+      <select id="verdict-salle"></select>
+    </div>
+    <div class="mt-2 text-sm text-alerte" id="verdict-erreur"></div>
+    <div class="mt-3.5 flex justify-end gap-1.5">
+      <button class="danger" id="verdict-refuser" hidden>Refuser</button>
+      <button class="principal" id="verdict-approuver" hidden>Approuver</button>
+      <button id="verdict-fermer">Fermer</button>
+    </div>
+  </div>
+</div>
+
 <div id="avis"></div>
 
 <script>
@@ -457,11 +572,46 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
     return corps.json
   }
 
+  /**
+   * Ramène la page à l'écran de connexion.
+   *
+   * Purement local : appelé aussi quand le hub répond 401, où la session est
+   * déjà morte et où lui parler ne ferait qu'ajouter une erreur à celle qu'on
+   * traite. La révocation côté hub est le geste du bouton, ci-dessous.
+   */
   function deconnecter() {
     jeton = null
     localStorage.removeItem('cloudnord-admin')
     $('console').hidden = true
     $('connexion').hidden = false
+    // Une modale laissée ouverte flotterait au-dessus du formulaire.
+    fermerVerdict()
+    $('motdepasse').value = ''
+  }
+
+  /**
+   * Déconnexion demandée : on révoque la session avant de lâcher le jeton.
+   *
+   * Oublier le jeton sans le révoquer laisserait une session valide derrière —
+   * la console s'ouvre sur des postes partagés, au fond d'une salle, et le
+   * jeton vit dans le stockage local du navigateur. L'échec réseau ne retient
+   * personne : on rend quand même la main à l'écran de connexion, sinon un hub
+   * injoignable empêcherait de fermer la console.
+   */
+  async function seDeconnecter() {
+    try {
+      await fetch('/api/auth/sign-out', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(jeton ? { authorization: 'Bearer ' + jeton } : {}),
+        },
+        body: '{}',
+      })
+    } catch (cause) {
+      avis("Session ferm\u00e9e ici, mais le hub n'a pas r\u00e9pondu : " + cause.message, true)
+    }
+    deconnecter()
   }
 
   $('form-connexion').onsubmit = async (evenement) => {
@@ -480,6 +630,49 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
       demarrer()
     } catch (cause) {
       avis(cause.message, true)
+    }
+  }
+
+  /**
+   * Départ vers Google, retour sur la console.
+   *
+   * Better Auth ne redirige pas lui-même : il rend l'URL d'autorisation, que
+   * la page suit. La salle demandée n'a rien à voir ici — c'est bien la
+   * console qu'on rouvre au retour.
+   */
+  async function connexionGoogle() {
+    try {
+      const reponse = await fetch('/api/auth/sign-in/social', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ provider: 'google', callbackURL: '/admin' }),
+      })
+      const corps = await reponse.json().catch(() => null)
+      if (!reponse.ok || !corps || !corps.url) throw new Error(corps && corps.message ? corps.message : 'Google indisponible')
+      location.assign(corps.url)
+    } catch (cause) {
+      avis(cause.message, true)
+    }
+  }
+
+  /**
+   * Session déjà ouverte par cookie — le retour de Google.
+   *
+   * La redirection pose un cookie de session ; le jeton porteur du formulaire,
+   * lui, ne peut pas voyager dans une redirection lisible par la page. Les
+   * appels RPC partent en same-origin, donc le cookie suit tout seul et le hub
+   * résout la session comme pour un jeton. Il n'y a qu'à savoir qu'elle existe.
+   */
+  async function sessionExistante() {
+    try {
+      const reponse = await fetch('/api/auth/get-session')
+      if (!reponse.ok) return null
+      const session = await reponse.json().catch(() => null)
+      return session && session.user ? session.user : null
+    } catch {
+      // Hub injoignable au chargement : l'écran de connexion est la bonne
+      // réponse, il redira ce qu'il faut au premier essai.
+      return null
     }
   }
 
@@ -521,10 +714,146 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
     return Math.floor(minutes / 60) + ' h ' + String(minutes % 60).padStart(2, '0')
   }
 
+  /**
+   * Notifications du navigateur.
+   *
+   * La console se regarde sur un téléphone, dans un couloir, entre deux
+   * salles : ce qui compte est de savoir qu'une salle déborde ou est tombée
+   * *sans* avoir la page sous les yeux. Elles ne se déclenchent que sur un
+   * **changement** — répéter « Track #1 déborde » toutes les dix secondes ferait
+   * couper les notifications au bout de deux minutes, et on ne les rallume pas.
+   *
+   * Portée assumée : l'API Notification de la page, sans service worker ni Web
+   * Push. Elles arrivent tant que la console est ouverte, onglet en arrière-plan
+   * compris ; elles s'arrêtent quand le téléphone met le navigateur en sommeil.
+   * Couvrir ce cas demande un abonnement Push côté hub, qui est un autre
+   * chantier — et une console fermée n'est de toute façon plus une console.
+   */
+  const CLE_NOTIFS = 'cloudnord-notifs'
+  let notifsActives = localStorage.getItem(CLE_NOTIFS) === '1'
+  /** Dernier état connu par salle. Vide au premier chargement : voir plus bas. */
+  const vuesSalles = new Map()
+  let appairagesVus = null
+
+  function notifsDisponibles() {
+    return typeof Notification !== 'undefined'
+  }
+
+  function rendreBoutonNotifs() {
+    const bouton = $('btn-notifs')
+    if (!notifsDisponibles()) return
+    bouton.hidden = false
+    bouton.textContent = notifsActives ? 'Notifications ●' : 'Notifications'
+    bouton.title = notifsActives
+      ? 'Alertes salles activées sur cet appareil'
+      : "Être prévenu d'un dépassement, d'une salle coupée ou d'une machine à appairer"
+  }
+
+  async function basculerNotifs() {
+    if (notifsActives) {
+      notifsActives = false
+      localStorage.removeItem(CLE_NOTIFS)
+      rendreBoutonNotifs()
+      return
+    }
+    // Demandée au clic, jamais au chargement : un navigateur qui voit la
+    // question arriver seule la refuse pour de bon, et on ne la repose plus.
+    const reponse = await Notification.requestPermission()
+    if (reponse !== 'granted') {
+      avis(reponse === 'denied'
+        ? "Notifications refus\u00e9es par le navigateur : \u00e0 rouvrir dans ses r\u00e9glages de site"
+        : 'Notifications non activ\u00e9es', true)
+      return
+    }
+    notifsActives = true
+    localStorage.setItem(CLE_NOTIFS, '1')
+    rendreBoutonNotifs()
+    prevenir('Notifications activ\u00e9es', 'Vous serez pr\u00e9venu des d\u00e9passements et des salles coup\u00e9es.', 'reglages')
+  }
+
+  /**
+   * @param cle Regroupe les avis d'une même salle : une notification remplace
+   *   la précédente au lieu d'empiler une colonne sur l'écran de verrouillage.
+   * @param vue Onglet à ouvrir au clic — la console a une adresse par onglet.
+   */
+  function prevenir(titre, corps, cle, vue) {
+    if (!notifsActives || !notifsDisponibles() || Notification.permission !== 'granted') return
+    try {
+      const notification = new Notification(titre, { body: corps, tag: cle, lang: 'fr' })
+      notification.onclick = () => {
+        globalThis.focus?.()
+        if (vue) basculerVue(vue)
+        notification.close()
+      }
+    } catch {
+      // Certains navigateurs mobiles refusent le constructeur hors service
+      // worker. Rien à faire ici : la console reste utilisable, et insister
+      // ferait une erreur toutes les dix secondes.
+    }
+  }
+
+  /**
+   * Compare la vue des salles à la précédente et prévient de ce qui a changé.
+   *
+   * Le tout premier passage n'alerte de rien : ouvrir la console sur une salle
+   * déjà coupée n'est pas un événement, c'est un état — et trois notifications
+   * à l'ouverture rendraient les suivantes invisibles.
+   */
+  function signalerSalles(salles) {
+    const premier = vuesSalles.size === 0
+    for (const salle of salles) {
+      const avant = vuesSalles.get(salle.roomId)
+      vuesSalles.set(salle.roomId, { conference: salle.conference, connectivity: salle.connectivity })
+      if (premier || avant == null) continue
+
+      if (salle.connectivity !== 'ONLINE' && avant.connectivity === 'ONLINE') {
+        prevenir(salle.name + ' ne r\u00e9pond plus', 'Plus de nouvelles de la machine de salle.', 'salle-' + salle.roomId, 'exploitation')
+      } else if (salle.connectivity === 'ONLINE' && avant.connectivity !== 'ONLINE') {
+        prevenir(salle.name + ' est revenue', 'La machine de salle r\u00e9pond de nouveau.', 'salle-' + salle.roomId, 'exploitation')
+      } else if (salle.conference === 'depassement' && avant.conference !== 'depassement') {
+        // Le seul qui demande un arbitrage : c'est lui qui décale la journée.
+        prevenir(salle.name + ' d\u00e9borde', 'Le cr\u00e9neau est fini, la salle tourne encore.', 'salle-' + salle.roomId, 'exploitation')
+      }
+    }
+  }
+
+  /** Une machine attend : le geste est court, mais personne ne le voit venir. */
+  function signalerAppairages(attente) {
+    const codes = attente.map((demande) => demande.clientId).sort().join('|')
+    if (appairagesVus != null && codes !== appairagesVus && attente.length > 0) {
+      const nouvelles = attente.filter((demande) => !appairagesVus.includes(demande.clientId))
+      if (nouvelles.length > 0) {
+        prevenir(
+          nouvelles.length === 1 ? 'Une machine attend son appairage' : nouvelles.length + ' machines attendent leur appairage',
+          "Le code est affich\u00e9 sur l'\u00e9cran de r\u00e9gie.",
+          'appairage',
+          'appairage',
+        )
+      }
+    }
+    appairagesVus = codes
+  }
+
   async function chargerSalles() {
     const salles = await appeler('rooms/statuses')
+    signalerSalles(salles)
     $('salles').innerHTML = salles.map((salle) => {
-      const classe = salle.connectivity === 'ONLINE' ? '' : salle.connectivity === 'DEGRADED' ? 'degraded' : 'offline'
+      /**
+       * Remplissage : où en est la conférence. Contour : ce qu'on sait de la
+       * salle. Une pastille qui ne portait que la connectivité affichait une
+       * salle verte alors qu'elle débordait de dix minutes.
+       */
+      const CONFERENCE = {
+        aucune: ['hors', 'rien au programme', 'text-attenue'],
+        pause: ['pause', 'pause', 'text-attenue'],
+        'en-cours': ['', 'en cours', 'text-attenue'],
+        'fin-proche': ['fin-proche', 'vers la fin', 'text-attention'],
+        depassement: ['depassement', 'dépassement', 'text-alerte'],
+      }
+      const [teinte, mot, couleurTexte] = CONFERENCE[salle.conference] || CONFERENCE.aucune
+      const contour = salle.connectivity === 'DEGRADED' ? ' doute'
+        : salle.connectivity === 'ONLINE' ? '' : ' muette'
+      const classe = teinte + contour
       const etiquette = (texte, teinte) =>
         '<span class="rounded bg-surface2 px-1.5 py-0.5 text-[11px] ' + (teinte || 'text-attenue') + '">' + texte + '</span>'
 
@@ -557,14 +886,152 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
             reste.texte + '</div>'
           : '') +
         (badges ? '<div class="mt-2 flex flex-wrap gap-1.5">' + badges + '</div>' : '') +
-        '<div class="mt-2 text-xs text-attenue">' + salle.connectivity.toLowerCase() +
-        ' · vu ' + ilYA(salle.lastSeenAt) + '</div>' +
+        // Le mot accompagne la couleur : une pastille seule ne se lit pas quand
+        // on ne distingue pas les teintes, et la carte se regarde de loin.
+        '<div class="mt-2 text-xs text-attenue"><span class="' + couleurTexte + '">' +
+        (salle.connectivity === 'ONLINE' ? mot : 'salle muette') + '</span> · ' +
+        salle.connectivity.toLowerCase() + ' · vu ' + ilYA(salle.lastSeenAt) + '</div>' +
         '</div>'
     }).join('') || '<div class="vide">Aucune salle déclarée.</div>'
   }
 
+  /**
+   * Ce que dit chaque verdict, et ce qu'il faut faire ensuite.
+   *
+   * Un code inconnu et un code expiré ne se corrigent pas de la même façon :
+   * l'un se recopie ou vient d'une base recréée, l'autre se redemande depuis la
+   * régie. Les confondre en « code invalide » enverrait chercher au mauvais bout
+   * de la salle.
+   */
+  const VERDICTS = {
+    inconnu: ['Code inconnu', "Aucun appairage en cours ne porte ce code. V\u00e9rifiez la saisie \u2014 " +
+      "ou la base du hub a \u00e9t\u00e9 recr\u00e9\u00e9e depuis, et la machine doit en demander un nouveau."],
+    expire: ['Code expir\u00e9', "Ce code a d\u00e9pass\u00e9 sa dur\u00e9e de vie. La r\u00e9gie en affiche " +
+      "un nouveau d\u00e8s qu'elle red\u00e9marre son appairage."],
+    approved: ['Code d\u00e9j\u00e0 approuv\u00e9', "Cette machine est appair\u00e9e : elle figure dans " +
+      "\u00ab Machines appair\u00e9es \u00bb. Il n'y a rien \u00e0 faire ici."],
+    denied: ['Code refus\u00e9', "Cet appairage a \u00e9t\u00e9 refus\u00e9. Pour revenir dessus, relancez " +
+      "l'appairage depuis la r\u00e9gie : elle affichera un autre code."],
+  }
+
+  function fermerVerdict() {
+    document.body.dataset.verdict = 'ferme'
+  }
+
+  /** Machine que la modale s'apprête à approuver ou refuser. */
+  let machineDuVerdict = null
+
+  /**
+   * Approuve ou refuse depuis la modale.
+   *
+   * Le même chemin que les boutons de la liste — devices/approve porte
+   * l'approbation *et* l'affectation en une opération —, mais sans avoir à
+   * retrouver la ligne : on vient d'en lire le code.
+   */
+  async function deciderVerdict(approuver) {
+    $('verdict-erreur').textContent = ''
+    for (const bouton of ['verdict-approuver', 'verdict-refuser']) $(bouton).disabled = true
+    try {
+      if (approuver) {
+        await appeler('devices/approve', {
+          userCode: codeDeLUrl,
+          clientId: machineDuVerdict,
+          roomId: $('verdict-salle').value,
+        })
+        avis('Machine appair\u00e9e')
+      } else {
+        await appeler('devices/deny', { userCode: codeDeLUrl })
+        avis('Appairage refus\u00e9')
+      }
+      fermerVerdict()
+      await tout()
+    } catch (cause) {
+      // Dans la modale, pas dans l'avis flottant : l'erreur porte sur le geste
+      // qu'on vient de faire, et le refus d'un code ouvert par un autre
+      // opérateur demande de lire une phrase entière.
+      $('verdict-erreur').textContent = cause.message
+    } finally {
+      for (const bouton of ['verdict-approuver', 'verdict-refuser']) $(bouton).disabled = false
+    }
+  }
+
+  /**
+   * Vérifie le code de l'URL avant que l'opérateur ne cherche la machine.
+   *
+   * La file affichée à côté ne dit rien de *ce* code-là : trois autres machines
+   * peuvent y attendre pendant que celui-ci est mort. On tranche donc d'abord,
+   * et la modale reste le seul endroit à lire.
+   */
+  /**
+   * Prépare l'approbation : la liste des salles, celle demandée en tête.
+   *
+   * Pré-sélectionnée mais modifiable, comme dans la liste : c'est l'opérateur
+   * de la salle qui sait où il se trouve, celui devant la console qui tranche.
+   * Se tromper envoie les commandes au mauvais vidéoprojecteur.
+   */
+  async function proposerDecision(verdict) {
+    machineDuVerdict = verdict.clientId
+    const salles = await appeler('rooms/list')
+    const choix = $('verdict-salle')
+    choix.innerHTML = salles.map((salle) =>
+      '<option value="' + echapper(salle.id) + '"' +
+      (salle.id === verdict.requestedRoomId ? ' selected' : '') + '>' +
+      echapper(salle.name) + '</option>').join('')
+    // Une salle demandée absente de ce hub ne doit pas passer pour la première
+    // de la liste : le dire vaut mieux que de laisser approuver au hasard.
+    if (verdict.requestedRoomId && !salles.some((salle) => salle.id === verdict.requestedRoomId)) {
+      $('verdict-erreur').textContent =
+        'La machine demande ' + verdict.requestedRoomId + ", inconnue de ce hub."
+    }
+    $('verdict-decision').hidden = false
+    $('verdict-approuver').hidden = false
+    $('verdict-refuser').hidden = false
+  }
+
+  async function verifierCodeDeLUrl() {
+    $('verdict-titre').textContent = 'Code ' + codeDeLUrl
+    $('verdict-texte').textContent = 'V\u00e9rification\u2026'
+    $('verdict-erreur').textContent = ''
+    $('verdict-decision').hidden = true
+    $('verdict-approuver').hidden = true
+    $('verdict-refuser').hidden = true
+    document.body.dataset.verdict = 'ouvert'
+
+    let titre, corps
+    try {
+      const verdict = await appeler('devices/lookup', { userCode: codeDeLUrl })
+      if (verdict.status === 'pending' && verdict.clientId) {
+        titre = 'Code valide'
+        corps = 'La machine <strong>' + echapper(verdict.clientId) +
+          '</strong> attend son approbation.'
+        await proposerDecision(verdict)
+      } else if (verdict.status === 'pending') {
+        // Sans client_id, Better Auth ne nous a pas reconnus comme le
+        // consultant du code : approuver échouerait, autant ne pas le proposer.
+        titre = 'Code valide'
+        corps = "Une machine attend, mais ce code a \u00e9t\u00e9 ouvert par un autre " +
+          'op\u00e9rateur : son approbation lui revient.'
+      } else {
+        const dit = VERDICTS[verdict.reason || verdict.status]
+        titre = dit ? dit[0] : 'Code illisible'
+        corps = echapper(dit ? dit[1] : "Le hub n'a pas su qualifier ce code.")
+      }
+    } catch (cause) {
+      // Session expirée : l'appel a déjà ramené l'écran de connexion, et une
+      // modale par-dessus ne ferait que masquer le formulaire.
+      if (!jeton) return fermerVerdict()
+      titre = 'V\u00e9rification impossible'
+      corps = echapper(cause.message)
+    }
+
+    $('verdict-titre').textContent = titre
+    $('verdict-texte').innerHTML =
+      '<div class="mb-2 font-semibold tracking-[.12em] tabular-nums">' + echapper(codeDeLUrl) + '</div>' + corps
+  }
+
   async function chargerAppairages() {
     const [attente, salles] = await Promise.all([appeler('devices/pending'), appeler('rooms/list')])
+    signalerAppairages(attente)
     const conteneur = $('appairages')
     if (attente.length === 0) {
       conteneur.innerHTML = codeDeLUrl
@@ -764,20 +1231,58 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
    */
   const codeDeLUrl = new URLSearchParams(location.search).get('user_code')
 
-  // Rendue par le serveur : la liste doit coller au markup, et le menu
+  // Rendues par le serveur : la liste doit coller au markup, et le menu
   // Développement n'est pas rendu hors du mode de développement.
   const VUES = ${JSON.stringify(vues)}
+  const CHEMINS = ${JSON.stringify(chemins)}
+  const VUES_PAR_CHEMIN = ${JSON.stringify(vuesParChemin)}
   let vueCourante = 'exploitation'
 
-  function basculerVue(nom) {
+  /**
+   * Vue désignée par l'adresse courante.
+   *
+   * Une adresse inconnue retombe sur l'exploitation plutôt que de laisser une
+   * console vide : le hub ne sert que les vues qui existent, mais l'historique
+   * du navigateur peut porter une vue retirée depuis — developpement après un
+   * redémarrage en production, par exemple.
+   */
+  function vueDuChemin() {
+    // Sans expression régulière : dans cette page, le motif vit dans un
+    // template literal, où une barre oblique échappée est mangée avant
+    // d'atteindre le navigateur.
+    const chemin = location.pathname
+    const sansFin = chemin.length > 1 && chemin.endsWith('/') ? chemin.slice(0, -1) : chemin
+    return VUES_PAR_CHEMIN[sansFin] || 'exploitation'
+  }
+
+  /**
+   * Change de vue, et l'inscrit dans l'adresse.
+   *
+   * Sans ça, la console vivait entièrement sur /admin : un rafraîchissement
+   * ramenait à l'exploitation, on ne pouvait ni mettre la modération en favori
+   * ni envoyer « regarde cet onglet » à quelqu'un, et le bouton Retour du
+   * navigateur quittait la console au lieu de revenir sur l'onglet précédent.
+   *
+   * @param historique false au premier rendu et sur popstate : l'adresse
+   *   est déjà la bonne, l'empiler à nouveau ferait un doublon dont le bouton
+   *   Retour ne sortirait pas.
+   */
+  function basculerVue(nom, historique = true) {
     vueCourante = nom
     for (const vue of VUES) {
       $('vue-' + vue).hidden = vue !== nom
       $('nav-' + vue).classList.toggle('actif', vue === nom)
     }
+    // Le code d'appairage ne survit pas au changement d'onglet : il a été
+    // traité, et le garder ferait rouvrir la modale au rafraîchissement suivant.
+    if (historique && location.pathname + location.search !== CHEMINS[nom]) {
+      history.pushState(null, '', CHEMINS[nom])
+    }
     void tout()
   }
   for (const vue of VUES) $('nav-' + vue).onclick = () => basculerVue(vue)
+  // Retour et Suivant du navigateur : on suit l'adresse, sans la réécrire.
+  globalThis.addEventListener('popstate', () => basculerVue(vueDuChemin(), false))
 
   async function chargerConferences() {
     const [etats, snapshots] = await Promise.all([
@@ -1386,15 +1891,38 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
     $('console').hidden = false
     // Arrivée par le lien que la machine affiche : on ouvre la page où le code
     // se saisit, sinon il faut le chercher dans un onglet qu'on ne connaît pas.
-    if (codeDeLUrl) basculerVue('appairage')
-    else void tout()
+    // Arrivée par le lien que la machine affiche : on ouvre l'appairage, sans
+    // toucher à l'adresse — le code y est encore, et la modale le lit.
+    basculerVue(codeDeLUrl ? 'appairage' : vueDuChemin(), false)
+    if (codeDeLUrl) void verifierCodeDeLUrl()
     // La supervision doit rester vivante sans intervention : c'est l'écran
     // qu'on laisse ouvert toute la journée.
     setInterval(() => { if (!$('console').hidden) void tout() }, 10_000)
   }
 
+  $('btn-deconnexion').onclick = () => seDeconnecter()
+  $('btn-notifs').onclick = () => basculerNotifs()
+  rendreBoutonNotifs()
+  $('verdict-fermer').onclick = fermerVerdict
+  $('verdict-approuver').onclick = () => deciderVerdict(true)
+  $('verdict-refuser').onclick = () => deciderVerdict(false)
+  document.addEventListener('keydown', (evenement) => {
+    if (evenement.key === 'Escape') fermerVerdict()
+  })
+
   $('btn-rafraichir').onclick = () => tout()
+  if ($('btn-google')) $('btn-google').onclick = () => connexionGoogle()
+
+  /**
+   * Deux façons d'arriver connecté : le jeton rangé au dernier passage, ou le
+   * cookie que vient de poser le retour de Google.
+   */
   if (jeton) demarrer()
+  else void sessionExistante().then((utilisateur) => {
+    if (utilisateur == null) return
+    $('identite').textContent = utilisateur.email
+    demarrer()
+  })
 })()
 </script>
 </body>

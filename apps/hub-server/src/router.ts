@@ -10,6 +10,7 @@ import {
   currentSession,
   nextSession,
   openFeedbackUrl,
+  roomConferenceState,
   type Session,
 } from '@cloudnord/program'
 import {
@@ -262,6 +263,12 @@ export const router = os.router({
                   endsAt: session.endsAt,
                   remainingMs: session.endsAtMs == null ? null : session.endsAtMs - at,
                 },
+          // Calculé ici pour la même raison que `remainingMs` : l'heure qui
+          // fait foi est celle du hub, et elle peut être simulée.
+          conference:
+            snapshot == null
+              ? 'aucune'
+              : roomConferenceState(snapshot.program, statut.roomId, at, statut.currentSessionId),
         }
       })
     }),
@@ -498,10 +505,29 @@ export const router = os.router({
         query: { user_code: input.userCode },
         headers: context.headers,
       })
-      await context.auth.api.deviceApprove({
-        body: { userCode: input.userCode },
-        headers: context.headers,
-      })
+      try {
+        await context.auth.api.deviceApprove({
+          body: { userCode: input.userCode },
+          headers: context.headers,
+        })
+      } catch (cause) {
+        /**
+         * Un code appartient au premier opérateur qui l'a consulté.
+         *
+         * Better Auth le rattache dès la vérification — celle que fait la
+         * console en ouvrant le lien de la machine. Un second opérateur qui
+         * approuve depuis son propre poste se voit refuser, et le message
+         * anglais du plugin n'aide personne à comprendre pourquoi.
+         */
+        if ((cause as { body?: { error?: string } }).body?.error === 'access_denied') {
+          throw new ORPCError('FORBIDDEN', {
+            message:
+              "Ce code a été ouvert par un autre opérateur : c'est à lui d'approuver, " +
+              "ou faites relancer l'appairage depuis la régie pour obtenir un nouveau code",
+          })
+        }
+        throw cause
+      }
 
       context.services.devices.bind({
         clientId: input.clientId,
@@ -513,7 +539,7 @@ export const router = os.router({
     }),
 
     deny: os.devices.deny.use(operatorOnly).handler(async ({ input, context }) => {
-      await context.auth.api.deviceVerify({
+      const verification = await context.auth.api.deviceVerify({
         query: { user_code: input.userCode },
         headers: context.headers,
       })
@@ -521,7 +547,52 @@ export const router = os.router({
         body: { userCode: input.userCode },
         headers: context.headers,
       })
+      /**
+       * La demande part avec le refus.
+       *
+       * Sans ça, la machine refusée restait dans la file jusqu'à ce que
+       * quelqu'un l'appaire : refuser n'avait aucun effet visible, et on
+       * refusait deux fois.
+       */
+      if (verification.client_id != null) context.services.devices.forget(verification.client_id)
       return { ok: true }
+    }),
+
+    /**
+     * Attention : consulter un code le **rattache** à l'opérateur qui regarde.
+     *
+     * C'est le geste que Better Auth attend d'une page de vérification, et
+     * celui que fait déjà l'approbation. La conséquence est qu'un second
+     * opérateur ne pourra plus approuver ce code-là — `approve` le dit en
+     * clair plutôt que de laisser passer le refus anglais du plugin.
+     */
+    lookup: os.devices.lookup.use(operatorOnly).handler(async ({ input, context }) => {
+      let verification: Awaited<ReturnType<typeof context.auth.api.deviceVerify>>
+      try {
+        verification = await context.auth.api.deviceVerify({
+          query: { user_code: input.userCode },
+          headers: context.headers,
+        })
+      } catch (cause) {
+        const reason = raisonDuCode(cause)
+        // Une panne authentique doit rester une panne : seuls les deux refus
+        // que la console sait expliquer deviennent une réponse.
+        if (reason == null) throw cause
+        return { status: null, reason, clientId: null, requestedRoomId: null, requestedRoomName: null }
+      }
+
+      const scope = verification.scope ?? ''
+      const demandee = scope.startsWith('room:') ? scope.slice('room:'.length) : null
+      const salle = demandee == null ? null : context.services.rooms.get(demandee)
+      return {
+        status: verification.status as 'pending' | 'approved' | 'denied',
+        reason: null,
+        clientId: verification.client_id ?? null,
+        requestedRoomId: demandee,
+        // Distinct de `requestedRoomId` : une salle demandée qui n'existe pas
+        // sur ce hub se voit, au lieu de disparaître silencieusement.
+        requestedRoomName: salle?.name ?? null,
+      }
     }),
 
     list: os.devices.list.use(operatorOnly).handler(({ context }) =>
@@ -710,6 +781,23 @@ function diffuserEtat(
     },
     null,
   )
+}
+
+/**
+ * Traduit un refus de Better Auth en raison affichable.
+ *
+ * Le plugin device rend `invalid_request` pour un code qu'il ne connaît pas et
+ * `expired_token` pour un code périmé, dans le corps de l'erreur. Les deux
+ * n'appellent pas le même geste — recopier le code, ou en demander un nouveau
+ * depuis la régie —, et rien d'autre ne permet de les distinguer.
+ *
+ * @returns `null` pour toute autre erreur : elle doit remonter telle quelle.
+ */
+function raisonDuCode(cause: unknown): 'inconnu' | 'expire' | null {
+  const erreur = (cause as { body?: { error?: string } }).body?.error
+  if (erreur === 'expired_token') return 'expire'
+  if (erreur === 'invalid_request') return 'inconnu'
+  return null
 }
 
 /** `lastEventId` est une chaîne opaque côté oRPC : on le ramène à un `seq` sûr. */

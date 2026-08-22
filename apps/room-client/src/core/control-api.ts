@@ -123,6 +123,10 @@ export interface ConfigVisible {
   relaySourceRoomId: string | null
   /** Projet OpenFeedback, pour le QR « Notez le talk ». */
   openFeedbackProjectId: string | null
+  /** Avertir au « Commencer » si rien n'enregistre. */
+  promptRecordingOnStart: boolean
+  /** Scène prise automatiquement au « Commencer ». `null` = aucune bascule. */
+  sceneOnStart: string | null
 }
 
 export interface PointObsVisible {
@@ -194,6 +198,16 @@ export interface ControlDiagnostics {
      * programme seul ne le dira jamais, il passe simplement au suivant.
      */
     currentSessionId: string | null
+    /**
+     * Où en est la salle, calculé par le hub.
+     *
+     * Lui seul croise le programme, son horloge — qui peut être simulée — et le
+     * cycle de vie des conférences des autres salles. La régie s'en sert tant
+     * que cette vue est fraîche, et retombe sur son propre cache dès qu'elle
+     * date : pendant une coupure, la salle d'à côté finit quand même à l'heure
+     * prévue.
+     */
+    conference: string
   }[]
   /** Instant du dernier rafraîchissement des salles, pour signaler une vue périmée. */
   roomsRefreshedAt: string | null

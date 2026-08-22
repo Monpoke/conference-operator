@@ -289,6 +289,29 @@ export const hubSetting = sqliteTable('hub_setting', {
   updatedAt: text('updated_at').notNull().default(now),
 })
 
+/**
+ * Abonnements Web Push des consoles.
+ *
+ * Une ligne par navigateur, pas par opérateur : la même personne consulte la
+ * console sur son téléphone et sur un poste, et n'attend pas la même chose des
+ * deux. L'`endpoint` est l'identité que donne le service de push du navigateur ;
+ * c'est lui la clé, parce que c'est lui qui devient invalide et que le service
+ * nous le dit alors par un 404 ou un 410.
+ */
+export const pushSubscription = sqliteTable('push_subscription', {
+  endpoint: text('endpoint').primaryKey(),
+  /** Clés de chiffrement du navigateur : le hub ne peut pas pousser sans elles. */
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
+  /** Opérateur qui s'est abonné, pour révoquer avec le compte. */
+  userId: text('user_id'),
+  /** Étiquette lisible — « iPhone de la régie » — laissée au client. */
+  label: text('label'),
+  createdAt: text('created_at').notNull().default(now),
+  /** Dernier envoi accepté : sert à purger ce qui ne répond plus. */
+  lastPushedAt: text('last_pushed_at'),
+})
+
 export const hubSchema = {
   programSnapshot,
   room,
@@ -303,4 +326,5 @@ export const hubSchema = {
   deviceRequest,
   sessionState,
   hubSetting,
+  pushSubscription,
 }

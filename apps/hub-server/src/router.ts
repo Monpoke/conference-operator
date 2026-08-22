@@ -10,10 +10,9 @@ import {
   currentSession,
   nextSession,
   openFeedbackUrl,
-  roomConferenceState,
   type Session,
-  type SessionStatuses,
 } from '@cloudnord/program'
+import { statutsDesSalles } from './supervision.js'
 import {
   auteurDe,
   publicIdentity,
@@ -245,42 +244,12 @@ export const router = os.router({
       return suivant
     }),
     /** Lecture seule : la régie affiche l'état des autres salles. */
-    statuses: os.rooms.statuses.use(roomOrOperator).handler(({ context }) => {
-      const snapshot = context.services.programs.active()
-      const at = context.services.clock.now()
-
-      /** Cycle de vie d'une salle, sous la forme qu'attend le sélecteur. */
-      const statutsParSalle = (roomId: string): SessionStatuses =>
-        Object.fromEntries(
-          context.services.sessions.states(roomId).map((etat) => [etat.sessionId, etat.status]),
-        )
-
-      // Enrichi ici, et non dans le service : c'est le routeur qui a le
-      // programme et l'horloge sous la main.
-      return context.services.rooms.statuses().map((statut) => {
-        const session = snapshot == null ? null : currentSession(snapshot.program, statut.roomId, at)
-        return {
-          ...statut,
-          currentSession:
-            session == null
-              ? null
-              : {
-                  id: session.id,
-                  title: session.title,
-                  endsAt: session.endsAt,
-                  remainingMs: session.endsAtMs == null ? null : session.endsAtMs - at,
-                },
-          // Calculé ici pour la même raison que `remainingMs` : l'heure qui
-          // fait foi est celle du hub, et lui seul tient le cycle de vie des
-          // conférences. Le déduire dans le navigateur donnerait une couleur
-          // juste sur le poste de l'opérateur et fausse partout ailleurs.
-          conference:
-            snapshot == null
-              ? 'aucune'
-              : roomConferenceState(snapshot.program, statut.roomId, at, statutsParSalle(statut.roomId)),
-        }
-      })
-    }),
+    statuses: os.rooms.statuses.use(roomOrOperator).handler(({ context }) =>
+      // Enrichi hors du service : c'est ici qu'on a le programme et l'horloge
+      // sous la main, et la veille qui pousse les notifications lit la même
+      // fonction — deux implémentations finiraient par diverger.
+      statutsDesSalles(context.services, context.services.clock.now()),
+    ),
 
     sync: os.rooms.sync.use(roomOnly).handler(({ input, context }) => {
       const room = context.services.rooms.get(context.roomId)
@@ -701,6 +670,29 @@ export const router = os.router({
           3_600,
         )
       }
+      return { ok: true }
+    }),
+  },
+
+  push: {
+    /** Ouvert à tout opérateur : la clé publique n'est pas un secret. */
+    publicKey: os.push.publicKey
+      .use(operatorOnly)
+      .handler(({ context }) => ({ publicKey: context.services.push.publicKey() })),
+
+    subscribe: os.push.subscribe.use(operatorOnly).handler(({ input, context }) => {
+      context.services.push.subscribe({
+        endpoint: input.endpoint,
+        p256dh: input.keys.p256dh,
+        auth: input.keys.auth,
+        userId: context.operator.id,
+        label: input.label,
+      })
+      return { ok: true }
+    }),
+
+    unsubscribe: os.push.unsubscribe.use(operatorOnly).handler(({ input, context }) => {
+      context.services.push.unsubscribe(input.endpoint)
       return { ok: true }
     }),
   },

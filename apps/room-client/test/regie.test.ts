@@ -11,6 +11,7 @@ import type { ContractRouterClient } from '@orpc/contract'
 import { contract } from '@cloudnord/contract'
 import { RoomApp } from '../src/core/room-app.js'
 import type { ObsTransport } from '../src/core/obs.js'
+import type { ObsInstance } from '@cloudnord/contract'
 import type { DisplayPayload } from '../src/core/display-server.js'
 
 const rawProgram = readFileSync(
@@ -23,15 +24,19 @@ const CLIENT_ID = '01JB2ZK5T7QW9V0YHRXM3N4P6C'
 const TRACK_1 = 'track-1-teilhard-de-chardin'
 
 function fakeObsPair(recDir: string) {
-  let appel = 0
-  const make = (scenes: string[]): ObsTransport => {
+  // Le faux OBS n'écoute qu'à son adresse : une adresse fausse doit échouer
+  // comme la vraie le ferait, sinon rien ne vérifie ce que voit l'opérateur
+  // quand il se trompe de port.
+  const make = (scenes: string[], adresse: string): ObsTransport => {
     const handlers = new Map<string, ((p: unknown) => void)[]>()
     let current = scenes[1] ?? scenes[0]!
     const emit = (event: string, payload: unknown) => {
       for (const h of handlers.get(event) ?? []) h(payload)
     }
     return {
-      connect: async () => {},
+      connect: async (url: string) => {
+        if (url !== adresse) throw new Error('connect ECONNREFUSED ' + url)
+      },
       disconnect: async () => {},
       call: (async (request: string, args?: Record<string, unknown>) => {
         if (request === 'GetSceneList') {
@@ -56,10 +61,15 @@ function fakeObsPair(recDir: string) {
       },
     }
   }
-  return () => {
-    appel += 1
-    return appel === 1 ? make(['Capture HDMI', 'Habillage']) : make(['Talk'])
-  }
+  /**
+   * Par instance, jamais par ordre d'appel : une reconnexion — celle que
+   * provoque un changement de configuration — recrée les deux contrôleurs, et
+   * un compteur aurait donné à OBS-A les scènes d'OBS-B.
+   */
+  return (instance: ObsInstance) =>
+    instance === 'A'
+      ? make(['Capture HDMI', 'Habillage'], 'ws://127.0.0.1:4455')
+      : make(['Talk'], 'ws://127.0.0.1:4456')
 }
 
 let hub: Hub
@@ -216,5 +226,114 @@ describe('fenêtre de régie', () => {
     const diagnostics = (await etat()).diagnostics
     expect(diagnostics?.outboxDepth).toBeGreaterThanOrEqual(0)
     expect(Array.isArray(diagnostics?.journal)).toBe(true)
+  }, 40_000)
+})
+
+describe('configuration de la salle depuis la régie', () => {
+  it('propose les scènes réellement déclarées dans chaque instance', async () => {
+    // Choisir un nom de scène dans une liste lue sur OBS plutôt que le retaper :
+    // c'est la faute de frappe qui produit un rôle introuvable.
+    const diagnostics = (await etat()).diagnostics
+    expect(diagnostics?.obs.A?.scenes).toEqual(['Capture HDMI', 'Habillage'])
+    expect(diagnostics?.obs.B?.scenes).toEqual(['Talk'])
+
+    expect((await agir({ action: 'obs.refreshScenes' })).body.ok).toBe(true)
+  }, 40_000)
+
+  /** Rôles inversés : la bascule doit suivre la configuration, pas l'inverse. */
+  const INVERSER_LES_ROLES = {
+    action: 'room.configure',
+    patch: {
+      obs: { A: { url: 'ws://127.0.0.1:4455' }, B: { url: 'ws://127.0.0.1:4456' } },
+      sceneRoles: { A: { LIVE: 'Habillage', HOLD: 'Capture HDMI' }, B: { TALK: 'Talk' } },
+      fileSlug: 'salle1',
+    },
+  }
+
+  it('enregistre sur le hub sans rien couper', async () => {
+    // Appliquer voudrait dire reconnecter, donc couper — y compris une
+    // captation en cours. Le moment appartient à l'opérateur.
+    expect((await agir(INVERSER_LES_ROLES)).body.ok).toBe(true)
+
+    expect(hub.services.rooms.get(TRACK_1)!.fileSlug).toBe('salle1')
+    const diagnostics = (await etat()).diagnostics
+    expect(diagnostics?.config?.fileSlug).toBe('salle1')
+    // La connexion tient, sur les réglages d'avant — et la régie le dit.
+    expect(diagnostics?.obs.A?.connected).toBe(true)
+    expect(diagnostics?.config?.obs.A.pending).toBe(true)
+
+    await agir({ action: 'scene.set', role: 'HOLD' })
+    expect((await etat()).diagnostics?.obs.A?.currentSceneName).toBe('Habillage')
+  }, 40_000)
+
+  it('applique les réglages à l\'instance qu\'on connecte', async () => {
+    await agir(INVERSER_LES_ROLES)
+
+    expect((await agir({ action: 'obs.connect', instance: 'A' })).body.ok).toBe(true)
+
+    const diagnostics = (await etat()).diagnostics
+    expect(diagnostics?.obs.A?.connected).toBe(true)
+    expect(diagnostics?.config?.obs.A.pending).toBe(false)
+
+    // « HOLD » désigne désormais l'autre scène : c'est bien la nouvelle
+    // configuration qui pilote.
+    await agir({ action: 'scene.set', role: 'HOLD' })
+    expect((await etat()).diagnostics?.obs.A?.currentSceneName).toBe('Capture HDMI')
+  }, 40_000)
+
+  it('ne touche pas à la captation quand on reconnecte la projection', async () => {
+    // Le défaut qu'on évite : reconnecter les deux instances d'un bloc pour
+    // appliquer un réglage de projection, et perdre la prise en cours.
+    await agir({ action: 'recording.start' })
+    expect((await etat()).diagnostics?.obs.B?.recording).toBe(true)
+
+    await agir(INVERSER_LES_ROLES)
+    await agir({ action: 'obs.connect', instance: 'A' })
+
+    const diagnostics = (await etat()).diagnostics
+    // OBS-B n'a pas été rouvert : son enregistrement est toujours là.
+    expect(diagnostics?.obs.B?.recording).toBe(true)
+    expect(diagnostics?.recording.active).toBe(true)
+    // Et ses réglages, eux, restent en attente d'une reconnexion.
+    expect(diagnostics?.config?.obs.B.pending).toBe(false)
+  }, 40_000)
+
+  it('rend l\'échec de connexion à l\'opérateur, sans le faire attendre', async () => {
+    // Une seule tentative quand c'est demandé à la main : la boucle de reprise
+    // repart en fond, mais le retour est immédiat et lisible.
+    await agir({
+      action: 'room.configure',
+      patch: { obs: { A: { url: 'ws://127.0.0.1:1' }, B: { url: 'ws://127.0.0.1:4456' } } },
+    })
+
+    const resultat = await agir({ action: 'obs.connect', instance: 'A' })
+    expect(resultat.status).toBe(409)
+    expect(resultat.body.message).toContain('OBS-A')
+  }, 40_000)
+
+  it('ne redescend jamais les mots de passe OBS jusqu\'à la page', async () => {
+    await agir({
+      action: 'room.configure',
+      patch: {
+        obs: {
+          A: { url: 'ws://127.0.0.1:4455', password: 'mot-de-passe-tres-secret' },
+          B: { url: 'ws://127.0.0.1:4456' },
+        },
+      },
+    })
+
+    const diagnostics = (await etat()).diagnostics
+    expect(diagnostics?.config?.obs.A).toEqual({
+      url: 'ws://127.0.0.1:4455',
+      hasPassword: true,
+      pending: true,
+    })
+    // La charge utile entière : le secret ne doit apparaître nulle part.
+    expect(JSON.stringify(diagnostics)).not.toContain('mot-de-passe-tres-secret')
+  }, 40_000)
+
+  it('refuse un correctif mal formé avant qu\'il n\'atteigne le hub', async () => {
+    expect((await agir({ action: 'room.configure', patch: { displayPort: -1 } })).status).toBe(400)
+    expect(hub.services.rooms.get(TRACK_1)!.displayPort).toBe(7788)
   }, 40_000)
 })

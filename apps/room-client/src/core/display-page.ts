@@ -37,8 +37,21 @@ export function renderProjectorPage(options: ProjectorPageOptions = {}): string 
 <title>Cloud Nord — écran de salle</title>
 <style>${TAILWIND_CSS}</style>
 <style>
-  :root { --couleur: #5b7cfa; --secondaire: #22d3ee; }
+  :root { --couleur: #5b7cfa; --secondaire: #22d3ee; --or: #d4a24c; }
   html, body { height: 100%; }
+
+  /*
+   * Arrivée d'une question projetée.
+   *
+   * Deux questions de longueurs différentes qui se substituent d'un coup ne se
+   * distinguent pas d'un écran qui se serait rafraîchi : la salle ne sait pas
+   * si elle a changé. Une entrée de trois dixièmes suffit à le dire.
+   */
+  @keyframes arrivee {
+    from { opacity: 0; transform: translateY(2vmin); }
+    to { opacity: 1; transform: none; }
+  }
+  .arrivee { animation: arrivee .32s ease both; }
   /* Curseur masqué : la page vit sur un vidéoprojecteur, pas sur un bureau. */
   body { overflow: hidden; cursor: none; }
 
@@ -47,12 +60,161 @@ export function renderProjectorPage(options: ProjectorPageOptions = {}): string 
    *
    * Hors Tailwind : deux dégradés radiaux composés avec color-mix, que les
    * utilitaires n'expriment pas, et qui doivent suivre --couleur à chaud.
+   *
+   * Sur leur propre couche, derrière la scène, parce qu'ils dérivent : une
+   * couche qui ne porte qu'un dégradé se déplace sur le GPU sans rien
+   * remettre en page de ce qui est écrit par-dessus. Le fond opaque reste sur
+   * le body, seul endroit où l'écran est garanti peint.
    */
-  #scene {
+  #halo {
     background:
       radial-gradient(120vmax 90vmax at 12% -10%, color-mix(in srgb, var(--couleur) 38%, transparent), transparent 60%),
-      radial-gradient(90vmax 70vmax at 110% 110%, color-mix(in srgb, var(--secondaire) 32%, transparent), transparent 60%),
-      var(--color-fond);
+      radial-gradient(90vmax 70vmax at 110% 110%, color-mix(in srgb, var(--secondaire) 32%, transparent), transparent 60%);
+    animation: derive 44s ease-in-out infinite;
+    will-change: transform;
+  }
+
+  /*
+   * Dérive du fond.
+   *
+   * Quarante-quatre secondes pour un aller-retour : à cette vitesse le
+   * mouvement ne se remarque pas, mais l'écran cesse d'être une image fixe.
+   * Une pause dure vingt minutes, et un vidéoprojecteur qui ne bouge pas du
+   * tout finit par se lire comme un poste éteint sur une image.
+   */
+  @keyframes derive {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+    50% { transform: translate3d(2.5vmin, -2vmin, 0) scale(1.07); }
+  }
+
+  /*
+   * Palier de tête, en doré.
+   *
+   * Une couleur qui ne vient pas du thème de l'événement, et c'est voulu : la
+   * marque habille l'écran, l'or dit le rang. Les deux ne disaient pas la même
+   * chose et se confondaient quand le bandeau reprenait --couleur — le palier
+   * qui a payé le plus cher se lisait alors comme un encadré de plus.
+   *
+   * Il habille le **premier** palier, pas celui qui s'appelle « Gold ». Le nom
+   * peut changer d'une édition à l'autre, le rang non.
+   */
+  .palier-tete {
+    border-color: color-mix(in srgb, var(--or) 62%, transparent);
+    border-width: .28vmin;
+    background: linear-gradient(160deg,
+      color-mix(in srgb, var(--or) 30%, transparent),
+      color-mix(in srgb, var(--or) 10%, transparent) 70%);
+    /* Arête haute éclairée, et un halo qui décolle le bandeau du fond. */
+    box-shadow:
+      inset 0 .2vmin 0 color-mix(in srgb, var(--or) 75%, transparent),
+      0 0 4vmin color-mix(in srgb, var(--or) 12%, transparent);
+  }
+  .palier-tete .intitule {
+    color: color-mix(in srgb, var(--or) 92%, #fff);
+    text-shadow: 0 0 1.4vmin color-mix(in srgb, var(--or) 45%, transparent);
+  }
+
+  /*
+   * Couches empilées : le fondu enchaîné.
+   *
+   * La page sortante est regreffée par-dessus la nouvelle le temps de
+   * s'effacer. Les deux sont donc à la même place, d'où le positionnement
+   * absolu — et seules opacity et transform sont animées, les deux propriétés
+   * que le compositeur sait traiter sans repasser par la mise en page. C'est
+   * ce qui tient dans une Browser Source OBS en 4K.
+   */
+  .calque { animation: entree .55s cubic-bezier(.22, 1, .36, 1) both; }
+  .calque.sortante { animation: sortie .5s ease-in both; pointer-events: none; }
+  @keyframes entree {
+    from { opacity: 0; transform: translateY(2.5vmin) scale(.985); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes sortie {
+    from { opacity: 1; transform: none; }
+    to { opacity: 0; transform: translateY(-1.5vmin) scale(1.015); }
+  }
+
+  /*
+   * Entrée en cascade.
+   *
+   * Une liste qui apparaît d'un bloc se lit comme un rafraîchissement ; la même
+   * liste dont les lignes arrivent l'une après l'autre se lit comme quelque
+   * chose qu'on est en train de vous montrer. Le pas se règle par élément
+   * parent : vingt-sept créneaux de programme ont besoin d'un pas plus court
+   * que quatre cartes.
+   */
+  .cascade > * {
+    animation: monter .5s cubic-bezier(.22, 1, .36, 1) both;
+    animation-delay: calc(var(--pas, 55ms) * var(--i, 0));
+  }
+  @keyframes monter {
+    from { opacity: 0; transform: translateY(2.5vmin); }
+    to { opacity: 1; transform: none; }
+  }
+
+  /*
+   * Défilement du programme.
+   *
+   * La journée fait deux à trois fois la hauteur de l'écran. Plutôt que de
+   * sauter sur le créneau en cours et de s'y arrêter, la liste part de là et
+   * glisse vers la suite pendant que la page est affichée. Les deux paliers
+   * laissent le temps de lire avant et après le mouvement.
+   *
+   * En translation, pas en scrollTop : le défilement natif repasse par la mise
+   * en page à chaque image, la translation non.
+   */
+  .defilant { overflow: hidden; }
+  .defile {
+    animation-name: defile;
+    animation-timing-function: cubic-bezier(.4, 0, .2, 1);
+    animation-fill-mode: both;
+  }
+  @keyframes defile {
+    0%, 14% { transform: translateY(var(--depart)); }
+    86%, 100% { transform: translateY(var(--arrivee)); }
+  }
+
+  /*
+   * Repère de progression.
+   *
+   * Le point actif se remplit sur la durée de la page : c'est la seule chose à
+   * l'écran qui dise *quand* ça va changer. Le décalage négatif reprend la
+   * jauge là où elle en est, pour qu'un état reçu en milieu de page ne la
+   * fasse pas repartir de zéro.
+   */
+  .point {
+    display: block;
+    height: .7vmin;
+    width: .7vmin;
+    border-radius: 999px;
+    background: rgb(255 255 255 / .25);
+    transition: width .45s cubic-bezier(.22, 1, .36, 1);
+  }
+  .point.actif {
+    position: relative;
+    width: 4vmin;
+    overflow: hidden;
+    background: rgb(255 255 255 / .18);
+  }
+  .point.actif::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--couleur);
+    transform-origin: left;
+    animation: remplir var(--duree, 12000ms) linear both;
+    animation-delay: calc(-1 * var(--ecoule, 0ms));
+  }
+  @keyframes remplir {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+
+  /* Battement du compte à rebours, relancé à chaque seconde. */
+  .bat { animation: bat .5s ease-out; }
+  @keyframes bat {
+    from { transform: scale(1.035); }
+    to { transform: scale(1); }
   }
 
   /* État réseau : discret, informatif, jamais alarmant pour le public. */
@@ -60,22 +222,44 @@ export function renderProjectorPage(options: ProjectorPageOptions = {}): string 
   body[data-connectivite="OFFLINE"] .etat-hors-ligne { display: inline; }
   body[data-connectivite="DEGRADED"] .etat-degrade { display: inline; }
 
-  /* En direct, l'écran s'efface : c'est la capture HDMI qui occupe la scène. */
-  body[data-mode="live"] #scene { background: #000; }
+  /*
+   * En direct, l'écran s'efface : c'est la capture HDMI qui occupe la scène.
+   *
+   * En fondu, et non d'un coup : la bascule se fait devant la salle, et une
+   * disparition instantanée se lit comme une coupure de signal.
+   */
+  header, footer, main { transition: opacity .45s ease; }
+  body[data-mode="live"] { background: #000; }
+  body[data-mode="live"] #halo { opacity: 0; }
   body[data-mode="live"] header,
   body[data-mode="live"] footer,
   body[data-mode="live"] main { opacity: 0; }
+
+  /*
+   * Poste réglé sur mouvement réduit : on garde les états, pas les trajets.
+   * Ne concerne pas le vidéoprojecteur, mais bien les machines d'où l'on
+   * relit ces pages.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::after {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+    }
+  }
 </style>
 </head>
 <body class="bg-fond font-sans text-texte" data-mode="sponsors" data-connectivite="OFFLINE">
 ${etatInitial}
+<div id="halo" class="pointer-events-none absolute inset-0"></div>
 <div id="scene" class="absolute inset-0 flex flex-col gap-[3vmin] p-[4.5vmin]">
   <header class="flex flex-none items-center justify-between gap-[2vmin]">
     <img id="logo" alt="" class="h-[7vmin] max-w-[30vw] object-contain" hidden>
     <div class="text-[2.6vmin] tracking-[.16em] text-attenue uppercase" id="nom-salle"></div>
   </header>
 
-  <main id="contenu" class="flex min-h-0 flex-1 flex-col justify-center"></main>
+  <!-- Pile de couches : la page sortante y reste le temps de s'effacer. -->
+  <main id="contenu" class="relative flex min-h-0 flex-1 flex-col"></main>
 
   <footer class="flex flex-none items-center justify-between gap-[2vmin] border-t border-white/10 pt-[2vmin] text-[2.2vmin] text-attenue">
     <div id="prochain"></div>
@@ -92,6 +276,9 @@ ${etatInitial}
 (() => {
   const contenu = document.getElementById('contenu')
   let dernier = null
+  // Ce qui est actuellement à l'écran : sert à décider d'un fondu enchaîné.
+  let modeAffiche = null
+  let rangAffiche = -1
 
   const echapper = (valeur) => String(valeur ?? '').replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
@@ -112,30 +299,237 @@ ${etatInitial}
     if (evenement.logoUrl) { logo.src = evenement.logoUrl; logo.hidden = false }
   }
 
+  /**
+   * Détourage automatique des logos.
+   *
+   * Les logos arrivent tels que les sponsors les ont déposés : certains sont
+   * cadrés au plus près, d'autres flottent au milieu d'une grande marge. Posés
+   * côte à côte à hauteur égale, les seconds paraissent deux fois plus petits —
+   * ce n'est pas une question de taille, c'est du vide qu'on affiche à leur
+   * place. On mesure donc l'encre et on recadre dessus.
+   *
+   * Le calcul n'est possible que parce que les images du cache sont servies par
+   * le client lui-même, sur /assets : un logo encore distant — cache pas
+   * encore rempli — invalide le canvas, la lecture lève, et on garde l'image
+   * telle quelle. C'est aussi ce qui se passe hors navigateur.
+   *
+   * Une seule fois par URL : le résultat est gardé, et la page repasse toutes
+   * les cinquante secondes.
+   */
+  const detoures = new Map()
+
+  /** Le pixel est-il du fond ? Transparent, ou blanc — et rien d'autre. */
+  const estFond = (d, i) => d[i + 3] < 16 || (d[i] > 244 && d[i + 1] > 244 && d[i + 2] > 244)
+
+  /**
+   * Recadre sur l'encre, et renvoie une image ou rien.
+   *
+   * Seuls les fonds transparents ou blancs sont rognés. Un logo posé sur un
+   * aplat de couleur — le carré bleu d'AXA, le violet de HoppR — a cet aplat
+   * pour marque : le resserrer sur le texte qu'il contient abîmerait le logo
+   * au lieu de le servir. Les quatre coins doivent donc être du fond, sinon on
+   * ne touche à rien.
+   */
+  function recadrer(img) {
+    const large = img.naturalWidth
+    const haut = img.naturalHeight
+    if (!large || !haut) return null
+
+    const toile = document.createElement('canvas')
+    const pinceau = toile.getContext && toile.getContext('2d')
+    if (!pinceau || !pinceau.getImageData) return null
+    toile.width = large
+    toile.height = haut
+    pinceau.drawImage(img, 0, 0)
+
+    // Lève si l'image vient d'une autre origine : c'est le cas nominal quand le
+    // cache d'assets n'a pas encore le logo.
+    let pixels
+    try { pixels = pinceau.getImageData(0, 0, large, haut).data } catch (_) { return null }
+
+    const coins = [0, (large - 1) * 4, (haut - 1) * large * 4, (haut * large - 1) * 4]
+    if (!coins.every((i) => estFond(pixels, i))) return null
+
+    let x1 = large, y1 = haut, x2 = -1, y2 = -1
+    for (let y = 0; y < haut; y += 1) {
+      for (let x = 0; x < large; x += 1) {
+        if (estFond(pixels, (y * large + x) * 4)) continue
+        if (x < x1) x1 = x
+        if (x > x2) x2 = x
+        if (y < y1) y1 = y
+        if (y > y2) y2 = y
+      }
+    }
+    if (x2 < x1 || y2 < y1) return null
+
+    const l = x2 - x1 + 1
+    const h = y2 - y1 + 1
+    // Rien à gagner, ou trop à perdre : une encre qui ne couvre presque rien
+    // trahit un seuil mal choisi plutôt qu'un logo minuscule.
+    if (l > large * 0.97 && h > haut * 0.97) return null
+    if (l * h < large * haut * 0.02) return null
+
+    const coupe = document.createElement('canvas')
+    coupe.width = l
+    coupe.height = h
+    coupe.getContext('2d').drawImage(img, x1, y1, l, h, 0, 0, l, h)
+    return coupe.toDataURL('image/png')
+  }
+
+  /** Détoure les logos d'une couche, une fois chacun, sans jamais lever. */
+  function detourerLogos(calque) {
+    for (const img of calque ? calque.querySelectorAll('img[data-logo]') : []) {
+      const source = img.getAttribute('src')
+      if (!source || source.startsWith('data:')) continue
+
+      const connu = detoures.get(source)
+      if (connu !== undefined) { if (connu) img.src = connu; continue }
+
+      const mesurer = () => {
+        let recadre = null
+        try { recadre = recadrer(img) } catch (_) { recadre = null }
+        detoures.set(source, recadre)
+        if (recadre) img.src = recadre
+      }
+      if (img.complete && img.naturalWidth > 0) mesurer()
+      else img.addEventListener('load', mesurer, { once: true })
+    }
+  }
+
+  /**
+   * Identité d'un sponsor, d'un palier à l'autre.
+   *
+   * L'export amont donne un identifiant **par palier** : « ape factory », qui a
+   * pris trois packs, en porte trois différents. Le site est la seule chose qui
+   * ne bouge pas d'une ligne à l'autre ; le nom sert de repli pour les rares
+   * sponsors qui n'en déclarent pas.
+   */
+  // La barre finale passe par une classe de caractères : dans un gabarit
+  // littéral, une barre échappée s'évanouit avant d'atteindre le navigateur, et
+  // la regex qui reste ne compile plus.
+  const cleSponsor = (s) =>
+    (s.website || s.name || '').trim().toLowerCase().replace(/[/]+$/, '')
+
+  /**
+   * Les partenaires, en podium.
+   *
+   * Le premier palier est celui qui a payé le plus cher — les paliers arrivent
+   * déjà triés par rang. Il prend donc le haut de l'écran, en grand, seul sur
+   * sa surface : c'est ce qu'on lui a vendu.
+   *
+   * Tout le reste est fondu en une rangée où chaque sponsor n'apparaît
+   * **qu'une fois**, avec la liste de ce qu'il a pris. Auparavant le même logo
+   * revenait à l'identique à trois lignes d'écart : projeté, un logo répété se
+   * lit comme un défaut d'affichage, pas comme de la générosité. Ceux qui se
+   * sont engagés sur plusieurs fronts y sont plus grands et encadrés de la
+   * couleur de marque — c'est la donnée qui le décide, pas une liste de noms
+   * écrite ici, qui serait fausse à la première édition suivante.
+   */
   function rendreSponsors(donnees) {
     const tiers = donnees.sponsorTiers.filter((t) => t.sponsors.length > 0)
     if (tiers.length === 0) return '<div class="' + TITRE_MODE + '">Merci à nos partenaires</div>'
-    return '<div class="' + TITRE_MODE + '">Nos partenaires</div>' +
-      '<div class="flex flex-col gap-[4vmin]">' +
-      tiers.map((tier, index) => \`
-        <section>
-          <div class="mb-[1.5vmin] text-[2.4vmin] tracking-[.2em] text-attenue uppercase">\${echapper(tier.name)}</div>
-          <div class="flex flex-wrap items-center gap-[3.5vmin]">\${tier.sponsors.map((s) =>
-            s.logoUrl
-              ? \`<img src="\${echapper(s.logoUrl)}" alt="\${echapper(s.name)}"
-                   class="\${index > 0 ? 'h-[7.5vmin]' : 'h-[11vmin]'} max-w-[26vw] rounded-[1.2vmin] bg-white object-contain px-[2vmin] py-[1.4vmin] drop-shadow-[0_.4vmin_1.2vmin_rgba(0,0,0,.45)]">\`
-              : \`<span class="text-[3vmin] font-semibold">\${echapper(s.name)}</span>\`).join('')}</div>
-        </section>\`).join('') + '</div>'
+
+    const tete = tiers[0]
+    const parSponsor = new Map()
+    for (const tier of tiers.slice(1)) {
+      for (const sponsor of tier.sponsors) {
+        const connu = parSponsor.get(cleSponsor(sponsor))
+        if (connu) connu.paliers.push(tier.name)
+        else parSponsor.set(cleSponsor(sponsor), { sponsor, paliers: [tier.name] })
+      }
+    }
+    // Le plus engagé en premier : c'est celui qu'on met en avant, et le tri de
+    // JavaScript est stable, donc les autres gardent l'ordre des paliers.
+    const engages = [...parSponsor.values()].sort((a, b) => b.paliers.length - a.paliers.length)
+    const surTousLesFronts = engages.some((e) => e.paliers.length > 1)
+
+    // L'écran ne s'étire pas : au-delà d'une poignée de logos, tout rétrécit
+    // d'un cran plutôt que de déborder sous le pied de page.
+    const dense = tete.sponsors.length > 5 || engages.length > 5
+
+    /**
+     * Un logo sur sa pastille blanche.
+     *
+     * La largeur est bornée par l'appelant, pas ici : dans le bandeau c'est
+     * l'écran qui limite, dans une carte c'est la carte. Un logo très allongé —
+     * celui d'ape factory fait cinq fois sa hauteur — sortait sinon de son
+     * cadre par les deux côtés.
+     */
+    const pastille = (sponsor, hauteur, largeur, rang) => sponsor.logoUrl
+      ? '<img src="' + echapper(sponsor.logoUrl) + '" alt="' + echapper(sponsor.name) + '"' +
+        ' data-logo style="--i:' + rang + '" class="' + hauteur + ' ' + largeur + ' rounded-[1.2vmin] bg-white' +
+        ' object-contain px-[2vmin] py-[1.4vmin] drop-shadow-[0_.4vmin_1.2vmin_rgba(0,0,0,.45)]">'
+      : '<span style="--i:' + rang + '" class="text-[3.2vmin] font-semibold">' +
+        echapper(sponsor.name) + '</span>'
+
+    const bande =
+      '<section class="palier-tete rounded-[2vmin] border px-[4vmin] py-[3vmin]">' +
+      '<div class="intitule mb-[2.2vmin] text-center text-[2.4vmin] tracking-[.2em] uppercase">' +
+      echapper(tete.name) + '</div>' +
+      '<div class="cascade flex flex-wrap items-center justify-center gap-[3vmin]" style="--pas:70ms">' +
+      tete.sponsors.map((s, rang) =>
+        pastille(s, dense ? 'h-[10vmin]' : 'h-[13vmin]', 'max-w-[24vw]', rang)).join('') +
+      '</div></section>'
+
+    if (engages.length === 0) return '<div class="' + TITRE_MODE + '">Nos partenaires</div>' + bande
+
+    const rangee = engages.map((engage, rang) => {
+      const vedette = engage.paliers.length > 1
+      /**
+       * Même hauteur de logo pour toute la rangée, et même rembourrage vertical.
+       *
+       * La hiérarchie est portée par le cadre — largeur, liseré de marque,
+       * teinte — pas par la taille du logo. Faire maigrir celui qui a pris un
+       * seul pack cassait la ligne : les pastilles ne partageaient plus ni haut
+       * ni bas, et les légendes flottaient à des hauteurs différentes. Une
+       * rangée de partenaires se lit comme une étagère, ou ne se lit pas.
+       */
+      const cadre = vedette
+        ? 'border-[color-mix(in_srgb,var(--couleur)_50%,transparent)] bg-[color-mix(in_srgb,var(--couleur)_14%,transparent)] px-[3vmin] py-[2.2vmin]'
+        : 'border-white/10 bg-white/5 px-[2.4vmin] py-[2.2vmin]'
+      const hauteur = dense ? 'h-[6.5vmin]' : 'h-[8vmin]'
+      // Largeur fixe : les cartes s'alignent, et la rangée cesse de dépendre de
+      // la longueur du nom des packs.
+      const large = vedette ? 'w-[38vmin]' : 'w-[27vmin]'
+      return '<article style="--i:' + rang + '" class="flex ' + large + ' flex-col items-center' +
+        ' gap-[1.4vmin] rounded-[1.6vmin] border text-center ' + cadre + '">' +
+        pastille(engage.sponsor, hauteur, 'max-w-full', 0) +
+        '<div class="text-[2vmin] leading-snug text-attenue">' +
+        echapper(engage.paliers.join(' · ')) + '</div></article>'
+    }).join('')
+
+    return '<div class="' + TITRE_MODE + '">Nos partenaires</div>' + bande +
+      '<section class="mt-[3.5vmin]">' +
+      '<div class="mb-[2vmin] text-[2.4vmin] tracking-[.2em] text-attenue uppercase">' +
+      (surTousLesFronts ? 'Et sur tous les fronts' : 'Et aussi') + '</div>' +
+      '<div class="cascade flex flex-wrap items-stretch justify-center gap-[2.5vmin]" style="--pas:70ms">' +
+      rangee + '</div></section>'
   }
 
   function rendreProgramme(donnees) {
     const maintenant = Date.now() + (donnees.state.serverTimeOffsetMs || 0)
     const encours = donnees.state.currentSession?.id
+    /**
+     * Ce que la salle doit trouver en premier : ce qui se passe, ou à défaut
+     * ce qui arrive. Entre deux talks, currentSession est vide — c'est
+     * justement le moment où l'on cherche l'heure du suivant.
+     *
+     * « repere » est une accroche, pas du style : rendre() s'en sert pour
+     * amener la ligne au centre.
+     */
+    const repere = encours ?? donnees.state.nextSession?.id
     if (donnees.sessions.length === 0) return '<div class="' + TITRE_MODE + '">Programme indisponible</div>'
 
+    /**
+     * Le cadre porte le débordement, la liste porte la translation.
+     *
+     * Deux niveaux et non un : c'est la liste entière qui glisse, et elle ne
+     * peut le faire que si quelque chose au-dessus d'elle coupe ce qui sort.
+     */
     return '<div class="' + TITRE_MODE + '">Programme de la salle</div>' +
-      '<div class="flex flex-col gap-[1.1vmin] overflow-hidden">' +
-      donnees.sessions.map((session) => {
+      '<div class="defilant min-h-0 flex-1">' +
+      '<div class="cascade flex flex-col gap-[1.1vmin]" style="--pas:25ms">' +
+      donnees.sessions.map((session, rang) => {
         const fin = session.endsAtMs ?? session.startsAtMs
         // Une seule mise en avant possible : en cours, sinon passée, sinon à venir.
         const etat = session.id === encours
@@ -145,27 +539,126 @@ ${etatInitial}
         const heureTeinte = session.id === encours ? "text-texte" : "text-attenue"
         const intervenants = session.speakers.map((s) =>
           s.company ? \`\${s.name} — \${s.company}\` : s.name).join(' · ')
-        return \`<article class="grid grid-cols-[15vmin_1fr] items-baseline gap-[2.5vmin] rounded-[1.2vmin] px-[2vmin] py-[1.4vmin] \${etat} \${pause}">
+        const accroche = session.id === repere ? 'repere' : ''
+        return \`<article style="--i:\${rang}" class="\${accroche} grid grid-cols-[15vmin_1fr] items-baseline gap-[2.5vmin] rounded-[1.2vmin] px-[2vmin] py-[1.4vmin] \${etat} \${pause}">
           <div class="text-[2.8vmin] tabular-nums \${heureTeinte}">\${heure(session.startsAt, donnees.timezone)}</div>
           <div>
             <div class="text-[3vmin] font-semibold">\${echapper(session.title)}</div>
             \${intervenants ? \`<div class="mt-[.4vmin] text-[2.2vmin] text-attenue">\${echapper(intervenants)}</div>\` : ''}
           </div>
         </article>\`
-      }).join('') + '</div>'
+      }).join('') + '</div></div>'
   }
 
+  /**
+   * Compte à rebours : le squelette seulement.
+   *
+   * Les chiffres sont laissés vides et remplis par majCompte(). C'est ce qui
+   * permet à l'écran de vivre : tant que ce html ne change pas, le mémo de
+   * rendre() ne reconstruit rien, et une animation posée sur les chiffres
+   * survit d'une seconde à l'autre. L'ancienne version réécrivait tout le bloc
+   * à chaque seconde, ce qui interdisait toute animation par construction.
+   */
   function rendreCompte(donnees) {
     const suivante = donnees.state.nextSession
     if (!suivante) return '<div class="text-center"><div class="text-[3.4vmin] text-attenue">Fin des interventions</div></div>'
+    return '<div class="text-center">' +
+      '<div class="cd-chiffres text-[22vmin] leading-none font-bold tabular-nums">' +
+      '<span class="cd-min">--</span>:<span class="cd-sec">--</span></div>' +
+      // Balayage d'une minute : sans instant de début de pause, c'est le seul
+      // repère honnête — et il suffit à montrer que le temps passe.
+      '<div class="mx-auto mt-[3vmin] h-[.8vmin] w-[40vmin] overflow-hidden rounded-full bg-white/15">' +
+      '<div class="cd-arc h-full w-full origin-left rounded-full bg-[var(--couleur)] transition-transform duration-1000 ease-linear"></div></div>' +
+      '<div class="mt-[2.5vmin] text-[3.4vmin] text-attenue">Reprise — ' + echapper(suivante.title) + '</div></div>'
+  }
+
+  /** Les valeurs du compte à rebours, écrites sans toucher à la structure. */
+  let derniereSeconde = null
+  function majCompte(donnees) {
+    const calque = contenu.querySelector('.calque:not(.sortante)')
+    const min = calque?.querySelector('.cd-min')
+    const suivante = donnees.state.nextSession
+    if (!min || !suivante) return
+
     const maintenant = Date.now() + (donnees.state.serverTimeOffsetMs || 0)
     const reste = Math.max(0, suivante.startsAtMs - maintenant)
-    const minutes = String(Math.floor(reste / 60000)).padStart(2, '0')
-    const secondes = String(Math.floor((reste % 60000) / 1000)).padStart(2, '0')
-    return \`<div class="text-center">
-      <div class="text-[22vmin] leading-none font-bold tabular-nums">\${minutes}:\${secondes}</div>
-      <div class="mt-[2vmin] text-[3.4vmin] text-attenue">Reprise — \${echapper(suivante.title)}</div>
-    </div>\`
+    const secondes = Math.floor((reste % 60000) / 1000)
+    min.textContent = String(Math.floor(reste / 60000)).padStart(2, '0')
+    calque.querySelector('.cd-sec').textContent = String(secondes).padStart(2, '0')
+
+    /**
+     * La barre se vide sur la minute en cours.
+     *
+     * Un compte à rebours qui se remplit dit le contraire de ce qu'il compte.
+     * Au passage à zéro elle remonte d'un coup : sans couper la transition, ce
+     * retour se lirait comme une seconde qui recule.
+     */
+    const arc = calque.querySelector('.cd-arc')
+    if (arc) {
+      arc.style.transitionDuration = derniereSeconde !== null && secondes > derniereSeconde ? '0s' : ''
+      arc.style.transform = 'scaleX(' + secondes / 60 + ')'
+    }
+
+    // Battement relancé à la main : réassigner la classe ne suffit pas, il faut
+    // que le navigateur ait recalculé entre le retrait et la repose.
+    if (secondes !== derniereSeconde) {
+      derniereSeconde = secondes
+      const chiffres = calque.querySelector('.cd-chiffres')
+      chiffres.classList.remove('bat')
+      void chiffres.offsetWidth
+      chiffres.classList.add('bat')
+    }
+  }
+
+  /**
+   * QR OpenFeedback du talk en cours.
+   *
+   * Affiché en fin de conférence, pendant que le public est encore assis :
+   * c'est le seul moment où l'on obtient des retours, et un lien dicté à voix
+   * haute n'est jamais scanné.
+   */
+  function rendreFeedback(donnees) {
+    const session = donnees.state.currentSession
+    const feedback = donnees.feedback
+    if (feedback == null || !feedback.qrSvg) {
+      return '<div class="' + TITRE_MODE + '">Aucune conférence à noter</div>'
+    }
+
+    return '<div class="' + TITRE_MODE + '">Votre avis sur cette conférence</div>' +
+      '<div class="flex items-center justify-center gap-[6vmin]">' +
+      '<div class="rounded-[1.4vmin] bg-white p-[1.4vmin] [&>svg]:h-[34vmin] [&>svg]:w-[34vmin]">' +
+      feedback.qrSvg + '</div>' +
+      '<div class="max-w-[46vmin]">' +
+      (session ? '<div class="text-[3.6vmin] leading-snug font-semibold">' + echapper(session.title) + '</div>' : '') +
+      '<div class="mt-[2vmin] text-[2.8vmin] leading-relaxed text-attenue">' +
+      'Scannez pour noter la conférence et laisser un commentaire aux speakers.</div></div></div>'
+  }
+
+  /**
+   * Question du public, choisie en régie.
+   *
+   * Même donnée que sur les deux overlays — une seule sélection, trois
+   * surfaces : incrustée dans la captation, petite par-dessus la vidéo de
+   * salle, ou en grand devant le public. Elles ne servent pas au même moment,
+   * et l'opérateur choisit lesquelles.
+   *
+   * Lit la question, jamais le bandeau de la console : celui-ci a son propre
+   * mode d'écran, et les confondre projetait « on reprend dans 5
+   * minutes » sous le titre « Question du public ».
+   */
+  function rendreQuestion(donnees) {
+    const question = donnees.state.question
+    if (question == null) {
+      return '<div class="' + TITRE_MODE + '">Aucune question affichée</div>'
+    }
+    // « arrivee » n'est posée qu'au changement de question : le rendu n'est
+    // réécrit que s'il diffère, donc l'animation ne se rejoue pas toute seule.
+    return '<div class="' + TITRE_MODE + '">Question du public</div>' +
+      '<div class="arrivee max-w-[80vmin] text-[6vmin] leading-snug font-semibold">' +
+      echapper(question.text) + '</div>' +
+      (question.author
+        ? '<div class="mt-[2vmin] text-[3vmin] text-attenue">' + echapper(question.author) + '</div>'
+        : '')
   }
 
   function rendreMur(donnees) {
@@ -182,14 +675,129 @@ ${etatInitial}
       // Le mur peut être vide en début de journée : mieux vaut inviter que
       // laisser un cadre désert.
       ? '<div class="' + carte + '"><div class="text-[2.9vmin] leading-snug">Les premiers messages apparaîtront ici.</div></div>'
-      : messages.map((message) =>
-          '<div class="' + carte + '">' +
+      : messages.map((message, rang) =>
+          '<div class="' + carte + '" style="--i:' + rang + '">' +
           '<div class="mb-[.6vmin] text-[2.1vmin] text-attenue">' + echapper(message.author) + '</div>' +
           '<div class="text-[2.9vmin] leading-snug">' + echapper(message.text) + '</div></div>').join('')
 
     return '<div class="' + TITRE_MODE + '">Vos messages</div>' +
       '<div class="grid h-full grid-cols-[1fr_26vmin] items-start gap-[4vmin]">' +
-      '<div class="flex flex-col gap-[1.6vmin] overflow-hidden">' + corps + '</div>' + colonne + '</div>'
+      '<div class="cascade flex flex-col gap-[1.6vmin] overflow-hidden">' + corps + '</div>' + colonne + '</div>'
+  }
+
+  /**
+   * Ce qui se joue à côté.
+   *
+   * La seule information qu'un participant assis dans cette salle ne peut pas
+   * deviner : les deux autres tracks tournent en même temps, et changer de
+   * salle entre deux talks se décide en trente secondes, pendant la pause.
+   */
+  function rendreAutresSalles(donnees) {
+    const salles = (donnees.otherRooms ?? []).filter((salle) => salle.session != null)
+    if (salles.length === 0) return '<div class="' + TITRE_MODE + '">Pendant ce temps…</div>'
+
+    return '<div class="' + TITRE_MODE + '">Pendant ce temps, à côté</div>' +
+      '<div class="cascade grid gap-[2.5vmin] ' +
+      (salles.length > 2 ? 'grid-cols-2' : 'grid-cols-1') + '">' +
+      salles.map((salle, rang) => \`<article style="--i:\${rang}" class="rounded-[1.6vmin] border border-white/10 bg-white/5 px-[3vmin] py-[2.4vmin]">
+        <div class="flex items-baseline justify-between gap-[2vmin]">
+          <div class="text-[2.6vmin] tracking-[.14em] text-attenue uppercase">\${echapper(salle.name)}</div>
+          <div class="text-[2.4vmin] tabular-nums \${salle.enCours ? 'text-[var(--couleur)]' : 'text-attenue'}">\${
+            salle.enCours ? 'en ce moment' : heure(salle.session.startsAt, donnees.timezone)}</div>
+        </div>
+        <div class="mt-[1.2vmin] text-[3.2vmin] leading-snug font-semibold">\${echapper(salle.session.title)}</div>
+        \${salle.session.speakers.length > 0
+          ? \`<div class="mt-[.8vmin] text-[2.4vmin] text-attenue">\${echapper(salle.session.speakers.join(' · '))}</div>\`
+          : ''}
+      </article>\`).join('') + '</div>'
+  }
+
+  /**
+   * Les comptes de l'événement.
+   *
+   * Réglés sur le hub et descendus au sync : l'export amont ne porte que les
+   * réseaux des speakers. Le handle est écrit en grand parce que c'est ce qu'on
+   * retape sur son téléphone depuis le fond de la salle — l'URL, elle, ne se
+   * recopie pas.
+   */
+  function rendreReseaux(donnees) {
+    const liens = donnees.socialLinks ?? []
+    if (liens.length === 0) return '<div class="' + TITRE_MODE + '">Cloud Nord</div>'
+    return '<div class="' + TITRE_MODE + '">Suivez Cloud Nord</div>' +
+      '<div class="cascade flex flex-wrap items-stretch justify-center gap-[3vmin]">' +
+      liens.map((lien, rang) => \`<article style="--i:\${rang}" class="rounded-[1.6vmin] border border-white/10 bg-white/5 px-[4vmin] py-[3vmin] text-center">
+        <div class="text-[2.4vmin] tracking-[.16em] text-attenue uppercase">\${echapper(lien.network)}</div>
+        <div class="mt-[1.2vmin] text-[4.2vmin] leading-none font-bold">\${echapper(lien.handle)}</div>
+      </article>\`).join('') + '</div>'
+  }
+
+  /**
+   * Boucle d'attente.
+   *
+   * Ce qu'on laisse tourner pendant les pauses : chaque page a sa durée, et
+   * celles qui n'ont rien à montrer sont **sautées** plutôt qu'affichées vides —
+   * dix secondes de cadre désert devant la salle se lisent comme une panne.
+   *
+   * Les durées ne sont pas égales : un programme de vingt-sept lignes se lit,
+   * une rangée de logos se regarde. Elles sont volontairement longues — un
+   * écran qui change toutes les trois secondes attire l'œil pendant une pause
+   * où les gens se parlent.
+   */
+  const PAGES_BOUCLE = [
+    { duree: 12_000, dispo: (d) => (d.sponsorTiers ?? []).some((t) => t.sponsors.length > 0), rendre: rendreSponsors },
+    { duree: 15_000, dispo: (d) => (d.sessions ?? []).length > 0, rendre: rendreProgramme },
+    { duree: 12_000, dispo: (d) => (d.otherRooms ?? []).some((s) => s.session != null), rendre: rendreAutresSalles },
+    { duree: 10_000, dispo: (d) => (d.socialLinks ?? []).length > 0, rendre: rendreReseaux },
+  ]
+  let boucleRang = 0
+  let boucleJusqua = 0
+  // Rang et durée réellement affichés, après filtrage des pages vides : c'est
+  // sur eux que se décide un fondu enchaîné, et sur eux que se calent la jauge
+  // et le défilement du programme.
+  let boucleRangAffiche = 0
+  let boucleDuree = 0
+
+  const pagesBoucle = (donnees) => PAGES_BOUCLE.filter((page) => page.dispo(donnees))
+
+  function rendreBoucle(donnees) {
+    const pages = pagesBoucle(donnees)
+    // Rien à montrer nulle part — salle jamais synchronisée : les sponsors
+    // disent au moins de quel événement il s'agit.
+    if (pages.length === 0) return rendreSponsors(donnees)
+
+    const rang = boucleRang % pages.length
+    const page = pages[rang]
+    if (boucleJusqua === 0) boucleJusqua = Date.now() + page.duree
+    boucleRangAffiche = rang
+    boucleDuree = page.duree
+
+    /**
+     * Repère de progression.
+     *
+     * Trois points en bas disent qu'il y a une suite, et qu'elle tourne : sans
+     * eux, un écran qui change tout seul se lit comme un écran instable. Le
+     * point actif se remplit sur la durée de la page, ce qui dit en plus
+     * *quand* elle va tourner.
+     *
+     * La durée est écrite ici parce qu'elle ne bouge pas de toute la page ; le
+     * temps déjà écoulé, lui, est posé après coup depuis le script — l'inscrire
+     * dans le html le ferait changer à chaque seconde, et le moindre état reçu
+     * relancerait un fondu enchaîné en plein milieu.
+     */
+    const points = pages.map((_, index) => index === rang
+      ? '<span class="point actif" style="--duree:' + page.duree + 'ms"></span>'
+      : '<span class="point"></span>').join('')
+
+    return '<div class="flex min-h-0 flex-1 flex-col justify-center">' + page.rendre(donnees) + '</div>' +
+      '<div class="mt-[2.5vmin] flex flex-none items-center justify-center gap-[1.2vmin]">' + points + '</div>'
+  }
+
+  /** Passe à la page suivante, en sautant celles qui n'ont rien à dire. */
+  function avancerBoucle(donnees) {
+    const pages = pagesBoucle(donnees)
+    if (pages.length === 0) { boucleJusqua = Date.now() + 5_000; return }
+    boucleRang = (boucleRang + 1) % pages.length
+    boucleJusqua = Date.now() + pages[boucleRang].duree
   }
 
   function rendreMessage(donnees) {
@@ -200,6 +808,73 @@ ${etatInitial}
     return \`<div class="flex h-full flex-col justify-center gap-[3vmin] rounded-[2vmin] text-center \${fond}">
       <div class="text-[7vmin] leading-[1.15] font-bold \${teinte}">\${echapper(message.text)}</div>
     </div>\`
+  }
+
+  /**
+   * Écrit une page, en croisant l'ancienne avec la nouvelle si demandé.
+   *
+   * innerHTML détruit tout ce qui était là : la couche sortante est donc mise
+   * de côté avant, puis regreffée par-dessus la nouvelle le temps de son
+   * animation de sortie. Elle s'enlève sur animationend, et de toute façon à
+   * la réécriture suivante — il ne peut jamais y en avoir deux.
+   */
+  function ecrire(html, croiser) {
+    if (html === contenu.__html) return
+    const sortante = croiser ? contenu.querySelector('.calque:not(.sortante)') : null
+    contenu.__html = html
+    contenu.innerHTML = html
+    if (!sortante) return
+    sortante.classList.add('sortante')
+    contenu.insertBefore(sortante, contenu.firstChild)
+
+    // Deux façons de s'en aller, parce qu'une seule ne suffit pas : un moteur
+    // qui n'anime pas — Browser Source en arrière-plan, mouvement réduit — ne
+    // dit jamais animationend, et la couche resterait là, transparente, jusqu'à
+    // la réécriture suivante.
+    const enlever = () => sortante.remove()
+    sortante.addEventListener('animationend', enlever, { once: true })
+    setTimeout(enlever, 1_200)
+  }
+
+  /**
+   * Cale la jauge du point actif sur le temps déjà écoulé.
+   *
+   * Posé ici et non dans le html : la valeur change à chaque seconde, et la
+   * mettre dans le gabarit ferait différer le rendu en permanence.
+   */
+  function poserJauge(calque) {
+    const jauge = calque?.querySelector('.point.actif')
+    if (!jauge) return
+    jauge.style.setProperty('--ecoule', Math.max(0, boucleDuree - (boucleJusqua - Date.now())) + 'ms')
+  }
+
+  /**
+   * Fait glisser le programme, du créneau en cours vers la suite de la journée.
+   *
+   * Les deux bornes se mesurent après insertion : elles dépendent de la hauteur
+   * réelle de l'écran, qui va du 1024x768 au 4K. Hors d'un vrai navigateur
+   * toutes ces mesures valent zéro, la classe n'est pas posée, et la liste
+   * reste simplement là où elle est.
+   */
+  function poserDefilement(calque) {
+    const cadre = calque?.querySelector('.defilant')
+    const liste = cadre?.firstElementChild
+    if (!cadre || !liste || liste.classList.contains('defile')) return
+
+    const haut = cadre.clientHeight
+    const course = liste.scrollHeight - haut
+    if (!(course > 0)) return
+
+    const repere = calque.querySelector('.repere')
+    const vise = repere ? repere.offsetTop - (haut - repere.offsetHeight) / 2 : 0
+    const depart = Math.max(0, Math.min(vise, course))
+    // Environ un écran plus bas, sans jamais dépasser le bas de la journée.
+    const arrivee = Math.min(depart + haut * 0.85, course)
+
+    liste.style.setProperty('--depart', -depart + 'px')
+    liste.style.setProperty('--arrivee', -arrivee + 'px')
+    liste.style.animationDuration = boucleDuree + 'ms'
+    liste.classList.add('defile')
   }
 
   function rendre(donnees) {
@@ -224,10 +899,71 @@ ${etatInitial}
       programme: rendreProgramme,
       countdown: rendreCompte,
       message: rendreMessage,
+      feedback: rendreFeedback,
+      question: rendreQuestion,
       wall: rendreMur,
+      loop: rendreBoucle,
       live: () => '',
     }
-    contenu.innerHTML = (modes[donnees.state.mode] ?? rendreSponsors)(donnees)
+    /**
+     * La boucle repart du début à chaque fois qu'on y revient.
+     *
+     * Sortir sur un message puis revenir doit reprendre aux sponsors, pas
+     * atterrir au milieu du programme avec deux secondes avant la bascule
+     * suivante.
+     */
+    if (donnees.state.mode !== 'loop') { boucleRang = 0; boucleJusqua = 0 }
+    /**
+     * Redessiné seulement quand le rendu change.
+     *
+     * Un état arrive à chaque bascule de scène, chaque profondeur de file : tout
+     * réécrire à chaque fois relançait les animations et faisait clignoter
+     * l'écran devant la salle, pour un contenu identique.
+     */
+    const corps = (modes[donnees.state.mode] ?? rendreSponsors)(donnees)
+    const html = corps === ''
+      ? ''
+      : '<div class="calque absolute inset-0 flex flex-col justify-center overflow-hidden">' + corps + '</div>'
+
+    /**
+     * Le fondu enchaîné, seulement là où il veut dire quelque chose.
+     *
+     * On croise à un vrai changement de page — un autre mode, ou la page
+     * suivante de la boucle. Pas sur un message de plus au mur ni sur une
+     * question réécrite : là, superposer deux textes différents ne se lirait
+     * pas, alors que l'entrée de la nouvelle couche suffit à dire que ça a
+     * bougé.
+     */
+    const croise = donnees.state.mode !== modeAffiche
+      || (donnees.state.mode === 'loop' && boucleRangAffiche !== rangAffiche)
+    ecrire(html, croise)
+    modeAffiche = donnees.state.mode
+    rangAffiche = boucleRangAffiche
+
+    /**
+     * Amène au centre ce qui se passe maintenant.
+     *
+     * Une journée de conférence fait deux à trois fois la hauteur de l'écran,
+     * et personne ne peut faire défiler un vidéoprojecteur : sans cela, la
+     * salle regarderait le petit-déjeuner à seize heures. Le conteneur est en
+     * overflow caché, donc il ne montre aucune barre, mais il se positionne
+     * très bien depuis le script.
+     *
+     * Dans la boucle, la même question a une meilleure réponse : la liste part
+     * du créneau en cours et glisse vers la suite pendant les quinze secondes
+     * de la page. Le mode « programme » de la régie, lui, est un écran qu'on
+     * pose et qu'on laisse : il se contente d'être au bon endroit.
+     *
+     * Toujours sur la couche vivante, jamais sur celle qui s'efface.
+     */
+    const vivante = contenu.querySelector('.calque:not(.sortante)')
+    detourerLogos(vivante)
+    if (donnees.state.mode === 'loop') {
+      poserJauge(vivante)
+      poserDefilement(vivante)
+    } else {
+      vivante?.querySelector('.repere')?.scrollIntoView({ block: 'center' })
+    }
   }
 
   function tic() {
@@ -236,8 +972,23 @@ ${etatInitial}
     document.getElementById('horloge').textContent = new Intl.DateTimeFormat('fr-FR', {
       hour: '2-digit', minute: '2-digit', timeZone: tz,
     }).format(new Date(Date.now() + decalage))
-    // Le compte à rebours se redessine à la seconde, le reste attend un état.
-    if (dernier?.state.mode === 'countdown') contenu.innerHTML = rendreCompte(dernier)
+    // Le compte à rebours change de valeurs à la seconde, le reste attend un
+    // état. Seuls les chiffres bougent : la structure, elle, tient.
+    if (dernier?.state.mode === 'countdown') majCompte(dernier)
+
+    /**
+     * La boucle avance sur ce même tic.
+     *
+     * Elle repasse par la fonction de rendu plutôt que d'écrire directement
+     * dans le conteneur : c'est elle
+     * qui recentre le programme sur le créneau en cours, et qui ne réécrit que
+     * si le html change — donc l'animation d'entrée ne se rejoue qu'au vrai
+     * changement de page.
+     */
+    if (dernier?.state.mode === 'loop' && Date.now() >= boucleJusqua) {
+      avancerBoucle(dernier)
+      rendre(dernier)
+    }
   }
   setInterval(tic, 1000)
 

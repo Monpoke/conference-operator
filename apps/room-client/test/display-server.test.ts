@@ -156,7 +156,7 @@ describe('serveur d\'affichage local', () => {
     })
 
     // L'écran ne doit jamais attendre un changement pour afficher quelque chose.
-    expect(messages[0]?.merged.state.mode).toBe('sponsors')
+    expect(messages[0]?.merged.state.mode).toBe('loop')
     expect(messages[1]?.merged.state.mode).toBe('programme')
     // Le premier message est complet, le suivant ne porte que ce qui a bougé.
     expect(messages[0]?.delta).toBe(false)
@@ -222,7 +222,7 @@ describe('serveur d\'affichage local', () => {
     // malgré tout plutôt que de laisser un écran noir en salle.
     const payload = (await (await fetch(`${autreOrigin}/display/data`)).json()) as DisplayPayload
     expect(payload.sessions).toEqual([])
-    expect(payload.state.mode).toBe('sponsors')
+    expect(payload.state.mode).toBe('loop')
     expect((await fetch(`${autreOrigin}/display/projector`)).status).toBe(200)
 
     await autre.close()

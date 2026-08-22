@@ -32,6 +32,18 @@ export const sceneRoleSchema = z.enum([
 ])
 export type SceneRole = z.infer<typeof sceneRoleSchema>
 
+/**
+ * Mode d'exécution d'un poste — hub comme salle.
+ *
+ * `dev` déverrouille les commodités de développement (heure simulée, OBS
+ * simulé) ; `production` les refuse, même laissées dans un fichier
+ * d'environnement. Circule entre hub et salle pour que chacun sache dans quoi
+ * il parle : une salle de développement branchée sur le hub de l'événement est
+ * exactement le genre d'accident qu'on veut voir de loin.
+ */
+export const modeExecutionSchema = z.enum(['production', 'dev'])
+export type ModeExecution = z.infer<typeof modeExecutionSchema>
+
 /** OBS-A = projection vidéoprojecteur, OBS-B = captation/VOD. */
 export const obsInstanceSchema = z.enum(['A', 'B'])
 export type ObsInstance = z.infer<typeof obsInstanceSchema>
@@ -43,9 +55,28 @@ export type ObsInstance = z.infer<typeof obsInstanceSchema>
 export const displayModeSchema = z.enum([
   'sponsors',
   'programme',
+  /** QR OpenFeedback du talk en cours : « notez cette conférence ». */
+  'feedback',
+  /**
+   * La question choisie en régie, en grand.
+   *
+   * Le bandeau vidéo ne touche que ceux qui regardent l'écran de captation ou
+   * la scène live ; ce mode-ci la met devant toute la salle, quel que soit ce
+   * qu'OBS diffuse au même moment.
+   */
+  'question',
   'countdown',
   'message',
   'wall',
+  /**
+   * Boucle d'attente : sponsors, programme de la salle, autres salles, réseaux.
+   *
+   * Ce qu'on laisse tourner pendant les pauses. Les modes `sponsors` et
+   * `programme` restent disponibles seuls : quand quelque chose se passe, on
+   * veut pouvoir figer l'écran sur une page précise plutôt que d'attendre que
+   * la boucle y revienne.
+   */
+  'loop',
   'live',
 ])
 export type DisplayMode = z.infer<typeof displayModeSchema>

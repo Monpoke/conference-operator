@@ -190,3 +190,108 @@ describe('machine de salle, démarrage complet', () => {
     expect(room.assets.localize(cached!.program).sponsorTiers[0]?.name).toBe('Gold')
   }, 30_000)
 })
+
+/**
+ * Questions du public, bornées à la conférence pilotée.
+ *
+ * Toutes salles confondues, la liste mélangeait la journée entière : à 16 h,
+ * les questions du talk de 10 h étaient encore en tête au vote, et le speaker
+ * se voyait poser une question qui ne le concernait pas.
+ */
+describe('questions du public', () => {
+  it('ne remonte que celles du talk piloté', async () => {
+    room = makeApp()
+    await room.startDisplay()
+    const token = await room.ensurePaired()
+    await room.connectHub(token!)
+
+    const cible = room.runtime.state().targetSession
+    expect(cible).not.toBeNull()
+
+    hub.services.questions.post({
+      roomId: TRACK_1, sessionId: cible!.id, author: 'Camille',
+      text: 'Comment gérez-vous les faux positifs ?',
+    })
+    hub.services.questions.post({
+      roomId: TRACK_1, sessionId: 'un-autre-talk', author: null,
+      text: 'Question du talk de ce matin',
+    })
+
+    await room.refreshQuestions()
+
+    const { questions, questionsSession } = room.diagnostics()
+    expect(questions.map((q) => q.text)).toEqual(['Comment gérez-vous les faux positifs ?'])
+    // Le talk est nommé : une liste vide ne dit pas la même chose selon qu'on
+    // pilote un talk sans question, ou qu'on n'en pilote aucun.
+    expect(questionsSession).toEqual({ id: cible!.id, title: cible!.title })
+  }, 30_000)
+
+  it('rattache la question mise à l\'antenne à ce talk', async () => {
+    // C'est ce qui la fait tomber au suivant, plutôt que de rester incrustée
+    // dans la VOD du speaker d'après.
+    room = makeApp()
+    await room.startDisplay()
+    const token = await room.ensurePaired()
+    await room.connectHub(token!)
+
+    room.setAiredQuestion('Et les faux positifs ?', 'Camille')
+
+    expect(room.runtime.state().question).toEqual({
+      text: 'Et les faux positifs ?',
+      author: 'Camille',
+      sessionId: room.runtime.state().targetSession?.id,
+    })
+    // Et surtout pas sur le canal du bandeau de la console.
+    expect(room.runtime.state().liveMessage).toBeNull()
+  }, 30_000)
+})
+
+/**
+ * Boucle d'attente : ce qu'elle a besoin de savoir.
+ *
+ * Deux champs que la salle calcule seule, depuis le programme déjà en cache —
+ * la boucle doit se dérouler entière pendant une pause, c'est-à-dire quand le
+ * réseau de l'événement est le plus chargé.
+ */
+describe('boucle d\'attente', () => {
+  it('sait ce qui se joue dans les autres salles, sans rien demander au hub', async () => {
+    room = makeApp()
+    const url = await room.startDisplay()
+    const token = await room.ensurePaired()
+    await room.connectHub(token!)
+
+    const payload = (await (await fetch(`${url}/display/data`)).json()) as DisplayPayload
+
+    // Les deux autres tracks, jamais la sienne.
+    expect(payload.otherRooms.map((salle) => salle.roomId)).toEqual([
+      'track-2-mf-1092',
+      'hands-on',
+    ])
+    // Des talks, pas des pauses : « Déjeuner en Track #2 » n'aide personne à
+    // choisir où aller.
+    for (const salle of payload.otherRooms) {
+      expect(salle.session?.title).not.toContain('Déjeuner')
+    }
+  }, 30_000)
+
+  it('reçoit les comptes de l\'événement du hub, et les garde', async () => {
+    hub.services.settings.update({
+      socialLinks: [
+        { network: 'Bluesky', handle: '@cloudnord.fr', url: 'https://bsky.app/profile/cloudnord.fr' },
+      ],
+    })
+
+    room = makeApp()
+    const url = await room.startDisplay()
+    const token = await room.ensurePaired()
+    await room.connectHub(token!)
+
+    const payload = (await (await fetch(`${url}/display/data`)).json()) as DisplayPayload
+    expect(payload.socialLinks).toEqual([
+      { network: 'Bluesky', handle: '@cloudnord.fr', url: 'https://bsky.app/profile/cloudnord.fr' },
+    ])
+    // En cache local : une salle qui redémarre hub injoignable déroule la même
+    // boucle qu'une autre.
+    expect(room.store.settings().socialLinks).toHaveLength(1)
+  }, 30_000)
+})

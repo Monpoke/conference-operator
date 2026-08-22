@@ -1,0 +1,1 @@
+ALTER TABLE `room_settings` ADD `social_links_json` text;

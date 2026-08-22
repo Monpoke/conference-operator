@@ -152,13 +152,24 @@ describe('clôture automatique', () => {
 
 describe('réglages du hub', () => {
   it('fournit des valeurs par défaut utilisables', () => {
-    expect(settings.get()).toEqual({ autoEndEnabled: true, autoEndGraceMinutes: 5 })
+    expect(settings.get()).toEqual({
+      autoEndEnabled: true,
+      autoEndGraceMinutes: 5,
+      // Sans source de programme tant que personne n'en a renseigné une : le
+      // hub n'importe alors rien tout seul, et c'est un état légitime.
+      programSourceUrl: null,
+      // Aucun compte déclaré : la boucle d'attente des salles saute sa page
+      // réseaux plutôt que d'afficher un cadre vide.
+      socialLinks: [],
+    })
   })
 
   it('applique une modification partielle', () => {
     expect(settings.update({ autoEndGraceMinutes: 15 })).toEqual({
       autoEndEnabled: true,
       autoEndGraceMinutes: 15,
+      programSourceUrl: null,
+      socialLinks: [],
     })
     expect(settings.get().autoEndGraceMinutes).toBe(15)
   })
@@ -166,5 +177,44 @@ describe('réglages du hub', () => {
   it('refuse une valeur hors bornes', () => {
     expect(() => settings.update({ autoEndGraceMinutes: -1 })).toThrow()
     expect(() => settings.update({ autoEndGraceMinutes: 999 })).toThrow()
+  })
+})
+
+/**
+ * Vues enrichies : ce que la console reçoit.
+ *
+ * Le temps restant s'y trouve parce qu'il ne peut pas se calculer ailleurs :
+ * l'heure qui fait foi est celle du hub, et elle peut être simulée. Fait dans
+ * le navigateur, le calcul affichait « +6010 min » sur un talk à l'heure dès
+ * qu'on déplaçait l'horloge depuis le menu Développement.
+ */
+describe('vues enrichies du programme', () => {
+  it('compte le restant sur l\'horloge du hub', () => {
+    sessions.start(TALK.id, TRACK_1, 'op')
+
+    const vue = sessions.views(TRACK_1, program).find((e) => e.sessionId === TALK.id)!
+    expect(vue.title).toBe(TALK.title)
+    // L'horloge de test est à 30 minutes de la fin du créneau — et à des mois
+    // de l'heure réelle de la machine qui exécute ce test.
+    expect(vue.remainingMs).toBe(30 * 60_000)
+  })
+
+  it('passe en négatif sur un dépassement', () => {
+    // C'est l'information qui déclenche une décision : elle doit exister avant
+    // que la clôture automatique ne s'en mêle.
+    sessions.start(TALK.id, TRACK_1, 'op')
+    horloge = FIN + 7 * 60_000
+
+    expect(sessions.views(TRACK_1, program)[0]?.remainingMs).toBe(-7 * 60_000)
+  })
+
+  it('ne l\'invente pas sans créneau de référence', () => {
+    // Session absente du programme courant : sans fin connue, « 0 min » serait
+    // un mensonge.
+    sessions.start('session-hors-programme', TRACK_1, 'op')
+
+    const vue = sessions.views(TRACK_1, program).find((e) => e.sessionId === 'session-hors-programme')!
+    expect(vue.scheduledEndsAt).toBeNull()
+    expect(vue.remainingMs).toBeNull()
   })
 })

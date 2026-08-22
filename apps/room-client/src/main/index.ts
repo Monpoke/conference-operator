@@ -3,6 +3,7 @@ import { app, BrowserWindow, safeStorage, screen } from 'electron'
 import { RoomApp } from '../core/room-app.js'
 import { formaterLigneJournal } from '../core/journal-console.js'
 import { createMockObsTransport } from '../core/obs-mock.js'
+import { decalageDuMode, lireMode } from '../core/mode.js'
 import { loadOrCreateClientId } from './identity.js'
 import { createSecretVault } from './secrets.js'
 
@@ -15,8 +16,16 @@ import { createSecretVault } from './secrets.js'
  */
 
 const HUB_ORIGIN = process.env.HUB_ORIGIN ?? 'http://localhost:8787'
-/** `OBS_MOCK=1` : dérouler un talk complet sans installer OBS. */
-const OBS_SIMULE = process.env.OBS_MOCK === '1'
+
+/**
+ * Mode d'exécution, lu une fois au démarrage.
+ *
+ * `MODE=dev` déroule un talk complet sans installer OBS ; hors de ce mode, les
+ * commodités de développement sont neutralisées même si elles traînent dans
+ * l'environnement — un `OBS_MOCK=1` oublié, c'est une journée filmée par une
+ * instance OBS qui n'existe pas.
+ */
+const MODE = lireMode()
 
 async function main(): Promise<void> {
   await app.whenReady()
@@ -27,12 +36,20 @@ async function main(): Promise<void> {
     console.warn(message),
   )
 
+  for (const { variable, raison } of MODE.ignores) {
+    console.error(formaterLigneJournal('error', `${variable} ignoré : ${raison}`))
+  }
+  if (MODE.mode === 'dev') {
+    console.warn(formaterLigneJournal('warn', 'MODE DÉVELOPPEMENT — à ne pas laisser le jour J'))
+  }
+
   const room = new RoomApp({
     dataDir,
+    mode: MODE.mode,
     hubOrigin: HUB_ORIGIN,
     clientId,
     roomId: process.env.ROOM_ID,
-    obsTransportFactory: OBS_SIMULE
+    obsTransportFactory: MODE.obsSimule
       ? (instance) =>
           createMockObsTransport({
             instance,
@@ -48,6 +65,11 @@ async function main(): Promise<void> {
       console.log(`Code d'appairage : ${code.user_code} — à approuver dans l'admin du hub`)
     },
   })
+
+  // Heure simulée locale, s'il y en a une : posée comme décalage, exactement
+  // comme le fera le hub dès qu'il répondra — et il reprendra la main.
+  const decalage = decalageDuMode(MODE)
+  if (decalage !== 0) room.runtime.setClockOffset(decalage, true)
 
   // L'écran d'abord : la salle doit projeter même si le hub ne répond jamais.
   const displayUrl = await room.startDisplay()

@@ -24,7 +24,29 @@
     },
     "dev": {
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      /*
+       * Turbo 2 filtre l'environnement des tâches (mode « strict ».
+       * Sans cette liste, `MODE=dev pnpm dev` à la racine démarrerait les deux
+       * applications en production, sans un mot — exactement le silence que le
+       * mode sert à éviter. `OBS_MOCK` y figure aussi : le garde-fou doit le
+       * voir pour pouvoir dire qu'il l'ignore.
+       */
+      "passThroughEnv": [
+        "MODE",
+        "HUB_ORIGIN",
+        "PORT",
+        "HOST",
+        "DATABASE_PATH",
+        "SIMULATED_TIME",
+        "CLOCK_CONTROL",
+        "HEURE_SIMULEE",
+        "OBS_MOCK",
+        "OBS_REEL",
+        "ROOM_ID",
+        "DISPLAY_PORT",
+        "DATA_DIR"
+      ]
     }
   }
 }

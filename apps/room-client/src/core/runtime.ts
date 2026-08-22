@@ -24,10 +24,47 @@ export interface BroadcastMessage {
   expiresAtMs: number | null
 }
 
+/**
+ * Question du public mise à l'antenne depuis la régie.
+ *
+ * **Canal distinct de `liveMessage`, et c'est tout l'objet du type.** Les deux
+ * ont longtemps partagé un seul champ : un « on reprend dans 5 minutes » envoyé
+ * du hub s'affichait alors à la place de la question sur l'écran de salle, et
+ * surtout, aucune surface ne pouvait montrer l'un sans risquer l'autre. Or ils
+ * ne vont pas au même endroit — la question a sa place dans la VOD, le message
+ * d'exploitation non.
+ */
+export interface AiredQuestion {
+  text: string
+  author: string | null
+  /**
+   * Conférence à laquelle elle se rattache.
+   *
+   * Sert à la faire tomber d'elle-même au talk suivant : une question restée à
+   * l'antenne au changement de conférence serait incrustée dans la VOD du
+   * mauvais speaker.
+   */
+  sessionId: string | null
+}
+
 /** Ce que la page d'affichage doit rendre à un instant donné. */
 export interface DisplayState {
   mode: DisplayMode
   message: BroadcastMessage | null
+  /**
+   * Bandeau superposé aux scènes live.
+   *
+   * Distinct de `message` : celui-ci **remplace** l'écran de salle, le bandeau
+   * se pose par-dessus la vidéo sans rien interrompre. Les deux coexistent
+   * donc, et c'est voulu.
+   *
+   * Distinct de `question` aussi : ce bandeau-ci vient de la console et ne doit
+   * jamais atteindre l'habillage de captation — il ne parle pas au public de la
+   * VOD, il parle à la salle de maintenant.
+   */
+  liveMessage: BroadcastMessage | null
+  /** Question du public à l'antenne. Va dans la VOD, contrairement au bandeau. */
+  question: AiredQuestion | null
   sceneRole: SceneRole | null
   connectivity: Connectivity
   roomId: string | null
@@ -36,7 +73,13 @@ export interface DisplayState {
   nextSession: Session | null
   outboxDepth: number
   serverTimeOffsetMs: number
-  /** État réel d'OBS-B, observé et non supposé. Sert au témoin de l'overlay. */
+  /**
+   * État réel d'OBS-B, observé et non supposé.
+   *
+   * Sert au témoin de la régie, jamais à l'habillage : ce qui est dans
+   * l'habillage part dans le master, et un point rouge gravé dans la VOD n'a
+   * rien à y faire.
+   */
   recording: boolean
   streaming: boolean
   /**
@@ -85,6 +128,17 @@ export interface Notification {
   at: string
 }
 
+/**
+ * Durée de vie d'un signalement.
+ *
+ * Un bandeau qui ne part pas cesse d'être lu : la régie finissait la journée
+ * avec cinq signalements empilés au-dessus des commandes, tous périmés depuis
+ * longtemps. Trente secondes suffisent à voir passer un fait ponctuel — et ce
+ * qui doit rester consultable, l'état des autres salles, est de toute façon
+ * dans le flux d'en-tête, qui lui ne périme pas.
+ */
+export const DUREE_SIGNALEMENT_MS = 30_000
+
 export interface RuntimeEffects {
   /** Bascule OBS-A. Séparé du runtime pour rester testable sans OBS. */
   setSceneRole?: (role: SceneRole) => Promise<void>
@@ -116,10 +170,18 @@ export class RoomRuntime extends EventEmitter {
     const cached = store.activeProgram()
     this.program = cached?.program ?? null
     this.display = {
-      // Au démarrage on montre les sponsors : c'est l'état neutre d'une salle
-      // avant intervention, et il ne dépend d'aucune donnée temps réel.
-      mode: 'sponsors',
+      /**
+       * Au démarrage, la boucle d'attente.
+       *
+       * C'est l'état neutre d'une salle avant intervention, et celui qu'on veut
+       * y trouver le matin sans que personne n'ait rien touché. Elle se réduit
+       * d'elle-même aux pages qui ont du contenu : une salle jamais
+       * synchronisée y montre les sponsors, comme avant.
+       */
+      mode: 'loop',
       message: null,
+      liveMessage: null,
+      question: null,
       sceneRole: null,
       connectivity: 'OFFLINE',
       roomId: settings.roomId,
@@ -161,7 +223,15 @@ export class RoomRuntime extends EventEmitter {
     this.emit('state', this.state())
   }
 
-  /** Heure corrigée de l'offset serveur — jamais `Date.now()` brut pour l'affichage. */
+  /**
+   * Heure corrigée de l'offset serveur — jamais `Date.now()` brut pour l'affichage.
+   *
+   * **`serverTimeOffsetMs` se compte à partir de l'horloge de la machine.** Les
+   * pages servies le rajoutent à leur propre `Date.now()`, la file de remontée
+   * date ses événements de la même façon, et une horloge injectée ici les
+   * ferait diverger sans un mot : c'est pourquoi l'heure simulée d'une salle
+   * est **un décalage** et non une horloge de remplacement.
+   */
   correctedNow(): number {
     return this.now() + this.display.serverTimeOffsetMs
   }
@@ -226,9 +296,50 @@ export class RoomRuntime extends EventEmitter {
     }
   }
 
+  /**
+   * Cale l'horloge sur celle du hub.
+   *
+   * L'écart se mesure contre **notre** horloge, pas contre un `Date.now()`
+   * relu par l'appelant. La nuance a coûté cher : mesuré de travers, l'écart
+   * s'ajoutait à une salle déjà décalée, et la régie cherchait ses conférences
+   * plusieurs semaines après la fin de l'événement — « aucune conférence à
+   * piloter », pendant que le flux des autres salles, lui, tombait juste.
+   */
+  setServerTime(serverTime: string, simulated = this.display.simulatedClock): void {
+    this.setClockOffset(Date.parse(serverTime) - this.now(), simulated)
+  }
+
   setClockOffset(offsetMs: number, simulated = this.display.simulatedClock): void {
+    if (offsetMs === this.display.serverTimeOffsetMs && simulated === this.display.simulatedClock) {
+      return
+    }
     this.store.saveSettings({ clockOffsetMs: offsetMs })
     this.patch({ serverTimeOffsetMs: offsetMs, simulatedClock: simulated })
+    // L'heure a bougé : la conférence en cours aussi, peut-être. Attendre le
+    // tic suivant laisserait l'écran désigner le mauvais talk pendant 5 s.
+    this.refreshSessions()
+  }
+
+  /**
+   * Bandeau posé depuis la régie.
+   *
+   * Sans durée : la régie a un bouton pour le retirer, et un bandeau qui
+   * disparaît seul pendant qu'on regarde ailleurs se remet sans qu'on sache
+   * pourquoi il était parti.
+   */
+  setLiveMessage(text: string | null, level: 'info' | 'warning' | 'urgent' = 'info'): void {
+    this.patch({ liveMessage: text == null ? null : { text, level, expiresAtMs: null } })
+  }
+
+  /**
+   * Question mise à l'antenne depuis la régie.
+   *
+   * Sans durée, comme le bandeau : la régie a un bouton pour la retirer. Elle
+   * porte en revanche la conférence à laquelle elle se rattache — voir
+   * `refreshSessions`, qui la fait tomber au talk suivant.
+   */
+  setQuestion(text: string | null, author: string | null, sessionId: string | null): void {
+    this.patch({ question: text == null ? null : { text, author, sessionId } })
   }
 
   setProgram(contentHash: string, program: Program): void {
@@ -265,11 +376,24 @@ export class RoomRuntime extends EventEmitter {
       ) ?? null
     const cible = courante?.kind === 'talk' ? courante : prochainTalk
 
+    /**
+     * La question à l'antenne tombe avec le talk auquel elle appartient.
+     *
+     * Sans ça, elle reste incrustée dans l'habillage de captation pendant que
+     * le speaker suivant s'installe — gravée dans sa VOD, adressée à quelqu'un
+     * d'autre. Une question sans conférence rattachée (posée hors talk) n'est
+     * pas concernée : rien ne dit quand elle devrait tomber.
+     */
+    const question = this.display.question
+    const questionPerimee =
+      question != null && question.sessionId != null && question.sessionId !== cible?.id
+
     this.patch({
       currentSession: courante,
       nextSession: suivante,
       targetSession: cible,
       targetIsUpcoming: cible != null && cible.id !== courante?.id,
+      ...(questionPerimee ? { question: null } : {}),
     })
   }
 
@@ -356,6 +480,22 @@ export class RoomRuntime extends EventEmitter {
         })
         break
       }
+      case 'overlay.set':
+        // Le bandeau ne touche ni au mode d'écran ni à la scène : il se
+        // superpose, et la salle continue exactement ce qu'elle faisait.
+        this.patch({
+          liveMessage:
+            payload.message == null
+              ? null
+              : {
+                  ...payload.message,
+                  expiresAtMs:
+                    command.ttlSeconds == null
+                      ? null
+                      : this.correctedNow() + command.ttlSeconds * 1000,
+                },
+        })
+        break
       case 'program.invalidate':
         this.effects.resync?.(payload.contentHash)
         break
@@ -381,8 +521,7 @@ export class RoomRuntime extends EventEmitter {
          * Sans ça, l'écran continuerait d'afficher l'ancien moment jusqu'à la
          * prochaine synchronisation — et la timeline désignerait le mauvais talk.
          */
-        this.setClockOffset(Date.parse(payload.serverTime) - this.now(), payload.simulated)
-        this.refreshSessions()
+        this.setServerTime(payload.serverTime, payload.simulated)
         this.notify({
           level: 'info',
           text: payload.simulated
@@ -406,10 +545,33 @@ export class RoomRuntime extends EventEmitter {
 
   /** Retire un message dont le TTL est écoulé. À appeler sur tic d'horloge. */
   expireMessage(): void {
-    const { message } = this.display
-    if (message?.expiresAtMs == null) return
-    if (this.correctedNow() > message.expiresAtMs) {
-      this.patch({ message: null, mode: 'sponsors' })
+    const { message, liveMessage } = this.display
+    const maintenant = this.correctedNow()
+
+    if (message?.expiresAtMs != null && maintenant > message.expiresAtMs) {
+      // Retour à la boucle d'attente : c'est l'écran par défaut de la salle, et
+      // celui sur lequel on veut retomber quand un message s'efface tout seul.
+      this.patch({ message: null, mode: 'loop' })
     }
+    // Le bandeau expire seul, mais ne ramène rien : il ne s'était substitué à
+    // rien, il se retire simplement de l'image.
+    if (liveMessage?.expiresAtMs != null && maintenant > liveMessage.expiresAtMs) {
+      this.patch({ liveMessage: null })
+    }
+  }
+
+  /**
+   * Retire les signalements passés de date. À appeler sur tic d'horloge.
+   *
+   * Écarter à la main reste possible et immédiat ; ceci ne concerne que ceux
+   * que personne n'a écartés, c'est-à-dire la plupart : en régie, on lit le
+   * bandeau, on ne le range pas.
+   */
+  expireNotifications(): void {
+    const { notifications } = this.display
+    if (notifications.length === 0) return
+    const limite = this.correctedNow() - DUREE_SIGNALEMENT_MS
+    const restants = notifications.filter((signalement) => Date.parse(signalement.at) > limite)
+    if (restants.length !== notifications.length) this.patch({ notifications: restants })
   }
 }

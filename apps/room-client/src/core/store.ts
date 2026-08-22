@@ -13,7 +13,28 @@ import {
   roomSettings,
 } from '@cloudnord/db/client'
 import { programSchema, type Program } from '@cloudnord/program'
-import { roomConfigSchema, type RoomConfig } from '@cloudnord/contract'
+import {
+  roomConfigSchema,
+  socialLinkSchema,
+  type RoomConfig,
+  type SocialLink,
+} from '@cloudnord/contract'
+
+/**
+ * Comptes relus du cache local.
+ *
+ * Tolérant : un JSON corrompu ou un schéma qui a bougé ne doit pas empêcher la
+ * salle de démarrer pour une page décorative. La boucle sautera ses réseaux.
+ */
+function lireReseaux(brut: string | null): SocialLink[] {
+  if (brut == null) return []
+  try {
+    const lu = socialLinkSchema.array().safeParse(JSON.parse(brut))
+    return lu.success ? lu.data : []
+  } catch {
+    return []
+  }
+}
 
 /**
  * Dossier des migrations locales.
@@ -41,6 +62,8 @@ export interface RoomSettings {
   token: string | null
   config: RoomConfig | null
   activeContentHash: string | null
+  /** Comptes de l'événement, poussés par le hub. Mis en cache comme le programme. */
+  socialLinks: SocialLink[]
   nextSeq: number
   lastCommandSeq: number
   clockOffsetMs: number
@@ -105,6 +128,9 @@ export class LocalStore {
       token: row?.token ?? null,
       config: row?.configJson == null ? null : roomConfigSchema.parse(JSON.parse(row.configJson)),
       activeContentHash: row?.activeContentHash ?? null,
+      // Réglage décoratif : un cache illisible ne doit pas empêcher la salle de
+      // démarrer, la boucle sautera simplement sa page réseaux.
+      socialLinks: lireReseaux(row?.socialLinksJson ?? null),
       nextSeq: row?.nextSeq ?? 1,
       lastCommandSeq: row?.lastCommandSeq ?? 0,
       clockOffsetMs: row?.clockOffsetMs ?? 0,
@@ -117,6 +143,7 @@ export class LocalStore {
     if (patch.token !== undefined) update.token = patch.token
     if (patch.config !== undefined) update.configJson = JSON.stringify(patch.config)
     if (patch.activeContentHash !== undefined) update.activeContentHash = patch.activeContentHash
+    if (patch.socialLinks !== undefined) update.socialLinksJson = JSON.stringify(patch.socialLinks)
     if (patch.lastCommandSeq !== undefined) update.lastCommandSeq = patch.lastCommandSeq
     if (patch.clockOffsetMs !== undefined) update.clockOffsetMs = patch.clockOffsetMs
 

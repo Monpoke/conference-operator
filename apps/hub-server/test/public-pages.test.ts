@@ -173,6 +173,34 @@ describe('dépôt public et modération', () => {
     const liste = await rpc('questions/list', { roomId: TRACK_1, sessionId: null })
     expect((liste.body.json as unknown as unknown[])).toHaveLength(1)
   })
+
+  /**
+   * Ce qui est déjà à l'écran, relu depuis le mobile.
+   *
+   * Ces messages sont publics au sens le plus fort : ils sont projetés en
+   * grand dans les salles. Les redonner au téléphone qui vient d'en déposer un
+   * est ce qui fait la différence entre un formulaire de contact et un mur.
+   */
+  it('rend les messages déjà projetés, sans compte', async () => {
+    const depose = await rpc('wall/post', {
+      roomId: null,
+      author: 'Camille',
+      text: 'Super talk, merci !',
+    })
+    const { id } = depose.body.json as unknown as { id: string }
+
+    // Rien avant modération : le mur ne montre que ce qui est passé par une
+    // décision humaine.
+    const avant = await rpc('wall/recent', { limit: 12 })
+    expect(avant.body.json as unknown as unknown[]).toHaveLength(0)
+
+    const jeton = await jetonOperateur()
+    await rpc('wall/moderate', { id, decision: 'approve' }, jeton)
+
+    const apres = await rpc('wall/recent', { limit: 12 })
+    const messages = apres.body.json as unknown as { text: string }[]
+    expect(messages.map((message) => message.text)).toEqual(['Super talk, merci !'])
+  })
 })
 
 describe('cycle de vie des conférences depuis la console', () => {
@@ -258,6 +286,9 @@ describe("heure simulée du hub", () => {
       publicUrl: 'http://127.0.0.1',
       authSecret: 'test-secret-'.padEnd(48, 'x'),
       logLevel: 'fatal',
+      // L'heure simulée ne s'applique qu'en mode développement — c'est ce que
+      // vérifie `mode.test.ts`, et ce que ce hub-là doit donc déclarer.
+      mode: 'dev',
       simulatedTime: '2026-10-30T10:20:00.000Z',
     })
     await simule.app.listen({ port: 0, host: '127.0.0.1' })
@@ -287,6 +318,9 @@ describe("heure simulée du hub", () => {
       publicUrl: 'http://127.0.0.1',
       authSecret: 'test-secret-'.padEnd(48, 'x'),
       logLevel: 'fatal',
+      // L'heure simulée ne s'applique qu'en mode développement — c'est ce que
+      // vérifie `mode.test.ts`, et ce que ce hub-là doit donc déclarer.
+      mode: 'dev',
       simulatedTime: '2026-10-30T10:20:00.000Z',
     })
     simule.services.rooms.upsert({
@@ -327,7 +361,8 @@ describe("heure simulée du hub", () => {
 })
 
 describe("réglage de l'heure depuis la console", () => {
-  const creerHub = (clockControl?: string) =>
+  /** Le mode fait foi : il n'y a plus d'interrupteur séparé pour l'horloge. */
+  const creerHub = (mode: 'production' | 'dev' = 'production') =>
     createHub({
       port: 0,
       host: '127.0.0.1',
@@ -335,7 +370,7 @@ describe("réglage de l'heure depuis la console", () => {
       publicUrl: 'http://127.0.0.1',
       authSecret: 'test-secret-'.padEnd(48, 'x'),
       logLevel: 'fatal',
-      ...(clockControl != null ? { clockControl } : {}),
+      mode,
     })
 
   async function adresseEtJeton(h: Hub) {
@@ -358,7 +393,7 @@ describe("réglage de l'heure depuis la console", () => {
       body: JSON.stringify({ json: entree }),
     })
 
-  it('refuse par défaut, en expliquant comment ouvrir', async () => {
+  it('refuse sur un hub de production, en expliquant comment ouvrir', async () => {
     const h = await creerHub()
     const { base, jeton } = await adresseEtJeton(h)
 
@@ -367,7 +402,7 @@ describe("réglage de l'heure depuis la console", () => {
     const corps = (await reponse.json()) as { json: { message: string } }
     // Changer l'heure pendant l'événement fausserait les timecodes : fermé par
     // défaut, et le message dit comment l'ouvrir en connaissance de cause.
-    expect(corps.json.message).toContain('CLOCK_CONTROL=1')
+    expect(corps.json.message).toContain('MODE=dev')
 
     const etat = await appeler(base, 'clock/get', {}, jeton)
     expect(((await etat.json()) as { json: { controllable: boolean } }).json.controllable).toBe(false)
@@ -376,7 +411,7 @@ describe("réglage de l'heure depuis la console", () => {
   })
 
   it("déplace l'heure quand le réglage est ouvert", async () => {
-    const h = await creerHub('1')
+    const h = await creerHub('dev')
     const { base, jeton } = await adresseEtJeton(h)
 
     const reponse = await appeler(base, 'clock/set', { at: '2026-10-30T10:20:00.000Z' }, jeton)
@@ -403,7 +438,7 @@ describe("réglage de l'heure depuis la console", () => {
   })
 
   it('diffuse le réalignement aux salles', async () => {
-    const h = await creerHub('true')
+    const h = await creerHub('dev')
     const { base, jeton } = await adresseEtJeton(h)
 
     await appeler(base, 'clock/set', { at: '2026-10-30T10:20:00.000Z' }, jeton)
@@ -418,7 +453,7 @@ describe("réglage de l'heure depuis la console", () => {
   })
 
   it('revient à l\'heure réelle', async () => {
-    const h = await creerHub('1')
+    const h = await creerHub('dev')
     const { base, jeton } = await adresseEtJeton(h)
 
     await appeler(base, 'clock/set', { at: '2026-10-30T10:20:00.000Z' }, jeton)
@@ -430,7 +465,7 @@ describe("réglage de l'heure depuis la console", () => {
   })
 
   it("réserve le réglage aux opérateurs", async () => {
-    const h = await creerHub('1')
+    const h = await creerHub('dev')
     await h.app.listen({ port: 0, host: '127.0.0.1' })
     const a = h.app.server.address()
     const base = `http://127.0.0.1:${typeof a === 'object' && a != null ? a.port : 0}`
@@ -441,6 +476,127 @@ describe("réglage de l'heure depuis la console", () => {
       body: JSON.stringify({ json: { at: null } }),
     })
     expect(anonyme.status).toBe(401)
+    await h.close()
+  })
+})
+
+/**
+ * Bandeau live.
+ *
+ * L'historique est lu dans les commandes émises : elles sont déjà persistées,
+ * datées et ordonnées, et une seconde copie ne pourrait que diverger de ce qui
+ * est réellement parti dans les salles.
+ */
+describe('bandeau live', () => {
+  const creerHub = () =>
+    createHub({
+      port: 0,
+      host: '127.0.0.1',
+      databasePath: ':memory:',
+      publicUrl: 'http://127.0.0.1',
+      authSecret: 'test-secret-'.padEnd(48, 'x'),
+      logLevel: 'fatal',
+    })
+
+  async function console_(h: Hub) {
+    await h.app.listen({ port: 0, host: '127.0.0.1' })
+    const a = h.app.server.address()
+    const base = `http://127.0.0.1:${typeof a === 'object' && a != null ? a.port : 0}`
+    await provisionOperator(h.auth, OPERATOR)
+    const r = await fetch(`${base}/api/auth/sign-in/email`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: OPERATOR.email, password: OPERATOR.password }),
+    })
+    const jeton = ((await r.json()) as { token: string }).token
+    return async (chemin: string, entree: unknown) => {
+      const reponse = await fetch(`${base}/rpc/${chemin}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${jeton}` },
+        body: JSON.stringify({ json: entree }),
+      })
+      return { status: reponse.status, body: (await reponse.json()) as { json?: never } }
+    }
+  }
+
+  it('retient ce qui est passé, et dit lequel est affiché', async () => {
+    const h = await creerHub()
+    const appeler = await console_(h)
+
+    await appeler('overlay/show', { roomId: null, message: { text: 'Premier', level: 'info' } })
+    await appeler('overlay/show', { roomId: null, message: { text: 'Second', level: 'warning' } })
+
+    const passes = (await appeler('overlay/history', {})).body.json as unknown as {
+      message: { text: string }
+      visible: boolean
+    }[]
+
+    // Du plus récent au plus ancien : c'est celui qu'on veut remettre en premier.
+    expect(passes.map((p) => p.message.text)).toEqual(['Second', 'Premier'])
+    expect(passes.map((p) => p.visible)).toEqual([true, false])
+
+    await h.close()
+  })
+
+  it('n\'affiche plus rien après un retrait', async () => {
+    const h = await creerHub()
+    const appeler = await console_(h)
+
+    await appeler('overlay/show', { roomId: null, message: { text: 'Premier', level: 'info' } })
+    await appeler('overlay/hide', { roomId: null })
+
+    const passes = (await appeler('overlay/history', {})).body.json as unknown as {
+      message: { text: string }
+      visible: boolean
+    }[]
+
+    // Le retrait n'est pas de l'historique — on ne remet pas « rien » à
+    // l'antenne — mais il éteint le bandeau qu'il a retiré.
+    expect(passes.map((p) => p.message.text)).toEqual(['Premier'])
+    expect(passes.every((p) => !p.visible)).toBe(true)
+
+    await h.close()
+  })
+})
+
+/**
+ * Conférence en cours, vue du mur public.
+ *
+ * Publique comme le mur lui-même : ces titres sont déjà projetés sur l'écran
+ * de la salle, et sans eux « posez votre question » ne dit pas à propos de quoi.
+ */
+describe('conférence en cours, côté public', () => {
+  it('la donne sans authentification', async () => {
+    const h = await createHub({
+      port: 0,
+      host: '127.0.0.1',
+      databasePath: ':memory:',
+      publicUrl: 'http://127.0.0.1',
+      authSecret: 'test-secret-'.padEnd(48, 'x'),
+      logLevel: 'fatal',
+      mode: 'dev',
+      simulatedTime: '2026-10-30T10:20:00.000Z',
+    })
+    await h.app.listen({ port: 0, host: '127.0.0.1' })
+    const adresse = h.app.server.address()
+    const base = `http://127.0.0.1:${typeof adresse === 'object' && adresse != null ? adresse.port : 0}`
+    const snapshot = h.services.programs.importFromText(rawProgram, 'https://exemple/programme.json')
+    h.services.rooms.ensureFromTracks(snapshot.program.rooms)
+
+    const reponse = await fetch(`${base}/rpc/rooms/current`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ json: { roomId: TRACK_1 } }),
+    })
+
+    expect(reponse.status).toBe(200)
+    const corps = (await reponse.json()) as {
+      json: { current: { title: string; speakers: string[] } | null; next: { title: string } | null }
+    }
+    expect(corps.json.current?.title).toContain('HoneySwamp')
+    expect(corps.json.current?.speakers.length).toBeGreaterThan(0)
+    expect(corps.json.next?.title).toBeTruthy()
+
     await h.close()
   })
 })

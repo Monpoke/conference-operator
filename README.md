@@ -11,7 +11,9 @@ Deux applications :
 - **room-client** (Electron, un par salle) — pilote deux instances OBS, sert l'écran
   de salle, et **fonctionne seul** : réseau coupé, la régie continue et rien n'est perdu.
 
-Plan d'architecture complet : `~/.claude/plans/je-voudrais-cr-er-une-validated-fountain.md`
+La structure du dépôt est décrite plus bas, et les choix qui ne se devinent pas
+à la lecture du code sont réunis dans « Décisions structurantes ». Pour
+contribuer : [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## État
 
@@ -70,7 +72,9 @@ pnpm --filter @cloudnord/hub-server dev
 ```
 
 Au premier démarrage il importe le programme depuis `PROGRAM_SOURCE_URL` et
-**crée les trois salles à partir de `event.tracks[]`**. La console est sur
+**crée les trois salles à partir de `event.tracks[]`**. Cette variable n'amorce
+que la première fois : l'URL devient ensuite le réglage « Source du programme »
+de la console, modifiable sans redémarrer et utilisé par « Réimporter ». La console est sur
 <http://localhost:8787/admin>, le mur public sur
 <http://localhost:8787/mur?salle=track-1-teilhard-de-chardin>.
 
@@ -93,22 +97,109 @@ Electron, c'est ce qui rend ce mode possible.
 **Avec Electron** :
 
 ```bash
-HUB_ORIGIN=http://localhost:8787 OBS_MOCK=1 pnpm --filter @cloudnord/room-client dev
+MODE=dev HUB_ORIGIN=http://localhost:8787 pnpm --filter @cloudnord/room-client dev
 ```
 
 Dans les deux cas, le client affiche un **code d'appairage** : le saisir dans la
 console (« Machines en attente »), choisir une salle, approuver.
 
-### Réglages du mode local
+### `MODE=dev` : les commodités de développement
 
-| Variable | Effet |
-|---|---|
-| `CLOCK_CONTROL=1` **(sur le hub)** | Ouvre le réglage de l'heure depuis la console (onglet Réglages) : sélecteur de date, raccourcis vers les moments clés, retour à l'heure réelle. Les salles se réalignent aussitôt. **Fermé par défaut** — le faire pendant l'événement fausserait les timecodes des enregistrements. |
-| `SIMULATED_TIME` **(sur le hub)** | Place **tout le système** à un instant de l'événement. Les salles s'alignent sur `serverTime`, il n'y a rien à régler de leur côté. C'est la bonne façon de dérouler la journée du 30/10 dès maintenant. |
-| `HEURE_SIMULEE` (sur la salle) | Heure locale, pour développer **sans hub**. Dès qu'un hub répond, son heure l'emporte. Régler les deux les ferait diverger — et tout ce qui les compare, comme l'obsolescence d'une commande, se mettrait à mentir. |
-| `OBS_MOCK=1` / `dev:headless` | OBS simulé : scènes, enregistrement, diffusion. Écrit un **vrai fichier** à l'arrêt, donc la chaîne VOD va jusqu'au sidecar. |
-| `OBS_REEL=1` | En headless, parle à un vrai OBS plutôt qu'au simulé. |
-| `DISPLAY_PORT` | Port du serveur local (défaut 7788). |
+**Un seul interrupteur par côté**, hub et salle, et c'est lui qui commande tout
+le reste. Le défaut est `production` — le défaut doit être le cas dangereux, pas
+le cas confortable.
+
+**Les deux applications, deux terminaux** — la façon recommandée, et la seule
+qui marche sous WSL sans serveur X :
+
+```bash
+# 1 — le hub
+MODE=dev pnpm --filter @cloudnord/hub-server dev
+
+# 2 — une salle, sans Electron ni OBS
+HUB_ORIGIN=http://localhost:8787 pnpm --filter @cloudnord/room-client dev:headless
+```
+
+`dev:headless` se met de lui-même en `MODE=dev` : c'est ce qu'il sert à faire.
+Avec Electron, à la place du second terminal :
+
+```bash
+MODE=dev HUB_ORIGIN=http://localhost:8787 pnpm --filter @cloudnord/room-client dev
+```
+
+**Ou les deux d'un coup**, depuis la racine — turbo lance le hub *et* le client
+Electron :
+
+```bash
+MODE=dev pnpm dev
+```
+
+Deux choses à savoir sur cette forme. Turbo 2 filtre l'environnement des tâches
+(mode « strict ») : les variables de développement sont donc déclarées en
+`passThroughEnv` dans `turbo.json`, sans quoi `MODE=dev` n'atteindrait aucune
+des deux applications et les deux démarreraient en production **sans un mot**.
+Et le client lancé est celui d'Electron : sous WSL sans serveur X, aucune
+fenêtre ne s'ouvre — les deux terminaux ci-dessus valent mieux.
+
+Une variable posée sur la ligne de commande l'emporte sur le `.env` : garder
+`MODE=production` dans `apps/hub-server/.env` n'empêche pas `MODE=dev pnpm …`
+de fonctionner.
+
+**Le hub et les salles d'un seul terminal**, sans Electron :
+
+```bash
+pnpm dev:duo    # hub + une salle   (7788)
+pnpm dev:trio   # hub + deux salles (7788 et 7789)
+```
+
+Une salle suffit pour développer une régie. Il en faut deux dès qu'on touche à
+ce qui est commun à l'événement — le mur des questions, un message poussé depuis
+la console, la modération : ces bugs-là ne se voient pas à une salle.
+
+Chaque salle a son `DATA_DIR`, donc sa propre identité machine, et son
+`ROOM_ID`, ce qui évite l'écran de choix de salle : elles affichent directement
+leur code d'appairage. `HUB_ORIGIN`, `SALLE_1`, `SALLE_2`, `PORT_1` et `PORT_2`
+restent réglables. Ctrl-C arrête tout le monde, en laissant au hub le temps de
+refermer sa base (voir « Arrêt du hub »).
+
+**Pour dérouler la journée du 30 octobre**, ajouter l'heure sur le hub — les
+salles s'alignent, il n'y a rien à régler de leur côté :
+
+```bash
+MODE=dev SIMULATED_TIME=2026-10-30T10:20:00Z pnpm --filter @cloudnord/hub-server dev
+```
+
+Hors de ce mode, les réglages ci-dessous sont **neutralisés même s'ils sont
+renseignés**, et chaque poste le dit bruyamment : journal en erreur, bandeau
+rouge dans la console du hub. Ils ne font pas échouer le démarrage — un hub qui
+refuse de repartir en cours d'événement parce qu'une ligne traîne dans un
+`.env` serait pire que le mal qu'on soigne. C'est là tout l'intérêt : un
+`OBS_MOCK=1` oublié dans un raccourci, c'est une journée entière filmée par une
+instance OBS qui n'existe pas, et la panne se découvre au montage.
+
+| Variable | Côté | Effet, **en `MODE=dev` seulement** |
+|---|---|---|
+| `SIMULATED_TIME` | hub | Place **tout le système** à un instant de l'événement. Les salles s'alignent sur `serverTime`, il n'y a rien à régler de leur côté. C'est la bonne façon de dérouler la journée du 30/10 dès maintenant. |
+| *(par le mode)* | hub | Le **réglage de l'heure depuis la console** (onglet Réglages) : sélecteur de date, raccourcis vers les moments clés, retour à l'heure réelle. Ouvert en dev, fermé en production. |
+| `HEURE_SIMULEE` | salle | Heure locale, pour développer **sans hub**. Posée comme un *décalage* sur l'horloge machine, exactement comme le fera le hub : dès qu'il répond, son heure remplace la valeur, sans que les deux se cumulent. Pour dérouler une journée, préférer `SIMULATED_TIME` sur le hub — les salles s'alignent seules. |
+| *(par le mode)* | salle | **OBS est simulé** : scènes, enregistrement, diffusion. Écrit un **vrai fichier** à l'arrêt, donc la chaîne VOD va jusqu'au sidecar. `OBS_REEL=1` parle à de vraies instances à la place. |
+
+**Deux variables ont disparu** : `CLOCK_CONTROL` et `OBS_MOCK`. Chacune
+doublait le mode par un second interrupteur, ce qui laissait exister des
+combinaisons absurdes — un hub de production dont on pouvait quand même
+déplacer l'horloge. Les trouver dans un `.env` ou un raccourci ne fait plus
+rien, et chaque poste le dit en nommant son remplaçant : le silence est ce
+qu'on cherche à éviter, pas la variable.
+
+Les réglages qui n'ont rien de dangereux restent libres : `DISPLAY_PORT` (port
+du serveur local, défaut 7788), `DATA_DIR`, `ROOM_ID`, `HUB_ORIGIN`.
+
+**Les deux côtés se surveillent.** Le hub annonce son mode à chaque `sync` ; la
+salle le compare au sien et affiche un badge en régie : `MODE DEV` en ambre
+quand tout le monde est d'accord, **`DEV · HUB EN PRODUCTION`** en rouge sinon.
+Une salle de développement branchée sur le hub de l'événement enverrait de
+vraies commandes depuis un poste qui simule tout — c'est exactement ce qu'on
+veut voir de loin. La console du hub porte le même badge, rendu côté serveur.
 
 Un talk complet avec OBS simulé produit exactement ce qu'il produirait en salle :
 
@@ -161,8 +252,101 @@ Le client sert trois surfaces sur son serveur local :
 | URL | Usage |
 |---|---|
 | `/display/projector` | Browser Source d'OBS-A, ou fenêtre plein écran de secours |
-| `/display/overlay` | Browser Source transparente d'OBS-B (habillage VOD) |
+| `/display/overlay` | Browser Source transparente d'OBS-B (habillage VOD, question du public) |
+| `/display/overlay-live` | Browser Source transparente d'OBS-A — question du public et messages de la console |
 | `/regie` | Fenêtre de l'opérateur : scènes, enregistrement, marqueurs, diagnostic |
+
+## L'écran d'attente : une boucle
+
+`loop` est le mode d'écran par défaut d'une salle — celui qu'on veut y trouver
+le matin sans que personne n'ait rien touché, et celui sur lequel on retombe
+quand un message s'efface. Il enchaîne quatre pages :
+
+| Page | Durée | Ce qu'elle apporte |
+|---|---|---|
+| Nos partenaires | 12 s | Le palier de tête en grand, les autres engagements dessous |
+| Programme de la salle | 15 s | La journée, du créneau en cours vers la suite |
+| Pendant ce temps, à côté | 12 s | Le talk en cours ou à venir des **autres** salles |
+| Suivez Cloud Nord | 10 s | Les comptes de l'événement, handle en grand |
+
+Un cycle complet fait 49 secondes. Les durées ne sont pas égales : un programme
+de vingt-sept lignes se lit, une rangée de logos se regarde. Elles sont
+volontairement longues — un écran qui change toutes les trois secondes attire
+l'œil pendant une pause où les gens se parlent. Les points en bas disent qu'il y
+a une suite, et qu'elle tourne : sans eux, un écran qui change tout seul se lit
+comme un écran instable. Le point actif se remplit sur la durée de la page, ce
+qui dit en plus *quand* elle va tourner.
+
+**Les partenaires sont en podium.** Le premier palier — celui qui a payé le
+plus cher, et les paliers arrivent déjà triés par rang — occupe seul un bandeau
+doré en haut de l'écran, logos au plus grand. L'or ne vient pas du thème de
+l'événement, et c'est voulu : la marque habille l'écran, l'or dit le rang. Tant
+que le bandeau reprenait la couleur de marque, le palier de tête se lisait comme
+un encadré de plus. Il se déclenche sur le **rang**, jamais sur le nom du
+palier : « Gold » peut devenir « Platine » d'une édition à l'autre, le premier
+reste le premier. Tout le reste est fondu en une rangée
+où chaque sponsor n'apparaît **qu'une fois**, avec la liste des packs qu'il a
+pris ; ceux qui s'en sont offert plusieurs y ont une carte plus large, encadrée
+de la couleur de marque, sous l'intitulé « Et sur tous les fronts ».
+
+La hiérarchie est portée par le cadre, jamais par la taille du logo : dans une
+rangée, toutes les pastilles partagent la même hauteur et la même ligne, et
+toutes les légendes le même appui. Faire maigrir le logo de celui qui n'a pris
+qu'un pack cassait la ligne — une rangée de partenaires se lit comme une
+étagère, ou ne se lit pas.
+
+**Les logos sont détourés à l'affichage.** Les sponsors déposent ce qu'ils
+veulent : certains fichiers sont cadrés au plus près, d'autres laissent flotter
+la marque au milieu d'une grande marge. Posés côte à côte à hauteur égale, les
+seconds paraissent deux fois plus petits — c'est du vide qu'on affiche à leur
+place. La page mesure donc l'encre de chaque logo et recadre dessus, une fois
+par image, gardée ensuite en mémoire.
+
+Deux garde-fous. Seules les marges **transparentes ou blanches** sont rognées :
+un logo posé sur un aplat de couleur — le carré bleu d'AXA — a cet aplat pour
+marque, et le resserrer sur le texte qu'il contient l'abîmerait. Et le calcul
+n'est possible que parce que les images du cache sont servies par le client
+lui-même sur `/assets` : un logo encore distant invalide le canvas, la lecture
+lève, et l'image est gardée telle quelle.
+
+Le dédoublonnage ne peut pas passer par l'identifiant : l'export amont en donne
+un **par palier**, si bien qu'un même partenaire en porte autant que de packs
+pris. C'est le site qui sert de clé, à la barre finale près, et le nom en repli.
+Sans cela le même logo revenait à l'identique à trois lignes d'écart — projeté,
+cela se lit comme un défaut d'affichage, pas comme de la générosité.
+
+**Elle est animée, sobrement.** Deux pages se croisent en fondu — la sortante
+s'efface par-dessus la nouvelle qui entre — les listes arrivent ligne à ligne
+plutôt que d'un bloc, le programme part du créneau en cours et glisse vers la
+suite de la journée pendant qu'il est affiché, et le halo de marque dérive en
+quarante-quatre secondes derrière tout cela. Rien de tout ceci n'anime autre
+chose qu'`opacity` et `transform` : ce sont les deux propriétés qu'un
+compositeur traite sans repasser par la mise en page, seule façon de tenir dans
+une Browser Source OBS en 4K. Un écran de pause parfaitement immobile pendant
+vingt minutes finit par se lire comme un poste éteint sur une image.
+
+**Une page sans contenu est sautée, pas affichée vide** : dix secondes de cadre
+désert devant la salle se lisent comme une panne. Une salle jamais synchronisée
+se réduit donc aux sponsors, exactement comme avant.
+
+Les modes `sponsors` et `programme` restent disponibles seuls : quand quelque
+chose se passe, on veut pouvoir figer l'écran sur une page précise plutôt que
+d'attendre que la boucle y revienne.
+
+### Ce qui alimente les deux pages nouvelles
+
+**Les autres salles** sont calculées par la salle elle-même, sur le programme
+déjà en cache et l'horloge corrigée du hub — jamais sur l'heure du poste, qui
+peut en être à des semaines quand le hub tourne sur une horloge simulée. Aucun
+appel réseau : la boucle tourne pendant les pauses, c'est-à-dire quand le réseau
+de l'événement est le plus chargé. Les pauses des autres salles sont écartées —
+« Déjeuner en Track #2 » n'aide personne à choisir où aller.
+
+**Les comptes Cloud Nord** sont un réglage du hub (console, onglet *Réglages*,
+panneau « Nos réseaux »), poussé aux salles au `sync` et **mis en cache local**
+comme le programme. L'export amont ne porte que les réseaux des *speakers* :
+ceux de l'événement n'ont aucune source, et corriger un handle ne doit pas
+demander de rejouer une release sur les trois machines de salle.
 
 ## Décisions structurantes
 
@@ -240,10 +424,35 @@ Le client sert trois surfaces sur son serveur local :
 |---|---|---|
 | hub | `/admin` | Console : modération, appairage, programme, supervision |
 | hub | `/admin/devices?user_code=…` | Même console, code d'appairage pré-rempli (lien affiché par la régie) |
-| hub | `/mur?salle=<id>` | Mur public et questions, scanné au QR |
+| hub | `/mur?salle=<id>` | Mur public (commun à l'événement) et questions de la salle, scanné au QR |
 | client | `/regie` | Fenêtre opérateur |
 | client | `/display/projector` | Browser Source OBS-A, ou plein écran de secours |
-| client | `/display/overlay` | Browser Source transparente OBS-B |
+| client | `/display/overlay` | Browser Source transparente OBS-B : titrage **et question du public** |
+| client | `/display/overlay-live` | Bandeau live d'OBS-A : question du public et messages de la console |
+
+## Appairer une machine
+
+L'appairage a sa **page dédiée** dans la console, onglet **Appairage** :
+machines en attente avec leur code, et machines déjà liées. Le geste n'a lieu
+qu'à la mise en route et demande de l'attention — se tromper de salle envoie les
+commandes au mauvais vidéoprojecteur —, alors que la supervision se regarde
+toute la journée : les mêler noyait l'un dans l'autre.
+
+L'adresse que la machine affiche (`/admin/devices?user_code=…`) ouvre
+directement cette page, code pré-rempli.
+
+## Superviser depuis un téléphone
+
+L'onglet **Exploitation** de la console liste les salles en **cartes** et non en
+tableau : la supervision se regarde debout, au fond d'une salle, et sept
+colonnes y deviennent illisibles. Chaque carte porte la connectivité, **ce qui
+se joue en ce moment** — le titre, calculé sur le programme, donc juste même
+quand la salle est coupée —, l'enregistrement, la diffusion, la scène, la file
+en attente, et un lien vers le mur public de la salle.
+
+La grille se replie d'elle-même : trois cartes de front sur un écran de bureau,
+une seule sur un téléphone. L'en-tête et les onglets passent à la ligne plutôt
+que de déborder.
 
 ## Empaqueter le client de salle
 
@@ -272,6 +481,234 @@ doublé d'un filet **synchrone** sur `exit` — les gestionnaires `exit` de Node
 n'attendent aucune promesse. `SIGKILL` reste hors de portée, et c'est
 précisément ce pour quoi le mode WAL de SQLite existe.
 
+Ce qui vaut aussi pour la façon dont on *lance* le hub. Un Ctrl-C part vers tout
+le groupe de processus au premier plan : le hub le reçoit alors en même temps
+que le `node --watch` qui le supervise, et meurt avant la fin de son drainage —
+les mêmes fichiers résiduels, par un autre chemin. Et `pnpm`, sur SIGTERM, tue
+son enveloppe `sh -c` en laissant le processus node orphelin, base ouverte.
+C'est pour ça que `scripts/dev-salles.sh` lance les applications directement,
+hors `pnpm run`, chacune dans son propre groupe de processus, et leur adresse
+SIGTERM une par une — puis SIGKILL après 8 s, pour la salle qui se bloque dans
+sa fermeture après avoir déjà rendu son port.
+
+## Configurer les deux OBS
+
+Deux instances par salle, et le partage est net : **OBS-A projette dans la
+salle, OBS-B enregistre et diffuse**. L'application ne crée jamais ni scène ni
+source — elle bascule les scènes d'OBS-A, lit et enregistre sur OBS-B.
+
+### OBS-A — ce que voit la salle
+
+Sa sortie part au vidéoprojecteur (clic droit sur l'aperçu → *Projecteur plein
+écran (Programme)* → sortie du projecteur). Deux scènes, plus une facultative :
+
+| Rôle | Scène par défaut | Contenu |
+|---|---|---|
+| `LIVE` | `Direct — capture HDMI` | La capture HDMI du portable du speaker. |
+| `HOLD` | `Habillage — écran de salle` | Une **Browser Source** sur `http://127.0.0.1:7788/display/projector`. |
+| `RELAY` | *(à créer si besoin)* | Le flux d'une autre salle (NDI ou SRT). L'acheminement est affaire de réseau ; l'application ne fait que basculer dessus. |
+
+La Browser Source de `HOLD` **est** l'écran de salle : sponsors, programme,
+compte à rebours, message, mur et son QR. Ce ne sont pas des slides — c'est une
+page servie en local, pilotée par les quatre boutons « Écran de salle » de la
+régie. La régler à la taille du canevas (1920 × 1080), et **décocher « Rafraîchir
+le navigateur quand la scène devient active »** : la page se met à jour toute
+seule par SSE, la recharger ferait clignoter la projection à chaque bascule.
+
+OBS-A est la **seule** instance dont l'application change les scènes : boutons
+« Projection » de la régie, touches `L` et `H`.
+
+### OBS-B — la captation et le direct
+
+| Rôle | Scène par défaut | Contenu |
+|---|---|---|
+| `TALK` | `Talk — caméra + slides` | Caméra + slides composées, **plus** une Browser Source transparente sur `http://127.0.0.1:7788/display/overlay`, tout en haut de la pile. |
+| `CAM_ONLY` | `Caméra seule` | |
+| `SLIDES_ONLY` | `Slides seules` | |
+
+L'habillage transparent porte le titrage du talk — titre, intervenants, pastille
+de catégorie — et le logo de l'événement : c'est ce qui fait un **master déjà
+habillé**, prêt pour la VOD sans montage.
+
+Il ne porte **que** cela, et c'est une règle : tout ce qui est dans cette page
+est incrusté dans l'enregistrement et dans le direct. Un témoin
+d'enregistrement y a figuré ; utile à l'opérateur, mais gravé dans la vidéo
+livrée. Ce repère-là vit en régie, panneau « Captation », où il ne coûte rien à
+personne.
+
+Ces trois rôles sont déclarés et vérifiés à la connexion, mais **l'application
+ne bascule jamais les scènes d'OBS-B** — la régie n'a pas de boutons pour elle.
+Le changement de cadrage se fait à la main dans OBS.
+
+C'est OBS-B qui **enregistre** (`Paramètres → Sortie → Enregistrement` : un
+dossier, et MKV plutôt que MP4, un OBS qui tombe n'abîme pas un MKV) et qui
+**diffuse**. Rien à saisir pour la diffusion : le hub pousse l'URL RTMP et la
+clé, l'application les applique juste avant de démarrer. Le nom de fichier non
+plus : elle écrit le format juste avant la prise, puis renomme le fichier à
+l'arrêt en `2026-10-30_track1_1100_titre-du-talk.mkv` et dépose le sidecar
+`.json` à côté. **Le dossier reste celui d'OBS** — le champ « Dossier des
+enregistrements » du ⚙ est informatif, il ne déplace rien.
+
+C'est aussi OBS-B qui alimente les vumètres de la régie.
+
+### Le bandeau live, où l'on veut
+
+`http://127.0.0.1:7788/display/overlay-live` est une **seconde source
+transparente**, indépendante de l'habillage. Elle porte deux choses : la
+**question du public** choisie en régie, et ce que la console met à l'antenne —
+« on reprend dans 5 minutes », « le son est en cours de réparation ». Quand les
+deux existent, le message de la console passe devant : s'il y en a un, c'est
+qu'il se passe quelque chose. La question revient dès qu'il est retiré.
+
+**À poser dans les scènes d'OBS-A, et nulle part ailleurs** : la scène `LIVE`
+pour que la salle voie le message **par-dessus les slides du speaker**. Même
+réglage que l'habillage : taille du canevas, pas de rafraîchissement à
+l'activation de la scène.
+
+**Jamais dans OBS-B.** C'est la règle qui garantit tout le reste : ce qui entre
+dans OBS-B est gravé dans la VOD, et les consignes d'exploitation de la console
+n'y ont pas leur place — « on reprend dans 5 minutes » incrusté dans un talk
+livré n'a aucun sens six mois plus tard. La question du public, elle, y va bien,
+mais par l'habillage de captation (`/display/overlay`), qui ne porte qu'elle.
+
+C'est là toute la différence avec le mode « Message » de l'écran de salle, qui
+**prend** l'écran entier : le bandeau se superpose et n'interrompt rien, le talk
+continue dessous. Les deux servent à des moments différents — une évacuation
+prend l'écran, un retard de cinq minutes non.
+
+### Question du public : deux canaux, quatre surfaces
+
+La question et le bandeau de la console sont **deux états distincts**, et c'est
+délibéré. Tant qu'ils partageaient un seul champ, un message envoyé du hub
+s'affichait à la place de la question — et surtout, aucune surface ne pouvait
+montrer l'un sans risquer l'autre.
+
+| Surface | Question du public | Message de la console |
+|---|---|---|
+| `/display/overlay` (OBS-B, VOD) | **oui** | jamais |
+| `/display/overlay-live` (OBS-A, salle) | oui | oui, prioritaire |
+| `/display/projector` mode « Question choisie » | oui, en grand | non — il a son propre mode « Message » |
+| `/regie` | la liste, et celle à l'antenne | zone Signalements |
+
+La question à l'antenne est **rattachée à la conférence pilotée** : elle tombe
+d'elle-même au talk suivant. Sans ça, elle resterait incrustée dans l'habillage
+de captation pendant que le speaker d'après s'installe — gravée dans sa VOD,
+adressée à quelqu'un d'autre.
+
+Côté console, onglet **Messages**, panneau « Bandeau live » : cinq modèles prêts
+à envoyer (questions, pause, micro, retard, enregistrement) qui **remplissent le
+champ** plutôt que de partir directement — un modèle est un point de départ, pas
+un rail —, un bouton pour retirer le bandeau, et la liste de ceux **déjà
+passés**, avec celui qui est en cours et un bouton pour le remettre sans le
+retaper. L'historique est lu dans les commandes déjà émises : elles sont
+persistées et datées, une seconde copie ne pourrait que diverger de ce qui est
+réellement parti dans les salles.
+
+### Le mur : commun à l'événement, pas à une salle
+
+**Un message du public s'adresse à Cloud Nord, pas à la pièce où son auteur se
+trouve.** Le mur dépose donc sans salle (`roomId: null`, ce qui vaut déjà
+« partout » côté hub) et s'affiche sur les trois écrans. Le limiter à une salle
+en faisait un canal de plus à surveiller, et privait les deux autres écrans de
+ce qui s'y disait.
+
+La page le dit **avant** le formulaire, pas en petit après le bouton : « votre
+message s'affiche dans toutes les salles », avec le nombre réel de salles. Et
+elle montre **ce qui est déjà à l'écran** — les derniers messages passés en
+relecture, relus toutes les quinze secondes. Sans ça, déposer un message
+revenait à parler dans le vide : rien ne montrait que d'autres écrivaient, ni
+que ça finissait réellement projeté. C'est la différence entre un formulaire de
+contact et un mur.
+
+Le choix de salle, lui, a déménagé dans l'onglet **Questions** — le seul endroit
+où il compte encore.
+
+### Questions du public, de bout en bout
+
+Le QR de chaque salle porte la sienne, mais un participant arrive aussi par un
+lien partagé, ou change de salle entre deux talks — il tombait alors sur
+« ouvrez le lien de votre salle » sans savoir lequel ouvrir, et sa question
+restait dans sa tête. Le choix est mémorisé sur le téléphone et recopié dans
+l'adresse. La page affiche aussi **le talk en cours**, relu chaque minute :
+« posez votre question » doit dire à propos de quoi, et la question part
+**rattachée à la conférence**.
+
+La console du hub y mène directement : un lien **Mur public** dans l'en-tête, et
+une colonne *Mur* dans le tableau des salles — c'est la page que les
+participants scannent, et la seule façon de voir ce qu'ils voient.
+
+En régie, la modale de consultation gagne un onglet **Questions** : la liste
+triée par votes, un bouton pour relire, et **Afficher** sur chaque question, qui
+la met sur le bandeau live. Le speaker répond, la salle lit — le talk continue
+dessous. « Retirer le bandeau » l'enlève.
+
+La liste est relue **à la demande** — à l'ouverture de l'onglet et par le bouton
+— et non poussée en continu : la régie ne la regarde qu'en fin de talk.
+
+### « Notez le talk » — le QR OpenFeedback
+
+Un mode d'écran de plus, dans les boutons « Écran de salle » de la régie :
+le QR de la conférence **en cours** sur OpenFeedback, à afficher en fin de talk
+pendant que le public est encore assis. C'est le seul moment où l'on obtient des
+retours, et un lien dicté à voix haute n'est jamais scanné.
+
+**Aucun appel réseau, aucune clé d'API.** OpenFeedback réutilise les
+identifiants de session de l'export « conference-center » — vérifié sur
+l'édition 2026, les 27 concordent — et sa route publique est
+`/{projet}/{aaaa-mm-jj}/{session}`. L'adresse se déduit donc du programme déjà
+en cache, et le QR se dessine réseau coupé : exactement le moment où l'on ne
+veut pas d'une image manquante devant deux cents personnes. La clé d'API ne sert
+qu'à *lire* les votes, ce que cette fonctionnalité ne fait pas — il n'y a donc
+aucun secret à déployer.
+
+Le projet (`cloud-nord-2026`) est un champ de la configuration de salle,
+modifiable dans le **⚙** de la régie : il change une fois par édition. Hors
+conférence, l'écran l'annonce plutôt que de montrer un QR mort.
+
+### Deux présentations pour la question
+
+`/display/overlay-live` sert **deux mises en page**, choisies dans l'adresse de
+la source OBS :
+
+| Adresse | Ce que ça donne |
+|---|---|
+| `/display/overlay-live` | Un **bandeau** en haut, sobre — pour un plan de caméra |
+| `/display/overlay-live?style=encart` | Un **encart** en bas à droite, avec son libellé « Question du public » — fait pour passer par-dessus des slides sans manger leur contenu |
+
+Un paramètre d'adresse plutôt qu'un réglage : c'est une décision de scène, prise
+une fois en montant la source, pas un geste de régie en pleine conférence. Les
+deux sont dans le menu **Écrans** de la régie.
+
+**Le passage d'une question à l'autre est animé, en deux temps** : l'ancienne
+sort, la nouvelle est posée, puis elle entre. Remplacer le texte en place
+donnerait un saut — deux questions de longueurs différentes se substituent d'un
+coup, et le spectateur ne sait pas si elle a changé ou si elle a toujours été
+là. Le bandeau descend, l'encart monte : chacun vient du bord dont il est
+proche. L'animation ne se rejoue **que** sur un vrai changement, jamais sur un
+état reçu identique.
+
+### La question du public, en grand
+
+« Afficher » dans l'onglet Questions pose la question sur le **bandeau vidéo**.
+Pour la mettre devant **toute la salle**, quel que soit ce qu'OBS diffuse au
+même moment, le bouton **Question choisie** des modes d'écran la projette en
+grand, avec la même arrivée en fondu. Une seule sélection, trois surfaces :
+bandeau, encart, ou pleine page sur le vidéoprojecteur — elles ne servent pas au
+même moment.
+
+### Le serveur WebSocket, sur chacune
+
+*Outils → Paramètres du serveur WebSocket* → activer. Port **4455** pour OBS-A,
+**4456** pour OBS-B (ce sont les valeurs par défaut de l'application), mot de
+passe si vous en mettez un. Deux instances sur la même machine : lancer la
+seconde avec `--multi` et un profil distinct, sinon elles se disputent le port.
+
+Puis, dans la régie, bouton **⚙** : les deux adresses, les mots de passe, et
+pour chaque rôle la scène **choisie dans la liste** — elle est lue sur OBS, et
+c'est la faute de frappe qui produit un rôle introuvable. Enfin **Connecter**
+sur chaque ligne. Le panneau Diagnostic doit finir vert des deux côtés, sans
+rôle absent.
+
 ## Écran de régie
 
 L'écran de l'opérateur tient dans une fenêtre, **sans ascenseur** : les
@@ -290,6 +727,15 @@ Ce qui reste visible en permanence est ce qui déclenche une décision :
   le programme mis en cache localement, pas sur l'état remonté par le hub :
   pendant une coupure, la salle d'à côté finit quand même à l'heure prévue.
 
+Les **signalements** — fin de talk à côté, message parti à la console, hub
+rejoint — s'affichent en bandeau sous le flux et **s'effacent seuls au bout de
+30 secondes** : un bandeau qui ne part pas cesse d'être lu, et la régie
+finissait la journée avec cinq signalements périmés au-dessus des commandes. La
+règle est appliquée deux fois, et c'est voulu : le runtime les retire sur son
+tic d'horloge (5 s), pour que rien ne ressuscite au rechargement, et la page
+cesse de les afficher à la seconde exacte. La croix reste là pour écarter plus
+tôt.
+
 Ce qui se consulte — programme complet de la salle, programme d'une autre
 salle, état des salles vu du hub — passe en **modale**, à un clic ou aux
 touches `P` et `S`, `Échap` pour refermer. Les commandes et les raccourcis
@@ -299,6 +745,49 @@ consulte le programme.
 Sur un écran court (moins de 700 px de haut), une règle de densité resserre
 panneaux et boutons plutôt que de laisser sortir une commande. Au-dessous de
 1024 px de large, la grille retombe sur une colonne défilante — faute de mieux.
+
+### Configurer la salle depuis la régie (⚙)
+
+Le bouton **⚙** de l'en-tête ouvre les réglages de la salle : adresses et mots
+de passe des deux OBS, mapping rôle → scène, port de l'écran local, dossier des
+enregistrements, préfixe de fichiers, salle relayée. C'est là que se branchent
+des instances OBS réelles — ces valeurs se constatent devant les machines, pas
+depuis une console à l'autre bout du bâtiment.
+
+Trois propriétés qui expliquent la forme :
+
+- **Le hub reste la source de vérité.** L'enregistrement part chez lui
+  (`rooms.configure`) et la salle se resynchronise. Garder le réglage en local
+  irait plus vite mais mentirait : le prochain `sync` repousse la configuration
+  du hub et la saisie disparaîtrait sans un mot. Hors ligne, « Enregistrer » est
+  donc désactivé et le dit.
+- **Chaque instance se connecte séparément.** Enregistrer ne reconnecte rien :
+  les contrôleurs portent leurs paramètres à la construction, donc appliquer
+  voudrait dire couper — y compris une captation en cours. Chaque instance a
+  son bouton **Connecter / Reconnecter**, qui enregistre d'abord ce qui est à
+  l'écran (sinon on ouvrirait la connexion sur les valeurs d'avant la saisie),
+  puis rouvre cette instance-là. Tant qu'un réglage enregistré n'est pas
+  appliqué, la ligne d'état affiche « réglages non appliqués ». Le bouton est
+  bloqué sur une instance qui **enregistre**, et le reste sur une instance
+  tombée en enregistrant : son dernier état connu est justement périmé.
+  À la main, une seule tentative — l'échec revient tel quel à l'opérateur — mais
+  la boucle de reprise repart en fond, pour que l'instance finisse par se
+  rattacher seule.
+- **Bornée à la salle appelante.** La cible est le jeton, pas l'entrée : il
+  n'existe aucune forme de l'appel qui configure une autre salle. L'identité
+  (`id`, `name`, `trackId`) vient du programme et la clé de diffusion descend du
+  hub — ni l'une ni l'autre n'est dans le correctif accepté.
+- **Les noms de scènes se choisissent, ils ne se retapent pas.** Les listes sont
+  lues sur OBS (`GetSceneList`), puisque c'est la faute de frappe qui produit un
+  rôle introuvable. Une scène configurée mais absente d'OBS reste proposée,
+  signalée comme telle : la faire disparaître changerait la configuration à
+  l'insu de l'opérateur. « Relire les scènes d'OBS » rafraîchit la liste après
+  un renommage, sans rien reconnecter.
+
+Le mot de passe OBS ne redescend jamais jusqu'à la page : elle sait seulement
+qu'il y en a un. Un champ laissé vide vaut « inchangé » — corriger un port
+n'efface pas le mot de passe au passage — et une case explicite sert à le
+retirer.
 
 ## Niveaux audio en régie
 

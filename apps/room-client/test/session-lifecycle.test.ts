@@ -41,6 +41,17 @@ beforeEach(async () => {
     authSecret: 'test-secret-'.padEnd(48, 'x'),
     logLevel: 'fatal',
     devicePollInterval: '1s',
+    /**
+     * L'instant se simule **sur le hub**, pas dans la salle.
+     *
+     * Une horloge posée dans la salle serait remplacée à la première
+     * synchronisation : le hub fait foi, la salle mesure son écart contre lui.
+     * Ce test simulait son propre temps et ne tenait que grâce à un écart
+     * calculé de travers — celui-là même qui laissait la régie sans conférence
+     * à piloter en heure simulée.
+     */
+    mode: 'dev',
+    simulatedTime: new Date(PENDANT_LE_TALK).toISOString(),
   })
   await hub.app.listen({ port: 0, host: '127.0.0.1' })
   const address = hub.app.server.address()
@@ -50,7 +61,6 @@ beforeEach(async () => {
   const snapshot = hub.services.programs.importFromText(rawProgram, 'https://exemple/programme.json')
   hub.services.rooms.ensureFromTracks(snapshot.program.rooms)
 
-  const debut = Date.now()
   let token: string | null = null
   room = new RoomApp({
     dataDir: dir,
@@ -59,7 +69,6 @@ beforeEach(async () => {
     // Salle connue d'avance : ces tests n'ont pas d'écran pour la choisir.
     roomId: TRACK_1,
     displayPort: 0,
-    now: () => PENDANT_LE_TALK + (Date.now() - debut),
     obsTransportFactory: (instance) =>
       createMockObsTransport({ instance, recordingDir: join(dir, 'rec') }),
     readToken: () => token,
@@ -197,6 +206,26 @@ describe('cycle de vie piloté depuis la régie', () => {
       ['hands-on', 'track-1-teilhard-de-chardin', 'track-2-mf-1092'],
     )
     expect((await etat()).diagnostics?.roomsRefreshedAt).toBeTruthy()
+  }, 40_000)
+})
+
+describe("heure simulée", () => {
+  it("laisse celle du hub reprendre la main sur un décalage local", async () => {
+    /**
+     * Le cas signalé : une salle lancée avec `HEURE_SIMULEE`, raccordée à un
+     * hub lui aussi en heure simulée. Les deux écarts se cumulaient — la régie
+     * annonçait « aucune conférence à piloter » pendant que le flux des autres
+     * salles, calculé dans la page, tombait juste.
+     */
+    room.runtime.setClockOffset(Date.parse('2026-11-30T10:20:00.000Z') - Date.now(), true)
+    expect(room.runtime.state().currentSession).toBeNull()
+
+    await room.resync()
+
+    expect(room.runtime.state().currentSession?.title).toContain('HoneySwamp')
+    // Et les pages voient le même instant : elles n'ont que leur `Date.now()`.
+    const vuParUnePage = Date.now() + room.runtime.state().serverTimeOffsetMs
+    expect(Math.abs(vuParUnePage - room.runtime.correctedNow())).toBeLessThan(100)
   }, 40_000)
 })
 

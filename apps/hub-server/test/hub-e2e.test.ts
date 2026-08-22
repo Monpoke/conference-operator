@@ -229,3 +229,112 @@ describe('hub de bout en bout', () => {
     await expect(room.rooms.sync({ since: null })).rejects.toBeDefined()
   }, 20_000)
 })
+
+
+/**
+ * Supervision : ce qui se joue dans chaque salle, et pour combien de temps.
+ *
+ * Le restant est calculé par le hub et non par la console : celle-ci n'a que
+ * l'horloge du poste, qui n'est pas celle qui fait foi — et qui peut en être
+ * à des semaines quand le hub tourne sur une heure simulée.
+ */
+describe('temps restant des salles', () => {
+  it('le compte sur l\'horloge du hub, pas sur celle du client', async () => {
+    hub.services.clock.setSimulated('2026-10-30T10:20:00.000Z')
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+
+    const salles = await admin.rooms.statuses()
+    const salle = salles.find((s) => s.roomId === TRACK_1)
+    const creneau = salle?.currentSession
+    expect(creneau?.title).toEqual(expect.any(String))
+    expect(creneau?.endsAt).toEqual(expect.any(String))
+
+    // Référencé sur l'heure simulée : la machine qui fait tourner ce test est
+    // à une tout autre date, et un calcul fait chez elle serait aberrant.
+    const attendu = Date.parse(creneau!.endsAt!) - Date.parse('2026-10-30T10:20:00.000Z')
+    expect(Math.abs(creneau!.remainingMs! - attendu)).toBeLessThan(2_000)
+  })
+
+  it('ne l\'invente pas quand rien ne se joue', async () => {
+    // Heure réelle : l'événement est en octobre, il n'y a pas de créneau en cours.
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    const salles = await admin.rooms.statuses()
+
+    expect(salles.find((s) => s.roomId === TRACK_1)?.currentSession).toBeNull()
+  })
+})
+
+/**
+ * Planning relu depuis la console.
+ *
+ * Le tableau des conférences ne montre que ce qui a été démarré : il répond à
+ * « où en est-on », jamais à « et après, il y a quoi ». Le lien OpenFeedback
+ * accompagne chaque créneau — c'est l'adresse qu'on redonne au speaker venu
+ * demander où sont ses retours.
+ */
+describe('planning du programme actif', () => {
+  it('rend le programme entier, salles et horaires résolus', async () => {
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+
+    const planning = await admin.program.planning()
+
+    expect(planning.contentHash).toEqual(expect.any(String))
+    expect(planning.timezone).toBe('Europe/Paris')
+    expect(planning.rooms.map((salle) => salle.id)).toContain(TRACK_1)
+    // 27 créneaux à l'export : la console les montre tous, pas seulement les
+    // deux ou trois qui ont été lancés.
+    expect(planning.sessions).toHaveLength(27)
+    // Le nom du hub l'emporte sur celui du programme : une salle se renomme
+    // depuis la console, et c'est ce nom-là qui est écrit sur la porte.
+    expect(planning.sessions.find((s) => s.roomId === TRACK_1)?.roomName).toBe(
+      'Track #1 - Teilhard de Chardin',
+    )
+  })
+
+  it('donne le lien OpenFeedback de chaque conférence', async () => {
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+
+    const planning = await admin.program.planning()
+    const talk = planning.sessions.find((session) => session.kind === 'talk')!
+
+    // Route publique d'OpenFeedback, fabriquée depuis le programme : aucun
+    // appel réseau, aucune clé d'API, et donc rien à réparer le jour J.
+    expect(talk.feedbackUrl).toBe(
+      `https://openfeedback.io/cloud-nord-2026/2026-10-30/${talk.id}`,
+    )
+  })
+
+  it('ne propose rien à noter sur une pause', async () => {
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+
+    const planning = await admin.program.planning()
+    const pause = planning.sessions.find((session) => session.kind === 'break')
+
+    // Personne ne note un déjeuner, et un QR mort coûte plus cher qu'une case
+    // vide.
+    expect(pause).toBeTruthy()
+    expect(pause?.feedbackUrl).toBeNull()
+  })
+
+  it('date le planning sur l\'horloge du hub, pas sur celle de la console', async () => {
+    // C'est cette heure-là qui désigne le créneau surligné « en ce moment ».
+    // Calculée dans le navigateur, elle pointerait un créneau d'une tout autre
+    // semaine dès que le hub tourne sur une heure simulée.
+    hub.services.clock.setSimulated('2026-10-30T10:20:00.000Z')
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+
+    const planning = await admin.program.planning()
+
+    expect(
+      Math.abs(Date.parse(planning.serverTime) - Date.parse('2026-10-30T10:20:00.000Z')),
+    ).toBeLessThan(2_000)
+  })
+
+  it('reste fermé aux machines de salle', async () => {
+    // Le planning est déjà poussé aux salles par le sync : leur ouvrir en plus
+    // une procédure d'opérateur n'ajouterait que de la surface.
+    const machine = httpClient(await pairRoomDevice())
+
+    await expect(machine.program.planning()).rejects.toThrow()
+  })
+})

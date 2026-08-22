@@ -1,10 +1,17 @@
 import Fastify, { type FastifyInstance } from 'fastify'
-import { sessionsForRoom, type Program, type Session, type SponsorTier } from '@cloudnord/program'
+import {
+  openFeedbackUrl,
+  sessionsForRoom,
+  type Program,
+  type Session,
+  type SponsorTier,
+} from '@cloudnord/program'
 import type { AssetCache } from './assets.js'
 import type { NiveauEntree } from './obs.js'
 import type { DisplayState, RoomRuntime } from './runtime.js'
 import { renderProjectorPage } from './display-page.js'
 import { renderOverlayPage } from './overlay-page.js'
+import { renderOverlayLivePage } from './overlay-live-page.js'
 import { renderRegiePage } from './regie-page.js'
 import {
   controlActionSchema,
@@ -25,6 +32,32 @@ export interface DisplayPayload {
   diagnostics: ControlDiagnostics | null
   /** Adresse du mur public et son QR (SVG en ligne), pour l'écran de salle. */
   wall: { url: string; qrSvg: string } | null
+  /**
+   * Ce qui arrive dans les **autres** salles.
+   *
+   * Calculé ici, depuis le programme déjà en cache : le hub n'a rien à en dire
+   * que la salle ne sache déjà, et la boucle d'attente doit se dérouler entière
+   * sans réseau. Sert à la page « pendant ce temps, à côté » — la seule chose
+   * qu'un participant en salle ne peut pas deviner.
+   */
+  otherRooms: {
+    roomId: string
+    name: string
+    /** Prochaine conférence à commencer, ou celle en cours si elle court. */
+    session: { id: string; title: string; startsAt: string; speakers: string[] } | null
+    /** Vrai si elle a déjà commencé : « en ce moment » plutôt que « à HH:MM ». */
+    enCours: boolean
+  }[]
+  /** Comptes de l'événement, réglés sur le hub. Vide = la boucle saute cette page. */
+  socialLinks: { network: string; handle: string; url: string }[]
+  /**
+   * QR OpenFeedback du talk en cours.
+   *
+   * Fabriqué hors ligne : OpenFeedback réutilise les identifiants de session de
+   * l'export amont, donc l'adresse se déduit du programme déjà en cache. `null`
+   * quand aucune conférence ne court, ou sans projet configuré.
+   */
+  feedback: { url: string; qrSvg: string } | null
   /** Appairage de la machine : la régie s'en sert pour afficher le code. */
   pairing: {
     status: string
@@ -37,7 +70,7 @@ export interface DisplayPayload {
 }
 
 /** Les trois pages servies, chacune n'ayant pas les mêmes besoins. */
-export type VueAffichage = 'projecteur' | 'overlay' | 'regie'
+export type VueAffichage = 'projecteur' | 'overlay' | 'bandeau' | 'regie'
 
 /**
  * Ce que chaque vue reçoit réellement.
@@ -49,8 +82,16 @@ export type VueAffichage = 'projecteur' | 'overlay' | 'regie'
  * page sans l'être ici produirait un rendu muet, pas une erreur.
  */
 export const CHAMPS_PAR_VUE: Record<VueAffichage, readonly (keyof DisplayPayload)[]> = {
-  projecteur: ['state', 'roomName', 'event', 'timezone', 'sessions', 'sponsorTiers', 'wall'],
+  projecteur: [
+    'state', 'roomName', 'event', 'timezone', 'sessions', 'sponsorTiers', 'wall', 'feedback',
+    // Deux champs pour la seule boucle d'attente : ils ne bougent qu'au
+    // changement de créneau et au sync, donc ils ne coûtent rien au flux.
+    'otherRooms', 'socialLinks',
+  ],
   overlay: ['state', 'event'],
+  // Le bandeau ne lit que `state.liveMessage` : lui pousser le programme et
+  // les sponsors coûterait trente kilo-octets par changement d'écran.
+  bandeau: ['state'],
   regie: ['state', 'roomName', 'timezone', 'sessions', 'diagnostics', 'pairing'],
 }
 
@@ -68,12 +109,16 @@ export interface DisplayServerOptions {
   program: () => { contentHash: string; program: Program } | null
   /** Nom d'affichage de la salle, issu de la configuration reçue du hub. */
   roomName?: () => string | null
+  /** Configuration de la salle, pour le projet OpenFeedback. Relue à chaque envoi. */
+  roomConfig?: () => { openFeedbackProjectId: string | null } | null
   /** Origine publique du hub, pour construire l'URL du mur affichée en QR. */
   hubOrigin?: string
   /** Cible des actions de régie. Absente, l'interface reste en lecture seule. */
   control?: ControlTarget
   /** État d'appairage, relu à chaque envoi. */
   pairing?: () => DisplayPayload['pairing']
+  /** Comptes de l'événement, relus du cache local à chaque envoi. */
+  socialLinks?: () => DisplayPayload['socialLinks']
   /**
    * Signale qu'une régie regarde (ou non) les niveaux audio.
    *
@@ -105,6 +150,9 @@ export class DisplayServer {
    */
   private wallCache: { url: string; qrSvg: string } | null = null
   private wallCacheKey: string | null = null
+  /** Même raison pour le QR OpenFeedback, qui change à chaque conférence. */
+  private feedbackCache: { url: string; qrSvg: string } | null = null
+  private feedbackCacheKey: string | null = null
   private readonly surChangement: () => void
 
   constructor(private readonly options: DisplayServerOptions) {
@@ -121,7 +169,9 @@ export class DisplayServer {
     const roomName = this.options.roomName?.() ?? null
     const diagnostics = this.options.control?.diagnostics() ?? null
     const wall = this.wallFor(state.roomId)
+    const feedback = this.feedbackPour(state.currentSession?.id ?? null)
     const pairing = this.options.pairing?.() ?? null
+    const socialLinks = this.options.socialLinks?.() ?? []
     if (cached == null) {
       return {
         state,
@@ -132,7 +182,10 @@ export class DisplayServer {
         sponsorTiers: [],
         diagnostics,
         wall,
+        feedback,
         pairing,
+        otherRooms: [],
+        socialLinks,
       }
     }
 
@@ -148,8 +201,91 @@ export class DisplayServer {
       sponsorTiers: program.sponsorTiers,
       diagnostics,
       wall,
+      feedback,
       pairing,
+      otherRooms: this.autresSalles(program, state.roomId),
+      socialLinks,
     }
+  }
+
+  /**
+   * Ce qui se joue, ou va se jouer, dans les autres salles.
+   *
+   * Calculé sur le programme en cache et l'horloge corrigée du hub — jamais sur
+   * l'heure du poste, qui peut en être à des semaines quand le hub tourne sur
+   * une horloge simulée. Les pauses sont écartées : « Déjeuner en Track #2 »
+   * n'aide personne à choisir où aller.
+   */
+  private autresSalles(program: Program, roomId: string | null): DisplayPayload['otherRooms'] {
+    const at = this.options.runtime.correctedNow()
+    return program.rooms
+      .filter((salle) => salle.id !== roomId)
+      .map((salle) => {
+        const creneaux = sessionsForRoom(program, salle.id).filter((c) => c.kind === 'talk')
+        // En cours d'abord, sinon la prochaine à commencer : entre deux talks,
+        // c'est l'heure du suivant qu'on vient chercher.
+        const courant = creneaux.find(
+          (c) => c.startsAtMs <= at && (c.endsAtMs == null || at < c.endsAtMs),
+        )
+        const session = courant ?? creneaux.find((c) => c.startsAtMs > at) ?? null
+        return {
+          roomId: salle.id,
+          name: salle.name,
+          session:
+            session == null
+              ? null
+              : {
+                  id: session.id,
+                  title: session.title,
+                  startsAt: session.startsAt,
+                  speakers: session.speakers.map((personne) => personne.name),
+                },
+          enCours: session != null && session === courant,
+        }
+      })
+  }
+
+  /**
+   * QR OpenFeedback de la conférence en cours.
+   *
+   * Aucune requête : l'adresse se fabrique depuis le programme déjà en cache —
+   * voir `openFeedbackUrl`, partagé avec le hub pour que le lien affiché dans
+   * la console et le QR projeté ne puissent pas diverger. Le QR se dessine donc
+   * même réseau coupé, ce qui est bien le moment où l'on ne veut pas d'une
+   * image manquante à l'écran.
+   */
+  private feedbackPour(sessionId: string | null): { url: string; qrSvg: string } | null {
+    const config = this.options.roomConfig?.() ?? null
+    const projet = config?.openFeedbackProjectId ?? null
+    if (projet == null || sessionId == null) return null
+    if (this.feedbackCacheKey === sessionId && this.feedbackCache != null) return this.feedbackCache
+
+    const cached = this.options.program()
+    const session = cached?.program.sessions.find((creneau) => creneau.id === sessionId) ?? null
+    if (session == null) return null
+    const url = openFeedbackUrl(session, projet, cached?.program.timezone ?? 'Europe/Paris')
+    if (url == null) return null
+
+    this.feedbackCacheKey = sessionId
+    this.feedbackCache = { url, qrSvg: this.qrFeedback.get(sessionId) ?? '' }
+    void this.preparerQrFeedback(sessionId, url)
+    return this.feedbackCache
+  }
+
+  /** QR dessiné en tâche de fond : le prochain envoi d'état le portera. */
+  private async preparerQrFeedback(sessionId: string, url: string): Promise<void> {
+    if (this.qrFeedback.has(sessionId)) return
+    this.qrFeedback.set(sessionId, '')
+    const { toString } = await import('qrcode')
+    const svg = await toString(url, {
+      type: 'svg',
+      margin: 1,
+      errorCorrectionLevel: 'H',
+      color: { dark: '#0d0f16', light: '#ffffff' },
+    })
+    this.qrFeedback.set(sessionId, svg)
+    this.feedbackCacheKey = null
+    this.broadcast()
   }
 
   /** Prépare (une fois) l'URL du mur et son QR pour la salle courante. */
@@ -166,6 +302,8 @@ export class DisplayServer {
 
   /** QR rendus en amont : la génération est synchrone mais pas gratuite. */
   private readonly pendingQr = new Map<string, string>()
+  /** QR OpenFeedback déjà dessinés, par conférence. */
+  private readonly qrFeedback = new Map<string, string>()
 
   /**
    * Prégénère le QR d'une salle.
@@ -255,6 +393,15 @@ export class DisplayServer {
       return reply.send(renderProjectorPage({ initialPayload: this.payload() }))
     })
 
+    /**
+     * Bandeau live : une source de plus, posée où l'on veut qu'un message
+     * apparaisse — y compris dans la scène LIVE d'OBS-A, par-dessus les slides.
+     */
+    this.app.get('/display/overlay-live', async (_request, reply) => {
+      reply.header('content-type', 'text/html; charset=utf-8')
+      return reply.send(renderOverlayLivePage({ initialPayload: this.payload() }))
+    })
+
     this.app.get('/display/overlay', async (_request, reply) => {
       reply.header('content-type', 'text/html; charset=utf-8')
       return reply.send(renderOverlayPage({ initialPayload: this.payload() }))
@@ -328,7 +475,9 @@ export class DisplayServer {
 
       const demandee = (request.query as { vue?: string } | undefined)?.vue
       const vue: VueAffichage | null =
-        demandee === 'projecteur' || demandee === 'overlay' || demandee === 'regie' ? demandee : null
+        demandee === 'projecteur' || demandee === 'overlay' || demandee === 'bandeau' || demandee === 'regie'
+          ? demandee
+          : null
 
       const ecrire = (evenement: string | null, corps: string): void => {
         reply.raw.write(`${evenement == null ? '' : `event: ${evenement}\n`}data: ${corps}\n\n`)

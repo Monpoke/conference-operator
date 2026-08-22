@@ -7,6 +7,12 @@ import {
   type Command,
 } from '@cloudnord/contract'
 import {
+  currentSession,
+  nextSession,
+  openFeedbackUrl,
+  type Session,
+} from '@cloudnord/program'
+import {
   auteurDe,
   publicIdentity,
   resolveActor,
@@ -87,6 +93,81 @@ export const router = os.router({
       )
       return { ok: true }
     }),
+
+    /**
+     * Le programme actif, mis à plat pour la console.
+     *
+     * Le hub le détient déjà ; la console, elle, ne connaissait que les
+     * conférences démarrées et ne pouvait donc pas répondre à « et après, il y
+     * a quoi ». Mis à plat ici plutôt que renvoyé entier : bios, logos et
+     * visuels font l'essentiel des 70 ko d'un snapshot, et rien de tout ça ne
+     * s'affiche dans un planning.
+     */
+    planning: os.program.planning.use(operatorOnly).handler(({ context }) => {
+      const snapshot = context.services.programs.active()
+      // Pas d'erreur : un hub tout juste installé n'a pas encore de programme,
+      // et la console doit pouvoir le dire plutôt que de tomber en panne.
+      if (snapshot == null) {
+        return {
+          contentHash: null,
+          timezone: 'Europe/Paris',
+          serverTime: nowIso(context),
+          rooms: [],
+          sessions: [],
+        }
+      }
+
+      const { program } = snapshot
+      const salles = new Map(context.services.rooms.list().map((salle) => [salle.id, salle]))
+      // Le hub fait foi sur le nom d'une salle — il se renomme depuis la
+      // console — mais un track jamais appairé n'y figure pas encore : le
+      // programme donne alors le nom écrit sur la porte, plutôt qu'un slug.
+      const nomsDuProgramme = new Map(program.rooms.map((salle) => [salle.id, salle.name]))
+      /**
+       * Projet OpenFeedback de repli.
+       *
+       * Il est réglé par salle — c'est là qu'on le constate, devant la machine —
+       * mais il vaut pour l'événement entier. Sans repli, un créneau sans salle
+       * (une plénière que l'export ne rattache à aucun track) n'aurait pas de
+       * lien alors que le projet est parfaitement connu.
+       */
+      const projetParDefaut =
+        [...salles.values()].find((salle) => salle.openFeedbackProjectId != null)
+          ?.openFeedbackProjectId ?? null
+
+      return {
+        contentHash: snapshot.contentHash,
+        timezone: program.timezone,
+        serverTime: nowIso(context),
+        rooms: program.rooms.map(({ id, name }) => ({ id, name })),
+        sessions: program.sessions.map((session) => {
+          const salle = session.roomId == null ? null : (salles.get(session.roomId) ?? null)
+          return {
+            id: session.id,
+            title: session.title,
+            speakers: session.speakers.map((personne) => personne.name),
+            startsAt: session.startsAt,
+            endsAt: session.endsAt,
+            roomId: session.roomId,
+            roomName:
+              session.roomId == null
+                ? null
+                : (salle?.name ?? nomsDuProgramme.get(session.roomId) ?? session.roomId),
+            kind: session.kind,
+            // Pas de lien sur une pause : personne ne note un déjeuner, et un
+            // QR mort scanné par le public coûte plus cher qu'une case vide.
+            feedbackUrl:
+              session.kind === 'break'
+                ? null
+                : openFeedbackUrl(
+                    session,
+                    salle?.openFeedbackProjectId ?? projetParDefaut,
+                    program.timezone,
+                  ),
+          }
+        }),
+      }
+    }),
   },
 
   rooms: {
@@ -96,10 +177,94 @@ export const router = os.router({
     ),
 
     list: os.rooms.list.use(operatorOnly).handler(({ context }) => context.services.rooms.list()),
+
+    /**
+     * Publique, comme `rooms.public` : le mur est ouvert à qui scanne le QR,
+     * et ces titres sont déjà projetés sur l'écran de la salle.
+     */
+    current: os.rooms.current.handler(({ input, context }) => {
+      const snapshot = context.services.programs.active()
+      if (snapshot == null) return { current: null, next: null }
+
+      const at = context.services.clock.now()
+      const apercu = (session: Session | null) =>
+        session == null
+          ? null
+          : {
+              id: session.id,
+              title: session.title,
+              speakers: session.speakers.map((personne) => personne.name),
+              startsAt: session.startsAt,
+              endsAt: session.endsAt,
+            }
+
+      return {
+        current: apercu(currentSession(snapshot.program, input.roomId, at)),
+        next: apercu(nextSession(snapshot.program, input.roomId, at)),
+      }
+    }),
+
+    /**
+     * Réglage d'une salle par elle-même — voir le contrat pour ce qu'elle a le
+     * droit de toucher. La cible n'est pas dans l'entrée mais dans le contexte :
+     * il n'existe pas de forme de cet appel qui configure une autre salle.
+     */
+    configure: os.rooms.configure.use(roomOnly).handler(({ input, context }) => {
+      const salle = context.services.rooms.get(context.roomId)
+      if (salle == null) throw new ORPCError('NOT_FOUND', { message: 'Salle introuvable' })
+
+      const relais = input.relaySourceRoomId
+      if (relais != null) {
+        if (relais === context.roomId) {
+          throw new ORPCError('BAD_REQUEST', {
+            message: "Une salle ne peut pas relayer sa propre scène",
+          })
+        }
+        if (context.services.rooms.get(relais) == null) {
+          throw new ORPCError('BAD_REQUEST', { message: 'Salle relayée inconnue du hub' })
+        }
+      }
+
+      // Fusion de surface : la régie envoie `obs` et `sceneRoles` entiers. Ce
+      // qui n'est pas dans le correctif — identité, clé de diffusion — reste
+      // tel quel, et c'est ce qui rend l'écriture sûre depuis une salle.
+      const suivant = {
+        ...salle,
+        ...input,
+        // Seule exception à la fusion de surface : un mot de passe OBS absent
+        // du correctif vaut « inchangé », pas « effacé ». La régie ne l'a pas
+        // en clair, elle ne peut donc pas le renvoyer pour le conserver.
+        obs: input.obs == null ? salle.obs : {
+          A: { url: input.obs.A.url, password: input.obs.A.password === undefined ? salle.obs.A.password : input.obs.A.password },
+          B: { url: input.obs.B.url, password: input.obs.B.password === undefined ? salle.obs.B.password : input.obs.B.password },
+        },
+      }
+      context.services.rooms.upsert(suivant)
+      return suivant
+    }),
     /** Lecture seule : la régie affiche l'état des autres salles. */
-    statuses: os.rooms.statuses
-      .use(roomOrOperator)
-      .handler(({ context }) => context.services.rooms.statuses()),
+    statuses: os.rooms.statuses.use(roomOrOperator).handler(({ context }) => {
+      const snapshot = context.services.programs.active()
+      const at = context.services.clock.now()
+
+      // Enrichi ici, et non dans le service : c'est le routeur qui a le
+      // programme et l'horloge sous la main.
+      return context.services.rooms.statuses().map((statut) => {
+        const session = snapshot == null ? null : currentSession(snapshot.program, statut.roomId, at)
+        return {
+          ...statut,
+          currentSession:
+            session == null
+              ? null
+              : {
+                  id: session.id,
+                  title: session.title,
+                  endsAt: session.endsAt,
+                  remainingMs: session.endsAtMs == null ? null : session.endsAtMs - at,
+                },
+        }
+      })
+    }),
 
     sync: os.rooms.sync.use(roomOnly).handler(({ input, context }) => {
       const room = context.services.rooms.get(context.roomId)
@@ -121,6 +286,10 @@ export const router = os.router({
         overrides: context.services.rooms.overrides(),
         serverTime: nowIso(context),
         simulatedClock: context.services.clock.simulated,
+        mode: context.services.mode,
+        // Descendus avec le reste : la boucle d'attente doit se dérouler
+        // entière sans toucher au réseau une fois la salle synchronisée.
+        socialLinks: context.services.settings.get().socialLinks,
       }
     }),
 
@@ -141,6 +310,48 @@ export const router = os.router({
           yield withEventMeta(command, { id: String(command.seq) })
         }
       }),
+  },
+
+  /**
+   * Bandeau des scènes live.
+   *
+   * Réservé aux opérateurs : ce qui part là passe dans le direct et dans la
+   * VOD de toutes les salles visées.
+   */
+  overlay: {
+    show: os.overlay.show.use(operatorOnly).handler(({ input, context }) => {
+      context.services.commands.publish(
+        input.roomId,
+        { type: 'overlay.set', message: input.message },
+        input.ttlSeconds,
+      )
+      return { ok: true }
+    }),
+
+    hide: os.overlay.hide.use(operatorOnly).handler(({ input, context }) => {
+      context.services.commands.publish(input.roomId, { type: 'overlay.set', message: null }, null)
+      return { ok: true }
+    }),
+
+    history: os.overlay.history.use(operatorOnly).handler(({ input, context }) => {
+      const passes = context.services.commands.bandeauxPasses(input.roomId, input.limit)
+      // Le plus récent dit ce qui est à l'antenne : un retrait n'est pas de
+      // l'historique, mais il éteint le bandeau qu'il a retiré.
+      const affiche = passes.find((entree) => entree.payload.message != null)
+      const retireDepuis = passes.findIndex((entree) => entree.payload.message == null)
+      const enCours = retireDepuis === 0 ? null : affiche
+
+      return passes
+        .filter((entree) => entree.payload.message != null)
+        .slice(0, input.limit)
+        .map((entree) => ({
+          seq: entree.seq,
+          roomId: entree.roomId,
+          message: entree.payload.message as { text: string; level: 'info' | 'warning' | 'urgent' },
+          issuedAt: entree.issuedAt,
+          visible: enCours != null && entree.seq === enCours.seq,
+        }))
+    }),
   },
 
   sessions: {
@@ -215,15 +426,17 @@ export const router = os.router({
     get: os.clock.get.use(operatorOnly).handler(({ context }) => ({
       serverTime: context.services.clock.nowIso(),
       simulated: context.services.clock.simulated,
-      controllable: context.services.clockControl,
+      // Le mode fait foi : déplacer l'heure d'un hub de production fausserait
+      // les timecodes des enregistrements et les clôtures automatiques.
+      controllable: context.services.mode === 'dev',
     })),
 
     set: os.clock.set.use(operatorOnly).handler(({ input, context }) => {
-      if (!context.services.clockControl) {
+      if (context.services.mode !== 'dev') {
         throw new ORPCError('FORBIDDEN', {
           message:
-            "Réglage de l'heure fermé sur ce hub. L'ouvrir avec CLOCK_CONTROL=1, " +
-            "à réserver au développement : changer l'heure pendant l'événement " +
+            "Réglage de l'heure fermé : ce hub tourne en production. Il s'ouvre " +
+            "avec MODE=dev, jamais pendant l'événement — changer l'heure " +
             'fausserait les timecodes des enregistrements.',
         })
       }
@@ -367,6 +580,16 @@ export const router = os.router({
       })
       return { id: posted.id, status: 'pending' as const }
     }),
+
+    /**
+     * Publique, comme le dépôt : ces messages sont déjà projetés en salle.
+     *
+     * Lue depuis l'instantané mémoire du service, jamais en SQL — c'est la
+     * seule charge non bornée de la journée.
+     */
+    recent: os.wall.recent.handler(({ input, context }) =>
+      context.services.wall.approved(null).slice(-input.limit).reverse(),
+    ),
 
     feed: os.wall.feed.handler(async function* ({ input, context, lastEventId, signal }) {
       for await (const entry of context.services.wall.stream(

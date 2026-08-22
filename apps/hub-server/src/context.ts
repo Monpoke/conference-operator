@@ -6,6 +6,7 @@ import type { IngestService } from './services/ingest.js'
 import type { DeviceService, RoomService } from './services/rooms.js'
 import type { QuestionService, WallService } from './services/wall.js'
 import type { RateLimiter } from './services/rate-limit.js'
+import type { PushService } from './services/push.js'
 import type { SessionStateService, SettingsService } from './services/sessions.js'
 import type { MutableClock } from './services/clock.js'
 import type { ModeExecution } from '@cloudnord/contract'
@@ -21,6 +22,7 @@ export interface Services {
   limiter: RateLimiter
   sessions: SessionStateService
   settings: SettingsService
+  push: PushService
   clock: MutableClock
   /**
    * Mode d'exécution, annoncé aux salles à chaque synchronisation.

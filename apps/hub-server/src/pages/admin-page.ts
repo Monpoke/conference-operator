@@ -749,10 +749,81 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
       : "Être prévenu d'un dépassement, d'une salle coupée ou d'une machine à appairer"
   }
 
+  /**
+   * Abonnement Web Push : les avis qui survivent à la fermeture de la console.
+   *
+   * Les notifications de la page s'arrêtent dès que le téléphone endort le
+   * navigateur — précisément le moment où l'on a besoin d'être prévenu. Le push
+   * passe par le service worker, que le système réveille pour nous.
+   *
+   * Sans service worker, sans clé publique ou sans permission, la console
+   * garde les notifications de page : mieux vaut un avertissement qui ne
+   * traverse pas le verrouillage que pas d'avertissement du tout.
+   */
+  async function abonnerPush() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false
+    try {
+      const { publicKey } = await appeler('push/publicKey')
+      if (!publicKey) return false
+
+      const worker = await navigator.serviceWorker.register('/sw.js')
+      await navigator.serviceWorker.ready
+      const abonnement =
+        (await worker.pushManager.getSubscription()) ??
+        (await worker.pushManager.subscribe({
+          // Imposé par les navigateurs : pas de push silencieux, chaque envoi
+          // doit se voir. C'est aussi ce qu'on veut ici.
+          userVisibleOnly: true,
+          applicationServerKey: base64UrlVersOctets(publicKey),
+        }))
+
+      const brut = abonnement.toJSON()
+      await appeler('push/subscribe', {
+        endpoint: brut.endpoint,
+        keys: { p256dh: brut.keys.p256dh, auth: brut.keys.auth },
+        label: navigator.userAgent.slice(0, 80),
+      })
+      return true
+    } catch (cause) {
+      // Pas d'erreur bloquante : l'essentiel — être prévenu console ouverte —
+      // fonctionne quand même, et insister masquerait ce qui marche.
+      avis('Notifications hors ligne indisponibles : ' + cause.message, true)
+      return false
+    }
+  }
+
+  /** La clé VAPID voyage en base64url ; l'abonnement veut des octets. */
+  function base64UrlVersOctets(valeur) {
+    const complet = (valeur + '='.repeat((4 - (valeur.length % 4)) % 4))
+      .replace(/-/g, '+')
+      .replace(/_/g, '/')
+    const brut = atob(complet)
+    const octets = new Uint8Array(brut.length)
+    for (let i = 0; i < brut.length; i += 1) octets[i] = brut.charCodeAt(i)
+    return octets
+  }
+
+  async function desabonnerPush() {
+    if (!('serviceWorker' in navigator)) return
+    try {
+      const worker = await navigator.serviceWorker.getRegistration()
+      const abonnement = await worker?.pushManager.getSubscription()
+      if (abonnement == null) return
+      // Le hub d'abord : oublier l'abonnement côté navigateur sans le dire
+      // laisserait le hub pousser dans le vide jusqu'à ce que le service de
+      // push le lui refuse.
+      await appeler('push/unsubscribe', { endpoint: abonnement.endpoint })
+      await abonnement.unsubscribe()
+    } catch {
+      // Rien à rattraper : le hub purge de lui-même les abonnements morts.
+    }
+  }
+
   async function basculerNotifs() {
     if (notifsActives) {
       notifsActives = false
       localStorage.removeItem(CLE_NOTIFS)
+      await desabonnerPush()
       rendreBoutonNotifs()
       return
     }
@@ -768,7 +839,14 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
     notifsActives = true
     localStorage.setItem(CLE_NOTIFS, '1')
     rendreBoutonNotifs()
-    prevenir('Notifications activ\u00e9es', 'Vous serez pr\u00e9venu des d\u00e9passements et des salles coup\u00e9es.', 'reglages')
+    const horsLigne = await abonnerPush()
+    prevenir(
+      'Notifications activ\u00e9es',
+      horsLigne
+        ? "D\u00e9passements, salles coup\u00e9es et machines \u00e0 appairer, m\u00eame console ferm\u00e9e."
+        : 'D\u00e9passements et salles coup\u00e9es, tant que la console reste ouverte.',
+      'reglages',
+    )
   }
 
   /**

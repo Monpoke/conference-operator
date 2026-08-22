@@ -24,6 +24,9 @@ import {
 } from './services/social.js'
 import { renderWallPage } from './pages/wall-page.js'
 import { ALIAS_APPAIRAGE, cheminDeVue, renderAdminPage, vuesConsole } from './pages/admin-page.js'
+import { renderServiceWorker } from './pages/service-worker.js'
+import { PushService } from './services/push.js'
+import { statutsDesSalles, VeilleSupervision } from './supervision.js'
 
 export interface Hub {
   app: FastifyInstance
@@ -49,6 +52,11 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   const { sqlite, orm } = openHubDatabase(config.databasePath)
 
   const devices = new DeviceService(orm, dureeEnMs(config.deviceCodeTtl))
+  const push = new PushService(orm, {
+    publicKey: config.vapidPublicKey,
+    privateKey: config.vapidPrivateKey,
+    subject: config.vapidSubject,
+  })
   const settings = new SettingsService(orm)
   const clock = mutableClock(config.simulatedTime ?? null)
   const services: Services = {
@@ -64,6 +72,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     limiter: new RateLimiter({ capacity: 5, refillPerSecond: 0.1 }),
     settings,
     sessions: new SessionStateService(orm, settings, () => clock.now()),
+    push,
     clock,
     mode: config.mode,
   }
@@ -112,6 +121,11 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     // les timecodes VOD et la clôture automatique.
     app.log.warn({ heure: clock.nowIso() }, 'HORLOGE SIMULÉE — développement uniquement')
   }
+
+  const panneDuPush = push.unavailableReason()
+  // Bruyant à dessein : quelqu'un a renseigné des clés qui ne servent à rien,
+  // et le silence ferait chercher la panne du côté des navigateurs.
+  if (panneDuPush != null) app.log.error(panneDuPush)
 
   for (const { variable, raison } of config.ignores) {
     // En erreur, pas en avertissement : quelqu'un croit avoir réglé quelque
@@ -188,6 +202,21 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     ...vuesConsole(config.mode === 'dev').map(cheminDeVue),
     ALIAS_APPAIRAGE,
   ]
+  /**
+   * Service worker des notifications, servi à la racine.
+   *
+   * La portée d'un service worker est celle de son chemin : servi sous
+   * `/admin/`, il ne couvrirait pas le reste du hub. Sans cache, il ne sert
+   * qu'à recevoir les avis poussés quand la console est fermée.
+   */
+  app.get('/sw.js', async (_request, reply) => {
+    reply.header('content-type', 'text/javascript; charset=utf-8')
+    // Le navigateur revérifie le worker à chaque chargement de page ; le
+    // laisser en cache retarderait toute correction d'un jour d'événement.
+    reply.header('cache-control', 'no-cache')
+    return reply.send(renderServiceWorker())
+  })
+
   for (const chemin of cheminsConsole) {
     app.get(chemin, async (_request, reply) => {
       reply.header('content-type', 'text/html; charset=utf-8')
@@ -255,6 +284,32 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   }, 30_000)
   balayage.unref?.()
 
+  /**
+   * Veille de supervision : ce que le hub remarque pour les consoles fermées.
+   *
+   * Toutes les 15 s, soit un peu moins que le silence au-delà duquel une salle
+   * est déclarée muette : de quoi voir la coupure au tour suivant, sans sonder
+   * pour rien. Elle ne fait rien quand personne n'est abonné — le cas normal
+   * d'un hub de développement.
+   */
+  const veille = new VeilleSupervision()
+  const surveillance = setInterval(() => {
+    if (services.push.publicKey() == null || services.push.count() === 0) return
+    const avis = veille.passe(
+      statutsDesSalles(services, clock.now()),
+      services.devices.pending(),
+    )
+    for (const notification of avis) {
+      void services.push
+        .send(notification)
+        .then((atteints) => {
+          if (atteints > 0) app.log.info({ avis: notification.title, atteints }, 'avis poussé')
+        })
+        .catch((cause) => app.log.warn({ cause }, "avis non poussé"))
+    }
+  }, 15_000)
+  surveillance.unref?.()
+
   if (social != null) social.start()
 
   let ferme = false
@@ -263,6 +318,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     if (ferme) return
     ferme = true
     clearInterval(balayage)
+    clearInterval(surveillance)
     social?.stop()
     /**
      * Ordre imposé. `wss.close()` cesse d'accepter de nouvelles connexions

@@ -10,6 +10,16 @@ import {
 import { deviceRequest, room, roomDevice, roomState, sessionOverride } from '@cloudnord/db/hub'
 import type { HubDatabase } from '../db.js'
 
+/**
+ * Silence au-delà duquel une salle est déclarée hors ligne.
+ *
+ * Les salles battent toutes les dix secondes ; trois battements manqués ne
+ * laissent plus de doute, et restent assez courts pour qu'un opérateur le voie
+ * avant de traverser le bâtiment. Sur l'horloge réelle, comme les battements
+ * eux-mêmes : une heure simulée déclarerait tout le monde mort.
+ */
+const SILENCE_MS = 35_000
+
 export class RoomService {
   constructor(private readonly db: HubDatabase) {}
 
@@ -100,6 +110,7 @@ export class RoomService {
   }
 
   statuses(): RoomStatus[] {
+    const limite = Date.now() - SILENCE_MS
     return this.db
       .select()
       .from(room)
@@ -109,7 +120,19 @@ export class RoomService {
         roomStatusSchema.parse({
           roomId: r.id,
           name: r.name,
-          connectivity: state?.connectivity ?? 'OFFLINE',
+          /**
+           * Une salle qui s'est tue est hors ligne, quoi qu'elle ait dit en
+           * dernier.
+           *
+           * `connectivity` est ce que la salle a **remonté** : débrancher son PC
+           * laissait « ONLINE » en base pour toujours, et la console affichait
+           * une salle en pleine forme dont plus personne n'avait de nouvelles.
+           * Le silence est justement le symptôme qu'on veut voir.
+           */
+          connectivity:
+            state?.lastSeenAt != null && Date.parse(state.lastSeenAt) < limite
+              ? 'OFFLINE'
+              : (state?.connectivity ?? 'OFFLINE'),
           lastSeenAt: state?.lastSeenAt ?? null,
           sceneRole: state?.sceneRole ?? null,
           currentSessionId: state?.currentSessionId ?? null,

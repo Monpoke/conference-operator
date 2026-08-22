@@ -85,6 +85,19 @@ const configSchema = z.object({
    */
   googleHostedDomain: z.string().min(1).default('cloudnord.fr'),
 
+  /**
+   * Clés VAPID des notifications poussées (RFC 8292).
+   *
+   * Facultatives : sans elles, le hub en fabrique une paire au premier
+   * démarrage et la garde en base. Les renseigner sert à survivre à une base
+   * recréée — des clés qui changent invalident tous les abonnements, et
+   * personne ne se réabonne deux fois.
+   */
+  vapidPublicKey: z.string().optional(),
+  vapidPrivateKey: z.string().optional(),
+  /** Contact que la RFC impose d'annoncer aux services de push. */
+  vapidSubject: z.string().default('mailto:contact@cloudnord.fr'),
+
   /** Hashtag suivi sur les réseaux. Vide = aucune ingestion sociale. */
   socialHashtag: z.string().optional(),
   /** Instance Mastodon interrogée pour la timeline publique du hashtag. */
@@ -199,6 +212,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     googleClientId: env.GOOGLE_CLIENT_ID,
     googleClientSecret: env.GOOGLE_CLIENT_SECRET,
     googleHostedDomain: env.GOOGLE_HOSTED_DOMAIN,
+    vapidPublicKey: env.VAPID_PUBLIC_KEY,
+    vapidPrivateKey: env.VAPID_PRIVATE_KEY,
+    vapidSubject: env.VAPID_SUBJECT,
     socialHashtag: env.SOCIAL_HASHTAG,
     mastodonInstance: env.MASTODON_INSTANCE,
     xBearerToken: env.X_BEARER_TOKEN,

@@ -245,6 +245,19 @@
   .pastille.fin-proche {
     @apply bg-attention;
   }
+  /*
+   * Un créneau que personne n'a lancé : rien ne tourne, donc gris — comme un
+   * hors-créneau. Ce qui les sépare est le mot affiché à côté, pas la couleur :
+   * dans les deux cas, il n'y a rien à l'antenne.
+   */
+  .pastille.pas-commencee,
+  .pastille.terminee {
+    @apply bg-attenue;
+  }
+  /* Passé le délai de courtoisie, l'absence de démarrage devient une question. */
+  .pastille.retard {
+    @apply bg-attention;
+  }
   .pastille.depassement {
     @apply bg-alerte;
   }

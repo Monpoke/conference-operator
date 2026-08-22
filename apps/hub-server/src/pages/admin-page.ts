@@ -846,8 +846,11 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
       const CONFERENCE = {
         aucune: ['hors', 'rien au programme', 'text-attenue'],
         pause: ['pause', 'pause', 'text-attenue'],
+        'pas-commencee': ['pas-commencee', 'pas commencée', 'text-attenue'],
+        retard: ['retard', 'retard au démarrage', 'text-attention'],
         'en-cours': ['', 'en cours', 'text-attenue'],
         'fin-proche': ['fin-proche', 'vers la fin', 'text-attention'],
+        terminee: ['terminee', 'terminée en avance', 'text-attenue'],
         depassement: ['depassement', 'dépassement', 'text-alerte'],
       }
       const [teinte, mot, couleurTexte] = CONFERENCE[salle.conference] || CONFERENCE.aucune

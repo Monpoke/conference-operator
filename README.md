@@ -801,6 +801,30 @@ c'est la faute de frappe qui produit un rôle introuvable. Enfin **Connecter**
 sur chaque ligne. Le panneau Diagnostic doit finir vert des deux côtés, sans
 rôle absent.
 
+### Ce que « Commencer » entraîne
+
+Deux gestes que la régie faisait de mémoire, et qu'elle oubliait aux moments les
+plus coûteux. Les deux sont dans le **⚙**, panneau « Au démarrage d'une
+conférence », **actifs par défaut** :
+
+- **Avertir si l'enregistrement n'est pas lancé.** Appuyer sur Commencer alors
+  qu'OBS-B n'enregistre pas ouvre une modale : *Enregistrer et commencer* /
+  *Commencer sans enregistrer* / *Annuler*. La question ne vaut qu'avant — une
+  fois la conférence lancée, l'enregistrement démarré manquera toujours les
+  premières minutes, et une VOD absente ne se rattrape pas le soir. Si
+  l'enregistrement refuse de partir, la conférence ne démarre pas non plus :
+  commencer quand même rendrait l'avertissement mensonger la fois suivante.
+  « Annuler » existe parce que la question peut tomber au mauvais moment — on
+  visait Terminer, ou l'intervenant n'est pas prêt — et qu'un avertissement sans
+  porte de sortie se clique sans être lu.
+- **Passer à l'antenne**, scène `LIVE` par défaut, réglable ou désactivable.
+  Sans elle, l'habillage restait à l'écran pendant les premières phrases de
+  l'intervenant. La bascule suit le démarrage, jamais l'inverse : une scène
+  prise sans conférence lancée mettrait la salle à l'antenne sur rien.
+
+Une salle qui n'enregistre pas du tout décoche l'avertissement, sinon il devient
+un clic de plus à chaque conférence.
+
 ## Écran de régie
 
 L'écran de l'opérateur tient dans une fenêtre, **sans ascenseur** : les
@@ -826,13 +850,27 @@ s'affichait en vert, parce que sa machine répondait. Deux informations, deux
 traits — le **remplissage** dit où en est la conférence, le **contour** dit ce
 qu'on sait de la salle.
 
-| Remplissage | État |
-|---|---|
-| gris | hors créneau — pas encore commencé, ou programme terminé |
-| bleu | pause : la salle est occupée, mais rien ne s'y joue |
-| vert | talk en cours, plus de cinq minutes devant lui |
-| ambre | **vers la fin**, cinq minutes ou moins — le moment où l'on ne lance pas un talk à côté |
-| rouge | **dépassement** : le créneau est clos, la salle tourne encore |
+| Remplissage | Mot | État |
+|---|---|---|
+| gris | hors créneau | rien au programme, ou entre deux créneaux |
+| bleu | pause | la salle est occupée, mais rien ne s'y joue |
+| gris | pas commencée | le créneau tourne, personne n'a appuyé sur **Commencer** |
+| ambre | retard au démarrage | toujours rien lancé cinq minutes après le début du créneau |
+| vert | en cours | talk lancé, plus de cinq minutes devant lui |
+| ambre | vers la fin | cinq minutes ou moins — le moment où l'on ne lance pas un talk à côté |
+| gris | terminée en avance | **Terminer** avant l'heure : la salle est libre, et la voisine peut en tenir compte |
+| rouge | dépassement | le créneau est clos, la conférence est toujours marquée en cours |
+
+La couleur **croise le programme et le cycle de vie** (`Commencer` / `Terminer`).
+Le programme donne le créneau, le cycle de vie donne ce qui s'y joue vraiment :
+sans lui, un créneau que personne n'a lancé se lisait « en cours », et une salle
+qui déborde n'existait pas — passé l'heure de fin, le programme passe simplement
+au créneau suivant.
+
+⚠️ Le corollaire est assumé : **une salle qui n'utilise pas les boutons reste
+« pas commencée » puis « en retard » toute la journée.** La console ne peut pas
+deviner qu'un talk tourne si personne ne le dit, et c'est le mot affiché à côté
+de la pastille qui empêche de lire cette absence comme une panne.
 
 Le contour reste gris pour ne jamais concurrencer ces couleurs : rien en
 `ONLINE`, un anneau en `DEGRADED`, et une **pastille creuse** quand la salle est
@@ -840,12 +878,15 @@ muette — on ne sait plus ce qui s'y joue, et le peindre serait pire que de se
 taire. Partout, un mot accompagne la couleur : elle se regarde de loin, et tout
 le monde ne distingue pas les teintes.
 
-Le **dépassement** est le seul état que le programme ne peut pas donner —
-passé l'heure de fin, il passe au créneau suivant. Il vient de ce que la salle
-pilote réellement, et c'est lui qui décale la journée. Le hub le calcule
-(`roomConferenceState`), parce que l'heure qui fait foi est la sienne et qu'elle
-peut être simulée ; la régie le recalcule sur son cache, pour continuer à
-répondre pendant une coupure.
+Le calcul vit chez le hub (`roomConferenceState`) : l'heure qui fait foi est la
+sienne — elle peut être simulée — et lui seul tient le cycle de vie de toutes
+les salles. La régie **reprend du hub les quatre états qu'il est seul à
+connaître** (pas commencée, retard, terminée, dépassement) et **recalcule le
+reste sur son cache**, chaque seconde : reprendre aussi « vers la fin » d'une
+vue rafraîchie toutes les quelques secondes ferait manquer le basculement, qui
+est justement ce qu'on surveille. Passé une minute sans nouvelles, la vue du hub
+décrit un passé et le programme local reprend la main — pendant une coupure, la
+salle d'à côté finit quand même à l'heure prévue.
 
 Les **signalements** — fin de talk à côté, message parti à la console, hub
 rejoint — s'affichent en bandeau sous le flux et **s'effacent seuls au bout de

@@ -81,6 +81,10 @@ export function renderRegiePage(options: RegiePageOptions = {}): string {
   #modale-config { display: none; }
   body[data-config="ouverte"] #modale-config { display: flex; }
 
+  /* Avertissement de démarrage : même mécanique que les deux modales ci-dessus. */
+  #modale-rec { display: none; }
+  body[data-rec="ouverte"] #modale-rec { display: flex; }
+
   /* Voile d'appairage : occupe tout l'écran tant que la machine n'est pas liée. */
   #appairage { display: none; }
   body[data-appairage="requis"] #appairage { display: flex; }
@@ -90,7 +94,7 @@ export function renderRegiePage(options: RegiePageOptions = {}): string {
   #toast.erreur { border-color: var(--color-alerte); background: #3a1519; }
 </style>
 </head>
-<body class="grid h-screen grid-rows-[auto_auto_auto_1fr] bg-fond font-sans text-texte" data-appairage="ok" data-modale="fermee" data-config="fermee">
+<body class="grid h-screen grid-rows-[auto_auto_auto_1fr] bg-fond font-sans text-texte" data-appairage="ok" data-modale="fermee" data-config="fermee" data-rec="fermee">
 ${etatInitial}
 <header class="flex items-center gap-3 border-b border-bord bg-surface px-3 py-2">
   <div class="truncate text-[15px] font-semibold" id="salle">—</div>
@@ -266,6 +270,28 @@ ${etatInitial}
       <button class="btn btn-petit ml-auto" id="btn-fermer-modale">Fermer<span class="touche">Échap</span></button>
     </div>
     <div class="min-h-0 flex-1 overflow-y-auto p-3" id="encart-contenu"></div>
+  </div>
+</div>
+
+<!--
+  Avertissement au démarrage d'une conférence.
+
+  Trois issues, pas deux : « Annuler » existe parce que la question peut arriver
+  au mauvais moment — on visait Terminer, ou l'intervenant n'est pas prêt — et
+  qu'un avertissement sans porte de sortie se clique sans être lu.
+-->
+<div class="fixed inset-0 z-50 items-center justify-center bg-black/65 p-4" id="modale-rec">
+  <div class="w-full max-w-[440px] rounded-xl border border-bord bg-surface p-5">
+    <h2 class="mb-1.5 text-[17px] font-semibold text-attention">Rien n'enregistre</h2>
+    <div class="mb-4 text-sm leading-relaxed text-attenue" id="modale-rec-detail">
+      La conférence va commencer et OBS-B n'enregistre pas. Une VOD manquante ne
+      se rattrape pas le soir.
+    </div>
+    <div class="flex flex-wrap justify-end gap-1.5">
+      <button class="btn" id="rec-annuler">Annuler</button>
+      <button class="btn" id="rec-sans">Commencer sans enregistrer</button>
+      <button class="btn actif" id="rec-avec">Enregistrer et commencer</button>
+    </div>
   </div>
 </div>
 
@@ -468,41 +494,79 @@ ${etatInitial}
   const FIN_PROCHE_MS = 5 * 60000
 
   /**
-   * État de la conférence d'une salle, pour la pastille et son libellé.
+   * Ce que peint chaque état, et le mot qui l'accompagne.
    *
-   * Deux sources, dans cet ordre :
-   *
-   * - **le dépassement** vient de l'état remonté par la salle. Le programme ne
-   *   le dira jamais : passé l'heure de fin, il passe simplement au créneau
-   *   suivant. Une salle qui pilote encore un talk dont le créneau est clos est
-   *   précisément ce qu'on veut voir depuis la régie d'à côté ;
-   * - **le reste** se lit sur le programme mis en cache, à l'heure du hub. Il
-   *   répond pendant une coupure, et suit l'heure simulée.
-   *
-   * @param sessionPilotee Conférence que la salle pilote réellement, ou null.
+   * Le mot n'est pas décoratif : la pastille se regarde de loin, et tout le
+   * monde ne distingue pas les teintes.
    */
-  function etatConference(sessions, instant, sessionPilotee) {
-    if (sessionPilotee != null) {
-      const index = sessions.findIndex((s) => s.id === sessionPilotee)
-      const fin = index === -1 ? null : finEffective(sessions, index)
-      if (fin != null && fin <= instant) {
-        return { classe: 'depassement', libelle: 'dépassement ' + duree(Math.round((instant - fin) / 60000)) }
-      }
-    }
+  const ETATS = {
+    aucune: ['hors', 'hors créneau'],
+    pause: ['pause', 'pause'],
+    'pas-commencee': ['pas-commencee', 'pas commencée'],
+    retard: ['retard', 'retard au démarrage'],
+    'en-cours': ['', 'en cours'],
+    'fin-proche': ['fin-proche', 'vers la fin'],
+    terminee: ['terminee', 'terminée en avance'],
+    depassement: ['depassement', 'dépassement'],
+  }
 
+  /** Fraîcheur au-delà de laquelle la vue du hub cesse de faire autorité. */
+  const VUE_PERIMEE_MS = 60000
+
+  function etatDe(nom) {
+    const dit = ETATS[nom] ?? ETATS.aucune
+    return { classe: dit[0], libelle: dit[1] }
+  }
+
+  /**
+   * États que seul le hub peut constater : ils tiennent au cycle de vie des
+   * conférences, que la régie ne reçoit pas pour les autres salles.
+   */
+  const ETATS_DU_HUB = ['pas-commencee', 'retard', 'terminee', 'depassement']
+
+  /**
+   * État d'une autre salle : le programme local, sauf pour ce qu'il ignore.
+   *
+   * Le partage n'est pas arbitraire. Le programme mis en cache est recalculé
+   * chaque seconde, sur l'heure du hub : il est le plus juste pour tout ce qui
+   * se déduit d'un horaire — en cours, vers la fin, pause. Reprendre là-dessus
+   * une vue rafraîchie toutes les quelques secondes ferait manquer le passage à
+   * « vers la fin », qui est précisément ce qu'on surveille.
+   *
+   * Le hub, lui, est seul à savoir qu'un créneau a commencé sans que personne
+   * ne l'ait lancé, ou qu'une salle déborde. Sur ces états-là, il fait foi —
+   * tant que sa vue est fraîche. Passé une minute, elle décrit un passé, et le
+   * programme redevient la meilleure réponse : pendant une coupure, la salle
+   * d'à côté finit quand même à l'heure prévue.
+   */
+  function etatSalle(roomId, sessions, instant) {
+    const local = etatConference(sessions, instant)
+    const vue = vueDuHub(roomId)
+    const date = donnees.diagnostics?.roomsRefreshedAt
+    const fraiche = date != null && Date.now() - Date.parse(date) < VUE_PERIMEE_MS
+    if (!fraiche || vue == null || !ETATS_DU_HUB.includes(vue.conference)) return local
+    return etatDe(vue.conference)
+  }
+
+  /**
+   * Repli local : ce que dit le programme, à l'heure du hub.
+   *
+   * Sans le cycle de vie, on ne distingue pas un talk lancé d'un créneau que
+   * personne n'a démarré — on décrit donc le créneau, pas la salle.
+   */
+  function etatConference(sessions, instant) {
     const courante = enCours(sessions, instant)
     if (courante == null) {
-      return { classe: 'hors', libelle: sessions.length === 0 ? 'programme inconnu' : 'hors créneau' }
+      return sessions.length === 0
+        ? { classe: 'hors', libelle: 'programme inconnu' }
+        : etatDe('aucune')
     }
-    if (courante.kind === 'break') return { classe: 'pause', libelle: 'pause' }
+    if (courante.kind === 'break') return etatDe('pause')
 
     const fin = finEffective(sessions, sessions.indexOf(courante))
-    if (fin != null && fin - instant <= FIN_PROCHE_MS) {
-      // Le cas qui décide : on ne lance pas un talk quand la salle d'à côté
-      // s'apprête à déverser son public dans le couloir.
-      return { classe: 'fin-proche', libelle: 'vers la fin' }
-    }
-    return { classe: '', libelle: 'en cours' }
+    // Le cas qui décide : on ne lance pas un talk quand la salle d'à côté
+    // s'apprête à déverser son public dans le couloir.
+    return etatDe(fin != null && fin - instant <= FIN_PROCHE_MS ? 'fin-proche' : 'en-cours')
   }
 
   /**
@@ -706,7 +770,7 @@ ${etatInitial}
       const vue = vueDuHub(salle.id)
       const courante = enCours(sessions, instant)
       const suivante = apres(sessions, instant)
-      const etat = etatConference(sessions, instant, vue?.currentSessionId ?? null)
+      const etat = etatSalle(salle.id, sessions, instant)
 
       let libelle = ''
       let detail = 'programme inconnu'
@@ -715,9 +779,13 @@ ${etatInitial}
       if (etat.classe === 'depassement') {
         // Le programme est passé au créneau suivant ; la salle, non. C'est
         // elle qui a raison, et c'est ce qui décale toute la journée.
-        libelle = sessionDe(sessions, vue?.currentSessionId)?.title ?? ''
+        libelle = sessionDe(sessions, vue?.currentSessionId)?.title ?? courante?.title ?? ''
         detail = etat.libelle
         teinte = 'text-alerte'
+      } else if (etat.classe === 'retard' || etat.classe === 'pas-commencee' || etat.classe === 'terminee') {
+        libelle = courante?.title ?? ''
+        detail = etat.libelle
+        teinte = etat.classe === 'retard' ? 'text-attention' : 'text-attenue'
       } else if (courante != null && courante.kind === 'break') {
         libelle = courante.title
         detail = suivante == null ? 'pause' : 'reprise ' + heure(suivante.startsAt, donnees.timezone)
@@ -856,6 +924,31 @@ ${etatInitial}
             "Pour mémoire : c'est OBS-B qui décide où il écrit. Le fichier est renommé sur place.") + '</div>' +
           relais +
         '</div>' +
+        /*
+         * Ce que « Commencer » entraîne.
+         *
+         * Deux gestes que la régie faisait de mémoire, et qu'elle oubliait aux
+         * moments les plus coûteux : lancer l'enregistrement, et passer à
+         * l'antenne. Les rattacher au démarrage de la conférence les met là où
+         * l'information existe — c'est le seul instant où l'on sait qu'un talk
+         * commence.
+         */
+        '<h3 class="titre-panneau mt-3.5">Au d\u00e9marrage d\u2019une conf\u00e9rence</h3>' +
+        '<label class="flex items-start gap-2 text-sm">' +
+          '<input type="checkbox" id="cfg-prompt-rec" class="mt-0.5">' +
+          '<span>Avertir si l\u2019enregistrement n\u2019est pas lanc\u00e9' +
+          '<span class="block text-[11px] text-attenue">Une VOD manquante ne se rattrape pas le soir.</span>' +
+          '</span></label>' +
+        '<div class="mt-2"><label class="mb-0.5 block text-xs text-attenue" for="cfg-scene-demarrage">' +
+          'Scène prise automatiquement</label>' +
+          '<select class="champ py-2" id="cfg-scene-demarrage">' +
+            '<option value="">— aucune bascule —</option>' +
+            ROLES_PAR_INSTANCE.A.map(function (r) {
+              return '<option value="' + r[0] + '">' + echapper(r[1]) + '</option>'
+            }).join('') +
+          '</select>' +
+          '<div class="mt-0.5 text-[11px] text-attenue">Sans elle, l\u2019habillage reste \u00e0 l\u2019\u00e9cran pendant les premi\u00e8res phrases.</div>' +
+        '</div>' +
       '</section>'
 
     // Les <select> portent leur valeur après insertion : la poser dans le
@@ -866,6 +959,8 @@ ${etatInitial}
       }
     }
     $('cfg-relay').value = config.relaySourceRoomId ?? ''
+    $('cfg-prompt-rec').checked = config.promptRecordingOnStart !== false
+    $('cfg-scene-demarrage').value = config.sceneOnStart ?? ''
 
     for (const instance of ['A', 'B']) {
       $('cfg-connect-' + instance).onclick = () => void connecterInstance(instance)
@@ -996,6 +1091,8 @@ ${etatInitial}
       fileSlug: texte('cfg-slug'),
       relaySourceRoomId: $('cfg-relay').value || null,
       openFeedbackProjectId: texte('cfg-openfeedback'),
+      promptRecordingOnStart: $('cfg-prompt-rec').checked,
+      sceneOnStart: $('cfg-scene-demarrage').value || null,
     }
   }
 
@@ -1183,7 +1280,7 @@ ${etatInitial}
     const instant = maintenant()
     const lignes = salles.map((salle) => {
       const sessions = programmesSalles.get(salle.roomId) ?? []
-      const etat = etatConference(sessions, instant, salle.currentSessionId)
+      const etat = etatSalle(salle.roomId, sessions, instant)
       const classe = etat.classe + confiance(salle.connectivity)
       const attente = salle.outboxDepth > 0 ? salle.outboxDepth + ' en attente' : ''
       // Le libellé accompagne la pastille : une couleur seule ne se lit pas
@@ -1195,7 +1292,8 @@ ${etatInitial}
         (attente ? ' · ' + attente : '') + '</div></div>' +
         '<div>' + (salle.recording ? '<span class="badge running">rec</span>' : '') + '</div>' +
         '<div class="flex items-center gap-1.5 text-xs ' +
-        (etat.classe === 'depassement' ? 'text-alerte' : etat.classe === 'fin-proche' ? 'text-attention' : 'text-attenue') +
+        (etat.classe === 'depassement' ? 'text-alerte'
+          : etat.classe === 'fin-proche' || etat.classe === 'retard' ? 'text-attention' : 'text-attenue') +
         '"><span>' + echapper(coupee ? 'salle muette' : etat.libelle) + '</span>' +
         '<span class="pastille ' + classe + '"></span></div>' +
         '</div>'
@@ -1508,7 +1606,64 @@ ${etatInitial}
     if (evenement.key === 'Enter') $('btn-message').click()
   })
 
-  $('btn-conf-demarrer').onclick = () => agir({ action: 'session.start' })
+  /**
+   * Démarrage d'une conférence, et ce qui va avec.
+   *
+   * Deux réglages de salle s'y accrochent, tous deux actifs par défaut :
+   * l'avertissement quand rien n'enregistre, et la bascule de scène. Ils sont
+   * ici plutôt que dans le cœur applicatif parce que ce sont des gestes de
+   * régie : la salle qui les refuse les décoche dans son ⚙, et le hub garde le
+   * réglage.
+   */
+  /**
+   * Réglages du démarrage, défauts compris.
+   *
+   * Les défauts vivent dans le contrat, où le hub les applique. La page les
+   * répète pour un état reçu avant ce réglage : lire un champ absent comme
+   * « ne rien faire » désactiverait un garde-fou en silence, ce qui est
+   * exactement ce qu'il est censé empêcher. Une valeur nulle, elle, reste un
+   * choix explicite.
+   */
+  function reglagesDemarrage() {
+    const config = donnees?.diagnostics?.config ?? {}
+    return {
+      avertir: config.promptRecordingOnStart !== false,
+      scene: config.sceneOnStart === undefined ? 'LIVE' : config.sceneOnStart,
+    }
+  }
+
+  async function demarrerConference() {
+    const enregistre = donnees?.diagnostics?.recording?.active === true
+    if (reglagesDemarrage().avertir && !enregistre) {
+      // La question n'a de sens qu'avant : une fois la conférence lancée,
+      // l'enregistrement démarré manquera toujours les premières minutes.
+      document.body.dataset.rec = 'ouverte'
+      return
+    }
+    await lancerConference(false)
+  }
+
+  /** @param enregistrer Lancer l'enregistrement d'abord, puis la conférence. */
+  async function lancerConference(enregistrer) {
+    document.body.dataset.rec = 'fermee'
+    if (enregistrer) {
+      const resultat = await agir({ action: 'recording.start' })
+      // L'enregistrement d'abord, et seulement s'il part : commencer quand même
+      // rendrait l'avertissement mensonger la prochaine fois.
+      if (!resultat?.ok) return
+    }
+    await agir({ action: 'session.start' })
+
+    // Après le démarrage : la scène suit la conférence, et une bascule sans
+    // conférence lancée laisserait la salle à l'antenne sur rien.
+    const role = reglagesDemarrage().scene
+    if (role) await agir({ action: 'scene.set', role })
+  }
+
+  $('btn-conf-demarrer').onclick = () => void demarrerConference()
+  $('rec-annuler').onclick = () => { document.body.dataset.rec = 'fermee' }
+  $('rec-sans').onclick = () => void lancerConference(false)
+  $('rec-avec').onclick = () => void lancerConference(true)
   $('btn-conf-terminer').onclick = () => agir({ action: 'session.end' })
   $('conf-detail').onclick = () => {
     if (donnees?.state.currentSession && $('badge-conf').classList.contains('ended')) {

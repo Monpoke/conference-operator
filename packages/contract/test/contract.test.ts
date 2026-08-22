@@ -129,6 +129,9 @@ describe('surface du contrat', () => {
       'ingest',
       'messages',
       'meta',
+      // Surface à part, et non un mode de plus sur l'écran de salle : le
+      // bandeau se superpose à la vidéo là où un message d'écran remplace tout.
+      'overlay',
       'program',
       'questions',
       'rooms',
@@ -140,6 +143,11 @@ describe('surface du contrat', () => {
     expect(Object.keys(contract.sessions).sort()).toEqual(['end', 'reset', 'start', 'states'])
     expect(Object.keys(contract.rooms).sort()).toEqual([
       'commands',
+      // Une salle se règle elle-même : les adresses OBS et les noms de scènes
+      // se constatent devant les machines, pas depuis la console.
+      'configure',
+      // Publique : le mur dit au participant ce qu'il est en train d'écouter.
+      'current',
       'list',
       // Publique : une machine non appairée doit pouvoir proposer un choix de salle.
       'public',
@@ -207,10 +215,20 @@ describe('cycle de vie des conférences', () => {
   })
 
   it('borne le délai de clôture automatique', () => {
-    expect(hubSettingsSchema.parse({})).toEqual({ autoEndEnabled: true, autoEndGraceMinutes: 5 })
+    expect(hubSettingsSchema.parse({})).toEqual({
+      autoEndEnabled: true,
+      autoEndGraceMinutes: 5,
+      // Aucun compte déclaré au départ : la boucle des salles saute sa page
+      // réseaux plutôt que d'afficher un cadre vide.
+      socialLinks: [],
+      programSourceUrl: null,
+    })
     expect(() => hubSettingsSchema.parse({ autoEndGraceMinutes: -1 })).toThrow()
     // Deux heures de grâce n'auraient plus rien d'automatique.
     expect(() => hubSettingsSchema.parse({ autoEndGraceMinutes: 121 })).toThrow()
+    // L'URL est validée comme telle : un « oui » saisi dans la console ne doit
+    // pas se découvrir au démarrage suivant, quand le hub tente l'import.
+    expect(() => hubSettingsSchema.parse({ programSourceUrl: 'pas-une-url' })).toThrow()
   })
 
   it('transporte un changement d\'état vers toutes les salles', () => {

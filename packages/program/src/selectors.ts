@@ -112,3 +112,34 @@ export function formatSessionRange(session: Session, timezone: string, locale = 
   if (session.endsAt == null) return start
   return `${start} – ${formatTime(session.endsAt, timezone, locale)}`
 }
+
+/**
+ * Adresse publique OpenFeedback d'une conférence.
+ *
+ * Fabriquée sans le moindre appel réseau : OpenFeedback réutilise les
+ * identifiants de session de l'export amont — vérifié, les 27 concordent — et
+ * sa route publique est `/{projet}/{aaaa-mm-jj}/{session}`. C'est ce qui permet
+ * au QR de se dessiner en salle réseau coupé, et au hub de lister les liens
+ * sans dépendre d'une API.
+ *
+ * Le jour se lit dans le fuseau de l'**événement**, pas en UTC : à Paris, un
+ * créneau de fin de soirée basculerait sinon sur le lendemain et le lien
+ * tomberait sur une page vide. Il vient de la session elle-même, ce qui rend la
+ * fonction juste sur un événement à plusieurs jours.
+ *
+ * `null` sans projet configuré : pas de lien vaut mieux qu'un lien mort.
+ */
+export function openFeedbackUrl(
+  session: Pick<Session, 'id' | 'startsAt'>,
+  projectId: string | null,
+  timezone: string,
+): string | null {
+  if (projectId == null || projectId.trim() === '') return null
+  const jour = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(session.startsAt))
+  return `https://openfeedback.io/${encodeURIComponent(projectId)}/${jour}/${encodeURIComponent(session.id)}`
+}

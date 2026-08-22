@@ -65,7 +65,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     settings,
     sessions: new SessionStateService(orm, settings, () => clock.now()),
     clock,
-    clockControl: config.clockControl,
+    mode: config.mode,
   }
 
   const authOptions = createAuthOptions({
@@ -94,10 +94,21 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
 
   const app = Fastify({ logger: { level: config.logLevel } })
 
+  if (config.mode === 'dev') {
+    app.log.warn('MODE DÉVELOPPEMENT — heure et horloge réglables, à ne pas laisser le jour J')
+  }
+
   if (clock.simulated) {
     // Bruyant à dessein : une heure simulée oubliée en production fausserait
     // les timecodes VOD et la clôture automatique.
     app.log.warn({ heure: clock.nowIso() }, 'HORLOGE SIMULÉE — développement uniquement')
+  }
+
+  for (const { variable, raison } of config.ignores) {
+    // En erreur, pas en avertissement : quelqu'un croit avoir réglé quelque
+    // chose, et ce quelque chose ne s'applique pas. Le taire ferait chercher
+    // ailleurs pendant des heures.
+    app.log.error({ variable }, `${variable} ignoré : ${raison}`)
   }
 
   const social =
@@ -157,7 +168,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   for (const chemin of ['/admin', '/admin/devices']) {
     app.get(chemin, async (_request, reply) => {
       reply.header('content-type', 'text/html; charset=utf-8')
-      return reply.send(renderAdminPage())
+      return reply.send(renderAdminPage({ mode: config.mode, ignores: config.ignores }))
     })
   }
 

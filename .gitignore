@@ -10,3 +10,10 @@ data/
 *.db
 *.db-wal
 *.db-shm
+
+# Aperçus HTML régénérés par `pnpm preview` : sortie de build, pas de source.
+preview/
+
+# Données d'exécution d'une salle : identité de la machine appairée, captations.
+# Elles n'appartiennent qu'au poste qui les a produites.
+.donnees-locales/

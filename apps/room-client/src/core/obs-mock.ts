@@ -101,6 +101,16 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
     abonnements != null && (abonnements & (1 << 16)) !== 0
 
   return {
+    /**
+     * Se déclare simulé.
+     *
+     * La régie l'affiche : rien ne distingue à l'écran un enregistrement
+     * simulé d'un vrai, et c'est exactement le genre de méprise qui se paie en
+     * VOD manquante. Porté par le transport plutôt que déduit d'une variable
+     * d'environnement lue ailleurs — ce qui est faux le dit soi-même, et ne
+     * peut pas se désaccorder avec la réalité.
+     */
+    simule: true,
     async connect(_url, _password, abonnements) {
       journal(`connecté — scènes : ${scenes.join(', ')}`)
       basculerVumetre(veutNiveaux(abonnements))

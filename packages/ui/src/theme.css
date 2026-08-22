@@ -191,8 +191,19 @@
   }
 
   /* — Étiquettes d'état — */
+  /*
+   * `text-sm`, et non `text-xs`.
+   *
+   * Dans le tableau des conférences — 13 px de base — une étiquette de 12 px en
+   * majuscules resserrées se lisait comme une note de bas de page, alors que
+   * c'est l'état du talk qu'on vient y chercher : elle doit se repérer sans
+   * qu'on la lise. `inline-block` pour que le rembourrage compte réellement
+   * dans la ligne, `whitespace-nowrap` pour qu'« EN COURS » ne se coupe pas en
+   * deux dans une colonne étroite.
+   */
   .badge {
-    @apply rounded-md bg-surface2 px-2.5 py-1 text-xs font-bold tracking-[.08em] text-attenue uppercase;
+    @apply inline-block rounded-md bg-surface2 px-3 py-1 text-sm font-bold
+           tracking-[.06em] whitespace-nowrap text-attenue uppercase;
   }
   .badge.running {
     @apply bg-ok text-[#05231a];

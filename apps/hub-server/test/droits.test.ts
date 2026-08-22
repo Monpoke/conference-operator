@@ -92,6 +92,14 @@ describe('ce que peut une salle', () => {
     expect((resultat.body.json as unknown as { room: { id: string } }).room.id).toBe(TRACK_1)
   })
 
+  it('apprend le mode du hub en même temps', async () => {
+    // La salle le compare au sien : un poste de développement branché sur le
+    // hub de l'événement doit se voir en régie, pas se découvrir au montage.
+    const resultat = await enSalle('rooms/sync', { since: null })
+
+    expect((resultat.body.json as unknown as { mode: string }).mode).toBe('production')
+  })
+
   it('remonte ses événements', async () => {
     const resultat = await enSalle('ingest/push', {
       batch: [
@@ -114,6 +122,51 @@ describe('ce que peut une salle', () => {
     const resultat = await enSalle('rooms/statuses', {})
     expect(resultat.status).toBe(200)
     expect((resultat.body.json as unknown as unknown[]).length).toBe(3)
+  })
+
+  it('règle sa propre configuration OBS', async () => {
+    // Ce qui se constate devant les machines se saisit devant les machines :
+    // adresses des deux instances et noms de scènes réels.
+    const resultat = await enSalle('rooms/configure', {
+      obs: {
+        A: { url: 'ws://192.168.1.20:4455', password: 'secret-a' },
+        B: { url: 'ws://192.168.1.21:4455', password: null },
+      },
+      sceneRoles: { A: { LIVE: 'Direct', HOLD: 'Habillage' }, B: { TALK: 'Talk' } },
+      displayPort: 7799,
+    })
+
+    expect(resultat.status).toBe(200)
+    const salle = hub.services.rooms.get(TRACK_1)!
+    expect(salle.obs.A).toEqual({ url: 'ws://192.168.1.20:4455', password: 'secret-a' })
+    expect(salle.sceneRoles.A.LIVE).toBe('Direct')
+    expect(salle.displayPort).toBe(7799)
+  })
+
+  it('garde le mot de passe qu\'elle n\'a pas renvoyé', async () => {
+    // La régie ne reçoit jamais le mot de passe en clair, donc elle ne peut pas
+    // le renvoyer pour le conserver : sans cette règle, corriger un port
+    // effacerait le mot de passe au passage.
+    await enSalle('rooms/configure', {
+      obs: { A: { url: 'ws://a:4455', password: 'secret-a' }, B: { url: 'ws://b:4455', password: null } },
+    })
+    await enSalle('rooms/configure', {
+      obs: { A: { url: 'ws://a:9999' }, B: { url: 'ws://b:4455' } },
+    })
+
+    const salle = hub.services.rooms.get(TRACK_1)!
+    expect(salle.obs.A).toEqual({ url: 'ws://a:9999', password: 'secret-a' })
+  })
+
+  it('efface un mot de passe quand elle le demande', async () => {
+    await enSalle('rooms/configure', {
+      obs: { A: { url: 'ws://a:4455', password: 'secret-a' }, B: { url: 'ws://b:4455', password: null } },
+    })
+    await enSalle('rooms/configure', {
+      obs: { A: { url: 'ws://a:4455', password: null }, B: { url: 'ws://b:4455' } },
+    })
+
+    expect(hub.services.rooms.get(TRACK_1)!.obs.A.password).toBeNull()
   })
 
   it('pilote le cycle de vie de ses propres conférences', async () => {
@@ -146,8 +199,55 @@ describe('ce que ne peut pas une salle', () => {
     expect((await enSalle('devices/revoke', { clientId: CLIENT_ID })).status).toBe(403)
   })
 
+  it('ne met pas de bandeau à l\'antenne', async () => {
+    // Ce qui part là passe dans le direct et la VOD de toutes les salles
+    // visées : c'est une décision d'organisation, pas de salle.
+    expect((await enSalle('overlay/show', {
+      roomId: null,
+      message: { text: 'coucou', level: 'info' },
+    })).status).toBe(403)
+    expect((await enSalle('overlay/history', {})).status).toBe(403)
+  })
+
   it('ne modifie pas les réglages du hub', async () => {
     expect((await enSalle('settings/update', { autoEndGraceMinutes: 60 })).status).toBe(403)
+  })
+
+  it('ne se renomme pas et ne se donne pas de clé de diffusion', async () => {
+    // Ces clés ne sont pas dans le correctif accepté : zod les écarte, l'appel
+    // aboutit, et rien de ce qui n'est pas offert ne bouge. L'identité vient du
+    // programme, la clé de diffusion descend du hub.
+    const avant = hub.services.rooms.get(TRACK_1)!
+    const resultat = await enSalle('rooms/configure', {
+      name: 'Salle pirate',
+      trackId: 'autre-track',
+      stream: { rtmpUrl: 'rtmp://ailleurs/live', streamKey: 'volée' },
+      displayPort: 7999,
+    })
+
+    expect(resultat.status).toBe(200)
+    const apres = hub.services.rooms.get(TRACK_1)!
+    expect(apres.name).toBe(avant.name)
+    expect(apres.trackId).toBe(avant.trackId)
+    expect(apres.stream).toBeNull()
+    // Ce qui est offert, lui, s'applique bien.
+    expect(apres.displayPort).toBe(7999)
+  })
+
+  it('ne configure pas une autre salle', async () => {
+    // Il n'existe aucune forme de cet appel qui vise ailleurs : la cible est le
+    // jeton, pas l'entrée.
+    await enSalle('rooms/configure', { displayPort: 7999 })
+
+    expect(hub.services.rooms.get(TRACK_2)!.displayPort).toBe(7788)
+  })
+
+  it('ne se déclare pas un relais incohérent', async () => {
+    const soi = await enSalle('rooms/configure', { relaySourceRoomId: TRACK_1 })
+    expect(soi.status).toBe(400)
+
+    const inconnue = await enSalle('rooms/configure', { relaySourceRoomId: 'track-9-inexistante' })
+    expect(inconnue.status).toBe(400)
   })
 
   it('ne décide pas pour une autre salle', async () => {

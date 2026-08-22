@@ -48,9 +48,12 @@ describe('état de la salle', () => {
     expect(state.nextSession?.title).toContain('Coupable')
   })
 
-  it('démarre sur les sponsors, sans dépendre du réseau', () => {
+  it('démarre sur la boucle d\'attente, sans dépendre du réseau', () => {
+    // C'est l'écran qu'on veut trouver en salle le matin sans que personne
+    // n'ait rien touché. Elle se réduit d'elle-même aux pages qui ont du
+    // contenu : sans programme en cache, elle montre les sponsors.
     expect(new RoomRuntime(store, {}, () => clockMs).state()).toMatchObject({
-      mode: 'sponsors',
+      mode: 'loop',
       connectivity: 'OFFLINE',
     })
   })
@@ -108,10 +111,45 @@ describe('application des commandes', () => {
     )
 
     // Basculer l'écran l'afficherait en grand devant le public.
-    expect(runtime.state().mode).toBe('sponsors')
+    expect(runtime.state().mode).toBe('loop')
     expect(runtime.state().message).toBeNull()
     expect(runtime.state().notifications.at(-1)?.text).toContain('Ton speaker est arrivé')
     expect(runtime.state().notifications.at(-1)?.text).toContain('organisateur@cloudnord.fr')
+  })
+
+  it('efface un signalement au bout de trente secondes', async () => {
+    const runtime = makeRuntime()
+    await runtime.applyCommand(
+      command({ type: 'message.broadcast', text: 'Ton speaker est arrivé', level: 'info', target: 'operator' }),
+    )
+    expect(runtime.state().notifications).toHaveLength(1)
+
+    // Vingt-neuf secondes plus tard : encore lisible.
+    clockMs += 29_000
+    runtime.expireNotifications()
+    expect(runtime.state().notifications).toHaveLength(1)
+
+    clockMs += 2_000
+    runtime.expireNotifications()
+    expect(runtime.state().notifications).toHaveLength(0)
+  })
+
+  it('ne fait pas tomber un signalement qui vient d\'arriver', async () => {
+    // Le piège du filtre par lot : le plus ancien périme, pas toute la pile.
+    const runtime = makeRuntime()
+    await runtime.applyCommand(
+      command({ type: 'message.broadcast', text: 'Premier', level: 'info', target: 'operator' }),
+    )
+    clockMs += 31_000
+    await runtime.applyCommand(
+      command({ type: 'message.broadcast', text: 'Second', level: 'info', target: 'operator' }),
+    )
+
+    runtime.expireNotifications()
+
+    const restants = runtime.state().notifications
+    expect(restants).toHaveLength(1)
+    expect(restants[0]?.text).toContain('Second')
   })
 
   it('écarte une commande rattrapée après expiration', async () => {
@@ -123,7 +161,7 @@ describe('application des commandes', () => {
     const outcome = await runtime.applyCommand(lunch)
 
     expect(outcome).toEqual({ applied: false, reason: 'expired' })
-    expect(runtime.state().mode).toBe('sponsors')
+    expect(runtime.state().mode).toBe('loop')
     // Marquée appliquée malgré tout, sinon chaque reconnexion la relivrerait.
     expect(store.hasApplied(lunch.seq)).toBe(true)
   })
@@ -169,7 +207,8 @@ describe('application des commandes', () => {
 
     clockMs += 301_000
     runtime.expireMessage()
-    expect(runtime.state()).toMatchObject({ mode: 'sponsors', message: null })
+    // Retour à l'écran d'attente par défaut, pas à une page figée.
+    expect(runtime.state()).toMatchObject({ mode: 'loop', message: null })
   })
 })
 
@@ -224,5 +263,182 @@ describe('conférence pilotable', () => {
   it("n'a plus de cible après le dernier talk", () => {
     const runtime = a('2026-10-31T12:00:00Z')
     expect(runtime.state().targetSession).toBeNull()
+  })
+})
+
+/**
+ * Horloge de la salle.
+ *
+ * `serverTimeOffsetMs` part dans la charge utile d'affichage : les pages
+ * servies l'ajoutent à **leur** `Date.now()` — elles n'ont que l'horloge du
+ * navigateur — et la file de remontée date ses événements pareil. L'écart doit
+ * donc se compter depuis la même horloge partout, sinon les deux moitiés du
+ * client vivent à des dates différentes sans que rien ne le signale.
+ */
+describe('horloge de la salle', () => {
+  /** Sans horloge injectée : comme en salle, où il n'y en a qu'une. */
+  const enSalle = () => {
+    const runtime = new RoomRuntime(store)
+    runtime.setRoomId(TRACK_1)
+    runtime.setProgram('hash-1', program)
+    return runtime
+  }
+
+  it('donne la même heure au cœur applicatif et aux pages', () => {
+    const runtime = enSalle()
+
+    runtime.setServerTime('2026-10-30T10:20:00.000Z')
+
+    const vuParUnePage = Date.now() + runtime.state().serverTimeOffsetMs
+    expect(Math.abs(vuParUnePage - runtime.correctedNow())).toBeLessThan(50)
+    expect(new Date(runtime.correctedNow()).toISOString()).toMatch(/^2026-10-30T10:20/)
+  })
+
+  it('laisse l\'heure du hub reprendre la main sur une heure simulée locale', () => {
+    /**
+     * Le défaut signalé : une salle lancée en heure simulée, puis raccordée à
+     * un hub lui aussi simulé, cumulait les deux écarts. La régie cherchait ses
+     * conférences des semaines après la fin de l'événement — « aucune
+     * conférence à piloter » — pendant que le flux des autres salles, calculé
+     * dans la page, tombait juste.
+     */
+    const runtime = enSalle()
+    runtime.setClockOffset(Date.parse('2026-10-30T16:00:00Z') - Date.now(), true)
+
+    runtime.setServerTime('2026-10-30T10:20:00.000Z')
+
+    expect(new Date(runtime.correctedNow()).toISOString()).toMatch(/^2026-10-30T10:20/)
+    // Et la conférence en cours suit, sans attendre le tic d'horloge suivant.
+    expect(runtime.state().currentSession?.title).toContain('HoneySwamp')
+  })
+
+  it('recalcule la timeline dès que l\'heure bouge', () => {
+    // Attendre le tic laisserait l'écran désigner le mauvais talk pendant 5 s.
+    const runtime = enSalle()
+
+    runtime.setServerTime('2026-10-30T07:00:00.000Z')
+    const matin = runtime.state().currentSession?.title
+
+    runtime.setServerTime('2026-10-30T10:20:00.000Z')
+
+    expect(runtime.state().currentSession?.title).toContain('HoneySwamp')
+    expect(runtime.state().currentSession?.title).not.toBe(matin)
+  })
+})
+
+/**
+ * Bandeau des scènes live.
+ *
+ * Il se superpose à la vidéo au lieu de prendre l'écran : c'est toute la
+ * différence avec un message diffusé au public, et la raison d'être d'une
+ * surface séparée.
+ */
+describe('bandeau live', () => {
+  it('affiche un bandeau sans rien interrompre', async () => {
+    const runtime = makeRuntime()
+    await runtime.applyCommand(command({ type: 'display.set', mode: 'programme' }))
+
+    await runtime.applyCommand(
+      command({ type: 'overlay.set', message: { text: 'Reprise dans 5 min', level: 'info' } }),
+    )
+
+    expect(runtime.state().liveMessage).toMatchObject({ text: 'Reprise dans 5 min', level: 'info' })
+    // Ni l'écran de salle ni la scène ne bougent : le talk continue dessous.
+    expect(runtime.state().mode).toBe('programme')
+    expect(runtime.state().message).toBeNull()
+  })
+
+  it('se retire sur ordre de la console', async () => {
+    const runtime = makeRuntime()
+    await runtime.applyCommand(
+      command({ type: 'overlay.set', message: { text: 'Micro en panne', level: 'warning' } }),
+    )
+
+    await runtime.applyCommand(command({ type: 'overlay.set', message: null }))
+
+    expect(runtime.state().liveMessage).toBeNull()
+  })
+
+  it('expire tout seul quand il a une durée', async () => {
+    const runtime = makeRuntime()
+    await runtime.applyCommand(
+      command({ type: 'overlay.set', message: { text: 'Bientôt', level: 'info' } }, 60),
+    )
+    expect(runtime.state().liveMessage).not.toBeNull()
+
+    clockMs += 61_000
+    runtime.expireMessage()
+
+    // Il ne ramène rien en se retirant : il ne s'était substitué à rien.
+    expect(runtime.state().liveMessage).toBeNull()
+    expect(runtime.state().mode).toBe('loop')
+  })
+})
+
+/**
+ * Question du public, canal distinct du bandeau.
+ *
+ * Les deux ont longtemps partagé `liveMessage`. Conséquence : un « on reprend
+ * dans 5 minutes » envoyé du hub s'affichait à la place de la question, et
+ * aucune surface ne pouvait montrer l'un sans risquer l'autre. Or ils ne vont
+ * pas au même endroit — la question a sa place dans la VOD, le message
+ * d'exploitation non.
+ */
+describe('question à l\'antenne', () => {
+  it('vit à côté du bandeau, sans le toucher', async () => {
+    const runtime = makeRuntime()
+    runtime.setQuestion('Et les faux positifs ?', 'Camille', runtime.state().targetSession?.id ?? null)
+
+    await runtime.applyCommand(
+      command({ type: 'overlay.set', message: { text: 'Reprise dans 5 min', level: 'info' } }),
+    )
+
+    // Le bandeau de la console n'écrase pas la question, et réciproquement.
+    expect(runtime.state().question).toMatchObject({ text: 'Et les faux positifs ?', author: 'Camille' })
+    expect(runtime.state().liveMessage).toMatchObject({ text: 'Reprise dans 5 min' })
+  })
+
+  it('n\'est jamais posée par une commande de bandeau', async () => {
+    const runtime = makeRuntime()
+
+    await runtime.applyCommand(
+      command({ type: 'overlay.set', message: { text: 'Micro en panne', level: 'warning' } }),
+    )
+
+    expect(runtime.state().question).toBeNull()
+  })
+
+  it('tombe au changement de conférence', () => {
+    // Sans ça, elle reste incrustée dans l'habillage de captation pendant que
+    // le speaker suivant s'installe — gravée dans sa VOD, adressée à un autre.
+    const runtime = makeRuntime()
+    const talk = runtime.state().targetSession!
+    runtime.setQuestion('Et les faux positifs ?', null, talk.id)
+
+    clockMs = talk.endsAtMs! + 20 * 60_000
+    runtime.refreshSessions()
+
+    expect(runtime.state().targetSession?.id).not.toBe(talk.id)
+    expect(runtime.state().question).toBeNull()
+  })
+
+  it('reste tant que la conférence pilotée ne change pas', () => {
+    const runtime = makeRuntime()
+    const talk = runtime.state().targetSession!
+    runtime.setQuestion('Et les faux positifs ?', null, talk.id)
+
+    clockMs += 60_000
+    runtime.refreshSessions()
+
+    expect(runtime.state().question).not.toBeNull()
+  })
+
+  it('se retire depuis la régie', () => {
+    const runtime = makeRuntime()
+    runtime.setQuestion('Et les faux positifs ?', null, null)
+
+    runtime.setQuestion(null, null, null)
+
+    expect(runtime.state().question).toBeNull()
   })
 })

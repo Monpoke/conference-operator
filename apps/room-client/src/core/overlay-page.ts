@@ -3,6 +3,13 @@ import { TAILWIND_CSS } from '@cloudnord/ui'
 /**
  * Habillage transparent superposé à la captation dans OBS-B.
  *
+ * **Tout ce qui est ici part dans le master.** Cette page est une source de la
+ * scène d'OBS-B : elle est incrustée dans l'enregistrement et dans le direct.
+ * Elle ne porte donc que ce qui a sa place dans une VOD — le titrage du talk
+ * et le logo de l'événement. Un témoin d'enregistrement y a figuré : utile à
+ * l'opérateur, mais gravé dans la vidéo livrée. Ce repère-là vit en régie,
+ * dans le panneau « Captation », où il ne coûte rien à personne.
+ *
  * Contraintes : fond réellement transparent (la Browser Source compose par
  * dessus la caméra et les slides), aucune animation coûteuse — la page tourne
  * pendant qu'OBS encode —, et une zone de titrage placée hors des tiers
@@ -37,17 +44,33 @@ export function renderOverlayPage(options: OverlayPageOptions = {}): string {
   /* Rien ne s'affiche tant qu'aucun talk n'est en cours. */
   #titrage { opacity: 0; transition: opacity .4s ease; }
   body[data-titrage="visible"] #titrage { opacity: 1; }
-  #rec { display: none; }
-  body[data-rec="true"] #rec { display: flex; }
+
+  /*
+   * Question du public.
+   *
+   * Elle **a** sa place dans le master, contrairement au bandeau de la console :
+   * une VOD où le speaker répond à une question qu'on n'a jamais lue est
+   * incompréhensible. Elle monte de son bord, comme le titrage apparaît du sien.
+   */
+  #question { opacity: 0; transform: translateY(1.5vh); transition: opacity .35s ease, transform .35s ease; }
+  body[data-question="visible"] #question { opacity: 1; transform: none; }
 </style>
 </head>
-<body class="font-sans text-white" data-titrage="masque" data-rec="false">
+<body class="font-sans text-white" data-titrage="masque" data-question="masque">
 ${etatInitial}
 <img id="logo" alt="" class="absolute right-[3vw] top-[5vh] h-[7vh] opacity-90" hidden>
 
-<div id="rec" class="absolute left-[3vw] top-[5vh] items-center gap-[1vh] rounded-full bg-black/55 px-[1.6vh] py-[.7vh] text-[2vh] font-medium tabular-nums backdrop-blur-sm">
-  <span class="block size-[1.6vh] rounded-full bg-alerte"></span>
-  <span id="rec-duree">00:00</span>
+<!--
+  Coin opposé au titrage : les deux peuvent être à l'écran en même temps — on
+  titre le speaker pendant qu'il répond — et ils ne doivent pas se recouvrir.
+-->
+<div id="question" class="absolute right-[3vw] bottom-[8vh] flex max-w-[34vw] items-stretch drop-shadow-[0_.6vh_1.6vh_rgba(0,0,0,.55)]">
+  <div class="w-[.9vh] rounded-l-[.45vh] bg-[var(--couleur)]"></div>
+  <div class="rounded-r-[.6vh] bg-[rgba(12,14,22,.88)] px-[2.2vh] py-[1.4vh] backdrop-blur-[2px]">
+    <div class="mb-[.6vh] text-[1.6vh] font-semibold tracking-[.12em] text-[var(--couleur)] uppercase">Question du public</div>
+    <div class="text-[2.5vh] leading-[1.25] font-semibold" id="question-texte"></div>
+    <div class="mt-[.5vh] text-[1.9vh] text-white/70" id="question-auteur" hidden></div>
+  </div>
 </div>
 
 <div id="titrage" class="absolute bottom-[8vh] left-[4vw] flex max-w-[60vw] items-stretch drop-shadow-[0_.6vh_1.6vh_rgba(0,0,0,.55)]">
@@ -61,18 +84,36 @@ ${etatInitial}
 
 <script>
 (() => {
-  let dernier = null
-
   const texte = (id, valeur) => { document.getElementById(id).textContent = valeur ?? '' }
 
   function rendre(donnees) {
-    dernier = donnees
     const session = donnees.state.currentSession
     const racine = document.documentElement.style
 
     if (donnees.event?.theme?.color) racine.setProperty('--couleur', donnees.event.theme.color)
     const logo = document.getElementById('logo')
     if (donnees.event?.logoUrl) { logo.src = donnees.event.logoUrl; logo.hidden = false }
+
+    /**
+     * Question à l'antenne.
+     *
+     * Rendue **avant** le titrage et hors de sa condition : elle ne dépend pas
+     * qu'un talk soit titrable, et surtout le titrage sort par un retour
+     * anticipé — la placer après l'aurait laissée figée sur la question
+     * précédente entre deux conférences.
+     *
+     * Lit la question, et jamais le bandeau de la console : ce qui est ici part
+     * dans le master, et les consignes d'exploitation de la console n'ont rien
+     * à faire dans une VOD.
+     */
+    const question = donnees.state.question
+    document.body.dataset.question = question == null ? 'masque' : 'visible'
+    if (question != null) {
+      texte('question-texte', question.text)
+      const auteur = document.getElementById('question-auteur')
+      auteur.hidden = !question.author
+      texte('question-auteur', question.author)
+    }
 
     // Pas de talk, ou créneau sans intervenant : rien à titrer.
     const titrable = session != null && session.kind === 'talk'
@@ -88,25 +129,20 @@ ${etatInitial}
     if (session.category) categorie.textContent = session.category.name
   }
 
-  function tic() {
-    document.body.dataset.rec = String(dernier?.state.recording === true)
-  }
-  setInterval(tic, 1000)
-
   // Le flux n'envoie que ce qui change : on garde l'etat courant et on fusionne.
   // Un message complet (a l'ouverture, et apres chaque reconnexion) le remplace.
   let etatCourant = {}
   const embarque = document.getElementById('etat-initial')
-  if (embarque) { etatCourant = JSON.parse(embarque.textContent); rendre(etatCourant); tic() }
+  if (embarque) { etatCourant = JSON.parse(embarque.textContent); rendre(etatCourant) }
 
   if (typeof EventSource !== 'undefined' && !window.__APERCU__) {
     const flux = new EventSource('/display/state?vue=overlay')
     flux.onmessage = (evenement) => {
-      etatCourant = JSON.parse(evenement.data); rendre(etatCourant); tic()
+      etatCourant = JSON.parse(evenement.data); rendre(etatCourant)
     }
     flux.addEventListener("delta", (evenement) => {
       etatCourant = Object.assign({}, etatCourant, JSON.parse(evenement.data))
-      rendre(etatCourant); tic()
+      rendre(etatCourant)
     })
   }
 })()

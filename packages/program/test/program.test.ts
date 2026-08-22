@@ -8,6 +8,7 @@ import {
   formatSessionRange,
   nextSession,
   normalizeProgram,
+  openFeedbackUrl,
   programSchema,
   roomTimelinePosition,
   sessionsForRoom,
@@ -145,5 +146,38 @@ describe('programSchema — validation du modèle normalisé', () => {
   it('rejette un snapshot corrompu plutôt que de l\'afficher', () => {
     const corrupted = { ...program, sessions: [{ id: 'x' }] }
     expect(() => programSchema.parse(corrupted)).toThrow()
+  })
+})
+
+/**
+ * Adresse OpenFeedback, fabriquée sans réseau.
+ *
+ * Le QR projeté en salle et le lien affiché dans la console sortent d'ici tous
+ * les deux : s'ils divergeaient, le public noterait un talk et le speaker en
+ * lirait un autre.
+ */
+describe('lien OpenFeedback', () => {
+  const program = normalizeProgram(rawFixture)
+  const session = program.sessions.find((s) => s.id === 'cmqav0qto03qe01nsitbr18cn')!
+
+  it('suit la route publique /{projet}/{jour}/{session}', () => {
+    expect(openFeedbackUrl(session, 'cloud-nord-2026', program.timezone)).toBe(
+      `https://openfeedback.io/cloud-nord-2026/2026-10-30/${session.id}`,
+    )
+  })
+
+  it('date le créneau dans le fuseau de l\'événement, pas en UTC', () => {
+    // 23:30 à Paris le 30 octobre, c'est le 30 — mais 22:30 UTC. Lire le jour
+    // en UTC ferait tomber le lien sur une page inexistante une fois sur deux
+    // en soirée.
+    const tardif = { id: 'tardif', startsAt: '2026-10-30T23:30:00+01:00' }
+    expect(openFeedbackUrl(tardif, 'cloud-nord-2026', 'Europe/Paris')).toContain('/2026-10-30/')
+  })
+
+  it('ne fabrique rien sans projet configuré', () => {
+    // Pas de lien vaut mieux qu'un lien mort : il finirait en QR devant deux
+    // cents personnes.
+    expect(openFeedbackUrl(session, null, program.timezone)).toBeNull()
+    expect(openFeedbackUrl(session, '   ', program.timezone)).toBeNull()
   })
 })

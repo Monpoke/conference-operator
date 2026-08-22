@@ -4,10 +4,24 @@ import { createHub } from './server.js'
 const config = loadConfig()
 const hub = await createHub(config)
 
-if (config.programSourceUrl != null && hub.services.programs.active() == null) {
+/**
+ * Source du programme : le réglage fait foi, l'environnement l'amorce.
+ *
+ * `PROGRAM_SOURCE_URL` ne sert qu'au tout premier démarrage, quand la base est
+ * vide. Ensuite c'est la console qui décide : une URL corrigée en cours
+ * d'événement doit survivre au redémarrage qui suit, et un `.env` figé la
+ * réécraserait à chaque fois.
+ */
+const reglages = hub.services.settings.get()
+const sourceProgramme = reglages.programSourceUrl ?? config.programSourceUrl ?? null
+if (reglages.programSourceUrl == null && sourceProgramme != null) {
+  hub.services.settings.update({ programSourceUrl: sourceProgramme })
+}
+
+if (sourceProgramme != null && hub.services.programs.active() == null) {
   // Premier démarrage : un hub sans programme ne sert à rien, autant l'importer
   // tout de suite plutôt que d'attendre une action manuelle dans l'admin.
-  const snapshot = await hub.services.programs.importFrom(config.programSourceUrl)
+  const snapshot = await hub.services.programs.importFrom(sourceProgramme)
   const { created } = hub.services.rooms.ensureFromTracks(snapshot.program.rooms)
   hub.app.log.info(
     {

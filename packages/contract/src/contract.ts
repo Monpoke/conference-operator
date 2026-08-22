@@ -1,7 +1,7 @@
 import { eventIterator, oc } from '@orpc/contract'
 import { z } from 'zod'
 import { programSchema } from '@cloudnord/program'
-import { commandSchema } from './commands.js'
+import { bandeauSchema, commandSchema } from './commands.js'
 import { envelopeSchema, ingestResultSchema } from './events.js'
 import {
   isoDateTimeSchema,
@@ -11,6 +11,7 @@ import {
 } from './primitives.js'
 import {
   hubSettingsSchema,
+  roomConfigPatchSchema,
   roomConfigSchema,
   roomStatusSchema,
   sessionStateSchema,
@@ -27,6 +28,39 @@ import { commentSchema, commentSourceSchema, questionSchema } from './wall.js'
  *
  * Une seule définition, aucune duplication : validé par `spikes/orpc-v2`.
  */
+
+/** Ce qu'une surface publique a besoin de savoir d'une conférence. */
+const sessionApercuSchema = z.object({
+  id: sessionIdSchema,
+  title: z.string(),
+  speakers: z.array(z.string()),
+  startsAt: isoDateTimeSchema,
+  endsAt: isoDateTimeSchema.nullable(),
+})
+
+/**
+ * Une ligne du planning, telle que la console la relit.
+ *
+ * Volontairement plus large que `sessionApercuSchema` : la console affiche le
+ * programme **entier**, pauses comprises, et pas seulement ce qui court en ce
+ * moment dans une salle.
+ */
+const planningSessionSchema = sessionApercuSchema.extend({
+  roomId: roomIdSchema.nullable(),
+  /** Le nom de la salle, pas son identifiant : c'est ce qui est écrit sur la porte. */
+  roomName: z.string().nullable(),
+  /** `break` = créneau sans intervenant : accueil, pause, déjeuner. */
+  kind: z.enum(['talk', 'break']),
+  /**
+   * Lien « notez ce talk » sur OpenFeedback.
+   *
+   * Résolu par le hub et non par la console : l'adresse se déduit du programme
+   * et du projet réglé sur la salle, deux choses que la console n'a pas. `null`
+   * sur une pause ou sans projet configuré — un lien mort scanné par le public
+   * coûte plus cher qu'une case vide.
+   */
+  feedbackUrl: z.url().nullable(),
+})
 
 export const contract = {
   meta: {
@@ -68,6 +102,37 @@ export const contract = {
       ),
     ),
     activate: oc.input(z.object({ contentHash: z.string() })).output(z.object({ ok: z.boolean() })),
+    /**
+     * Le programme actif, à plat et prêt à afficher. Admin.
+     *
+     * Le hub détient déjà le programme ; sans cette procédure, la console ne
+     * connaît que les conférences **démarrées** et ne peut pas répondre à « et
+     * après, il y a quoi ». Renvoyé à plat plutôt que le `programSchema`
+     * complet : les biographies, les logos de sponsors et les visuels pèsent
+     * l'essentiel des 70 ko d'un snapshot, et rien de tout cela ne s'affiche
+     * dans un planning.
+     */
+    planning: oc.output(
+      z.object({
+        /** Version affichée : la même que dans la liste des snapshots. `null` si aucun programme. */
+        contentHash: z.string().nullable(),
+        /** Fuseau de l'événement : les heures se lisent là-bas, pas sur le PC de la console. */
+        timezone: z.string(),
+        /**
+         * Heure du hub au moment de la lecture.
+         *
+         * C'est elle qui désigne le créneau surligné « maintenant ». Prise ici
+         * et non dans le navigateur pour la même raison que `remainingMs` :
+         * l'horloge du hub peut être simulée, et c'est elle qui fait foi — un
+         * surlignage calculé sur l'heure du poste pointerait un créneau de la
+         * semaine dernière pendant qu'on déroule la journée depuis le menu
+         * Développement.
+         */
+        serverTime: isoDateTimeSchema,
+        rooms: z.array(z.object({ id: roomIdSchema, name: z.string() })),
+        sessions: z.array(planningSessionSchema),
+      }),
+    ),
   },
 
   rooms: {
@@ -84,6 +149,36 @@ export const contract = {
     sync: oc
       .input(z.object({ since: z.string().nullable() }))
       .output(syncResultSchema),
+    /**
+     * Réglage d'une salle par elle-même.
+     *
+     * Le hub reste la source de vérité — c'est lui qui repousse la config à
+     * chaque `sync`, et une modification gardée en local serait écrasée au
+     * suivant. Mais la saisie, elle, a sa place en salle : les adresses des
+     * deux OBS et les noms de scènes se constatent devant les machines, pas
+     * depuis une console à l'autre bout du bâtiment.
+     *
+     * Bornée à la salle appelante par `roomOnly` : le contexte porte le
+     * `roomId`, il n'est pas dans l'entrée, donc aucune salle ne peut en
+     * configurer une autre.
+     */
+    configure: oc.input(roomConfigPatchSchema).output(roomConfigSchema),
+    /**
+     * Conférence en cours et suivante d'une salle. **Publique.**
+     *
+     * Le mur s'en sert pour dire au participant ce qu'il est en train
+     * d'écouter : sans ça, « posez votre question » ne dit pas à propos de
+     * quoi, et les questions arrivent en régie sans qu'on sache à quel talk
+     * les rattacher. Ces titres sont déjà publics — ils sont projetés.
+     */
+    current: oc
+      .input(z.object({ roomId: roomIdSchema }))
+      .output(
+        z.object({
+          current: sessionApercuSchema.nullable(),
+          next: sessionApercuSchema.nullable(),
+        }),
+      ),
     /** Supervision des salles dans l'admin. */
     statuses: oc.output(z.array(roomStatusSchema)),
     /**
@@ -92,6 +187,60 @@ export const contract = {
      * par un paramètre d'entrée.
      */
     commands: oc.output(eventIterator(commandSchema)),
+  },
+
+  /**
+   * Bandeau des scènes live.
+   *
+   * Une surface à part, et non un mode de plus sur l'écran de salle : le
+   * bandeau se superpose à la vidéo sans rien interrompre, là où un message
+   * d'écran remplace tout. Les deux servent à des moments différents.
+   */
+  overlay: {
+    /** Met un bandeau à l'antenne. `roomId` nul = toutes les salles. */
+    show: oc
+      .input(
+        z.object({
+          roomId: roomIdSchema.nullable(),
+          message: bandeauSchema,
+          /** Durée d'affichage. `null` = jusqu'à ce qu'on le retire. */
+          ttlSeconds: z.number().int().positive().max(3600).nullable().default(null),
+        }),
+      )
+      .output(z.object({ ok: z.boolean() })),
+
+    /** Retire le bandeau. */
+    hide: oc
+      .input(z.object({ roomId: roomIdSchema.nullable() }))
+      .output(z.object({ ok: z.boolean() })),
+
+    /**
+     * Ce qui est déjà passé à l'antenne, du plus récent au plus ancien.
+     *
+     * Lu dans les commandes émises : elles sont déjà persistées et datées, et
+     * en tenir une seconde copie ne pourrait que diverger. Sert à remettre un
+     * bandeau sans le retaper — un « on reprend dans 5 minutes » ressort
+     * plusieurs fois dans une journée.
+     */
+    history: oc
+      .input(
+        z.object({
+          roomId: roomIdSchema.nullable().default(null),
+          limit: z.number().int().min(1).max(100).default(20),
+        }),
+      )
+      .output(
+        z.array(
+          z.object({
+            seq: z.number().int(),
+            roomId: roomIdSchema.nullable(),
+            message: bandeauSchema,
+            issuedAt: isoDateTimeSchema,
+            /** Ce bandeau est-il celui qui est à l'antenne en ce moment ? */
+            visible: z.boolean(),
+          }),
+        ),
+      ),
   },
 
   /**
@@ -190,7 +339,14 @@ export const contract = {
   },
 
   wall: {
-    /** Dépôt public depuis le mobile (QR). Passe par la modération. */
+    /**
+     * Dépôt public depuis le mobile (QR). Passe par la modération.
+     *
+     * `roomId` nul — ce qu'envoie le mur public — vaut « toutes les salles » :
+     * un message du public s'adresse à l'événement, pas à la pièce où son
+     * auteur se trouve. Le champ reste là pour les sources qui, elles, savent
+     * de quelle salle elles parlent.
+     */
     post: oc
       .input(
         z.object({
@@ -204,6 +360,21 @@ export const contract = {
     feed: oc
       .input(z.object({ roomId: roomIdSchema.nullable() }))
       .output(eventIterator(commentSchema)),
+    /**
+     * Derniers messages déjà à l'écran. **Publique.**
+     *
+     * Sert au mur sur mobile : sans elle, déposer un message revenait à parler
+     * dans le vide — rien ne montrait que d'autres écrivaient, ni que ça
+     * finissait réellement projeté. Ces messages sont déjà publics au sens le
+     * plus fort du terme : ils sont affichés en grand dans les salles.
+     *
+     * Servie depuis l'instantané mémoire du hub, comme le flux : le mur est la
+     * seule charge non bornée de la journée — quelques centaines de mobiles
+     * quand le QR est à l'écran — et elle ne doit pas se traduire en requêtes.
+     */
+    recent: oc
+      .input(z.object({ limit: z.number().int().min(1).max(30).default(12) }))
+      .output(z.array(commentSchema)),
     /** File de modération, toutes sources confondues. Admin. */
     pending: oc
       .input(z.object({ source: commentSourceSchema.optional() }))

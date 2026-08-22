@@ -47,6 +47,26 @@ export function renderWallPage({ roomId, rooms }: WallPageOptions): string {
 <header class="pt-[22px] pb-3.5">
   <h1 class="text-[21px] font-bold">Cloud Nord 2026</h1>
   <div class="mt-1 text-sm text-attenue" id="salle"></div>
+
+  <!--
+    Choix de la salle, sur la page.
+
+    Le QR de chaque salle porte déjà la sienne, mais un participant arrive
+    aussi par un lien partagé, ou change de salle entre deux talks. Sans ce
+    choix, il tombait sur « Ouvrez le lien de votre salle » sans savoir quoi
+    ouvrir — et sa question restait dans sa tête.
+
+    Il ne concerne **que** les questions : le mur, lui, est commun à tout
+    l'événement. D'où sa place dans l'onglet Questions plutôt que dans l'en-tête.
+  -->
+
+  <!-- Ce qu'il écoute en ce moment : « posez votre question » doit dire à
+       propos de quoi, et la question arrive en régie rattachée au bon talk. -->
+  <div class="mt-2.5 rounded-[10px] border border-bord bg-surface p-3" id="talk" hidden>
+    <div class="text-[11px] tracking-[.1em] text-attenue uppercase" id="talk-quand">En ce moment</div>
+    <div class="mt-1 text-[15px] leading-snug font-semibold" id="talk-titre"></div>
+    <div class="mt-0.5 text-[13px] text-attenue" id="talk-qui"></div>
+  </div>
 </header>
 
 <div class="onglets my-3.5 flex gap-1.5">
@@ -55,20 +75,51 @@ export function renderWallPage({ roomId, rooms }: WallPageOptions): string {
 </div>
 
 <section id="vue-mur">
+  <!--
+    Ce que devient le message, dit avant de l'écrire.
+
+    C'est la promesse de la page : on n'écrit pas dans une boîte à idées, on
+    écrit sur les écrans de l'événement. Le dire après le formulaire — ce que
+    faisait la version précédente, en petit et en gris — revenait à ne pas le
+    dire : personne ne lit sous un bouton qu'il vient d'appuyer.
+  -->
+  <div class="mb-3.5 rounded-[12px] border border-marque/40 bg-[color-mix(in_srgb,var(--color-marque)_12%,transparent)] p-3.5">
+    <div class="text-[15px] leading-snug font-semibold">
+      Votre message s'affiche <span class="text-marque">dans toutes les salles</span>
+    </div>
+    <div class="mt-1 text-[13px] leading-relaxed text-attenue" id="portee">
+      Projeté sur les écrans de l'événement, après relecture.
+    </div>
+  </div>
+
   <form class="carte" id="form-message">
     <label for="auteur">Votre prénom</label>
     <input class="mb-3.5 rounded-[10px] p-[13px]" id="auteur" maxlength="80" autocomplete="given-name" required>
     <label for="message">Votre message</label>
     <textarea class="mb-3.5 w-full rounded-[10px] border border-bord bg-fond p-[13px] text-texte" id="message" maxlength="500" required></textarea>
     <div class="-mt-2.5 mb-3 text-right text-xs text-attenue"><span id="compteur-message">0</span>/500</div>
-    <button class="envoyer" type="submit">Envoyer</button>
+    <button class="envoyer" type="submit">Envoyer à l'événement</button>
   </form>
-  <div class="mt-3.5 text-[13px] leading-relaxed text-attenue">
-    Les messages sont relus avant d'apparaître sur l'écran de la salle.
+
+  <!--
+    Ce qui est déjà à l'écran.
+
+    Sans ça, déposer un message revenait à parler dans le vide : rien ne
+    montrait que d'autres écrivaient, ni que ça finissait réellement projeté.
+    C'est ce qui fait la différence entre un formulaire de contact et un mur.
+  -->
+  <div class="mt-5 flex items-baseline gap-2">
+    <h2 class="text-[13px] font-semibold tracking-[.1em] text-attenue uppercase">En ce moment sur les écrans</h2>
   </div>
+  <div class="mt-2.5 flex flex-col gap-2.5" id="liste-mur"></div>
 </section>
 
 <section id="vue-questions" hidden>
+  <!-- La salle ne sert qu'ici : une question s'adresse à un speaker précis,
+       dans une pièce précise, alors qu'un message du mur s'adresse à tous. -->
+  <label class="mb-1" for="choix-salle">Dans quelle salle êtes-vous ?</label>
+  <select class="mb-3.5 rounded-[10px] p-[11px]" id="choix-salle"></select>
+
   <form class="carte" id="form-question">
     <label for="question">Votre question au speaker</label>
     <textarea class="mb-3.5 w-full rounded-[10px] border border-bord bg-fond p-[13px] text-texte" id="question" maxlength="300" required></textarea>
@@ -98,8 +149,90 @@ export function renderWallPage({ roomId, rooms }: WallPageOptions): string {
   }
   const votes = new Set(JSON.parse(localStorage.getItem('cloudnord-votes') || '[]'))
 
-  const salle = rooms.find((r) => r.id === roomId)
-  $('salle').textContent = salle ? salle.name : 'Toutes salles'
+  /**
+   * Salle courante.
+   *
+   * Trois sources, dans cet ordre : le lien scanné, le dernier choix de ce
+   * téléphone, puis rien. Le choix est mémorisé parce qu'un participant reste
+   * dans la même salle plusieurs talks d'affilée, et rescanner à chaque fois
+   * pour poser une question n'arriverait jamais.
+   */
+  let salleCourante = roomId || localStorage.getItem('cloudnord-salle') || ''
+  if (!rooms.some((r) => r.id === salleCourante)) salleCourante = ''
+
+  const choix = $('choix-salle')
+  choix.innerHTML = '<option value="">Choisissez votre salle…</option>' +
+    rooms.map((r) => '<option value="' + r.id + '">' + r.name + '</option>').join('')
+  choix.value = salleCourante
+
+  function majSalle(valeur) {
+    salleCourante = valeur
+    choix.value = valeur
+    const salle = rooms.find((r) => r.id === valeur)
+    // La salle ne qualifie plus que les questions : le mur est commun à
+    // l'événement, et laisser un nom de salle en tête de page laissait croire
+    // qu'on écrivait à cette salle-là.
+    $('salle').textContent = salle
+      ? 'Questions — ' + salle.name
+      : 'Mur commun à toutes les salles'
+    if (valeur) localStorage.setItem('cloudnord-salle', valeur)
+    // L'adresse suit, pour que la page partagée ou rechargée reste la bonne.
+    const url = new URL(location.href)
+    if (valeur) url.searchParams.set('salle', valeur)
+    else url.searchParams.delete('salle')
+    history.replaceState(null, '', url)
+    void rafraichirTalk()
+    if (!$('vue-questions').hidden) void rafraichirQuestions()
+  }
+
+  choix.onchange = (evenement) => majSalle(evenement.target.value)
+
+  /**
+   * Conférence à laquelle se rattachent les questions.
+   *
+   * Celle en cours, ou à défaut la suivante : une question posée pendant la
+   * pause qui précède un talk le vise, et la rattacher à rien la rendrait
+   * invisible de tous — de la régie comme des autres participants.
+   */
+  let sessionCourante = null
+  /** Son titre, pour dire de quoi la liste parle. */
+  let titreCourant = null
+
+  /** Conférence en cours dans la salle choisie, relue régulièrement. */
+  async function rafraichirTalk() {
+    const bloc = $('talk')
+    if (!salleCourante) { bloc.hidden = true; return }
+    try {
+      const { current, next } = await appeler('rooms/current', { roomId: salleCourante })
+      const session = current || next
+      const avant = sessionCourante
+      sessionCourante = session ? session.id : null
+      titreCourant = session ? session.title : null
+      if (!session) { bloc.hidden = true; return }
+      bloc.hidden = false
+      $('talk-quand').textContent = current ? 'En ce moment' : 'À suivre'
+      $('talk-titre').textContent = session.title
+      $('talk-qui').textContent = session.speakers.join(' · ')
+      // La journée avance pendant que le téléphone reste posé sur la table :
+      // au changement de talk, la liste affichée doit suivre sans attendre son
+      // tour de rafraîchissement.
+      if (avant !== sessionCourante && !$('vue-questions').hidden) void rafraichirQuestions()
+    } catch {
+      // Le mur reste utilisable sans : ce bloc informe, il ne commande rien.
+      bloc.hidden = true
+    }
+  }
+
+  /** Portée du mur, dite avec le nombre réel de salles plutôt qu'en principe. */
+  $('portee').textContent = rooms.length > 1
+    ? 'Projeté sur les écrans des ' + rooms.length + ' salles, après relecture.'
+    : "Projeté sur les écrans de l'événement, après relecture."
+
+  majSalle(salleCourante)
+  void rafraichirMur()
+  // La journée avance pendant que la page reste ouverte sur un téléphone posé
+  // sur une table : sans relecture, elle annoncerait le talk d'il y a une heure.
+  setInterval(() => void rafraichirTalk(), 60_000)
 
   /** Le protocole oRPC en HTTP tient en un objet { json: ... } : pas besoin de client. */
   async function appeler(chemin, entree) {
@@ -127,7 +260,7 @@ export function renderWallPage({ roomId, rooms }: WallPageOptions): string {
   compteur('message', 'compteur-message')
   compteur('question', 'compteur-question')
 
-  $('onglet-mur').onclick = () => basculer(true)
+  $('onglet-mur').onclick = () => { basculer(true); rafraichirMur() }
   $('onglet-questions').onclick = () => { basculer(false); rafraichirQuestions() }
   function basculer(mur) {
     $('vue-mur').hidden = !mur
@@ -136,19 +269,63 @@ export function renderWallPage({ roomId, rooms }: WallPageOptions): string {
     $('onglet-questions').classList.toggle('actif', !mur)
   }
 
+  /**
+   * Ce qui est déjà projeté, relu régulièrement.
+   *
+   * C'est la moitié sociale du mur : sans elle, déposer un message revenait à
+   * parler dans le vide. Elle montre aussi, sans rien expliquer, ce qui passe
+   * la relecture et ce qui n'y passe pas.
+   */
+  async function rafraichirMur() {
+    const conteneur = $('liste-mur')
+    try {
+      const liste = await appeler('wall/recent', { limit: 12 })
+      conteneur.innerHTML = ''
+      if (liste.length === 0) {
+        const vide = document.createElement('div')
+        vide.className = 'rounded-[10px] border border-dashed border-bord p-4 text-center text-sm text-attenue'
+        vide.textContent = 'Rien encore. Le premier message de la journée peut être le vôtre.'
+        conteneur.appendChild(vide)
+        return
+      }
+      for (const message of liste) {
+        const carte = document.createElement('div')
+        carte.className = 'rounded-[10px] border border-bord bg-surface p-3'
+        const auteur = document.createElement('div')
+        auteur.className = 'mb-1 text-xs text-attenue'
+        // Le handle quand la source en a un : c'est ce qui distingue un post
+        // repris des réseaux d'un message déposé ici.
+        auteur.textContent = message.authorHandle
+          ? message.author + ' · ' + message.authorHandle
+          : message.author
+        const texte = document.createElement('div')
+        texte.className = 'text-[15px] leading-snug'
+        texte.textContent = message.text
+        carte.append(auteur, texte)
+        conteneur.appendChild(carte)
+      }
+    } catch {
+      // Silencieux : le mur reste utilisable sans, et un participant n'a rien
+      // à faire d'une erreur de rafraîchissement.
+    }
+  }
+
   $('form-message').onsubmit = async (evenement) => {
     evenement.preventDefault()
     const bouton = evenement.target.querySelector('button')
     bouton.disabled = true
     try {
       await appeler('wall/post', {
-        roomId,
+        // Toujours nul : un message du public s'adresse à l'événement, pas à la
+        // pièce où son auteur se trouve. Côté hub, une salle nulle vaut
+        // « toutes les salles » — c'est déjà ce que faisait un message social.
+        roomId: null,
         author: $('auteur').value.trim(),
         text: $('message').value.trim(),
       })
       $('message').value = ''
       $('compteur-message').textContent = '0'
-      avis('Message envoyé — il apparaîtra après relecture.')
+      avis('Envoyé — il apparaîtra sur les écrans après relecture.')
     } catch (cause) {
       avis(cause.message, true)
     } finally {
@@ -158,13 +335,15 @@ export function renderWallPage({ roomId, rooms }: WallPageOptions): string {
 
   $('form-question').onsubmit = async (evenement) => {
     evenement.preventDefault()
-    if (!roomId) { avis('Ouvrez le lien de votre salle pour poser une question.', true); return }
+    if (!salleCourante) { avis('Choisissez votre salle pour poser une question.', true); return }
     const bouton = evenement.target.querySelector('button')
     bouton.disabled = true
     try {
       await appeler('questions/post', {
-        roomId,
-        sessionId: null,
+        roomId: salleCourante,
+        // Rattachée au talk en cours : en régie, une question sans conférence
+        // ne dit pas à quoi elle répond.
+        sessionId: sessionCourante,
         author: $('auteur').value.trim() || null,
         text: $('question').value.trim(),
       })
@@ -193,12 +372,36 @@ export function renderWallPage({ roomId, rooms }: WallPageOptions): string {
   }
 
   async function rafraichirQuestions() {
-    if (!roomId) return
+    if (!salleCourante) return
+    const conteneur = $('liste-questions')
+    /**
+     * Les questions de **cette** conférence, jamais celles de la journée.
+     *
+     * À 16 h, la liste remontait encore les questions du talk de 10 h — les
+     * mieux votées, donc en tête — et le public votait pour des questions que
+     * plus personne ne poserait. Une question ne survit pas à son talk.
+     */
+    // Titre du talk posé en textContent et non concaténé dans du HTML : il
+    // vient de l'export amont, et le reste de cette page compose déjà en nœuds
+    // pour cette raison.
+    const vide = (texte) => {
+      conteneur.innerHTML = ''
+      const bloc = document.createElement('div')
+      bloc.className = 'py-[26px] text-center text-sm text-attenue'
+      bloc.textContent = texte
+      conteneur.appendChild(bloc)
+    }
+
+    if (!sessionCourante) {
+      vide('Aucune conférence annoncée dans cette salle pour le moment.')
+      return
+    }
     try {
-      const liste = await appeler('questions/list', { roomId, sessionId: null })
-      const conteneur = $('liste-questions')
+      const liste = await appeler('questions/list', { roomId: salleCourante, sessionId: sessionCourante })
       if (liste.length === 0) {
-        conteneur.innerHTML = '<div class="py-[26px] text-center text-sm text-attenue">Aucune question pour l\\'instant.</div>'
+        vide(titreCourant
+          ? 'Aucune question sur \\u00ab\\u00a0' + titreCourant + '\\u00a0\\u00bb pour l\\'instant.'
+          : 'Aucune question pour l\\'instant.')
         return
       }
       conteneur.innerHTML = ''
@@ -227,6 +430,9 @@ export function renderWallPage({ roomId, rooms }: WallPageOptions): string {
   }
 
   setInterval(() => { if (!$('vue-questions').hidden) rafraichirQuestions() }, 15_000)
+  // Le mur vit pendant qu'on le regarde : un téléphone posé sur une table doit
+  // voir arriver les messages des autres, sinon la page a l'air morte.
+  setInterval(() => { if (!$('vue-mur').hidden) rafraichirMur() }, 15_000)
 })()
 </script>
 </body>

@@ -40,18 +40,6 @@ export function renderProjectorPage(options: ProjectorPageOptions = {}): string 
   :root { --couleur: #5b7cfa; --secondaire: #22d3ee; --or: #d4a24c; }
   html, body { height: 100%; }
 
-  /*
-   * Arrivée d'une question projetée.
-   *
-   * Deux questions de longueurs différentes qui se substituent d'un coup ne se
-   * distinguent pas d'un écran qui se serait rafraîchi : la salle ne sait pas
-   * si elle a changé. Une entrée de trois dixièmes suffit à le dire.
-   */
-  @keyframes arrivee {
-    from { opacity: 0; transform: translateY(2vmin); }
-    to { opacity: 1; transform: none; }
-  }
-  .arrivee { animation: arrivee .32s ease both; }
   /* Curseur masqué : la page vit sur un vidéoprojecteur, pas sur un bureau. */
   body { overflow: hidden; cursor: none; }
 
@@ -254,7 +242,7 @@ ${etatInitial}
 <div id="halo" class="pointer-events-none absolute inset-0"></div>
 <div id="scene" class="absolute inset-0 flex flex-col gap-[3vmin] p-[4.5vmin]">
   <header class="flex flex-none items-center justify-between gap-[2vmin]">
-    <img id="logo" alt="" class="h-[7vmin] max-w-[30vw] object-contain" hidden>
+    <img id="logo" alt="" data-logo class="h-[7vmin] max-w-[30vw] object-contain" hidden>
     <div class="text-[2.6vmin] tracking-[.16em] text-attenue uppercase" id="nom-salle"></div>
   </header>
 
@@ -295,8 +283,19 @@ ${etatInitial}
     const racine = document.documentElement.style
     if (evenement.theme?.color) racine.setProperty('--couleur', evenement.theme.color)
     if (evenement.theme?.colorSecondary) racine.setProperty('--secondaire', evenement.theme.colorSecondary)
+    /*
+     * Posé une seule fois par URL.
+     *
+     * Le détourage remplace ensuite la source par l'image recadrée ; réaffecter
+     * l'originale à chaque état reçu la ferait réapparaître non détourée le
+     * temps d'une image.
+     */
     const logo = document.getElementById('logo')
-    if (evenement.logoUrl) { logo.src = evenement.logoUrl; logo.hidden = false }
+    if (evenement.logoUrl && logo.dataset.source !== evenement.logoUrl) {
+      logo.dataset.source = evenement.logoUrl
+      logo.src = evenement.logoUrl
+      logo.hidden = false
+    }
   }
 
   /**
@@ -651,10 +650,12 @@ ${etatInitial}
     if (question == null) {
       return '<div class="' + TITRE_MODE + '">Aucune question affichée</div>'
     }
-    // « arrivee » n'est posée qu'au changement de question : le rendu n'est
-    // réécrit que s'il diffère, donc l'animation ne se rejoue pas toute seule.
+    // Aucune animation posée ici : la couche entière entre à chaque réécriture,
+    // et le rendu n'est réécrit que s'il diffère. Une question qui change est
+    // donc déjà annoncée — en poser une seconde par-dessus faisait bouger le
+    // texte deux fois pour un seul événement.
     return '<div class="' + TITRE_MODE + '">Question du public</div>' +
-      '<div class="arrivee max-w-[80vmin] text-[6vmin] leading-snug font-semibold">' +
+      '<div class="max-w-[80vmin] text-[6vmin] leading-snug font-semibold">' +
       echapper(question.text) + '</div>' +
       (question.author
         ? '<div class="mt-[2vmin] text-[3vmin] text-attenue">' + echapper(question.author) + '</div>'
@@ -749,24 +750,51 @@ ${etatInitial}
     { duree: 12_000, dispo: (d) => (d.otherRooms ?? []).some((s) => s.session != null), rendre: rendreAutresSalles },
     { duree: 10_000, dispo: (d) => (d.socialLinks ?? []).length > 0, rendre: rendreReseaux },
   ]
+  /**
+   * Rang dans PAGES_BOUCLE, et non dans la liste des pages disponibles.
+   *
+   * C'est la correction d'un défaut discret : quand une page perdait son
+   * contenu — le dernier talk des autres salles se termine — ou en gagnait un
+   * au sync, la liste filtrée changeait de longueur et le même indice désignait
+   * soudain une autre page. L'écran changeait alors en plein milieu, en gardant
+   * l'échéance de la page précédente, et sans fondu puisque l'indice, lui,
+   * n'avait pas bougé. Un rang qui désigne toujours la même page ne peut pas
+   * glisser sous nos pieds.
+   */
   let boucleRang = 0
   let boucleJusqua = 0
-  // Rang et durée réellement affichés, après filtrage des pages vides : c'est
-  // sur eux que se décide un fondu enchaîné, et sur eux que se calent la jauge
-  // et le défilement du programme.
+  // Rang et durée réellement affichés : c'est sur eux que se décide un fondu
+  // enchaîné, et sur eux que se calent la jauge et le défilement du programme.
   let boucleRangAffiche = 0
   let boucleDuree = 0
 
   const pagesBoucle = (donnees) => PAGES_BOUCLE.filter((page) => page.dispo(donnees))
 
+  /**
+   * La première page qui a quelque chose à montrer, en partant de ce rang.
+   *
+   * Renvoie -1 quand aucune n'a rien — salle jamais synchronisée.
+   */
+  function pageDepuis(donnees, depart) {
+    for (let pas = 0; pas < PAGES_BOUCLE.length; pas += 1) {
+      const rang = (depart + pas) % PAGES_BOUCLE.length
+      if (PAGES_BOUCLE[rang].dispo(donnees)) return rang
+    }
+    return -1
+  }
+
   function rendreBoucle(donnees) {
-    const pages = pagesBoucle(donnees)
     // Rien à montrer nulle part — salle jamais synchronisée : les sponsors
     // disent au moins de quel événement il s'agit.
-    if (pages.length === 0) return rendreSponsors(donnees)
+    if (pageDepuis(donnees, boucleRang) === -1) return rendreSponsors(donnees)
+    const pages = pagesBoucle(donnees)
 
-    const rang = boucleRang % pages.length
-    const page = pages[rang]
+    const rang = pageDepuis(donnees, boucleRang)
+    // La page visée a pu se vider depuis la dernière bascule : on adopte celle
+    // qu'on affiche réellement, et on lui donne sa propre durée — sinon elle
+    // hériterait de l'échéance d'une page qui n'est plus à l'écran.
+    if (rang !== boucleRang) { boucleRang = rang; boucleJusqua = 0 }
+    const page = PAGES_BOUCLE[rang]
     if (boucleJusqua === 0) boucleJusqua = Date.now() + page.duree
     boucleRangAffiche = rang
     boucleDuree = page.duree
@@ -784,7 +812,8 @@ ${etatInitial}
      * dans le html le ferait changer à chaque seconde, et le moindre état reçu
      * relancerait un fondu enchaîné en plein milieu.
      */
-    const points = pages.map((_, index) => index === rang
+    const position = pages.indexOf(page)
+    const points = pages.map((_, index) => index === position
       ? '<span class="point actif" style="--duree:' + page.duree + 'ms"></span>'
       : '<span class="point"></span>').join('')
 
@@ -794,10 +823,10 @@ ${etatInitial}
 
   /** Passe à la page suivante, en sautant celles qui n'ont rien à dire. */
   function avancerBoucle(donnees) {
-    const pages = pagesBoucle(donnees)
-    if (pages.length === 0) { boucleJusqua = Date.now() + 5_000; return }
-    boucleRang = (boucleRang + 1) % pages.length
-    boucleJusqua = Date.now() + pages[boucleRang].duree
+    const rang = pageDepuis(donnees, (boucleRang + 1) % PAGES_BOUCLE.length)
+    if (rang === -1) { boucleJusqua = Date.now() + 5_000; return }
+    boucleRang = rang
+    boucleJusqua = Date.now() + PAGES_BOUCLE[rang].duree
   }
 
   function rendreMessage(donnees) {
@@ -957,7 +986,10 @@ ${etatInitial}
      * Toujours sur la couche vivante, jamais sur celle qui s'efface.
      */
     const vivante = contenu.querySelector('.calque:not(.sortante)')
-    detourerLogos(vivante)
+    // Le document entier, et non la seule couche : le logo de l'événement vit
+    // dans l'en-tête. Le résultat étant gardé par URL, le balayage ne coûte
+    // rien de plus.
+    detourerLogos(document)
     if (donnees.state.mode === 'loop') {
       poserJauge(vivante)
       poserDefilement(vivante)

@@ -88,9 +88,37 @@ function avancer(secondes: number): void {
   }
 }
 
+/**
+ * Le flux d'état, simulé.
+ *
+ * happy-dom ne fournit pas `EventSource`, si bien que la page sautait purement
+ * et simplement sa branche temps réel : rien ne vérifiait la fusion des deltas,
+ * qui est pourtant le chemin par lequel arrive **tout** changement pendant une
+ * pause. Le stub l'ouvre, et permet de pousser un delta à la seconde près.
+ */
+type FluxSimule = { deltas: (charge: Record<string, unknown>) => void }
+let flux: FluxSimule | null = null
+
+const VRAI_EVENTSOURCE = globalThis.EventSource
+
+function poserFlux(): void {
+  flux = null
+  globalThis.EventSource = class {
+    private ecouteurs: Record<string, (evenement: { data: string }) => void> = {}
+    constructor() {
+      flux = { deltas: (charge) => this.ecouteurs.delta?.({ data: JSON.stringify(charge) }) }
+    }
+    addEventListener(nom: string, fn: (evenement: { data: string }) => void): void {
+      this.ecouteurs[nom] = fn
+    }
+    close(): void {}
+  } as unknown as typeof EventSource
+}
+
 function poserMinuteurs(): void {
   MINUTEURS.length = 0
   decalage = 0
+  poserFlux()
   Date.now = () => VRAI_NOW.call(Date) + decalage
   globalThis.setInterval = ((fn: () => void, ms: number) => {
     // Seul le tic d'une seconde nous intéresse : c'est lui qui fait avancer la
@@ -106,6 +134,7 @@ function poserMinuteurs(): void {
 function rendreMinuteurs(): void {
   Date.now = VRAI_NOW
   globalThis.setInterval = VRAI_INTERVAL
+  globalThis.EventSource = VRAI_EVENTSOURCE
 }
 
 function monterEcran(payload: DisplayPayload = ETAT): void {
@@ -559,6 +588,53 @@ describe('boucle d\'attente', () => {
     avancer(13)
     const programme = vivante().querySelector('.point.actif') as HTMLElement
     expect(programme.style.getPropertyValue('--duree')).toBe('15000ms')
+  })
+
+  /**
+   * Une page qui apparaît ou disparaît en cours de boucle.
+   *
+   * Le rang désigne une page, pas une position dans la liste de celles qui ont
+   * du contenu. Sans cela, un sync qui ajoute une page — ou un dernier talk
+   * qui se termine dans une autre salle — décalait tout : l'écran changeait au
+   * milieu d'une page, en gardant l'échéance de la précédente, et sans fondu
+   * puisque la position, elle, n'avait pas bougé.
+   *
+   * C'est un cas de pause : exactement quand la boucle tourne devant la salle.
+   */
+  it("ne change pas de page quand une autre apparaît", () => {
+    monterEcran(enBoucle({ otherRooms: [] }))
+    // Sponsors 12 s, programme 15 s, puis les réseaux — « autres salles » étant
+    // sautée faute de contenu.
+    avancer(13)
+    avancer(16)
+    expect(vivante().textContent).toContain('Suivez Cloud Nord')
+
+    // Les autres salles reprennent : la page existe de nouveau, mais ce n'est
+    // pas une raison pour interrompre celle qu'on est en train de lire.
+    flux!.deltas({ otherRooms: AUTRES })
+
+    expect(vivante().textContent).toContain('Suivez Cloud Nord')
+    expect(vivante().textContent).not.toContain('Pendant ce temps')
+  })
+
+  it('donne sa propre durée à la page adoptée quand la sienne se vide', () => {
+    monterEcran(enBoucle())
+    // Sponsors 12 s, programme 15 s : à 28 s on est sur « autres salles »,
+    // affichée depuis une seconde, et qui doit durer douze secondes.
+    avancer(13)
+    avancer(15)
+    expect(vivante().textContent).toContain('Pendant ce temps')
+
+    // Le dernier talk d'à côté se termine : la page n'a plus rien à montrer.
+    // Les réseaux prennent la suite — avec leurs dix secondes à eux, pas le
+    // reliquat des douze de la page disparue.
+    flux!.deltas({ otherRooms: [] })
+    expect(vivante().textContent).toContain('Suivez Cloud Nord')
+
+    avancer(9)
+    expect(vivante().textContent).toContain('Suivez Cloud Nord')
+    avancer(1)
+    expect(vivante().textContent).toContain('Nos partenaires')
   })
 
   it('reste tenable sur une salle jamais synchronisée', () => {

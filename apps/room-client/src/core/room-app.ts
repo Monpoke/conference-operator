@@ -657,6 +657,7 @@ export class RoomApp implements ControlTarget {
           recording: salle.recording,
           outboxDepth: salle.outboxDepth,
           lastSeenAt: salle.lastSeenAt,
+          currentSessionId: salle.currentSessionId,
         }))
         this.roomStatusesAt = new Date().toISOString()
       } catch {

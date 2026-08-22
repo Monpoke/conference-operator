@@ -3,7 +3,7 @@ import { WebSocketServer, type WebSocket as NodeWebSocket } from 'ws'
 import { RPCHandler as FastifyRPCHandler } from '@orpc/server/fastify'
 import { RPCHandler as WebSocketRPCHandler } from '@orpc/server/websocket'
 import { createAuth, createAuthOptions, migrateAuth, type Auth } from './auth.js'
-import { configSchema, type ConfigInput } from './config.js'
+import { configSchema, dureeEnMs, type ConfigInput } from './config.js'
 import { openHubDatabase } from './db.js'
 import { router } from './router.js'
 import type { HubContext, Services } from './context.js'
@@ -23,7 +23,7 @@ import {
   type SocialSource,
 } from './services/social.js'
 import { renderWallPage } from './pages/wall-page.js'
-import { renderAdminPage } from './pages/admin-page.js'
+import { ALIAS_APPAIRAGE, cheminDeVue, renderAdminPage, vuesConsole } from './pages/admin-page.js'
 
 export interface Hub {
   app: FastifyInstance
@@ -48,7 +48,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   const config = configSchema.parse(input)
   const { sqlite, orm } = openHubDatabase(config.databasePath)
 
-  const devices = new DeviceService(orm)
+  const devices = new DeviceService(orm, dureeEnMs(config.deviceCodeTtl))
   const settings = new SettingsService(orm)
   const clock = mutableClock(config.simulatedTime ?? null)
   const services: Services = {
@@ -75,6 +75,15 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     onDeviceRequest: (clientId, scope) => devices.recordRequest(clientId, scope),
     isKnownClient: (clientId) => devices.isKnownClient(clientId),
     deviceInterval: config.devicePollInterval,
+    deviceCodeExpiresIn: config.deviceCodeTtl,
+    google:
+      config.googleClientId != null && config.googleClientSecret != null
+        ? {
+            clientId: config.googleClientId,
+            clientSecret: config.googleClientSecret,
+            hostedDomain: config.googleHostedDomain,
+          }
+        : undefined,
   })
   await migrateAuth(authOptions)
   const auth = createAuth(authOptions)
@@ -160,15 +169,37 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   /**
    * Console d'exploitation : modération, appairage, programme, supervision.
    *
-   * `/admin/devices` sert la même page : c'est l'adresse que Better Auth donne
-   * à la machine pendant l'appairage, avec le code en paramètre. La console le
+   * Une adresse par onglet, toutes servies par la même page : la console
+   * choisit sa vue au chargement, et le rafraîchissement, le favori et le
+   * bouton Retour retombent sur leurs pieds. Le serveur doit les connaître,
+   * sinon `/admin/moderation` rechargée répondrait 404.
+   *
+   * Les vues sont énumérées, pas prises au joker : `/admin/*` servirait la
+   * console sur n'importe quelle faute de frappe, qui s'ouvrirait alors sur
+   * l'exploitation sans dire que l'adresse n'existe pas. Et `developpement`
+   * n'est servie qu'en mode dev, comme elle n'est rendue qu'en mode dev.
+   *
+   * `/admin/devices` s'ajoute : c'est l'adresse que Better Auth donne à la
+   * machine pendant l'appairage, avec le code en paramètre. La console le
    * pré-remplit, ce qui évite de le recopier à la main depuis un écran de régie
    * à l'autre bout de la salle.
    */
-  for (const chemin of ['/admin', '/admin/devices']) {
+  const cheminsConsole = [
+    ...vuesConsole(config.mode === 'dev').map(cheminDeVue),
+    ALIAS_APPAIRAGE,
+  ]
+  for (const chemin of cheminsConsole) {
     app.get(chemin, async (_request, reply) => {
       reply.header('content-type', 'text/html; charset=utf-8')
-      return reply.send(renderAdminPage({ mode: config.mode, ignores: config.ignores }))
+      return reply.send(
+        renderAdminPage({
+          mode: config.mode,
+          ignores: config.ignores,
+          // Le bouton n'est rendu que si le hub sait s'en servir : proposer une
+          // connexion qui échoue au clic vaut moins que ne rien proposer.
+          google: config.googleClientId == null ? null : { domaine: config.googleHostedDomain },
+        }),
+      )
     })
   }
 

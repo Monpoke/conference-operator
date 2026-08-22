@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { openHubDatabase, type HubDatabase } from '../src/db.js'
 import { ProgramService } from '../src/services/program.js'
 import { CommandService } from '../src/services/commands.js'
@@ -14,6 +14,7 @@ const rawProgram = readFileSync(
 
 const TRACK_1 = 'track-1-teilhard-de-chardin'
 const CLIENT_ID = '01JB2ZK5T7QW9V0YHRXM3N4P6C'
+const AUTRE_CLIENT_ID = '01JB2ZK5T7QW9V0YHRXM3N4P6D'
 
 let db: HubDatabase
 beforeEach(() => {
@@ -237,11 +238,14 @@ describe('IngestService', () => {
   })
 })
 
+/** Trente minutes, la valeur par défaut de `DEVICE_CODE_TTL`. */
+const TTL_APPAIRAGE = 30 * 60_000
+
 describe('DeviceService', () => {
   it('lie une machine à une salle et la révoque sans toucher au compte', () => {
     const rooms = new RoomService(db)
     seedRoom(rooms)
-    const devices = new DeviceService(db)
+    const devices = new DeviceService(db, TTL_APPAIRAGE)
 
     devices.recordRequest(CLIENT_ID, 'room')
     expect(devices.pending().map((p) => p.clientId)).toEqual([CLIENT_ID])
@@ -256,11 +260,36 @@ describe('DeviceService', () => {
   })
 
   it('ignore une machine jamais appairée', () => {
-    expect(new DeviceService(db).roomFor('01ZZZZZZZZZZZZZZZZZZZZZZZZ')).toBeNull()
+    expect(new DeviceService(db, TTL_APPAIRAGE).roomFor('01ZZZZZZZZZZZZZZZZZZZZZZZZ')).toBeNull()
+  })
+
+  it('oublie une demande dont le code a expiré', () => {
+    vi.useFakeTimers()
+    try {
+      const devices = new DeviceService(db, 60_000)
+      devices.recordRequest(CLIENT_ID, 'room:' + TRACK_1)
+      expect(devices.pending()).toHaveLength(1)
+
+      // Rien ne l'effaçait : une machine réinstallée revient sous une nouvelle
+      // identité, et la file gardait l'ancienne indéfiniment.
+      vi.advanceTimersByTime(120_000)
+      expect(devices.pending()).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('oublie une demande précise, sans toucher aux autres', () => {
+    const devices = new DeviceService(db, TTL_APPAIRAGE)
+    devices.recordRequest(CLIENT_ID, undefined)
+    devices.recordRequest(AUTRE_CLIENT_ID, undefined)
+
+    devices.forget(CLIENT_ID)
+    expect(devices.pending().map((p) => p.clientId)).toEqual([AUTRE_CLIENT_ID])
   })
 
   it('filtre les `client_id` hors format ULID', () => {
-    const devices = new DeviceService(db)
+    const devices = new DeviceService(db, TTL_APPAIRAGE)
     expect(devices.isKnownClient(CLIENT_ID)).toBe(true)
     expect(devices.isKnownClient('machine-du-stagiaire')).toBe(false)
   })

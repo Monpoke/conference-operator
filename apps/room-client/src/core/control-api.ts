@@ -185,6 +185,15 @@ export interface ControlDiagnostics {
     recording: boolean
     outboxDepth: number
     lastSeenAt: string | null
+    /**
+     * Conférence que la salle pilote réellement, `null` si elle n'en pilote
+     * aucune.
+     *
+     * Distinct de ce que dit le programme : c'est la seule façon de savoir
+     * qu'une salle **déborde** — son créneau est fini, elle tourne encore. Le
+     * programme seul ne le dira jamais, il passe simplement au suivant.
+     */
+    currentSessionId: string | null
   }[]
   /** Instant du dernier rafraîchissement des salles, pour signaler une vue périmée. */
   roomsRefreshedAt: string | null

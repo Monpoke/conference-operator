@@ -105,8 +105,8 @@ const ETAT = {
       openFeedbackProjectId: 'cloud-nord-2026',
     },
     rooms: [
-      { roomId: 'track-1', name: 'Track #1', connectivity: 'ONLINE', sceneRole: 'HOLD', recording: false, outboxDepth: 0, lastSeenAt: new Date().toISOString() },
-      { roomId: 'track-2', name: 'Track #2', connectivity: 'OFFLINE', sceneRole: null, recording: false, outboxDepth: 7, lastSeenAt: null },
+      { roomId: 'track-1', name: 'Track #1', connectivity: 'ONLINE', sceneRole: 'HOLD', recording: false, outboxDepth: 0, lastSeenAt: new Date().toISOString(), currentSessionId: 'ses-1' },
+      { roomId: 'track-2', name: 'Track #2', connectivity: 'OFFLINE', sceneRole: null, recording: false, outboxDepth: 7, lastSeenAt: null, currentSessionId: null },
     ],
     roomsRefreshedAt: new Date().toISOString(),
   },
@@ -291,6 +291,68 @@ describe('encart de gauche', () => {
     expect(choix.hidden).toBe(false)
     const valeurs = [...choix.options].map((o) => o.value).filter(Boolean)
     expect(valeurs).toEqual(['track-2'])
+  })
+
+  /**
+   * Ce qui se joue à côté, à l'heure du hub.
+   *
+   * La modale déroulait une liste de créneaux sans dire où on en était : il
+   * fallait lire les horaires et faire le calcul de tête, en pleine régie.
+   */
+  it("surligne le créneau en cours de l'autre salle", async () => {
+    // Houston court de 11:10 à 11:50 chez la voisine.
+    monterRegie(a('2026-10-30T11:20:00Z'))
+    $('encart-autre').click()
+    const choix = $('choix-autre-salle') as HTMLSelectElement
+    choix.value = 'track-2'
+    choix.dispatchEvent(new Event('change'))
+    await attendreQue(() => $('encart-contenu').querySelector('.actuel') != null)
+
+    expect($('encart-contenu').querySelector('.actuel')?.textContent).toContain('Houston')
+  })
+
+  it("suit l'heure du hub, simulée comprise", async () => {
+    /**
+     * Le surlignage se calcule sur `serverTimeOffsetMs`, pas sur l'horloge de
+     * la machine : c'est ce qui permet de dérouler la journée du 30 octobre des
+     * mois à l'avance, et c'est là que le décalage se voit le plus vite.
+     */
+    monterRegie(a('2026-10-30T10:30:00Z'))
+    $('encart-autre').click()
+    const choix = $('choix-autre-salle') as HTMLSelectElement
+    choix.value = 'track-2'
+    choix.dispatchEvent(new Event('change'))
+    await attendreQue(() => $('encart-contenu').querySelector('.actuel') != null)
+
+    // À 10:30, c'est Blind ops — pas Houston, deux créneaux plus loin.
+    expect($('encart-contenu').querySelector('.actuel')?.textContent).toContain('Blind ops')
+  })
+
+  it("ne surligne rien avant le début de la journée d'à côté", async () => {
+    monterRegie(a('2026-10-30T08:00:00Z'))
+    $('encart-autre').click()
+    const choix = $('choix-autre-salle') as HTMLSelectElement
+    choix.value = 'track-2'
+    choix.dispatchEvent(new Event('change'))
+    await attendreQue(() => ($('encart-contenu').textContent ?? '').includes('Blind ops'))
+
+    // Surligner le premier créneau par défaut ferait croire qu'il a commencé.
+    expect($('encart-contenu').querySelector('.actuel')).toBeNull()
+  })
+
+  /**
+   * La pastille des salles portait la seule connectivité : une salle verte
+   * pouvait déborder de dix minutes sans que rien ne le dise.
+   */
+  it('peint la conférence sur la pastille des salles', async () => {
+    monterRegie(a('2026-10-30T11:20:00Z'))
+    $('encart-salles').click()
+    await attendreQue(() => $('encart-contenu').querySelectorAll('.pastille').length > 0)
+
+    // Track #2 ne répond plus : pastille creuse, et on le dit.
+    const texte = $('encart-contenu').textContent ?? ''
+    expect(texte).toContain('salle muette')
+    expect($('encart-contenu').innerHTML).toContain('muette')
   })
 
   it('n\'affiche le sélecteur que sur l\'onglet concerné', () => {

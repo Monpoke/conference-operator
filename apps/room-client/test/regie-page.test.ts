@@ -105,8 +105,8 @@ const ETAT = {
       openFeedbackProjectId: 'cloud-nord-2026',
     },
     rooms: [
-      { roomId: 'track-1', name: 'Track #1', connectivity: 'ONLINE', sceneRole: 'HOLD', recording: false, outboxDepth: 0, lastSeenAt: new Date().toISOString(), currentSessionId: 'ses-1' },
-      { roomId: 'track-2', name: 'Track #2', connectivity: 'OFFLINE', sceneRole: null, recording: false, outboxDepth: 7, lastSeenAt: null, currentSessionId: null },
+      { roomId: 'track-1', name: 'Track #1', connectivity: 'ONLINE', sceneRole: 'HOLD', recording: false, outboxDepth: 0, lastSeenAt: new Date().toISOString(), currentSessionId: 'ses-1', conference: 'en-cours' },
+      { roomId: 'track-2', name: 'Track #2', connectivity: 'OFFLINE', sceneRole: null, recording: false, outboxDepth: 7, lastSeenAt: null, currentSessionId: null, conference: 'en-cours' },
     ],
     roomsRefreshedAt: new Date().toISOString(),
   },
@@ -355,6 +355,50 @@ describe('encart de gauche', () => {
     expect($('encart-contenu').innerHTML).toContain('muette')
   })
 
+  /** Vue du hub avec un état de conférence choisi pour Track #2. */
+  function avecEtatHub(conference: string, refreshedAt = new Date().toISOString()): DisplayPayload {
+    return {
+      ...ETAT,
+      state: { ...ETAT.state, serverTimeOffsetMs: Date.parse('2026-10-30T10:20:00Z') - Date.now() },
+      diagnostics: {
+        ...ETAT.diagnostics,
+        rooms: (ETAT.diagnostics?.rooms ?? []).map((salle: Record<string, unknown>) =>
+          salle.roomId === 'track-2'
+            ? { ...salle, connectivity: 'ONLINE', conference }
+            : salle),
+        roomsRefreshedAt: refreshedAt,
+      },
+    } as unknown as DisplayPayload
+  }
+
+  it('reprend du hub ce que la régie ne peut pas savoir', async () => {
+    /**
+     * Le cycle de vie des conférences d'à côté n'arrive pas jusqu'ici : seul le
+     * hub sait qu'un créneau a commencé sans que personne ne l'ait lancé. Tant
+     * que sa vue est fraîche, c'est elle qui fait foi.
+     */
+    monterRegie(avecEtatHub('retard'))
+    $('encart-salles').click()
+    await attendreQue(() => $('encart-contenu').querySelectorAll('.pastille').length > 1)
+
+    // Le programme dirait « en cours » : personne n'a lancé le talk, et seul le
+    // hub le sait.
+    expect($('encart-contenu').textContent).toContain('retard au démarrage')
+    expect($('encart-contenu').innerHTML).toContain('pastille retard')
+  })
+
+  it('retombe sur son cache quand la vue du hub date', async () => {
+    // Pendant une coupure, la salle d'à côté finit quand même à l'heure prévue :
+    // une vue périmée décrit un passé, le programme local décrit maintenant.
+    monterRegie(avecEtatHub('retard', new Date(Date.now() - 5 * 60_000).toISOString()))
+    $('encart-salles').click()
+    await attendreQue(() => $('encart-contenu').querySelectorAll('.pastille').length > 1)
+
+    // Le hub avait constaté ce retard cinq minutes plus tôt : le répéter
+    // décrirait un passé. Le programme local, lui, décrit maintenant.
+    expect($('encart-contenu').textContent).not.toContain('retard au démarrage')
+  })
+
   it('n\'affiche le sélecteur que sur l\'onglet concerné', () => {
     expect(($('choix-autre-salle') as HTMLSelectElement).hidden).toBe(true)
     $('encart-autre').click()
@@ -493,10 +537,99 @@ describe('cycle de vie de la conférence', () => {
     expect(($('btn-conf-terminer') as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('envoie la commande de démarrage', async () => {
-    $('btn-conf-demarrer').click()
-    await new Promise((resolve) => setTimeout(resolve, 10))
-    expect(envoyees).toContainEqual({ action: 'session.start' })
+  /**
+   * Ce que « Commencer » entraîne.
+   *
+   * Deux gestes que la régie faisait de mémoire et oubliait aux moments les
+   * plus coûteux : lancer l'enregistrement, et passer à l'antenne.
+   */
+  describe('démarrage', () => {
+    /** Salle qui enregistre déjà : l'avertissement n'a pas lieu d'être. */
+    function enregistrementLance(): DisplayPayload {
+      return {
+        ...ETAT,
+        diagnostics: {
+          ...ETAT.diagnostics,
+          recording: { active: true, markers: 0, startedAtMs: Date.now() },
+        },
+      } as unknown as DisplayPayload
+    }
+
+    it('avertit quand rien n\'enregistre, au lieu de commencer', async () => {
+      $('btn-conf-demarrer').click()
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      // La question n'a de sens qu'avant : après, l'enregistrement manquera
+      // toujours les premières minutes.
+      expect(document.body.dataset.rec).toBe('ouverte')
+      expect(envoyees).toEqual([])
+    })
+
+    it('enregistre puis commence, dans cet ordre', async () => {
+      $('btn-conf-demarrer').click()
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      $('rec-avec').click()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+
+      const actions = envoyees.map((envoi) => (envoi as { action: string }).action)
+      expect(actions.indexOf('recording.start')).toBeLessThan(actions.indexOf('session.start'))
+      expect(document.body.dataset.rec).toBe('fermee')
+    })
+
+    it('sait commencer sans enregistrer', async () => {
+      $('btn-conf-demarrer').click()
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      $('rec-sans').click()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+
+      expect(envoyees).toContainEqual({ action: 'session.start' })
+      expect(envoyees).not.toContainEqual({ action: 'recording.start' })
+    })
+
+    it('renonce sans rien envoyer', async () => {
+      $('btn-conf-demarrer').click()
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      $('rec-annuler').click()
+
+      // La question peut tomber au mauvais moment : on visait Terminer, ou
+      // l'intervenant n'est pas prêt.
+      expect(document.body.dataset.rec).toBe('fermee')
+      expect(envoyees).toEqual([])
+    })
+
+    it('passe à l\'antenne dans la foulée', async () => {
+      monterRegie(enregistrementLance())
+      $('btn-conf-demarrer').click()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+
+      // Sans cette bascule, l'habillage restait à l'écran pendant les
+      // premières phrases de l'intervenant.
+      expect(envoyees).toContainEqual({ action: 'session.start' })
+      expect(envoyees).toContainEqual({ action: 'scene.set', role: 'LIVE' })
+    })
+
+    it('ne demande rien quand la salle enregistre déjà', async () => {
+      monterRegie(enregistrementLance())
+      $('btn-conf-demarrer').click()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+
+      expect(document.body.dataset.rec).toBe('fermee')
+      expect(envoyees).toContainEqual({ action: 'session.start' })
+    })
+
+    it('respecte une salle qui a décoché les deux réglages', async () => {
+      monterRegie({
+        ...ETAT,
+        diagnostics: {
+          ...ETAT.diagnostics,
+          config: { ...ETAT.diagnostics?.config, promptRecordingOnStart: false, sceneOnStart: null },
+        },
+      } as unknown as DisplayPayload)
+      $('btn-conf-demarrer').click()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+
+      expect(envoyees).toEqual([{ action: 'session.start' }])
+    })
   })
 
   it('inverse les boutons quand le talk est en cours', () => {

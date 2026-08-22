@@ -12,6 +12,7 @@ import {
   openFeedbackUrl,
   roomConferenceState,
   type Session,
+  type SessionStatuses,
 } from '@cloudnord/program'
 import {
   auteurDe,
@@ -248,6 +249,12 @@ export const router = os.router({
       const snapshot = context.services.programs.active()
       const at = context.services.clock.now()
 
+      /** Cycle de vie d'une salle, sous la forme qu'attend le sélecteur. */
+      const statutsParSalle = (roomId: string): SessionStatuses =>
+        Object.fromEntries(
+          context.services.sessions.states(roomId).map((etat) => [etat.sessionId, etat.status]),
+        )
+
       // Enrichi ici, et non dans le service : c'est le routeur qui a le
       // programme et l'horloge sous la main.
       return context.services.rooms.statuses().map((statut) => {
@@ -264,11 +271,13 @@ export const router = os.router({
                   remainingMs: session.endsAtMs == null ? null : session.endsAtMs - at,
                 },
           // Calculé ici pour la même raison que `remainingMs` : l'heure qui
-          // fait foi est celle du hub, et elle peut être simulée.
+          // fait foi est celle du hub, et lui seul tient le cycle de vie des
+          // conférences. Le déduire dans le navigateur donnerait une couleur
+          // juste sur le poste de l'opérateur et fausse partout ailleurs.
           conference:
             snapshot == null
               ? 'aucune'
-              : roomConferenceState(snapshot.program, statut.roomId, at, statut.currentSessionId),
+              : roomConferenceState(snapshot.program, statut.roomId, at, statutsParSalle(statut.roomId)),
         }
       })
     }),

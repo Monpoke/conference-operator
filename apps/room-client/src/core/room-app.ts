@@ -658,6 +658,7 @@ export class RoomApp implements ControlTarget {
           outboxDepth: salle.outboxDepth,
           lastSeenAt: salle.lastSeenAt,
           currentSessionId: salle.currentSessionId,
+          conference: salle.conference,
         }))
         this.roomStatusesAt = new Date().toISOString()
       } catch {
@@ -1207,6 +1208,8 @@ export class RoomApp implements ControlTarget {
       fileSlug: config.fileSlug,
       relaySourceRoomId: config.relaySourceRoomId,
       openFeedbackProjectId: config.openFeedbackProjectId,
+      promptRecordingOnStart: config.promptRecordingOnStart,
+      sceneOnStart: config.sceneOnStart,
     }
   }
 

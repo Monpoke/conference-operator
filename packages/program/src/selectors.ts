@@ -71,47 +71,79 @@ export function nextSession(program: Program, roomId: string, nowMs: number): Se
 }
 
 /** Où en est une salle, en un mot. Voir `roomConferenceState`. */
-export type RoomConferenceState = 'aucune' | 'pause' | 'en-cours' | 'fin-proche' | 'depassement'
+export type RoomConferenceState =
+  | 'aucune'
+  | 'pause'
+  | 'pas-commencee'
+  | 'retard'
+  | 'en-cours'
+  | 'fin-proche'
+  | 'terminee'
+  | 'depassement'
 
 /** En deçà, une conférence est « vers la fin » : le moment où une décision se prend. */
 export const FIN_PROCHE_MS = 5 * 60_000
 
 /**
+ * Au-delà, un créneau commencé que personne n'a lancé devient un retard.
+ *
+ * Les premières minutes ne disent rien : le public s'installe, l'intervenant
+ * branche son PC. C'est après que l'absence de démarrage devient une question.
+ */
+export const RETARD_MS = 5 * 60_000
+
+/** Cycle de vie des conférences d'une salle, par identifiant. */
+export type SessionStatuses = Record<string, 'scheduled' | 'running' | 'ended'>
+
+/**
  * État de la salle tel que les consoles le peignent.
  *
- * Deux sources, et l'ordre compte :
+ * Croise deux sources qui disent des choses différentes :
  *
- * - `pilotedSessionId` — ce que la salle pilote réellement — l'emporte, parce
- *   qu'il est le seul à révéler un **dépassement**. Le programme, lui, passe au
- *   créneau suivant dès l'heure de fin et ne dira jamais qu'une salle déborde ;
- * - le programme donne tout le reste, à l'heure passée en `nowMs`.
+ * - **le programme** donne le créneau : ce qui *devrait* se jouer, à `nowMs` ;
+ * - **le cycle de vie** (`Commencer` / `Terminer` en régie) donne ce qui se
+ *   joue vraiment. Lui seul révèle un **dépassement** — le programme, passé
+ *   l'heure de fin, passe simplement au créneau suivant — et lui seul distingue
+ *   un talk en cours d'un créneau que personne n'a lancé.
  *
- * Une salle qui pilote une conférence absente du programme (import remplacé en
- * cours de journée) n'est pas en dépassement pour autant : sans créneau, il n'y
- * a rien à dépasser, et on retombe sur ce que dit le programme.
+ * À défaut de cycle de vie, une salle apparaît « pas commencée » puis « en
+ * retard » tout du long. C'est assumé : la console ne peut pas deviner qu'un
+ * talk tourne si personne ne le dit, et le mot affiché à côté de la pastille
+ * évite de lire cette absence comme une panne.
  */
 export function roomConferenceState(
   program: Program,
   roomId: string,
   nowMs: number,
-  pilotedSessionId: string | null = null,
+  statuses: SessionStatuses = {},
 ): RoomConferenceState {
   const sessions = sessionsForRoom(program, roomId)
 
-  if (pilotedSessionId != null) {
-    const index = sessions.findIndex((session) => session.id === pilotedSessionId)
-    if (index !== -1) {
-      const fin = effectiveEndMs(sessions[index]!, sessions[index + 1])
-      if (fin != null && fin <= nowMs) return 'depassement'
-    }
-  }
+  /**
+   * Le dépassement d'abord : c'est le seul état qui parle d'un créneau *passé*,
+   * et le seul qui décale la suite de la journée.
+   */
+  const deborde = sessions.some((session, index) => {
+    if (statuses[session.id] !== 'running') return false
+    const fin = effectiveEndMs(session, sessions[index + 1])
+    return fin != null && fin <= nowMs
+  })
+  if (deborde) return 'depassement'
 
   const { current } = roomTimelinePosition(program, roomId, nowMs)
   if (current == null) return 'aucune'
   if (current.kind === 'break') return 'pause'
 
-  const fin = effectiveEndMs(current, sessions[sessions.indexOf(current) + 1])
-  return fin != null && fin - nowMs <= FIN_PROCHE_MS ? 'fin-proche' : 'en-cours'
+  const statut = statuses[current.id] ?? 'scheduled'
+  // Terminée avant l'heure : la salle est libre, et c'est une information pour
+  // celle d'à côté — pas un créneau vide.
+  if (statut === 'ended') return 'terminee'
+
+  if (statut === 'running') {
+    const fin = effectiveEndMs(current, sessions[sessions.indexOf(current) + 1])
+    return fin != null && fin - nowMs <= FIN_PROCHE_MS ? 'fin-proche' : 'en-cours'
+  }
+  return nowMs - current.startsAtMs > RETARD_MS ? 'retard' : 'pas-commencee'
 }
 
 /**

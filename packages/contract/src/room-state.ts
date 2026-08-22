@@ -68,6 +68,27 @@ export const roomConfigSchema = z.object({
    * Le défaut vaut pour cette édition ; il se change dans le ⚙ de la régie.
    */
   openFeedbackProjectId: z.string().nullable().default('cloud-nord-2026'),
+  /**
+   * Au « Commencer », avertir si rien n'enregistre.
+   *
+   * L'oubli le plus coûteux de la journée : le talk se déroule, personne ne
+   * s'en aperçoit, et il n'y a pas de VOD à rattraper le soir. Le geste de
+   * lancer une conférence est le bon endroit pour poser la question — c'est le
+   * seul moment où l'on sait qu'un talk commence.
+   *
+   * Activé par défaut. Se coupe pour une salle qui n'enregistre pas du tout,
+   * où l'avertissement deviendrait un clic de plus à chaque conférence.
+   */
+  promptRecordingOnStart: z.boolean().default(true),
+  /**
+   * Scène prise automatiquement au « Commencer ».
+   *
+   * Lancer la conférence et passer à l'antenne sont deux gestes qui vont
+   * ensemble ; les séparer laissait l'habillage à l'écran pendant les
+   * premières phrases de l'intervenant. `null` désactive la bascule pour une
+   * salle qui préfère garder la main.
+   */
+  sceneOnStart: sceneRoleSchema.nullable().default('LIVE'),
 })
 export type RoomConfig = z.infer<typeof roomConfigSchema>
 
@@ -110,6 +131,8 @@ export const roomConfigPatchSchema = z
     fileSlug: z.string().max(24).nullable(),
     relaySourceRoomId: roomIdSchema.nullable(),
     openFeedbackProjectId: z.string().nullable(),
+    promptRecordingOnStart: z.boolean(),
+    sceneOnStart: sceneRoleSchema.nullable(),
   })
   .partial()
 export type RoomConfigPatch = z.infer<typeof roomConfigPatchSchema>
@@ -305,12 +328,23 @@ export const roomStatusSchema = z.object({
    * navigateur donnerait une couleur juste sur le poste de l'opérateur et
    * fausse partout ailleurs.
    *
-   * `depassement` est le seul état que le programme ne peut pas donner : passé
-   * l'heure de fin, il passe au créneau suivant. Il vient de ce que la salle
-   * pilote réellement (`currentSessionId`), et c'est lui qui décale la journée.
+   * Croise le programme et le cycle de vie des conférences (« Commencer » /
+   * « Terminer » en régie). Le programme donne le créneau ; le cycle de vie
+   * donne ce qui s'y joue vraiment. Sans lui, un créneau commencé que personne
+   * n'a lancé se lisait « en cours », et une salle qui déborde n'existait pas —
+   * passé l'heure de fin, le programme passe au créneau suivant.
    */
   conference: z
-    .enum(['aucune', 'pause', 'en-cours', 'fin-proche', 'depassement'])
+    .enum([
+      'aucune',
+      'pause',
+      'pas-commencee',
+      'retard',
+      'en-cours',
+      'fin-proche',
+      'terminee',
+      'depassement',
+    ])
     .default('aucune'),
 })
 export type RoomStatus = z.infer<typeof roomStatusSchema>

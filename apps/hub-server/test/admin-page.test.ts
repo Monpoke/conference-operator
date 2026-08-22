@@ -911,6 +911,21 @@ describe('liste des salles', () => {
     expect($('salles').textContent).toContain('salle muette')
   })
 
+  it("ne dit pas « en cours » d'un talk que personne n'a lancé", async () => {
+    // Le créneau tourne, la régie n'a pas appuyé sur Commencer : la pastille
+    // passait au vert sur une salle où il ne se passait rien.
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const chemin = String(url).replace('/rpc/', '')
+      const json = chemin === 'rooms/statuses' ? [{ ...SALLES[0], conference: 'retard' }] : []
+      return new Response(JSON.stringify({ json }), { status: 200 })
+    }))
+    monterConsole()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect($('salles').querySelector('.pastille')?.className).toContain('retard')
+    expect($('salles').textContent).toContain('retard au démarrage')
+  })
+
   it('signale un dépassement en rouge, avec le mot', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       const chemin = String(url).replace('/rpc/', '')

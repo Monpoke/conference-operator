@@ -3,6 +3,7 @@ import { programSchema } from '@cloudnord/program'
 import {
   connectivitySchema,
   isoDateTimeSchema,
+  modeExecutionSchema,
   roomIdSchema,
   sceneRoleSchema,
   sessionIdSchema,
@@ -56,8 +57,62 @@ export const roomConfigSchema = z.object({
    * bouton dont personne ne sait ce qu'il montre.
    */
   relaySourceRoomId: roomIdSchema.nullable().default(null),
+  /**
+   * Projet OpenFeedback de l'événement.
+   *
+   * Sert à fabriquer le QR « notez ce talk », **hors ligne** : OpenFeedback
+   * réutilise les identifiants de session de l'export amont — vérifié, les 27
+   * concordent — donc l'adresse se déduit du programme déjà en cache, sans clé
+   * d'API ni appel réseau le jour J.
+   *
+   * Le défaut vaut pour cette édition ; il se change dans le ⚙ de la régie.
+   */
+  openFeedbackProjectId: z.string().nullable().default('cloud-nord-2026'),
 })
 export type RoomConfig = z.infer<typeof roomConfigSchema>
+
+/**
+ * Ce qu'une salle a le droit de reconfigurer elle-même.
+ *
+ * Volontairement plus étroit que `roomConfigSchema`, et le reste ne s'y glisse
+ * pas par accident : zod écarte les clés inconnues. Trois exclusions, chacune
+ * pour sa raison.
+ *
+ * - `id`, `name`, `trackId` : l'identité de la salle vient du programme amont.
+ *   La laisser réécrire depuis un poste couperait le lien salle ↔ track, et
+ *   avec lui tout le programme affiché.
+ * - `stream` : une clé de diffusion descend du hub vers sa salle, jamais
+ *   l'inverse. Elle se saisit là où elle est déjà, sur le hub.
+ *
+ * Tout le reste est du réglage de poste — adresses OBS, noms de scènes, port,
+ * dossier d'enregistrement — c'est-à-dire précisément ce qui se découvre en
+ * salle, devant les machines, et pas au moment de créer les salles.
+ */
+const obsEndpointPatchSchema = z.object({
+  url: z.string(),
+  /**
+   * Absent = inchangé.
+   *
+   * La régie ne reçoit jamais le mot de passe en clair — elle sait seulement
+   * qu'il y en a un — donc elle ne peut pas le renvoyer tel quel. Sans cette
+   * distinction entre « vide » et « absent », enregistrer un changement de port
+   * effacerait le mot de passe au passage.
+   */
+  password: z.string().nullable().optional(),
+})
+
+export const roomConfigPatchSchema = z
+  .object({
+    obs: z.object({ A: obsEndpointPatchSchema, B: obsEndpointPatchSchema }),
+    sceneRoles: sceneRoleMapSchema,
+    displayPort: z.number().int().positive(),
+    recordingRoot: z.string().nullable(),
+    fileSlug: z.string().max(24).nullable(),
+    relaySourceRoomId: roomIdSchema.nullable(),
+    openFeedbackProjectId: z.string().nullable(),
+  })
+  .partial()
+export type RoomConfigPatch = z.infer<typeof roomConfigPatchSchema>
 
 /**
  * Forme *avant* validation : les champs à valeur par défaut y sont facultatifs.
@@ -87,6 +142,23 @@ export const sessionStateSchema = z.object({
 export type SessionState = z.infer<typeof sessionStateSchema>
 
 /**
+ * Un compte de l'événement, affiché dans la boucle d'attente.
+ *
+ * L'export amont ne porte que les réseaux des **speakers** : ceux de Cloud Nord
+ * n'ont aucune source dans le programme, d'où ce réglage. Réglage du hub et non
+ * constante du code : un handle change entre deux éditions, et le corriger ne
+ * doit pas demander de rejouer une release sur les trois machines de salle.
+ */
+export const socialLinkSchema = z.object({
+  /** Nom du réseau, affiché tel quel : « Bluesky », « LinkedIn »… */
+  network: z.string().min(1).max(40),
+  /** Ce qu'on lit à l'écran et qu'on retape : « @cloudnord.fr ». */
+  handle: z.string().min(1).max(80),
+  url: z.url(),
+})
+export type SocialLink = z.infer<typeof socialLinkSchema>
+
+/**
  * Réglages du hub modifiables en cours d'événement.
  *
  * La clôture automatique existe parce que personne ne pense à appuyer sur
@@ -97,6 +169,25 @@ export type SessionState = z.infer<typeof sessionStateSchema>
 export const hubSettingsSchema = z.object({
   autoEndEnabled: z.boolean().default(true),
   autoEndGraceMinutes: z.number().int().min(0).max(120).default(5),
+  /**
+   * Export « conference-center » que le hub réimporte.
+   *
+   * Réglage et non variable d'environnement : l'URL change quand le programme
+   * change, c'est-à-dire pendant l'événement, et redémarrer le hub pour la
+   * corriger est exactement ce qu'on ne peut pas faire ce jour-là.
+   * `PROGRAM_SOURCE_URL` reste l'amorce du premier démarrage, puis ce réglage
+   * fait foi.
+   */
+  programSourceUrl: z.url().nullable().default(null),
+  /**
+   * Comptes Cloud Nord, affichés dans la boucle d'attente des salles.
+   *
+   * Poussés aux salles au `sync` et gardés en cache local : la boucle tourne
+   * pendant les pauses, c'est-à-dire exactement quand le réseau de l'événement
+   * est le plus chargé, et un écran qui perd la moitié de son contenu parce que
+   * le hub a mis trois secondes à répondre se voit de la salle entière.
+   */
+  socialLinks: z.array(socialLinkSchema).max(8).default([]),
 })
 export type HubSettings = z.infer<typeof hubSettingsSchema>
 export type HubSettingsInput = z.input<typeof hubSettingsSchema>
@@ -114,6 +205,16 @@ export const sessionStateViewSchema = sessionStateSchema.extend({
   /** Horaires **prévus** au programme, pas les horaires réels. */
   scheduledStartsAt: isoDateTimeSchema.nullable(),
   scheduledEndsAt: isoDateTimeSchema.nullable(),
+  /**
+   * Temps restant sur le créneau prévu, d'après l'horloge du hub. Négatif = dépassement.
+   *
+   * Redondant avec `scheduledEndsAt` en apparence seulement : le soustraire
+   * demande une heure de référence, et le navigateur n'a que la sienne.
+   * L'horloge du hub peut être simulée — en développement l'écart se compte en
+   * semaines — et c'est elle qui fait foi pour toute la journée. Même raison,
+   * et même champ, que `roomStatus.currentSession.remainingMs`.
+   */
+  remainingMs: z.number().int().nullable().default(null),
 })
 export type SessionStateView = z.infer<typeof sessionStateViewSchema>
 
@@ -135,12 +236,27 @@ export const syncResultSchema = z.object({
   /** Base de l'offset d'horloge : les timecodes VOD en dépendent. */
   serverTime: isoDateTimeSchema,
   /**
+   * Mode du hub.
+   *
+   * La salle le compare au sien et le signale s'ils divergent : un poste de
+   * développement branché sur le hub de l'événement — ou l'inverse — doit se
+   * voir avant qu'on s'en aperçoive dans les enregistrements.
+   */
+  mode: modeExecutionSchema.default('production'),
+  /**
    * L'heure du hub est simulée.
    *
    * Propagé jusqu'à l'écran de régie : voir 11:00 un matin d'août sans
    * explication ferait douter de tout le reste.
    */
   simulatedClock: z.boolean().default(false),
+  /**
+   * Comptes de l'événement, pour la boucle d'attente.
+   *
+   * Descendus avec le reste plutôt que demandés à part : la salle doit pouvoir
+   * dérouler sa boucle entière sans toucher au réseau une fois synchronisée.
+   */
+  socialLinks: z.array(socialLinkSchema).default([]),
 })
 
 /** Vue hub d'une salle, alimentée par les heartbeats — l'écran de supervision. */
@@ -155,5 +271,31 @@ export const roomStatusSchema = z.object({
   streaming: z.boolean(),
   outboxDepth: z.number().int().nonnegative(),
   programContentHash: z.string().nullable(),
+  /**
+   * Ce qui se joue en ce moment, d'après le programme et l'heure du hub.
+   *
+   * Le titre, pas seulement l'identifiant : une console de supervision doit
+   * répondre à « qu'est-ce qui se passe » sans qu'on aille chercher ailleurs.
+   * Calculé sur le programme plutôt que sur ce que la salle a remonté — une
+   * salle coupée doit continuer d'afficher ce qu'elle est censée diffuser.
+   */
+  currentSession: z
+    .object({
+      id: sessionIdSchema,
+      title: z.string(),
+      endsAt: isoDateTimeSchema.nullable(),
+      /**
+       * Temps restant sur le créneau, d'après l'horloge du hub. Négatif = dépassement.
+       *
+       * Redondant avec `endsAt` en apparence seulement : le soustraire demande
+       * une heure de référence, et le navigateur n'a que la sienne. L'horloge du
+       * hub peut être simulée — en développement l'écart se compte en semaines —
+       * et c'est elle qui fait foi pour toute la journée. `null` sur un créneau
+       * de fin inconnue, qu'on ne veut pas afficher comme « 0 min ».
+       */
+      remainingMs: z.number().int().nullable().default(null),
+    })
+    .nullable()
+    .default(null),
 })
 export type RoomStatus = z.infer<typeof roomStatusSchema>

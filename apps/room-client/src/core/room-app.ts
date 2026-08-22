@@ -15,11 +15,29 @@ import type { ObsTransport } from './obs.js'
 import type { ObsInstance } from '@cloudnord/contract'
 import { ConnectivityTracker, probeConnectivity } from './connectivity.js'
 import { RecordingSession, slugify, type StopResult } from './recording.js'
-import type { ControlDiagnostics, ControlTarget } from './control-api.js'
+import type { ControlDiagnostics, ControlTarget, PointObsVisible } from './control-api.js'
 import { Outbox } from './outbox.js'
 import { OutboxPump, buildHeartbeat, heartbeatDedupKey } from './outbox-pump.js'
 import { AgregateurNiveaux } from './niveaux-audio.js'
-import type { RoomEventPayload } from '@cloudnord/contract'
+import type { ModeExecution, RoomConfigPatch, RoomEventPayload } from '@cloudnord/contract'
+
+/** Configuration de salle en cache local, telle que le hub l'a poussée. */
+type ConfigSalle = NonNullable<ReturnType<LocalStore['settings']>['config']>
+
+/**
+ * Ce dont dépend une connexion OBS.
+ *
+ * Sert à savoir si la connexion en cours a été ouverte avec les réglages
+ * actuels : le port change, le mapping change, et la connexion vivante devient
+ * périmée sans que rien ne le montre.
+ */
+function empreinteObs(config: ConfigSalle, instance: ObsInstance): string {
+  return JSON.stringify([
+    config.obs[instance].url,
+    config.obs[instance].password,
+    config.sceneRoles[instance],
+  ])
+}
 
 /** Où en est l'appairage de cette machine. */
 export interface PairingState {
@@ -63,6 +81,13 @@ export interface RoomAppOptions {
    */
   roomId?: string
   /**
+   * Mode d'exécution de la salle.
+   *
+   * Décidé par le point d'entrée, qui lit l'environnement — le cœur applicatif
+   * ne lit pas `process.env`, c'est ce qui le rend testable. Voir `core/mode`.
+   */
+  mode?: ModeExecution
+  /**
    * Source de temps de la salle.
    *
    * Sert au développement, pour se placer au milieu de l'événement. Passe par
@@ -102,7 +127,16 @@ export class RoomApp implements ControlTarget {
   private tick: NodeJS.Timeout | null = null
   private heartbeat: NodeJS.Timeout | null = null
   private roomsTimer: NodeJS.Timeout | null = null
+  /** Mode annoncé par le hub au dernier sync. `null` tant qu'il n'a pas répondu. */
+  private hubMode: ModeExecution | null = null
+  /** Empreinte des réglages avec lesquels chaque instance a été branchée. */
+  private obsApplique: Record<ObsInstance, string | null> = { A: null, B: null }
+  /** Une boucle de reprise tourne déjà pour cette instance. */
+  private repriseObs: Record<ObsInstance, boolean> = { A: false, B: false }
   private roomStatuses: ControlDiagnostics['rooms'] = []
+  private questions: ControlDiagnostics['questions'] = []
+  private questionsAt: string | null = null
+  private questionsSession: ControlDiagnostics['questionsSession'] = null
   private roomStatusesAt: string | null = null
   private pairing: PairingState = { status: 'idle' }
   private supervision: NodeJS.Timeout | null = null
@@ -145,9 +179,14 @@ export class RoomApp implements ControlTarget {
       assets: this.assets,
       program: () => this.store.activeProgram(),
       roomName: () => this.store.settings().config?.name ?? null,
+      roomConfig: () => this.store.settings().config ?? null,
       hubOrigin: options.hubOrigin,
       control: this,
       pairing: () => this.pairingState(),
+      // Relus du cache à chaque envoi : ils changent au sync, pas à chaque
+      // bascule de scène, et une salle démarrée hub injoignable garde les
+      // derniers connus plutôt qu'une page vide.
+      socialLinks: () => this.store.settings().socialLinks,
       onNiveauxDemandes: (actif) => {
         this.niveauxDemandes = actif
         // Sans OBS-B connecté, on retient seulement l'intention : l'abonnement
@@ -336,11 +375,12 @@ export class RoomApp implements ControlTarget {
     const url = await this.display.listen()
     this.options.onLog?.('info', "écran de salle servi", { url: `${url}/display/projector` })
 
-    // Tic d'horloge : fait avancer la timeline et expirer les messages même
-    // quand plus rien n'arrive du hub.
+    // Tic d'horloge : fait avancer la timeline, et expirer messages et
+    // signalements, même quand plus rien n'arrive du hub.
     this.tick = setInterval(() => {
       this.runtime.refreshSessions()
       this.runtime.expireMessage()
+      this.runtime.expireNotifications()
     }, 5_000)
 
     return url
@@ -464,6 +504,17 @@ export class RoomApp implements ControlTarget {
       store: this.store,
       runtime: this.runtime,
       onLog: this.options.onLog,
+      onHubMode: (mode) => {
+        if (mode === this.hubMode) return
+        this.hubMode = mode
+        const nous = this.options.mode ?? 'production'
+        if (mode !== nous) {
+          this.options.onLog?.('error', 'MODES DIVERGENTS entre la salle et le hub', {
+            salle: nous,
+            hub: mode,
+          })
+        }
+      },
       onAuthRejected: (raison) => {
         // Relancé hors de la pile d'appel : on est dans le gestionnaire
         // d'erreur du lien qu'on s'apprête à fermer.
@@ -537,7 +588,7 @@ export class RoomApp implements ControlTarget {
       },
       onDepth: (depth) => this.runtime.setOutboxDepth(depth),
       onServerTime: (serverTime) =>
-        this.runtime.setClockOffset(Date.parse(serverTime) - Date.now()),
+        this.runtime.setServerTime(serverTime),
     })
     this.pump.start()
 
@@ -630,7 +681,81 @@ export class RoomApp implements ControlTarget {
     await this.connectCapture(config)
   }
 
-  private async connectProjection(config: NonNullable<ReturnType<LocalStore['settings']>['config']>): Promise<void> {
+  /**
+   * Ouvre (ou rouvre) **une** instance, à la demande de l'opérateur.
+   *
+   * Instance par instance : couper la captation pour appliquer un réglage de
+   * projection coûterait une prise. C'est aussi pourquoi enregistrer un réglage
+   * ne reconnecte rien tout seul — le moment appartient à l'opérateur, qui sait
+   * si un talk est en cours.
+   */
+  async connectObsInstance(instance: ObsInstance): Promise<void> {
+    const config = this.store.settings().config
+    if (config == null) {
+      throw new Error("Configuration de salle absente : le hub n'a pas encore répondu")
+    }
+
+    // L'ancienne connexion part d'abord : les paramètres sont portés par le
+    // contrôleur, qui est reconstruit.
+    if (instance === 'A') {
+      await this.obsA?.disconnect().catch(() => {})
+      this.obsA = null
+      await this.connectProjection(config, true)
+    } else {
+      await this.obsB?.disconnect().catch(() => {})
+      this.obsB = null
+      await this.connectCapture(config, true)
+    }
+  }
+
+  /**
+   * Ouvre la connexion d'une instance déjà construite.
+   *
+   * Deux régimes. Au démarrage, on insiste sans fin : OBS est souvent lancé
+   * après la régie, et personne ne devrait avoir à rien recliquer. À la
+   * demande, une seule tentative — quelqu'un attend devant l'écran et l'échec
+   * doit lui revenir — mais la boucle de reprise repart quand même en fond,
+   * pour que l'instance finisse par se rattacher toute seule.
+   */
+  private async brancher(instance: ObsInstance, manuel: boolean): Promise<void> {
+    const connecter = () => (instance === 'A' ? this.obsA! : this.obsB!).connect()
+
+    if (!manuel) {
+      this.repriseObs[instance] = true
+      try {
+        await keepObsConnected({
+          connect: connecter,
+          onLog: this.options.onLog,
+          signal: this.abort.signal,
+        })
+      } finally {
+        this.repriseObs[instance] = false
+      }
+      return
+    }
+
+    try {
+      await connecter()
+    } catch (cause) {
+      this.relancerReprise(instance)
+      throw new Error('OBS-' + instance + " n'a pas répondu : " + (cause as Error).message)
+    }
+  }
+
+  /** Boucle de reprise en fond, une seule à la fois par instance. */
+  private relancerReprise(instance: ObsInstance): void {
+    if (this.repriseObs[instance]) return
+    this.repriseObs[instance] = true
+    void keepObsConnected({
+      connect: () => (instance === 'A' ? this.obsA! : this.obsB!).connect(),
+      onLog: this.options.onLog,
+      signal: this.abort.signal,
+    }).finally(() => {
+      this.repriseObs[instance] = false
+    })
+  }
+
+  private async connectProjection(config: ConfigSalle, manuel = false): Promise<void> {
     const transport = (this.options.obsTransportFactory ?? createObsTransport)('A')
     this.obsA = new ObsController({
       instance: 'A',
@@ -669,18 +794,15 @@ export class RoomApp implements ControlTarget {
       },
     })
 
-    await keepObsConnected({
-      connect: () => this.obsA!.connect(),
-      onLog: this.options.onLog,
-      signal: this.abort.signal,
-    })
+    this.obsApplique.A = empreinteObs(config, 'A')
+    await this.brancher('A', manuel)
   }
 
   /**
    * OBS-B : la captation. Distincte de la projection parce qu'elle n'a ni les
    * mêmes scènes, ni les mêmes conséquences — une erreur ici coûte une VOD.
    */
-  private async connectCapture(config: NonNullable<ReturnType<LocalStore['settings']>['config']>): Promise<void> {
+  private async connectCapture(config: ConfigSalle, manuel = false): Promise<void> {
     const transport = (this.options.obsTransportFactory ?? createObsTransport)('B')
     this.obsB = new ObsController({
       instance: 'B',
@@ -756,11 +878,8 @@ export class RoomApp implements ControlTarget {
       onLog: this.options.onLog,
     })
 
-    await keepObsConnected({
-      connect: () => this.obsB!.connect(),
-      onLog: this.options.onLog,
-      signal: this.abort.signal,
-    })
+    this.obsApplique.B = empreinteObs(config, 'B')
+    await this.brancher('B', manuel)
   }
 
   /** Démarre l'enregistrement du talk en cours. */
@@ -941,6 +1060,57 @@ export class RoomApp implements ControlTarget {
     this.runtime.notify({ level: 'info', text: `Envoyé à la console : ${text}` })
   }
 
+  /** Pose ou retire le bandeau des scènes live, depuis la régie. */
+  setLiveMessage(text: string | null, level: 'info' | 'warning' | 'urgent'): void {
+    this.runtime.setLiveMessage(text, level)
+  }
+
+  /**
+   * Met une question du public à l'antenne, ou l'en retire.
+   *
+   * Rattachée à la conférence pilotée : c'est ce qui la fait tomber au talk
+   * suivant plutôt que de rester incrustée dans la VOD du speaker d'après.
+   */
+  setAiredQuestion(text: string | null, author: string | null): void {
+    this.runtime.setQuestion(text, author, this.runtime.state().targetSession?.id ?? null)
+  }
+
+  /**
+   * Relit les questions posées dans cette salle.
+   *
+   * À la demande : la régie ne les regarde qu'en fin de talk, et les faire
+   * circuler en continu chargerait le flux d'état pour rien.
+   */
+  async refreshQuestions(): Promise<void> {
+    if (this.link == null) throw new Error('Hub non connecté : les questions vivent chez lui')
+    const { roomId, targetSession } = this.runtime.state()
+    if (roomId == null) throw new Error('Salle inconnue')
+
+    /**
+     * Bornées à la conférence pilotée.
+     *
+     * Toutes salles confondues, la liste mélangeait les questions de la
+     * journée : à 16 h, celles du talk de 10 h étaient encore en tête au vote,
+     * et le speaker se voyait poser une question qui ne le concernait pas.
+     * Aucun talk piloté : rien à lister — il n'y a pas de « questions en
+     * général » qu'on voudrait mettre à l'antenne.
+     */
+    this.questionsSession =
+      targetSession == null ? null : { id: targetSession.id, title: targetSession.title }
+    this.questions =
+      targetSession == null
+        ? []
+        : (await this.link.questions(roomId, targetSession.id)).map((question) => ({
+            id: question.id,
+            text: question.text,
+            author: question.author,
+            votes: question.votes,
+          }))
+    this.questionsAt = new Date(this.runtime.correctedNow()).toISOString()
+    // L'état repart tout de suite : la régie affiche la liste sans attendre.
+    this.runtime.emit('state', this.runtime.state())
+  }
+
   /** Écarte un signalement lu en régie. */
   dismissNotification(id: string): void {
     this.runtime.dismissNotification(id)
@@ -951,6 +1121,40 @@ export class RoomApp implements ControlTarget {
     if (this.link == null) throw new Error("Hub non connecté : rien à synchroniser")
     const result = await this.link.sync()
     if (!result.ok) throw new Error('Le hub est injoignable')
+  }
+
+  /**
+   * Enregistre un réglage de salle, puis remet la salle en accord avec lui.
+   *
+   * Trois temps, dans cet ordre : le hub écrit, la salle resynchronise, OBS se
+   * rouvre. Écrire d'abord en local irait plus vite mais mentirait — le
+   * prochain `sync` repousse la configuration du hub, et la saisie
+   * disparaîtrait sans un mot. D'où l'échec franc quand le hub est absent : il
+   * n'y a pas de demi-mesure honnête ici.
+   */
+  async configureRoom(patch: RoomConfigPatch): Promise<void> {
+    if (this.link == null) {
+      throw new Error(
+        "Hub non connecté : la configuration s'enregistre sur le hub, elle serait perdue au prochain sync",
+      )
+    }
+    await this.link.configure(patch)
+
+    const result = await this.link.sync()
+    if (!result.ok) throw new Error('Configuration écrite, mais la salle ne s\'est pas resynchronisée')
+
+    // Pas de reconnexion d'office : les contrôleurs portent leurs paramètres à
+    // la construction, donc appliquer voudrait dire couper — y compris une
+    // captation en cours. La régie signale l'écart et laisse l'opérateur
+    // choisir son moment, instance par instance.
+    this.options.onLog?.('info', 'configuration de salle modifiée depuis la régie')
+  }
+
+  /** Relit les scènes des deux instances, pour le formulaire de configuration. */
+  async refreshObsScenes(): Promise<void> {
+    const lues = await Promise.allSettled([this.obsA?.refreshScenes(), this.obsB?.refreshScenes()])
+    const echec = lues.find((resultat) => resultat.status === 'rejected')
+    if (echec != null) throw new Error('OBS n\'a pas répondu — instance déconnectée ?')
   }
 
   /**
@@ -972,6 +1176,11 @@ export class RoomApp implements ControlTarget {
         createdAt: entry.createdAt,
       })),
       relaySourceRoomId: this.store.settings().config?.relaySourceRoomId ?? null,
+      config: this.configVisible(),
+      questions: this.questions,
+      questionsRefreshedAt: this.questionsAt,
+      questionsSession: this.questionsSession,
+      mode: { salle: this.options.mode ?? 'production', hub: this.hubMode },
       rooms: this.roomStatuses,
       roomsRefreshedAt: this.roomStatusesAt,
       recording: {
@@ -979,6 +1188,35 @@ export class RoomApp implements ControlTarget {
         markers: this.recording?.markerCount ?? 0,
         startedAtMs: this.recording?.startedAt ?? null,
       },
+    }
+  }
+
+  /** Réglages de la salle, mots de passe retirés. Voir `ConfigVisible`. */
+  private configVisible(): ControlDiagnostics['config'] {
+    const config = this.store.settings().config
+    if (config == null) return null
+    return {
+      obs: {
+        A: this.pointVisible(config, 'A'),
+        B: this.pointVisible(config, 'B'),
+      },
+      sceneRoles: config.sceneRoles,
+      displayPort: config.displayPort,
+      recordingRoot: config.recordingRoot,
+      fileSlug: config.fileSlug,
+      relaySourceRoomId: config.relaySourceRoomId,
+      openFeedbackProjectId: config.openFeedbackProjectId,
+    }
+  }
+
+  private pointVisible(config: ConfigSalle, instance: ObsInstance): PointObsVisible {
+    const applique = this.obsApplique[instance]
+    return {
+      url: config.obs[instance].url,
+      hasPassword: (config.obs[instance].password ?? '') !== '',
+      // Jamais branchée : le bouton « Connecter » dit déjà quoi faire, inutile
+      // d'annoncer en plus un écart avec une connexion qui n'existe pas.
+      pending: applique != null && applique !== empreinteObs(config, instance),
     }
   }
 

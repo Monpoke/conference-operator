@@ -2,7 +2,13 @@ import { WebSocket } from 'ws'
 import { createORPCClient } from '@orpc/client'
 import { RPCLink } from '@orpc/client/websocket'
 import type { ContractRouterClient } from '@orpc/contract'
-import { contract, type Connectivity } from '@cloudnord/contract'
+import {
+  contract,
+  type Connectivity,
+  type ModeExecution,
+  type Question,
+  type RoomConfigPatch,
+} from '@cloudnord/contract'
 import { programSchema } from '@cloudnord/program'
 import { SuiviInterruption } from './interruptions.js'
 import type { LocalStore } from './store.js'
@@ -19,6 +25,14 @@ export interface HubLinkOptions {
   onLog?: (level: 'info' | 'warn' | 'error', message: string, context?: unknown) => void
   /** Appelé quand le hub refuse nos identifiants : il faut réappairer. */
   onAuthRejected?: (raison: string) => void
+  /**
+   * Mode annoncé par le hub à chaque synchronisation.
+   *
+   * La salle le compare au sien : un poste de développement branché sur le hub
+   * de l'événement — ou l'inverse — doit se voir en régie, pas se découvrir
+   * dans les enregistrements.
+   */
+  onHubMode?: (mode: ModeExecution) => void
   /**
    * Échéance d'un `sync`.
    *
@@ -122,6 +136,30 @@ export class HubLink {
   }
 
   /**
+   * Questions posées dans cette salle.
+   *
+   * Procédure publique — le mur est ouvert à qui scanne le QR — mais appelée
+   * ici par le lien déjà établi : pas de second client à entretenir.
+   */
+  async questions(roomId: string, sessionId: string | null): Promise<Question[]> {
+    return this.client.questions.list(
+      { roomId, sessionId },
+      { signal: AbortSignal.timeout(8_000) },
+    )
+  }
+
+  /**
+   * Enregistre un réglage de salle sur le hub.
+   *
+   * Lève, contrairement à `sync` : ici quelqu'un attend devant l'écran, et un
+   * échec silencieux lui ferait croire que c'est passé. Le hub reste la source
+   * de vérité — garder le réglage en local le ferait écraser au sync suivant.
+   */
+  async configure(patch: RoomConfigPatch): Promise<void> {
+    await this.client.rooms.configure(patch, { signal: AbortSignal.timeout(8_000) })
+  }
+
+  /**
    * Synchronise programme et configuration.
    *
    * Ne lève jamais : un hub injoignable au démarrage est un cas nominal, la
@@ -138,9 +176,14 @@ export class HubLink {
 
       // Offset d'horloge : les timecodes VOD et la timeline en dépendent.
       // Le hub dit aussi si son heure est simulée — la régie doit le signaler.
-      runtime.setClockOffset(Date.parse(result.serverTime) - Date.now(), result.simulatedClock)
+      runtime.setServerTime(result.serverTime, result.simulatedClock)
+      this.options.onHubMode?.(result.mode)
 
-      store.saveSettings({ roomId: result.room.id, config: result.room })
+      store.saveSettings({
+        roomId: result.room.id,
+        config: result.room,
+        socialLinks: result.socialLinks,
+      })
       runtime.setRoomId(result.room.id)
 
       if (result.program != null) {

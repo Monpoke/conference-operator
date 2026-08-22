@@ -22,6 +22,8 @@ export const ABONNEMENTS_OBS = {
 } as const
 
 export interface ObsTransport {
+  /** Transport simulé, et non une vraie instance OBS. Voir `obs-mock`. */
+  readonly simule?: boolean
   connect(url: string, password?: string, abonnements?: number): Promise<void>
   /** Renégocie les abonnements sans rouvrir la connexion. */
   reidentify?(abonnements: number): Promise<void>
@@ -52,6 +54,21 @@ export interface ObsState {
   currentRole: SceneRole | null
   /** Rôles configurés mais absents d'OBS : à afficher en rouge dans la régie. */
   unresolvedRoles: SceneRole[]
+  /**
+   * L'instance est simulée.
+   *
+   * À signaler partout où l'on croit piloter OBS : un enregistrement simulé
+   * ressemble en tout point à un vrai, sauf qu'il ne capte rien.
+   */
+  simulated: boolean
+  /**
+   * Scènes réellement déclarées dans cette instance.
+   *
+   * Sert au formulaire de configuration de la régie : choisir un nom de scène
+   * dans une liste lue sur OBS vaut mieux que le retaper, puisque c'est
+   * justement la faute de frappe qui produit un rôle introuvable.
+   */
+  scenes: string[]
   recording: boolean
   streaming: boolean
 }
@@ -121,6 +138,8 @@ export class ObsController {
       currentSceneName: null,
       currentRole: null,
       unresolvedRoles: [],
+      scenes: [],
+      simulated: options.transport.simule === true,
       recording: false,
       streaming: false,
     }
@@ -217,8 +236,7 @@ export class ObsController {
         ? ABONNEMENTS_OBS.standard | ABONNEMENTS_OBS.niveaux
         : ABONNEMENTS_OBS.standard,
     )
-    const { scenes, currentProgramSceneName } = await this.options.transport.call('GetSceneList')
-    const available = new Set(scenes.map((scene) => scene.sceneName))
+    const inventaire = await this.lireScenes()
 
     /**
      * On interroge aussi l'enregistrement et la diffusion.
@@ -243,17 +261,13 @@ export class ObsController {
       /* idem */
     }
 
-    const unresolvedRoles = (Object.keys(this.options.sceneRoles) as SceneRole[]).filter((role) => {
-      const sceneName = this.options.sceneRoles[role]
-      return sceneName == null || !available.has(sceneName)
-    })
-
-    const currentRole = this.roleOf(currentProgramSceneName)
+    const { noms, unresolvedRoles, currentSceneName, currentRole } = inventaire
     this.patch({
       connected: true,
-      currentSceneName: currentProgramSceneName,
+      currentSceneName,
       currentRole,
       unresolvedRoles,
+      scenes: noms,
       recording,
       streaming,
     })
@@ -261,11 +275,46 @@ export class ObsController {
       type: 'connected',
       unresolvedRoles,
       currentRole,
-      currentSceneName: currentProgramSceneName,
+      currentSceneName,
       recording,
       streaming,
     })
     return this.snapshot()
+  }
+
+  /**
+   * Relit les scènes d'OBS et rejoue la résolution des rôles.
+   *
+   * Renommer ou ajouter une scène dans OBS n'émet aucun événement auquel nous
+   * sommes abonnés : sans relecture explicite, le formulaire de configuration
+   * proposerait la liste telle qu'elle était à la connexion, et un rôle réparé
+   * dans OBS resterait rouge en régie jusqu'au prochain redémarrage.
+   */
+  async refreshScenes(): Promise<ObsState> {
+    const { noms, unresolvedRoles, currentSceneName, currentRole } = await this.lireScenes()
+    this.patch({ scenes: noms, unresolvedRoles, currentSceneName, currentRole })
+    return this.snapshot()
+  }
+
+  /** Inventaire des scènes et des rôles qu'elles résolvent, à un instant donné. */
+  private async lireScenes(): Promise<{
+    noms: string[]
+    unresolvedRoles: SceneRole[]
+    currentSceneName: string
+    currentRole: SceneRole | null
+  }> {
+    const { scenes, currentProgramSceneName } = await this.options.transport.call('GetSceneList')
+    const noms = scenes.map((scene) => scene.sceneName)
+    const presentes = new Set(noms)
+    return {
+      noms,
+      unresolvedRoles: (Object.keys(this.options.sceneRoles) as SceneRole[]).filter((role) => {
+        const sceneName = this.options.sceneRoles[role]
+        return sceneName == null || !presentes.has(sceneName)
+      }),
+      currentSceneName: currentProgramSceneName,
+      currentRole: this.roleOf(currentProgramSceneName),
+    }
   }
 
   async disconnect(): Promise<void> {

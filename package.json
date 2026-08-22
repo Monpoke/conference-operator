@@ -9,6 +9,8 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
+    "dev:duo": "bash scripts/dev-salles.sh 1",
+    "dev:trio": "bash scripts/dev-salles.sh 2",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint"

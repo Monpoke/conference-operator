@@ -74,10 +74,17 @@ export class SessionStateService {
    *
    * Le titre et les horaires prévus sont résolus ici : la console ne détient
    * pas le programme, et un identifiant opaque ne se lit pas.
+   *
+   * Le temps restant aussi, et pour une raison plus forte : le calculer dans le
+   * navigateur revenait à le soustraire de l'heure du poste, alors que l'heure
+   * qui fait foi est celle du hub — laquelle peut être simulée. La console
+   * affichait donc « +6010 min » sur un talk parfaitement à l'heure dès qu'on
+   * déplaçait l'horloge depuis le menu Développement.
    */
   views(roomId: string | null, program: Program | null): SessionStateView[] {
     const parId = new Map((program?.sessions ?? []).map((session) => [session.id, session]))
     const sallesParId = new Map((program?.rooms ?? []).map((salle) => [salle.id, salle.name]))
+    const maintenant = this.now()
 
     return this.states(roomId).map((etat) => {
       const session = parId.get(etat.sessionId)
@@ -87,6 +94,9 @@ export class SessionStateService {
         roomName: etat.roomId == null ? null : (sallesParId.get(etat.roomId) ?? etat.roomId),
         scheduledStartsAt: session?.startsAt ?? null,
         scheduledEndsAt: session?.endsAt ?? null,
+        // `null` sur un créneau de fin inconnue, qu'on ne veut pas afficher
+        // comme « 0 min ».
+        remainingMs: session?.endsAtMs == null ? null : session.endsAtMs - maintenant,
       })
     })
   }

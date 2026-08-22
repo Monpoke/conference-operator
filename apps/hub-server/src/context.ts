@@ -8,6 +8,7 @@ import type { QuestionService, WallService } from './services/wall.js'
 import type { RateLimiter } from './services/rate-limit.js'
 import type { SessionStateService, SettingsService } from './services/sessions.js'
 import type { MutableClock } from './services/clock.js'
+import type { ModeExecution } from '@cloudnord/contract'
 
 export interface Services {
   programs: ProgramService
@@ -21,8 +22,15 @@ export interface Services {
   sessions: SessionStateService
   settings: SettingsService
   clock: MutableClock
-  /** Le réglage de l'heure est-il ouvert sur ce hub ? */
-  clockControl: boolean
+  /**
+   * Mode d'exécution, annoncé aux salles à chaque synchronisation.
+   *
+   * Commande aussi ce que la console a le droit de faire : le réglage de
+   * l'heure n'est ouvert qu'en développement. Un second interrupteur pour ça
+   * — l'ancien `CLOCK_CONTROL` — laissait exister une combinaison absurde, un
+   * hub de production dont on pouvait quand même déplacer l'horloge.
+   */
+  mode: ModeExecution
 }
 
 /**

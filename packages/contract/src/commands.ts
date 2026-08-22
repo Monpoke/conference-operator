@@ -15,6 +15,29 @@ import { sessionStatusSchema } from './room-state.js'
  * de compteur de rattrapage maison — voir `spikes/orpc-v2/FINDINGS.md`.
  */
 
+/** Ce qu'un bandeau live affiche. Court : il partage l'écran avec la vidéo. */
+export const bandeauSchema = z.object({
+  text: z.string().min(1).max(240),
+  level: z.enum(['info', 'warning', 'urgent']),
+})
+export type Bandeau = z.infer<typeof bandeauSchema>
+
+/**
+ * Modèles de bandeau, prêts à envoyer.
+ *
+ * Constants et partagés plutôt que stockés : ce sont les quelques phrases
+ * qu'on met à l'antenne sans réfléchir, un jour d'événement, et les retaper
+ * sous pression est le meilleur moyen de les rater. Le texte reste modifiable
+ * avant envoi — ce sont des points de départ, pas des rails.
+ */
+export const MODELES_BANDEAU: { nom: string; message: Bandeau }[] = [
+  { nom: 'Questions', message: { text: 'Posez vos questions sur le mur — QR code à l\'écran', level: 'info' } },
+  { nom: 'Pause', message: { text: 'Pause de 15 minutes — reprise juste après', level: 'info' } },
+  { nom: 'Micro', message: { text: 'Problème de son en cours de résolution', level: 'warning' } },
+  { nom: 'Retard', message: { text: 'La conférence commencera avec quelques minutes de retard', level: 'warning' } },
+  { nom: 'Enregistrement', message: { text: 'Cette session est enregistrée et sera disponible en ligne', level: 'info' } },
+]
+
 export const commandPayloadSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('scene.force'),
@@ -40,6 +63,19 @@ export const commandPayloadSchema = z.discriminatedUnion('type', [
     target: z.enum(['operator', 'audience']).default('operator'),
     /** Auteur affiché, pour qu'on sache à qui répondre. */
     from: z.string().max(80).nullable().default(null),
+  }),
+  z.object({
+    /**
+     * Bandeau des scènes live.
+     *
+     * À ne pas confondre avec `message.broadcast`, qui **prend** l'écran de la
+     * salle : celui-ci se superpose à la vidéo sans rien interrompre. Le
+     * speaker continue, ses slides restent visibles, et le bandeau part dans
+     * le direct et la VOD comme le reste de l'habillage.
+     */
+    type: z.literal('overlay.set'),
+    /** `null` retire le bandeau. C'est le « masquer » de la console. */
+    message: bandeauSchema.nullable(),
   }),
   z.object({
     /** Un nouveau snapshot est disponible : le client resynchronise. */

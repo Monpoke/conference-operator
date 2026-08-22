@@ -1,5 +1,5 @@
 import { EventEmitter, on } from 'node:events'
-import { and, asc, eq, gt, isNull, or } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, isNull, or } from 'drizzle-orm'
 import { commandSchema, type Command, type CommandPayloadInput } from '@cloudnord/contract'
 import { command } from '@cloudnord/db/hub'
 import type { HubDatabase } from '../db.js'
@@ -43,6 +43,42 @@ export class CommandService {
    * monotone) et sert d'identifiant d'événement oRPC : c'est lui que le client
    * renvoie en `lastEventId` pour reprendre après une coupure.
    */
+  /**
+   * Bandeaux déjà passés à l'antenne, du plus récent au plus ancien.
+   *
+   * Lus dans les commandes émises plutôt que recopiés ailleurs : elles sont
+   * déjà persistées, datées et ordonnées. Une seconde table ne pourrait que
+   * diverger de ce qui est réellement parti dans les salles.
+   *
+   * Les retraits (`message: null`) ne sont pas de l'historique — on ne remet
+   * pas « rien » à l'antenne — mais le plus récent dit **lequel** des bandeaux
+   * est encore affiché.
+   */
+  bandeauxPasses(roomId: string | null, limit: number): {
+    seq: number
+    roomId: string | null
+    payload: { type: 'overlay.set'; message: { text: string; level: string } | null }
+    issuedAt: string
+  }[] {
+    return this.db
+      .select()
+      .from(command)
+      .where(eq(command.type, 'overlay.set'))
+      .orderBy(desc(command.seq))
+      .limit(limit * 2)
+      .all()
+      .filter((ligne) => roomId == null || ligne.roomId == null || ligne.roomId === roomId)
+      .map((ligne) => ({
+        seq: ligne.seq,
+        roomId: ligne.roomId,
+        payload: JSON.parse(ligne.payloadJson) as {
+          type: 'overlay.set'
+          message: { text: string; level: string } | null
+        },
+        issuedAt: ligne.issuedAt,
+      }))
+  }
+
   publish(
     roomId: string | null,
     payload: CommandPayloadInput,

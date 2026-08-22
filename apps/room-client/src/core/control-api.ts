@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { displayModeSchema, sceneRoleSchema } from '@cloudnord/contract'
+import { displayModeSchema, obsInstanceSchema, roomConfigPatchSchema, sceneRoleSchema } from '@cloudnord/contract'
+import type { ModeExecution, ObsInstance, RoomConfigPatch, SceneRoleMap } from '@cloudnord/contract'
 import type { ObsState } from './obs.js'
 import type { StopResult } from './recording.js'
 
@@ -25,8 +26,52 @@ export const controlActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('session.reset') }),
   /** Choix de la salle desservie, depuis l'écran d'appairage. */
   z.object({ action: z.literal('pairing.chooseRoom'), roomId: z.string().min(1) }),
+  /**
+   * Bandeau des scènes live, posé depuis la régie.
+   *
+   * La salle pilote ses propres surfaces — c'est déjà le cas de son écran —
+   * et le hub garde la sienne : les deux écrivent le même état. `text` nul
+   * retire le bandeau.
+   */
+  z.object({
+    action: z.literal('overlay.set'),
+    text: z.string().min(1).max(240).nullable(),
+    level: z.enum(['info', 'warning', 'urgent']).default('info'),
+  }),
+  /**
+   * Question du public mise à l'antenne.
+   *
+   * Canal distinct de `overlay.set`, et non un bandeau de plus : la question va
+   * dans l'habillage de captation — donc dans la VOD —, le bandeau non. Les
+   * confondre revenait à ne pouvoir montrer ni l'un ni l'autre sans l'autre.
+   * `text` nul la retire.
+   */
+  z.object({
+    action: z.literal('question.set'),
+    text: z.string().min(1).max(300).nullable(),
+    author: z.string().max(80).nullable().default(null),
+  }),
+  /** Relit les questions posées dans cette salle. */
+  z.object({ action: z.literal('questions.refresh') }),
   /** Écarte un signalement lu. */
   z.object({ action: z.literal('notification.dismiss'), id: z.string().min(1) }),
+  /**
+   * Réglage de la salle depuis la régie.
+   *
+   * Part au hub, qui reste la source de vérité : le garder en local serait
+   * écrasé au prochain sync. La salle se resynchronise puis rouvre ses
+   * connexions OBS avec les nouveaux paramètres.
+   */
+  z.object({ action: z.literal('room.configure'), patch: roomConfigPatchSchema }),
+  /** Relit les scènes déclarées dans OBS, sans rien reconnecter. */
+  z.object({ action: z.literal('obs.refreshScenes') }),
+  /**
+   * Ouvre (ou rouvre) **une** instance OBS.
+   *
+   * Instance par instance, et jamais les deux ensemble : couper la captation
+   * pour appliquer un réglage de projection coûterait une VOD.
+   */
+  z.object({ action: z.literal('obs.connect'), instance: obsInstanceSchema }),
   /** Message de la salle vers la console. */
   z.object({
     action: z.literal('message.send'),
@@ -52,11 +97,77 @@ export interface ControlTarget {
   chooseRoom(roomId: string): Promise<void>
   dismissNotification(id: string): void
   sendMessage(text: string, level: 'info' | 'warning' | 'urgent'): void
+  setLiveMessage(text: string | null, level: 'info' | 'warning' | 'urgent'): void
+  setAiredQuestion(text: string | null, author: string | null): void
+  refreshQuestions(): Promise<void>
+  configureRoom(patch: RoomConfigPatch): Promise<void>
+  connectObsInstance(instance: ObsInstance): Promise<void>
+  refreshObsScenes(): Promise<void>
   diagnostics(): ControlDiagnostics
+}
+
+/**
+ * Configuration de la salle telle que la régie la voit.
+ *
+ * Les mots de passe OBS n'en font pas partie : seulement le fait qu'il y en a
+ * un. Le formulaire n'a pas besoin de les relire pour les garder — un champ
+ * laissé vide vaut « inchangé » — et une page servie en HTTP n'est pas
+ * l'endroit où faire réapparaître un secret déjà enregistré.
+ */
+export interface ConfigVisible {
+  obs: { A: PointObsVisible; B: PointObsVisible }
+  sceneRoles: SceneRoleMap
+  displayPort: number
+  recordingRoot: string | null
+  fileSlug: string | null
+  relaySourceRoomId: string | null
+  /** Projet OpenFeedback, pour le QR « Notez le talk ». */
+  openFeedbackProjectId: string | null
+}
+
+export interface PointObsVisible {
+  url: string
+  hasPassword: boolean
+  /**
+   * La connexion en cours n'a pas été ouverte avec ces réglages-là.
+   *
+   * Enregistrer ne reconnecte pas : c'est à l'opérateur de choisir quand
+   * couper une instance. Encore faut-il qu'il voie qu'il reste à le faire.
+   */
+  pending: boolean
 }
 
 export interface ControlDiagnostics {
   obs: { A: ObsState | null; B: ObsState | null }
+  /**
+   * Questions posées dans cette salle, les plus votées d'abord.
+   *
+   * Relues à la demande plutôt que poussées : la régie ne les regarde qu'en
+   * fin de talk, et les faire circuler en continu chargerait le flux d'état
+   * pour rien.
+   */
+  questions: { id: string; text: string; author: string | null; votes: number }[]
+  /** Instant de la dernière relecture, pour dire une liste datée. */
+  questionsRefreshedAt: string | null
+  /**
+   * Conférence à laquelle se rapportent les questions listées.
+   *
+   * Affiché en régie : une liste vide ne dit pas la même chose selon qu'aucune
+   * question n'a été posée sur ce talk, ou qu'aucun talk n'est piloté. `null`
+   * dans le second cas.
+   */
+  questionsSession: { id: string; title: string } | null
+  /** Réglages de la salle, pour le panneau de configuration. `null` avant le premier sync. */
+  config: ConfigVisible | null
+  /**
+   * Modes d'exécution, celui de la salle et celui du hub.
+   *
+   * `hub` reste `null` tant qu'aucune synchronisation n'a abouti. Les deux sont
+   * affichés ensemble parce que c'est leur **désaccord** qui compte : une salle
+   * de développement branchée sur le hub de l'événement enverrait de vraies
+   * commandes depuis un poste qui simule tout.
+   */
+  mode: { salle: ModeExecution; hub: ModeExecution | null }
   /** Salle relayée, `null` si le relais n'est pas configuré pour cette salle. */
   relaySourceRoomId: string | null
   /**
@@ -152,6 +263,24 @@ export async function runControlAction(
       case 'message.send':
         target.sendMessage(action.text, action.level)
         return { ok: true, message: 'Message envoyé à la console' }
+      case 'room.configure':
+        await target.configureRoom(action.patch)
+        return { ok: true, message: 'Configuration enregistrée' }
+      case 'obs.refreshScenes':
+        await target.refreshObsScenes()
+        return { ok: true, message: 'Scènes relues dans OBS' }
+      case 'overlay.set':
+        target.setLiveMessage(action.text, action.level)
+        return { ok: true, message: action.text == null ? 'Bandeau retiré' : 'Bandeau affiché' }
+      case 'question.set':
+        target.setAiredQuestion(action.text, action.author)
+        return { ok: true, message: action.text == null ? 'Question retirée' : 'Question à l\u2019antenne' }
+      case 'questions.refresh':
+        await target.refreshQuestions()
+        return { ok: true, message: 'Questions relues' }
+      case 'obs.connect':
+        await target.connectObsInstance(action.instance)
+        return { ok: true, message: 'OBS-' + action.instance + ' connecté' }
     }
   } catch (cause) {
     return { ok: false, message: (cause as Error).message }

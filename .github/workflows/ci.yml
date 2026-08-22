@@ -1,0 +1,48 @@
+# Typage et tests, à chaque poussée et à chaque proposition.
+#
+# La suite entière tient en moins d'une minute : rien ne justifie de la
+# découper, ni de ne la lancer qu'au moment de fusionner.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Une proposition qu'on pousse trois fois de suite n'occupe qu'un coureur : les
+# exécutions précédentes n'ont plus rien à dire.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verifier:
+    runs-on: ubuntu-latest
+    env:
+      # Aucun test ne démarre Electron — toute la logique du client de salle vit
+      # en dehors, c'est précisément ce qui rend le mode « headless » possible.
+      # Éviter le binaire épargne une centaine de mégaoctets par exécution.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # La version de pnpm est figée par le champ `packageManager` du
+      # package.json : corepack la lit, et personne n'a à la répéter ici.
+      - run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typage
+        run: pnpm typecheck
+
+      # Recompile aussi la feuille Tailwind et la compare à celle qui est
+      # committée : une classe ajoutée dans une page sans régénération n'a
+      # aucun style, et rien d'autre ne l'attraperait.
+      - name: Tests
+        run: pnpm test

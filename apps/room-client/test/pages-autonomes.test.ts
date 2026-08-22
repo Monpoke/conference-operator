@@ -1,4 +1,9 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+
+/** L'accent grave, nommé pour ne pas l'écrire dans un fichier qui en parle. */
+const ACCENT = String.fromCharCode(96)
 import { renderProjectorPage } from '../src/core/display-page.js'
 import { renderOverlayPage } from '../src/core/overlay-page.js'
 import { renderRegiePage } from '../src/core/regie-page.js'
@@ -16,6 +21,40 @@ const PAGES: [string, string][] = [
   ['habillage', renderOverlayPage()],
   ['régie', renderRegiePage()],
 ]
+
+/**
+ * Fichiers source des pages, pour les garde-fous d'écriture.
+ *
+ * Ces pages sont des gabarits littéraux : ce qu'on y écrit passe deux fois par
+ * un analyseur, celui de TypeScript puis celui du navigateur.
+ */
+const SOURCES = [
+  'display-page.ts',
+  'overlay-page.ts',
+  'overlay-live-page.ts',
+  'regie-page.ts',
+].map((nom) => [nom, readFileSync(fileURLToPath(new URL('../src/core/' + nom, import.meta.url)), 'utf8')] as const)
+
+describe('écriture des gabarits', () => {
+  it.each(SOURCES)('%s : aucun accent grave dans le corps du gabarit', (_nom, source) => {
+    /**
+     * L'erreur qui revient, et qui coûte cher à chaque fois.
+     *
+     * Un accent grave dans un commentaire — « voir CONFIG » écrit en style
+     * code — referme le gabarit littéral. TypeScript signale alors une erreur
+     * de syntaxe **à la fin du fichier**, à cent lignes de la cause, et la page
+     * entière cesse de compiler. Ce test la nomme.
+     */
+    const debut = source.indexOf(ACCENT + '<!doctype html>')
+    const fin = source.lastIndexOf(ACCENT)
+    expect(debut).toBeGreaterThan(-1)
+
+    // Les accents graves **échappés** sont légitimes : `display-page` s'en sert
+    // pour ses propres gabarits imbriqués. Seuls les nus referment la chaîne.
+    const corps = source.slice(debut + 1, fin).split('\\' + ACCENT).join('')
+    expect(corps).not.toContain(ACCENT)
+  })
+})
 
 describe('pages servies par le client', () => {
   it.each(PAGES)('%s : aucune dépendance externe', (_nom, html) => {

@@ -14,21 +14,31 @@ import { join, resolve } from 'node:path'
 import { ulid } from 'ulid'
 import { RoomApp } from '../src/core/room-app.js'
 import { createMockObsTransport } from '../src/core/obs-mock.js'
+import { decalageDuMode, lireMode } from '../src/core/mode.js'
 import { formaterLigneJournal } from '../src/core/journal-console.js'
 
 const hubOrigin = process.env.HUB_ORIGIN ?? 'http://localhost:8787'
 const dataDir = resolve(process.env.DATA_DIR ?? './.donnees-locales')
 const port = Number(process.env.DISPLAY_PORT ?? 7788)
-const obsReel = process.env.OBS_REEL === '1'
+
 /**
- * Heure simulée locale, pour développer **sans hub**.
+ * Ce script sert au développement : il s'y met de lui-même.
  *
- * Dès qu'un hub répond, c'est son heure qui l'emporte : la salle cale son
- * offset sur `serverTime` à chaque synchronisation. Pour simuler une journée
- * d'événement, régler `SIMULATED_TIME` sur le hub plutôt qu'ici — sinon les
- * deux horloges divergent et tout ce qui les compare se met à mentir.
+ * Sans ce défaut, il faudrait écrire `MODE=dev` devant chaque lancement pour
+ * obtenir ce que ce script est le seul à savoir faire. `MODE=production` reste
+ * possible, et c'est alors une vraie salle sans Electron — un cas réel sur une
+ * machine sans interface graphique.
+ *
+ * L'heure simulée locale sert à développer **sans hub** : dès qu'un hub répond,
+ * c'est son heure qui l'emporte. Pour dérouler une journée d'événement, régler
+ * `SIMULATED_TIME` sur le hub plutôt qu'ici — sinon les deux horloges divergent
+ * et tout ce qui les compare se met à mentir.
  */
-const heureSimulee = process.env.HEURE_SIMULEE ?? null
+const mode = lireMode({ MODE: 'dev', ...process.env })
+for (const { variable, raison } of mode.ignores) {
+  console.error(formaterLigneJournal('error', `${variable} ignoré : ${raison}`))
+}
+const decalage = decalageDuMode(mode)
 
 mkdirSync(dataDir, { recursive: true })
 
@@ -45,21 +55,9 @@ const clientId = existsSync(cheminClientId)
 /** Jeton en clair : c'est un environnement de développement, et on le dit. */
 const cheminJeton = join(dataDir, 'jeton')
 
-/**
- * Horloge de la salle. En heure simulée, elle avance au rythme réel depuis
- * l'instant demandé : le compte à rebours et la timeline restent vivants.
- */
-const demarrage = Date.now()
-const cibleMs = heureSimulee == null ? null : Date.parse(heureSimulee)
-if (heureSimulee != null && Number.isNaN(cibleMs)) {
-  console.error(`HEURE_SIMULEE illisible : ${heureSimulee}`)
-  process.exit(1)
-}
-const maintenant = cibleMs == null ? undefined : () => cibleMs + (Date.now() - demarrage)
-
 const room = new RoomApp({
   dataDir,
-  now: maintenant,
+  mode: mode.mode,
   // `ROOM_ID` court-circuite l'écran de choix, pour un poste provisionné.
   roomId: process.env.ROOM_ID,
   hubOrigin,
@@ -67,7 +65,7 @@ const room = new RoomApp({
   displayPort: port,
   readToken: () => (existsSync(cheminJeton) ? readFileSync(cheminJeton, 'utf8').trim() : null),
   writeToken: (jeton) => writeFileSync(cheminJeton, jeton),
-  obsTransportFactory: obsReel
+  obsTransportFactory: !mode.obsSimule
     ? undefined
     : (instance) =>
         createMockObsTransport({
@@ -86,6 +84,9 @@ const room = new RoomApp({
   },
 })
 
+// Heure simulée locale : un décalage, comme celui que le hub posera.
+if (decalage !== 0) room.runtime.setClockOffset(decalage, true)
+
 const local = await room.startDisplay()
 
 console.log('')
@@ -93,12 +94,12 @@ console.log(`  Salle démarrée — machine ${clientId}`)
 console.log(`  Régie       ${local}/regie`)
 console.log(`  Projection  ${local}/display/projector`)
 console.log(`  Habillage   ${local}/display/overlay`)
-console.log(`  OBS         ${obsReel ? 'réel (obs-websocket)' : 'simulé'}`)
+console.log(`  Mode        ${mode.mode}`)
+console.log(`  OBS         ${mode.obsSimule ? 'SIMULÉ' : 'réel (obs-websocket)'}`)
 console.log('')
 
-if (cibleMs != null) {
-  room.runtime.refreshSessions()
-  console.log(`  Heure simulée localement : ${new Date(cibleMs).toISOString()}`)
+if (decalage !== 0) {
+  console.log(`  Heure simulée localement : ${new Date(room.runtime.correctedNow()).toISOString()}`)
   console.log("  (l'heure du hub l'emportera dès la connexion)")
 }
 

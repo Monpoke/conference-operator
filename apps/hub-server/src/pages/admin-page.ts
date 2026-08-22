@@ -1,4 +1,6 @@
 import { TAILWIND_CSS } from '@cloudnord/ui'
+import { MODELES_BANDEAU, type ModeExecution } from '@cloudnord/contract'
+import type { IgnoreConfig } from '../config.js'
 
 /**
  * Console d'exploitation du hub.
@@ -8,7 +10,93 @@ import { TAILWIND_CSS } from '@cloudnord/ui'
  * Servie par le hub lui-même, sans étape de build — c'est l'outil dont on a
  * besoin quand quelque chose ne va pas, il doit s'ouvrir sans rien installer.
  */
-export function renderAdminPage(): string {
+export interface AdminPageOptions {
+  /** Mode d'exécution du hub, affiché en clair : voir le badge de l'en-tête. */
+  mode?: ModeExecution
+  /** Réglages trouvés dans l'environnement et laissés sans effet, avec pourquoi. */
+  ignores?: IgnoreConfig[]
+}
+
+export function renderAdminPage(options: AdminPageOptions = {}): string {
+  const mode = options.mode ?? 'production'
+  const ignores = options.ignores ?? []
+
+  /**
+   * Le menu Développement n'est pas *masqué* en production : il n'est pas rendu.
+   *
+   * Masquer laisserait le panneau à un `hidden` près de quelqu'un qui inspecte
+   * la page, et surtout laisserait le JavaScript câbler des boutons qui
+   * déplacent l'heure de tout le système. Le hub refuse déjà `clock/set` hors
+   * mode dev ; la console dit la même chose en ne proposant rien.
+   */
+  const dev = mode === 'dev'
+  const vues = ['exploitation', 'appairage', 'conferences', 'moderation', 'messages', 'reglages']
+  if (dev) vues.push('developpement')
+
+  /**
+   * Deux avertissements, rendus côté serveur.
+   *
+   * Servis avec la page plutôt que chargés ensuite : ils décrivent le hub qui
+   * répond, pas un état applicatif, et doivent être là même si tout le reste
+   * échoue à se charger.
+   */
+  const badgeMode = mode === 'dev'
+    ? '<span class="rounded border border-attention/40 px-1.5 py-px text-[11px] font-semibold ' +
+      'tracking-[.08em] text-attention uppercase">mode dev</span>'
+    : ''
+  const avisIgnores = ignores.length === 0
+    ? ''
+    : '<div class="mb-3.5 rounded-[10px] border border-[#6c2027] bg-[#3a1519] px-3.5 py-2.5 text-sm">' +
+      ignores.map(({ variable, raison }) =>
+        // La raison accompagne la variable : « ignoré » tout court enverrait
+        // chercher au mauvais endroit, et les deux causes ne se corrigent pas
+        // de la même façon.
+        '<div><strong>' + variable + '</strong> ignoré : ' + raison + '.</div>').join('') +
+      '</div>'
+
+  /**
+   * Vue Développement : les commodités qui déplacent tout le système.
+   *
+   * L'heure du hub y est seule pour l'instant, et c'est déjà beaucoup — la
+   * changer réaligne les trois salles, fausse les timecodes VOD et déclenche
+   * des clôtures automatiques à contretemps. Elle n'a rien à faire à côté des
+   * réglages qu'on touche le jour J.
+   */
+  const vueDeveloppement = dev
+    ? `<div class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5" id="vue-developpement" hidden>
+    <section class="panneau">
+      <h2 class="titre-panneau">Heure du hub</h2>
+      <div class="reglage">
+        <div class="libelle">
+          <strong id="horloge-etat">—</strong>
+          <span id="horloge-valeur"></span>
+        </div>
+      </div>
+      <div id="horloge-controles" hidden>
+        <div class="mb-[11px]">
+          <label for="horloge-cible">Se placer à</label>
+          <input id="horloge-cible" type="datetime-local" step="60">
+        </div>
+        <div class="flex gap-1.5">
+          <button class="principal" id="btn-horloge-appliquer">Appliquer</button>
+          <button id="btn-horloge-reelle">Revenir à l'heure réelle</button>
+        </div>
+        <div class="mt-2 flex gap-1.5" id="horloge-raccourcis"></div>
+      </div>
+      <div class="aide" id="horloge-aide"></div>
+    </section>
+
+    <section class="panneau">
+      <h2 class="titre-panneau">Ce menu n'existe qu'en mode dev</h2>
+      <div class="aide mt-0">
+        Le hub tourne avec <strong>MODE=dev</strong>. En production, ce menu
+        n'est pas rendu du tout et <code>clock/set</code> est refusé côté
+        serveur : deux verrous, parce qu'un seul se contourne.
+      </div>
+    </section>
+  </div>`
+    : ''
+
   return `<!doctype html>
 <html lang="fr">
 <head>
@@ -38,30 +126,74 @@ export function renderAdminPage(): string {
   </section>
 </div>
 
-<div class="mx-auto max-w-[1180px] p-5" id="console" hidden>
-  <header class="mb-5 flex items-center gap-3.5">
-    <h1 class="text-[19px] font-semibold">Cloud Nord — console hub</h1>
-    <div class="ml-auto text-[13px] text-attenue" id="identite"></div>
-    <button class="petit" id="btn-rafraichir">Rafraîchir</button>
+<div class="mx-auto max-w-[1180px] p-3 sm:p-5" id="console" hidden>
+  <!--
+    En-tête.
+
+    Sur un téléphone tenu debout au fond d'une salle, l'adresse de l'opérateur
+    connecté est ce dont on a le moins besoin : elle disparaît la première, et
+    les deux actions restent atteignables au pouce.
+  -->
+  <header class="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 sm:mb-5">
+    <h1 class="text-[17px] font-semibold sm:text-[19px]">Cloud Nord — console hub</h1>
+    ${badgeMode}
+    <div class="ml-auto flex items-center gap-2">
+      <div class="hidden text-[13px] text-attenue sm:block" id="identite"></div>
+      <a class="petit rounded-lg border border-bord bg-surface2 px-[11px] py-[7px] text-[13px] font-semibold text-texte no-underline"
+         href="/mur" target="_blank" rel="noopener">Mur public</a>
+      <button class="petit" id="btn-rafraichir">Rafraîchir</button>
+    </div>
   </header>
 
-  <nav class="mb-[18px] flex gap-1.5">
-    <button id="nav-exploitation" class="btn btn-onglet actif">Exploitation</button>
-    <button id="nav-conferences" class="btn btn-onglet">Conférences</button>
-    <button id="nav-moderation" class="btn btn-onglet">Modération</button>
-    <button id="nav-messages" class="btn btn-onglet">Messages</button>
-    <button id="nav-reglages" class="btn btn-onglet">Réglages</button>
+  ${avisIgnores}
+
+  <!--
+    Navigation.
+
+    Six ou sept onglets ne tiennent pas sur une largeur de téléphone : ils
+    passeraient sur trois lignes, qui pousseraient le contenu sous la ligne de
+    flottaison. En bande défilante ils tiennent sur une ligne, et la barre reste
+    collée en haut — changer de vue est le geste qu'on répète le plus, il ne
+    doit pas demander de remonter toute la page. Au-delà, la barre reprend sa
+    place dans le flux et s'enroule.
+  -->
+  <nav class="sticky top-0 z-20 -mx-3 mb-3 flex gap-1.5 overflow-x-auto border-b border-bord bg-fond px-3 py-2
+              sm:static sm:mx-0 sm:mb-[18px] sm:flex-wrap sm:border-0 sm:px-0 sm:py-0">
+    <button id="nav-exploitation" class="btn btn-onglet actif shrink-0">Exploitation</button>
+    <button id="nav-appairage" class="btn btn-onglet shrink-0">Appairage</button>
+    <button id="nav-conferences" class="btn btn-onglet shrink-0">Conférences</button>
+    <button id="nav-moderation" class="btn btn-onglet shrink-0">Modération</button>
+    <button id="nav-messages" class="btn btn-onglet shrink-0">Messages</button>
+    <button id="nav-reglages" class="btn btn-onglet shrink-0">Réglages</button>
+    ${dev ? '<button id="nav-developpement" class="btn btn-onglet shrink-0 text-attention">Développement</button>' : ''}
   </nav>
 
-  <div class="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-3.5" id="vue-exploitation">
+  <div class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5" id="vue-exploitation">
+    <!--
+      Une carte par salle plutôt qu'un tableau.
+
+      La supervision se regarde debout, au fond d'une salle, sur un téléphone :
+      un tableau de sept colonnes y devient illisible ou déborde. Les cartes
+      tiennent dans les deux cas, et laissent la place au titre de ce qui se
+      joue — la première chose qu'on vient vérifier.
+    -->
     <section class="panneau col-span-full">
       <h2 class="titre-panneau">Salles</h2>
-      <table>
-        <thead><tr><th>Salle</th><th>État</th><th>Scène</th><th>REC</th><th>File</th><th>Vu</th></tr></thead>
-        <tbody id="salles"></tbody>
-      </table>
+      <div class="grid grid-cols-[repeat(auto-fit,minmax(min(260px,100%),1fr))] gap-2.5" id="salles"></div>
     </section>
 
+  </div>
+
+  <!--
+    Appairage : une vue à part.
+
+    Le geste n'a lieu qu'à la mise en route, et il demande de l'attention — on
+    lie une machine à une salle, et se tromper de salle envoie les commandes
+    au mauvais vidéoprojecteur. Le mêler à la supervision, qu'on regarde toute
+    la journée, c'était le noyer là où personne ne le cherche. C'est aussi la
+    page vers laquelle Better Auth renvoie, code en paramètre.
+  -->
+  <div class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5" id="vue-appairage" hidden>
     <section class="panneau">
       <h2 class="titre-panneau">Machines en attente d'appairage</h2>
       <div id="appairages"></div>
@@ -69,30 +201,16 @@ export function renderAdminPage(): string {
 
     <section class="panneau">
       <h2 class="titre-panneau">Machines appairées</h2>
-      <table>
-        <thead><tr><th>Machine</th><th>Salle</th><th></th></tr></thead>
-        <tbody id="machines"></tbody>
-      </table>
-    </section>
-
-    <section class="panneau">
-      <h2 class="titre-panneau">Programme</h2>
-      <div class="mb-[11px]">
-        <label for="url-programme">URL de l'export</label>
-        <div class="flex items-end gap-[9px] [&>*]:flex-1">
-          <input id="url-programme" type="url" placeholder="https://…/programme.json">
-          <button class="principal shrink-0" id="btn-importer">Importer</button>
-        </div>
+      <div class="overflow-x-auto">
+        <table>
+          <thead><tr><th>Machine</th><th>Salle</th><th></th></tr></thead>
+          <tbody id="machines"></tbody>
+        </table>
       </div>
-      <table>
-        <thead><tr><th>Version</th><th>Sessions</th><th>Anomalies</th><th></th></tr></thead>
-        <tbody id="snapshots"></tbody>
-      </table>
     </section>
-
   </div>
 
-  <div class="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-3.5" id="vue-moderation" hidden>
+  <div class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5" id="vue-moderation" hidden>
     <section class="panneau col-span-full">
       <h2 class="titre-panneau">Modération du mur</h2>
       <div class="aide mt-0 mb-3.5">
@@ -103,7 +221,7 @@ export function renderAdminPage(): string {
     </section>
   </div>
 
-  <div class="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-3.5" id="vue-messages" hidden>
+  <div class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5" id="vue-messages" hidden>
     <section class="panneau">
       <h2 class="titre-panneau">Envoyer un message</h2>
       <div class="mb-[11px]">
@@ -141,39 +259,143 @@ export function renderAdminPage(): string {
       <h2 class="titre-panneau">Reçus des salles</h2>
       <div id="messages-recus"></div>
     </section>
-  </div>
 
-  <div class="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-3.5" id="vue-conferences" hidden>
+    <!--
+      Bandeau live : superposé à la vidéo, il n'interrompt rien — c'est toute
+      la différence avec un message d'écran, qui prend la salle entière.
+    -->
     <section class="panneau col-span-full">
-      <h2 class="titre-panneau">Conférences — toutes salles</h2>
-      <table>
-        <thead><tr><th>Salle</th><th>Conférence</th><th>Prévu</th><th>Reste</th><th>État</th><th></th></tr></thead>
-        <tbody id="conferences"></tbody>
-      </table>
+      <div class="mb-2.5 flex items-center gap-3">
+        <h2 class="titre-panneau mb-0 flex-1">Bandeau live</h2>
+        <button class="petit" id="btn-bandeau-masquer">Masquer le bandeau</button>
+      </div>
+
+      <div class="mb-[11px] flex flex-wrap gap-1.5" id="bandeau-modeles"></div>
+
+      <div class="mb-[11px] flex gap-1.5">
+        <input id="bandeau-texte" class="flex-1" maxlength="240" placeholder="Texte du bandeau">
+        <select id="bandeau-niveau" class="w-auto shrink-0">
+          <option value="info">Info</option>
+          <option value="warning">Important</option>
+          <option value="urgent">Urgent</option>
+        </select>
+        <button class="principal shrink-0" id="btn-bandeau-afficher">Afficher</button>
+      </div>
+
+      <div class="aide">
+        Part dans les salles choisies plus haut, et se superpose aux scènes live —
+        le talk continue dessous. Un modèle remplit le champ : le texte reste
+        modifiable avant envoi.
+      </div>
+
+      <h3 class="titre-panneau mt-3.5">Déjà passés</h3>
+      <div id="bandeau-historique"></div>
     </section>
   </div>
 
-  <div class="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-3.5" id="vue-reglages" hidden>
+  <div class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5" id="vue-conferences" hidden>
+    <section class="panneau col-span-full">
+      <h2 class="titre-panneau">Conférences — toutes salles</h2>
+      <div class="overflow-x-auto">
+        <table>
+          <thead><tr><th>Salle</th><th>Conférence</th><th>Prévu</th><th>Reste</th><th>État</th><th></th></tr></thead>
+          <tbody id="conferences"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!--
+      Le planning, en dessous, et dans le même onglet.
+
+      Le tableau du dessus ne montre que ce qui a été **démarré** : il répond à
+      « où en est-on », jamais à « et après, il y a quoi ». Or c'est la question
+      qu'on pose à l'organisateur toute la journée, et jusqu'ici il fallait
+      rouvrir le site de l'événement pour y répondre.
+
+      Le lien OpenFeedback accompagne chaque créneau : c'est l'adresse qu'on
+      redonne à un speaker qui vient demander où sont ses retours, et elle se
+      fabrique depuis le programme, sans appel réseau.
+    -->
+    <section class="panneau col-span-full">
+      <div class="mb-2.5 flex flex-wrap items-center gap-2">
+        <h2 class="titre-panneau mb-0 flex-1">Planning du programme actif</h2>
+        <select class="w-auto shrink-0" id="planning-salle">
+          <option value="">Toutes les salles</option>
+        </select>
+      </div>
+      <div class="overflow-x-auto">
+        <table>
+          <thead><tr><th>Horaire</th><th>Salle</th><th>Conférence</th><th>Feedback</th></tr></thead>
+          <tbody id="planning"></tbody>
+        </table>
+      </div>
+      <div class="aide">
+        Les horaires sont ceux du programme, lus dans le fuseau de l'événement —
+        pas celui du poste d'où l'on regarde. Le lien « noter » ouvre la page
+        OpenFeedback de la conférence, la même que celle du QR projeté en salle.
+      </div>
+    </section>
+  </div>
+
+  <div class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5" id="vue-reglages" hidden>
+    <!--
+      Le programme : sa source, et les versions déjà importées.
+
+      Un réglage, pas une variable d'environnement : l'URL change quand le
+      programme change — c'est-à-dire pendant l'événement — et redémarrer le hub
+      pour la corriger est précisément ce qu'on ne peut pas faire ce jour-là.
+
+      Source et versions dans le même encart : on ne réimporte jamais sans
+      regarder ce que ça donne, et revenir à la version d'avant est le geste qui
+      suit immédiatement un import raté.
+    -->
     <section class="panneau">
-      <h2 class="titre-panneau">Heure du hub</h2>
-      <div class="reglage">
-        <div class="libelle">
-          <strong id="horloge-etat">—</strong>
-          <span id="horloge-valeur"></span>
-        </div>
+      <h2 class="titre-panneau">Programme</h2>
+      <div class="mb-[11px]">
+        <label for="url-programme">URL de l'export « conference-center »</label>
+        <input id="url-programme" type="url" placeholder="https://…/programme.json">
       </div>
-      <div id="horloge-controles" hidden>
-        <div class="mb-[11px]">
-          <label for="horloge-cible">Se placer à</label>
-          <input id="horloge-cible" type="datetime-local" step="60">
-        </div>
-        <div class="flex gap-1.5">
-          <button class="principal" id="btn-horloge-appliquer">Appliquer</button>
-          <button id="btn-horloge-reelle">Revenir à l'heure réelle</button>
-        </div>
-        <div class="mt-2 flex gap-1.5" id="horloge-raccourcis"></div>
+      <div class="flex flex-wrap gap-1.5 [&>*]:min-w-[130px] [&>*]:flex-1">
+        <button class="principal" id="btn-source-programme">Enregistrer</button>
+        <button id="btn-reimporter">Réimporter</button>
       </div>
-      <div class="aide" id="horloge-aide"></div>
+      <div class="aide">
+        Deux gestes, et dans cet ordre : enregistrer n'importe rien, importer ne
+        change pas l'URL. « Réimporter » attend donc que la saisie soit
+        enregistrée — sinon il tirerait l'ancienne adresse pendant qu'on en
+        regarde une nouvelle. Cette URL sert aussi au tout premier démarrage du
+        hub, quand aucun programme n'est encore en base.
+      </div>
+      <!-- Le tableau défile pour lui-même : sinon c'est la page qui déborde. -->
+      <div class="mt-3.5 overflow-x-auto">
+        <table>
+          <thead><tr><th>Version</th><th>Sessions</th><th>Anomalies</th><th></th></tr></thead>
+          <tbody id="snapshots"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!--
+      Les comptes de l'événement.
+
+      Réglage du hub et non constante du code : l'export amont ne porte que les
+      réseaux des speakers, ceux de Cloud Nord n'ont aucune source — et corriger
+      un handle ne doit pas demander de rejouer une release sur les trois
+      machines de salle. Ils descendent au sync et s'affichent dans la boucle
+      d'attente projetée pendant les pauses.
+    -->
+    <section class="panneau">
+      <h2 class="titre-panneau">Nos réseaux</h2>
+      <div id="reseaux"></div>
+      <div class="mt-2 flex flex-wrap gap-1.5 [&>*]:min-w-[130px] [&>*]:flex-1">
+        <button id="btn-reseau-ajouter">Ajouter un compte</button>
+        <button class="principal" id="btn-reseaux">Enregistrer</button>
+      </div>
+      <div class="aide">
+        Affichés dans la boucle d'attente des salles, entre les sponsors et le
+        programme. Le libellé est repris tel quel — c'est ce que la salle lit et
+        retape.
+      </div>
     </section>
 
     <section class="panneau">
@@ -200,6 +422,8 @@ export function renderAdminPage(): string {
       </div>
     </section>
   </div>
+
+  ${vueDeveloppement}
 </div>
 
 <div id="avis"></div>
@@ -265,22 +489,78 @@ export function renderAdminPage(): string {
   const ilYA = (iso) => {
     if (!iso) return 'jamais'
     const secondes = Math.round((Date.now() - Date.parse(iso)) / 1000)
+    // Une date dans le futur n'est pas un écart négatif à afficher : l'horloge
+    // du hub et celle du navigateur ne sont pas la même, et « vu -6010436 s »
+    // ne veut rien dire pour personne.
+    if (secondes < 1) return "à l'instant"
     if (secondes < 60) return secondes + ' s'
     if (secondes < 3600) return Math.round(secondes / 60) + ' min'
     return Math.round(secondes / 3600) + ' h'
+  }
+
+  /**
+   * Temps restant sur le créneau d'une salle, prêt à afficher.
+   *
+   * Arrondi à la minute : sur un écran de supervision qui se rafraîchit toutes
+   * les dix secondes, la seconde serait fausse aussitôt affichée — et ce n'est
+   * pas ici qu'on tient la fin d'un talk, c'est en régie.
+   *
+   * Le dépassement est la raison d'être de cet affichage : c'est lui qui décale
+   * le reste de la journée, donc il se distingue du reste.
+   */
+  function restantDuCreneau(ms) {
+    if (ms == null) return null
+    const minutes = Math.round(ms / 60000)
+    if (minutes < 0) return { texte: 'dépassement de ' + duree(-minutes), depasse: true }
+    return { texte: duree(minutes) + ' restantes', depasse: false }
+  }
+
+  /** Durée en minutes, lisible. Au-delà de l'heure, les minutes seules ne se lisent plus. */
+  function duree(minutes) {
+    if (minutes < 60) return minutes + ' min'
+    return Math.floor(minutes / 60) + ' h ' + String(minutes % 60).padStart(2, '0')
   }
 
   async function chargerSalles() {
     const salles = await appeler('rooms/statuses')
     $('salles').innerHTML = salles.map((salle) => {
       const classe = salle.connectivity === 'ONLINE' ? '' : salle.connectivity === 'DEGRADED' ? 'degraded' : 'offline'
-      return '<tr><td>' + echapper(salle.name) + '</td>' +
-        '<td><span class="pastille ' + classe + '"></span>' + salle.connectivity.toLowerCase() + '</td>' +
-        '<td>' + echapper(salle.sceneRole ?? '—') + '</td>' +
-        '<td>' + (salle.recording ? '<span class="actif">● REC</span>' : '—') + '</td>' +
-        '<td>' + (salle.outboxDepth > 0 ? salle.outboxDepth : '—') + '</td>' +
-        '<td>' + ilYA(salle.lastSeenAt) + '</td></tr>'
-    }).join('') || '<tr><td colspan="6" class="vide">Aucune salle déclarée.</td></tr>'
+      const etiquette = (texte, teinte) =>
+        '<span class="rounded bg-surface2 px-1.5 py-0.5 text-[11px] ' + (teinte || 'text-attenue') + '">' + texte + '</span>'
+
+      const badges = [
+        salle.recording ? etiquette('● REC', 'text-alerte') : '',
+        salle.streaming ? etiquette('● LIVE', 'text-ok') : '',
+        salle.sceneRole ? etiquette(echapper(salle.sceneRole)) : '',
+        salle.outboxDepth > 0 ? etiquette(salle.outboxDepth + ' en file', 'text-attention') : '',
+      ].filter(Boolean).join(' ')
+
+      // Calculé par le hub : lui seul connaît l'heure qui fait foi, et elle
+      // peut être simulée.
+      const reste = restantDuCreneau(salle.currentSession?.remainingMs)
+
+      return '<div class="rounded-xl border border-bord bg-fond p-3">' +
+        '<div class="flex items-center gap-2">' +
+        '<span class="pastille ' + classe + '"></span>' +
+        '<span class="flex-1 truncate font-semibold">' + echapper(salle.name) + '</span>' +
+        '<a class="shrink-0 text-[13px] text-marque no-underline" target="_blank" rel="noopener" href="/mur?salle=' +
+        encodeURIComponent(salle.roomId) + '">mur ↗</a></div>' +
+        // Ce qui se joue : la première chose qu'on vient vérifier.
+        '<div class="mt-1.5 text-[13px] leading-snug">' +
+        (salle.currentSession
+          ? echapper(salle.currentSession.title)
+          : '<span class="text-attenue">Rien au programme</span>') + '</div>' +
+        // Et pour combien de temps encore : sans ça, savoir ce qui se joue ne
+        // dit pas si la salle est en avance, à l'heure, ou en train de déborder.
+        (reste
+          ? '<div class="mt-0.5 text-xs ' + (reste.depasse ? 'text-alerte' : 'text-attenue') + '">' +
+            reste.texte + '</div>'
+          : '') +
+        (badges ? '<div class="mt-2 flex flex-wrap gap-1.5">' + badges + '</div>' : '') +
+        '<div class="mt-2 text-xs text-attenue">' + salle.connectivity.toLowerCase() +
+        ' · vu ' + ilYA(salle.lastSeenAt) + '</div>' +
+        '</div>'
+    }).join('') || '<div class="vide">Aucune salle déclarée.</div>'
   }
 
   async function chargerAppairages() {
@@ -417,10 +697,17 @@ export function renderAdminPage(): string {
     }
   }
 
-  $('btn-importer').onclick = async () => {
-    const url = $('url-programme').value.trim()
-    if (!url) { avis('Renseignez une URL', true); return }
-    $('btn-importer').disabled = true
+  /**
+   * Import du programme, depuis la source **enregistrée**.
+   *
+   * Jamais depuis le champ de saisie : ce qui est importé doit être ce que le
+   * hub réimportera tout seul au prochain démarrage, sans quoi les deux
+   * divergeraient sans que rien ne le dise.
+   */
+  async function importerProgramme() {
+    const url = reglages?.programSourceUrl ?? null
+    if (!url) { avis('Aucune URL de programme enregistrée', true); return }
+    $('btn-reimporter').disabled = true
     try {
       const resultat = await appeler('program/import', { sourceUrl: url })
       avis(resultat.program.sessions.length + ' sessions importées')
@@ -428,9 +715,14 @@ export function renderAdminPage(): string {
     } catch (cause) {
       avis(cause.message, true)
     } finally {
-      $('btn-importer').disabled = false
+      rendreSourceProgramme()
     }
   }
+
+  $('btn-reimporter').onclick = () => importerProgramme()
+  // L'état du bouton suit la frappe : il doit dire « pas encore » avant le
+  // clic, pas après.
+  $('url-programme').oninput = () => rendreSourceProgramme()
 
   async function chargerModeration() {
     const messages = await appeler('wall/pending', {})
@@ -472,7 +764,9 @@ export function renderAdminPage(): string {
    */
   const codeDeLUrl = new URLSearchParams(location.search).get('user_code')
 
-  const VUES = ['exploitation', 'conferences', 'moderation', 'messages', 'reglages']
+  // Rendue par le serveur : la liste doit coller au markup, et le menu
+  // Développement n'est pas rendu hors du mode de développement.
+  const VUES = ${JSON.stringify(vues)}
   let vueCourante = 'exploitation'
 
   function basculerVue(nom) {
@@ -507,8 +801,11 @@ export function renderAdminPage(): string {
     corps.innerHTML = ''
     for (const etat of etats) {
       const ligne = document.createElement('tr')
+      // Fuseau de l'événement, comme dans le planning juste en dessous : les
+      // deux tableaux montrent les mêmes créneaux, ils ne peuvent pas annoncer
+      // deux heures différentes selon l'endroit d'où la console est ouverte.
       const heure = (iso) =>
-        iso ? new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }).format(new Date(iso)) : '—'
+        iso ? new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: fuseauEvenement() }).format(new Date(iso)) : '—'
 
       const creneau = etat.scheduledStartsAt
         ? heure(etat.scheduledStartsAt) + '–' + heure(etat.scheduledEndsAt)
@@ -554,11 +851,17 @@ export function renderAdminPage(): string {
    *
    * Pas le temps réel écoulé : c'est l'écart au créneau prévu qui intéresse
    * l'organisateur, parce que c'est lui qui décale toute la suite de la journée.
+   *
+   * L'écart vient du hub, comme celui des cartes de salles : lui seul connaît
+   * l'heure qui fait foi, et elle peut être simulée. Soustraire ici la fin du
+   * créneau de l'heure du navigateur affichait « +6010 min » sur un talk
+   * parfaitement à l'heure dès qu'on déplaçait l'horloge depuis le menu
+   * Développement.
    */
   function resteAuProgramme(etat) {
-    if (etat.status !== 'running' || !etat.scheduledEndsAt) return '<span class="text-attenue">—</span>'
+    if (etat.status !== 'running' || etat.remainingMs == null) return '<span class="text-attenue">—</span>'
 
-    const minutes = Math.round((Date.parse(etat.scheduledEndsAt) - Date.now()) / 60000)
+    const minutes = Math.round(etat.remainingMs / 60000)
     if (minutes >= 0) {
       const classe = minutes <= 5 ? 'class="text-attention"' : ''
       return '<span ' + classe + '>' + minutes + ' min</span>'
@@ -566,6 +869,145 @@ export function renderAdminPage(): string {
     // Débordement : c'est l'information qui déclenche une décision.
     return '<span class="font-semibold text-alerte">+' + Math.abs(minutes) + ' min</span>'
   }
+
+  /**
+   * Le planning du programme actif.
+   *
+   * Gardé en mémoire entre deux rendus : le filtre par salle rejoue l'affichage
+   * sans redemander au hub, et un programme ne change qu'à l'import.
+   */
+  let planning = null
+
+  /**
+   * Fuseau dans lequel se lisent les horaires du programme.
+   *
+   * Celui de l'événement, jamais celui du poste : la console s'ouvre aussi
+   * depuis un train ou un autre pays, et annoncer un talk une heure trop tôt à
+   * qui appelle la salle est une erreur qu'on ne rattrape pas. Repli sur le
+   * fuseau du navigateur tant que le hub n'a pas répondu — mieux qu'une heure
+   * absente.
+   */
+  const fuseauEvenement = () => planning?.timezone ?? undefined
+
+  async function chargerPlanning() {
+    planning = await appeler('program/planning')
+
+    // La liste des salles ne bouge qu'à l'import : la reconstruire à chaque
+    // rafraîchissement remettrait le filtre sur « toutes » toutes les dix
+    // secondes, pendant qu'on lit une salle en particulier.
+    const filtre = $('planning-salle')
+    if (filtre.options.length !== planning.rooms.length + 1) {
+      filtre.innerHTML = '<option value="">Toutes les salles</option>' +
+        planning.rooms.map((salle) =>
+          '<option value="' + echapper(salle.id) + '">' + echapper(salle.name) + '</option>').join('')
+    }
+    rendrePlanning()
+  }
+
+  function rendrePlanning() {
+    const corps = $('planning')
+    if (planning == null || planning.sessions.length === 0) {
+      corps.innerHTML = '<tr><td colspan="4" class="vide">Aucun programme actif. ' +
+        'Il s\u2019importe depuis les réglages.</td></tr>'
+      return
+    }
+
+    const salleChoisie = $('planning-salle').value
+    const creneaux = planning.sessions.filter(
+      (session) => salleChoisie === '' || session.roomId === salleChoisie)
+    if (creneaux.length === 0) {
+      corps.innerHTML = '<tr><td colspan="4" class="vide">Aucun créneau dans cette salle.</td></tr>'
+      return
+    }
+
+    /**
+     * Heures lues dans le fuseau de l'**événement**.
+     *
+     * La console s'ouvre depuis n'importe où — un train, un autre pays — et le
+     * programme, lui, ne se décale pas. Afficher l'heure du poste ferait
+     * annoncer un talk une heure trop tôt à qui appelle la salle.
+     */
+    const dans = (options) => (iso) =>
+      new Intl.DateTimeFormat('fr-FR', { ...options, timeZone: planning.timezone }).format(new Date(iso))
+    const heure = dans({ hour: '2-digit', minute: '2-digit' })
+    const jour = dans({ weekday: 'short', day: '2-digit', month: '2-digit' })
+
+    // Le jour n'apparaît que s'il y en a plusieurs : sur un événement d'une
+    // journée, il ne dirait rien et prendrait la place du titre.
+    const jours = new Set(creneaux.map((session) => jour(session.startsAt)))
+    const plusieursJours = jours.size > 1
+
+    /**
+     * Où en est la journée, d'après l'heure du **hub**.
+     *
+     * Un planning de vingt-sept lignes se lit en cherchant d'abord « on en est
+     * où » : sans repère, on recompte les créneaux depuis le haut à chaque
+     * fois. L'heure vient du hub et non du navigateur — elle peut être simulée,
+     * et c'est elle qui fait foi pour toute la journée.
+     */
+    const maintenant = Date.parse(planning.serverTime)
+    const situer = (session) => {
+      const debut = Date.parse(session.startsAt)
+      const fin = session.endsAt == null ? null : Date.parse(session.endsAt)
+      if (debut > maintenant) return 'a-venir'
+      // Créneau de fin inconnue : il court jusqu'à preuve du contraire, plutôt
+      // que d'être déclaré passé à la seconde où il commence.
+      if (fin == null || maintenant < fin) return 'en-cours'
+      return 'passe'
+    }
+
+    corps.innerHTML = creneaux.map((session) => {
+      const quand = situer(session)
+      const creneau = (plusieursJours ? jour(session.startsAt) + ' ' : '') +
+        heure(session.startsAt) + (session.endsAt ? '–' + heure(session.endsAt) : '')
+      const qui = session.speakers.length === 0
+        ? ''
+        : '<div class="text-xs text-attenue">' + echapper(session.speakers.join(', ')) + '</div>'
+      // Case vide plutôt que lien mort : sans projet OpenFeedback réglé, ou sur
+      // une pause, il n'y a rien à noter.
+      const lien = session.feedbackUrl
+        ? '<a class="font-semibold text-marque no-underline" target="_blank" rel="noopener" href="' +
+          echapper(session.feedbackUrl) + '">noter ↗</a>'
+        : '<span class="text-attenue">—</span>'
+
+      /**
+       * Trois traitements, un seul repère.
+       *
+       * Le créneau en cours est marqué au trait de marque et écrit en clair ;
+       * ce qui est passé s'efface sans disparaître — on doit encore pouvoir y
+       * retrouver un lien de feedback ; ce qui vient reste au repos.
+       */
+      const ligne = quand === 'en-cours'
+        ? ' class="bg-surface2"'
+        : quand === 'passe' ? ' class="opacity-55"' : ''
+      const marque = quand === 'en-cours'
+        ? '<span class="mr-1.5 inline-block h-3.5 w-[3px] translate-y-0.5 rounded-full bg-marque"></span>'
+        : ''
+      const horaire = quand === 'en-cours'
+        ? 'whitespace-nowrap tabular-nums font-semibold text-texte'
+        : 'whitespace-nowrap tabular-nums text-attenue'
+
+      return '<tr' + ligne + '>' +
+        '<td class="' + horaire + '">' + marque + creneau + '</td>' +
+        '<td class="whitespace-nowrap">' + echapper(session.roomName ?? '—') + '</td>' +
+        // Les pauses restent dans la liste — elles font partie de la journée —
+        // mais en retrait : ce n'est pas ce qu'on cherche en ouvrant le planning.
+        '<td' + (session.kind === 'break' ? ' class="text-attenue"' : '') + '>' +
+        echapper(session.title) + qui +
+        // Dit en toutes lettres ce que le trait montre : le surlignage seul se
+        // confondrait avec une ligne survolée, et l'heure affichée peut être
+        // simulée — auquel cas « en ce moment » est la seule chose qui explique
+        // pourquoi c'est cette ligne-là qui est marquée.
+        (quand === 'en-cours'
+          ? '<div class="text-xs font-semibold text-marque">en ce moment</div>'
+          : '') +
+        '</td>' +
+        '<td>' + lien + '</td>' +
+        '</tr>'
+    }).join('')
+  }
+
+  $('planning-salle').onchange = () => rendrePlanning()
 
   async function chargerMessages() {
     const [salles, recus] = await Promise.all([
@@ -607,6 +1049,87 @@ export function renderAdminPage(): string {
   }
   $('msg-cible').onchange()
 
+  /**
+   * Bandeau live.
+   *
+   * Les modèles viennent du contrat, rendus côté serveur : ce sont les quelques
+   * phrases qu'on met à l'antenne sans réfléchir un jour d'événement, et les
+   * retaper sous pression est le meilleur moyen de les rater.
+   */
+  const MODELES = ${JSON.stringify(MODELES_BANDEAU)}
+
+  function salleVisee() {
+    return $('msg-salle').value || null
+  }
+
+  async function chargerBandeaux() {
+    const passes = await appeler('overlay/history', { roomId: salleVisee(), limit: 20 })
+    const zone = $('bandeau-historique')
+    if (passes.length === 0) {
+      zone.innerHTML = '<div class="vide">Aucun bandeau diffusé pour le moment.</div>'
+      return
+    }
+    zone.innerHTML = ''
+    for (const passe of passes) {
+      const ligne = document.createElement('div')
+      ligne.className = 'reglage'
+      ligne.innerHTML =
+        '<div class="libelle"><strong>' + echapper(passe.message.text) + '</strong>' +
+        '<span>' + passe.message.level + ' · ' + ilYA(passe.issuedAt) +
+        (passe.roomId ? ' · ' + echapper(passe.roomId) : ' · toutes salles') + '</span></div>' +
+        (passe.visible ? '<span class="badge running">en cours</span>' : '')
+      const remettre = document.createElement('button')
+      remettre.className = 'petit'
+      remettre.textContent = passe.visible ? 'Masquer' : 'Remettre'
+      remettre.onclick = () => (passe.visible
+        ? masquerBandeau()
+        : afficherBandeau(passe.message.text, passe.message.level))
+      ligne.append(remettre)
+      zone.append(ligne)
+    }
+  }
+
+  async function afficherBandeau(text, level) {
+    try {
+      await appeler('overlay/show', { roomId: salleVisee(), message: { text, level }, ttlSeconds: null })
+      avis('Bandeau affiché')
+      await chargerBandeaux()
+    } catch (cause) {
+      avis(cause.message, true)
+    }
+  }
+
+  async function masquerBandeau() {
+    try {
+      await appeler('overlay/hide', { roomId: salleVisee() })
+      avis('Bandeau retiré')
+      await chargerBandeaux()
+    } catch (cause) {
+      avis(cause.message, true)
+    }
+  }
+
+  for (const modele of MODELES) {
+    const bouton = document.createElement('button')
+    bouton.className = 'petit'
+    bouton.textContent = modele.nom
+    // Remplit le champ plutôt que d'envoyer : un modèle est un point de départ,
+    // pas un rail — la date, la durée, le nom de la salle changent à chaque fois.
+    bouton.onclick = () => {
+      $('bandeau-texte').value = modele.message.text
+      $('bandeau-niveau').value = modele.message.level
+      $('bandeau-texte').focus()
+    }
+    $('bandeau-modeles').append(bouton)
+  }
+
+  $('btn-bandeau-afficher').onclick = () => {
+    const texte = $('bandeau-texte').value.trim()
+    if (texte.length === 0) { avis('Renseignez un texte', true); return }
+    void afficherBandeau(texte, $('bandeau-niveau').value)
+  }
+  $('btn-bandeau-masquer').onclick = () => void masquerBandeau()
+
   $('btn-envoyer-message').onclick = async () => {
     const texte = $('msg-texte').value.trim()
     if (texte.length === 0) { avis('Renseignez un message', true); return }
@@ -627,11 +1150,111 @@ export function renderAdminPage(): string {
     }
   }
 
+  /**
+   * Derniers réglages connus.
+   *
+   * Gardés parce que deux vues s'en servent : Réglages les édite, et
+   * Exploitation a besoin de l'URL du programme pour son bouton « Réimporter ».
+   */
+  let reglages = null
+
+  /**
+   * Comptes de l'événement, édités à la volée.
+   *
+   * Gardés dans un tableau plutôt que relus du DOM à l'enregistrement : une
+   * ligne vidée puis réenregistrée doit disparaître, ce qui se dit mal en
+   * relisant des champs.
+   */
+  let reseaux = []
+
+  function rendreReseaux() {
+    const zone = $('reseaux')
+    zone.innerHTML = ''
+    if (reseaux.length === 0) {
+      zone.innerHTML = '<div class="vide">Aucun compte déclaré. La boucle des salles saute cette page.</div>'
+      return
+    }
+    reseaux.forEach((lien, index) => {
+      const ligne = document.createElement('div')
+      ligne.className = 'mb-1.5 grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,2fr)_auto] items-center gap-1.5'
+      ligne.innerHTML =
+        '<input placeholder="Réseau" value="' + echapper(lien.network) + '">' +
+        '<input placeholder="@handle" value="' + echapper(lien.handle) + '">' +
+        '<input placeholder="https://…" value="' + echapper(lien.url) + '">'
+      const champs = ligne.querySelectorAll('input')
+      const cles = ['network', 'handle', 'url']
+      champs.forEach((champ, rang) => {
+        champ.oninput = () => { reseaux[index][cles[rang]] = champ.value }
+      })
+      const retirer = document.createElement('button')
+      retirer.className = 'petit danger'
+      retirer.textContent = '×'
+      retirer.title = 'Retirer ce compte'
+      retirer.onclick = () => { reseaux.splice(index, 1); rendreReseaux() }
+      ligne.appendChild(retirer)
+      zone.appendChild(ligne)
+    })
+  }
+
+  $('btn-reseau-ajouter').onclick = () => {
+    reseaux.push({ network: '', handle: '', url: '' })
+    rendreReseaux()
+  }
+
+  $('btn-reseaux').onclick = async () => {
+    // Les lignes vides sont écartées ici : ajouter une ligne puis se raviser
+    // est un geste normal, et le hub refuserait une URL vide.
+    const propres = reseaux.filter((lien) =>
+      lien.network.trim() !== '' && lien.handle.trim() !== '' && lien.url.trim() !== '')
+    try {
+      reglages = await appeler('settings/update', { socialLinks: propres })
+      reseaux = reglages.socialLinks.map((lien) => ({ ...lien }))
+      rendreReseaux()
+      avis('Réseaux enregistrés')
+    } catch (cause) {
+      avis(cause.message, true)
+    }
+  }
+
   async function chargerReglages() {
-    const [reglages, horloge] = await Promise.all([appeler('settings/get'), appeler('clock/get')])
+    reglages = await appeler('settings/get')
     $('auto-actif').checked = reglages.autoEndEnabled
     $('auto-delai').value = reglages.autoEndGraceMinutes
-    rendreHorloge(horloge)
+    // Sans écraser une saisie en cours : le rafraîchissement tourne toutes les
+    // dix secondes, et rien n'est plus déroutant qu'un champ qui se réécrit
+    // pendant qu'on tape dedans.
+    if (document.activeElement !== $('url-programme')) {
+      $('url-programme').value = reglages.programSourceUrl ?? ''
+    }
+    rendreSourceProgramme()
+    // Même précaution : le rafraîchissement tourne toutes les dix secondes, et
+    // réécrire la liste pendant qu'on tape dedans effacerait la saisie.
+    if (!$('reseaux').contains(document.activeElement)) {
+      reseaux = (reglages.socialLinks ?? []).map((lien) => ({ ...lien }))
+      rendreReseaux()
+    }
+  }
+
+  /**
+   * État du bouton d'import.
+   *
+   * Il attend que la saisie soit enregistrée : importer l'ancienne adresse
+   * pendant qu'on en lit une nouvelle à l'écran est le genre de malentendu
+   * qu'on ne remarque qu'après.
+   */
+  function rendreSourceProgramme() {
+    const url = reglages?.programSourceUrl ?? null
+    const enAttente = $('url-programme').value.trim() !== (url ?? '')
+    $('btn-reimporter').disabled = url == null || enAttente
+    $('btn-reimporter').title = url == null
+      ? 'Renseignez une URL, puis enregistrez'
+      : enAttente
+        ? "Enregistrez d'abord : l'import part de l'URL enregistrée"
+        : url
+  }
+
+  async function chargerDeveloppement() {
+    rendreHorloge(await appeler('clock/get'))
   }
 
   /** Heure locale au format attendu par un champ datetime-local. */
@@ -656,7 +1279,7 @@ export function renderAdminPage(): string {
       ? "Déplacer l'heure déplace <strong>tout le système</strong> : les salles s'alignent " +
         'aussitôt. Outil de développement — pendant l\u2019événement, cela fausserait les ' +
         'timecodes des enregistrements et déclencherait des clôtures à contretemps.'
-      : 'Réglage fermé sur ce hub. L\u2019ouvrir avec <code>CLOCK_CONTROL=1</code>, ' +
+      : 'Réglage fermé : ce hub tourne en production. Il s\u2019ouvre avec <code>MODE=dev</code>, ' +
         'à réserver au développement.'
 
     if (!horloge.controllable) return
@@ -691,13 +1314,31 @@ export function renderAdminPage(): string {
     }
   }
 
-  $('btn-horloge-appliquer').onclick = () => {
-    const valeur = $('horloge-cible').value
-    if (!valeur) { avis('Renseignez une date', true); return }
-    // Le champ datetime-local rend une heure locale : on la convertit en instant.
-    reglerHorloge(new Date(valeur).toISOString())
+  // Hors développement, ces boutons ne sont pas rendus. Les câbler sans vérifier
+  // lèverait sur un null et casserait tout le script de la console — le reste
+  // de la page cesserait de répondre, sans un mot dans la console du navigateur.
+  if ($('btn-horloge-appliquer') != null) {
+    $('btn-horloge-appliquer').onclick = () => {
+      const valeur = $('horloge-cible').value
+      if (!valeur) { avis('Renseignez une date', true); return }
+      // Le champ datetime-local rend une heure locale : on la convertit en instant.
+      reglerHorloge(new Date(valeur).toISOString())
+    }
+    $('btn-horloge-reelle').onclick = () => reglerHorloge(null)
   }
-  $('btn-horloge-reelle').onclick = () => reglerHorloge(null)
+
+  $('btn-source-programme').onclick = async () => {
+    const url = $('url-programme').value.trim()
+    try {
+      // Vidé = plus de source. Le hub n'importe alors plus rien tout seul, ce
+      // qui est un état légitime : un programme déjà en base continue de servir.
+      reglages = await appeler('settings/update', { programSourceUrl: url === '' ? null : url })
+      rendreSourceProgramme()
+      avis('Source du programme enregistrée')
+    } catch (cause) {
+      avis(cause.message, true)
+    }
+  }
 
   $('btn-reglages').onclick = async () => {
     try {
@@ -716,17 +1357,24 @@ export function renderAdminPage(): string {
       // Seule la vue affichée est chargée : rafraîchir en boucle des panneaux
       // invisibles n'apporterait rien et sollicite le hub pour rien.
       if (vueCourante === 'exploitation') {
-        await Promise.all([
-          chargerSalles(), chargerAppairages(), chargerMachines(), chargerSnapshots(),
-        ])
+        // Les salles seules : c'est l'écran qu'on laisse ouvert toute la
+        // journée, il n'a pas à interroger le hub sur le reste.
+        await chargerSalles()
+      } else if (vueCourante === 'appairage') {
+        await Promise.all([chargerAppairages(), chargerMachines()])
       } else if (vueCourante === 'conferences') {
+        // Le planning d'abord : c'est lui qui porte le fuseau de l'événement,
+        // dans lequel le tableau du dessus lit ses horaires.
+        await chargerPlanning()
         await chargerConferences()
       } else if (vueCourante === 'moderation') {
         await chargerModeration()
       } else if (vueCourante === 'messages') {
-        await chargerMessages()
+        await Promise.all([chargerMessages(), chargerBandeaux()])
+      } else if (vueCourante === 'developpement') {
+        await chargerDeveloppement()
       } else {
-        await chargerReglages()
+        await Promise.all([chargerSnapshots(), chargerReglages()])
       }
     } catch (cause) {
       avis(cause.message, true)
@@ -736,7 +1384,10 @@ export function renderAdminPage(): string {
   function demarrer() {
     $('connexion').hidden = true
     $('console').hidden = false
-    void tout()
+    // Arrivée par le lien que la machine affiche : on ouvre la page où le code
+    // se saisit, sinon il faut le chercher dans un onglet qu'on ne connaît pas.
+    if (codeDeLUrl) basculerVue('appairage')
+    else void tout()
     // La supervision doit rester vivante sans intervention : c'est l'écran
     // qu'on laisse ouvert toute la journée.
     setInterval(() => { if (!$('console').hidden) void tout() }, 10_000)

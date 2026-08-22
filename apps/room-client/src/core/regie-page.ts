@@ -1,4 +1,5 @@
 import { TAILWIND_CSS } from '@cloudnord/ui'
+import { DUREE_SIGNALEMENT_MS } from './runtime.js'
 
 /**
  * Fenêtre de régie.
@@ -75,6 +76,11 @@ export function renderRegiePage(options: RegiePageOptions = {}): string {
   #modale { display: none; }
   body[data-modale="ouverte"] #modale { display: flex; }
 
+  /* Modale de configuration : réglages de la salle. Attribut distinct — les
+     deux ne s'ouvrent jamais ensemble, mais chacune sait se fermer seule. */
+  #modale-config { display: none; }
+  body[data-config="ouverte"] #modale-config { display: flex; }
+
   /* Voile d'appairage : occupe tout l'écran tant que la machine n'est pas liée. */
   #appairage { display: none; }
   body[data-appairage="requis"] #appairage { display: flex; }
@@ -84,10 +90,11 @@ export function renderRegiePage(options: RegiePageOptions = {}): string {
   #toast.erreur { border-color: var(--color-alerte); background: #3a1519; }
 </style>
 </head>
-<body class="grid h-screen grid-rows-[auto_auto_auto_1fr] bg-fond font-sans text-texte" data-appairage="ok" data-modale="fermee">
+<body class="grid h-screen grid-rows-[auto_auto_auto_1fr] bg-fond font-sans text-texte" data-appairage="ok" data-modale="fermee" data-config="fermee">
 ${etatInitial}
 <header class="flex items-center gap-3 border-b border-bord bg-surface px-3 py-2">
   <div class="truncate text-[15px] font-semibold" id="salle">—</div>
+  <span class="shrink-0" id="badge-mode"></span>
   <div class="flex shrink-0 items-center gap-1.5 text-xs text-attenue">
     <span class="pastille" id="pastille"></span>
     <span id="etat-libelle">hors ligne</span>
@@ -97,6 +104,7 @@ ${etatInitial}
   <div class="flex shrink-0 items-center gap-1.5">
     <button class="btn btn-petit" id="btn-programme">Programme<span class="touche">P</span></button>
     <button class="btn btn-petit" id="btn-salles">Salles<span class="touche">S</span></button>
+    <button class="btn btn-petit" id="btn-config" title="Configuration de la salle">⚙</button>
     <div class="menu relative" id="menu-ecrans">
       <button class="btn btn-petit" id="btn-ecrans">Écrans ▾</button>
       <div class="menu-liste absolute top-[calc(100%+6px)] right-0 z-20 min-w-[260px] rounded-[9px] border border-bord bg-surface p-[5px] shadow-[0_10px_30px_rgba(0,0,0,.45)]" id="liste-ecrans"></div>
@@ -129,6 +137,15 @@ ${etatInitial}
         <span class="badge" id="badge-conf">à venir</span>
       </div>
       <div class="mb-2 line-clamp-2 text-sm leading-snug" id="titre-conf">—</div>
+      <!--
+        Les intervenants du créneau piloté.
+
+        Au micro, ce qu'on cherche est un prénom, et le titre ne le donne pas.
+        Il fallait ouvrir la modale programme pour le lire — deux clics, au
+        moment précis où l'on parle à la salle. Masqué sur un créneau sans
+        speaker : une ligne vide sous « Pause déjeuner » ferait douter.
+      -->
+      <div class="mb-2 line-clamp-1 text-xs text-attenue" id="qui-conf" hidden></div>
       <!-- Le temps restant est la donnée qu'on regarde en boucle : elle a la taille qui va avec. -->
       <div class="text-[40px] leading-none font-bold tabular-nums" id="restant">--:--</div>
       <div class="mt-1 text-xs text-attenue" id="conf-detail"></div>
@@ -153,7 +170,7 @@ ${etatInitial}
     </section>
 
     <section class="panneau p-3">
-      <h2 class="titre-panneau">Projection — OBS&nbsp;A</h2>
+      <h2 class="titre-panneau">Projection — OBS&nbsp;A<span id="simule-A"></span></h2>
       <div class="grid grid-cols-2 gap-1.5" id="scenes"></div>
     </section>
 
@@ -180,7 +197,7 @@ ${etatInitial}
 
   <div class="flex min-h-0 flex-col gap-2.5 lg:overflow-y-auto">
     <section class="panneau p-3">
-      <h2 class="titre-panneau">Captation — OBS&nbsp;B</h2>
+      <h2 class="titre-panneau">Captation — OBS&nbsp;B<span id="simule-B"></span></h2>
       <div class="mb-2 flex items-baseline gap-2.5">
         <span class="inactif text-[22px] font-bold tabular-nums" id="duree">00:00</span>
         <span class="text-[11px] text-attenue" id="marqueurs">aucun marqueur</span>
@@ -208,6 +225,29 @@ ${etatInitial}
 </main>
 
 <!--
+  Configuration de la salle.
+
+  Les adresses des deux OBS et les noms de scènes se constatent devant les
+  machines : les saisir ici évite l'aller-retour vers la console du hub, qui
+  reste malgré tout la source de vérité — l'enregistrement part chez lui, la
+  salle se resynchronise, puis rouvre ses connexions OBS.
+-->
+<div class="fixed inset-0 z-40 items-center justify-center bg-black/65 p-4" id="modale-config">
+  <div class="flex max-h-[88vh] min-h-0 w-full max-w-[820px] flex-col rounded-xl border border-bord bg-surface">
+    <div class="flex items-center gap-2 border-b border-bord px-4 py-2.5">
+      <h2 class="titre-panneau mb-0 flex-1">⚙ Configuration de la salle</h2>
+      <button class="btn btn-petit" id="btn-relire-scenes">Relire les scènes d'OBS</button>
+      <button class="btn btn-petit" id="btn-fermer-config">Fermer<span class="touche">Échap</span></button>
+    </div>
+    <div class="min-h-0 flex-1 overflow-y-auto p-4" id="config-contenu"></div>
+    <div class="flex items-center gap-3 border-t border-bord px-4 py-3">
+      <div class="flex-1 text-xs text-attenue" id="config-avis"></div>
+      <button class="btn shrink-0" id="btn-config-enregistrer">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!--
   Modale de consultation.
 
   Trois vues qui se lisent, jamais qui commandent : le programme de la salle,
@@ -221,6 +261,7 @@ ${etatInitial}
       <button class="btn btn-onglet actif" id="encart-programme">Programme</button>
       <button class="btn btn-onglet" id="encart-autre">Autre salle</button>
       <button class="btn btn-onglet" id="encart-salles">Salles</button>
+      <button class="btn btn-onglet" id="encart-questions">Questions</button>
       <select class="champ max-w-[220px] py-2 text-[13px]" id="choix-autre-salle" hidden></select>
       <button class="btn btn-petit ml-auto" id="btn-fermer-modale">Fermer<span class="touche">Échap</span></button>
     </div>
@@ -257,10 +298,31 @@ ${etatInitial}
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
   const MODES = [
+    // La boucle en premier : c'est l'écran d'attente par défaut, celui vers
+    // lequel on revient. Les pages qu'elle enchaîne restent disponibles seules,
+    // pour figer l'écran sur l'une d'elles quand quelque chose se passe.
+    ['loop', 'Boucle'],
     ['sponsors', 'Sponsors'], ['programme', 'Programme'],
     ['countdown', 'Compte à rebours'], ['message', 'Message'],
+    // Fin de talk : le public est encore assis, c'est le seul moment où l'on
+    // obtient des retours.
+    ['feedback', 'Notez le talk'], ['wall', 'Mur & questions'],
+    ['question', 'Question choisie'],
   ]
   const SCENES_BASE = [['LIVE', 'Direct', 'L'], ['HOLD', 'Habillage', 'H']]
+
+  /**
+   * Péremption d'un signalement, reprise du runtime.
+   *
+   * Le runtime les retire aussi, mais sur son tic d'horloge — toutes les cinq
+   * secondes. La page applique la même règle à la seconde, pour que le bandeau
+   * disparaisse quand il le doit et pas au tic d'après.
+   *
+   * Sauf en aperçu : l'heure y est figée à la génération du fichier, et le
+   * bandeau s'effacerait quelques secondes après l'ouverture — un aperçu ne
+   * montrerait alors jamais de signalement.
+   */
+  const PEREMPTION_MS = window.__APERCU__ ? Infinity : ${DUREE_SIGNALEMENT_MS}
 
   /**
    * Écrans servis localement.
@@ -271,6 +333,8 @@ ${etatInitial}
   const ECRANS = [
     ['/display/projector', 'Projection', "Ce que voit la salle — Browser Source d'OBS-A"],
     ['/display/overlay', 'Habillage captation', 'Superposé à la vidéo dans OBS-B'],
+    ['/display/overlay-live', 'Bandeau live', 'Question en haut — sobre sur un plan caméra'],
+    ['/display/overlay-live?style=encart', 'Encart live', 'Question en carte, en bas à droite — par-dessus des slides'],
     ['/regie', 'Régie', 'Cette page, dans une autre fenêtre'],
   ]
 
@@ -292,10 +356,12 @@ ${etatInitial}
       })
       const resultat = await reponse.json()
       toast(resultat.message ?? (resultat.ok ? 'Fait' : 'Échec'), !resultat.ok)
+      return resultat
     } catch (cause) {
       // La régie tourne en local : un échec ici veut dire que le cœur applicatif
       // ne répond plus, ce que l'opérateur doit voir immédiatement.
       toast('Le service local ne répond pas', true)
+      return { ok: false, message: 'Le service local ne répond pas' }
     }
   }
 
@@ -312,6 +378,50 @@ ${etatInitial}
       bouton.onclick = () => agir(construire(valeur))
       conteneur.appendChild(bouton)
     }
+  }
+
+  /**
+   * Badge « simulé ».
+   *
+   * Rien ne distingue à l'écran un enregistrement simulé d'un vrai : mêmes
+   * boutons, même chronomètre, même sidecar écrit. La seule différence est
+   * qu'aucune caméra n'est branchée derrière — d'où ce rappel partout où l'on
+   * croit piloter OBS.
+   */
+  const BADGE_SIMULE = '<span class="ml-1.5 rounded border border-attention/40 px-1 py-px ' +
+    'text-[10px] font-semibold tracking-[.08em] text-attention uppercase">simulé</span>'
+
+  /**
+   * Mode d'exécution, celui de la salle et celui du hub.
+   *
+   * Rien en production des deux côtés : un badge permanent qui ne dit jamais
+   * rien cesse d'être lu. C'est le **désaccord** qui compte le plus — une
+   * salle de développement branchée sur le hub de l'événement enverrait de
+   * vraies commandes depuis un poste qui simule tout.
+   */
+  function rendreMode() {
+    const cible = $('badge-mode')
+    const mode = donnees.diagnostics?.mode
+    const hub = mode?.hub ?? 'production'
+    if (mode == null || (mode.salle === 'production' && hub === 'production')) {
+      cible.innerHTML = ''
+      return
+    }
+
+    const divergent = mode.hub != null && mode.hub !== mode.salle
+    const texte = !divergent
+      ? 'mode dev'
+      : mode.salle === 'dev'
+        ? 'dev · hub en production'
+        : 'hub en dev'
+    cible.innerHTML = '<span class="rounded border px-1.5 py-px text-[10px] font-semibold ' +
+      'tracking-[.08em] uppercase ' +
+      (divergent ? 'border-alerte/50 text-alerte' : 'border-attention/40 text-attention') +
+      '">' + texte + '</span>'
+  }
+
+  function badgeSimule(instance) {
+    return donnees.diagnostics?.obs?.[instance]?.simulated === true ? BADGE_SIMULE : ''
   }
 
   function heure(iso, tz) {
@@ -338,6 +448,16 @@ ${etatInitial}
   let sessionsAutreSalle = []
   let sallesDisponibles = []
 
+  /**
+   * Intervenants d'un créneau, dans l'ordre du programme.
+   *
+   * Le point médian sépare mieux que la virgule des noms qui en contiennent
+   * parfois une (« Dupont, Jean »).
+   */
+  function intervenants(session) {
+    return (session?.speakers ?? []).map((p) => p.name).join(' · ')
+  }
+
   function creneaux(sessions, surlignerActuel) {
     if (sessions.length === 0) return '<div class="text-xs text-attenue">Aucune session.</div>'
     const instant = maintenant()
@@ -353,7 +473,7 @@ ${etatInitial}
         ? 'actuel bg-[color-mix(in_srgb,var(--color-marque)_22%,transparent)] shadow-[inset_3px_0_0_var(--color-marque)]'
         : (s.endsAtMs ?? s.startsAtMs) < instant ? 'opacity-35' : ''
       const pause = s.kind === 'break' ? 'opacity-50' : ''
-      const qui = s.speakers.map((p) => p.name).join(' · ')
+      const qui = intervenants(s)
       return '<div class="' + CRENEAU + ' ' + etat + ' ' + pause + '">' +
         '<div class="text-[13px] text-attenue tabular-nums">' + heure(s.startsAt, donnees.timezone) + '</div>' +
         '<div><div class="text-sm">' + echapper(s.title) + '</div>' +
@@ -367,6 +487,10 @@ ${etatInitial}
 
     if (encart === 'salles') {
       conteneur.innerHTML = rendreSalles()
+      return
+    }
+    if (encart === 'questions') {
+      rendreQuestions(conteneur)
       return
     }
     if (encart === 'autre') {
@@ -522,6 +646,260 @@ ${etatInitial}
     zone.innerHTML = html
   }
 
+
+  /**
+   * Configuration de la salle.
+   *
+   * Le formulaire est construit **à l'ouverture**, jamais à chaque état reçu :
+   * la régie en reçoit un toutes les quelques secondes, et reconstruire les
+   * champs sous les doigts effacerait la saisie en cours. Ne suivent en direct
+   * que l'état des deux OBS et la liste de leurs scènes.
+   */
+  const ROLES_PAR_INSTANCE = {
+    A: [['LIVE', 'Direct'], ['HOLD', 'Habillage'], ['RELAY', 'Relais']],
+    B: [['TALK', 'Talk complet'], ['CAM_ONLY', 'Caméra seule'], ['SLIDES_ONLY', 'Slides seules']],
+  }
+
+  /** Vrai si la configuration doit être reconstruite au prochain état reçu. */
+  let refaireConfig = false
+  let scenesRendues = ''
+
+  function champ(id, libelle, valeur, aide) {
+    return '<label class="mb-0.5 block text-xs text-attenue">' + echapper(libelle) + '</label>' +
+      '<input class="champ py-2" id="' + id + '" value="' + echapper(valeur == null ? '' : valeur) + '">' +
+      (aide ? '<div class="mt-0.5 text-[11px] text-attenue">' + echapper(aide) + '</div>' : '')
+  }
+
+  function optionsScenes(instance, valeur) {
+    const scenes = donnees.diagnostics?.obs?.[instance]?.scenes ?? []
+    const options = ['<option value="">— non configuré —</option>']
+    for (const nom of scenes) {
+      options.push('<option value="' + echapper(nom) + '">' + echapper(nom) + '</option>')
+    }
+    // La scène configurée peut ne pas exister dans OBS — c'est même le défaut
+    // qu'on vient réparer ici. On la garde dans la liste, dite pour ce qu'elle est.
+    if (valeur && scenes.indexOf(valeur) === -1) {
+      options.push('<option value="' + echapper(valeur) + '">' + echapper(valeur) + " — absente d'OBS</option>")
+    }
+    return options.join('')
+  }
+
+  function blocObs(instance, titre, config) {
+    const point = config.obs[instance]
+    const roles = ROLES_PAR_INSTANCE[instance].map(([role, libelle]) =>
+      '<div><label class="mb-0.5 block text-xs text-attenue">' + role + ' · ' + libelle + '</label>' +
+      '<select class="champ py-2" id="cfg-role-' + instance + '-' + role + '">' +
+      optionsScenes(instance, config.sceneRoles[instance]?.[role]) + '</select></div>').join('')
+
+    return '<section class="panneau mb-3 p-3">' +
+      '<div class="mb-2 flex items-center gap-2">' +
+        '<h3 class="titre-panneau mb-0">' + echapper(titre) +
+          '<span id="config-simule-' + instance + '"></span></h3>' +
+        '<span class="flex-1 truncate text-xs text-attenue" id="config-etat-' + instance + '"></span>' +
+        '<button class="btn btn-petit shrink-0" id="cfg-connect-' + instance + '">Connecter</button>' +
+      '</div>' +
+      '<div class="grid grid-cols-2 gap-2">' +
+        '<div>' + champ('cfg-url-' + instance, 'Adresse WebSocket', point.url) + '</div>' +
+        '<div><label class="mb-0.5 block text-xs text-attenue">Mot de passe</label>' +
+          '<input type="password" class="champ py-2" id="cfg-pass-' + instance + '" placeholder="' +
+            (point.hasPassword ? 'inchangé' : 'aucun') + '">' +
+          (point.hasPassword
+            ? '<label class="mt-1 flex items-center gap-1.5 text-[11px] text-attenue">' +
+              '<input type="checkbox" id="cfg-pass-vide-' + instance + '"> retirer le mot de passe</label>'
+            : '') +
+        '</div>' +
+      '</div>' +
+      '<div class="mt-2 grid grid-cols-3 gap-2">' + roles + '</div>' +
+      '</section>'
+  }
+
+  function rendreConfig() {
+    const zone = $('config-contenu')
+    const config = donnees.diagnostics?.config
+    if (config == null) {
+      zone.innerHTML = '<div class="text-sm text-attenue">Rien à configurer tant que le hub ' +
+        "n'a pas répondu : c'est lui qui détient la configuration de la salle.</div>"
+      return
+    }
+
+    const autres = (donnees.diagnostics?.rooms ?? []).filter((salle) => salle.roomId !== donnees.state.roomId)
+    const relais = '<div><label class="mb-0.5 block text-xs text-attenue">Salle relayée</label>' +
+      '<select class="champ py-2" id="cfg-relay">' +
+      '<option value="">— aucune —</option>' +
+      autres.map((salle) => '<option value="' + echapper(salle.roomId) + '">' + echapper(salle.name) + '</option>').join('') +
+      '</select>' +
+      '<div class="mt-0.5 text-[11px] text-attenue">Active le bouton « Relais » en projection. ' +
+      "L'acheminement du flux reste une affaire de configuration OBS.</div></div>"
+
+    zone.innerHTML =
+      blocObs('A', 'OBS-A — projection', config) +
+      blocObs('B', 'OBS-B — captation', config) +
+      '<section class="panneau p-3">' +
+        '<h3 class="titre-panneau">Salle</h3>' +
+        '<div class="grid grid-cols-2 gap-2">' +
+          '<div>' + champ('cfg-port', "Port de l'écran local", config.displayPort,
+            'Prend effet au prochain démarrage du client.') + '</div>' +
+          '<div>' + champ('cfg-slug', 'Préfixe des fichiers', config.fileSlug,
+            "Utilisé dans les noms d'enregistrements. Vide : dérivé du nom de la salle.") + '</div>' +
+          '<div>' + champ('cfg-openfeedback', 'Projet OpenFeedback', config.openFeedbackProjectId,
+            'Sert au QR « Notez le talk ». Change une fois par édition.') + '</div>' +
+          '<div>' + champ('cfg-root', 'Dossier des enregistrements', config.recordingRoot,
+            "Pour mémoire : c'est OBS-B qui décide où il écrit. Le fichier est renommé sur place.") + '</div>' +
+          relais +
+        '</div>' +
+      '</section>'
+
+    // Les <select> portent leur valeur après insertion : la poser dans le
+    // markup obligerait à recopier la logique de « scène absente d'OBS ».
+    for (const instance of ['A', 'B']) {
+      for (const [role] of ROLES_PAR_INSTANCE[instance]) {
+        $('cfg-role-' + instance + '-' + role).value = config.sceneRoles[instance]?.[role] ?? ''
+      }
+    }
+    $('cfg-relay').value = config.relaySourceRoomId ?? ''
+
+    for (const instance of ['A', 'B']) {
+      $('cfg-connect-' + instance).onclick = () => void connecterInstance(instance)
+    }
+
+    scenesRendues = cleScenes()
+    majEtatConfig()
+  }
+
+  function cleScenes() {
+    return JSON.stringify([
+      donnees.diagnostics?.obs?.A?.scenes ?? [],
+      donnees.diagnostics?.obs?.B?.scenes ?? [],
+    ])
+  }
+
+  /**
+   * Ce qui suit l'état en direct, formulaire ouvert : la connexion des deux
+   * OBS, leurs scènes, et la possibilité même d'enregistrer.
+   */
+  function majEtatConfig() {
+    if (document.body.dataset.config !== 'ouverte') return
+
+    for (const instance of ['A', 'B']) {
+      const cible = $('config-etat-' + instance)
+      if (cible == null) continue
+      const obs = donnees.diagnostics?.obs?.[instance]
+      const connecte = obs?.connected === true
+      const manquants = connecte ? (obs.unresolvedRoles ?? []) : []
+      const enAttente = donnees.diagnostics?.config?.obs?.[instance]?.pending === true
+
+      cible.className = 'flex-1 truncate text-xs ' +
+        (!connecte ? 'text-alerte' : manquants.length > 0 || enAttente ? 'text-attention' : 'text-ok')
+      cible.textContent = (!connecte
+        ? 'déconnecté'
+        : manquants.length > 0
+          ? 'connecté · rôles absents : ' + manquants.join(', ')
+          : 'connecté · ' + (obs.currentSceneName ?? 'scène inconnue')) +
+        // L'écart entre ce qui est enregistré et ce qui est branché : sans le
+        // dire, un réglage juste resterait sans effet sans que personne ne voie
+        // pourquoi.
+        (enAttente ? ' · réglages non appliqués' : '')
+
+      $('config-simule-' + instance).innerHTML = badgeSimule(instance)
+
+      const bouton = $('cfg-connect-' + instance)
+      if (bouton == null) continue
+      bouton.textContent = connecte ? 'Reconnecter' : 'Connecter'
+      // Reconnecter, c'est couper : jamais sous une prise en cours. Une
+      // instance déconnectée reste reconnectable, même si son dernier état
+      // connu disait « enregistre » — il est justement périmé.
+      const prise = connecte && obs.recording === true
+      bouton.disabled = prise
+      bouton.title = prise
+        ? "Enregistrement en cours sur cette instance : l'arrêter avant de reconnecter"
+        : 'Applique les réglages ci-dessus à cette instance'
+    }
+
+    // Scènes relues : on remplace les options sans perdre le choix en cours.
+    const cle = cleScenes()
+    if (cle !== scenesRendues) {
+      scenesRendues = cle
+      for (const instance of ['A', 'B']) {
+        for (const [role] of ROLES_PAR_INSTANCE[instance]) {
+          const select = $('cfg-role-' + instance + '-' + role)
+          if (select == null) continue
+          const valeur = select.value
+          select.innerHTML = optionsScenes(instance, valeur)
+          select.value = valeur
+        }
+      }
+    }
+
+    // Le hub est la source de vérité : hors ligne, enregistrer serait une
+    // promesse en l'air, la saisie repartirait au premier sync réussi.
+    const enLigne = donnees.state.connectivity === 'ONLINE'
+    const avis = $('config-avis')
+    $('btn-config-enregistrer').disabled = !enLigne
+    if (!enLigne) {
+      avis.dataset.raison = 'hors-ligne'
+      avis.className = 'flex-1 text-xs text-attention'
+      avis.textContent = "Hub injoignable : la configuration s'enregistre sur le hub, " +
+        'elle serait perdue au prochain sync.'
+    } else if (avis.dataset.raison === 'hors-ligne') {
+      avis.dataset.raison = ''
+      avis.className = 'flex-1 text-xs text-attenue'
+      avis.textContent = ''
+    }
+  }
+
+  /** Ce que le formulaire dit, sous la forme attendue par le hub. */
+  function lireConfig() {
+    const config = donnees.diagnostics.config
+
+    const point = (instance) => {
+      const valeur = { url: $('cfg-url-' + instance).value.trim() }
+      const vider = $('cfg-pass-vide-' + instance)
+      const saisi = $('cfg-pass-' + instance).value
+      // Champ vide = inchangé : la page n'a jamais eu le mot de passe, elle ne
+      // peut pas le renvoyer pour le conserver.
+      if (vider != null && vider.checked) valeur.password = null
+      else if (saisi.length > 0) valeur.password = saisi
+      return valeur
+    }
+
+    const roles = (instance) => {
+      // On repart de l'existant : un rôle mappé hors des trois proposés ici
+      // — cas rare mais légitime — ne doit pas disparaître à l'enregistrement.
+      const suivant = Object.assign({}, config.sceneRoles[instance])
+      for (const [role] of ROLES_PAR_INSTANCE[instance]) {
+        const valeur = $('cfg-role-' + instance + '-' + role).value
+        if (valeur) suivant[role] = valeur
+        else delete suivant[role]
+      }
+      return suivant
+    }
+
+    const texte = (id) => {
+      const valeur = $(id).value.trim()
+      return valeur.length === 0 ? null : valeur
+    }
+
+    return {
+      obs: { A: point('A'), B: point('B') },
+      sceneRoles: { A: roles('A'), B: roles('B') },
+      displayPort: Number($('cfg-port').value) || config.displayPort,
+      recordingRoot: texte('cfg-root'),
+      fileSlug: texte('cfg-slug'),
+      relaySourceRoomId: $('cfg-relay').value || null,
+      openFeedbackProjectId: texte('cfg-openfeedback'),
+    }
+  }
+
+  function ouvrirConfig() {
+    fermerModale()
+    document.body.dataset.config = 'ouverte'
+    if (donnees) rendreConfig()
+  }
+
+  function fermerConfig() {
+    document.body.dataset.config = 'fermee'
+  }
+
   function rendreAppairage() {
     const appairage = donnees.pairing
     const requis = appairage != null && appairage.status !== 'paired'
@@ -615,6 +993,80 @@ ${etatInitial}
     }
   }
 
+  /**
+   * Questions du public, et mise à l'antenne.
+   *
+   * Le bandeau live sert de support : il se superpose à la vidéo sans
+   * interrompre le talk, ce qui est exactement ce qu'on veut d'une question
+   * lue à voix haute — le speaker répond, la salle lit.
+   */
+  function rendreQuestions(conteneur) {
+    const questions = donnees.diagnostics?.questions ?? []
+    const vu = donnees.diagnostics?.questionsRefreshedAt
+    const talk = donnees.diagnostics?.questionsSession ?? null
+    const aLAntenne = donnees.state.question ?? null
+
+    /**
+     * Le talk dont on lit les questions, écrit en clair.
+     *
+     * La liste ne porte que celles de la conférence pilotée : sans ce rappel,
+     * une liste vide se lit « personne n'a rien demandé » alors qu'elle veut
+     * parfois dire « aucun talk n'est piloté ».
+     */
+    const entete = '<div class="mb-2.5 flex flex-wrap items-center gap-2">' +
+      '<button class="btn btn-petit" id="btn-relire-questions">Relire</button>' +
+      '<button class="btn btn-petit" id="btn-cacher-question">Retirer de l\u2019antenne</button>' +
+      '<span class="flex-1 text-xs text-attenue">' +
+      (vu == null ? 'Jamais relues' : 'Relues ' + heure(vu, donnees.timezone)) + '</span></div>' +
+      '<div class="mb-2.5 text-xs text-attenue">' +
+      (talk == null
+        ? 'Aucune conférence pilotée : rien à mettre à l\u2019antenne.'
+        : 'Questions posées sur <strong class="text-texte">' + echapper(talk.title) + '</strong>') +
+      '</div>'
+
+    if (questions.length === 0) {
+      conteneur.innerHTML = entete +
+        '<div class="text-xs text-attenue">' +
+        (talk == null ? '' : 'Aucune question sur cette conférence pour le moment.') + '</div>'
+    } else {
+      conteneur.innerHTML = entete + '<div class="flex flex-col gap-1.5">' + questions.map((question) => {
+        // La question déjà à l'antenne se reconnaît : sinon on la remet, ou on
+        // cherche laquelle est projetée en relisant les trois premières.
+        const active = aLAntenne != null && aLAntenne.text === question.text
+        return '<div class="grid grid-cols-[auto_1fr_auto] items-center gap-2.5 rounded-md border px-2.5 py-2 ' +
+          (active ? 'border-marque bg-surface2' : 'border-bord') + '">' +
+          '<span class="rounded bg-surface2 px-1.5 py-0.5 text-xs tabular-nums">' + question.votes + '</span>' +
+          '<div><div class="text-sm leading-snug">' + echapper(question.text) + '</div>' +
+          (question.author ? '<div class="mt-0.5 text-xs text-attenue">' + echapper(question.author) + '</div>' : '') +
+          '</div>' +
+          '<button class="btn btn-petit afficher' + (active ? ' actif' : '') + '" data-texte="' +
+          echapper(question.text) + '" data-auteur="' + echapper(question.author ?? '') + '">' +
+          (active ? 'À l\u2019antenne' : 'Afficher') + '</button>' +
+          '</div>'
+      }).join('') + '</div>'
+    }
+
+    // Ce que « Afficher » fait, et ce qu'il ne fait pas : sans le dire, on
+    // clique et on cherche la question sur le vidéoprojecteur.
+    conteneur.insertAdjacentHTML('beforeend',
+      '<div class="mt-2.5 text-[11px] leading-relaxed text-attenue">' +
+      'Afficher met la question sur l\u2019habillage de captation — elle part donc ' +
+      'dans la VOD — et sur le bandeau vidéo de la salle. Pour la projeter en grand ' +
+      'devant le public, choisir « Question choisie » dans Écran de salle.</div>')
+
+    $('btn-relire-questions').onclick = () => agir({ action: 'questions.refresh' })
+    $('btn-cacher-question').onclick = () => agir({ action: 'question.set', text: null })
+    conteneur.onclick = (evenement) => {
+      const bouton = evenement.target.closest?.('.afficher')
+      if (bouton == null) return
+      agir({
+        action: 'question.set',
+        text: bouton.dataset.texte,
+        author: bouton.dataset.auteur === '' ? null : bouton.dataset.auteur,
+      })
+    }
+  }
+
   function rendreSalles() {
     const salles = donnees.diagnostics?.rooms ?? []
     if (salles.length === 0) return '<div class="text-xs text-attenue">Aucune salle connue du hub.</div>'
@@ -642,11 +1094,19 @@ ${etatInitial}
 
   function rendreSignalements() {
     const zone = $('signalements')
-    const liste = donnees.state.notifications ?? []
-    if (liste.length === 0) {
-      zone.innerHTML = ''
-      return
-    }
+    const limite = maintenant() - PEREMPTION_MS
+    const liste = (donnees.state.notifications ?? [])
+      .filter((signalement) => Date.parse(signalement.at) > limite)
+
+    // Reconstruit seulement quand la liste change : la fonction est rappelée
+    // chaque seconde pour faire tomber les signalements périmés, et réécrire le
+    // bandeau en continu ferait disparaître la croix sous le curseur. C'est
+    // aussi ce qui garde écarté un signalement que l'état pousse encore, le
+    // temps que la demande de retrait arrive au runtime.
+    const cle = liste.map((signalement) => signalement.id).join(',')
+    if (zone.__cle === cle) return
+    zone.__cle = cle
+
     zone.innerHTML = ''
     for (const signalement of liste) {
       const bloc = document.createElement('div')
@@ -732,6 +1192,11 @@ ${etatInitial}
     $('titre-conf').textContent = session
       ? (aVenir ? heure(session.startsAt, donnees.timezone) + ' · ' + session.title : session.title)
       : 'Aucune conférence à piloter'
+    const qui = $('qui-conf')
+    const noms = intervenants(session)
+    qui.textContent = noms
+    qui.hidden = noms === ''
+
     const badge = $('badge-conf')
     badge.className = 'badge ' + statut
     badge.textContent =
@@ -760,11 +1225,15 @@ ${etatInitial}
     const instant = maintenant()
     const depart = session?.startsAtMs ?? instant
     const suivante = (donnees.sessions ?? []).find((s) => s.startsAtMs > depart)
+    // Sur une deuxième ligne : accolés au titre, les noms sortaient du cadre
+    // dès que le titre était long, et c'est le titre qui disparaissait.
+    const quiSuivante = intervenants(suivante)
     $('suivant').innerHTML = suivante == null
       ? 'Plus rien après au programme.'
       : '<span class="text-attenue">Suivant</span> <span class="tabular-nums text-texte">' +
         heure(suivante.startsAt, donnees.timezone) + '</span> <span class="text-texte">· ' +
-        echapper(suivante.title) + '</span>'
+        echapper(suivante.title) + '</span>' +
+        (quiSuivante ? '<div class="mt-0.5 text-texte">' + echapper(quiSuivante) + '</div>' : '')
 
     rendreRestant()
   }
@@ -795,6 +1264,7 @@ ${etatInitial}
       return '<div class="' + LIGNE + '">' +
         '<span class="pastille ' + (connecte ? '' : 'offline') + '"></span>' +
         '<span class="truncate">OBS ' + cle + (connecte ? ' — ' + echapper(obs.currentSceneName ?? 'scène inconnue') : ' — déconnecté') + '</span>' +
+        badgeSimule(cle) +
         (manquants.length ? '<span class="ml-auto shrink-0 text-attention">rôles absents : ' + manquants.join(', ') + '</span>' : '') +
         '</div>'
     }).join('')
@@ -865,7 +1335,10 @@ ${etatInitial}
     rendreConference()
     rendreEcrans()
     rendreDiagnostic()
+    rendreMode()
+    for (const instance of ['A', 'B']) $('simule-' + instance).innerHTML = badgeSimule(instance)
     rendreFluxSalles()
+    if (refaireConfig) { refaireConfig = false; rendreConfig() } else majEtatConfig()
     void chargerProgrammes()
     tic()
   }
@@ -879,6 +1352,7 @@ ${etatInitial}
 
     rendreRestant()
     rendreFluxSalles()
+    rendreSignalements()
 
     const duree = $('duree')
     if (debutRec == null) {
@@ -924,7 +1398,7 @@ ${etatInitial}
     }
   }
 
-  const ONGLETS = ['programme', 'autre', 'salles']
+  const ONGLETS = ['programme', 'autre', 'salles', 'questions']
   function ouvrirEncart(nom) {
     encart = nom
     for (const onglet of ONGLETS) {
@@ -942,8 +1416,57 @@ ${etatInitial}
   function fermerModale() {
     document.body.dataset.modale = 'fermee'
   }
+  $('btn-config').onclick = ouvrirConfig
+  $('btn-fermer-config').onclick = fermerConfig
+  $('modale-config').onclick = (evenement) => {
+    if (evenement.target === $('modale-config')) fermerConfig()
+  }
+  $('btn-relire-scenes').onclick = () => agir({ action: 'obs.refreshScenes' })
+
+  /**
+   * Connecte une instance, sur ce qui est à l'écran.
+   *
+   * Le formulaire part d'abord au hub : brancher sur les réglages d'avant la
+   * saisie donnerait un résultat que personne ne pourrait s'expliquer. Hub
+   * injoignable, on connecte tout de même avec la configuration en place —
+   * rouvrir OBS après un redémarrage n'a besoin de personne d'autre.
+   */
+  async function connecterInstance(instance) {
+    const bouton = $('cfg-connect-' + instance)
+    bouton.disabled = true
+    try {
+      if (donnees.state.connectivity === 'ONLINE') {
+        const enregistre = await agir({ action: 'room.configure', patch: lireConfig() })
+        if (!enregistre?.ok) return
+        refaireConfig = true
+      }
+      await agir({ action: 'obs.connect', instance })
+    } finally {
+      bouton.disabled = false
+    }
+  }
+  $('btn-config-enregistrer').onclick = async () => {
+    const bouton = $('btn-config-enregistrer')
+    const avis = $('config-avis')
+    bouton.disabled = true
+    avis.dataset.raison = ''
+    avis.className = 'flex-1 text-xs text-attenue'
+    avis.textContent = 'Enregistrement…'
+
+    const resultat = await agir({ action: 'room.configure', patch: lireConfig() })
+    bouton.disabled = false
+    avis.className = 'flex-1 text-xs ' + (resultat?.ok ? 'text-ok' : 'text-alerte')
+    avis.textContent = resultat?.ok ? 'Enregistré.' : (resultat?.message ?? 'Échec')
+    // Reconstruit sur l'état qui revient du hub, pas sur ce qu'on vient de
+    // taper : c'est la seule façon de voir ce qui a réellement été retenu.
+    if (resultat?.ok) refaireConfig = true
+  }
+
   $('btn-programme').onclick = () => ouvrirModale('programme')
   $('btn-salles').onclick = () => ouvrirModale('salles')
+  // Ouvrir l'onglet relit la liste : la regarder sans la rafraîchir donnerait
+  // les questions d'il y a une heure.
+  $('encart-questions').addEventListener('click', () => void agir({ action: 'questions.refresh' }))
   $('btn-fermer-modale').onclick = fermerModale
   // Clic sur le voile, pas sur la boîte : le geste attendu pour refermer.
   $('modale').onclick = (evenement) => {
@@ -974,8 +1497,11 @@ ${etatInitial}
   // Raccourcis : dans une salle sombre, viser un bouton coûte plus cher
   // qu'appuyer sur une touche.
   document.addEventListener('keydown', (evenement) => {
-    if (evenement.key === 'Escape') fermerModale()
-    if (evenement.target.tagName === 'INPUT') return
+    if (evenement.key === 'Escape') { fermerModale(); fermerConfig() }
+    // Les listes déroulantes comptent autant que les champs texte : une touche
+    // « l » dans un choix de scène ne doit pas basculer la projection en direct.
+    const saisie = evenement.target.tagName
+    if (saisie === 'INPUT' || saisie === 'SELECT' || saisie === 'TEXTAREA') return
     const touche = evenement.key.toLowerCase()
     if (touche === 'l') agir({ action: 'scene.set', role: 'LIVE' })
     if (touche === 'h') agir({ action: 'scene.set', role: 'HOLD' })

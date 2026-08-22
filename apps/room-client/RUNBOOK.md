@@ -15,12 +15,30 @@ l'opérateur a l'application ouverte et rien d'autre.
 4. La régie affiche ensuite un **code d'appairage**. Le donner à la personne qui
    tient la console hub (`/admin`), qui vérifie la salle et approuve.
    *Le code expire au bout de 30 minutes ; relancer l'application en régénère un.*
-5. Vérifier le panneau **Diagnostic** : les deux OBS doivent être verts et
-   **aucun rôle ne doit apparaître en rouge**. Un rôle rouge = une scène OBS
-   renommée ou absente. Corriger maintenant, pas pendant un talk.
+5. Vérifier le panneau **Diagnostic**. Quatre choses, dans cet ordre :
+   - les deux OBS **verts** ;
+   - **aucun rôle en rouge** — un rôle rouge = une scène renommée ou absente ;
+   - **aucun badge « simulé »** — un OBS simulé se pilote exactement comme un
+     vrai, mais ne capte rien ;
+   - **aucun badge de mode** près du nom de la salle, en haut à gauche : le jour
+     J, salle et hub sont en production.
+
+   Corriger maintenant, pas pendant un talk. Bouton **⚙** dans l'en-tête : la
+   première ligne de chaque instance porte son adresse et son mot de passe, les
+   listes en dessous le choix des scènes — elles sont lues sur OBS. Puis
+   **Connecter** sur la ligne de l'instance concernée : reconnecter la
+   projection ne touche pas à la captation, et le bouton se bloque sur une
+   instance qui enregistre. Le hub doit être joignable pour enregistrer un
+   réglage.
 6. Dans OBS-A, vérifier que la scène `HOLD` contient bien une Browser Source sur
-   `http://127.0.0.1:7788/display/projector`, et OBS-B une source transparente
-   sur `http://127.0.0.1:7788/display/overlay`.
+   `http://127.0.0.1:7788/display/projector`, la scène `LIVE` une source
+   transparente sur `http://127.0.0.1:7788/display/overlay-live`, et OBS-B une
+   source transparente sur `http://127.0.0.1:7788/display/overlay`.
+
+   **`overlay-live` ne va jamais dans OBS-B.** Il porte aussi les messages de la
+   console — « on reprend dans 5 minutes » — et tout ce qui entre dans OBS-B est
+   gravé dans la VOD. La question du public, elle, part bien en VOD, mais par
+   `overlay`, qui ne porte qu'elle.
 
 ---
 
@@ -28,12 +46,12 @@ l'opérateur a l'application ouverte et rien d'autre.
 
 | Moment | Geste |
 |---|---|
-| Avant | Écran sur **Sponsors** ou **Programme**, projection sur **Habillage** (`H`) |
+| Avant | Écran sur **Boucle** — le défaut —, projection sur **Habillage** (`H`) |
 | Le speaker branche | Projection sur **Direct** (`L`) |
 | Début du talk | **Commencer** puis **Enregistrer** (`R`) |
 | Moment marquant | **Marquer** (`M`) — saisir un libellé, ou laisser « Chapitre » |
 | Fin du talk | **Arrêter** (`R`), puis projection sur **Habillage** (`H`) |
-| Entre deux | Écran sur **Compte à rebours** ou **Mur** |
+| Entre deux | Écran sur **Compte à rebours**, ou retour à la **Boucle** |
 
 Le bloc « Conférence en cours » vise toujours la conférence pertinente : celle en
 cours si elle a commencé, sinon **la suivante**. Entre deux talks ou pendant une
@@ -100,9 +118,12 @@ programme et les sponsors s'affichent alors normalement ; seules les commandes
 
 Tout message est relu avant affichage : c'est donc une erreur de modération.
 
-1. Basculer immédiatement l'écran sur **Sponsors**.
+1. Basculer immédiatement l'écran sur **Sponsors** — une page figée, pas la
+   boucle, qui repasserait sur le mur toute seule.
 2. Prévenir la personne qui modère (`/admin`) pour qu'elle rejette le message.
-3. Rebasculer sur **Mur** une fois confirmé.
+   **Le mur est commun à l'événement** : le message est sur les trois écrans, et
+   les deux autres salles ont le même geste à faire.
+3. Rebasculer sur **Boucle** une fois confirmé.
 
 ---
 

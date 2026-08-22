@@ -6,7 +6,23 @@ import { z } from 'zod'
  * Un hub qui démarre avec une variable manquante le jour J est pire qu'un hub
  * qui refuse de démarrer : on veut l'échec au déploiement, pas en salle.
  */
+/** Un réglage trouvé dans l'environnement et laissé sans effet, avec pourquoi. */
+export interface IgnoreConfig {
+  variable: string
+  raison: string
+}
+
 const configSchema = z.object({
+  /**
+   * Mode d'exécution du hub.
+   *
+   * Un seul interrupteur devant les commodités de développement, plutôt qu'une
+   * variable par commodité : le jour J, ce qu'on veut vérifier tient en une
+   * ligne. Par défaut `production`, parce que le défaut doit être le cas
+   * dangereux — un hub d'événement démarré sans rien préciser ne doit rien
+   * simuler.
+   */
+  mode: z.enum(['production', 'dev']).default('production'),
   /** `0` demande au système un port libre — utile en test et en développement. */
   port: z.coerce.number().int().min(0).max(65535).default(8787),
   host: z.string().default('0.0.0.0'),
@@ -46,19 +62,42 @@ const configSchema = z.object({
   simulatedTime: z.iso.datetime({ offset: true }).optional(),
 
   /**
-   * Autorise le réglage de l'heure depuis la console.
+   * Ancien interrupteur du réglage de l'heure. **Obsolète.**
    *
-   * Fermé par défaut, et c'est délibéré : changer l'heure pendant l'événement
-   * fausserait les timecodes des enregistrements et déclencherait des clôtures
-   * automatiques à contretemps — deux erreurs qu'on ne rattrape pas après coup.
+   * Le réglage suit désormais `MODE` : ouvert en développement, fermé en
+   * production. Le champ ne subsiste que pour être *détecté* — le trouver dans
+   * un `.env` veut dire que quelqu'un croit avoir ouvert quelque chose, et le
+   * taire ferait chercher ailleurs. Il n'est jamais lu ensuite.
    */
-  clockControl: z
-    // Accepte la chaîne venue de l'environnement comme le booléen déjà résolu :
-    // `createHub` reçoit parfois une config déjà normalisée.
-    .union([z.string(), z.boolean()])
-    .optional()
-    .transform((v) => v === true || v === '1' || v === 'true'),
+  clockControl: z.union([z.string(), z.boolean()]).optional(),
 })
+  /**
+   * Garde-fou du mode production, et rappel des variables obsolètes.
+   *
+   * Les réglages de développement sont **neutralisés**, pas refusés : un hub
+   * qui ne redémarre pas parce qu'une ligne traîne dans un `.env` serait pire
+   * que le mal qu'on soigne — c'est justement en cours d'événement qu'on le
+   * relance. Chaque neutralisation est rendue avec **sa raison**, qui remonte
+   * au journal et à la console : « ignoré » sans explication enverrait
+   * chercher au mauvais endroit.
+   */
+  .transform(({ clockControl, ...config }) => {
+    const ignores: IgnoreConfig[] = []
+
+    if (clockControl === true || clockControl === '1' || clockControl === 'true') {
+      ignores.push({
+        variable: 'CLOCK_CONTROL',
+        raison: "remplacé par MODE=dev, qui ouvre le réglage de l'heure",
+      })
+    }
+
+    const dev = config.mode === 'dev'
+    if (!dev && config.simulatedTime != null) {
+      ignores.push({ variable: 'SIMULATED_TIME', raison: 'réservé au mode développement (MODE=dev)' })
+    }
+
+    return { ...config, simulatedTime: dev ? config.simulatedTime : undefined, ignores }
+  })
 
 export type Config = z.infer<typeof configSchema>
 
@@ -73,6 +112,7 @@ export { configSchema }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const parsed = configSchema.safeParse({
+    mode: env.MODE,
     port: env.PORT,
     host: env.HOST,
     databasePath: env.DATABASE_PATH,

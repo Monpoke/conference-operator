@@ -28,6 +28,32 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 describe('OBS simulé', () => {
+  it('se déclare simulé, pour que la régie puisse le dire', async () => {
+    // Rien ne distingue à l'écran un enregistrement simulé d'un vrai : le
+    // transport porte l'information lui-même, plutôt qu'une variable
+    // d'environnement relue ailleurs, qui pourrait le contredire.
+    const simule = new ObsController({
+      instance: 'A',
+      url: 'mock',
+      sceneRoles: {},
+      transport: createMockObsTransport({ instance: 'A', recordingDir: join(dir, 'rec') }),
+    })
+    expect(simule.snapshot().simulated).toBe(true)
+
+    const reel = new ObsController({
+      instance: 'A',
+      url: 'ws://127.0.0.1:4455',
+      sceneRoles: {},
+      transport: {
+        connect: async () => {},
+        disconnect: async () => {},
+        call: (async () => ({})) as never,
+        on: () => {},
+      },
+    })
+    expect(reel.snapshot().simulated).toBe(false)
+  })
+
   it('expose les mêmes scènes que le mapping posé à la création d\'une salle', async () => {
     const controller = new ObsController({
       instance: 'A',

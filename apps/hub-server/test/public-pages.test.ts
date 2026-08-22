@@ -100,6 +100,24 @@ describe('pages publiques', () => {
     }
   })
 
+  it('sert le service worker à la racine', async () => {
+    /**
+     * La portée d'un service worker est celle de son chemin : servi sous
+     * `/admin/`, il ne couvrirait pas le reste du hub — et sans lui, aucune
+     * notification n'arrive console fermée.
+     */
+    const reponse = await fetch(`${origin}/sw.js`)
+    expect(reponse.status).toBe(200)
+    expect(reponse.headers.get('content-type')).toContain('javascript')
+    // Revérifié à chaque chargement : le mettre en cache retarderait toute
+    // correction d'un jour d'événement.
+    expect(reponse.headers.get('cache-control')).toContain('no-cache')
+
+    const code = await reponse.text()
+    expect(code).toContain("addEventListener('push'")
+    expect(() => new Function(code)).not.toThrow()
+  })
+
   it("ne sert pas une vue qui n'existe pas", async () => {
     // Un joker servirait la console sur n'importe quelle faute de frappe, qui
     // s'ouvrirait alors sur l'exploitation sans dire que l'adresse est fausse.

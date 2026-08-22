@@ -133,6 +133,9 @@ describe('surface du contrat', () => {
       // bandeau se superpose à la vidéo là où un message d'écran remplace tout.
       'overlay',
       'program',
+      // Notifications qui survivent à la fermeture de la console : la
+      // supervision se regarde sur un téléphone rangé dans une poche.
+      'push',
       'questions',
       'rooms',
       'sessions',

@@ -472,6 +472,38 @@ export const contract = {
     revoke: oc.input(z.object({ clientId: z.string() })).output(z.object({ ok: z.boolean() })),
   },
 
+  /**
+   * Notifications poussées aux consoles, **fenêtre fermée**.
+   *
+   * La console se regarde sur un téléphone rangé dans une poche : les
+   * notifications de la page s'arrêtent dès que le navigateur s'endort, ce qui
+   * est précisément le moment où l'on a besoin d'être prévenu. Le Web Push
+   * traverse cet endormissement, au prix d'un abonnement par navigateur et
+   * d'une veille côté hub — lui seul peut encore constater qu'une salle est
+   * tombée quand plus personne ne regarde.
+   */
+  push: {
+    /**
+     * Clé publique VAPID du hub, à passer à `pushManager.subscribe`.
+     *
+     * `null` quand le push n'est pas disponible : la console ne propose alors
+     * que les notifications de page, plutôt qu'un bouton qui échouerait.
+     */
+    publicKey: oc.output(z.object({ publicKey: z.string().nullable() })),
+    /** Enregistre le navigateur. Ré-appelable : le même endpoint écrase. */
+    subscribe: oc
+      .input(
+        z.object({
+          endpoint: z.url(),
+          keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }),
+          /** Étiquette lisible — « iPhone de la régie » — pour s'y retrouver. */
+          label: z.string().max(80).nullable().default(null),
+        }),
+      )
+      .output(z.object({ ok: z.boolean() })),
+    unsubscribe: oc.input(z.object({ endpoint: z.url() })).output(z.object({ ok: z.boolean() })),
+  },
+
   questions: {
     post: oc
       .input(

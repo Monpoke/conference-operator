@@ -538,13 +538,32 @@ La permission est demandée **au clic**, jamais au chargement : un navigateur qu
 voit la question arriver seule la refuse définitivement. Le réglage est retenu
 par appareil.
 
-⚠️ **Portée**. C'est l'API `Notification` de la page, sans service worker ni Web
-Push : les avis arrivent tant que la console est ouverte, onglet en arrière-plan
-compris, et s'arrêtent quand le téléphone met le navigateur en sommeil. Sur iOS,
-il faut avoir **ajouté la console à l'écran d'accueil** pour que les
-notifications existent, et le hub doit être servi en HTTPS (ou sur `localhost`).
-Couvrir la console fermée demande un abonnement Web Push côté hub — un autre
-chantier.
+**Console fermée, ça marche aussi.** Activer les notifications abonne le
+navigateur en **Web Push** : le hub garde l'abonnement, un service worker
+(`/sw.js`) reçoit l'avis et l'affiche même quand plus personne ne regarde. C'est
+le cas qui compte le jour J — le téléphone est dans une poche, pas devant les
+yeux.
+
+Le corollaire est que **le hub doit constater lui-même ce qui change** : une
+veille compare l'état des salles toutes les quinze secondes et pousse les mêmes
+avis que la page, avec les mêmes règles — rien au premier tour, rien sans
+changement. Elle ne tourne pas tant que personne n'est abonné.
+
+Les deux mécanismes emploient **la même étiquette** par salle : quand la console
+est ouverte *et* abonnée, le second avis remplace le premier au lieu d'empiler
+deux fois la même information.
+
+Les clés VAPID sont fabriquées au premier démarrage et gardées en base ;
+`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` servent à survivre à une base recréée.
+Une clé illisible **désactive le push et n'arrête pas le hub** — c'est un
+confort de supervision, pas le cœur du système —, mais le dit en erreur au
+démarrage.
+
+⚠️ **Deux conditions**, hors `localhost` : le hub doit être servi en **HTTPS**,
+et sur **iOS** la console doit avoir été **ajoutée à l'écran d'accueil** avant
+que les notifications existent. Sans push disponible, le bouton reste, avec les
+notifications de page seules — un avertissement qui ne traverse pas le
+verrouillage vaut mieux que pas d'avertissement.
 
 ## Empaqueter le client de salle
 

@@ -40,6 +40,50 @@ const configSchema = z.object({
   devicePollInterval: z
     .custom<`${number}${'s' | 'm'}`>((value) => typeof value === 'string' && /^\d+[sm]$/.test(value))
     .default('5s'),
+  /**
+   * Durée de vie d'un code d'appairage — et, avec elle, celle d'une demande
+   * dans la file de la console.
+   *
+   * Un seul réglage pour les deux : un code mort dont la demande reste affichée
+   * fait cliquer « Approuver » sur quelque chose qui ne peut plus aboutir, et
+   * la file finit par ne plus vouloir rien dire.
+   *
+   * Court par défaut, à l'inverse de la valeur RFC : une file qui se vide seule
+   * vaut mieux qu'un code qui survit à la journée. Rien n'est perdu quand il
+   * expire — la boucle de supervision en redemande un sous 15 s, et l'écran de
+   * régie affiche le nouveau. Ce qui se paie, c'est la traversée de la salle :
+   * un opérateur qui recopie le code et marche jusqu'à la console peut arriver
+   * après sa mort. **Le jour J, poser `DEVICE_CODE_TTL=30m`** ; la console dit
+   * de toute façon en clair qu'un code a expiré.
+   */
+  deviceCodeTtl: z
+    .custom<`${number}${'s' | 'm' | 'h'}`>(
+      (value) => typeof value === 'string' && /^\d+[smh]$/.test(value),
+    )
+    .default('2m'),
+
+  /**
+   * Connexion des opérateurs par Google Workspace.
+   *
+   * Les deux identifiants viennent du client OAuth « Application Web » de la
+   * console Google Cloud. Absents, le hub ne monte pas le fournisseur et la
+   * console ne propose que le mot de passe — c'est le cas par défaut, et un
+   * hub d'événement doit pouvoir démarrer sans compte Google.
+   */
+  googleClientId: z.string().optional(),
+  googleClientSecret: z.string().optional(),
+  /**
+   * Domaine Workspace admis. **Tout compte de ce domaine est un opérateur.**
+   *
+   * Envoyé à Google comme indice `hd`, et surtout **revérifié contre la
+   * revendication `hd` du jeton d'identité** au retour : l'indice seul est une
+   * suggestion d'écran de choix, qu'un compte personnel contourne.
+   *
+   * Le défaut vaut mieux qu'une absence de défaut : oublier la variable sur un
+   * autre domaine ferme la porte à tout le monde, ce qui se voit, plutôt que
+   * de l'ouvrir à n'importe quel compte Google, ce qui ne se voit pas.
+   */
+  googleHostedDomain: z.string().min(1).default('cloudnord.fr'),
 
   /** Hashtag suivi sur les réseaux. Vide = aucune ingestion sociale. */
   socialHashtag: z.string().optional(),
@@ -71,6 +115,22 @@ const configSchema = z.object({
    */
   clockControl: z.union([z.string(), z.boolean()]).optional(),
 })
+  /**
+   * Un Google à moitié configuré ne démarre pas.
+   *
+   * Le laisser passer monterait un hub où le bouton « Continuer avec Google »
+   * échoue à chaque clic, ou n'apparaît pas alors que la variable est bien là :
+   * dans les deux cas on cherche la panne dans la console Google Cloud, pas
+   * dans un `.env` amputé d'une ligne.
+   */
+  .refine(
+    (config) => (config.googleClientId == null) === (config.googleClientSecret == null),
+    {
+      path: ['googleClientId'],
+      message:
+        'GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET vont par paire : renseigner les deux, ou aucun',
+    },
+  )
   /**
    * Garde-fou du mode production, et rappel des variables obsolètes.
    *
@@ -110,6 +170,20 @@ export type ConfigInput = z.input<typeof configSchema>
 
 export { configSchema }
 
+/** Durées façon Better Auth (« 30m »), en millisecondes. */
+const UNITE_MS = { s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const
+
+/**
+ * Convertit une durée de configuration en millisecondes.
+ *
+ * Better Auth veut la chaîne, nos requêtes SQL veulent le nombre : la
+ * conversion vit ici pour que les deux ne puissent pas diverger.
+ */
+export function dureeEnMs(duree: string): number {
+  const unite = duree.slice(-1) as keyof typeof UNITE_MS
+  return Number.parseInt(duree, 10) * (UNITE_MS[unite] ?? 1_000)
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const parsed = configSchema.safeParse({
     mode: env.MODE,
@@ -121,6 +195,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     programSourceUrl: env.PROGRAM_SOURCE_URL,
     logLevel: env.LOG_LEVEL,
     devicePollInterval: env.DEVICE_POLL_INTERVAL,
+    deviceCodeTtl: env.DEVICE_CODE_TTL,
+    googleClientId: env.GOOGLE_CLIENT_ID,
+    googleClientSecret: env.GOOGLE_CLIENT_SECRET,
+    googleHostedDomain: env.GOOGLE_HOSTED_DOMAIN,
     socialHashtag: env.SOCIAL_HASHTAG,
     mastodonInstance: env.MASTODON_INSTANCE,
     xBearerToken: env.X_BEARER_TOKEN,

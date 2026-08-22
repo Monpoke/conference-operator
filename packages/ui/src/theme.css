@@ -212,15 +212,53 @@
     @apply bg-[#3a2a13] text-attention;
   }
 
-  /* — Pastille de connectivité — */
+  /*
+   * — Pastille —
+   *
+   * Deux informations, deux traits : le **remplissage** dit où en est la
+   * conférence, le **contour** dit ce qu'on sait de la salle. Les confondre
+   * rendait une salle verte alors qu'elle débordait de dix minutes : « vert »
+   * ne voulait dire que « la machine répond ».
+   *
+   * Le contour reste gris en toutes circonstances, pour ne jamais entrer en
+   * concurrence avec les couleurs du remplissage.
+   */
   .pastille {
     @apply block size-2.5 shrink-0 rounded-full bg-ok;
   }
+
+  /* Connectivité seule — pastille d'une machine, pas d'une conférence. */
   .pastille.degraded {
     @apply bg-attention;
   }
   .pastille.offline {
     @apply bg-alerte;
+  }
+
+  /* Remplissage : la conférence. Sans classe, c'est le talk en cours. */
+  .pastille.hors {
+    @apply bg-attenue;
+  }
+  .pastille.pause {
+    @apply bg-marque;
+  }
+  .pastille.fin-proche {
+    @apply bg-attention;
+  }
+  .pastille.depassement {
+    @apply bg-alerte;
+  }
+
+  /* Contour : la confiance qu'on accorde à ce remplissage. */
+  .pastille.doute {
+    @apply shadow-[0_0_0_2px_var(--color-attenue)];
+  }
+  /*
+   * Salle muette : pastille creuse. On ne sait plus ce qui s'y joue, et le
+   * prétendre en couleur serait pire que de se taire.
+   */
+  .pastille.muette {
+    @apply border-[1.5px] border-attenue bg-transparent;
   }
 }
 

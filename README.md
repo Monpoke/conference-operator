@@ -65,6 +65,41 @@ openssl rand -base64 48
 pnpm --filter @cloudnord/hub-server operator regie@cloudnord.fr "Régie" <mot-de-passe>
 ```
 
+**Ce compte reste nécessaire même avec Google** (ci-dessous) : Google exige
+internet au moment de la connexion, et tout ce système est bâti pour survivre à
+une coupure. Un hub qui ne s'ouvre que par Google enferme l'équipe dehors
+exactement le matin où le réseau tombe.
+
+### Connexion Google Workspace
+
+Facultative, et **tout compte du domaine autorisé est un opérateur** — c'est
+l'annuaire qui fait la liste, personne n'a de compte à provisionner le matin de
+l'événement.
+
+Dans la console Google Cloud : un client OAuth « Application Web », avec
+`<PUBLIC_URL>/api/auth/callback/google` en URI de redirection autorisée (plus
+`http://localhost:8787/api/auth/callback/google` pour le développement — Google
+n'accepte `http` que sur localhost). Écran de consentement en **Internal** si le
+domaine est bien un Workspace : c'est une barrière de plus, gratuite.
+
+Puis dans le `.env` du hub :
+
+```bash
+GOOGLE_CLIENT_ID=…apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=…
+GOOGLE_HOSTED_DOMAIN=cloudnord.fr
+```
+
+Le domaine est **envoyé à Google comme indice `hd` *et* revérifié contre la
+revendication du jeton d'identité** au retour. L'indice seul ne serait qu'une
+préférence d'écran de choix de compte, qu'un compte personnel contourne ; c'est
+la seconde vérification qui tient la frontière.
+
+Les deux identifiants vont par paire : n'en renseigner qu'un **empêche le hub de
+démarrer**, plutôt que de monter une console dont le bouton échoue à chaque clic.
+Le bouton n'apparaît que si le hub sait s'en servir, et le mot de passe reste
+au-dessus, toujours.
+
 **3. Lancer le hub**
 
 ```bash
@@ -404,8 +439,8 @@ demander de rejouer une release sur les trois machines de salle.
   hub répond en HTTP mais le temps réel est tombé) n'appellent pas la même
   réaction en régie. On ne se fie jamais à `navigator.onLine`, qui ne dit rien de
   l'accessibilité du hub.
-- **Better Auth** : opérateurs par e-mail, machines de salle par *device authorization*
-  (RFC 8628). Better Auth lie l'appareil à l'opérateur qui approuve ; l'affectation
+- **Better Auth** : opérateurs par e-mail **ou par Google Workspace**, machines de
+  salle par *device authorization* (RFC 8628). Better Auth lie l'appareil à l'opérateur qui approuve ; l'affectation
   machine → salle est à nous (`room_device`), ce qui rend la révocation indépendante
   des comptes.
 - **L'écran est servi avant tout appel réseau.** `RoomApp.startDisplay()` précède
@@ -422,8 +457,8 @@ demander de rejouer une release sur les trois machines de salle.
 
 | Servi par | URL | Usage |
 |---|---|---|
-| hub | `/admin` | Console : modération, appairage, programme, supervision |
-| hub | `/admin/devices?user_code=…` | Même console, code d'appairage pré-rempli (lien affiché par la régie) |
+| hub | `/admin` | Console : supervision. Un onglet par adresse — `/admin/moderation`, `/admin/conferences`, `/admin/appairage`, `/admin/messages`, `/admin/reglages` |
+| hub | `/admin/devices?user_code=…` | L'onglet Appairage, code pré-rempli (lien affiché par la régie) et verdict du code en modale |
 | hub | `/mur?salle=<id>` | Mur public (commun à l'événement) et questions de la salle, scanné au QR |
 | client | `/regie` | Fenêtre opérateur |
 | client | `/display/projector` | Browser Source OBS-A, ou plein écran de secours |
@@ -432,6 +467,12 @@ demander de rejouer une release sur les trois machines de salle.
 
 ## Appairer une machine
 
+**Chaque onglet est une adresse.** La console rafraîchie rouvre l'onglet qu'on
+regardait, un onglet se met en favori ou s'envoie à un collègue, et le bouton
+Retour revient sur le précédent au lieu de quitter la console. Le hub sert la
+liste des vues, pas un joker : `/admin/moderationn` répond 404 plutôt que
+d'ouvrir l'exploitation en laissant croire à l'adresse.
+
 L'appairage a sa **page dédiée** dans la console, onglet **Appairage** :
 machines en attente avec leur code, et machines déjà liées. Le geste n'a lieu
 qu'à la mise en route et demande de l'attention — se tromper de salle envoie les
@@ -439,7 +480,32 @@ commandes au mauvais vidéoprojecteur —, alors que la supervision se regarde
 toute la journée : les mêler noyait l'un dans l'autre.
 
 L'adresse que la machine affiche (`/admin/devices?user_code=…`) ouvre
-directement cette page, code pré-rempli.
+directement cette page, code pré-rempli — et une **modale tranche sur ce
+code-là** avant qu'on cherche la machine dans la file : valide, inconnu, expiré,
+ou déjà traité. Quand il est valide, **elle porte la décision** : la salle
+demandée pré-sélectionnée, Approuver, Refuser. Renvoyer vers la liste faisait
+chercher la bonne ligne pour refaire le geste qu'on venait de valider des yeux. La file d'à côté ne dit rien du
+code qu'on tient : trois autres machines peuvent y attendre pendant que
+celui-ci est mort, et un code inconnu ne se corrige pas comme un code expiré —
+l'un se recopie, l'autre se redemande depuis la régie.
+
+Un détail qui compte à deux opérateurs : **consulter un code le réserve**.
+Better Auth le rattache à la session qui le regarde — c'est ce que fait la
+modale —, et un second opérateur ne pourra plus l'approuver depuis son poste.
+La console le dit alors en clair, au lieu du refus anglais du plugin.
+
+**Les demandes s'effacent seules.** Une demande vit le temps de son code
+(`DEVICE_CODE_TTL`, **2 min** par défaut) et part avec un refus. Sans quoi la file
+n'accumulait que des fantômes : une salle réinstallée revient sous une nouvelle
+identité machine, et l'ancienne y restait indéfiniment. En développement, où
+chaque `DATA_DIR` neuf produit une machine de plus, la file se vide toute
+seule. Rien n'est perdu quand un code expire : la boucle de supervision en
+redemande un sous 15 s et la régie affiche le nouveau.
+
+⚠️ **Le jour J, poser `DEVICE_CODE_TTL=30m`.** Deux minutes, c'est le temps de
+traverser une salle : l'opérateur qui recopie le code sur l'écran de régie et
+marche jusqu'à la console peut arriver après sa mort. La modale le dira, mais
+c'est un aller-retour de perdu — et il se paie devant une salle qui attend.
 
 ## Superviser depuis un téléphone
 
@@ -453,6 +519,32 @@ en attente, et un lien vers le mur public de la salle.
 La grille se replie d'elle-même : trois cartes de front sur un écran de bureau,
 une seule sur un téléphone. L'en-tête et les onglets passent à la ligne plutôt
 que de déborder.
+
+### Être prévenu sans regarder
+
+Un bouton **Notifications** dans l'en-tête. La console se consulte debout, dans
+un couloir, entre deux salles : ce qui compte est d'apprendre qu'une salle
+déborde sans avoir la page sous les yeux.
+
+Trois avis, et rien d'autre : une salle **passe en dépassement**, une salle
+**tombe** ou **revient**, une **machine attend son appairage**. Ils ne partent
+que sur un *changement* — répéter « Track #1 déborde » toutes les dix secondes
+ferait couper les notifications au bout de deux minutes, et on ne les rallume
+pas. Le premier chargement n'alerte de rien : ouvrir la console sur une salle
+déjà coupée est un état, pas un événement. Un clic sur l'avis ouvre l'onglet
+concerné, maintenant que chaque onglet a son adresse.
+
+La permission est demandée **au clic**, jamais au chargement : un navigateur qui
+voit la question arriver seule la refuse définitivement. Le réglage est retenu
+par appareil.
+
+⚠️ **Portée**. C'est l'API `Notification` de la page, sans service worker ni Web
+Push : les avis arrivent tant que la console est ouverte, onglet en arrière-plan
+compris, et s'arrêtent quand le téléphone met le navigateur en sommeil. Sur iOS,
+il faut avoir **ajouté la console à l'écran d'accueil** pour que les
+notifications existent, et le hub doit être servi en HTTPS (ou sur `localhost`).
+Couvrir la console fermée demande un abonnement Web Push côté hub — un autre
+chantier.
 
 ## Empaqueter le client de salle
 
@@ -727,6 +819,34 @@ Ce qui reste visible en permanence est ce qui déclenche une décision :
   le programme mis en cache localement, pas sur l'état remonté par le hub :
   pendant une coupure, la salle d'à côté finit quand même à l'heure prévue.
 
+### Ce que dit la pastille
+
+Elle portait la seule connectivité : une salle en dépassement de dix minutes
+s'affichait en vert, parce que sa machine répondait. Deux informations, deux
+traits — le **remplissage** dit où en est la conférence, le **contour** dit ce
+qu'on sait de la salle.
+
+| Remplissage | État |
+|---|---|
+| gris | hors créneau — pas encore commencé, ou programme terminé |
+| bleu | pause : la salle est occupée, mais rien ne s'y joue |
+| vert | talk en cours, plus de cinq minutes devant lui |
+| ambre | **vers la fin**, cinq minutes ou moins — le moment où l'on ne lance pas un talk à côté |
+| rouge | **dépassement** : le créneau est clos, la salle tourne encore |
+
+Le contour reste gris pour ne jamais concurrencer ces couleurs : rien en
+`ONLINE`, un anneau en `DEGRADED`, et une **pastille creuse** quand la salle est
+muette — on ne sait plus ce qui s'y joue, et le peindre serait pire que de se
+taire. Partout, un mot accompagne la couleur : elle se regarde de loin, et tout
+le monde ne distingue pas les teintes.
+
+Le **dépassement** est le seul état que le programme ne peut pas donner —
+passé l'heure de fin, il passe au créneau suivant. Il vient de ce que la salle
+pilote réellement, et c'est lui qui décale la journée. Le hub le calcule
+(`roomConferenceState`), parce que l'heure qui fait foi est la sienne et qu'elle
+peut être simulée ; la régie le recalcule sur son cache, pour continuer à
+répondre pendant une coupure.
+
 Les **signalements** — fin de talk à côté, message parti à la console, hub
 rejoint — s'affichent en bandeau sous le flux et **s'effacent seuls au bout de
 30 secondes** : un bandeau qui ne part pas cesse d'être lu, et la régie
@@ -738,7 +858,13 @@ tôt.
 
 Ce qui se consulte — programme complet de la salle, programme d'une autre
 salle, état des salles vu du hub — passe en **modale**, à un clic ou aux
-touches `P` et `S`, `Échap` pour refermer. Les commandes et les raccourcis
+touches `P` et `S`, `Échap` pour refermer. Les deux programmes **surlignent le
+créneau en cours** et s'ouvrent dessus. Pour sa propre salle, c'est l'état
+réellement piloté : un talk lancé en retard reste le talk en cours. Pour la
+salle d'à côté, dont on ne reçoit pas l'état, c'est le programme lu à l'heure du
+hub — **heure simulée comprise**, ce qui permet de dérouler la journée du 30
+octobre des mois à l'avance. Sans ce repère, la modale déroulait une liste
+d'horaires et laissait faire le calcul de tête, en pleine régie. Les commandes et les raccourcis
 restent actifs modale ouverte : une conférence ne s'arrête pas parce qu'on
 consulte le programme.
 

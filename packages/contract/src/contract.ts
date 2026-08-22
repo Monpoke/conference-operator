@@ -420,6 +420,29 @@ export const contract = {
       .output(z.object({ ok: z.boolean() })),
     deny: oc.input(z.object({ userCode: z.string().min(4) })).output(z.object({ ok: z.boolean() })),
     /**
+     * État d'un code d'appairage, sans rien approuver.
+     *
+     * Sert au lien que la machine affiche : arriver sur la console avec un code
+     * mort et une file de demandes ne dit rien de ce qui cloche. Un code
+     * inconnu et un code expiré ne se corrigent pas de la même façon — l'un est
+     * une faute de frappe ou une base recréée, l'autre demande de relancer
+     * l'appairage depuis la régie —, d'où deux raisons distinctes plutôt qu'une
+     * erreur.
+     */
+    lookup: oc.input(z.object({ userCode: z.string().min(4) })).output(
+      z.object({
+        /** État Better Auth du code, ou `null` s'il n'est plus exploitable. */
+        status: z.enum(['pending', 'approved', 'denied']).nullable(),
+        /** Renseignée quand `status` est `null` : pourquoi le code ne vaut rien. */
+        reason: z.enum(['inconnu', 'expire']).nullable(),
+        clientId: z.string().nullable(),
+        /** Salle demandée par la machine, telle qu'elle voyage dans le scope. */
+        requestedRoomId: roomIdSchema.nullable(),
+        /** `null` si la salle demandée n'existe pas (ou plus) sur ce hub. */
+        requestedRoomName: z.string().nullable(),
+      }),
+    ),
+    /**
      * Échange la session d'approbation contre un jeton de salle.
      *
      * Appelé par la machine juste après l'appairage, avec la session que lui a

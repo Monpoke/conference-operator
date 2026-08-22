@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, isNull, lt } from 'drizzle-orm'
 import {
   roomConfigSchema,
   roomStatusSchema,
@@ -129,7 +129,16 @@ export class RoomService {
  * l'opérateur qui approuve. Quelle salle une machine dessert relève d'ici.
  */
 export class DeviceService {
-  constructor(private readonly db: HubDatabase) {}
+  /**
+   * @param ttlMs Durée de vie d'une demande, alignée sur celle du code
+   *   d'appairage (`DEVICE_CODE_TTL`). Sur l'horloge réelle, pas sur celle du
+   *   hub : les codes de Better Auth expirent eux aussi en temps réel, et une
+   *   heure simulée ne doit pas décider de la survie d'un appairage.
+   */
+  constructor(
+    private readonly db: HubDatabase,
+    private readonly ttlMs: number,
+  ) {}
 
   /** Alimenté par le hook `onDeviceAuthRequest` du plugin. */
   recordRequest(clientId: string, scope: string | undefined): void {
@@ -141,8 +150,38 @@ export class DeviceService {
       .run()
   }
 
-  /** Demandes non encore rattachées à une salle. */
+  /**
+   * Oublie les demandes dont le code ne vaut plus rien.
+   *
+   * Rien ne les effaçait : une machine dont le code a expiré, ou qu'on a
+   * refusée, restait dans la file jusqu'à ce que quelqu'un l'appaire — et une
+   * salle réinstallée revient sous une nouvelle identité, donc une ligne de
+   * plus. En développement, où chaque `DATA_DIR` neuf en produit une, la file
+   * finissait par masquer la seule demande qui comptait.
+   *
+   * @returns Nombre de demandes oubliées, pour le journal.
+   */
+  purgeExpired(): number {
+    const limite = new Date(Date.now() - this.ttlMs).toISOString()
+    // Les horodatages sont tous en ISO 8601 UTC : l'ordre lexicographique est
+    // l'ordre chronologique, et SQLite n'a pas de type date à comparer.
+    return this.db.delete(deviceRequest).where(lt(deviceRequest.requestedAt, limite)).run().changes
+  }
+
+  /** Oublie une demande précise — machine refusée, ou déjà traitée. */
+  forget(clientId: string): void {
+    this.db.delete(deviceRequest).where(eq(deviceRequest.clientId, clientId)).run()
+  }
+
+  /**
+   * Demandes non encore rattachées à une salle.
+   *
+   * La purge est faite ici plutôt que par un minuteur : c'est le seul appel
+   * qui regarde la file, la console l'interroge toutes les dix secondes, et
+   * une demande périmée que personne ne consulte ne gêne personne.
+   */
   pending() {
+    this.purgeExpired()
     return this.db
       .select({
         clientId: deviceRequest.clientId,

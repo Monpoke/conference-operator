@@ -41,8 +41,21 @@ function estVisible(id: string): boolean {
   return true
 }
 
+/**
+ * Visibilité d'un élément que seule une règle CSS montre ou cache.
+ *
+ * `estVisible` regarde d'abord l'attribut `hidden` ; les modales, elles, sont
+ * pilotées par un attribut sur `body`, et n'en portent jamais.
+ */
+function affiche(id: string): boolean {
+  return globalThis.getComputedStyle($(id)).display !== 'none'
+}
+
 beforeEach(() => {
   localStorage.clear()
+  // Chaque onglet a son adresse : sans remise à zéro, un test qui change de vue
+  // ouvrirait le suivant sur la sienne.
+  globalThis.history.replaceState(null, '', '/admin')
   // Session présente : la console s'affiche directement, sans écran de connexion.
   localStorage.setItem('cloudnord-admin', 'jeton-de-test')
   vi.stubGlobal(
@@ -115,6 +128,51 @@ describe('navigation de la console', () => {
     // Elle ne doit plus encombrer l'écran d'exploitation.
     expect(estVisible('vue-exploitation')).toBe(false)
     expect($('moderation')).toBeTruthy()
+  })
+
+  /**
+   * Chaque onglet a son adresse.
+   *
+   * Sans cela, la console vivait entièrement sur `/admin` : rafraîchir la page
+   * ramenait à l'exploitation, aucun onglet ne se mettait en favori ni ne
+   * s'envoyait à un collègue, et le bouton Retour quittait la console.
+   */
+  it('inscrit l\'onglet courant dans l\'adresse', () => {
+    $('nav-moderation').click()
+    expect(globalThis.location.pathname).toBe('/admin/moderation')
+
+    // L'exploitation est la racine : c'est l'adresse qu'on écrit de mémoire.
+    $('nav-exploitation').click()
+    expect(globalThis.location.pathname).toBe('/admin')
+  })
+
+  it('ouvre la vue que porte l\'adresse', () => {
+    globalThis.history.replaceState(null, '', '/admin/conferences')
+    monterConsole()
+
+    expect(estVisible('vue-conferences')).toBe(true)
+    expect(estVisible('vue-exploitation')).toBe(false)
+  })
+
+  it('retombe sur l\'exploitation quand l\'adresse ne dit rien', () => {
+    // L'historique du navigateur peut porter une vue retirée depuis — un
+    // `/admin/developpement` d'après un hub redémarré en production.
+    globalThis.history.replaceState(null, '', '/admin/developpement')
+    monterConsole()
+
+    expect(estVisible('vue-exploitation')).toBe(true)
+  })
+
+  it('suit le bouton Retour du navigateur', () => {
+    $('nav-messages').click()
+    expect(estVisible('vue-messages')).toBe(true)
+
+    // Le retour ne réécrit pas l'adresse : il la suit.
+    globalThis.history.replaceState(null, '', '/admin')
+    globalThis.dispatchEvent(new Event('popstate'))
+
+    expect(estVisible('vue-exploitation')).toBe(true)
+    expect(estVisible('vue-messages')).toBe(false)
   })
 
   it('une seule vue à la fois, quel que soit l\'onglet', () => {
@@ -201,6 +259,133 @@ describe('appairage', () => {
     expect(document.getElementById('vue-exploitation')?.contains(document.getElementById('appairages'))).toBe(false)
   })
 
+  it('tranche sur le code de l\'URL, sans faire chercher dans la file', async () => {
+    // Arriver par le lien de la régie et lire une file de demandes ne dit rien
+    // de *ce* code-là : il peut être mort pendant que trois autres attendent.
+    globalThis.history.replaceState(null, '', '/admin/devices?user_code=HK62AA49')
+    localStorage.setItem('cloudnord-admin', 'jeton')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        new Response(
+          JSON.stringify({
+            json: String(url).endsWith('/devices/lookup')
+              ? { status: null, reason: 'expire', clientId: null, requestedRoomId: null, requestedRoomName: null }
+              : [],
+          }),
+          { status: 200 },
+        ),
+      ),
+    )
+    monterConsole()
+    await vi.waitFor(() => expect($('verdict-titre').textContent).toBe('Code expiré'))
+
+    expect(affiche('verdict-code')).toBe(true)
+    // Le code est rappelé : l'opérateur en a souvent deux sous les yeux.
+    expect($('verdict-texte').textContent).toContain('HK62AA49')
+
+    ;($('verdict-fermer') as HTMLButtonElement).click()
+    expect(affiche('verdict-code')).toBe(false)
+    globalThis.history.replaceState(null, '', '/admin')
+  })
+
+  it('approuve la machine depuis la modale, salle demandée en tête', async () => {
+    /**
+     * Le code qu'on tient est là, la machine aussi : renvoyer vers la liste
+     * derrière la modale faisait rechercher la bonne ligne pour refaire le
+     * geste qu'on venait de valider des yeux.
+     */
+    globalThis.history.replaceState(null, '', '/admin/devices?user_code=YBFACMQT')
+    localStorage.setItem('cloudnord-admin', 'jeton')
+    const appels: { chemin: string; entree: unknown }[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      const chemin = String(url).replace('/rpc/', '')
+      appels.push({ chemin, entree: JSON.parse(String(init.body)).json })
+      const json = chemin === 'devices/lookup'
+        ? {
+            status: 'pending',
+            reason: null,
+            clientId: '01M0NGT9NMRNE1986V7XGWHBER',
+            requestedRoomId: 'track-2',
+            requestedRoomName: 'Track #2',
+          }
+        : chemin === 'rooms/list'
+          ? [{ id: 'track-1', name: 'Track #1' }, { id: 'track-2', name: 'Track #2' }]
+          : { ok: true }
+      return new Response(JSON.stringify({ json }), { status: 200 })
+    }))
+    monterConsole()
+    await vi.waitFor(() => expect($('verdict-approuver').hidden).toBe(false))
+
+    // La salle demandée est pré-sélectionnée, sans engager : c'est la console
+    // qui tranche, et se tromper envoie les commandes au mauvais projecteur.
+    expect(($('verdict-salle') as HTMLSelectElement).value).toBe('track-2')
+
+    ;($('verdict-approuver') as HTMLButtonElement).click()
+    await vi.waitFor(() => expect(appels.some((appel) => appel.chemin === 'devices/approve')).toBe(true))
+
+    expect(appels.find((appel) => appel.chemin === 'devices/approve')?.entree).toMatchObject({
+      userCode: 'YBFACMQT',
+      clientId: '01M0NGT9NMRNE1986V7XGWHBER',
+      roomId: 'track-2',
+    })
+    // La modale se referme une fois le geste passé : elle n'a plus rien à dire.
+    await vi.waitFor(() => expect(affiche('verdict-code')).toBe(false))
+  })
+
+  it('refuse depuis la modale, sans choisir de salle', async () => {
+    globalThis.history.replaceState(null, '', '/admin/devices?user_code=YBFACMQT')
+    localStorage.setItem('cloudnord-admin', 'jeton')
+    const appels: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const chemin = String(url).replace('/rpc/', '')
+      appels.push(chemin)
+      const json = chemin === 'devices/lookup'
+        ? { status: 'pending', reason: null, clientId: '01M0', requestedRoomId: null, requestedRoomName: null }
+        : chemin === 'rooms/list' ? [] : { ok: true }
+      return new Response(JSON.stringify({ json }), { status: 200 })
+    }))
+    monterConsole()
+    await vi.waitFor(() => expect($('verdict-refuser').hidden).toBe(false))
+
+    ;($('verdict-refuser') as HTMLButtonElement).click()
+    await vi.waitFor(() => expect(appels).toContain('devices/deny'))
+
+    expect(appels).not.toContain('devices/approve')
+  })
+
+  it('garde la modale ouverte quand le hub refuse le geste', async () => {
+    // Un code ouvert par un autre opérateur se refuse à l'approbation : le
+    // message tient en une phrase qu'il faut lire, pas en un avis fugace.
+    globalThis.history.replaceState(null, '', '/admin/devices?user_code=YBFACMQT')
+    localStorage.setItem('cloudnord-admin', 'jeton')
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const chemin = String(url).replace('/rpc/', '')
+      if (chemin === 'devices/approve') {
+        return new Response(JSON.stringify({ json: { message: 'Ce code a été ouvert par un autre opérateur' } }), { status: 403 })
+      }
+      const json = chemin === 'devices/lookup'
+        ? { status: 'pending', reason: null, clientId: '01M0', requestedRoomId: 'track-1', requestedRoomName: 'Track #1' }
+        : chemin === 'rooms/list' ? [{ id: 'track-1', name: 'Track #1' }] : { ok: true }
+      return new Response(JSON.stringify({ json }), { status: 200 })
+    }))
+    monterConsole()
+    await vi.waitFor(() => expect($('verdict-approuver').hidden).toBe(false))
+
+    ;($('verdict-approuver') as HTMLButtonElement).click()
+    await vi.waitFor(() => expect($('verdict-erreur').textContent).toContain('autre opérateur'))
+
+    expect(affiche('verdict-code')).toBe(true)
+    // Le bouton se réarme : un refus passager ne doit pas geler la modale.
+    expect(($('verdict-approuver') as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('ne montre aucun verdict sans code dans l\'URL', () => {
+    monterConsole()
+
+    expect(affiche('verdict-code')).toBe(false)
+  })
+
   it('s\'ouvre sur le code quand la machine y renvoie', () => {
     // Better Auth renvoie la machine vers `/admin/devices?user_code=…` : sans
     // cela, l'opérateur cherche le champ dans un onglet qu'il ne connaît pas.
@@ -211,6 +396,227 @@ describe('appairage', () => {
     expect(document.getElementById('vue-appairage')?.hidden).toBe(false)
     expect(document.getElementById('vue-exploitation')?.hidden).toBe(true)
     globalThis.history.replaceState(null, '', '/admin')
+  })
+})
+
+/**
+ * Notifications du navigateur.
+ *
+ * La console se regarde sur un téléphone, dans un couloir : savoir qu'une salle
+ * déborde ne doit pas demander d'avoir la page sous les yeux.
+ */
+describe('notifications', () => {
+  class NotificationFactice {
+    static permission = 'default'
+    static demandes = 0
+    static envoyees: { titre: string; corps: string | undefined }[] = []
+    onclick: (() => void) | null = null
+    static async requestPermission(): Promise<string> {
+      NotificationFactice.demandes += 1
+      NotificationFactice.permission = 'granted'
+      return 'granted'
+    }
+    constructor(titre: string, options?: { body?: string }) {
+      NotificationFactice.envoyees.push({ titre, corps: options?.body })
+    }
+    close(): void {}
+  }
+
+  /** Rejoue un cycle de rafraîchissement avec l'état de salles donné. */
+  async function avecSalles(salles: unknown[]): Promise<void> {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const chemin = String(url).replace('/rpc/', '')
+      return new Response(JSON.stringify({ json: chemin === 'rooms/statuses' ? salles : [] }), { status: 200 })
+    }))
+    $('btn-rafraichir').click()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+
+  const SALLE = {
+    roomId: 'track-1',
+    name: 'Track #1',
+    connectivity: 'ONLINE',
+    sceneRole: 'LIVE',
+    recording: false,
+    streaming: false,
+    outboxDepth: 0,
+    lastSeenAt: new Date().toISOString(),
+    programContentHash: 'h',
+    currentSession: null,
+    conference: 'en-cours',
+  }
+
+  beforeEach(() => {
+    NotificationFactice.permission = 'default'
+    NotificationFactice.demandes = 0
+    NotificationFactice.envoyees = []
+    vi.stubGlobal('Notification', NotificationFactice)
+    localStorage.setItem('cloudnord-admin', 'jeton')
+  })
+
+  it('propose le réglage, sans rien demander au chargement', () => {
+    monterConsole()
+
+    // Un navigateur qui voit la question arriver seule la refuse pour de bon.
+    expect(NotificationFactice.demandes).toBe(0)
+    expect($('btn-notifs').hidden).toBe(false)
+  })
+
+  it("demande la permission au clic, et retient le choix de l'appareil", async () => {
+    monterConsole()
+
+    $('btn-notifs').click()
+    await vi.waitFor(() => expect(localStorage.getItem('cloudnord-notifs')).toBe('1'))
+    expect(NotificationFactice.demandes).toBe(1)
+
+    // Deuxième clic : on éteint, sans redemander la permission.
+    $('btn-notifs').click()
+    expect(localStorage.getItem('cloudnord-notifs')).toBeNull()
+    expect(NotificationFactice.demandes).toBe(1)
+  })
+
+  it('ne dit rien du premier chargement, prévient du changement', async () => {
+    localStorage.setItem('cloudnord-notifs', '1')
+    NotificationFactice.permission = 'granted'
+    monterConsole()
+    await avecSalles([SALLE])
+    // Ouvrir la console sur une salle en cours n'est pas un événement.
+    expect(NotificationFactice.envoyees).toEqual([])
+
+    await avecSalles([{ ...SALLE, conference: 'depassement' }])
+    expect(NotificationFactice.envoyees.map((n) => n.titre)).toEqual(['Track #1 déborde'])
+
+    // Le même état au rafraîchissement suivant ne renotifie pas : répéter
+    // ferait couper les notifications, et on ne les rallume pas.
+    await avecSalles([{ ...SALLE, conference: 'depassement' }])
+    expect(NotificationFactice.envoyees).toHaveLength(1)
+  })
+
+  it('prévient quand une salle tombe, puis quand elle revient', async () => {
+    localStorage.setItem('cloudnord-notifs', '1')
+    NotificationFactice.permission = 'granted'
+    monterConsole()
+    await avecSalles([SALLE])
+
+    await avecSalles([{ ...SALLE, connectivity: 'OFFLINE' }])
+    await avecSalles([SALLE])
+
+    expect(NotificationFactice.envoyees.map((n) => n.titre)).toEqual([
+      'Track #1 ne répond plus',
+      'Track #1 est revenue',
+    ])
+  })
+
+  it('se tait tant que le réglage est éteint', async () => {
+    NotificationFactice.permission = 'granted'
+    monterConsole()
+    await avecSalles([SALLE])
+    await avecSalles([{ ...SALLE, conference: 'depassement' }])
+
+    expect(NotificationFactice.envoyees).toEqual([])
+  })
+})
+
+/**
+ * Connexion Google Workspace.
+ *
+ * Tout compte du domaine autorisé est un opérateur : le bouton est la seule
+ * porte que la plupart des gens pousseront, et elle ne doit exister que si le
+ * hub sait s'en servir.
+ */
+describe('connexion Google', () => {
+  it("ne propose rien quand le hub n'a pas d'identifiants", () => {
+    monterConsole()
+
+    // Un bouton qui échoue à chaque clic vaut moins que pas de bouton.
+    expect($('btn-google')).toBeNull()
+  })
+
+  it('dit quel domaine ouvre la console', () => {
+    monterConsole({ google: { domaine: 'cloudnord.fr' } })
+
+    expect($('btn-google')).toBeTruthy()
+    // Sans cette mention, on s'obstine avec une adresse personnelle que Google
+    // refusera de toute façon.
+    expect($('connexion').textContent).toContain('@cloudnord.fr')
+  })
+
+  it('part vers Google et suit son adresse', async () => {
+    const aller = vi.fn()
+    vi.stubGlobal('location', { ...globalThis.location, assign: aller, search: '', pathname: '/admin' })
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify({ url: 'https://accounts.google.com/o/oauth2/v2/auth?hd=cloudnord.fr' }), { status: 200 })))
+    localStorage.clear()
+    monterConsole({ google: { domaine: 'cloudnord.fr' } })
+
+    ;($('btn-google') as HTMLButtonElement).click()
+    // Better Auth ne redirige pas lui-même : il rend l'URL, la page la suit.
+    await vi.waitFor(() => expect(aller).toHaveBeenCalledWith(expect.stringContaining('accounts.google.com')))
+    vi.unstubAllGlobals()
+  })
+
+  it('ouvre la console sur la session que le retour a posée', async () => {
+    /**
+     * La redirection pose un cookie, pas le jeton porteur du formulaire : sans
+     * cette reconnaissance, l'opérateur revenait de Google authentifié… sur
+     * l'écran de connexion.
+     */
+    localStorage.clear()
+    vi.stubGlobal('fetch', vi.fn(async (url: string) =>
+      new Response(
+        JSON.stringify(String(url).includes('get-session') ? { user: { email: 'ops@cloudnord.fr' } } : { json: [] }),
+        { status: 200 },
+      )))
+    monterConsole({ google: { domaine: 'cloudnord.fr' } })
+
+    await vi.waitFor(() => expect($('console').hidden).toBe(false))
+    expect($('identite').textContent).toBe('ops@cloudnord.fr')
+  })
+
+  it('reste sur le formulaire quand aucune session ne répond', async () => {
+    localStorage.clear()
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 401 })))
+    monterConsole()
+
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect($('console').hidden).toBe(true)
+    expect($('connexion').hidden).toBe(false)
+  })
+})
+
+/**
+ * Fermer la console.
+ *
+ * Le bouton n'existait pas : on ne pouvait quitter la console qu'en attendant
+ * l'expiration de la session, sur un poste souvent partagé.
+ */
+describe('déconnexion', () => {
+  it('révoque la session côté hub avant de rendre la main', async () => {
+    const appels = vi.fn(async (url: string) => {
+      void url
+      return new Response(JSON.stringify({ json: [] }), { status: 200 })
+    })
+    vi.stubGlobal('fetch', appels)
+    monterConsole()
+
+    ;($('btn-deconnexion') as HTMLButtonElement).click()
+    // Oublier le jeton sans le révoquer laisserait une session valide derrière.
+    await vi.waitFor(() => expect(appels.mock.calls.some(([url]) => url === '/api/auth/sign-out')).toBe(true))
+
+    expect(localStorage.getItem('cloudnord-admin')).toBeNull()
+    expect($('console').hidden).toBe(true)
+    expect($('connexion').hidden).toBe(false)
+  })
+
+  it('rend la main même quand le hub ne répond pas', async () => {
+    // Un hub injoignable ne doit pas retenir un opérateur devant sa console.
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('réseau coupé') }))
+    monterConsole()
+
+    ;($('btn-deconnexion') as HTMLButtonElement).click()
+    await vi.waitFor(() => expect($('connexion').hidden).toBe(false))
+
+    expect(localStorage.getItem('cloudnord-admin')).toBeNull()
   })
 })
 
@@ -409,6 +815,7 @@ describe('liste des salles', () => {
       lastSeenAt: new Date().toISOString(),
       programContentHash: 'h',
       currentSession: CRENEAU,
+      conference: 'en-cours',
     },
     {
       roomId: 'hands-on',
@@ -421,6 +828,7 @@ describe('liste des salles', () => {
       lastSeenAt: null,
       programContentHash: null,
       currentSession: null,
+      conference: 'aucune',
     },
   ]
 
@@ -487,6 +895,37 @@ describe('liste des salles', () => {
     expect(texte).toContain('REC')
     expect(texte).toContain('12 en file')
     expect(document.getElementById('salles')?.querySelector('table')).toBeNull()
+  })
+
+  /**
+   * La pastille dit deux choses à la fois : remplissage pour la conférence,
+   * contour pour la confiance. Elle ne portait que la connectivité — une salle
+   * en dépassement de dix minutes s'affichait en vert.
+   */
+  it('peint la conférence, et creuse la pastille des salles muettes', async () => {
+    const pastilles = [...$('salles').querySelectorAll('.pastille')].map((p) => p.className)
+    // Track #1 joue son talk dans les temps : remplissage par défaut, pas de contour.
+    expect(pastilles[0]).toBe('pastille ')
+    // Hands on ne répond plus : on ne sait pas ce qui s'y joue, on ne le peint pas.
+    expect(pastilles[1]).toContain('muette')
+    expect($('salles').textContent).toContain('salle muette')
+  })
+
+  it('signale un dépassement en rouge, avec le mot', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const chemin = String(url).replace('/rpc/', '')
+      const json = chemin === 'rooms/statuses'
+        ? [{ ...SALLES[0], conference: 'depassement' }]
+        : []
+      return new Response(JSON.stringify({ json }), { status: 200 })
+    }))
+    monterConsole()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect($('salles').querySelector('.pastille')?.className).toContain('depassement')
+    // Le mot accompagne la couleur : la carte se regarde de loin, et tout le
+    // monde ne distingue pas les teintes.
+    expect($('salles').textContent).toContain('dépassement')
   })
 
   it('mène au mur public de la salle', () => {

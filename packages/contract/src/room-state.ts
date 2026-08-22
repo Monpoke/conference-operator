@@ -297,5 +297,20 @@ export const roomStatusSchema = z.object({
     })
     .nullable()
     .default(null),
+  /**
+   * Où en est la salle, en un mot — ce que peint la pastille des consoles.
+   *
+   * Calculé par le hub, comme `remainingMs` et pour la même raison : lui seul
+   * a l'heure qui fait foi, et elle peut être simulée. Le déduire dans le
+   * navigateur donnerait une couleur juste sur le poste de l'opérateur et
+   * fausse partout ailleurs.
+   *
+   * `depassement` est le seul état que le programme ne peut pas donner : passé
+   * l'heure de fin, il passe au créneau suivant. Il vient de ce que la salle
+   * pilote réellement (`currentSessionId`), et c'est lui qui décale la journée.
+   */
+  conference: z
+    .enum(['aucune', 'pause', 'en-cours', 'fin-proche', 'depassement'])
+    .default('aucune'),
 })
 export type RoomStatus = z.infer<typeof roomStatusSchema>

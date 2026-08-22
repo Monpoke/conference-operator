@@ -70,6 +70,50 @@ export function nextSession(program: Program, roomId: string, nowMs: number): Se
   return roomTimelinePosition(program, roomId, nowMs).next
 }
 
+/** Où en est une salle, en un mot. Voir `roomConferenceState`. */
+export type RoomConferenceState = 'aucune' | 'pause' | 'en-cours' | 'fin-proche' | 'depassement'
+
+/** En deçà, une conférence est « vers la fin » : le moment où une décision se prend. */
+export const FIN_PROCHE_MS = 5 * 60_000
+
+/**
+ * État de la salle tel que les consoles le peignent.
+ *
+ * Deux sources, et l'ordre compte :
+ *
+ * - `pilotedSessionId` — ce que la salle pilote réellement — l'emporte, parce
+ *   qu'il est le seul à révéler un **dépassement**. Le programme, lui, passe au
+ *   créneau suivant dès l'heure de fin et ne dira jamais qu'une salle déborde ;
+ * - le programme donne tout le reste, à l'heure passée en `nowMs`.
+ *
+ * Une salle qui pilote une conférence absente du programme (import remplacé en
+ * cours de journée) n'est pas en dépassement pour autant : sans créneau, il n'y
+ * a rien à dépasser, et on retombe sur ce que dit le programme.
+ */
+export function roomConferenceState(
+  program: Program,
+  roomId: string,
+  nowMs: number,
+  pilotedSessionId: string | null = null,
+): RoomConferenceState {
+  const sessions = sessionsForRoom(program, roomId)
+
+  if (pilotedSessionId != null) {
+    const index = sessions.findIndex((session) => session.id === pilotedSessionId)
+    if (index !== -1) {
+      const fin = effectiveEndMs(sessions[index]!, sessions[index + 1])
+      if (fin != null && fin <= nowMs) return 'depassement'
+    }
+  }
+
+  const { current } = roomTimelinePosition(program, roomId, nowMs)
+  if (current == null) return 'aucune'
+  if (current.kind === 'break') return 'pause'
+
+  const fin = effectiveEndMs(current, sessions[sessions.indexOf(current) + 1])
+  return fin != null && fin - nowMs <= FIN_PROCHE_MS ? 'fin-proche' : 'en-cours'
+}
+
 /**
  * Toutes les URLs distantes à précharger dans le cache local.
  *

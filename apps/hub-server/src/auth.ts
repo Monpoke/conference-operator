@@ -26,6 +26,14 @@ export interface AuthDeps {
    */
   deviceInterval?: Duration
   deviceCodeExpiresIn?: Duration
+  /**
+   * Connexion Google Workspace, si le hub en a les identifiants.
+   *
+   * Absente, seul le mot de passe ouvre la console. Le hub doit pouvoir
+   * démarrer et s'ouvrir sans Google : le jour J, une coupure d'internet ne
+   * doit pas enfermer l'équipe dehors.
+   */
+  google?: { clientId: string; clientSecret: string; hostedDomain: string }
 }
 
 /**
@@ -49,7 +57,8 @@ export function createAuthOptions({
   onDeviceRequest,
   isKnownClient,
   deviceInterval = '5s',
-  deviceCodeExpiresIn = '30m',
+  deviceCodeExpiresIn = '2m',
+  google,
 }: AuthDeps) {
   return {
     // Même fichier SQLite que le reste du hub : un seul verrou, une seule sauvegarde.
@@ -66,7 +75,13 @@ export function createAuthOptions({
       // Jetons porteurs : le client de salle n'a pas de cookie jar.
       bearer(),
       deviceAuthorization({
-        /** Large : une machine peut être branchée bien avant qu'un opérateur ne l'approuve. */
+        /**
+         * Court, à l'inverse de la valeur RFC : une file d'appairage qui se
+         * vide seule vaut mieux qu'un code qui survit à la journée. La machine
+         * en redemande un sous 15 s, sa boucle de supervision est faite pour
+         * ça. Voir `DEVICE_CODE_TTL` — à rallonger le jour J, où l'opérateur
+         * traverse la salle entre la lecture du code et la console.
+         */
         expiresIn: deviceCodeExpiresIn,
         /**
          * Cadence de polling. Poller plus vite renvoie `slow_down`
@@ -89,6 +104,39 @@ export function createAuthOptions({
         },
       }),
     ],
+    /**
+     * Google Workspace : **tout compte du domaine est un opérateur.**
+     *
+     * C'est le choix assumé pour un hub d'organisation — l'annuaire fait
+     * l'annuaire, et personne n'a à provisionner un compte de plus le matin de
+     * l'événement. Le domaine est la seule frontière, d'où le soin porté à
+     * `hd` : Better Auth l'envoie à Google *et* le revérifie contre la
+     * revendication du jeton d'identité au retour. Sans cette seconde
+     * vérification, `hd` ne serait qu'une préférence d'écran de choix,
+     * contournable avec un compte personnel.
+     */
+    ...(google == null
+      ? {}
+      : {
+          socialProviders: {
+            google: {
+              clientId: google.clientId,
+              clientSecret: google.clientSecret,
+              hd: google.hostedDomain,
+            },
+          },
+          account: {
+            /**
+             * Un opérateur déjà provisionné retrouve son compte.
+             *
+             * Sans liage, le premier passage par Google échouerait sur une
+             * adresse déjà connue — celle du compte de secours créé en CLI. Le
+             * fournisseur est digne de confiance parce que `hd` est vérifié :
+             * l'adresse appartient bien au domaine.
+             */
+            accountLinking: { enabled: true, trustedProviders: ['google'] },
+          },
+        }),
   } satisfies BetterAuthOptions
 }
 

@@ -10,6 +10,7 @@ import {
   normalizeProgram,
   openFeedbackUrl,
   programSchema,
+  roomConferenceState,
   roomTimelinePosition,
   sessionsForRoom,
 } from '../src/index.js'
@@ -126,6 +127,48 @@ describe('timeline d\'une salle', () => {
   it('retourne null sur une salle inconnue plutôt que de lever', () => {
     expect(currentSession(program, 'salle-inexistante', at('2026-10-30T10:20:00Z'))).toBeNull()
     expect(nextSession(program, 'salle-inexistante', at('2026-10-30T10:20:00Z'))).toBeNull()
+  })
+})
+
+/**
+ * Ce que peint la pastille des consoles.
+ *
+ * Une couleur juste vaut mieux qu'une couleur rassurante : c'est sur elle qu'on
+ * décide de laisser filer cinq minutes ou de lancer le talk suivant.
+ */
+describe("état d'une salle", () => {
+  const program = normalizeProgram(rawFixture)
+
+  it('distingue le talk, la pause et le hors-créneau', () => {
+    expect(roomConferenceState(program, TRACK_1, at('2026-10-30T10:20:00Z'))).toBe('en-cours')
+    // Déjeuner : la salle est occupée, mais rien ne s'y joue.
+    expect(roomConferenceState(program, TRACK_1, at('2026-10-30T11:30:00Z'))).toBe('pause')
+    // Battement de cinq minutes entre deux créneaux.
+    expect(roomConferenceState(program, TRACK_1, at('2026-10-30T08:47:00Z'))).toBe('aucune')
+    expect(roomConferenceState(program, TRACK_1, at('2026-10-30T21:00:00Z'))).toBe('aucune')
+  })
+
+  it('annonce une fin proche cinq minutes avant', () => {
+    // HoneySwamp finit à 10:50 : c'est le moment où l'on ne lance pas un talk
+    // dans la salle d'à côté, sous peine de croiser tout son public.
+    expect(roomConferenceState(program, TRACK_1, at('2026-10-30T10:44:00Z'))).toBe('en-cours')
+    expect(roomConferenceState(program, TRACK_1, at('2026-10-30T10:46:00Z'))).toBe('fin-proche')
+  })
+
+  it('ne voit un dépassement que dans ce que la salle pilote', () => {
+    const apresLaFin = at('2026-10-30T11:00:00Z')
+    const honeySwamp = sessionsForRoom(program, TRACK_1).find((s) => s.title.startsWith('HoneySwamp'))!
+
+    // Le programme seul est passé au créneau suivant : il ne dira jamais qu'une
+    // salle déborde, c'est l'état remonté qui le révèle.
+    expect(roomConferenceState(program, TRACK_1, apresLaFin)).toBe('en-cours')
+    expect(roomConferenceState(program, TRACK_1, apresLaFin, honeySwamp.id)).toBe('depassement')
+  })
+
+  it('ignore une conférence pilotée absente du programme', () => {
+    // Import remplacé en cours de journée : sans créneau, il n'y a rien à
+    // dépasser, et on retombe sur ce que dit le programme.
+    expect(roomConferenceState(program, TRACK_1, at('2026-10-30T10:20:00Z'), 'ses-fantome')).toBe('en-cours')
   })
 })
 

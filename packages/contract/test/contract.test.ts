@@ -161,6 +161,7 @@ describe('surface du contrat', () => {
       'claim',
       'deny',
       'list',
+      'lookup',
       'pending',
       'revoke',
     ])

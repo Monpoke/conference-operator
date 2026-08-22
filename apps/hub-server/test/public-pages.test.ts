@@ -87,6 +87,27 @@ describe('pages publiques', () => {
     expect(html).not.toMatch(/<script[^>]+src=|<link[^>]+href=/)
   })
 
+  it('sert une adresse par onglet de la console', async () => {
+    /**
+     * Chaque onglet est une adresse : sans route côté hub, une console
+     * rafraîchie sur `/admin/moderation` répondrait 404 — exactement là où
+     * l'opérateur l'avait laissée ouverte.
+     */
+    for (const chemin of ['/admin', '/admin/appairage', '/admin/moderation', '/admin/reglages']) {
+      const reponse = await fetch(`${origin}${chemin}`)
+      expect(reponse.status, chemin).toBe(200)
+      expect(await reponse.text()).toContain('console hub')
+    }
+  })
+
+  it("ne sert pas une vue qui n'existe pas", async () => {
+    // Un joker servirait la console sur n'importe quelle faute de frappe, qui
+    // s'ouvrirait alors sur l'exploitation sans dire que l'adresse est fausse.
+    expect((await fetch(`${origin}/admin/moderationn`)).status).toBe(404)
+    // `developpement` n'est rendue qu'en mode dev : le hub ne la sert pas non plus.
+    expect((await fetch(`${origin}/admin/developpement`)).status).toBe(404)
+  })
+
   it("sert l'adresse de vérification annoncée pendant l'appairage", async () => {
     /**
      * Cette adresse est affichée à l'écran de régie et suivie par un opérateur.

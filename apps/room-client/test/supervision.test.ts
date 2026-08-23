@@ -133,7 +133,7 @@ describe('hub absent au démarrage', () => {
     expect(room.pairingState().status).toBe('paired')
     expect(room.store.settings().roomId).toBe(TRACK_1)
     // Le programme est là : le rattrapage est allé jusqu'au bout.
-    expect(room.store.activeProgram()?.program.sessions).toHaveLength(27)
+    expect(room.store.activeProgram()?.program.sessions).toHaveLength(38)
   }, 60_000)
 
   it('ne relance pas de travail tant que le hub reste absent', async () => {

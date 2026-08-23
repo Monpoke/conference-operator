@@ -62,6 +62,26 @@ const planningSessionSchema = sessionApercuSchema.extend({
    * coûte plus cher qu'une case vide.
    */
   feedbackUrl: z.url().nullable(),
+  /**
+   * Décision prise sur ce créneau depuis la console, ou `null`.
+   *
+   * Le `kind` ci-dessus est déjà celui que le hub **sert** : un créneau
+   * surchargé y arrive corrigé, comme partout ailleurs. Ce champ dit d'où vient
+   * ce genre — de l'export, ou d'une décision — ce que la console est seule à
+   * avoir besoin de savoir : c'est elle qui l'a prise, c'est chez elle qu'on la
+   * retire, et elle en déduit ce que dit l'export (l'inverse, puisqu'une
+   * décision sans effet n'est jamais appliquée).
+   */
+  overriddenAs: z.enum(['talk', 'break']).nullable().default(null),
+  /**
+   * Créneau dont cette ligne est la projection dans une autre salle, ou `null`.
+   *
+   * Une salle libre pendant qu'une autre est en pause hérite de cette pause :
+   * la ligne existe donc dans le programme servi sans exister dans l'export.
+   * Elle ne s'édite pas — c'est l'original qu'on corrige, et la projection
+   * suit.
+   */
+  sharedFrom: z.string().nullable().default(null),
 })
 
 export const contract = {
@@ -114,6 +134,31 @@ export const contract = {
      * l'essentiel des 70 ko d'un snapshot, et rien de tout cela ne s'affiche
      * dans un planning.
      */
+    /**
+     * Le créneau commun du moment : ce qui concerne tout le monde à la fois.
+     *
+     * Séparé de la supervision par salle, parce que la question n'est pas la
+     * même : les cartes disent où en est chaque salle, celui-ci dit ce que fait
+     * l'événement. `null` le reste du temps — l'encart n'a alors rien à dire, et
+     * un encart vide se lit comme une panne.
+     */
+    globalBreak: oc.output(
+      z
+        .object({
+          /** `a-venir` : il commence dans moins d'un quart d'heure. */
+          state: z.enum(['en-cours', 'a-venir']),
+          title: z.string(),
+          startsAt: isoDateTimeSchema,
+          /** Reprise : fin effective du break. `null` si rien ne le ferme. */
+          endsAt: isoDateTimeSchema.nullable(),
+          /** Nombre de salles concernées — toutes, le plus souvent. */
+          rooms: z.number().int(),
+          /** Heure du hub, base du décompte : le navigateur n'a que la sienne. */
+          serverTime: isoDateTimeSchema,
+        })
+        .nullable(),
+    ),
+
     planning: oc.output(
       z.object({
         /** Version affichée : la même que dans la liste des snapshots. `null` si aucun programme. */
@@ -273,6 +318,25 @@ export const contract = {
     end: oc.input(z.object({ sessionId: sessionIdSchema })).output(sessionStateSchema),
     /** Annule une décision : le talk redevient « à venir ». */
     reset: oc.input(z.object({ sessionId: sessionIdSchema })).output(z.object({ ok: z.boolean() })),
+    /**
+     * Surcharge un créneau du programme, sans réimport.
+     *
+     * `action: null` retire la surcharge : le créneau redevient ce que dit
+     * l'export. Réservée à l'opérateur — c'est une décision sur le programme de
+     * l'événement, pas sur le déroulé d'une salle.
+     *
+     * Rend l'empreinte du programme tel qu'il est désormais servi : elle change
+     * avec la surcharge, et c'est ce qui fait redescendre le programme dans les
+     * salles au lieu de les laisser sur leur cache.
+     */
+    override: oc
+      .input(
+        z.object({
+          sessionId: sessionIdSchema,
+          action: z.enum(['talk', 'break']).nullable(),
+        }),
+      )
+      .output(z.object({ ok: z.boolean(), contentHash: z.string() })),
   },
 
   /**

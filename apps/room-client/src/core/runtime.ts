@@ -11,6 +11,7 @@ import {
 import {
   currentSession,
   nextSession,
+  roomBreak,
   sessionsForRoom,
   type Program,
   type Session,
@@ -109,6 +110,13 @@ export interface DisplayState {
    * l'opérateur veut appuyer sur « Commencer » — le speaker s'installe.
    */
   targetSession: Session | null
+  /**
+   * Break de la salle, en cours ou imminent — ou `null`.
+   *
+   * À part de la session en cours : les deux cohabitent, et « BREAK à venir »
+   * s'affiche pendant qu'une conférence court encore.
+   */
+  breakBadge: { state: 'en-cours' | 'a-venir'; title: string; startsAt: string } | null
   /** La cible n'a pas encore commencé au programme : l'écran doit le dire. */
   targetIsUpcoming: boolean
   simulatedClock: boolean
@@ -208,6 +216,7 @@ export class RoomRuntime extends EventEmitter {
       simulatedClock: false,
       targetSession: null,
       targetIsUpcoming: false,
+      breakBadge: null,
     }
     this.refreshSessions()
   }
@@ -385,7 +394,7 @@ export class RoomRuntime extends EventEmitter {
   refreshSessions(): void {
     const { roomId } = this.display
     if (this.program == null || roomId == null) {
-      this.patch({ currentSession: null, nextSession: null })
+      this.patch({ currentSession: null, nextSession: null, breakBadge: null })
       return
     }
     const at = this.correctedNow()
@@ -416,11 +425,17 @@ export class RoomRuntime extends EventEmitter {
     const questionPerimee =
       question != null && question.sessionId != null && question.sessionId !== cible?.id
 
+    const pause = roomBreak(this.program, roomId, at)
+
     this.patch({
       currentSession: courante,
       nextSession: suivante,
       targetSession: cible,
       targetIsUpcoming: cible != null && cible.id !== courante?.id,
+      breakBadge:
+        pause == null
+          ? null
+          : { state: pause.state, title: pause.session.title, startsAt: pause.session.startsAt },
       ...(questionPerimee ? { question: null } : {}),
     })
   }

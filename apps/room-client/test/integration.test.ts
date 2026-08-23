@@ -138,8 +138,9 @@ describe('salle et hub, chaîne complète', () => {
     expect(result.ok).toBe(true)
 
     expect(runtime.state().roomId).toBe(TRACK_1)
-    // 15 sessions sur le track 1, filtrées depuis les 27 de l'événement.
-    expect(store.activeProgram()?.program.sessions).toHaveLength(27)
+    // 27 créneaux à l'export, 38 servis par le hub : les pauses communes sont
+    // projetées dans les salles libres au même moment.
+    expect(store.activeProgram()?.program.sessions).toHaveLength(38)
     expect(store.settings().config?.sceneRoles.A?.LIVE).toBe('Capture HDMI')
   }, 20_000)
 
@@ -225,7 +226,7 @@ describe('salle et hub, chaîne complète', () => {
     openStores.push(offline)
     const runtime = new RoomRuntime(offline)
     // Le programme et la salle sont là, sans le moindre appel réseau.
-    expect(offline.activeProgram()?.program.sessions).toHaveLength(27)
+    expect(offline.activeProgram()?.program.sessions).toHaveLength(38)
     expect(offline.settings().roomId).toBe(TRACK_1)
     expect(runtime.state().contentHash).toBeTruthy()
 

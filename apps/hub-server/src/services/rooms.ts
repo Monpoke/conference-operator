@@ -103,10 +103,37 @@ export class RoomService {
       .filter((row) => sessionIds == null || sessionIds.includes(row.sessionId))
       .map((row) => ({
         sessionId: row.sessionId,
-        status: row.status as 'delayed' | 'cancelled' | 'moved',
+        status: row.status as 'talk' | 'break' | 'delayed' | 'cancelled' | 'moved',
         delayMinutes: row.delayMinutes,
         note: row.note,
       }))
+  }
+
+  /**
+   * Pose ou retire une décision sur un créneau.
+   *
+   * `null` supprime la ligne plutôt que d'enregistrer un statut « rien » : une
+   * surcharge retirée doit être indistinguable d'une surcharge jamais posée,
+   * sinon l'empreinte du programme servi ne reviendrait pas à sa valeur d'avant
+   * et les salles retéléchargeraient pour rien.
+   */
+  setOverride(sessionId: string, status: 'talk' | 'break' | null): void {
+    if (status == null) {
+      this.db.delete(sessionOverride).where(eq(sessionOverride.sessionId, sessionId)).run()
+      return
+    }
+    const values = {
+      sessionId,
+      status,
+      delayMinutes: null,
+      note: null,
+      updatedAt: new Date().toISOString(),
+    }
+    this.db
+      .insert(sessionOverride)
+      .values(values)
+      .onConflictDoUpdate({ target: sessionOverride.sessionId, set: values })
+      .run()
   }
 
   statuses(): RoomStatus[] {

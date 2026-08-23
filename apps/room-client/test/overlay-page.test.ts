@@ -70,6 +70,27 @@ describe('habillage de captation', () => {
     expect(document.body.dataset.titrage).toBe('masque')
   })
 
+  it('titre sans ligne vide quand personne n\'est encore annoncé', () => {
+    /**
+     * Le cas existe depuis qu'un créneau peut être déclaré conférence à la
+     * main : une keynote d'ouverture dont le speaker n'est pas encore annoncé
+     * porte un titre et aucun nom. Une ligne vide garderait sa marge sous le
+     * titre et se lirait, dans le direct comme dans la VOD, comme un nom qui
+     * n'a pas chargé.
+     */
+    monterHabillage({
+      ...ETAT,
+      state: {
+        ...ETAT.state,
+        currentSession: { ...TALK, title: "Keynote d'ouverture", speakers: [] },
+      },
+    } as unknown as DisplayPayload)
+
+    expect(document.body.dataset.titrage).toBe('visible')
+    expect(document.getElementById('titre')?.textContent).toContain('Keynote')
+    expect(document.getElementById('personnes')?.hidden).toBe(true)
+  })
+
   it('ne signale pas l\'enregistrement, même en pleine prise', () => {
     // Un point rouge ici serait gravé dans la VOD livrée. Le témoin de prise
     // vit en régie, panneau « Captation ».

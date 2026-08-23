@@ -83,6 +83,22 @@ export const commandPayloadSchema = z.discriminatedUnion('type', [
     contentHash: z.string(),
   }),
   z.object({
+    /**
+     * Resynchronisation complète demandée depuis la console.
+     *
+     * Distincte de `program.invalidate`, qui annonce un fait — le programme a
+     * changé — et laisse la salle ne retélécharger que ce qui a bougé. Ici rien
+     * n'a changé sur le hub : c'est la salle qu'on soupçonne d'avoir dérivé, et
+     * on lui demande de tout relire sans se fier à ce qu'elle a en cache.
+     *
+     * Le geste existe parce qu'il n'y en avait pas d'autre : remettre une salle
+     * d'aplomb demandait de la redémarrer, donc de couper sa captation.
+     */
+    type: z.literal('room.resync'),
+    /** Qui l'a demandée : la salle le trace, on saura d'où vient le geste. */
+    requestedBy: z.string().nullable().default(null),
+  }),
+  z.object({
     type: z.literal('wall.approved'),
     commentId: z.string(),
   }),

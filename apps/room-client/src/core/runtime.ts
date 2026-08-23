@@ -144,6 +144,16 @@ export interface RuntimeEffects {
   setSceneRole?: (role: SceneRole) => Promise<void>
   /** Redemande un sync au hub après invalidation du programme. */
   resync?: (contentHash: string) => void
+  /**
+   * Relit le cycle de vie des conférences auprès du hub.
+   *
+   * Le runtime tient une copie locale, alimentée au fil des commandes : elle ne
+   * peut pas se corriger seule quand c'est le *temps* qui change, puisqu'aucune
+   * commande n'est émise pour les décisions qui cessent de s'appliquer.
+   */
+  reloadSessionStates?: () => void
+  /** Resynchronisation complète demandée par la console. */
+  fullResync?: () => void
 }
 
 export type CommandOutcome =
@@ -279,6 +289,24 @@ export class RoomRuntime extends EventEmitter {
     // marqueur qui voudrait dire « rien ne s'est produit ».
     if (status === 'scheduled') delete suivant[sessionId]
     else suivant[sessionId] = status
+    this.patch({ sessionStates: suivant })
+  }
+
+  /**
+   * Remplace tout le cycle de vie par ce que dit le hub.
+   *
+   * Un remplacement, pas une fusion : ce qui a disparu de la liste du hub doit
+   * disparaître ici aussi. Une décision annulée — par la console, ou parce
+   * qu'on a reculé l'horloge — ne s'efface d'aucune autre façon, et une salle
+   * qui garderait « en cours » sur une conférence à venir peindrait sa pastille
+   * et son compte à rebours sur un fait qui n'existe plus.
+   */
+  replaceSessionStates(etats: { sessionId: string; status: SessionStatus }[]): void {
+    const suivant: Record<string, SessionStatus> = {}
+    // `scheduled` reste l'absence d'état, à l'identique de setSessionStatus.
+    for (const etat of etats) {
+      if (etat.status !== 'scheduled') suivant[etat.sessionId] = etat.status
+    }
     this.patch({ sessionStates: suivant })
   }
 
@@ -499,6 +527,23 @@ export class RoomRuntime extends EventEmitter {
       case 'program.invalidate':
         this.effects.resync?.(payload.contentHash)
         break
+      case 'room.resync':
+        /**
+         * Signalé en régie, et pas seulement au journal.
+         *
+         * Une salle qui se remet à télécharger son programme au milieu d'une
+         * journée sans que personne ne l'ait demandé sur place se lit comme un
+         * incident. Dire d'où vient le geste évite qu'on aille le chercher.
+         */
+        this.notify({
+          level: 'info',
+          text:
+            payload.requestedBy == null
+              ? 'Resynchronisation complète demandée depuis la console'
+              : `Resynchronisation complète demandée par ${payload.requestedBy}`,
+        })
+        this.effects.fullResync?.()
+        break
       case 'session.state': {
         const notre = this.display.roomId
         if (payload.roomId == null || payload.roomId === notre) {
@@ -522,6 +567,16 @@ export class RoomRuntime extends EventEmitter {
          * prochaine synchronisation — et la timeline désignerait le mauvais talk.
          */
         this.setServerTime(payload.serverTime, payload.simulated)
+        /**
+         * Et on relit le cycle de vie dans la foulée.
+         *
+         * Reculer l'horloge annule des décisions : un talk lancé plus tard dans
+         * la journée n'a pas encore commencé au nouvel instant. Le hub le sait
+         * — c'est lui qui date les décisions —, la salle non : sans cette
+         * relecture, la régie garde « en cours » sur une conférence à venir
+         * jusqu'à la prochaine synchronisation.
+         */
+        this.effects.reloadSessionStates?.()
         this.notify({
           level: 'info',
           text: payload.simulated

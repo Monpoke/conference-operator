@@ -83,6 +83,55 @@ describe('cycle de vie d\'une conférence', () => {
   })
 })
 
+/**
+ * Reculer l'horloge du hub — ce que fait le menu Développement.
+ *
+ * Le défaut observé : le talk de 09:50 lancé pendant un essai à 11 h restait
+ * « en cours » quand on revenait à 08:38, et la régie affichait deux heures de
+ * compte à rebours sur une conférence que personne n'avait démarrée.
+ */
+describe('horloge reculée', () => {
+  it('écarte une décision datée d\'après l\'instant courant', () => {
+    sessions.start(TALK.id, TRACK_1, 'op')
+    expect(sessions.get(TALK.id)?.status).toBe('running')
+
+    horloge -= 2 * 60 * 60_000
+    expect(sessions.get(TALK.id)).toBeNull()
+    expect(sessions.states(TRACK_1)).toEqual([])
+  })
+
+  it('écarte aussi une clôture à venir, sans faire réapparaître le démarrage', () => {
+    sessions.start(TALK.id, TRACK_1, 'op')
+    horloge += 45 * 60_000
+    sessions.end(TALK.id, TRACK_1, 'op')
+
+    // Entre le démarrage et la clôture : la conférence tourne encore.
+    horloge -= 20 * 60_000
+    expect(sessions.get(TALK.id)).toBeNull()
+  })
+
+  it('retrouve la journée là où on l\'avait laissée en ré-avançant', () => {
+    const demarre = sessions.start(TALK.id, TRACK_1, 'op')
+    const depart = horloge
+
+    horloge -= 2 * 60 * 60_000
+    expect(sessions.get(TALK.id)).toBeNull()
+
+    // On filtre à la lecture, on n'efface pas : la ligne est toujours là.
+    horloge = depart
+    expect(sessions.get(TALK.id)).toEqual(demarre)
+  })
+
+  it('ne clôture pas automatiquement ce qui n\'a pas encore commencé', () => {
+    sessions.start(TALK.id, TRACK_1, 'op')
+
+    // Une heure *avant* le démarrage enregistré, mais bien après la fin du
+    // créneau de la veille : la règle horaire ne doit rien conclure.
+    horloge = FIN - 3 * 60 * 60_000
+    expect(sessions.sweep(program).ended).toEqual([])
+  })
+})
+
 describe('clôture automatique', () => {
   it('ne clôture rien avant le délai de grâce', () => {
     sessions.start(TALK.id, TRACK_1, 'op')

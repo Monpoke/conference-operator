@@ -184,6 +184,18 @@ export const contract = {
     /** Supervision des salles dans l'admin. */
     statuses: oc.output(z.array(roomStatusSchema)),
     /**
+     * Demande une resynchronisation complète. `roomId` nul = toutes les salles.
+     *
+     * Réservée à l'opérateur : c'est un geste de console, pas quelque chose
+     * qu'une salle se demande à elle-même — la régie a déjà son bouton.
+     *
+     * `rooms` compte les salles visées, pour que la console puisse le dire
+     * plutôt que d'annoncer un envoi sans destinataire quand il n'y en a aucune.
+     */
+    resync: oc
+      .input(z.object({ roomId: roomIdSchema.nullable() }))
+      .output(z.object({ ok: z.boolean(), rooms: z.number().int() })),
+    /**
      * Flux descendant. Chaque événement est estampillé avec son `seq` via
      * `withEventMeta` : la reprise après coupure passe par `lastEventId`, pas
      * par un paramètre d'entrée.

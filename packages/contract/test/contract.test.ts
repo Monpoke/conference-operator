@@ -157,6 +157,9 @@ describe('surface du contrat', () => {
       'list',
       // Publique : une machine non appairée doit pouvoir proposer un choix de salle.
       'public',
+      // Geste de console : remettre une salle d'aplomb sans la redémarrer,
+      // donc sans couper sa captation.
+      'resync',
       'statuses',
       'sync',
     ])

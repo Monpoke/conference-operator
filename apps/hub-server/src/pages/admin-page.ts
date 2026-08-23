@@ -211,6 +211,10 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
   /* Réglage des notifications : même mécanique que la modale ci-dessus. */
   #reglage-notifs { display: none; }
   body[data-notifs="ouvert"] #reglage-notifs { display: flex; }
+
+  /* Confirmation d'une resynchronisation : même mécanique, même raison. */
+  #confirmer-resync { display: none; }
+  body[data-resync="ouvert"] #confirmer-resync { display: flex; }
 </style>
 </head>
 <body class="bg-fond font-sans text-texte">
@@ -554,6 +558,30 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
         tenu alors que personne ne l'a démarré fausserait l'historique et la VOD.
       </div>
     </section>
+
+    <!--
+      Remettre une salle d'aplomb sans la redémarrer.
+
+      Le seul recours, jusqu'ici, était de redémarrer la machine de salle —
+      donc de couper sa captation, au moment précis où l'on constate qu'elle a
+      dérivé. Cette demande refait tout ce que fait un démarrage *sauf* ce qui
+      coupe : le programme redescend entier, les assets manquants sont repris,
+      configuration, réseaux, événement, horloge et cycle de vie sont relus. OBS
+      reste connecté, l'enregistrement continue.
+    -->
+    <section class="panneau">
+      <h2 class="titre-panneau">Resynchronisation des salles</h2>
+      <div class="mb-[11px]">
+        <label for="resync-salle">Salle à resynchroniser</label>
+        <select id="resync-salle"><option value="">Toutes les salles</option></select>
+      </div>
+      <button class="w-full" id="btn-resync">Demander une resynchronisation</button>
+      <div class="aide">
+        Passe par le flux descendant : une salle momentanément coupée rattrapera
+        la demande à sa reconnexion plutôt que de la perdre. Rien n'est coupé en
+        salle — ni OBS, ni un enregistrement en cours.
+      </div>
+    </section>
   </div>
 
   ${vueDeveloppement}
@@ -627,6 +655,30 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
   </div>
 </div>
 
+<!--
+  Confirmation d'une resynchronisation.
+
+  Sous confirmation parce que le geste part vers des machines qu'on ne voit pas,
+  et qu'il porte à toutes les salles par défaut : « Toutes » est le choix par
+  défaut de la liste, et c'est exactement le cas où un clic de trop se paie.
+  La modale nomme la cible plutôt que de la sous-entendre.
+-->
+<div class="fixed inset-0 z-50 items-center justify-center bg-black/65 p-4" id="confirmer-resync">
+  <div class="panneau w-full max-w-[460px]">
+    <h2 class="titre-panneau">Resynchroniser ?</h2>
+    <div class="text-sm leading-relaxed" id="resync-texte"></div>
+    <div class="aide mt-3">
+      La salle relit tout du hub : programme entier, assets manquants,
+      configuration, réseaux, événement, horloge, cycle de vie des conférences.
+      <strong>OBS n'est pas reconnecté et l'enregistrement n'est pas interrompu.</strong>
+    </div>
+    <div class="mt-3.5 flex justify-end gap-1.5">
+      <button id="resync-annuler">Annuler</button>
+      <button class="principal" id="resync-confirmer">Resynchroniser</button>
+    </div>
+  </div>
+</div>
+
 <div id="avis"></div>
 
 <script>
@@ -672,6 +724,7 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
     $('connexion').hidden = false
     // Une modale laissée ouverte flotterait au-dessus du formulaire.
     fermerVerdict()
+    fermerConfirmationResync()
     $('motdepasse').value = ''
   }
 
@@ -2120,6 +2173,65 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
       reseaux = (reglages.socialLinks ?? []).map((lien) => ({ ...lien }))
       rendreReseaux()
     }
+    await remplirSallesResync()
+  }
+
+  /**
+   * Liste des salles à resynchroniser.
+   *
+   * Réécrite seulement quand elle change : cette vue se rafraîchit toutes les
+   * dix secondes, et reconstruire la liste remettrait le choix sur « Toutes »
+   * pendant qu'on ouvre la modale sur une salle précise.
+   */
+  async function remplirSallesResync() {
+    const salles = await appeler('rooms/list')
+    const choix = $('resync-salle')
+    const attendu = salles.map((salle) => salle.id).join('|')
+    if (choix.dataset.salles === attendu) return
+    choix.dataset.salles = attendu
+    const garde = choix.value
+    choix.innerHTML = '<option value="">Toutes les salles</option>' +
+      salles.map((salle) =>
+        '<option value="' + echapper(salle.id) + '">' + echapper(salle.name) + '</option>').join('')
+    if (salles.some((salle) => salle.id === garde)) choix.value = garde
+  }
+
+  /** Nom lisible de la cible, pour que la modale la nomme au lieu de l'insinuer. */
+  function cibleResync() {
+    const choix = $('resync-salle')
+    return {
+      roomId: choix.value || null,
+      nom: choix.value === '' ? null : choix.options[choix.selectedIndex].textContent,
+    }
+  }
+
+  function ouvrirConfirmationResync() {
+    const { nom } = cibleResync()
+    $('resync-texte').innerHTML = nom == null
+      ? 'Demander une resynchronisation compl\u00e8te \u00e0 <strong>toutes les salles</strong>.'
+      : 'Demander une resynchronisation compl\u00e8te \u00e0 <strong>' + echapper(nom) + '</strong>.'
+    document.body.dataset.resync = 'ouvert'
+  }
+
+  function fermerConfirmationResync() {
+    document.body.dataset.resync = 'ferme'
+  }
+
+  async function confirmerResync() {
+    const { roomId, nom } = cibleResync()
+    try {
+      const resultat = await appeler('rooms/resync', { roomId })
+      fermerConfirmationResync()
+      // Le nombre de salles visées, pas un « c'est parti » : un hub sans
+      // aucune salle appairée accepterait la demande sans que rien ne parte.
+      avis(nom != null
+        ? 'Resynchronisation demand\u00e9e \u00e0 ' + nom
+        : resultat.rooms === 0
+          ? 'Aucune salle sur ce hub : la demande n\u2019atteindra personne'
+          : 'Resynchronisation demand\u00e9e \u00e0 ' + resultat.rooms + ' salle(s)')
+    } catch (cause) {
+      avis(cause.message, true)
+    }
   }
 
   /**
@@ -2330,8 +2442,11 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
   $('verdict-fermer').onclick = fermerVerdict
   $('verdict-approuver').onclick = () => deciderVerdict(true)
   $('verdict-refuser').onclick = () => deciderVerdict(false)
+  $('btn-resync').onclick = ouvrirConfirmationResync
+  $('resync-annuler').onclick = fermerConfirmationResync
+  $('resync-confirmer').onclick = () => void confirmerResync()
   document.addEventListener('keydown', (evenement) => {
-    if (evenement.key === 'Escape') fermerVerdict()
+    if (evenement.key === 'Escape') { fermerVerdict(); fermerConfirmationResync() }
   })
 
   $('btn-rafraichir').onclick = () => tout()

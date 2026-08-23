@@ -659,6 +659,41 @@ Sans push disponible, le bouton reste, avec les notifications de page seules —
 un avertissement qui ne traverse pas le verrouillage vaut mieux que pas
 d'avertissement — et la console dit laquelle des deux portées elle a obtenue.
 
+### Remettre une salle d'aplomb sans la redémarrer
+
+Console → **Réglages** → panneau « Resynchronisation des salles » → choisir une
+salle (ou « Toutes les salles ») → **Demander une resynchronisation** →
+confirmer.
+
+Le geste existe parce qu'il n'y en avait pas d'autre : une salle qu'on soupçonne
+d'avoir dérivé — programme d'une version antérieure, logo jamais téléchargé,
+réglage qui n'a pas pris — se remettait d'aplomb en redémarrant la machine,
+donc en coupant sa captation, au moment précis où l'on constate le problème.
+
+Ce que la salle refait, à réception :
+
+| Relu | Pourquoi ça compte |
+|---|---|
+| Le programme **entier** | Sans se fier à l'empreinte en cache — c'est justement le cache qu'on soupçonne. Un `sync` ordinaire, lui, s'appuie dessus pour ne pas retélécharger 70 ko à chaque battement |
+| Les assets manquants | Un logo ou une photo tombés au premier `sync` sont repris ; ceux déjà en cache ne sont pas retéléchargés |
+| Configuration, réseaux, événement, horloge | Ce que le `sync` redescend de toute façon, mais qu'on force ici |
+| Le cycle de vie des conférences | Relu au hub, qui fait foi — voir « Ce que « Commencer » entraîne » |
+
+**Ce qui n'est pas touché : OBS et l'enregistrement.** Reconnecter voudrait dire
+couper, y compris une captation en cours — c'est exactement ce qu'on cherche à
+éviter. La reconnexion reste un geste explicite, instance par instance, depuis
+la régie (⚙).
+
+Sous confirmation parce que la demande part vers des machines qu'on ne voit pas,
+et que « Toutes les salles » est le choix par défaut de la liste : la modale
+nomme la cible plutôt que de la sous-entendre. Elle passe par le flux
+descendant, comme toute commande — une salle momentanément coupée la rattrape à
+sa reconnexion au lieu de la perdre, et la déduplication par `seq` l'empêche de
+s'appliquer deux fois. La régie de la salle le signale dans son bandeau, avec
+l'adresse de qui l'a demandée : une salle qui se remet à télécharger son
+programme au milieu de la journée sans que personne ne l'ait demandé sur place
+se lirait sinon comme un incident.
+
 ## Empaqueter le client de salle
 
 ```bash

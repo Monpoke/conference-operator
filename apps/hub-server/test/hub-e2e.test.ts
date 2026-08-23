@@ -293,6 +293,60 @@ describe('temps restant des salles', () => {
 })
 
 /**
+ * Resynchronisation demandée depuis la console.
+ *
+ * Elle existe parce qu'il n'y avait pas d'autre recours : remettre une salle
+ * d'aplomb demandait de la redémarrer, donc de couper sa captation.
+ */
+describe('resynchronisation des salles', () => {
+  it('descend la demande à la salle visée', async () => {
+    const headers = await pairRoomDevice()
+    const salle = wsClient(headers)
+    const recues: Command[] = []
+    const flux = (async () => {
+      for await (const commande of await salle.rooms.commands()) {
+        recues.push(commande)
+        if (recues.length >= 1) break
+      }
+    })()
+
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    await sleep(200)
+    const resultat = await admin.rooms.resync({ roomId: TRACK_1 })
+    expect(resultat).toEqual({ ok: true, rooms: 1 })
+
+    await Promise.race([flux, sleep(3_000)])
+    expect(recues[0]?.payload).toMatchObject({
+      type: 'room.resync',
+      // Qui l'a demandée : la salle le trace, on saura d'où vient le geste.
+      requestedBy: OPERATOR.email,
+    })
+  })
+
+  it('compte les salles visées quand la demande est générale', async () => {
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+
+    // Une seule salle sur ce hub : c'est le compte qu'annonce la console, et
+    // c'est ce qui lui permet de dire « aucune salle » plutôt que « c'est parti »
+    // sur un hub où rien n'est appairé.
+    expect(await admin.rooms.resync({ roomId: null })).toEqual({ ok: true, rooms: 1 })
+  })
+
+  it('refuse une salle inconnue plutôt que d\'émettre dans le vide', async () => {
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+
+    await expect(admin.rooms.resync({ roomId: 'salle-fantome' })).rejects.toThrow(/inconnue/)
+  })
+
+  it('reste fermée aux salles : c\'est un geste de console', async () => {
+    const headers = await pairRoomDevice()
+    const salle = wsClient(headers)
+
+    await expect(salle.rooms.resync({ roomId: TRACK_1 })).rejects.toThrow()
+  })
+})
+
+/**
  * Planning relu depuis la console.
  *
  * Le tableau des conférences ne montre que ce qui a été démarré : il répond à

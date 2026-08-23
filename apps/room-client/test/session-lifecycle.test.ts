@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createHub, type Hub } from '@cloudnord/hub-server/server'
 import { provisionOperator } from '@cloudnord/hub-server/operators'
 import { createORPCClient } from '@orpc/client'
@@ -113,6 +113,19 @@ const agir = async (payload: unknown) => {
   return { status: response.status, body: (await response.json()) as { ok: boolean; message?: string } }
 }
 const etat = async () => (await (await fetch(`${regie}/display/data`)).json()) as DisplayPayload
+
+/** Client opérateur : ce que la console tient une fois connectée. */
+async function operateur(): Promise<ContractRouterClient<typeof contract>> {
+  const response = await fetch(`${origin}/api/auth/sign-in/email`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: OPERATOR.email, password: OPERATOR.password }),
+  })
+  const session = (await response.json()) as { token: string }
+  return createORPCClient(
+    new RPCLink({ origin, url: '/rpc', headers: () => ({ authorization: `Bearer ${session.token}` }) }),
+  )
+}
 
 describe('cycle de vie piloté depuis la régie', () => {
   it('démarre et termine la conférence en cours', async () => {
@@ -226,6 +239,87 @@ describe("heure simulée", () => {
     // Et les pages voient le même instant : elles n'ont que leur `Date.now()`.
     const vuParUnePage = Date.now() + room.runtime.state().serverTimeOffsetMs
     expect(Math.abs(vuParUnePage - room.runtime.correctedNow())).toBeLessThan(100)
+  }, 40_000)
+
+  it("annule en régie les décisions prises plus tard dans la journée", async () => {
+    /**
+     * Le cas signalé : on essaie la journée, on lance « HoneySwamp » à 10:20,
+     * puis on recule l'horloge à 08:38 pour reprendre au matin. La régie
+     * gardait « en cours » et déroulait deux heures de compte à rebours sur une
+     * conférence que personne n'avait démarrée — l'état venait d'une journée
+     * qui n'avait pas encore eu lieu.
+     */
+    const session = room.runtime.state().currentSession!
+    await agir({ action: 'session.start' })
+    expect((await etat()).state.sessionStates[session.id]).toBe('running')
+
+    const admin = await operateur()
+    await admin.clock.set({ at: '2026-10-30T07:38:00.000Z' })
+    await sleep(600)
+
+    // Le hub n'applique plus la décision…
+    expect(hub.services.sessions.get(session.id)).toBeNull()
+    // …et la salle non plus : elle relit le cycle de vie quand l'heure bouge.
+    const payload = await etat()
+    expect(payload.state.sessionStates[session.id]).toBeUndefined()
+    // Et la régie repart sur le matin : le prochain talk, pas encore commencé.
+    expect(payload.state.currentSession?.id).not.toBe(session.id)
+    expect(payload.state.targetSession?.startsAtMs).toBeGreaterThan(
+      Date.parse('2026-10-30T07:38:00.000Z'),
+    )
+    expect(payload.state.targetIsUpcoming).toBe(true)
+  }, 40_000)
+})
+
+/**
+ * Resynchronisation demandée depuis la console.
+ *
+ * Le seul recours, avant, était de redémarrer la machine de salle — donc de
+ * couper sa captation, au moment précis où l'on constate qu'elle a dérivé.
+ */
+describe('resynchronisation complète', () => {
+  it("relit tout sur demande de la console, sans couper la salle", async () => {
+    const admin = await operateur()
+    const avant = room.runtime.state().recording
+
+    await admin.rooms.resync({ roomId: TRACK_1 })
+    await sleep(800)
+
+    const payload = await etat()
+    const textes = payload.state.notifications.map((n) => n.text)
+    // Signalé en régie : une salle qui se remet à télécharger son programme
+    // sans que personne ne l'ait demandé sur place se lit comme un incident.
+    expect(textes.some((t) => t.includes(OPERATOR.email))).toBe(true)
+    expect(textes).toContain('Resynchronisation complète terminée')
+
+    // Rien n'a été coupé : c'est tout l'intérêt du geste.
+    expect(payload.state.recording).toBe(avant)
+    expect(payload.pairing?.status).toBe('paired')
+    expect(payload.state.connectivity).toBe('ONLINE')
+    // Et la salle est toujours sur le programme du hub.
+    expect(room.runtime.state().currentSession?.title).toContain('HoneySwamp')
+  }, 40_000)
+
+  it("redemande le programme entier, là où un sync ordinaire s'en dispense", async () => {
+    /**
+     * C'est ce qui distingue ce geste d'un `sync` ordinaire : le sync s'appuie
+     * sur l'empreinte pour ne pas retélécharger 70 ko à chaque battement, et
+     * c'est justement le cache qu'on soupçonne ici. Le programme redescendu se
+     * constate à l'écriture en base locale.
+     */
+    const store = (room as unknown as { store: { saveProgram: (...args: never[]) => void } }).store
+    const ecrit = vi.spyOn(store, 'saveProgram')
+
+    // Le sync ordinaire n'écrit rien : l'empreinte n'a pas bougé.
+    await room.resync()
+    expect(ecrit).not.toHaveBeenCalled()
+
+    const admin = await operateur()
+    await admin.rooms.resync({ roomId: null })
+    await sleep(800)
+
+    expect(ecrit).toHaveBeenCalled()
+    ecrit.mockRestore()
   }, 40_000)
 })
 

@@ -1454,17 +1454,48 @@ ${etatInitial}
     rendreRestant()
   }
 
+  /**
+   * Ce que compte le grand chronomètre.
+   *
+   * Avant le créneau, le temps qui reste **avant** de commencer ; à partir de
+   * son heure, ce qu'il reste du créneau. Compter d'emblée vers la fin donnait
+   * « 2:01:59 » en gros caractères à 8h38 sur la conférence de 9h50 : un
+   * chiffre qui se lit comme un talk en cours, et qui a été lu ainsi.
+   *
+   * Un talk lancé en avance compte vers sa fin sans attendre son heure : dès
+   * qu'on a appuyé sur « Commencer », c'est l'écart au programme qui décide de
+   * la suite de la journée.
+   */
+  function comptePourLeChrono() {
+    const session = donnees.state.targetSession
+    if (session == null) return null
+    const instant = maintenant()
+    const statut = (donnees.state.sessionStates ?? {})[session.id] ?? 'scheduled'
+    if (statut === 'scheduled' && session.startsAtMs > instant) {
+      return { ms: session.startsAtMs - instant, avantDebut: true }
+    }
+    return session.endsAtMs == null ? null : { ms: session.endsAtMs - instant, avantDebut: false }
+  }
+
   /** Le grand compte à rebours, remis à jour chaque seconde par tic(). */
   function rendreRestant() {
     const el = $('restant')
-    const ms = resteMs()
-    if (ms == null) {
+    const compte = comptePourLeChrono()
+    if (compte == null) {
       el.textContent = '--:--'
       el.className = 'text-[40px] leading-none font-bold tabular-nums text-attenue'
       return
     }
-    el.textContent = chrono(ms)
-    const teinte = ms < 0 ? 'text-alerte' : ms < 300_000 ? 'text-attention' : 'text-texte'
+    el.textContent = chrono(compte.ms)
+    // Avant le début, le décompte ne réclame rien : atténué, il se distingue
+    // d'un créneau qui court — lequel vire à l'attention puis à l'alerte.
+    const teinte = compte.avantDebut
+      ? 'text-attenue'
+      : compte.ms < 0
+        ? 'text-alerte'
+        : compte.ms < 300_000
+          ? 'text-attention'
+          : 'text-texte'
     el.className = 'text-[40px] leading-none font-bold tabular-nums ' + teinte
   }
 

@@ -8,6 +8,7 @@ import type { QuestionService, WallService } from './services/wall.js'
 import type { RateLimiter } from './services/rate-limit.js'
 import type { PushService } from './services/push.js'
 import type { SessionStateService, SettingsService } from './services/sessions.js'
+import type { EventIdentityService } from './services/event-identity.js'
 import type { MutableClock } from './services/clock.js'
 import type { ModeExecution } from '@cloudnord/contract'
 
@@ -22,6 +23,14 @@ export interface Services {
   limiter: RateLimiter
   sessions: SessionStateService
   settings: SettingsService
+  /**
+   * Qui est l'événement — nom complet et nom court.
+   *
+   * Un service et non une constante : c'est ce qui permet au même binaire de
+   * servir deux événements différents, et le nom se corrige en cours de
+   * journée sans redémarrer le hub.
+   */
+  identity: EventIdentityService
   push: PushService
   clock: MutableClock
   /**

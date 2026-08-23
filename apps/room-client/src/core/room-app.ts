@@ -8,6 +8,7 @@ import { createORPCClient } from '@orpc/client'
 import { RPCLink as FetchLink } from '@orpc/client/fetch'
 import type { ContractRouterClient } from '@orpc/contract'
 import { contract } from '@cloudnord/contract'
+import { FUSEAU_PAR_DEFAUT } from '@cloudnord/program'
 import { RoomRuntime } from './runtime.js'
 import { LocalStore } from './store.js'
 import { createObsTransport, keepObsConnected } from './obs-transport.js'
@@ -187,6 +188,7 @@ export class RoomApp implements ControlTarget {
       // bascule de scène, et une salle démarrée hub injoignable garde les
       // derniers connus plutôt qu'une page vide.
       socialLinks: () => this.store.settings().socialLinks,
+      event: () => this.store.settings().event,
       onNiveauxDemandes: (actif) => {
         this.niveauxDemandes = actif
         // Sans OBS-B connecté, on retient seulement l'intention : l'abonnement
@@ -896,7 +898,7 @@ export class RoomApp implements ControlTarget {
       session: state.currentSession,
       roomId: state.roomId,
       roomSlug: config.fileSlug ?? slugify(config.name).slice(0, 16),
-      timezone: cached?.program.timezone ?? 'Europe/Paris',
+      timezone: cached?.program.timezone ?? FUSEAU_PAR_DEFAUT,
     })
     this.emit({ type: 'recording.started', obs: 'B', sessionId: state.currentSession?.id ?? null })
   }

@@ -57,7 +57,7 @@ beforeEach(() => {
   // ouvrirait le suivant sur la sienne.
   globalThis.history.replaceState(null, '', '/admin')
   // Session présente : la console s'affiche directement, sans écran de connexion.
-  localStorage.setItem('cloudnord-admin', 'jeton-de-test')
+  localStorage.setItem('hub-admin', 'jeton-de-test')
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => new Response(JSON.stringify({ json: [] }), { status: 200 })),
@@ -263,7 +263,7 @@ describe('appairage', () => {
     // Arriver par le lien de la régie et lire une file de demandes ne dit rien
     // de *ce* code-là : il peut être mort pendant que trois autres attendent.
     globalThis.history.replaceState(null, '', '/admin/devices?user_code=HK62AA49')
-    localStorage.setItem('cloudnord-admin', 'jeton')
+    localStorage.setItem('hub-admin', 'jeton')
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) =>
@@ -296,7 +296,7 @@ describe('appairage', () => {
      * geste qu'on venait de valider des yeux.
      */
     globalThis.history.replaceState(null, '', '/admin/devices?user_code=YBFACMQT')
-    localStorage.setItem('cloudnord-admin', 'jeton')
+    localStorage.setItem('hub-admin', 'jeton')
     const appels: { chemin: string; entree: unknown }[] = []
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
       const chemin = String(url).replace('/rpc/', '')
@@ -335,7 +335,7 @@ describe('appairage', () => {
 
   it('refuse depuis la modale, sans choisir de salle', async () => {
     globalThis.history.replaceState(null, '', '/admin/devices?user_code=YBFACMQT')
-    localStorage.setItem('cloudnord-admin', 'jeton')
+    localStorage.setItem('hub-admin', 'jeton')
     const appels: string[] = []
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       const chemin = String(url).replace('/rpc/', '')
@@ -358,7 +358,7 @@ describe('appairage', () => {
     // Un code ouvert par un autre opérateur se refuse à l'approbation : le
     // message tient en une phrase qu'il faut lire, pas en un avis fugace.
     globalThis.history.replaceState(null, '', '/admin/devices?user_code=YBFACMQT')
-    localStorage.setItem('cloudnord-admin', 'jeton')
+    localStorage.setItem('hub-admin', 'jeton')
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       const chemin = String(url).replace('/rpc/', '')
       if (chemin === 'devices/approve') {
@@ -390,7 +390,7 @@ describe('appairage', () => {
     // Better Auth renvoie la machine vers `/admin/devices?user_code=…` : sans
     // cela, l'opérateur cherche le champ dans un onglet qu'il ne connaît pas.
     globalThis.history.replaceState(null, '', '/admin/devices?user_code=FH9BAXGZ')
-    localStorage.setItem('cloudnord-admin', 'jeton')
+    localStorage.setItem('hub-admin', 'jeton')
     monterConsole()
 
     expect(document.getElementById('vue-appairage')?.hidden).toBe(false)
@@ -451,7 +451,7 @@ describe('notifications', () => {
     NotificationFactice.demandes = 0
     NotificationFactice.envoyees = []
     vi.stubGlobal('Notification', NotificationFactice)
-    localStorage.setItem('cloudnord-admin', 'jeton')
+    localStorage.setItem('hub-admin', 'jeton')
   })
 
   it("explique un refus du service de push sans parler du hub", async () => {
@@ -479,7 +479,7 @@ describe('notifications', () => {
     await vi.waitFor(() => expect($('avis').textContent).toContain('service de notifications'))
 
     // Et l'essentiel reste acquis : les alertes console ouverte fonctionnent.
-    expect(localStorage.getItem('cloudnord-notifs')).toBeTruthy()
+    expect(localStorage.getItem('hub-notifs')).toBeTruthy()
     vi.unstubAllGlobals()
   })
 
@@ -500,8 +500,8 @@ describe('notifications', () => {
     ;($('notif-exploitation') as HTMLSelectElement).value = 'tout'
     $('notif-appliquer').click()
 
-    await vi.waitFor(() => expect(localStorage.getItem('cloudnord-notifs')).toBeTruthy())
-    expect(JSON.parse(localStorage.getItem('cloudnord-notifs')!)).toEqual({
+    await vi.waitFor(() => expect(localStorage.getItem('hub-notifs')).toBeTruthy())
+    expect(JSON.parse(localStorage.getItem('hub-notifs')!)).toEqual({
       technique: 'essentiel',
       exploitation: 'tout',
     })
@@ -522,12 +522,12 @@ describe('notifications', () => {
 
     // Le réglage reste écrit : rallumer ne doit pas repasser par une
     // permission qu'un refus rendrait définitive.
-    expect(JSON.parse(localStorage.getItem('cloudnord-notifs')!).technique).toBe('rien')
+    expect(JSON.parse(localStorage.getItem('hub-notifs')!).technique).toBe('rien')
     expect(NotificationFactice.demandes).toBe(1)
   })
 
   it('ne dit rien du premier chargement, prévient du changement', async () => {
-    localStorage.setItem('cloudnord-notifs', JSON.stringify({ technique: 'tout', exploitation: 'tout' }))
+    localStorage.setItem('hub-notifs', JSON.stringify({ technique: 'tout', exploitation: 'tout' }))
     NotificationFactice.permission = 'granted'
     monterConsole()
     await avecSalles([SALLE])
@@ -545,7 +545,7 @@ describe('notifications', () => {
 
   it('prévient quand une salle tombe, puis quand elle revient', async () => {
     // « Revenue » est un soulagement, pas une décision : il faut « tout ».
-    localStorage.setItem('cloudnord-notifs', JSON.stringify({ technique: 'tout', exploitation: 'tout' }))
+    localStorage.setItem('hub-notifs', JSON.stringify({ technique: 'tout', exploitation: 'tout' }))
     NotificationFactice.permission = 'granted'
     monterConsole()
     await avecSalles([SALLE])
@@ -561,7 +561,7 @@ describe('notifications', () => {
 
   it('respecte le niveau : le rythme de la journée ne passe pas en « essentiel »', async () => {
     localStorage.setItem(
-      'cloudnord-notifs',
+      'hub-notifs',
       JSON.stringify({ technique: 'essentiel', exploitation: 'essentiel' }),
     )
     NotificationFactice.permission = 'granted'
@@ -579,7 +579,7 @@ describe('notifications', () => {
 
   it('annonce début et fin quand on veut tout suivre', async () => {
     localStorage.setItem(
-      'cloudnord-notifs',
+      'hub-notifs',
       JSON.stringify({ technique: 'rien', exploitation: 'tout' }),
     )
     NotificationFactice.permission = 'granted'
@@ -691,7 +691,7 @@ describe('déconnexion', () => {
     // Oublier le jeton sans le révoquer laisserait une session valide derrière.
     await vi.waitFor(() => expect(appels.mock.calls.some(([url]) => url === '/api/auth/sign-out')).toBe(true))
 
-    expect(localStorage.getItem('cloudnord-admin')).toBeNull()
+    expect(localStorage.getItem('hub-admin')).toBeNull()
     expect($('console').hidden).toBe(true)
     expect($('connexion').hidden).toBe(false)
   })
@@ -704,7 +704,7 @@ describe('déconnexion', () => {
     ;($('btn-deconnexion') as HTMLButtonElement).click()
     await vi.waitFor(() => expect($('connexion').hidden).toBe(false))
 
-    expect(localStorage.getItem('cloudnord-admin')).toBeNull()
+    expect(localStorage.getItem('hub-admin')).toBeNull()
   })
 })
 
@@ -926,7 +926,7 @@ describe('liste des salles', () => {
       const json = chemin === 'rooms/statuses' ? SALLES : []
       return new Response(JSON.stringify({ json }), { status: 200 })
     }))
-    localStorage.setItem('cloudnord-admin', 'jeton')
+    localStorage.setItem('hub-admin', 'jeton')
     monterConsole()
     await new Promise((resolve) => setTimeout(resolve, 20))
   })
@@ -1106,7 +1106,7 @@ describe('vue Conférences', () => {
               : []
       return new Response(JSON.stringify({ json }), { status: 200 })
     }))
-    localStorage.setItem('cloudnord-admin', 'jeton')
+    localStorage.setItem('hub-admin', 'jeton')
     monterConsole()
     $('nav-conferences').click()
     await new Promise((resolve) => setTimeout(resolve, 20))
@@ -1256,7 +1256,7 @@ describe('réseaux de l\'événement', () => {
       const json = chemin.startsWith('settings/') ? reglages : []
       return new Response(JSON.stringify({ json }), { status: 200 })
     }))
-    localStorage.setItem('cloudnord-admin', 'jeton')
+    localStorage.setItem('hub-admin', 'jeton')
     monterConsole()
     $('nav-reglages').click()
   }
@@ -1326,5 +1326,106 @@ describe('réseaux de l\'événement', () => {
     ;($('reseaux').querySelector('button') as HTMLButtonElement).click()
 
     expect($('reseaux').textContent).toContain('Aucun compte déclaré')
+  })
+})
+
+/**
+ * Le panneau « L'événement ».
+ *
+ * Il existe pour que le dépôt n'ait pas à connaître l'événement qu'il sert. Le
+ * cas normal est qu'il reste **vide** : le hub lit le nom dans le programme
+ * importé. Ce qui se teste ici est donc surtout ce qui permet de relâcher un
+ * réglage — sans ça, le renseigner une fois serait un aller sans retour.
+ */
+describe('identité de l\'événement, dans la console', () => {
+  const IDENTITE = {
+    resolved: { name: 'Cloud Nord 2026', shortName: 'Cloud Nord' },
+    derived: { name: 'Cloud Nord 2026', shortName: 'Cloud Nord' },
+  }
+  const REGLAGES = {
+    autoEndEnabled: true,
+    autoEndGraceMinutes: 5,
+    programSourceUrl: null,
+    socialLinks: [],
+    eventName: null,
+    eventShortName: null,
+    openFeedbackProjectId: null,
+  }
+
+  let appels: { chemin: string; entree: unknown }[]
+
+  function brancher(reglages: Record<string, unknown> = REGLAGES): void {
+    appels = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      const chemin = String(url).replace('/rpc/', '')
+      appels.push({ chemin, entree: JSON.parse(String(init.body)).json })
+      const json = chemin.startsWith('settings/')
+        ? reglages
+        : chemin === 'event/identity'
+          ? IDENTITE
+          : []
+      return new Response(JSON.stringify({ json }), { status: 200 })
+    }))
+    localStorage.setItem('hub-admin', 'jeton')
+    monterConsole({ event: IDENTITE })
+    $('nav-reglages').click()
+  }
+
+  const attendre = () => new Promise((resolve) => setTimeout(resolve, 20))
+
+  it('laisse les champs vides et montre la déduction en repère', async () => {
+    brancher()
+    await attendre()
+
+    // Pré-remplir avec la valeur déduite ferait croire qu'elle est figée — et
+    // le premier enregistrement l'aurait effectivement figée : le nom cesserait
+    // de suivre les imports suivants.
+    expect(($('event-nom') as HTMLInputElement).value).toBe('')
+    expect(($('event-nom') as HTMLInputElement).placeholder).toBe('Cloud Nord 2026')
+    expect(($('event-nom-court') as HTMLInputElement).placeholder).toBe('Cloud Nord')
+    expect($('event-aide').textContent).toContain('Déduit du programme importé')
+  })
+
+  it('enregistre un nom qui contredit l\'export amont', async () => {
+    brancher()
+    await attendre()
+    ;($('event-nom') as HTMLInputElement).value = 'Cloud Nord — répétition'
+    ;($('event-openfeedback') as HTMLInputElement).value = 'cloud-nord-2026'
+    $('btn-event').click()
+    await attendre()
+
+    expect(appels).toContainEqual({
+      chemin: 'settings/update',
+      entree: {
+        eventName: 'Cloud Nord — répétition',
+        eventShortName: null,
+        openFeedbackProjectId: 'cloud-nord-2026',
+      },
+    })
+  })
+
+  it('relâche un réglage quand on vide le champ', async () => {
+    // Distinguer « vide » de « absent » est tout l'intérêt : sans ça, on ne
+    // pourrait plus jamais revenir au nom du programme.
+    brancher({ ...REGLAGES, eventName: 'Cloud Nord — répétition' })
+    await attendre()
+    expect(($('event-nom') as HTMLInputElement).value).toBe('Cloud Nord — répétition')
+    expect($('event-aide').textContent).toContain('Nom imposé ici')
+
+    ;($('event-nom') as HTMLInputElement).value = '   '
+    $('btn-event').click()
+    await attendre()
+
+    expect(appels).toContainEqual({
+      chemin: 'settings/update',
+      entree: { eventName: null, eventShortName: null, openFeedbackProjectId: null },
+    })
+  })
+
+  it('titre la console du nom de l\'événement', async () => {
+    brancher()
+    await attendre()
+
+    expect($('titre-console').textContent).toBe('Cloud Nord 2026 — console hub')
   })
 })

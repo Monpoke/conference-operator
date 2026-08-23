@@ -32,7 +32,7 @@ export function renderRegiePage(options: RegiePageOptions = {}): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Régie — Cloud Nord</title>
+<title>Régie de salle</title>
 <style>${TAILWIND_CSS}</style>
 <style>
   /*
@@ -1493,6 +1493,12 @@ ${etatInitial}
   function rendre(nouvelles) {
     donnees = nouvelles
     const etat = donnees.state
+
+    // Le titre suit l'événement, pas une constante du binaire : c'est la même
+    // machine qui servira l'édition suivante, et la barre de fenêtre est le
+    // premier endroit où un nom périmé se remarque.
+    const nomEvenement = donnees.eventIdentity?.name
+    if (nomEvenement) document.title = 'Régie — ' + nomEvenement
 
     $('salle').textContent = donnees.roomName ?? etat.roomId ?? 'Salle non appairée'
     const pastille = $('pastille')

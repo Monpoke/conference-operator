@@ -1,3 +1,17 @@
+import { IDENTITE_PAR_DEFAUT, type EventIdentity } from '@cloudnord/contract'
+
+export interface ServiceWorkerOptions {
+  /**
+   * Identité de l'événement, figée dans le worker au moment où il est servi.
+   *
+   * Un avis poussé arrive parfois sans charge utile lisible : c'est alors le
+   * seul nom dont le worker dispose pour titrer la notification. Le lire du
+   * hub plutôt que l'écrire en dur est ce qui permet au même binaire de servir
+   * deux événements.
+   */
+  event?: EventIdentity
+}
+
 /**
  * Service worker de la console.
  *
@@ -10,7 +24,8 @@
  * worker est celle de son chemin, et un worker servi sous `/admin/` ne
  * couvrirait pas les autres pages du hub.
  */
-export function renderServiceWorker(): string {
+export function renderServiceWorker(options: ServiceWorkerOptions = {}): string {
+  const identite = options.event ?? IDENTITE_PAR_DEFAUT
   return `/* Généré par le hub — voir src/pages/service-worker.ts */
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', (evenement) => evenement.waitUntil(self.clients.claim()))
@@ -23,7 +38,7 @@ self.addEventListener('push', (evenement) => {
    * alors serait le pire des deux mondes — le téléphone a vibré, et l'écran ne
    * dit rien.
    */
-  let avis = { title: 'Cloud Nord', body: 'Quelque chose a changé sur le hub.', tag: 'hub' }
+  let avis = { title: ${JSON.stringify(identite.shortName)}, body: 'Quelque chose a changé sur le hub.', tag: 'hub' }
   try {
     if (evenement.data) avis = { ...avis, ...evenement.data.json() }
   } catch {}

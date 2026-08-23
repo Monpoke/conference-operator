@@ -9,6 +9,7 @@ import {
   sessionIdSchema,
   PROTOCOL_VERSION,
 } from './primitives.js'
+import { eventIdentitySchema } from './event-identity.js'
 import {
   hubSettingsSchema,
   niveauxNotifSchema,
@@ -321,6 +322,25 @@ export const contract = {
     set: oc
       .input(z.object({ at: isoDateTimeSchema.nullable() }))
       .output(z.object({ serverTime: isoDateTimeSchema, simulated: z.boolean() })),
+  },
+
+  /**
+   * Identité de l'événement, telle que le hub la tranche.
+   *
+   * Lecture seule : elle s'écrit par `settings.update` (ou pas du tout, quand
+   * elle se déduit du programme importé). Deux valeurs plutôt qu'une, parce
+   * que la console doit pouvoir dire ce qu'on obtiendrait en relâchant le
+   * réglage — sinon personne n'ose vider un champ.
+   */
+  event: {
+    identity: oc.output(
+      z.object({
+        /** Ce qui s'affiche partout : réglage s'il existe, déduction sinon. */
+        resolved: eventIdentitySchema,
+        /** Ce que donnerait le programme importé seul, réglages ignorés. */
+        derived: eventIdentitySchema,
+      }),
+    ),
   },
 
   /** Réglages modifiables en cours d'événement. */

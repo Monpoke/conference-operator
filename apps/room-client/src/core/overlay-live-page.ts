@@ -31,7 +31,7 @@ export function renderOverlayLivePage(options: OverlayLivePageOptions = {}): str
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<title>Cloud Nord — bandeau live</title>
+<title>Bandeau live</title>
 <style>${TAILWIND_CSS}</style>
 <style>
   /* Fond réellement transparent : OBS compose cette page par-dessus la vidéo. */
@@ -107,6 +107,10 @@ ${etatInitial}
    * nouvelle, on la fait entrer.
    */
   function rendre(donnees) {
+    // Le titre suit l'événement : rien n'est compilé en dur, le nom vient du
+    // hub et reste en cache pour survivre à un démarrage réseau coupé.
+    const nomEvenement = donnees.eventIdentity?.name
+    if (nomEvenement) document.title = nomEvenement + ' — bandeau live'
     /**
      * Deux canaux, une seule place à l'écran.
      *

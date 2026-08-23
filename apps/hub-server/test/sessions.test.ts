@@ -161,6 +161,12 @@ describe('réglages du hub', () => {
       // Aucun compte déclaré : la boucle d'attente des salles saute sa page
       // réseaux plutôt que d'afficher un cadre vide.
       socialLinks: [],
+      // Rien de l'événement n'est réglé au départ : le hub déduit son nom du
+      // programme importé, et c'est ce qui rend le produit agnostique. Ces
+      // champs ne servent qu'à contredire l'export amont.
+      eventName: null,
+      eventShortName: null,
+      openFeedbackProjectId: null,
     })
   })
 
@@ -170,6 +176,9 @@ describe('réglages du hub', () => {
       autoEndGraceMinutes: 15,
       programSourceUrl: null,
       socialLinks: [],
+      eventName: null,
+      eventShortName: null,
+      openFeedbackProjectId: null,
     })
     expect(settings.get().autoEndGraceMinutes).toBe(15)
   })

@@ -1,8 +1,11 @@
 # Cloud Nord — Régie de salle & Hub
 
-Régie d'événement pour **Cloud Nord 2026** (30/10/2026, 3 salles) : projection des
-slides, captation d'un master déjà habillé pour la VOD, streaming live, bascule
-vers sponsors et programme entre les interventions, mur social.
+Régie d'événement — projection des slides, captation d'un master déjà habillé
+pour la VOD, streaming live, bascule vers sponsors et programme entre les
+interventions, mur social. Écrit pour **Cloud Nord 2026** (30/10/2026, 3 salles),
+mais **le dépôt ne connaît pas l'événement qu'il sert** : le hub le déduit du
+programme importé, et le nom se corrige dans la console — voir
+[Servir un autre événement](#servir-un-autre-événement).
 
 Deux applications :
 
@@ -43,7 +46,7 @@ spikes/orpc-v2      spike jetable de validation des adapters — voir FINDINGS.m
 
 ```bash
 corepack enable && pnpm install
-pnpm test            # 213 tests
+pnpm test            # 747 tests
 pnpm typecheck
 ```
 
@@ -87,8 +90,14 @@ Puis dans le `.env` du hub :
 ```bash
 GOOGLE_CLIENT_ID=…apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=…
-GOOGLE_HOSTED_DOMAIN=cloudnord.fr
+GOOGLE_HOSTED_DOMAIN=votre-domaine.fr
 ```
+
+`GOOGLE_HOSTED_DOMAIN` n'a **pas de défaut** et devient obligatoire dès que
+`GOOGLE_CLIENT_ID` est renseigné : le hub refuse de démarrer plutôt que de
+deviner qui a le droit d'entrer. Un domaine de repli écrit dans le code
+n'appartiendrait qu'à un organisateur, et ouvrirait la console d'un autre
+événement à son personnel.
 
 Le domaine est **envoyé à Google comme indice `hd` *et* revérifié contre la
 revendication du jeton d'identité** au retour. L'indice seul ne serait qu'une
@@ -302,7 +311,7 @@ quand un message s'efface. Il enchaîne quatre pages :
 | Nos partenaires | 12 s | Le palier de tête en grand, les autres engagements dessous |
 | Programme de la salle | 15 s | La journée, du créneau en cours vers la suite |
 | Pendant ce temps, à côté | 12 s | Le talk en cours ou à venir des **autres** salles |
-| Suivez Cloud Nord | 10 s | Les comptes de l'événement, handle en grand |
+| Suivez *\<événement\>* | 10 s | Les comptes de l'organisateur, handle en grand |
 
 Un cycle complet fait 49 secondes. Les durées ne sont pas égales : un programme
 de vingt-sept lignes se lit, une rangée de logos se regarde. Elles sont
@@ -377,11 +386,58 @@ appel réseau : la boucle tourne pendant les pauses, c'est-à-dire quand le rés
 de l'événement est le plus chargé. Les pauses des autres salles sont écartées —
 « Déjeuner en Track #2 » n'aide personne à choisir où aller.
 
-**Les comptes Cloud Nord** sont un réglage du hub (console, onglet *Réglages*,
-panneau « Nos réseaux »), poussé aux salles au `sync` et **mis en cache local**
-comme le programme. L'export amont ne porte que les réseaux des *speakers* :
-ceux de l'événement n'ont aucune source, et corriger un handle ne doit pas
-demander de rejouer une release sur les trois machines de salle.
+**Les comptes de l'organisateur** sont un réglage du hub (console, onglet
+*Réglages*, panneau « Nos réseaux »), poussé aux salles au `sync` et **mis en
+cache local** comme le programme. L'export amont ne porte que les réseaux des
+*speakers* : ceux de l'événement n'ont aucune source, et corriger un handle ne
+doit pas demander de rejouer une release sur les trois machines de salle. Le nom
+écrit au-dessus (« Suivez … ») vient de la même descente, et suit l'événement.
+
+## Servir un autre événement
+
+Le dépôt ne connaît pas l'événement qu'il sert. Le hub **déduit son identité du
+programme importé** — `event.name` de l'export « conference-center » — et la
+descend à tout le reste : mur public, console, notifications poussées, titres
+des fenêtres de salle, boucle d'attente projetée. Changer d'édition, ou
+d'événement, tient donc en un geste :
+
+```
+Console → Réglages → Programme → URL de l'export → Enregistrer → Réimporter
+```
+
+Rien d'autre à faire : aucune variable d'environnement, aucune release à
+rejouer sur les machines de salle. Les salles reçoivent le nouveau nom au `sync`
+suivant et le gardent en cache local — une salle qui redémarre hub injoignable
+titre quand même correctement.
+
+**Ce qui se règle à la main** — console, onglet *Réglages*, panneau
+« L'événement » — n'existe que pour les cas que l'export ne couvre pas :
+
+| Réglage | À quoi il sert | Vide = |
+|---|---|---|
+| Nom affiché | Contredire un export qui porte un nom interne (« CN26-prod ») | Le nom du programme importé |
+| Nom court | Corriger la déduction là où la place manque (fenêtres, notifications) | Le nom complet, millésime retiré |
+| Projet OpenFeedback | Fabriquer les QR « notez ce talk » hors ligne | Aucun QR — voir plus bas |
+
+Les champs laissés vides montrent en `placeholder` ce que le hub a déduit : on
+voit donc ce qu'on obtient en vidant un champ, ce qui est la condition pour
+oser le vider. Le nom court retire un millésime reconnaissable en fin de nom
+(« Cloud Nord 2026 » → « Cloud Nord », « DevFest Lille #12 » → « DevFest
+Lille ») et rend le nom inchangé dès qu'il n'est sûr de rien : un nom court faux
+se lirait sur chaque écran de la journée, un nom court trop long ne se remarque
+pas.
+
+**Ce qui reste au nom de Cloud Nord, et pourquoi.** Le scope npm
+(`@cloudnord/*`), l'`appId` du paquet Electron (`fr.cloudnord.roomclient`) et le
+copyright nomment le **logiciel** et son éditeur, pas l'événement projeté :
+rien de tout cela ne s'affiche devant une salle. L'`appId` en particulier ne se
+renomme pas à la légère — Electron en dérive le dossier `userData`, donc la base
+locale d'une machine de salle : son cache de programme et sa file de remontée
+non vidée.
+
+Le reste de ce README décrit l'édition 2026 parce que c'est celle sur laquelle
+tout a été éprouvé ; les chemins, identifiants de track et horaires cités sont
+des exemples, pas des constantes du code.
 
 ## Décisions structurantes
 
@@ -810,9 +866,14 @@ veut pas d'une image manquante devant deux cents personnes. La clé d'API ne ser
 qu'à *lire* les votes, ce que cette fonctionnalité ne fait pas — il n'y a donc
 aucun secret à déployer.
 
-Le projet (`cloud-nord-2026`) est un champ de la configuration de salle,
-modifiable dans le **⚙** de la régie : il change une fois par édition. Hors
-conférence, l'écran l'annonce plutôt que de montrer un QR mort.
+Le projet se règle **sur le hub** (console, onglet *Réglages*, panneau
+« L'événement ») : c'est une propriété de l'événement, pas d'une salle, et le
+poser une fois vaut pour toutes — y compris pour un créneau que l'export ne
+rattache à aucun track. Une salle peut encore le surcharger dans le **⚙** de sa
+régie, pour le cas où elle doit pointer ailleurs. Tant qu'aucun projet n'est
+réglé, **aucun QR n'est proposé** : pas de lien vaut mieux qu'un lien mort
+scanné par deux cents personnes. Hors conférence, l'écran l'annonce plutôt que
+de montrer un QR périmé.
 
 ### Deux présentations pour la question
 
@@ -977,6 +1038,11 @@ de passe des deux OBS, mapping rôle → scène, port de l'écran local, dossier
 enregistrements, préfixe de fichiers, salle relayée. C'est là que se branchent
 des instances OBS réelles — ces valeurs se constatent devant les machines, pas
 depuis une console à l'autre bout du bâtiment.
+
+Le champ « Projet OpenFeedback » y figure aussi, mais comme **surcharge** : le
+projet est une propriété de l'événement, réglée sur le hub, et laissé vide ici
+c'est celui du hub qui descend au `sync`. Il ne se renseigne que pour une salle
+qui doit pointer ailleurs.
 
 Trois propriétés qui expliquent la forme :
 

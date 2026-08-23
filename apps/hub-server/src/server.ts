@@ -14,6 +14,7 @@ import { DeviceService, RoomService } from './services/rooms.js'
 import { QuestionService, WallService } from './services/wall.js'
 import { RateLimiter } from './services/rate-limit.js'
 import { SessionStateService, SettingsService } from './services/sessions.js'
+import { EventIdentityService } from './services/event-identity.js'
 import { mutableClock } from './services/clock.js'
 import {
   SocialIngestor,
@@ -58,9 +59,10 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     subject: config.vapidSubject,
   })
   const settings = new SettingsService(orm)
+  const programs = new ProgramService(orm)
   const clock = mutableClock(config.simulatedTime ?? null)
   const services: Services = {
-    programs: new ProgramService(orm),
+    programs,
     rooms: new RoomService(orm),
     devices,
     commands: new CommandService(orm, () => clock.now()),
@@ -71,6 +73,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     // normalement, pas de quoi noyer la file de modération.
     limiter: new RateLimiter({ capacity: 5, refillPerSecond: 0.1 }),
     settings,
+    identity: new EventIdentityService(settings, programs),
     sessions: new SessionStateService(orm, settings, () => clock.now()),
     push,
     clock,
@@ -90,7 +93,10 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
         ? {
             clientId: config.googleClientId,
             clientSecret: config.googleClientSecret,
-            hostedDomain: config.googleHostedDomain,
+            // Garanti présent par le `refine` de la config : Google sans
+            // domaine ne démarre pas, parce que le domaine *est* la liste des
+            // opérateurs.
+            hostedDomain: config.googleHostedDomain!,
           }
         : undefined,
   })
@@ -176,6 +182,10 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       renderWallPage({
         roomId: request.query.salle ?? null,
         rooms: services.rooms.list().map((room) => ({ id: room.id, name: room.name })),
+        // Injecté au rendu plutôt que demandé par la page : c'est le premier
+        // mot que lit un participant qui vient de scanner un QR, et l'attendre
+        // d'un appel réseau de plus le ferait apparaître après coup.
+        event: services.identity.get(),
       }),
     )
   })
@@ -214,7 +224,11 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     // Le navigateur revérifie le worker à chaque chargement de page ; le
     // laisser en cache retarderait toute correction d'un jour d'événement.
     reply.header('cache-control', 'no-cache')
-    return reply.send(renderServiceWorker())
+    // Le nom de l'événement est figé dans le worker au moment où il est servi :
+    // un avis poussé console fermée n'a pas d'autre source pour se titrer, et
+    // le navigateur revérifie le worker à chaque chargement de page — un
+    // renommage suit donc au premier passage de l'opérateur.
+    return reply.send(renderServiceWorker({ event: services.identity.get() }))
   })
 
   for (const chemin of cheminsConsole) {
@@ -223,10 +237,11 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       return reply.send(
         renderAdminPage({
           mode: config.mode,
+          event: { resolved: services.identity.get(), derived: services.identity.derived() },
           ignores: config.ignores,
           // Le bouton n'est rendu que si le hub sait s'en servir : proposer une
           // connexion qui échoue au clic vaut moins que ne rien proposer.
-          google: config.googleClientId == null ? null : { domaine: config.googleHostedDomain },
+          google: config.googleClientId == null ? null : { domaine: config.googleHostedDomain! },
         }),
       )
     })

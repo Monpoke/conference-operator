@@ -9,6 +9,7 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { toString } from 'qrcode'
 import { normalizeProgram, sessionsForRoom } from '@cloudnord/program'
+import { resoudreIdentiteEvenement } from '@cloudnord/contract'
 import { renderProjectorPage } from '../src/core/display-page.js'
 import { renderOverlayPage } from '../src/core/overlay-page.js'
 import { renderOverlayLivePage } from '../src/core/overlay-live-page.js'
@@ -190,6 +191,9 @@ const base: DisplayPayload = {
       enCours: true,
     },
   ],
+  // Déduite de la fixture, comme le hub la déduirait du programme importé :
+  // l'aperçu montre alors le même enchaînement que la réalité.
+  eventIdentity: resoudreIdentiteEvenement({ programme: program.event.name }),
   socialLinks: [
     { network: 'Bluesky', handle: '@cloudnord.fr', url: 'https://bsky.app/profile/cloudnord.fr' },
     { network: 'LinkedIn', handle: 'Cloud Nord', url: 'https://www.linkedin.com/company/cloud-nord' },

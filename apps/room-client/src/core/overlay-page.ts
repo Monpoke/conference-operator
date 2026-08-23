@@ -34,7 +34,7 @@ export function renderOverlayPage(options: OverlayPageOptions = {}): string {
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<title>Cloud Nord — habillage captation</title>
+<title>Habillage captation</title>
 <style>${TAILWIND_CSS}</style>
 <style>
   :root { --couleur: #1c71d8; --categorie: #1c71d8; }
@@ -87,6 +87,10 @@ ${etatInitial}
   const texte = (id, valeur) => { document.getElementById(id).textContent = valeur ?? '' }
 
   function rendre(donnees) {
+    // Le titre suit l'événement : rien n'est compilé en dur, le nom vient du
+    // hub et reste en cache pour survivre à un démarrage réseau coupé.
+    const nomEvenement = donnees.eventIdentity?.name
+    if (nomEvenement) document.title = nomEvenement + ' — habillage captation'
     const session = donnees.state.currentSession
     const racine = document.documentElement.style
 

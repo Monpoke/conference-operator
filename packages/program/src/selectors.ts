@@ -174,7 +174,7 @@ export function assetUrls(program: Program): string[] {
   return [...urls]
 }
 
-/** Heure locale de l'événement (`Europe/Paris`), pas celle du PC de régie. */
+/** Heure locale de l'événement (`program.timezone`), pas celle du PC de régie. */
 export function formatTime(iso: string, timezone: string, locale = 'fr-FR'): string {
   return new Intl.DateTimeFormat(locale, {
     hour: '2-digit',

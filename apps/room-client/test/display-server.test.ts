@@ -179,7 +179,7 @@ describe('serveur d\'affichage local', () => {
     })
     // Le programme de la salle pèse l'essentiel de la charge utile, et
     // l'overlay ne l'affiche jamais.
-    expect(Object.keys(messages[0]!.raw).sort()).toEqual(['event', 'state'])
+    expect(Object.keys(messages[0]!.raw).sort()).toEqual(['event', 'eventIdentity', 'state'])
     expect(messages[0]!.raw).not.toHaveProperty('sessions')
     expect(messages[0]!.raw).not.toHaveProperty('diagnostics')
   })

@@ -1,5 +1,5 @@
 import { TAILWIND_CSS } from '@cloudnord/ui'
-import { MODELES_BANDEAU, type ModeExecution } from '@cloudnord/contract'
+import { IDENTITE_PAR_DEFAUT, MODELES_BANDEAU, type EventIdentity, type ModeExecution } from '@cloudnord/contract'
 import type { IgnoreConfig } from '../config.js'
 
 /**
@@ -13,6 +13,18 @@ import type { IgnoreConfig } from '../config.js'
 export interface AdminPageOptions {
   /** Mode d'exécution du hub, affiché en clair : voir le badge de l'en-tête. */
   mode?: ModeExecution
+  /**
+   * Identité de l'événement, tranchée par le hub.
+   *
+   * Rendue dans la page : la console doit dire de quel événement elle est la
+   * console dès l'écran de connexion, c'est-à-dire avant d'avoir le droit
+   * d'appeler la moindre procédure.
+   *
+   * `derived` est ce que donnerait le programme importé seul : c'est le
+   * `placeholder` des champs de réglage laissés vides. La page le rafraîchit
+   * ensuite par `event/identity` ; il n'est ici que pour le premier rendu.
+   */
+  event?: { resolved: EventIdentity; derived: EventIdentity }
   /** Réglages trouvés dans l'environnement et laissés sans effet, avec pourquoi. */
   ignores?: IgnoreConfig[]
   /**
@@ -68,6 +80,9 @@ export function cheminDeVue(vue: string): string {
 export const ALIAS_APPAIRAGE = '/admin/devices'
 
 export function renderAdminPage(options: AdminPageOptions = {}): string {
+  const identite = options.event?.resolved ?? IDENTITE_PAR_DEFAUT
+  const identiteDeduite = options.event?.derived ?? IDENTITE_PAR_DEFAUT
+  const nomEvenement = echapperServeur(identite.name)
   const mode = options.mode ?? 'production'
   const ignores = options.ignores ?? []
   const google = options.google ?? null
@@ -174,7 +189,7 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cloud Nord — console hub</title>
+<title>${nomEvenement} — console hub</title>
 <style>${TAILWIND_CSS}</style>
 <style>
   /*
@@ -220,7 +235,7 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
     les deux actions restent atteignables au pouce.
   -->
   <header class="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 sm:mb-5">
-    <h1 class="text-[17px] font-semibold sm:text-[19px]">Cloud Nord — console hub</h1>
+    <h1 class="text-[17px] font-semibold sm:text-[19px]" id="titre-console">${nomEvenement} — console hub</h1>
     ${badgeMode}
     <div class="ml-auto flex items-center gap-2">
       <div class="hidden text-[13px] text-attenue sm:block" id="identite"></div>
@@ -426,6 +441,37 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
 
   <div class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5" id="vue-reglages" hidden>
     <!--
+      L'événement.
+
+      Ce panneau existe pour que le dépôt n'ait pas à connaître l'événement
+      qu'il sert. Les deux champs sont vides dans le cas normal : le hub lit le
+      nom dans le programme importé, et changer d'événement se réduit alors à
+      importer son export. Ils ne servent qu'à contredire l'export — un nom
+      interne (« CN26-prod »), ou pas de nom du tout.
+
+      Ce qui est écrit ici se propage partout : mur public, titre de cette
+      console, notifications poussées, et jusqu'aux fenêtres des machines de
+      salle, qui le reçoivent au sync et le gardent en cache.
+    -->
+    <section class="panneau">
+      <h2 class="titre-panneau">L'événement</h2>
+      <div class="mb-[11px]">
+        <label for="event-nom">Nom affiché</label>
+        <input id="event-nom" type="text" maxlength="80" placeholder="">
+      </div>
+      <div class="mb-[11px]">
+        <label for="event-nom-court">Nom court</label>
+        <input id="event-nom-court" type="text" maxlength="40" placeholder="">
+      </div>
+      <div class="mb-[11px]">
+        <label for="event-openfeedback">Projet OpenFeedback</label>
+        <input id="event-openfeedback" type="text" maxlength="80" placeholder="mon-evenement-2026">
+      </div>
+      <button class="principal w-full" id="btn-event">Enregistrer</button>
+      <div class="aide" id="event-aide"></div>
+    </section>
+
+    <!--
       Le programme : sa source, et les versions déjà importées.
 
       Un réglage, pas une variable d'environnement : l'URL change quand le
@@ -466,7 +512,7 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
       Les comptes de l'événement.
 
       Réglage du hub et non constante du code : l'export amont ne porte que les
-      réseaux des speakers, ceux de Cloud Nord n'ont aucune source — et corriger
+      réseaux des speakers, ceux de l'organisateur n'ont aucune source — et corriger
       un handle ne doit pas demander de rejouer une release sur les trois
       machines de salle. Ils descendent au sync et s'affichent dans la boucle
       d'attente projetée pendant les pauses.
@@ -586,7 +632,7 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
 <script>
 (() => {
   const $ = (id) => document.getElementById(id)
-  let jeton = localStorage.getItem('cloudnord-admin') || null
+  let jeton = localStorage.getItem('hub-admin') || null
 
   function avis(message, erreur) {
     const el = $('avis')
@@ -621,7 +667,7 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
    */
   function deconnecter() {
     jeton = null
-    localStorage.removeItem('cloudnord-admin')
+    localStorage.removeItem('hub-admin')
     $('console').hidden = true
     $('connexion').hidden = false
     // Une modale laissée ouverte flotterait au-dessus du formulaire.
@@ -665,7 +711,7 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
       if (!reponse.ok) throw new Error('Identifiants refusés')
       const session = await reponse.json()
       jeton = session.token
-      localStorage.setItem('cloudnord-admin', jeton)
+      localStorage.setItem('hub-admin', jeton)
       $('identite').textContent = $('email').value
       demarrer()
     } catch (cause) {
@@ -769,7 +815,7 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
    * Couvrir ce cas demande un abonnement Push côté hub, qui est un autre
    * chantier — et une console fermée n'est de toute façon plus une console.
    */
-  const CLE_NOTIFS = 'cloudnord-notifs'
+  const CLE_NOTIFS = 'hub-notifs'
   /**
    * Niveaux voulus par cet appareil-ci.
    *
@@ -1913,6 +1959,42 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
   let reglages = null
 
   /**
+   * Ce que le hub déduirait du programme importé, réglages ignorés.
+   *
+   * Sert de placeholder aux champs de l'événement laissés vides : sans lui,
+   * on ne sait pas ce qu'on obtient en vidant un champ, donc on ne le vide
+   * jamais et le réglage devient un aller sans retour. Amorcé avec ce que le
+   * serveur a rendu dans la page, puis rafraîchi.
+   */
+  let deduit = ${JSON.stringify(identiteDeduite)}
+
+  /**
+   * Rafraîchit le nom de l'événement, sans jamais faire tomber l'appelant.
+   *
+   * Le titre de la page est décoratif ; les réglages qu'il accompagne ne le
+   * sont pas. Laisser une erreur ici interrompre chargerReglages priverait
+   * la console de tout son onglet Réglages pour un nom mal rendu — le serveur
+   * a déjà mis le bon dans la page au rendu.
+   */
+  async function chargerIdentite() {
+    try {
+      const identite = await appeler('event/identity')
+      if (identite && identite.derived) deduit = identite.derived
+      if (identite && identite.resolved && identite.resolved.name) {
+        // Renommer l'événement et continuer à lire l'ancien nom en haut de sa
+        // propre console serait le premier endroit où douter que le réglage
+        // soit pris.
+        const titre = identite.resolved.name + ' — console hub'
+        document.title = titre
+        $('titre-console').textContent = titre
+      }
+    } catch {
+      // Volontairement muet : voir ci-dessus. Un avis toutes les dix secondes
+      // sur un titre de page couvrirait ceux qui parlent des salles.
+    }
+  }
+
+  /**
    * Comptes de l'événement, édités à la volée.
    *
    * Gardés dans un tableau plutôt que relus du DOM à l'enregistrement : une
@@ -1970,8 +2052,59 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
     }
   }
 
+  /**
+   * Identité de l'événement.
+   *
+   * Les champs restent vides quand rien n'est réglé : le placeholder montre
+   * alors ce que le hub a déduit du programme importé. Un champ pré-rempli
+   * avec la valeur déduite ferait croire qu'elle est figée, et le premier
+   * enregistrement l'aurait effectivement figée — le nom cesserait de suivre
+   * les imports suivants.
+   */
+  function rendreEvenement() {
+    // Sans écraser une saisie en cours : le rafraîchissement tourne toutes les
+    // dix secondes, et rien n'est plus déroutant qu'un champ qui se réécrit
+    // pendant qu'on tape dedans. Borné à ces trois champs : saisir l'URL du
+    // programme ne doit pas figer le reste du panneau.
+    const champs = ['event-nom', 'event-nom-court', 'event-openfeedback']
+    if (champs.some((id) => $(id) === document.activeElement)) return
+    $('event-nom').value = reglages.eventName ?? ''
+    $('event-nom-court').value = reglages.eventShortName ?? ''
+    $('event-openfeedback').value = reglages.openFeedbackProjectId ?? ''
+    $('event-nom').placeholder = deduit.name
+    $('event-nom-court').placeholder = deduit.shortName
+    $('event-aide').textContent = reglages.eventName
+      ? 'Nom imposé ici : il ne suivra plus les imports de programme. Videz le champ pour revenir à « ' + deduit.name +' ».'
+      : 'Déduit du programme importé (« ' + deduit.name + ' »). Renseignez un nom pour contredire l\u2019export amont.'
+  }
+
+  $('btn-event').onclick = async () => {
+    // Vidé = revenir à la déduction. Distinguer « vide » de « absent » est tout
+    // l'intérêt du réglage : sans ça, on ne pourrait plus jamais le relâcher.
+    const vide = (valeur) => (valeur.trim() === '' ? null : valeur.trim())
+    try {
+      reglages = await appeler('settings/update', {
+        eventName: vide($('event-nom').value),
+        eventShortName: vide($('event-nom-court').value),
+        openFeedbackProjectId: vide($('event-openfeedback').value),
+      })
+      // Rechargé plutôt que déduit dans le navigateur : c'est le hub qui
+      // tranche, et la page doit montrer ce qu'il a retenu, pas ce qu'elle
+      // aurait retenu à sa place.
+      await chargerIdentite()
+      rendreEvenement()
+      avis('Événement enregistré')
+    } catch (cause) {
+      avis(cause.message, true)
+    }
+  }
+
   async function chargerReglages() {
     reglages = await appeler('settings/get')
+    // Avant rendreEvenement : c'est lui qui fournit les placeholders, et un
+    // import de programme fait pendant que la console est ouverte doit s'y voir.
+    await chargerIdentite()
+    rendreEvenement()
     $('auto-actif').checked = reglages.autoEndEnabled
     $('auto-delai').value = reglages.autoEndGraceMinutes
     // Sans écraser une saisie en cours : le rafraîchissement tourne toutes les
@@ -2025,7 +2158,10 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
     $('horloge-etat').textContent = horloge.simulated ? 'Horloge SIMULÉE' : 'Heure réelle'
     $('horloge-etat').style.color = horloge.simulated ? 'var(--tiede)' : ''
     $('horloge-valeur').textContent = new Intl.DateTimeFormat('fr-FR', {
-      dateStyle: 'full', timeStyle: 'medium', timeZone: 'Europe/Paris',
+      // Fuseau de l'événement, comme partout ailleurs dans la console : lire
+      // l'heure du hub dans celui du poste d'où l'on regarde, c'est justement
+      // l'erreur que le réglage d'horloge sert à débusquer.
+      dateStyle: 'full', timeStyle: 'medium', timeZone: fuseauEvenement(),
     }).format(new Date(horloge.serverTime))
 
     $('horloge-controles').hidden = !horloge.controllable
@@ -2039,23 +2175,60 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
     if (!horloge.controllable) return
     if (!$('horloge-cible').value) $('horloge-cible').value = pourChamp(horloge.serverTime)
 
-    // Raccourcis vers les moments qu'on veut réellement observer.
+    /*
+     * Raccourcis vers les moments qu'on veut réellement observer.
+     *
+     * Déduits du programme importé, jamais écrits en dur : une date d'édition
+     * dans le code ne vaut que pour cette édition-là, et les boutons devenaient
+     * silencieusement inutiles au changement d'événement — un déplacement à une
+     * date sans le moindre créneau ne montre rien et ne dit pas pourquoi.
+     *
+     * Reconstruits à chaque changement de programme, d'où la version en clé.
+     */
     const raccourcis = $('horloge-raccourcis')
-    if (raccourcis.childElementCount === 0) {
-      const moments = [
-        ['Ouverture', '2026-10-30T09:30'],
-        ['Premier talk', '2026-10-30T11:00'],
-        ['Déjeuner', '2026-10-30T12:30'],
-        ['Fin de journée', '2026-10-30T18:30'],
-      ]
-      for (const [libelle, valeur] of moments) {
+    const version = planning?.contentHash ?? ''
+    if (raccourcis.dataset.version !== version) {
+      raccourcis.dataset.version = version
+      raccourcis.replaceChildren()
+      for (const [libelle, iso] of momentsDuProgramme()) {
         const bouton = document.createElement('button')
         bouton.className = 'petit'
         bouton.textContent = libelle
-        bouton.onclick = () => { $('horloge-cible').value = valeur }
+        bouton.onclick = () => { $('horloge-cible').value = pourChamp(iso) }
         raccourcis.appendChild(bouton)
       }
     }
+  }
+
+  /**
+   * Les quatre moments d'une journée d'événement, lus dans le programme.
+   *
+   * Trois talks et une veille suffisent à dérouler tout ce qui se teste : la
+   * boucle d'attente avant l'ouverture, un début, un milieu, un dépassement de
+   * fin. Rien si aucun programme n'est importé — il n'y a alors rien à observer.
+   */
+  function momentsDuProgramme() {
+    const creneaux = (planning?.sessions ?? []).filter((session) => session.startsAt)
+    if (creneaux.length === 0) return []
+    const tries = [...creneaux].sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))
+    const premier = tries[0]
+    const dernier = tries[tries.length - 1]
+    const talks = tries.filter((session) => session.kind !== 'break')
+    const milieu = talks[Math.floor(talks.length / 2)] ?? tries[Math.floor(tries.length / 2)]
+
+    const decale = (iso, minutes) => new Date(Date.parse(iso) + minutes * 60_000).toISOString()
+    const moments = [
+      ['Avant ouverture', decale(premier.startsAt, -30)],
+      ['Première conférence', decale(premier.startsAt, 5)],
+      ['Milieu de journée', decale(milieu.startsAt, 5)],
+      // Cinq minutes après la fin du dernier créneau : c'est là que la clôture
+      // automatique se déclenche, et c'est ce qu'on vient vérifier.
+      ['Fin de journée', decale(dernier.endsAt ?? dernier.startsAt, 5)],
+    ]
+    // Dédoublonné : sur un programme d'un seul créneau, quatre boutons qui
+    // mènent au même instant se lisent comme quatre choix.
+    const vus = new Set()
+    return moments.filter(([, iso]) => (vus.has(iso) ? false : (vus.add(iso), true)))
   }
 
   async function reglerHorloge(at) {

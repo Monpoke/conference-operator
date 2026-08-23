@@ -5,10 +5,10 @@ import { configSchema } from '../src/config.js'
 /**
  * Connexion des opérateurs par Google Workspace.
  *
- * Le domaine est la seule frontière : tout compte de `cloudnord.fr` est un
+ * Le domaine est la seule frontière : tout compte du domaine configuré est un
  * opérateur, et aucun autre ne l'est. Ces tests portent donc sur ce qui garde
- * cette frontière — l'indice envoyé à Google, et le fait que le fournisseur ne
- * se monte pas tout seul.
+ * cette frontière — l'indice envoyé à Google, le refus de démarrer sans
+ * domaine, et le fait que le fournisseur ne se monte pas tout seul.
  */
 
 const BASE = {
@@ -52,11 +52,22 @@ describe('configuration', () => {
     expect(configSchema.safeParse({ ...BASE, googleClientSecret: 'chut' }).success).toBe(false)
   })
 
-  it('retient le domaine du hub par défaut', () => {
+  it('refuse un Google sans domaine', () => {
+    // Pas de défaut, et c'est le point : un domaine écrit en dur n'appartient
+    // qu'à un organisateur, et le laisser servir de repli ouvrirait la console
+    // d'un autre événement au personnel du premier. Le hub refuse de deviner.
+    const sansDomaine = configSchema.safeParse({
+      ...BASE,
+      googleClientId: 'client-de-test.apps.googleusercontent.com',
+      googleClientSecret: 'secret-de-test',
+    })
+    expect(sansDomaine.success).toBe(false)
+  })
+
+  it('ne réclame pas de domaine quand Google n\'est pas configuré', () => {
+    // Le cas par défaut : un hub d'événement doit démarrer sans compte Google.
     const config = configSchema.parse(BASE)
-    // Un défaut ferme la porte sur un autre domaine — ce qui se voit — plutôt
-    // que de l'ouvrir à tout compte Google — ce qui ne se voit pas.
-    expect(config.googleHostedDomain).toBe('cloudnord.fr')
+    expect(config.googleHostedDomain).toBeUndefined()
   })
 })
 
@@ -72,6 +83,7 @@ describe('connexion Google', () => {
     const origin = await demarrer({
       googleClientId: 'client-de-test.apps.googleusercontent.com',
       googleClientSecret: 'secret-de-test',
+      googleHostedDomain: 'cloudnord.fr',
     })
 
     const { status, body } = await demanderGoogle(origin)
@@ -104,6 +116,7 @@ describe('connexion Google', () => {
     const origin = await demarrer({
       googleClientId: 'client-de-test.apps.googleusercontent.com',
       googleClientSecret: 'secret-de-test',
+      googleHostedDomain: 'cloudnord.fr',
     })
 
     const reponse = await fetch(`${origin}/api/auth/sign-in/email`, {

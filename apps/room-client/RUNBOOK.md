@@ -8,7 +8,7 @@ l'opérateur a l'application ouverte et rien d'autre.
 ## Mise en route (à faire la veille, pas le jour J)
 
 1. Brancher capture HDMI, caméra, projecteur. Lancer **OBS-A** puis **OBS-B**.
-2. Lancer **Régie Cloud Nord**. Deux fenêtres s'ouvrent : la régie sur l'écran
+2. Lancer **Régie de salle**. Deux fenêtres s'ouvrent : la régie sur l'écran
    opérateur, la projection sur l'écran secondaire.
 3. Au premier lancement, la régie demande **quelle salle dessert ce poste**.
    Choisir la bonne : la console la retrouvera pré-sélectionnée.

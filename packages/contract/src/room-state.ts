@@ -189,6 +189,35 @@ export type SocialLink = z.infer<typeof socialLinkSchema>
  * grâce est réglable : cinq minutes conviennent à un format de 50 minutes,
  * beaucoup moins à un quickie de 20.
  */
+/**
+ * Ce qu'un navigateur veut être notifié, famille par famille.
+ *
+ * Trois crans plutôt qu'un interrupteur : sur l'export 2026, annoncer chaque
+ * début, fin et fin proche fait **soixante-trois avis** dans la journée, et un
+ * téléphone qui vibre soixante-trois fois finit en silencieux — auquel cas le
+ * dépassement passe inaperçu lui aussi.
+ *
+ * `essentiel` ne contient que les écarts au script : quelque chose ne se passe
+ * pas comme prévu et quelqu'un doit trancher. `tout` ajoute le rythme normal de
+ * la journée, qu'on suit depuis un couloir.
+ */
+export const niveauNotifSchema = z.enum(['rien', 'essentiel', 'tout'])
+export type NiveauNotif = z.infer<typeof niveauNotifSchema>
+
+/**
+ * Les deux familles d'avis.
+ *
+ * `technique` parle des machines — une salle qui se tait, une machine à
+ * appairer. `exploitation` parle du déroulé — ce qui commence, finit, déborde.
+ * Elles se règlent séparément parce qu'elles ne s'adressent pas au même
+ * moment : l'une inquiète, l'autre rythme.
+ */
+export const niveauxNotifSchema = z.object({
+  technique: niveauNotifSchema.default('essentiel'),
+  exploitation: niveauNotifSchema.default('essentiel'),
+})
+export type NiveauxNotif = z.infer<typeof niveauxNotifSchema>
+
 export const hubSettingsSchema = z.object({
   autoEndEnabled: z.boolean().default(true),
   autoEndGraceMinutes: z.number().int().min(0).max(120).default(5),

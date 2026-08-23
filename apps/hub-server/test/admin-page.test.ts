@@ -475,10 +475,11 @@ describe('notifications', () => {
     monterConsole()
 
     $('btn-notifs').click()
+    $('notif-appliquer').click()
     await vi.waitFor(() => expect($('avis').textContent).toContain('service de notifications'))
 
     // Et l'essentiel reste acquis : les alertes console ouverte fonctionnent.
-    expect(localStorage.getItem('cloudnord-notifs')).toBe('1')
+    expect(localStorage.getItem('cloudnord-notifs')).toBeTruthy()
     vi.unstubAllGlobals()
   })
 
@@ -490,21 +491,43 @@ describe('notifications', () => {
     expect($('btn-notifs').hidden).toBe(false)
   })
 
-  it("demande la permission au clic, et retient le choix de l'appareil", async () => {
+  it("demande la permission à l'application, et retient les niveaux", async () => {
     monterConsole()
 
     $('btn-notifs').click()
-    await vi.waitFor(() => expect(localStorage.getItem('cloudnord-notifs')).toBe('1'))
-    expect(NotificationFactice.demandes).toBe(1)
+    // Le panneau s'ouvre sur les défauts : l'essentiel des deux familles.
+    expect(($('notif-technique') as HTMLSelectElement).value).toBe('essentiel')
+    ;($('notif-exploitation') as HTMLSelectElement).value = 'tout'
+    $('notif-appliquer').click()
 
-    // Deuxième clic : on éteint, sans redemander la permission.
+    await vi.waitFor(() => expect(localStorage.getItem('cloudnord-notifs')).toBeTruthy())
+    expect(JSON.parse(localStorage.getItem('cloudnord-notifs')!)).toEqual({
+      technique: 'essentiel',
+      exploitation: 'tout',
+    })
+    expect(NotificationFactice.demandes).toBe(1)
+  })
+
+  it('éteint tout sans redemander la permission', async () => {
+    monterConsole()
     $('btn-notifs').click()
-    expect(localStorage.getItem('cloudnord-notifs')).toBeNull()
+    $('notif-appliquer').click()
+    await vi.waitFor(() => expect(NotificationFactice.demandes).toBe(1))
+
+    $('btn-notifs').click()
+    ;($('notif-technique') as HTMLSelectElement).value = 'rien'
+    ;($('notif-exploitation') as HTMLSelectElement).value = 'rien'
+    $('notif-appliquer').click()
+    await vi.waitFor(() => expect($('avis').textContent).toContain('éteintes'))
+
+    // Le réglage reste écrit : rallumer ne doit pas repasser par une
+    // permission qu'un refus rendrait définitive.
+    expect(JSON.parse(localStorage.getItem('cloudnord-notifs')!).technique).toBe('rien')
     expect(NotificationFactice.demandes).toBe(1)
   })
 
   it('ne dit rien du premier chargement, prévient du changement', async () => {
-    localStorage.setItem('cloudnord-notifs', '1')
+    localStorage.setItem('cloudnord-notifs', JSON.stringify({ technique: 'tout', exploitation: 'tout' }))
     NotificationFactice.permission = 'granted'
     monterConsole()
     await avecSalles([SALLE])
@@ -521,7 +544,8 @@ describe('notifications', () => {
   })
 
   it('prévient quand une salle tombe, puis quand elle revient', async () => {
-    localStorage.setItem('cloudnord-notifs', '1')
+    // « Revenue » est un soulagement, pas une décision : il faut « tout ».
+    localStorage.setItem('cloudnord-notifs', JSON.stringify({ technique: 'tout', exploitation: 'tout' }))
     NotificationFactice.permission = 'granted'
     monterConsole()
     await avecSalles([SALLE])
@@ -532,6 +556,42 @@ describe('notifications', () => {
     expect(NotificationFactice.envoyees.map((n) => n.titre)).toEqual([
       'Track #1 ne répond plus',
       'Track #1 est revenue',
+    ])
+  })
+
+  it('respecte le niveau : le rythme de la journée ne passe pas en « essentiel »', async () => {
+    localStorage.setItem(
+      'cloudnord-notifs',
+      JSON.stringify({ technique: 'essentiel', exploitation: 'essentiel' }),
+    )
+    NotificationFactice.permission = 'granted'
+    monterConsole()
+    await avecSalles([SALLE])
+
+    // Une fin qui approche rythme la journée ; elle ne demande pas d'arbitrage.
+    await avecSalles([{ ...SALLE, conference: 'fin-proche' }])
+    expect(NotificationFactice.envoyees).toEqual([])
+
+    // Un dépassement, si.
+    await avecSalles([{ ...SALLE, conference: 'depassement' }])
+    expect(NotificationFactice.envoyees.map((n) => n.titre)).toEqual(['Track #1 déborde'])
+  })
+
+  it('annonce début et fin quand on veut tout suivre', async () => {
+    localStorage.setItem(
+      'cloudnord-notifs',
+      JSON.stringify({ technique: 'rien', exploitation: 'tout' }),
+    )
+    NotificationFactice.permission = 'granted'
+    monterConsole()
+    await avecSalles([{ ...SALLE, conference: 'pas-commencee' }])
+
+    await avecSalles([{ ...SALLE, conference: 'en-cours' }])
+    await avecSalles([{ ...SALLE, conference: 'terminee' }])
+
+    expect(NotificationFactice.envoyees.map((n) => n.titre)).toEqual([
+      "Track #1 · c'est parti",
+      'Track #1 · terminé',
     ])
   })
 

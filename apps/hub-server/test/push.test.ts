@@ -13,6 +13,9 @@ import type { RoomStatus } from '@cloudnord/contract'
  * avis répété fait couper les notifications pour de bon.
  */
 
+/** Abonnement qui veut tout : sert de base aux tests d'envoi. */
+const TOUT = { technique: 'tout', exploitation: 'tout' } as const
+
 const SALLE = (patch: Partial<RoomStatus> = {}): RoomStatus =>
   ({
     roomId: 'track-1',
@@ -67,6 +70,58 @@ describe('veille de supervision', () => {
     expect(veille.passe([SALLE()], [{ clientId: 'machine-a' }])).toEqual([])
     const arrivee = veille.passe([SALLE()], [{ clientId: 'machine-a' }, { clientId: 'machine-b' }])
     expect(arrivee.map((avis) => avis.tag)).toEqual(['appairage'])
+  })
+
+  it('annonce début et fin depuis le cycle de vie, pas depuis la couleur', () => {
+    /**
+     * Une conférence terminée à l'heure passe directement de « en cours » à
+     * « aucune » : déduire la fin de l'état agrégé l'aurait manquée.
+     */
+    const veille = new VeilleSupervision()
+    const titres = (id: string) => (id === 'ses-1' ? 'HoneySwamp' : null)
+    veille.passe([SALLE()], [], { 'track-1': { 'ses-1': 'scheduled' } }, titres)
+
+    const debut = veille.passe([SALLE()], [], { 'track-1': { 'ses-1': 'running' } }, titres)
+    expect(debut.map((avis) => [avis.title, avis.body, avis.niveau])).toEqual([
+      ["Track #1 · c'est parti", 'HoneySwamp', 'tout'],
+    ])
+
+    const fin = veille.passe([SALLE()], [], { 'track-1': { 'ses-1': 'ended' } }, titres)
+    expect(fin.map((avis) => avis.title)).toEqual(['Track #1 · terminé'])
+  })
+
+  it('sépare les étiquettes des machines et du déroulé', () => {
+    // Un « c'est parti » ne doit jamais venir effacer un « ne répond plus »
+    // resté non lu sur un écran de verrouillage.
+    const veille = new VeilleSupervision()
+    veille.passe([SALLE()], [], { 'track-1': { 'ses-1': 'scheduled' } })
+
+    const avis = veille.passe(
+      [SALLE({ connectivity: 'OFFLINE' })],
+      [],
+      { 'track-1': { 'ses-1': 'running' } },
+    )
+    const etiquettes = avis.map((a) => a.tag)
+    expect(new Set(etiquettes).size).toBe(etiquettes.length)
+    expect(etiquettes).toContain('salle-track-1')
+    expect(etiquettes).toContain('conf-track-1')
+  })
+
+  it('classe chaque avis dans sa famille et son niveau', () => {
+    const veille = new VeilleSupervision()
+    veille.passe([SALLE()])
+
+    const classe = (avis: { famille: string; niveau: string }[]) =>
+      avis.map((un) => [un.famille, un.niveau])
+
+    expect(classe(veille.passe([SALLE({ connectivity: 'OFFLINE' })]))).toEqual([
+      ['technique', 'essentiel'],
+    ])
+    // Un soulagement, pas une décision.
+    expect(classe(veille.passe([SALLE()]))).toEqual([['technique', 'tout']])
+    expect(classe(veille.passe([SALLE({ conference: 'fin-proche' })]))).toEqual([
+      ['exploitation', 'tout'],
+    ])
   })
 
   it('oublie une salle retirée du programme', () => {
@@ -133,6 +188,7 @@ describe('abonnements', () => {
       auth: 'secret',
       userId: 'op-1',
       label: 'iPhone',
+      levels: TOUT,
     }
     service.subscribe(abonnement)
     // Le navigateur rend le même endpoint après une réinstallation : un doublon
@@ -140,6 +196,29 @@ describe('abonnements', () => {
     service.subscribe({ ...abonnement, label: 'iPhone de la régie' })
 
     expect(service.count()).toBe(1)
+  })
+
+  it('ne pousse pas au-delà du niveau choisi', async () => {
+    const service = new PushService(db)
+    service.subscribe({
+      endpoint: 'https://push.exemple/essentiel',
+      p256dh: 'cle',
+      auth: 'secret',
+      userId: null,
+      label: 'téléphone en poche',
+      levels: { technique: 'essentiel', exploitation: 'essentiel' },
+    })
+
+    const webpush = (await import('web-push')).default
+    const envoi = vi.spyOn(webpush, 'sendNotification').mockResolvedValue({} as never)
+
+    await service.send({ title: 'rythme', body: '', tag: 't', famille: 'exploitation', niveau: 'tout' })
+    // Le rythme de la journée ne réveille pas un téléphone réglé sur l'essentiel.
+    expect(envoi).not.toHaveBeenCalled()
+
+    await service.send({ title: 'écart', body: '', tag: 't', famille: 'exploitation', niveau: 'essentiel' })
+    expect(envoi).toHaveBeenCalledTimes(1)
+    vi.restoreAllMocks()
   })
 
   it('oublie un abonnement que le service de push a révoqué', async () => {
@@ -150,6 +229,7 @@ describe('abonnements', () => {
       auth: 'secret',
       userId: null,
       label: null,
+      levels: TOUT,
     })
 
     const webpush = (await import('web-push')).default
@@ -158,7 +238,7 @@ describe('abonnements', () => {
       Object.assign(new Error('Gone'), { statusCode: 410 }),
     )
 
-    await service.send({ title: 'x', body: 'y', tag: 'z' })
+    await service.send({ title: 'x', body: 'y', tag: 'z', famille: 'technique', niveau: 'essentiel' })
     expect(service.count()).toBe(0)
     vi.restoreAllMocks()
   })
@@ -171,6 +251,7 @@ describe('abonnements', () => {
       auth: 'secret',
       userId: null,
       label: null,
+      levels: TOUT,
     })
 
     const webpush = (await import('web-push')).default
@@ -178,7 +259,7 @@ describe('abonnements', () => {
       Object.assign(new Error('timeout'), { statusCode: 502 }),
     )
 
-    await service.send({ title: 'x', body: 'y', tag: 'z' })
+    await service.send({ title: 'x', body: 'y', tag: 'z', famille: 'technique', niveau: 'essentiel' })
     // Réseau ou quota : l'abonnement est toujours bon, et le prochain avis
     // passera.
     expect(service.count()).toBe(1)

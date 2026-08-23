@@ -307,6 +307,15 @@ export const pushSubscription = sqliteTable('push_subscription', {
   userId: text('user_id'),
   /** Étiquette lisible — « iPhone de la régie » — laissée au client. */
   label: text('label'),
+  /**
+   * Niveau voulu par famille : `rien`, `essentiel` ou `tout`.
+   *
+   * Ici et non dans un réglage d'opérateur : le filtrage se fait à l'envoi, et
+   * l'envoi vise un navigateur. Le téléphone dans la poche et la console posée
+   * sur la table n'attendent pas la même chose de la journée.
+   */
+  niveauTechnique: text('niveau_technique').notNull().default('essentiel'),
+  niveauExploitation: text('niveau_exploitation').notNull().default('essentiel'),
   createdAt: text('created_at').notNull().default(now),
   /** Dernier envoi accepté : sert à purger ce qui ne répond plus. */
   lastPushedAt: text('last_pushed_at'),

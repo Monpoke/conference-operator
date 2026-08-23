@@ -454,6 +454,34 @@ describe('notifications', () => {
     localStorage.setItem('cloudnord-admin', 'jeton')
   })
 
+  it("explique un refus du service de push sans parler du hub", async () => {
+    /**
+     * S'abonner exige que le *navigateur* joigne le service de push de son
+     * éditeur, sur Internet — même pour un hub local. Le message brut
+     * (« push service error ») faisait chercher la panne côté hub.
+     */
+    NotificationFactice.permission = 'granted'
+    vi.stubGlobal('isSecureContext', true)
+    vi.stubGlobal('navigator', {
+      ...globalThis.navigator,
+      serviceWorker: {
+        register: async () => { throw new Error('Registration failed - push service error') },
+        ready: Promise.resolve({}),
+      },
+    })
+    vi.stubGlobal('PushManager', class {})
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify({ json: { publicKey: 'BJ' } }), { status: 200 })))
+    monterConsole()
+
+    $('btn-notifs').click()
+    await vi.waitFor(() => expect($('avis').textContent).toContain('service de notifications'))
+
+    // Et l'essentiel reste acquis : les alertes console ouverte fonctionnent.
+    expect(localStorage.getItem('cloudnord-notifs')).toBe('1')
+    vi.unstubAllGlobals()
+  })
+
   it('propose le réglage, sans rien demander au chargement', () => {
     monterConsole()
 

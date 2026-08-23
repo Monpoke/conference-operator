@@ -559,11 +559,24 @@ Une clé illisible **désactive le push et n'arrête pas le hub** — c'est un
 confort de supervision, pas le cœur du système —, mais le dit en erreur au
 démarrage.
 
-⚠️ **Deux conditions**, hors `localhost` : le hub doit être servi en **HTTPS**,
-et sur **iOS** la console doit avoir été **ajoutée à l'écran d'accueil** avant
-que les notifications existent. Sans push disponible, le bouton reste, avec les
-notifications de page seules — un avertissement qui ne traverse pas le
-verrouillage vaut mieux que pas d'avertissement.
+⚠️ **Trois conditions.** Hors `localhost`, le hub doit être servi en **HTTPS** —
+ouvrir la console par l'adresse IP du hub, ce qu'on fait naturellement depuis un
+téléphone, ne suffit pas. Sur **iOS**, la console doit avoir été **ajoutée à
+l'écran d'accueil**. Et surtout : **s'abonner exige qu'Internet soit joignable
+depuis le navigateur**, même pour un hub local — le navigateur doit s'enregistrer
+auprès du service de push de son éditeur (Google pour Chrome, Mozilla pour
+Firefox). Un réseau d'événement fermé refuse l'abonnement *et* la réception ;
+certains navigateurs (Brave, quelques Chromium de distribution) désactivent le
+push d'eux-mêmes.
+
+C'est la limite structurelle de ce mécanisme, et elle va contre le reste du
+système : tout ici est fait pour tenir sans réseau, le Web Push non. Il faut le
+lire comme un confort pour l'organisation — savoir depuis le couloir qu'une
+salle déborde — et non comme un canal d'alerte sur lequel s'appuyer le jour J.
+
+Sans push disponible, le bouton reste, avec les notifications de page seules —
+un avertissement qui ne traverse pas le verrouillage vaut mieux que pas
+d'avertissement — et la console dit laquelle des deux portées elle a obtenue.
 
 ## Empaqueter le client de salle
 

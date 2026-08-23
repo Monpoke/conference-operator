@@ -189,9 +189,15 @@ async function attendreQue(condition: () => boolean, limiteMs = 5_000): Promise<
 }
 
 /** Place la régie à un instant du programme, sans toucher à l'horloge du test. */
-function a(instant: string, etat: Record<string, unknown> = {}): DisplayPayload {
+function a(
+  instant: string,
+  etat: Record<string, unknown> = {},
+  /** Programme de la salle, quand le test a besoin d'autre chose que celui par défaut. */
+  sessions?: unknown[],
+): DisplayPayload {
   return {
     ...ETAT,
+    ...(sessions == null ? {} : { sessions }),
     state: { ...ETAT.state, serverTimeOffsetMs: Date.parse(instant) - Date.now(), ...etat },
   } as unknown as DisplayPayload
 }
@@ -799,6 +805,83 @@ describe('compte à rebours du créneau', () => {
     expect($('restant').className).not.toContain('text-attenue')
   })
 
+  /**
+   * Après « Terminer ».
+   *
+   * Le chronomètre continuait sur le créneau quitté : quinze minutes affichées
+   * en grand sur un talk que la salle venait de quitter. Ce qu'on vient y
+   * chercher à ce moment-là est la seule chose qui décide de la suite — dans
+   * combien de temps la prochaine commence.
+   */
+  describe('conférence terminée', () => {
+    const talk = (id: string, titre: string, debut: string, fin: string) => ({
+      id, title: titre,
+      startsAt: debut, endsAt: fin,
+      startsAtMs: Date.parse(debut), endsAtMs: Date.parse(fin),
+      kind: 'talk', speakers: [],
+    })
+    const pause = (id: string, titre: string, debut: string, fin: string) => ({
+      ...talk(id, titre, debut, fin), kind: 'break',
+    })
+
+    /** Le programme par défaut s'arrête après « HoneySwamp » : on lui donne une suite. */
+    const AVEC_SUITE = [
+      ...ETAT.sessions,
+      talk('ses-2', 'Blind ops', '2026-10-30T11:00:00.000Z', '2026-10-30T11:50:00.000Z'),
+    ]
+
+    /** Instant décalé d'une demi-seconde : sur une frontière exacte, l'arrondi bascule. */
+    const TERMINEE = { sessionStates: { 'ses-1': 'ended' } }
+
+    it('repart vers la prochaine conférence', () => {
+      monterRegie(a('2026-10-30T10:35:29.500Z', TERMINEE, AVEC_SUITE))
+
+      // 10:35:29,5 → 11:00, début de « Blind ops ». Pas 10:50, fin du créneau quitté.
+      expect($('restant').textContent).toBe('24:30')
+      expect(($('badge-restant') as HTMLElement).hidden).toBe(false)
+      // Atténué : rien à décider avant que ça ne reparte.
+      expect($('restant').className).toContain('text-attenue')
+    })
+
+    it("nomme la conférence visée, sans perdre l'annulation", () => {
+      monterRegie(a('2026-10-30T10:35:00Z', TERMINEE, AVEC_SUITE))
+
+      const detail = $('conf-detail').textContent ?? ''
+      // Heure de l'événement : 11:00 UTC se lit 12:00 à Paris.
+      expect(detail).toContain('Prochaine conférence à 12:00')
+      // Le geste d'annulation reste à portée : « Terminer » se presse par erreur.
+      expect(detail).toContain('Remettre à venir')
+    })
+
+    it("saute les pauses : on n'attend pas un déjeuner", () => {
+      // Compter jusqu'à la pause donnerait un chiffre juste et sans usage — et
+      // « Commencer » viserait de toute façon le talk d'après.
+      monterRegie(a('2026-10-30T10:35:29.500Z', TERMINEE, [
+        ...ETAT.sessions,
+        pause('pause-1', 'Pause croissants', '2026-10-30T10:50:00.000Z', '2026-10-30T11:10:00.000Z'),
+        talk('ses-3', 'Houston', '2026-10-30T11:10:00.000Z', '2026-10-30T11:50:00.000Z'),
+      ]))
+
+      expect($('restant').textContent).toBe('34:30')
+      expect($('conf-detail').textContent).toContain('Prochaine conférence à 12:10')
+    })
+
+    it('reste muet quand plus rien ne suit', () => {
+      monterRegie(a('2026-10-30T10:35:00Z', TERMINEE))
+
+      expect($('restant').textContent).toBe('--:--')
+      expect(($('badge-restant') as HTMLElement).hidden).toBe(true)
+      expect($('conf-detail').textContent).toContain('Terminée')
+    })
+
+    it('ne porte pas le badge sur une conférence qui court', () => {
+      monterRegie(a('2026-10-30T10:20:29.500Z', { sessionStates: { 'ses-1': 'running' } }))
+
+      expect(($('badge-restant') as HTMLElement).hidden).toBe(true)
+      expect($('restant').textContent).toBe('29:30')
+    })
+  })
+
   it('reste muet sans conférence à piloter', () => {
     monterRegie({
       ...ETAT,
@@ -937,6 +1020,38 @@ describe('flux des autres salles', () => {
 
     const salle = $('flux-salles').querySelector('[data-salle="track-2"]')!
     expect(salle.textContent).toContain('reprise 12:10')
+  })
+
+  it("marque d'une étiquette la salle en break, sans nommer le créneau", async () => {
+    // 10:53 : Track #2 est sur sa pause café. « Pause café » à la place d'un
+    // titre de conférence se lisait comme une salle occupée.
+    monterRegie(a('2026-10-30T10:53:00Z'))
+    await attendre()
+
+    const salle = $('flux-salles').querySelector('[data-salle="track-2"]')!
+    expect(salle.textContent).toContain('BREAK')
+    expect(salle.textContent).not.toContain('Pause café')
+    // La reprise reste : c'est elle qui décide si on laisse filer cinq minutes.
+    expect(salle.textContent).toContain('reprise 12:10')
+  })
+
+  it("annonce le break à venir pendant que le talk d'à côté court encore", async () => {
+    // 10:47 : « Blind ops » finit à 10:50, la pause suit. C'est le cas qui
+    // compte — celui où l'on décide de ne pas enchaîner.
+    monterRegie(a('2026-10-30T10:47:00Z'))
+    await attendre()
+
+    const salle = $('flux-salles').querySelector('[data-salle="track-2"]')!
+    expect(salle.textContent).toContain('BREAK à venir')
+    // Le talk reste annoncé : la salle n'est pas encore vide.
+    expect(salle.textContent).toContain('Blind ops')
+  })
+
+  it("ne parle pas d'un break encore lointain", async () => {
+    monterRegie(a('2026-10-30T10:20:00Z'))
+    await attendre()
+
+    expect($('flux-salles').textContent).not.toContain('BREAK')
   })
 
   it('reste muet sur le programme d\'une salle qu\'il ne connaît pas', async () => {

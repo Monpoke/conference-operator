@@ -283,6 +283,24 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
       tiennent dans les deux cas, et laissent la place au titre de ce qui se
       joue — la première chose qu'on vient vérifier.
     -->
+    <!--
+      Ce qui concerne tout le monde à la fois.
+
+      Une question différente de celle des cartes : elles disent où en est chaque
+      salle, celui-ci dit ce que fait l'événement. Il n'apparaît que quand un
+      créneau commun court ou approche — le reste du temps il n'a rien à dire, et
+      un encart vide se lit comme une panne.
+    -->
+    <section class="panneau col-span-full" id="encart-global" hidden>
+      <h2 class="titre-panneau">Global</h2>
+      <div class="flex items-center gap-2">
+        <span class="pastille" id="global-pastille"></span>
+        <span class="flex-1 truncate font-semibold" id="global-titre"></span>
+        <span class="shrink-0 text-[13px] text-attenue tabular-nums" id="global-horaire"></span>
+      </div>
+      <div class="mt-1 text-xs text-attenue" id="global-detail"></div>
+    </section>
+
     <section class="panneau col-span-full">
       <h2 class="titre-panneau">Salles</h2>
       <div class="grid grid-cols-[repeat(auto-fit,minmax(min(260px,100%),1fr))] gap-2.5" id="salles"></div>
@@ -431,7 +449,7 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
       </div>
       <div class="overflow-x-auto">
         <table>
-          <thead><tr><th>Horaire</th><th>Salle</th><th>Conférence</th><th>Feedback</th></tr></thead>
+          <thead><tr><th>Horaire</th><th>Salle</th><th>Conférence</th><th>Feedback</th><th>Action</th></tr></thead>
           <tbody id="planning"></tbody>
         </table>
       </div>
@@ -439,6 +457,23 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
         Les horaires sont ceux du programme, lus dans le fuseau de l'événement —
         pas celui du poste d'où l'on regarde. Le lien « noter » ouvre la page
         OpenFeedback de la conférence, la même que celle du QR projeté en salle.
+      </div>
+      <div class="aide">
+        <strong>Considérer comme break</strong> corrige ce que l'export ne dit
+        pas : un accueil, un déjeuner, une plénière y sont des créneaux comme les
+        autres, avec un titre et une salle. Marqué comme break, le créneau cesse
+        d'être une conférence <em>partout</em> — la salle ne le titre plus à
+        l'antenne, la régie ne propose plus de le « commencer », la pastille dit
+        « pause », et son QR de feedback disparaît. La décision est retirable
+        d'un clic, et vaut jusqu'au prochain import.
+      </div>
+      <div class="aide">
+        <strong>Pauses communes.</strong> Une salle qui n'a rien de prévu pendant
+        qu'une autre est en pause hérite de cette pause : l'export ne rattache le
+        déjeuner qu'à une salle, alors que l'événement entier déjeune. Ces lignes
+        apparaissent ici marquées « héritée » et ne s'éditent pas — c'est le
+        créneau d'origine qu'on corrige, et la projection suit. Une salle occupée,
+        ne serait-ce qu'en partie, garde son propre programme.
       </div>
     </section>
   </div>
@@ -1179,6 +1214,42 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
     appairagesVus = codes
   }
 
+  /**
+   * Ce que fait l'événement, quand il fait quelque chose de commun.
+   *
+   * Le décompte se calcule sur l'heure que rend le hub, et non sur celle du poste :
+   * celle du hub fait foi et peut être simulée — sinon la console annoncerait
+   * « dans 6010 min » dès qu'on déplace l'heure depuis le menu Développement.
+   */
+  async function chargerGlobal() {
+    const pause = await appeler('program/globalBreak')
+    const encart = $('encart-global')
+    if (pause == null) { encart.hidden = true; return }
+    encart.hidden = false
+
+    const maintenant = Date.parse(pause.serverTime)
+    const enCours = pause.state === 'en-cours'
+    $('global-pastille').className = 'pastille' + (enCours ? ' pause' : ' pas-commencee')
+    $('global-titre').textContent = pause.title + (enCours ? '' : ' — à venir')
+    $('global-horaire').textContent =
+      heureEvenement(pause.startsAt) + (pause.endsAt ? ' – ' + heureEvenement(pause.endsAt) : '')
+
+    const salles = pause.rooms + (pause.rooms > 1 ? ' salles' : ' salle')
+    // Ce qu'on vient chercher : quand ça reprend, ou quand ça commence.
+    const bord = enCours ? pause.endsAt : pause.startsAt
+    const minutes = bord == null ? null : Math.round((Date.parse(bord) - maintenant) / 60000)
+    $('global-detail').textContent = minutes == null
+      ? salles
+      : (enCours ? 'reprise dans ' : 'dans ') + minutes + ' min · ' + salles
+  }
+
+  /** Heure d'un instant, dans le fuseau de l'événement. */
+  function heureEvenement(iso) {
+    return new Intl.DateTimeFormat('fr-FR', {
+      hour: '2-digit', minute: '2-digit', timeZone: fuseauEvenement(),
+    }).format(new Date(iso))
+  }
+
   async function chargerSalles() {
     const salles = await appeler('rooms/statuses')
     signalerSalles(salles)
@@ -1190,7 +1261,9 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
        */
       const CONFERENCE = {
         aucune: ['hors', 'rien au programme', 'text-attenue'],
-        pause: ['pause', 'pause', 'text-attenue'],
+        // Un créneau commun n'est pas un état de la salle : il n'y a personne.
+        // « pause » laissait croire à une conférence en suspens.
+        pause: ['hors', 'rien dans la salle', 'text-attenue'],
         'pas-commencee': ['pas-commencee', 'pas commencée', 'text-attenue'],
         retard: ['retard', 'retard au démarrage', 'text-attention'],
         'en-cours': ['', 'en cours', 'text-attenue'],
@@ -1212,21 +1285,40 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
         salle.outboxDepth > 0 ? etiquette(salle.outboxDepth + ' en file', 'text-attention') : '',
       ].filter(Boolean).join(' ')
 
+      /**
+       * Un créneau commun ne se présente pas comme une conférence.
+       *
+       * Pendant le déjeuner, la carte annonçait « Déjeuner · 22 min restantes »
+       * exactement comme elle annonce un talk : même place, même forme, même
+       * décompte. On lisait une salle occupée là où il n'y a personne. Une
+       * étiquette à côté du nom, et la ligne du dessous se tait — le détail du
+       * créneau vit dans l'encart Global, où il est dit une fois pour toutes.
+       */
+      const pause = salle.breakBadge
+      const enPause = pause?.state === 'en-cours'
+      const etiquetteBreak = pause == null
+        ? ''
+        : etiquette(pause.state === 'en-cours' ? 'BREAK' : 'BREAK à venir',
+            pause.state === 'en-cours' ? '' : 'text-attention')
+
       // Calculé par le hub : lui seul connaît l'heure qui fait foi, et elle
       // peut être simulée.
-      const reste = restantDuCreneau(salle.currentSession?.remainingMs)
+      const reste = enPause ? null : restantDuCreneau(salle.currentSession?.remainingMs)
 
       return '<div class="rounded-xl border border-bord bg-fond p-3">' +
         '<div class="flex items-center gap-2">' +
         '<span class="pastille ' + classe + '"></span>' +
-        '<span class="flex-1 truncate font-semibold">' + echapper(salle.name) + '</span>' +
+        '<span class="min-w-0 flex-1 truncate font-semibold">' + echapper(salle.name) + '</span>' +
+        etiquetteBreak +
         '<a class="shrink-0 text-[13px] text-marque no-underline" target="_blank" rel="noopener" href="/mur?salle=' +
         encodeURIComponent(salle.roomId) + '">mur ↗</a></div>' +
         // Ce qui se joue : la première chose qu'on vient vérifier.
         '<div class="mt-1.5 text-[13px] leading-snug">' +
-        (salle.currentSession
-          ? echapper(salle.currentSession.title)
-          : '<span class="text-attenue">Rien au programme</span>') + '</div>' +
+        (enPause
+          ? '<span class="text-attenue">—</span>'
+          : salle.currentSession
+            ? echapper(salle.currentSession.title)
+            : '<span class="text-attenue">Rien au programme</span>') + '</div>' +
         // Et pour combien de temps encore : sans ça, savoir ce qui se joue ne
         // dit pas si la salle est en avance, à l'heure, ou en train de déborder.
         (reste
@@ -1759,8 +1851,11 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
 
   function rendrePlanning() {
     const corps = $('planning')
+    // Le planning se rafraîchit toutes les dix secondes : le réécrire pendant
+    // qu'un menu d'action est déplié refermerait le menu sous le curseur.
+    if (corps.contains(document.activeElement)) return
     if (planning == null || planning.sessions.length === 0) {
-      corps.innerHTML = '<tr><td colspan="4" class="vide">Aucun programme actif. ' +
+      corps.innerHTML = '<tr><td colspan="5" class="vide">Aucun programme actif. ' +
         'Il s\u2019importe depuis les réglages.</td></tr>'
       return
     }
@@ -1769,7 +1864,7 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
     const creneaux = planning.sessions.filter(
       (session) => salleChoisie === '' || session.roomId === salleChoisie)
     if (creneaux.length === 0) {
-      corps.innerHTML = '<tr><td colspan="4" class="vide">Aucun créneau dans cette salle.</td></tr>'
+      corps.innerHTML = '<tr><td colspan="5" class="vide">Aucun créneau dans cette salle.</td></tr>'
       return
     }
 
@@ -1847,6 +1942,11 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
         // mais en retrait : ce n'est pas ce qu'on cherche en ouvrant le planning.
         '<td' + (session.kind === 'break' ? ' class="text-attenue"' : '') + '>' +
         echapper(session.title) + qui +
+        // La salle n'a rien de prévu, une autre est en pause : elle en hérite.
+        // Le dire évite de chercher ce créneau dans l'export, où il n'est pas.
+        (session.sharedFrom != null
+          ? '<div class="text-xs text-attenue">pause commune, héritée d\u2019une autre salle</div>'
+          : '') +
         // Dit en toutes lettres ce que le trait montre : le surlignage seul se
         // confondrait avec une ligne survolée, et l'heure affichée peut être
         // simulée — auquel cas « en ce moment » est la seule chose qui explique
@@ -1856,9 +1956,78 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
           : '') +
         '</td>' +
         '<td>' + lien + '</td>' +
+        '<td>' + actionDuCreneau(session) + '</td>' +
         '</tr>'
     }).join('')
   }
+
+  /**
+   * Le menu d'actions d'une ligne du planning.
+   *
+   * Deux entrées, jamais plus : ce que dit l'export, et la décision qui le
+   * contredit. Proposer les deux genres partout laisserait sur chaque ligne une
+   * action sans effet — et une action sans effet se clique quand même.
+   *
+   * Ce que dit l'export se déduit de la décision appliquée : le hub n'applique
+   * que celles qui changent quelque chose, donc une décision « break » implique
+   * un export qui disait « conférence ». Sans décision, l'export est ce qui est
+   * servi.
+   */
+  function actionDuCreneau(session) {
+    // Une pause héritée d'une autre salle ne s'édite pas ici : c'est le créneau
+    // d'origine qu'on corrige, et la projection suit. Un menu sur la copie
+    // laisserait croire à deux décisions indépendantes.
+    if (session.sharedFrom != null) {
+      return '<span class="text-attenue" title="Pause h\u00e9rit\u00e9e d\u2019une autre salle">héritée</span>'
+    }
+    const decide = session.overriddenAs ?? null
+    const auProgramme = decide == null ? session.kind : (decide === 'break' ? 'talk' : 'break')
+    // L'action offerte est celle qui contredit l'export : l'autre ne ferait rien.
+    const action = auProgramme === 'break' ? 'talk' : 'break'
+    const libelles = {
+      talk: 'Considérer comme conférence',
+      break: 'Considérer comme break',
+    }
+    return '<select class="w-auto py-1 text-xs" data-session="' + echapper(session.id) + '" ' +
+      'data-applique="' + (decide ?? '') + '">' +
+      '<option value="">Aucune — ' +
+      (auProgramme === 'break' ? 'pause' : 'conférence') + ' au programme</option>' +
+      '<option value="' + action + '"' + (decide === action ? ' selected' : '') + '>' +
+      libelles[action] + '</option>' +
+      '</select>'
+  }
+
+  /**
+   * Les menus sont réécrits à chaque rendu : l'écouteur vit sur le tableau.
+   *
+   * Posé sur chaque menu, il faudrait le reposer à chaque
+   * rafraîchissement — et une ligne recréée entre le clic et le changement
+   * perdrait le sien sans que rien ne le dise.
+   */
+  $('planning').addEventListener('change', async (evenement) => {
+    const menu = evenement.target
+    const sessionId = menu?.dataset?.session
+    if (sessionId == null) return
+    const action = menu.value === '' ? null : menu.value
+    // Sa valeur d'avant, pour l'y remettre si le hub refuse : le menu ne doit
+    // pas rester sur une décision que personne n'a enregistrée.
+    const avant = menu.dataset.applique ?? ''
+    try {
+      await appeler('sessions/override', { sessionId, action })
+      avis(action === 'break'
+        ? 'Créneau considéré comme break'
+        : action === 'talk'
+          ? 'Créneau considéré comme conférence'
+          : 'Créneau rendu au programme')
+      // Relu depuis le hub : c'est lui qui sert le programme corrigé, et le
+      // reconstruire dans la page le ferait diverger de ce que voient les salles.
+      menu.blur()
+      await chargerPlanning()
+    } catch (cause) {
+      avis(cause.message, true)
+      menu.value = avant
+    }
+  })
 
   $('planning-salle').onchange = () => rendrePlanning()
 
@@ -2396,9 +2565,10 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
       // Seule la vue affichée est chargée : rafraîchir en boucle des panneaux
       // invisibles n'apporterait rien et sollicite le hub pour rien.
       if (vueCourante === 'exploitation') {
-        // Les salles seules : c'est l'écran qu'on laisse ouvert toute la
-        // journée, il n'a pas à interroger le hub sur le reste.
-        await chargerSalles()
+        // Les salles, et ce qui les concerne toutes : c'est l'écran qu'on
+        // laisse ouvert toute la journée, il n'a pas à interroger le hub sur
+        // le reste.
+        await Promise.all([chargerSalles(), chargerGlobal()])
       } else if (vueCourante === 'appairage') {
         await Promise.all([chargerAppairages(), chargerMachines()])
       } else if (vueCourante === 'conferences') {

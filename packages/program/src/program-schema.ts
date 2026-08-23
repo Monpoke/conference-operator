@@ -60,6 +60,14 @@ export const sessionSchema = z.object({
   durationMinutes: z.number().nullable(),
   roomId: z.string().nullable(),
   kind: sessionKindSchema,
+  /**
+   * Projection d'un créneau d'une autre salle. Voir `Session.sharedFrom`.
+   *
+   * Valeur par défaut, et non champ requis : un cache local écrit avant que ce
+   * champ n'existe doit continuer de se relire. Une salle qui redémarre hub
+   * injoignable n'a que ce cache.
+   */
+  sharedFrom: z.string().nullable().default(null),
   speakers: z.array(speakerSchema),
   category: categorySchema.nullable(),
   format: formatSchema.nullable(),

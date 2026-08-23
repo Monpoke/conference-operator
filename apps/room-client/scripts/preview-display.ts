@@ -47,6 +47,8 @@ const base: DisplayPayload = {
     nextSession: next,
     targetSession: current ?? next,
     targetIsUpcoming: current == null,
+    // L'aperçu se pose sur une conférence : pas de break à annoncer.
+    breakBadge: null,
     simulatedClock: false,
     outboxDepth: 0,
     serverTimeOffsetMs: AT - Date.now(),

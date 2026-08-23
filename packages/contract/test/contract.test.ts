@@ -146,7 +146,15 @@ describe('surface du contrat', () => {
       'wall',
     ])
     // Le cycle de vie est pilotable des deux côtés : régie de salle et console.
-    expect(Object.keys(contract.sessions).sort()).toEqual(['end', 'reset', 'start', 'states'])
+    // `override` corrige le programme lui-même — un déjeuner que l'export donne
+    // pour une conférence — là où les quatre autres pilotent son déroulé.
+    expect(Object.keys(contract.sessions).sort()).toEqual([
+      'end',
+      'override',
+      'reset',
+      'start',
+      'states',
+    ])
     expect(Object.keys(contract.rooms).sort()).toEqual([
       'commands',
       // Une salle se règle elle-même : les adresses OBS et les noms de scènes

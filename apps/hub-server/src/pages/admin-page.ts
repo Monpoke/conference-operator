@@ -762,6 +762,22 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
    */
   async function abonnerPush() {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false
+    /*
+     * Contexte sécurisé exigé : HTTPS, ou localhost.
+     *
+     * Ouvrir la console par l'adresse IP du hub — ce qu'on fait naturellement
+     * depuis un téléphone — n'en est pas un, et l'échec arriverait plus loin,
+     * sous un message qui parle de service de push et envoie chercher au
+     * mauvais endroit.
+     */
+    if (!globalThis.isSecureContext) {
+      avis(
+        "Notifications hors ligne : il faut ouvrir la console en HTTPS. Sur " +
+          location.hostname + ', le navigateur les refuse.',
+        true,
+      )
+      return false
+    }
     try {
       const { publicKey } = await appeler('push/publicKey')
       if (!publicKey) return false
@@ -785,9 +801,24 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
       })
       return true
     } catch (cause) {
-      // Pas d'erreur bloquante : l'essentiel — être prévenu console ouverte —
-      // fonctionne quand même, et insister masquerait ce qui marche.
-      avis('Notifications hors ligne indisponibles : ' + cause.message, true)
+      /*
+       * Pas d'erreur bloquante : l'essentiel — être prévenu console ouverte —
+       * fonctionne quand même, et insister masquerait ce qui marche.
+       *
+       * Le message du navigateur seul (« push service error ») fait chercher
+       * la panne du côté du hub, alors qu'elle est presque toujours ailleurs :
+       * s'abonner exige que **le navigateur** joigne le service de push de son
+       * éditeur, sur Internet. Un réseau d'événement fermé le refuse, et
+       * certains navigateurs le désactivent d'eux-mêmes.
+       */
+      const detail = String(cause?.message ?? cause)
+      avis(
+        /push service|Registration failed/i.test(detail)
+          ? "Le navigateur n'a pas pu joindre son service de notifications " +
+            '(Internet requis, même pour un hub local). Les alertes console ouverte fonctionnent.'
+          : 'Notifications hors ligne indisponibles : ' + detail,
+        true,
+      )
       return false
     }
   }

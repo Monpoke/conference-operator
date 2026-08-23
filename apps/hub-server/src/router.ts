@@ -687,6 +687,7 @@ export const router = os.router({
         auth: input.keys.auth,
         userId: context.operator.id,
         label: input.label,
+        levels: input.levels,
       })
       return { ok: true }
     }),

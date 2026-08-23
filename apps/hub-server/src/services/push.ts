@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm'
 import webpush from 'web-push'
 import { hubSetting, pushSubscription } from '@cloudnord/db/hub'
+import type { NiveauxNotif } from '@cloudnord/contract'
 import type { HubDatabase } from '../db.js'
 
 /**
@@ -30,11 +31,24 @@ export interface VapidKeys {
 export interface PushPayload {
   title: string
   body: string
-  /** Regroupe les avis d'une même salle : le suivant remplace le précédent. */
+  /**
+   * Regroupe les avis d'une même salle *et* d'une même famille.
+   *
+   * Deux étiquettes par salle, pas une : un « Track #2 a commencé » ne doit
+   * jamais venir effacer un « Track #2 ne répond plus » resté non lu.
+   */
   tag: string
   /** Vue de la console à ouvrir au clic — chaque onglet a son adresse. */
   vue?: string
+  famille: FamilleNotif
+  /** Niveau minimal auquel cet avis part. */
+  niveau: 'essentiel' | 'tout'
 }
+
+export type FamilleNotif = 'technique' | 'exploitation'
+
+/** Un abonnement reçoit un avis si son niveau va au moins aussi loin. */
+const PORTEE: Record<string, number> = { rien: 0, essentiel: 1, tout: 2 }
 
 export class PushService {
   private readonly keys: VapidKeys | null
@@ -114,6 +128,7 @@ export class PushService {
     auth: string
     userId: string | null
     label: string | null
+    levels: NiveauxNotif
   }): void {
     const values = {
       endpoint: input.endpoint,
@@ -121,6 +136,8 @@ export class PushService {
       auth: input.auth,
       userId: input.userId,
       label: input.label,
+      niveauTechnique: input.levels.technique,
+      niveauExploitation: input.levels.exploitation,
       createdAt: new Date().toISOString(),
       lastPushedAt: null,
     }
@@ -153,7 +170,22 @@ export class PushService {
    */
   async send(payload: PushPayload): Promise<number> {
     if (this.keys == null) return 0
-    const abonnements = this.db.select().from(pushSubscription).all()
+    const attendu = PORTEE[payload.niveau] ?? 1
+    const abonnements = this.db
+      .select()
+      .from(pushSubscription)
+      .all()
+      // Filtré à l'envoi : un abonnement réglé sur « essentiel » ne doit pas
+      // recevoir le rythme de la journée, et un « rien » ne reçoit plus rien
+      // sans qu'on ait à supprimer son abonnement — le rallumer ne demande
+      // alors pas de repasser par la permission du navigateur.
+      .filter((abonnement) => {
+        const niveau =
+          payload.famille === 'technique'
+            ? abonnement.niveauTechnique
+            : abonnement.niveauExploitation
+        return (PORTEE[niveau] ?? 0) >= attendu
+      })
     const corps = JSON.stringify(payload)
     let atteints = 0
 

@@ -192,6 +192,10 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
    */
   #verdict-code { display: none; }
   body[data-verdict="ouvert"] #verdict-code { display: flex; }
+
+  /* Réglage des notifications : même mécanique que la modale ci-dessus. */
+  #reglage-notifs { display: none; }
+  body[data-notifs="ouvert"] #reglage-notifs { display: flex; }
 </style>
 </head>
 <body class="bg-fond font-sans text-texte">
@@ -541,6 +545,42 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
   </div>
 </div>
 
+<!--
+  Niveaux de notification.
+
+  Deux familles réglées séparément : elles ne s'adressent pas au même moment,
+  l'une inquiète, l'autre rythme. Trois crans plutôt qu'un interrupteur — sur le
+  programme 2026, annoncer chaque début, fin et fin proche fait soixante-trois
+  avis dans la journée, et un téléphone qui vibre soixante-trois fois finit en
+  silencieux.
+-->
+<div class="fixed inset-0 z-50 items-center justify-center bg-black/65 p-4" id="reglage-notifs">
+  <div class="panneau w-full max-w-[460px]">
+    <h2 class="titre-panneau">Notifications</h2>
+    <div class="mb-3.5">
+      <label for="notif-technique">Technique — les machines</label>
+      <select id="notif-technique">
+        <option value="rien">Rien</option>
+        <option value="essentiel">Une salle ne répond plus, une machine à appairer</option>
+        <option value="tout">Tout, retours de salle compris</option>
+      </select>
+    </div>
+    <div class="mb-3.5">
+      <label for="notif-exploitation">Exploitation — le déroulé</label>
+      <select id="notif-exploitation">
+        <option value="rien">Rien</option>
+        <option value="essentiel">Dépassements et retards au démarrage</option>
+        <option value="tout">Tout : débuts, fins, et fins dans cinq minutes</option>
+      </select>
+    </div>
+    <div class="mb-3.5 text-xs text-attenue" id="notif-portee"></div>
+    <div class="flex justify-end gap-1.5">
+      <button id="notif-fermer">Fermer</button>
+      <button class="principal" id="notif-appliquer">Appliquer</button>
+    </div>
+  </div>
+</div>
+
 <div id="avis"></div>
 
 <script>
@@ -730,10 +770,46 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
    * chantier — et une console fermée n'est de toute façon plus une console.
    */
   const CLE_NOTIFS = 'cloudnord-notifs'
-  let notifsActives = localStorage.getItem(CLE_NOTIFS) === '1'
+  /**
+   * Niveaux voulus par cet appareil-ci.
+   *
+   * Rangés côté navigateur *et* renvoyés au hub avec l'abonnement : la page
+   * décide pour ses propres avis, le hub décide pour ceux qu'il pousse, et les
+   * deux doivent dire la même chose. Le téléphone dans la poche et la console
+   * posée sur la table sont deux appareils, avec deux réponses légitimes.
+   */
+  const NIVEAUX_DEFAUT = { technique: 'essentiel', exploitation: 'essentiel' }
+  let niveaux = lireNiveaux()
   /** Dernier état connu par salle. Vide au premier chargement : voir plus bas. */
   const vuesSalles = new Map()
   let appairagesVus = null
+
+  function lireNiveaux() {
+    try {
+      const brut = JSON.parse(localStorage.getItem(CLE_NOTIFS) || 'null')
+      // L'ancien réglage était un simple « 1 » : il vaut les défauts, plutôt
+      // que d'éteindre en silence des notifications déjà acceptées.
+      if (brut === '1' || brut == null) return { ...NIVEAUX_DEFAUT }
+      return {
+        technique: brut.technique ?? NIVEAUX_DEFAUT.technique,
+        exploitation: brut.exploitation ?? NIVEAUX_DEFAUT.exploitation,
+      }
+    } catch {
+      return { ...NIVEAUX_DEFAUT }
+    }
+  }
+
+  /** Actives dès qu'une famille dit autre chose que « rien ». */
+  function notifsActives() {
+    return niveaux.technique !== 'rien' || niveaux.exploitation !== 'rien'
+  }
+
+  const PORTEE = { rien: 0, essentiel: 1, tout: 2 }
+
+  /** Cet avis-là passe-t-il le réglage de cet appareil ? */
+  function niveauSuffit(famille, niveau) {
+    return (PORTEE[niveaux[famille]] ?? 0) >= (PORTEE[niveau] ?? 1)
+  }
 
   function notifsDisponibles() {
     return typeof Notification !== 'undefined'
@@ -743,9 +819,10 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
     const bouton = $('btn-notifs')
     if (!notifsDisponibles()) return
     bouton.hidden = false
-    bouton.textContent = notifsActives ? 'Notifications ●' : 'Notifications'
-    bouton.title = notifsActives
-      ? 'Alertes salles activées sur cet appareil'
+    const allume = notifsActives() && localStorage.getItem(CLE_NOTIFS) != null
+    bouton.textContent = allume ? 'Notifications ●' : 'Notifications'
+    bouton.title = allume
+      ? 'Alertes activées sur cet appareil'
       : "Être prévenu d'un dépassement, d'une salle coupée ou d'une machine à appairer"
   }
 
@@ -798,6 +875,9 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
         endpoint: brut.endpoint,
         keys: { p256dh: brut.keys.p256dh, auth: brut.keys.auth },
         label: navigator.userAgent.slice(0, 80),
+        // Renvoyés à chaque changement : le filtrage des avis poussés se fait
+        // dans le hub, qui ne lit pas le stockage local du navigateur.
+        levels: niveaux,
       })
       return true
     } catch (cause) {
@@ -850,32 +930,58 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
     }
   }
 
-  async function basculerNotifs() {
-    if (notifsActives) {
-      notifsActives = false
-      localStorage.removeItem(CLE_NOTIFS)
+  function ouvrirReglageNotifs() {
+    $('notif-technique').value = niveaux.technique
+    $('notif-exploitation').value = niveaux.exploitation
+    $('notif-portee').textContent =
+      Notification.permission === 'granted'
+        ? "Cet appareil est autoris\u00e9 \u00e0 notifier."
+        : "Le navigateur demandera l'autorisation \u00e0 la premi\u00e8re application."
+    document.body.dataset.notifs = 'ouvert'
+  }
+
+  /**
+   * Applique les niveaux choisis.
+   *
+   * Tout éteindre ne supprime pas l'abonnement côté navigateur : le rallumer ne
+   * demande alors pas de repasser par la permission, qu'un refus rendrait
+   * définitive. Le hub, lui, filtre à l'envoi.
+   */
+  async function appliquerNotifs() {
+    niveaux = {
+      technique: $('notif-technique').value,
+      exploitation: $('notif-exploitation').value,
+    }
+    document.body.dataset.notifs = 'ferme'
+
+    if (!notifsActives()) {
+      localStorage.setItem(CLE_NOTIFS, JSON.stringify(niveaux))
       await desabonnerPush()
       rendreBoutonNotifs()
+      avis('Notifications \u00e9teintes sur cet appareil')
       return
     }
-    // Demandée au clic, jamais au chargement : un navigateur qui voit la
-    // question arriver seule la refuse pour de bon, et on ne la repose plus.
-    const reponse = await Notification.requestPermission()
-    if (reponse !== 'granted') {
-      avis(reponse === 'denied'
-        ? "Notifications refus\u00e9es par le navigateur : \u00e0 rouvrir dans ses r\u00e9glages de site"
-        : 'Notifications non activ\u00e9es', true)
-      return
+
+    if (Notification.permission !== 'granted') {
+      // Demandée au clic, jamais au chargement : un navigateur qui voit la
+      // question arriver seule la refuse pour de bon, et on ne la repose plus.
+      const reponse = await Notification.requestPermission()
+      if (reponse !== 'granted') {
+        avis(reponse === 'denied'
+          ? "Notifications refus\u00e9es par le navigateur : \u00e0 rouvrir dans ses r\u00e9glages de site"
+          : 'Notifications non activ\u00e9es', true)
+        return
+      }
     }
-    notifsActives = true
-    localStorage.setItem(CLE_NOTIFS, '1')
+
+    localStorage.setItem(CLE_NOTIFS, JSON.stringify(niveaux))
     rendreBoutonNotifs()
     const horsLigne = await abonnerPush()
     prevenir(
       'Notifications activ\u00e9es',
       horsLigne
-        ? "D\u00e9passements, salles coup\u00e9es et machines \u00e0 appairer, m\u00eame console ferm\u00e9e."
-        : 'D\u00e9passements et salles coup\u00e9es, tant que la console reste ouverte.',
+        ? "M\u00eame console ferm\u00e9e, tant que le navigateur a Internet."
+        : 'Tant que la console reste ouverte.',
       'reglages',
     )
   }
@@ -885,8 +991,20 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
    *   la précédente au lieu d'empiler une colonne sur l'écran de verrouillage.
    * @param vue Onglet à ouvrir au clic — la console a une adresse par onglet.
    */
-  function prevenir(titre, corps, cle, vue) {
-    if (!notifsActives || !notifsDisponibles() || Notification.permission !== 'granted') return
+  /**
+   * @param famille technique ou exploitation. Absente : avis de service — la
+   *   confirmation d'activation — qui ne se filtre pas.
+   * @param niveau Niveau minimal auquel cet avis part.
+   */
+  function prevenir(titre, corps, cle, vue, famille, niveau) {
+    if (!notifsDisponibles() || Notification.permission !== 'granted') return
+    /*
+     * Il ne suffit pas que le navigateur autorise : il faut que quelqu'un
+     * l'ait voulu **ici**. Une permission accordée pour un autre usage ferait
+     * sinon vibrer une console que personne n'a réglée.
+     */
+    if (localStorage.getItem(CLE_NOTIFS) == null) return
+    if (famille && !niveauSuffit(famille, niveau ?? 'essentiel')) return
     try {
       const notification = new Notification(titre, { body: corps, tag: cle, lang: 'fr' })
       notification.onclick = () => {
@@ -915,13 +1033,30 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
       vuesSalles.set(salle.roomId, { conference: salle.conference, connectivity: salle.connectivity })
       if (premier || avant == null) continue
 
+      // Deux étiquettes par salle : un « c'est parti » ne doit jamais venir
+      // effacer un « ne répond plus » resté non lu.
+      const machine = 'salle-' + salle.roomId
+      const conf = 'conf-' + salle.roomId
+
       if (salle.connectivity !== 'ONLINE' && avant.connectivity === 'ONLINE') {
-        prevenir(salle.name + ' ne r\u00e9pond plus', 'Plus de nouvelles de la machine de salle.', 'salle-' + salle.roomId, 'exploitation')
+        prevenir(salle.name + ' ne r\u00e9pond plus', 'Plus de nouvelles de la machine de salle.', machine, 'exploitation', 'technique', 'essentiel')
       } else if (salle.connectivity === 'ONLINE' && avant.connectivity !== 'ONLINE') {
-        prevenir(salle.name + ' est revenue', 'La machine de salle r\u00e9pond de nouveau.', 'salle-' + salle.roomId, 'exploitation')
-      } else if (salle.conference === 'depassement' && avant.conference !== 'depassement') {
+        // Un soulagement, pas une décision : réservé à qui veut tout suivre.
+        prevenir(salle.name + ' est revenue', 'La machine de salle r\u00e9pond de nouveau.', machine, 'exploitation', 'technique', 'tout')
+      }
+
+      if (salle.conference === avant.conference) continue
+      if (salle.conference === 'depassement') {
         // Le seul qui demande un arbitrage : c'est lui qui décale la journée.
-        prevenir(salle.name + ' d\u00e9borde', 'Le cr\u00e9neau est fini, la salle tourne encore.', 'salle-' + salle.roomId, 'exploitation')
+        prevenir(salle.name + ' d\u00e9borde', 'Le cr\u00e9neau est fini, la conf\u00e9rence est toujours en cours.', conf, 'exploitation', 'exploitation', 'essentiel')
+      } else if (salle.conference === 'retard') {
+        prevenir(salle.name + " n'a pas d\u00e9marr\u00e9", "Le cr\u00e9neau a commenc\u00e9, la conf\u00e9rence n'est pas lanc\u00e9e.", conf, 'exploitation', 'exploitation', 'essentiel')
+      } else if (salle.conference === 'fin-proche') {
+        prevenir(salle.name + ' \u00b7 cinq minutes', 'La conf\u00e9rence touche \u00e0 sa fin.', conf, 'exploitation', 'exploitation', 'tout')
+      } else if (salle.conference === 'en-cours' && avant.conference === 'pas-commencee') {
+        prevenir(salle.name + " \u00b7 c'est parti", salle.currentSession?.title ?? 'La conf\u00e9rence a commenc\u00e9.', conf, 'exploitation', 'exploitation', 'tout')
+      } else if (salle.conference === 'terminee') {
+        prevenir(salle.name + ' \u00b7 termin\u00e9', salle.currentSession?.title ?? 'La conf\u00e9rence est termin\u00e9e.', conf, 'exploitation', 'exploitation', 'tout')
       }
     }
   }
@@ -937,6 +1072,8 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
           "Le code est affich\u00e9 sur l'\u00e9cran de r\u00e9gie.",
           'appairage',
           'appairage',
+          'technique',
+          'essentiel',
         )
       }
     }
@@ -2013,7 +2150,9 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
   }
 
   $('btn-deconnexion').onclick = () => seDeconnecter()
-  $('btn-notifs').onclick = () => basculerNotifs()
+  $('btn-notifs').onclick = () => ouvrirReglageNotifs()
+  $('notif-fermer').onclick = () => { document.body.dataset.notifs = 'ferme' }
+  $('notif-appliquer').onclick = () => void appliquerNotifs()
   rendreBoutonNotifs()
   $('verdict-fermer').onclick = fermerVerdict
   $('verdict-approuver').onclick = () => deciderVerdict(true)

@@ -526,13 +526,38 @@ Un bouton **Notifications** dans l'en-tête. La console se consulte debout, dans
 un couloir, entre deux salles : ce qui compte est d'apprendre qu'une salle
 déborde sans avoir la page sous les yeux.
 
-Trois avis, et rien d'autre : une salle **passe en dépassement**, une salle
-**tombe** ou **revient**, une **machine attend son appairage**. Ils ne partent
-que sur un *changement* — répéter « Track #1 déborde » toutes les dix secondes
-ferait couper les notifications au bout de deux minutes, et on ne les rallume
-pas. Le premier chargement n'alerte de rien : ouvrir la console sur une salle
-déjà coupée est un état, pas un événement. Un clic sur l'avis ouvre l'onglet
-concerné, maintenant que chaque onglet a son adresse.
+**Deux familles, trois crans chacune**, réglées séparément dans le panneau du
+bouton. Elles ne s'adressent pas au même moment : l'une inquiète, l'autre
+rythme.
+
+| | **Rien** | **Essentiel** (défaut) | **Tout** |
+|---|---|---|---|
+| **Technique** — les machines | — | salle qui ne répond plus · machine en attente d'appairage | + salle revenue |
+| **Exploitation** — le déroulé | — | dépassement · retard au démarrage | + conférence commencée · terminée · fin dans 5 min |
+
+La ligne de partage : « essentiel » ne contient que **les écarts au script**,
+ce qui demande un arbitrage. « Tout » ajoute le rythme normal de la journée.
+Trois crans plutôt qu'un interrupteur parce que le volume le commande — sur
+l'export 2026, 21 talks font **63 avis** rien qu'en débuts, fins et fins
+proches, et un téléphone qui vibre soixante-trois fois finit en silencieux,
+dépassements compris.
+
+Le réglage vit **par appareil**, pas par opérateur : c'est la même personne qui
+veut l'essentiel sur le téléphone dans sa poche et tout sur la console posée
+devant elle. Il voyage donc avec l'abonnement jusqu'au hub, qui filtre à
+l'envoi ; la page applique le même filtre pour ses propres avis.
+
+Rien ne part sans un *changement* — répéter « Track #1 déborde » toutes les dix
+secondes ferait couper les notifications au bout de deux minutes, et on ne les
+rallume pas. Le premier chargement n'alerte de rien : ouvrir la console sur une
+salle déjà coupée est un état, pas un événement. **Deux étiquettes par salle**
+— une pour la machine, une pour le déroulé — pour qu'un « c'est parti » ne vienne
+jamais effacer un « ne répond plus » resté non lu. Un clic sur l'avis ouvre
+l'onglet concerné, maintenant que chaque onglet a son adresse.
+
+Début et fin se lisent sur le **cycle de vie** (`Commencer` / `Terminer`), pas
+sur la couleur de la pastille : une conférence terminée à l'heure passe
+directement de « en cours » à « aucune », et l'événement serait manqué.
 
 La permission est demandée **au clic**, jamais au chargement : un navigateur qui
 voit la question arriver seule la refuse définitivement. Le réglage est retenu

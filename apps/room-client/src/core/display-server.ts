@@ -1,5 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify'
+import { IDENTITE_PAR_DEFAUT } from '@cloudnord/contract'
 import {
+  FUSEAU_PAR_DEFAUT,
   openFeedbackUrl,
   sessionsForRoom,
   type Program,
@@ -51,6 +53,14 @@ export interface DisplayPayload {
   /** Comptes de l'événement, réglés sur le hub. Vide = la boucle saute cette page. */
   socialLinks: { network: string; handle: string; url: string }[]
   /**
+   * Nom de l'événement, tranché par le hub et relu du cache local.
+   *
+   * Distinct de `event.name` du programme : le hub peut le contredire par
+   * réglage, et surtout il est connu **sans** programme — une machine tout
+   * juste appairée doit déjà titrer ses fenêtres correctement.
+   */
+  eventIdentity: { name: string; shortName: string }
+  /**
    * QR OpenFeedback du talk en cours.
    *
    * Fabriqué hors ligne : OpenFeedback réutilise les identifiants de session de
@@ -87,12 +97,15 @@ export const CHAMPS_PAR_VUE: Record<VueAffichage, readonly (keyof DisplayPayload
     // Deux champs pour la seule boucle d'attente : ils ne bougent qu'au
     // changement de créneau et au sync, donc ils ne coûtent rien au flux.
     'otherRooms', 'socialLinks',
+    // Le nom de l'événement : deux mots qui ne bougent qu'au sync, et sans
+    // lesquels chaque page se retitrerait avec une constante compilée.
+    'eventIdentity',
   ],
-  overlay: ['state', 'event'],
+  overlay: ['state', 'event', 'eventIdentity'],
   // Le bandeau ne lit que `state.liveMessage` : lui pousser le programme et
   // les sponsors coûterait trente kilo-octets par changement d'écran.
-  bandeau: ['state'],
-  regie: ['state', 'roomName', 'timezone', 'sessions', 'diagnostics', 'pairing'],
+  bandeau: ['state', 'eventIdentity'],
+  regie: ['state', 'roomName', 'timezone', 'sessions', 'diagnostics', 'pairing', 'eventIdentity'],
 }
 
 /** Un abonné au flux : sa vue, et la dernière valeur qu'il a reçue par champ. */
@@ -119,6 +132,8 @@ export interface DisplayServerOptions {
   pairing?: () => DisplayPayload['pairing']
   /** Comptes de l'événement, relus du cache local à chaque envoi. */
   socialLinks?: () => DisplayPayload['socialLinks']
+  /** Identité de l'événement, relue du cache local à chaque envoi. */
+  event?: () => DisplayPayload['eventIdentity']
   /**
    * Signale qu'une régie regarde (ou non) les niveaux audio.
    *
@@ -172,12 +187,13 @@ export class DisplayServer {
     const feedback = this.feedbackPour(state.currentSession?.id ?? null)
     const pairing = this.options.pairing?.() ?? null
     const socialLinks = this.options.socialLinks?.() ?? []
+    const eventIdentity = this.options.event?.() ?? IDENTITE_PAR_DEFAUT
     if (cached == null) {
       return {
         state,
         roomName,
         event: null,
-        timezone: 'Europe/Paris',
+        timezone: FUSEAU_PAR_DEFAUT,
         sessions: [],
         sponsorTiers: [],
         diagnostics,
@@ -186,6 +202,7 @@ export class DisplayServer {
         pairing,
         otherRooms: [],
         socialLinks,
+        eventIdentity,
       }
     }
 
@@ -205,6 +222,7 @@ export class DisplayServer {
       pairing,
       otherRooms: this.autresSalles(program, state.roomId),
       socialLinks,
+      eventIdentity,
     }
   }
 
@@ -263,7 +281,7 @@ export class DisplayServer {
     const cached = this.options.program()
     const session = cached?.program.sessions.find((creneau) => creneau.id === sessionId) ?? null
     if (session == null) return null
-    const url = openFeedbackUrl(session, projet, cached?.program.timezone ?? 'Europe/Paris')
+    const url = openFeedbackUrl(session, projet, cached?.program.timezone ?? FUSEAU_PAR_DEFAUT)
     if (url == null) return null
 
     this.feedbackCacheKey = sessionId

@@ -168,7 +168,10 @@ const etat = async () => (await (await fetch(`${regie}/display/data`)).json()) a
 describe('fenêtre de régie', () => {
   it('sert une page autonome, sans étape de build', async () => {
     const html = await (await fetch(`${regie}/regie`)).text()
-    expect(html).toContain('Régie — Cloud Nord')
+    // Titre d'amorçage neutre : le nom de l'événement arrive avec la charge
+    // utile, tranché par le hub. L'écrire dans le HTML servi le figerait dans
+    // le binaire installé sur la machine de salle.
+    expect(html).toContain('<title>Régie de salle</title>')
     // Une dépendance externe casserait la régie dès la première coupure.
     expect(html).not.toMatch(/<script[^>]+src=|<link[^>]+href=/)
   }, 40_000)

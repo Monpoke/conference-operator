@@ -35,6 +35,15 @@ export const roomSettings = sqliteTable('room_settings', {
    * même boucle qu'une autre.
    */
   socialLinksJson: text('social_links_json'),
+  /**
+   * Identité de l'événement, poussée par le hub au sync.
+   *
+   * En cache pour la même raison que le reste : une salle qui démarre hub
+   * injoignable doit titrer ses fenêtres et sa boucle d'attente du nom de
+   * l'événement, pas d'un nom compilé dans le binaire — sinon la machine
+   * installée pour une édition affiche l'ancienne pendant la suivante.
+   */
+  eventIdentityJson: text('event_identity_json'),
   /** Prochain `seq` à attribuer aux événements sortants. Monotone, jamais réinitialisé. */
   nextSeq: integer('next_seq').notNull().default(1),
   /** Dernier `seq` de commande appliqué : c'est le `lastEventId` renvoyé à la reprise. */

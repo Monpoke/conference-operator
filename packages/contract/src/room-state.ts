@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { programSchema } from '@cloudnord/program'
+import { eventIdentitySchema, IDENTITE_PAR_DEFAUT } from './event-identity.js'
 import {
   connectivitySchema,
   isoDateTimeSchema,
@@ -58,16 +59,18 @@ export const roomConfigSchema = z.object({
    */
   relaySourceRoomId: roomIdSchema.nullable().default(null),
   /**
-   * Projet OpenFeedback de l'événement.
+   * Projet OpenFeedback, **surcharge de salle**.
    *
    * Sert à fabriquer le QR « notez ce talk », **hors ligne** : OpenFeedback
-   * réutilise les identifiants de session de l'export amont — vérifié, les 27
-   * concordent — donc l'adresse se déduit du programme déjà en cache, sans clé
-   * d'API ni appel réseau le jour J.
+   * réutilise les identifiants de session de l'export amont, donc l'adresse se
+   * déduit du programme déjà en cache, sans clé d'API ni appel réseau le jour J.
    *
-   * Le défaut vaut pour cette édition ; il se change dans le ⚙ de la régie.
+   * `null` — le cas normal — veut dire « celui de l'événement » : le hub
+   * descend au `sync` la valeur de ses réglages. Le projet est une propriété de
+   * l'événement, pas de la salle ; le renseigner ici ne sert qu'à une salle qui
+   * doit pointer ailleurs, et se fait dans le ⚙ de la régie.
    */
-  openFeedbackProjectId: z.string().nullable().default('cloud-nord-2026'),
+  openFeedbackProjectId: z.string().nullable().default(null),
   /**
    * Au « Commencer », avertir si rien n'enregistre.
    *
@@ -165,17 +168,18 @@ export const sessionStateSchema = z.object({
 export type SessionState = z.infer<typeof sessionStateSchema>
 
 /**
- * Un compte de l'événement, affiché dans la boucle d'attente.
+ * Un compte de l'organisateur, affiché dans la boucle d'attente.
  *
- * L'export amont ne porte que les réseaux des **speakers** : ceux de Cloud Nord
- * n'ont aucune source dans le programme, d'où ce réglage. Réglage du hub et non
- * constante du code : un handle change entre deux éditions, et le corriger ne
- * doit pas demander de rejouer une release sur les trois machines de salle.
+ * L'export amont ne porte que les réseaux des **speakers** : ceux de
+ * l'événement lui-même n'ont aucune source dans le programme, d'où ce réglage.
+ * Réglage du hub et non constante du code : un handle change entre deux
+ * éditions — et d'un événement à l'autre — et le corriger ne doit pas demander
+ * de rejouer une release sur les machines de salle.
  */
 export const socialLinkSchema = z.object({
   /** Nom du réseau, affiché tel quel : « Bluesky », « LinkedIn »… */
   network: z.string().min(1).max(40),
-  /** Ce qu'on lit à l'écran et qu'on retape : « @cloudnord.fr ». */
+  /** Ce qu'on lit à l'écran et qu'on retape : « @exemple.fr ». */
   handle: z.string().min(1).max(80),
   url: z.url(),
 })
@@ -219,6 +223,35 @@ export const niveauxNotifSchema = z.object({
 export type NiveauxNotif = z.infer<typeof niveauxNotifSchema>
 
 export const hubSettingsSchema = z.object({
+  /**
+   * Nom de l'événement, **s'il faut contredire le programme importé**.
+   *
+   * `null` — le cas normal — laisse le hub lire `event.name` du snapshot actif :
+   * importer le programme d'un autre événement suffit alors à renommer le mur
+   * public, la console, les écrans de salle et les notifications, sans toucher
+   * une ligne de code ni une variable d'environnement.
+   *
+   * Le réglage sert quand l'export amont porte un nom interne (« CN26-prod »)
+   * ou pas de nom du tout. Voir `resoudreIdentiteEvenement`.
+   */
+  eventName: z.string().max(80).nullable().default(null),
+  /**
+   * Nom court, là où l'année n'apprend rien : titre de fenêtre, notification.
+   *
+   * `null` le déduit du nom complet en retirant le millésime. À renseigner
+   * quand la déduction se trompe — elle est volontairement timide.
+   */
+  eventShortName: z.string().max(40).nullable().default(null),
+  /**
+   * Projet OpenFeedback de l'événement.
+   *
+   * Au niveau du hub parce que c'est une propriété de l'événement, pas d'une
+   * salle : le régler une fois vaut pour toutes. Il descend aux salles au
+   * `sync`, où chacune peut encore le surcharger — voir
+   * `roomConfig.openFeedbackProjectId`. Vide, aucun QR « notez ce talk » n'est
+   * dessiné : pas de lien vaut mieux qu'un lien mort scanné en salle.
+   */
+  openFeedbackProjectId: z.string().max(80).nullable().default(null),
   autoEndEnabled: z.boolean().default(true),
   autoEndGraceMinutes: z.number().int().min(0).max(120).default(5),
   /**
@@ -232,7 +265,7 @@ export const hubSettingsSchema = z.object({
    */
   programSourceUrl: z.url().nullable().default(null),
   /**
-   * Comptes Cloud Nord, affichés dans la boucle d'attente des salles.
+   * Comptes de l'organisateur, affichés dans la boucle d'attente des salles.
    *
    * Poussés aux salles au `sync` et gardés en cache local : la boucle tourne
    * pendant les pauses, c'est-à-dire exactement quand le réseau de l'événement
@@ -309,6 +342,15 @@ export const syncResultSchema = z.object({
    * dérouler sa boucle entière sans toucher au réseau une fois synchronisée.
    */
   socialLinks: z.array(socialLinkSchema).default([]),
+  /**
+   * Identité de l'événement, tranchée par le hub.
+   *
+   * Descendue et mise en cache comme le reste : la salle doit pouvoir titrer
+   * ses fenêtres et sa boucle d'attente avant d'avoir joint qui que ce soit.
+   * Résolue côté hub et non déduite du programme côté salle, pour que le
+   * réglage qui contredit l'export amont vaille aussi sur les écrans.
+   */
+  event: eventIdentitySchema.default(IDENTITE_PAR_DEFAUT),
 })
 
 /** Vue hub d'une salle, alimentée par les heartbeats — l'écran de supervision. */

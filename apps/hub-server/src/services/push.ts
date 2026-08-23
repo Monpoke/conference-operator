@@ -95,7 +95,10 @@ export class PushService {
   }
 
   private resoudreClés(configured: Partial<VapidKeys>): VapidKeys | null {
-    const subject = configured.subject ?? 'mailto:contact@cloudnord.fr'
+    // Repli local : hors du hub — un test, un script — il n'y a pas de domaine
+    // public à annoncer, et la RFC veut un contact quel qu'il soit. Le hub, lui,
+    // passe toujours le sien : voir `vapidSubject` dans la config.
+    const subject = configured.subject ?? 'mailto:hub@localhost'
     if (configured.publicKey != null && configured.privateKey != null) {
       return { publicKey: configured.publicKey, privateKey: configured.privateKey, subject }
     }

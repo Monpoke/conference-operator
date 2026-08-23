@@ -176,6 +176,34 @@ describe('hub de bout en bout', () => {
     expect(again.contentHash).toBe(sync.contentHash)
   }, 20_000)
 
+  it('descend à la salle le nom de l\'événement et le projet OpenFeedback', async () => {
+    // La salle titre ses fenêtres et dessine ses QR avec ce que le hub a
+    // tranché, jamais avec une constante compilée dans le binaire installé sur
+    // la machine — c'est la même machine qui servira l'édition suivante.
+    hub.services.settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
+    const room = wsClient(await pairRoomDevice())
+
+    const sync = await room.rooms.sync({ since: null })
+
+    expect(sync.event).toEqual({ name: 'Cloud Nord 2026', shortName: 'Cloud Nord' })
+    // Résolu par le hub : la salle n'a pas à connaître la règle de priorité
+    // entre le réglage de l'événement et sa propre surcharge.
+    expect(sync.room.openFeedbackProjectId).toBe('cloud-nord-2026')
+  }, 20_000)
+
+  it('laisse une salle surcharger le projet OpenFeedback de l\'événement', async () => {
+    // Ce qui se découvre devant la machine gagne : une salle peut devoir
+    // pointer ailleurs, et ça ne se décide pas depuis la console.
+    hub.services.settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
+    const salle = hub.services.rooms.get(TRACK_1)!
+    hub.services.rooms.upsert({ ...salle, openFeedbackProjectId: 'atelier-2026' })
+    const room = wsClient(await pairRoomDevice())
+
+    const sync = await room.rooms.sync({ since: null })
+
+    expect(sync.room.openFeedbackProjectId).toBe('atelier-2026')
+  }, 20_000)
+
   it('achemine les commandes descendantes et remonte les événements', async () => {
     const deviceHeaders = await pairRoomDevice()
     const room = wsClient(deviceHeaders)
@@ -291,8 +319,22 @@ describe('planning du programme actif', () => {
     )
   })
 
+  it('ne propose rien à noter tant que le projet OpenFeedback n\'est pas réglé', async () => {
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+
+    const planning = await admin.program.planning()
+
+    // Pas de projet en dur : le dépôt ne connaît pas l'événement qu'il sert, et
+    // un lien vers le projet d'un autre organisateur serait pire que rien —
+    // scanné en salle, il mène à une page qui ne parle pas de ce talk.
+    expect(planning.sessions.every((session) => session.feedbackUrl == null)).toBe(true)
+  })
+
   it('donne le lien OpenFeedback de chaque conférence', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    // Réglage du hub : le projet est une propriété de l'événement, pas d'une
+    // salle. Le régler une fois vaut pour toutes, créneaux sans salle compris.
+    await admin.settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
 
     const planning = await admin.program.planning()
     const talk = planning.sessions.find((session) => session.kind === 'talk')!

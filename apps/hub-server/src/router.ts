@@ -9,6 +9,7 @@ import {
 import {
   currentSession,
   nextSession,
+  FUSEAU_PAR_DEFAUT,
   openFeedbackUrl,
   type Session,
 } from '@cloudnord/program'
@@ -111,7 +112,7 @@ export const router = os.router({
       if (snapshot == null) {
         return {
           contentHash: null,
-          timezone: 'Europe/Paris',
+          timezone: FUSEAU_PAR_DEFAUT,
           serverTime: nowIso(context),
           rooms: [],
           sessions: [],
@@ -125,16 +126,16 @@ export const router = os.router({
       // programme donne alors le nom écrit sur la porte, plutôt qu'un slug.
       const nomsDuProgramme = new Map(program.rooms.map((salle) => [salle.id, salle.name]))
       /**
-       * Projet OpenFeedback de repli.
+       * Projet OpenFeedback de l'événement.
        *
-       * Il est réglé par salle — c'est là qu'on le constate, devant la machine —
-       * mais il vaut pour l'événement entier. Sans repli, un créneau sans salle
-       * (une plénière que l'export ne rattache à aucun track) n'aurait pas de
-       * lien alors que le projet est parfaitement connu.
+       * Réglage du hub : le projet est une propriété de l'événement, pas d'une
+       * salle. Une salle peut encore le surcharger — c'est devant la machine
+       * qu'on découvre qu'elle doit pointer ailleurs — mais un créneau sans
+       * salle (une plénière que l'export ne rattache à aucun track) garde son
+       * lien, ce que l'ancien repli « la première salle qui en a un » ne
+       * garantissait pas.
        */
-      const projetParDefaut =
-        [...salles.values()].find((salle) => salle.openFeedbackProjectId != null)
-          ?.openFeedbackProjectId ?? null
+      const projetDeLEvenement = context.services.settings.get().openFeedbackProjectId
 
       return {
         contentHash: snapshot.contentHash,
@@ -162,7 +163,7 @@ export const router = os.router({
                 ? null
                 : openFeedbackUrl(
                     session,
-                    salle?.openFeedbackProjectId ?? projetParDefaut,
+                    salle?.openFeedbackProjectId ?? projetDeLEvenement,
                     program.timezone,
                   ),
           }
@@ -263,18 +264,27 @@ export const router = os.router({
       // Le snapshot ne repart que s'il a changé : sur un réseau de salle poussif,
       // renvoyer 70 ko à chaque heartbeat serait du gâchis.
       const unchanged = input.since === snapshot.contentHash
+      const reglages = context.services.settings.get()
       return {
         protocolVersion: PROTOCOL_VERSION,
         contentHash: snapshot.contentHash,
         program: unchanged ? null : snapshot.program,
-        room,
+        // Le projet OpenFeedback de l'événement est descendu **résolu** : la
+        // salle dessine ses QR hors ligne et n'a pas à connaître la règle de
+        // priorité. Ce qu'elle a réglé pour elle-même gagne, comme dans la
+        // console.
+        room: { ...room, openFeedbackProjectId: room.openFeedbackProjectId ?? reglages.openFeedbackProjectId },
         overrides: context.services.rooms.overrides(),
         serverTime: nowIso(context),
         simulatedClock: context.services.clock.simulated,
         mode: context.services.mode,
         // Descendus avec le reste : la boucle d'attente doit se dérouler
         // entière sans toucher au réseau une fois la salle synchronisée.
-        socialLinks: context.services.settings.get().socialLinks,
+        socialLinks: reglages.socialLinks,
+        // Même raison, et c'est ce qui rend les écrans renommables : la salle
+        // titre ses fenêtres avec le nom que le hub a tranché, pas avec une
+        // constante compilée dans le binaire installé sur la machine.
+        event: context.services.identity.get(),
       }
     }),
 
@@ -448,6 +458,13 @@ export const router = os.router({
       return { serverTime, simulated: context.services.clock.simulated }
     }),
   },
+  event: {
+    identity: os.event.identity.use(operatorOnly).handler(({ context }) => ({
+      resolved: context.services.identity.get(),
+      derived: context.services.identity.derived(),
+    })),
+  },
+
   settings: {
     get: os.settings.get.use(operatorOnly).handler(({ context }) => context.services.settings.get()),
     update: os.settings.update

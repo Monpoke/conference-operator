@@ -1,5 +1,13 @@
+# Identité de l'**application**, pas de l'événement.
+#
+# Ce qui s'affiche dans le produit — titres de fenêtres, écrans, mur public —
+# vient du hub et suit l'événement importé ; rien ici n'a besoin de changer
+# d'une édition à l'autre. Ces trois lignes nomment le logiciel installé sur la
+# machine de salle, et `appId` en particulier ne se renomme pas à la légère :
+# Electron en dérive le dossier `userData`, donc la base locale — cache du
+# programme et file de remontée non vidée.
 appId: fr.cloudnord.roomclient
-productName: Cloud Nord — Régie de salle
+productName: Régie de salle
 copyright: Cloud Nord
 
 directories:
@@ -31,7 +39,7 @@ nsis:
   perMachine: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
-  shortcutName: Régie Cloud Nord
+  shortcutName: Régie de salle
 
 # Modules natifs : `better-sqlite3` doit être recompilé pour l'ABI d'Electron,
 # pas celui de Node. electron-builder s'en charge à l'empaquetage.

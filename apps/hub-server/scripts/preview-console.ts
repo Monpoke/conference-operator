@@ -16,6 +16,18 @@ import { renderWallPage } from '../src/pages/wall-page.js'
 const outDir = resolve(process.argv[2] ?? './preview')
 mkdirSync(outDir, { recursive: true })
 
+/**
+ * Identité de l'événement, telle que le hub la tranche du programme importé.
+ *
+ * L'aperçu la fournit comme le ferait un vrai hub : c'est la même valeur qui
+ * titre les pages, et une constante d'aperçu masquerait le jour où le
+ * mécanisme se casse.
+ */
+const EVENEMENT = {
+  resolved: { name: 'Cloud Nord 2026', shortName: 'Cloud Nord' },
+  derived: { name: 'Cloud Nord 2026', shortName: 'Cloud Nord' },
+}
+
 const SALLES = [
   { id: 'track-1-teilhard-de-chardin', name: 'Track #1 — Teilhard de Chardin' },
   { id: 'track-2-mf-1092', name: 'Track #2 — MF 1092' },
@@ -91,10 +103,17 @@ const REPONSES: Record<string, unknown> = {
       { id: 'ses-3', title: 'Event Iterators en production', speakers: ['Alex Martin'], startsAt: '2026-10-30T12:00:00.000Z', endsAt: '2026-10-30T12:50:00.000Z', roomId: SALLES[2]!.id, roomName: SALLES[2]!.name, kind: 'talk', feedbackUrl: 'https://openfeedback.io/cloud-nord-2026/2026-10-30/ses-3' },
     ],
   },
+  'event/identity': EVENEMENT,
   'settings/get': {
     autoEndGraceMinutes: 5,
     autoEndEnabled: true,
     programSourceUrl: 'https://exemple.test/programme.json',
+    // Rien de réglé : les champs de l'onglet Réglages restent vides, et
+    // montrent en placeholder ce que le hub a déduit du programme. C'est l'état
+    // normal, et celui qu'il faut donner à relire.
+    eventName: null,
+    eventShortName: null,
+    openFeedbackProjectId: 'cloud-nord-2026',
     socialLinks: [
       { network: 'Bluesky', handle: '@cloudnord.fr', url: 'https://bsky.app/profile/cloudnord.fr' },
       { network: 'LinkedIn', handle: 'Cloud Nord', url: 'https://www.linkedin.com/company/cloud-nord' },
@@ -131,7 +150,7 @@ const REPONSES: Record<string, unknown> = {
  */
 function figer(html: string, vueActive: string | null): string {
   const amorce = `<script>
-    localStorage.setItem('cloudnord-admin', 'jeton-apercu')
+    localStorage.setItem('hub-admin', 'jeton-apercu')
     window.fetch = async (url) => {
       const chemin = String(url).replace('/rpc/', '')
       const json = ${JSON.stringify(REPONSES)}[chemin] ?? []
@@ -153,7 +172,7 @@ const VUES: [string, string | null][] = [
 
 for (const [nom, vue] of VUES) {
   const chemin = join(outDir, `${nom}.html`)
-  writeFileSync(chemin, figer(renderAdminPage(), vue))
+  writeFileSync(chemin, figer(renderAdminPage({ event: EVENEMENT }), vue))
   console.log(`écrit ${chemin}`)
 }
 
@@ -185,10 +204,10 @@ const MODES: [string, Parameters<typeof renderAdminPage>[0], string][] = [
 
 for (const [nom, options, vue] of MODES) {
   const chemin = join(outDir, `${nom}.html`)
-  writeFileSync(chemin, figer(renderAdminPage(options), vue))
+  writeFileSync(chemin, figer(renderAdminPage({ ...options, event: EVENEMENT }), vue))
   console.log(`écrit ${chemin}`)
 }
 
 const mur = join(outDir, 'mur-public.html')
-writeFileSync(mur, figer(renderWallPage({ roomId: SALLES[0]!.id, rooms: SALLES }), null))
+writeFileSync(mur, figer(renderWallPage({ roomId: SALLES[0]!.id, rooms: SALLES, event: EVENEMENT.resolved }), null))
 console.log(`écrit ${mur}`)

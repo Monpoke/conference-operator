@@ -111,7 +111,15 @@ function openRegieWindow(url: string): BrowserWindow {
     height: 860,
     backgroundColor: '#0d0f16',
     autoHideMenuBar: true,
-    title: 'Régie — Cloud Nord',
+    /**
+     * Titre d'amorçage seulement.
+     *
+     * La page le remplace par « Régie — <événement> » dès le premier rendu,
+     * avec le nom que le hub a tranché. L'écrire ici serait le figer dans le
+     * binaire installé sur la machine — c'est-à-dire pour toutes les éditions
+     * qu'elle servira ensuite.
+     */
+    title: 'Régie de salle',
     webPreferences: { nodeIntegration: false, contextIsolation: true },
   })
   void window.loadURL(url)

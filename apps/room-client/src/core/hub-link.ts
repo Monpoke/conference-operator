@@ -183,6 +183,10 @@ export class HubLink {
         roomId: result.room.id,
         config: result.room,
         socialLinks: result.socialLinks,
+        // Le nom de l'événement descend avec le reste et reste en cache : les
+        // pages doivent se titrer correctement au démarrage suivant, hub
+        // injoignable compris.
+        event: result.event,
       })
       runtime.setRoomId(result.room.id)
 

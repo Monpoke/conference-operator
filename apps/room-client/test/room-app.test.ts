@@ -294,4 +294,20 @@ describe('boucle d\'attente', () => {
     // boucle qu'une autre.
     expect(room.store.settings().socialLinks).toHaveLength(1)
   }, 30_000)
+
+  it('apprend du hub le nom de l\'événement, et le garde', async () => {
+    // Rien n'est compilé dans le binaire : la machine de salle reçoit le nom au
+    // sync, et c'est ce qui lui permet de servir l'édition suivante sans être
+    // réinstallée. Le hub le déduit ici du programme importé.
+    room = makeApp()
+    const url = await room.startDisplay()
+    const token = await room.ensurePaired()
+    await room.connectHub(token!)
+
+    const payload = (await (await fetch(`${url}/display/data`)).json()) as DisplayPayload
+    expect(payload.eventIdentity).toEqual({ name: 'Cloud Nord 2026', shortName: 'Cloud Nord' })
+    // En cache, comme le programme : une salle qui démarre hub injoignable
+    // titre quand même ses fenêtres correctement.
+    expect(room.store.settings().event.name).toBe('Cloud Nord 2026')
+  }, 30_000)
 })

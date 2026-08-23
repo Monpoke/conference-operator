@@ -13,7 +13,18 @@ import type {
   SponsorTier,
 } from './model.js'
 
-const DEFAULT_TIMEZONE = 'Europe/Paris'
+/**
+ * Fuseau retenu quand l'export amont n'en donne aucun.
+ *
+ * Un repli, pas une hypothèse sur l'événement : tout ce qui affiche une heure
+ * lit `program.timezone`, que le normaliseur renseigne toujours. La constante
+ * est exportée pour que les rares surfaces qui doivent afficher une heure
+ * **avant** d'avoir un programme — la console d'un hub tout juste installé —
+ * retombent sur la même valeur que le reste, plutôt que chacune sur la sienne.
+ */
+export const FUSEAU_PAR_DEFAUT = 'Europe/Paris'
+
+const DEFAULT_TIMEZONE = FUSEAU_PAR_DEFAUT
 
 function isHttpUrl(value: string): boolean {
   try {

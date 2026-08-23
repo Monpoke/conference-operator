@@ -126,6 +126,9 @@ describe('surface du contrat', () => {
     expect(Object.keys(contract).sort()).toEqual([
       'clock',
       'devices',
+      // Identité de l'événement, en lecture : ce que le hub a tranché du nom
+      // affiché partout, et ce qu'il déduirait sans réglage.
+      'event',
       'ingest',
       'messages',
       'meta',
@@ -226,6 +229,11 @@ describe('cycle de vie des conférences', () => {
       // réseaux plutôt que d'afficher un cadre vide.
       socialLinks: [],
       programSourceUrl: null,
+      // Rien de l'événement n'est réglé par défaut : le hub le déduit du
+      // programme importé, et c'est ce qui rend le dépôt agnostique.
+      eventName: null,
+      eventShortName: null,
+      openFeedbackProjectId: null,
     })
     expect(() => hubSettingsSchema.parse({ autoEndGraceMinutes: -1 })).toThrow()
     // Deux heures de grâce n'auraient plus rien d'automatique.

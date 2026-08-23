@@ -34,7 +34,7 @@ export function renderProjectorPage(options: ProjectorPageOptions = {}): string 
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cloud Nord — écran de salle</title>
+<title>Écran de salle</title>
 <style>${TAILWIND_CSS}</style>
 <style>
   :root { --couleur: #5b7cfa; --secondaire: #22d3ee; --or: #d4a24c; }
@@ -723,8 +723,9 @@ ${etatInitial}
    */
   function rendreReseaux(donnees) {
     const liens = donnees.socialLinks ?? []
-    if (liens.length === 0) return '<div class="' + TITRE_MODE + '">Cloud Nord</div>'
-    return '<div class="' + TITRE_MODE + '">Suivez Cloud Nord</div>' +
+    const nom = nomCourt(donnees)
+    if (liens.length === 0) return '<div class="' + TITRE_MODE + '">' + echapper(nom) + '</div>'
+    return '<div class="' + TITRE_MODE + '">Suivez ' + echapper(nom) + '</div>' +
       '<div class="cascade flex flex-wrap items-stretch justify-center gap-[3vmin]">' +
       liens.map((lien, rang) => \`<article style="--i:\${rang}" class="rounded-[1.6vmin] border border-white/10 bg-white/5 px-[4vmin] py-[3vmin] text-center">
         <div class="text-[2.4vmin] tracking-[.16em] text-attenue uppercase">\${echapper(lien.network)}</div>
@@ -906,8 +907,23 @@ ${etatInitial}
     liste.classList.add('defile')
   }
 
+  /**
+   * Nom court de l'événement, poussé par le hub et gardé en cache par la salle.
+   *
+   * Pas le nom du programme (donnees.event.name) : le hub peut le contredire par
+   * réglage, et il le connaît avant même qu'un programme soit importé.
+   */
+  function nomCourt(donnees) {
+    return donnees.eventIdentity?.shortName || ''
+  }
+
   function rendre(donnees) {
     dernier = donnees
+    // Le titre suit l'événement : la fenêtre de secours et l'onglet de la
+    // Browser Source doivent dire de quel événement il s'agit, sans qu'un nom
+    // soit compilé dans le binaire installé sur la machine.
+    const titre = donnees.eventIdentity?.name
+    if (titre) document.title = titre + ' — écran de salle'
     document.body.dataset.mode = donnees.state.mode
     document.body.dataset.connectivite = donnees.state.connectivity
     appliquerTheme(donnees.event)

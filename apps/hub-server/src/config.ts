@@ -79,11 +79,13 @@ const configSchema = z.object({
    * revendication `hd` du jeton d'identité** au retour : l'indice seul est une
    * suggestion d'écran de choix, qu'un compte personnel contourne.
    *
-   * Le défaut vaut mieux qu'une absence de défaut : oublier la variable sur un
-   * autre domaine ferme la porte à tout le monde, ce qui se voit, plutôt que
-   * de l'ouvrir à n'importe quel compte Google, ce qui ne se voit pas.
+   * Sans défaut, et obligatoire dès que Google est configuré : un domaine écrit
+   * en dur dans le code n'appartient qu'à un organisateur, et le laisser servir
+   * de repli ouvrirait la console d'un autre événement au personnel du
+   * premier. Le hub refuse donc de démarrer plutôt que de deviner — c'est la
+   * même règle que pour les deux identifiants, et pour la même raison.
    */
-  googleHostedDomain: z.string().min(1).default('cloudnord.fr'),
+  googleHostedDomain: z.string().min(1).optional(),
 
   /**
    * Clés VAPID des notifications poussées (RFC 8292).
@@ -95,8 +97,19 @@ const configSchema = z.object({
    */
   vapidPublicKey: z.string().optional(),
   vapidPrivateKey: z.string().optional(),
-  /** Contact que la RFC impose d'annoncer aux services de push. */
-  vapidSubject: z.string().default('mailto:contact@cloudnord.fr'),
+  /**
+   * Contact que la RFC 8292 impose d'annoncer aux services de push.
+   *
+   * Une adresse `mailto:` ou une URL `https:`. Absent, le hub le dérive de son
+   * propre domaine (`mailto:hub@<domaine>`) : un dépôt ne doit pas embarquer
+   * l'adresse de contact d'un organisateur, qui recevrait alors les
+   * signalements d'abus de tous les autres.
+   *
+   * **À renseigner en production** : le dérivé est syntaxiquement valide et
+   * pointe le bon domaine, mais rien ne garantit que quelqu'un relève cette
+   * boîte, et c'est bien à un humain que le service de push écrira.
+   */
+  vapidSubject: z.string().optional(),
 
   /** Hashtag suivi sur les réseaux. Vide = aucune ingestion sociale. */
   socialHashtag: z.string().optional(),
@@ -145,6 +158,18 @@ const configSchema = z.object({
     },
   )
   /**
+   * Google sans domaine ne démarre pas.
+   *
+   * Le domaine *est* la liste des opérateurs : sans lui, il n'y a pas de
+   * frontière à faire respecter, et l'oubli ne se verrait qu'au premier compte
+   * personnel qui entre — c'est-à-dire trop tard.
+   */
+  .refine((config) => config.googleClientId == null || config.googleHostedDomain != null, {
+    path: ['googleHostedDomain'],
+    message:
+      'GOOGLE_HOSTED_DOMAIN est obligatoire avec GOOGLE_CLIENT_ID : il décide qui est opérateur',
+  })
+  /**
    * Garde-fou du mode production, et rappel des variables obsolètes.
    *
    * Les réglages de développement sont **neutralisés**, pas refusés : un hub
@@ -169,7 +194,16 @@ const configSchema = z.object({
       ignores.push({ variable: 'SIMULATED_TIME', raison: 'réservé au mode développement (MODE=dev)' })
     }
 
-    return { ...config, simulatedTime: dev ? config.simulatedTime : undefined, ignores }
+    return {
+      ...config,
+      simulatedTime: dev ? config.simulatedTime : undefined,
+      // Dérivé du domaine du hub, et non de son URL : `http://localhost:8787`
+      // est une adresse publique parfaitement valable en développement, que
+      // web-push refuserait comme sujet — il n'accepte qu'un `mailto:` ou une
+      // URL `https:`. Le push se serait alors tu, sans dire pourquoi.
+      vapidSubject: config.vapidSubject ?? `mailto:hub@${new URL(config.publicUrl).hostname}`,
+      ignores,
+    }
   })
 
 export type Config = z.infer<typeof configSchema>

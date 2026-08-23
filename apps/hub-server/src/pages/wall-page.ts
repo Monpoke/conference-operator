@@ -1,8 +1,30 @@
 import { TAILWIND_CSS } from '@cloudnord/ui'
+import { IDENTITE_PAR_DEFAUT, type EventIdentity } from '@cloudnord/contract'
 
 export interface WallPageOptions {
   roomId: string | null
   rooms: { id: string; name: string }[]
+  /**
+   * Nom de l'événement, tranché par le hub.
+   *
+   * Rendu dans la page et non demandé par elle : c'est le premier mot que lit
+   * quelqu'un qui vient de scanner un QR au fond d'une salle, et l'obtenir
+   * d'un aller-retour réseau de plus le ferait apparaître après le reste — sur
+   * la 4G d'une salle de conférence, bien après.
+   */
+  event?: EventIdentity
+}
+
+/**
+ * Échappe une valeur insérée dans le HTML rendu.
+ *
+ * Le nom de l'événement vient de l'export amont ou d'un réglage de la console :
+ * deux sources de confiance, mais aucune raison de faire une exception à la
+ * règle dans une page construite par concaténation.
+ */
+function echapperServeur(valeur: string): string {
+  return valeur.replace(/[&<>"']/g, (caractere) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[caractere]!)
 }
 
 /**
@@ -13,8 +35,10 @@ export interface WallPageOptions {
  * du HTML autonome, aucune dépendance externe, et des appels au contrat via un
  * `fetch` minimal — le protocole oRPC en HTTP est un simple `{ json: … }`.
  */
-export function renderWallPage({ roomId, rooms }: WallPageOptions): string {
+export function renderWallPage({ roomId, rooms, event }: WallPageOptions): string {
   const donnees = JSON.stringify({ roomId, rooms }).replace(/</g, '\\u003c')
+  const identite = event ?? IDENTITE_PAR_DEFAUT
+  const nom = echapperServeur(identite.name)
 
   return `<!doctype html>
 <html lang="fr">
@@ -22,7 +46,7 @@ export function renderWallPage({ roomId, rooms }: WallPageOptions): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#10121a">
-<title>Cloud Nord — mur & questions</title>
+<title>${nom} — mur &amp; questions</title>
 <style>${TAILWIND_CSS}</style>
 <style>
   /*
@@ -45,7 +69,7 @@ export function renderWallPage({ roomId, rooms }: WallPageOptions): string {
 </head>
 <body class="mx-auto max-w-[620px] bg-fond font-sans text-texte">
 <header class="pt-[22px] pb-3.5">
-  <h1 class="text-[21px] font-bold">Cloud Nord 2026</h1>
+  <h1 class="text-[21px] font-bold">${nom}</h1>
   <div class="mt-1 text-sm text-attenue" id="salle"></div>
 
   <!--
@@ -142,12 +166,12 @@ export function renderWallPage({ roomId, rooms }: WallPageOptions): string {
    * Demander une inscription pour voter une question garantirait que personne
    * ne vote.
    */
-  let deviceId = localStorage.getItem('cloudnord-device')
+  let deviceId = localStorage.getItem('mur-device')
   if (!deviceId || deviceId.length < 8) {
     deviceId = 'dev-' + Math.random().toString(36).slice(2) + Date.now().toString(36)
-    localStorage.setItem('cloudnord-device', deviceId)
+    localStorage.setItem('mur-device', deviceId)
   }
-  const votes = new Set(JSON.parse(localStorage.getItem('cloudnord-votes') || '[]'))
+  const votes = new Set(JSON.parse(localStorage.getItem('mur-votes') || '[]'))
 
   /**
    * Salle courante.
@@ -157,7 +181,7 @@ export function renderWallPage({ roomId, rooms }: WallPageOptions): string {
    * dans la même salle plusieurs talks d'affilée, et rescanner à chaque fois
    * pour poser une question n'arriverait jamais.
    */
-  let salleCourante = roomId || localStorage.getItem('cloudnord-salle') || ''
+  let salleCourante = roomId || localStorage.getItem('mur-salle') || ''
   if (!rooms.some((r) => r.id === salleCourante)) salleCourante = ''
 
   const choix = $('choix-salle')
@@ -175,7 +199,7 @@ export function renderWallPage({ roomId, rooms }: WallPageOptions): string {
     $('salle').textContent = salle
       ? 'Questions — ' + salle.name
       : 'Mur commun à toutes les salles'
-    if (valeur) localStorage.setItem('cloudnord-salle', valeur)
+    if (valeur) localStorage.setItem('mur-salle', valeur)
     // L'adresse suit, pour que la page partagée ou rechargée reste la bonne.
     const url = new URL(location.href)
     if (valeur) url.searchParams.set('salle', valeur)
@@ -363,7 +387,7 @@ export function renderWallPage({ roomId, rooms }: WallPageOptions): string {
     try {
       const resultat = await appeler('questions/vote', { id, deviceId })
       votes.add(id)
-      localStorage.setItem('cloudnord-votes', JSON.stringify([...votes]))
+      localStorage.setItem('mur-votes', JSON.stringify([...votes]))
       bouton.querySelector('.n').textContent = resultat.votes
       bouton.classList.add('vote')
     } catch (cause) {

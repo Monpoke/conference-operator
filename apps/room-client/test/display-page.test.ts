@@ -55,6 +55,10 @@ const ETAT = {
   },
   roomName: 'Track #1',
   event: null,
+  // Ce que le hub a tranché et poussé au sync : c'est de là que la page tire
+  // son titre et le nom qu'elle écrit dans la boucle d'attente. Rien n'est
+  // compilé dans le binaire de la salle.
+  eventIdentity: { name: 'Cloud Nord 2026', shortName: 'Cloud Nord' },
   timezone: 'Europe/Paris',
   sessions: SESSIONS,
   sponsorTiers: [],

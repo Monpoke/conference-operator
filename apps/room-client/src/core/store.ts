@@ -14,8 +14,11 @@ import {
 } from '@cloudnord/db/client'
 import { programSchema, type Program } from '@cloudnord/program'
 import {
+  eventIdentitySchema,
+  IDENTITE_PAR_DEFAUT,
   roomConfigSchema,
   socialLinkSchema,
+  type EventIdentity,
   type RoomConfig,
   type SocialLink,
 } from '@cloudnord/contract'
@@ -33,6 +36,23 @@ function lireReseaux(brut: string | null): SocialLink[] {
     return lu.success ? lu.data : []
   } catch {
     return []
+  }
+}
+
+/**
+ * Identité de l'événement relue du cache local.
+ *
+ * Le repli est neutre et non un nom d'événement : une machine jamais
+ * synchronisée ne sait pas encore où elle est, et afficher le nom d'une autre
+ * édition serait pire que ne rien affirmer. Le premier sync corrige.
+ */
+function lireIdentite(brut: string | null): EventIdentity {
+  if (brut == null) return IDENTITE_PAR_DEFAUT
+  try {
+    const lu = eventIdentitySchema.safeParse(JSON.parse(brut))
+    return lu.success ? lu.data : IDENTITE_PAR_DEFAUT
+  } catch {
+    return IDENTITE_PAR_DEFAUT
   }
 }
 
@@ -64,6 +84,14 @@ export interface RoomSettings {
   activeContentHash: string | null
   /** Comptes de l'événement, poussés par le hub. Mis en cache comme le programme. */
   socialLinks: SocialLink[]
+  /**
+   * Nom de l'événement, poussé par le hub. En cache pour la même raison.
+   *
+   * C'est ce qui titre les fenêtres et la boucle d'attente : l'écrire en dur
+   * rendait une machine installée pour une édition incapable d'en servir une
+   * autre sans réinstallation.
+   */
+  event: EventIdentity
   nextSeq: number
   lastCommandSeq: number
   clockOffsetMs: number
@@ -131,6 +159,7 @@ export class LocalStore {
       // Réglage décoratif : un cache illisible ne doit pas empêcher la salle de
       // démarrer, la boucle sautera simplement sa page réseaux.
       socialLinks: lireReseaux(row?.socialLinksJson ?? null),
+      event: lireIdentite(row?.eventIdentityJson ?? null),
       nextSeq: row?.nextSeq ?? 1,
       lastCommandSeq: row?.lastCommandSeq ?? 0,
       clockOffsetMs: row?.clockOffsetMs ?? 0,
@@ -144,6 +173,7 @@ export class LocalStore {
     if (patch.config !== undefined) update.configJson = JSON.stringify(patch.config)
     if (patch.activeContentHash !== undefined) update.activeContentHash = patch.activeContentHash
     if (patch.socialLinks !== undefined) update.socialLinksJson = JSON.stringify(patch.socialLinks)
+    if (patch.event !== undefined) update.eventIdentityJson = JSON.stringify(patch.event)
     if (patch.lastCommandSeq !== undefined) update.lastCommandSeq = patch.lastCommandSeq
     if (patch.clockOffsetMs !== undefined) update.clockOffsetMs = patch.clockOffsetMs
 

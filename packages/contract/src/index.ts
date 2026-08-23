@@ -1,4 +1,5 @@
 export * from './primitives.js'
+export * from './event-identity.js'
 export * from './events.js'
 export * from './commands.js'
 export * from './room-state.js'

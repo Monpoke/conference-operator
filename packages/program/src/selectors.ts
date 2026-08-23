@@ -125,6 +125,16 @@ export function roomConferenceState(
    */
   const deborde = sessions.some((session, index) => {
     if (statuses[session.id] !== 'running') return false
+    /**
+     * Un créneau qui n'est pas une conférence ne déborde pas.
+     *
+     * Il n'y a rien à y terminer — personne ne clôture un déjeuner —, et un
+     * état « en cours » peut lui rester d'avant : le hub sert le programme
+     * décisions comprises, et une conférence déjà lancée peut être déclarée
+     * break en cours de journée. La signaler en dépassement ferait clignoter la
+     * console sur un fait qu'on vient soi-même de corriger.
+     */
+    if (session.kind === 'break') return false
     const fin = effectiveEndMs(session, sessions[index + 1])
     return fin != null && fin <= nowMs
   })
@@ -144,6 +154,57 @@ export function roomConferenceState(
     return fin != null && fin - nowMs <= FIN_PROCHE_MS ? 'fin-proche' : 'en-cours'
   }
   return nowMs - current.startsAtMs > RETARD_MS ? 'retard' : 'pas-commencee'
+}
+
+/**
+ * En deçà, un break qui approche s'annonce.
+ *
+ * Un quart d'heure : c'est le moment où l'on cesse de lancer quoi que ce soit
+ * et où l'on commence à préparer la reprise. Plus tôt, l'information ne sert
+ * pas ; plus tard, elle arrive après la décision qu'elle devait éclairer.
+ */
+export const BREAK_PROCHE_MS = 15 * 60_000
+
+export interface RoomBreak {
+  /** `en-cours` : le break court. `a-venir` : il commence dans moins d'un quart d'heure. */
+  state: 'en-cours' | 'a-venir'
+  session: Session
+  /** Reprise : fin effective du break, ou `null` si rien ne le ferme. */
+  endsAtMs: number | null
+}
+
+/**
+ * Le break d'une salle, en cours ou imminent.
+ *
+ * Une donnée à part de `roomConferenceState`, et non un état de plus : elle
+ * cohabite avec ce que fait la salle. Une conférence peut courir pendant que le
+ * déjeuner approche — c'est même le cas qui compte, celui où l'on décide de ne
+ * pas laisser filer.
+ *
+ * `null` le reste du temps : l'étiquette n'apparaît que quand elle a quelque
+ * chose à dire.
+ */
+export function roomBreak(program: Program, roomId: string, nowMs: number): RoomBreak | null {
+  const sessions = sessionsForRoom(program, roomId)
+  const reprise = (session: Session): number | null =>
+    effectiveEndMs(session, sessions[sessions.indexOf(session) + 1])
+
+  const { current, next } = roomTimelinePosition(program, roomId, nowMs)
+  if (current?.kind === 'break') {
+    return { state: 'en-cours', session: current, endsAtMs: reprise(current) }
+  }
+  /**
+   * Le créneau suivant, qu'une conférence coure ou non.
+   *
+   * C'est là qu'est l'intérêt : savoir que le déjeuner tombe dans douze minutes
+   * pendant qu'un talk se termine est ce qui fait décider de ne pas enchaîner.
+   * Ne regarder que les salles déjà vides aurait donné l'information à ceux qui
+   * n'en avaient plus besoin.
+   */
+  if (next?.kind === 'break' && next.startsAtMs - nowMs <= BREAK_PROCHE_MS) {
+    return { state: 'a-venir', session: next, endsAtMs: reprise(next) }
+  }
+  return null
 }
 
 /**

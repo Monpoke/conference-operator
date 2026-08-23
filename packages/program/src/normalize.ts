@@ -191,6 +191,9 @@ export function normalizeProgram(input: unknown): Program {
       durationMinutes: rawSession.durationMinutes ?? null,
       roomId,
       kind: speakerIds.length > 0 ? 'talk' : 'break',
+      // Rien n'est projeté à la normalisation : la règle des pauses communes
+      // s'applique sur le programme normalisé, et se relit donc dessus.
+      sharedFrom: null,
       speakers: resolvedSpeakers,
       category: (rawSession.categoryId != null ? categoryById.get(rawSession.categoryId) : undefined) ?? null,
       format: (rawSession.formatId != null ? formatById.get(rawSession.formatId) : undefined) ?? null,

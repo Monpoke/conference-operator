@@ -76,7 +76,10 @@ describe('ProgramService', () => {
     expect(programs.active()?.contentHash).toBe(bad.contentHash)
 
     programs.activate(original.contentHash)
-    expect(programs.active()?.program.sessions).toHaveLength(27)
+    // 27 créneaux à l'export, 38 servis : les onze de plus sont les pauses
+    // communes projetées dans les salles qui n'ont rien de prévu à ce
+    // moment-là. `active()` sert le programme, pas le fichier importé.
+    expect(programs.active()?.program.sessions).toHaveLength(38)
     expect(programs.list()).toHaveLength(2)
   })
 })

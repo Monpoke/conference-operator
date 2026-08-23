@@ -77,7 +77,7 @@ ${etatInitial}
   <div class="w-[.9vh] rounded-l-[.45vh] bg-[var(--categorie)]"></div>
   <div class="rounded-r-[.6vh] bg-[rgba(12,14,22,.88)] px-[2.4vh] py-[1.6vh] backdrop-blur-[2px]">
     <div class="text-[3.4vh] leading-[1.15] font-bold" id="titre"></div>
-    <div class="mt-[.7vh] text-[2.4vh] text-white/80" id="personnes"></div>
+    <div class="mt-[.7vh] text-[2.4vh] text-white/80" id="personnes" hidden></div>
     <span class="mt-[1vh] inline-block rounded-[.4vh] bg-[var(--categorie)] px-[1.1vh] py-[.35vh] text-[1.7vh] tracking-[.12em] uppercase" id="categorie" hidden></span>
   </div>
 </div>
@@ -126,7 +126,17 @@ ${etatInitial}
 
     racine.setProperty('--categorie', session.category?.color ?? donnees.event?.theme?.color ?? '#1c71d8')
     texte('titre', session.title)
-    texte('personnes', session.speakers.map((s) => s.company ? s.name + ' — ' + s.company : s.name).join(' · '))
+    /**
+     * Ligne masquée quand personne n'est annoncé.
+     *
+     * Le cas existe depuis qu'un créneau peut être déclaré conférence à la main :
+     * une keynote d'ouverture dont le speaker n'est pas encore annoncé porte un
+     * titre et aucun nom. Une ligne vide sous le titre garderait sa marge et se
+     * lirait, dans le direct comme dans la VOD, comme un nom qui n'a pas chargé.
+     */
+    const noms = session.speakers.map((s) => s.company ? s.name + ' — ' + s.company : s.name).join(' · ')
+    document.getElementById('personnes').hidden = noms === ''
+    texte('personnes', noms)
 
     const categorie = document.getElementById('categorie')
     categorie.hidden = session.category == null

@@ -323,6 +323,83 @@ describe('resynchronisation complète', () => {
   }, 40_000)
 })
 
+/**
+ * Créneaux dont le genre se corrige depuis la console.
+ *
+ * L'export amont ne distingue pas un déjeuner d'une conférence, et le
+ * normaliseur tranche sur un seul signal : pas d'intervenant, donc une pause.
+ * La correction doit se voir *en salle*, sinon elle ne sert à rien là où elle
+ * compte.
+ */
+describe('genre d\'un créneau corrigé depuis le hub', () => {
+  it("cesse d'être une conférence en salle, sans rien redémarrer", async () => {
+    const session = room.runtime.state().currentSession!
+    expect(session.title).toContain('HoneySwamp')
+    expect(room.runtime.state().targetSession?.id).toBe(session.id)
+
+    const admin = await operateur()
+    await admin.sessions.override({ sessionId: session.id, action: 'break' })
+    // Le hub diffuse `program.invalidate` : la salle resynchronise d'elle-même.
+    await sleep(1_000)
+    room.runtime.refreshSessions()
+
+    const etatSalle = room.runtime.state()
+    // Le créneau court toujours — il occupe la salle — mais ce n'est plus une
+    // conférence : la régie vise le talk suivant, celui qu'on peut lancer.
+    expect(etatSalle.currentSession?.id).toBe(session.id)
+    expect(etatSalle.currentSession?.kind).toBe('break')
+    expect(etatSalle.targetSession?.id).not.toBe(session.id)
+    expect(etatSalle.targetSession?.kind).toBe('talk')
+    expect(etatSalle.targetIsUpcoming).toBe(true)
+
+    // Et rien n'a été coupé au passage.
+    expect(etatSalle.connectivity).toBe('ONLINE')
+    expect((await etat()).pairing?.status).toBe('paired')
+  }, 40_000)
+
+  it("rend pilotable une keynote que l'export donne pour une pause", async () => {
+    /**
+     * Le cas signalé : le speaker de la keynote d'ouverture n'est pas encore
+     * annoncé, donc l'export ne lui en donne aucun, donc le normaliseur en fait
+     * une pause. La régie n'avait rien à lancer, et rien ne partait à l'antenne.
+     */
+    const admin = await operateur()
+    const keynote = hub.services.programs
+      .active()!
+      .program.sessions.find((s) => s.title.includes('Keynote'))!
+    expect(keynote.kind).toBe('break')
+
+    await admin.sessions.override({ sessionId: keynote.id, action: 'talk' })
+    await sleep(1_000)
+
+    // 08:10 UTC : la keynote court de 08:00 à 08:45.
+    room.runtime.setClockOffset(Date.parse('2026-10-30T08:10:00Z') - Date.now())
+    room.runtime.refreshSessions()
+
+    const etatSalle = room.runtime.state()
+    expect(etatSalle.currentSession?.id).toBe(keynote.id)
+    expect(etatSalle.currentSession?.kind).toBe('talk')
+    // Elle est désormais la conférence que la régie pilote.
+    expect(etatSalle.targetSession?.id).toBe(keynote.id)
+    expect(etatSalle.targetIsUpcoming).toBe(false)
+    expect((await agir({ action: 'session.start' })).status).toBe(200)
+  }, 40_000)
+
+  it('redevient une conférence quand on retire la décision', async () => {
+    const session = room.runtime.state().currentSession!
+    const admin = await operateur()
+
+    await admin.sessions.override({ sessionId: session.id, action: 'break' })
+    await sleep(1_000)
+    await admin.sessions.override({ sessionId: session.id, action: null })
+    await sleep(1_000)
+    room.runtime.refreshSessions()
+
+    expect(room.runtime.state().currentSession?.kind).toBe('talk')
+    expect(room.runtime.state().targetSession?.id).toBe(session.id)
+  }, 40_000)
+})
+
 describe("identifiants refusés par le hub", () => {
   it("réaffiche l'écran d'appairage au lieu de boucler", async () => {
     // Le cas vécu : la base du hub a été recréée, ou la machine a été révoquée.
@@ -406,13 +483,21 @@ describe('notifications inter-salles', () => {
 
   it("sert le programme d'une autre salle à la demande", async () => {
     const reponse = await fetch(`${regie}/display/sessions?salle=track-2-mf-1092`)
-    const corps = (await reponse.json()) as { sessions: unknown[]; rooms: unknown[] }
+    const corps = (await reponse.json()) as {
+      sessions: { sharedFrom: string | null }[]
+      rooms: unknown[]
+    }
 
-    expect(corps.sessions).toHaveLength(9)
+    // Neuf créneaux à l'export pour Track #2, quinze servis : elle hérite des
+    // six pauses de Track #1, qui tombent toutes pendant qu'elle est libre.
+    // C'est précisément ce que la régie vient lire — sans ça, la salle voisine
+    // paraissait déserte pendant le déjeuner.
+    expect(corps.sessions).toHaveLength(15)
+    expect(corps.sessions.filter((s) => s.sharedFrom != null)).toHaveLength(6)
     expect(corps.rooms).toHaveLength(3)
 
-    // Hors du flux d'état : embarquer 27 sessions à chaque envoi SSE coûterait
-    // pour une donnée consultée à l'ouverture d'un onglet.
+    // Hors du flux d'état : embarquer le programme entier à chaque envoi SSE
+    // coûterait pour une donnée consultée à l'ouverture d'un onglet.
     const payload = await etat()
     expect(payload.sessions).toHaveLength(15)
   }, 40_000)

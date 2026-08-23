@@ -1,4 +1,9 @@
-import { currentSession, roomConferenceState, type SessionStatuses } from '@cloudnord/program'
+import {
+  currentSession,
+  roomBreak,
+  roomConferenceState,
+  type SessionStatuses,
+} from '@cloudnord/program'
 import type { RoomStatus } from '@cloudnord/contract'
 import type { Services } from './context.js'
 import type { PushPayload } from './services/push.js'
@@ -22,8 +27,19 @@ export function statutsDesSalles(services: Services, at: number): RoomStatus[] {
 
   return services.rooms.statuses().map((statut) => {
     const session = snapshot == null ? null : currentSession(snapshot.program, statut.roomId, at)
+    const pause = snapshot == null ? null : roomBreak(snapshot.program, statut.roomId, at)
     return {
       ...statut,
+      breakBadge:
+        pause == null
+          ? null
+          : {
+              state: pause.state,
+              title: pause.session.title,
+              startsAt: pause.session.startsAt,
+              endsAt:
+                pause.endsAtMs == null ? null : new Date(pause.endsAtMs).toISOString(),
+            },
       currentSession:
         session == null
           ? null

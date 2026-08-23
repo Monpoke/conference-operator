@@ -303,9 +303,25 @@ export const sessionStateViewSchema = sessionStateSchema.extend({
 })
 export type SessionStateView = z.infer<typeof sessionStateViewSchema>
 
+/**
+ * Décision prise sur un créneau le jour J, sans réimport.
+ *
+ * `break` et `talk` corrigent ce que l'export ne dit pas. Le normaliseur n'a
+ * qu'un signal pour trancher — un créneau **sans intervenant** est une pause —
+ * et il se trompe dans les deux sens : une plénière annoncée avec un nom passe
+ * pour une conférence de salle, une keynote dont le speaker n'est pas encore
+ * annoncé passe pour un déjeuner.
+ *
+ * Le hub sert alors le programme avec le `kind` corrigé, et tout ce qui en
+ * découle suit — titrage à l'antenne, cible de « Commencer », couleur de la
+ * pastille, QR de feedback. Une surcharge qui dit ce que l'export dit déjà est
+ * sans effet : voir `ProgramService.active`.
+ *
+ * Les trois autres sont déclarées mais pas encore appliquées.
+ */
 export const sessionOverrideSchema = z.object({
   sessionId: sessionIdSchema,
-  status: z.enum(['delayed', 'cancelled', 'moved']),
+  status: z.enum(['talk', 'break', 'delayed', 'cancelled', 'moved']),
   delayMinutes: z.number().int().nullable(),
   note: z.string().nullable(),
 })
@@ -388,6 +404,27 @@ export const roomStatusSchema = z.object({
        * de fin inconnue, qu'on ne veut pas afficher comme « 0 min ».
        */
       remainingMs: z.number().int().nullable().default(null),
+    })
+    .nullable()
+    .default(null),
+  /**
+   * Le break de la salle, en cours ou imminent — ou `null`.
+   *
+   * À part de `conference`, et non un état de plus : les deux cohabitent. Une
+   * conférence peut courir pendant que le déjeuner approche, et c'est même le
+   * cas qui compte — celui où l'on décide de ne pas enchaîner.
+   *
+   * Calculé par le hub, comme le reste de cette structure : lui seul a l'heure
+   * qui fait foi, et elle peut être simulée.
+   */
+  breakBadge: z
+    .object({
+      /** `a-venir` : il commence dans moins d'un quart d'heure. */
+      state: z.enum(['en-cours', 'a-venir']),
+      title: z.string(),
+      startsAt: isoDateTimeSchema,
+      /** Reprise : fin effective du break. `null` si rien ne le ferme. */
+      endsAt: isoDateTimeSchema.nullable(),
     })
     .nullable()
     .default(null),

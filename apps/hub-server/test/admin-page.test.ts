@@ -58,9 +58,20 @@ beforeEach(() => {
   globalThis.history.replaceState(null, '', '/admin')
   // Session présente : la console s'affiche directement, sans écran de connexion.
   localStorage.setItem('hub-admin', 'jeton-de-test')
+  /**
+   * Réponse par défaut : une liste vide.
+   *
+   * Sauf pour les routes qui ne rendent pas de liste — un tableau là où la
+   * console attend un objet la fait échouer sur une route sans rapport avec ce
+   * qu'un test vérifie, et le message d'erreur atterrit dans l'avis partagé.
+   */
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => new Response(JSON.stringify({ json: [] }), { status: 200 })),
+    vi.fn(async (url: string) => {
+      const chemin = String(url).replace('/rpc/', '')
+      const json = chemin === 'program/globalBreak' ? null : []
+      return new Response(JSON.stringify({ json }), { status: 200 })
+    }),
   )
   monterConsole()
 })
@@ -470,8 +481,15 @@ describe('notifications', () => {
       },
     })
     vi.stubGlobal('PushManager', class {})
-    vi.stubGlobal('fetch', vi.fn(async () =>
-      new Response(JSON.stringify({ json: { publicKey: 'BJ' } }), { status: 200 })))
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const chemin = String(url).replace('/rpc/', '')
+      // Seule la clé publique compte ici ; le reste doit rester lisible par la
+      // console, sinon son erreur vient couvrir celle qu'on vient vérifier.
+      const json = chemin === 'push/publicKey' ? { publicKey: 'BJ' }
+        : chemin === 'program/globalBreak' ? null
+          : []
+      return new Response(JSON.stringify({ json }), { status: 200 })
+    }))
     monterConsole()
 
     $('btn-notifs').click()
@@ -920,15 +938,22 @@ describe('liste des salles', () => {
     },
   ]
 
-  beforeEach(async () => {
+  /** Remonte la console sur un état de salles et un créneau commun donnés. */
+  async function avecSallesEtGlobal(salles: unknown, global: unknown = null): Promise<void> {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       const chemin = String(url).replace('/rpc/', '')
-      const json = chemin === 'rooms/statuses' ? SALLES : []
+      const json = chemin === 'rooms/statuses' ? salles
+        : chemin === 'program/globalBreak' ? global
+          : []
       return new Response(JSON.stringify({ json }), { status: 200 })
     }))
     localStorage.setItem('hub-admin', 'jeton')
     monterConsole()
     await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+
+  beforeEach(async () => {
+    await avecSallesEtGlobal(SALLES)
   })
 
   /** Remonte la console sur une seule salle, dont le créneau est retouché. */
@@ -936,16 +961,87 @@ describe('liste des salles', () => {
     endsAt?: string | null
     remainingMs?: number | null
   }): Promise<void> {
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-      const chemin = String(url).replace('/rpc/', '')
-      const json = chemin === 'rooms/statuses'
-        ? [{ ...SALLES[0], currentSession: { ...CRENEAU, ...patch } }]
-        : []
-      return new Response(JSON.stringify({ json }), { status: 200 })
-    }))
-    monterConsole()
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await avecSallesEtGlobal([{ ...SALLES[0], currentSession: { ...CRENEAU, ...patch } }])
   }
+
+  /**
+   * Un créneau commun ne se présente pas comme une conférence.
+   *
+   * Pendant le déjeuner, la carte annonçait « Déjeuner · 22 min restantes »
+   * exactement comme elle annonce un talk : même place, même forme, même
+   * décompte. On lisait une salle occupée là où il n'y a personne.
+   */
+  describe('créneau commun', () => {
+    const DEJEUNER = {
+      state: 'en-cours',
+      title: 'Déjeuner',
+      startsAt: '2026-10-30T11:15:00.000Z',
+      endsAt: '2026-10-30T12:05:00.000Z',
+    }
+
+    it('marque la salle d\'une étiquette et se tait sur le reste', async () => {
+      await avecSallesEtGlobal([
+        {
+          ...SALLES[0],
+          conference: 'pause',
+          currentSession: { ...CRENEAU, title: 'Déjeuner' },
+          breakBadge: DEJEUNER,
+        },
+      ])
+
+      const carte = document.getElementById('salles')!.textContent ?? ''
+      expect(carte).toContain('BREAK')
+      // Ni le titre du créneau, ni son décompte : le détail vit dans l'encart.
+      expect(carte).not.toContain('Déjeuner')
+      expect(carte).not.toContain('restantes')
+      // La pastille le dit en toutes lettres : il n'y a personne.
+      expect(carte).toContain('rien dans la salle')
+    })
+
+    it("l'annonce pendant que la conférence court encore", async () => {
+      await avecSallesEtGlobal([
+        { ...SALLES[0], breakBadge: { ...DEJEUNER, state: 'a-venir' } },
+      ])
+
+      const carte = document.getElementById('salles')!.textContent ?? ''
+      expect(carte).toContain('BREAK à venir')
+      // La conférence, elle, continue de s'afficher : c'est le cas qui compte —
+      // celui où l'on décide de ne pas enchaîner.
+      expect(carte).toContain('HoneySwamp')
+    })
+
+    it('ouvre un encart Global pendant le créneau commun', async () => {
+      await avecSallesEtGlobal(SALLES, {
+        ...DEJEUNER,
+        rooms: 3,
+        serverTime: '2026-10-30T11:43:00.000Z',
+      })
+
+      expect(document.getElementById('encart-global')!.hidden).toBe(false)
+      expect(document.getElementById('global-titre')!.textContent).toBe('Déjeuner')
+      // Le décompte se calcule sur l'heure du hub, jamais sur celle du poste :
+      // sinon la console annonce « dans 6010 min » en heure simulée.
+      expect(document.getElementById('global-detail')!.textContent)
+        .toBe('reprise dans 22 min · 3 salles')
+    })
+
+    it("l'annonce à venir, puis le referme quand il n'y a rien", async () => {
+      await avecSallesEtGlobal(SALLES, {
+        ...DEJEUNER,
+        state: 'a-venir',
+        rooms: 3,
+        serverTime: '2026-10-30T11:03:00.000Z',
+      })
+
+      expect(document.getElementById('global-titre')!.textContent).toBe('Déjeuner — à venir')
+      expect(document.getElementById('global-detail')!.textContent).toBe('dans 12 min · 3 salles')
+
+      // Rien de commun en cours : l'encart disparaît. Un encart vide se lirait
+      // comme une panne.
+      await avecSallesEtGlobal(SALLES, null)
+      expect(document.getElementById('encart-global')!.hidden).toBe(true)
+    })
+  })
 
   it('dit ce qui se joue dans chaque salle', () => {
     // La première chose qu'on vient vérifier — elle manquait au tableau.
@@ -1095,21 +1191,32 @@ describe('vue Conférences', () => {
     ],
   }
 
+  /** Appels partis vers le hub depuis l'ouverture de la vue. */
+  let appels: { chemin: string; entree: unknown }[] = []
+
   /** Ouvre la console sur l'onglet Conférences, hub simulé. */
   async function ouvrir(planning: unknown = PLANNING, etats: unknown = ETATS): Promise<void> {
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    appels = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
       const chemin = String(url).replace('/rpc/', '')
+      appels.push({ chemin, entree: JSON.parse(String(init.body)).json })
       const json =
         chemin === 'sessions/states' ? etats
           : chemin === 'program/planning' ? planning
             : chemin === 'program/snapshots' ? [{ contentHash: 'a1b2c3', active: true }]
-              : []
+              : chemin === 'sessions/override' ? { ok: true, contentHash: 'a1b2c3~ff' }
+                : []
       return new Response(JSON.stringify({ json }), { status: 200 })
     }))
     localStorage.setItem('hub-admin', 'jeton')
     monterConsole()
     $('nav-conferences').click()
     await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+
+  /** Le menu d'actions d'une ligne du planning, repéré par son créneau. */
+  function menuDe(sessionId: string): HTMLSelectElement | null {
+    return $('planning').querySelector('select[data-session="' + sessionId + '"]')
   }
 
   it('compte le restant sur l\'horloge du hub', async () => {
@@ -1226,6 +1333,153 @@ describe('vue Conférences', () => {
     })
 
     expect($('planning').textContent).toContain('Aucun programme actif')
+  })
+
+  /**
+   * La colonne Action.
+   *
+   * L'export amont ne distingue pas un déjeuner d'une conférence : les deux
+   * sont des créneaux avec un titre et une salle. C'est ici qu'on le corrige,
+   * ligne par ligne, sans réimport.
+   */
+  describe('corriger le genre d\'un créneau', () => {
+    /** Les entrées d'un menu, dans l'ordre : (valeur, libellé). */
+    function entrees(menu: HTMLSelectElement): [string, string][] {
+      return [...menu.options].map((option) => [option.value, option.textContent ?? ''])
+    }
+
+    it('offre l\'action qui contredit l\'export, jamais celle qui ne ferait rien', async () => {
+      await ouvrir()
+
+      // Une conférence ne se propose qu'en break…
+      expect(entrees(menuDe('ses-1')!)).toEqual([
+        ['', 'Aucune — conférence au programme'],
+        ['break', 'Considérer comme break'],
+      ])
+      // …et une pause qu'en conférence. C'est le cas de la keynote d'ouverture,
+      // que l'export donne pour une pause faute de speaker annoncé.
+      expect(entrees(menuDe('pause')!)).toEqual([
+        ['', 'Aucune — pause au programme'],
+        ['talk', 'Considérer comme conférence'],
+      ])
+    })
+
+    it('envoie « conférence » sur un créneau que l\'export donne pour une pause', async () => {
+      await ouvrir()
+      appels.length = 0
+
+      const menu = menuDe('pause')!
+      menu.value = 'talk'
+      menu.dispatchEvent(new Event('change', { bubbles: true }))
+      await new Promise((resolve) => setTimeout(resolve, 20))
+
+      expect(appels).toContainEqual({
+        chemin: 'sessions/override',
+        entree: { sessionId: 'pause', action: 'talk' },
+      })
+      expect($('avis').textContent).toContain('conférence')
+    })
+
+    it('déduit l\'export de la décision appliquée, sans le redemander', async () => {
+      // Le hub sert la keynote en conférence, en disant que c'est une décision :
+      // l'export, lui, la donne pour une pause. Le menu doit donc proposer de
+      // la lui rendre, pas de la re-déclarer conférence.
+      await ouvrir({
+        ...PLANNING,
+        sessions: PLANNING.sessions.map((session) =>
+          session.id === 'pause'
+            ? { ...session, kind: 'talk', overriddenAs: 'talk' }
+            : session),
+      })
+
+      const menu = menuDe('pause')!
+      expect(entrees(menu)).toEqual([
+        ['', 'Aucune — pause au programme'],
+        ['talk', 'Considérer comme conférence'],
+      ])
+      expect(menu.value).toBe('talk')
+    })
+
+    it('envoie la décision au hub, puis relit le planning', async () => {
+      await ouvrir()
+      appels.length = 0
+
+      const menu = menuDe('ses-1')!
+      menu.value = 'break'
+      menu.dispatchEvent(new Event('change', { bubbles: true }))
+      await new Promise((resolve) => setTimeout(resolve, 20))
+
+      expect(appels).toContainEqual({
+        chemin: 'sessions/override',
+        entree: { sessionId: 'ses-1', action: 'break' },
+      })
+      // Relu depuis le hub : c'est lui qui sert le programme corrigé, et le
+      // reconstruire dans la page le ferait diverger de ce que voient les salles.
+      expect(appels.some((appel) => appel.chemin === 'program/planning')).toBe(true)
+      expect($('avis').textContent).toContain('break')
+    })
+
+    it('montre la décision en cours, et sert à la retirer', async () => {
+      // Le hub sert déjà le créneau en break, en disant d'où vient ce break.
+      await ouvrir({
+        ...PLANNING,
+        sessions: PLANNING.sessions.map((session) =>
+          session.id === 'ses-1'
+            ? { ...session, kind: 'break', feedbackUrl: null, overriddenAs: 'break' }
+            : session),
+      })
+
+
+      const menu = menuDe('ses-1')!
+      expect(menu.value).toBe('break')
+
+      appels.length = 0
+      menu.value = ''
+      menu.dispatchEvent(new Event('change', { bubbles: true }))
+      await new Promise((resolve) => setTimeout(resolve, 20))
+
+      expect(appels).toContainEqual({
+        chemin: 'sessions/override',
+        entree: { sessionId: 'ses-1', action: null },
+      })
+    })
+
+    it("n'édite pas une pause héritée d'une autre salle", async () => {
+      // Elle n'existe pas dans l'export : c'est le créneau d'origine qu'on
+      // corrige, et la projection suit. Un menu sur la copie laisserait croire
+      // à deux décisions indépendantes.
+      await ouvrir({
+        ...PLANNING,
+        sessions: [
+          ...PLANNING.sessions,
+          {
+            id: 'pause@hands-on', title: 'Déjeuner', speakers: [],
+            startsAt: '2026-10-30T11:00:00.000Z', endsAt: '2026-10-30T12:00:00.000Z',
+            roomId: 'hands-on', roomName: 'Hands on', kind: 'break',
+            feedbackUrl: null, sharedFrom: 'pause',
+          },
+        ],
+      })
+
+      expect(menuDe('pause@hands-on')).toBeNull()
+      expect($('planning').textContent).toContain('héritée')
+    })
+
+    it('remet le menu où il était quand le hub refuse', async () => {
+      await ouvrir()
+      // Un créneau disparu du programme entre l'affichage et le clic : le menu
+      // ne doit pas rester sur une décision que personne n'a enregistrée.
+      vi.stubGlobal('fetch', vi.fn(async () =>
+        new Response(JSON.stringify({ json: { message: 'Créneau inconnu' } }), { status: 404 })))
+
+      const menu = menuDe('ses-1')!
+      menu.value = 'break'
+      menu.dispatchEvent(new Event('change', { bubbles: true }))
+      await new Promise((resolve) => setTimeout(resolve, 20))
+
+      expect(menu.value).toBe('')
+      expect($('avis').className).toContain('erreur')
+    })
   })
 })
 

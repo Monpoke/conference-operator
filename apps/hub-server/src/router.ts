@@ -9,6 +9,7 @@ import {
 import {
   currentSession,
   nextSession,
+  roomBreak,
   FUSEAU_PAR_DEFAUT,
   openFeedbackUrl,
   type Session,
@@ -76,9 +77,17 @@ export const router = os.router({
         context.services.rooms.ensureFromTracks(snapshot.program.rooms)
         // Prévenir les salles plutôt que d'attendre leur prochain sync : un
         // changement de programme doit atteindre l'écran en secondes.
+        //
+        // L'empreinte annoncée est celle du programme **servi**, relue après
+        // import : des décisions du jour peuvent survivre au réimport, et
+        // annoncer celle du snapshot désignerait une version que personne ne
+        // reçoit.
         context.services.commands.publish(
           null,
-          { type: 'program.invalidate', contentHash: snapshot.contentHash },
+          {
+            type: 'program.invalidate',
+            contentHash: context.services.programs.active()?.contentHash ?? snapshot.contentHash,
+          },
           null,
         )
         return snapshot
@@ -88,9 +97,14 @@ export const router = os.router({
       .handler(({ context }) => context.services.programs.list()),
     activate: os.program.activate.use(operatorOnly).handler(({ input, context }) => {
       context.services.programs.activate(input.contentHash)
+      // Relue après bascule, et pour la même raison qu'à l'import : c'est
+      // l'empreinte du programme servi que les salles vont comparer à la leur.
       context.services.commands.publish(
         null,
-        { type: 'program.invalidate', contentHash: input.contentHash },
+        {
+          type: 'program.invalidate',
+          contentHash: context.services.programs.active()?.contentHash ?? input.contentHash,
+        },
         null,
       )
       return { ok: true }
@@ -105,6 +119,58 @@ export const router = os.router({
      * visuels font l'essentiel des 70 ko d'un snapshot, et rien de tout ça ne
      * s'affiche dans un planning.
      */
+    /**
+     * Le créneau commun du moment, vu de l'événement et non d'une salle.
+     *
+     * Calculé salle par salle puis regroupé : c'est la seule façon honnête de
+     * dire « trois salles ». Un créneau commun n'est pas une entité du
+     * programme — c'est une pause que plusieurs salles tiennent au même moment,
+     * les unes parce qu'elle y est au programme, les autres parce qu'elles n'ont
+     * rien de prévu et en héritent.
+     *
+     * Départage par le nombre de salles : sur un événement où deux pauses se
+     * chevauchent, celle qui concerne le plus de monde est celle qu'on affiche.
+     */
+    globalBreak: os.program.globalBreak.use(operatorOnly).handler(({ context }) => {
+      const snapshot = context.services.programs.active()
+      const at = context.services.clock.now()
+      if (snapshot == null) return null
+
+      const groupes = new Map<
+        string,
+        { state: 'en-cours' | 'a-venir'; title: string; startsAt: string; endsAt: string | null; startsAtMs: number; rooms: number }
+      >()
+      for (const salle of snapshot.program.rooms) {
+        const pause = roomBreak(snapshot.program, salle.id, at)
+        if (pause == null) continue
+        const cle = `${pause.session.startsAtMs}-${pause.endsAtMs ?? ''}-${pause.session.title}`
+        const connu = groupes.get(cle)
+        if (connu != null) {
+          connu.rooms += 1
+          // Une salle déjà en pause l'emporte sur une salle qui l'anticipe :
+          // le créneau a commencé quelque part, il ne s'annonce plus.
+          if (pause.state === 'en-cours') connu.state = 'en-cours'
+          continue
+        }
+        groupes.set(cle, {
+          state: pause.state,
+          title: pause.session.title,
+          startsAt: pause.session.startsAt,
+          endsAt: pause.endsAtMs == null ? null : new Date(pause.endsAtMs).toISOString(),
+          startsAtMs: pause.session.startsAtMs,
+          rooms: 1,
+        })
+      }
+
+      const retenu = [...groupes.values()].sort(
+        (a, b) => b.rooms - a.rooms || a.startsAtMs - b.startsAtMs,
+      )[0]
+      if (retenu == null) return null
+
+      const { startsAtMs: _ignore, ...reste } = retenu
+      return { ...reste, serverTime: nowIso(context) }
+    }),
+
     planning: os.program.planning.use(operatorOnly).handler(({ context }) => {
       const snapshot = context.services.programs.active()
       // Pas d'erreur : un hub tout juste installé n'a pas encore de programme,
@@ -137,6 +203,13 @@ export const router = os.router({
        */
       const projetDeLEvenement = context.services.settings.get().openFeedbackProjectId
 
+      /**
+       * Les décisions **appliquées**, pour que la console distingue un genre
+       * décidé d'un genre importé : c'est le premier qu'elle propose de
+       * retirer, et c'est de là qu'elle déduit ce que dit l'export.
+       */
+      const surcharges = snapshot.overrides
+
       return {
         contentHash: snapshot.contentHash,
         timezone: program.timezone,
@@ -166,6 +239,8 @@ export const router = os.router({
                     salle?.openFeedbackProjectId ?? projetDeLEvenement,
                     program.timezone,
                   ),
+            overriddenAs: surcharges[session.id] ?? null,
+            sharedFrom: session.sharedFrom,
           }
         }),
       }
@@ -398,6 +473,58 @@ export const router = os.router({
       const etat = context.services.sessions.end(session.id, roomId, auteurDe(context))
       diffuserEtat(context, etat)
       return etat
+    }),
+
+    /**
+     * Surcharge un créneau du programme.
+     *
+     * Le geste n'existe que parce que l'export amont ne dit pas tout : un
+     * accueil, un déjeuner, une plénière y sont des créneaux comme les autres,
+     * rattachés à une salle, avec un titre. La salle les titrait donc à
+     * l'antenne et la régie proposait de les « commencer ».
+     *
+     * Décidé ici et pas en salle : c'est le programme de l'événement qu'on
+     * corrige, et il doit se lire pareil partout. La diffusion qui suit fait
+     * redescendre le programme corrigé — l'empreinte a changé, les salles ne
+     * resteront donc pas sur leur cache.
+     */
+    override: os.sessions.override.use(operatorOnly).handler(({ input, context }) => {
+      const snapshot = context.services.programs.active()
+      if (snapshot == null) {
+        throw new ORPCError('NOT_FOUND', { message: 'Aucun programme actif sur ce hub' })
+      }
+      const creneau = snapshot.program.sessions.find((session) => session.id === input.sessionId)
+      if (creneau == null) {
+        throw new ORPCError('NOT_FOUND', {
+          message: `Créneau inconnu du programme actif : ${input.sessionId}`,
+        })
+      }
+      /**
+       * Une pause héritée d'une autre salle ne s'édite pas.
+       *
+       * Elle n'existe pas dans l'export : elle est la projection d'un créneau
+       * qui, lui, s'édite. Accepter une décision dessus l'enregistrerait sur un
+       * identifiant dérivé, que le prochain calcul ne retrouverait pas — une
+       * décision qui n'aurait aucun effet et qu'on ne saurait pas retirer.
+       */
+      if (creneau.sharedFrom != null) {
+        throw new ORPCError('BAD_REQUEST', {
+          message:
+            'Ce créneau est une pause héritée d\'une autre salle : la décision se prend ' +
+            'sur le créneau d\'origine, et la projection suit.',
+        })
+      }
+
+      context.services.rooms.setOverride(input.sessionId, input.action)
+      // Relu après écriture : c'est l'empreinte du programme tel qu'il est
+      // désormais servi, et c'est elle qu'on annonce aux salles.
+      const contentHash = context.services.programs.active()?.contentHash ?? snapshot.contentHash
+      context.services.commands.publish(
+        null,
+        { type: 'program.invalidate', contentHash },
+        null,
+      )
+      return { ok: true, contentHash }
     }),
 
     reset: os.sessions.reset.use(roomOrOperator).handler(({ input, context }) => {

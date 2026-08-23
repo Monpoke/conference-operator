@@ -243,7 +243,19 @@ ${etatInitial}
 <div id="scene" class="absolute inset-0 flex flex-col gap-[3vmin] p-[4.5vmin]">
   <header class="flex flex-none items-center justify-between gap-[2vmin]">
     <img id="logo" alt="" data-logo class="h-[7vmin] max-w-[30vw] object-contain" hidden>
-    <div class="text-[2.6vmin] tracking-[.16em] text-attenue uppercase" id="nom-salle"></div>
+    <div class="flex items-center gap-[1.6vmin]">
+      <!--
+        Le créneau commun, annoncé sur l'écran de la salle.
+
+        L'habillage bascule en boucle d'attente pendant une pause, ce qui ne dit
+        pas *pourquoi* : un participant entré au milieu ne sait pas s'il a raté
+        le talk ou si tout le monde déjeune. L'étiquette le dit, et l'annonce un
+        quart d'heure avant, pendant que la conférence se termine encore.
+      -->
+      <span class="rounded-[.6vmin] bg-white/10 px-[1.4vmin] py-[.5vmin] text-[2vmin] tracking-[.14em] uppercase"
+            id="etiquette-break" hidden></span>
+      <div class="text-[2.6vmin] tracking-[.16em] text-attenue uppercase" id="nom-salle"></div>
+    </div>
   </header>
 
   <!-- Pile de couches : la page sortante y reste le temps de s'effacer. -->
@@ -929,6 +941,16 @@ ${etatInitial}
     appliquerTheme(donnees.event)
 
     document.getElementById('nom-salle').textContent = donnees.roomName ?? donnees.state.roomId ?? ''
+
+    const pause = donnees.state.breakBadge
+    const etiquette = document.getElementById('etiquette-break')
+    etiquette.hidden = pause == null
+    if (pause != null) {
+      etiquette.textContent = pause.state === 'en-cours' ? 'Break' : 'Break à venir'
+      // « À venir » attire l'œil, « en cours » se contente d'exister : à ce
+      // moment-là, l'écran entier dit déjà que rien ne se joue.
+      etiquette.style.color = pause.state === 'en-cours' ? '' : 'var(--color-attention)'
+    }
     const pastille = document.getElementById('pastille')
     pastille.className = "block size-[1.4vmin] rounded-full " + (
       donnees.state.connectivity === 'OFFLINE' ? "bg-alerte"

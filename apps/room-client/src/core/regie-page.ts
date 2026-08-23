@@ -150,8 +150,18 @@ ${etatInitial}
         speaker : une ligne vide sous « Pause déjeuner » ferait douter.
       -->
       <div class="mb-2 line-clamp-1 text-xs text-attenue" id="qui-conf" hidden></div>
-      <!-- Le temps restant est la donnée qu'on regarde en boucle : elle a la taille qui va avec. -->
-      <div class="text-[40px] leading-none font-bold tabular-nums" id="restant">--:--</div>
+      <!--
+        Le temps restant est la donnée qu'on regarde en boucle : elle a la
+        taille qui va avec.
+
+        Le badge à côté dit *ce que* le nombre décompte. Sans lui, « 12:34 » se
+        lit comme du temps de conférence restant — y compris quand il s'agit du
+        temps qui reste **avant** de commencer, ce qui est l'inverse.
+      -->
+      <div class="flex items-center gap-2.5">
+        <div class="text-[40px] leading-none font-bold tabular-nums" id="restant">--:--</div>
+        <span class="badge" id="badge-restant" hidden>à venir</span>
+      </div>
       <div class="mt-1 text-xs text-attenue" id="conf-detail"></div>
       <div class="mt-2 border-t border-bord pt-2 text-xs text-attenue" id="suivant"></div>
       <div class="mt-2 grid grid-cols-2 gap-2">
@@ -490,6 +500,35 @@ ${etatInitial}
     return sessions.find((s) => s.startsAtMs > instant) ?? null
   }
 
+  /** En deçà, un break qui approche s'annonce. Même seuil que côté programme. */
+  const BREAK_PROCHE_MS = 15 * 60000
+
+  /**
+   * Le break d'une salle, en cours ou imminent — jumeau local de roomBreak.
+   *
+   * Recalculé ici plutôt que reçu du hub, comme tout ce bandeau : le programme
+   * mis en cache répond même pendant une coupure, et c'est précisément quand le
+   * réseau lâche qu'on veut encore savoir quand la salle d'à côté reprend.
+   *
+   * Le créneau suivant compte même si une conférence court : savoir que le
+   * déjeuner tombe dans douze minutes est ce qui fait décider de ne pas
+   * enchaîner.
+   */
+  function pauseDe(sessions, instant) {
+    const courante = enCours(sessions, instant)
+    if (courante != null && courante.kind === 'break') return { etat: 'en-cours', session: courante }
+    if (courante != null) {
+      const suivante = sessions[sessions.indexOf(courante) + 1]
+      return suivante?.kind === 'break' && suivante.startsAtMs - instant <= BREAK_PROCHE_MS
+        ? { etat: 'a-venir', session: suivante }
+        : null
+    }
+    const suivante = apres(sessions, instant)
+    return suivante?.kind === 'break' && suivante.startsAtMs - instant <= BREAK_PROCHE_MS
+      ? { etat: 'a-venir', session: suivante }
+      : null
+  }
+
   /** Créneau au-delà duquel une fin proche se signale. */
   const FIN_PROCHE_MS = 5 * 60000
 
@@ -501,7 +540,8 @@ ${etatInitial}
    */
   const ETATS = {
     aucune: ['hors', 'hors créneau'],
-    pause: ['pause', 'pause'],
+    // Un créneau commun n'est pas un état de la salle : il n'y a personne.
+    pause: ['hors', 'rien dans la salle'],
     'pas-commencee': ['pas-commencee', 'pas commencée'],
     retard: ['retard', 'retard au démarrage'],
     'en-cours': ['', 'en cours'],
@@ -787,7 +827,9 @@ ${etatInitial}
         detail = etat.libelle
         teinte = etat.classe === 'retard' ? 'text-attention' : 'text-attenue'
       } else if (courante != null && courante.kind === 'break') {
-        libelle = courante.title
+        // Pas de libellé : l'étiquette BREAK le dit déjà, et « Déjeuner » à la
+        // place d'un titre de conférence se lisait comme une salle occupée. Ce
+        // qui décide ici, c'est l'heure de reprise.
         detail = suivante == null ? 'pause' : 'reprise ' + heure(suivante.startsAt, donnees.timezone)
       } else if (courante != null) {
         libelle = courante.title
@@ -807,10 +849,24 @@ ${etatInitial}
       }
 
       const classe = etat.classe + confiance(vue?.connectivity ?? salle.connectivity)
+      /**
+       * L'étiquette du break, à côté du nom de la salle.
+       *
+       * Elle cohabite avec ce que fait la salle : « BREAK à venir » s'affiche
+       * pendant qu'une conférence court encore, et c'est là qu'elle sert.
+       */
+      const pause = pauseDe(sessions, instant)
+      const etiquette = pause == null
+        ? ''
+        : '<span class="shrink-0 rounded bg-fond px-1.5 py-0.5 text-[11px] ' +
+          (pause.etat === 'en-cours' ? 'text-attenue' : 'text-attention') + '">' +
+          (pause.etat === 'en-cours' ? 'BREAK' : 'BREAK à venir') + '</span>'
+
       return '<button data-salle="' + echapper(salle.id) + '" ' +
         'class="flex shrink-0 items-center gap-2 rounded-md border border-bord bg-surface2 px-2.5 py-1 text-xs font-normal">' +
         '<span class="pastille ' + classe + '"></span>' +
         '<span class="font-semibold">' + echapper(salle.name) + '</span>' +
+        etiquette +
         (libelle ? '<span class="max-w-[26ch] truncate text-attenue">' + echapper(libelle) + '</span>' : '') +
         '<span class="' + teinte + ' tabular-nums">' + echapper(detail) + '</span>' +
         '</button>'
@@ -1425,9 +1481,21 @@ ${etatInitial}
     demarrer.classList.toggle('actif', statut === 'running')
 
     const reste = resteAuProgramme()
+    /**
+     * Terminée : on nomme ce que le décompte vise.
+     *
+     * Le grand nombre compte jusqu'à la prochaine conférence, la ligne
+     * « Suivant » juste en dessous annonce le prochain *créneau* — qui peut être
+     * une pause. Les deux différaient sans que rien ne l'explique. L'heure ici
+     * lève l'ambiguïté, et l'annulation reste à portée.
+     */
+    const prochaine = statut === 'ended' ? prochaineConference(maintenant()) : null
     $('conf-detail').textContent =
       statut === 'ended'
-        ? "Terminée. « Remettre à venir » si c'est une erreur."
+        ? (prochaine == null
+            ? "Terminée. « Remettre à venir » si c'est une erreur."
+            : 'Prochaine conférence à ' + heure(prochaine.startsAt, donnees.timezone) +
+              ". « Remettre à venir » si c'est une erreur.")
         : statut === 'running'
           ? reste
           : aVenir
@@ -1471,16 +1539,45 @@ ${etatInitial}
     if (session == null) return null
     const instant = maintenant()
     const statut = (donnees.state.sessionStates ?? {})[session.id] ?? 'scheduled'
+
+    /**
+     * Une conférence terminée ne décompte plus rien.
+     *
+     * Le chronomètre continuait sur son créneau : « Terminer » appuyé à 10:35,
+     * il restait quinze minutes à l'écran sur un talk que la salle venait de
+     * quitter. Ce qu'on vient y chercher à ce moment-là est la seule chose qui
+     * décide de la suite — dans combien de temps la prochaine commence.
+     */
+    if (statut === 'ended') {
+      const suivante = prochaineConference(instant)
+      return suivante == null ? null : { ms: suivante.startsAtMs - instant, avantDebut: true }
+    }
+
     if (statut === 'scheduled' && session.startsAtMs > instant) {
       return { ms: session.startsAtMs - instant, avantDebut: true }
     }
     return session.endsAtMs == null ? null : { ms: session.endsAtMs - instant, avantDebut: false }
   }
 
+  /**
+   * La prochaine **conférence** de la salle, pauses sautées.
+   *
+   * Un déjeuner n'est pas ce qu'on attend : compter jusqu'à lui donnerait un
+   * chiffre juste et sans usage, quand ce qui se prépare est le talk d'après.
+   * C'est aussi ce que vise « Commencer » — les deux doivent désigner le même
+   * créneau, sinon le décompte annonce une chose et le bouton en lance une autre.
+   */
+  function prochaineConference(instant) {
+    return (donnees.sessions ?? []).find((s) => s.kind === 'talk' && s.startsAtMs > instant) ?? null
+  }
+
   /** Le grand compte à rebours, remis à jour chaque seconde par tic(). */
   function rendreRestant() {
     const el = $('restant')
     const compte = comptePourLeChrono()
+    // Le badge dit ce que le nombre décompte : un temps d'antenne qui s'épuise,
+    // ou une attente avant que ça reparte. Les deux se lisent pareil sans lui.
+    $('badge-restant').hidden = compte == null || !compte.avantDebut
     if (compte == null) {
       el.textContent = '--:--'
       el.className = 'text-[40px] leading-none font-bold tabular-nums text-attenue'

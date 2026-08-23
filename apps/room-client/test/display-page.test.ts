@@ -172,6 +172,48 @@ beforeEach(() => {
   monterEcran()
 })
 
+/**
+ * Le créneau commun, annoncé sur l'écran de la salle.
+ *
+ * L'habillage bascule en boucle d'attente pendant une pause, ce qui ne dit pas
+ * *pourquoi* : un participant entré au milieu ne sait pas s'il a raté le talk
+ * ou si tout le monde déjeune.
+ */
+describe('étiquette de break', () => {
+  const etiquette = () => document.getElementById('etiquette-break')!
+
+  it('ne dit rien pendant une conférence', () => {
+    expect(etiquette().hidden).toBe(true)
+  })
+
+  it('annonce le break en cours', () => {
+    monterEcran({
+      ...ETAT,
+      state: {
+        ...ETAT.state,
+        breakBadge: { state: 'en-cours', title: 'Déjeuner', startsAt: '2026-10-30T11:15:00.000Z' },
+      },
+    } as unknown as DisplayPayload)
+
+    expect(etiquette().hidden).toBe(false)
+    expect(etiquette().textContent).toBe('Break')
+  })
+
+  it("l'annonce un quart d'heure avant, pendant que la conférence se termine", () => {
+    monterEcran({
+      ...ETAT,
+      state: {
+        ...ETAT.state,
+        breakBadge: { state: 'a-venir', title: 'Déjeuner', startsAt: '2026-10-30T11:15:00.000Z' },
+      },
+    } as unknown as DisplayPayload)
+
+    expect(etiquette().textContent).toBe('Break à venir')
+    // « À venir » attire l'œil ; « en cours » se contente d'exister.
+    expect(etiquette().style.color).toBeTruthy()
+  })
+})
+
 describe('programme projeté', () => {
   it('amène la conférence en cours au centre de l\'écran', () => {
     // Sans cela, la salle regarderait le petit-déjeuner à seize heures.

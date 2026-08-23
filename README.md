@@ -659,6 +659,155 @@ Sans push disponible, le bouton reste, avec les notifications de page seules —
 un avertissement qui ne traverse pas le verrouillage vaut mieux que pas
 d'avertissement — et la console dit laquelle des deux portées elle a obtenue.
 
+### Corriger un créneau que l'export raconte mal
+
+Console → **Conférences** → *Planning du programme actif* → colonne **Action**.
+
+L'export amont ne distingue pas un déjeuner d'une conférence : les deux sont des
+créneaux avec un titre, un horaire et un track. Le normaliseur tranche sur un
+seul signal — un créneau **sans intervenant** est une pause — qui couvre les cas
+ordinaires et se trompe dans les deux sens :
+
+- une plénière, une remise de prix, un mot du sponsor portent un nom de speaker
+  sans être des conférences de salle : la salle les titrait à l'antenne et la
+  régie proposait de les « commencer » ;
+- une **keynote d'ouverture dont le speaker n'est pas encore annoncé** n'a aucun
+  intervenant : elle passait pour un déjeuner, sans titrage ni bouton
+  « Commencer ».
+
+D'où deux actions, symétriques. Le menu n'en propose jamais qu'une — celle qui
+contredit l'export — plus « Aucune », qui rend le créneau à ce que dit l'export :
+
+| Le programme dit | Le menu propose |
+|---|---|
+| conférence | *Considérer comme break* |
+| pause | *Considérer comme conférence* |
+
+Ce que la décision entraîne, dans un sens comme dans l'autre :
+
+| Surface | En break | En conférence |
+|---|---|---|
+| Écran de salle | Plus de titrage à l'antenne | Titré — sans ligne vide si personne n'est encore annoncé |
+| Régie | Plus la cible de « Commencer » : c'est le talk suivant | Devient la conférence pilotée |
+| Pastilles | « pause » | « pas commencée », puis « retard au démarrage » |
+| Feedback | Plus de QR ni de lien OpenFeedback | Le QR reparaît |
+| Clôture automatique | Sans objet : un break ne se démarre pas, donc ne déborde pas | S'applique normalement |
+
+C'est le **hub** qui applique la décision, au seul endroit où le programme se
+lit (`ProgramService.active()`). Salles, mur, console, supervision et
+notifications voient donc tous la même chose — appliquer la correction plus loin
+laisserait la pastille de la console dire « conférence » pendant que l'écran dit
+« pause ». L'empreinte du programme servi change avec la décision : sans quoi
+les salles resteraient sur leur cache, à titrer à l'antenne ce qu'on vient
+justement de corriger. Elles reçoivent un `program.invalidate` et
+resynchronisent dans la seconde.
+
+**Une décision qui dit ce que l'export dit déjà est sans effet** — ni sur le
+programme servi, ni sur son empreinte. C'est ce qui rend le mécanisme sûr au
+réimport : le jour où l'export annonce enfin le speaker de la keynote, le
+normaliseur en fait une conférence tout seul, la décision devient sans objet, et
+les salles ne retéléchargent pas pour un changement qui n'en est pas un. La
+console s'appuie sur la même règle pour savoir ce que dit l'export, sans le
+redemander : une décision appliquée implique un export qui disait l'inverse.
+
+Les décisions vivent dans `session_override`, à côté du snapshot et non dedans :
+elles **survivent au réimport** — un export corrigé deux fois dans la journée ne
+les efface pas — et se retirent du même menu.
+
+### Les pauses d'une salle valent pour celles qui n'ont rien de prévu
+
+Le modèle amont ne porte qu'un `trackId` par créneau : une session appartient à
+**une** salle au plus. Déjeuner, accueil et pauses café figurent donc sur la
+salle principale et nulle part ailleurs, alors que l'événement entier déjeune.
+Les autres salles affichaient un trou — « hors créneau » sur la pastille,
+habillage neutre à l'écran, et rien à dire au public entré par la mauvaise porte.
+
+La règle, appliquée sans réglage : **une salle libre pendant toute la durée
+d'une pause tenue ailleurs hérite de cette pause.** Sur l'export 2026, cela fait
+onze projections — 27 créneaux importés, 38 servis :
+
+```
+12:40  Track #1  Déjeuner          Track #2  Déjeuner ⤴        Hands on  Déjeuner ⤴
+10:50  Track #1  Pause croissants  Track #2  Pause croissants ⤴  Hands on  (son atelier)
+```
+
+Deux garde-fous, et ce sont eux qui font la différence entre une règle et une
+approximation :
+
+- **Libre pendant *toute* la durée, pas seulement au début.** Un chevauchement,
+  même partiel, veut dire que la salle a son propre programme à ce moment-là —
+  l'atelier de deux heures de Hands on, qui court par-dessus la pause croissants.
+  Rogner la pause pour la faire entrer dans l'intervalle restant fabriquerait un
+  créneau que personne n'a mis au programme.
+- **Bord à bord n'est pas un chevauchement.** Un talk qui finit à 11:15 ne
+  recouvre pas une pause qui commence à 11:15 — c'est le cas courant, et le
+  traiter autrement annulerait la règle partout où elle sert.
+
+La projection est **dérivée, jamais stockée** : elle se recalcule sur le
+programme servi, décisions du jour comprises, et n'entre donc pas dans son
+empreinte — ses deux sources, le snapshot et les décisions, la couvrent déjà.
+Conséquence utile : *Considérer comme break* fait apparaître le créneau dans les
+salles libres au même moment, et *Considérer comme conférence* l'en retire, sans
+que rien d'autre n'ait à suivre.
+
+Les copies portent un identifiant dérivé (`<créneau>@<salle>`) et le champ
+`sharedFrom`. Le planning les montre — c'est là qu'on vérifie ce que chaque
+salle affichera vraiment — marquées « héritée » et sans menu d'action : la
+décision se prend sur le créneau d'origine.
+
+⚠️ La règle s'applique au **programme servi**, pas au cache des salles. Après une
+mise à jour du hub, une salle dont l'empreinte n'a pas bougé garde son ancien
+programme : c'est le cas d'école de « Demander une resynchronisation », ci-dessous.
+
+### Un break ne se présente pas comme une conférence
+
+Une pause occupait la même place qu'un talk : titre du créneau, décompte,
+pastille colorée. On lisait « Déjeuner · 22 min restantes » exactement comme on
+lit « HoneySwamp · 22 min restantes », et rien ne disait qu'il n'y a personne
+dans la salle.
+
+Trois surfaces, une même étiquette :
+
+| Surface | Pendant le break | Un quart d'heure avant |
+|---|---|---|
+| Carte de salle (console) | `[BREAK]` à côté du nom, ligne du créneau vide, pastille « rien dans la salle » | `[BREAK à venir]`, la conférence en cours reste affichée |
+| Bandeau des salles (régie) | `[BREAK]` + « reprise 13:05 » | `[BREAK à venir]` + le talk qui court encore |
+| Écran de salle | `Break` près du nom de la salle | `Break à venir` |
+
+**Le quart d'heure n'attend pas que la salle soit vide.** C'est même l'inverse
+qui compte : savoir que le déjeuner tombe dans douze minutes pendant qu'un talk
+se termine est ce qui fait décider de ne pas enchaîner. Réserver l'annonce aux
+salles déjà libres l'aurait donnée à ceux qui n'en avaient plus besoin.
+
+**« rien dans la salle », et pas « pause ».** Un créneau commun n'est pas un
+état de la conférence, c'est l'absence de conférence. La pastille prend donc la
+teinte neutre, avec son mot — le mot compte autant que la couleur, la carte se
+regarde de loin et tout le monde ne distingue pas les teintes.
+
+**Un talk jamais « Terminé » l'emporte sur le break.** Si l'heure du déjeuner
+arrive alors que la régie n'a pas clôturé, la pastille reste au **dépassement** :
+c'est le seul état qui demande un arbitrage, et c'est lui qui décale la journée.
+« rien dans la salle » n'apparaît qu'une fois « Terminer » appuyé.
+
+#### L'encart « Global »
+
+En tête de l'onglet *Exploitation*, au-dessus des cartes de salle. Il n'apparaît
+que quand un créneau commun court ou approche :
+
+```
+┌─ Global ─────────────────────────────┐
+│ ● Déjeuner        12:15 – 13:05      │
+│   reprise dans 22 min · 3 salles     │
+└──────────────────────────────────────┘
+```
+
+Le reste du temps il disparaît — un encart vide se lit comme une panne. Le
+compte de salles est calculé, pas supposé : le hub regarde chaque salle, groupe
+celles qui tiennent le même créneau au même moment, et retient celui qui
+concerne le plus de monde. Le décompte se lit sur l'heure du **hub**, qui
+voyage avec la réponse : la calculer dans le navigateur annonçait « dans
+6010 min » dès qu'on déplaçait l'horloge depuis le menu Développement.
+
 ### Remettre une salle d'aplomb sans la redémarrer
 
 Console → **Réglages** → panneau « Resynchronisation des salles » → choisir une
@@ -987,14 +1136,42 @@ l'enregistrement et de la diffusion sur un écran de 720 px.
 
 Ce qui reste visible en permanence est ce qui déclenche une décision :
 
-- le **temps restant** au créneau, à la seconde, qui vire à l'alerte en
-  dépassement — pas le temps écoulé depuis le début réel, mais l'écart au
-  programme, puisque c'est lui qui décale la suite de la journée ;
+- le **grand chronomètre**, à la seconde. Il ne compte pas toujours la même
+  chose, et un badge le dit (voir ci-dessous) ;
 - la **conférence suivante**, qui dit si on peut laisser filer cinq minutes ;
 - le **flux des autres salles**, une ligne : conférence en cours, « vers la fin »
   dans les cinq dernières minutes, reprise après une pause. Il est calculé sur
   le programme mis en cache localement, pas sur l'état remonté par le hub :
   pendant une coupure, la salle d'à côté finit quand même à l'heure prévue.
+
+### Ce que compte le grand chronomètre
+
+Un nombre en 40 px qu'on regarde en boucle, et qui ne mesure pas la même chose
+selon le moment. Sans le dire, « 12:34 » se lit comme du temps d'antenne
+restant — y compris quand c'est l'inverse. D'où le badge **à venir** à côté,
+présent dès que le décompte vise un début et non une fin :
+
+| Moment | Il compte jusqu'à | Badge | Teinte |
+|---|---|---|---|
+| Avant l'heure du créneau | le **début** de la conférence | à venir | atténuée |
+| Le créneau court | la **fin** prévue | — | texte, puis attention à 5 min, alerte en dépassement |
+| « Terminer » appuyé | le **début de la prochaine conférence** | à venir | atténuée |
+
+Les deux cas « à venir » ont la même raison d'être : ce n'est pas du temps
+d'antenne, il n'y a rien à décider, et l'atténuation le dit avant qu'on lise le
+badge.
+
+**Après « Terminer », les pauses sont sautées.** Le décompte vise la prochaine
+*conférence*, pas le prochain créneau : attendre un déjeuner donnerait un
+chiffre juste et sans usage, quand ce qui se prépare est le talk d'après. C'est
+aussi ce que vise « Commencer » — les deux doivent désigner le même créneau,
+sinon le décompte annonce une chose et le bouton en lance une autre. La ligne du
+dessous nomme l'heure visée, parce que la ligne « Suivant » juste à côté, elle,
+annonce le prochain créneau, pause comprise : les deux différaient sans que rien
+ne l'explique.
+
+Le geste d'annulation reste à portée dans tous les cas — « Terminer » se presse
+par erreur, et « Remettre à venir » doit rester lisible sans chercher.
 
 ### Ce que dit la pastille
 

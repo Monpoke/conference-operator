@@ -59,6 +59,17 @@ export interface Session {
   durationMinutes: number | null
   roomId: string | null
   kind: SessionKind
+  /**
+   * Créneau dont celui-ci est la projection dans une autre salle, ou `null`
+   * pour un créneau du programme.
+   *
+   * Une salle sans rien de prévu pendant qu'une autre est en pause hérite de
+   * cette pause : un déjeuner que l'export ne rattache qu'à Track #1 concerne
+   * pourtant tout le monde. La copie porte l'identifiant de l'original, pour
+   * qu'on sache d'où elle vient et qu'on ne la prenne pas pour un créneau qu'on
+   * pourrait éditer.
+   */
+  sharedFrom: string | null
   speakers: Speaker[]
   category: Category | null
   format: Format | null

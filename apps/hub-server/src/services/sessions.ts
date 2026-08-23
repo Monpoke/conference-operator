@@ -112,6 +112,7 @@ export class SessionStateService {
       )
       .all()
       .map(toState)
+      .filter((etat) => this.applicable(etat))
   }
 
   get(sessionId: string): SessionState | null {
@@ -120,7 +121,32 @@ export class SessionStateService {
       .from(sessionState)
       .where(eq(sessionState.sessionId, sessionId))
       .get()
-    return row == null ? null : toState(row)
+    if (row == null) return null
+    const etat = toState(row)
+    return this.applicable(etat) ? etat : null
+  }
+
+  /**
+   * Une décision prise *après* l'instant du hub ne s'applique pas.
+   *
+   * Elle appartient à une journée qui n'a pas encore eu lieu — ce qui n'arrive
+   * qu'en développement, quand on recule l'horloge depuis la console. Le talk
+   * de 09:50 lancé lors d'un essai à 11 h restait « en cours » en revenant à
+   * 08:38 : la régie affichait « en cours » et deux heures de compte à rebours
+   * sur une conférence que personne n'avait démarrée.
+   *
+   * On filtre à la lecture plutôt que d'effacer la ligne : ré-avancer l'horloge
+   * doit retrouver la journée exactement là où on l'avait laissée. Sous une
+   * horloge réelle, rien ne change — aucune décision n'est datée du futur.
+   *
+   * Une date illisible reste applicable : un état qu'on ne sait pas situer dans
+   * le temps est un problème de données, pas une raison de le faire disparaître.
+   */
+  private applicable(etat: SessionState): boolean {
+    const decide = etat.status === 'ended' ? etat.endedAt : etat.startedAt
+    if (decide == null) return true
+    const instant = Date.parse(decide)
+    return Number.isNaN(instant) || instant <= this.now()
   }
 
   start(sessionId: string, roomId: string | null, decidedBy: string): SessionState {

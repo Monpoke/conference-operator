@@ -252,6 +252,33 @@ export const router = os.router({
       statutsDesSalles(context.services, context.services.clock.now()),
     ),
 
+    /**
+     * Resynchronisation complète, demandée depuis la console.
+     *
+     * Une commande, pas un appel direct : la console ne parle pas aux salles,
+     * elle passe par le flux descendant — c'est ce qui fait qu'une salle
+     * momentanément coupée rattrape la demande à sa reconnexion au lieu de la
+     * perdre.
+     *
+     * Sans TTL, pour la même raison : une demande de remise d'aplomb ne périme
+     * pas comme un « pause déjeuner ». La déduplication par `seq` empêche
+     * qu'elle s'applique deux fois au rattrapage.
+     */
+    resync: os.rooms.resync.use(operatorOnly).handler(({ input, context }) => {
+      if (input.roomId != null && context.services.rooms.get(input.roomId) == null) {
+        throw new ORPCError('NOT_FOUND', { message: `Salle inconnue : ${input.roomId}` })
+      }
+      context.services.commands.publish(
+        input.roomId,
+        { type: 'room.resync', requestedBy: context.operator.email },
+        null,
+      )
+      return {
+        ok: true,
+        rooms: input.roomId != null ? 1 : context.services.rooms.list().length,
+      }
+    }),
+
     sync: os.rooms.sync.use(roomOnly).handler(({ input, context }) => {
       const room = context.services.rooms.get(context.roomId)
       if (room == null) throw new ORPCError('NOT_FOUND', { message: 'Salle introuvable' })

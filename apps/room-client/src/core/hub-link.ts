@@ -164,11 +164,19 @@ export class HubLink {
    *
    * Ne lève jamais : un hub injoignable au démarrage est un cas nominal, la
    * salle continue sur son cache. L'échec est remonté par la connectivité.
+   *
+   * @param options.complet Ignore le cache local et redemande le programme
+   *   entier, même à empreinte identique. C'est ce que veut dire « resynchro
+   *   complète » : le sync ordinaire s'appuie sur l'empreinte pour ne pas
+   *   retélécharger 70 ko à chaque battement, ce qui est exactement l'économie
+   *   dont on se méfie quand on soupçonne une salle d'avoir dérivé.
    */
-  async sync(): Promise<{ ok: boolean; contentHash?: string; authRejected?: boolean }> {
+  async sync(
+    options: { complet?: boolean } = {},
+  ): Promise<{ ok: boolean; contentHash?: string; authRejected?: boolean }> {
     const { store, runtime } = this.options
     try {
-      const since = store.settings().activeContentHash
+      const since = options.complet === true ? null : store.settings().activeContentHash
       const result = await this.client.rooms.sync(
         { since },
         { signal: AbortSignal.timeout(this.options.syncTimeoutMs ?? 8_000) },

@@ -1429,3 +1429,114 @@ describe('identité de l\'événement, dans la console', () => {
     expect($('titre-console').textContent).toBe('Cloud Nord 2026 — console hub')
   })
 })
+
+/**
+ * Resynchronisation des salles.
+ *
+ * Le geste part vers des machines qu'on ne voit pas, et porte à toutes les
+ * salles par défaut : il ne doit pas tenir en un clic.
+ */
+describe('resynchronisation des salles', () => {
+  let appels: { chemin: string; entree: unknown }[]
+
+  const SALLES = [
+    { id: 'track-1', name: 'Track #1' },
+    { id: 'track-2', name: 'Track #2' },
+  ]
+
+  function brancher(): void {
+    appels = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      const chemin = String(url).replace('/rpc/', '')
+      appels.push({ chemin, entree: JSON.parse(String(init.body)).json })
+      const json =
+        chemin === 'rooms/list'
+          ? SALLES
+          : chemin === 'rooms/resync'
+            ? { ok: true, rooms: 2 }
+            : chemin.startsWith('settings/')
+              ? { autoEndEnabled: true, autoEndGraceMinutes: 5, socialLinks: [] }
+              : []
+      return new Response(JSON.stringify({ json }), { status: 200 })
+    }))
+    monterConsole()
+    $('nav-reglages').click()
+  }
+
+  const attendre = () => new Promise((resolve) => setTimeout(resolve, 20))
+
+  it('propose les salles du hub, « toutes » en tête', async () => {
+    brancher()
+    await attendre()
+
+    const choix = $('resync-salle') as HTMLSelectElement
+    expect([...choix.options].map((option) => option.textContent)).toEqual([
+      'Toutes les salles',
+      'Track #1',
+      'Track #2',
+    ])
+    // Le défaut est le cas le plus large : raison de plus pour confirmer.
+    expect(choix.value).toBe('')
+  })
+
+  it('ne demande rien avant confirmation', async () => {
+    brancher()
+    await attendre()
+
+    $('btn-resync').click()
+    await attendre()
+
+    expect(affiche('confirmer-resync')).toBe(true)
+    expect(appels.some((appel) => appel.chemin === 'rooms/resync')).toBe(false)
+  })
+
+  it('nomme la salle visée plutôt que de la sous-entendre', async () => {
+    brancher()
+    await attendre()
+
+    ;($('resync-salle') as HTMLSelectElement).value = 'track-2'
+    $('btn-resync').click()
+
+    expect($('resync-texte').textContent).toContain('Track #2')
+  })
+
+  it('envoie la demande une fois confirmée', async () => {
+    brancher()
+    await attendre()
+
+    ;($('resync-salle') as HTMLSelectElement).value = 'track-1'
+    $('btn-resync').click()
+    $('resync-confirmer').click()
+    await attendre()
+
+    expect(appels).toContainEqual({ chemin: 'rooms/resync', entree: { roomId: 'track-1' } })
+    // La modale se referme : la laisser ouverte ferait renvoyer la demande.
+    expect(affiche('confirmer-resync')).toBe(false)
+    expect($('avis').textContent).toContain('Track #1')
+  })
+
+  it('vise toutes les salles quand aucune n\'est choisie', async () => {
+    brancher()
+    await attendre()
+
+    $('btn-resync').click()
+    expect($('resync-texte').textContent).toContain('toutes les salles')
+    $('resync-confirmer').click()
+    await attendre()
+
+    expect(appels).toContainEqual({ chemin: 'rooms/resync', entree: { roomId: null } })
+    expect($('avis').textContent).toContain('2 salle(s)')
+  })
+
+  it('renonce sans rien envoyer', async () => {
+    brancher()
+    await attendre()
+
+    $('btn-resync').click()
+    $('resync-annuler').click()
+    await attendre()
+
+    expect(affiche('confirmer-resync')).toBe(false)
+    expect(appels.some((appel) => appel.chemin === 'rooms/resync')).toBe(false)
+  })
+})

@@ -773,6 +773,32 @@ describe('compte à rebours du créneau', () => {
     expect($('restant').className).toContain('text-alerte')
   })
 
+  it('compte vers le début tant que la conférence n\'a pas commencé', () => {
+    /**
+     * Le cas signalé : à 8h38, la régie déroulait deux heures de compte à
+     * rebours sur la conférence de 9h50. Le chiffre était juste — c'est bien ce
+     * qu'il resterait du créneau — mais en gros caractères il se lit comme un
+     * talk en cours, et il a été lu ainsi.
+     */
+    monterRegie(a('2026-10-30T08:38:29.500Z', { targetIsUpcoming: true }))
+
+    // 08:38:29,5 → 10:00 : une heure, vingt-et-une minutes et trente secondes.
+    expect($('restant').textContent).toBe('1:21:30')
+    // Atténué : rien à décider avant que ça ne commence.
+    expect($('restant').className).toContain('text-attenue')
+  })
+
+  it('bascule vers la fin dès qu\'on lance le talk en avance', () => {
+    monterRegie(a('2026-10-30T09:58:29.500Z', {
+      targetIsUpcoming: true,
+      sessionStates: { 'ses-1': 'running' },
+    }))
+
+    // Lancé deux minutes avant l'heure : ce qui compte redevient la fin prévue.
+    expect($('restant').textContent).toBe('51:30')
+    expect($('restant').className).not.toContain('text-attenue')
+  })
+
   it('reste muet sans conférence à piloter', () => {
     monterRegie({
       ...ETAT,

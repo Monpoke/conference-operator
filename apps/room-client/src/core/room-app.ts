@@ -167,6 +167,12 @@ export class RoomApp implements ControlTarget {
         resync: () => {
           void this.link?.sync()
         },
+        reloadSessionStates: () => {
+          void this.chargerEtatsDesConferences()
+        },
+        fullResync: () => {
+          void this.fullResync()
+        },
       },
       options.now,
     )
@@ -524,7 +530,30 @@ export class RoomApp implements ControlTarget {
       },
     })
 
-    const result = await this.link.sync()
+    await this.synchroniserTout()
+
+    void this.link.consumeCommands(this.abort.signal)
+    void this.link.consumeWall(this.abort.signal)
+    this.startOutbox()
+    this.startRoomWatch()
+
+    // État initial des conférences : sans ça, un redémarrage en plein talk
+    // afficherait « à venir » sur une conférence déjà lancée.
+    await this.chargerEtatsDesConferences()
+  }
+
+  /**
+   * Tout ce que la salle relit du hub : programme, assets, configuration, QR.
+   *
+   * Extrait du raccordement pour être rejouable en cours de journée. Ce qui
+   * *ouvre* quelque chose — flux de commandes, file de remontée, veille des
+   * salles, OBS — n'y est pas : le rejouer couperait ce qui tourne.
+   *
+   * @param complet Redemande le programme entier même à empreinte identique.
+   */
+  private async synchroniserTout(complet = false): Promise<boolean> {
+    if (this.link == null) return false
+    const result = await this.link.sync({ complet })
     const roomId = this.store.settings().roomId
     if (roomId != null) {
       await this.display
@@ -540,17 +569,62 @@ export class RoomApp implements ControlTarget {
         this.options.onLog?.('info', 'assets préchargés', report)
       }
     }
+    return result.ok
+  }
 
-    void this.link.consumeCommands(this.abort.signal)
-    void this.link.consumeWall(this.abort.signal)
-    this.startOutbox()
-    this.startRoomWatch()
+  /**
+   * Resynchronisation complète, demandée depuis la console.
+   *
+   * Tout ce que fait un démarrage, sauf ce qui couperait quelque chose : le
+   * programme redescend entier — sans se fier à l'empreinte en cache, puisque
+   * c'est justement le cache qu'on soupçonne —, les assets manquants sont
+   * repris, la configuration, les réseaux, l'événement et l'horloge relus, et
+   * le cycle de vie des conférences redemandé au hub.
+   *
+   * **OBS n'est pas reconnecté et l'enregistrement n'est pas touché.** Une
+   * salle qu'on remet d'aplomb pendant un talk ne doit pas y perdre sa
+   * captation : ce geste existe précisément pour ne pas avoir à redémarrer la
+   * machine, ce qui, lui, coupe tout.
+   */
+  async fullResync(): Promise<void> {
+    if (this.link == null) {
+      this.options.onLog?.('warn', 'resynchronisation complète sans hub : rien à relire')
+      return
+    }
+    this.options.onLog?.('info', 'resynchronisation complète demandée')
+    const ok = await this.synchroniserTout(true)
+    await this.chargerEtatsDesConferences()
+    if (ok) {
+      this.runtime.notify({ level: 'info', text: 'Resynchronisation complète terminée' })
+      this.options.onLog?.('info', 'resynchronisation complète terminée')
+      return
+    }
+    // Dit franchement : une salle qui reste sur son cache après qu'on lui a
+    // demandé de tout relire n'est pas remise d'aplomb, et la console vient
+    // d'annoncer le contraire.
+    this.runtime.notify({
+      level: 'warning',
+      text: 'Resynchronisation complète : hub injoignable, la salle garde son cache',
+    })
+    this.options.onLog?.('warn', 'resynchronisation complète incomplète : hub injoignable')
+  }
 
-    // État initial des conférences : sans ça, un redémarrage en plein talk
-    // afficherait « à venir » sur une conférence déjà lancée.
+  /**
+   * Relit le cycle de vie des conférences de la salle auprès du hub.
+   *
+   * Appelée au sync, et à chaque fois que l'heure du hub bouge : le hub écarte
+   * les décisions datées d'après l'instant courant, la salle doit donc les
+   * relire plutôt que de raisonner sur sa copie — elle n'a pas les dates de
+   * décision, et aucune commande n'annonce qu'un fait a cessé de s'appliquer.
+   *
+   * En cas d'échec on garde la copie précédente : périmée vaut mieux que vide,
+   * qui afficherait « à venir » sur un talk en cours.
+   */
+  private async chargerEtatsDesConferences(): Promise<void> {
+    if (this.link == null) return
     try {
       const etats = await this.link.client.sessions.states({ roomId: this.store.settings().roomId })
-      for (const etat of etats) this.runtime.setSessionStatus(etat.sessionId, etat.status)
+      this.runtime.replaceSessionStates(etats)
     } catch (cause) {
       this.options.onLog?.('warn', 'états des conférences non récupérés', {
         message: (cause as Error).message,

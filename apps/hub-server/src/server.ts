@@ -295,9 +295,22 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   const veille = new VeilleSupervision()
   const surveillance = setInterval(() => {
     if (services.push.publicKey() == null || services.push.count() === 0) return
+    const snapshot = services.programs.active()
+    const statuts = statutsDesSalles(services, clock.now())
     const avis = veille.passe(
-      statutsDesSalles(services, clock.now()),
+      statuts,
       services.devices.pending(),
+      Object.fromEntries(
+        statuts.map((salle) => [
+          salle.roomId,
+          Object.fromEntries(
+            services.sessions.states(salle.roomId).map((etat) => [etat.sessionId, etat.status]),
+          ),
+        ]),
+      ),
+      // Un identifiant opaque ne se lit pas sur un écran de verrouillage.
+      (sessionId) =>
+        snapshot?.program.sessions.find((session) => session.id === sessionId)?.title ?? null,
     )
     for (const notification of avis) {
       void services.push

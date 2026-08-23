@@ -11,6 +11,7 @@ import {
 } from './primitives.js'
 import {
   hubSettingsSchema,
+  niveauxNotifSchema,
   roomConfigPatchSchema,
   roomConfigSchema,
   roomStatusSchema,
@@ -498,6 +499,14 @@ export const contract = {
           keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }),
           /** Étiquette lisible — « iPhone de la régie » — pour s'y retrouver. */
           label: z.string().max(80).nullable().default(null),
+          /**
+           * Ce que ce navigateur-là veut recevoir.
+           *
+           * Rangé avec l'abonnement, et non avec l'opérateur : c'est la même
+           * personne qui veut l'essentiel sur le téléphone dans sa poche et
+           * tout sur la console posée devant elle.
+           */
+          levels: niveauxNotifSchema.default({ technique: 'essentiel', exploitation: 'essentiel' }),
         }),
       )
       .output(z.object({ ok: z.boolean() })),

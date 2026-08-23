@@ -1,0 +1,2 @@
+ALTER TABLE `push_subscription` ADD `niveau_technique` text DEFAULT 'essentiel' NOT NULL;--> statement-breakpoint
+ALTER TABLE `push_subscription` ADD `niveau_exploitation` text DEFAULT 'essentiel' NOT NULL;

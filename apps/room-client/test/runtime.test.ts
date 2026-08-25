@@ -82,6 +82,55 @@ describe('application des commandes', () => {
     expect(runtime.state().sceneRole).toBe('LIVE')
   })
 
+  /**
+   * Ce que fait une salle voisine arrive déjà poussé sur le flux de commandes ;
+   * seule la *vue* qui l'affiche était sondée. La régie recevait donc la
+   * notification « Track #2 vient de terminer » pendant que la pastille de
+   * Track #2 disait encore « en cours ».
+   */
+  it("redemande la vue des autres salles dès qu'une d'elles décide", async () => {
+    const refreshRoomStatuses = vi.fn()
+    const runtime = makeRuntime({ refreshRoomStatuses })
+    runtime.setRoomId('track-1')
+
+    await runtime.applyCommand(
+      command({
+        type: 'session.state',
+        sessionId: 'ses-voisine',
+        roomId: 'track-2',
+        sessionTitle: 'Blind ops',
+        status: 'ended',
+        decidedBy: 'regie@cloudnord.fr',
+      }),
+    )
+
+    expect(refreshRoomStatuses).toHaveBeenCalledTimes(1)
+    // Sans toucher à notre propre cycle de vie : celui d'à côté n'a rien à y faire.
+    expect(runtime.state().sessionStates['ses-voisine']).toBeUndefined()
+  })
+
+  it("ne redemande rien sur une décision qui la concerne elle-même", async () => {
+    // Sa propre salle se met à jour par la commande : il n'y a rien à relire,
+    // et une requête par décision locale serait du bruit.
+    const refreshRoomStatuses = vi.fn()
+    const runtime = makeRuntime({ refreshRoomStatuses })
+    runtime.setRoomId('track-1')
+
+    await runtime.applyCommand(
+      command({
+        type: 'session.state',
+        sessionId: 'ses-1',
+        roomId: 'track-1',
+        sessionTitle: 'HoneySwamp',
+        status: 'running',
+        decidedBy: 'regie@cloudnord.fr',
+      }),
+    )
+
+    expect(refreshRoomStatuses).not.toHaveBeenCalled()
+    expect(runtime.state().sessionStates['ses-1']).toBe('running')
+  })
+
   it('affiche en salle un message destiné au public', async () => {
     const runtime = makeRuntime()
     await runtime.applyCommand(
@@ -440,5 +489,125 @@ describe('question à l\'antenne', () => {
     runtime.setQuestion(null, null, null)
 
     expect(runtime.state().question).toBeNull()
+  })
+})
+
+/**
+ * La conférence pilotée saute ce qui ne se tiendra plus.
+ *
+ * La régie autorise « Commencer » — puis « Terminer » — sur une conférence
+ * dont le créneau n'a pas encore commencé. La cible restait ensuite collée
+ * dessus jusqu'à l'heure prévue : une heure pendant laquelle l'opérateur ne
+ * pouvait pas piloter la conférence suivante, et pendant laquelle le grand
+ * compte à rebours décomptait jusqu'au début d'un talk déjà clos.
+ */
+describe('cible des commandes et cycle de vie', () => {
+  /**
+   * 08:10 UTC — 09:10 à Paris : la keynote d'ouverture court, et c'est un
+   * créneau sans intervenant, donc une pause. Le talk suivant est à 08:50 UTC.
+   */
+  const AVANT = Date.parse('2026-10-30T08:10:00.000Z')
+
+  it('vise la prochaine conférence quand rien ne se joue', () => {
+    clockMs = AVANT
+    const runtime = makeRuntime()
+
+    expect(runtime.state().targetSession?.title).toBe('IA for OPS on Scaleway')
+    expect(runtime.state().targetIsUpcoming).toBe(true)
+  })
+
+  it('passe à la suivante dès qu’on termine celle qui n’a pas commencé', () => {
+    clockMs = AVANT
+    const runtime = makeRuntime()
+    const terminee = runtime.state().targetSession!
+
+    runtime.setSessionStatus(terminee.id, 'ended')
+
+    // Sans attendre le tic d'horloge : le geste vient d'être posé, et c'est
+    // maintenant qu'on veut pouvoir lancer la conférence d'après.
+    const cible = runtime.state().targetSession
+    expect(cible?.id).not.toBe(terminee.id)
+    expect(cible?.kind).toBe('talk')
+    expect(cible!.startsAtMs).toBeGreaterThan(terminee.startsAtMs)
+  })
+
+  it('reste sur une conférence terminée pendant son propre créneau', () => {
+    // Terminer en avance pendant le créneau laisse la conférence pilotée : le
+    // geste se répare depuis la carte, « Remettre à venir » à portée.
+    clockMs = Date.parse('2026-10-30T10:20:00.000Z')
+    const runtime = makeRuntime()
+    const courante = runtime.state().targetSession!
+
+    runtime.setSessionStatus(courante.id, 'ended')
+
+    expect(runtime.state().targetSession?.id).toBe(courante.id)
+  })
+
+  /**
+   * Le cas signalé en régie : conférence lancée à 08:59, horloge avancée à
+   * 09:44 puis 09:45. À la seconde où le créneau se fermait, la régie basculait
+   * sur le compte à rebours du talk suivant et « Terminer » disparaissait —
+   * alors que le speaker parlait encore. Le dépassement est précisément le
+   * moment où ce bouton est le seul qui compte.
+   */
+  it('reste sur la conférence en cours quand son créneau est dépassé', () => {
+    clockMs = AVANT
+    const runtime = makeRuntime()
+    const lancee = runtime.state().targetSession!
+    runtime.setSessionStatus(lancee.id, 'running')
+
+    // Une seconde après la fin prévue du créneau : le talk est en dépassement.
+    clockMs = lancee.endsAtMs! + 1_000
+    runtime.refreshSessions()
+
+    expect(runtime.state().currentSession?.id).not.toBe(lancee.id)
+    expect(runtime.state().targetSession?.id).toBe(lancee.id)
+    // Ni « à venir » — elle est à l'antenne — ni impilotable.
+    expect(runtime.state().targetIsUpcoming).toBe(false)
+    expect(runtime.currentSessionStatus()).toBe('running')
+  })
+
+  it("rend la main à la suivante une fois le dépassement terminé", () => {
+    clockMs = AVANT
+    const runtime = makeRuntime()
+    const lancee = runtime.state().targetSession!
+    runtime.setSessionStatus(lancee.id, 'running')
+
+    clockMs = lancee.endsAtMs! + 1_000
+    runtime.refreshSessions()
+    runtime.setSessionStatus(lancee.id, 'ended')
+
+    const cible = runtime.state().targetSession
+    expect(cible?.id).not.toBe(lancee.id)
+    expect(cible?.kind).toBe('talk')
+  })
+
+  /**
+   * Un talk oublié ouvert le matin ne doit pas capturer la régie de la journée.
+   * Le créneau courant prime : c'est ce que la salle est en train de vivre.
+   */
+  it('préfère le créneau courant à une conférence restée ouverte', () => {
+    clockMs = AVANT
+    const runtime = makeRuntime()
+    const oubliee = runtime.state().targetSession!
+    runtime.setSessionStatus(oubliee.id, 'running')
+
+    // 11:20 à Paris : « HoneySwamp » a son propre créneau.
+    clockMs = Date.parse('2026-10-30T10:20:00.000Z')
+    runtime.refreshSessions()
+
+    expect(runtime.state().targetSession?.title).toContain('HoneySwamp')
+    expect(runtime.state().targetIsUpcoming).toBe(false)
+  })
+
+  it('reprend la conférence quand la décision est annulée', () => {
+    clockMs = AVANT
+    const runtime = makeRuntime()
+    const terminee = runtime.state().targetSession!
+
+    runtime.setSessionStatus(terminee.id, 'ended')
+    runtime.setSessionStatus(terminee.id, 'scheduled')
+
+    expect(runtime.state().targetSession?.id).toBe(terminee.id)
   })
 })

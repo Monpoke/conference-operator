@@ -1176,6 +1176,9 @@ describe('vue Conférences', () => {
         startsAt: '2026-10-30T10:00:00.000Z', endsAt: '2026-10-30T10:50:00.000Z',
         roomId: 'track-1', roomName: 'Track #1', kind: 'talk',
         feedbackUrl: 'https://openfeedback.io/cloud-nord-2026/2026-10-30/ses-1',
+        // Lancée avec quatre minutes de retard, pas encore terminée.
+        startedAt: '2026-10-30T10:04:00.000Z', endedAt: null,
+        decidedBy: 'regie@cloudnord.fr',
       },
       {
         id: 'pause', title: 'Déjeuner', speakers: [],
@@ -1187,6 +1190,7 @@ describe('vue Conférences', () => {
         startsAt: '2026-10-30T12:00:00.000Z', endsAt: '2026-10-30T12:50:00.000Z',
         roomId: 'hands-on', roomName: 'Hands on', kind: 'talk',
         feedbackUrl: 'https://openfeedback.io/cloud-nord-2026/2026-10-30/ses-2',
+        startedAt: null, endedAt: null,
       },
     ],
   }
@@ -1255,6 +1259,83 @@ describe('vue Conférences', () => {
     // dans le planning.
     expect(texte).toContain('Déjeuner')
     expect(texte).toContain('Steven LE ROUX')
+  })
+
+  /**
+   * Ce qui était prévu et ce qui s'est passé, côte à côte.
+   *
+   * L'écart est la seule chose qu'on vient chercher : un retard au démarrage,
+   * un dépassement, une durée réelle pour le montage. Il ne se lit que si les
+   * deux colonnes sont sur la même ligne — recroiser deux tableaux de tête est
+   * exactement ce que cette vue existe pour éviter.
+   */
+  describe('horaires réels du planning', () => {
+    /** La ligne d'un créneau, repérée par son titre. */
+    function ligneDe(titre: string): HTMLTableRowElement {
+      return [...$('planning').querySelectorAll('tr')].find(
+        (tr) => tr.textContent?.includes(titre),
+      ) as HTMLTableRowElement
+    }
+
+    it('affiche le début réel en regard du prévu', async () => {
+      await ouvrir()
+      const cellules = ligneDe('HoneySwamp').querySelectorAll('td')
+
+      // 10:00 UTC = 11:00 à Paris ; lancée à 10:04 UTC, soit 11:04.
+      expect(cellules[0]?.textContent).toContain('11:00')
+      expect(cellules[1]?.textContent).toContain('11:04')
+    })
+
+    it('ne referme pas un créneau que personne n\'a terminé', async () => {
+      await ouvrir()
+
+      expect(ligneDe('HoneySwamp').querySelectorAll('td')[1]?.textContent).toContain('en cours')
+    })
+
+    it('donne l\'instant complet et l\'auteur en infobulle', async () => {
+      await ouvrir()
+      const infobulle = ligneDe('HoneySwamp').innerHTML
+
+      // L'heure suffit pour lire la journée ; la date entière sert au montage.
+      expect(infobulle).toContain('2026-10-30T10:04:00.000Z')
+      // Et l'auteur, qui est ce qu'on cherche devant une décision dont personne
+      // ne se souvient.
+      expect(infobulle).toContain('regie@cloudnord.fr')
+    })
+
+    it('nomme la règle horaire plutôt que de dire « auto »', async () => {
+      await ouvrir({
+        ...PLANNING,
+        sessions: [
+          { ...PLANNING.sessions[0], endedAt: '2026-10-30T10:53:00.000Z', decidedBy: 'auto' },
+          ...PLANNING.sessions.slice(1),
+        ],
+      })
+
+      expect(ligneDe('HoneySwamp').innerHTML).toContain('la règle horaire')
+    })
+
+    it('affiche la fin réelle une fois la conférence terminée', async () => {
+      await ouvrir({
+        ...PLANNING,
+        sessions: [
+          { ...PLANNING.sessions[0], endedAt: '2026-10-30T10:53:00.000Z' },
+          ...PLANNING.sessions.slice(1),
+        ],
+      })
+
+      // Dépassement de trois minutes : 10:53 UTC = 11:53 à Paris.
+      expect(ligneDe('HoneySwamp').querySelectorAll('td')[1]?.textContent).toContain('11:53')
+    })
+
+    it('ne fabrique rien sur un créneau que personne n\'a piloté', async () => {
+      await ouvrir()
+
+      // Une heure reprise du programme affirmerait qu'un talk s'est tenu quand
+      // rien ne l'atteste — et une pause n'est jamais pilotée.
+      expect(ligneDe('Event Iterators').querySelectorAll('td')[1]?.textContent).toBe('—')
+      expect(ligneDe('Déjeuner').querySelectorAll('td')[1]?.textContent).toBe('—')
+    })
   })
 
   it('lit les heures dans le fuseau de l\'événement', async () => {
@@ -1792,5 +1873,301 @@ describe('resynchronisation des salles', () => {
 
     expect(affiche('confirmer-resync')).toBe(false)
     expect(appels.some((appel) => appel.chemin === 'rooms/resync')).toBe(false)
+  })
+})
+
+/**
+ * Rapatriement des rushes, depuis la console.
+ *
+ * L'onglet répond à une seule question, et c'est la dernière de la journée :
+ * « peut-on démonter cette salle ? ». Un rush qui n'est pas encore parti n'est
+ * nulle part ailleurs que sur un disque qu'on s'apprête à débrancher, et
+ * personne ne le saura avant de chercher la VOD des semaines plus tard.
+ *
+ * D'où ce que ces tests tiennent : que la page dise laquelle des trois
+ * situations elle décrit — pas de clés, clés sans bucket, prêt —, parce
+ * qu'elles ne se corrigent pas au même endroit ; et qu'aucun secret du stockage
+ * ne transite par une console qu'on ouvre depuis un téléphone.
+ */
+describe('onglet VOD', () => {
+  const STATUT_PRET = {
+    configure: true,
+    endpoint: 'https://s3.exemple.test',
+    bucket: 'rushes',
+    prefix: 'cn26',
+    politique: {
+      actif: true,
+      debitMaxOctetsS: 2_048_000,
+      cpuMax: 0.7,
+      margeConferenceMinutes: 10,
+      taillePartMo: 8,
+    },
+  }
+
+  const LIGNE = {
+    roomId: 'track-1',
+    roomName: 'Track #1',
+    file: '2026-10-30_track1_1000_honeyswamp.mkv',
+    kind: 'rush',
+    sessionId: 'ses-1',
+    objectKey: 'cn26/2026-10-30/track-1/2026-10-30_track1_1000_honeyswamp.mkv',
+    state: 'echoue',
+    sizeBytes: 1000,
+    bytesSent: 250,
+    debitOctetsS: null,
+    startedAt: '2026-10-30T11:00:00.000Z',
+    lastProgressAt: '2026-10-30T11:01:00.000Z',
+    finishedAt: null,
+    attempts: 3,
+    lastError: 'Le stockage a refusé (AccessDenied) : quota dépassé',
+  }
+
+  let envoyees: { chemin: string; entree: unknown }[] = []
+
+  function servir(statut: unknown, lignes: unknown[] = []): void {
+    envoyees = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: { body?: string }) => {
+        const chemin = String(url).replace('/rpc/', '')
+        if (init?.body != null) {
+          envoyees.push({ chemin, entree: (JSON.parse(init.body) as { json: unknown }).json })
+        }
+        const json =
+          chemin === 'vod/status'
+            ? statut
+            : chemin === 'vod/uploads'
+              ? lignes
+              : chemin === 'rooms/list'
+                ? [{ id: 'track-1', name: 'Track #1' }]
+                : chemin === 'program/globalBreak'
+                  ? null
+                  // Le panneau du stockage vit dans les Réglages : les ouvrir
+                  // charge aussi le reste de l'onglet, qui attend un objet.
+                  : chemin === 'settings/get'
+                    ? { autoEndEnabled: true, autoEndGraceMinutes: 10, socialLinks: [] }
+                    : []
+        return new Response(JSON.stringify({ json }), { status: 200 })
+      }),
+    )
+    monterConsole()
+  }
+
+  const attendre = () => new Promise((resolve) => setTimeout(resolve, 0))
+
+  async function ouvrir(statut: unknown, lignes: unknown[] = []): Promise<void> {
+    servir(statut, lignes)
+    $('nav-vod').click()
+    await attendre()
+    await attendre()
+  }
+
+  /**
+   * Le stockage se règle dans les Réglages, pas dans l'onglet VOD.
+   *
+   * L'onglet ne garde que ce qui se regarde le jour même — l'avancement et la
+   * relance ; ce qui se pose une fois pour l'édition a rejoint le reste des
+   * réglages.
+   */
+  async function ouvrirStockage(statut: unknown): Promise<void> {
+    servir(statut)
+    $('nav-reglages').click()
+    await attendre()
+    await attendre()
+  }
+
+  it('a son onglet et son adresse, comme les autres', async () => {
+    await ouvrir(STATUT_PRET)
+    expect(estVisible('vue-vod')).toBe(true)
+    expect(estVisible('vue-exploitation')).toBe(false)
+    // Un onglet est une adresse : rafraîchir doit revenir dessus, et le lien
+    // s'envoyer à un collègue qui démonte la salle d'à côté.
+    expect(globalThis.location.pathname).toBe('/admin/vod')
+  })
+
+  it('règle le stockage dans les Réglages, et garde la relance dans l\'onglet', async () => {
+    // Deux moments différents : le bucket et le rythme se posent une fois pour
+    // l'édition, avec le reste des réglages ; l'avancement se regarde le jour
+    // même, salle par salle, pendant qu'on démonte.
+    await ouvrirStockage(STATUT_PRET)
+
+    expect($('vue-reglages').contains($('vod-bucket'))).toBe(true)
+    expect($('vue-reglages').contains($('btn-vod-eprouver'))).toBe(true)
+    expect($('vue-vod').contains($('vod-bucket'))).toBe(false)
+    expect($('vue-vod').contains($('btn-vod-relancer'))).toBe(true)
+  })
+
+  it('ne demande plus le stockage pour afficher les téléversements', async () => {
+    // L'onglet ne porte plus le formulaire : l'interroger toutes les dix
+    // secondes solliciterait le hub pour un panneau qui n'est pas à l'écran.
+    servir(STATUT_PRET, [LIGNE])
+    const mock = globalThis.fetch as unknown as { mock: { calls: [string][] }; mockClear: () => void }
+    await attendre()
+    mock.mockClear()
+
+    $('nav-vod').click()
+    await attendre()
+    await attendre()
+
+    const urls = mock.mock.calls.map((appel) => String(appel[0]))
+    expect(urls.some((url) => url.includes('vod/uploads'))).toBe(true)
+    expect(urls.some((url) => url.includes('vod/status'))).toBe(false)
+  })
+
+  it('dit qu\'il n\'y a pas de clés, et où elles se posent', async () => {
+    // Le cas normal : un hub d'événement n'a pas forcément de stockage. Sans
+    // cette phrase, on remplirait le formulaire en se demandant pourquoi rien
+    // ne part — et les clés ne se règlent justement pas ici.
+    await ouvrirStockage({ configure: false, endpoint: null, bucket: null, prefix: null, politique: STATUT_PRET.politique })
+
+    const texte = $('vod-etat').textContent ?? ''
+    expect(texte).toContain('Aucun stockage S3 configuré')
+    expect(texte).toContain('S3_ACCESS_KEY_ID')
+  })
+
+  it('distingue « pas de clés » de « pas de bucket »', async () => {
+    // L'état le plus déroutant des trois : les clés sont là, la page s'ouvre,
+    // et rien ne part. Les deux causes ne se corrigent pas au même endroit —
+    // l'une dans un fichier d'environnement, l'autre dans le champ du dessous.
+    await ouvrirStockage({ ...STATUT_PRET, configure: false, bucket: null })
+
+    const texte = $('vod-etat').textContent ?? ''
+    expect(texte).toContain('aucun bucket')
+    expect(texte).not.toContain('S3_ACCESS_KEY_ID')
+  })
+
+  it('relit les réglages du hub dans ses champs', async () => {
+    await ouvrirStockage(STATUT_PRET)
+
+    expect(($('vod-bucket') as HTMLInputElement).value).toBe('rushes')
+    expect(($('vod-prefixe') as HTMLInputElement).value).toBe('cn26')
+    expect(($('vod-auto') as HTMLInputElement).checked).toBe(true)
+    // Saisi en kilo-octets par seconde, stocké en octets : c'est l'unité dans
+    // laquelle un débit réseau se pense, pas celle dans laquelle il se compte.
+    expect(($('vod-debit') as HTMLInputElement).value).toBe('2000')
+    expect(($('vod-cpu') as HTMLInputElement).value).toBe('70')
+  })
+
+  it('enregistre la politique dans les unités du contrat', async () => {
+    await ouvrirStockage(STATUT_PRET)
+    ;($('vod-debit') as HTMLInputElement).value = '500'
+    ;($('vod-cpu') as HTMLInputElement).value = '60'
+    ;($('btn-vod-reglages') as HTMLButtonElement).click()
+    await attendre()
+
+    const envoi = envoyees.find((appel) => appel.chemin === 'settings/update')
+    expect(envoi?.entree).toMatchObject({
+      vodBucket: 'rushes',
+      vodPrefix: 'cn26',
+      vodPolitique: { debitMaxOctetsS: 512_000, cpuMax: 0.6, actif: true },
+    })
+  })
+
+  it('rend un plafond vide comme « pas de plafond », et non comme zéro', async () => {
+    await ouvrirStockage(STATUT_PRET)
+    ;($('vod-debit') as HTMLInputElement).value = ''
+    ;($('btn-vod-reglages') as HTMLButtonElement).click()
+    await attendre()
+
+    // Zéro voudrait dire « aucun octet par seconde », c'est-à-dire un
+    // téléversement qui n'avance jamais et que personne ne saurait expliquer.
+    const envoi = envoyees.find((appel) => appel.chemin === 'settings/update')
+    expect((envoi?.entree as { vodPolitique: { debitMaxOctetsS: unknown } }).vodPolitique.debitMaxOctetsS).toBeNull()
+  })
+
+  it('montre l\'erreur du stockage telle qu\'elle est venue', async () => {
+    await ouvrir(STATUT_PRET, [LIGNE])
+
+    const texte = $('vod-lignes').textContent ?? ''
+    expect(texte).toContain('Track #1')
+    expect(texte).toContain('en échec')
+    expect(texte).toContain('25 %')
+    // « AccessDenied » est le seul mot qu'on puisse porter à qui tient le
+    // bucket : le traduire le ferait perdre.
+    expect(texte).toContain('AccessDenied')
+  })
+
+  it('relance un fichier précis, et pas la salle entière', async () => {
+    await ouvrir(STATUT_PRET, [LIGNE])
+    envoyees = []
+    ;($('vod-lignes').querySelector('[data-vod-relancer]') as HTMLButtonElement).click()
+    await attendre()
+
+    expect(envoyees.find((appel) => appel.chemin === 'vod/request')?.entree).toEqual({
+      roomId: 'track-1',
+      file: '2026-10-30_track1_1000_honeyswamp.mkv',
+    })
+  })
+
+  it('ne propose pas de relancer ce qui est déjà arrivé', async () => {
+    // Repayer trois gigaoctets sur le réseau de l'événement au premier clic
+    // distrait est exactement ce qu'on évite.
+    await ouvrir(STATUT_PRET, [{ ...LIGNE, state: 'termine', bytesSent: LIGNE.sizeBytes }])
+    expect($('vod-lignes').querySelector('[data-vod-relancer]')).toBeNull()
+  })
+
+  it('refuse un « tout relancer » sans salle, plutôt que de ne rien faire', async () => {
+    await ouvrir(STATUT_PRET, [LIGNE])
+    envoyees = []
+    ;($('btn-vod-relancer') as HTMLButtonElement).click()
+    await attendre()
+
+    // La demande descend vers une machine précise : sans salle choisie, il n'y
+    // a personne à qui parler, et un bouton qui ne fait rien se reclique.
+    expect(envoyees.find((appel) => appel.chemin === 'vod/request')).toBeUndefined()
+  })
+
+  it('éprouve la connexion et rend le verdict étape par étape', async () => {
+    await ouvrirStockage(STATUT_PRET)
+    const appels: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const chemin = String(url).replace('/rpc/', '')
+        appels.push(chemin)
+        const json =
+          chemin === 'vod/check'
+            ? {
+                ok: false,
+                etapes: [
+                  { nom: 'joindre', ok: true, detail: null },
+                  { nom: 'authentifier', ok: false, detail: 'AccessDenied : pas le droit d\'écrire' },
+                ],
+              }
+            : chemin === 'vod/status'
+              ? STATUT_PRET
+              : []
+        return new Response(JSON.stringify({ json }), { status: 200 })
+      }),
+    )
+    ;($('btn-vod-eprouver') as HTMLButtonElement).click()
+    await attendre()
+    await attendre()
+
+    expect(appels).toContain('vod/check')
+    const verdict = $('vod-controle').textContent ?? ''
+    // Jusqu'où on est allé compte autant que là où on s'est arrêté : savoir que
+    // le stockage répond écarte d'emblée le pare-feu et le certificat.
+    expect(verdict).toContain('Joindre le stockage')
+    expect(verdict).toContain('Clés et bucket')
+    // Et le code du stockage, repris tel quel : c'est le seul mot qu'on puisse
+    // porter à qui tient le bucket.
+    expect(verdict).toContain('AccessDenied')
+  })
+
+  it('n\'offre rien à éprouver quand le hub n\'a pas de clés', async () => {
+    // Un bouton qui échouerait à chaque clic est pire qu'un bouton grisé, et
+    // le panneau dit déjà en haut ce qui manque et où le poser.
+    await ouvrirStockage({ configure: false, endpoint: null, bucket: null, prefix: null, politique: STATUT_PRET.politique })
+    expect(($('btn-vod-eprouver') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('ne fait transiter aucun secret du stockage', async () => {
+    // Cette console s'ouvre depuis un téléphone, sur le réseau de l'événement.
+    // Ce qu'elle affiche du stockage se limite à son adresse et à son bucket.
+    await ouvrir(STATUT_PRET, [LIGNE])
+    const rendu = document.documentElement.innerHTML
+    expect(rendu).not.toMatch(/S3_SECRET_ACCESS_KEY\s*[:=]/)
+    expect(rendu).not.toContain('secretAccessKey')
   })
 })

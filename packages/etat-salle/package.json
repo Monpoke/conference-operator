@@ -1,0 +1,28 @@
+{
+  "name": "@cloudnord/etat-salle",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./page-automate": "./src/page-automate.ts",
+    "./navigateur": "./src/navigateur.ts"
+  },
+  "scripts": {
+    "build": "node scripts/build-navigateur.mjs",
+    "preview": "tsx scripts/preview-automate.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cloudnord/program": "workspace:*"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "happy-dom": "20.11.6",
+    "tsx": "4.23.12",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
+  }
+}

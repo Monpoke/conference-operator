@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ulid } from './ulid.js'
 import {
   DELIVERY_BY_EVENT,
+  POLITIQUE_VOD_PAR_DEFAUT,
   PROTOCOL_VERSION,
   commandPayloadSchema,
   commandSchema,
@@ -143,6 +144,9 @@ describe('surface du contrat', () => {
       'rooms',
       'sessions',
       'settings',
+      // Rapatriement des rushes : le hub détient les clés du stockage et signe
+      // des adresses, la salle téléverse. Aucun secret ne descend en salle.
+      'vod',
       'wall',
     ])
     // Le cycle de vie est pilotable des deux côtés : régie de salle et console.
@@ -181,6 +185,26 @@ describe('surface du contrat', () => {
       'lookup',
       'pending',
       'revoke',
+    ])
+    // Cinq procédures de salle et trois de console. Les premières sont bornées
+    // à la salle appelante par son jeton — aucune n'a de `roomId` en entrée —,
+    // les secondes ne font que regarder et demander : la console ne détient pas
+    // les fichiers, elle ne peut pas téléverser à la place de qui que ce soit.
+    expect(Object.keys(contract.vod).sort()).toEqual([
+      'abort',
+      // Ouvre *ou reprend* : c'est ce qui rend une coupure à 90 % rattrapable.
+      'begin',
+      // Le vrai geste, pas une sonde : ouvrir, signer, écrire, abandonner.
+      'check',
+      'complete',
+      'parts',
+      'progress',
+      'request',
+      // Efface le préfixe du bucket et les rushes des salles. Développement
+      // seulement, et refusé côté serveur — pas seulement absent de la console.
+      'reset',
+      'status',
+      'uploads',
     ])
   })
 
@@ -245,7 +269,17 @@ describe('cycle de vie des conférences', () => {
       eventName: null,
       eventShortName: null,
       openFeedbackProjectId: null,
+      // Pas de stockage, et surtout : rien qui parte tout seul. Le défaut doit
+      // être le cas où aucun octet ne quitte une salle sans qu'on l'ait demandé.
+      vodBucket: null,
+      vodPrefix: null,
+      vodPolitique: POLITIQUE_VOD_PAR_DEFAUT,
     })
+    expect(POLITIQUE_VOD_PAR_DEFAUT.actif).toBe(false)
+    expect(POLITIQUE_VOD_PAR_DEFAUT.debitMaxOctetsS).toBeNull()
+    // Cinq mégaoctets est le minimum d'une part multipart chez S3 : descendre
+    // en dessous produirait des téléversements refusés à la dernière étape.
+    expect(() => hubSettingsSchema.parse({ vodPolitique: { taillePartMo: 4 } })).toThrow()
     expect(() => hubSettingsSchema.parse({ autoEndGraceMinutes: -1 })).toThrow()
     // Deux heures de grâce n'auraient plus rien d'automatique.
     expect(() => hubSettingsSchema.parse({ autoEndGraceMinutes: 121 })).toThrow()

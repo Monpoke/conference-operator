@@ -81,6 +81,10 @@ perdrait rien, mais ne réglerait rien non plus.
 que le canal temps réel est coupé : le programme reste à jour, les commandes
 depuis l'admin n'arrivent plus. Même consigne.
 
+Survoler la pastille du hub — ou l'atteindre au clavier — ouvre le détail :
+état du lien, nombre d'événements en attente de remontée, écart avec l'horloge
+du hub, et ce qui continue de fonctionner sans lui.
+
 ---
 
 ## OBS-A plante en pleine projection
@@ -100,6 +104,38 @@ le début est sur le disque.
 
 1. Relancer OBS-B, attendre le vert dans **Diagnostic**.
 2. Relancer un enregistrement. Prévenir le montage : ce talk sera en deux parties.
+
+---
+
+## La pastille **Poste** passe à l'orange, ou au rouge
+
+Dans l'en-tête, à côté de l'état du hub. Elle surveille la machine qui encode,
+sur **deux mesures** : processeur et mémoire. La pastille prend toujours la
+pire des deux — survoler ouvre le détail, qui dit laquelle a bougé.
+
+Processeur :
+
+- **Verte** : rien à faire.
+- **Orange** (au-delà de 70 %) : le poste tient, mais n'a plus de marge pour un
+  imprévu. Fermer ce qui n'est pas la régie : navigateur, messagerie, mises à
+  jour. Ne rien changer dans OBS pendant un talk.
+- **Rouge** (au-delà de 90 %) : OBS **perd probablement des images**, et rien
+  d'autre ne le signalera. Le rush est en train de s'abîmer. Fermer tout le
+  reste immédiatement ; entre deux talks, baisser la résolution ou le débit de
+  l'encodage dans OBS-B, et prévenir le montage pour le talk déjà passé.
+
+Mémoire — l'autre façon de lâcher, et la plus sournoise : la machine ne ralentit
+pas franchement, elle se met à **échanger sur le disque**, celui-là même qui
+écrit le rush. Le symptôme est un enregistrement qui saute alors que le
+processeur va bien.
+
+- **Orange** (au-delà de 85 %) : fermer les onglets et les lecteurs vidéo
+  ouverts à côté avant le prochain talk.
+- **Rouge** (au-delà de 95 %) : fermer tout le reste maintenant. Entre deux
+  talks, relancer l'application libère ce qu'elle a accumulé dans la journée.
+
+**Grise** : la mesure n'a pas pu être lue — pastille sans valeur, pas poste au
+repos. Si elle reste grise, relancer l'application entre deux talks.
 
 ---
 
@@ -131,10 +167,29 @@ Tout message est relu avant affichage : c'est donc une erreur de modération.
 
 1. Vérifier que le compteur d'événements en attente est à **zéro**. Sinon,
    laisser la machine allumée et connectée jusqu'à ce qu'il descende.
-2. Récupérer le dossier d'enregistrements : chaque talk y a un `.mkv` **et** un
-   `.json` du même nom. **Les deux sont nécessaires au montage** — le `.json`
-   contient les intervenants et les marqueurs de chapitre.
-3. Ne pas renommer les fichiers.
+2. Ouvrir **🎞 Enregistrements** et contrôler ce qui a été produit. Chaque talk
+   doit y avoir un `.mkv` **et** un `.json` du même nom. **Les deux sont
+   nécessaires au montage** — le `.json` contient les intervenants et les
+   marqueurs de chapitre.
+3. **Si le hub rapatrie les rushes** (un bouton ⬆ apparaît sur chaque ligne) :
+   « Tout téléverser », puis **attendre que chaque ligne affiche ☁**.
+
+   C'est le dernier moment où le disque est encore branché. Un rush qui n'est
+   pas parti n'est nulle part ailleurs qu'ici, et personne ne s'en apercevra
+   avant de chercher la VOD dans plusieurs semaines.
+
+   Une ligne qui reste en attente dit pourquoi en haut de la modale. Le motif le
+   plus courant en fin de journée est une **captation encore en cours** : arrêter
+   l'enregistrement suffit à débloquer la file. Une ligne **en échec** porte le
+   message du stockage — le porter tel quel à qui tient le bucket.
+
+   ⚠️ Ne pas éteindre la machine pendant qu'une montée est en cours. Ce n'est pas
+   grave — elle reprendra où elle en était au redémarrage — mais personne ne sera
+   là pour le voir.
+4. Récupérer le dossier d'enregistrements. Même quand tout est parti sur le
+   stockage : une copie sur place ne coûte rien, et c'est la seule qui ne dépend
+   pas d'un réseau.
+5. Ne pas renommer les fichiers.
 
 ---
 

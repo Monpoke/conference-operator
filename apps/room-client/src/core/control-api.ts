@@ -3,6 +3,8 @@ import { displayModeSchema, obsInstanceSchema, roomConfigPatchSchema, sceneRoleS
 import type { ModeExecution, ObsInstance, RoomConfigPatch, SceneRoleMap } from '@cloudnord/contract'
 import type { ObsState } from './obs.js'
 import type { StopResult } from './recording.js'
+import type { ControleVod, EntreeVod, Extrait, FluxFichier, VerdictVod } from './vod-index.js'
+import type { VueTeleversements } from './televersement.js'
 
 /**
  * Actions que la fenêtre de régie peut déclencher.
@@ -17,6 +19,32 @@ export const controlActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('recording.start') }),
   z.object({ action: z.literal('recording.stop') }),
   z.object({ action: z.literal('recording.mark'), label: z.string().min(1).max(80) }),
+  /**
+   * Contrôle des rushes déjà produits.
+   *
+   * Séparé de la captation elle-même : `vod.inspect` ne touche pas à OBS, il
+   * relit un fichier sur le disque. On peut donc vérifier la matinée pendant
+   * que l'après-midi enregistre — ce qui est tout l'intérêt, la salle étant
+   * démontée bien avant que quiconque ouvre les fichiers.
+   */
+  z.object({ action: z.literal('vod.inspect'), file: z.string().min(1).max(400) }),
+  /** Dernier mot de l'opérateur, qui a pu ouvrir le fichier. `null` efface. */
+  z.object({
+    action: z.literal('vod.verdict'),
+    file: z.string().min(1).max(400),
+    status: z.enum(['ok', 'suspect', 'illisible']).nullable(),
+  }),
+  /**
+   * Rapatriement d'un rush vers le stockage du hub.
+   *
+   * Séparé de `vod.inspect` comme celui-ci l'est de la captation : rien ici ne
+   * touche à OBS. La demande passe par le régulateur, qui peut la reporter —
+   * mais une demande **manuelle** passe outre l'attente ordinaire : celui qui
+   * appuie a la salle sous les yeux. `file` nul vise tout ce qui reste.
+   */
+  z.object({ action: z.literal('vod.upload'), file: z.string().max(400).nullable().default(null) }),
+  /** Renonce à un téléversement en cours. Le hub ferme le multipart. */
+  z.object({ action: z.literal('vod.upload.cancel'), file: z.string().min(1).max(400) }),
   z.object({ action: z.literal('stream.start') }),
   z.object({ action: z.literal('stream.stop') }),
   z.object({ action: z.literal('hub.sync') }),
@@ -88,6 +116,19 @@ export interface ControlTarget {
   startRecording(): Promise<void>
   stopRecording(): Promise<StopResult>
   mark(label: string): void
+  /** Rushes produits sous la racine d'enregistrement, et leur dernier contrôle. */
+  listRecordings(): Promise<VodListe>
+  inspectRecording(file: string): Promise<ControleVod>
+  setRecordingVerdict(file: string, status: VerdictVod | null): Promise<ControleVod | null>
+  /** Téléversements en cours et raison d'attente, pour la modale des rushes. */
+  vodUploads(): VueTeleversements
+  /** Met un rush en file. `file` nul = tout ce qui reste. Rend le nombre visé. */
+  uploadRecording(file: string | null): Promise<number>
+  cancelUpload(file: string): Promise<void>
+  /** Extrait lisible dans le navigateur. `null` : ffmpeg absent de la machine. */
+  readRecordingExtract(file: string, atMs: number, dureeMs: number): Promise<Extrait | null>
+  /** Le rush tel quel, par tranche. `null` : fichier absent. */
+  readRecordingFile(file: string, plage: string | null): Promise<FluxFichier | null>
   startStreaming(): Promise<void>
   stopStreaming(): Promise<void>
   resync(): Promise<void>
@@ -217,6 +258,25 @@ export interface ControlDiagnostics {
   recording: { active: boolean; markers: number; startedAtMs: number | null }
 }
 
+/**
+ * Ce que la modale des enregistrements reçoit.
+ *
+ * `root` est repris tel quel — nul, la liste est vide et la page doit dire
+ * pourquoi plutôt que d'afficher « aucun enregistrement », qui se lirait comme
+ * une journée perdue.
+ */
+export interface VodListe {
+  root: string | null
+  entries: EntreeVod[]
+  /**
+   * Outils externes réellement présents sur la machine.
+   *
+   * La page s'en sert pour ne pas proposer un lecteur qui ne démarrera jamais :
+   * ni ffmpeg ni ffprobe ne sont des dépendances du poste.
+   */
+  outils: { ffmpeg: boolean; ffprobe: boolean }
+}
+
 export interface ControlOutcome {
   ok: boolean
   message?: string
@@ -259,6 +319,40 @@ export async function runControlAction(
       case 'recording.mark':
         target.mark(action.label)
         return { ok: true, message: `Marqueur « ${action.label} »` }
+      case 'vod.inspect': {
+        const controle = await target.inspectRecording(action.file)
+        return {
+          ok: true,
+          message:
+            controle.status === 'ok'
+              ? `${action.file} — exploitable`
+              : `${action.file} — ${controle.status} : ${controle.reasons[0] ?? ''}`,
+          detail: controle,
+        }
+      }
+      case 'vod.verdict': {
+        const controle = await target.setRecordingVerdict(action.file, action.status)
+        return {
+          ok: true,
+          message: action.status == null ? 'Contrôle effacé' : `${action.file} — ${action.status}`,
+          detail: controle,
+        }
+      }
+      case 'vod.upload': {
+        const vises = await target.uploadRecording(action.file)
+        return {
+          ok: true,
+          message:
+            vises === 0
+              ? 'Rien à téléverser'
+              : vises === 1
+                ? 'Téléversement demandé'
+                : `${vises} fichiers en file`,
+        }
+      }
+      case 'vod.upload.cancel':
+        await target.cancelUpload(action.file)
+        return { ok: true, message: 'Téléversement annulé' }
       case 'stream.start':
         await target.startStreaming()
         return { ok: true, message: 'Diffusion démarrée' }

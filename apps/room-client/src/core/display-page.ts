@@ -1,3 +1,4 @@
+import { MACHINE_JS } from '@cloudnord/etat-salle'
 import { TAILWIND_CSS } from '@cloudnord/ui'
 
 /**
@@ -272,6 +273,15 @@ ${etatInitial}
   </footer>
 </div>
 
+<!--
+  L'automate, inliné comme dans la régie et la console.
+
+  L'écran n'a besoin que de la fin effective d'un créneau, mais il la déduisait
+  à sa façon — et sa façon était fausse pour un créneau que l'export ne borne
+  que par une durée.
+-->
+<script>${MACHINE_JS}</script>
+
 <script>
 (() => {
   const contenu = document.getElementById('contenu')
@@ -541,11 +551,20 @@ ${etatInitial}
       '<div class="defilant min-h-0 flex-1">' +
       '<div class="cascade flex flex-col gap-[1.1vmin]" style="--pas:25ms">' +
       donnees.sessions.map((session, rang) => {
-        const fin = session.endsAtMs ?? session.startsAtMs
+        /**
+         * La fin effective, pas l'heure de fin brute.
+         *
+         * Sans repli sur la durée ni sur le créneau suivant, un talk que
+         * l'export ne borne que par sa durée était grisé dès son heure de
+         * début : la salle lisait « passé » sur la conférence en train de se
+         * jouer. Rend null pour un créneau que rien ne ferme, qu'on préfère ne
+         * pas griser du tout.
+         */
+        const fin = EtatSalle.finEffectiveA(donnees.sessions, rang)
         // Une seule mise en avant possible : en cours, sinon passée, sinon à venir.
         const etat = session.id === encours
           ? "bg-[color-mix(in_srgb,var(--couleur)_26%,transparent)] shadow-[inset_.5vmin_0_0_var(--couleur)]"
-          : fin < maintenant ? "opacity-35" : ""
+          : fin != null && fin < maintenant ? "opacity-35" : ""
         const pause = session.kind === 'break' ? "opacity-55" : ""
         const heureTeinte = session.id === encours ? "text-texte" : "text-attenue"
         const intervenants = session.speakers.map((s) =>

@@ -16,10 +16,40 @@ directories:
 
 files:
   - dist/**
+  # La source map reste sur la machine de build, pas sur le poste de régie :
+  # rien n'active `--enable-source-maps` dans le client, elle y serait cinq
+  # mégaoctets illisibles. `dist/main.cjs.map` survit à l'empaquetage — une
+  # trace remontée d'une salle se relit donc après coup, à condition de garder
+  # la sortie de build de la version installée.
+  - "!dist/*.map"
   - package.json
   # Migrations du schéma local : lues au démarrage depuis le paquet.
   - "!node_modules/**"
   - node_modules/better-sqlite3/**
+  # `better-sqlite3` livre un binaire par plateforme — huit, dont un seul peut
+  # servir dans un paquet Windows x64. Les sept autres (macOS, arm, musl)
+  # pesaient treize mégaoctets transportés jusqu'au poste de régie pour rien.
+  # L'ordre compte : la négation d'abord, la réintégration ensuite.
+  - "!node_modules/better-sqlite3/prebuilds/*"
+  - node_modules/better-sqlite3/prebuilds/win32-x64.node
+  # Et rien de ce qui sert à *compiler* la bibliothèque : l'amalgame C de SQLite
+  # pèse à lui seul dix mégaoctets, pour un binaire qu'on ne construit jamais
+  # sur le poste — il voyage déjà tout fait juste au-dessus.
+  - "!node_modules/better-sqlite3/deps/**"
+  - "!node_modules/better-sqlite3/src/**"
+
+# Chromium embarque ses traductions, cinquante-cinq langues et 47 Mo, pour une
+# application qui ne parle que français. On garde l'anglais comme repli : c'est
+# la langue vers laquelle Chromium retombe pour ses propres chaînes (menus
+# contextuels, messages réseau) si le fichier demandé manque.
+electronLanguages:
+  - fr
+  - en-US
+
+# LZMA au maximum plutôt que par défaut. Un installeur se construit une fois et
+# se recopie sur trois postes : le temps de compression se paie une seule fois,
+# les mégaoctets à chaque copie sur clé USB un matin d'événement.
+compression: maximum
 
 extraResources:
   # Le client migre sa base au lancement ; les fichiers SQL doivent voyager avec.
@@ -41,7 +71,17 @@ nsis:
   createDesktopShortcut: true
   shortcutName: Régie de salle
 
-# Modules natifs : `better-sqlite3` doit être recompilé pour l'ABI d'Electron,
-# pas celui de Node. electron-builder s'en charge à l'empaquetage.
-npmRebuild: true
+# Modules natifs : RIEN À RECOMPILER, et c'est délibéré.
+#
+# `better-sqlite3` 13 est un module **Node-API** (`NAPI_VERSION=10`) et publie
+# dans son paquet npm un binaire par plateforme — `prebuilds/win32-x64.node`
+# part tel quel dans l'installeur. Node-API garantit la stabilité binaire entre
+# Node et Electron : l'ABI d'Electron ne le concerne plus, contrairement aux
+# versions antérieures de la bibliothèque.
+#
+# Laisser `npmRebuild: true` ne rendait donc rien de plus, et INTERDISAIT
+# d'empaqueter ailleurs que sous Windows : @electron/rebuild tente une
+# compilation croisée que node-gyp ne sait pas faire, et s'arrête sur
+# « node-gyp does not support cross-compiling native modules from source ».
+npmRebuild: false
 nodeGypRebuild: false

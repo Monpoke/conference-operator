@@ -213,6 +213,85 @@ describe('sidecar', () => {
     expect(result.sidecar.title).toContain('HoneySwamp')
   })
 
+  it('suit l\'horloge simulée en développement', async () => {
+    /*
+     * On déroule une journée en poussant l'horloge du hub : 09:00, on lance la
+     * captation, on saute à 09:50 pour simuler la fin. La prise annonçait
+     * « 0 min » — le temps réellement passé devant l'écran — pendant que la
+     * timeline affichait un créneau de cinquante minutes. Deux chiffres pour le
+     * même enregistrement, qui ne se ressemblaient pas.
+     */
+    const { fs, files } = fakeFs(['/rec/talk.mkv'])
+    let decalage = 0
+    const { session } = makeSession(fs, {
+      correctedNow: () => clockMs + decalage,
+      suitLHorloge: true,
+    })
+
+    await session.start(START)
+    // Le hub avance de cinquante minutes ; le temps réel, lui, ne bouge pas.
+    decalage = 50 * 60_000
+    const result = await session.stop(async () => '/rec/talk.mkv')
+
+    expect(result.sidecar.durationMs).toBe(50 * 60_000)
+    const sidecar = JSON.parse(files.get(result.sidecarPath!)!) as Sidecar
+    expect(sidecar.durationMs).toBe(50 * 60_000)
+  })
+
+  it('place les marqueurs sur la même horloge que la durée', async () => {
+    // Sinon un marqueur posé après un saut d'horloge tomberait au-delà de la
+    // fin du fichier qu'il annote.
+    const { fs } = fakeFs(['/rec/talk.mkv'])
+    let decalage = 0
+    const { session } = makeSession(fs, {
+      correctedNow: () => clockMs + decalage,
+      suitLHorloge: true,
+    })
+
+    await session.start(START)
+    decalage = 12 * 60_000
+    const marqueur = session.mark('démo')
+    decalage = 30 * 60_000
+    const result = await session.stop(async () => '/rec/talk.mkv')
+
+    expect(marqueur.offsetMs).toBe(12 * 60_000)
+    expect(marqueur.offsetMs).toBeLessThan(result.sidecar.durationMs)
+  })
+
+  it('ignore l\'horloge en production, où le temps monotone fait foi', async () => {
+    // Une durée de captation ne doit pas bouger parce que le poste a
+    // resynchronisé son horloge en pleine conférence : un talk de trois minutes
+    // dure trois minutes, quoi qu'en dise l'horloge murale.
+    const { fs } = fakeFs(['/rec/talk.mkv'])
+    let decalage = 0
+    const { session } = makeSession(fs, { correctedNow: () => clockMs + decalage })
+
+    await session.start(START)
+    clockMs += 3 * 60_000
+    decalage = 50 * 60_000
+    const result = await session.stop(async () => '/rec/talk.mkv')
+
+    expect(result.sidecar.durationMs).toBe(3 * 60_000)
+  })
+
+  it('ne rend jamais une durée négative quand on recule l\'horloge', async () => {
+    // Reculer l'horloge de développement ramène la prise à zéro. C'est la
+    // conséquence assumée de la suivre — et ça vaut mieux qu'une durée négative
+    // qui casserait tout ce qui la lit en aval.
+    const { fs } = fakeFs(['/rec/talk.mkv'])
+    let decalage = 0
+    const { session } = makeSession(fs, {
+      correctedNow: () => clockMs + decalage,
+      suitLHorloge: true,
+    })
+
+    await session.start(START)
+    decalage = -24 * 60 * 60_000
+    const result = await session.stop(async () => '/rec/talk.mkv')
+
+    expect(result.sidecar.durationMs).toBe(0)
+  })
+
   it('produit un sidecar exploitable même sans session au programme', async () => {
     const { fs, files } = fakeFs(['/rec/hors-programme.mkv'])
     const { session } = makeSession(fs)

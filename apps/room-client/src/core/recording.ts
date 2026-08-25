@@ -39,6 +39,26 @@ export interface RecordingDeps {
   now: () => number
   /** Horloge corrigée de l'offset serveur : les timecodes en dépendent. */
   correctedNow: () => number
+  /**
+   * Mesurer la durée sur l'horloge corrigée plutôt que sur le temps réel.
+   * **Développement seulement.**
+   *
+   * En production c'est le temps monotone qui fait foi, et c'est le bon choix :
+   * une durée de captation ne doit pas bouger parce que le poste a resynchronisé
+   * son horloge en pleine conférence. Un talk de cinquante minutes dure
+   * cinquante minutes, quoi qu'en dise `Date.now()`.
+   *
+   * En développement, la même règle rend la simulation illisible. On y déroule
+   * une journée en poussant l'horloge du hub — 09:00, on lance la captation,
+   * on saute à 09:50 pour simuler la fin — et la prise annonçait « 3 min »,
+   * le temps réellement passé devant l'écran, pendant que la timeline affichait
+   * un créneau de cinquante minutes. Les deux chiffres décrivaient le même
+   * enregistrement et ne se ressemblaient pas.
+   *
+   * Le début et la fin suivaient déjà l'horloge corrigée : seule la durée
+   * restait sur le temps réel, et c'est ce désaccord qu'on lève ici.
+   */
+  suitLHorloge?: boolean
   onLog?: (level: 'info' | 'warn' | 'error', message: string, context?: unknown) => void
 }
 
@@ -65,6 +85,8 @@ export interface StopResult {
  */
 export class RecordingSession {
   private startedAtMs: number | null = null
+  /** Même départ, lu sur l'horloge corrigée : la base du temps de captation en dev. */
+  private startedAtCorrigeMs: number | null = null
   private startedAtIso: string | null = null
   private markers: Marker[] = []
   private input: StartInput | null = null
@@ -82,6 +104,20 @@ export class RecordingSession {
   /** Instant de départ, pour le chronomètre affiché en régie. */
   get startedAt(): number | null {
     return this.startedAtMs
+  }
+
+  /**
+   * Le même départ sur l'horloge corrigée — ou `null` si elle ne fait pas foi.
+   *
+   * Un seul champ qui porte à la fois la valeur et la règle : `null` dit à la
+   * régie « compte en temps réel », un nombre dit « compte sur l'horloge du
+   * hub, celle qui peut sauter ». Sans quoi le chronomètre affiché pendant la
+   * prise continuerait de compter les minutes passées devant l'écran pendant
+   * que la durée enregistrée, elle, suivrait la journée simulée — deux
+   * chiffres pour le même enregistrement, encore.
+   */
+  get startedAtCorrige(): number | null {
+    return this.deps.suitLHorloge === true ? this.startedAtCorrigeMs : null
   }
 
   /**
@@ -106,9 +142,32 @@ export class RecordingSession {
 
     await this.deps.startRecord()
     this.startedAtMs = this.deps.now()
-    this.startedAtIso = new Date(this.deps.correctedNow()).toISOString()
+    const departCorrige = this.deps.correctedNow()
+    this.startedAtCorrigeMs = departCorrige
+    this.startedAtIso = new Date(departCorrige).toISOString()
     this.markers = []
     this.input = input
+  }
+
+  /**
+   * Temps écoulé depuis le début de la prise.
+   *
+   * Deux horloges, une par mode. Le temps monotone en production : une durée de
+   * captation ne doit pas bouger parce que le poste a resynchronisé son horloge
+   * en pleine conférence. L'horloge corrigée en développement : c'est en la
+   * poussant qu'on y déroule une journée, et la prise doit suivre ce qu'elle
+   * raconte plutôt que le temps passé devant l'écran.
+   *
+   * Jamais négatif. Reculer l'horloge de développement ramène donc la prise à
+   * zéro — c'est la conséquence assumée de la suivre, et ça vaut mieux qu'une
+   * durée négative qui casserait tout ce qui la lit en aval.
+   */
+  private ecouleMs(): number {
+    if (this.startedAtMs == null) return 0
+    if (this.deps.suitLHorloge === true && this.startedAtCorrigeMs != null) {
+      return Math.max(0, this.deps.correctedNow() - this.startedAtCorrigeMs)
+    }
+    return Math.max(0, this.deps.now() - this.startedAtMs)
   }
 
   /** Pose un marqueur de chapitre à l'instant courant. */
@@ -116,7 +175,9 @@ export class RecordingSession {
     if (this.startedAtMs == null) throw new Error('Aucun enregistrement en cours')
     const marker: Marker = {
       label,
-      offsetMs: Math.max(0, this.deps.now() - this.startedAtMs),
+      // Même horloge que la durée : un marqueur posé après un saut d'horloge
+      // doit tomber au même endroit que ce que la prise annonce durer.
+      offsetMs: this.ecouleMs(),
       at: new Date(this.deps.correctedNow()).toISOString(),
     }
     this.markers.push(marker)
@@ -142,7 +203,7 @@ export class RecordingSession {
     await this.deps.stopRecord()
     const outputPath = await resolveOutputPath()
     const endedAtIso = new Date(this.deps.correctedNow()).toISOString()
-    const durationMs = Math.max(0, this.deps.now() - this.startedAtMs)
+    const durationMs = this.ecouleMs()
     const input = this.input
     const session = input.session
 
@@ -197,6 +258,7 @@ export class RecordingSession {
     }
 
     this.startedAtMs = null
+    this.startedAtCorrigeMs = null
     this.startedAtIso = null
     this.input = null
     return { sidecarPath, videoPath, sidecar }

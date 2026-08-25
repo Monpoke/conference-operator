@@ -1099,6 +1099,12 @@ export class RoomApp implements ControlTarget {
       fs: nodeRecordingFs(),
       now: () => Date.now(),
       correctedNow: () => this.runtime.correctedNow(),
+      // En développement seulement : c'est en poussant l'horloge qu'on y
+      // déroule une journée, et la durée d'une prise doit suivre ce que la
+      // timeline raconte plutôt que le temps passé devant l'écran. En
+      // production, le temps monotone reste seul juge — une resynchronisation
+      // d'horloge en pleine conférence ne doit pas rallonger le talk.
+      suitLHorloge: (this.options.mode ?? 'production') === 'dev',
       onLog: this.options.onLog,
     })
 
@@ -1684,6 +1690,7 @@ export class RoomApp implements ControlTarget {
         active: this.recording?.active ?? false,
         markers: this.recording?.markerCount ?? 0,
         startedAtMs: this.recording?.startedAt ?? null,
+        startedAtCorrigeMs: this.recording?.startedAtCorrige ?? null,
       },
     }
   }

@@ -488,6 +488,39 @@ describe('chronomètre de captation', () => {
     expect($('duree').classList.contains('inactif')).toBe(false)
     expect(globalThis.getComputedStyle($('duree')).color).not.toBe(eteint)
   })
+
+  it('compte sur l\'horloge du hub quand elle fait foi', () => {
+    /*
+     * En développement, on déroule une journée en poussant l'horloge du hub.
+     * Le chronomètre comptait les minutes passées devant l'écran pendant que la
+     * durée finalement enregistrée, elle, suivait la journée simulée : deux
+     * chiffres pour le même enregistrement.
+     *
+     * `startedAtCorrigeMs` porte la valeur et la règle — renseigné, on compte
+     * sur l'horloge du hub, décalage compris.
+     */
+    const decalage = 3 * 3600_000
+    monterRegie({
+      ...ETAT,
+      state: {
+        ...(ETAT as unknown as { state: Record<string, unknown> }).state,
+        serverTimeOffsetMs: decalage,
+      },
+      diagnostics: {
+        ...(ETAT as unknown as { diagnostics: Record<string, unknown> }).diagnostics,
+        recording: {
+          active: true,
+          markers: 0,
+          startedAtMs: Date.now() - 5_000,
+          // Départ posé vingt minutes plus tôt sur l'horloge du hub.
+          startedAtCorrigeMs: Date.now() + decalage - 20 * 60_000,
+        },
+      },
+    } as unknown as DisplayPayload)
+
+    // Vingt minutes, pas les cinq secondes de temps réel.
+    expect($('duree').textContent).toMatch(/^20:0\d$/)
+  })
 })
 
 describe('temps restant au programme', () => {

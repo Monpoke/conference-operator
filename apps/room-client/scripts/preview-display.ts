@@ -114,7 +114,9 @@ const base: DisplayPayload = {
       { level: 'warn', message: 'remontée impossible, lot reporté', createdAt: '2026-10-30T11:18:00.000Z' },
       { level: 'info', message: 'assets préchargés', createdAt: '2026-10-30T09:02:00.000Z' },
     ],
-    recording: { active: true, markers: 2, startedAtMs: AT - 14 * 60_000 },
+    // `startedAtCorrigeMs` nul : l'aperçu montre le cas de production, où le
+    // chronomètre compte en temps réel.
+    recording: { active: true, markers: 2, startedAtMs: AT - 14 * 60_000, startedAtCorrigeMs: null },
     rooms: [
       { roomId: 'track-1-teilhard-de-chardin', name: 'Track #1 — Teilhard de Chardin', connectivity: 'ONLINE', sceneRole: 'LIVE', recording: true, outboxDepth: 3, lastSeenAt: new Date(AT - 4_000).toISOString(), currentSessionId: null, conference: 'en-cours' },
       { roomId: 'track-2-mf-1092', name: 'Track #2 — MF 1092', connectivity: 'ONLINE', sceneRole: 'HOLD', recording: false, outboxDepth: 0, lastSeenAt: new Date(AT - 9_000).toISOString(), currentSessionId: null, conference: 'en-cours' },

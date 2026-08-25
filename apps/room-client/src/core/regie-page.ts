@@ -541,6 +541,8 @@ ${etatInitial}
 (() => {
   let donnees = null
   let debutRec = null
+  /** Le chronomètre compte sur l'horloge du hub plutôt qu'en temps réel. */
+  let recSuitHorloge = false
 
   const $ = (id) => document.getElementById(id)
   const echapper = (v) => String(v ?? '').replace(/[&<>"']/g, (c) =>
@@ -2266,7 +2268,16 @@ ${etatInitial}
     boutons($('scenes'), scenes, etat.sceneRole, (role) => ({ action: 'scene.set', role }))
 
     const rec = donnees.diagnostics?.recording
-    debutRec = rec?.active ? rec.startedAtMs : null
+    /*
+     * Le départ de la prise, et sur quelle horloge le compter.
+     *
+     * Un startedAtCorrigeMs renseigné veut dire « compte sur l'horloge du hub »
+     * — le cas du développement, où l'on déroule une journée en la poussant, et
+     * où le chronomètre doit dire la même chose que la durée finalement
+     * enregistrée. Absent, on compte en temps réel, comme en production.
+     */
+    debutRec = rec?.active ? (rec.startedAtCorrigeMs ?? rec.startedAtMs) : null
+    recSuitHorloge = rec?.active === true && rec.startedAtCorrigeMs != null
     const btnRec = $('btn-rec')
     btnRec.classList.toggle('actif', Boolean(rec?.active))
     btnRec.textContent = rec?.active ? 'Arrêter' : 'Enregistrer'
@@ -2342,7 +2353,9 @@ ${etatInitial}
       return
     }
     duree.classList.remove('inactif')
-    const ecoule = Math.max(0, Date.now() - debutRec)
+    // maintenant() porte le décalage du hub, et le relit à chaque tic : c'est
+    // ce qui fait avancer le chronomètre d'un coup quand on pousse l'horloge.
+    const ecoule = Math.max(0, (recSuitHorloge ? maintenant() : Date.now()) - debutRec)
     const m = String(Math.floor(ecoule / 60000)).padStart(2, '0')
     const s = String(Math.floor((ecoule % 60000) / 1000)).padStart(2, '0')
     duree.textContent = m + ':' + s

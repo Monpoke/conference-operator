@@ -255,7 +255,19 @@ export interface ControlDiagnostics {
   outboxDepth: number
   journal: { level: string; message: string; createdAt: string }[]
   /** Enregistrement en cours côté client, et nombre de marqueurs posés. */
-  recording: { active: boolean; markers: number; startedAtMs: number | null }
+  recording: {
+    active: boolean
+    markers: number
+    startedAtMs: number | null
+    /**
+     * Départ sur l'horloge corrigée, ou `null` si le temps réel fait foi.
+     *
+     * Porte la valeur **et** la règle : la régie compte sur l'horloge du hub
+     * quand ce champ est renseigné — le cas du développement, où l'on déroule
+     * une journée en poussant l'horloge — et en temps réel sinon.
+     */
+    startedAtCorrigeMs: number | null
+  }
 }
 
 /**

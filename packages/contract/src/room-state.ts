@@ -173,6 +173,41 @@ export type RoomConfigInput = z.input<typeof roomConfigSchema>
 export const sessionStatusSchema = z.enum(STATUTS)
 export type SessionStatus = z.infer<typeof sessionStatusSchema>
 
+/**
+ * Ce qu'OpenFeedback sait des créneaux du programme.
+ *
+ * Trois issues, et les distinguer est tout l'intérêt : un projet introuvable
+ * (`projetTrouve` faux) tue toutes les adresses d'un coup et se corrige d'un
+ * champ ; un projet qui ne stocke pas ses talks (`talksConnus` nul) rend la
+ * comparaison sans objet, et le dire vaut mieux que signaler vingt-sept
+ * créneaux qui ne manquent pas ; sinon `manquants` nomme ceux dont le lien et
+ * le QR mènent à une page vide.
+ */
+export const controleOpenFeedbackSchema = z.object({
+  projet: z.string(),
+  projetTrouve: z.boolean(),
+  /**
+   * Nombre de talks connus d'OpenFeedback, ou `null`.
+   *
+   * `null` ne veut pas dire zéro : il veut dire « OpenFeedback ne tient pas
+   * cette liste », parce que le projet lit ses sessions d'une source externe.
+   * Confondre les deux ferait crier au loup sur un événement parfaitement
+   * configuré — et un contrôle qui crie au loup ne se relance jamais.
+   */
+  talksConnus: z.number().int().nonnegative().nullable(),
+  manquants: z.array(
+    z.object({
+      sessionId: sessionIdSchema,
+      title: z.string(),
+      /** L'identifiant réellement servi : c'est lui qu'on est allé chercher. */
+      feedbackId: z.string(),
+    }),
+  ),
+  /** Ce qu'il faut en comprendre, en clair : la console l'affiche tel quel. */
+  detail: z.string(),
+})
+export type ControleOpenFeedback = z.infer<typeof controleOpenFeedbackSchema>
+
 export const sessionStateSchema = z.object({
   sessionId: sessionIdSchema,
   roomId: roomIdSchema.nullable(),

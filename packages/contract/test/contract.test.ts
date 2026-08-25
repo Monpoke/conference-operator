@@ -162,6 +162,16 @@ describe('surface du contrat', () => {
       'start',
       'states',
     ])
+    expect(Object.keys(contract.program).sort()).toEqual([
+      'activate',
+      // Le seul appel sortant de la console : confronte les identifiants du
+      // programme à ce qu'OpenFeedback connaît, sur demande et jamais en fond.
+      'controleOpenFeedback',
+      'globalBreak',
+      'import',
+      'planning',
+      'snapshots',
+    ])
     expect(Object.keys(contract.rooms).sort()).toEqual([
       'commands',
       // Une salle se règle elle-même : les adresses OBS et les noms de scènes

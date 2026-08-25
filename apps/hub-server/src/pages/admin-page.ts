@@ -514,8 +514,18 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
           vigueur, et se déplie d'un clic. Ce qu'on demande, c'est d'avoir voulu
           les modifier avant de pouvoir le faire.
         -->
+        <!--
+          Le contrôle des liens de feedback.
+
+          Sur demande et non en continu : il sort du hub pour interroger
+          OpenFeedback, et c'est un geste d'avant-événement — on le passe une
+          fois le programme importé, on corrige ce qu'il signale, et on n'y
+          revient plus.
+        -->
+        <button class="shrink-0" id="btn-controle-feedback">Vérifier les liens</button>
         <button class="shrink-0" id="btn-planning-actions" aria-expanded="false"></button>
       </div>
+      <div class="mb-2.5" id="controle-feedback" hidden></div>
       <div class="overflow-x-auto">
         <table>
           <thead><tr><th>Prévu</th><th>Réel</th><th>Salle</th><th>Conférence</th><th>Feedback</th><th>VOD</th><th class="col-action">Action</th></tr></thead>
@@ -2335,6 +2345,60 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
         '</tr>'
     }).join('')
   }
+
+  /**
+   * Confronte les identifiants du programme à ce qu'OpenFeedback connaît.
+   *
+   * Le seul geste de cette console qui sorte vers un tiers, et le seul dont
+   * l'échec ne dise rien du programme : le résultat s'affiche donc dans le
+   * panneau, sous le bouton, et pas dans l'avis flottant qui disparaît.
+   */
+  async function controlerFeedback() {
+    const zone = $('controle-feedback')
+    const bouton = $('btn-controle-feedback')
+    zone.hidden = false
+    zone.className = 'aide mb-2.5'
+    zone.textContent = 'Interrogation d’OpenFeedback…'
+    bouton.disabled = true
+    try {
+      const controle = await appeler('program/controleOpenFeedback')
+      zone.innerHTML = rendreControleFeedback(controle)
+    } catch (cause) {
+      zone.className = 'aide mb-2.5 text-alerte'
+      zone.textContent = cause.message
+    } finally {
+      bouton.disabled = false
+    }
+  }
+
+  function rendreControleFeedback(controle) {
+    // Projet introuvable : la panne la plus bête et la plus totale — une faute
+    // de frappe dans un champ, et les vingt-sept adresses sont mortes.
+    if (!controle.projetTrouve) {
+      return '<strong class="text-alerte">Projet « ' + echapper(controle.projet) +
+        ' » introuvable chez OpenFeedback.</strong> ' + echapper(controle.detail)
+    }
+    // Talks absents : la comparaison est sans objet, et le dire vaut mieux que
+    // signaler vingt-sept créneaux qui ne manquent pas.
+    if (controle.talksConnus == null) {
+      return '<strong>Projet trouvé.</strong> ' + echapper(controle.detail)
+    }
+    if (controle.manquants.length === 0) {
+      return '<strong class="text-ok">' + controle.talksConnus + ' talks chez OpenFeedback, ' +
+        'tous les créneaux ont le leur.</strong> ' + echapper(controle.detail)
+    }
+    const lignes = controle.manquants.map((creneau) =>
+      '<li>' + echapper(creneau.title) +
+      ' <span class="font-mono text-[11px] text-attenue">' + echapper(creneau.feedbackId) +
+      '</span></li>').join('')
+    return '<strong class="text-attention">' + controle.manquants.length +
+      ' créneau' + (controle.manquants.length > 1 ? 'x' : '') + ' sans page OpenFeedback</strong> ' +
+      '<span class="text-attenue">sur ' + controle.talksConnus + ' talks connus.</span> ' +
+      echapper(controle.detail) +
+      '<ul class="mt-1.5 list-disc pl-4">' + lignes + '</ul>'
+  }
+
+  $('btn-controle-feedback').onclick = () => void controlerFeedback()
 
   /**
    * Le bouton qui ouvre l'identifiant OpenFeedback d'un créneau.

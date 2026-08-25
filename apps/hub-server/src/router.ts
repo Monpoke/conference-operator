@@ -17,6 +17,7 @@ import {
   type Session,
 } from '@cloudnord/program'
 import type { CaptationBrute } from './services/ingest.js'
+import { controlerOpenFeedback } from './services/openfeedback.js'
 import { TransitionRefusee } from './services/sessions.js'
 import { StockageIncomplet, type VodService } from './services/vod.js'
 import { ErreurS3 } from './services/s3.js'
@@ -176,6 +177,50 @@ export const router = os.router({
       const { startsAtMs: _ignore, ...reste } = retenu
       return { ...reste, serverTime: nowIso(context) }
     }),
+
+    /**
+     * Confronte les identifiants du programme à ce qu'OpenFeedback connaît.
+     *
+     * Les pauses en sont exclues : elles n'ont pas de page de retours, et les
+     * compter comme manquantes noierait les vraies anomalies. Les pauses
+     * héritées d'une autre salle aussi — elles n'existent que comme projection.
+     *
+     * L'échec réseau est traduit, comme pour le stockage : « fetch failed » ne
+     * dit rien à qui lit la console, et un contrôle qui échoue sans dire
+     * pourquoi ne se relance pas.
+     */
+    controleOpenFeedback: os.program.controleOpenFeedback
+      .use(operatorOnly)
+      .handler(async ({ context }) => {
+        const projet = renseigne(context.services.settings.get().openFeedbackProjectId)
+        if (projet == null) {
+          throw new ORPCError('BAD_REQUEST', {
+            message:
+              'Aucun projet OpenFeedback réglé : il n\'y a rien à contrôler tant que ' +
+              'le champ des réglages est vide.',
+          })
+        }
+        const snapshot = context.services.programs.active()
+        if (snapshot == null) {
+          throw new ORPCError('NOT_FOUND', { message: 'Aucun programme actif sur ce hub' })
+        }
+
+        const creneaux = snapshot.program.sessions
+          .filter((session) => session.kind !== 'break' && session.sharedFrom == null)
+          .map((session) => ({
+            id: session.id,
+            title: session.title,
+            feedbackId: session.feedbackId ?? session.id,
+          }))
+
+        try {
+          return await controlerOpenFeedback(projet, creneaux)
+        } catch (cause) {
+          throw new ORPCError('BAD_GATEWAY', {
+            message: `OpenFeedback est injoignable : ${causeLisible(cause)}`,
+          })
+        }
+      }),
 
     planning: os.program.planning.use(operatorOnly).handler(({ context }) => {
       const snapshot = context.services.programs.active()

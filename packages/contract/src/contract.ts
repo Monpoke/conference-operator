@@ -11,6 +11,7 @@ import {
 } from './primitives.js'
 import { eventIdentitySchema } from './event-identity.js'
 import {
+  controleOpenFeedbackSchema,
   hubSettingsSchema,
   niveauxNotifSchema,
   roomConfigPatchSchema,
@@ -210,6 +211,16 @@ export const contract = {
         })
         .nullable(),
     ),
+
+    /**
+     * Confronte les identifiants OpenFeedback du programme aux siens. Admin.
+     *
+     * Sur demande, jamais en tâche de fond : c'est un geste d'avant-événement,
+     * qu'on exécute une fois le programme importé pour corriger ce qu'il
+     * signale. Il sort du hub — la seule procédure ici qui appelle un tiers —
+     * et il peut donc échouer pour des raisons qui ne disent rien du programme.
+     */
+    controleOpenFeedback: oc.output(controleOpenFeedbackSchema),
 
     planning: oc.output(
       z.object({

@@ -1199,6 +1199,15 @@ describe('vue Conférences', () => {
   /** Appels partis vers le hub depuis l'ouverture de la vue. */
   let appels: { chemin: string; entree: unknown }[] = []
 
+  /** Ce que le hub répond au contrôle des liens, réglable par test. */
+  let controleFeedback: unknown = {
+    projet: 'cloud-nord-2026',
+    projetTrouve: true,
+    talksConnus: 27,
+    manquants: [],
+    detail: 'Tous les créneaux ont leur page chez OpenFeedback.',
+  }
+
   /** Ce que le hub répond au dossier VOD, réglable par test. */
   let dossierVod: unknown = {
     sessionId: 'ses-1',
@@ -1223,7 +1232,8 @@ describe('vue Conférences', () => {
                 : chemin === 'vod/conference' ? dossierVod
                 : chemin === 'sessions/feedbackId'
                   ? { ok: true, feedbackId: 'of-42', feedbackUrl: null }
-                  : []
+                  : chemin === 'program/controleOpenFeedback' ? controleFeedback
+                    : []
       return new Response(JSON.stringify({ json }), { status: 200 })
     }))
     localStorage.setItem('hub-admin', 'jeton')
@@ -1428,6 +1438,45 @@ describe('vue Conférences', () => {
     })
 
     expect($('btn-planning-actions').textContent).toContain('1 décision')
+  })
+
+  it('nomme les créneaux sans page OpenFeedback', async () => {
+    controleFeedback = {
+      projet: 'cloud-nord-2026',
+      projetTrouve: true,
+      talksConnus: 26,
+      manquants: [{ sessionId: 'ses-2', title: 'Event Iterators', feedbackId: 'ses-2' }],
+      detail: 'Ces créneaux n’ont pas de page chez OpenFeedback',
+    }
+    await ouvrir()
+
+    $('btn-controle-feedback').click()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    const zone = $('controle-feedback') as HTMLElement
+    expect(zone.hidden).toBe(false)
+    expect(zone.textContent).toContain('Event Iterators')
+    expect(zone.textContent).toContain('26 talks connus')
+  })
+
+  it('ne crie pas au loup quand OpenFeedback ne stocke pas les talks', async () => {
+    // Un projet qui lit ses sessions d'une source externe n'a rien à comparer :
+    // signaler les vingt-sept créneaux ferait abandonner le contrôle.
+    controleFeedback = {
+      projet: 'cloud-nord-2026',
+      projetTrouve: true,
+      talksConnus: null,
+      manquants: [],
+      detail: 'Le projet existe, mais OpenFeedback n’y stocke aucun talk',
+    }
+    await ouvrir()
+
+    $('btn-controle-feedback').click()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    const texte = $('controle-feedback').textContent ?? ''
+    expect(texte).toContain('Projet trouvé')
+    expect(texte).not.toContain('sans page')
   })
 
   it('ouvre l\'identifiant OpenFeedback d\'une conférence', async () => {

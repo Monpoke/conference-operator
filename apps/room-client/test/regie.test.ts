@@ -340,3 +340,110 @@ describe('configuration de la salle depuis la régie', () => {
     expect(hub.services.rooms.get(TRACK_1)!.displayPort).toBe(7788)
   }, 40_000)
 })
+
+/**
+ * Contrôle des rushes depuis la régie.
+ *
+ * De bout en bout : ce qui est écrit sur le disque par la captation doit se
+ * retrouver dans la liste, et le verdict posé doit survivre à la fermeture de
+ * la modale. C'est le seul moment où l'on peut encore refaire une prise — le
+ * soir, la salle est démontée.
+ */
+describe('contrôle des enregistrements', () => {
+  const lister = async () =>
+    (await (await fetch(`${regie}/control/recordings`)).json()) as {
+      ok: boolean
+      root: string | null
+      entries: {
+        file: string
+        sizeBytes: number
+        sidecar: { title: string } | null
+        check: { status: string; by: string; reasons: string[] } | null
+      }[]
+    }
+
+  it('liste le rush produit, avec le titre de la conférence', async () => {
+    expect((await lister()).entries).toEqual([])
+
+    await agir({ action: 'recording.start' })
+    await agir({ action: 'recording.stop' })
+
+    const liste = await lister()
+    expect(liste.root).toMatch(/rec$/)
+    expect(liste.entries).toHaveLength(1)
+    expect(liste.entries[0]!.file).toMatch(/\.mkv$/)
+    // Le sidecar est apparié au fichier : c'est lui qui porte le titre.
+    expect(liste.entries[0]!.sidecar?.title).toBeTruthy()
+    expect(liste.entries[0]!.check).toBeNull()
+  }, 40_000)
+
+  it('refuse de déclarer exploitable un fichier de quatre octets', async () => {
+    await agir({ action: 'recording.start' })
+    await agir({ action: 'recording.stop' })
+    const rush = (await lister()).entries[0]!
+
+    const controle = await agir({ action: 'vod.inspect', file: rush.file })
+    expect(controle.body.ok).toBe(true)
+
+    const apres = (await lister()).entries[0]!
+    // Le faux OBS écrit quatre octets : que ffprobe soit installé ou non sur la
+    // machine de test, rien là-dedans ne peut passer pour une conférence.
+    expect(apres.check?.status).not.toBe('ok')
+    expect(apres.check?.reasons.length).toBeGreaterThan(0)
+  }, 40_000)
+
+  it('retient le verdict de l\'opérateur, et le laisse se reprendre', async () => {
+    await agir({ action: 'recording.start' })
+    await agir({ action: 'recording.stop' })
+    const rush = (await lister()).entries[0]!
+
+    await agir({ action: 'vod.verdict', file: rush.file, status: 'illisible' })
+    expect((await lister()).entries[0]!.check).toMatchObject({ status: 'illisible', by: 'operateur' })
+
+    await agir({ action: 'vod.verdict', file: rush.file, status: null })
+    expect((await lister()).entries[0]!.check).toBeNull()
+  }, 40_000)
+
+  it('sert le rush tel quel, et par tranche', async () => {
+    await agir({ action: 'recording.start' })
+    await agir({ action: 'recording.stop' })
+    const rush = (await lister()).entries[0]!
+    const adresse = `${regie}/control/recordings/fichier?file=` + encodeURIComponent(rush.file)
+
+    const entier = await fetch(adresse)
+    expect(entier.status).toBe(200)
+    expect(entier.headers.get('content-type')).toBe('video/x-matroska')
+    expect(entier.headers.get('accept-ranges')).toBe('bytes')
+    expect((await entier.text()).length).toBe(rush.sizeBytes)
+
+    // Les tranches sont ce qui rend un fichier de trois gigaoctets navigable :
+    // sans elles, un lecteur télécharge tout avant la première image.
+    const tranche = await fetch(adresse, { headers: { range: 'bytes=1-2' } })
+    expect(tranche.status).toBe(206)
+    expect(tranche.headers.get('content-range')).toBe(`bytes 1-2/${rush.sizeBytes}`)
+    expect((await tranche.text()).length).toBe(2)
+  }, 40_000)
+
+  it('ne laisse pas lire n\'importe quoi sur le disque', async () => {
+    // La régie est servie en HTTP sur la machine : ces deux routes rendent des
+    // octets, elles sont exactement l'endroit où un `..` coûterait cher.
+    const lecture = await fetch(`${regie}/control/recordings/fichier?file=../../etc/passwd`)
+    expect(lecture.status).toBe(409)
+
+    const apercu = await fetch(`${regie}/control/recordings/extrait?file=../../etc/passwd`)
+    expect(apercu.status).toBe(409)
+  }, 40_000)
+
+  it('rend 404 sur un rush qui n\'existe plus', async () => {
+    const reponse = await fetch(`${regie}/control/recordings/fichier?file=jamais.mkv`)
+    expect(reponse.status).toBe(404)
+  }, 40_000)
+
+  it('ne sort pas du dossier des enregistrements', async () => {
+    // La page est servie en HTTP sur la machine : un `..` dans le nom du fichier
+    // ferait lire, et marquer, n'importe quoi sur le disque.
+    const resultat = await agir({ action: 'vod.inspect', file: '../../etc/passwd' })
+    expect(resultat.status).toBe(409)
+    expect(resultat.body.message).toContain('hors du dossier')
+  }, 40_000)
+})

@@ -17,3 +17,6 @@ preview/
 # Données d'exécution d'une salle : identité de la machine appairée, captations.
 # Elles n'appartiennent qu'au poste qui les a produites.
 .donnees-locales/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/

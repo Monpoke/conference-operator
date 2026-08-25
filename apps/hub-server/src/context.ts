@@ -7,6 +7,7 @@ import type { DeviceService, RoomService } from './services/rooms.js'
 import type { QuestionService, WallService } from './services/wall.js'
 import type { RateLimiter } from './services/rate-limit.js'
 import type { PushService } from './services/push.js'
+import type { VodService } from './services/vod.js'
 import type { SessionStateService, SettingsService } from './services/sessions.js'
 import type { EventIdentityService } from './services/event-identity.js'
 import type { MutableClock } from './services/clock.js'
@@ -31,6 +32,15 @@ export interface Services {
    * journée sans redémarrer le hub.
    */
   identity: EventIdentityService
+  /**
+   * Rapatriement des rushes vers S3.
+   *
+   * `null` quand aucun stockage n'est configuré, et c'est le cas par défaut :
+   * un hub sans S3 ne doit pas porter une demi-fonctionnalité, avec une console
+   * qui annonce un stockage prêt et des boutons qui échouent. Chaque procédure
+   * refuse alors en le disant.
+   */
+  vod: VodService | null
   push: PushService
   clock: MutableClock
   /**

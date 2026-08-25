@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify'
 import { IDENTITE_PAR_DEFAUT } from '@cloudnord/contract'
+import { timelinePosition } from '@cloudnord/program/selectors'
 import {
   FUSEAU_PAR_DEFAUT,
   openFeedbackUrl,
@@ -21,6 +22,7 @@ import {
   type ControlDiagnostics,
   type ControlTarget,
 } from './control-api.js'
+import { moniteurHote, type ChargeHote } from './hote.js'
 
 export interface DisplayPayload {
   state: DisplayState
@@ -142,6 +144,8 @@ export interface DisplayServerOptions {
    * ferme. Une salle dont personne ne regarde les niveaux n'en paie pas le prix.
    */
   onNiveauxDemandes?: (actif: boolean) => void
+  /** Charge du poste, relevée à la demande. Par défaut, celle de cette machine. */
+  hote?: () => ChargeHote
   host?: string
   port?: number
 }
@@ -169,8 +173,17 @@ export class DisplayServer {
   private feedbackCache: { url: string; qrSvg: string } | null = null
   private feedbackCacheKey: string | null = null
   private readonly surChangement: () => void
+  /**
+   * Relevé de charge du poste.
+   *
+   * Créé ici, et non à chaque requête : la mesure est une **différence** entre
+   * deux lectures des compteurs du noyau, donc elle n'existe que si quelqu'un
+   * garde le repère précédent.
+   */
+  private readonly hote: () => ChargeHote
 
   constructor(private readonly options: DisplayServerOptions) {
+    this.hote = options.hote ?? moniteurHote()
     this.app = Fastify({ logger: false })
     this.registerRoutes()
     // Rediffuse à chaque changement d'état : l'écran n'interroge jamais.
@@ -239,13 +252,23 @@ export class DisplayServer {
     return program.rooms
       .filter((salle) => salle.id !== roomId)
       .map((salle) => {
-        const creneaux = sessionsForRoom(program, salle.id).filter((c) => c.kind === 'talk')
-        // En cours d'abord, sinon la prochaine à commencer : entre deux talks,
-        // c'est l'heure du suivant qu'on vient chercher.
-        const courant = creneaux.find(
-          (c) => c.startsAtMs <= at && (c.endsAtMs == null || at < c.endsAtMs),
-        )
-        const session = courant ?? creneaux.find((c) => c.startsAtMs > at) ?? null
+        /**
+         * La position se calcule sur **tous** les créneaux, les pauses
+         * comprises, et on ne retient que les conférences ensuite.
+         *
+         * L'ordre compte : la fin d'un créneau se déduit du début du suivant
+         * quand l'export ne la donne pas, et chercher directement dans une
+         * liste filtrée faisait sauter la pause qui le ferme. Un talk sans
+         * heure de fin restait alors « en cours » sur l'écran d'à côté jusqu'à
+         * la fin de la journée.
+         */
+        const creneaux = sessionsForRoom(program, salle.id)
+        const { current } = timelinePosition(creneaux, at)
+        // Les pauses sont écartées ici : « Déjeuner en Track #2 » n'aide
+        // personne à choisir où aller.
+        const courant = current?.kind === 'talk' ? current : null
+        const session =
+          courant ?? creneaux.find((c) => c.kind === 'talk' && c.startsAtMs > at) ?? null
         return {
           roomId: salle.id,
           name: salle.name,
@@ -452,6 +475,113 @@ export class DisplayServer {
     })
 
     /**
+     * Rushes produits, à la demande.
+     *
+     * Hors du flux d'état, et pour la même raison que le programme des autres
+     * salles : lire le dossier des captations à chaque tic coûterait un accès
+     * disque par seconde pour une liste qu'on ouvre trois fois dans la journée.
+     * Rien n'est sondé ici — ouvrir la modale ne doit pas lancer une série de
+     * ffprobe pendant qu'une conférence tourne.
+     */
+    this.app.get('/control/recordings', async (_request, reply) => {
+      if (this.options.control == null) {
+        return reply.status(503).send({ ok: false, message: 'Régie indisponible' })
+      }
+      try {
+        return { ok: true, ...(await this.options.control.listRecordings()) }
+      } catch (cause) {
+        return reply
+          .status(200)
+          .send({ ok: false, root: null, entries: [], message: (cause as Error).message })
+      }
+    })
+
+    /**
+     * Aperçu d'un rush, produit à la volée.
+     *
+     * Vingt secondes remballées en MP4 fragmenté, et jamais le fichier entier :
+     * les rushes d'OBS sont des Matroska, qu'aucun navigateur ne sait ouvrir, et
+     * ils pèsent plusieurs gigaoctets. L'extrait répond à la seule question
+     * qu'on se pose devant la liste — « est-ce qu'il y a une image et du son ? »
+     * — sans rien écrire sur le disque ni attendre un téléchargement.
+     */
+    this.app.get<{ Querystring: { file?: string; at?: string; duree?: string } }>(
+      '/control/recordings/extrait',
+      async (request, reply) => {
+        if (this.options.control == null) {
+          return reply.status(503).send({ ok: false, message: 'Régie indisponible' })
+        }
+        const fichier = request.query.file
+        if (fichier == null || fichier.length === 0) {
+          return reply.status(400).send({ ok: false, message: 'Fichier non précisé' })
+        }
+
+        let extrait: Awaited<ReturnType<ControlTarget['readRecordingExtract']>>
+        try {
+          extrait = await this.options.control.readRecordingExtract(
+            fichier,
+            Number(request.query.at ?? 0) || 0,
+            Number(request.query.duree ?? 20_000) || 20_000,
+          )
+        } catch (cause) {
+          return reply.status(409).send({ ok: false, message: (cause as Error).message })
+        }
+        if (extrait == null) {
+          return reply.status(503).send({ ok: false, message: 'ffmpeg introuvable sur cette machine' })
+        }
+
+        // Le flux s'écrit au fil de l'encodage : ni longueur connue, ni tranche
+        // possible. Le lecteur le prend comme un direct, ce qu'il est.
+        reply.header('content-type', 'video/mp4')
+        reply.header('accept-ranges', 'none')
+        reply.header('cache-control', 'no-store')
+        // Refermer la modale ne doit pas laisser un ffmpeg tourner sur la
+        // machine qui enregistre la conférence suivante.
+        request.raw.on('close', () => extrait.arreter())
+        return reply.send(extrait.flux)
+      },
+    )
+
+    /**
+     * Le rush tel quel, par tranche.
+     *
+     * Pour l'ouvrir dans un lecteur qui sait lire du Matroska, ou le rapatrier
+     * sur une autre machine — ce qu'un aperçu de vingt secondes ne remplacera
+     * jamais.
+     */
+    this.app.get<{ Querystring: { file?: string } }>(
+      '/control/recordings/fichier',
+      async (request, reply) => {
+        if (this.options.control == null) {
+          return reply.status(503).send({ ok: false, message: 'Régie indisponible' })
+        }
+        const fichier = request.query.file
+        if (fichier == null || fichier.length === 0) {
+          return reply.status(400).send({ ok: false, message: 'Fichier non précisé' })
+        }
+
+        let flux: Awaited<ReturnType<ControlTarget['readRecordingFile']>>
+        try {
+          flux = await this.options.control.readRecordingFile(fichier, request.headers.range ?? null)
+        } catch (cause) {
+          return reply.status(409).send({ ok: false, message: (cause as Error).message })
+        }
+        if (flux == null) return reply.status(404).send({ ok: false, message: 'Fichier absent du disque' })
+
+        const partiel = flux.debut > 0 || flux.fin < flux.taille - 1
+        reply.header('content-type', flux.type)
+        reply.header('accept-ranges', 'bytes')
+        reply.header('content-length', String(flux.fin - flux.debut + 1))
+        if (partiel) {
+          reply.header('content-range', `bytes ${flux.debut}-${flux.fin}/${flux.taille}`)
+          reply.status(206)
+        }
+        request.raw.on('close', () => flux.flux.destroy())
+        return reply.send(flux.flux)
+      },
+    )
+
+    /**
      * Programme d'une autre salle, à la demande.
      *
      * Volontairement hors du flux d'état : embarquer les 27 sessions de
@@ -472,6 +602,32 @@ export class DisplayServer {
         rooms: program.rooms.map((salle) => ({ id: salle.id, name: salle.name })),
         sessions: roomId == null ? [] : sessionsForRoom(program, roomId),
       }
+    })
+
+    /**
+     * Charge du poste, à la demande.
+     *
+     * Hors du flux d'état, et c'est le point : un chiffre qui bouge chaque
+     * seconde placé dans la charge utile republierait tout le diagnostic —
+     * salles, journal, configuration — à chaque tic, alors qu'une salle au
+     * repos ne doit générer aucun trafic. Ici, seule la régie ouverte
+     * interroge, et elle interroge une réponse de trois champs.
+     */
+    this.app.get('/control/host', async () => this.hote())
+
+    /**
+     * Téléversements en cours, et pourquoi rien ne part.
+     *
+     * Hors du flux d'état pour la même raison que la charge du poste : un
+     * pourcentage qui avance republierait tout le diagnostic à chaque part.
+     * La modale des enregistrements l'interroge tant qu'elle est ouverte, et
+     * personne ne paie rien quand elle est fermée.
+     */
+    this.app.get('/control/uploads', async (_request, reply) => {
+      if (this.options.control?.vodUploads == null) {
+        return reply.status(503).send({ ok: false, message: 'Régie indisponible' })
+      }
+      return { ok: true, ...this.options.control.vodUploads() }
     })
 
     this.app.get('/display/data', async () => this.payload())

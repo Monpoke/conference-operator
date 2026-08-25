@@ -306,3 +306,116 @@ describe('vumètre', () => {
     }
   })
 })
+
+/**
+ * Ce qui se joue dans les autres salles, sur la fin **effective**.
+ *
+ * La position se cherchait dans une liste déjà filtrée sur les conférences, et
+ * un créneau sans heure de fin explicite y était « en cours » pour toujours :
+ * l'écran d'à côté annonçait le premier talk de la matinée jusqu'au soir. Le
+ * calcul passe désormais par `timelinePosition`, sur tous les créneaux, et le
+ * filtre sur les conférences vient après.
+ */
+describe('autres salles, fin effective', () => {
+  const TRACK_2 = 'track-2-mf-1092'
+  /** 08:50 → 09:40 UTC, le premier talk de Track #2. */
+  const MATIN = 'cmq3nx20102h901ppuyjkennd'
+  /** 10:00 → 10:50 UTC : celui qui se joue vraiment à l'heure du test. */
+  const MIDI = 'cmqb69foj000p01nl361us8f0'
+
+  async function voisine(): Promise<DisplayPayload['otherRooms'][number] | undefined> {
+    const payload = (await (await fetch(`${origin}/display/data`)).json()) as DisplayPayload
+    return payload.otherRooms.find((salle) => salle.roomId === TRACK_2)
+  }
+
+  it('annonce le talk qui se joue, pas celui du matin resté ouvert', async () => {
+    // Le talk du matin perd son heure de fin : il ne reste que sa durée, comme
+    // dans un export qui ne porte que des heures de début.
+    const servi: Program = {
+      ...program,
+      sessions: program.sessions.map((session) =>
+        session.id === MATIN
+          ? { ...session, endsAt: null, endsAtMs: null, durationMinutes: 50 }
+          : session,
+      ),
+    }
+    store.saveProgram('hash-2', servi)
+    runtime.setProgram('hash-2', servi)
+
+    // L'horloge du fichier est à 10:20 UTC : la durée ferme le talk du matin à
+    // 09:40, et c'est celui de 10:00 qui se joue.
+    const vue = await voisine()
+    expect(vue?.session?.id).toBe(MIDI)
+    expect(vue?.enCours).toBe(true)
+  })
+
+  it('donne la conférence suivante quand rien ne se joue à côté', async () => {
+    // 09:50 UTC : Track #2 est entre deux talks. Une salle vide n'annonce pas
+    // « en ce moment », elle annonce l'heure du prochain.
+    runtime.setServerTime(new Date(Date.parse('2026-10-30T09:50:00.000Z')).toISOString(), true)
+
+    const vue = await voisine()
+    expect(vue?.enCours).toBe(false)
+    expect(vue?.session?.id).toBe(MIDI)
+  })
+})
+
+/**
+ * Charge du poste, servie hors du flux d'état.
+ *
+ * Le point à protéger n'est pas le chiffre : c'est qu'il ne voyage pas dans la
+ * charge utile. Une valeur qui bouge chaque seconde y republierait tout le
+ * diagnostic à chaque tic, alors qu'une salle au repos ne doit rien émettre.
+ */
+describe('charge du poste', () => {
+  it('répond sur sa propre route', async () => {
+    const reponse = await fetch(`${origin}/control/host`)
+    expect(reponse.status).toBe(200)
+
+    const charge = (await reponse.json()) as {
+      cpu: number | null
+      coeurs: number
+      fenetreMs: number
+      memoire: { occupeeOctets: number; totalOctets: number } | null
+    }
+    expect(charge.coeurs).toBeGreaterThan(0)
+    // La mémoire, elle, se lit dès le premier appel : c'est un instantané.
+    expect(charge.memoire?.totalOctets).toBeGreaterThan(0)
+    expect(charge.memoire?.occupeeOctets).toBeLessThanOrEqual(charge.memoire?.totalOctets ?? 0)
+    // Au premier relevé, aucune fenêtre n'est écoulée : le serveur l'avoue
+    // plutôt que d'annoncer une machine au repos.
+    expect(charge.cpu === null || (charge.cpu >= 0 && charge.cpu <= 1)).toBe(true)
+  })
+
+  it('reste hors de la charge utile envoyée aux pages', async () => {
+    const payload = (await (await fetch(`${origin}/display/data`)).json()) as Record<string, unknown>
+    expect(payload).not.toHaveProperty('hote')
+    expect(JSON.stringify(payload)).not.toContain('coeurs')
+  })
+
+  it('relaie le relevé qu\'on lui confie', async () => {
+    const local = new DisplayServer({
+      runtime,
+      assets,
+      program: () => store.activeProgram(),
+      hote: () => ({
+        cpu: 0.42,
+        coeurs: 8,
+        fenetreMs: 5_000,
+        memoire: { occupeeOctets: 11_000_000_000, totalOctets: 16_000_000_000 },
+      }),
+      port: 0,
+    })
+    const adresse = await local.listen()
+    try {
+      expect(await (await fetch(`${adresse}/control/host`)).json()).toEqual({
+        cpu: 0.42,
+        coeurs: 8,
+        fenetreMs: 5_000,
+        memoire: { occupeeOctets: 11_000_000_000, totalOctets: 16_000_000_000 },
+      })
+    } finally {
+      await local.close()
+    }
+  })
+})

@@ -16,6 +16,7 @@
   "dependencies": {
     "@cloudnord/contract": "workspace:*",
     "@cloudnord/db": "workspace:*",
+    "@cloudnord/etat-salle": "workspace:*",
     "@cloudnord/program": "workspace:*",
     "@cloudnord/ui": "workspace:*",
     "@orpc/client": "2.0.0-beta.29",

@@ -254,6 +254,29 @@ export class ObsController {
     } catch {
       /* instance qui ne gère pas la requête */
     }
+
+    /**
+     * Une instance simulée ne rapporte aucune prise en cours : on la coupe.
+     *
+     * Adopter l'enregistrement d'OBS existe pour une seule raison — l'appli a
+     * redémarré au milieu d'un talk et la prise, elle, court toujours. Rien de
+     * tel avec une instance simulée : elle naît avec l'application, ne capte
+     * rien, et ce qu'elle « enregistre » d'une connexion à l'autre n'est le
+     * souvenir d'aucune vidéo. La régie s'allumait donc parfois sur une
+     * captation en cours que personne n'avait lancée, et qu'il fallait arrêter
+     * pour pouvoir en lancer une.
+     *
+     * On coupe plutôt que d'ignorer : signaler « rien ne capte » en laissant
+     * l'instance croire le contraire ferait échouer le prochain « Enregistrer »
+     * sur un « déjà en cours » que l'écran contredit.
+     */
+    if (this.state.simulated && recording) {
+      // L'instance simulée tient son propre journal : l'arrêt s'y lit, et un
+      // échec ne doit pas empêcher la connexion — on repart de « rien ne capte »
+      // dans les deux cas, puisque c'est la vérité de ce qui est capté.
+      await this.options.transport.call('StopRecord').catch(() => {})
+      recording = false
+    }
     try {
       const etat = (await this.options.transport.call('GetStreamStatus')) as { outputActive?: boolean }
       streaming = etat.outputActive === true
@@ -345,6 +368,21 @@ export class ObsController {
 
   async stopRecording(): Promise<void> {
     await this.options.transport.call('StopRecord')
+  }
+
+  /**
+   * Dossier où OBS écrit ses enregistrements.
+   *
+   * Sert de repli quand la salle n'a pas renseigné sa racine de captations :
+   * c'est OBS qui décide en dernier ressort, et lui seul le sait de source
+   * sûre.
+   */
+  async recordDirectory(): Promise<string | null> {
+    const reponse = (await this.options.transport.call('GetRecordDirectory')) as {
+      recordDirectory?: string
+    }
+    const dossier = reponse?.recordDirectory
+    return dossier != null && dossier.length > 0 ? dossier : null
   }
 
   /**

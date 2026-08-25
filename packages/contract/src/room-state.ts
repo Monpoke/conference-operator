@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ETATS_SALLE, STATUTS } from '@cloudnord/etat-salle'
 import { programSchema } from '@cloudnord/program'
 import { eventIdentitySchema, IDENTITE_PAR_DEFAUT } from './event-identity.js'
 import {
@@ -9,6 +10,7 @@ import {
   sceneRoleSchema,
   sessionIdSchema,
 } from './primitives.js'
+import { POLITIQUE_VOD_PAR_DEFAUT, politiqueVodSchema, vodSyncSchema } from './vod.js'
 
 /**
  * Mapping rôle → nom de scène OBS, par salle et par instance.
@@ -152,8 +154,12 @@ export type RoomConfigInput = z.input<typeof roomConfigSchema>
  *
  * `scheduled` est l'état par défaut et n'est jamais stocké : on n'enregistre
  * que ce qui s'est produit.
+ *
+ * La liste vient de `@cloudnord/etat-salle`, qui porte aussi les transitions
+ * autorisées : le contrat et l'automate ne peuvent donc pas connaître des
+ * états différents.
  */
-export const sessionStatusSchema = z.enum(['scheduled', 'running', 'ended'])
+export const sessionStatusSchema = z.enum(STATUTS)
 export type SessionStatus = z.infer<typeof sessionStatusSchema>
 
 export const sessionStateSchema = z.object({
@@ -273,6 +279,23 @@ export const hubSettingsSchema = z.object({
    * le hub a mis trois secondes à répondre se voit de la salle entière.
    */
   socialLinks: z.array(socialLinkSchema).max(8).default([]),
+  /**
+   * Bucket où atterrissent les rushes. `null` = aucun, et rien ne part.
+   *
+   * Ici et non dans l'environnement, à la différence des clés : un nom de
+   * bucket n'est pas un secret, et c'est la partie qui change — d'une édition à
+   * l'autre, ou le matin où l'on s'aperçoit qu'on visait celui de l'an dernier.
+   */
+  vodBucket: z.string().max(200).nullable().default(null),
+  /**
+   * Préfixe de rangement dans le bucket, sans barre finale.
+   *
+   * Le nom de fichier produit par la salle porte déjà date, salle, heure et
+   * titre ; le préfixe ne sert qu'à faire tenir plusieurs éditions dans un même
+   * bucket sans qu'elles se mélangent.
+   */
+  vodPrefix: z.string().max(200).nullable().default(null),
+  vodPolitique: politiqueVodSchema.default(POLITIQUE_VOD_PAR_DEFAUT),
 })
 export type HubSettings = z.infer<typeof hubSettingsSchema>
 export type HubSettingsInput = z.input<typeof hubSettingsSchema>
@@ -367,6 +390,16 @@ export const syncResultSchema = z.object({
    * réglage qui contredit l'export amont vaille aussi sur les écrans.
    */
   event: eventIdentitySchema.default(IDENTITE_PAR_DEFAUT),
+  /**
+   * Rapatriement des rushes : le hub sait-il où les envoyer, et à quel rythme.
+   *
+   * Descendu et mis en cache comme le programme, et pour la même raison : le
+   * régulateur d'une salle tranche plusieurs fois par minute, et il ne doit
+   * jamais dépendre d'un appel réseau — surtout pas au moment précis où le
+   * réseau est ce qu'on cherche à ménager. `null` quand le hub n'a pas de
+   * stockage configuré.
+   */
+  vod: vodSyncSchema.nullable().default(null),
 })
 
 /** Vue hub d'une salle, alimentée par les heartbeats — l'écran de supervision. */
@@ -442,17 +475,6 @@ export const roomStatusSchema = z.object({
    * n'a lancé se lisait « en cours », et une salle qui déborde n'existait pas —
    * passé l'heure de fin, le programme passe au créneau suivant.
    */
-  conference: z
-    .enum([
-      'aucune',
-      'pause',
-      'pas-commencee',
-      'retard',
-      'en-cours',
-      'fin-proche',
-      'terminee',
-      'depassement',
-    ])
-    .default('aucune'),
+  conference: z.enum(ETATS_SALLE).default('aucune'),
 })
 export type RoomStatus = z.infer<typeof roomStatusSchema>

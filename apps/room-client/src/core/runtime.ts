@@ -8,10 +8,10 @@ import {
   type SceneRole,
   type SessionStatus,
 } from '@cloudnord/contract'
+import { conferenceAPiloter, roomBreak } from '@cloudnord/etat-salle'
 import {
   currentSession,
   nextSession,
-  roomBreak,
   sessionsForRoom,
   type Program,
   type Session,
@@ -162,6 +162,29 @@ export interface RuntimeEffects {
   reloadSessionStates?: () => void
   /** Resynchronisation complète demandée par la console. */
   fullResync?: () => void
+  /**
+   * Rapatriement des rushes demandé par la console. `file` nul = tout ce qui reste.
+   *
+   * Le runtime ne téléverse rien lui-même : il n'a ni disque ni réseau. Il
+   * transmet, exactement comme pour la resynchronisation.
+   */
+  uploadVod?: (file: string | null) => void
+  /**
+   * Efface les rushes de la salle. **Développement seulement.**
+   *
+   * Le runtime ne supprime rien lui-même : il transmet, comme pour le reste.
+   * Le refus de production vit dans `RoomApp`, au plus près du disque.
+   */
+  razVod?: () => void
+  /**
+   * Redemande au hub l'état des autres salles, sans attendre le tour de sonde.
+   *
+   * Ce que fait une salle voisine arrive déjà poussé sur le flux de commandes ;
+   * seule la *vue* qui l'affiche était sondée. La régie recevait donc la
+   * notification « Track #2 vient de terminer » pendant que la pastille de
+   * Track #2 disait encore « en cours ».
+   */
+  refreshRoomStatuses?: () => void
 }
 
 export type CommandOutcome =
@@ -299,6 +322,9 @@ export class RoomRuntime extends EventEmitter {
     if (status === 'scheduled') delete suivant[sessionId]
     else suivant[sessionId] = status
     this.patch({ sessionStates: suivant })
+    // La cible dépend du cycle de vie : terminer la conférence à venir doit
+    // faire passer la régie à la suivante tout de suite, pas au prochain tic.
+    this.refreshSessions()
   }
 
   /**
@@ -317,6 +343,7 @@ export class RoomRuntime extends EventEmitter {
       if (etat.status !== 'scheduled') suivant[etat.sessionId] = etat.status
     }
     this.patch({ sessionStates: suivant })
+    this.refreshSessions()
   }
 
   /** État de la conférence pilotable. */
@@ -402,16 +429,17 @@ export class RoomRuntime extends EventEmitter {
     const suivante = nextSession(this.program, roomId, at)
 
     /**
-     * Cible des commandes : la conférence en cours si c'en est une, sinon la
-     * prochaine. Un créneau sans speaker (pause, déjeuner) ne se « démarre »
-     * pas — ce que l'opérateur veut piloter à ce moment-là, c'est le talk qui
-     * arrive.
+     * Cible des commandes : ce que « Commencer » et « Terminer » atteignent.
+     *
+     * La règle vit dans `conferenceAPiloter`, avec le reste de l'automate : la
+     * console du hub et le banc d'essai la déroulent aussi, et trois copies
+     * d'une règle d'horaire finissent toujours par diverger.
      */
-    const prochainTalk =
-      sessionsForRoom(this.program, roomId).find(
-        (session) => session.kind === 'talk' && session.startsAtMs > at,
-      ) ?? null
-    const cible = courante?.kind === 'talk' ? courante : prochainTalk
+    const cible = conferenceAPiloter(
+      sessionsForRoom(this.program, roomId),
+      at,
+      this.display.sessionStates,
+    )
 
     /**
      * La question à l'antenne tombe avec le talk auquel elle appartient.
@@ -431,7 +459,15 @@ export class RoomRuntime extends EventEmitter {
       currentSession: courante,
       nextSession: suivante,
       targetSession: cible,
-      targetIsUpcoming: cible != null && cible.id !== courante?.id,
+      /**
+       * « À venir » se lit sur l'horaire, pas sur l'écart à la session courante.
+       *
+       * Une conférence en dépassement n'est plus le créneau courant — son
+       * créneau est clos — sans être pour autant à venir : elle est à
+       * l'antenne. Comparer les identifiants l'annonçait « à venir » au moment
+       * précis où elle débordait.
+       */
+      targetIsUpcoming: cible != null && cible.startsAtMs > at,
       breakBadge:
         pause == null
           ? null
@@ -559,13 +595,57 @@ export class RoomRuntime extends EventEmitter {
         })
         this.effects.fullResync?.()
         break
+      case 'vod.upload':
+        /**
+         * Signalé en régie, comme la resynchronisation, et pour la même raison.
+         *
+         * Une salle qui se met à saturer son uplink au milieu d'une journée
+         * sans que personne ne l'ait demandé sur place se lit comme un
+         * incident. Dire d'où vient le geste évite qu'on cherche la panne.
+         */
+        this.notify({
+          level: 'info',
+          text:
+            payload.requestedBy == null
+              ? 'Rapatriement des rushes demandé depuis la console'
+              : `Rapatriement des rushes demandé par ${payload.requestedBy}`,
+        })
+        this.effects.uploadVod?.(payload.file)
+        break
+      case 'vod.reset':
+        /**
+         * Signalée en régie, et en avertissement.
+         *
+         * Une salle qui perd ses rushes doit le dire fort et nommer qui l'a
+         * demandé : c'est le seul geste du système dont on ne revient pas, et
+         * découvrir le dossier vide sans savoir pourquoi est le pire des deux
+         * moments.
+         */
+        this.notify({
+          level: 'warning',
+          text:
+            payload.requestedBy == null
+              ? 'Remise à zéro des rushes demandée depuis la console'
+              : `Remise à zéro des rushes demandée par ${payload.requestedBy}`,
+        })
+        this.effects.razVod?.()
+        break
       case 'session.state': {
         const notre = this.display.roomId
         if (payload.roomId == null || payload.roomId === notre) {
           this.setSessionStatus(payload.sessionId, payload.status)
           break
         }
-        // Une autre salle : on ne touche pas à notre état, on signale.
+        /**
+         * Une autre salle : on ne touche pas à notre état, mais on va relire
+         * le sien.
+         *
+         * Le cycle de vie des autres salles ne nous est pas envoyé — et on n'en
+         * veut pas, il n'a rien à faire dans notre état. Ce qui l'affiche est la
+         * vue de supervision, sondée : la commande sert donc de déclencheur, et
+         * la pastille suit la notification au lieu de la traîner d'un tour.
+         */
+        this.effects.refreshRoomStatuses?.()
         if (payload.status === 'ended') {
           this.notify({
             level: 'info',

@@ -14,6 +14,8 @@ import { DeviceService, RoomService } from './services/rooms.js'
 import { QuestionService, WallService } from './services/wall.js'
 import { RateLimiter } from './services/rate-limit.js'
 import { SessionStateService, SettingsService } from './services/sessions.js'
+import { readFileSync } from 'node:fs'
+import { clesS3, VodService } from './services/vod.js'
 import { EventIdentityService } from './services/event-identity.js'
 import { mutableClock } from './services/clock.js'
 import {
@@ -61,6 +63,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   const settings = new SettingsService(orm)
   const programs = new ProgramService(orm)
   const clock = mutableClock(config.simulatedTime ?? null)
+
   const services: Services = {
     programs,
     rooms: new RoomService(orm),
@@ -76,6 +79,9 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     identity: new EventIdentityService(settings, programs),
     sessions: new SessionStateService(orm, settings, () => clock.now()),
     push,
+    // Renseigné juste après la création du serveur : le service journalise,
+    // et son journal est celui de Fastify.
+    vod: null,
     clock,
     mode: config.mode,
   }
@@ -118,6 +124,69 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
 
   const app = Fastify({ logger: { level: config.logLevel } })
 
+  /**
+   * Rapatriement des rushes : monté seulement si le stockage est configuré.
+   *
+   * `null` est le cas normal — c'est une fonctionnalité d'après-événement, et
+   * un hub qui n'en a pas besoin ne doit pas porter la moitié de ses rouages :
+   * ni boucle de ménage, ni panneau dans la console, ni procédures qui
+   * échouent.
+   */
+  /**
+   * Bucket : l'environnement amorce, la console décide.
+   *
+   * `S3_BUCKET` ne sert qu'au tout premier démarrage — même règle que
+   * `PROGRAM_SOURCE_URL`, et pour la même raison : un bucket corrigé en cours
+   * d'événement doit survivre au redémarrage qui suit.
+   *
+   * Amorcé **ici** et non dans `main.ts`, à la différence du programme : c'est
+   * juste en dessous que le hub annonce l'état du stockage, et le faire plus
+   * tard lui ferait dire « aucun bucket réglé » à chaque premier démarrage
+   * d'une installation pourtant complète. Un journal qui se contredit trois
+   * lignes plus loin ne se lit plus.
+   *
+   * Corollaire à connaître : vider le champ dans la console n'éteint pas la
+   * fonctionnalité de façon durable, puisque le prochain démarrage le
+   * réamorcerait. Pour l'éteindre, c'est « Téléverser automatiquement » qu'on
+   * décoche — ce réglage-là, rien ne le réécrit.
+   */
+  if (config.s3Bucket != null && settings.get().vodBucket == null) {
+    settings.update({ vodBucket: config.s3Bucket })
+  }
+
+  /**
+   * Autorité de certification du stockage, lue une fois au démarrage.
+   *
+   * Illisible, on le dit **en erreur** et on continue sans : le rapatriement
+   * échouera alors sur un refus TLS, mais le hub démarre. C'est la même règle
+   * que pour les clés VAPID, et pour la même raison — le téléversement est un
+   * confort d'après-événement, et un hub qui refuse de repartir en cours de
+   * journée coûterait bien plus cher que des rushes rapatriés le lendemain.
+   */
+  let caCert: string | null = null
+  if (config.s3CaCert != null) {
+    try {
+      caCert = readFileSync(config.s3CaCert, 'utf8')
+    } catch (cause) {
+      app.log.error(
+        { chemin: config.s3CaCert, message: (cause as Error).message },
+        "S3_CA_CERT illisible : le stockage sera refusé si son certificat n'est pas signé par une CA publique",
+      )
+    }
+  }
+
+  const cles = clesS3(config, caCert)
+  if (cles != null) {
+    services.vod = new VodService(
+      orm,
+      settings,
+      cles,
+      config.vodAbandonMinutes,
+      () => clock.nowIso(),
+      (niveau, message, contexte) => app.log[niveau](contexte ?? {}, message),
+    )
+  }
+
   if (config.mode === 'dev') {
     app.log.warn('MODE DÉVELOPPEMENT — heure et horloge réglables, à ne pas laisser le jour J')
   }
@@ -126,6 +195,21 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     // Bruyant à dessein : une heure simulée oubliée en production fausserait
     // les timecodes VOD et la clôture automatique.
     app.log.warn({ heure: clock.nowIso() }, 'HORLOGE SIMULÉE — développement uniquement')
+  }
+
+  /**
+   * Ce que le stockage est, ou n'est pas.
+   *
+   * Dit au démarrage plutôt que découvert au premier clic : « configuré mais
+   * sans bucket » est l'état le plus déroutant des trois — les clés sont là,
+   * la console montre le panneau, et rien ne part. Le journal le nomme.
+   */
+  if (services.vod == null) {
+    app.log.info('rapatriement des rushes : inactif (aucun stockage S3 configuré)')
+  } else if (!services.vod.pret()) {
+    app.log.warn('rapatriement des rushes : clés S3 présentes, mais aucun bucket réglé (console → VOD)')
+  } else {
+    app.log.info({ endpoint: config.s3Endpoint }, 'rapatriement des rushes : actif')
   }
 
   const panneDuPush = push.unavailableReason()
@@ -340,6 +424,21 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
 
   if (social != null) social.start()
 
+  /**
+   * Ménage des téléversements en plan.
+   *
+   * Dix minutes, et non quinze secondes comme la supervision : rien ici ne se
+   * regarde en direct, et interroger le stockage en boucle coûterait des
+   * requêtes facturées pour un problème qui se mesure en heures. L'inventaire
+   * des orphelins, lui, ne se fait **qu'au démarrage** — c'est le seul moment
+   * où le registre peut ignorer ce que le stockage détient, parce que la base
+   * vient d'être recréée.
+   */
+  if (services.vod != null) {
+    services.vod.demarrerMenage()
+    void services.vod.menageDesOrphelins().catch(() => {})
+  }
+
   let ferme = false
   /** Idempotent : l'arrêt gracieux et le filet de sécurité peuvent se croiser. */
   const fermerRessources = (): void => {
@@ -347,6 +446,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     ferme = true
     clearInterval(balayage)
     clearInterval(surveillance)
+    services.vod?.arreterMenage()
     social?.stop()
     /**
      * Ordre imposé. `wss.close()` cesse d'accepter de nouvelles connexions

@@ -34,6 +34,7 @@ contribuer : [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```
 packages/program    parseur/normaliseur de l'export « conference-center » + sélecteurs par salle
+packages/etat-salle automate d'une salle : états, transitions, apparence — partagé hub ↔ régie
 packages/contract   contrat oRPC v2 (zod) : procédures, événements, commandes
 packages/db         schémas Drizzle + migrations (hub et client), helper SQLite
 apps/hub-server     Fastify + oRPC + SQLite + Better Auth : programme, salles, commandes, appairage
@@ -46,7 +47,7 @@ spikes/orpc-v2      spike jetable de validation des adapters — voir FINDINGS.m
 
 ```bash
 corepack enable && pnpm install
-pnpm test            # 747 tests
+pnpm test            # 898 tests
 pnpm typecheck
 ```
 
@@ -225,6 +226,7 @@ instance OBS qui n'existe pas, et la panne se découvre au montage.
 |---|---|---|
 | `SIMULATED_TIME` | hub | Place **tout le système** à un instant de l'événement. Les salles s'alignent sur `serverTime`, il n'y a rien à régler de leur côté. C'est la bonne façon de dérouler la journée du 30/10 dès maintenant. |
 | *(par le mode)* | hub | Le **réglage de l'heure depuis la console** (onglet Réglages) : sélecteur de date, raccourcis vers les moments clés, retour à l'heure réelle. Ouvert en dev, fermé en production. |
+| *(par le mode)* | hub | La **remise à zéro des données** (onglet Développement) : vide le préfixe du bucket et les rushes des salles. Refusée côté serveur en production, et pas seulement absente de la console. |
 | `HEURE_SIMULEE` | salle | Heure locale, pour développer **sans hub**. Posée comme un *décalage* sur l'horloge machine, exactement comme le fera le hub : dès qu'il répond, son heure remplace la valeur, sans que les deux se cumulent. Pour dérouler une journée, préférer `SIMULATED_TIME` sur le hub — les salles s'alignent seules. |
 | *(par le mode)* | salle | **OBS est simulé** : scènes, enregistrement, diffusion. Écrit un **vrai fichier** à l'arrêt, donc la chaîne VOD va jusqu'au sidecar. `OBS_REEL=1` parle à de vraies instances à la place. |
 
@@ -487,6 +489,15 @@ des exemples, pas des constantes du code.
   régie s'ouvrent même quand tout le reste va mal, et se testent en HTTP. Le
   contrat oRPC sur MessagePort prévu au plan reste disponible le jour où une UI
   plus riche justifiera un bundler.
+- **Le hub tient les clés du stockage, la salle tient les fichiers.** Aucune clé
+  S3 ne descend en salle : le hub signe des adresses à durée de vie courte, et
+  c'est tout ce qu'une machine de régie détient. Elle vit dans un couloir,
+  allumée toute la journée devant deux cents personnes.
+- **Un téléversement se reprend, il ne se recommence pas.** L'état vit dans la
+  base locale de la salle et dans celle du hub : une machine redémarrée en pleine
+  montée repart de la part suivante. Sur un rush de trois gigaoctets et le réseau
+  d'un événement, c'est la différence entre « ça finira » et « ça ne finira
+  jamais ».
 - **Le chemin du fichier enregistré ne se connaît qu'après `StopRecord`.** OBS ne
   l'annonce que dans l'événement `RecordStateChanged` qui suit l'arrêt, et il faut
   armer l'attente *avant* de demander l'arrêt. Le lire avant donne toujours `null`
@@ -513,7 +524,7 @@ des exemples, pas des constantes du code.
 
 | Servi par | URL | Usage |
 |---|---|---|
-| hub | `/admin` | Console : supervision. Un onglet par adresse — `/admin/moderation`, `/admin/conferences`, `/admin/appairage`, `/admin/messages`, `/admin/reglages` |
+| hub | `/admin` | Console : supervision. Un onglet par adresse — `/admin/moderation`, `/admin/conferences`, `/admin/appairage`, `/admin/messages`, `/admin/vod`, `/admin/reglages` |
 | hub | `/admin/devices?user_code=…` | L'onglet Appairage, code pré-rempli (lien affiché par la régie) et verdict du code en modale |
 | hub | `/mur?salle=<id>` | Mur public (commun à l'événement) et questions de la salle, scanné au QR |
 | client | `/regie` | Fenêtre opérateur |
@@ -936,9 +947,337 @@ clé, l'application les applique juste avant de démarrer. Le nom de fichier non
 plus : elle écrit le format juste avant la prise, puis renomme le fichier à
 l'arrêt en `2026-10-30_track1_1100_titre-du-talk.mkv` et dépose le sidecar
 `.json` à côté. **Le dossier reste celui d'OBS** — le champ « Dossier des
-enregistrements » du ⚙ est informatif, il ne déplace rien.
+VOD » du ⚙ ne déplace rien ; il dit seulement où la régie va *relire* ce qui a
+été produit, et à défaut elle demande à OBS-B où il écrit.
 
 C'est aussi OBS-B qui alimente les vumètres de la régie.
+
+### Vérifier les rushes pendant qu'il est encore temps
+
+Le chronomètre de la régie dit qu'on enregistrait. Il ne dit pas qu'OBS
+écrivait quelque chose d'exploitable — un disque plein, un encodeur qui lâche,
+une carte d'acquisition débranchée donnent le même chronomètre. Et cela ne se
+découvre normalement qu'au montage, quand la salle est démontée et que la seule
+réponse possible est « on ne l'a pas ».
+
+Le petit **🎞** en haut à droite du panneau « Captation » — discret, parce que
+ce n'est pas une commande de la conférence en cours et que rien ne doit le faire
+confondre avec « Enregistrer » — ouvre une liste plein cadre de tout ce qui a
+été enregistré : le fichier, le titre tiré du
+sidecar, la durée, la taille, les marqueurs. Un rush **sans sidecar** y figure
+comme les autres — c'est même celui qu'on cherche.
+
+« Vérifier » ouvre le conteneur avec **ffprobe** et pose un verdict :
+
+| Verdict | Ce qui l'a déclenché |
+|---|---|
+| **Exploitable** | pistes vidéo et audio présentes, durée conforme au chronomètre, débit crédible |
+| **À revoir** | sidecar absent, moins de cinq secondes, fin manquante par rapport au chronomètre, débit très bas, fichier encore en écriture |
+| **Illisible** | fichier vide ou absent, pas de piste vidéo, pas de piste audio, durée illisible (conteneur tronqué) |
+
+Ni ffprobe ni ffmpeg ne sont des dépendances du poste : ils arrivent avec la
+plupart des installations d'OBS, et pas avec toutes. Leur absence n'est pas une
+erreur, et la modale l'annonce **en haut, une fois** plutôt que de la laisser
+découvrir bouton par bouton : sans ffprobe le contrôle se rabat sur la taille et
+le sidecar, sans ffmpeg l'aperçu sert le fichier tel quel — ce qui marche pour un
+MP4 et pas pour un Matroska, et c'est écrit noir sur blanc.
+
+Un seul cas accuse le fichier : **ffprobe est allé au bout et a rendu un code de
+sortie non nul**. Binaire absent ou non exécutable, délai dépassé, sortie trop
+volumineuse — le contrôle rend « sonde ffprobe indisponible » et se limite à ce
+qu'il sait. Confondre les deux ferait déclarer illisibles des rushes intacts
+parce que le poste n'avait pas ffprobe, c'est-à-dire produirait exactement
+l'erreur de diagnostic que ce contrôle est là pour éviter.
+
+**👁 déplie un aperçu** sous la ligne : image et son, dans la modale. Les rushes
+d'OBS sont des Matroska, qu'aucun navigateur ne sait ouvrir, et ils pèsent
+plusieurs gigaoctets — le lecteur reçoit donc un **extrait de vingt secondes
+remballé en MP4 fragmenté par ffmpeg**, produit à la demande, jamais écrit sur le
+disque, et le rush n'est pas touché. Cinq points de départ — début, 25 %, milieu,
+75 %, fin — parce qu'une prise se casse presque toujours au début ou à la fin.
+Quand les codecs le permettent (h264/aac, le cas normal d'OBS) l'extrait est
+**remballé sans réencoder** : quelques millisecondes, et pas le processeur de la
+machine qui enregistre déjà la conférence suivante.
+
+« Fichier brut » sert le rush tel quel, **par tranches** (`Range`) : de quoi
+l'ouvrir dans un lecteur qui, lui, sait lire du Matroska, ou le rapatrier sur une
+autre machine — ce qu'un aperçu de vingt secondes ne remplacera jamais.
+
+Aucune sonde ne voit le mauvais plan de caméra ni le micro resté dans la poche :
+**✓** et **✕** posent ce verdict-là à la main, et le même bouton le reprend. Les
+verdicts vivent dans `.controles-vod.json`, à la racine des enregistrements —
+pas dans les sidecars, qui décrivent la conférence et non la relecture qu'on en
+a faite.
+
+**Le dossier lu est réglable** dans le ⚙ de la régie, champ « Dossier des VOD » —
+laissé vide, la régie demande à OBS-B où il écrit. Le réglage part au hub comme
+les autres : c'est lui qui détient la configuration de la salle.
+
+Rien de tout cela ne touche à OBS : la modale relit le disque. On peut donc
+contrôler la matinée pendant que l'après-midi enregistre — et « Tout vérifier »
+enchaîne les fichiers **un par un**, parce que six lectures de rushes en
+parallèle sur le disque qui enregistre est exactement ce qu'on ne veut pas.
+
+### Rapatrier les rushes, si le hub sait où
+
+Jusqu'ici un rush ne quittait la machine que si quelqu'un le téléchargeait
+depuis la modale ci-dessus, ou débranchait le disque. Le hub peut désormais
+tenir un stockage S3 : les salles y déposent leurs rushes et leurs sidecars,
+sans jamais voir une clé.
+
+**Le partage est net, et c'est lui qui tient la sécurité de tout le reste.** Le
+hub détient les clés du bucket et ne les donne à personne. Sur demande d'une
+salle, il ouvre un téléversement chez le stockage et lui rend des **adresses
+signées à durée de vie courte** ; la salle écrit dessus, et dit après chaque
+part où elle en est. Une machine de régie volée ne donne accès à aucun bucket,
+et révoquer une salle la coupe du stockage sans toucher à quoi que ce soit
+d'autre.
+
+Cela ne s'allume pas tout seul :
+
+| Ce qui manque | Ce qui se passe |
+|---|---|
+| Rien dans l'environnement | La fonctionnalité n'existe pas : pas d'onglet actif, pas de boucle, rien en salle |
+| Une variable sur trois | **Le hub refuse de démarrer** — une console qui annonce un stockage prêt et des téléversements qui échouent tous se cherche dans les droits du bucket, pas dans un `.env` |
+| Les clés, mais pas de bucket | Le hub démarre et le dit, en journal et dans le panneau **Stockage** des Réglages — sauf si `S3_BUCKET` l'amorce |
+
+Les clés (`S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`) vivent
+dans l'environnement du hub ; le **bucket**, le **préfixe** et la politique se
+règlent dans la console, onglet **Réglages**, panneau **Stockage** — ils se
+posent une fois pour l'édition, comme le reste de cet onglet, tandis que
+l'onglet **VOD** garde ce qui se regarde le jour même. La ligne de partage
+entre environnement et console est celle de ce qui change : une clé d'accès se
+pose une fois, un nom de bucket change d'une édition à l'autre — et parfois le
+matin même, quand on s'aperçoit qu'on visait celui de l'an dernier.
+
+`S3_BUCKET` existe quand même, et **n'amorce que le premier démarrage** — même
+règle que `PROGRAM_SOURCE_URL`. Elle sert aux déploiements où personne n'ouvre
+la console : une machine provisionnée d'avance, un script qui monte le hub.
+Ensuite le réglage fait foi, et une correction faite en cours d'événement
+survit au redémarrage qui suit. Le préfixe n'a pas d'équivalent : il se règle
+dans la console.
+
+⚠️ Corollaire : **vider le champ Bucket n'éteint pas durablement le
+rapatriement** quand `S3_BUCKET` est posée — le démarrage suivant le
+réamorcerait. Pour l'éteindre, décocher « Téléverser automatiquement » ; ce
+réglage-là, rien ne le réécrit.
+
+Ce qui monte : le **rush et son sidecar**, sous la même clé à l'extension près.
+
+```
+<préfixe>/<aaaa-mm-jj>/<salle>/2026-10-30_track1_1100_honeyswamp.mkv
+<préfixe>/<aaaa-mm-jj>/<salle>/2026-10-30_track1_1100_honeyswamp.json
+```
+
+La date est celle du **rush**, lue dans son nom, pas celle du rapatriement : un
+fichier du 30 octobre remonté le 5 novembre se range au 30 octobre, sinon
+personne ne le retrouve en cherchant la journée.
+
+#### Les droits à donner sur le bucket
+
+Cinq actions suffisent, mais **deux ne se devinent pas** — et ce sont celles
+qu'on oublie :
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket", "s3:ListBucketMultipartUploads"],
+      "Resource": ["arn:aws:s3:::mon-bucket"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload"],
+      "Resource": ["arn:aws:s3:::mon-bucket/*"]
+    }
+  ]
+}
+```
+
+| Action | Ce qui la réclame |
+|---|---|
+| `s3:PutObject` | Ouvrir un téléversement, envoyer chaque part, le clore — les trois d'un coup |
+| **`s3:AbortMultipartUpload`** | Annuler depuis la régie, et le **ménage** des téléversements en plan. `PutObject` ne la couvre pas : abandonner un multipart a son action propre, et c'est le piège |
+| **`s3:ListBucketMultipartUploads`** | L'inventaire des orphelins au démarrage, et la remise à zéro |
+| `s3:ListBucket` | Lister les objets d'un préfixe, pour la remise à zéro |
+| `s3:DeleteObject` | Supprimer, pour la remise à zéro |
+
+Sans les deux en gras, tout **semble** marcher : les rushes montent. Ce qui
+casse, c'est le ménage — donc des multiparts abandonnés qui restent facturés,
+et personne ne le découvre avant la facture. « Éprouver la connexion » les
+attrape et **nomme l'action manquante**.
+
+`s3:GetObject` n'est nécessaire que pour relire les rushes déposés ; le hub ne
+s'en sert pas.
+
+#### Éprouver la connexion avant d'en avoir besoin
+
+Console → **Réglages** → **Stockage** → **Éprouver la connexion**. Elle ne
+sonde pas, elle **fait le vrai geste** : ouvrir un téléversement, signer une
+adresse de part, y écrire quelques octets, tout abandonner. Rien ne reste.
+
+Le verdict est rendu **étape par étape**, parce que « ça ne marche pas » est
+précisément ce qu'on savait déjà en cliquant :
+
+| Étape | Ce que son échec désigne |
+|---|---|
+| **Joindre le stockage** | Réseau, DNS, pare-feu, ou certificat qu'on ne sait pas vérifier |
+| **Clés et bucket** | Clé refusée, bucket absent, ou pas le droit d'y écrire |
+| **Adresse signée** | La signature des URL de parts — celle qui porte tout le téléversement |
+| **Nettoyage** | `s3:AbortMultipartUpload` manque à la policy, le plus souvent |
+
+Sur un refus de droits, le verdict **nomme l'action S3 attendue** : une enquête
+dans la policy devient une ligne à ajouter.
+
+Rien de moins ne répond à la question. Un `HEAD` sur le bucket dirait qu'il
+existe, pas qu'on a le droit d'y écrire ; et une clé acceptée ne prouve pas
+qu'une adresse presignée le sera — or c'est elle que les salles utilisent, et
+c'est la plus délicate à signer.
+
+⚠️ Elle éprouve le chemin **depuis le hub**. Les salles écrivent les parts
+elles-mêmes, sur un autre réseau et parfois derrière un autre pare-feu : un
+contrôle vert ne les dispense pas d'un vrai téléversement d'essai.
+
+#### Un stockage interne, derrière votre CA
+
+Node **n'utilise pas le magasin de certificats du système** : il embarque sa
+propre liste de CA publiques. Un stockage dont le certificat est signé par une
+CA d'entreprise échoue donc sur `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` — un message
+qui ne dit ni ce qui manque, ni où le poser.
+
+```bash
+S3_CA_CERT=/etc/ssl/certs/ca-interne.pem
+```
+
+Le chemin pointe le PEM de la **CA**, pas le certificat du serveur ; plusieurs
+CA se concatènent dans un seul fichier.
+
+**Le hub la descend aux salles** au `sync`, avec le reste de la politique. C'est
+le point qui compte : le téléversement est à cheval — le hub ouvre et clôt les
+multiparts, les salles écrivent les parts — et il aurait donc fallu poser la CA
+sur chaque machine. Un geste à refaire sur trois postes Electron un matin
+d'événement s'oublie sur le troisième, et l'oubli ne se découvre que le soir,
+quand les rushes ne partent pas. Un certificat d'autorité est public par
+construction : le diffuser n'est pas diffuser un secret, c'est distribuer de
+quoi en vérifier un.
+
+Elle ne vaut que pour les envois vers le stockage. Rien d'autre de ce que la
+salle accepte n'en est changé, à la différence de `NODE_EXTRA_CA_CERTS` qui vaut
+pour tout le processus — les deux marchent, celui-ci est plus étroit.
+
+Illisible, le hub **le dit en erreur au démarrage et continue sans** : même
+règle que pour les clés VAPID. Le rapatriement échouera, la journée non.
+
+#### Six règles, dans cet ordre
+
+Un rush qu'on ne rapatrie pas ce soir se rapatrie demain. Une captation abîmée
+parce qu'on lisait le disque pendant qu'OBS y écrivait ne se refait jamais.
+Toute la hiérarchie vient de là — et l'ordre compte autant que les règles, parce
+que **la première qui refuse est celle dont la régie affiche le motif** :
+
+| # | Rien ne part si | Pourquoi |
+|---|---|---|
+| 1 | Aucun stockage, ou automatique éteint | Il n'y a nulle part où envoyer, ou personne ne l'a demandé |
+| 2 | **OBS-B enregistre** | On ne lit pas le disque sur lequel un master s'écrit |
+| 3 | Une conférence est pilotée | L'uplink sert peut-être au direct, et le poste encode |
+| 4 | La suivante commence dans moins de *n* minutes | On ne veut pas être en plein transfert quand elle démarre |
+| 5 | Le poste est chargé | L'encodeur passe avant ; une charge **illisible** compte comme forte |
+| 6 | Le débit s'effondre | Le réseau sert à autre chose ; on recule en exponentiel |
+
+**Une demande manuelle passe outre les trois dernières.** Elles protègent un
+automatisme ; celui qui appuie sur le bouton n'en est pas un — il a la salle sous
+les yeux. Elle ne passe jamais outre les deux premières : ce sont les seuls cas
+où continuer coûterait la captation elle-même.
+
+Et **le motif est affiché**, en haut de la modale 🎞 : « en attente — conférence
+dans 6 min », « en attente — poste à 82 % ». Une attente muette se lit comme un
+bouton mort, on reclique, puis on va chercher la panne ailleurs.
+
+#### Une coupure ne coûte que la part en cours
+
+Un rush de trois gigaoctets sur le réseau d'un événement **sera** coupé : ce
+n'est pas une hypothèse. Il part donc en parts de huit mégaoctets, et l'état vit
+en base locale — pas en mémoire. Une machine redémarrée en pleine montée
+redemande son plan au hub, reçoit la liste des parts déjà arrivées, et repart de
+la suivante. Sans cela, une coupure à quatre-vingt-dix pour cent coûte les
+quatre-vingt-dix pour cent, et une salle qu'on rallume deux fois ne finit jamais.
+
+La taille de part est aussi le **grain du plafond de débit** : après huit
+mégaoctets envoyés en deux secondes sous un plafond de deux mégaoctets par
+seconde, la salle attend deux secondes. Grossier, mais lisible — un chiffre dans
+la console, une conséquence visible.
+
+**Un fichier à la fois, une part à la fois.** Même raison que « Tout vérifier »
+qui enchaîne les rushes un par un.
+
+#### Le ménage
+
+Une salle éteinte en pleine montée ne dit rien. Le hub abandonne donc chez le
+stockage tout téléversement sans nouvelle depuis `VOD_ABANDON_MINUTES` (30 par
+défaut) — un multipart oublié reste ouvert, et facturé, indéfiniment. Au
+démarrage il fait en plus l'inventaire des multiparts ouverts sous son préfixe
+et ferme ceux de plus de vingt-quatre heures que plus aucune ligne ne réclame :
+c'est le cas de la base recréée, où le hub ne sait plus ce qu'il a ouvert.
+
+⚠️ **Poser aussi une règle de cycle de vie sur le bucket.** Le ménage du hub
+couvre le hub qui tourne ; la règle couvre le hub qui ne tourne plus.
+
+#### Tout remettre à zéro — développement seulement
+
+Console → **Développement** → « Remise à zéro des données ». Elle vide le
+préfixe du bucket, téléversements en cours compris, et demande à chaque salle
+d'effacer ses rushes, leurs sidecars et ses verdicts de relecture.
+
+C'est le seul geste du système dont on ne revient pas. Il porte donc **trois
+verrous**, et chacun couvre ce que les autres laissent passer :
+
+| Verrou | Ce qu'il arrête |
+|---|---|
+| Le menu n'est pas *rendu* en production | L'étourderie — mais rien d'autre : une vue masquée reste à un `hidden` près |
+| Le hub **refuse** `vod.reset` hors `MODE=dev` | Un appel direct, qui court-circuite la console |
+| Le mot `RAZ` doit être recopié, et le **contrat** l'exige | Un appel direct fait par distraction — la garde est côté hub, pas seulement dans la modale |
+
+La salle refuse **à son tour** si elle n'est pas elle-même en développement.
+Deux verrous plutôt qu'un, parce qu'une salle de développement et un hub
+d'événement peuvent se retrouver branchés l'un à l'autre — c'est même l'accident
+que le badge de mode de la régie existe pour rendre visible.
+
+Deux limites délibérées, qui sont des refus et non des oublis :
+
+- **un préfixe est exigé.** Sans lui, « vider le préfixe » et « vider le bucket »
+  sont le même geste, et un bucket qui sert aussi à autre chose y passerait ;
+- **côté salle, seul ce que l'application connaît est effacé** — les conteneurs
+  vidéo qu'elle liste, leurs sidecars, `.controles-vod.json`. La racine des
+  captations est un dossier saisi dans un formulaire : parfois un disque
+  partagé, parfois pas celui qu'on croit.
+
+Le programme, les salles, les comptes et l'appairage ne sont pas touchés.
+
+#### Deux endroits pour le déclencher
+
+En **régie**, modale 🎞 : un ⬆ par ligne, « Tout téléverser » à côté de « Tout
+vérifier », « Annuler » pendant la montée, et ☁ sur ce qui est déjà arrivé — pas
+de bouton, parce que repayer trois gigaoctets au premier clic distrait est
+exactement ce qu'on évite.
+
+En **console**, onglet **VOD** : la liste des téléversements de toutes les
+salles, avec « Relancer » — l'état du stockage et la politique, eux, se règlent
+dans les **Réglages**. La console ne détient pas les fichiers : elle ne peut
+que demander, et la demande descend par le flux de commandes comme une
+resynchronisation — une salle momentanément coupée la rattrape à sa
+reconnexion. La régie le signale alors dans son bandeau, avec l'adresse de qui
+l'a demandée.
+
+#### L'aveu qui va avec
+
+Téléverser **exige Internet**, ce que tout le reste de ce système est bâti pour
+ne pas exiger. C'est la même limite structurelle que le Web Push, et elle se lit
+de la même façon : un confort d'après-événement, pas une pièce du jour J. Le
+réseau qui compte le 30 octobre est celui qui porte la projection et le direct —
+et c'est précisément pour ne pas lui disputer un octet que les six règles
+ci-dessus existent.
 
 ### Le bandeau live, où l'on veut
 
@@ -1124,6 +1463,41 @@ conférence », **actifs par défaut** :
   l'intervenant. La bascule suit le démarrage, jamais l'inverse : une scène
   prise sans conférence lancée mettrait la salle à l'antenne sur rien.
 
+### Terminer en avance se confirme
+
+« Terminer » n'est pas anodin : la salle passe à « rien dans la salle », les
+autres régies le voient, le compte à rebours saute à la conférence suivante. Et
+le bouton est **à côté de « Commencer »** — un voisinage qui se paie une fois par
+événement.
+
+Appuyer dessus **avant l'heure de fin** ouvre donc une question, qui dit ce
+qu'il reste au créneau :
+
+```
+Terminer en avance ?
+Il reste 22 min au créneau de « IA for OPS on Scaleway ». La salle
+passera à « rien dans la salle », et les autres régies le verront.
+« Remettre à venir » annule, si c'est une erreur.
+
+                                        [ Non  N ]  [ Terminer  Y ]
+```
+
+**Seulement en avance.** Terminer à l'heure ou en dépassement est le geste
+normal de la journée : le confirmer à chaque fois en ferait un réflexe, ce qui
+reviendrait à ne plus le lire. Un créneau sans heure de fin n'a pas d'avance
+possible — rien à demander.
+
+**Le reste en secondes sous la minute.** Arrondies, huit secondes deviennent
+« 0 min », et la question perd le seul chiffre qui permettait d'y répondre sans
+réfléchir.
+
+**Deux touches, pas une souris** — on a le micro dans une main : `y` termine,
+`n` renonce, `Échap` aussi. Tant que la question est posée, **elle seule répond
+au clavier** : un `r` réflexe basculerait la captation sous la question, et un
+`l` mettrait la salle à l'antenne. Même garde sur l'avertissement
+d'enregistrement, qui a gagné au passage la fermeture par `Échap` — une modale
+qu'Échap ne ferme pas est un piège.
+
 Une salle qui n'enregistre pas du tout décoche l'avertissement, sinon il devient
 un clic de plus à chaque conférence.
 
@@ -1143,6 +1517,65 @@ Ce qui reste visible en permanence est ce qui déclenche une décision :
   dans les cinq dernières minutes, reprise après une pause. Il est calculé sur
   le programme mis en cache localement, pas sur l'état remonté par le hub :
   pendant une coupure, la salle d'à côté finit quand même à l'heure prévue.
+  Ce que seul le hub sait — démarré, terminé, en dépassement — arrive par le
+  chemin décrit ci-dessous.
+
+### Quand la page elle-même décroche
+
+Deux pannes différentes, et une seule se voyait. La pastille de l'en-tête dit si
+la **salle** joint le hub. Rien ne disait si la **page** joint sa salle.
+
+`EventSource` se reconnecte tout seul et ne lève rien. Une machine de salle
+redémarrée sous une régie restée ouverte laissait donc une page vivante en
+apparence — l'horloge tourne, le compte à rebours descend, le flux des salles
+avance, tout cela se redessinant chaque seconde depuis la **dernière charge
+utile reçue** — et figée en fait : l'état de la conférence restait sur ce qu'il
+disait à la coupure. Une régie bloquée sur « terminée » ne se distinguait pas
+d'une régie à jour.
+
+D'où le mot **« écran figé — flux interrompu »** dans l'en-tête, après quatre
+secondes d'interruption. Le délai de grâce n'est pas cosmétique : `onerror` part
+aussi pour une reconnexion d'une seconde, et une page qui clignote à chaque
+hoquet cesse d'être lue.
+
+Sur la régie seulement : l'écran projeté ne doit rien afficher qui s'adresse à
+l'exploitation, et l'habillage de captation encore moins — ce serait gravé dans
+la VOD.
+
+### Comment l'état des autres salles arrive
+
+Trois cadences, et chacune répond à un problème différent.
+
+| Ce qui change | Chemin | Délai |
+|---|---|---|
+| Une régie voisine démarre, termine, ou se fait clôturer | commande `session.state`, diffusée à **toutes** les salles → déclenche une relecture immédiate de la supervision | **< 1 s** |
+| Enregistrement, scène, connectivité d'une salle voisine | battement de cette salle vers le hub, puis sondage | ~10 s (le battement) |
+| Rien | sondage toutes les 5 s, republié seulement s'il a bougé | — |
+
+**La commande sert de déclencheur.** La décision d'une salle voisine arrivait
+déjà poussée sur le flux descendant : la régie affichait « Track #2 vient de
+terminer » dans son bandeau. Mais l'état qui peint la pastille venait d'un
+sondage, et accusait donc jusqu'à un tour de retard sur la notification qui
+l'accompagnait. La commande ne sert pas seulement à notifier : elle redemande
+la vue dans la foulée. Un seul appel en vol à la fois, avec au plus une
+redemande en attente — une rafale de décisions ne doit pas ouvrir dix requêtes,
+mais la dernière ne doit pas se perdre : une réponse partie *avant* l'écriture
+décrit encore le passé.
+
+**Le sondage doit republier, pas seulement se mettre à jour.** Rafraîchir le
+champ en mémoire ne réveille personne : l'écran ne reçoit que sur un changement
+d'état du runtime. Le sondage tournait donc dans le vide, et la vue n'atteignait
+la page qu'en s'accrochant à autre chose — l'offset d'horloge, recalculé à chaque
+vidange de la file de remontée, qui fait bouger l'état toutes les dix secondes.
+Un délai qui ne se voyait nulle part dans le code, et que rien ne garantissait.
+
+**Republier à chaque tour serait l'excès inverse** : la charge utile entière est
+resérialisée à chaque diffusion, et le flux est censé rester muet quand rien ne
+change. D'où la comparaison avant publication — doublée d'un rappel toutes les
+20 s, parce que la régie ne se fie à cette vue que si son horodatage est frais.
+Passé une minute elle la déclare périmée et retombe sur le programme, qui ne
+connaît ni retard ni dépassement : sans le rappel, la vue se dégradait en
+silence alors que le hub répondait très bien.
 
 ### Ce que compte le grand chronomètre
 
@@ -1172,6 +1605,203 @@ ne l'explique.
 
 Le geste d'annulation reste à portée dans tous les cas — « Terminer » se presse
 par erreur, et « Remettre à venir » doit rester lisible sans chercher.
+
+### L'automate d'une salle
+
+Deux automates, et la distinction porte tout le reste : **celui qui a des
+transitions n'est pas celui qu'on affiche.**
+
+Les deux vivent dans **`packages/etat-salle`**, et nulle part ailleurs. Le hub
+l'importe pour calculer l'état de chaque salle et pour refuser un geste
+impossible ; les pages — régie, console — **inlinent** le même module, compilé
+en une constante `MACHINE_JS` que `<script>` reçoit telle quelle, comme la
+feuille Tailwind de `@cloudnord/ui` : elles n'ont pas d'étape de build et
+doivent s'ouvrir sans réseau. Un test recompile et compare à chaque passe, puis
+**exécute** le bundle pour vérifier qu'il répond comme le module source — une
+règle changée sans régénération ferait tourner les pages sur l'ancienne, et on
+aurait reconstruit la divergence qu'on venait de supprimer.
+
+Ce partage n'est pas théorique : les trois copies précédentes avaient déjà
+dérivé. Le même état se lisait « hors créneau » en régie et « rien au
+programme » dans la console ; le dernier créneau de la journée, celui sans heure
+de fin, était « en cours » pour le hub et « hors créneau » pour la régie ; et la
+régie grisait « Terminer » sur une conférence non lancée pendant que la
+procédure du hub l'acceptait — écrivant `ended` sur un talk qui ne s'était pas
+tenu.
+
+#### Ce qui est stocké : le cycle de vie d'une conférence
+
+Une ligne par conférence, trois valeurs, et `scheduled` qui n'est jamais écrit —
+on n'enregistre que ce qui s'est produit. C'est le seul état de la journée qui
+soit une décision, et il vit chez le hub : la régie appelle `sessions.start`,
+elle ne se déclare pas commencée dans son coin, sinon l'organisateur ne verrait
+rien depuis la console et les autres salles non plus.
+
+Les flèches ci-dessous sont une **table**, `cycle-de-vie.ts`, et les deux côtés
+la lisent : la régie pour griser un bouton — le refus devient son infobulle —,
+le hub pour refuser l'écriture d'un `CONFLICT`. Un bouton actif dont la
+procédure refuserait le geste, ou l'inverse, n'est plus une chose possible.
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    state "scheduled" as scheduled
+    state "running" as running
+    state "ended" as ended
+
+    [*] --> scheduled
+    scheduled --> running : « Commencer » en régie
+    running --> ended : « Terminer » en régie
+    running --> ended : clôture automatique, balayage 30 s
+    ended --> scheduled : « Remettre à venir »
+
+    note right of ended
+        La clôture automatique ne part jamais de scheduled : affirmer qu'un talk s'est tenu alors que personne ne l'a lancé serait un mensonge dans l'historique, et fausserait la VOD.
+    end note
+```
+
+Trois détails qui ne se devinent pas :
+
+- **`start` conserve `startedAt`.** La clôture ne réécrit pas l'heure de début,
+  sinon la durée effective du talk serait perdue.
+- **`reset` supprime la ligne** au lieu d'écrire `scheduled`. L'absence est
+  l'état par défaut, et la reconstituer plutôt que la marquer garde la table
+  lisible : ce qu'elle contient s'est passé. La procédure accepte n'importe quel
+  état, mais la seule surface qui l'offre est le détail d'une conférence
+  **terminée** : « Remettre à venir » répare une fausse manœuvre, il n'annule
+  pas un talk en cours.
+- **Reculer l'horloge annule des décisions**, sans rien effacer
+  (`decisionApplicable`, partagée avec le banc d'essai). Un état daté
+  d'après l'instant du hub est écarté *à la lecture* : le talk de 09:50 lancé
+  pendant un essai à 11 h redevient « à venir » quand on revient à 08:38, et
+  ré-avancer l'horloge le retrouve intact. Sous une horloge réelle, la règle ne
+  se voit jamais.
+
+#### Le banc d'essai
+
+```bash
+pnpm --filter @cloudnord/etat-salle preview   # écrit preview/automate.html
+```
+
+Une page autonome où l'on charge le programme d'une salle, où l'on pousse
+l'heure à la vitesse qu'on veut, et où l'on regarde l'automate répondre. Elle
+n'imite rien : elle inline le même `MACHINE_JS` que la régie et appelle les
+mêmes fonctions — les boutons passent par `refusDeTransition`, la clôture
+automatique par `doitEtreClose`. Un état qui colle ici colle en salle.
+
+Elle porte quatre choses qu'on ne voit nulle part ailleurs : le **journal** des
+changements d'état horodaté à l'heure simulée, qui montre si une salle revient
+à un état neutre ou non ; la **clôture automatique** réglable en direct, avec
+un interrupteur pour retirer les heures de fin explicites ; la **surcharge de
+créneau**, d'un clic sur le type — c'est ce qui rend une keynote sans
+intervenant annoncé à sa nature de conférence, et l'automate suit ; et le
+**schéma** de l'automate, l'état courant allumé et la dernière transition
+surlignée.
+
+Passer un autre export en second argument remplace le programme. C'est l'outil
+à ouvrir avant de chercher un défaut dans le code : le jour J, on ne peut pas
+rejouer 09:50.
+
+#### Ce qui est calculé : l'état de la salle
+
+Il n'est stocké nulle part. `roomConferenceState` croise le **programme** — le
+créneau qui *devrait* jouer à l'instant du hub — et le **cycle de vie** — ce qui
+s'y joue vraiment. Les flèches ci-dessous sont donc des franchissements de
+seuil, pas des événements : rien ne se souvient d'un passage, et rien ne peut
+rester collé.
+
+```mermaid
+stateDiagram-v2
+    state "hors créneau" as aucune
+    state "pause" as pause
+    state "terminée en avance" as terminee
+    state "dépassement" as depassement
+    state creneau <<choice>>
+
+    state "rien de lancé" as attente {
+        state "pas commencée" as pas_commencee
+        state "retard au démarrage" as retard
+        [*] --> pas_commencee
+        pas_commencee --> retard : début + 5 min
+    }
+
+    state "conférence lancée" as lancee {
+        state "en cours" as en_cours
+        state "vers la fin" as fin_proche
+        [*] --> en_cours
+        en_cours --> fin_proche : plus que 5 min
+        fin_proche --> en_cours : horloge reculée
+    }
+
+    [*] --> creneau
+    creneau --> aucune : rien au programme
+    creneau --> pause : un break
+    creneau --> attente : un talk
+
+    aucune --> creneau : un créneau commence
+    pause --> creneau : fin du break
+    attente --> creneau : fin du créneau
+    terminee --> creneau : fin du créneau
+    depassement --> creneau : clôture, créneau tourné
+
+    attente --> lancee : « Commencer »
+    lancee --> terminee : « Terminer »
+    lancee --> depassement : fin atteinte, toujours running
+    depassement --> terminee : clôture pendant le créneau
+```
+
+Le losange n'est pas un état : c'est la relecture du créneau courant à l'heure
+du hub, refaite à chaque lecture. Les deux boîtes ne le sont pas davantage —
+elles regroupent les quatre états d'une conférence selon qu'on l'a lancée ou
+non, parce que la sortie est la même pour les deux qu'elles contiennent. L'ordre
+d'évaluation *est* la spécification, et la première ligne vraie gagne :
+
+| # | Condition | État |
+|---|---|---|
+| 1 | une session `running`, `kind ≠ break`, dont la fin effective est passée | dépassement |
+| 2 | aucun créneau courant | hors créneau |
+| 3 | le créneau courant est un break | pause |
+| 4 | statut `ended` | terminée en avance |
+| 5 | statut `running`, fin dans 5 min ou moins | vers la fin |
+| 6 | statut `running` | en cours |
+| 7 | statut `scheduled`, créneau commencé depuis plus de 5 min | retard au démarrage |
+| 8 | statut `scheduled` | pas commencée |
+
+Le **dépassement d'abord**, parce que c'est le seul état qui parle d'un créneau
+*passé* et le seul qui décale la journée — le programme, lui, passe simplement
+au créneau suivant et ne dirait jamais qu'une salle déborde.
+
+Ce que le schéma ne montre pas, faute de flèche pour ça :
+
+- **Le break de la salle vit à côté**, pas dans l'automate. `roomBreak` cohabite
+  avec l'état : « BREAK à venir » s'affiche pendant qu'une conférence court
+  encore, et c'est même le cas qui compte — celui où l'on décide de ne pas
+  enchaîner.
+- **Un créneau `break` ne déborde pas.** Personne ne clôture un déjeuner, et un
+  `running` peut lui rester d'avant : une conférence déjà lancée puis déclarée
+  break en cours de journée ferait clignoter la console sur une correction qu'on
+  vient soi-même de faire.
+- **Le dépassement est absorbant.** Il est évalué en premier et gagne sur tout
+  créneau ultérieur : une conférence laissée `running` au-delà de son créneau
+  tient la salle en rouge pour le reste de la journée. Deux choses seulement
+  l'en sortent — « Terminer », ou la clôture automatique. C'est voulu : un
+  débordement que personne ne clôt doit rester bruyant.
+- **La clôture automatique lit la même fin que le dépassement** — heure
+  explicite, sinon durée, sinon début du créneau suivant. Elle exigeait un
+  `endsAt` explicite, si bien qu'un créneau dont l'export ne donne que l'heure
+  de début débordait sans que le balayage ne le voie jamais passer : la salle
+  restait en rouge toute la journée. Reste ouvert le seul cas qu'aucune des
+  trois règles ne ferme — un dernier créneau sans fin ni durée —, et là c'est à
+  raison : personne ne sait quand il finit.
+- **Un créneau que l'export raconte mal fausse tout en amont.** Le normaliseur
+  n'a qu'un signal — un créneau sans intervenant est une pause — et une keynote
+  dont le speaker n'est pas encore annoncé se lit « rien dans la salle » à
+  l'heure où le public s'installe. L'automate n'y est pour rien : il reçoit un
+  break et le dit. La correction est la surcharge de créneau, et le banc
+  d'essai la simule d'un clic sur le type.
+- **Un réimport du programme redessine les seuils** sous l'automate : les
+  flèches horaires se rejouent alors sur les nouveaux créneaux, sans qu'aucune
+  décision d'opérateur ait bougé.
 
 ### Ce que dit la pastille
 
@@ -1208,15 +1838,35 @@ muette — on ne sait plus ce qui s'y joue, et le peindre serait pire que de se
 taire. Partout, un mot accompagne la couleur : elle se regarde de loin, et tout
 le monde ne distingue pas les teintes.
 
-Le calcul vit chez le hub (`roomConferenceState`) : l'heure qui fait foi est la
-sienne — elle peut être simulée — et lui seul tient le cycle de vie de toutes
-les salles. La régie **reprend du hub les quatre états qu'il est seul à
+Toutes les surfaces lisent le même automate : le hub l'importe, et la régie, la
+console et l'écran de salle **inlinent** le module compilé. Les boutons de la
+console suivent la table du cycle de vie comme ceux de la régie, et l'écran
+projeté déduit la fin d'un créneau avec la même règle que le hub — il la
+déduisait à sa façon, et grisait dès son heure de début un talk que l'export ne
+borne que par sa durée.
+
+Le calcul vit dans `@cloudnord/etat-salle` et fait autorité chez le hub :
+l'heure qui fait foi est la sienne — elle peut être simulée — et lui seul tient
+le cycle de vie de toutes les salles. La régie **reprend du hub les quatre états qu'il est seul à
 connaître** (pas commencée, retard, terminée, dépassement) et **recalcule le
 reste sur son cache**, chaque seconde : reprendre aussi « vers la fin » d'une
 vue rafraîchie toutes les quelques secondes ferait manquer le basculement, qui
 est justement ce qu'on surveille. Passé une minute sans nouvelles, la vue du hub
 décrit un passé et le programme local reprend la main — pendant une coupure, la
 salle d'à côté finit quand même à l'heure prévue.
+
+Une conférence **terminée avant son créneau** ne compte plus comme la
+prochaine, ni pour le décompte ni pour les boutons. La régie autorise
+« Commencer » puis « Terminer » sur un talk à venir ; celui-ci se désignait
+alors lui-même — le compte à rebours visait le début d'un talk qu'on venait de
+clore, le détail annonçait « prochaine conférence à 09:50 » sur la conférence
+de 09:50, et la régie restait **bloquée dessus jusqu'à l'heure prévue**, sans
+pouvoir piloter la suivante. La règle vit dans `prochaineConference`, et le
+choix de la conférence pilotée en dépend comme le décompte : les deux doivent
+désigner le même créneau, sinon le chrono annonce une chose et le bouton en
+lance une autre. Le rattrapage d'une clôture posée par erreur avant l'heure se
+fait alors depuis la console du hub, qui liste chaque conférence avec son
+« Remettre à venir ».
 
 Les **signalements** — fin de talk à côté, message parti à la console, hub
 rejoint — s'affichent en bandeau sous le flux et **s'effacent seuls au bout de
@@ -1237,7 +1887,10 @@ hub — **heure simulée comprise**, ce qui permet de dérouler la journée du 3
 octobre des mois à l'avance. Sans ce repère, la modale déroulait une liste
 d'horaires et laissait faire le calcul de tête, en pleine régie. Les commandes et les raccourcis
 restent actifs modale ouverte : une conférence ne s'arrête pas parce qu'on
-consulte le programme.
+consulte le programme. Une seule exception, la modale des enregistrements (**🎞**) :
+elle prend le clavier, parce qu'on y parcourt une liste de fichiers à deux
+mains et qu'un `r` réflexe par-dessus lancerait une captation dans le dos de
+l'opérateur.
 
 Sur un écran court (moins de 700 px de haut), une règle de densité resserre
 panneaux et boutons plutôt que de laisser sortir une commande. Au-dessous de
@@ -1246,8 +1899,8 @@ panneaux et boutons plutôt que de laisser sortir une commande. Au-dessous de
 ### Configurer la salle depuis la régie (⚙)
 
 Le bouton **⚙** de l'en-tête ouvre les réglages de la salle : adresses et mots
-de passe des deux OBS, mapping rôle → scène, port de l'écran local, dossier des
-enregistrements, préfixe de fichiers, salle relayée. C'est là que se branchent
+de passe des deux OBS, mapping rôle → scène, port de l'écran local, **dossier des
+VOD** — celui que relit la modale 🎞 —, préfixe de fichiers, salle relayée. C'est là que se branchent
 des instances OBS réelles — ces valeurs se constatent devant les machines, pas
 depuis une console à l'autre bout du bâtiment.
 

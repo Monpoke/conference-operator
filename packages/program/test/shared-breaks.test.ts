@@ -6,8 +6,6 @@ import {
   applySharedBreaks,
   currentSession,
   normalizeProgram,
-  roomBreak,
-  roomConferenceState,
   sessionsForRoom,
   type Program,
   type Session,
@@ -59,7 +57,6 @@ describe('applySharedBreaks — export Cloud Nord 2026 réel', () => {
 
     for (const salle of [TRACK_1, TRACK_2, HANDS_ON]) {
       expect(currentSession(servi, salle, midi)?.title).toBe('Déjeuner')
-      expect(roomConferenceState(servi, salle, midi)).toBe('pause')
     }
   })
 
@@ -174,51 +171,5 @@ describe('applySharedBreaks — cas limites', () => {
     p.sessions = p.sessions.map((s) => ({ ...s, title: 'Pause café' }))
 
     expect(partagees(p, 'c')).toHaveLength(1)
-  })
-})
-
-/**
- * L'étiquette BREAK, telle que les trois surfaces la lisent.
- *
- * Une donnée à part de `roomConferenceState` : les deux cohabitent, et c'est
- * voulu — une conférence peut courir pendant que le déjeuner approche.
- */
-describe('roomBreak', () => {
-  const program = applySharedBreaks(normalizeProgram(rawFixture))
-
-  it('annonce le break en cours, avec sa reprise', () => {
-    const midi = at('2026-10-30T11:40:00Z')
-    const pause = roomBreak(program, TRACK_2, midi)!
-
-    expect(pause.state).toBe('en-cours')
-    expect(pause.session.title).toBe('Déjeuner')
-    // La reprise : c'est ce qu'on vient chercher pendant une pause.
-    expect(pause.endsAtMs).toBe(at('2026-10-30T12:05:00Z'))
-  })
-
-  it("l'annonce un quart d'heure avant, pendant que la conférence court encore", () => {
-    // 11:05 UTC : Track #2 tient un talk jusqu'à 11:15, le déjeuner suit.
-    // C'est le cas qui compte — celui où l'on décide de ne pas enchaîner.
-    const avant = at('2026-10-30T11:05:00Z')
-
-    expect(currentSession(program, TRACK_2, avant)?.kind).toBe('talk')
-    expect(roomBreak(program, TRACK_2, avant)).toMatchObject({
-      state: 'a-venir',
-      session: { title: 'Déjeuner' },
-    })
-  })
-
-  it('se tait au-delà du quart d\'heure', () => {
-    // 11:00 UTC : le déjeuner est à quinze minutes et une seconde près — trop
-    // tôt pour que l'information serve, et elle encombrerait toute la journée.
-    expect(roomBreak(program, TRACK_2, at('2026-10-30T10:59:00Z'))).toBeNull()
-    expect(roomBreak(program, TRACK_2, at('2026-10-30T11:00:00Z'))).toMatchObject({
-      state: 'a-venir',
-    })
-  })
-
-  it('se tait quand une conférence suit une conférence', () => {
-    // 10:30 UTC sur Hands on : un atelier court, un autre suit. Rien à annoncer.
-    expect(roomBreak(program, HANDS_ON, at('2026-10-30T10:30:00Z'))).toBeNull()
   })
 })

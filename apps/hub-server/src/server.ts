@@ -124,6 +124,25 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
 
   const app = Fastify({ logger: { level: config.logLevel } })
 
+  /*
+   * Reprise du projet OpenFeedback saisi jadis sur une régie.
+   *
+   * Au démarrage plutôt qu'en migration SQL : la valeur vit dans le
+   * `config_json` d'une salle, et la déterrer en SQL demanderait de raisonner
+   * en JSON dans une migration, là où le service sait déjà lire et réécrire une
+   * configuration. Idempotent — au démarrage suivant il n'y a plus rien à
+   * reprendre, et rien n'est réécrit.
+   */
+  const repriseOpenFeedback = services.rooms.reprendreProjetOpenFeedback(settings)
+  if (repriseOpenFeedback.sallesNettoyees.length > 0) {
+    app.log.info(
+      { adopte: repriseOpenFeedback.adopte, salles: repriseOpenFeedback.sallesNettoyees },
+      repriseOpenFeedback.adopte == null
+        ? 'projet OpenFeedback : surcharges de salle effacées, le réglage du hub fait foi'
+        : 'projet OpenFeedback repris depuis une salle vers les réglages du hub',
+    )
+  }
+
   /**
    * Rapatriement des rushes : monté seulement si le stockage est configuré.
    *

@@ -188,9 +188,8 @@ export const router = os.router({
           serverTime: nowIso(context),
           // Le réglage se lit quand même : sans programme il n'y a aucun lien à
           // fabriquer, mais la console peut déjà dire s'il en manque un.
-          openFeedbackProjectId: projetParDefaut(
+          openFeedbackProjectId: renseigne(
             context.services.settings.get().openFeedbackProjectId,
-            context.services.rooms.list(),
           ),
           rooms: [],
           sessions: [],
@@ -204,26 +203,16 @@ export const router = os.router({
       // programme donne alors le nom écrit sur la porte, plutôt qu'un slug.
       const nomsDuProgramme = new Map(program.rooms.map((salle) => [salle.id, salle.name]))
       /**
-       * Projet OpenFeedback qui vaut par défaut sur cet événement.
+       * Projet OpenFeedback de l'événement. Un seul, et il vient du hub.
        *
-       * Réglage du hub d'abord : le projet est une propriété de l'événement,
-       * pas d'une salle, et c'est ce qui donne son lien à un créneau sans salle
-       * — une plénière que l'export ne rattache à aucun track.
-       *
-       * Le repli sur les salles n'est pas un doublon de la ligne suivante. Le
-       * champ existe aussi sur la configuration d'une salle, où il se saisit
-       * **depuis la régie** : il suffit donc qu'un opérateur l'ait rempli sur
-       * une machine, un matin, pour que cette salle-là ait des liens et pas les
-       * autres — le réglage du hub, lui, n'ayant jamais été touché. C'est
-       * exactement ce qu'on a constaté : la salle 1 renseignée, les autres à
-       * blanc, une seule colonne de liens sur vingt-sept créneaux. Ce que
-       * déclare une salle décrit l'événement entier ; la réponse juste est donc
-       * de l'étendre aux autres, pas de laisser les vingt-six autres lignes
-       * vides.
+       * Plus de surcharge par salle : le champ a existé dans le ⚙ de la régie,
+       * et il a suffi qu'un opérateur le remplisse sur une machine pour que
+       * cette salle-là ait des liens et pas les autres. Le projet est une
+       * propriété de l'événement — un créneau sans salle, plénière que l'export
+       * ne rattache à aucun track, a autant droit à son lien qu'un autre.
        */
-      const projetDeLEvenement = projetParDefaut(
+      const projetDeLEvenement = renseigne(
         context.services.settings.get().openFeedbackProjectId,
-        [...salles.values()],
       )
 
       /**
@@ -270,11 +259,7 @@ export const router = os.router({
             feedbackUrl:
               session.kind === 'break'
                 ? null
-                : openFeedbackUrl(
-                    session,
-                    renseigne(salle?.openFeedbackProjectId) ?? projetDeLEvenement,
-                    program.timezone,
-                  ),
+                : openFeedbackUrl(session, projetDeLEvenement, program.timezone),
             overriddenAs: surcharges[session.id] ?? null,
             sharedFrom: session.sharedFrom,
             /**
@@ -417,17 +402,13 @@ export const router = os.router({
         protocolVersion: PROTOCOL_VERSION,
         contentHash: snapshot.contentHash,
         program: unchanged ? null : snapshot.program,
-        // Le projet OpenFeedback est descendu **résolu** : la salle dessine ses
-        // QR hors ligne et n'a pas à connaître la règle de priorité. Ce qu'elle
-        // a réglé pour elle-même gagne, puis le réglage du hub, puis ce que
-        // déclarent les autres salles — la même règle que dans la console, et
-        // pour la même raison : un projet saisi sur une seule régie décrit
-        // l'événement entier, et les salles muettes n'ont pas à rester sans QR.
+        // Le projet OpenFeedback descend **écrasé**, pas complété : quoi qu'une
+        // salle ait en cache ou en base, c'est le réglage du hub qui fait foi.
+        // La salle dessine ses QR hors ligne, donc la valeur doit voyager ; mais
+        // elle n'a rien à décider, et ne peut plus rien contredire.
         room: {
           ...room,
-          openFeedbackProjectId:
-            renseigne(room.openFeedbackProjectId) ??
-            projetParDefaut(reglages.openFeedbackProjectId, context.services.rooms.list()),
+          openFeedbackProjectId: renseigne(reglages.openFeedbackProjectId),
         },
         overrides: context.services.rooms.overrides(),
         serverTime: nowIso(context),
@@ -1316,45 +1297,6 @@ function rattacher(
 function renseigne(valeur: string | null | undefined): string | null {
   const propre = valeur?.trim() ?? ''
   return propre === '' ? null : propre
-}
-
-/**
- * Le projet OpenFeedback qui vaut à défaut d'en avoir un sur la salle.
- *
- * Le réglage du hub gagne : c'est là que se décide l'événement, et c'est le
- * seul endroit qui couvre les créneaux sans salle. À défaut, on prend ce que
- * les salles déclarent — le champ se saisit aussi depuis chaque régie, et une
- * seule salle renseignée suffit à dire quel est le projet de l'événement.
- *
- * Le plus fréquent l'emporte, les salles étant parcourues dans l'ordre de leur
- * identifiant : deux salles qui se contredisent doivent donner la même réponse
- * à chaque appel, sans quoi les liens changeraient d'un rafraîchissement à
- * l'autre et personne ne saurait lequel est le bon.
- */
-function projetParDefaut(
-  reglageDuHub: string | null,
-  salles: { id: string; openFeedbackProjectId: string | null }[],
-): string | null {
-  const duHub = renseigne(reglageDuHub)
-  if (duHub != null) return duHub
-
-  const comptes = new Map<string, number>()
-  for (const salle of [...salles].sort((a, b) => a.id.localeCompare(b.id))) {
-    const projet = renseigne(salle.openFeedbackProjectId)
-    if (projet == null) continue
-    comptes.set(projet, (comptes.get(projet) ?? 0) + 1)
-  }
-
-  let retenu: string | null = null
-  let meilleur = 0
-  // Comparaison stricte : à égalité, la première salle dans l'ordre garde la main.
-  for (const [projet, combien] of comptes) {
-    if (combien > meilleur) {
-      retenu = projet
-      meilleur = combien
-    }
-  }
-  return retenu
 }
 
 /**

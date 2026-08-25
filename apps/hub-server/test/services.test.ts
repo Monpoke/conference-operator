@@ -6,6 +6,7 @@ import { ProgramService } from '../src/services/program.js'
 import { CommandService } from '../src/services/commands.js'
 import { IngestService } from '../src/services/ingest.js'
 import { DeviceService, RoomService } from '../src/services/rooms.js'
+import { SettingsService } from '../src/services/sessions.js'
 
 const rawProgram = readFileSync(
   fileURLToPath(new URL('../../../packages/program/test/fixtures/cloudnord-2026.json', import.meta.url)),
@@ -189,6 +190,57 @@ describe('IngestService', () => {
     const replay = ingest.push(TRACK_1, batch)
     expect(replay.acked).toHaveLength(0)
     expect(replay.duplicates).toHaveLength(2)
+  })
+
+  it('reprend vers le hub un projet OpenFeedback saisi sur une régie', () => {
+    // Le champ a été éditable dans le ⚙ de chaque salle. Le retirer sans rien
+    // reprendre aurait éteint les liens de la seule salle qui en avait — c'est
+    // exactement l'état du hub de développement : réglage d'événement vide,
+    // salle 1 renseignée, deux salles muettes.
+    const rooms = new RoomService(db)
+    seedRoom(rooms)
+    const settings = new SettingsService(db)
+    const salle = rooms.get(TRACK_1)!
+    rooms.upsert({ ...salle, openFeedbackProjectId: 'cloud-nord-2026' })
+
+    const reprise = rooms.reprendreProjetOpenFeedback(settings)
+
+    expect(reprise.adopte).toBe('cloud-nord-2026')
+    expect(settings.get().openFeedbackProjectId).toBe('cloud-nord-2026')
+    // Effacé côté salle : un champ que plus rien ne lit finit par ressusciter.
+    expect(rooms.get(TRACK_1)?.openFeedbackProjectId).toBeNull()
+  })
+
+  it('ne reprend rien quand le hub a déjà son projet', () => {
+    const rooms = new RoomService(db)
+    seedRoom(rooms)
+    const settings = new SettingsService(db)
+    settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
+    const salle = rooms.get(TRACK_1)!
+    rooms.upsert({ ...salle, openFeedbackProjectId: 'atelier-2026' })
+
+    const reprise = rooms.reprendreProjetOpenFeedback(settings)
+
+    // Le réglage de la console fait foi : la valeur de salle est effacée sans
+    // avoir eu voix au chapitre.
+    expect(reprise.adopte).toBeNull()
+    expect(settings.get().openFeedbackProjectId).toBe('cloud-nord-2026')
+    expect(rooms.get(TRACK_1)?.openFeedbackProjectId).toBeNull()
+  })
+
+  it('ne réécrit rien au démarrage suivant', () => {
+    // Idempotence : la reprise tourne à chaque démarrage, et un hub installé
+    // depuis six mois ne doit pas repasser sur ses salles à chaque fois.
+    const rooms = new RoomService(db)
+    seedRoom(rooms)
+    const settings = new SettingsService(db)
+    const salle = rooms.get(TRACK_1)!
+    rooms.upsert({ ...salle, openFeedbackProjectId: 'cloud-nord-2026' })
+
+    rooms.reprendreProjetOpenFeedback(settings)
+    const second = rooms.reprendreProjetOpenFeedback(settings)
+
+    expect(second).toEqual({ adopte: null, sallesNettoyees: [] })
   })
 
   it('recompose les prises depuis les deux bouts remontés par la salle', () => {

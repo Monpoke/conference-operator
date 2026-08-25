@@ -195,9 +195,11 @@ describe('hub de bout en bout', () => {
     expect(sync.room.openFeedbackProjectId).toBe('cloud-nord-2026')
   }, 20_000)
 
-  it('laisse une salle surcharger le projet OpenFeedback de l\'événement', async () => {
-    // Ce qui se découvre devant la machine gagne : une salle peut devoir
-    // pointer ailleurs, et ça ne se décide pas depuis la console.
+  it('ne laisse plus une salle contredire le projet OpenFeedback de l\'événement', async () => {
+    // Le projet est une propriété de l'événement, et un seul endroit l'écrit.
+    // Tant que la régie le pouvait aussi, il a suffi qu'un opérateur le
+    // remplisse sur une machine pour que cette salle-là ait des liens et pas
+    // les autres — sans que rien ne dise pourquoi.
     hub.services.settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
     const salle = hub.services.rooms.get(TRACK_1)!
     hub.services.rooms.upsert({ ...salle, openFeedbackProjectId: 'atelier-2026' })
@@ -205,7 +207,26 @@ describe('hub de bout en bout', () => {
 
     const sync = await room.rooms.sync({ since: null })
 
-    expect(sync.room.openFeedbackProjectId).toBe('atelier-2026')
+    // Écrasé, pas complété : ce que la salle porte en base ne pèse rien.
+    expect(sync.room.openFeedbackProjectId).toBe('cloud-nord-2026')
+  }, 20_000)
+
+  it('refuse à une salle d\'écrire le projet OpenFeedback', async () => {
+    // La procédure de configuration existe toujours — les adresses OBS et les
+    // noms de scènes se constatent devant les machines — mais ce champ-là en
+    // est sorti : zod écarte les clés inconnues, la salle ne peut plus rien
+    // poser dessus.
+    hub.services.settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
+    const room = wsClient(await pairRoomDevice())
+
+    const config = await room.rooms.configure({
+      openFeedbackProjectId: 'atelier-2026',
+      displayPort: 7799,
+    } as never)
+
+    // Le reste du patch passe : c'est un champ ignoré, pas un appel refusé.
+    expect(config.displayPort).toBe(7799)
+    expect(hub.services.rooms.get(TRACK_1)?.openFeedbackProjectId).toBeNull()
   }, 20_000)
 
   it('achemine les commandes descendantes et remonte les événements', async () => {
@@ -762,26 +783,35 @@ describe('planning du programme actif', () => {
     )
   })
 
-  it('étend aux autres salles le projet OpenFeedback réglé sur une seule', async () => {
-    // Le cas constaté, et le bogue qu'il produisait : le champ existe aussi sur
-    // la configuration d'une salle, où il se saisit **depuis la régie**. Il a
-    // suffi qu'un opérateur le remplisse sur la machine de la salle 1, un
-    // matin, pour que cette salle-là ait des liens et pas les autres — le
-    // réglage du hub, lui, n'ayant jamais été touché. Vingt-six créneaux sur
-    // vingt-sept restaient sans lien, sans que rien ne dise pourquoi.
+  it('donne le lien à toutes les salles dès que le hub a son projet', async () => {
+    // Le bogue constaté tenait à un second propriétaire du réglage : la salle 1
+    // le portait, les autres non, et vingt-six créneaux sur vingt-sept
+    // restaient sans lien. Un seul propriétaire, et la question ne se pose
+    // plus — le projet vaut pour toutes les salles à la fois.
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    await admin.settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
+
+    const planning = await admin.program.planning()
+
+    const talks = planning.sessions.filter((session) => session.kind === 'talk')
+    const salles = new Set(talks.map((session) => session.roomId))
+    expect(salles.size).toBeGreaterThan(1)
+    expect(talks.every((session) => session.feedbackUrl != null)).toBe(true)
+    expect(planning.openFeedbackProjectId).toBe('cloud-nord-2026')
+  })
+
+  it('ignore un projet resté sur une salle', async () => {
+    // Une base d'avant le changement en porte encore. Il ne doit plus rien
+    // décider : sans réglage sur le hub, personne n'a de lien — la reprise au
+    // démarrage est le seul endroit qui regarde encore ce champ.
     const salle = hub.services.rooms.get(TRACK_1)!
     hub.services.rooms.upsert({ ...salle, openFeedbackProjectId: 'cloud-nord-2026' })
 
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
     const planning = await admin.program.planning()
 
-    const ailleurs = planning.sessions.filter(
-      (session) => session.kind === 'talk' && session.roomId !== TRACK_1,
-    )
-    expect(ailleurs.length).toBeGreaterThan(0)
-    // Ce que déclare une salle décrit l'événement entier : les autres en héritent.
-    expect(ailleurs.every((session) => session.feedbackUrl != null)).toBe(true)
-    expect(planning.openFeedbackProjectId).toBe('cloud-nord-2026')
+    expect(planning.openFeedbackProjectId).toBeNull()
+    expect(planning.sessions.every((session) => session.feedbackUrl == null)).toBe(true)
   })
 
   it('ne prend pas une chaîne vide pour un projet OpenFeedback', async () => {

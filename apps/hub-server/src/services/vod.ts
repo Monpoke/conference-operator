@@ -598,6 +598,19 @@ export class VodService {
   }
 
   /**
+   * Les téléversements d'**une** conférence, toutes salles et tous essais.
+   *
+   * Sans filtre de salle : un créneau relayé, ou une salle renommée en cours de
+   * route, laisse des lignes sous deux identifiants, et n'en montrer qu'une
+   * moitié serait pire que de ne rien montrer. Le rush et son sidecar arrivent
+   * ensemble, les plus récents d'abord — ce qui met en tête l'essai en cours
+   * quand un premier a échoué.
+   */
+  pourSession(sessionId: string, nomDeSalle: (id: string) => string | null): TeleversementVu[] {
+    return this.uploads(null, nomDeSalle).filter((ligne) => ligne.sessionId === sessionId)
+  }
+
+  /**
    * Abandonne un multipart sans jamais lever.
    *
    * Le ménage tourne en fond : un stockage momentanément injoignable ne doit

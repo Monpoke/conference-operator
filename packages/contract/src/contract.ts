@@ -11,6 +11,7 @@ import {
 } from './primitives.js'
 import { eventIdentitySchema } from './event-identity.js'
 import {
+  controleOpenFeedbackSchema,
   hubSettingsSchema,
   niveauxNotifSchema,
   roomConfigPatchSchema,
@@ -23,6 +24,7 @@ import {
 import { commentSchema, commentSourceSchema, questionSchema } from './wall.js'
 import {
   controleStockageSchema,
+  dossierVodSchema,
   genreVodSchema,
   partSigneeSchema,
   planTeleversementSchema,
@@ -70,6 +72,23 @@ const planningSessionSchema = sessionApercuSchema.extend({
    * coûte plus cher qu'une case vide.
    */
   feedbackUrl: z.url().nullable(),
+  /**
+   * L'identifiant **servi** dans l'adresse OpenFeedback de ce créneau.
+   *
+   * Celui de l'export, sauf correction. Rendu à part de `feedbackUrl` parce que
+   * c'est lui qu'on lit et qu'on compare quand un speaker dit « mes retours
+   * sont vides » : l'URL entière noie le seul segment qui puisse être faux.
+   */
+  feedbackId: z.string(),
+  /**
+   * La correction posée depuis la console, ou `null`.
+   *
+   * `feedbackId` ci-dessus est déjà résolu — même règle que `kind` avec
+   * `overriddenAs`. Ce champ dit d'où vient l'identifiant servi : de l'export,
+   * ou de quelqu'un qui l'a corrigé à la main. C'est ce que la console a besoin
+   * de savoir pour proposer de rendre le créneau à l'export.
+   */
+  feedbackIdOverride: z.string().nullable().default(null),
   /**
    * Décision prise sur ce créneau depuis la console, ou `null`.
    *
@@ -193,6 +212,16 @@ export const contract = {
         .nullable(),
     ),
 
+    /**
+     * Confronte les identifiants OpenFeedback du programme aux siens. Admin.
+     *
+     * Sur demande, jamais en tâche de fond : c'est un geste d'avant-événement,
+     * qu'on exécute une fois le programme importé pour corriger ce qu'il
+     * signale. Il sort du hub — la seule procédure ici qui appelle un tiers —
+     * et il peut donc échouer pour des raisons qui ne disent rien du programme.
+     */
+    controleOpenFeedback: oc.output(controleOpenFeedbackSchema),
+
     planning: oc.output(
       z.object({
         /** Version affichée : la même que dans la liste des snapshots. `null` si aucun programme. */
@@ -210,6 +239,15 @@ export const contract = {
          * Développement.
          */
         serverTime: isoDateTimeSchema,
+        /**
+         * Le projet OpenFeedback qui sert de défaut, une fois la règle appliquée.
+         *
+         * Rendu pour que la console puisse expliquer une colonne « Feedback »
+         * vide au lieu de la laisser vide. Sans lui, la seule chose visible est
+         * une suite de tirets, et rien ne dit s'il manque un réglage ou si
+         * OpenFeedback n'est pas de la partie sur cet événement.
+         */
+        openFeedbackProjectId: z.string().nullable(),
         rooms: z.array(z.object({ id: roomIdSchema, name: z.string() })),
         sessions: z.array(planningSessionSchema),
       }),
@@ -371,6 +409,37 @@ export const contract = {
         }),
       )
       .output(z.object({ ok: z.boolean(), contentHash: z.string() })),
+
+    /**
+     * Corrige l'identifiant OpenFeedback d'un créneau. Admin.
+     *
+     * L'adresse se fabrique hors ligne en pariant qu'OpenFeedback réutilise les
+     * identifiants de l'export amont. Le pari tient — les vingt-sept concordent
+     * — mais il se perdrait en silence : le lien resterait cliquable et le QR
+     * scannable, tous deux menant à une page qui ne parle d'aucun talk. On ne
+     * s'en apercevrait qu'aux retours manquants, c'est-à-dire trop tard.
+     *
+     * `feedbackId` nul rend le créneau à l'export. La correction survit au
+     * réimport : c'est une propriété du hub, et le programme réimporté
+     * ramènerait justement l'identifiant fautif.
+     */
+    feedbackId: oc
+      .input(
+        z.object({
+          sessionId: sessionIdSchema,
+          /** `null` — ou blanc — rend le créneau à l'identifiant de l'export. */
+          feedbackId: z.string().max(200).nullable(),
+        }),
+      )
+      .output(
+        z.object({
+          ok: z.boolean(),
+          /** L'identifiant servi après le geste, correction ou export. */
+          feedbackId: z.string(),
+          /** L'adresse qui en découle, pour la vérifier d'un clic. `null` sans projet réglé. */
+          feedbackUrl: z.url().nullable(),
+        }),
+      ),
   },
 
   /**
@@ -735,6 +804,24 @@ export const contract = {
     uploads: oc
       .input(z.object({ roomId: roomIdSchema.nullable().default(null) }))
       .output(z.array(televersementVuSchema)),
+
+    /**
+     * Le dossier VOD d'**une** conférence. Admin.
+     *
+     * La vue « téléversements » range par fichier et par salle, ce qui est le
+     * bon classement quand on démonte une salle et le mauvais quand un speaker
+     * demande où est sa captation. Cette procédure répond dans l'autre sens :
+     * on part du créneau, et on redescend vers la prise puis vers l'objet chez
+     * le stockage.
+     *
+     * Elle ne dépend pas du stockage : un hub sans S3 répond quand même, avec
+     * `stockageConfigure` à faux et la moitié « prises » remplie. C'est même le
+     * cas le plus utile — savoir qu'un rush existe sur une machine qu'on
+     * s'apprête à débrancher.
+     */
+    conference: oc
+      .input(z.object({ sessionId: sessionIdSchema }))
+      .output(dossierVodSchema),
 
     /**
      * Le stockage est-il configuré, et comment. Admin.

@@ -95,12 +95,13 @@ const REPONSES: Record<string, unknown> = {
     // 10:12 UTC : le premier créneau est en cours, c'est lui que l'aperçu doit
     // montrer surligné.
     serverTime: '2026-10-30T10:12:00.000Z',
+    openFeedbackProjectId: 'cloud-nord-2026',
     rooms: SALLES,
     sessions: [
-      { id: 'ses-1', title: 'HoneySwamp : piéger les bots', speakers: ['Steven LE ROUX'], startsAt: '2026-10-30T10:00:00.000Z', endsAt: '2026-10-30T10:50:00.000Z', roomId: SALLES[0]!.id, roomName: SALLES[0]!.name, kind: 'talk', feedbackUrl: 'https://openfeedback.io/cloud-nord-2026/2026-10-30/ses-1' },
-      { id: 'ses-2', title: '100 % open source, au-dessus de la mêlée', speakers: ['Camille Durand', 'Sacha Nguyen'], startsAt: '2026-10-30T10:00:00.000Z', endsAt: '2026-10-30T10:50:00.000Z', roomId: SALLES[1]!.id, roomName: SALLES[1]!.name, kind: 'talk', feedbackUrl: 'https://openfeedback.io/cloud-nord-2026/2026-10-30/ses-2' },
-      { id: 'pause-midi', title: 'Déjeuner', speakers: [], startsAt: '2026-10-30T11:00:00.000Z', endsAt: '2026-10-30T12:00:00.000Z', roomId: null, roomName: null, kind: 'break', feedbackUrl: null },
-      { id: 'ses-3', title: 'Event Iterators en production', speakers: ['Alex Martin'], startsAt: '2026-10-30T12:00:00.000Z', endsAt: '2026-10-30T12:50:00.000Z', roomId: SALLES[2]!.id, roomName: SALLES[2]!.name, kind: 'talk', feedbackUrl: 'https://openfeedback.io/cloud-nord-2026/2026-10-30/ses-3' },
+      { id: 'ses-1', title: 'HoneySwamp : piéger les bots', speakers: ['Steven LE ROUX'], startsAt: '2026-10-30T10:00:00.000Z', endsAt: '2026-10-30T10:50:00.000Z', roomId: SALLES[0]!.id, roomName: SALLES[0]!.name, kind: 'talk', feedbackUrl: 'https://openfeedback.io/cloud-nord-2026/2026-10-30/ses-1', feedbackId: 'ses-1', feedbackIdOverride: null },
+      { id: 'ses-2', title: '100 % open source, au-dessus de la mêlée', speakers: ['Camille Durand', 'Sacha Nguyen'], startsAt: '2026-10-30T10:00:00.000Z', endsAt: '2026-10-30T10:50:00.000Z', roomId: SALLES[1]!.id, roomName: SALLES[1]!.name, kind: 'talk', feedbackUrl: 'https://openfeedback.io/cloud-nord-2026/2026-10-30/of-42', feedbackId: 'of-42', feedbackIdOverride: 'of-42' },
+      { id: 'pause-midi', title: 'Déjeuner', speakers: [], startsAt: '2026-10-30T11:00:00.000Z', endsAt: '2026-10-30T12:00:00.000Z', roomId: null, roomName: null, kind: 'break', feedbackUrl: null, feedbackId: 'pause-midi', feedbackIdOverride: null },
+      { id: 'ses-3', title: 'Event Iterators en production', speakers: ['Alex Martin'], startsAt: '2026-10-30T12:00:00.000Z', endsAt: '2026-10-30T12:50:00.000Z', roomId: SALLES[2]!.id, roomName: SALLES[2]!.name, kind: 'talk', feedbackUrl: 'https://openfeedback.io/cloud-nord-2026/2026-10-30/ses-3', feedbackId: 'ses-3', feedbackIdOverride: null },
     ],
   },
   'event/identity': EVENEMENT,
@@ -181,6 +182,24 @@ const REPONSES: Record<string, unknown> = {
     { roomId: SALLES[1]!.id, roomName: SALLES[1]!.name, file: '2026-10-30_track2_1000_open-source.mkv', kind: 'rush', sessionId: 'ses-2', objectKey: 'cn26/2026-10-30/track-2/2026-10-30_track2_1000_open-source.mkv', state: 'en-cours', sizeBytes: 3_100_000_000, bytesSent: 1_300_000_000, debitOctetsS: 1_400_000, startedAt: '2026-10-30T11:02:00.000Z', lastProgressAt: '2026-10-30T11:19:00.000Z', finishedAt: null, attempts: 1, lastError: null },
     { roomId: SALLES[2]!.id, roomName: SALLES[2]!.name, file: '2026-10-30_handson_0900_atelier.mkv', kind: 'rush', sessionId: 'ses-3', objectKey: 'cn26/2026-10-30/hands-on/2026-10-30_handson_0900_atelier.mkv', state: 'echoue', sizeBytes: 5_400_000_000, bytesSent: 210_000_000, debitOctetsS: null, startedAt: '2026-10-30T11:05:00.000Z', lastProgressAt: '2026-10-30T11:09:00.000Z', finishedAt: null, attempts: 4, lastError: 'Le stockage a refusé (AccessDenied) : quota dépassé sur le bucket' },
   ],
+  /**
+   * Le dossier VOD d'une conférence, tel que la modale du planning le montre.
+   *
+   * Une prise et son objet chez le stockage : c'est le cas nominal, celui qui
+   * doit se relire d'un coup d'œil sur l'aperçu.
+   */
+  'vod/conference': {
+    sessionId: 'ses-1',
+    roomId: SALLES[0]!.id,
+    roomName: SALLES[0]!.name,
+    stockageConfigure: true,
+    captations: [
+      { roomId: SALLES[0]!.id, obs: 'B', startedAt: '2026-10-30T10:02:00.000Z', endedAt: '2026-10-30T10:53:00.000Z', durationMs: 3_060_000, file: '/rushes/2026-10-30_track1_1000_honeyswamp.mkv', sidecarWritten: true, enCours: false, rattachement: 'session' },
+    ],
+    televersements: [
+      { roomId: SALLES[0]!.id, roomName: SALLES[0]!.name, file: '2026-10-30_track1_1000_honeyswamp.mkv', kind: 'rush', sessionId: 'ses-1', objectKey: 'cn26/2026-10-30/track-1/2026-10-30_track1_1000_honeyswamp.mkv', state: 'termine', sizeBytes: 2_700_000_000, bytesSent: 2_700_000_000, debitOctetsS: 1_900_000, startedAt: '2026-10-30T10:55:00.000Z', lastProgressAt: '2026-10-30T11:18:00.000Z', finishedAt: '2026-10-30T11:18:00.000Z', attempts: 1, lastError: null },
+    ],
+  },
   'questions/list': [
     { id: 'q1', roomId: SALLES[0]!.id, sessionId: 'ses-1', author: 'Camille', text: 'Comment gérez-vous les faux positifs ?', votes: 7, status: 'open', createdAt: '2026-10-30T10:12:00.000Z' },
   ],

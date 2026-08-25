@@ -6,6 +6,7 @@ import { ProgramService } from '../src/services/program.js'
 import { CommandService } from '../src/services/commands.js'
 import { IngestService } from '../src/services/ingest.js'
 import { DeviceService, RoomService } from '../src/services/rooms.js'
+import { SettingsService } from '../src/services/sessions.js'
 
 const rawProgram = readFileSync(
   fileURLToPath(new URL('../../../packages/program/test/fixtures/cloudnord-2026.json', import.meta.url)),
@@ -189,6 +190,134 @@ describe('IngestService', () => {
     const replay = ingest.push(TRACK_1, batch)
     expect(replay.acked).toHaveLength(0)
     expect(replay.duplicates).toHaveLength(2)
+  })
+
+  it('reprend vers le hub un projet OpenFeedback saisi sur une régie', () => {
+    // Le champ a été éditable dans le ⚙ de chaque salle. Le retirer sans rien
+    // reprendre aurait éteint les liens de la seule salle qui en avait — c'est
+    // exactement l'état du hub de développement : réglage d'événement vide,
+    // salle 1 renseignée, deux salles muettes.
+    const rooms = new RoomService(db)
+    seedRoom(rooms)
+    const settings = new SettingsService(db)
+    const salle = rooms.get(TRACK_1)!
+    rooms.upsert({ ...salle, openFeedbackProjectId: 'cloud-nord-2026' })
+
+    const reprise = rooms.reprendreProjetOpenFeedback(settings)
+
+    expect(reprise.adopte).toBe('cloud-nord-2026')
+    expect(settings.get().openFeedbackProjectId).toBe('cloud-nord-2026')
+    // Effacé côté salle : un champ que plus rien ne lit finit par ressusciter.
+    expect(rooms.get(TRACK_1)?.openFeedbackProjectId).toBeNull()
+  })
+
+  it('ne reprend rien quand le hub a déjà son projet', () => {
+    const rooms = new RoomService(db)
+    seedRoom(rooms)
+    const settings = new SettingsService(db)
+    settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
+    const salle = rooms.get(TRACK_1)!
+    rooms.upsert({ ...salle, openFeedbackProjectId: 'atelier-2026' })
+
+    const reprise = rooms.reprendreProjetOpenFeedback(settings)
+
+    // Le réglage de la console fait foi : la valeur de salle est effacée sans
+    // avoir eu voix au chapitre.
+    expect(reprise.adopte).toBeNull()
+    expect(settings.get().openFeedbackProjectId).toBe('cloud-nord-2026')
+    expect(rooms.get(TRACK_1)?.openFeedbackProjectId).toBeNull()
+  })
+
+  it('ne réécrit rien au démarrage suivant', () => {
+    // Idempotence : la reprise tourne à chaque démarrage, et un hub installé
+    // depuis six mois ne doit pas repasser sur ses salles à chaque fois.
+    const rooms = new RoomService(db)
+    seedRoom(rooms)
+    const settings = new SettingsService(db)
+    const salle = rooms.get(TRACK_1)!
+    rooms.upsert({ ...salle, openFeedbackProjectId: 'cloud-nord-2026' })
+
+    rooms.reprendreProjetOpenFeedback(settings)
+    const second = rooms.reprendreProjetOpenFeedback(settings)
+
+    expect(second).toEqual({ adopte: null, sallesNettoyees: [] })
+  })
+
+  it('recompose les prises depuis les deux bouts remontés par la salle', () => {
+    const rooms = new RoomService(db)
+    seedRoom(rooms)
+    const ingest = new IngestService(db)
+
+    ingest.push(TRACK_1, [
+      {
+        ...envelope('01F1AAAAAAAAAAAAAAAAAAAAAA', 1, {
+          type: 'recording.started',
+          obs: 'B',
+          sessionId: 'ses-1',
+        }),
+        occurredAt: '2026-10-30T10:00:00.000+00:00',
+      },
+      {
+        ...envelope('01F2AAAAAAAAAAAAAAAAAAAAAA', 2, {
+          type: 'recording.stopped',
+          obs: 'B',
+          sessionId: 'ses-1',
+          outputPath: '/rushes/ses-1.mkv',
+          durationMs: 2_700_000,
+          sidecarWritten: true,
+        }),
+        occurredAt: '2026-10-30T10:45:00.000+00:00',
+      },
+    ])
+
+    // Le hub ne lit pas le disque de la régie : il apparie le démarrage et
+    // l'arrêt, et c'est l'arrêt qui porte le fichier écrit.
+    expect(ingest.captations(TRACK_1)).toEqual([
+      {
+        roomId: TRACK_1,
+        obs: 'B',
+        sessionId: 'ses-1',
+        startedAt: '2026-10-30T10:00:00.000+00:00',
+        endedAt: '2026-10-30T10:45:00.000+00:00',
+        durationMs: 2_700_000,
+        file: '/rushes/ses-1.mkv',
+        sidecarWritten: true,
+        enCours: false,
+      },
+    ])
+  })
+
+  it('n\'attribue pas à une instance OBS le fichier de l\'autre', () => {
+    const rooms = new RoomService(db)
+    seedRoom(rooms)
+    const ingest = new IngestService(db)
+
+    // Les deux tournent en même temps sur certaines salles. Apparier dans
+    // l'ordre d'arrivée, sans regarder l'instance, donnerait le fichier de B à
+    // la prise de A.
+    ingest.push(TRACK_1, [
+      envelope('01G1AAAAAAAAAAAAAAAAAAAAAA', 1, { type: 'recording.started', obs: 'A', sessionId: 'ses-1' }),
+      envelope('01G2AAAAAAAAAAAAAAAAAAAAAA', 2, { type: 'recording.started', obs: 'B', sessionId: 'ses-1' }),
+      envelope('01G3AAAAAAAAAAAAAAAAAAAAAA', 3, {
+        type: 'recording.stopped',
+        obs: 'B',
+        sessionId: 'ses-1',
+        outputPath: '/rushes/depuis-B.mkv',
+        durationMs: 1_000,
+        sidecarWritten: false,
+      }),
+    ])
+
+    const prises = ingest.captations(TRACK_1)
+    expect(prises.find((prise) => prise.obs === 'B')).toMatchObject({
+      file: '/rushes/depuis-B.mkv',
+      enCours: false,
+    })
+    // A n'a jamais été arrêtée : elle sort ouverte, et sans fichier.
+    expect(prises.find((prise) => prise.obs === 'A')).toMatchObject({
+      file: null,
+      enCours: true,
+    })
   })
 
   it('écarte un événement malformé sans bloquer les autres', () => {

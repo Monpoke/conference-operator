@@ -1,5 +1,10 @@
 import { z } from 'zod'
-import { isoDateTimeSchema, roomIdSchema, sessionIdSchema } from './primitives.js'
+import {
+  isoDateTimeSchema,
+  obsInstanceSchema,
+  roomIdSchema,
+  sessionIdSchema,
+} from './primitives.js'
 
 /**
  * Rapatriement des rushes vers un stockage S3.
@@ -179,6 +184,81 @@ export const televersementVuSchema = z.object({
   lastError: z.string().nullable(),
 })
 export type TeleversementVu = z.infer<typeof televersementVuSchema>
+
+/**
+ * Une prise, telle que le hub la reconstitue depuis ce que la salle a remonté.
+ *
+ * Le hub n'a jamais vu le disque de la régie, et n'a aucun moyen de le lire :
+ * les salles appellent, jamais l'inverse. Ce qu'il sait, il le tient des deux
+ * événements que la salle émet en enregistrant — `recording.started` et
+ * `recording.stopped` —, et ces deux-là suffisent : le second porte le chemin
+ * du fichier écrit, sa durée, et si le sidecar a pu être écrit à côté. Une
+ * ligne ici veut donc dire « un fichier existe sur la machine de la salle »,
+ * pas « un fichier existe quelque part ».
+ */
+export const captationVueSchema = z.object({
+  roomId: roomIdSchema,
+  /** Laquelle des deux instances OBS a enregistré. */
+  obs: obsInstanceSchema,
+  startedAt: isoDateTimeSchema,
+  /** `null` tant que la prise court : c'est exactement ce que dit `enCours`. */
+  endedAt: isoDateTimeSchema.nullable(),
+  durationMs: z.number().int().nonnegative().nullable(),
+  /**
+   * Chemin rendu par OBS, après renommage.
+   *
+   * `null` sur une prise qu'OBS a refusé de nommer — disque plein, processus
+   * tué en plein arrêt. C'est précisément le cas qu'on veut voir avant de
+   * démonter la salle : la prise a eu lieu, le fichier est introuvable.
+   */
+  file: z.string().nullable(),
+  /**
+   * Le sidecar a été écrit à côté du master.
+   *
+   * Sans lui le rush arrive au montage en fichier anonyme : ni titre, ni
+   * intervenants, ni marqueurs. Le dire ici évite de le découvrir au montage.
+   */
+  sidecarWritten: z.boolean(),
+  enCours: z.boolean(),
+  /**
+   * Comment la prise a été rattachée au créneau.
+   *
+   * `session` : la régie l'a estampillée elle-même, c'est le cas normal et le
+   * seul qui ne se discute pas. `horaire` : la prise ne porte aucun créneau —
+   * enregistrement lancé à la main, hors du cycle de vie — mais elle recouvre
+   * l'heure de celui-ci dans la même salle. Le dire plutôt que de le taire :
+   * un rush existe, il est probablement le bon, et personne ne le retrouverait
+   * s'il n'apparaissait nulle part.
+   */
+  rattachement: z.enum(['session', 'horaire']),
+})
+export type CaptationVue = z.infer<typeof captationVueSchema>
+
+/**
+ * Le dossier VOD d'une conférence : ce qui a été pris, ce qui est monté.
+ *
+ * Les deux moitiés répondent à deux questions qu'on pose l'une après l'autre un
+ * jour d'événement — « est-ce qu'on l'a ? », puis « est-ce que c'est parti ? » —
+ * et elles ne se déduisent pas l'une de l'autre : un rush enregistré peut
+ * n'être jamais monté, et un téléversement peut courir sur un fichier dont la
+ * prise s'est mal terminée.
+ */
+export const dossierVodSchema = z.object({
+  sessionId: sessionIdSchema,
+  roomId: roomIdSchema.nullable(),
+  roomName: z.string().nullable(),
+  /**
+   * Le hub sait-il téléverser.
+   *
+   * Faux, « rien de monté » ne veut rien dire : ce n'est pas un retard, c'est
+   * une fonctionnalité qui n'est pas branchée sur ce hub. La console ne dit
+   * pas la même chose dans les deux cas.
+   */
+  stockageConfigure: z.boolean(),
+  captations: z.array(captationVueSchema),
+  televersements: z.array(televersementVuSchema),
+})
+export type DossierVod = z.infer<typeof dossierVodSchema>
 
 /**
  * Les quatre étapes d'un contrôle de connexion, dans l'ordre où elles échouent.

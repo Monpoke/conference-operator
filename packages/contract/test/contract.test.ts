@@ -154,10 +154,23 @@ describe('surface du contrat', () => {
     // pour une conférence — là où les quatre autres pilotent son déroulé.
     expect(Object.keys(contract.sessions).sort()).toEqual([
       'end',
+      // Corrige l'identifiant OpenFeedback d'un créneau quand celui de l'export
+      // ne correspond pas : sans elle, un QR mort ne se répare pas.
+      'feedbackId',
       'override',
       'reset',
       'start',
       'states',
+    ])
+    expect(Object.keys(contract.program).sort()).toEqual([
+      'activate',
+      // Le seul appel sortant de la console : confronte les identifiants du
+      // programme à ce qu'OpenFeedback connaît, sur demande et jamais en fond.
+      'controleOpenFeedback',
+      'globalBreak',
+      'import',
+      'planning',
+      'snapshots',
     ])
     expect(Object.keys(contract.rooms).sort()).toEqual([
       'commands',
@@ -186,7 +199,7 @@ describe('surface du contrat', () => {
       'pending',
       'revoke',
     ])
-    // Cinq procédures de salle et trois de console. Les premières sont bornées
+    // Cinq procédures de salle et quatre de console. Les premières sont bornées
     // à la salle appelante par son jeton — aucune n'a de `roomId` en entrée —,
     // les secondes ne font que regarder et demander : la console ne détient pas
     // les fichiers, elle ne peut pas téléverser à la place de qui que ce soit.
@@ -197,6 +210,9 @@ describe('surface du contrat', () => {
       // Le vrai geste, pas une sonde : ouvrir, signer, écrire, abandonner.
       'check',
       'complete',
+      // Le dossier d'*une* conférence : prises de la régie et objets chez le
+      // stockage. L'autre sens de lecture que `uploads`, qui range par fichier.
+      'conference',
       'parts',
       'progress',
       'request',

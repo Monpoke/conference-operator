@@ -5,6 +5,7 @@ import {
   PROTOCOL_VERSION,
   contract,
   isCommandExpired,
+  type CaptationVue,
   type Command,
 } from '@cloudnord/contract'
 import { roomBreak } from '@cloudnord/etat-salle'
@@ -15,6 +16,8 @@ import {
   openFeedbackUrl,
   type Session,
 } from '@cloudnord/program'
+import type { CaptationBrute } from './services/ingest.js'
+import { controlerOpenFeedback } from './services/openfeedback.js'
 import { TransitionRefusee } from './services/sessions.js'
 import { StockageIncomplet, type VodService } from './services/vod.js'
 import { ErreurS3 } from './services/s3.js'
@@ -175,6 +178,50 @@ export const router = os.router({
       return { ...reste, serverTime: nowIso(context) }
     }),
 
+    /**
+     * Confronte les identifiants du programme à ce qu'OpenFeedback connaît.
+     *
+     * Les pauses en sont exclues : elles n'ont pas de page de retours, et les
+     * compter comme manquantes noierait les vraies anomalies. Les pauses
+     * héritées d'une autre salle aussi — elles n'existent que comme projection.
+     *
+     * L'échec réseau est traduit, comme pour le stockage : « fetch failed » ne
+     * dit rien à qui lit la console, et un contrôle qui échoue sans dire
+     * pourquoi ne se relance pas.
+     */
+    controleOpenFeedback: os.program.controleOpenFeedback
+      .use(operatorOnly)
+      .handler(async ({ context }) => {
+        const projet = renseigne(context.services.settings.get().openFeedbackProjectId)
+        if (projet == null) {
+          throw new ORPCError('BAD_REQUEST', {
+            message:
+              'Aucun projet OpenFeedback réglé : il n\'y a rien à contrôler tant que ' +
+              'le champ des réglages est vide.',
+          })
+        }
+        const snapshot = context.services.programs.active()
+        if (snapshot == null) {
+          throw new ORPCError('NOT_FOUND', { message: 'Aucun programme actif sur ce hub' })
+        }
+
+        const creneaux = snapshot.program.sessions
+          .filter((session) => session.kind !== 'break' && session.sharedFrom == null)
+          .map((session) => ({
+            id: session.id,
+            title: session.title,
+            feedbackId: session.feedbackId ?? session.id,
+          }))
+
+        try {
+          return await controlerOpenFeedback(projet, creneaux)
+        } catch (cause) {
+          throw new ORPCError('BAD_GATEWAY', {
+            message: `OpenFeedback est injoignable : ${causeLisible(cause)}`,
+          })
+        }
+      }),
+
     planning: os.program.planning.use(operatorOnly).handler(({ context }) => {
       const snapshot = context.services.programs.active()
       // Pas d'erreur : un hub tout juste installé n'a pas encore de programme,
@@ -184,6 +231,11 @@ export const router = os.router({
           contentHash: null,
           timezone: FUSEAU_PAR_DEFAUT,
           serverTime: nowIso(context),
+          // Le réglage se lit quand même : sans programme il n'y a aucun lien à
+          // fabriquer, mais la console peut déjà dire s'il en manque un.
+          openFeedbackProjectId: renseigne(
+            context.services.settings.get().openFeedbackProjectId,
+          ),
           rooms: [],
           sessions: [],
         }
@@ -196,16 +248,17 @@ export const router = os.router({
       // programme donne alors le nom écrit sur la porte, plutôt qu'un slug.
       const nomsDuProgramme = new Map(program.rooms.map((salle) => [salle.id, salle.name]))
       /**
-       * Projet OpenFeedback de l'événement.
+       * Projet OpenFeedback de l'événement. Un seul, et il vient du hub.
        *
-       * Réglage du hub : le projet est une propriété de l'événement, pas d'une
-       * salle. Une salle peut encore le surcharger — c'est devant la machine
-       * qu'on découvre qu'elle doit pointer ailleurs — mais un créneau sans
-       * salle (une plénière que l'export ne rattache à aucun track) garde son
-       * lien, ce que l'ancien repli « la première salle qui en a un » ne
-       * garantissait pas.
+       * Plus de surcharge par salle : le champ a existé dans le ⚙ de la régie,
+       * et il a suffi qu'un opérateur le remplisse sur une machine pour que
+       * cette salle-là ait des liens et pas les autres. Le projet est une
+       * propriété de l'événement — un créneau sans salle, plénière que l'export
+       * ne rattache à aucun track, a autant droit à son lien qu'un autre.
        */
-      const projetDeLEvenement = context.services.settings.get().openFeedbackProjectId
+      const projetDeLEvenement = renseigne(
+        context.services.settings.get().openFeedbackProjectId,
+      )
 
       /**
        * Les décisions **appliquées**, pour que la console distingue un genre
@@ -230,6 +283,7 @@ export const router = os.router({
         contentHash: snapshot.contentHash,
         timezone: program.timezone,
         serverTime: nowIso(context),
+        openFeedbackProjectId: projetDeLEvenement,
         rooms: program.rooms.map(({ id, name }) => ({ id, name })),
         sessions: program.sessions.map((session) => {
           const salle = session.roomId == null ? null : (salles.get(session.roomId) ?? null)
@@ -250,11 +304,11 @@ export const router = os.router({
             feedbackUrl:
               session.kind === 'break'
                 ? null
-                : openFeedbackUrl(
-                    session,
-                    salle?.openFeedbackProjectId ?? projetDeLEvenement,
-                    program.timezone,
-                  ),
+                : openFeedbackUrl(session, projetDeLEvenement, program.timezone),
+            // Résolu, comme `kind` : l'export sauf correction. Le programme
+            // servi porte déjà la correction, il n'y a rien à recroiser ici.
+            feedbackId: session.feedbackId ?? session.id,
+            feedbackIdOverride: session.feedbackId,
             overriddenAs: surcharges[session.id] ?? null,
             sharedFrom: session.sharedFrom,
             /**
@@ -397,11 +451,14 @@ export const router = os.router({
         protocolVersion: PROTOCOL_VERSION,
         contentHash: snapshot.contentHash,
         program: unchanged ? null : snapshot.program,
-        // Le projet OpenFeedback de l'événement est descendu **résolu** : la
-        // salle dessine ses QR hors ligne et n'a pas à connaître la règle de
-        // priorité. Ce qu'elle a réglé pour elle-même gagne, comme dans la
-        // console.
-        room: { ...room, openFeedbackProjectId: room.openFeedbackProjectId ?? reglages.openFeedbackProjectId },
+        // Le projet OpenFeedback descend **écrasé**, pas complété : quoi qu'une
+        // salle ait en cache ou en base, c'est le réglage du hub qui fait foi.
+        // La salle dessine ses QR hors ligne, donc la valeur doit voyager ; mais
+        // elle n'a rien à décider, et ne peut plus rien contredire.
+        room: {
+          ...room,
+          openFeedbackProjectId: renseigne(reglages.openFeedbackProjectId),
+        },
         overrides: context.services.rooms.overrides(),
         serverTime: nowIso(context),
         simulatedClock: context.services.clock.simulated,
@@ -570,6 +627,60 @@ export const router = os.router({
         null,
       )
       return { ok: true, contentHash }
+    }),
+
+    /**
+     * Corrige l'identifiant OpenFeedback d'un créneau.
+     *
+     * Rend l'adresse qui en découle : c'est le seul moyen de vérifier la
+     * correction, et l'ouvrir d'un clic vaut mieux que la recomposer de tête.
+     *
+     * Les salles sont prévenues comme pour une décision de genre — elles
+     * dessinent leurs QR hors ligne, et un QR resté sur l'ancien identifiant
+     * est précisément l'accident que cette procédure existe pour éviter.
+     */
+    feedbackId: os.sessions.feedbackId.use(operatorOnly).handler(({ input, context }) => {
+      const snapshot = context.services.programs.active()
+      if (snapshot == null) {
+        throw new ORPCError('NOT_FOUND', { message: 'Aucun programme actif sur ce hub' })
+      }
+      const creneau = snapshot.program.sessions.find((session) => session.id === input.sessionId)
+      if (creneau == null) {
+        throw new ORPCError('NOT_FOUND', {
+          message: `Créneau inconnu du programme actif : ${input.sessionId}`,
+        })
+      }
+      // Une pause n'a pas de page de retours, et une pause héritée n'a même pas
+      // d'existence propre : corriger son identifiant n'aurait aucun effet
+      // visible, et laisserait une ligne que rien ne viendrait relire.
+      if (creneau.kind === 'break') {
+        throw new ORPCError('BAD_REQUEST', {
+          message: 'Une pause n\'a pas de page OpenFeedback : rien à corriger ici.',
+        })
+      }
+
+      context.services.rooms.setFeedbackId(input.sessionId, input.feedbackId)
+
+      // Relu après écriture : le programme servi porte désormais la correction,
+      // et c'est de lui que l'adresse se déduit — la recomposer ici ferait un
+      // second endroit où la règle vit, donc un endroit où elle peut diverger.
+      const apres = context.services.programs.active()
+      const corrige = apres?.program.sessions.find((session) => session.id === input.sessionId)
+      const contentHash = apres?.contentHash ?? snapshot.contentHash
+      context.services.commands.publish(null, { type: 'program.invalidate', contentHash }, null)
+
+      return {
+        ok: true,
+        feedbackId: corrige?.feedbackId ?? creneau.id,
+        feedbackUrl:
+          corrige == null
+            ? null
+            : openFeedbackUrl(
+                corrige,
+                renseigne(context.services.settings.get().openFeedbackProjectId),
+                snapshot.program.timezone,
+              ),
+      }
     }),
 
     reset: os.sessions.reset.use(roomOrOperator).handler(({ input, context }) => {
@@ -968,6 +1079,50 @@ export const router = os.router({
     }),
 
     /**
+     * Le dossier VOD d'une conférence. Admin.
+     *
+     * **Sans `exigerStockage`, et c'est délibéré.** Les deux moitiés de la
+     * réponse ne viennent pas du même endroit : les prises sont reconstituées
+     * depuis le journal d'ingestion, que tout hub tient, et seuls les
+     * téléversements réclament S3. Refuser la procédure entière faute de
+     * stockage priverait un hub sans S3 de la seule réponse qui compte le soir
+     * du démontage — « le rush est-il sur la machine ? ».
+     */
+    conference: os.vod.conference.use(operatorOnly).handler(({ input, context }) => {
+      const { session, roomId } = resolveSession(context, input.sessionId)
+      const salles = new Map(context.services.rooms.list().map((salle) => [salle.id, salle.name]))
+      const vod = context.services.vod
+
+      /*
+       * Le créneau vécu, pas le créneau prévu.
+       *
+       * C'est lui qui borne le rattachement à l'heure : un talk annoncé à 14 h
+       * et commencé à 14 h 20 a été enregistré à 14 h 20. Comparer à l'horaire
+       * du programme raccrocherait la prise du créneau précédent.
+       */
+      const etat = context.services.sessions.states(roomId)
+        .find((candidat) => candidat.sessionId === input.sessionId)
+
+      const captations =
+        roomId == null
+          ? []
+          : context.services.ingest
+              .captations(roomId)
+              .map((captation) => rattacher(captation, input.sessionId, etat))
+              .filter((captation) => captation != null)
+
+      return {
+        sessionId: session.id,
+        roomId,
+        roomName: roomId == null ? null : (salles.get(roomId) ?? null),
+        stockageConfigure: vod != null && vod.pret(),
+        captations,
+        televersements:
+          vod == null ? [] : vod.pourSession(input.sessionId, (id) => salles.get(id) ?? null),
+      }
+    }),
+
+    /**
      * Éprouve la connexion au stockage. Admin.
      *
      * **Pas de `surStockage` ici, et c'est le point** : le diagnostic est la
@@ -1190,6 +1345,61 @@ function exigerStockage(context: { services: HubContext['services'] }): VodServi
     })
   }
   return vod
+}
+
+/**
+ * Cette prise appartient-elle à cette conférence, et à quel titre.
+ *
+ * Deux réponses possibles, et elles ne se valent pas. La régie estampille
+ * normalement chaque prise du créneau en cours : c'est `session`, ce n'est pas
+ * discutable, et rien d'autre n'est nécessaire.
+ *
+ * Reste le cas qui coûte cher un soir de démontage : un enregistrement lancé à
+ * la main, avant le « Commencer » de la régie ou sans lui, ne porte aucun
+ * créneau. Le rush existe pourtant, il est même le seul qui existe, et le
+ * chercher revient à ouvrir les fichiers un par un. On le raccroche alors par
+ * le temps — la prise recouvre le créneau **vécu**, dans la même salle — en
+ * disant que le rattachement est déduit : c'est une piste, pas un fait, et la
+ * console l'affiche comme telle.
+ *
+ * Le créneau prévu ne sert jamais d'appui : un talk annoncé à 14 h et démarré à
+ * 14 h 20 ferait raccrocher la prise du créneau d'avant.
+ */
+function rattacher(
+  captation: CaptationBrute,
+  sessionId: string,
+  vecu: { startedAt: string | null; endedAt: string | null } | undefined,
+): CaptationVue | null {
+  if (captation.sessionId === sessionId) {
+    return { ...captation, rattachement: 'session' }
+  }
+  // Estampillée d'un autre créneau : elle appartient à celui-là, pas à celui-ci.
+  if (captation.sessionId != null) return null
+  if (vecu?.startedAt == null) return null
+
+  const debutTalk = Date.parse(vecu.startedAt)
+  // Talk encore en cours : il court jusqu'à maintenant, donc toute prise
+  // ouverte depuis son démarrage le recouvre.
+  const finTalk = vecu.endedAt == null ? Number.POSITIVE_INFINITY : Date.parse(vecu.endedAt)
+  const debutPrise = Date.parse(captation.startedAt)
+  const finPrise =
+    captation.endedAt == null ? Number.POSITIVE_INFINITY : Date.parse(captation.endedAt)
+
+  const seRecouvrent = debutPrise < finTalk && debutTalk < finPrise
+  return seRecouvrent ? { ...captation, rattachement: 'horaire' } : null
+}
+
+/**
+ * Une chaîne blanche n'est pas une valeur.
+ *
+ * Un champ texte laissé vide dans un formulaire arrive ici en `''`, pas en
+ * `null`, et `??` le laisse passer : c'est ainsi qu'un projet OpenFeedback
+ * « réglé à rien » écrasait silencieusement le repli et rendait des adresses
+ * `https://openfeedback.io///…`.
+ */
+function renseigne(valeur: string | null | undefined): string | null {
+  const propre = valeur?.trim() ?? ''
+  return propre === '' ? null : propre
 }
 
 /**

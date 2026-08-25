@@ -70,6 +70,20 @@ export interface Session {
    * pourrait éditer.
    */
   sharedFrom: string | null
+  /**
+   * Identifiant OpenFeedback corrigé depuis la console, ou `null`.
+   *
+   * `null` — le cas normal — veut dire que l'identifiant de l'export fait foi :
+   * l'adresse `openfeedback.io/{projet}/{jour}/{id}` se fabrique en pariant
+   * qu'OpenFeedback réutilise la numérotation amont. Le pari tient, mais il se
+   * perdrait en silence — lien cliquable, QR scannable, page qui ne parle
+   * d'aucun talk — et on ne s'en apercevrait qu'aux retours manquants.
+   *
+   * Posé par le hub sur le programme qu'il **sert**, comme `kind` quand une
+   * décision le contredit : c'est ce qui garantit que le lien de la console et
+   * le QR projeté en salle ne peuvent pas diverger.
+   */
+  feedbackId: string | null
   speakers: Speaker[]
   category: Category | null
   format: Format | null

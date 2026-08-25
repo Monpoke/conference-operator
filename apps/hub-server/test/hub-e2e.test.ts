@@ -762,6 +762,41 @@ describe('planning du programme actif', () => {
     )
   })
 
+  it('étend aux autres salles le projet OpenFeedback réglé sur une seule', async () => {
+    // Le cas constaté, et le bogue qu'il produisait : le champ existe aussi sur
+    // la configuration d'une salle, où il se saisit **depuis la régie**. Il a
+    // suffi qu'un opérateur le remplisse sur la machine de la salle 1, un
+    // matin, pour que cette salle-là ait des liens et pas les autres — le
+    // réglage du hub, lui, n'ayant jamais été touché. Vingt-six créneaux sur
+    // vingt-sept restaient sans lien, sans que rien ne dise pourquoi.
+    const salle = hub.services.rooms.get(TRACK_1)!
+    hub.services.rooms.upsert({ ...salle, openFeedbackProjectId: 'cloud-nord-2026' })
+
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    const planning = await admin.program.planning()
+
+    const ailleurs = planning.sessions.filter(
+      (session) => session.kind === 'talk' && session.roomId !== TRACK_1,
+    )
+    expect(ailleurs.length).toBeGreaterThan(0)
+    // Ce que déclare une salle décrit l'événement entier : les autres en héritent.
+    expect(ailleurs.every((session) => session.feedbackUrl != null)).toBe(true)
+    expect(planning.openFeedbackProjectId).toBe('cloud-nord-2026')
+  })
+
+  it('ne prend pas une chaîne vide pour un projet OpenFeedback', async () => {
+    // Un champ texte laissé vide arrive en `''`, pas en `null`, et `??` le
+    // laisse passer : le repli était écrasé, et l'adresse fabriquée pointait
+    // sur `openfeedback.io///…`. Mieux vaut pas de lien qu'un lien mort.
+    hub.services.settings.update({ openFeedbackProjectId: '   ' })
+
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    const planning = await admin.program.planning()
+
+    expect(planning.openFeedbackProjectId).toBeNull()
+    expect(planning.sessions.every((session) => session.feedbackUrl == null)).toBe(true)
+  })
+
   it('ne propose rien à noter sur une pause', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
 
@@ -794,5 +829,137 @@ describe('planning du programme actif', () => {
     const machine = httpClient(await pairRoomDevice())
 
     await expect(machine.program.planning()).rejects.toThrow()
+  })
+})
+
+describe('dossier VOD d\'une conférence', () => {
+  /** Le talk de la salle 1, celui que la régie de test enregistre. */
+  const talkDeLaSalle1 = async (admin: Client) => {
+    const planning = await admin.program.planning()
+    const talk = planning.sessions.find(
+      (session) => session.kind === 'talk' && session.roomId === TRACK_1,
+    )
+    expect(talk).toBeTruthy()
+    return talk!
+  }
+
+  it('répond sans stockage configuré, prises comprises', async () => {
+    // **Le point de la procédure.** Les deux moitiés ne viennent pas du même
+    // endroit : les prises se recomposent depuis le journal d'ingestion, que
+    // tout hub tient, et seuls les téléversements réclament S3. Refuser faute
+    // de stockage priverait un hub sans S3 de la seule réponse qui compte le
+    // soir du démontage — « le rush est-il sur la machine ? ».
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    const talk = await talkDeLaSalle1(admin)
+
+    hub.services.ingest.push(TRACK_1, [
+      {
+        id: '01H1AAAAAAAAAAAAAAAAAAAAAA',
+        roomId: TRACK_1,
+        seq: 1,
+        occurredAt: '2026-10-30T10:00:00.000+00:00',
+        monotonicMs: 1000,
+        delivery: 'required',
+        payload: { type: 'recording.started', obs: 'B', sessionId: talk.id },
+      },
+      {
+        id: '01H2AAAAAAAAAAAAAAAAAAAAAA',
+        roomId: TRACK_1,
+        seq: 2,
+        occurredAt: '2026-10-30T10:50:00.000+00:00',
+        monotonicMs: 2000,
+        delivery: 'required',
+        payload: {
+          type: 'recording.stopped',
+          obs: 'B',
+          sessionId: talk.id,
+          outputPath: '/rushes/le-talk.mkv',
+          durationMs: 3_000_000,
+          sidecarWritten: true,
+        },
+      },
+    ])
+
+    const dossier = await admin.vod.conference({ sessionId: talk.id })
+
+    expect(dossier.stockageConfigure).toBe(false)
+    expect(dossier.roomId).toBe(TRACK_1)
+    expect(dossier.captations).toHaveLength(1)
+    expect(dossier.captations[0]).toMatchObject({
+      file: '/rushes/le-talk.mkv',
+      sidecarWritten: true,
+      enCours: false,
+      // Estampillée par la régie : ce n'est pas une déduction.
+      rattachement: 'session',
+    })
+    expect(dossier.televersements).toEqual([])
+  })
+
+  it('rattache à l\'heure une prise lancée hors du cycle de vie', async () => {
+    // Un enregistrement démarré à la main ne porte aucun créneau. Le rush
+    // existe pourtant, et il est même le seul : le laisser invisible reviendrait
+    // à le faire chercher fichier par fichier.
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    const talk = await talkDeLaSalle1(admin)
+    hub.services.clock.setSimulated('2026-10-30T10:05:00.000Z')
+    await admin.sessions.start({ sessionId: talk.id })
+
+    hub.services.ingest.push(TRACK_1, [
+      {
+        id: '01J1AAAAAAAAAAAAAAAAAAAAAA',
+        roomId: TRACK_1,
+        seq: 1,
+        occurredAt: '2026-10-30T10:06:00.000+00:00',
+        monotonicMs: 1000,
+        delivery: 'required',
+        payload: { type: 'recording.started', obs: 'B', sessionId: null },
+      },
+    ])
+
+    const dossier = await admin.vod.conference({ sessionId: talk.id })
+
+    expect(dossier.captations).toHaveLength(1)
+    // Une piste, pas un fait : la console l'affiche comme telle.
+    expect(dossier.captations[0]).toMatchObject({ rattachement: 'horaire', enCours: true })
+  })
+
+  it('n\'attribue pas à une conférence la prise estampillée d\'une autre', async () => {
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    const talk = await talkDeLaSalle1(admin)
+    hub.services.clock.setSimulated('2026-10-30T10:05:00.000Z')
+    await admin.sessions.start({ sessionId: talk.id })
+
+    hub.services.ingest.push(TRACK_1, [
+      {
+        id: '01K1AAAAAAAAAAAAAAAAAAAAAA',
+        roomId: TRACK_1,
+        seq: 1,
+        occurredAt: '2026-10-30T10:06:00.000+00:00',
+        monotonicMs: 1000,
+        delivery: 'required',
+        payload: { type: 'recording.started', obs: 'B', sessionId: 'un-autre-creneau' },
+      },
+    ])
+
+    const dossier = await admin.vod.conference({ sessionId: talk.id })
+
+    // Elle recouvre bien l'heure, mais elle appartient déjà à quelqu'un : le
+    // repli horaire ne sert qu'aux prises que personne ne réclame.
+    expect(dossier.captations).toEqual([])
+  })
+
+  it('refuse une conférence inconnue au programme', async () => {
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+
+    await expect(admin.vod.conference({ sessionId: 'ses-inexistante' })).rejects.toThrow()
+  })
+
+  it('reste fermé aux machines de salle', async () => {
+    // Le dossier croise toutes les salles : c'est une vue de console.
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    const talk = await talkDeLaSalle1(admin)
+    const machine = httpClient(await pairRoomDevice())
+
+    await expect(machine.vod.conference({ sessionId: talk.id })).rejects.toThrow()
   })
 })

@@ -5,6 +5,7 @@ import {
   PROTOCOL_VERSION,
   contract,
   isCommandExpired,
+  type CaptationVue,
   type Command,
 } from '@cloudnord/contract'
 import { roomBreak } from '@cloudnord/etat-salle'
@@ -15,6 +16,7 @@ import {
   openFeedbackUrl,
   type Session,
 } from '@cloudnord/program'
+import type { CaptationBrute } from './services/ingest.js'
 import { TransitionRefusee } from './services/sessions.js'
 import { StockageIncomplet, type VodService } from './services/vod.js'
 import { ErreurS3 } from './services/s3.js'
@@ -184,6 +186,12 @@ export const router = os.router({
           contentHash: null,
           timezone: FUSEAU_PAR_DEFAUT,
           serverTime: nowIso(context),
+          // Le réglage se lit quand même : sans programme il n'y a aucun lien à
+          // fabriquer, mais la console peut déjà dire s'il en manque un.
+          openFeedbackProjectId: projetParDefaut(
+            context.services.settings.get().openFeedbackProjectId,
+            context.services.rooms.list(),
+          ),
           rooms: [],
           sessions: [],
         }
@@ -196,16 +204,27 @@ export const router = os.router({
       // programme donne alors le nom écrit sur la porte, plutôt qu'un slug.
       const nomsDuProgramme = new Map(program.rooms.map((salle) => [salle.id, salle.name]))
       /**
-       * Projet OpenFeedback de l'événement.
+       * Projet OpenFeedback qui vaut par défaut sur cet événement.
        *
-       * Réglage du hub : le projet est une propriété de l'événement, pas d'une
-       * salle. Une salle peut encore le surcharger — c'est devant la machine
-       * qu'on découvre qu'elle doit pointer ailleurs — mais un créneau sans
-       * salle (une plénière que l'export ne rattache à aucun track) garde son
-       * lien, ce que l'ancien repli « la première salle qui en a un » ne
-       * garantissait pas.
+       * Réglage du hub d'abord : le projet est une propriété de l'événement,
+       * pas d'une salle, et c'est ce qui donne son lien à un créneau sans salle
+       * — une plénière que l'export ne rattache à aucun track.
+       *
+       * Le repli sur les salles n'est pas un doublon de la ligne suivante. Le
+       * champ existe aussi sur la configuration d'une salle, où il se saisit
+       * **depuis la régie** : il suffit donc qu'un opérateur l'ait rempli sur
+       * une machine, un matin, pour que cette salle-là ait des liens et pas les
+       * autres — le réglage du hub, lui, n'ayant jamais été touché. C'est
+       * exactement ce qu'on a constaté : la salle 1 renseignée, les autres à
+       * blanc, une seule colonne de liens sur vingt-sept créneaux. Ce que
+       * déclare une salle décrit l'événement entier ; la réponse juste est donc
+       * de l'étendre aux autres, pas de laisser les vingt-six autres lignes
+       * vides.
        */
-      const projetDeLEvenement = context.services.settings.get().openFeedbackProjectId
+      const projetDeLEvenement = projetParDefaut(
+        context.services.settings.get().openFeedbackProjectId,
+        [...salles.values()],
+      )
 
       /**
        * Les décisions **appliquées**, pour que la console distingue un genre
@@ -230,6 +249,7 @@ export const router = os.router({
         contentHash: snapshot.contentHash,
         timezone: program.timezone,
         serverTime: nowIso(context),
+        openFeedbackProjectId: projetDeLEvenement,
         rooms: program.rooms.map(({ id, name }) => ({ id, name })),
         sessions: program.sessions.map((session) => {
           const salle = session.roomId == null ? null : (salles.get(session.roomId) ?? null)
@@ -252,7 +272,7 @@ export const router = os.router({
                 ? null
                 : openFeedbackUrl(
                     session,
-                    salle?.openFeedbackProjectId ?? projetDeLEvenement,
+                    renseigne(salle?.openFeedbackProjectId) ?? projetDeLEvenement,
                     program.timezone,
                   ),
             overriddenAs: surcharges[session.id] ?? null,
@@ -397,11 +417,18 @@ export const router = os.router({
         protocolVersion: PROTOCOL_VERSION,
         contentHash: snapshot.contentHash,
         program: unchanged ? null : snapshot.program,
-        // Le projet OpenFeedback de l'événement est descendu **résolu** : la
-        // salle dessine ses QR hors ligne et n'a pas à connaître la règle de
-        // priorité. Ce qu'elle a réglé pour elle-même gagne, comme dans la
-        // console.
-        room: { ...room, openFeedbackProjectId: room.openFeedbackProjectId ?? reglages.openFeedbackProjectId },
+        // Le projet OpenFeedback est descendu **résolu** : la salle dessine ses
+        // QR hors ligne et n'a pas à connaître la règle de priorité. Ce qu'elle
+        // a réglé pour elle-même gagne, puis le réglage du hub, puis ce que
+        // déclarent les autres salles — la même règle que dans la console, et
+        // pour la même raison : un projet saisi sur une seule régie décrit
+        // l'événement entier, et les salles muettes n'ont pas à rester sans QR.
+        room: {
+          ...room,
+          openFeedbackProjectId:
+            renseigne(room.openFeedbackProjectId) ??
+            projetParDefaut(reglages.openFeedbackProjectId, context.services.rooms.list()),
+        },
         overrides: context.services.rooms.overrides(),
         serverTime: nowIso(context),
         simulatedClock: context.services.clock.simulated,
@@ -968,6 +995,50 @@ export const router = os.router({
     }),
 
     /**
+     * Le dossier VOD d'une conférence. Admin.
+     *
+     * **Sans `exigerStockage`, et c'est délibéré.** Les deux moitiés de la
+     * réponse ne viennent pas du même endroit : les prises sont reconstituées
+     * depuis le journal d'ingestion, que tout hub tient, et seuls les
+     * téléversements réclament S3. Refuser la procédure entière faute de
+     * stockage priverait un hub sans S3 de la seule réponse qui compte le soir
+     * du démontage — « le rush est-il sur la machine ? ».
+     */
+    conference: os.vod.conference.use(operatorOnly).handler(({ input, context }) => {
+      const { session, roomId } = resolveSession(context, input.sessionId)
+      const salles = new Map(context.services.rooms.list().map((salle) => [salle.id, salle.name]))
+      const vod = context.services.vod
+
+      /*
+       * Le créneau vécu, pas le créneau prévu.
+       *
+       * C'est lui qui borne le rattachement à l'heure : un talk annoncé à 14 h
+       * et commencé à 14 h 20 a été enregistré à 14 h 20. Comparer à l'horaire
+       * du programme raccrocherait la prise du créneau précédent.
+       */
+      const etat = context.services.sessions.states(roomId)
+        .find((candidat) => candidat.sessionId === input.sessionId)
+
+      const captations =
+        roomId == null
+          ? []
+          : context.services.ingest
+              .captations(roomId)
+              .map((captation) => rattacher(captation, input.sessionId, etat))
+              .filter((captation) => captation != null)
+
+      return {
+        sessionId: session.id,
+        roomId,
+        roomName: roomId == null ? null : (salles.get(roomId) ?? null),
+        stockageConfigure: vod != null && vod.pret(),
+        captations,
+        televersements:
+          vod == null ? [] : vod.pourSession(input.sessionId, (id) => salles.get(id) ?? null),
+      }
+    }),
+
+    /**
      * Éprouve la connexion au stockage. Admin.
      *
      * **Pas de `surStockage` ici, et c'est le point** : le diagnostic est la
@@ -1190,6 +1261,100 @@ function exigerStockage(context: { services: HubContext['services'] }): VodServi
     })
   }
   return vod
+}
+
+/**
+ * Cette prise appartient-elle à cette conférence, et à quel titre.
+ *
+ * Deux réponses possibles, et elles ne se valent pas. La régie estampille
+ * normalement chaque prise du créneau en cours : c'est `session`, ce n'est pas
+ * discutable, et rien d'autre n'est nécessaire.
+ *
+ * Reste le cas qui coûte cher un soir de démontage : un enregistrement lancé à
+ * la main, avant le « Commencer » de la régie ou sans lui, ne porte aucun
+ * créneau. Le rush existe pourtant, il est même le seul qui existe, et le
+ * chercher revient à ouvrir les fichiers un par un. On le raccroche alors par
+ * le temps — la prise recouvre le créneau **vécu**, dans la même salle — en
+ * disant que le rattachement est déduit : c'est une piste, pas un fait, et la
+ * console l'affiche comme telle.
+ *
+ * Le créneau prévu ne sert jamais d'appui : un talk annoncé à 14 h et démarré à
+ * 14 h 20 ferait raccrocher la prise du créneau d'avant.
+ */
+function rattacher(
+  captation: CaptationBrute,
+  sessionId: string,
+  vecu: { startedAt: string | null; endedAt: string | null } | undefined,
+): CaptationVue | null {
+  if (captation.sessionId === sessionId) {
+    return { ...captation, rattachement: 'session' }
+  }
+  // Estampillée d'un autre créneau : elle appartient à celui-là, pas à celui-ci.
+  if (captation.sessionId != null) return null
+  if (vecu?.startedAt == null) return null
+
+  const debutTalk = Date.parse(vecu.startedAt)
+  // Talk encore en cours : il court jusqu'à maintenant, donc toute prise
+  // ouverte depuis son démarrage le recouvre.
+  const finTalk = vecu.endedAt == null ? Number.POSITIVE_INFINITY : Date.parse(vecu.endedAt)
+  const debutPrise = Date.parse(captation.startedAt)
+  const finPrise =
+    captation.endedAt == null ? Number.POSITIVE_INFINITY : Date.parse(captation.endedAt)
+
+  const seRecouvrent = debutPrise < finTalk && debutTalk < finPrise
+  return seRecouvrent ? { ...captation, rattachement: 'horaire' } : null
+}
+
+/**
+ * Une chaîne blanche n'est pas une valeur.
+ *
+ * Un champ texte laissé vide dans un formulaire arrive ici en `''`, pas en
+ * `null`, et `??` le laisse passer : c'est ainsi qu'un projet OpenFeedback
+ * « réglé à rien » écrasait silencieusement le repli et rendait des adresses
+ * `https://openfeedback.io///…`.
+ */
+function renseigne(valeur: string | null | undefined): string | null {
+  const propre = valeur?.trim() ?? ''
+  return propre === '' ? null : propre
+}
+
+/**
+ * Le projet OpenFeedback qui vaut à défaut d'en avoir un sur la salle.
+ *
+ * Le réglage du hub gagne : c'est là que se décide l'événement, et c'est le
+ * seul endroit qui couvre les créneaux sans salle. À défaut, on prend ce que
+ * les salles déclarent — le champ se saisit aussi depuis chaque régie, et une
+ * seule salle renseignée suffit à dire quel est le projet de l'événement.
+ *
+ * Le plus fréquent l'emporte, les salles étant parcourues dans l'ordre de leur
+ * identifiant : deux salles qui se contredisent doivent donner la même réponse
+ * à chaque appel, sans quoi les liens changeraient d'un rafraîchissement à
+ * l'autre et personne ne saurait lequel est le bon.
+ */
+function projetParDefaut(
+  reglageDuHub: string | null,
+  salles: { id: string; openFeedbackProjectId: string | null }[],
+): string | null {
+  const duHub = renseigne(reglageDuHub)
+  if (duHub != null) return duHub
+
+  const comptes = new Map<string, number>()
+  for (const salle of [...salles].sort((a, b) => a.id.localeCompare(b.id))) {
+    const projet = renseigne(salle.openFeedbackProjectId)
+    if (projet == null) continue
+    comptes.set(projet, (comptes.get(projet) ?? 0) + 1)
+  }
+
+  let retenu: string | null = null
+  let meilleur = 0
+  // Comparaison stricte : à égalité, la première salle dans l'ordre garde la main.
+  for (const [projet, combien] of comptes) {
+    if (combien > meilleur) {
+      retenu = projet
+      meilleur = combien
+    }
+  }
+  return retenu
 }
 
 /**

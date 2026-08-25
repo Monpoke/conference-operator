@@ -1,7 +1,8 @@
-import { and, asc, desc, eq, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import {
   envelopeSchema,
   type Envelope,
+  type ObsInstance,
   type RoomEventPayload,
 } from '@cloudnord/contract'
 import { ingestEvent, roomState } from '@cloudnord/db/hub'
@@ -11,6 +12,25 @@ export interface IngestOutcome {
   acked: string[]
   duplicates: string[]
   rejected: { id: string; reason: 'invalid-schema' | 'unknown-room' | 'protocol-too-old' | 'expired' }[]
+}
+
+/**
+ * Une prise recomposée, avant tout rattachement à un créneau.
+ *
+ * `CaptationVue` du contrat porte en plus le `rattachement`, qui n'a de sens
+ * qu'une fois qu'on a choisi une conférence : c'est le routeur qui le pose, pas
+ * le journal.
+ */
+export interface CaptationBrute {
+  roomId: string
+  obs: ObsInstance
+  sessionId: string | null
+  startedAt: string
+  endedAt: string | null
+  durationMs: number | null
+  file: string | null
+  sidecarWritten: boolean
+  enCours: boolean
 }
 
 export class IngestService {
@@ -77,6 +97,112 @@ export class IngestService {
     })
 
     return outcome
+  }
+
+  /**
+   * Les prises d'une salle, recomposées depuis le journal d'ingestion.
+   *
+   * Le hub ne voit jamais le disque de la régie — les salles appellent, jamais
+   * l'inverse — mais il a mieux qu'un inventaire : il a les deux bouts de
+   * chaque prise. `recording.started` dit qu'OBS s'est mis en marche et sur
+   * quel créneau ; `recording.stopped` dit le fichier écrit, sa durée, et si le
+   * sidecar a suivi. Les apparier rend exactement ce qu'on cherche : la liste
+   * de ce qui existe sur cette machine-là.
+   *
+   * L'appariement se fait **par instance OBS** : les deux tournent en même
+   * temps sur certaines salles, et mélanger leurs paires attribuerait le
+   * fichier de l'une à la prise de l'autre. Un `started` sans `stopped` reste
+   * ouvert et sort marqué en cours — c'est le cas d'une conférence qui tourne,
+   * et celui d'une machine morte en pleine prise, qu'on veut voir tous les
+   * deux.
+   *
+   * Lu à la demande plutôt que projeté dans une table : les prises se comptent
+   * en dizaines sur une journée d'événement, là où les heartbeats se comptent
+   * en dizaines de milliers, et une projection de plus serait une chose de plus
+   * à garder juste.
+   */
+  captations(roomId: string): CaptationBrute[] {
+    const lignes = this.db
+      .select({
+        seq: ingestEvent.seq,
+        type: ingestEvent.type,
+        occurredAt: ingestEvent.occurredAt,
+        payloadJson: ingestEvent.payloadJson,
+      })
+      .from(ingestEvent)
+      .where(
+        and(
+          eq(ingestEvent.roomId, roomId),
+          inArray(ingestEvent.type, ['recording.started', 'recording.stopped']),
+        ),
+      )
+      .orderBy(asc(ingestEvent.seq))
+      .all()
+
+    const captations: CaptationBrute[] = []
+    /** La prise encore ouverte de chaque instance OBS, s'il y en a une. */
+    const ouvertes = new Map<string, CaptationBrute>()
+
+    for (const ligne of lignes) {
+      const payload = JSON.parse(ligne.payloadJson) as Extract<
+        RoomEventPayload,
+        { type: 'recording.started' | 'recording.stopped' }
+      >
+      const obs = payload.obs
+
+      if (payload.type === 'recording.started') {
+        // Deux `started` d'affilée sur la même instance : la salle a redémarré
+        // sans qu'on entende l'arrêt. La première prise reste dans la liste,
+        // ouverte — perdre sa trace effacerait un fichier qui existe.
+        const captation: CaptationBrute = {
+          roomId,
+          obs,
+          sessionId: payload.sessionId,
+          startedAt: ligne.occurredAt,
+          endedAt: null,
+          durationMs: null,
+          file: null,
+          sidecarWritten: false,
+          enCours: true,
+        }
+        ouvertes.set(obs, captation)
+        captations.push(captation)
+        continue
+      }
+
+      const ouverte = ouvertes.get(obs)
+      if (ouverte == null) {
+        /*
+         * Un arrêt sans début connu : le journal commence au milieu d'une prise
+         * — hub réinstallé, base repartie de zéro. Le début manque, le fichier
+         * non : la ligne vaut d'être rendue, datée de son arrêt.
+         */
+        captations.push({
+          roomId,
+          obs,
+          sessionId: payload.sessionId,
+          startedAt: ligne.occurredAt,
+          endedAt: ligne.occurredAt,
+          durationMs: payload.durationMs,
+          file: payload.outputPath,
+          sidecarWritten: payload.sidecarWritten,
+          enCours: false,
+        })
+        continue
+      }
+
+      ouverte.endedAt = ligne.occurredAt
+      ouverte.durationMs = payload.durationMs
+      ouverte.file = payload.outputPath
+      ouverte.sidecarWritten = payload.sidecarWritten
+      ouverte.enCours = false
+      // L'arrêt sait parfois le créneau que le démarrage ignorait : une prise
+      // lancée avant le « Commencer » de la régie n'est estampillée qu'à la fin.
+      ouverte.sessionId ??= payload.sessionId
+      ouvertes.delete(obs)
+    }
+
+    return captations
   }
 
   /**

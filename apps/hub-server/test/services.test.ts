@@ -191,6 +191,83 @@ describe('IngestService', () => {
     expect(replay.duplicates).toHaveLength(2)
   })
 
+  it('recompose les prises depuis les deux bouts remontés par la salle', () => {
+    const rooms = new RoomService(db)
+    seedRoom(rooms)
+    const ingest = new IngestService(db)
+
+    ingest.push(TRACK_1, [
+      {
+        ...envelope('01F1AAAAAAAAAAAAAAAAAAAAAA', 1, {
+          type: 'recording.started',
+          obs: 'B',
+          sessionId: 'ses-1',
+        }),
+        occurredAt: '2026-10-30T10:00:00.000+00:00',
+      },
+      {
+        ...envelope('01F2AAAAAAAAAAAAAAAAAAAAAA', 2, {
+          type: 'recording.stopped',
+          obs: 'B',
+          sessionId: 'ses-1',
+          outputPath: '/rushes/ses-1.mkv',
+          durationMs: 2_700_000,
+          sidecarWritten: true,
+        }),
+        occurredAt: '2026-10-30T10:45:00.000+00:00',
+      },
+    ])
+
+    // Le hub ne lit pas le disque de la régie : il apparie le démarrage et
+    // l'arrêt, et c'est l'arrêt qui porte le fichier écrit.
+    expect(ingest.captations(TRACK_1)).toEqual([
+      {
+        roomId: TRACK_1,
+        obs: 'B',
+        sessionId: 'ses-1',
+        startedAt: '2026-10-30T10:00:00.000+00:00',
+        endedAt: '2026-10-30T10:45:00.000+00:00',
+        durationMs: 2_700_000,
+        file: '/rushes/ses-1.mkv',
+        sidecarWritten: true,
+        enCours: false,
+      },
+    ])
+  })
+
+  it('n\'attribue pas à une instance OBS le fichier de l\'autre', () => {
+    const rooms = new RoomService(db)
+    seedRoom(rooms)
+    const ingest = new IngestService(db)
+
+    // Les deux tournent en même temps sur certaines salles. Apparier dans
+    // l'ordre d'arrivée, sans regarder l'instance, donnerait le fichier de B à
+    // la prise de A.
+    ingest.push(TRACK_1, [
+      envelope('01G1AAAAAAAAAAAAAAAAAAAAAA', 1, { type: 'recording.started', obs: 'A', sessionId: 'ses-1' }),
+      envelope('01G2AAAAAAAAAAAAAAAAAAAAAA', 2, { type: 'recording.started', obs: 'B', sessionId: 'ses-1' }),
+      envelope('01G3AAAAAAAAAAAAAAAAAAAAAA', 3, {
+        type: 'recording.stopped',
+        obs: 'B',
+        sessionId: 'ses-1',
+        outputPath: '/rushes/depuis-B.mkv',
+        durationMs: 1_000,
+        sidecarWritten: false,
+      }),
+    ])
+
+    const prises = ingest.captations(TRACK_1)
+    expect(prises.find((prise) => prise.obs === 'B')).toMatchObject({
+      file: '/rushes/depuis-B.mkv',
+      enCours: false,
+    })
+    // A n'a jamais été arrêtée : elle sort ouverte, et sans fichier.
+    expect(prises.find((prise) => prise.obs === 'A')).toMatchObject({
+      file: null,
+      enCours: true,
+    })
+  })
+
   it('écarte un événement malformé sans bloquer les autres', () => {
     const rooms = new RoomService(db)
     seedRoom(rooms)

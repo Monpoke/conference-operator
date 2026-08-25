@@ -23,6 +23,7 @@ import {
 import { commentSchema, commentSourceSchema, questionSchema } from './wall.js'
 import {
   controleStockageSchema,
+  dossierVodSchema,
   genreVodSchema,
   partSigneeSchema,
   planTeleversementSchema,
@@ -210,6 +211,15 @@ export const contract = {
          * Développement.
          */
         serverTime: isoDateTimeSchema,
+        /**
+         * Le projet OpenFeedback qui sert de défaut, une fois la règle appliquée.
+         *
+         * Rendu pour que la console puisse expliquer une colonne « Feedback »
+         * vide au lieu de la laisser vide. Sans lui, la seule chose visible est
+         * une suite de tirets, et rien ne dit s'il manque un réglage ou si
+         * OpenFeedback n'est pas de la partie sur cet événement.
+         */
+        openFeedbackProjectId: z.string().nullable(),
         rooms: z.array(z.object({ id: roomIdSchema, name: z.string() })),
         sessions: z.array(planningSessionSchema),
       }),
@@ -735,6 +745,24 @@ export const contract = {
     uploads: oc
       .input(z.object({ roomId: roomIdSchema.nullable().default(null) }))
       .output(z.array(televersementVuSchema)),
+
+    /**
+     * Le dossier VOD d'**une** conférence. Admin.
+     *
+     * La vue « téléversements » range par fichier et par salle, ce qui est le
+     * bon classement quand on démonte une salle et le mauvais quand un speaker
+     * demande où est sa captation. Cette procédure répond dans l'autre sens :
+     * on part du créneau, et on redescend vers la prise puis vers l'objet chez
+     * le stockage.
+     *
+     * Elle ne dépend pas du stockage : un hub sans S3 répond quand même, avec
+     * `stockageConfigure` à faux et la moitié « prises » remplie. C'est même le
+     * cas le plus utile — savoir qu'un rush existe sur une machine qu'on
+     * s'apprête à débrancher.
+     */
+    conference: oc
+      .input(z.object({ sessionId: sessionIdSchema }))
+      .output(dossierVodSchema),
 
     /**
      * Le stockage est-il configuré, et comment. Admin.

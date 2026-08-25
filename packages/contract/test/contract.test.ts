@@ -186,7 +186,7 @@ describe('surface du contrat', () => {
       'pending',
       'revoke',
     ])
-    // Cinq procédures de salle et trois de console. Les premières sont bornées
+    // Cinq procédures de salle et quatre de console. Les premières sont bornées
     // à la salle appelante par son jeton — aucune n'a de `roomId` en entrée —,
     // les secondes ne font que regarder et demander : la console ne détient pas
     // les fichiers, elle ne peut pas téléverser à la place de qui que ce soit.
@@ -197,6 +197,9 @@ describe('surface du contrat', () => {
       // Le vrai geste, pas une sonde : ouvrir, signer, écrire, abandonner.
       'check',
       'complete',
+      // Le dossier d'*une* conférence : prises de la régie et objets chez le
+      // stockage. L'autre sens de lecture que `uploads`, qui range par fichier.
+      'conference',
       'parts',
       'progress',
       'request',

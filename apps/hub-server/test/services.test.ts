@@ -283,6 +283,7 @@ describe('IngestService', () => {
         file: '/rushes/ses-1.mkv',
         sidecarWritten: true,
         enCours: false,
+        finInconnue: false,
       },
     ])
   })
@@ -318,6 +319,58 @@ describe('IngestService', () => {
       file: null,
       enCours: true,
     })
+  })
+
+  it('ne laisse pas une prise supplantée passer pour active', () => {
+    // Constaté sur une salle de développement de trois jours : quatre
+    // « enregistrement en cours » empilés au-dessus de la seule ligne qui
+    // disait quelque chose. Un `started` sans `stopped`, puis un autre
+    // `started` : le hub n'entendra jamais l'arrêt du premier, et le présenter
+    // comme actif est faux.
+    const rooms = new RoomService(db)
+    seedRoom(rooms)
+    const ingest = new IngestService(db)
+
+    ingest.push(TRACK_1, [
+      envelope('01M1AAAAAAAAAAAAAAAAAAAAAA', 1, { type: 'recording.started', obs: 'B', sessionId: null }),
+      envelope('01M2AAAAAAAAAAAAAAAAAAAAAA', 2, { type: 'recording.started', obs: 'B', sessionId: null }),
+      envelope('01M3AAAAAAAAAAAAAAAAAAAAAA', 3, { type: 'recording.started', obs: 'B', sessionId: null }),
+    ])
+
+    const prises = ingest.captations(TRACK_1)
+    expect(prises).toHaveLength(3)
+    // Les deux premières : supplantées, donc closes et signalées comme telles.
+    expect(prises.slice(0, 2).every((p) => !p.enCours && p.finInconnue)).toBe(true)
+    // La dernière seule peut encore courir.
+    expect(prises[2]).toMatchObject({ enCours: true, finInconnue: false })
+  })
+
+  it('oublie les prises à la remise à zéro, et rien d\'autre', () => {
+    // Le RAZ efface le bucket et les disques des salles. Sans ce geste, le hub
+    // gardait la mémoire de prises dont plus aucun fichier n'existe, et le
+    // dossier VOD continuait de les lister — la remise à zéro paraissait sans
+    // effet.
+    const rooms = new RoomService(db)
+    seedRoom(rooms)
+    const ingest = new IngestService(db)
+
+    ingest.push(TRACK_1, [
+      envelope('01N1AAAAAAAAAAAAAAAAAAAAAA', 1, { type: 'recording.started', obs: 'B', sessionId: null }),
+      envelope('01N2AAAAAAAAAAAAAAAAAAAAAA', 2, {
+        type: 'recording.stopped', obs: 'B', sessionId: null,
+        outputPath: '/rushes/x.mkv', durationMs: 1000, sidecarWritten: true,
+      }),
+      envelope('01N3AAAAAAAAAAAAAAAAAAAAAA', 3, {
+        type: 'room.message', text: 'micro HS', level: 'warning',
+      }),
+    ])
+
+    const efface = ingest.oublierCaptations()
+
+    expect(efface).toBe(2)
+    expect(ingest.captations(TRACK_1)).toEqual([])
+    // Le diagnostic d'une journée n'a rien à voir avec les rushes : il reste.
+    expect(ingest.messagesFromRooms()).toHaveLength(1)
   })
 
   it('écarte un événement malformé sans bloquer les autres', () => {

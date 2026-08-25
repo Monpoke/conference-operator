@@ -31,6 +31,8 @@ export interface CaptationBrute {
   file: string | null
   sidecarWritten: boolean
   enCours: boolean
+  /** Ouverte, puis supplantée par une autre : son arrêt ne viendra jamais. */
+  finInconnue: boolean
 }
 
 export class IngestService {
@@ -151,9 +153,20 @@ export class IngestService {
       const obs = payload.obs
 
       if (payload.type === 'recording.started') {
-        // Deux `started` d'affilée sur la même instance : la salle a redémarré
-        // sans qu'on entende l'arrêt. La première prise reste dans la liste,
-        // ouverte — perdre sa trace effacerait un fichier qui existe.
+        /*
+         * Deux `started` d'affilée sur la même instance : la salle a redémarré
+         * sans qu'on entende l'arrêt. La première prise reste dans la liste —
+         * perdre sa trace effacerait un fichier qui existe — mais elle cesse
+         * d'être « en cours » : son arrêt n'a pas été entendu, il ne se produira
+         * plus. Les laisser actives empilait, sur une salle de développement de
+         * trois jours, quatre faux enregistrements en cours au-dessus de la
+         * seule ligne qui disait quelque chose.
+         */
+        const precedente = ouvertes.get(obs)
+        if (precedente != null) {
+          precedente.enCours = false
+          precedente.finInconnue = true
+        }
         const captation: CaptationBrute = {
           roomId,
           obs,
@@ -164,6 +177,7 @@ export class IngestService {
           file: null,
           sidecarWritten: false,
           enCours: true,
+          finInconnue: false,
         }
         ouvertes.set(obs, captation)
         captations.push(captation)
@@ -187,6 +201,7 @@ export class IngestService {
           file: payload.outputPath,
           sidecarWritten: payload.sidecarWritten,
           enCours: false,
+          finInconnue: false,
         })
         continue
       }
@@ -203,6 +218,29 @@ export class IngestService {
     }
 
     return captations
+  }
+
+  /**
+   * Oublie tout ce que le hub sait des prises. **Remise à zéro uniquement.**
+   *
+   * Le RAZ efface le préfixe du bucket et les rushes des salles ; sans ce
+   * geste-ci, le hub gardait la mémoire de prises dont plus aucun fichier
+   * n'existe, et le dossier VOD d'une conférence continuait de lister des
+   * captations effacées la veille. Une remise à zéro qui laisse une moitié de
+   * l'état debout n'en est pas une : on la relance, elle ne change rien, et on
+   * finit par croire que c'est le bouton qui est cassé.
+   *
+   * Seuls les deux types de la captation partent. Le reste du journal —
+   * heartbeats, messages des salles, changements de scène — n'a rien à voir
+   * avec les rushes, et l'effacer perdrait le diagnostic d'une journée sans
+   * rien libérer d'utile.
+   */
+  oublierCaptations(): number {
+    const efface = this.db
+      .delete(ingestEvent)
+      .where(inArray(ingestEvent.type, ['recording.started', 'recording.stopped']))
+      .run()
+    return efface.changes
   }
 
   /**

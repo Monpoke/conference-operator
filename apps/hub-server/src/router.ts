@@ -1168,6 +1168,11 @@ export const router = os.router({
       }
       return surStockage(context, async () => {
         const efface = await exigerStockage(context).raz()
+        // Le hub oublie aussi ce qu'il savait des prises : sans cela, le
+        // dossier VOD d'une conférence continue de lister des captations dont
+        // on vient d'effacer les fichiers, et la remise à zéro paraît sans
+        // effet.
+        const prises = context.services.ingest.oublierCaptations()
         const salles = context.services.rooms.list()
         for (const salle of salles) {
           context.services.commands.publish(
@@ -1176,7 +1181,7 @@ export const router = os.router({
             null,
           )
         }
-        return { ...efface, salles: salles.length }
+        return { ...efface, salles: salles.length, prises }
       })
     }),
 

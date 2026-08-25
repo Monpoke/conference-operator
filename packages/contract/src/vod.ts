@@ -221,6 +221,20 @@ export const captationVueSchema = z.object({
   sidecarWritten: z.boolean(),
   enCours: z.boolean(),
   /**
+   * La prise n'a jamais été refermée, et une autre a démarré après elle.
+   *
+   * Ce n'est pas « en cours » : c'est une prise dont le hub n'a jamais entendu
+   * l'arrêt — OBS relancé, machine de salle tuée, remise à zéro en plein
+   * enregistrement. Les afficher toutes comme actives donnait, sur une salle de
+   * développement de trois jours, une pile de faux « enregistrement en cours »
+   * au-dessus de la seule ligne qui disait quelque chose.
+   *
+   * Elles restent listées : le hub sait qu'OBS a écrit, et un fichier orphelin
+   * sur un disque qu'on s'apprête à débrancher mérite d'être vu. Mais elles se
+   * disent pour ce qu'elles sont.
+   */
+  finInconnue: z.boolean().default(false),
+  /**
    * Comment la prise a été rattachée au créneau.
    *
    * `session` : la régie l'a estampillée elle-même, c'est le cas normal et le

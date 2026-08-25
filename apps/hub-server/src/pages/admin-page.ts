@@ -1014,8 +1014,10 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
     <div class="text-sm leading-relaxed" id="raz-texte"></div>
     <div class="aide mt-3">
       <strong>Irréversible.</strong> Les objets du préfixe sont supprimés chez le
-      stockage, et chaque salle efface ses rushes, leurs sidecars et ses
-      verdicts de relecture. Rien de tout cela ne se rattrape.
+      stockage, chaque salle efface ses rushes, leurs sidecars et ses
+      verdicts de relecture, et le hub oublie ce qu'il savait des prises — sans
+      quoi le dossier VOD des conférences continuerait de lister des captations
+      dont plus aucun fichier n'existe. Rien de tout cela ne se rattrape.
     </div>
     <div class="mt-3">
       <label for="raz-mot">Recopier <strong>RAZ</strong> pour confirmer</label>
@@ -2624,14 +2626,20 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
   }
 
   function ligneCaptation(captation) {
-    const etat = captation.enCours
-      ? '<span class="text-marque">enregistrement en cours</span>'
-      : captation.file == null
-        ? '<span class="text-alerte">arrêtée sans fichier</span>'
-        : '<span class="text-ok">fichier écrit</span>'
+    // Quatre états, pas trois. « Interrompue » se distingue de « en cours » :
+    // le hub n'a jamais entendu son arrêt et ne l'entendra plus, une autre
+    // prise ayant démarré derrière. Les confondre empilait des enregistrements
+    // prétendument actifs sur une salle qui n'enregistrait rien.
+    const etat = captation.finInconnue
+      ? '<span class="text-attention">interrompue, fin jamais reçue</span>'
+      : captation.enCours
+        ? '<span class="text-marque">enregistrement en cours</span>'
+        : captation.file == null
+          ? '<span class="text-alerte">arrêtée sans fichier</span>'
+          : '<span class="text-ok">fichier écrit</span>'
     // Le sidecar n'est pas un détail : sans lui le rush arrive au montage sans
     // titre, sans intervenants et sans marqueurs.
-    const sidecar = captation.enCours
+    const sidecar = captation.enCours || captation.finInconnue
       ? ''
       : captation.sidecarWritten
         ? ' · sidecar écrit'
@@ -2648,10 +2656,22 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
       ? '<div class="text-[11px] text-alerte">OBS n’a rendu aucun chemin — disque plein, ' +
         'ou processus tué en plein arrêt.</div>'
       : '<div class="font-mono text-[11px] break-all">' + echapper(captation.file) + '</div>'
-    // L'heure de l'événement, comme partout : c'est celle du planning juste
-    // derrière, et la seule qui se compare à l'horaire annoncé du talk.
+    /*
+     * L'heure de l'événement, comme partout : c'est celle du planning juste
+     * derrière, et la seule qui se compare à l'horaire annoncé du talk.
+     *
+     * Un intervalle qui se termine avant de commencer n'est pas affiché : les
+     * instants viennent de l'horloge de la salle, qui peut être **simulée** et
+     * sauter d'un événement à l'autre. « 09:00–08:36 » ne décrit alors rien, et
+     * fait douter du reste de la ligne — alors que la durée, elle, est mesurée
+     * par la salle et reste juste. On garde donc le début seul.
+     */
+    const finApresDebut = captation.endedAt != null &&
+      Date.parse(captation.endedAt) >= Date.parse(captation.startedAt)
     const quand = heureEvenement(captation.startedAt) +
-      (captation.endedAt == null ? '–…' : '–' + heureEvenement(captation.endedAt))
+      (captation.endedAt == null
+        ? '–…'
+        : finApresDebut ? '–' + heureEvenement(captation.endedAt) : '')
     return '<div class="border-t border-bord py-2 first:border-t-0">' +
       '<div class="text-sm">' + etat + ' · OBS ' + echapper(captation.obs) + duree + sidecar + '</div>' +
       '<div class="text-[11px] tabular-nums text-attenue">' + quand + '</div>' +

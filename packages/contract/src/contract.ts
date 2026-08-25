@@ -903,6 +903,15 @@ export const contract = {
           multiparts: z.number().int().nonnegative(),
           /** Salles à qui l'ordre a été envoyé. Elles effacent chacune chez elles. */
           salles: z.number().int().nonnegative(),
+          /**
+           * Événements de captation oubliés par le hub.
+           *
+           * Le hub tient sa propre mémoire des prises, reconstituée du journal
+           * d'ingestion. La laisser debout faisait lister, dans le dossier VOD
+           * d'une conférence, des captations dont on venait d'effacer les
+           * fichiers — et la remise à zéro paraissait sans effet.
+           */
+          prises: z.number().int().nonnegative().default(0),
         }),
       ),
 

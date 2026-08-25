@@ -194,6 +194,9 @@ export function normalizeProgram(input: unknown): Program {
       // Rien n'est projeté à la normalisation : la règle des pauses communes
       // s'applique sur le programme normalisé, et se relit donc dessus.
       sharedFrom: null,
+      // L'export ne connaît pas OpenFeedback : la correction, s'il en faut une,
+      // se pose sur le programme servi, pas sur celui qu'on vient de normaliser.
+      feedbackId: null,
       speakers: resolvedSpeakers,
       category: (rawSession.categoryId != null ? categoryById.get(rawSession.categoryId) : undefined) ?? null,
       format: (rawSession.formatId != null ? formatById.get(rawSession.formatId) : undefined) ?? null,

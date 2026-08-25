@@ -1099,8 +1099,6 @@ ${etatInitial}
             'Prend effet au prochain démarrage du client.') + '</div>' +
           '<div>' + champ('cfg-slug', 'Préfixe des fichiers', config.fileSlug,
             "Utilisé dans les noms d'enregistrements. Vide : dérivé du nom de la salle.") + '</div>' +
-          '<div>' + champ('cfg-openfeedback', 'Projet OpenFeedback', config.openFeedbackProjectId,
-            'Sert au QR « Notez le talk ». Change une fois par édition.') + '</div>' +
           '<div>' + champ('cfg-root', 'Dossier des VOD', config.recordingRoot,
             'Où la régie relit les enregistrements (🎞 dans le panneau Captation). ' +
             'Vide : le dossier d\u2019OBS-B, qu\u2019elle lui demande. Ce champ ne déplace rien : ' +
@@ -1273,7 +1271,6 @@ ${etatInitial}
       recordingRoot: texte('cfg-root'),
       fileSlug: texte('cfg-slug'),
       relaySourceRoomId: $('cfg-relay').value || null,
-      openFeedbackProjectId: texte('cfg-openfeedback'),
       promptRecordingOnStart: $('cfg-prompt-rec').checked,
       sceneOnStart: $('cfg-scene-demarrage').value || null,
     }

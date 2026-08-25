@@ -68,6 +68,22 @@ export const sessionSchema = z.object({
    * injoignable n'a que ce cache.
    */
   sharedFrom: z.string().nullable().default(null),
+  /**
+   * Identifiant OpenFeedback corrigé depuis la console, ou `null`.
+   *
+   * Champ posé par le hub sur le programme qu'il **sert**, comme `kind` quand
+   * une décision le contredit et comme `sharedFrom` : c'est ce qui garantit que
+   * la console et le QR projeté en salle ne peuvent pas diverger. La salle
+   * dessine ses QR hors ligne depuis ce cache — lui faire recevoir la
+   * correction par un autre canal reviendrait à tenir la même vérité à deux
+   * endroits, et à projeter l'ancienne adresse devant le public le jour où les
+   * deux se désynchroniseraient.
+   *
+   * `null` — le cas normal — veut dire « l'identifiant de l'export fait foi ».
+   * Valeur par défaut et non champ requis, pour la même raison que
+   * `sharedFrom` : un cache écrit avant ce champ doit continuer de se relire.
+   */
+  feedbackId: z.string().nullable().default(null),
   speakers: z.array(speakerSchema),
   category: categorySchema.nullable(),
   format: formatSchema.nullable(),

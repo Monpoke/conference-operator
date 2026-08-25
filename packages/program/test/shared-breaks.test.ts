@@ -100,6 +100,7 @@ describe('applySharedBreaks — cas limites', () => {
     roomId,
     kind,
     sharedFrom: null,
+    feedbackId: null,
     speakers: [],
     category: null,
     format: null,

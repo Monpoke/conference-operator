@@ -7,7 +7,14 @@ import {
   type RoomConfigInput,
   type RoomStatus,
 } from '@cloudnord/contract'
-import { deviceRequest, room, roomDevice, roomState, sessionOverride } from '@cloudnord/db/hub'
+import {
+  deviceRequest,
+  room,
+  roomDevice,
+  roomState,
+  sessionFeedback,
+  sessionOverride,
+} from '@cloudnord/db/hub'
 import type { HubDatabase } from '../db.js'
 
 /**
@@ -97,6 +104,68 @@ export class RoomService {
     return row == null ? null : roomConfigSchema.parse(JSON.parse(row.configJson))
   }
 
+  /**
+   * Rapatrie vers le hub un projet OpenFeedback saisi jadis sur une régie.
+   *
+   * Le champ a été éditable dans le ⚙ de chaque salle. Il ne l'est plus — le
+   * projet est une propriété de l'événement —, mais les bases existantes en
+   * portent la trace, et sur le hub de développement c'était même la *seule*
+   * trace : réglage d'événement vide, salle 1 renseignée, deux salles muettes.
+   * Retirer le champ sans rien reprendre aurait éteint les liens de la seule
+   * salle qui en avait.
+   *
+   * Deux gestes, dans cet ordre. Adopter, si le hub n'a rien : la valeur d'une
+   * régie décrivait déjà l'événement entier, elle n'attendait qu'un endroit
+   * pour le dire. Puis effacer les valeurs de salle, toutes, y compris celle
+   * qu'on vient d'adopter : laisser en base un champ que plus rien ne lit est
+   * la meilleure façon de le voir ressusciter au prochain refactor.
+   *
+   * Idempotent : au deuxième démarrage il n'y a plus rien à reprendre, et la
+   * méthode ne touche pas au disque.
+   */
+  reprendreProjetOpenFeedback(settings: {
+    get(): { openFeedbackProjectId: string | null }
+    update(patch: { openFeedbackProjectId: string }): unknown
+  }): { adopte: string | null; sallesNettoyees: string[] } {
+    const salles = this.list()
+    const portees = salles.filter(
+      (salle) => (salle.openFeedbackProjectId ?? '').trim() !== '',
+    )
+    if (portees.length === 0) return { adopte: null, sallesNettoyees: [] }
+
+    const duHub = (settings.get().openFeedbackProjectId ?? '').trim()
+    let adopte: string | null = null
+    if (duHub === '') {
+      /*
+       * Le plus fréquent, salles parcourues dans l'ordre de leur identifiant.
+       *
+       * Deux régies qui se contredisent doivent donner la même réponse à chaque
+       * démarrage : une reprise qui dépendrait de l'ordre de lecture de SQLite
+       * changerait de projet au redémarrage, et personne ne saurait lequel est
+       * le bon.
+       */
+      const comptes = new Map<string, number>()
+      for (const salle of [...portees].sort((a, b) => a.id.localeCompare(b.id))) {
+        const projet = salle.openFeedbackProjectId!.trim()
+        comptes.set(projet, (comptes.get(projet) ?? 0) + 1)
+      }
+      let meilleur = 0
+      for (const [projet, combien] of comptes) {
+        // Strict : à égalité, la première salle dans l'ordre garde la main.
+        if (combien > meilleur) {
+          adopte = projet
+          meilleur = combien
+        }
+      }
+      if (adopte != null) settings.update({ openFeedbackProjectId: adopte })
+    }
+
+    for (const salle of portees) {
+      this.upsert({ ...salle, openFeedbackProjectId: null })
+    }
+    return { adopte, sallesNettoyees: portees.map((salle) => salle.id) }
+  }
+
   overrides(sessionIds?: string[]) {
     const rows = this.db.select().from(sessionOverride).all()
     return rows
@@ -107,6 +176,42 @@ export class RoomService {
         delayMinutes: row.delayMinutes,
         note: row.note,
       }))
+  }
+
+  /**
+   * Les identifiants OpenFeedback corrigés à la main, par créneau.
+   *
+   * Un dictionnaire et non une liste : les appelants cherchent tous « cette
+   * session a-t-elle une correction », jamais « donne-moi toutes les
+   * corrections dans l'ordre ». Vide dans le cas normal — l'export fait foi
+   * tant que personne ne l'a contredit.
+   */
+  feedbackIds(): Record<string, string> {
+    const rows = this.db.select().from(sessionFeedback).all()
+    return Object.fromEntries(rows.map((row) => [row.sessionId, row.feedbackId]))
+  }
+
+  /**
+   * Corrige — ou rend à l'export — l'identifiant OpenFeedback d'un créneau.
+   *
+   * `null` supprime la ligne au lieu d'enregistrer une correction vide, pour la
+   * même raison que `setOverride` : une correction retirée doit être
+   * indistinguable d'une correction jamais posée. Une chaîne blanche vaut
+   * `null` — un identifiant fait d'espaces ne fabrique qu'une adresse morte, et
+   * c'est ce que le champ du formulaire renvoie quand on l'efface.
+   */
+  setFeedbackId(sessionId: string, feedbackId: string | null): void {
+    const propre = feedbackId?.trim() ?? ''
+    if (propre === '') {
+      this.db.delete(sessionFeedback).where(eq(sessionFeedback.sessionId, sessionId)).run()
+      return
+    }
+    const values = { sessionId, feedbackId: propre, updatedAt: new Date().toISOString() }
+    this.db
+      .insert(sessionFeedback)
+      .values(values)
+      .onConflictDoUpdate({ target: sessionFeedback.sessionId, set: values })
+      .run()
   }
 
   /**

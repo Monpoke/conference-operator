@@ -61,16 +61,23 @@ export const roomConfigSchema = z.object({
    */
   relaySourceRoomId: roomIdSchema.nullable().default(null),
   /**
-   * Projet OpenFeedback, **surcharge de salle**.
+   * Projet OpenFeedback, **écrit par le hub, jamais par la salle**.
    *
    * Sert à fabriquer le QR « notez ce talk », **hors ligne** : OpenFeedback
    * réutilise les identifiants de session de l'export amont, donc l'adresse se
    * déduit du programme déjà en cache, sans clé d'API ni appel réseau le jour J.
+   * C'est pour cela que la valeur voyage jusqu'ici plutôt que d'être demandée
+   * au moment de dessiner le QR.
    *
-   * `null` — le cas normal — veut dire « celui de l'événement » : le hub
-   * descend au `sync` la valeur de ses réglages. Le projet est une propriété de
-   * l'événement, pas de la salle ; le renseigner ici ne sert qu'à une salle qui
-   * doit pointer ailleurs, et se fait dans le ⚙ de la régie.
+   * Le champ est absent de `roomConfigPatchSchema` : une régie ne peut pas
+   * l'écrire, et il n'apparaît plus dans son ⚙. Le projet est une propriété de
+   * l'**événement** — il se règle une fois dans la console, dans
+   * `hubSettings.openFeedbackProjectId`, et descend résolu à chaque `sync`.
+   *
+   * Ce n'est pas une préférence de style : tant que deux endroits pouvaient
+   * l'écrire, il a suffi qu'un opérateur le remplisse sur une seule machine
+   * pour que cette salle-là ait des liens et pas les autres, sans que rien ne
+   * dise pourquoi. Vingt-six créneaux muets sur vingt-sept.
    */
   openFeedbackProjectId: z.string().nullable().default(null),
   /**
@@ -109,6 +116,11 @@ export type RoomConfig = z.infer<typeof roomConfigSchema>
  *   avec lui tout le programme affiché.
  * - `stream` : une clé de diffusion descend du hub vers sa salle, jamais
  *   l'inverse. Elle se saisit là où elle est déjà, sur le hub.
+ * - `openFeedbackProjectId` : propriété de l'**événement**, pas d'un poste. Il
+ *   a été éditable ici, et le prix s'est vu : rempli sur la seule machine de la
+ *   salle 1, il donnait des liens à cette salle et à aucune autre, sans que
+ *   rien ne l'explique. Un réglage que deux endroits peuvent écrire finit
+ *   toujours par n'être écrit qu'à un seul.
  *
  * Tout le reste est du réglage de poste — adresses OBS, noms de scènes, port,
  * dossier d'enregistrement — c'est-à-dire précisément ce qui se découvre en
@@ -135,7 +147,6 @@ export const roomConfigPatchSchema = z
     recordingRoot: z.string().nullable(),
     fileSlug: z.string().max(24).nullable(),
     relaySourceRoomId: roomIdSchema.nullable(),
-    openFeedbackProjectId: z.string().nullable(),
     promptRecordingOnStart: z.boolean(),
     sceneOnStart: sceneRoleSchema.nullable(),
   })
@@ -161,6 +172,41 @@ export type RoomConfigInput = z.input<typeof roomConfigSchema>
  */
 export const sessionStatusSchema = z.enum(STATUTS)
 export type SessionStatus = z.infer<typeof sessionStatusSchema>
+
+/**
+ * Ce qu'OpenFeedback sait des créneaux du programme.
+ *
+ * Trois issues, et les distinguer est tout l'intérêt : un projet introuvable
+ * (`projetTrouve` faux) tue toutes les adresses d'un coup et se corrige d'un
+ * champ ; un projet qui ne stocke pas ses talks (`talksConnus` nul) rend la
+ * comparaison sans objet, et le dire vaut mieux que signaler vingt-sept
+ * créneaux qui ne manquent pas ; sinon `manquants` nomme ceux dont le lien et
+ * le QR mènent à une page vide.
+ */
+export const controleOpenFeedbackSchema = z.object({
+  projet: z.string(),
+  projetTrouve: z.boolean(),
+  /**
+   * Nombre de talks connus d'OpenFeedback, ou `null`.
+   *
+   * `null` ne veut pas dire zéro : il veut dire « OpenFeedback ne tient pas
+   * cette liste », parce que le projet lit ses sessions d'une source externe.
+   * Confondre les deux ferait crier au loup sur un événement parfaitement
+   * configuré — et un contrôle qui crie au loup ne se relance jamais.
+   */
+  talksConnus: z.number().int().nonnegative().nullable(),
+  manquants: z.array(
+    z.object({
+      sessionId: sessionIdSchema,
+      title: z.string(),
+      /** L'identifiant réellement servi : c'est lui qu'on est allé chercher. */
+      feedbackId: z.string(),
+    }),
+  ),
+  /** Ce qu'il faut en comprendre, en clair : la console l'affiche tel quel. */
+  detail: z.string(),
+})
+export type ControleOpenFeedback = z.infer<typeof controleOpenFeedbackSchema>
 
 export const sessionStateSchema = z.object({
   sessionId: sessionIdSchema,
@@ -249,13 +295,17 @@ export const hubSettingsSchema = z.object({
    */
   eventShortName: z.string().max(40).nullable().default(null),
   /**
-   * Projet OpenFeedback de l'événement.
+   * Projet OpenFeedback de l'événement. **Seul endroit où il s'écrit.**
    *
    * Au niveau du hub parce que c'est une propriété de l'événement, pas d'une
-   * salle : le régler une fois vaut pour toutes. Il descend aux salles au
-   * `sync`, où chacune peut encore le surcharger — voir
-   * `roomConfig.openFeedbackProjectId`. Vide, aucun QR « notez ce talk » n'est
-   * dessiné : pas de lien vaut mieux qu'un lien mort scanné en salle.
+   * salle : le régler une fois vaut pour toutes. Il descend résolu aux salles
+   * au `sync`, et une régie ne peut plus le contredire — le champ a existé dans
+   * son ⚙, et il a suffi qu'il soit rempli sur une seule machine pour que les
+   * autres salles n'aient plus de liens du tout.
+   *
+   * Vide, aucun QR « notez ce talk » n'est dessiné nulle part : pas de lien
+   * vaut mieux qu'un lien mort scanné en salle. Une chaîne blanche compte comme
+   * vide — elle ne fabrique que des adresses `openfeedback.io///…`.
    */
   openFeedbackProjectId: z.string().max(80).nullable().default(null),
   autoEndEnabled: z.boolean().default(true),

@@ -248,9 +248,28 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
   #confirmer-raz { display: none; }
   body[data-raz="ouverte"] #confirmer-raz { display: flex; }
   body[data-resync="ouvert"] #confirmer-resync { display: flex; }
+
+  /* Dossier VOD d'une conférence : même mécanique que les modales ci-dessus. */
+  #dossier-vod { display: none; }
+  body[data-vod="ouvert"] #dossier-vod { display: flex; }
+
+  /* Identifiant OpenFeedback d'un créneau : même mécanique. */
+  #feedback-id { display: none; }
+  body[data-feedback="ouvert"] #feedback-id { display: flex; }
+
+  /*
+   * La colonne « Action » du planning, repliée par défaut.
+   *
+   * En CSS et non par un rendu conditionnel : les lignes sont réécrites toutes
+   * les dix secondes, et faire dépendre leur contenu de l'état du bouton
+   * demanderait de tenir cet état juste à deux endroits. Une règle sur le body
+   * bascule les vingt-sept lignes et l'en-tête d'un seul attribut, et le rendu
+   * n'a rien à savoir.
+   */
+  body[data-planning-actions="repliees"] .col-action { display: none; }
 </style>
 </head>
-<body class="bg-fond font-sans text-texte">
+<body class="bg-fond font-sans text-texte" data-planning-actions="repliees" data-vod="ferme" data-feedback="ferme">
 <div class="mx-auto my-[12vh] max-w-[380px] p-5" id="connexion">
   <section class="panneau">
     <h2 class="titre-panneau">Console hub</h2>
@@ -480,10 +499,36 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
         <select class="w-auto shrink-0" id="planning-salle">
           <option value="">Toutes les salles</option>
         </select>
+        <!--
+          La colonne « Action » est repliée par défaut.
+
+          Elle est la seule de ce tableau qui *écrit* quelque chose, au milieu
+          de cinq colonnes qui ne font que lire — et elle écrit une décision qui
+          se propage à toutes les surfaces : un créneau marqué break disparaît
+          de l'antenne, de la régie et des QR. Un menu déroulant posé sur chaque
+          ligne d'un planning qu'on parcourt toute la journée en cherchant un
+          horaire finit par se cliquer sans qu'on l'ait voulu, et rien dans le
+          tableau ne le rattrape.
+
+          La replier ne cache rien : le bouton dit combien de décisions sont en
+          vigueur, et se déplie d'un clic. Ce qu'on demande, c'est d'avoir voulu
+          les modifier avant de pouvoir le faire.
+        -->
+        <!--
+          Le contrôle des liens de feedback.
+
+          Sur demande et non en continu : il sort du hub pour interroger
+          OpenFeedback, et c'est un geste d'avant-événement — on le passe une
+          fois le programme importé, on corrige ce qu'il signale, et on n'y
+          revient plus.
+        -->
+        <button class="shrink-0" id="btn-controle-feedback">Vérifier les liens</button>
+        <button class="shrink-0" id="btn-planning-actions" aria-expanded="false"></button>
       </div>
+      <div class="mb-2.5" id="controle-feedback" hidden></div>
       <div class="overflow-x-auto">
         <table>
-          <thead><tr><th>Prévu</th><th>Réel</th><th>Salle</th><th>Conférence</th><th>Feedback</th><th>Action</th></tr></thead>
+          <thead><tr><th>Prévu</th><th>Réel</th><th>Salle</th><th>Conférence</th><th>Feedback</th><th>VOD</th><th class="col-action">Action</th></tr></thead>
           <tbody id="planning"></tbody>
         </table>
       </div>
@@ -493,6 +538,16 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
         Les deux sont lus dans le fuseau de l'événement, pas celui du poste d'où
         l'on regarde. Le lien « noter » ouvre la page
         OpenFeedback de la conférence, la même que celle du QR projeté en salle.
+      </div>
+      <div class="aide" id="planning-feedback-aide" hidden></div>
+      <div class="aide">
+        <strong>La colonne VOD</strong> répond dans l'autre sens que l'onglet du
+        même nom : on part de la conférence, pas du fichier. « Où est la
+        captation de ce talk ? » est la question qu'un speaker pose à
+        l'organisation, et la seule qui compte le soir, salle par salle, avant
+        de débrancher les disques. Le hub n'a jamais vu ces disques — il
+        recompose ce qu'il sait des prises depuis ce que les régies lui ont
+        remonté en enregistrant.
       </div>
       <div class="aide">
         <strong>Considérer comme break</strong> corrige ce que l'export ne dit
@@ -840,6 +895,83 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
       <button id="notif-fermer">Fermer</button>
       <button class="principal" id="notif-appliquer">Appliquer</button>
     </div>
+  </div>
+</div>
+
+<!--
+  L'identifiant OpenFeedback d'une conférence.
+
+  L'adresse « notez ce talk » se fabrique hors ligne — projet, jour, identifiant —
+  en pariant qu'OpenFeedback réutilise les identifiants de l'export amont. Le
+  pari tient : les vingt-sept concordent. Mais c'est un pari qui se perd en
+  silence — le lien reste cliquable, le QR reste scannable, et les deux mènent à
+  une page qui ne parle d'aucun talk. On ne s'en aperçoit qu'aux retours
+  manquants, c'est-à-dire une fois l'événement fini.
+
+  D'où cette modale : voir l'identifiant servi, l'adresse entière pour la
+  comparer à celle qu'on a sous les yeux dans OpenFeedback, et la corriger sans
+  toucher à l'export. La correction survit au réimport — sans quoi le prochain
+  import ramènerait l'identifiant fautif.
+-->
+<div class="fixed inset-0 z-50 items-center justify-center bg-black/65 p-4" id="feedback-id">
+  <div class="panneau w-full max-w-[520px]">
+    <div class="mb-2.5 flex items-start gap-2">
+      <h2 class="titre-panneau mb-0 flex-1" id="feedback-titre">Identifiant OpenFeedback</h2>
+      <button class="shrink-0" id="feedback-fermer">Fermer</button>
+    </div>
+    <div class="mb-[11px]">
+      <label for="feedback-champ">Identifiant servi</label>
+      <!--
+        Le placeholder est atténué à la main : la feuille du thème ne le
+        distingue pas d'une valeur saisie, et ici les deux disent la même chose
+        — l'identifiant de l'export. Confondus, le champ paraît déjà rempli, et
+        « Enregistrer » semble poser une correction qui n'en est pas une.
+      -->
+      <input id="feedback-champ" type="text" maxlength="200" autocomplete="off"
+        class="placeholder:text-attenue placeholder:italic">
+    </div>
+    <div class="aide">
+      Vide, c'est celui de l'export qui sert :
+      <strong class="font-mono" id="feedback-export"></strong>. Ne le corrigez
+      que si la page OpenFeedback du talk porte un autre identifiant — c'est
+      elle qui fait foi, pas l'export.
+    </div>
+    <div class="mt-2" id="feedback-apercu"></div>
+    <div class="mt-2 text-sm text-alerte" id="feedback-erreur" hidden></div>
+    <div class="mt-3.5 flex justify-end gap-1.5">
+      <button id="feedback-rendre">Rendre à l'export</button>
+      <button class="principal" id="feedback-enregistrer">Enregistrer</button>
+    </div>
+    <div class="aide">
+      La correction vaut jusqu'à ce qu'on la retire, réimports compris, et
+      descend aux salles : le QR projeté suit, sans quoi la console et l'écran
+      afficheraient deux adresses différentes pour le même talk.
+    </div>
+  </div>
+</div>
+
+<!--
+  Le dossier VOD d'une conférence.
+
+  En modale et non dans une colonne de plus : la réponse tient en trois ou
+  quatre lignes de prises et de téléversements, avec des chemins de fichiers et
+  des clés d'objet dont aucune n'entre dans une cellule. Et c'est une question
+  qu'on pose sur *une* conférence, celle du speaker qui vient de demander, pas
+  sur les vingt-sept à la fois.
+
+  Deux moitiés, dans l'ordre où la question se pose : est-ce que la salle l'a
+  enregistré, puis est-ce que c'est monté. Elles ne se déduisent pas l'une de
+  l'autre, et la première est celle qui compte le soir du démontage — un rush
+  qui n'est ni là ni monté n'existe plus une fois le disque débranché.
+-->
+<div class="fixed inset-0 z-50 items-center justify-center bg-black/65 p-4" id="dossier-vod">
+  <div class="panneau max-h-[85vh] w-full max-w-[640px] overflow-y-auto">
+    <div class="mb-2.5 flex items-start gap-2">
+      <h2 class="titre-panneau mb-0 flex-1" id="vod-titre">Captation</h2>
+      <button class="shrink-0" id="vod-fermer">Fermer</button>
+    </div>
+    <div class="text-xs text-attenue" id="vod-sous-titre"></div>
+    <div class="mt-3" id="vod-corps"></div>
   </div>
 </div>
 
@@ -2047,8 +2179,55 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
         planning.rooms.map((salle) =>
           '<option value="' + echapper(salle.id) + '">' + echapper(salle.name) + '</option>').join('')
     }
+    rendreAideFeedback()
+    rendreBoutonActions()
     rendrePlanning()
   }
+
+  /**
+   * Explique une colonne « Feedback » vide, plutôt que de la laisser vide.
+   *
+   * Sans projet OpenFeedback réglé, la colonne n'est qu'une suite de tirets, et
+   * rien ne dit s'il manque un réglage ou si OpenFeedback n'est pas de la
+   * partie sur cet événement. La différence tient en un champ, encore faut-il
+   * savoir qu'il existe et où il est.
+   */
+  function rendreAideFeedback() {
+    const zone = $('planning-feedback-aide')
+    const regle = planning?.openFeedbackProjectId ?? null
+    zone.hidden = regle != null
+    if (regle != null) return
+    zone.innerHTML = '<strong>Aucun projet OpenFeedback réglé</strong> : la colonne ' +
+      '« Feedback » reste vide, et les salles ne projettent aucun QR « notez ce talk ». ' +
+      'Il se règle dans <strong>Réglages → L’événement</strong>, une fois pour tout ' +
+      'l’événement.'
+  }
+
+  /**
+   * Le bouton qui déplie la colonne « Action », et ce qu'il annonce.
+   *
+   * Il dit combien de décisions sont en vigueur : replier une colonne ne doit
+   * pas revenir à cacher qu'on a corrigé six créneaux. Le compte se lit sur le
+   * planning entier et non sur la salle filtrée — c'est un état de l'événement.
+   */
+  function rendreBoutonActions() {
+    const bouton = $('btn-planning-actions')
+    const depliees = document.body.dataset.planningActions !== 'repliees'
+    const decidees = (planning?.sessions ?? [])
+      .filter((session) => session.overriddenAs != null).length
+    const compte = decidees === 0
+      ? ''
+      : ' (' + decidees + ' décision' + (decidees > 1 ? 's' : '') + ')'
+    bouton.textContent = (depliees ? 'Masquer les actions' : 'Modifier les créneaux') + compte
+    bouton.setAttribute('aria-expanded', depliees ? 'true' : 'false')
+  }
+
+  $('btn-planning-actions').onclick = () => {
+    const depliees = document.body.dataset.planningActions !== 'repliees'
+    document.body.dataset.planningActions = depliees ? 'repliees' : 'depliees'
+    rendreBoutonActions()
+  }
+  rendreBoutonActions()
 
   function rendrePlanning() {
     const corps = $('planning')
@@ -2056,7 +2235,7 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
     // qu'un menu d'action est déplié refermerait le menu sous le curseur.
     if (corps.contains(document.activeElement)) return
     if (planning == null || planning.sessions.length === 0) {
-      corps.innerHTML = '<tr><td colspan="6" class="vide">Aucun programme actif. ' +
+      corps.innerHTML = '<tr><td colspan="7" class="vide">Aucun programme actif. ' +
         'Il s\u2019importe depuis les réglages.</td></tr>'
       return
     }
@@ -2065,7 +2244,7 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
     const creneaux = planning.sessions.filter(
       (session) => salleChoisie === '' || session.roomId === salleChoisie)
     if (creneaux.length === 0) {
-      corps.innerHTML = '<tr><td colspan="6" class="vide">Aucun créneau dans cette salle.</td></tr>'
+      corps.innerHTML = '<tr><td colspan="7" class="vide">Aucun créneau dans cette salle.</td></tr>'
       return
     }
 
@@ -2118,6 +2297,9 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
         ? '<a class="font-semibold text-marque no-underline" target="_blank" rel="noopener" href="' +
           echapper(session.feedbackUrl) + '">noter ↗</a>'
         : '<span class="text-attenue">—</span>'
+      const feedback = session.kind === 'break'
+        ? lien
+        : lien + boutonIdFeedback(session)
 
       /**
        * Trois traitements, un seul repère.
@@ -2157,10 +2339,369 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
           ? '<div class="text-xs font-semibold text-marque">en ce moment</div>'
           : '') +
         '</td>' +
-        '<td>' + lien + '</td>' +
-        '<td>' + actionDuCreneau(session) + '</td>' +
+        '<td class="whitespace-nowrap">' + feedback + '</td>' +
+        '<td>' + boutonVod(session) + '</td>' +
+        '<td class="col-action">' + actionDuCreneau(session) + '</td>' +
         '</tr>'
     }).join('')
+  }
+
+  /**
+   * Confronte les identifiants du programme à ce qu'OpenFeedback connaît.
+   *
+   * Le seul geste de cette console qui sorte vers un tiers, et le seul dont
+   * l'échec ne dise rien du programme : le résultat s'affiche donc dans le
+   * panneau, sous le bouton, et pas dans l'avis flottant qui disparaît.
+   */
+  async function controlerFeedback() {
+    const zone = $('controle-feedback')
+    const bouton = $('btn-controle-feedback')
+    zone.hidden = false
+    zone.className = 'aide mb-2.5'
+    zone.textContent = 'Interrogation d’OpenFeedback…'
+    bouton.disabled = true
+    try {
+      const controle = await appeler('program/controleOpenFeedback')
+      zone.innerHTML = rendreControleFeedback(controle)
+    } catch (cause) {
+      zone.className = 'aide mb-2.5 text-alerte'
+      zone.textContent = cause.message
+    } finally {
+      bouton.disabled = false
+    }
+  }
+
+  function rendreControleFeedback(controle) {
+    // Projet introuvable : la panne la plus bête et la plus totale — une faute
+    // de frappe dans un champ, et les vingt-sept adresses sont mortes.
+    if (!controle.projetTrouve) {
+      return '<strong class="text-alerte">Projet « ' + echapper(controle.projet) +
+        ' » introuvable chez OpenFeedback.</strong> ' + echapper(controle.detail)
+    }
+    // Talks absents : la comparaison est sans objet, et le dire vaut mieux que
+    // signaler vingt-sept créneaux qui ne manquent pas.
+    if (controle.talksConnus == null) {
+      return '<strong>Projet trouvé.</strong> ' + echapper(controle.detail)
+    }
+    if (controle.manquants.length === 0) {
+      return '<strong class="text-ok">' + controle.talksConnus + ' talks chez OpenFeedback, ' +
+        'tous les créneaux ont le leur.</strong> ' + echapper(controle.detail)
+    }
+    const lignes = controle.manquants.map((creneau) =>
+      '<li>' + echapper(creneau.title) +
+      ' <span class="font-mono text-[11px] text-attenue">' + echapper(creneau.feedbackId) +
+      '</span></li>').join('')
+    return '<strong class="text-attention">' + controle.manquants.length +
+      ' créneau' + (controle.manquants.length > 1 ? 'x' : '') + ' sans page OpenFeedback</strong> ' +
+      '<span class="text-attenue">sur ' + controle.talksConnus + ' talks connus.</span> ' +
+      echapper(controle.detail) +
+      '<ul class="mt-1.5 list-disc pl-4">' + lignes + '</ul>'
+  }
+
+  $('btn-controle-feedback').onclick = () => void controlerFeedback()
+
+  /**
+   * Le bouton qui ouvre l'identifiant OpenFeedback d'un créneau.
+   *
+   * Discret, et à côté du lien : ce n'est pas un geste qu'on fait tous les
+   * jours. L'adresse se déduit de l'export en pariant qu'OpenFeedback réutilise
+   * sa numérotation, et le pari tient — jusqu'au jour où il ne tient plus, sans
+   * que rien ne le dise. Le bouton signale quand quelqu'un a déjà corrigé : une
+   * correction invisible est une correction qu'on refait.
+   */
+  function boutonIdFeedback(session) {
+    const corrige = session.feedbackIdOverride != null
+    return '<button class="btn btn-petit ml-1.5 ' +
+      (corrige ? 'text-attention' : 'text-attenue') + '" ' +
+      'data-feedback-session="' + echapper(session.id) + '" ' +
+      'title="' + (corrige ? 'Identifiant OpenFeedback corrigé' : 'Identifiant OpenFeedback') + '">' +
+      (corrige ? 'id ✱' : 'id') + '</button>'
+  }
+
+  $('planning').addEventListener('click', (evenement) => {
+    const bouton = evenement.target?.closest?.('[data-feedback-session]')
+    if (bouton == null) return
+    ouvrirIdFeedback(bouton.dataset.feedbackSession)
+  })
+
+  /** Le créneau dont la modale d'identifiant parle. */
+  let idOuvert = null
+
+  function fermerIdFeedback() {
+    idOuvert = null
+    document.body.dataset.feedback = 'ferme'
+  }
+
+  $('feedback-fermer').onclick = fermerIdFeedback
+  $('feedback-id').onclick = (evenement) => {
+    if (evenement.target === $('feedback-id')) fermerIdFeedback()
+  }
+
+  /**
+   * Ouvre la correction d'identifiant d'un créneau.
+   *
+   * Tout est déjà dans le planning en mémoire : pas d'appel au hub pour ouvrir,
+   * seulement pour enregistrer. Une modale qui attend le réseau pour afficher
+   * ce qu'on vient de lire dans le tableau derrière elle serait absurde.
+   */
+  function ouvrirIdFeedback(sessionId) {
+    const creneau = (planning?.sessions ?? []).find((session) => session.id === sessionId)
+    if (creneau == null) return
+    idOuvert = sessionId
+    document.body.dataset.feedback = 'ouvert'
+    $('feedback-titre').textContent = creneau.title
+    $('feedback-export').textContent = creneau.id
+    $('feedback-champ').value = creneau.feedbackIdOverride ?? ''
+    $('feedback-champ').placeholder = creneau.id
+    rendreApercuFeedback(creneau)
+    $('feedback-erreur').hidden = true
+  }
+
+  /**
+   * L'adresse telle qu'elle sera, pendant qu'on tape.
+   *
+   * Recomposée dans la page à partir du lien que le hub a déjà rendu : c'est le
+   * seul segment qui change, et voir l'adresse entière est ce qui permet de la
+   * comparer à celle qu'on a sous les yeux dans OpenFeedback. Le hub reste seul
+   * à fabriquer celle qui fait foi — celle-ci n'est qu'un aperçu, remplacé par
+   * sa réponse dès qu'on enregistre.
+   */
+  function rendreApercuFeedback(creneau) {
+    const saisi = $('feedback-champ').value.trim()
+    const identifiant = saisi === '' ? creneau.id : saisi
+    const base = creneau.feedbackUrl
+    if (base == null) {
+      $('feedback-apercu').innerHTML = '<span class="text-attention">Aucun projet OpenFeedback ' +
+        'réglé : il n’y aura d’adresse pour personne tant que le champ des réglages est vide.</span>'
+      return
+    }
+    const adresse = base.slice(0, base.lastIndexOf('/') + 1) + encodeURIComponent(identifiant)
+    $('feedback-apercu').innerHTML = '<a class="font-mono text-[11px] break-all text-marque" ' +
+      'target="_blank" rel="noopener" href="' + echapper(adresse) + '">' +
+      echapper(adresse) + ' ↗</a>'
+  }
+
+  $('feedback-champ').oninput = () => {
+    const creneau = (planning?.sessions ?? []).find((session) => session.id === idOuvert)
+    if (creneau != null) rendreApercuFeedback(creneau)
+  }
+
+  async function enregistrerIdFeedback(valeur) {
+    const sessionId = idOuvert
+    if (sessionId == null) return
+    try {
+      const reponse = await appeler('sessions/feedbackId', { sessionId, feedbackId: valeur })
+      avis(valeur == null
+        ? 'Créneau rendu à l’identifiant de l’export'
+        : 'Identifiant OpenFeedback corrigé')
+      fermerIdFeedback()
+      // Relu depuis le hub : c'est lui qui sert le programme corrigé, et les
+      // salles viennent de recevoir l'invalidation. Reconstruire la ligne ici la
+      // ferait diverger de ce que projettent les QR.
+      void reponse
+      await chargerPlanning()
+    } catch (cause) {
+      const zone = $('feedback-erreur')
+      zone.hidden = false
+      // Dans la modale et non dans l'avis flottant : l'erreur porte sur ce
+      // qu'on vient de taper, et c'est là qu'on va le corriger.
+      zone.textContent = cause.message
+    }
+  }
+
+  $('feedback-enregistrer').onclick = () => {
+    const saisi = $('feedback-champ').value.trim()
+    void enregistrerIdFeedback(saisi === '' ? null : saisi)
+  }
+  $('feedback-rendre').onclick = () => void enregistrerIdFeedback(null)
+
+  /**
+   * Le bouton qui ouvre le dossier VOD d'un créneau.
+   *
+   * Rien sur une pause : personne ne cherche le rush du déjeuner, et un bouton
+   * qui ouvrirait une modale vide sur vingt-sept lignes ferait douter des
+   * vingt-sept. Rien non plus sur une pause héritée, qui n'a même pas
+   * d'existence propre dans l'export.
+   */
+  function boutonVod(session) {
+    if (session.kind === 'break' || session.sharedFrom != null) {
+      return '<span class="text-attenue">—</span>'
+    }
+    return '<button class="btn btn-petit" data-vod-session="' + echapper(session.id) + '" ' +
+      'title="Où en est la captation de cette conférence">captation</button>'
+  }
+
+  /**
+   * Un seul écouteur sur le tableau, comme pour les menus d'action.
+   *
+   * Les lignes sont réécrites toutes les dix secondes : un écouteur posé sur
+   * chaque bouton serait à reposer à chaque tour, et un bouton recréé entre
+   * l'appui et le relâchement perdrait le sien sans que rien ne le dise.
+   */
+  $('planning').addEventListener('click', (evenement) => {
+    const bouton = evenement.target?.closest?.('[data-vod-session]')
+    if (bouton == null) return
+    void ouvrirDossierVod(bouton.dataset.vodSession)
+  })
+
+  /** Le créneau dont la modale parle : elle se rafraîchit sur lui, pas sur l'écran. */
+  let vodOuverte = null
+
+  function fermerDossierVod() {
+    vodOuverte = null
+    document.body.dataset.vod = 'ferme'
+  }
+
+  $('vod-fermer').onclick = fermerDossierVod
+  // Le fond, comme partout ailleurs : cliquer à côté referme, cliquer dedans non.
+  $('dossier-vod').onclick = (evenement) => {
+    if (evenement.target === $('dossier-vod')) fermerDossierVod()
+  }
+
+  /**
+   * Ouvre le dossier VOD d'une conférence.
+   *
+   * La modale s'ouvre **avant** la réponse du hub, sur un message d'attente :
+   * elle interroge le journal d'ingestion d'une salle, et sur un hub qui a
+   * tourné trois jours, cela se compte en dizaines de millisecondes plutôt
+   * qu'en une. Ouvrir après ferait douter du clic.
+   */
+  async function ouvrirDossierVod(sessionId) {
+    const creneau = (planning?.sessions ?? []).find((session) => session.id === sessionId)
+    vodOuverte = sessionId
+    document.body.dataset.vod = 'ouvert'
+    $('vod-titre').textContent = creneau?.title ?? 'Captation'
+    $('vod-sous-titre').textContent = creneau == null
+      ? ''
+      : (creneau.roomName ?? 'salle inconnue') +
+        (creneau.speakers.length === 0 ? '' : ' · ' + creneau.speakers.join(', '))
+    $('vod-corps').innerHTML = '<div class="text-attenue">Lecture…</div>'
+
+    try {
+      const dossier = await appeler('vod/conference', { sessionId })
+      // Une réponse qui arrive après qu'on a refermé, ou après avoir ouvert une
+      // autre conférence, ne doit pas repeindre la modale par-dessus.
+      if (vodOuverte !== sessionId) return
+      $('vod-corps').innerHTML = rendreDossierVod(dossier)
+      for (const bouton of $('vod-corps').querySelectorAll('[data-vod-relancer]')) {
+        bouton.onclick = () => void demanderVod(bouton.dataset.vodRelancer, bouton.dataset.vodFichier)
+      }
+    } catch (cause) {
+      if (vodOuverte !== sessionId) return
+      $('vod-corps').innerHTML = '<div class="text-alerte">' + echapper(cause.message) + '</div>'
+    }
+  }
+
+  /**
+   * Le dossier, en deux moitiés, dans l'ordre où la question se pose.
+   *
+   * D'abord la prise — « est-ce que la salle l'a ? » —, puis le téléversement —
+   * « est-ce que c'est parti ? ». Les deux sont indépendantes, et c'est
+   * précisément pour cela qu'elles s'affichent l'une sous l'autre plutôt que
+   * fondues en un état unique : « pas de rush » et « rush jamais monté » se
+   * traitent le même soir mais pas de la même façon.
+   */
+  function rendreDossierVod(dossier) {
+    return sectionCaptations(dossier) + sectionTeleversements(dossier)
+  }
+
+  function sectionCaptations(dossier) {
+    const titre = '<h3 class="titre-panneau">Sur la régie</h3>'
+    if (dossier.roomId == null) {
+      return titre + '<div class="aide">Ce créneau n’est rattaché à aucune salle dans ' +
+        'l’export : aucune régie n’avait à l’enregistrer.</div>'
+    }
+    if (dossier.captations.length === 0) {
+      return titre +
+        '<div class="text-attention">Aucune prise remontée par ' +
+        echapper(dossier.roomName ?? dossier.roomId) + '.</div>' +
+        '<div class="aide">Le hub ne lit pas le disque de la régie : il recompose les ' +
+        'prises depuis ce que la salle remonte en démarrant et en arrêtant OBS. Rien ici ' +
+        'veut dire qu’aucun enregistrement n’a été signalé sur ce créneau — pas qu’il n’y ' +
+        'a rien sur le disque. À vérifier en régie avant de démonter la salle.</div>'
+    }
+    return titre + dossier.captations.map(ligneCaptation).join('')
+  }
+
+  function ligneCaptation(captation) {
+    const etat = captation.enCours
+      ? '<span class="text-marque">enregistrement en cours</span>'
+      : captation.file == null
+        ? '<span class="text-alerte">arrêtée sans fichier</span>'
+        : '<span class="text-ok">fichier écrit</span>'
+    // Le sidecar n'est pas un détail : sans lui le rush arrive au montage sans
+    // titre, sans intervenants et sans marqueurs.
+    const sidecar = captation.enCours
+      ? ''
+      : captation.sidecarWritten
+        ? ' · sidecar écrit'
+        : ' · <span class="text-attention">sans sidecar</span>'
+    const duree = captation.durationMs == null
+      ? ''
+      : ' · ' + Math.round(captation.durationMs / 60000) + ' min'
+    // Un rattachement déduit de l'heure est une piste, pas un fait : le dire.
+    const deduit = captation.rattachement === 'horaire'
+      ? '<div class="text-[11px] text-attention">Rattachée à l’heure : la prise ne porte ' +
+        'aucun créneau, mais elle recouvre celui-ci dans la même salle.</div>'
+      : ''
+    const chemin = captation.file == null
+      ? '<div class="text-[11px] text-alerte">OBS n’a rendu aucun chemin — disque plein, ' +
+        'ou processus tué en plein arrêt.</div>'
+      : '<div class="font-mono text-[11px] break-all">' + echapper(captation.file) + '</div>'
+    // L'heure de l'événement, comme partout : c'est celle du planning juste
+    // derrière, et la seule qui se compare à l'horaire annoncé du talk.
+    const quand = heureEvenement(captation.startedAt) +
+      (captation.endedAt == null ? '–…' : '–' + heureEvenement(captation.endedAt))
+    return '<div class="border-t border-bord py-2 first:border-t-0">' +
+      '<div class="text-sm">' + etat + ' · OBS ' + echapper(captation.obs) + duree + sidecar + '</div>' +
+      '<div class="text-[11px] tabular-nums text-attenue">' + quand + '</div>' +
+      chemin + deduit +
+      '</div>'
+  }
+
+  function sectionTeleversements(dossier) {
+    const titre = '<h3 class="titre-panneau mt-3.5">Chez le stockage</h3>'
+    if (!dossier.stockageConfigure) {
+      return titre + '<div class="aide">Aucun stockage configuré sur ce hub : rien ne peut ' +
+        'partir, et « rien de monté » ne veut donc rien dire ici. Le stockage se règle dans ' +
+        '<strong>Réglages → Rapatriement des rushes</strong>.</div>'
+    }
+    if (dossier.televersements.length === 0) {
+      const rushDispo = dossier.captations.some((prise) => !prise.enCours && prise.file != null)
+      const relance = rushDispo
+        // Sans attribut data-vod-fichier : absent, il arrive en undefined, que
+        // demanderVod traduit en « tout ce qui n'est pas encore monté ». Un
+        // attribut vide passerait une chaîne vide pour un nom de fichier.
+        ? '<button class="btn btn-petit mt-1.5" data-vod-relancer="' +
+          echapper(dossier.roomId) + '">Rapatrier cette salle</button>'
+        : ''
+      return titre +
+        '<div class="' + (rushDispo ? 'text-attention' : 'text-attenue') + '">' +
+        'Rien de monté pour cette conférence.</div>' + relance
+    }
+    return titre + dossier.televersements.map(ligneTeleversement).join('')
+  }
+
+  function ligneTeleversement(ligne) {
+    const etat = ETATS_VOD[ligne.state] ?? [ligne.state, '']
+    const pourcent = ligne.sizeBytes > 0
+      ? Math.min(100, Math.round((ligne.bytesSent / ligne.sizeBytes) * 100))
+      : 0
+    const erreur = ligne.lastError == null
+      ? ''
+      : '<div class="text-[11px] text-alerte">' + echapper(ligne.lastError) + '</div>'
+    const relance = ligne.state === 'termine'
+      ? ''
+      : '<button class="btn btn-petit mt-1.5" data-vod-relancer="' + echapper(ligne.roomId) +
+        '" data-vod-fichier="' + echapper(ligne.file) + '">Relancer</button>'
+    // La clé d'objet, pas seulement le nom du fichier : c'est elle qu'on donne
+    // à qui va chercher le rush dans le bucket.
+    return '<div class="border-t border-bord py-2 first:border-t-0">' +
+      '<div class="text-sm"><span class="' + etat[1] + '">' + etat[0] + '</span> · ' +
+      echapper(ligne.kind) + ' · ' + pourcent + ' %</div>' +
+      '<div class="font-mono text-[11px] break-all">' + echapper(ligne.objectKey) + '</div>' +
+      erreur + relance +
+      '</div>'
   }
 
   /**
@@ -3125,7 +3666,9 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
   $('resync-annuler').onclick = fermerConfirmationResync
   $('resync-confirmer').onclick = () => void confirmerResync()
   document.addEventListener('keydown', (evenement) => {
-    if (evenement.key === 'Escape') { fermerVerdict(); fermerConfirmationResync() }
+    if (evenement.key === 'Escape') {
+      fermerVerdict(); fermerConfirmationResync(); fermerDossierVod(); fermerIdFeedback()
+    }
   })
 
   $('btn-rafraichir').onclick = () => tout()

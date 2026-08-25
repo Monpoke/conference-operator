@@ -7,7 +7,7 @@ import {
   type Program,
   type SessionKind,
 } from '@cloudnord/program'
-import { programSnapshot, sessionOverride } from '@cloudnord/db/hub'
+import { programSnapshot, sessionFeedback, sessionOverride } from '@cloudnord/db/hub'
 import type { HubDatabase } from '../db.js'
 
 export interface Snapshot {
@@ -181,7 +181,25 @@ export class ProgramService {
         .filter((surcharge) => surcharge.status === 'talk' || surcharge.status === 'break')
         .map((surcharge) => [surcharge.sessionId, surcharge.status as SessionKind]),
     )
-    if (decisions.size === 0) {
+    /**
+     * Les identifiants OpenFeedback corrigés à la main.
+     *
+     * Appliqués ici, au même endroit que les décisions de genre, et pour la
+     * même raison : la salle dessine ses QR hors ligne depuis ce programme, et
+     * la console lit le sien depuis le même. Poser la correction ailleurs
+     * ferait vivre la même vérité à deux endroits, et c'est l'adresse projetée
+     * devant le public qui finirait par être la mauvaise.
+     */
+    const corrections = new Map(
+      this.db
+        .select()
+        .from(sessionFeedback)
+        .orderBy(asc(sessionFeedback.sessionId))
+        .all()
+        .map((ligne) => [ligne.sessionId, ligne.feedbackId]),
+    )
+
+    if (decisions.size === 0 && corrections.size === 0) {
       return {
         contentHash: row.contentHash,
         program: applySharedBreaks(program),
@@ -191,14 +209,28 @@ export class ProgramService {
     }
 
     const appliquees: Record<string, SessionKind> = {}
+    /** Ce qui contredit réellement l'export : le reste ne compte pas. */
+    const idsAppliques: Record<string, string> = {}
     const sessions = program.sessions.map((session) => {
       const voulu = decisions.get(session.id)
-      if (voulu == null || voulu === session.kind) return session
-      appliquees[session.id] = voulu
-      return { ...session, kind: voulu }
+      const corrige = corrections.get(session.id)
+      // Une correction qui redit l'identifiant de l'export est sans objet,
+      // exactement comme une décision qui redit son genre : le programme servi
+      // doit rester octet pour octet celui du snapshot, sinon les salles
+      // retéléchargent pour rien.
+      const identifiant = corrige == null || corrige === session.id ? null : corrige
+      const genre = voulu == null || voulu === session.kind ? null : voulu
+      if (genre == null && identifiant == null) return session
+      if (genre != null) appliquees[session.id] = genre
+      if (identifiant != null) idsAppliques[session.id] = identifiant
+      return {
+        ...session,
+        ...(genre == null ? {} : { kind: genre }),
+        ...(identifiant == null ? {} : { feedbackId: identifiant }),
+      }
     })
 
-    if (Object.keys(appliquees).length === 0) {
+    if (Object.keys(appliquees).length === 0 && Object.keys(idsAppliques).length === 0) {
       return {
         contentHash: row.contentHash,
         program: applySharedBreaks(program),
@@ -214,9 +246,12 @@ export class ProgramService {
        * Les salles ne retéléchargent le programme que si l'empreinte a changé.
        * Garder celle du snapshot laisserait une salle sur son cache, à titrer à
        * l'antenne un déjeuner qu'on vient justement de déclarer comme tel — et
-       * ce sans que rien ne le signale.
+       * ce sans que rien ne le signale. Les identifiants corrigés y entrent au
+       * même titre : une correction que les salles ne retéléchargeraient pas
+       * laisserait le QR projeté sur l'ancienne adresse, celle qu'on vient
+       * justement de déclarer fausse.
        */
-      contentHash: `${row.contentHash}~${empreinteDes(appliquees)}`,
+      contentHash: `${row.contentHash}~${empreinteDes(appliquees, idsAppliques)}`,
       program: applySharedBreaks({ ...program, sessions }),
       importedAt: row.importedAt,
       overrides: appliquees,
@@ -244,10 +279,22 @@ export class ProgramService {
  * donner la même empreinte, sinon les salles retéléchargeraient sur un
  * changement qui n'en est pas un.
  */
-function empreinteDes(appliquees: Record<string, SessionKind>): string {
-  const trie = Object.entries(appliquees)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([sessionId, kind]) => `${sessionId}:${kind}`)
-    .join(',')
+function empreinteDes(
+  appliquees: Record<string, SessionKind>,
+  idsAppliques: Record<string, string> = {},
+): string {
+  const trier = (entrees: Record<string, string>, prefixe: string) =>
+    Object.entries(entrees)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([sessionId, valeur]) => `${prefixe}${sessionId}:${valeur}`)
+  /*
+   * Les deux familles sont préfixées.
+   *
+   * Sans préfixe, une décision et une correction portant le même couple
+   * (créneau, valeur) donneraient la même chaîne — improbable, mais une
+   * empreinte qui confond deux états différents est un bogue qu'on ne
+   * découvrirait qu'en salle, sur un cache qui refuse de se rafraîchir.
+   */
+  const trie = [...trier(appliquees, 'k:'), ...trier(idsAppliques, 'f:')].join(',')
   return createHash('sha256').update(trie).digest('hex').slice(0, 8)
 }

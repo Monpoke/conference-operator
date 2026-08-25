@@ -1166,6 +1166,7 @@ describe('vue Conférences', () => {
     timezone: 'Europe/Paris',
     // 10:12 UTC : « HoneySwamp » court, le déjeuner n'a pas commencé.
     serverTime: '2026-10-30T10:12:00.000Z',
+    openFeedbackProjectId: 'cloud-nord-2026',
     rooms: [
       { id: 'track-1', name: 'Track #1' },
       { id: 'hands-on', name: 'Hands on' },
@@ -1198,6 +1199,25 @@ describe('vue Conférences', () => {
   /** Appels partis vers le hub depuis l'ouverture de la vue. */
   let appels: { chemin: string; entree: unknown }[] = []
 
+  /** Ce que le hub répond au contrôle des liens, réglable par test. */
+  let controleFeedback: unknown = {
+    projet: 'cloud-nord-2026',
+    projetTrouve: true,
+    talksConnus: 27,
+    manquants: [],
+    detail: 'Tous les créneaux ont leur page chez OpenFeedback.',
+  }
+
+  /** Ce que le hub répond au dossier VOD, réglable par test. */
+  let dossierVod: unknown = {
+    sessionId: 'ses-1',
+    roomId: 'track-1',
+    roomName: 'Track #1',
+    stockageConfigure: false,
+    captations: [],
+    televersements: [],
+  }
+
   /** Ouvre la console sur l'onglet Conférences, hub simulé. */
   async function ouvrir(planning: unknown = PLANNING, etats: unknown = ETATS): Promise<void> {
     appels = []
@@ -1209,7 +1229,11 @@ describe('vue Conférences', () => {
           : chemin === 'program/planning' ? planning
             : chemin === 'program/snapshots' ? [{ contentHash: 'a1b2c3', active: true }]
               : chemin === 'sessions/override' ? { ok: true, contentHash: 'a1b2c3~ff' }
-                : []
+                : chemin === 'vod/conference' ? dossierVod
+                : chemin === 'sessions/feedbackId'
+                  ? { ok: true, feedbackId: 'of-42', feedbackUrl: null }
+                  : chemin === 'program/controleOpenFeedback' ? controleFeedback
+                    : []
       return new Response(JSON.stringify({ json }), { status: 200 })
     }))
     localStorage.setItem('hub-admin', 'jeton')
@@ -1356,6 +1380,261 @@ describe('vue Conférences', () => {
     ])
     // Rien à noter sur un déjeuner : la ligne existe, le lien non.
     expect(liens).not.toContain(null)
+  })
+
+  it('explique une colonne « Feedback » vide au lieu de la laisser vide', async () => {
+    // Sans projet réglé, la colonne n'est qu'une suite de tirets, et rien ne
+    // dit s'il manque un réglage ou si OpenFeedback n'est pas de la partie. La
+    // différence tient en un champ, encore faut-il savoir où il est.
+    await ouvrir({
+      ...PLANNING,
+      openFeedbackProjectId: null,
+      sessions: PLANNING.sessions.map((session) => ({ ...session, feedbackUrl: null })),
+    })
+
+    const aide = $('planning-feedback-aide') as HTMLElement
+    expect(aide.hidden).toBe(false)
+    expect(aide.textContent).toContain('Réglages')
+  })
+
+  it('ne dit rien du réglage OpenFeedback quand il est en place', async () => {
+    await ouvrir()
+
+    expect(($('planning-feedback-aide') as HTMLElement).hidden).toBe(true)
+  })
+
+  it('replie la colonne « Action » au premier abord', async () => {
+    // Elle est la seule de ce tableau qui *écrit*, et ce qu'elle écrit se
+    // propage partout : un créneau marqué break disparaît de l'antenne, de la
+    // régie et des QR. Un menu déroulant posé sur chaque ligne d'un planning
+    // qu'on parcourt toute la journée finit par se cliquer sans qu'on l'ait
+    // voulu, et rien dans le tableau ne le rattrape.
+    await ouvrir()
+
+    expect(document.body.dataset.planningActions).toBe('repliees')
+    // Repliée, pas absente : les menus restent dans le DOM, sous une règle CSS.
+    expect(menuDe('ses-1')).not.toBeNull()
+    expect(menuDe('ses-1')?.closest('td')?.className).toContain('col-action')
+    expect($('btn-planning-actions').getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('déplie la colonne « Action » sur demande, et le redit', async () => {
+    await ouvrir()
+
+    $('btn-planning-actions').click()
+
+    expect(document.body.dataset.planningActions).toBe('depliees')
+    expect($('btn-planning-actions').getAttribute('aria-expanded')).toBe('true')
+    expect($('btn-planning-actions').textContent).toContain('Masquer')
+  })
+
+  it('annonce les décisions en vigueur sans qu\'on déplie', async () => {
+    // Replier une colonne ne doit pas revenir à cacher qu'on a corrigé des
+    // créneaux : le bouton porte le compte.
+    await ouvrir({
+      ...PLANNING,
+      sessions: PLANNING.sessions.map((session) =>
+        session.id === 'ses-1' ? { ...session, overriddenAs: 'break' } : session),
+    })
+
+    expect($('btn-planning-actions').textContent).toContain('1 décision')
+  })
+
+  it('nomme les créneaux sans page OpenFeedback', async () => {
+    controleFeedback = {
+      projet: 'cloud-nord-2026',
+      projetTrouve: true,
+      talksConnus: 26,
+      manquants: [{ sessionId: 'ses-2', title: 'Event Iterators', feedbackId: 'ses-2' }],
+      detail: 'Ces créneaux n’ont pas de page chez OpenFeedback',
+    }
+    await ouvrir()
+
+    $('btn-controle-feedback').click()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    const zone = $('controle-feedback') as HTMLElement
+    expect(zone.hidden).toBe(false)
+    expect(zone.textContent).toContain('Event Iterators')
+    expect(zone.textContent).toContain('26 talks connus')
+  })
+
+  it('ne crie pas au loup quand OpenFeedback ne stocke pas les talks', async () => {
+    // Un projet qui lit ses sessions d'une source externe n'a rien à comparer :
+    // signaler les vingt-sept créneaux ferait abandonner le contrôle.
+    controleFeedback = {
+      projet: 'cloud-nord-2026',
+      projetTrouve: true,
+      talksConnus: null,
+      manquants: [],
+      detail: 'Le projet existe, mais OpenFeedback n’y stocke aucun talk',
+    }
+    await ouvrir()
+
+    $('btn-controle-feedback').click()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    const texte = $('controle-feedback').textContent ?? ''
+    expect(texte).toContain('Projet trouvé')
+    expect(texte).not.toContain('sans page')
+  })
+
+  it('ouvre l\'identifiant OpenFeedback d\'une conférence', async () => {
+    // L'adresse se fabrique en pariant qu'OpenFeedback réutilise les
+    // identifiants de l'export. Le pari se perd en silence : il faut pouvoir
+    // lire l'identifiant servi, et le corriger.
+    await ouvrir()
+
+    const bouton = $('planning').querySelector('[data-feedback-session="ses-1"]') as HTMLElement
+    expect(bouton).not.toBeNull()
+    bouton.click()
+
+    expect(document.body.dataset.feedback).toBe('ouvert')
+    expect($('feedback-titre').textContent).toBe('HoneySwamp')
+    // Vide : rien n'a été corrigé, l'export fait foi — et il est nommé à côté.
+    expect(($('feedback-champ') as HTMLInputElement).value).toBe('')
+    expect($('feedback-export').textContent).toBe('ses-1')
+  })
+
+  it('montre l\'adresse tant qu\'on tape, avant d\'enregistrer', async () => {
+    // C'est ce qui permet de la comparer à celle qu'on a sous les yeux dans
+    // OpenFeedback : l'identifiant seul ne se vérifie pas.
+    await ouvrir()
+    ;($('planning').querySelector('[data-feedback-session="ses-1"]') as HTMLElement).click()
+
+    const champ = $('feedback-champ') as HTMLInputElement
+    champ.value = 'of-42'
+    champ.dispatchEvent(new Event('input'))
+
+    expect($('feedback-apercu').textContent).toContain(
+      'https://openfeedback.io/cloud-nord-2026/2026-10-30/of-42',
+    )
+  })
+
+  it('signale un créneau dont l\'identifiant a déjà été corrigé', async () => {
+    // Une correction invisible est une correction qu'on refait.
+    await ouvrir({
+      ...PLANNING,
+      sessions: PLANNING.sessions.map((session) =>
+        session.id === 'ses-1' ? { ...session, feedbackIdOverride: 'of-42' } : session),
+    })
+
+    const bouton = $('planning').querySelector('[data-feedback-session="ses-1"]') as HTMLElement
+    expect(bouton.textContent).toContain('✱')
+    expect(bouton.getAttribute('title')).toContain('corrigé')
+  })
+
+  it('enregistre la correction auprès du hub', async () => {
+    await ouvrir()
+    ;($('planning').querySelector('[data-feedback-session="ses-1"]') as HTMLElement).click()
+    ;($('feedback-champ') as HTMLInputElement).value = 'of-42'
+
+    $('feedback-enregistrer').click()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(appels).toContainEqual({
+      chemin: 'sessions/feedbackId',
+      entree: { sessionId: 'ses-1', feedbackId: 'of-42' },
+    })
+    expect(document.body.dataset.feedback).toBe('ferme')
+  })
+
+  it('rend un créneau à l\'export d\'un bouton', async () => {
+    await ouvrir()
+    ;($('planning').querySelector('[data-feedback-session="ses-1"]') as HTMLElement).click()
+
+    $('feedback-rendre').click()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    // `null`, pas la chaîne vide : c'est ce qui supprime la ligne côté hub.
+    expect(appels).toContainEqual({
+      chemin: 'sessions/feedbackId',
+      entree: { sessionId: 'ses-1', feedbackId: null },
+    })
+  })
+
+  it('n\'offre pas de corriger l\'identifiant d\'une pause', async () => {
+    await ouvrir()
+
+    expect($('planning').querySelector('[data-feedback-session="pause"]')).toBeNull()
+  })
+
+  it('ouvre le dossier VOD d\'une conférence', async () => {
+    dossierVod = {
+      sessionId: 'ses-1',
+      roomId: 'track-1',
+      roomName: 'Track #1',
+      stockageConfigure: true,
+      captations: [
+        {
+          roomId: 'track-1', obs: 'B', startedAt: '2026-10-30T10:04:00.000Z',
+          endedAt: '2026-10-30T10:52:00.000Z', durationMs: 2_880_000,
+          file: '/rushes/honeyswamp.mkv', sidecarWritten: true, enCours: false,
+          rattachement: 'session',
+        },
+      ],
+      televersements: [
+        {
+          roomId: 'track-1', roomName: 'Track #1', file: 'honeyswamp.mkv', kind: 'rush',
+          sessionId: 'ses-1', objectKey: 'cn26/track-1/honeyswamp.mkv', state: 'termine',
+          sizeBytes: 1000, bytesSent: 1000, debitOctetsS: null,
+          startedAt: '2026-10-30T11:00:00.000Z', lastProgressAt: null,
+          finishedAt: '2026-10-30T11:20:00.000Z', attempts: 1, lastError: null,
+        },
+      ],
+    }
+    await ouvrir()
+
+    const bouton = $('planning').querySelector('[data-vod-session="ses-1"]') as HTMLElement
+    expect(bouton).not.toBeNull()
+    bouton.click()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(document.body.dataset.vod).toBe('ouvert')
+    expect($('vod-titre').textContent).toBe('HoneySwamp')
+    const corps = $('vod-corps').textContent ?? ''
+    // Les deux moitiés, dans l'ordre où la question se pose : est-ce que la
+    // salle l'a, puis est-ce que c'est parti.
+    expect(corps).toContain('/rushes/honeyswamp.mkv')
+    expect(corps).toContain('cn26/track-1/honeyswamp.mkv')
+    expect(appels.some((appel) => appel.chemin === 'vod/conference')).toBe(true)
+  })
+
+  it('dit qu\'aucune prise n\'a été remontée plutôt que de rester muet', async () => {
+    // Le hub ne lit pas le disque de la régie : « rien ici » veut dire « rien
+    // n'a été signalé », pas « il n'y a rien sur le disque ». La nuance décide
+    // si on va voir en salle avant de démonter.
+    dossierVod = {
+      sessionId: 'ses-1', roomId: 'track-1', roomName: 'Track #1',
+      stockageConfigure: false, captations: [], televersements: [],
+    }
+    await ouvrir()
+
+    ;($('planning').querySelector('[data-vod-session="ses-1"]') as HTMLElement).click()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    const corps = $('vod-corps').textContent ?? ''
+    expect(corps).toContain('Aucune prise remontée')
+    // Sans stockage, « rien de monté » ne veut rien dire : on le dit autrement.
+    expect(corps).toContain('Aucun stockage configuré')
+  })
+
+  it('n\'offre pas de dossier VOD sur une pause', async () => {
+    // Personne ne cherche le rush du déjeuner, et un bouton qui ouvrirait une
+    // modale vide sur une ligne ferait douter des autres.
+    await ouvrir()
+
+    expect($('planning').querySelector('[data-vod-session="pause"]')).toBeNull()
+  })
+
+  it('referme le dossier VOD sur Échap', async () => {
+    await ouvrir()
+    ;($('planning').querySelector('[data-vod-session="ses-1"]') as HTMLElement).click()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+
+    expect(document.body.dataset.vod).toBe('ferme')
   })
 
   it('se filtre sur une salle sans redemander au hub', async () => {

@@ -194,6 +194,33 @@ export const sessionOverride = sqliteTable('session_override', {
 })
 
 /**
+ * Identifiant OpenFeedback d'une conférence, quand celui de l'export ne va pas.
+ *
+ * L'adresse `openfeedback.io/{projet}/{jour}/{id}` se fabrique sans le moindre
+ * appel réseau, en pariant qu'OpenFeedback réutilise les identifiants de
+ * session de l'export amont. Le pari a tenu jusqu'ici — les vingt-sept
+ * concordent — mais rien ne le garantit, et c'est un pari qui se perd en
+ * silence : le lien reste cliquable, le QR reste scannable, et ils mènent à une
+ * page qui ne parle d'aucun talk. Personne ne s'en aperçoit avant que les
+ * retours ne manquent, c'est-à-dire trop tard.
+ *
+ * Une ligne ici corrige un créneau, à la main, sans toucher à l'export. Table
+ * à part et non colonne de `session_override` : celle-là porte une décision
+ * sur le *genre* du créneau, avec un `status` obligatoire, et corriger un
+ * identifiant n'est pas décider qu'un talk est une pause.
+ *
+ * Survit au réimport, comme les surcharges : c'est bien la propriété du hub,
+ * pas celle du programme, et le programme réimporté ramènerait l'identifiant
+ * fautif.
+ */
+export const sessionFeedback = sqliteTable('session_feedback', {
+  sessionId: text('session_id').primaryKey(),
+  /** Ce qu'on met dans l'URL à la place de l'identifiant de l'export. */
+  feedbackId: text('feedback_id').notNull(),
+  updatedAt: text('updated_at').notNull().default(now),
+})
+
+/**
  * Liaison machine → salle.
  *
  * Better Auth (device authorization) authentifie **l'opérateur** qui a mis la
@@ -397,6 +424,7 @@ export const hubSchema = {
   question,
   questionVote,
   sessionOverride,
+  sessionFeedback,
   roomDevice,
   deviceRequest,
   sessionState,

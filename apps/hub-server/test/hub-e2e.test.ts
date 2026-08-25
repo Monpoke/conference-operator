@@ -827,6 +827,92 @@ describe('planning du programme actif', () => {
     expect(planning.sessions.every((session) => session.feedbackUrl == null)).toBe(true)
   })
 
+  it('corrige l\'identifiant OpenFeedback d\'un créneau', async () => {
+    // Le pari « OpenFeedback réutilise les identifiants de l'export » se perd en
+    // silence : le lien reste cliquable, le QR reste scannable, et les deux
+    // mènent à une page qui ne parle d'aucun talk. Sans cette correction, un QR
+    // mort ne se répare pas — l'export le ramènerait à chaque import.
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    await admin.settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
+    const talk = (await admin.program.planning()).sessions.find((s) => s.kind === 'talk')!
+
+    const pose = await admin.sessions.feedbackId({ sessionId: talk.id, feedbackId: 'of-42' })
+
+    expect(pose.feedbackId).toBe('of-42')
+    expect(pose.feedbackUrl).toBe('https://openfeedback.io/cloud-nord-2026/2026-10-30/of-42')
+
+    const apres = (await admin.program.planning()).sessions.find((s) => s.id === talk.id)!
+    expect(apres.feedbackId).toBe('of-42')
+    expect(apres.feedbackIdOverride).toBe('of-42')
+    // L'identifiant du créneau, lui, ne bouge pas : c'est la clé du cycle de vie.
+    expect(apres.id).toBe(talk.id)
+  })
+
+  it('fait suivre la correction jusqu\'au programme servi aux salles', async () => {
+    // La salle dessine ses QR hors ligne depuis ce programme. Si la correction
+    // n'y était pas, la console afficherait la bonne adresse pendant que
+    // l'écran en projetterait une autre — et c'est celle devant le public qui
+    // serait la mauvaise.
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    await admin.settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
+    const talk = (await admin.program.planning()).sessions.find(
+      (s) => s.kind === 'talk' && s.roomId === TRACK_1,
+    )!
+    const room = wsClient(await pairRoomDevice())
+    const avant = await room.rooms.sync({ since: null })
+
+    await admin.sessions.feedbackId({ sessionId: talk.id, feedbackId: 'of-42' })
+
+    const apres = await room.rooms.sync({ since: avant.contentHash })
+    // L'empreinte bouge : sans cela une salle resterait sur son cache, à
+    // projeter l'adresse qu'on vient justement de déclarer fausse.
+    expect(apres.contentHash).not.toBe(avant.contentHash)
+    expect(apres.program).not.toBeNull()
+    const servi = apres.program!.sessions.find((s) => s.id === talk.id)!
+    expect(servi.feedbackId).toBe('of-42')
+  }, 20_000)
+
+  it('rend un créneau à l\'identifiant de l\'export', async () => {
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    await admin.settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
+    const talk = (await admin.program.planning()).sessions.find((s) => s.kind === 'talk')!
+    await admin.sessions.feedbackId({ sessionId: talk.id, feedbackId: 'of-42' })
+
+    const retire = await admin.sessions.feedbackId({ sessionId: talk.id, feedbackId: null })
+
+    expect(retire.feedbackId).toBe(talk.id)
+    const apres = (await admin.program.planning()).sessions.find((s) => s.id === talk.id)!
+    expect(apres.feedbackIdOverride).toBeNull()
+    expect(apres.feedbackUrl).toBe(
+      `https://openfeedback.io/cloud-nord-2026/2026-10-30/${talk.id}`,
+    )
+  })
+
+  it('ne compte pas une correction qui redit l\'export', async () => {
+    // Même règle que pour les décisions de genre : une correction sans objet ne
+    // doit pas changer l'empreinte, sinon les salles retéléchargent pour rien.
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    const talk = (await admin.program.planning()).sessions.find((s) => s.kind === 'talk')!
+    const avant = (await admin.program.planning()).contentHash
+
+    await admin.sessions.feedbackId({ sessionId: talk.id, feedbackId: talk.id })
+
+    const apres = await admin.program.planning()
+    expect(apres.contentHash).toBe(avant)
+    expect(apres.sessions.find((s) => s.id === talk.id)?.feedbackIdOverride).toBeNull()
+  })
+
+  it('refuse de corriger l\'identifiant d\'une pause', async () => {
+    // Une pause n'a pas de page de retours : la ligne posée ne serait relue par
+    // personne.
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    const pause = (await admin.program.planning()).sessions.find((s) => s.kind === 'break')!
+
+    await expect(
+      admin.sessions.feedbackId({ sessionId: pause.id, feedbackId: 'of-42' }),
+    ).rejects.toThrow()
+  })
+
   it('ne propose rien à noter sur une pause', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
 

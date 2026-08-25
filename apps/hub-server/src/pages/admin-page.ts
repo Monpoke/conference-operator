@@ -253,6 +253,10 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
   #dossier-vod { display: none; }
   body[data-vod="ouvert"] #dossier-vod { display: flex; }
 
+  /* Identifiant OpenFeedback d'un créneau : même mécanique. */
+  #feedback-id { display: none; }
+  body[data-feedback="ouvert"] #feedback-id { display: flex; }
+
   /*
    * La colonne « Action » du planning, repliée par défaut.
    *
@@ -265,7 +269,7 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
   body[data-planning-actions="repliees"] .col-action { display: none; }
 </style>
 </head>
-<body class="bg-fond font-sans text-texte" data-planning-actions="repliees" data-vod="ferme">
+<body class="bg-fond font-sans text-texte" data-planning-actions="repliees" data-vod="ferme" data-feedback="ferme">
 <div class="mx-auto my-[12vh] max-w-[380px] p-5" id="connexion">
   <section class="panneau">
     <h2 class="titre-panneau">Console hub</h2>
@@ -880,6 +884,58 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
     <div class="flex justify-end gap-1.5">
       <button id="notif-fermer">Fermer</button>
       <button class="principal" id="notif-appliquer">Appliquer</button>
+    </div>
+  </div>
+</div>
+
+<!--
+  L'identifiant OpenFeedback d'une conférence.
+
+  L'adresse « notez ce talk » se fabrique hors ligne — projet, jour, identifiant —
+  en pariant qu'OpenFeedback réutilise les identifiants de l'export amont. Le
+  pari tient : les vingt-sept concordent. Mais c'est un pari qui se perd en
+  silence — le lien reste cliquable, le QR reste scannable, et les deux mènent à
+  une page qui ne parle d'aucun talk. On ne s'en aperçoit qu'aux retours
+  manquants, c'est-à-dire une fois l'événement fini.
+
+  D'où cette modale : voir l'identifiant servi, l'adresse entière pour la
+  comparer à celle qu'on a sous les yeux dans OpenFeedback, et la corriger sans
+  toucher à l'export. La correction survit au réimport — sans quoi le prochain
+  import ramènerait l'identifiant fautif.
+-->
+<div class="fixed inset-0 z-50 items-center justify-center bg-black/65 p-4" id="feedback-id">
+  <div class="panneau w-full max-w-[520px]">
+    <div class="mb-2.5 flex items-start gap-2">
+      <h2 class="titre-panneau mb-0 flex-1" id="feedback-titre">Identifiant OpenFeedback</h2>
+      <button class="shrink-0" id="feedback-fermer">Fermer</button>
+    </div>
+    <div class="mb-[11px]">
+      <label for="feedback-champ">Identifiant servi</label>
+      <!--
+        Le placeholder est atténué à la main : la feuille du thème ne le
+        distingue pas d'une valeur saisie, et ici les deux disent la même chose
+        — l'identifiant de l'export. Confondus, le champ paraît déjà rempli, et
+        « Enregistrer » semble poser une correction qui n'en est pas une.
+      -->
+      <input id="feedback-champ" type="text" maxlength="200" autocomplete="off"
+        class="placeholder:text-attenue placeholder:italic">
+    </div>
+    <div class="aide">
+      Vide, c'est celui de l'export qui sert :
+      <strong class="font-mono" id="feedback-export"></strong>. Ne le corrigez
+      que si la page OpenFeedback du talk porte un autre identifiant — c'est
+      elle qui fait foi, pas l'export.
+    </div>
+    <div class="mt-2" id="feedback-apercu"></div>
+    <div class="mt-2 text-sm text-alerte" id="feedback-erreur" hidden></div>
+    <div class="mt-3.5 flex justify-end gap-1.5">
+      <button id="feedback-rendre">Rendre à l'export</button>
+      <button class="principal" id="feedback-enregistrer">Enregistrer</button>
+    </div>
+    <div class="aide">
+      La correction vaut jusqu'à ce qu'on la retire, réimports compris, et
+      descend aux salles : le QR projeté suit, sans quoi la console et l'écran
+      afficheraient deux adresses différentes pour le même talk.
     </div>
   </div>
 </div>
@@ -2231,6 +2287,9 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
         ? '<a class="font-semibold text-marque no-underline" target="_blank" rel="noopener" href="' +
           echapper(session.feedbackUrl) + '">noter ↗</a>'
         : '<span class="text-attenue">—</span>'
+      const feedback = session.kind === 'break'
+        ? lien
+        : lien + boutonIdFeedback(session)
 
       /**
        * Trois traitements, un seul repère.
@@ -2270,12 +2329,127 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
           ? '<div class="text-xs font-semibold text-marque">en ce moment</div>'
           : '') +
         '</td>' +
-        '<td>' + lien + '</td>' +
+        '<td class="whitespace-nowrap">' + feedback + '</td>' +
         '<td>' + boutonVod(session) + '</td>' +
         '<td class="col-action">' + actionDuCreneau(session) + '</td>' +
         '</tr>'
     }).join('')
   }
+
+  /**
+   * Le bouton qui ouvre l'identifiant OpenFeedback d'un créneau.
+   *
+   * Discret, et à côté du lien : ce n'est pas un geste qu'on fait tous les
+   * jours. L'adresse se déduit de l'export en pariant qu'OpenFeedback réutilise
+   * sa numérotation, et le pari tient — jusqu'au jour où il ne tient plus, sans
+   * que rien ne le dise. Le bouton signale quand quelqu'un a déjà corrigé : une
+   * correction invisible est une correction qu'on refait.
+   */
+  function boutonIdFeedback(session) {
+    const corrige = session.feedbackIdOverride != null
+    return '<button class="btn btn-petit ml-1.5 ' +
+      (corrige ? 'text-attention' : 'text-attenue') + '" ' +
+      'data-feedback-session="' + echapper(session.id) + '" ' +
+      'title="' + (corrige ? 'Identifiant OpenFeedback corrigé' : 'Identifiant OpenFeedback') + '">' +
+      (corrige ? 'id ✱' : 'id') + '</button>'
+  }
+
+  $('planning').addEventListener('click', (evenement) => {
+    const bouton = evenement.target?.closest?.('[data-feedback-session]')
+    if (bouton == null) return
+    ouvrirIdFeedback(bouton.dataset.feedbackSession)
+  })
+
+  /** Le créneau dont la modale d'identifiant parle. */
+  let idOuvert = null
+
+  function fermerIdFeedback() {
+    idOuvert = null
+    document.body.dataset.feedback = 'ferme'
+  }
+
+  $('feedback-fermer').onclick = fermerIdFeedback
+  $('feedback-id').onclick = (evenement) => {
+    if (evenement.target === $('feedback-id')) fermerIdFeedback()
+  }
+
+  /**
+   * Ouvre la correction d'identifiant d'un créneau.
+   *
+   * Tout est déjà dans le planning en mémoire : pas d'appel au hub pour ouvrir,
+   * seulement pour enregistrer. Une modale qui attend le réseau pour afficher
+   * ce qu'on vient de lire dans le tableau derrière elle serait absurde.
+   */
+  function ouvrirIdFeedback(sessionId) {
+    const creneau = (planning?.sessions ?? []).find((session) => session.id === sessionId)
+    if (creneau == null) return
+    idOuvert = sessionId
+    document.body.dataset.feedback = 'ouvert'
+    $('feedback-titre').textContent = creneau.title
+    $('feedback-export').textContent = creneau.id
+    $('feedback-champ').value = creneau.feedbackIdOverride ?? ''
+    $('feedback-champ').placeholder = creneau.id
+    rendreApercuFeedback(creneau)
+    $('feedback-erreur').hidden = true
+  }
+
+  /**
+   * L'adresse telle qu'elle sera, pendant qu'on tape.
+   *
+   * Recomposée dans la page à partir du lien que le hub a déjà rendu : c'est le
+   * seul segment qui change, et voir l'adresse entière est ce qui permet de la
+   * comparer à celle qu'on a sous les yeux dans OpenFeedback. Le hub reste seul
+   * à fabriquer celle qui fait foi — celle-ci n'est qu'un aperçu, remplacé par
+   * sa réponse dès qu'on enregistre.
+   */
+  function rendreApercuFeedback(creneau) {
+    const saisi = $('feedback-champ').value.trim()
+    const identifiant = saisi === '' ? creneau.id : saisi
+    const base = creneau.feedbackUrl
+    if (base == null) {
+      $('feedback-apercu').innerHTML = '<span class="text-attention">Aucun projet OpenFeedback ' +
+        'réglé : il n’y aura d’adresse pour personne tant que le champ des réglages est vide.</span>'
+      return
+    }
+    const adresse = base.slice(0, base.lastIndexOf('/') + 1) + encodeURIComponent(identifiant)
+    $('feedback-apercu').innerHTML = '<a class="font-mono text-[11px] break-all text-marque" ' +
+      'target="_blank" rel="noopener" href="' + echapper(adresse) + '">' +
+      echapper(adresse) + ' ↗</a>'
+  }
+
+  $('feedback-champ').oninput = () => {
+    const creneau = (planning?.sessions ?? []).find((session) => session.id === idOuvert)
+    if (creneau != null) rendreApercuFeedback(creneau)
+  }
+
+  async function enregistrerIdFeedback(valeur) {
+    const sessionId = idOuvert
+    if (sessionId == null) return
+    try {
+      const reponse = await appeler('sessions/feedbackId', { sessionId, feedbackId: valeur })
+      avis(valeur == null
+        ? 'Créneau rendu à l’identifiant de l’export'
+        : 'Identifiant OpenFeedback corrigé')
+      fermerIdFeedback()
+      // Relu depuis le hub : c'est lui qui sert le programme corrigé, et les
+      // salles viennent de recevoir l'invalidation. Reconstruire la ligne ici la
+      // ferait diverger de ce que projettent les QR.
+      void reponse
+      await chargerPlanning()
+    } catch (cause) {
+      const zone = $('feedback-erreur')
+      zone.hidden = false
+      // Dans la modale et non dans l'avis flottant : l'erreur porte sur ce
+      // qu'on vient de taper, et c'est là qu'on va le corriger.
+      zone.textContent = cause.message
+    }
+  }
+
+  $('feedback-enregistrer').onclick = () => {
+    const saisi = $('feedback-champ').value.trim()
+    void enregistrerIdFeedback(saisi === '' ? null : saisi)
+  }
+  $('feedback-rendre').onclick = () => void enregistrerIdFeedback(null)
 
   /**
    * Le bouton qui ouvre le dossier VOD d'un créneau.
@@ -3428,7 +3602,9 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
   $('resync-annuler').onclick = fermerConfirmationResync
   $('resync-confirmer').onclick = () => void confirmerResync()
   document.addEventListener('keydown', (evenement) => {
-    if (evenement.key === 'Escape') { fermerVerdict(); fermerConfirmationResync(); fermerDossierVod() }
+    if (evenement.key === 'Escape') {
+      fermerVerdict(); fermerConfirmationResync(); fermerDossierVod(); fermerIdFeedback()
+    }
   })
 
   $('btn-rafraichir').onclick = () => tout()

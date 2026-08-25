@@ -260,6 +260,10 @@ export const router = os.router({
               session.kind === 'break'
                 ? null
                 : openFeedbackUrl(session, projetDeLEvenement, program.timezone),
+            // Résolu, comme `kind` : l'export sauf correction. Le programme
+            // servi porte déjà la correction, il n'y a rien à recroiser ici.
+            feedbackId: session.feedbackId ?? session.id,
+            feedbackIdOverride: session.feedbackId,
             overriddenAs: surcharges[session.id] ?? null,
             sharedFrom: session.sharedFrom,
             /**
@@ -578,6 +582,60 @@ export const router = os.router({
         null,
       )
       return { ok: true, contentHash }
+    }),
+
+    /**
+     * Corrige l'identifiant OpenFeedback d'un créneau.
+     *
+     * Rend l'adresse qui en découle : c'est le seul moyen de vérifier la
+     * correction, et l'ouvrir d'un clic vaut mieux que la recomposer de tête.
+     *
+     * Les salles sont prévenues comme pour une décision de genre — elles
+     * dessinent leurs QR hors ligne, et un QR resté sur l'ancien identifiant
+     * est précisément l'accident que cette procédure existe pour éviter.
+     */
+    feedbackId: os.sessions.feedbackId.use(operatorOnly).handler(({ input, context }) => {
+      const snapshot = context.services.programs.active()
+      if (snapshot == null) {
+        throw new ORPCError('NOT_FOUND', { message: 'Aucun programme actif sur ce hub' })
+      }
+      const creneau = snapshot.program.sessions.find((session) => session.id === input.sessionId)
+      if (creneau == null) {
+        throw new ORPCError('NOT_FOUND', {
+          message: `Créneau inconnu du programme actif : ${input.sessionId}`,
+        })
+      }
+      // Une pause n'a pas de page de retours, et une pause héritée n'a même pas
+      // d'existence propre : corriger son identifiant n'aurait aucun effet
+      // visible, et laisserait une ligne que rien ne viendrait relire.
+      if (creneau.kind === 'break') {
+        throw new ORPCError('BAD_REQUEST', {
+          message: 'Une pause n\'a pas de page OpenFeedback : rien à corriger ici.',
+        })
+      }
+
+      context.services.rooms.setFeedbackId(input.sessionId, input.feedbackId)
+
+      // Relu après écriture : le programme servi porte désormais la correction,
+      // et c'est de lui que l'adresse se déduit — la recomposer ici ferait un
+      // second endroit où la règle vit, donc un endroit où elle peut diverger.
+      const apres = context.services.programs.active()
+      const corrige = apres?.program.sessions.find((session) => session.id === input.sessionId)
+      const contentHash = apres?.contentHash ?? snapshot.contentHash
+      context.services.commands.publish(null, { type: 'program.invalidate', contentHash }, null)
+
+      return {
+        ok: true,
+        feedbackId: corrige?.feedbackId ?? creneau.id,
+        feedbackUrl:
+          corrige == null
+            ? null
+            : openFeedbackUrl(
+                corrige,
+                renseigne(context.services.settings.get().openFeedbackProjectId),
+                snapshot.program.timezone,
+              ),
+      }
     }),
 
     reset: os.sessions.reset.use(roomOrOperator).handler(({ input, context }) => {

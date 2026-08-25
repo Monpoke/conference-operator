@@ -7,7 +7,14 @@ import {
   type RoomConfigInput,
   type RoomStatus,
 } from '@cloudnord/contract'
-import { deviceRequest, room, roomDevice, roomState, sessionOverride } from '@cloudnord/db/hub'
+import {
+  deviceRequest,
+  room,
+  roomDevice,
+  roomState,
+  sessionFeedback,
+  sessionOverride,
+} from '@cloudnord/db/hub'
 import type { HubDatabase } from '../db.js'
 
 /**
@@ -169,6 +176,42 @@ export class RoomService {
         delayMinutes: row.delayMinutes,
         note: row.note,
       }))
+  }
+
+  /**
+   * Les identifiants OpenFeedback corrigés à la main, par créneau.
+   *
+   * Un dictionnaire et non une liste : les appelants cherchent tous « cette
+   * session a-t-elle une correction », jamais « donne-moi toutes les
+   * corrections dans l'ordre ». Vide dans le cas normal — l'export fait foi
+   * tant que personne ne l'a contredit.
+   */
+  feedbackIds(): Record<string, string> {
+    const rows = this.db.select().from(sessionFeedback).all()
+    return Object.fromEntries(rows.map((row) => [row.sessionId, row.feedbackId]))
+  }
+
+  /**
+   * Corrige — ou rend à l'export — l'identifiant OpenFeedback d'un créneau.
+   *
+   * `null` supprime la ligne au lieu d'enregistrer une correction vide, pour la
+   * même raison que `setOverride` : une correction retirée doit être
+   * indistinguable d'une correction jamais posée. Une chaîne blanche vaut
+   * `null` — un identifiant fait d'espaces ne fabrique qu'une adresse morte, et
+   * c'est ce que le champ du formulaire renvoie quand on l'efface.
+   */
+  setFeedbackId(sessionId: string, feedbackId: string | null): void {
+    const propre = feedbackId?.trim() ?? ''
+    if (propre === '') {
+      this.db.delete(sessionFeedback).where(eq(sessionFeedback.sessionId, sessionId)).run()
+      return
+    }
+    const values = { sessionId, feedbackId: propre, updatedAt: new Date().toISOString() }
+    this.db
+      .insert(sessionFeedback)
+      .values(values)
+      .onConflictDoUpdate({ target: sessionFeedback.sessionId, set: values })
+      .run()
   }
 
   /**

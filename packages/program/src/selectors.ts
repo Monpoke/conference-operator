@@ -155,18 +155,28 @@ export function formatSessionRange(session: Session, timezone: string, locale = 
  * fonction juste sur un événement à plusieurs jours.
  *
  * `null` sans projet configuré : pas de lien vaut mieux qu'un lien mort.
+ *
+ * `session.feedbackId`, posé par le hub sur le programme qu'il sert, contredit
+ * l'identifiant de l'export pour le cas où le pari ci-dessus ne tient pas. Il
+ * se règle par créneau depuis la console : l'adresse reste fabriquée hors
+ * ligne, mais elle cesse d'être une déduction impossible à corriger le jour où
+ * OpenFeedback ne numérote plus comme l'amont. Lu ici, et non passé en
+ * paramètre par chaque appelant : c'est ce qui empêche le lien de la console et
+ * le QR projeté de diverger.
  */
 export function openFeedbackUrl(
-  session: Pick<Session, 'id' | 'startsAt'>,
+  session: Pick<Session, 'id' | 'startsAt'> & { feedbackId?: string | null },
   projectId: string | null,
   timezone: string,
 ): string | null {
   if (projectId == null || projectId.trim() === '') return null
+  const corrige = session.feedbackId?.trim() ?? ''
+  const identifiant = corrige === '' ? session.id : corrige
   const jour = new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
   }).format(new Date(session.startsAt))
-  return `https://openfeedback.io/${encodeURIComponent(projectId)}/${jour}/${encodeURIComponent(session.id)}`
+  return `https://openfeedback.io/${encodeURIComponent(projectId)}/${jour}/${encodeURIComponent(identifiant)}`
 }

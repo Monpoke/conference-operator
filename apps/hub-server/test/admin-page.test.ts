@@ -1221,6 +1221,8 @@ describe('vue Conférences', () => {
             : chemin === 'program/snapshots' ? [{ contentHash: 'a1b2c3', active: true }]
               : chemin === 'sessions/override' ? { ok: true, contentHash: 'a1b2c3~ff' }
                 : chemin === 'vod/conference' ? dossierVod
+                : chemin === 'sessions/feedbackId'
+                  ? { ok: true, feedbackId: 'of-42', feedbackUrl: null }
                   : []
       return new Response(JSON.stringify({ json }), { status: 200 })
     }))
@@ -1426,6 +1428,86 @@ describe('vue Conférences', () => {
     })
 
     expect($('btn-planning-actions').textContent).toContain('1 décision')
+  })
+
+  it('ouvre l\'identifiant OpenFeedback d\'une conférence', async () => {
+    // L'adresse se fabrique en pariant qu'OpenFeedback réutilise les
+    // identifiants de l'export. Le pari se perd en silence : il faut pouvoir
+    // lire l'identifiant servi, et le corriger.
+    await ouvrir()
+
+    const bouton = $('planning').querySelector('[data-feedback-session="ses-1"]') as HTMLElement
+    expect(bouton).not.toBeNull()
+    bouton.click()
+
+    expect(document.body.dataset.feedback).toBe('ouvert')
+    expect($('feedback-titre').textContent).toBe('HoneySwamp')
+    // Vide : rien n'a été corrigé, l'export fait foi — et il est nommé à côté.
+    expect(($('feedback-champ') as HTMLInputElement).value).toBe('')
+    expect($('feedback-export').textContent).toBe('ses-1')
+  })
+
+  it('montre l\'adresse tant qu\'on tape, avant d\'enregistrer', async () => {
+    // C'est ce qui permet de la comparer à celle qu'on a sous les yeux dans
+    // OpenFeedback : l'identifiant seul ne se vérifie pas.
+    await ouvrir()
+    ;($('planning').querySelector('[data-feedback-session="ses-1"]') as HTMLElement).click()
+
+    const champ = $('feedback-champ') as HTMLInputElement
+    champ.value = 'of-42'
+    champ.dispatchEvent(new Event('input'))
+
+    expect($('feedback-apercu').textContent).toContain(
+      'https://openfeedback.io/cloud-nord-2026/2026-10-30/of-42',
+    )
+  })
+
+  it('signale un créneau dont l\'identifiant a déjà été corrigé', async () => {
+    // Une correction invisible est une correction qu'on refait.
+    await ouvrir({
+      ...PLANNING,
+      sessions: PLANNING.sessions.map((session) =>
+        session.id === 'ses-1' ? { ...session, feedbackIdOverride: 'of-42' } : session),
+    })
+
+    const bouton = $('planning').querySelector('[data-feedback-session="ses-1"]') as HTMLElement
+    expect(bouton.textContent).toContain('✱')
+    expect(bouton.getAttribute('title')).toContain('corrigé')
+  })
+
+  it('enregistre la correction auprès du hub', async () => {
+    await ouvrir()
+    ;($('planning').querySelector('[data-feedback-session="ses-1"]') as HTMLElement).click()
+    ;($('feedback-champ') as HTMLInputElement).value = 'of-42'
+
+    $('feedback-enregistrer').click()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(appels).toContainEqual({
+      chemin: 'sessions/feedbackId',
+      entree: { sessionId: 'ses-1', feedbackId: 'of-42' },
+    })
+    expect(document.body.dataset.feedback).toBe('ferme')
+  })
+
+  it('rend un créneau à l\'export d\'un bouton', async () => {
+    await ouvrir()
+    ;($('planning').querySelector('[data-feedback-session="ses-1"]') as HTMLElement).click()
+
+    $('feedback-rendre').click()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    // `null`, pas la chaîne vide : c'est ce qui supprime la ligne côté hub.
+    expect(appels).toContainEqual({
+      chemin: 'sessions/feedbackId',
+      entree: { sessionId: 'ses-1', feedbackId: null },
+    })
+  })
+
+  it('n\'offre pas de corriger l\'identifiant d\'une pause', async () => {
+    await ouvrir()
+
+    expect($('planning').querySelector('[data-feedback-session="pause"]')).toBeNull()
   })
 
   it('ouvre le dossier VOD d\'une conférence', async () => {

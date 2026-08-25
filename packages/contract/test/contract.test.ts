@@ -154,6 +154,9 @@ describe('surface du contrat', () => {
     // pour une conférence — là où les quatre autres pilotent son déroulé.
     expect(Object.keys(contract.sessions).sort()).toEqual([
       'end',
+      // Corrige l'identifiant OpenFeedback d'un créneau quand celui de l'export
+      // ne correspond pas : sans elle, un QR mort ne se répare pas.
+      'feedbackId',
       'override',
       'reset',
       'start',

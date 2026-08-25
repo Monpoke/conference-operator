@@ -9,6 +9,14 @@ import {
   type SessionStateView,
   type SessionStatus,
 } from '@cloudnord/contract'
+import {
+  decisionApplicable,
+  doitEtreClose,
+  finEffectiveDansProgramme,
+  refusDeTransition,
+  statutApres,
+  type ActionConference,
+} from '@cloudnord/etat-salle'
 import { hubSetting, sessionState } from '@cloudnord/db/hub'
 import type { Program } from '@cloudnord/program'
 import type { HubDatabase } from '../db.js'
@@ -35,7 +43,25 @@ export class SettingsService {
   }
 
   update(patch: Partial<HubSettingsInput>): HubSettings {
-    const suivant = hubSettingsSchema.parse({ ...this.get(), ...patch })
+    const courant = this.get()
+    /**
+     * La politique VOD se fusionne champ par champ, pas en bloc.
+     *
+     * Partout ailleurs, « la valeur envoyée est la valeur » : `socialLinks` est
+     * une liste, et n'en envoyer qu'un élément veut bien dire qu'il n'en reste
+     * qu'un. Une politique, non — c'est un panneau de réglages, et un
+     * formulaire n'envoie que ce qu'il porte. Fusionnée à plat, elle repassait
+     * par ses valeurs par défaut : corriger le plafond de débit en cours
+     * d'événement rendait au passage `actif` à faux et la taille de part à huit
+     * mégaoctets, sans que rien ne le dise. Un réglage qui se défait tout seul
+     * est pire qu'un réglage absent.
+     */
+    const vodPolitique =
+      patch.vodPolitique == null
+        ? courant.vodPolitique
+        : { ...courant.vodPolitique, ...patch.vodPolitique }
+
+    const suivant = hubSettingsSchema.parse({ ...courant, ...patch, vodPolitique })
     const values = {
       key: CLE_REGLAGES,
       valueJson: JSON.stringify(suivant),
@@ -47,6 +73,25 @@ export class SettingsService {
       .onConflictDoUpdate({ target: hubSetting.key, set: values })
       .run()
     return suivant
+  }
+}
+
+/**
+ * Geste refusé par le cycle de vie.
+ *
+ * Une erreur de domaine, et pas une `ORPCError` : le service se teste et
+ * s'appelle sans passer par le transport, et c'est le routeur qui sait quel
+ * code HTTP dire à qui. Le message, lui, est déjà celui qu'un opérateur peut
+ * lire — il vient de la table partagée avec la régie.
+ */
+export class TransitionRefusee extends Error {
+  constructor(
+    readonly depuis: SessionStatus,
+    readonly action: ActionConference,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'TransitionRefusee'
   }
 }
 
@@ -144,17 +189,15 @@ export class SessionStateService {
    */
   private applicable(etat: SessionState): boolean {
     const decide = etat.status === 'ended' ? etat.endedAt : etat.startedAt
-    if (decide == null) return true
-    const instant = Date.parse(decide)
-    return Number.isNaN(instant) || instant <= this.now()
+    return decisionApplicable(decide == null ? null : Date.parse(decide), this.now())
   }
 
   start(sessionId: string, roomId: string | null, decidedBy: string): SessionState {
-    return this.write(sessionId, roomId, 'running', decidedBy)
+    return this.write(sessionId, roomId, 'start', decidedBy)
   }
 
   end(sessionId: string, roomId: string | null, decidedBy: string): SessionState {
-    return this.write(sessionId, roomId, 'ended', decidedBy)
+    return this.write(sessionId, roomId, 'end', decidedBy)
   }
 
   /** Ramène une conférence à « à venir » — pour corriger une fausse manœuvre. */
@@ -162,14 +205,29 @@ export class SessionStateService {
     this.db.delete(sessionState).where(eq(sessionState.sessionId, sessionId)).run()
   }
 
+  /**
+   * Applique un geste, si le cycle de vie l'autorise depuis l'état constaté.
+   *
+   * Le service prend une **action** et non un statut : c'est la table partagée
+   * qui dit ce que l'action produit, et c'est elle qui refuse. Sans ce
+   * passage obligé, la régie grisait « Terminer » sur une conférence non lancée
+   * pendant que cette procédure l'acceptait — on écrivait `ended` sur un talk
+   * qui ne s'était pas tenu, et l'historique mentait sans que rien ne casse.
+   */
   private write(
     sessionId: string,
     roomId: string | null,
-    status: SessionStatus,
+    action: ActionConference,
     decidedBy: string,
   ): SessionState {
     const maintenant = new Date(this.now()).toISOString()
     const existant = this.get(sessionId)
+    const depuis = existant?.status ?? 'scheduled'
+
+    const status = statutApres(depuis, action)
+    if (status == null) {
+      throw new TransitionRefusee(depuis, action, refusDeTransition(depuis, action) ?? 'Geste refusé')
+    }
 
     const values = {
       sessionId,
@@ -204,18 +262,20 @@ export class SessionStateService {
     const reglages = this.settings.get()
     if (!reglages.autoEndEnabled || program == null) return { ended: [] }
 
-    const limite = this.now() - reglages.autoEndGraceMinutes * 60_000
-    const parId = new Map(program.sessions.map((session) => [session.id, session]))
+    const reglage = { actif: true, graceMinutes: reglages.autoEndGraceMinutes }
+    const maintenant = this.now()
     const ended: SessionState[] = []
 
     for (const etat of this.states(null)) {
-      if (etat.status !== 'running') continue
-      const session = parId.get(etat.sessionId)
-      // Session absente du programme courant (réimport, annulation) : on ne
-      // décide rien, faute de créneau de référence.
-      if (session?.endsAtMs == null) continue
-      if (session.endsAtMs > limite) continue
-
+      /**
+       * La règle vit dans `@cloudnord/etat-salle`, et la fin qu'elle lit est
+       * celle du dépassement : heure explicite, sinon durée, sinon début du
+       * créneau suivant. Les deux règles parlaient d'horaires différents, et
+       * une salle pouvait rester en dépassement toute la journée sans que ce
+       * balayage ne la voie jamais.
+       */
+      const fin = finEffectiveDansProgramme(program, etat.sessionId)
+      if (!doitEtreClose(fin, etat.status, maintenant, reglage)) continue
       ended.push(this.end(etat.sessionId, etat.roomId, 'auto'))
     }
     return { ended }

@@ -1,3 +1,4 @@
+import { MACHINE_JS } from '@cloudnord/etat-salle'
 import { TAILWIND_CSS } from '@cloudnord/ui'
 import { DUREE_SIGNALEMENT_MS } from './runtime.js'
 
@@ -56,6 +57,59 @@ export function renderRegiePage(options: RegiePageOptions = {}): string {
   .menu.ouvert .menu-liste { display: block; }
 
   /*
+   * Indicateurs de l'en-tête, et leur info-bulle.
+   *
+   * Le « title » natif disait la même chose, mais après une seconde d'attente,
+   * dans la police du système, et sans pouvoir colorer le chiffre — qui est
+   * justement toute l'information. Écrite à la main plutôt qu'en utilitaires :
+   * elle tient à trois choses qu'aucune classe n'exprime — l'apparition au
+   * survol *et* au clavier, la flèche en ::before, et une couleur pilotée par
+   * un seul attribut sur le bloc, data-niveau, comme le reste de la page.
+   */
+  .indicateur { cursor: help; }
+  .indicateur .bulle {
+    position: absolute; top: calc(100% + 9px); left: -10px; z-index: 30;
+    width: 270px; padding: 11px 13px;
+    border: 1px solid var(--color-bord); border-radius: 10px;
+    background: var(--color-surface2); color: var(--color-texte);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, .5);
+    opacity: 0; transform: translateY(-4px); pointer-events: none;
+    transition: opacity .12s ease, transform .12s ease;
+  }
+  /* La flèche prolonge le coin : même fond, et les deux bords qu'elle croise. */
+  .indicateur .bulle::before {
+    content: ''; position: absolute; top: -5px; left: 15px; width: 8px; height: 8px;
+    background: var(--color-surface2); transform: rotate(45deg);
+    border-left: 1px solid var(--color-bord); border-top: 1px solid var(--color-bord);
+  }
+  .indicateur:hover .bulle, .indicateur:focus-visible .bulle { opacity: 1; transform: translateY(0); }
+  .indicateur:focus-visible { outline: none; }
+
+  /* La jauge dit la même chose que la pastille, en longueur. */
+  .indicateur .jauge { height: 5px; border-radius: 999px; background: var(--color-bord); overflow: hidden; }
+  .indicateur .jauge > span {
+    display: block; height: 100%; border-radius: inherit;
+    background: var(--color-ok); transition: width .3s ease;
+  }
+
+  /*
+   * Un seul vocabulaire de couleurs, du chiffre à la jauge.
+   *
+   * Chaque mesure porte la sienne — le poste peut avoir un processeur au repos
+   * et une mémoire pleine — tandis que la pastille du bandeau prend la pire des
+   * deux. Le niveau posé sur le bloc reste celui de la pastille : c'est lui qui
+   * doit être lisible de l'autre bout de la salle.
+   */
+  .indicateur .niveau-ok { color: var(--color-ok); }
+  .indicateur .niveau-attention { color: var(--color-attention); }
+  .indicateur .niveau-alerte { color: var(--color-alerte); }
+  .indicateur .niveau-inconnu { color: var(--color-attenue); }
+  .indicateur .jauge > span.niveau-ok { background: var(--color-ok); }
+  .indicateur .jauge > span.niveau-attention { background: var(--color-attention); }
+  .indicateur .jauge > span.niveau-alerte { background: var(--color-alerte); }
+  .indicateur .jauge > span.niveau-inconnu { background: var(--color-attenue); }
+
+  /*
    * Écran court : la densité s'ajuste plutôt que les commandes ne sortent.
    *
    * Hors couche, donc prioritaire sur les utilitaires comme sur .btn : c'est
@@ -81,9 +135,21 @@ export function renderRegiePage(options: RegiePageOptions = {}): string {
   #modale-config { display: none; }
   body[data-config="ouverte"] #modale-config { display: flex; }
 
+  /* Contrôle des rushes : plein cadre, et indépendante des deux autres. */
+  #modale-vod { display: none; }
+  body[data-vod="ouverte"] #modale-vod { display: flex; }
+
   /* Avertissement de démarrage : même mécanique que les deux modales ci-dessus. */
   #modale-rec { display: none; }
   body[data-rec="ouverte"] #modale-rec { display: flex; }
+
+  /* Confirmation d'une fin anticipée : même mécanique, même raison. */
+  #modale-fin { display: none; }
+  body[data-fin="ouverte"] #modale-fin { display: flex; }
+
+  /* Confirmation d'un démarrage très en avance : idem. */
+  #modale-tot { display: none; }
+  body[data-tot="ouverte"] #modale-tot { display: flex; }
 
   /* Voile d'appairage : occupe tout l'écran tant que la machine n'est pas liée. */
   #appairage { display: none; }
@@ -94,16 +160,52 @@ export function renderRegiePage(options: RegiePageOptions = {}): string {
   #toast.erreur { border-color: var(--color-alerte); background: #3a1519; }
 </style>
 </head>
-<body class="grid h-screen grid-rows-[auto_auto_auto_1fr] bg-fond font-sans text-texte" data-appairage="ok" data-modale="fermee" data-config="fermee" data-rec="fermee">
+<body class="grid h-screen grid-rows-[auto_auto_auto_1fr] bg-fond font-sans text-texte" data-appairage="ok" data-modale="fermee" data-config="fermee" data-rec="fermee" data-fin="fermee" data-tot="fermee" data-vod="fermee">
 ${etatInitial}
 <header class="flex items-center gap-3 border-b border-bord bg-surface px-3 py-2">
   <div class="truncate text-[15px] font-semibold" id="salle">—</div>
   <span class="shrink-0" id="badge-mode"></span>
-  <div class="flex shrink-0 items-center gap-1.5 text-xs text-attenue">
-    <span class="pastille" id="pastille"></span>
+  <div class="indicateur relative flex shrink-0 items-center gap-1.5 text-xs text-attenue" id="hub"
+       data-niveau="alerte" tabindex="0" aria-label="Lien avec le hub : hors ligne">
+    <span class="pastille" id="pastille-hub"></span>
     <span id="etat-libelle">hors ligne</span>
+    <div class="bulle" id="bulle-hub" aria-hidden="true"></div>
+  </div>
+  <!--
+    Charge du poste, en pastille.
+
+    La machine qui encode est le point faible invisible de la salle : quand elle
+    sature, OBS perd des images sans rien dire et le rush est mauvais sans que
+    personne s'en aperçoive avant le montage. Une couleur suffit à le voir de
+    loin ; le détail — processeur, mémoire, fenêtre de mesure — tient dans
+    l'info-bulle, parce qu'un chiffre de plus dans le bandeau se lirait tout le
+    temps pour ne servir que trois fois dans la journée.
+
+    « Poste » et non « CPU » : la pastille prend la pire des deux mesures, et
+    une pastille rouge sous un mot qui ne parle que du processeur enverrait
+    chercher la panne au mauvais endroit.
+  -->
+  <div class="indicateur relative flex shrink-0 items-center gap-1.5 text-xs text-attenue" id="cpu"
+       data-niveau="inconnu" tabindex="0" aria-label="Charge du poste : première mesure en cours">
+    <span class="pastille hors" id="pastille-cpu"></span>
+    <span>Poste</span>
+    <!--
+      Le lecteur d'écran lit aria-label sur le bloc : la bulle redirait mot
+      pour mot la même chose, en la découpant en cinq bribes sans ordre.
+    -->
+    <div class="bulle" id="bulle-cpu" aria-hidden="true"></div>
   </div>
   <div class="shrink-0 text-xs text-attention" id="file"></div>
+  <!--
+    Le flux de la page est mort : ce qui est affiché ne bouge plus.
+
+    Sans ce mot, une page figée passe pour une page vivante — l'horloge, le
+    compte à rebours et le flux des salles se redessinent chaque seconde depuis
+    la dernière charge utile reçue, et continuent donc d'avancer. Seul l'état
+    de la conférence reste bloqué, sur ce qu'il disait à la coupure. C'est
+    exactement ce qu'on ne peut pas diagnostiquer depuis une salle.
+  -->
+  <div class="shrink-0 text-xs font-semibold text-alerte" id="flux-mort" hidden>écran figé — flux interrompu</div>
   <div class="horloge ml-auto shrink-0 text-[19px] font-semibold tabular-nums" id="horloge">--:--</div>
   <div class="flex shrink-0 items-center gap-1.5">
     <button class="btn btn-petit" id="btn-programme">Programme<span class="touche">P</span></button>
@@ -211,7 +313,16 @@ ${etatInitial}
 
   <div class="flex min-h-0 flex-col gap-2.5 lg:overflow-y-auto">
     <section class="panneau p-3">
-      <h2 class="titre-panneau">Captation — OBS&nbsp;B<span id="simule-B"></span></h2>
+      <div class="mb-1.5 flex items-center gap-2">
+        <h2 class="titre-panneau mb-0 flex-1">Captation — OBS&nbsp;B<span id="simule-B"></span></h2>
+        <!-- Vérifier les rushes se fait pendant l'événement ou jamais : la salle
+             est démontée bien avant que quiconque ouvre les fichiers. Discret
+             pour autant : ce n'est pas une commande de la conférence en cours,
+             et rien ne doit le faire confondre avec « Enregistrer ». -->
+        <button class="shrink-0 rounded border border-transparent px-1.5 py-0.5 text-[13px] leading-none opacity-60 hover:border-bord hover:opacity-100"
+                id="btn-vod" aria-label="Vérifier les enregistrements"
+                title="Lister, contrôler et prévisualiser les enregistrements déjà produits">🎞</button>
+      </div>
       <div class="mb-2 flex items-baseline gap-2.5">
         <span class="inactif text-[22px] font-bold tabular-nums" id="duree">00:00</span>
         <span class="text-[11px] text-attenue" id="marqueurs">aucun marqueur</span>
@@ -284,6 +395,45 @@ ${etatInitial}
 </div>
 
 <!--
+  Contrôle des enregistrements produits.
+
+  Plein cadre, et volontairement : ce qu'on y cherche est une liste de fichiers
+  avec des noms longs, des durées et des raisons en clair. Vue dans une
+  colonne, elle se lit à coups de trois mots par ligne et on referme sans avoir
+  rien vérifié.
+
+  Elle ne commande rien dans la salle — elle relit le disque. On peut donc
+  contrôler la matinée pendant que l'après-midi enregistre, ce qui est tout
+  l'intérêt : le soir, la salle est démontée.
+-->
+<div class="fixed inset-0 z-40 items-center justify-center bg-black/70 p-3" id="modale-vod">
+  <div class="flex h-full w-full min-h-0 flex-col rounded-xl border border-bord bg-surface">
+    <div class="flex flex-wrap items-center gap-2 border-b border-bord px-4 py-2.5">
+      <h2 class="titre-panneau mb-0 shrink-0">🎞 Enregistrements</h2>
+      <div class="min-w-0 flex-1 truncate font-mono text-[11px] text-attenue" id="vod-racine"></div>
+      <div class="shrink-0 text-xs text-attenue" id="vod-avancement"></div>
+      <button class="btn btn-petit shrink-0" id="btn-vod-tout">Tout vérifier</button>
+      <button class="btn btn-petit shrink-0" id="btn-vod-monter-tout">Tout téléverser</button>
+      <button class="btn btn-petit shrink-0" id="btn-vod-relire">Relire le dossier</button>
+      <button class="btn btn-petit shrink-0" id="btn-fermer-vod">Fermer<span class="touche">Échap</span></button>
+    </div>
+    <!--
+      Pourquoi rien ne monte.
+
+      Une attente muette se lit comme un bouton mort : on reclique, puis on
+      cherche la panne. « conférence dans 6 min » se lit comme une décision.
+    -->
+    <div class="hidden border-b border-bord px-4 py-1.5 text-[11px]" id="vod-regulateur"></div>
+    <div class="min-h-0 flex-1 overflow-y-auto p-3" id="vod-contenu"></div>
+    <div class="border-t border-bord px-4 py-2 text-[11px] text-attenue">
+      « Vérifier » ouvre le conteneur avec ffprobe : pistes présentes, durée réelle
+      contre durée chronométrée, débit. Ce qu'aucune sonde ne dit — le mauvais plan,
+      le micro dans la poche — reste à l'œil : ✓ et ✕ posent ce verdict-là.
+    </div>
+  </div>
+</div>
+
+<!--
   Avertissement au démarrage d'une conférence.
 
   Trois issues, pas deux : « Annuler » existe parce que la question peut arriver
@@ -301,6 +451,58 @@ ${etatInitial}
       <button class="btn" id="rec-annuler">Annuler</button>
       <button class="btn" id="rec-sans">Commencer sans enregistrer</button>
       <button class="btn actif" id="rec-avec">Enregistrer et commencer</button>
+    </div>
+  </div>
+</div>
+
+<!--
+  Confirmation d'une fin anticipée.
+
+  Terminer n'est pas un geste anodin : la salle passe à « rien dans la salle »,
+  les autres régies le voient, le compte à rebours saute à la conférence
+  suivante. Le bouton est à côté de « Commencer », et c'est le genre de voisinage
+  qui se paie une fois par événement.
+
+  Seulement en avance : terminer à l'heure ou en dépassement est le geste normal
+  de la journée, et le confirmer à chaque fois en ferait un réflexe — ce qui
+  reviendrait à ne plus le lire du tout.
+
+  Deux touches plutôt qu'une souris : on a le micro dans une main.
+-->
+<div class="fixed inset-0 z-50 items-center justify-center bg-black/65 p-4" id="modale-fin">
+  <div class="w-full max-w-[440px] rounded-xl border border-bord bg-surface p-5">
+    <h2 class="mb-1.5 text-[17px] font-semibold text-attention">Terminer en avance ?</h2>
+    <div class="mb-4 text-sm leading-relaxed text-attenue" id="modale-fin-detail"></div>
+    <div class="flex flex-wrap justify-end gap-1.5">
+      <button class="btn" id="fin-non">Non<span class="touche">N</span></button>
+      <button class="btn actif" id="fin-oui">Terminer<span class="touche">Y</span></button>
+    </div>
+  </div>
+</div>
+
+<!--
+  Confirmation d'un démarrage très en avance.
+
+  Entre deux créneaux, ou pendant une pause, la régie pilote la conférence qui
+  arrive : c'est ce qu'on veut à 09:48 pour un talk de 09:50, et c'est un piège
+  à 08:45 pour un talk de 09:50. Rien à l'écran ne distinguait les deux, et un
+  « Commencer » de trop y écrivait un talk tenu de 08:45 à 08:45 — un créneau
+  marqué comme s'étant déroulé alors que la salle était vide.
+
+  Seulement très en avance : lancer cinq minutes avant l'heure est le geste
+  normal du matin, et le confirmer à chaque fois en ferait un réflexe.
+
+  L'écart est dit en toutes lettres, parce que c'est le seul chiffre qui permet
+  de répondre — et l'heure du créneau avec lui, pour reconnaître qu'on ne vise
+  pas celui qu'on croyait.
+-->
+<div class="fixed inset-0 z-50 items-center justify-center bg-black/65 p-4" id="modale-tot">
+  <div class="w-full max-w-[440px] rounded-xl border border-bord bg-surface p-5">
+    <h2 class="mb-1.5 text-[17px] font-semibold text-attention">Commencer très en avance ?</h2>
+    <div class="mb-4 text-sm leading-relaxed text-attenue" id="modale-tot-detail"></div>
+    <div class="flex flex-wrap justify-end gap-1.5">
+      <button class="btn" id="tot-non">Non<span class="touche">N</span></button>
+      <button class="btn actif" id="tot-oui">Commencer<span class="touche">Y</span></button>
     </div>
   </div>
 </div>
@@ -323,6 +525,17 @@ ${etatInitial}
 </div>
 
 <div class="fixed bottom-6 left-1/2 z-50 max-w-[70vw] rounded-[9px] border border-bord bg-surface2 px-5 py-3 text-sm transition-[opacity,transform] duration-200 pointer-events-none" id="toast"></div>
+
+<!--
+  L'automate d'une salle, inliné.
+
+  La régie n'a pas d'étape de build : elle ne peut pas importer. Le même module
+  sert au hub, qui calcule l'état de toutes les salles, et à cette page, qui le
+  recalcule chaque seconde sur son cache — voir @cloudnord/etat-salle. Les deux
+  en tenaient chacune une copie, et les seuils comme les libellés avaient déjà
+  commencé à diverger.
+-->
+<script>${MACHINE_JS}</script>
 
 <script>
 (() => {
@@ -471,121 +684,45 @@ ${etatInitial}
   }
 
   /**
-   * Fin effective d'un créneau : fin explicite, sinon durée, sinon début du
-   * suivant.
+   * Tout ce qui suit vient d'EtatSalle, inliné plus haut.
    *
-   * Même règle que effectiveEndMs côté programme. Un créneau sans dateEnd n'est
-   * pas un créneau de durée nulle : le lire ainsi ne mettait jamais rien « en
-   * cours » dans les salles dont l'export ne porte que les heures de début.
-   *
-   * Rend null pour un créneau qu'aucune des trois règles ne ferme — le dernier
-   * de la journée. On préfère ne rien surligner à surligner un talk fini depuis
-   * la veille.
+   * La page en tenait sa propre copie : fin effective, créneau courant, seuils,
+   * table des couleurs. Elle avait dérivé — le même état s'appelait « hors
+   * créneau » ici et « rien au programme » dans la console du hub, et le
+   * créneau sans heure de fin n'était pas courant ici alors qu'il l'était pour
+   * le hub. Ne restent en propre que les adaptations d'affichage.
    */
-  function finEffective(sessions, index) {
-    const session = sessions[index]
-    if (session.endsAtMs != null) return session.endsAtMs
-    if (session.durationMinutes != null) return session.startsAtMs + session.durationMinutes * 60000
-    return sessions[index + 1] ? sessions[index + 1].startsAtMs : null
-  }
 
-  function enCours(sessions, instant) {
-    return sessions.find((s, i) => {
-      const fin = finEffective(sessions, i)
-      return fin != null && s.startsAtMs <= instant && fin > instant
-    }) ?? null
-  }
-
-  function apres(sessions, instant) {
-    return sessions.find((s) => s.startsAtMs > instant) ?? null
-  }
-
-  /** En deçà, un break qui approche s'annonce. Même seuil que côté programme. */
-  const BREAK_PROCHE_MS = 15 * 60000
-
-  /**
-   * Le break d'une salle, en cours ou imminent — jumeau local de roomBreak.
-   *
-   * Recalculé ici plutôt que reçu du hub, comme tout ce bandeau : le programme
-   * mis en cache répond même pendant une coupure, et c'est précisément quand le
-   * réseau lâche qu'on veut encore savoir quand la salle d'à côté reprend.
-   *
-   * Le créneau suivant compte même si une conférence court : savoir que le
-   * déjeuner tombe dans douze minutes est ce qui fait décider de ne pas
-   * enchaîner.
-   */
-  function pauseDe(sessions, instant) {
-    const courante = enCours(sessions, instant)
-    if (courante != null && courante.kind === 'break') return { etat: 'en-cours', session: courante }
-    if (courante != null) {
-      const suivante = sessions[sessions.indexOf(courante) + 1]
-      return suivante?.kind === 'break' && suivante.startsAtMs - instant <= BREAK_PROCHE_MS
-        ? { etat: 'a-venir', session: suivante }
-        : null
-    }
-    const suivante = apres(sessions, instant)
-    return suivante?.kind === 'break' && suivante.startsAtMs - instant <= BREAK_PROCHE_MS
-      ? { etat: 'a-venir', session: suivante }
-      : null
-  }
-
-  /** Créneau au-delà duquel une fin proche se signale. */
-  const FIN_PROCHE_MS = 5 * 60000
-
-  /**
-   * Ce que peint chaque état, et le mot qui l'accompagne.
-   *
-   * Le mot n'est pas décoratif : la pastille se regarde de loin, et tout le
-   * monde ne distingue pas les teintes.
-   */
-  const ETATS = {
-    aucune: ['hors', 'hors créneau'],
-    // Un créneau commun n'est pas un état de la salle : il n'y a personne.
-    pause: ['hors', 'rien dans la salle'],
-    'pas-commencee': ['pas-commencee', 'pas commencée'],
-    retard: ['retard', 'retard au démarrage'],
-    'en-cours': ['', 'en cours'],
-    'fin-proche': ['fin-proche', 'vers la fin'],
-    terminee: ['terminee', 'terminée en avance'],
-    depassement: ['depassement', 'dépassement'],
-  }
-
-  /** Fraîcheur au-delà de laquelle la vue du hub cesse de faire autorité. */
-  const VUE_PERIMEE_MS = 60000
-
+  /** Ce que la page attend d'un état : une classe de pastille et un mot. */
   function etatDe(nom) {
-    const dit = ETATS[nom] ?? ETATS.aucune
-    return { classe: dit[0], libelle: dit[1] }
+    const dit = EtatSalle.apparenceDe(nom)
+    return { classe: dit.teinte, libelle: dit.mot, texte: dit.texte }
   }
-
-  /**
-   * États que seul le hub peut constater : ils tiennent au cycle de vie des
-   * conférences, que la régie ne reçoit pas pour les autres salles.
-   */
-  const ETATS_DU_HUB = ['pas-commencee', 'retard', 'terminee', 'depassement']
 
   /**
    * État d'une autre salle : le programme local, sauf pour ce qu'il ignore.
    *
-   * Le partage n'est pas arbitraire. Le programme mis en cache est recalculé
-   * chaque seconde, sur l'heure du hub : il est le plus juste pour tout ce qui
-   * se déduit d'un horaire — en cours, vers la fin, pause. Reprendre là-dessus
-   * une vue rafraîchie toutes les quelques secondes ferait manquer le passage à
-   * « vers la fin », qui est précisément ce qu'on surveille.
-   *
-   * Le hub, lui, est seul à savoir qu'un créneau a commencé sans que personne
-   * ne l'ait lancé, ou qu'une salle déborde. Sur ces états-là, il fait foi —
-   * tant que sa vue est fraîche. Passé une minute, elle décrit un passé, et le
-   * programme redevient la meilleure réponse : pendant une coupure, la salle
-   * d'à côté finit quand même à l'heure prévue.
+   * L'arbitrage lui-même — quels états le hub est seul à connaître, et jusqu'à
+   * quelle fraîcheur sa vue fait foi — vit dans la lib, avec le calcul qu'il
+   * arbitre. La page n'apporte ici que ce qu'elle est seule à avoir : la date du
+   * dernier rafraîchissement.
    */
   function etatSalle(roomId, sessions, instant) {
     const local = etatConference(sessions, instant)
     const vue = vueDuHub(roomId)
     const date = donnees.diagnostics?.roomsRefreshedAt
-    const fraiche = date != null && Date.now() - Date.parse(date) < VUE_PERIMEE_MS
-    if (!fraiche || vue == null || !ETATS_DU_HUB.includes(vue.conference)) return local
-    return etatDe(vue.conference)
+    const fraiche = date != null && Date.now() - Date.parse(date) < EtatSalle.VUE_PERIMEE_MS
+    const nom = EtatSalle.etatFaisantFoi(local, vue?.conference, fraiche)
+    /**
+     * Programme absent du cache : le dire.
+     *
+     * « hors créneau » se lirait comme une salle sans rien de prévu, alors
+     * qu'on ignore tout de la sienne.
+     */
+    if (nom === 'aucune' && sessions.length === 0) {
+      return { classe: 'hors', libelle: 'programme inconnu', texte: 'text-attenue' }
+    }
+    return etatDe(nom)
   }
 
   /**
@@ -595,18 +732,7 @@ ${etatInitial}
    * personne n'a démarré — on décrit donc le créneau, pas la salle.
    */
   function etatConference(sessions, instant) {
-    const courante = enCours(sessions, instant)
-    if (courante == null) {
-      return sessions.length === 0
-        ? { classe: 'hors', libelle: 'programme inconnu' }
-        : etatDe('aucune')
-    }
-    if (courante.kind === 'break') return etatDe('pause')
-
-    const fin = finEffective(sessions, sessions.indexOf(courante))
-    // Le cas qui décide : on ne lance pas un talk quand la salle d'à côté
-    // s'apprête à déverser son public dans le couloir.
-    return etatDe(fin != null && fin - instant <= FIN_PROCHE_MS ? 'fin-proche' : 'en-cours')
+    return EtatSalle.etatDuProgramme(sessions, instant)
   }
 
   /**
@@ -664,7 +790,7 @@ ${etatInitial}
     return '<div class="timeline flex flex-col gap-1">' + sessions.map((s, i) => {
       // "actuel" reste un nom de classe : rendreEncart s'en sert pour faire
       // défiler la timeline jusqu'à la conférence en cours.
-      const fin = finEffective(sessions, i)
+      const fin = EtatSalle.finEffectiveA(sessions, i)
       const etat = s.id === actuel
         ? 'actuel bg-[color-mix(in_srgb,var(--color-marque)_22%,transparent)] shadow-[inset_3px_0_0_var(--color-marque)]'
         : fin != null && fin < instant ? 'opacity-35' : ''
@@ -700,7 +826,7 @@ ${etatInitial}
        */
       conteneur.innerHTML = autreSalle == null
         ? '<div class="text-xs text-attenue">Choisissez une salle à suivre.</div>'
-        : creneaux(sessionsAutreSalle, enCours(sessionsAutreSalle, maintenant())?.id ?? null)
+        : creneaux(sessionsAutreSalle, EtatSalle.timelinePosition(sessionsAutreSalle, maintenant()).current?.id ?? null)
       defilerVersActuel(conteneur)
       return
     }
@@ -808,8 +934,7 @@ ${etatInitial}
     const html = salles.map((salle) => {
       const sessions = programmesSalles.get(salle.id) ?? []
       const vue = vueDuHub(salle.id)
-      const courante = enCours(sessions, instant)
-      const suivante = apres(sessions, instant)
+      const { current: courante, next: suivante } = EtatSalle.timelinePosition(sessions, instant)
       const etat = etatSalle(salle.id, sessions, instant)
 
       let libelle = ''
@@ -833,7 +958,7 @@ ${etatInitial}
         detail = suivante == null ? 'pause' : 'reprise ' + heure(suivante.startsAt, donnees.timezone)
       } else if (courante != null) {
         libelle = courante.title
-        const fin = finEffective(sessions, sessions.indexOf(courante))
+        const fin = EtatSalle.finEffectiveA(sessions, sessions.indexOf(courante))
         const restant = fin == null ? null : Math.round((fin - instant) / 60000)
         if (etat.classe === 'fin-proche') {
           detail = 'vers la fin · ' + duree(restant ?? 0)
@@ -855,12 +980,12 @@ ${etatInitial}
        * Elle cohabite avec ce que fait la salle : « BREAK à venir » s'affiche
        * pendant qu'une conférence court encore, et c'est là qu'elle sert.
        */
-      const pause = pauseDe(sessions, instant)
+      const pause = EtatSalle.pauseDesCreneaux(sessions, instant)
       const etiquette = pause == null
         ? ''
         : '<span class="shrink-0 rounded bg-fond px-1.5 py-0.5 text-[11px] ' +
-          (pause.etat === 'en-cours' ? 'text-attenue' : 'text-attention') + '">' +
-          (pause.etat === 'en-cours' ? 'BREAK' : 'BREAK à venir') + '</span>'
+          (pause.state === 'en-cours' ? 'text-attenue' : 'text-attention') + '">' +
+          (pause.state === 'en-cours' ? 'BREAK' : 'BREAK à venir') + '</span>'
 
       return '<button data-salle="' + echapper(salle.id) + '" ' +
         'class="flex shrink-0 items-center gap-2 rounded-md border border-bord bg-surface2 px-2.5 py-1 text-xs font-normal">' +
@@ -976,8 +1101,10 @@ ${etatInitial}
             "Utilisé dans les noms d'enregistrements. Vide : dérivé du nom de la salle.") + '</div>' +
           '<div>' + champ('cfg-openfeedback', 'Projet OpenFeedback', config.openFeedbackProjectId,
             'Sert au QR « Notez le talk ». Change une fois par édition.') + '</div>' +
-          '<div>' + champ('cfg-root', 'Dossier des enregistrements', config.recordingRoot,
-            "Pour mémoire : c'est OBS-B qui décide où il écrit. Le fichier est renommé sur place.") + '</div>' +
+          '<div>' + champ('cfg-root', 'Dossier des VOD', config.recordingRoot,
+            'Où la régie relit les enregistrements (🎞 dans le panneau Captation). ' +
+            'Vide : le dossier d\u2019OBS-B, qu\u2019elle lui demande. Ce champ ne déplace rien : ' +
+            'c\u2019est OBS-B qui décide où il écrit.') + '</div>' +
           relais +
         '</div>' +
         /*
@@ -1154,12 +1281,487 @@ ${etatInitial}
 
   function ouvrirConfig() {
     fermerModale()
+    fermerVod()
     document.body.dataset.config = 'ouverte'
     if (donnees) rendreConfig()
   }
 
   function fermerConfig() {
     document.body.dataset.config = 'fermee'
+  }
+
+  /**
+   * Contrôle des rushes.
+   *
+   * La question à laquelle cette modale répond est celle qu'on se pose au
+   * démontage : « est-ce qu'on a bien tout ? » Le chronomètre de la régie a dit
+   * qu'on enregistrait ; il ne dit pas qu'OBS écrivait vraiment quelque chose
+   * d'exploitable. Entre les deux, il y a un disque plein, un encodeur qui a
+   * lâché, une carte d'acquisition débranchée — et personne ne s'en aperçoit
+   * avant le montage, quand la salle n'existe plus.
+   *
+   * Rien n'est chargé tant qu'on n'ouvre pas : lire le dossier des captations à
+   * chaque tic d'horloge coûterait un accès disque par seconde pour une liste
+   * qu'on consulte trois fois dans la journée.
+   */
+  let vod = null
+  let vodEnCours = false
+  /** Rush déplié pour aperçu, et l'endroit du fichier qu'on regarde. */
+  let vodApercu = null
+  /** Téléversements, sondés tant que la modale est ouverte. */
+  let vodMontees = null
+  let vodMonteesTimer = null
+
+  /** Vingt secondes : assez pour entendre le son et voir le cadrage, pas plus. */
+  const EXTRAIT_MS = 20_000
+
+  const BADGES_VOD = {
+    ok: ['Exploitable', 'border-ok/50 text-ok'],
+    suspect: ['À revoir', 'border-attention/50 text-attention'],
+    illisible: ['Illisible', 'border-alerte/60 text-alerte'],
+  }
+
+  function tailleFichier(octets) {
+    if (octets >= 1e9) return (octets / 1e9).toFixed(1).replace('.', ',') + ' Go'
+    if (octets >= 1e6) return Math.round(octets / 1e6) + ' Mo'
+    return Math.max(1, Math.round(octets / 1e3)) + ' ko'
+  }
+
+  function dureeCourte(ms) {
+    const total = Math.round(ms / 1000)
+    const deux = (valeur) => String(valeur).padStart(2, '0')
+    const heures = Math.floor(total / 3600)
+    const restant = deux(Math.floor((total % 3600) / 60)) + ':' + deux(total % 60)
+    return heures > 0 ? heures + ':' + restant : restant
+  }
+
+  async function chargerVod() {
+    try {
+      const reponse = await fetch('/control/recordings')
+      const corps = await reponse.json()
+      vod = { root: corps.root ?? null, entries: corps.entries ?? [], outils: corps.outils ?? null }
+      if (corps.ok === false && corps.message) toast(corps.message, true)
+    } catch (cause) {
+      vod = { root: null, entries: [], outils: null }
+      toast('Le service local ne répond pas', true)
+    }
+    rendreVod()
+  }
+
+  /**
+   * Téléversements en cours, sondés plutôt que poussés.
+   *
+   * Même choix que la charge du poste : un pourcentage qui avance placé dans le
+   * flux d'état republierait tout le diagnostic à chaque part. Ici, seule une
+   * modale ouverte interroge, et une salle dont personne ne regarde les rushes
+   * ne paie rien.
+   */
+  async function chargerMontees() {
+    try {
+      const reponse = await fetch('/control/uploads')
+      const corps = await reponse.json()
+      vodMontees = corps.ok === false ? null : corps
+    } catch (cause) {
+      vodMontees = null
+    }
+    rendreRegulateur()
+    rendreVod()
+  }
+
+  function rendreRegulateur() {
+    const zone = $('vod-regulateur')
+    const verdict = vodMontees?.verdict
+    /**
+     * Rien à dire quand tout va, ni quand il n'y a rien à faire aller.
+     *
+     * « desactive » n'est pas une attente : c'est un hub sans stockage, donc
+     * une fonctionnalité que personne n'a demandée. L'annoncer en ambre à
+     * chaque ouverture de la modale, toute la journée, la ferait passer pour
+     * une panne — et userait le bandeau avant le jour où il dit vrai.
+     */
+    if (verdict == null || verdict.autorise || verdict.raison === 'desactive') {
+      zone.className = 'hidden border-b border-bord px-4 py-1.5 text-[11px]'
+      zone.textContent = ''
+      return
+    }
+    zone.className = 'border-b border-bord px-4 py-1.5 text-[11px] text-attention'
+    zone.textContent = 'Téléversement en attente — ' + verdict.texte + '.'
+  }
+
+  /** État de montée d'un fichier, ou nul s'il n'a jamais été mis en file. */
+  function monteeDe(fichier) {
+    return (vodMontees?.entrees ?? []).find((entree) => entree.file === fichier) ?? null
+  }
+
+  function ligneVod(entree) {
+    const controle = entree.check
+    const badge = controle == null
+      ? ['Non vérifié', 'border-bord text-attenue']
+      : (BADGES_VOD[controle.status] ?? ['Non vérifié', 'border-bord text-attenue'])
+
+    const sidecar = entree.sidecar
+    const duree = controle?.probe?.durationMs ?? sidecar?.durationMs ?? null
+    const qui = (sidecar?.speakers ?? []).map((personne) => personne.name).filter(Boolean).join(', ')
+
+    // Ce qui se lit d'un coup d'œil : quand, combien, et ce qui manque déjà.
+    const details = []
+    if (sidecar == null) details.push('sidecar absent')
+    else {
+      details.push(heure(sidecar.startedAt, donnees.timezone))
+      const marqueurs = (sidecar.markers ?? []).length
+      if (marqueurs > 0) details.push(marqueurs + ' marqueur' + (marqueurs > 1 ? 's' : ''))
+    }
+    if (duree != null) details.push(dureeCourte(duree))
+    details.push(tailleFichier(entree.sizeBytes))
+    if (entree.enEcriture) details.push('encore en écriture')
+    if (controle != null && controle.by === 'operateur') details.push('verdict de la régie')
+
+    // L'état de montée se lit dans la même ligne que le reste : c'est la même
+    // question — « ce rush est-il en sécurité ? » — et la séparer en deux
+    // colonnes obligerait à croiser deux listes des yeux.
+    const montee = monteeDe(entree.file)
+    const LIBELLES_MONTEE = {
+      attente: 'téléversement en attente',
+      'en-cours': 'téléversement en cours',
+      termine: 'téléversé',
+      abandonne: 'téléversement abandonné',
+      echoue: 'téléversement en échec',
+    }
+    if (montee != null) {
+      const libelle = LIBELLES_MONTEE[montee.state] ?? montee.state
+      details.push(
+        montee.state === 'en-cours' ? libelle + ' — ' + montee.pourcent + ' %' : libelle,
+      )
+    }
+
+    const raisons = controle == null || controle.reasons.length === 0
+      ? ''
+      : '<div class="mt-1 text-[11px] ' +
+        (controle.status === 'ok' ? 'text-attenue' : 'text-attention') + '">' +
+        echapper(controle.reasons.join(' · ')) + '</div>'
+
+    // L'erreur du stockage est reprise telle quelle : « AccessDenied » est le
+    // seul mot qu'on puisse porter à qui tient le bucket.
+    const echecMontee = montee?.erreur == null
+      ? ''
+      : '<div class="mt-1 text-[11px] text-alerte">Téléversement : ' +
+        echapper(montee.erreur) + '</div>'
+
+    const bouton = (verdict, libelle, titre, classes) =>
+      '<button class="btn btn-petit ' + classes + '" title="' + echapper(titre) + '" ' +
+      'data-vod-action="' + verdict + '" data-vod-fichier="' + echapper(entree.file) + '">' +
+      libelle + '</button>'
+
+    // « Actif » sur le verdict déjà posé : le même bouton l'enlève, sinon une
+    // fausse manœuvre resterait à l'écran sans moyen de la reprendre.
+    const pose = (verdict) =>
+      controle != null && controle.by === 'operateur' && controle.status === verdict ? ' actif' : ''
+
+    return '<div class="grid grid-cols-[1fr_auto] items-start gap-3 rounded-lg border border-bord p-2.5">' +
+      '<div class="min-w-0">' +
+        '<div class="flex flex-wrap items-center gap-2">' +
+          '<span class="rounded border px-1.5 py-px text-[10px] font-semibold tracking-[.08em] uppercase ' +
+            badge[1] + '">' + badge[0] + '</span>' +
+          '<span class="truncate font-mono text-[12px] text-attenue">' + echapper(entree.file) + '</span>' +
+        '</div>' +
+        '<div class="mt-1 truncate text-sm">' + echapper(sidecar?.title ?? 'Titre inconnu') +
+          (qui ? '<span class="text-attenue"> — ' + echapper(qui) + '</span>' : '') + '</div>' +
+        '<div class="mt-0.5 text-[11px] text-attenue">' + echapper(details.join(' · ')) + '</div>' +
+        raisons +
+        echecMontee +
+      '</div>' +
+      '<div class="flex shrink-0 items-center gap-1">' +
+        '<button class="btn btn-petit' + (vodApercu?.file === entree.file ? ' actif' : '') + '" ' +
+          'title="Voir et entendre un extrait" data-vod-apercu="' + echapper(entree.file) + '">👁</button>' +
+        bouton('inspect', 'Vérifier', 'Relit le conteneur : pistes, durée réelle, débit', '') +
+        boutonMontee(entree, montee) +
+        bouton('ok', '✓', 'Fichier ouvert et relu : exploitable', pose('ok')) +
+        bouton('illisible', '✕', 'Fichier inexploitable : à refaire ou à signaler', pose('illisible')) +
+      '</div>' +
+      panneauApercu(entree) +
+    '</div>'
+  }
+
+  /**
+   * Le bouton de téléversement d'une ligne.
+   *
+   * Trois états, et un seul bouton : rien (⬆), en cours (Annuler), terminé
+   * (rien à proposer). Un rush déjà chez le stockage ne doit pas offrir de
+   * bouton qui repaierait trois gigaoctets sur le réseau de l'événement au
+   * premier clic distrait.
+   *
+   * Absent tant que le hub n'a pas de destination : un bouton qui échoue à
+   * chaque clic est pire qu'un bouton absent, et l'en-tête dit déjà pourquoi.
+   */
+  function boutonMontee(entree, montee) {
+    if (vodMontees == null || vodMontees.verdict?.raison === 'desactive') return ''
+
+    if (montee?.state === 'en-cours' || montee?.state === 'attente') {
+      return '<button class="btn btn-petit" title="Renoncer à ce téléversement" ' +
+        'data-vod-annuler="' + echapper(entree.file) + '">Annuler</button>'
+    }
+    if (montee?.state === 'termine') {
+      return '<span class="px-1.5 text-[13px] text-attenue" title="Déjà chez le stockage">☁</span>'
+    }
+    const titre = entree.enEcriture
+      ? 'Prise encore en cours : le fichier partira une fois arrêtée'
+      : 'Envoyer ce rush et son sidecar au stockage'
+    return '<button class="btn btn-petit" title="' + echapper(titre) + '" ' +
+      'data-vod-monter="' + echapper(entree.file) + '">⬆</button>'
+  }
+
+  /**
+   * Aperçu d'un rush, déplié sous sa ligne.
+   *
+   * Les rushes d'OBS sont des Matroska, qu'aucun navigateur ne sait ouvrir, et
+   * ils pèsent plusieurs gigaoctets : le lecteur reçoit un extrait de vingt
+   * secondes remballé en MP4 par ffmpeg, produit à la demande et jamais écrit
+   * sur le disque. Les points de départ sautent aux endroits où une prise se
+   * casse d'habitude — le tout début, et la fin.
+   */
+  function panneauApercu(entree) {
+    if (vodApercu == null || vodApercu.file !== entree.file) return ''
+
+    const encode = encodeURIComponent(entree.file)
+    const duree = entree.check?.probe?.durationMs ?? entree.sidecar?.durationMs ?? null
+    const points = duree == null || duree < 60_000
+      ? [['Début', 0]]
+      : [
+          ['Début', 0],
+          ['25 %', Math.round(duree * 0.25)],
+          ['Milieu', Math.round(duree * 0.5)],
+          ['75 %', Math.round(duree * 0.75)],
+          ['Fin', Math.max(0, duree - EXTRAIT_MS)],
+        ]
+
+    const ffmpeg = vod?.outils?.ffmpeg === true
+    const positions = !ffmpeg ? '' : points.map(([libelle, position]) =>
+      '<button class="btn btn-petit px-2 py-1 text-[11px]' +
+      (position === vodApercu.at ? ' actif' : '') + '" data-vod-position="' + position +
+      '" data-vod-fichier="' + echapper(entree.file) + '">' + libelle + '</button>').join('')
+
+    // Sans ffmpeg, on sert le fichier tel quel : le navigateur lira un MP4 et
+    // butera sur un Matroska. Le dire d’avance vaut mieux qu’un lecteur noir.
+    const source = ffmpeg
+      ? '/control/recordings/extrait?file=' + encode + '&at=' + vodApercu.at + '&duree=' + EXTRAIT_MS
+      : '/control/recordings/fichier?file=' + encode
+
+    const avis = ffmpeg
+      ? 'Extrait de ' + Math.round(EXTRAIT_MS / 1000) + ' s, remballé à la volée — le fichier n’est pas modifié.'
+      : 'ffmpeg introuvable : lecture directe du fichier. Un Matroska ne s’ouvrira pas dans le navigateur — passez par « Fichier brut ».'
+
+    return '<div class="col-span-2 mt-2 border-t border-bord pt-2">' +
+      '<div class="mb-1.5 flex flex-wrap items-center gap-1.5">' +
+        (ffmpeg ? '<span class="text-[11px] text-attenue">Extrait à partir de</span>' : '') +
+        positions +
+        '<a class="btn btn-petit ml-auto px-2 py-1 text-[11px]" target="_blank" rel="noreferrer" ' +
+        'href="/control/recordings/fichier?file=' + encode + '">Fichier brut</a>' +
+      '</div>' +
+      '<video class="max-h-[46vh] w-full rounded-lg bg-black" controls autoplay playsinline ' +
+      'src="' + echapper(source) + '"></video>' +
+      '<div class="mt-1 text-[11px] text-attenue" data-vod-avis>' + echapper(avis) + '</div>' +
+    '</div>'
+  }
+
+  function rendreVod() {
+    const conteneur = $('vod-contenu')
+    $('vod-racine').textContent = vod?.root ?? ''
+
+    if (vod == null) {
+      conteneur.innerHTML = '<div class="text-xs text-attenue">Lecture du dossier…</div>'
+      return
+    }
+    if (vod.root == null) {
+      // Une liste vide se lirait comme une journée perdue : dire pourquoi.
+      conteneur.innerHTML = '<div class="text-sm text-attention">Aucun dossier d’enregistrement connu. ' +
+        'Renseignez-le dans la configuration de la salle, ou connectez OBS-B — ' +
+        'c’est lui qui dit où il écrit.</div>'
+      return
+    }
+    if (vod.entries.length === 0) {
+      conteneur.innerHTML = '<div class="text-sm text-attenue">Aucun fichier vidéo dans ce dossier.</div>'
+      return
+    }
+
+    // Ce dont la machine ne dispose pas, dit une fois en haut plutôt que
+    // découvert bouton par bouton.
+    const manquants = []
+    if (vod.outils?.ffprobe === false) manquants.push('« Vérifier » se limite à la taille et au sidecar')
+    if (vod.outils?.ffmpeg === false) manquants.push('les aperçus ne peuvent pas être produits')
+    const avertissement = manquants.length === 0
+      ? ''
+      : '<div class="mb-2 rounded-lg border border-attention/40 px-2.5 py-1.5 text-[11px] text-attention">' +
+        (vod.outils?.ffprobe === false && vod.outils?.ffmpeg === false
+          ? 'ffmpeg et ffprobe introuvables sur cette machine : '
+          : (vod.outils?.ffprobe === false ? 'ffprobe introuvable : ' : 'ffmpeg introuvable : ')) +
+        manquants.join(', ') + '.</div>'
+
+    conteneur.innerHTML = avertissement + '<div class="flex flex-col gap-1.5">' +
+      vod.entries.map(ligneVod).join('') + '</div>'
+    for (const bouton of conteneur.querySelectorAll('[data-vod-action]')) {
+      bouton.onclick = () => actionVod(bouton, bouton.dataset.vodFichier, bouton.dataset.vodAction)
+    }
+    for (const bouton of conteneur.querySelectorAll('[data-vod-apercu]')) {
+      bouton.onclick = () => basculerApercu(bouton.dataset.vodApercu)
+    }
+    for (const bouton of conteneur.querySelectorAll('[data-vod-monter]')) {
+      bouton.onclick = () => void monterVod(bouton.dataset.vodMonter)
+    }
+    for (const bouton of conteneur.querySelectorAll('[data-vod-annuler]')) {
+      bouton.onclick = () => void annulerVod(bouton.dataset.vodAnnuler)
+    }
+    for (const bouton of conteneur.querySelectorAll('[data-vod-position]')) {
+      bouton.onclick = () => {
+        vodApercu = { file: bouton.dataset.vodFichier, at: Number(bouton.dataset.vodPosition) }
+        rendreVod()
+      }
+    }
+    for (const lecteur of conteneur.querySelectorAll('video')) {
+      // Le clic sur 👁 vaut geste utilisateur : la lecture peut partir seule.
+      // Refusée — politique du navigateur —, les commandes restent là.
+      try {
+        const lancee = lecteur.play?.()
+        if (lancee != null && typeof lancee.catch === 'function') lancee.catch(() => {})
+      } catch (cause) {
+        // Un lecteur qui refuse de démarrer ne doit pas emporter le rendu de la
+        // liste avec lui.
+      }
+      lecteur.onerror = () => {
+        const avis = lecteur.parentElement?.querySelector('[data-vod-avis]')
+        if (avis == null) return
+        avis.className = 'mt-1 text-[11px] text-alerte'
+        avis.textContent = 'Extrait illisible : ce fichier ne s’ouvre pas. ' +
+          'C’est en soi une réponse — lancez « Vérifier » pour savoir ce qui manque.'
+      }
+    }
+  }
+
+  /** Déplie l'aperçu d'un rush, ou le referme si c'est déjà le sien. */
+  function basculerApercu(fichier) {
+    vodApercu = vodApercu != null && vodApercu.file === fichier ? null : { file: fichier, at: 0 }
+    rendreVod()
+  }
+
+  async function actionVod(bouton, fichier, action) {
+    const entree = (vod?.entries ?? []).find((candidat) => candidat.file === fichier)
+    // Lire un rush de deux heures prend quelques secondes : sans ce retour, on
+    // reclique, et le disque se retrouve à répondre trois fois à la question.
+    const libelle = bouton.innerHTML
+    bouton.disabled = true
+    if (action === 'inspect') bouton.textContent = '…'
+    try {
+      if (action === 'inspect') {
+        await agir({ action: 'vod.inspect', file: fichier })
+      } else {
+        const controle = entree?.check
+        const deja = controle != null && controle.by === 'operateur' && controle.status === action
+        await agir({ action: 'vod.verdict', file: fichier, status: deja ? null : action })
+      }
+    } finally {
+      bouton.disabled = false
+      bouton.innerHTML = libelle
+    }
+    await chargerVod()
+  }
+
+  /**
+   * Contrôle de tout le dossier, un fichier après l'autre.
+   *
+   * En série, et pas en parallèle : ffprobe lit réellement les fichiers, et
+   * lancer six lectures de rushes de deux heures sur le disque qui enregistre
+   * est exactement ce qu'on ne veut pas pendant une conférence. Sans toast par
+   * fichier non plus — douze messages à la suite ne disent rien de plus que le
+   * compte affiché en haut.
+   */
+  async function verifierToutVod() {
+    if (vod == null || vodEnCours) return
+    const cibles = vod.entries.map((entree) => entree.file)
+    if (cibles.length === 0) return
+
+    vodEnCours = true
+    $('btn-vod-tout').disabled = true
+    try {
+      for (let index = 0; index < cibles.length; index += 1) {
+        $('vod-avancement').textContent = 'contrôle ' + (index + 1) + ' / ' + cibles.length
+        try {
+          await fetch('/control/action', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ action: 'vod.inspect', file: cibles[index] }),
+          })
+        } catch (cause) {
+          toast('Le service local ne répond pas', true)
+          break
+        }
+      }
+    } finally {
+      vodEnCours = false
+      $('btn-vod-tout').disabled = false
+      $('vod-avancement').textContent = ''
+    }
+
+    await chargerVod()
+    const douteux = (vod?.entries ?? []).filter((entree) => entree.check != null && entree.check.status !== 'ok')
+    toast(
+      douteux.length === 0
+        ? cibles.length + ' enregistrement(s) contrôlé(s), rien à signaler'
+        : douteux.length + ' enregistrement(s) à revoir',
+      douteux.length > 0,
+    )
+  }
+
+  /**
+   * Met un rush en file, ou tout ce qui reste.
+   *
+   * Aucune fenêtre de confirmation, et surtout pas une native : elle bloque la
+   * boucle de rendu de la page, donc le chronomètre et le flux des salles, en
+   * pleine conférence. Le geste n'est de toute façon pas destructif — il met en
+   * file, il ne lit rien tout de suite.
+   *
+   * Le seul cas qui mérite un mot est la captation en cours : c'est le seul où
+   * le régulateur refusera *malgré* la demande manuelle, parce qu'on ne lit pas
+   * le disque sur lequel un master s'écrit. On le dit en passant, le bandeau
+   * d'en-tête le répète tant que ça dure, et le fichier part dès l'arrêt.
+   */
+  async function monterVod(fichier) {
+    const resultat = await agir({ action: 'vod.upload', file: fichier ?? null })
+    if (resultat.ok && donnees.state?.recording === true) {
+      toast('Mis en file — départ à l’arrêt de la captation en cours')
+    }
+    await chargerMontees()
+  }
+
+  async function annulerVod(fichier) {
+    await agir({ action: 'vod.upload.cancel', file: fichier })
+    await chargerMontees()
+  }
+
+  function ouvrirVod() {
+    fermerModale()
+    fermerConfig()
+    document.body.dataset.vod = 'ouverte'
+    // Relu à chaque ouverture : le dossier s'est rempli depuis la dernière fois.
+    vod = null
+    vodApercu = null
+    vodMontees = null
+    rendreVod()
+    void chargerVod()
+    void chargerMontees()
+    /**
+     * Sondage tant que la modale est ouverte, et lui seul.
+     *
+     * Trois secondes : assez pour qu'un pourcentage avance sous les yeux, assez
+     * peu pour qu'une salle dont la modale est fermée — c'est-à-dire toute la
+     * journée — ne génère aucun trafic. L'intervalle est coupé à la fermeture,
+     * sans quoi il survivrait à toutes les ouvertures de la journée.
+     */
+    if (vodMonteesTimer == null) vodMonteesTimer = setInterval(() => void chargerMontees(), 3000)
+  }
+
+  function fermerVod() {
+    document.body.dataset.vod = 'fermee'
+    if (vodMonteesTimer != null) clearInterval(vodMonteesTimer)
+    vodMonteesTimer = null
   }
 
   function rendreAppairage() {
@@ -1348,8 +1950,7 @@ ${etatInitial}
         (attente ? ' · ' + attente : '') + '</div></div>' +
         '<div>' + (salle.recording ? '<span class="badge running">rec</span>' : '') + '</div>' +
         '<div class="flex items-center gap-1.5 text-xs ' +
-        (etat.classe === 'depassement' ? 'text-alerte'
-          : etat.classe === 'fin-proche' || etat.classe === 'retard' ? 'text-attention' : 'text-attenue') +
+        etat.texte +
         '"><span>' + echapper(coupee ? 'salle muette' : etat.libelle) + '</span>' +
         '<span class="pastille ' + classe + '"></span></div>' +
         '</div>'
@@ -1474,10 +2075,25 @@ ${etatInitial}
     badge.textContent =
       statut === 'running' ? 'en cours' : statut === 'ended' ? 'terminée' : aVenir ? 'à venir' : 'prête'
 
+    /**
+     * Les deux boutons suivent la table du cycle de vie, pas une condition
+     * écrite ici.
+     *
+     * C'est la même table que le hub applique en écriture : un bouton actif
+     * dont la procédure refuserait le geste — ou l'inverse — n'est plus
+     * possible. Le refus sert d'infobulle, pour que la raison soit lisible sans
+     * avoir à cliquer pour la découvrir.
+     */
     const demarrer = $('btn-conf-demarrer')
     const terminer = $('btn-conf-terminer')
-    demarrer.disabled = session == null || statut === 'running'
-    terminer.disabled = session == null || statut !== 'running'
+    for (const [bouton, action] of [[demarrer, 'start'], [terminer, 'end']]) {
+      const refus = session == null
+        ? 'Aucune conférence à piloter dans cette salle.'
+        : EtatSalle.refusDeTransition(statut, action)
+      bouton.disabled = refus != null
+      if (refus == null) bouton.removeAttribute('title')
+      else bouton.title = refus
+    }
     demarrer.classList.toggle('actif', statut === 'running')
 
     const reste = resteAuProgramme()
@@ -1560,15 +2176,18 @@ ${etatInitial}
   }
 
   /**
-   * La prochaine **conférence** de la salle, pauses sautées.
+   * La prochaine conférence de la salle : celle qui va encore se tenir.
    *
-   * Un déjeuner n'est pas ce qu'on attend : compter jusqu'à lui donnerait un
-   * chiffre juste et sans usage, quand ce qui se prépare est le talk d'après.
-   * C'est aussi ce que vise « Commencer » — les deux doivent désigner le même
-   * créneau, sinon le décompte annonce une chose et le bouton en lance une autre.
+   * Pauses sautées — un déjeuner n'est pas ce qu'on attend — et conférences
+   * déjà terminées sautées aussi. La page ne tranche plus elle-même : la règle
+   * est celle de l'automate, la même que le banc d'essai déroule.
    */
   function prochaineConference(instant) {
-    return (donnees.sessions ?? []).find((s) => s.kind === 'talk' && s.startsAtMs > instant) ?? null
+    return EtatSalle.prochaineConference(
+      donnees.sessions ?? [],
+      instant,
+      donnees.state.sessionStates ?? {},
+    )
   }
 
   /** Le grand compte à rebours, remis à jour chaque seconde par tic(). */
@@ -1629,19 +2248,16 @@ ${etatInitial}
     if (nomEvenement) document.title = 'Régie — ' + nomEvenement
 
     $('salle').textContent = donnees.roomName ?? etat.roomId ?? 'Salle non appairée'
-    const pastille = $('pastille')
-    pastille.className = 'pastille' + (etat.connectivity === 'ONLINE' ? '' : etat.connectivity === 'DEGRADED' ? ' degraded' : ' offline')
-    $('etat-libelle').textContent =
-      etat.connectivity === 'ONLINE' ? 'hub connecté'
-      : etat.connectivity === 'DEGRADED' ? 'temps réel interrompu' : 'hors ligne'
+
+    // La profondeur de file est l'indicateur à surveiller pendant une coupure :
+    // elle se lit dans le bandeau, et se détaille dans la bulle du hub.
+    const profondeur = donnees.diagnostics?.outboxDepth ?? etat.outboxDepth ?? 0
+    rendreHub(etat, profondeur)
+    $('file').textContent = profondeur > 0 ? profondeur + ' en attente' : ''
 
     // Une heure calée sur un hub en temps simulé se lit de travers si on ne le
     // dit pas : l'écart avec la montre de l'opérateur ferait douter du reste.
     document.body.dataset.horloge = etat.simulatedClock ? 'simulee' : 'reelle'
-
-    // La profondeur de file est l'indicateur à surveiller pendant une coupure.
-    const profondeur = donnees.diagnostics?.outboxDepth ?? etat.outboxDepth ?? 0
-    $('file').textContent = profondeur > 0 ? profondeur + ' en attente' : ''
 
     boutons($('modes'), MODES, etat.mode, (mode) => ({ action: 'display.set', mode }))
     // Le relais n'apparaît que s'il est configuré, et annonce sa source :
@@ -1693,6 +2309,23 @@ ${etatInitial}
     tic()
   }
 
+  /**
+   * Depuis quand le flux de la page est coupé, ou null s'il tient.
+   *
+   * Distinct de la connectivité affichée à côté, qui dit si la **salle** joint
+   * le hub. Celle-ci dit si la **page** joint sa salle — deux pannes
+   * différentes, et la seconde était muette.
+   */
+  let fluxCoupeDepuis = null
+
+  /** Au-delà, une coupure cesse d'être une reconnexion et devient un écran mort. */
+  const FLUX_MORT_MS = 4000
+
+  function rendreVivacite() {
+    const coupe = fluxCoupeDepuis != null && Date.now() - fluxCoupeDepuis > FLUX_MORT_MS
+    $('flux-mort').hidden = !coupe
+  }
+
   function tic() {
     if (!donnees) return
     const decalage = donnees.state.serverTimeOffsetMs || 0
@@ -1703,6 +2336,7 @@ ${etatInitial}
     rendreRestant()
     rendreFluxSalles()
     rendreSignalements()
+    rendreVivacite()
 
     const duree = $('duree')
     if (debutRec == null) {
@@ -1717,6 +2351,271 @@ ${etatInitial}
     duree.textContent = m + ':' + s
   }
   setInterval(tic, 1000)
+
+  /**
+   * Charge du poste, relevée à part du flux d'état.
+   *
+   * Un appel toutes les cinq secondes plutôt qu'un champ de plus dans la charge
+   * utile : la mesure est déjà une moyenne sur l'intervalle — interroger plus
+   * souvent ne dirait rien de plus — et surtout une salle dont la régie est
+   * fermée continue de n'émettre aucun trafic.
+   */
+  const CPU_PERIODE_MS = 5000
+  /** Au-delà, l'encodage n'a plus de marge ; plus haut encore, il perd des images. */
+  const CPU_ATTENTION = 0.7
+  const CPU_ALERTE = 0.9
+
+  /** Pastilles de l'en-tête : la couleur d'un niveau, et rien d'autre. */
+  const PASTILLE_NIVEAU = { ok: '', attention: ' degraded', alerte: ' offline', inconnu: ' hors' }
+
+  /** Les niveaux, du plus calme au plus grave. « inconnu » n'est pas une gravité. */
+  const GRAVITE = ['ok', 'attention', 'alerte']
+
+  /** Une barre de proportion, teintée par sa propre mesure. */
+  function jauge(part, niveau) {
+    return '<div class="jauge"><span class="niveau-' + niveau + '" style="width:' +
+      Math.min(100, Math.max(0, part)) + '%"></span></div>'
+  }
+
+  /**
+   * Le pire de deux niveaux — ce que la pastille du bandeau doit montrer.
+   *
+   * « inconnu » ne l'emporte sur rien : une mesure absente ne doit pas éteindre
+   * l'alerte que l'autre est en train de donner.
+   */
+  function pire(a, b) {
+    if (GRAVITE.indexOf(a) < 0) return b
+    if (GRAVITE.indexOf(b) < 0) return a
+    return GRAVITE.indexOf(a) >= GRAVITE.indexOf(b) ? a : b
+  }
+
+  /**
+   * Remplit un indicateur d'en-tête : sa pastille, sa bulle, et ce qu'un lecteur
+   * d'écran en dira.
+   *
+   * Les deux indicateurs passent par ici, et c'est le point : ils se lisent d'un
+   * même coup d'œil parce qu'ils sont bâtis d'une même main — la couleur au même
+   * endroit, le verdict à la même place, le chiffre au même format. Deux rendus
+   * séparés auraient divergé au premier ajout.
+   */
+  function rendreIndicateur(cle, vue) {
+    const bloc = $(cle)
+
+    // Un seul attribut : la pastille et la bulle se colorent d'après lui, et ne
+    // peuvent donc pas se contredire.
+    bloc.dataset.niveau = vue.niveau
+    $('pastille-' + cle).className = 'pastille' + PASTILLE_NIVEAU[vue.niveau]
+
+    // La couleur du grand chiffre est celle de *sa* mesure, pas celle du bloc :
+    // un processeur au repos reste vert sous une pastille rouge de mémoire.
+    const teinte = 'niveau-' + (vue.valeurNiveau ?? vue.niveau)
+    $('bulle-' + cle).innerHTML =
+      '<div class="text-[10px] font-semibold tracking-[.12em] text-attenue uppercase">' + vue.titre + '</div>' +
+      '<div class="mt-1 mb-2 flex items-baseline gap-2">' +
+        '<span class="chiffre ' + teinte + ' text-[22px] leading-none font-semibold tabular-nums">' + vue.valeur + '</span>' +
+        '<span class="etiquette ' + teinte + ' ml-auto text-right text-[11px] font-semibold">' + vue.etiquette + '</span>' +
+      '</div>' +
+      // La jauge n'a de sens que sur une part de quelque chose : le lien avec le
+      // hub n'en a pas, et une barre vide s'y lirait comme une mesure à zéro.
+      (vue.jauge == null ? '' : jauge(vue.jauge, vue.valeurNiveau ?? vue.niveau)) +
+      '<div class="mt-1.5 text-[11px] text-attenue">' + vue.detail + '</div>' +
+      (vue.encart ?? '') +
+      '<div class="mt-2 border-t border-bord pt-2 text-xs leading-snug text-texte">' + vue.verdict + '</div>'
+
+    // Ce que le lecteur d'écran annonce : la bulle est décorative, elle ne fait
+    // que mettre en forme cette phrase-là.
+    bloc.setAttribute('aria-label', vue.resume ??
+      vue.titre + ' : ' + vue.valeur + ', ' + vue.etiquette + ' — ' + vue.detail + '. ' + vue.verdict)
+  }
+
+  /**
+   * Le lien avec le hub, dans ses trois états.
+   *
+   * Ce que la bulle ajoute à la couleur : **ce qui marche encore**. C'est la
+   * seule question de l'opérateur quand la pastille change en pleine journée, et
+   * la réponse est contre-intuitive — la salle projette, capte et déroule son
+   * programme sans le hub. Le dire évite l'arrêt de séance réflexe.
+   */
+  const HUB_ETATS = {
+    ONLINE: {
+      niveau: 'ok',
+      libelle: 'hub connecté',
+      valeur: 'Connecté',
+      etiquette: 'échanges en direct',
+      verdict: 'Commandes, remontée et programme circulent normalement.',
+    },
+    DEGRADED: {
+      niveau: 'attention',
+      libelle: 'temps réel interrompu',
+      valeur: 'Différé',
+      // Pas « temps réel interrompu » : le bandeau le dit déjà à trois
+      // centimètres de là. L'étiquette sert à dire ce qu'il advient du reste.
+      etiquette: 'remontée en file',
+      verdict: 'Le hub répond encore, mais plus en direct : la salle continue seule et ce qu’elle produit part en file. Rien n’est perdu tant que l’application reste ouverte.',
+    },
+    OFFLINE: {
+      niveau: 'alerte',
+      libelle: 'hors ligne',
+      valeur: 'Hors ligne',
+      etiquette: 'aucun contact',
+      verdict: 'Plus rien ne circule avec le hub. Projection et captation, elles, n’en dépendent pas : continuez le talk, prévenez la console par un autre moyen.',
+    },
+  }
+
+  /**
+   * L'écart avec l'horloge du hub, dans une unité qu'on puisse se représenter.
+   *
+   * « décalée de +5 693 432,6 s » est exact et illisible. Au-delà de la minute
+   * seul l'ordre de grandeur compte : un poste à deux heures du hub n'a pas le
+   * même problème qu'un poste à deux secondes, et c'est ce qu'il faut lire.
+   */
+  function ecartHorloge(ms) {
+    const secondes = Math.abs(ms) / 1000
+    if (secondes < 1) return 'horloge alignée'
+
+    const signe = ms > 0 ? '+' : '−'
+    const dit = (valeur, unite) => 'horloge décalée de ' + signe + valeur + ' ' + unite
+    if (secondes < 90) return dit(secondes.toFixed(1).replace('.', ','), 's')
+    const minutes = secondes / 60
+    if (minutes < 90) return dit(Math.round(minutes), 'min')
+    const heures = minutes / 60
+    if (heures < 48) return dit(Math.round(heures), 'h')
+    return dit(Math.round(heures / 24), 'jours')
+  }
+
+  function rendreHub(etat, profondeur) {
+    const hub = HUB_ETATS[etat.connectivity] ?? HUB_ETATS.OFFLINE
+    $('etat-libelle').textContent = hub.libelle
+
+    // L'écart d'horloge se dit ici et nulle part ailleurs : c'est ce qui
+    // explique un compte à rebours qui ne colle pas à la montre de l'opérateur.
+    const horloge = etat.simulatedClock
+      ? 'horloge simulée par le hub'
+      : ecartHorloge(etat.serverTimeOffsetMs || 0)
+
+    rendreIndicateur('hub', {
+      titre: 'Lien avec le hub',
+      valeur: hub.valeur,
+      etiquette: hub.etiquette,
+      niveau: hub.niveau,
+      jauge: null,
+      detail: (profondeur > 0 ? profondeur + ' en attente de remontée' : 'file vide') + ' · ' + horloge,
+      verdict: hub.verdict,
+    })
+  }
+
+  /**
+   * Les quatre états de la charge processeur, chacun avec ce qu'il coûte.
+   *
+   * Le verdict est écrit ici plutôt que déduit à l'affichage : une couleur seule
+   * ne dit pas quoi faire, et l'opérateur qui survole la pastille au milieu
+   * d'un talk n'a pas trois secondes pour se demander ce qu'elle attend de lui.
+   */
+  const CPU_NIVEAUX = {
+    ok: {
+      etiquette: 'marge confortable',
+      verdict: 'Le poste encaisse l’encodage sans forcer.',
+    },
+    attention: {
+      etiquette: 'charge soutenue',
+      verdict: 'Plus de marge pour un imprévu : fermez ce qui n’est pas la régie.',
+    },
+    alerte: {
+      etiquette: 'saturé',
+      verdict: 'OBS perd probablement des images, et rien d’autre ne le dira. Le rush s’abîme maintenant.',
+    },
+    inconnu: {
+      etiquette: 'mesure indisponible',
+      verdict: 'Pastille sans valeur, pas poste au repos : la charge n’a pas pu être lue.',
+    },
+  }
+
+  /**
+   * L'autre façon dont un poste lâche, et la plus sournoise.
+   *
+   * La machine ne ralentit pas franchement : elle commence à échanger sur le
+   * disque — celui-là même qui écrit le rush. Le symptôme visible est un
+   * enregistrement qui saute, sans que le processeur ait bougé.
+   */
+  const MEM_ATTENTION = 0.85
+  const MEM_ALERTE = 0.95
+  const MEM_VERDICTS = {
+    attention: 'La mémoire se remplit. Fermez les onglets et les lecteurs vidéo ouverts à côté avant le prochain talk.',
+    alerte: 'Mémoire pleine : la machine va échanger sur le disque, celui-là même qui écrit le rush. Fermez tout le reste maintenant.',
+  }
+
+  /** Octets en gigaoctets, à une décimale, à la française. */
+  function enGo(octets) {
+    return (octets / 1_000_000_000).toFixed(1).replace('.', ',')
+  }
+
+  function rendreCpu(charge) {
+    const valeur = charge == null ? null : charge.cpu
+    const connu = typeof valeur === 'number'
+    const cle = !connu ? 'inconnu'
+      : valeur >= CPU_ALERTE ? 'alerte'
+      : valeur >= CPU_ATTENTION ? 'attention' : 'ok'
+    const pourcent = connu ? Math.round(valeur * 100) : 0
+
+    const memoire = charge == null ? null : charge.memoire
+    const part = memoire != null && memoire.totalOctets > 0
+      ? memoire.occupeeOctets / memoire.totalOctets
+      : null
+    const cleMem = part == null ? 'inconnu'
+      : part >= MEM_ALERTE ? 'alerte'
+      : part >= MEM_ATTENTION ? 'attention' : 'ok'
+    const pourcentMem = part == null ? 0 : Math.round(part * 100)
+
+    // Le verdict revient à la mesure la plus grave : une mémoire pleine sous un
+    // processeur au repos ne doit pas s'entendre dire « le poste encaisse ».
+    const parLaMemoire = GRAVITE.indexOf(cleMem) > GRAVITE.indexOf(cle)
+    const detailCpu = connu
+      ? 'processeur · moyenne sur ' + Math.max(1, Math.round((charge.fenetreMs || 0) / 1000)) + ' s · ' +
+        charge.coeurs + ' cœurs'
+      : charge == null
+        ? 'le serveur local de la salle n’a pas répondu'
+        : 'première mesure en cours, le temps d’une fenêtre'
+    const detailMem = part == null
+      ? 'mémoire illisible sur cette machine'
+      : enGo(memoire.occupeeOctets) + ' Go occupés sur ' + enGo(memoire.totalOctets)
+
+    rendreIndicateur('cpu', {
+      titre: 'Charge du poste',
+      valeur: connu ? pourcent + ' %' : '—',
+      etiquette: CPU_NIVEAUX[cle].etiquette,
+      // La pastille du bandeau prend la pire des deux : c'est elle qu'on lit de
+      // loin, et elle ne doit rater aucune des deux façons de saturer.
+      niveau: pire(cle, cleMem),
+      valeurNiveau: cle,
+      jauge: pourcent,
+      detail: detailCpu,
+      encart:
+        '<div class="mt-2.5 mb-1 flex items-baseline gap-2">' +
+          '<span class="text-[10px] font-semibold tracking-[.12em] text-attenue uppercase">Mémoire</span>' +
+          '<span class="niveau-' + cleMem + ' ml-auto text-xs font-semibold tabular-nums">' +
+            (part == null ? '—' : pourcentMem + ' %') + '</span>' +
+        '</div>' +
+        jauge(pourcentMem, cleMem) +
+        '<div class="mt-1.5 text-[11px] text-attenue">' + detailMem + '</div>',
+      verdict: parLaMemoire ? MEM_VERDICTS[cleMem] : CPU_NIVEAUX[cle].verdict,
+      resume: 'Charge du poste : processeur ' + (connu ? pourcent + ' %' : 'non mesuré') +
+        ', ' + CPU_NIVEAUX[cle].etiquette + ' — ' + detailCpu +
+        '. Mémoire ' + (part == null ? 'non mesurée' : pourcentMem + ' %, ' + detailMem) +
+        '. ' + (parLaMemoire ? MEM_VERDICTS[cleMem] : CPU_NIVEAUX[cle].verdict),
+    })
+  }
+
+  async function releverCpu() {
+    try {
+      const reponse = await fetch('/control/host')
+      if (!reponse.ok) throw new Error('relevé indisponible')
+      rendreCpu(await reponse.json())
+    } catch {
+      rendreCpu(null)
+    }
+  }
+  releverCpu()
+  setInterval(releverCpu, CPU_PERIODE_MS)
 
   $('btn-rec').onclick = () =>
     agir({ action: debutRec == null ? 'recording.start' : 'recording.stop' })
@@ -1766,7 +2665,46 @@ ${etatInitial}
     }
   }
 
+  /**
+   * Au-delà, un démarrage cesse d'être « un peu en avance » et devient une
+   * erreur de cible.
+   *
+   * Un quart d'heure : c'est le battement le plus large du programme, donc la
+   * limite en deçà de laquelle lancer le talk suivant est un geste normal — on
+   * a fini plus tôt, le speaker est branché, la salle est pleine. Au-delà, on
+   * vise presque toujours autre chose que ce qu'on croit.
+   */
+  const TROP_TOT_MS = 15 * 60000
+
+  /**
+   * Démarrer, avec un garde-fou quand c'est très en avance.
+   *
+   * La question passe **avant** celle de l'enregistrement : celle-ci porte sur
+   * la manière de commencer, celle-là sur la conférence qu'on est en train de
+   * lancer. Les poser dans l'autre ordre ferait démarrer une captation pour un
+   * talk qu'on va renoncer à lancer.
+   */
+  function demarrerAvecGardeFou() {
+    const session = donnees?.state.targetSession
+    const avance = session == null ? null : session.startsAtMs - maintenant()
+    if (avance == null || avance <= TROP_TOT_MS) {
+      void demarrerConference()
+      return
+    }
+    $('modale-tot-detail').textContent =
+      '« ' + session.title + ' » est au programme à ' +
+      heure(session.startsAt, donnees.timezone) + ', dans ' + resteLisible(avance) + '. ' +
+      'La lancer maintenant l\u2019inscrira comme tenue à cette heure-ci, ' +
+      'dans le programme comme dans l\u2019historique du hub.'
+    document.body.dataset.tot = 'ouverte'
+  }
+
+  function fermerTot() {
+    document.body.dataset.tot = 'fermee'
+  }
+
   async function demarrerConference() {
+    fermerTot()
     const enregistre = donnees?.diagnostics?.recording?.active === true
     if (reglagesDemarrage().avertir && !enregistre) {
       // La question n'a de sens qu'avant : une fois la conférence lancée,
@@ -1794,11 +2732,56 @@ ${etatInitial}
     if (role) await agir({ action: 'scene.set', role })
   }
 
-  $('btn-conf-demarrer').onclick = () => void demarrerConference()
+  $('btn-conf-demarrer').onclick = () => demarrerAvecGardeFou()
+  $('tot-non').onclick = fermerTot
+  $('tot-oui').onclick = () => void demarrerConference()
   $('rec-annuler').onclick = () => { document.body.dataset.rec = 'fermee' }
   $('rec-sans').onclick = () => void lancerConference(false)
   $('rec-avec').onclick = () => void lancerConference(true)
-  $('btn-conf-terminer').onclick = () => agir({ action: 'session.end' })
+  /**
+   * Ce qu'il reste au créneau, en toutes lettres.
+   *
+   * Les minutes seules ne suffisent pas ici : arrondies, huit secondes
+   * deviennent « 0 min », et la question perdrait le seul chiffre qui permet d'y
+   * répondre sans réfléchir.
+   */
+  function resteLisible(ms) {
+    const secondes = Math.round(ms / 1000)
+    if (secondes < 60) return secondes + ' s'
+    return duree(Math.round(secondes / 60))
+  }
+
+  /**
+   * Terminer, avec un garde-fou quand c'est en avance.
+   *
+   * En avance seulement : terminer à l'heure ou en dépassement est le geste
+   * normal de la journée, et le confirmer à chaque fois en ferait un réflexe.
+   * Un créneau sans heure de fin n'a pas d'avance possible — rien à demander.
+   */
+  function terminerConference() {
+    const session = donnees?.state.targetSession
+    const reste = session?.endsAtMs == null ? null : session.endsAtMs - maintenant()
+    if (reste == null || reste <= 0) {
+      void agir({ action: 'session.end' })
+      return
+    }
+    $('modale-fin-detail').textContent =
+      'Il reste ' + resteLisible(reste) + ' au créneau de « ' + session.title + ' ». ' +
+      'La salle passera à « rien dans la salle », et les autres régies le verront. ' +
+      '« Remettre à venir » annule, si c\u2019est une erreur.'
+    document.body.dataset.fin = 'ouverte'
+  }
+
+  function fermerFin() {
+    document.body.dataset.fin = 'fermee'
+  }
+
+  $('btn-conf-terminer').onclick = () => terminerConference()
+  $('fin-non').onclick = fermerFin
+  $('fin-oui').onclick = () => {
+    fermerFin()
+    void agir({ action: 'session.end' })
+  }
   $('conf-detail').onclick = () => {
     if (donnees?.state.currentSession && $('badge-conf').classList.contains('ended')) {
       agir({ action: 'session.reset' })
@@ -1818,11 +2801,21 @@ ${etatInitial}
   /** Ouvre la consultation : les programmes ne prennent la place qu'à la demande. */
   function ouvrirModale(nom) {
     ouvrirEncart(nom)
+    fermerVod()
     document.body.dataset.modale = 'ouverte'
   }
   function fermerModale() {
     document.body.dataset.modale = 'fermee'
   }
+  $('btn-vod').onclick = ouvrirVod
+  $('btn-fermer-vod').onclick = fermerVod
+  $('modale-vod').onclick = (evenement) => {
+    if (evenement.target === $('modale-vod')) fermerVod()
+  }
+  $('btn-vod-relire').onclick = () => void chargerVod()
+  $('btn-vod-tout').onclick = () => void verifierToutVod()
+  $('btn-vod-monter-tout').onclick = () => void monterVod(null)
+
   $('btn-config').onclick = ouvrirConfig
   $('btn-fermer-config').onclick = fermerConfig
   $('modale-config').onclick = (evenement) => {
@@ -1904,12 +2897,58 @@ ${etatInitial}
   // Raccourcis : dans une salle sombre, viser un bouton coûte plus cher
   // qu'appuyer sur une touche.
   document.addEventListener('keydown', (evenement) => {
-    if (evenement.key === 'Escape') { fermerModale(); fermerConfig() }
+    /**
+     * Une touche tenue avec Ctrl, Cmd ou Alt appartient au navigateur.
+     *
+     * Ctrl+R recharge la page — et lançait la captation au passage, puisque
+     * seule la lettre était lue. Une régie retrouvée en train d'enregistrer
+     * sans que personne ne l'ait demandé, un fichier de plus sur le disque, et
+     * rien à l'écran pour dire d'où ça venait. Ctrl+S, Ctrl+P, Ctrl+L posaient
+     * le même piège sur d'autres lettres.
+     *
+     * Maj reste passant : « Maj+R » n'a pas de sens pour le navigateur, et
+     * c'est la même intention que « r » pour qui tape vite.
+     */
+    if (evenement.ctrlKey || evenement.metaKey || evenement.altKey) return
+
+    if (evenement.key === 'Escape') {
+      fermerModale()
+      fermerConfig()
+      fermerFin()
+      fermerTot()
+      fermerVod()
+      // Une modale qu'Échap ne ferme pas est un piège : celle-ci se refermait
+      // déjà sur « Annuler », qui est exactement ce que fait cette ligne.
+      document.body.dataset.rec = 'fermee'
+    }
     // Les listes déroulantes comptent autant que les champs texte : une touche
     // « l » dans un choix de scène ne doit pas basculer la projection en direct.
     const saisie = evenement.target.tagName
     if (saisie === 'INPUT' || saisie === 'SELECT' || saisie === 'TEXTAREA') return
     const touche = evenement.key.toLowerCase()
+
+    /**
+     * Une question ouverte prend le clavier.
+     *
+     * Les trois modales de décision portent sur la conférence, et les
+     * raccourcis agissent dessus : un « r » réflexe pendant qu'on demande s'il
+     * faut enregistrer basculerait la captation sous la question elle-même.
+     * Elles répondent donc seules, et rien d'autre ne passe.
+     */
+    if (document.body.dataset.fin === 'ouverte') {
+      if (touche === 'y' || touche === 'o') $('fin-oui').click()
+      if (touche === 'n') fermerFin()
+      return
+    }
+    if (document.body.dataset.tot === 'ouverte') {
+      if (touche === 'y' || touche === 'o') $('tot-oui').click()
+      if (touche === 'n') fermerTot()
+      return
+    }
+    if (document.body.dataset.rec === 'ouverte') return
+    // Le contrôle des rushes se lit à deux mains sur la liste : un « r » réflexe
+    // par-dessus lancerait une captation dans le dos de l'opérateur.
+    if (document.body.dataset.vod === 'ouverte') return
     if (touche === 'l') agir({ action: 'scene.set', role: 'LIVE' })
     if (touche === 'h') agir({ action: 'scene.set', role: 'HOLD' })
     if (touche === 'r') $('btn-rec').click()
@@ -2015,8 +3054,26 @@ ${etatInitial}
 
   if (typeof EventSource !== 'undefined' && !window.__APERCU__) {
     const flux = new EventSource('/display/state?vue=regie')
-    flux.onmessage = (evenement) => { etatCourant = JSON.parse(evenement.data); rendre(etatCourant) }
+    /**
+     * Le flux, lui aussi, doit dire quand il ne va pas bien.
+     *
+     * EventSource se reconnecte tout seul et ne lève rien : une machine de
+     * salle redémarrée sous une page ouverte laisse cette page vivante en
+     * apparence — l'horloge tourne, le compte à rebours descend — et figée en
+     * fait, sur l'état d'avant la coupure.
+     *
+     * Le délai de grâce évite de crier à chaque reconnexion : onerror part
+     * aussi pour une coupure d'une seconde, que personne n'a besoin de voir.
+     */
+    flux.onopen = () => { fluxCoupeDepuis = null }
+    flux.onerror = () => { if (fluxCoupeDepuis == null) fluxCoupeDepuis = Date.now() }
+    flux.onmessage = (evenement) => {
+      fluxCoupeDepuis = null
+      etatCourant = JSON.parse(evenement.data)
+      rendre(etatCourant)
+    }
     flux.addEventListener("delta", (evenement) => {
+      fluxCoupeDepuis = null
       etatCourant = Object.assign({}, etatCourant, JSON.parse(evenement.data))
       rendre(etatCourant)
     })

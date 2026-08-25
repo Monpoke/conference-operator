@@ -103,6 +103,43 @@ export const commandPayloadSchema = z.discriminatedUnion('type', [
     commentId: z.string(),
   }),
   z.object({
+    /**
+     * Téléverser les rushes, demandé depuis la console.
+     *
+     * La console ne détient pas les fichiers : elle ne peut que demander, et
+     * c'est la salle qui décide *quand*, en repassant par son régulateur. Une
+     * demande venue d'ici porte la même urgence qu'un clic en régie — elle
+     * passe donc outre les règles d'attente, mais pas outre l'absence de
+     * stockage configuré.
+     *
+     * Elle emprunte le flux descendant comme `room.resync`, et pour la même
+     * raison : une salle momentanément coupée la rattrape à sa reconnexion au
+     * lieu de la perdre.
+     */
+    type: z.literal('vod.upload'),
+    /** Fichier visé. `null` = tout ce qui n'est pas encore monté. */
+    file: z.string().nullable().default(null),
+    /** Qui l'a demandée : la régie l'affiche, comme pour une resynchronisation. */
+    requestedBy: z.string().nullable().default(null),
+  }),
+  z.object({
+    /**
+     * Efface les rushes de la salle. **Développement seulement.**
+     *
+     * Le hub refuse de l'émettre hors `MODE=dev`, et la salle la refuse à son
+     * tour : deux verrous plutôt qu'un, parce qu'une salle de développement et
+     * un hub d'événement peuvent se retrouver branchés l'un à l'autre — c'est
+     * même l'accident que le badge de mode existe pour rendre visible.
+     *
+     * Seul ce que l'application connaît est effacé : conteneurs vidéo,
+     * sidecars, fichier de verdicts. La racine des captations est parfois un
+     * disque partagé, et vider un dossier qu'on ne possède pas entièrement
+     * n'est pas un geste qu'on rattrape.
+     */
+    type: z.literal('vod.reset'),
+    requestedBy: z.string().nullable().default(null),
+  }),
+  z.object({
     type: z.literal('session.override'),
     sessionId: sessionIdSchema,
     status: z.enum(['delayed', 'cancelled', 'moved']),

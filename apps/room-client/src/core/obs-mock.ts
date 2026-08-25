@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ObsInstance } from '@cloudnord/contract'
 import type { ObsTransport } from './obs.js'
@@ -155,7 +155,7 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
         case 'StopRecord': {
           if (!enregistre) throw new Error('Aucun enregistrement en cours')
           enregistre = false
-          const chemin = join(options.recordingDir, `${format}.mkv`)
+          const chemin = cheminLibre(options.recordingDir, format)
           // Fichier réel : la chaîne VOD va le renommer et écrire son sidecar.
           writeFileSync(chemin, `enregistrement simulé — ${new Date().toISOString()}\n`)
           journal(`enregistrement arrêté → ${chemin}`)
@@ -178,6 +178,11 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
           journal('diffusion arrêtée')
           emettre('StreamStateChanged', { outputActive: false })
           return {}
+
+        case 'GetRecordDirectory':
+          // La régie s'en sert pour lister les rushes quand la salle n'a pas
+          // renseigné sa racine : le poste simulé doit répondre comme le vrai.
+          return { recordDirectory: options.recordingDir }
 
         case 'GetRecordStatus':
           // Interrogé à la connexion : une régie relancée doit retrouver l'état.
@@ -202,4 +207,23 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
       handlers.set(event, liste)
     },
   }
+}
+
+/**
+ * Un chemin qui n'écrase rien.
+ *
+ * Le poste simulé écrit dans le même dossier que la vraie captation, et deux
+ * arrêts sur la même conférence donnent le même nom de fichier. Écraser
+ * relevait de l'anecdote tant que ce dossier ne contenait que des fichiers de
+ * cinquante octets ; depuis que la régie sait les relire, on y dépose de vraies
+ * vidéos — et un « Arrêter » de trop les effaçait sans rien dire.
+ */
+function cheminLibre(dossier: string, format: string): string {
+  const candidat = join(dossier, `${format}.mkv`)
+  if (!existsSync(candidat)) return candidat
+  for (let suite = 2; suite < 1000; suite += 1) {
+    const suivant = join(dossier, `${format}-${suite}.mkv`)
+    if (!existsSync(suivant)) return suivant
+  }
+  return candidat
 }

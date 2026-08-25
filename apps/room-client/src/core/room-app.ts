@@ -16,10 +16,30 @@ import type { ObsTransport } from './obs.js'
 import type { ObsInstance } from '@cloudnord/contract'
 import { ConnectivityTracker, probeConnectivity } from './connectivity.js'
 import { RecordingSession, slugify, type StopResult } from './recording.js'
-import type { ControlDiagnostics, ControlTarget, PointObsVisible } from './control-api.js'
+import type { ControlDiagnostics, ControlTarget, PointObsVisible, VodListe } from './control-api.js'
+import {
+  ffprobeSonde,
+  inspecterEnregistrement,
+  listerEnregistrements,
+  nodeVodFs,
+  outilDisponible,
+  ouvrirExtrait,
+  ouvrirFichier,
+  poserVerdict,
+  cheminSur,
+  type ControleVod,
+  type Extrait,
+  type FluxFichier,
+  type VerdictVod,
+  type VodIndexDeps,
+} from './vod-index.js'
 import { Outbox } from './outbox.js'
 import { OutboxPump, buildHeartbeat, heartbeatDedupKey } from './outbox-pump.js'
 import { AgregateurNiveaux } from './niveaux-audio.js'
+import { moniteurHote, type ChargeHote } from './hote.js'
+import { Televersements, type CandidatVod, type HubVod, type VueTeleversements } from './televersement.js'
+import { prochaineConference } from '@cloudnord/etat-salle'
+import { sessionsForRoom } from '@cloudnord/program'
 import type { ModeExecution, RoomConfigPatch, RoomEventPayload } from '@cloudnord/contract'
 
 /** Configuration de salle en cache local, telle que le hub l'a poussée. */
@@ -124,6 +144,18 @@ export class RoomApp implements ControlTarget {
   private pendingOutputPath: ((path: string | null) => void) | null = null
   private outbox: Outbox | null = null
   private pump: OutboxPump | null = null
+  /**
+   * Relevé de charge du poste, **partagé** avec le serveur d'affichage.
+   *
+   * La mesure est une différence entre deux lectures des compteurs du noyau :
+   * elle n'existe que si quelqu'un garde le repère précédent. Deux moniteurs
+   * distincts — un pour la régie, un pour le régulateur — garderaient chacun le
+   * leur et rendraient deux chiffres également faux, sans que rien ne le dise.
+   */
+  private readonly hote: () => ChargeHote = moniteurHote()
+  private readonly televersements: Televersements
+  /** Dernière racine d'enregistrement constatée : le téléverseur y résout ses chemins. */
+  private racineConnue: string | null = null
   private readonly abort = new AbortController()
   private tick: NodeJS.Timeout | null = null
   private heartbeat: NodeJS.Timeout | null = null
@@ -173,6 +205,15 @@ export class RoomApp implements ControlTarget {
         fullResync: () => {
           void this.fullResync()
         },
+        uploadVod: (file) => {
+          void this.televersements.demander(file)
+        },
+        razVod: () => {
+          void this.razVod()
+        },
+        refreshRoomStatuses: () => {
+          void this.refreshRoomStatuses()
+        },
       },
       options.now,
     )
@@ -204,10 +245,36 @@ export class RoomApp implements ControlTarget {
           this.options.onLog?.('warn', "OBS-B n'a pas accepté l'abonnement au vumètre")
         })
       },
+      hote: this.hote,
       port: options.displayPort ?? 7788,
     })
 
     this.niveaux = new AgregateurNiveaux((inputs) => this.display.publierNiveaux(inputs))
+
+    /**
+     * Rapatriement des rushes.
+     *
+     * Monté toujours, actif jamais tant que le hub n'a pas de stockage : c'est
+     * le hub qui décide, et il le dit au sync. Une salle n'a rien à savoir de
+     * S3 — elle sait seulement qu'il y a, ou non, une destination.
+     */
+    this.televersements = new Televersements({
+      store: this.store,
+      candidats: () => this.candidatsVod(),
+      hub: () => this.hubVod(),
+      politique: () => this.store.settings().vod?.politique ?? null,
+      charge: this.hote,
+      // L'état réel d'OBS-B, observé et non supposé : c'est le même booléen que
+      // le témoin de la régie, et il vaut mieux que ce qu'on croit avoir lancé.
+      enregistre: () => this.runtime.state().recording,
+      conferenceEnCours: () => this.runtime.currentSessionStatus() === 'running',
+      msAvantProchaine: () => this.msAvantProchaineConference(),
+      cheminDe: (file) => this.cheminDansCaptations(file),
+      // Relue du cache à chaque envoi, comme le reste : une CA corrigée sur le
+      // hub prend effet au sync suivant, sans toucher à la machine de salle.
+      caCert: () => this.store.settings().vod?.caCert ?? null,
+      onLog: this.options.onLog,
+    })
   }
 
   /** Une régie affiche-t-elle les niveaux en ce moment ? */
@@ -390,6 +457,16 @@ export class RoomApp implements ControlTarget {
       this.runtime.expireMessage()
       this.runtime.expireNotifications()
     }, 5_000)
+
+    /**
+     * Rapatriement des rushes, en fond.
+     *
+     * Démarré avec l'écran et non avec le hub : la boucle ne fait rien tant
+     * qu'aucune destination n'est connue, et la démarrer plus tard voudrait dire
+     * qu'une salle jamais raccordée ne rattraperait jamais ses rushes le soir,
+     * quand le hub revient.
+     */
+    this.televersements.demarrer()
 
     return url
   }
@@ -714,37 +791,106 @@ export class RoomApp implements ControlTarget {
   }
 
   /**
-   * Rafraîchit périodiquement l'état des autres salles.
+   * Au-delà, la régie cesse de croire la vue des autres salles.
    *
-   * Mis en cache : l'écran de régie se redessine à chaque changement d'état, et
-   * déclencher un appel réseau à chaque rendu serait absurde.
+   * Miroir de `VUE_PERIMEE_MS` côté page : c'est la fenêtre qu'il faut tenir,
+   * et le rappel ci-dessous s'y prend largement à l'avance.
+   */
+  private static readonly VUE_PERIMEE_MS = 60_000
+
+  /**
+   * Au-delà, on republie même sans changement, pour rafraîchir l'horodatage.
+   *
+   * La régie ne se fie à la vue du hub que si elle est fraîche ; l'horodatage
+   * doit donc lui parvenir régulièrement, y compris quand rien ne bouge. Un
+   * tiers de la fenêtre laisse deux occasions de la tenir avant qu'elle ne se
+   * ferme, même si l'une échoue.
+   */
+  private static readonly RAPPEL_VUE_MS = 20_000
+
+  /** Sérialisation de la dernière vue publiée, pour ne republier qu'à bon escient. */
+  private roomStatusesPubliees: string | null = null
+  private roomStatusesPublieesA = 0
+  /** Un seul appel en vol, et au plus une redemande en attente. */
+  private roomWatchEnCours = false
+  private roomWatchRedemande = false
+
+  /**
+   * Rafraîchit l'état des autres salles.
+   *
+   * Trois cadences, et c'est voulu : un sondage court pour ce qui n'a pas de
+   * commande — enregistrement, scène, connectivité, qui remontent au battement
+   * de la salle concernée —, un **déclenchement immédiat** sur commande pour ce
+   * qui en a une, et un rappel périodique pour tenir l'horodatage de fraîcheur.
+   *
+   * Le déclenchement immédiat est ce qui fait la différence en salle : la
+   * décision d'une régie voisine arrive déjà poussée sur le flux de commandes,
+   * seule la *vue* était sondée. La pastille accusait donc jusqu'à un tour de
+   * sonde de retard sur la notification qui l'accompagnait.
    */
   private startRoomWatch(): void {
     if (this.roomsTimer != null) clearInterval(this.roomsTimer)
-    const rafraichir = async (): Promise<void> => {
-      if (this.link == null) return
-      try {
-        const statuses = await this.link.client.rooms.statuses()
-        this.roomStatuses = statuses.map((salle) => ({
-          roomId: salle.roomId,
-          name: salle.name,
-          connectivity: salle.connectivity,
-          sceneRole: salle.sceneRole,
-          recording: salle.recording,
-          outboxDepth: salle.outboxDepth,
-          lastSeenAt: salle.lastSeenAt,
-          currentSessionId: salle.currentSessionId,
-          conference: salle.conference,
-        }))
-        this.roomStatusesAt = new Date().toISOString()
-      } catch {
-        // Hub injoignable : on garde la dernière vue connue, datée, plutôt que
-        // de vider le panneau — une liste vide se lirait comme « aucune salle ».
+    void this.refreshRoomStatuses()
+    this.roomsTimer = setInterval(() => void this.refreshRoomStatuses(), 5_000)
+    this.roomsTimer.unref?.()
+  }
+
+  /**
+   * Redemande la vue des autres salles, et la republie si elle a bougé.
+   *
+   * La publication ne va pas de soi : mettre à jour le champ en mémoire ne
+   * réveille personne. L'écran ne reçoit que sur `runtime.emit('state')` —
+   * c'est ce qui manquait, et le sondage tournait dans le vide.
+   *
+   * Republier à chaque tour serait l'excès inverse : la charge utile entière
+   * est resérialisée à chaque diffusion, et le flux est censé rester muet quand
+   * rien ne change. D'où la comparaison, doublée d'un rappel périodique pour
+   * l'horodatage.
+   */
+  private async refreshRoomStatuses(): Promise<void> {
+    if (this.link == null) return
+    // Un seul appel en vol : une rafale de décisions ne doit pas ouvrir dix
+    // requêtes parallèles, mais la dernière ne doit pas non plus se perdre —
+    // une réponse partie *avant* l'écriture décrit encore le passé.
+    if (this.roomWatchEnCours) {
+      this.roomWatchRedemande = true
+      return
+    }
+    this.roomWatchEnCours = true
+    try {
+      const statuses = await this.link.client.rooms.statuses()
+      this.roomStatuses = statuses.map((salle) => ({
+        roomId: salle.roomId,
+        name: salle.name,
+        connectivity: salle.connectivity,
+        sceneRole: salle.sceneRole,
+        recording: salle.recording,
+        outboxDepth: salle.outboxDepth,
+        lastSeenAt: salle.lastSeenAt,
+        currentSessionId: salle.currentSessionId,
+        conference: salle.conference,
+      }))
+      this.roomStatusesAt = new Date().toISOString()
+
+      const vue = JSON.stringify(this.roomStatuses)
+      const rappelDu = Date.now() - this.roomStatusesPublieesA >= RoomApp.RAPPEL_VUE_MS
+      if (vue !== this.roomStatusesPubliees || rappelDu) {
+        this.roomStatusesPubliees = vue
+        this.roomStatusesPublieesA = Date.now()
+        this.runtime.emit('state', this.runtime.state())
+      }
+    } catch {
+      // Hub injoignable : on garde la dernière vue connue, datée, plutôt que
+      // de vider le panneau — une liste vide se lirait comme « aucune salle ».
+      // L'horodatage ne bouge pas : passé une minute, la régie retombera d'elle
+      // même sur le programme, qui reste juste hors ligne.
+    } finally {
+      this.roomWatchEnCours = false
+      if (this.roomWatchRedemande) {
+        this.roomWatchRedemande = false
+        void this.refreshRoomStatuses()
       }
     }
-    void rafraichir()
-    this.roomsTimer = setInterval(() => void rafraichir(), 15_000)
-    this.roomsTimer.unref?.()
   }
 
   /** Connecte les deux instances OBS avec le mapping de rôles de la salle. */
@@ -974,6 +1120,18 @@ export class RoomApp implements ControlTarget {
       roomSlug: config.fileSlug ?? slugify(config.name).slice(0, 16),
       timezone: cached?.program.timezone ?? FUSEAU_PAR_DEFAUT,
     })
+    /**
+     * Le journal de la salle, et pas seulement la console du poste.
+     *
+     * Une captation qu'on retrouve en cours sans se souvenir de l'avoir lancée
+     * est une question qu'on se pose devant la régie, pas devant un terminal :
+     * la réponse doit être à côté du chronomètre. Le journal est repris dans le
+     * panneau Diagnostic, et il porte l'heure.
+     */
+    this.options.onLog?.('info', 'captation démarrée depuis la régie', {
+      session: state.currentSession?.title ?? null,
+      simule: this.obsB?.snapshot().simulated === true,
+    })
     this.emit({ type: 'recording.started', obs: 'B', sessionId: state.currentSession?.id ?? null })
   }
 
@@ -1058,6 +1216,10 @@ export class RoomApp implements ControlTarget {
     // foulée de la requête, et un résolveur posé après le manquerait.
     const outputPath = this.awaitOutputPath()
     const result = await this.recording.stop(() => outputPath)
+    this.options.onLog?.('info', 'captation arrêtée depuis la régie', {
+      duree: Math.round(result.sidecar.durationMs / 1000) + ' s',
+      fichier: result.sidecar.videoFile,
+    })
     this.emit({
       type: 'recording.stopped',
       obs: 'B',
@@ -1067,6 +1229,263 @@ export class RoomApp implements ControlTarget {
       sidecarWritten: result.sidecarPath != null,
     })
     return result
+  }
+
+  /**
+   * Racine des captations.
+   *
+   * Le réglage de la salle fait foi ; à défaut on demande à OBS-B où il écrit.
+   * Sans ce repli, une salle qui n'a jamais rempli le champ — le cas le plus
+   * courant, puisque rien d'autre ne s'en sert — ne pourrait rien vérifier du
+   * tout, alors que le dossier existe et se remplit depuis le matin.
+   */
+  private async racineCaptations(): Promise<string | null> {
+    const configuree = this.store.settings().config?.recordingRoot
+    if (configuree != null && configuree.trim().length > 0) return configuree
+    try {
+      return (await this.obsB?.recordDirectory()) ?? null
+    } catch {
+      return null
+    }
+  }
+
+  private vodDeps(root: string): VodIndexDeps {
+    return {
+      root,
+      fs: nodeVodFs(),
+      now: () => this.runtime.correctedNow(),
+      probe: ffprobeSonde(),
+      onLog: this.options.onLog,
+    }
+  }
+
+  /**
+   * Chemin absolu d'un fichier de la racine des enregistrements.
+   *
+   * Passe par le même garde-fou que la modale de la régie : la racine est un
+   * dossier qu'un opérateur saisit dans un formulaire servi en HTTP, et
+   * `../../` y est une entrée valide. `null` quand le fichier n'est pas
+   * strictement dessous — le téléverseur refuse alors, plutôt que d'envoyer
+   * chez un tiers un fichier qu'on ne lui a pas demandé.
+   */
+  private cheminDansCaptations(file: string): string | null {
+    if (this.racineConnue == null) return null
+    try {
+      return cheminSur(this.racineConnue, file)
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Ce qu'il y a à rapatrier : les rushes, chacun avec son sidecar.
+   *
+   * Reconstruit à chaque passe plutôt que gardé : le dossier se remplit toute
+   * la journée, et une liste figée au démarrage ne verrait aucun talk.
+   */
+  private async candidatsVod(): Promise<CandidatVod[]> {
+    const root = await this.racineCaptations()
+    this.racineConnue = root
+    if (root == null) return []
+    const deps = this.vodDeps(root)
+    const entrees = await listerEnregistrements(deps)
+
+    return await Promise.all(
+      entrees.map(async (entree) => {
+        const nom = entree.file.replace(/\.[^./]+$/, '.json')
+        /**
+         * La taille du sidecar se **lit sur le disque**, elle ne se déduit pas.
+         *
+         * Elle a d'abord été calculée en re-sérialisant l'objet relu : le
+         * fichier écrit par la salle est indenté, la chaîne recalculée ne
+         * l'était pas, et le sidecar arrivait chez le stockage tronqué de ses
+         * espaces — donc invalide, donc illisible au montage. Un JSON coupé au
+         * milieu ne se voit pas dans une liste de fichiers ; il se découvre en
+         * l'ouvrant, des mois plus tard.
+         */
+        const stat = entree.sidecar == null ? null : await deps.fs.stat(cheminSur(root, nom))
+        return {
+          file: entree.file,
+          sizeBytes: entree.sizeBytes,
+          enEcriture: entree.enEcriture,
+          sessionId: entree.sidecar?.sessionId ?? null,
+          // Absent, on ne monte que le rush : un rush sans sidecar est
+          // justement celui qu'il faut sauver.
+          sidecar: stat == null ? null : { file: nom, sizeBytes: stat.size },
+        }
+      }),
+    )
+  }
+
+  /**
+   * Le hub, tel que le téléverseur s'en sert. `null` : rien ne part.
+   *
+   * Deux conditions, et il faut les deux : un lien ouvert, et un hub qui a
+   * annoncé une destination au dernier sync. Une salle hors ligne ne téléverse
+   * pas — c'est la seule chose du système qui ne peut pas se faire sans réseau,
+   * et c'est dans sa nature.
+   */
+  private hubVod(): HubVod | null {
+    const lien = this.link
+    if (lien == null || !(this.store.settings().vod?.actif ?? false)) return null
+    return {
+      begin: (entree) => lien.client.vod.begin(entree),
+      parts: (uploadId, numeros) => lien.client.vod.parts({ uploadId, numeros }),
+      progress: async (entree) => {
+        await lien.client.vod.progress(entree)
+      },
+      complete: async (uploadId) => {
+        await lien.client.vod.complete({ uploadId })
+      },
+      abort: async (uploadId, raison) => {
+        await lien.client.vod.abort({ uploadId, raison })
+      },
+    }
+  }
+
+  /**
+   * Millisecondes avant la prochaine conférence de cette salle.
+   *
+   * Sur le programme en cache et l'**horloge corrigée du hub**, jamais celle du
+   * poste : en développement, l'écart entre les deux se compte en semaines, et
+   * le régulateur autoriserait un téléversement en plein talk. `null` quand il
+   * n'y a plus rien au programme — fin de journée, ou salle jamais
+   * synchronisée : dans les deux cas, il n'y a rien à ménager.
+   */
+  private msAvantProchaineConference(): number | null {
+    const cache = this.store.activeProgram()
+    const roomId = this.store.settings().roomId
+    if (cache == null || roomId == null) return null
+    const at = this.runtime.correctedNow()
+    const suivante = prochaineConference(
+      sessionsForRoom(cache.program, roomId),
+      at,
+      this.runtime.state().sessionStates,
+    )
+    return suivante == null ? null : Math.max(0, suivante.startsAtMs - at)
+  }
+
+  /**
+   * Efface les rushes de cette salle. **Développement seulement.**
+   *
+   * Second verrou, après celui du hub. Deux plutôt qu'un parce que les deux
+   * postes peuvent se retrouver branchés l'un à l'autre par accident — c'est
+   * même le désaccord que le badge de mode de la régie existe pour rendre
+   * visible. Une salle de production qui reçoit cet ordre le refuse et le dit.
+   *
+   * N'efface que ce que l'application connaît : les conteneurs vidéo qu'elle
+   * liste, leurs sidecars, le fichier de verdicts. La racine des captations est
+   * un dossier qu'un opérateur a saisi dans un formulaire — parfois un disque
+   * partagé, parfois pas celui qu'on croit — et la vider entièrement n'est pas
+   * un geste qu'on rattrape.
+   */
+  async razVod(): Promise<number> {
+    if (this.options.mode !== 'dev') {
+      this.options.onLog?.(
+        'error',
+        'remise à zéro des rushes refusée : cette salle n\u2019est pas en mode développement',
+      )
+      return 0
+    }
+
+    const root = await this.racineCaptations()
+    if (root == null) return 0
+
+    const { unlink } = await import('node:fs/promises')
+    const entrees = await listerEnregistrements(this.vodDeps(root))
+    // Le fichier de verdicts vit à la racine, à côté des rushes, et décrit une
+    // relecture qui n'a plus d'objet une fois les rushes partis.
+    const noms = entrees.flatMap((entree) => [
+      entree.file,
+      entree.file.replace(/\.[^./]+$/, '.json'),
+    ])
+    noms.push('.controles-vod.json')
+
+    let effaces = 0
+    for (const nom of noms) {
+      let chemin: string
+      try {
+        // Le même garde-fou que partout ailleurs : la racine vient d'un
+        // formulaire servi en HTTP, et `../../` y est une saisie valide.
+        chemin = cheminSur(root, nom)
+      } catch {
+        continue
+      }
+      try {
+        await unlink(chemin)
+        effaces += 1
+      } catch {
+        // Absent, ou déjà parti : ce n'est pas une erreur. Un sidecar jamais
+        // écrit est même le cas qu'on rencontre le plus.
+      }
+    }
+
+    this.televersements.oublierTout()
+    this.options.onLog?.('warn', 'rushes effacés (remise à zéro)', { root, fichiers: effaces })
+    return effaces
+  }
+
+  /** Téléversements en cours et raison d'attente, pour la modale de la régie. */
+  vodUploads(): VueTeleversements {
+    return this.televersements.vue()
+  }
+
+  /** Met un rush en file. `file` nul = tout ce qui reste. */
+  async uploadRecording(file: string | null): Promise<number> {
+    return await this.televersements.demander(file)
+  }
+
+  /** Renonce à un téléversement en cours. */
+  async cancelUpload(file: string): Promise<void> {
+    await this.televersements.annuler(file)
+  }
+
+  /** Rushes produits sous la racine, du plus récent au plus ancien. */
+  async listRecordings(): Promise<VodListe> {
+    const [ffmpeg, ffprobe] = await Promise.all([
+      outilDisponible('ffmpeg'),
+      outilDisponible('ffprobe'),
+    ])
+    const outils = { ffmpeg, ffprobe }
+    const root = await this.racineCaptations()
+    if (root == null) return { root: null, entries: [], outils }
+    return { root, entries: await listerEnregistrements(this.vodDeps(root)), outils }
+  }
+
+  /** Extrait de quelques secondes, produit à la volée pour la modale. */
+  async readRecordingExtract(file: string, atMs: number, dureeMs: number): Promise<Extrait | null> {
+    const root = await this.racineCaptations()
+    if (root == null) throw new Error('Aucun dossier d\u2019enregistrement connu')
+    return await ouvrirExtrait(this.vodDeps(root), file, { atMs, dureeMs })
+  }
+
+  /** Le rush tel quel : pour l'ouvrir dans un vrai lecteur, ou le rapatrier. */
+  async readRecordingFile(file: string, plage: string | null): Promise<FluxFichier | null> {
+    const root = await this.racineCaptations()
+    if (root == null) throw new Error('Aucun dossier d\u2019enregistrement connu')
+    return await ouvrirFichier(this.vodDeps(root), file, plage)
+  }
+
+  /** Contrôle technique d'un rush : conteneur, pistes, durée, débit. */
+  async inspectRecording(file: string): Promise<ControleVod> {
+    const root = await this.racineCaptations()
+    if (root == null) throw new Error('Aucun dossier d\u2019enregistrement connu')
+    const controle = await inspecterEnregistrement(this.vodDeps(root), file)
+    // Au journal de la salle, pas seulement à l'écran : un rush illisible
+    // constaté à 11 h doit se retrouver le soir, quand on cherche ce qui manque.
+    this.options.onLog?.(
+      controle.status === 'ok' ? 'info' : controle.status === 'suspect' ? 'warn' : 'error',
+      `contrôle VOD ${controle.status} : ${file}`,
+      { raisons: controle.reasons },
+    )
+    return controle
+  }
+
+  /** Verdict posé à la main, qui prime sur la sonde. */
+  async setRecordingVerdict(file: string, status: VerdictVod | null): Promise<ControleVod | null> {
+    const root = await this.racineCaptations()
+    if (root == null) throw new Error('Aucun dossier d\u2019enregistrement connu')
+    return await poserVerdict(this.vodDeps(root), file, status)
   }
 
   /** Profondeur de la file, affichée en régie. */
@@ -1306,6 +1725,7 @@ export class RoomApp implements ControlTarget {
     // sondage survivrait à la fermeture.
     await this.appairageEnCours?.catch(() => {})
     this.pump?.stop()
+    this.televersements.arreter()
     if (this.supervision != null) clearInterval(this.supervision)
     if (this.roomsTimer != null) clearInterval(this.roomsTimer)
     if (this.heartbeat != null) clearInterval(this.heartbeat)

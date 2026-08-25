@@ -195,6 +195,9 @@ export class HubLink {
         // pages doivent se titrer correctement au démarrage suivant, hub
         // injoignable compris.
         event: result.event,
+        // Idem pour le rapatriement : le régulateur tranche plusieurs fois par
+        // minute, et il ne doit jamais dépendre d'un appel réseau.
+        vod: result.vod,
       })
       runtime.setRoomId(result.room.id)
 

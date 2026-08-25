@@ -293,3 +293,68 @@ describe('révocation', () => {
     expect(machines[0]?.tokenHash).toMatch(/^[0-9a-f]{64}$/)
   })
 })
+
+/**
+ * Rapatriement des rushes : qui a le droit de quoi.
+ *
+ * L'enjeu tient en une phrase : le hub détient les clés du stockage, et rien de
+ * ce qu'il descend en salle ne doit permettre d'en faire autre chose que
+ * déposer *ses* fichiers. Une machine de salle vit dans un couloir, sur un
+ * réseau d'événement, allumée toute la journée devant deux cents personnes.
+ */
+describe('téléversement des rushes', () => {
+  const enSalle = (chemin: string, entree: unknown) => rpc(chemin, entree, jetonSalle)
+  const enConsole = (chemin: string, entree: unknown) => rpc(chemin, entree, jetonOperateur)
+
+  it('répond « non configuré » plutôt que d\'échouer, sur un hub sans stockage', async () => {
+    // Le cas normal : un hub d'événement n'a pas forcément de bucket. La
+    // console doit pouvoir l'afficher plutôt que d'ouvrir un panneau mort.
+    const statut = await enConsole('vod/status', {})
+    expect(statut.status).toBe(200)
+    expect((statut.body.json as unknown as { configure: boolean }).configure).toBe(false)
+
+    // Et tout le reste refuse net, en disant quoi renseigner.
+    const essai = await enSalle('vod/begin', {
+      file: 'rush.mkv',
+      sizeBytes: 10,
+      kind: 'rush',
+      sessionId: null,
+    })
+    expect(essai.status).toBe(501)
+  })
+
+  it('ferme le contrôle de connexion à une salle', async () => {
+    // Il écrit chez le stockage, même quelques octets qu'il efface ensuite :
+    // c'est un geste d'exploitation, pas quelque chose qu'une machine de salle
+    // ait à déclencher.
+    expect((await enSalle('vod/check', {})).status).toBe(403)
+  })
+
+  it('ferme la lecture du stockage à une salle', async () => {
+    // `status` porte l'adresse du stockage et ses réglages : c'est une
+    // propriété de l'événement, pas quelque chose qu'une salle ait à connaître.
+    expect((await enSalle('vod/status', {})).status).toBe(403)
+    // Idem pour demander à *une autre* salle de téléverser.
+    expect((await enSalle('vod/request', { roomId: TRACK_2, file: null })).status).toBe(403)
+  })
+
+  it('ne laisse pas une salle voir les téléversements d\'une autre', async () => {
+    // Le `roomId` d'entrée est ignoré pour une salle : il vient du jeton. Sans
+    // ça, un jeton de salle donnerait une vue de l'événement entier.
+    const resultat = await enSalle('vod/uploads', { roomId: TRACK_2 })
+    expect(resultat.status).toBe(501)
+  })
+
+  it('refuse une demande de console pour une salle qui n\'existe pas', async () => {
+    const resultat = await enConsole('vod/request', { roomId: 'salle-fantome', file: null })
+    // 501 tant qu'aucun stockage n'est monté : la fonctionnalité passe avant la
+    // cible, et dire « salle inconnue » sur un hub sans S3 enverrait chercher
+    // au mauvais endroit.
+    expect(resultat.status).toBe(501)
+  })
+
+  it('n\'ouvre le réglage du stockage qu\'à la console', async () => {
+    expect((await enSalle('settings/update', { vodBucket: 'pirate' })).status).toBe(403)
+    expect((await enConsole('settings/update', { vodBucket: 'rushes' })).status).toBe(200)
+  })
+})

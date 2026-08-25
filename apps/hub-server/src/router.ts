@@ -1,19 +1,23 @@
 import { implement, withEventMeta } from '@orpc/server'
 import { ORPCError } from '@orpc/server'
 import {
+  POLITIQUE_VOD_PAR_DEFAUT,
   PROTOCOL_VERSION,
   contract,
   isCommandExpired,
   type Command,
 } from '@cloudnord/contract'
+import { roomBreak } from '@cloudnord/etat-salle'
 import {
   currentSession,
   nextSession,
-  roomBreak,
   FUSEAU_PAR_DEFAUT,
   openFeedbackUrl,
   type Session,
 } from '@cloudnord/program'
+import { TransitionRefusee } from './services/sessions.js'
+import { StockageIncomplet, type VodService } from './services/vod.js'
+import { ErreurS3 } from './services/s3.js'
 import { statutsDesSalles } from './supervision.js'
 import {
   auteurDe,
@@ -210,6 +214,18 @@ export const router = os.router({
        */
       const surcharges = snapshot.overrides
 
+      /**
+       * Le cycle de vie, joint ici plutôt que recroisé par la console.
+       *
+       * `states(null)` : toutes les salles à la fois, puisque c'est la vue
+       * centralisée de l'événement. Le filtre d'applicabilité s'applique comme
+       * ailleurs — une décision datée d'après l'instant du hub, ce qui n'arrive
+       * qu'en horloge simulée, ne doit pas apparaître ici non plus.
+       */
+      const vecu = new Map(
+        context.services.sessions.states(null).map((etat) => [etat.sessionId, etat]),
+      )
+
       return {
         contentHash: snapshot.contentHash,
         timezone: program.timezone,
@@ -241,6 +257,16 @@ export const router = os.router({
                   ),
             overriddenAs: surcharges[session.id] ?? null,
             sharedFrom: session.sharedFrom,
+            /**
+             * Une pause héritée porte un identifiant dérivé, que le cycle de
+             * vie ne connaît pas : c'est le créneau d'origine qui est piloté.
+             * Chercher sous l'identifiant de la projection ne rendrait jamais
+             * rien, et le faire sous celui de l'original afficherait la même
+             * décision sur deux lignes.
+             */
+            startedAt: vecu.get(session.id)?.startedAt ?? null,
+            endedAt: vecu.get(session.id)?.endedAt ?? null,
+            decidedBy: vecu.get(session.id)?.decidedBy ?? null,
           }
         }),
       }
@@ -387,6 +413,21 @@ export const router = os.router({
         // titre ses fenêtres avec le nom que le hub a tranché, pas avec une
         // constante compilée dans le binaire installé sur la machine.
         event: context.services.identity.get(),
+        /**
+         * Rapatriement des rushes : y a-t-il une destination, et sous quelles
+         * règles.
+         *
+         * Descendu au sync et mis en cache comme le reste : le régulateur de la
+         * salle tranche plusieurs fois par minute, et il ne doit jamais dépendre
+         * d'un appel réseau — surtout pas au moment précis où le réseau est ce
+         * qu'on cherche à ménager. `null` dit « nulle part où envoyer », et une
+         * salle qui reçoit `null` cesse d'elle-même : c'est ainsi qu'on éteint
+         * la fonctionnalité en cours de journée depuis la console.
+         */
+        vod:
+          context.services.vod == null || !context.services.vod.pret()
+            ? null
+            : context.services.vod.sync(),
       }
     }),
 
@@ -462,7 +503,9 @@ export const router = os.router({
     start: os.sessions.start.use(roomOrOperator).handler(({ input, context }) => {
       const { session, roomId } = resolveSession(context, input.sessionId)
       exigerMemeSalle(context, roomId)
-      const etat = context.services.sessions.start(session.id, roomId, auteurDe(context))
+      const etat = surTransition(() =>
+        context.services.sessions.start(session.id, roomId, auteurDe(context)),
+      )
       diffuserEtat(context, etat)
       return etat
     }),
@@ -470,7 +513,9 @@ export const router = os.router({
     end: os.sessions.end.use(roomOrOperator).handler(({ input, context }) => {
       const { session, roomId } = resolveSession(context, input.sessionId)
       exigerMemeSalle(context, roomId)
-      const etat = context.services.sessions.end(session.id, roomId, auteurDe(context))
+      const etat = surTransition(() =>
+        context.services.sessions.end(session.id, roomId, auteurDe(context)),
+      )
       diffuserEtat(context, etat)
       return etat
     }),
@@ -563,7 +608,7 @@ export const router = os.router({
     }),
 
     fromRooms: os.messages.fromRooms.use(operatorOnly).handler(({ input, context }) => {
-      const salles = new Map(context.services.rooms.list().map((salle) => [salle.id, salle.name]))
+      const salles = new Map(context.services.rooms.list().map((salle) => [salle.id, salle.name] as const))
       return context.services.ingest.messagesFromRooms(input.limit).map((message) => ({
         ...message,
         roomName: salles.get(message.roomId) ?? null,
@@ -869,6 +914,161 @@ export const router = os.router({
     }),
   },
 
+  /**
+   * Rapatriement des rushes vers le stockage du hub.
+   *
+   * Les cinq procédures de salle sont bornées par `roomOnly` : le `roomId` vient
+   * du jeton, jamais de l'entrée. Une salle ne peut donc ni téléverser pour une
+   * autre, ni lire le plan d'une autre — et révoquer une machine la coupe du
+   * stockage sans toucher au bucket.
+   */
+  vod: {
+    begin: os.vod.begin.use(roomOnly).handler(({ input, context }) =>
+      surStockage(context, () => exigerStockage(context).begin({ roomId: context.roomId, ...input })),
+    ),
+
+    parts: os.vod.parts.use(roomOnly).handler(({ input, context }) =>
+      surStockage(context, () => exigerStockage(context).parts(context.roomId, input.uploadId, input.numeros)),
+    ),
+
+    progress: os.vod.progress.use(roomOnly).handler(({ input, context }) =>
+      surStockage(context, () => {
+        exigerStockage(context).progress({ roomId: context.roomId, ...input })
+        return { ok: true }
+      }),
+    ),
+
+    complete: os.vod.complete.use(roomOnly).handler(({ input, context }) =>
+      surStockage(context, async () => ({
+        ok: true,
+        objectKey: await exigerStockage(context).complete(context.roomId, input.uploadId),
+      })),
+    ),
+
+    abort: os.vod.abort.use(roomOnly).handler(({ input, context }) =>
+      surStockage(context, async () => {
+        await exigerStockage(context).abort(context.roomId, input.uploadId, input.raison)
+        return { ok: true }
+      }),
+    ),
+
+    /**
+     * Une salle ne voit que ses propres téléversements.
+     *
+     * La régie s'en sert pour peindre sa modale ; la console, elle, passe sans
+     * `roomId` et les voit tous. Laisser une salle en interroger une autre ne
+     * servirait à rien et donnerait à un jeton de salle une vue de l'événement
+     * entier.
+     */
+    uploads: os.vod.uploads.use(roomOrOperator).handler(({ input, context }) => {
+      const vod = exigerStockage(context)
+      const salles = new Map(context.services.rooms.list().map((salle) => [salle.id, salle.name]))
+      const cible = context.operator != null ? input.roomId : context.roomId
+      return vod.uploads(cible, (id) => salles.get(id) ?? null)
+    }),
+
+    /**
+     * Éprouve la connexion au stockage. Admin.
+     *
+     * **Pas de `surStockage` ici, et c'est le point** : le diagnostic est la
+     * réponse. Traduire l'échec en 502 ferait perdre l'étape à laquelle on
+     * s'est arrêté — joindre, authentifier, signer, nettoyer —, c'est-à-dire
+     * exactement ce que ce bouton existe pour dire.
+     */
+    check: os.vod.check.use(operatorOnly).handler(({ context }) => {
+      const vod = context.services.vod
+      if (vod == null) {
+        return {
+          ok: false,
+          etapes: [
+            {
+              nom: 'joindre' as const,
+              ok: false,
+              detail:
+                'Aucun stockage S3 configuré sur ce hub : renseigner S3_ENDPOINT, S3_ACCESS_KEY_ID et S3_SECRET_ACCESS_KEY.',
+            },
+          ],
+        }
+      }
+      return vod.check()
+    }),
+
+    /**
+     * Remise à zéro. **Développement seulement, et refusé ici, pas seulement caché.**
+     *
+     * Même garde que le réglage de l'horloge, et pour une raison plus forte
+     * encore : une console qui ne rend pas le bouton ne protège que de
+     * l'étourderie, pas d'un appel direct. Celui-ci détruit une journée de
+     * captation.
+     *
+     * La confirmation est dans le contrat (`z.literal('RAZ')`) : elle est donc
+     * vérifiée par le hub, et pas seulement par la modale.
+     */
+    reset: os.vod.reset.use(operatorOnly).handler(({ context }) => {
+      if (context.services.mode !== 'dev') {
+        throw new ORPCError('FORBIDDEN', {
+          message:
+            "La remise à zéro n'existe qu'en mode développement. Un hub d'événement ne détruit pas ses captations.",
+        })
+      }
+      return surStockage(context, async () => {
+        const efface = await exigerStockage(context).raz()
+        const salles = context.services.rooms.list()
+        for (const salle of salles) {
+          context.services.commands.publish(
+            salle.id,
+            { type: 'vod.reset', requestedBy: context.operator.email },
+            null,
+          )
+        }
+        return { ...efface, salles: salles.length }
+      })
+    }),
+
+    /**
+     * L'état du stockage, y compris quand il n'y en a pas.
+     *
+     * Seule procédure du groupe qui répond sans stockage configuré : c'est
+     * précisément sa raison d'être. La console doit pouvoir dire « non
+     * configuré », et nommer les variables absentes — elles ne se devinent pas
+     * depuis un navigateur.
+     */
+    status: os.vod.status.use(operatorOnly).handler(({ context }) => {
+      const vod = context.services.vod
+      if (vod == null) {
+        return {
+          configure: false,
+          endpoint: null,
+          bucket: null,
+          prefix: null,
+          politique: POLITIQUE_VOD_PAR_DEFAUT,
+        }
+      }
+      return vod.status()
+    }),
+
+    /**
+     * Demande à une salle de téléverser.
+     *
+     * Une commande, pas un appel direct — comme `rooms.resync`, et pour la même
+     * raison : la console ne parle pas aux salles, et une salle momentanément
+     * coupée rattrape la demande à sa reconnexion. Sans TTL : « rapatrie tes
+     * rushes » ne périme pas.
+     */
+    request: os.vod.request.use(operatorOnly).handler(({ input, context }) => {
+      exigerStockage(context)
+      if (context.services.rooms.get(input.roomId) == null) {
+        throw new ORPCError('NOT_FOUND', { message: `Salle inconnue : ${input.roomId}` })
+      }
+      context.services.commands.publish(
+        input.roomId,
+        { type: 'vod.upload', file: input.file, requestedBy: context.operator.email },
+        null,
+      )
+      return { ok: true }
+    }),
+  },
+
   questions: {
     post: os.questions.post.handler(({ input, context }) => {
       if (!context.services.limiter.take(publicIdentity(context))) {
@@ -895,6 +1095,104 @@ export const router = os.router({
 })
 
 /**
+ * Traduit ce que le stockage refuse en quelque chose de lisible en console.
+ *
+ * Deux familles, et il faut les distinguer : `StockageIncomplet` dit qu'il
+ * manque un réglage **ici** — un bucket, un téléversement qu'on a oublié
+ * d'ouvrir —, `ErreurS3` rapporte ce que le stockage a répondu, code compris.
+ * Les confondre en « erreur interne » enverrait chercher la panne dans le hub
+ * quand elle est dans les droits du bucket, et réciproquement.
+ *
+ * Le code du stockage est repris tel quel : `SignatureDoesNotMatch`,
+ * `NoSuchBucket`, `AccessDenied` sont les seuls mots qu'on puisse mettre dans
+ * un moteur de recherche, et les traduire les ferait perdre.
+ */
+async function surStockage<T>(
+  context: { services: HubContext['services'] },
+  geste: () => T | Promise<T>,
+): Promise<T> {
+  try {
+    return await geste()
+  } catch (erreur) {
+    /**
+     * Ce qui a déjà été traduit passe intact.
+     *
+     * `exigerStockage` lève un `NOT_IMPLEMENTED` quand aucun stockage n'est
+     * configuré : le réempaqueter en « stockage injoignable » ferait chercher
+     * une panne réseau là où il n'y a simplement rien de monté — c'est
+     * l'inverse exact du service que ce bloc est censé rendre.
+     */
+    if (erreur instanceof ORPCError) throw erreur
+    if (erreur instanceof StockageIncomplet) {
+      throw new ORPCError('BAD_REQUEST', { message: erreur.message })
+    }
+    if (erreur instanceof ErreurS3) {
+      throw new ORPCError('BAD_GATEWAY', {
+        message: `Le stockage a refusé (${erreur.code}) : ${erreur.message}`,
+      })
+    }
+    /**
+     * Tout le reste, plutôt qu'une erreur interne.
+     *
+     * Le cas qui a motivé ce bloc : le stockage injoignable. `fetch` lève alors
+     * un `TypeError: fetch failed` dont la vraie cause — `ECONNREFUSED`,
+     * `ENOTFOUND`, un certificat — est rangée dans `cause`, et oRPC en faisait
+     * un « Internal Server Error » que la régie affichait tel quel. On cherchait
+     * la panne dans le hub alors qu'il manquait un conteneur.
+     *
+     * Rien ici n'est jamais la faute du hub : ces procédures ne font qu'appeler
+     * un stockage tiers. `BAD_GATEWAY` le dit, et le message nomme **l'adresse
+     * qu'on a essayé de joindre** — sans elle, on ne sait même pas si c'est
+     * celle qu'on croit.
+     */
+    throw new ORPCError('BAD_GATEWAY', {
+      message: `Stockage injoignable (${context.services.vod?.endpoint() ?? 'adresse inconnue'}) : ${causeLisible(erreur)}`,
+    })
+  }
+}
+
+/**
+ * Le vrai motif d'un échec réseau, sous la couche de `fetch`.
+ *
+ * `fetch failed` ne dit rien : c'est le message qu'undici pose sur *toutes* ses
+ * pannes de transport. Le code errno, lui, distingue un service éteint
+ * (`ECONNREFUSED`) d'un nom qui ne résout pas (`ENOTFOUND`) et d'un pare-feu
+ * qui laisse pendre (`ETIMEDOUT`) — trois pannes qui ne se corrigent pas au
+ * même endroit.
+ */
+function causeLisible(erreur: unknown): string {
+  const chaine: string[] = []
+  let courant: unknown = erreur
+  for (let profondeur = 0; courant != null && profondeur < 4; profondeur += 1) {
+    const noeud = courant as { message?: string; code?: string; cause?: unknown }
+    const code = typeof noeud.code === 'string' ? noeud.code : null
+    if (code != null) chaine.push(code)
+    else if (typeof noeud.message === 'string' && noeud.message !== '') chaine.push(noeud.message)
+    courant = noeud.cause
+  }
+  return chaine.length === 0 ? String(erreur) : chaine.join(' — ')
+}
+
+/**
+ * Le service de téléversement, ou un refus qui dit quoi faire.
+ *
+ * Un hub sans stockage configuré n'est pas en panne : c'est le cas par défaut,
+ * et le dire ainsi évite qu'on cherche une erreur de droits sur un bucket qui
+ * n'existe pas. `NOT_IMPLEMENTED` plutôt qu'une erreur serveur, parce que rien
+ * n'a échoué — la fonctionnalité n'est simplement pas montée.
+ */
+function exigerStockage(context: { services: HubContext['services'] }): VodService {
+  const vod = context.services.vod
+  if (vod == null) {
+    throw new ORPCError('NOT_IMPLEMENTED', {
+      message:
+        "Aucun stockage S3 configuré sur ce hub : renseigner S3_ENDPOINT, S3_ACCESS_KEY_ID et S3_SECRET_ACCESS_KEY.",
+    })
+  }
+  return vod
+}
+
+/**
  * Retrouve une session dans le programme actif.
  *
  * Refuser une session inconnue plutôt que d'écrire un état orphelin : une
@@ -919,6 +1217,25 @@ function resolveSession(
  * La console n'est pas concernée : c'est précisément son rôle de trancher à
  * distance quand un opérateur de salle n'est pas disponible.
  */
+/**
+ * Traduit un refus du cycle de vie en réponse que la régie sait afficher.
+ *
+ * `CONFLICT` et pas `BAD_REQUEST` : la demande était bien formée, c'est l'état
+ * de la conférence qui a bougé — le plus souvent parce qu'une autre régie, ou
+ * la clôture automatique, est passée entre-temps. Le message vient de la table
+ * partagée, donc il dit la même chose que le bouton grisé d'en face.
+ */
+function surTransition<T>(geste: () => T): T {
+  try {
+    return geste()
+  } catch (erreur) {
+    if (erreur instanceof TransitionRefusee) {
+      throw new ORPCError('CONFLICT', { message: erreur.message })
+    }
+    throw erreur
+  }
+}
+
 function exigerMemeSalle(context: ActorContext, roomId: string | null): void {
   if (context.roomId != null && roomId !== context.roomId) {
     throw new ORPCError('FORBIDDEN', {

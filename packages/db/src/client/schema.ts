@@ -44,6 +44,15 @@ export const roomSettings = sqliteTable('room_settings', {
    * installée pour une édition affiche l'ancienne pendant la suivante.
    */
   eventIdentityJson: text('event_identity_json'),
+  /**
+   * Rapatriement des rushes : le hub a-t-il une destination, et sous quelles
+   * règles. Poussé au sync, en cache pour la même raison que le reste.
+   *
+   * Le régulateur tranche plusieurs fois par minute et ne doit jamais dépendre
+   * d'un appel réseau — surtout pas au moment précis où le réseau est ce qu'on
+   * cherche à ménager. Absent, rien ne part : c'est le bon défaut.
+   */
+  vodJson: text('vod_json'),
   /** Prochain `seq` à attribuer aux événements sortants. Monotone, jamais réinitialisé. */
   nextSeq: integer('next_seq').notNull().default(1),
   /** Dernier `seq` de commande appliqué : c'est le `lastEventId` renvoyé à la reprise. */
@@ -133,6 +142,56 @@ export const journal = sqliteTable(
   (table) => [index('journal_created_idx').on(table.createdAt)],
 )
 
+/**
+ * File des rushes à téléverser, et où en est chacun.
+ *
+ * Persistée pour la même raison que l'outbox : une machine redémarrée en pleine
+ * montée doit repartir de la part suivante, pas du premier octet. Sur un rush de
+ * trois gigaoctets et un réseau d'événement, la différence entre les deux est
+ * celle entre « ça finira » et « ça ne finira jamais ».
+ *
+ * Le plan lui-même (`objectKey`, `s3UploadId`, taille de part) vient du hub :
+ * on le garde ici pour pouvoir reprendre sans redemander, et on le redemande
+ * quand même au premier échec — c'est le hub qui fait foi.
+ */
+export const televersement = sqliteTable(
+  'televersement',
+  {
+    /** Chemin relatif à la racine des enregistrements : la clé de `vod-index`. */
+    file: text('file').primaryKey(),
+    kind: text('kind').notNull().default('rush'),
+    sessionId: text('session_id'),
+    tailleOctets: integer('taille_octets').notNull().default(0),
+    objectKey: text('object_key'),
+    s3UploadId: text('s3_upload_id'),
+    taillePartOctets: integer('taille_part_octets'),
+    /** Numéros de parts déjà acquittées par le hub. */
+    partsJson: text('parts_json').notNull().default('[]'),
+    octetsEnvoyes: integer('octets_envoyes').notNull().default(0),
+    state: text('state').notNull().default('attente'),
+    /**
+     * Demandé par un humain, ici ou depuis la console.
+     *
+     * Le régulateur s'en sert pour passer outre ses règles d'attente : celui
+     * qui appuie sur le bouton sait ce qu'il fait, et lui répondre « pas
+     * maintenant » sans rien montrer se lit comme un bouton mort.
+     */
+    manuel: integer('manuel', { mode: 'boolean' }).notNull().default(false),
+    attempts: integer('attempts').notNull().default(0),
+    lastError: text('last_error'),
+    /** Débit de la dernière part, en octets/s : c'est lui qui fait lever le pied. */
+    debitOctetsS: integer('debit_octets_s'),
+    nextAttemptAt: text('next_attempt_at').notNull().default(now),
+    demandeA: text('demande_a').notNull().default(now),
+    commenceA: text('commence_a'),
+    finiA: text('fini_a'),
+  },
+  (table) => [
+    /** Élection du prochain candidat : les demandes manuelles d'abord. */
+    index('televersement_pret_idx').on(table.state, table.nextAttemptAt),
+  ],
+)
+
 export const clientSchema = {
   programCache,
   roomSettings,
@@ -140,4 +199,5 @@ export const clientSchema = {
   appliedCommand,
   assetCache,
   journal,
+  televersement,
 }

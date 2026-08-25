@@ -114,6 +114,69 @@ const agir = async (payload: unknown) => {
 }
 const etat = async () => (await (await fetch(`${regie}/display/data`)).json()) as DisplayPayload
 
+/**
+ * Mesure le délai entre une décision et son arrivée dans le **flux** de la régie.
+ *
+ * Le flux, et pas `/display/data` : celui-ci relit tout à chaque appel et répond
+ * donc juste même quand rien n'est poussé. C'est précisément ce qui masquait le
+ * défaut — la vue des autres salles se rafraîchissait en mémoire sans que
+ * personne ne soit réveillé.
+ *
+ * L'abonnement s'ouvre **avant** `action`, et le chronomètre ne part qu'après :
+ * mesurer depuis l'ouverture compterait le temps qu'on laisse à la salle pour
+ * se taire, et le délai n'aurait plus de sens.
+ */
+async function delaiDansLeFlux(
+  condition: (etat: Record<string, unknown>) => boolean,
+  action: () => Promise<void>,
+  limiteMs: number,
+): Promise<number | null> {
+  const abandon = new AbortController()
+  const reponse = await fetch(`${regie}/display/state?vue=regie`, { signal: abandon.signal })
+  const lecteur = reponse.body!.getReader()
+
+  // Rien n'est lu pendant ce temps : ce qui arrive s'empile, et sera relu
+  // ensuite sans satisfaire la condition — le changement n'a pas encore eu lieu.
+  await action()
+
+  const depart = Date.now()
+  const minuterie = setTimeout(() => abandon.abort(), limiteMs)
+  const decodeur = new TextDecoder()
+  let courant: Record<string, unknown> = {}
+  let tampon = ''
+  try {
+    for (;;) {
+      const { value, done } = await lecteur.read()
+      if (done) return null
+      tampon += decodeur.decode(value, { stream: true })
+
+      let coupure: number
+      while ((coupure = tampon.indexOf('\n\n')) !== -1) {
+        const bloc = tampon.slice(0, coupure)
+        tampon = tampon.slice(coupure + 2)
+        const lignes = bloc.split('\n')
+        const data = lignes.find((ligne) => ligne.startsWith('data: '))
+        if (data == null) continue
+        const brut = JSON.parse(data.slice(6)) as Record<string, unknown>
+        courant = lignes.includes('event: delta') ? { ...courant, ...brut } : brut
+        if (condition(courant)) return Date.now() - depart
+      }
+    }
+  } catch {
+    // Abandon sur délai : la condition n'est jamais venue.
+    return null
+  } finally {
+    clearTimeout(minuterie)
+    abandon.abort()
+  }
+}
+
+/** État d'une salle dans la vue de supervision reçue par la régie. */
+function salleDuFlux(etat: Record<string, unknown>, roomId: string): { conference?: string } | null {
+  const diagnostics = etat.diagnostics as { rooms?: { roomId: string; conference?: string }[] } | null
+  return diagnostics?.rooms?.find((salle) => salle.roomId === roomId) ?? null
+}
+
 /** Client opérateur : ce que la console tient une fois connectée. */
 async function operateur(): Promise<ContractRouterClient<typeof contract>> {
   const response = await fetch(`${origin}/api/auth/sign-in/email`, {
@@ -397,6 +460,98 @@ describe('genre d\'un créneau corrigé depuis le hub', () => {
 
     expect(room.runtime.state().currentSession?.kind).toBe('talk')
     expect(room.runtime.state().targetSession?.id).toBe(session.id)
+  }, 40_000)
+})
+
+/**
+ * Ce qu'une salle voisine décide doit atteindre la régie tout de suite.
+ *
+ * La décision arrivait déjà poussée sur le flux de commandes ; seule la *vue*
+ * qui l'affiche était sondée, toutes les quinze secondes — et le sondage ne
+ * réveillait personne. La régie affichait donc « Track #2 vient de terminer »
+ * pendant que la pastille de Track #2 disait encore « en cours ».
+ */
+describe("état des autres salles", () => {
+  const AUTRE = 'track-2-mf-1092'
+
+  /** La conférence de Track #2 qui court à l'instant simulé. */
+  const conferenceVoisine = () =>
+    hub.services.programs
+      .active()!
+      .program.sessions.find(
+        (s) => s.roomId === AUTRE && s.startsAtMs <= PENDANT_LE_TALK && (s.endsAtMs ?? 0) > PENDANT_LE_TALK,
+      )!
+
+  it('pousse la décision dans le flux, sans attendre le tour de sonde', async () => {
+    const voisine = conferenceVoisine()
+    // Personne ne l'a lancée : le créneau court depuis vingt minutes.
+    expect((await etat()).diagnostics?.rooms?.find((s) => s.roomId === AUTRE)?.conference)
+      .toBe('retard')
+
+    const delai = await delaiDansLeFlux(
+      (recu) => salleDuFlux(recu, AUTRE)?.conference === 'en-cours',
+      async () => {
+        /**
+         * On laisse d'abord la salle se taire.
+         *
+         * Au démarrage, sa file de remontée est chargée — connexion OBS,
+         * journal — et chaque vidange recalcule l'offset d'horloge, ce qui fait
+         * bouger l'état et emporte la vue des salles au passage. Ce bruit
+         * masquerait ce qu'on mesure. Une fois la salle installée, il ne reste
+         * que le battement, toutes les dix secondes.
+         *
+         * La durée n'est pas neutre : elle place la décision **entre** deux
+         * tours de sonde. À 3,5 s, le tour suivant tombait 1,4 s plus tard et
+         * le test réussissait sans rien devoir au déclenchement — de justesse,
+         * et par pure coïncidence de phase.
+         */
+        await sleep(5_200)
+
+        hub.services.sessions.start(voisine.id, AUTRE, 'regie-voisine@cloudnord.fr')
+        hub.services.commands.publish(
+          null,
+          {
+            type: 'session.state',
+            sessionId: voisine.id,
+            roomId: AUTRE,
+            sessionTitle: voisine.title,
+            status: 'running',
+            decidedBy: 'regie-voisine@cloudnord.fr',
+          },
+          null,
+        )
+      },
+      /**
+       * Une seconde et demie, et c'est le cœur du test.
+       *
+       * La diffusion finit toujours par partir : l'offset d'horloge se
+       * recalcule à chaque vidange de la file et fait bouger l'état, ce qui
+       * emporte la vue des salles au passage. Mais au rythme du battement — dix
+       * secondes — et seulement après un tour de sonde. C'est ce délai-là qu'on
+       * refuse : sous ce plafond, seule une poussée déclenchée par la commande
+       * tient. Retirer l'une ou l'autre fait échouer ce test.
+       */
+      1_500,
+    )
+
+    expect(delai).not.toBeNull()
+  }, 40_000)
+
+  it('redate la vue à chaque tour de sonde, changement ou non', async () => {
+    /**
+     * La régie ne se fie à la vue du hub que si elle est fraîche — passé une
+     * minute elle retombe sur le programme, qui ne connaît ni retard ni
+     * dépassement. L'horodatage doit donc avancer même quand rien ne bouge,
+     * sinon la vue se dégrade en silence alors que le hub répond très bien.
+     */
+    const avant = (await etat()).diagnostics?.roomsRefreshedAt
+    expect(avant).toBeTruthy()
+
+    // Un tour de sonde, et un peu de marge.
+    await sleep(5_500)
+
+    const apres = (await etat()).diagnostics?.roomsRefreshedAt
+    expect(Date.parse(apres!)).toBeGreaterThan(Date.parse(avant!))
   }, 40_000)
 })
 

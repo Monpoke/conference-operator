@@ -550,10 +550,18 @@ describe('cycle de vie de la conférence', () => {
    * plus coûteux : lancer l'enregistrement, et passer à l'antenne.
    */
   describe('démarrage', () => {
+    /**
+     * Le montage par défaut ouvre la page sur l'heure du poste, à des mois du
+     * créneau : le garde-fou du démarrage anticipé répondrait avant celui de
+     * l'enregistrement, qui est ce que ces tests-là visent. On se pose donc
+     * juste avant le créneau, là où commencer est le geste normal du matin.
+     */
+    beforeEach(() => monterRegie(a('2026-10-30T09:58:00Z')))
+
     /** Salle qui enregistre déjà : l'avertissement n'a pas lieu d'être. */
     function enregistrementLance(): DisplayPayload {
       return {
-        ...ETAT,
+        ...a('2026-10-30T09:58:00Z'),
         diagnostics: {
           ...ETAT.diagnostics,
           recording: { active: true, markers: 0, startedAtMs: Date.now() },
@@ -625,7 +633,7 @@ describe('cycle de vie de la conférence', () => {
 
     it('respecte une salle qui a décoché les deux réglages', async () => {
       monterRegie({
-        ...ETAT,
+        ...a('2026-10-30T09:58:00Z'),
         diagnostics: {
           ...ETAT.diagnostics,
           config: { ...ETAT.diagnostics?.config, promptRecordingOnStart: false, sceneOnStart: null },
@@ -638,6 +646,102 @@ describe('cycle de vie de la conférence', () => {
     })
   })
 
+  /**
+   * Le cas signalé : en salle 2, à 08:45, « Industrialiser l'IA » de 09:50
+   * était marquée tenue de 08:45 à 08:45. Entre deux créneaux la régie pilote
+   * la conférence qui arrive — ce qu'on veut à 09:48, et un piège à 08:45.
+   * Rien à l'écran ne distinguait les deux.
+   */
+  describe('démarrage très en avance', () => {
+    const ouverte = () => document.body.dataset.tot === 'ouverte'
+    const touche = (key: string) =>
+      document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+
+    it('demande confirmation, et ne lance rien avant la réponse', async () => {
+      // 08:45, le créneau est à 10:00 UTC : une heure et quart d'avance.
+      monterRegie(a('2026-10-30T08:45:00Z'))
+      $('btn-conf-demarrer').click()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+
+      expect(ouverte()).toBe(true)
+      expect(envoyees).toEqual([])
+      // Les deux chiffres qui permettent de répondre : l'écart, et l'heure du
+      // créneau qu'on est en train de viser.
+      expect($('modale-tot-detail').textContent).toContain('1 h 15')
+      expect($('modale-tot-detail').textContent).toContain('11:00')
+      expect($('modale-tot-detail').textContent).toContain('HoneySwamp')
+    })
+
+    it('passe la main au garde-fou de l\'enregistrement une fois confirmé', async () => {
+      monterRegie(a('2026-10-30T08:45:00Z'))
+      $('btn-conf-demarrer').click()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      $('tot-oui').click()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+
+      // La question de la captation vient après celle de la cible : l'inverse
+      // ferait tourner un enregistrement pour un talk qu'on renonce à lancer.
+      expect(ouverte()).toBe(false)
+      expect(document.body.dataset.rec).toBe('ouverte')
+      expect(envoyees).toEqual([])
+    })
+
+    it('renonce sans rien envoyer', async () => {
+      monterRegie(a('2026-10-30T08:45:00Z'))
+      $('btn-conf-demarrer').click()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      $('tot-non').click()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+
+      expect(ouverte()).toBe(false)
+      expect(document.body.dataset.rec).toBe('fermee')
+      expect(envoyees).toEqual([])
+    })
+
+    it('répond au clavier, comme la confirmation de fin', async () => {
+      monterRegie(a('2026-10-30T08:45:00Z'))
+      $('btn-conf-demarrer').click()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+
+      touche('n')
+      expect(ouverte()).toBe(false)
+
+      $('btn-conf-demarrer').click()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      touche('Escape')
+      expect(ouverte()).toBe(false)
+    })
+
+    it('ne prend pas le raccourci de captation pendant la question', async () => {
+      monterRegie(a('2026-10-30T08:45:00Z'))
+      $('btn-conf-demarrer').click()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+
+      // Un « r » réflexe basculerait la captation sous la question elle-même.
+      touche('r')
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(envoyees).toEqual([])
+    })
+
+    it('ne demande rien quinze minutes avant, geste normal du matin', async () => {
+      // 09:48 pour un créneau à 10:00 : on a fini plus tôt, le speaker est prêt.
+      monterRegie(a('2026-10-30T09:48:00Z'))
+      $('btn-conf-demarrer').click()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+
+      expect(ouverte()).toBe(false)
+      expect(document.body.dataset.rec).toBe('ouverte')
+    })
+
+    it('ne demande rien sur une conférence dont le créneau court', async () => {
+      monterRegie(a('2026-10-30T10:20:00Z'))
+      $('btn-conf-demarrer').click()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+
+      expect(ouverte()).toBe(false)
+    })
+  })
+
   it('inverse les boutons quand le talk est en cours', () => {
     monterRegie({
       ...ETAT,
@@ -647,6 +751,96 @@ describe('cycle de vie de la conférence', () => {
     expect($('badge-conf').textContent).toBe('en cours')
     expect(($('btn-conf-demarrer') as HTMLButtonElement).disabled).toBe(true)
     expect(($('btn-conf-terminer') as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  /**
+   * Terminer n'est pas un geste anodin : la salle passe à « rien dans la
+   * salle », les autres régies le voient, le compte à rebours saute à la
+   * conférence suivante. Et le bouton est à côté de « Commencer ».
+   */
+  describe('fin anticipée', () => {
+    const EN_COURS = { sessionStates: { 'ses-1': 'running' } }
+    const ouverte = () => document.body.dataset.fin === 'ouverte'
+    const touche = (key: string) =>
+      document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+
+    it('demande confirmation, et ne termine rien avant la réponse', () => {
+      // 10:20, le créneau court jusqu'à 10:50 : trente minutes d'avance.
+      monterRegie(a('2026-10-30T10:20:00Z', EN_COURS))
+
+      $('btn-conf-terminer').click()
+
+      expect(ouverte()).toBe(true)
+      expect(envoyees).toEqual([])
+      // Le chiffre qui permet de répondre sans réfléchir.
+      expect($('modale-fin-detail').textContent).toContain('30 min')
+      expect($('modale-fin-detail').textContent).toContain('HoneySwamp')
+    })
+
+    it('compte en secondes quand la fin est toute proche', () => {
+      // Arrondies, huit secondes deviennent « 0 min » — et la question perd le
+      // seul chiffre qui permettait d'y répondre.
+      monterRegie(a('2026-10-30T10:49:52Z', EN_COURS))
+
+      $('btn-conf-terminer').click()
+
+      expect($('modale-fin-detail').textContent).toContain('8 s')
+    })
+
+    it('termine sur « y »', () => {
+      monterRegie(a('2026-10-30T10:20:00Z', EN_COURS))
+      $('btn-conf-terminer').click()
+
+      touche('y')
+
+      expect(ouverte()).toBe(false)
+      expect(envoyees).toEqual([{ action: 'session.end' }])
+    })
+
+    it('renonce sur « n », sans rien envoyer', () => {
+      monterRegie(a('2026-10-30T10:20:00Z', EN_COURS))
+      $('btn-conf-terminer').click()
+
+      touche('n')
+
+      expect(ouverte()).toBe(false)
+      expect(envoyees).toEqual([])
+    })
+
+    it('renonce aussi sur Échap', () => {
+      monterRegie(a('2026-10-30T10:20:00Z', EN_COURS))
+      $('btn-conf-terminer').click()
+
+      touche('Escape')
+
+      expect(ouverte()).toBe(false)
+      expect(envoyees).toEqual([])
+    })
+
+    it('garde le clavier tant que la question est posée', () => {
+      // Un « r » réflexe pendant qu'on demande s'il faut terminer basculerait
+      // la captation sous la question elle-même.
+      monterRegie(a('2026-10-30T10:20:00Z', EN_COURS))
+      $('btn-conf-terminer').click()
+
+      touche('r')
+      touche('l')
+      touche('p')
+
+      expect(envoyees).toEqual([])
+      expect(ouverte()).toBe(true)
+    })
+
+    it('ne demande rien à l\'heure ou en dépassement', () => {
+      // Le geste normal de la journée : le confirmer à chaque fois en ferait un
+      // réflexe, ce qui reviendrait à ne plus le lire.
+      monterRegie(a('2026-10-30T10:52:00Z', EN_COURS))
+
+      $('btn-conf-terminer').click()
+
+      expect(ouverte()).toBe(false)
+      expect(envoyees).toEqual([{ action: 'session.end' }])
+    })
   })
 
   it('n\'active rien sans conférence à piloter', () => {
@@ -702,6 +896,31 @@ describe('commandes de scène et d\'écran', () => {
 
   it('répond aux raccourcis clavier', async () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(envoyees).toContainEqual({ action: 'scene.set', role: 'LIVE' })
+  })
+
+  /**
+   * Le défaut signalé : Ctrl+R rechargeait la page **et** lançait la captation.
+   * Seule la lettre était lue, jamais les modificateurs — une régie retrouvée
+   * en train d'enregistrer, un fichier de plus sur le disque, et rien à l'écran
+   * pour dire d'où ça venait.
+   */
+  it('laisse les raccourcis du navigateur au navigateur', async () => {
+    for (const modificateur of ['ctrlKey', 'metaKey', 'altKey']) {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'r', bubbles: true, [modificateur]: true }),
+      )
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'l', bubbles: true, [modificateur]: true }),
+      )
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(envoyees).toEqual([])
+  })
+
+  it('garde la touche seule, et Maj avec elle', async () => {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'L', bubbles: true, shiftKey: true }))
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(envoyees).toContainEqual({ action: 'scene.set', role: 'LIVE' })
   })
@@ -986,6 +1205,86 @@ describe('intervenants', () => {
 
     expect($('suivant').textContent).toContain('Blind ops')
     expect($('suivant').textContent).toContain('Nuno')
+  })
+})
+
+/**
+ * Une page figée ne doit pas passer pour une page vivante.
+ *
+ * L'horloge, le compte à rebours et le flux des salles se redessinent chaque
+ * seconde depuis la dernière charge utile reçue : ils continuent d'avancer même
+ * quand plus rien n'arrive. Seul l'état de la conférence reste bloqué sur ce
+ * qu'il disait à la coupure — et c'est exactement ce qu'on ne peut pas
+ * diagnostiquer depuis une salle.
+ */
+describe('vivacité du flux de la page', () => {
+  /** Flux d'état factice : la page en ouvre un au montage, on garde la main dessus. */
+  class FluxFactice {
+    static dernier: FluxFactice | null = null
+    onopen: (() => void) | null = null
+    onerror: (() => void) | null = null
+    onmessage: ((evenement: MessageEvent) => void) | null = null
+    constructor(public readonly url: string) {
+      if (url.includes('vue=regie')) FluxFactice.dernier = this
+    }
+    addEventListener(): void {}
+    close(): void {}
+  }
+
+  /** Laisse passer un tic de la page — c'est lui qui évalue la vivacité. */
+  const unTic = () => new Promise((resolve) => setTimeout(resolve, 1_100))
+
+  function monterAvecFlux(): FluxFactice {
+    FluxFactice.dernier = null
+    vi.stubGlobal('EventSource', FluxFactice)
+    monterRegie()
+    return FluxFactice.dernier!
+  }
+
+  it('ne dit rien tant que le flux tient', async () => {
+    monterAvecFlux()
+    await unTic()
+
+    expect(($('flux-mort') as HTMLElement).hidden).toBe(true)
+  })
+
+  it('ne crie pas sur une reconnexion passagère', async () => {
+    // `onerror` part aussi pour une coupure d'une seconde, que personne n'a
+    // besoin de voir : une page qui clignote à chaque reconnexion cesse d'être lue.
+    const flux = monterAvecFlux()
+    flux.onerror!()
+    await unTic()
+
+    expect(($('flux-mort') as HTMLElement).hidden).toBe(true)
+  })
+
+  it('signale un écran figé quand la coupure dure', async () => {
+    const flux = monterAvecFlux()
+    flux.onerror!()
+
+    // Cinq secondes plus tard, sans que le flux soit revenu.
+    const vraiNow = Date.now.bind(Date)
+    vi.spyOn(Date, 'now').mockImplementation(() => vraiNow() + 5_000)
+    await unTic()
+
+    expect(($('flux-mort') as HTMLElement).hidden).toBe(false)
+    expect($('flux-mort').textContent).toContain('figé')
+    vi.mocked(Date.now).mockRestore()
+  })
+
+  it('se tait dès que le flux revient', async () => {
+    const flux = monterAvecFlux()
+    flux.onerror!()
+    const vraiNow = Date.now.bind(Date)
+    vi.spyOn(Date, 'now').mockImplementation(() => vraiNow() + 5_000)
+    await unTic()
+    expect(($('flux-mort') as HTMLElement).hidden).toBe(false)
+
+    flux.onopen!()
+    await unTic()
+
+    expect(($('flux-mort') as HTMLElement).hidden).toBe(true)
+    vi.mocked(Date.now).mockRestore()
   })
 })
 
@@ -1455,5 +1754,732 @@ describe('questions du public', () => {
     ouvrirQuestions()
 
     expect($('encart-contenu').textContent).toContain('Relues 11:19')
+  })
+})
+
+/**
+ * Les deux boutons lisent la même table que le hub.
+ *
+ * Ils encodaient leur propre condition — `statut === 'running'` d'un côté,
+ * `statut !== 'running'` de l'autre. Elle disait juste, mais rien ne
+ * garantissait qu'elle continue de dire la même chose que la procédure qui
+ * écrit. Depuis `@cloudnord/etat-salle`, c'est la même table des deux côtés, et
+ * le refus sert d'infobulle plutôt que de se découvrir au clic.
+ */
+describe('boutons pilotés par le cycle de vie', () => {
+  const bouton = (id: string) => $(id) as HTMLButtonElement
+
+  it('dit pourquoi « Terminer » est fermé sur une conférence non lancée', () => {
+    monterRegie()
+
+    expect(bouton('btn-conf-terminer').disabled).toBe(true)
+    expect(bouton('btn-conf-terminer').title).toContain("n'a pas été lancée")
+    // Le geste possible, lui, n'a rien à expliquer.
+    expect(bouton('btn-conf-demarrer').disabled).toBe(false)
+    expect(bouton('btn-conf-demarrer').hasAttribute('title')).toBe(false)
+  })
+
+  it('dit pourquoi « Commencer » est fermé sur un talk en cours', () => {
+    monterRegie({
+      ...ETAT,
+      state: { ...ETAT.state, sessionStates: { 'ses-1': 'running' } },
+    } as unknown as DisplayPayload)
+
+    expect(bouton('btn-conf-demarrer').title).toContain('déjà lancée')
+    expect(bouton('btn-conf-terminer').hasAttribute('title')).toBe(false)
+  })
+
+  it('rouvre « Commencer » après une clôture, sans passer par « Remettre à venir »', () => {
+    // Une conférence close par la règle horaire alors qu'elle n'était pas finie
+    // se rattrape d'un geste.
+    monterRegie({
+      ...ETAT,
+      state: { ...ETAT.state, sessionStates: { 'ses-1': 'ended' } },
+    } as unknown as DisplayPayload)
+
+    expect(bouton('btn-conf-demarrer').disabled).toBe(false)
+    expect(bouton('btn-conf-terminer').title).toContain('déjà terminée')
+  })
+})
+
+/**
+ * Terminer une conférence **avant son créneau**.
+ *
+ * La régie l'autorise à dessein — « Commencer » reste disponible sur une
+ * conférence à venir, et « Terminer » suit. Mais la conférence restait alors
+ * « après maintenant » pour le calcul de la suivante, et la salle se désignait
+ * elle-même : le grand compte à rebours décomptait jusqu'au début d'un talk
+ * qu'on venait de clore, et le détail annonçait « prochaine conférence à
+ * 09:50 » sur la conférence de 09:50 qu'on venait de terminer.
+ */
+describe('conférence terminée avant son créneau', () => {
+  /** 09:00 : le talk de 10:00 n'a pas commencé, et un autre suit à 11:00. */
+  function avantLeCreneau(statuts: Record<string, string>): DisplayPayload {
+    const apres = {
+      id: 'ses-2',
+      title: 'Le talk suivant',
+      startsAt: '2026-10-30T11:00:00.000Z',
+      endsAt: '2026-10-30T11:50:00.000Z',
+      startsAtMs: Date.parse('2026-10-30T11:00:00Z'),
+      endsAtMs: Date.parse('2026-10-30T11:50:00Z'),
+      kind: 'talk',
+      speakers: [],
+    }
+    return {
+      ...ETAT,
+      sessions: [...(ETAT.sessions as unknown[]), apres],
+      state: {
+        ...ETAT.state,
+        targetIsUpcoming: true,
+        sessionStates: statuts,
+        serverTimeOffsetMs: Date.parse('2026-10-30T09:00:00Z') - Date.now(),
+      },
+    } as unknown as DisplayPayload
+  }
+
+  it('ne se désigne pas elle-même comme prochaine conférence', () => {
+    monterRegie(avantLeCreneau({ 'ses-1': 'ended' }))
+
+    expect($('badge-conf').textContent).toBe('terminée')
+    // 11:00 heure UTC, soit 12:00 à Paris : le talk d'après, pas celui qu'on
+    // vient de terminer.
+    expect($('conf-detail').textContent).toContain('12:00')
+    expect($('conf-detail').textContent).not.toContain('11:00')
+  })
+
+  it('décompte jusqu’à ce qui va réellement se tenir', () => {
+    monterRegie(avantLeCreneau({ 'ses-1': 'ended' }))
+
+    // 09:00 → 11:00 : deux heures, et non l'heure qui séparait de la
+    // conférence terminée. Le chrono passe en heures au-delà de soixante
+    // minutes, et perd la seconde que met le montage.
+    expect($('restant').textContent).toMatch(/^1:59:\d\d$/)
+  })
+
+  it('ne saute rien tant que la conférence tient toujours', () => {
+    // Sans décision, la prochaine conférence reste celle de 10:00 — c'est ce
+    // que vise « Commencer », et les deux doivent désigner le même créneau.
+    monterRegie(avantLeCreneau({}))
+
+    expect($('badge-conf').textContent).toBe('à venir')
+    expect($('conf-detail').textContent).toContain('Commencer')
+  })
+})
+
+/**
+ * Contrôle des rushes.
+ *
+ * La modale ne commande rien dans la salle : elle relit le disque et renvoie
+ * des verdicts. Ce qui doit être tenu ici, c'est qu'elle liste ce que le
+ * service dit — sidecar manquant compris —, que ✓ se reprend, et qu'elle prend
+ * le clavier tant qu'elle est ouverte.
+ */
+describe('enregistrements produits', () => {
+  const RUSHES = [
+    {
+      file: '2026-10-30_track1_1000_honeyswamp.mkv',
+      sizeBytes: 2_700_000_000,
+      modifiedAtMs: Date.parse('2026-10-30T10:45:00Z'),
+      enEcriture: false,
+      sidecar: {
+        title: 'HoneySwamp',
+        speakers: [{ name: 'Steven', company: null }],
+        startedAt: '2026-10-30T10:00:00.000Z',
+        durationMs: 45 * 60_000,
+        markers: [{ label: 'démo', offsetMs: 60_000, at: '2026-10-30T10:01:00.000Z' }],
+      },
+      check: null,
+    },
+    {
+      file: '2026-10-30_track1_1100_blind-ops.mkv',
+      sizeBytes: 12_000,
+      modifiedAtMs: Date.parse('2026-10-30T11:05:00Z'),
+      enEcriture: false,
+      sidecar: null,
+      check: {
+        status: 'illisible',
+        at: '2026-10-30T11:10:00.000Z',
+        by: 'auto',
+        reasons: ['aucune piste vidéo dans le conteneur'],
+        probe: null,
+      },
+    },
+  ]
+
+  const OUTILS = { ffmpeg: true, ffprobe: true }
+
+  /**
+   * Rapatriement, tel que le service local le rend.
+   *
+   * Le défaut est un hub sans stockage : c'est le cas normal, et il doit rester
+   * celui que les tests existants décrivent — aucune colonne de plus, aucun
+   * bouton de plus sur une salle qui n'a nulle part où envoyer.
+   */
+  const SANS_STOCKAGE = {
+    entrees: [] as unknown[],
+    verdict: { autorise: false, raison: 'desactive', texte: 'aucun stockage configuré sur le hub' },
+  }
+
+  /** Le service local, tel que la modale le voit. */
+  function servir(
+    entrees: unknown[] = RUSHES,
+    root: string | null = 'D:\\captations\\2026',
+    outils: { ffmpeg: boolean; ffprobe: boolean } = OUTILS,
+    montees: unknown = SANS_STOCKAGE,
+  ): void {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: { body?: string }) => {
+        if (init?.body != null) envoyees.push(JSON.parse(init.body))
+        if (url === '/control/recordings') {
+          return new Response(JSON.stringify({ ok: true, root, entries: entrees, outils }), { status: 200 })
+        }
+        if (url === '/control/uploads') {
+          return new Response(JSON.stringify({ ok: true, ...(montees as object) }), { status: 200 })
+        }
+        return new Response(JSON.stringify({ ok: true, message: 'fait' }), { status: 200 })
+      }),
+    )
+  }
+
+  async function ouvrir(
+    entrees: unknown[] = RUSHES,
+    root: string | null = 'D:\\captations\\2026',
+    outils: { ffmpeg: boolean; ffprobe: boolean } = OUTILS,
+    montees: unknown = SANS_STOCKAGE,
+  ) {
+    servir(entrees, root, outils, montees)
+    $('btn-vod').click()
+    await attendreQue(() => ($('vod-contenu').textContent ?? '') !== 'Lecture du dossier…')
+  }
+
+  it('s’ouvre depuis la captation et liste ce qui a été enregistré', async () => {
+    expect(document.body.dataset.vod).toBe('fermee')
+
+    await ouvrir()
+
+    expect(document.body.dataset.vod).toBe('ouverte')
+    const texte = $('vod-contenu').textContent ?? ''
+    expect(texte).toContain('HoneySwamp')
+    expect(texte).toContain('Steven')
+    expect(texte).toContain('1 marqueur')
+    expect(texte).toContain('2,7 Go')
+    expect($('vod-racine').textContent).toContain('captations')
+  })
+
+  it('montre le verdict et sa raison, sidecar manquant compris', async () => {
+    await ouvrir()
+
+    const texte = $('vod-contenu').textContent ?? ''
+    expect(texte).toContain('Illisible')
+    expect(texte).toContain('aucune piste vidéo')
+    // Le rush sans sidecar est justement celui qu'on cherche : il reste listé,
+    // et le dit.
+    expect(texte).toContain('sidecar absent')
+    expect(texte).toContain('Non vérifié')
+  })
+
+  it('dit pourquoi la liste est vide plutôt que de laisser croire à une journée perdue', async () => {
+    await ouvrir([], null)
+
+    expect($('vod-contenu').textContent).toContain('Aucun dossier d’enregistrement connu')
+  })
+
+  it('lance le contrôle technique d’un fichier', async () => {
+    await ouvrir()
+    envoyees = []
+
+    const boutons = [...$('vod-contenu').querySelectorAll('[data-vod-action="inspect"]')]
+    ;(boutons[0] as HTMLButtonElement).click()
+    await attendreQue(() => envoyees.length > 0)
+
+    expect(envoyees[0]).toEqual({
+      action: 'vod.inspect',
+      file: '2026-10-30_track1_1000_honeyswamp.mkv',
+    })
+  })
+
+  it('pose un verdict à la main, et le reprend au second clic', async () => {
+    await ouvrir()
+    envoyees = []
+    ;($('vod-contenu').querySelector('[data-vod-action="ok"]') as HTMLButtonElement).click()
+    await attendreQue(() => envoyees.length > 0)
+
+    expect(envoyees[0]).toEqual({
+      action: 'vod.verdict',
+      file: '2026-10-30_track1_1000_honeyswamp.mkv',
+      status: 'ok',
+    })
+
+    // Le service renvoie maintenant un verdict d'opérateur : le même bouton doit
+    // l'effacer, sinon une fausse manœuvre resterait à l'écran sans reprise.
+    const relu = [
+      {
+        ...RUSHES[0],
+        check: { status: 'ok', at: '2026-10-30T12:00:00.000Z', by: 'operateur', reasons: ['relu en régie'], probe: null },
+      },
+    ]
+    await ouvrir(relu)
+    envoyees = []
+    ;($('vod-contenu').querySelector('[data-vod-action="ok"]') as HTMLButtonElement).click()
+    await attendreQue(() => envoyees.length > 0)
+
+    expect(envoyees[0]).toEqual({
+      action: 'vod.verdict',
+      file: '2026-10-30_track1_1000_honeyswamp.mkv',
+      status: null,
+    })
+  })
+
+  it('contrôle tout le dossier en série', async () => {
+    await ouvrir()
+    envoyees = []
+
+    $('btn-vod-tout').click()
+    await attendreQue(() => envoyees.length >= 2)
+
+    expect(envoyees.slice(0, 2)).toEqual([
+      { action: 'vod.inspect', file: '2026-10-30_track1_1000_honeyswamp.mkv' },
+      { action: 'vod.inspect', file: '2026-10-30_track1_1100_blind-ops.mkv' },
+    ])
+  })
+
+  it('déplie un aperçu qui ne demande pas le fichier entier', async () => {
+    await ouvrir()
+
+    ;($('vod-contenu').querySelector('[data-vod-apercu]') as HTMLButtonElement).click()
+
+    const lecteur = $('vod-contenu').querySelector('video') as HTMLVideoElement
+    // Un Matroska de trois gigaoctets ne s'ouvre pas dans un navigateur : le
+    // lecteur reçoit un extrait remballé à la volée, pas le fichier.
+    expect(lecteur.getAttribute('src')).toContain('/control/recordings/extrait')
+    expect(lecteur.getAttribute('src')).toContain(encodeURIComponent(RUSHES[0]!.file))
+    expect(lecteur.getAttribute('src')).toContain('at=0')
+    // Le fichier brut reste joignable : un vrai lecteur, lui, sait l'ouvrir.
+    expect($('vod-contenu').querySelector('a[href*="/control/recordings/fichier"]')).toBeTruthy()
+  })
+
+  it('saute aux endroits où une prise se casse', async () => {
+    await ouvrir()
+    ;($('vod-contenu').querySelector('[data-vod-apercu]') as HTMLButtonElement).click()
+
+    const positions = [...$('vod-contenu').querySelectorAll('[data-vod-position]')]
+    expect(positions.map((bouton) => bouton.textContent)).toEqual([
+      'Début',
+      '25 %',
+      'Milieu',
+      '75 %',
+      'Fin',
+    ])
+
+    // « Fin » : les vingt dernières secondes des quarante-cinq minutes.
+    ;(positions[4] as HTMLButtonElement).click()
+    const lecteur = $('vod-contenu').querySelector('video') as HTMLVideoElement
+    expect(lecteur.getAttribute('src')).toContain('at=' + (45 * 60_000 - 20_000))
+  })
+
+  it('referme l’aperçu au second clic', async () => {
+    await ouvrir()
+    const oeil = () => $('vod-contenu').querySelector('[data-vod-apercu]') as HTMLButtonElement
+
+    oeil().click()
+    expect($('vod-contenu').querySelector('video')).toBeTruthy()
+
+    oeil().click()
+    expect($('vod-contenu').querySelector('video')).toBeNull()
+  })
+
+  it('dit ce qui manque sur la machine plutôt que d’afficher un lecteur noir', async () => {
+    await ouvrir(RUSHES, 'D:\\captations\\2026', { ffmpeg: false, ffprobe: false })
+
+    expect($('vod-contenu').textContent).toContain('ffmpeg et ffprobe introuvables')
+
+    ;($('vod-contenu').querySelector('[data-vod-apercu]') as HTMLButtonElement).click()
+    const lecteur = $('vod-contenu').querySelector('video') as HTMLVideoElement
+    // Sans ffmpeg, plus d'extrait : on sert le fichier tel quel, en le disant.
+    expect(lecteur.getAttribute('src')).toContain('/control/recordings/fichier')
+    expect($('vod-contenu').querySelector('[data-vod-position]')).toBeNull()
+    expect($('vod-contenu').textContent).toContain('Matroska ne s’ouvrira pas')
+  })
+
+  it('prend le clavier tant qu’elle est ouverte', async () => {
+    await ouvrir()
+    envoyees = []
+
+    // Un « r » réflexe par-dessus la liste lancerait une captation dans le dos
+    // de l'opérateur.
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'r' }))
+    await attendre()
+    expect(envoyees).toEqual([])
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    expect(document.body.dataset.vod).toBe('fermee')
+  })
+
+  /**
+   * Rapatriement des rushes, vu de la régie.
+   *
+   * Ce que ces tests protègent tient en deux choses. La première : sur une
+   * salle dont le hub n'a pas de stockage, rien ne doit apparaître — un bouton
+   * qui échoue à chaque clic est pire qu'un bouton absent, et la journée se
+   * passe devant cette modale. La seconde : quand rien ne monte, l'écran doit
+   * dire pourquoi. Une attente muette se lit comme un bouton mort ; l'opérateur
+   * reclique, puis va chercher la panne ailleurs.
+   */
+  const AVEC_STOCKAGE = {
+    entrees: [],
+    verdict: { autorise: true, raison: null, texte: 'en cours' },
+  }
+
+  it('ne propose rien tant que le hub n’a pas de stockage', async () => {
+    await ouvrir()
+
+    expect($('vod-contenu').querySelector('[data-vod-monter]')).toBeNull()
+    // Le bandeau non plus : « aucun stockage configuré » n'est pas une attente,
+    // c'est une absence de fonctionnalité, et l'annoncer en ambre trois fois
+    // par jour la ferait passer pour une panne.
+    expect($('vod-regulateur').className).toContain('hidden')
+  })
+
+  it('propose de téléverser dès que le hub a une destination', async () => {
+    await ouvrir(RUSHES, 'D:\\captations', OUTILS, AVEC_STOCKAGE)
+    envoyees = []
+
+    const bouton = $('vod-contenu').querySelector('[data-vod-monter]') as HTMLButtonElement
+    expect(bouton).not.toBeNull()
+    bouton.click()
+    await attendreQue(() => envoyees.length > 0)
+
+    expect(envoyees[0]).toEqual({
+      action: 'vod.upload',
+      file: '2026-10-30_track1_1000_honeyswamp.mkv',
+    })
+  })
+
+  it('dit pourquoi rien ne monte, en nommant ce qu’on attend', async () => {
+    await ouvrir(RUSHES, 'D:\\captations', OUTILS, {
+      entrees: [],
+      verdict: { autorise: false, raison: 'fenetre', texte: 'conférence dans 6 min' },
+    })
+
+    // Le chiffre compte autant que le motif : « en attente » ne dit pas si
+    // c'est l'affaire de six minutes ou de la journée.
+    expect($('vod-regulateur').textContent).toContain('conférence dans 6 min')
+    expect($('vod-regulateur').className).not.toContain('hidden')
+  })
+
+  it('montre l’avancement, et l’erreur du stockage telle qu’elle est venue', async () => {
+    await ouvrir(RUSHES, 'D:\\captations', OUTILS, {
+      entrees: [
+        {
+          file: '2026-10-30_track1_1000_honeyswamp.mkv',
+          state: 'en-cours',
+          pourcent: 42,
+          debitOctetsS: 1_000_000,
+          erreur: null,
+          manuel: true,
+        },
+        {
+          file: '2026-10-30_track1_1100_blind-ops.mkv',
+          state: 'echoue',
+          pourcent: 12,
+          debitOctetsS: null,
+          erreur: 'Le stockage a refusé (AccessDenied) : nope',
+          manuel: false,
+        },
+      ],
+      verdict: { autorise: true, raison: null, texte: 'en cours' },
+    })
+
+    const texte = $('vod-contenu').textContent ?? ''
+    expect(texte).toContain('téléversement en cours — 42 %')
+    // « AccessDenied » est le seul mot qu'on puisse porter à qui tient le
+    // bucket : le traduire le ferait perdre.
+    expect(texte).toContain('AccessDenied')
+  })
+
+  it('propose d’annuler ce qui monte, et rien sur ce qui est déjà arrivé', async () => {
+    await ouvrir(RUSHES, 'D:\\captations', OUTILS, {
+      entrees: [
+        { file: '2026-10-30_track1_1000_honeyswamp.mkv', state: 'en-cours', pourcent: 42, debitOctetsS: null, erreur: null, manuel: true },
+        { file: '2026-10-30_track1_1100_blind-ops.mkv', state: 'termine', pourcent: 100, debitOctetsS: null, erreur: null, manuel: false },
+      ],
+      verdict: { autorise: true, raison: null, texte: 'en cours' },
+    })
+    envoyees = []
+
+    const annuler = $('vod-contenu').querySelector('[data-vod-annuler]') as HTMLButtonElement
+    annuler.click()
+    await attendreQue(() => envoyees.length > 0)
+    expect(envoyees[0]).toEqual({
+      action: 'vod.upload.cancel',
+      file: '2026-10-30_track1_1000_honeyswamp.mkv',
+    })
+
+    // Un rush déjà chez le stockage n'offre aucun bouton : repayer trois
+    // gigaoctets sur le réseau de l'événement au premier clic distrait est
+    // exactement ce qu'on évite.
+    const lignes = [...$('vod-contenu').querySelectorAll('[data-vod-monter]')]
+    expect(lignes.map((b) => (b as HTMLElement).dataset.vodMonter)).not.toContain(
+      '2026-10-30_track1_1100_blind-ops.mkv',
+    )
+  })
+
+  it('téléverse tout d’un geste', async () => {
+    await ouvrir(RUSHES, 'D:\\captations', OUTILS, AVEC_STOCKAGE)
+    envoyees = []
+
+    ;($('btn-vod-monter-tout') as HTMLButtonElement).click()
+    await attendreQue(() => envoyees.length > 0)
+    expect(envoyees[0]).toEqual({ action: 'vod.upload', file: null })
+  })
+
+})
+
+/**
+ * Lien avec le hub, en pastille.
+ *
+ * Ce que ces tests protègent n'est pas la couleur — elle existait déjà — mais
+ * la phrase qui l'accompagne. Quand la pastille passe au rouge en pleine
+ * journée, la question de l'opérateur est « qu'est-ce qui ne marche plus ? »,
+ * et la réponse est contre-intuitive : la salle projette et capte sans le hub.
+ * Un opérateur qui l'ignore arrête le talk pour rien.
+ */
+describe('bulle du lien avec le hub', () => {
+  /** Un état de salle, sans toucher à l'horloge du test. */
+  function lien(etat: Record<string, unknown>, outboxDepth = 0): DisplayPayload {
+    const base = ETAT as unknown as { diagnostics: Record<string, unknown> }
+    return {
+      ...ETAT,
+      diagnostics: { ...base.diagnostics, outboxDepth },
+      state: { ...ETAT.state, serverTimeOffsetMs: 0, ...etat },
+    } as unknown as DisplayPayload
+  }
+
+  const bulle = () => $('bulle-hub').textContent ?? ''
+
+  it('dit le lien tenu, et ce qui circule', () => {
+    monterRegie(lien({ connectivity: 'ONLINE' }))
+
+    expect($('hub').dataset.niveau).toBe('ok')
+    expect($('pastille-hub').className).toBe('pastille')
+    expect($('etat-libelle').textContent).toBe('hub connecté')
+    expect(bulle()).toContain('Connecté')
+    expect(bulle()).toContain('file vide')
+    expect(bulle()).toContain('horloge alignée')
+  })
+
+  it('dit ce qui continue quand le temps réel tombe', () => {
+    monterRegie(lien({ connectivity: 'DEGRADED' }, 3))
+
+    expect($('hub').dataset.niveau).toBe('attention')
+    expect($('pastille-hub').className).toContain('degraded')
+    expect(bulle()).toContain('Différé')
+    // Le chiffre qui compte pendant une coupure : ce qui attend de repartir.
+    expect(bulle()).toContain('3 en attente de remontée')
+    expect(bulle()).toContain('continue seule')
+    expect(bulle()).toContain('Rien n’est perdu')
+  })
+
+  it('hors ligne, rappelle que la salle n’a pas besoin du hub pour tourner', () => {
+    monterRegie(lien({ connectivity: 'OFFLINE' }, 12))
+
+    expect($('hub').dataset.niveau).toBe('alerte')
+    expect($('pastille-hub').className).toContain('offline')
+    expect(bulle()).toContain('Hors ligne')
+    // La consigne, pas seulement le constat : continuer, et prévenir autrement.
+    expect(bulle()).toContain('captation')
+    expect(bulle()).toContain('continuez le talk')
+  })
+
+  it('affiche l’écart d’horloge, qui explique un compte à rebours de travers', () => {
+    monterRegie(lien({ connectivity: 'ONLINE', serverTimeOffsetMs: 2_400 }))
+
+    expect(bulle()).toContain('décalée de +2,4 s')
+  })
+
+  it('dit un gros écart dans une unité qu’on se représente', () => {
+    // « décalée de +5 693 432,6 s » est exact et illisible : au-delà de la
+    // minute, c'est l'ordre de grandeur qui compte.
+    monterRegie(lien({ connectivity: 'ONLINE', serverTimeOffsetMs: 3 * 3_600_000 }))
+
+    expect(bulle()).toContain('décalée de +3 h')
+  })
+
+  it('nomme une horloge simulée plutôt que d’annoncer un décalage énorme', () => {
+    // Un hub en temps simulé peut être à des semaines : « décalée de 604 800 s »
+    // ne dit rien à personne.
+    monterRegie(lien({ connectivity: 'ONLINE', simulatedClock: true, serverTimeOffsetMs: 604_800_000 }))
+
+    expect(bulle()).toContain('simulée')
+    expect(bulle()).not.toContain('décalée')
+  })
+
+  it('n’affiche pas de jauge là où il n’y a rien à mesurer', () => {
+    monterRegie(lien({ connectivity: 'ONLINE' }))
+
+    // Une barre vide se lirait comme une mesure à zéro ; le lien avec le hub
+    // n'est pas une part de quelque chose.
+    expect($('bulle-hub').querySelector('.jauge')).toBeNull()
+  })
+
+  it('se signale au survol comme un élément qui a quelque chose à dire', () => {
+    monterRegie()
+
+    // Le curseur d'aide est la seule invitation qu'un bandeau puisse donner :
+    // rien d'autre ne distingue une pastille bavarde d'une pastille décorative.
+    for (const cle of ['hub', 'cpu']) expect($(cle).classList.contains('indicateur')).toBe(true)
+    expect(document.documentElement.innerHTML).toContain('.indicateur { cursor: help; }')
+  })
+})
+
+/**
+ * Charge du poste, en pastille.
+ *
+ * La machine qui encode sature en silence : OBS perd des images sans rien dire,
+ * et le rush est mauvais sans que personne s'en aperçoive avant le montage.
+ * Ce que ces tests protègent, c'est la seule chose qui rende ça visible en
+ * salle — une couleur juste, et une info-bulle qui dit pourquoi.
+ */
+describe('pastille du processeur', () => {
+  /** Monte la régie devant un poste dont le service local dit telle charge. */
+  async function poste(charge: unknown): Promise<void> {
+    let releves = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/control/host') {
+          releves += 1
+          if (charge == null) return new Response('', { status: 503 })
+          return new Response(JSON.stringify(charge), { status: 200 })
+        }
+        return new Response(JSON.stringify({ ok: true, message: 'fait' }), { status: 200 })
+      }),
+    )
+    monterRegie()
+    // On attend le relevé lui-même, et non un libellé : l'absence de mesure se
+    // dit avec les mots du montage, et un test qui les guette passerait sans
+    // que la page ait interrogé quoi que ce soit.
+    await attendreQue(() => releves > 0)
+    await attendre()
+  }
+
+  /** Ce que la bulle donne à lire, mise à plat. */
+  const bulle = () => $('bulle-cpu').textContent ?? ''
+
+  /** Un poste dont la mémoire respire : 4 Go sur 16. */
+  const MEMOIRE_SAINE = { occupeeOctets: 4_000_000_000, totalOctets: 16_000_000_000 }
+
+  it('reste verte tant que le poste a de la marge', async () => {
+    await poste({ cpu: 0.31, coeurs: 8, fenetreMs: 5_000, memoire: MEMOIRE_SAINE })
+
+    expect($('pastille-cpu').className).toBe('pastille')
+    expect($('cpu').dataset.niveau).toBe('ok')
+    expect(bulle()).toContain('31 %')
+    expect(bulle()).toContain('8 cœurs')
+    expect(bulle()).toContain('sans forcer')
+  })
+
+  it('passe à l’orange sur une charge soutenue', async () => {
+    await poste({ cpu: 0.78, coeurs: 8, fenetreMs: 5_000 })
+
+    expect($('pastille-cpu').className).toContain('degraded')
+    expect($('cpu').dataset.niveau).toBe('attention')
+    expect(bulle()).toContain('78 %')
+    expect(bulle()).toContain('charge soutenue')
+  })
+
+  it('passe au rouge, et dit ce que ça coûte, quand le poste sature', async () => {
+    await poste({ cpu: 0.96, coeurs: 4, fenetreMs: 5_000 })
+
+    expect($('pastille-cpu').className).toContain('offline')
+    expect($('cpu').dataset.niveau).toBe('alerte')
+    // Une couleur seule ne dit pas quoi faire : la bulle nomme le risque.
+    expect(bulle()).toContain('images')
+  })
+
+  it('colore la pastille et la bulle depuis la même décision', async () => {
+    // Deux chemins finiraient par se contredire — pastille verte, bulle rouge —
+    // et c'est dans ce désaccord qu'on cesserait de croire l'indicateur.
+    await poste({ cpu: 0.96, coeurs: 4, fenetreMs: 5_000 })
+
+    expect($('cpu').dataset.niveau).toBe('alerte')
+    expect($('pastille-cpu').className).toContain('offline')
+
+    // La jauge dit la même chose que la pastille, en longueur.
+    expect($('bulle-cpu').querySelector('.jauge > span')?.getAttribute('style')).toContain('96%')
+  })
+
+  it('grise la pastille plutôt que d’annoncer un poste au repos', async () => {
+    // Service local muet : afficher « 0 % » ferait exactement le contraire de
+    // ce que la pastille sert à voir.
+    await poste(null)
+
+    expect($('pastille-cpu').className).toContain('hors')
+    expect($('cpu').dataset.niveau).toBe('inconnu')
+    expect(bulle()).toContain('n’a pas répondu')
+    expect(bulle()).not.toContain('0 %')
+  })
+
+  it('avoue une mesure encore absente', async () => {
+    await poste({ cpu: null, coeurs: 8, fenetreMs: 0 })
+
+    expect($('pastille-cpu').className).toContain('hors')
+    expect(bulle()).toContain('première mesure')
+  })
+
+  it('montre la mémoire à côté du processeur', async () => {
+    await poste({ cpu: 0.31, coeurs: 8, fenetreMs: 5_000, memoire: MEMOIRE_SAINE })
+
+    expect(bulle()).toContain('Mémoire')
+    expect(bulle()).toContain('25 %')
+    expect(bulle()).toContain('4,0 Go occupés sur 16,0')
+  })
+
+  it('allume la pastille sur la mémoire, même processeur au repos', async () => {
+    // La façon sournoise dont un poste lâche : le processeur ne bouge pas, la
+    // machine se met à échanger sur le disque qui écrit le rush.
+    await poste({
+      cpu: 0.12,
+      coeurs: 8,
+      fenetreMs: 5_000,
+      memoire: { occupeeOctets: 15_500_000_000, totalOctets: 16_000_000_000 },
+    })
+
+    expect($('pastille-cpu').className).toContain('offline')
+    expect($('cpu').dataset.niveau).toBe('alerte')
+    // Le grand chiffre reste celui du processeur, et garde sa propre couleur :
+    // c'est la mémoire qui va mal, pas lui.
+    expect($('bulle-cpu').querySelector('.chiffre')?.className).toContain('niveau-ok')
+    expect(bulle()).toContain('12 %')
+    // Et le verdict revient à la mesure la plus grave, sans quoi il dirait
+    // « le poste encaisse » d'une machine en train de saturer.
+    expect(bulle()).toContain('échanger sur le disque')
+  })
+
+  it('ne prend pas une mémoire illisible pour une mémoire pleine', async () => {
+    await poste({ cpu: 0.31, coeurs: 8, fenetreMs: 5_000, memoire: null })
+
+    expect($('cpu').dataset.niveau).toBe('ok')
+    expect($('pastille-cpu').className).toBe('pastille')
+    expect(bulle()).toContain('mémoire illisible')
+  })
+
+  it('n’ajoute pas de bulle native par-dessus la sienne', async () => {
+    await poste({ cpu: 0.31, coeurs: 8, fenetreMs: 5_000, memoire: MEMOIRE_SAINE })
+
+    // Un `title` restant afficherait les deux, l'une sur l'autre, à une seconde
+    // d'intervalle. L'annonce vocale, elle, passe par `aria-label`.
+    expect($('cpu').getAttribute('title')).toBeNull()
+    expect($('cpu').getAttribute('aria-label')).toContain('31 %')
+    expect($('bulle-cpu').getAttribute('aria-hidden')).toBe('true')
+  })
+
+  it('se laisse ouvrir au clavier, sans souris', async () => {
+    await poste({ cpu: 0.31, coeurs: 8, fenetreMs: 5_000 })
+
+    // La régie se tient aussi au clavier pendant un talk : une bulle qui ne
+    // s'ouvre qu'au survol serait invisible à qui n'a pas lâché les raccourcis.
+    expect($('cpu').getAttribute('tabindex')).toBe('0')
   })
 })

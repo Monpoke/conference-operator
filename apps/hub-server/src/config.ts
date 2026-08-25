@@ -111,6 +111,77 @@ const configSchema = z.object({
    */
   vapidSubject: z.string().optional(),
 
+  /**
+   * Stockage S3 des rushes. **Les quatre vont ensemble.**
+   *
+   * Ce sont les seuls réglages de cette fonctionnalité qui vivent ici : une clé
+   * d'accès n'a rien à faire dans une base qu'on sauvegarde ni dans une console
+   * qu'on ouvre depuis un téléphone. Le bucket et le préfixe, eux, sont des
+   * réglages de la console — ils changent d'une édition à l'autre, et parfois le
+   * matin même.
+   *
+   * Aucun des quatre renseigné : la fonctionnalité est simplement éteinte, et
+   * personne n'a rien à faire. Une partie seulement : le hub refuse de démarrer,
+   * parce que la panne se manifesterait autrement par une console dont chaque
+   * bouton échoue, et qu'on la chercherait chez l'hébergeur.
+   */
+  s3Endpoint: z.url().optional(),
+  s3Region: z.string().min(1).default('us-east-1'),
+  /**
+   * Bucket où atterrissent les rushes — **amorce seulement**.
+   *
+   * Le réglage de la console fait foi ; celui-ci ne sert qu'au tout premier
+   * démarrage, quand rien n'a jamais été renseigné. Même règle que
+   * `PROGRAM_SOURCE_URL`, et pour la même raison : un bucket corrigé en cours
+   * d'événement doit survivre au redémarrage qui suit, et un `.env` figé le
+   * réécraserait à chaque fois.
+   *
+   * Il existe pour les déploiements où personne n'ouvre la console — une
+   * machine provisionnée d'avance, un script qui monte le hub. Sans lui, un hub
+   * fraîchement déployé démarre avec ses clés et aucune destination.
+   */
+  s3Bucket: z.string().min(1).optional(),
+  /**
+   * Chemin d'un fichier PEM d'autorité de certification, pour un stockage interne.
+   *
+   * Node n'utilise pas le magasin de certificats du système : il embarque sa
+   * propre liste de CA publiques. Un stockage dont le certificat est signé par
+   * une CA d'entreprise échoue donc sur `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`,
+   * message qui ne dit ni ce qui manque ni où le poser.
+   *
+   * Le hub s'en sert pour ses propres appels **et le descend aux salles** au
+   * sync : poser une variable d'environnement sur trois postes Electron un
+   * matin d'événement est un geste qui s'oublie sur le troisième, et l'oubli ne
+   * se découvre que le soir. Un certificat d'autorité est public par
+   * construction — le diffuser n'est pas diffuser un secret.
+   *
+   * `NODE_EXTRA_CA_CERTS` reste possible et vaut pour tout le processus ;
+   * celui-ci ne vaut que pour le stockage, ce qui est plus étroit et donc
+   * préférable.
+   */
+  s3CaCert: z.string().min(1).optional(),
+  s3AccessKeyId: z.string().min(1).optional(),
+  s3SecretAccessKey: z.string().min(1).optional(),
+  /**
+   * Adressage `endpoint/bucket/cle` plutôt que `bucket.endpoint/cle`.
+   *
+   * Vrai par défaut : c'est ce que veulent MinIO et la plupart des stockages
+   * compatibles, et c'est le seul mode qui marche sur une adresse IP. AWS
+   * lui-même n'accepte plus que l'autre, d'où le réglage.
+   */
+  s3ForcePathStyle: z
+    .union([z.string(), z.boolean()])
+    .default(true)
+    .transform((valeur) => valeur !== 'false' && valeur !== '0' && valeur !== false),
+  /**
+   * Minutes de silence après lesquelles un téléversement est abandonné.
+   *
+   * Une salle éteinte en pleine montée ne dit rien : sans cette échéance, son
+   * multipart resterait ouvert — et facturé — indéfiniment. Assez long pour
+   * qu'une coupure réseau de quelques minutes ne fasse pas tout recommencer.
+   */
+  vodAbandonMinutes: z.coerce.number().int().min(5).max(1440).default(30),
+
   /** Hashtag suivi sur les réseaux. Vide = aucune ingestion sociale. */
   socialHashtag: z.string().optional(),
   /** Instance Mastodon interrogée pour la timeline publique du hashtag. */
@@ -169,6 +240,30 @@ const configSchema = z.object({
     message:
       'GOOGLE_HOSTED_DOMAIN est obligatoire avec GOOGLE_CLIENT_ID : il décide qui est opérateur',
   })
+  /**
+   * Un stockage S3 à moitié configuré ne démarre pas.
+   *
+   * Même règle que la paire Google, et pour la même raison : trois variables
+   * sur quatre montent un hub où la console annonce un stockage prêt et où
+   * chaque téléversement échoue à la signature. On chercherait la panne dans
+   * les droits du bucket, pas dans un `.env` amputé d'une ligne. Zéro sur
+   * quatre reste parfaitement valable — c'est même le cas normal.
+   */
+  .refine(
+    (config) => {
+      const poses = [
+        config.s3Endpoint,
+        config.s3AccessKeyId,
+        config.s3SecretAccessKey,
+      ].filter((valeur) => valeur != null).length
+      return poses === 0 || poses === 3
+    },
+    {
+      path: ['s3Endpoint'],
+      message:
+        'S3_ENDPOINT, S3_ACCESS_KEY_ID et S3_SECRET_ACCESS_KEY vont ensemble : les renseigner tous, ou aucun',
+    },
+  )
   /**
    * Garde-fou du mode production, et rappel des variables obsolètes.
    *
@@ -249,6 +344,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     vapidPublicKey: env.VAPID_PUBLIC_KEY,
     vapidPrivateKey: env.VAPID_PRIVATE_KEY,
     vapidSubject: env.VAPID_SUBJECT,
+    s3Endpoint: env.S3_ENDPOINT,
+    s3Region: env.S3_REGION,
+    s3Bucket: env.S3_BUCKET,
+    s3CaCert: env.S3_CA_CERT,
+    s3AccessKeyId: env.S3_ACCESS_KEY_ID,
+    s3SecretAccessKey: env.S3_SECRET_ACCESS_KEY,
+    s3ForcePathStyle: env.S3_FORCE_PATH_STYLE,
+    vodAbandonMinutes: env.VOD_ABANDON_MINUTES,
     socialHashtag: env.SOCIAL_HASHTAG,
     mastodonInstance: env.MASTODON_INSTANCE,
     xBearerToken: env.X_BEARER_TOKEN,

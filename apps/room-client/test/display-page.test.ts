@@ -694,3 +694,52 @@ describe('boucle d\'attente', () => {
     expect(contenu().textContent).toContain('partenaires')
   })
 })
+
+/**
+ * Le grisé des créneaux passés suit la fin **effective**.
+ *
+ * L'écran la déduisait à sa façon — `endsAtMs ?? startsAtMs` — et un talk que
+ * l'export ne borne que par sa durée était grisé dès son heure de début : la
+ * salle lisait « passé » sur la conférence en train de se jouer. Il inline
+ * désormais le même automate que la régie.
+ */
+describe('créneaux passés, dans le programme projeté', () => {
+  /** La ligne du programme portant ce titre. */
+  const ligne = (titre: string) =>
+    [...contenu().querySelectorAll('article')].find((a) => a.textContent?.includes(titre))!
+
+  const grisee = (titre: string) => ligne(titre).className.includes('opacity-35')
+
+  it('grise ce qui est fini, pas ce qui court', () => {
+    // L'horloge est à 10:20 : HoneySwamp (10:00–10:45) se joue.
+    monterEcran()
+    expect(grisee('IA for OPS')).toBe(true)
+    expect(grisee('HoneySwamp')).toBe(false)
+    expect(grisee('Blind ops')).toBe(false)
+  })
+
+  it('tient sur un créneau que seule sa durée borne', () => {
+    const parDuree = SESSIONS.map((creneau) =>
+      creneau.id === 's-3'
+        ? { ...creneau, endsAt: null, endsAtMs: null, durationMinutes: 45 }
+        : creneau,
+    )
+    monterEcran({ ...ETAT, sessions: parDuree } as unknown as DisplayPayload)
+
+    // 10:20, le talk court jusqu'à 10:45 : il ne doit pas se lire comme passé.
+    expect(grisee('HoneySwamp')).toBe(false)
+    expect(grisee('IA for OPS')).toBe(true)
+  })
+
+  it('ne grise pas un créneau que rien ne ferme', () => {
+    // Ni heure de fin, ni durée, et un suivant qui n'existe pas : personne ne
+    // sait quand il finit, et le griser serait affirmer qu'il est passé.
+    const ouvert = [
+      SESSIONS[0]!,
+      { ...SESSIONS[1]!, id: 's-ouvert', title: 'Atelier libre', endsAt: null, endsAtMs: null },
+    ]
+    monterEcran({ ...ETAT, sessions: ouvert } as unknown as DisplayPayload)
+
+    expect(grisee('Atelier libre')).toBe(false)
+  })
+})

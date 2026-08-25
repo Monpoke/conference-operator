@@ -321,6 +321,72 @@ export const pushSubscription = sqliteTable('push_subscription', {
   lastPushedAt: text('last_pushed_at'),
 })
 
+/**
+ * Téléversements des rushes vers le stockage S3.
+ *
+ * Le hub tient le registre parce qu'il tient les clés : c'est lui qui ouvre un
+ * multipart chez le stockage, lui qui collecte les ETags — S3 les redemande
+ * tous au moment de recomposer l'objet —, et lui qui abandonne ce qui traîne.
+ * Une salle qui perd sa base locale peut redemander son plan ; l'inverse n'est
+ * pas vrai, et c'est pour ça que la vérité est ici.
+ *
+ * Rien de tout cela n'existe tant qu'aucun stockage n'est configuré.
+ */
+export const vodUpload = sqliteTable(
+  'vod_upload',
+  {
+    id: text('id').primaryKey(),
+    roomId: text('room_id')
+      .notNull()
+      .references(() => room.id, { onDelete: 'cascade' }),
+    /** Chemin relatif à la racine des enregistrements, tel que la salle le nomme. */
+    file: text('file').notNull(),
+    /** `rush` ou `sidecar` : les deux partent, à l'extension près. */
+    kind: text('kind').notNull(),
+    sessionId: text('session_id'),
+    objectKey: text('object_key').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    partSizeBytes: integer('part_size_bytes').notNull(),
+    bytesSent: integer('bytes_sent').notNull().default(0),
+    /** Identifiant multipart chez S3. `null` pour un envoi direct (le sidecar). */
+    s3UploadId: text('s3_upload_id'),
+    /**
+     * `[{n, etag}]` des parts déjà arrivées.
+     *
+     * Ce n'est pas de la comptabilité : `CompleteMultipartUpload` réclame la
+     * liste complète, part par part. La perdre rend l'objet irrécupérable côté
+     * stockage alors que tous ses octets y sont déjà.
+     */
+    partsJson: text('parts_json').notNull().default('[]'),
+    state: text('state').notNull().default('en-cours'),
+    /** Dernier débit constaté, en octets/s — ce que la console affiche. */
+    debitOctetsS: integer('debit_octets_s'),
+    startedAt: text('started_at').notNull().default(now),
+    /**
+     * Dernière part reçue.
+     *
+     * C'est sur ce champ que porte le ménage : une salle éteinte en pleine
+     * montée ne dit rien, et un multipart abandonné en silence reste facturé
+     * indéfiniment.
+     */
+    lastProgressAt: text('last_progress_at').notNull().default(now),
+    finishedAt: text('finished_at'),
+    attempts: integer('attempts').notNull().default(0),
+    lastError: text('last_error'),
+  },
+  (table) => [
+    /**
+     * Un fichier ne monte qu'une fois par salle.
+     *
+     * C'est cette contrainte qui fait de `vod.begin` une reprise : une machine
+     * redémarrée redemande son plan, retrouve sa ligne, et repart de la part
+     * suivante au lieu de rouvrir un second multipart sur les mêmes octets.
+     */
+    uniqueIndex('vod_upload_room_file_idx').on(table.roomId, table.file),
+    index('vod_upload_state_idx').on(table.state, table.lastProgressAt),
+  ],
+)
+
 export const hubSchema = {
   programSnapshot,
   room,
@@ -336,4 +402,5 @@ export const hubSchema = {
   sessionState,
   hubSetting,
   pushSubscription,
+  vodUpload,
 }

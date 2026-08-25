@@ -1,3 +1,4 @@
+import { MACHINE_JS } from '@cloudnord/etat-salle'
 import { TAILWIND_CSS } from '@cloudnord/ui'
 import { IDENTITE_PAR_DEFAUT, MODELES_BANDEAU, type EventIdentity, type ModeExecution } from '@cloudnord/contract'
 import type { IgnoreConfig } from '../config.js'
@@ -57,7 +58,7 @@ function echapperServeur(valeur: string): string {
  * quelqu'un qui inspecte la page.
  */
 export function vuesConsole(dev: boolean): string[] {
-  const vues = ['exploitation', 'appairage', 'conferences', 'moderation', 'messages', 'reglages']
+  const vues = ['exploitation', 'appairage', 'conferences', 'moderation', 'messages', 'vod', 'reglages']
   return dev ? [...vues, 'developpement'] : vues
 }
 
@@ -173,6 +174,36 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
       <div class="aide" id="horloge-aide"></div>
     </section>
 
+    <!--
+      Remise à zéro des données.
+
+      Le seul geste du système dont on ne revient pas. Il vit ici, avec
+      l'horloge, parce que les deux ont la même nature : des commodités de
+      développement qui n'ont rien à faire devant une salle.
+
+      Trois verrous, et chacun couvre ce que les autres laissent passer : le
+      menu n'est pas rendu en production, le hub refuse la procédure hors
+      MODE=dev, et le mot RAZ doit être recopié — le contrat lui-même l'exige,
+      donc un appel direct ne peut pas se faire par distraction.
+    -->
+    <section class="panneau">
+      <h2 class="titre-panneau">Remise à zéro des données</h2>
+      <div class="aide mt-0">
+        Efface <strong>tout ce qui est sous le préfixe</strong> du bucket —
+        téléversements en cours compris — et demande à chaque salle d'effacer ses
+        rushes, leurs sidecars et ses verdicts de relecture. Le programme, les
+        salles et les comptes ne sont pas touchés.
+      </div>
+      <div class="aide">
+        Un préfixe est <strong>exigé</strong> : sans lui, « le préfixe » et « le
+        bucket entier » sont la même chose. Côté salle, seuls les fichiers que
+        l'application connaît partent — la racine des captations est parfois un
+        disque partagé.
+      </div>
+      <button class="mt-3 w-full" id="btn-raz">Remettre à zéro…</button>
+      <div class="mt-2" id="raz-resultat"></div>
+    </section>
+
     <section class="panneau">
       <h2 class="titre-panneau">Ce menu n'existe qu'en mode dev</h2>
       <div class="aide mt-0">
@@ -214,6 +245,8 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
 
   /* Confirmation d'une resynchronisation : même mécanique, même raison. */
   #confirmer-resync { display: none; }
+  #confirmer-raz { display: none; }
+  body[data-raz="ouverte"] #confirmer-raz { display: flex; }
   body[data-resync="ouvert"] #confirmer-resync { display: flex; }
 </style>
 </head>
@@ -270,6 +303,7 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
     <button id="nav-conferences" class="btn btn-onglet shrink-0">Conférences</button>
     <button id="nav-moderation" class="btn btn-onglet shrink-0">Modération</button>
     <button id="nav-messages" class="btn btn-onglet shrink-0">Messages</button>
+    <button id="nav-vod" class="btn btn-onglet shrink-0">VOD</button>
     <button id="nav-reglages" class="btn btn-onglet shrink-0">Réglages</button>
     ${dev ? '<button id="nav-developpement" class="btn btn-onglet shrink-0 text-attention">Développement</button>' : ''}
   </nav>
@@ -449,13 +483,15 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
       </div>
       <div class="overflow-x-auto">
         <table>
-          <thead><tr><th>Horaire</th><th>Salle</th><th>Conférence</th><th>Feedback</th><th>Action</th></tr></thead>
+          <thead><tr><th>Prévu</th><th>Réel</th><th>Salle</th><th>Conférence</th><th>Feedback</th><th>Action</th></tr></thead>
           <tbody id="planning"></tbody>
         </table>
       </div>
       <div class="aide">
-        Les horaires sont ceux du programme, lus dans le fuseau de l'événement —
-        pas celui du poste d'où l'on regarde. Le lien « noter » ouvre la page
+        « Prévu » vient du programme, « Réel » du cycle de vie — l'instant du
+        « Commencer » et celui du « Terminer », clôture automatique comprise.
+        Les deux sont lus dans le fuseau de l'événement, pas celui du poste d'où
+        l'on regarde. Le lien « noter » ouvre la page
         OpenFeedback de la conférence, la même que celle du QR projeté en salle.
       </div>
       <div class="aide">
@@ -474,6 +510,36 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
         apparaissent ici marquées « héritée » et ne s'éditent pas — c'est le
         créneau d'origine qu'on corrige, et la projection suit. Une salle occupée,
         ne serait-ce qu'en partie, garde son propre programme.
+      </div>
+    </section>
+  </div>
+
+  <!--
+    Rapatriement des rushes : où ils en sont.
+
+    Un onglet à part parce que ce qui se regarde ici n'est pas de la
+    configuration : c'est l'avancement, et on le regarde en fin de journée, une
+    fois, longuement, pendant que les salles se démontent. Le stockage, lui, se
+    règle une fois pour l'édition — il est passé dans les Réglages, avec le
+    reste de ce qu'on pose avant d'ouvrir les portes.
+  -->
+  <div class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5" id="vue-vod" hidden>
+    <section class="panneau">
+      <h2 class="titre-panneau">Téléversements</h2>
+      <div class="mb-2 flex flex-wrap gap-1.5">
+        <select id="vod-salle" class="min-w-[150px] flex-1"></select>
+        <button id="btn-vod-relancer">Tout relancer</button>
+      </div>
+      <div class="overflow-x-auto">
+        <table>
+          <thead><tr><th>Salle</th><th>Fichier</th><th>État</th><th>Avancement</th><th></th></tr></thead>
+          <tbody id="vod-lignes"></tbody>
+        </table>
+      </div>
+      <div class="aide" id="vod-aide">
+        À regarder <strong>avant de démonter une salle</strong> : c'est le dernier
+        moment où son disque est encore branché. Un rush qui n'est pas ici n'est
+        nulle part ailleurs qu'à Lille.
       </div>
     </section>
   </div>
@@ -591,6 +657,93 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
         La règle ne clôture que les conférences <strong>explicitement démarrées</strong>.
         Une conférence jamais lancée reste « à venir » : affirmer qu'un talk s'est
         tenu alors que personne ne l'a démarré fausserait l'historique et la VOD.
+      </div>
+    </section>
+
+    <!--
+      Le stockage des rushes.
+
+      Réglé une fois pour l'édition — le bucket, le préfixe, et le rythme auquel
+      les salles ont le droit de téléverser — donc posé ici, avec le reste de ce
+      qui se décide avant d'ouvrir les portes. L'onglet VOD garde ce qui se
+      regarde le jour même : l'avancement, et la relance de ce qui n'est pas
+      passé.
+
+      Le hub détient les clés du stockage et ne les montre jamais : ce panneau
+      dit seulement s'il en a, et où il écrit.
+    -->
+    <section class="panneau">
+      <h2 class="titre-panneau">Stockage</h2>
+      <div class="aide mb-3" id="vod-etat"></div>
+      <div class="mb-[11px]">
+        <label for="vod-bucket">Bucket</label>
+        <input id="vod-bucket" type="text" maxlength="200" placeholder="rushes-cloudnord">
+      </div>
+      <div class="mb-[11px]">
+        <label for="vod-prefixe">Préfixe</label>
+        <input id="vod-prefixe" type="text" maxlength="200" placeholder="cn26">
+      </div>
+      <div class="reglage">
+        <div class="libelle">
+          <strong>Téléverser automatiquement</strong>
+          <span>Sinon, rien ne part sans qu'on le demande — ici ou en régie.</span>
+        </div>
+        <input type="checkbox" id="vod-auto">
+      </div>
+      <div class="reglage">
+        <div class="libelle">
+          <strong>Plafond de débit</strong>
+          <span>Ko/s. Vide = pas de plafond. C'est ce qui protège l'uplink de l'événement.</span>
+        </div>
+        <input type="number" id="vod-debit" min="0" max="1000000">
+      </div>
+      <div class="reglage">
+        <div class="libelle">
+          <strong>Charge maximale du poste</strong>
+          <span>En %. Au-delà, la salle laisse le processeur à l'encodeur.</span>
+        </div>
+        <input type="number" id="vod-cpu" min="10" max="100">
+      </div>
+      <div class="reglage">
+        <div class="libelle">
+          <strong>Marge avant conférence</strong>
+          <span>Minutes. La salle s'arrête ce temps-là avant le talk suivant.</span>
+        </div>
+        <input type="number" id="vod-marge" min="0" max="120">
+      </div>
+      <div class="reglage">
+        <div class="libelle">
+          <strong>Taille d'une part</strong>
+          <span>Mo. C'est aussi le grain de la reprise et du plafond de débit.</span>
+        </div>
+        <input type="number" id="vod-part" min="5" max="64">
+      </div>
+      <div class="mt-3 flex flex-wrap gap-1.5 [&>*]:min-w-[130px] [&>*]:flex-1">
+        <button class="principal" id="btn-vod-reglages">Enregistrer</button>
+        <button id="btn-vod-eprouver">Éprouver la connexion</button>
+      </div>
+      <!--
+        Le verdict, étape par étape.
+
+        Un booléen ne servirait à rien : « ça ne marche pas » est ce qu'on
+        savait déjà en arrivant ici. Un pare-feu, une clé, un droit sur le
+        bucket et une signature ne se corrigent pas au même endroit.
+      -->
+      <div class="mt-2" id="vod-controle"></div>
+      <div class="aide">
+        « Éprouver la connexion » fait le <strong>vrai geste</strong> : ouvrir un
+        téléversement, signer une adresse, y écrire quelques octets, tout
+        abandonner. Rien n'est laissé derrière. Elle éprouve le chemin
+        <strong>depuis le hub</strong> — les salles écrivent les parts
+        elles-mêmes, parfois derrière un autre pare-feu.
+      </div>
+      <div class="aide">
+        Le bucket et le préfixe se règlent ici parce qu'ils changent d'une édition
+        à l'autre. Les <strong>clés</strong>, elles, viennent de l'environnement du
+        hub — <code>S3_ENDPOINT</code>, <code>S3_ACCESS_KEY_ID</code>,
+        <code>S3_SECRET_ACCESS_KEY</code> — et n'apparaissent nulle part dans cette
+        console : une machine de salle ne les reçoit jamais, elle ne reçoit que des
+        adresses signées à durée de vie courte.
       </div>
     </section>
 
@@ -714,7 +867,46 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
   </div>
 </div>
 
+<!--
+  Confirmation d'une remise à zéro.
+
+  Elle nomme ce qui sera détruit — le bucket, le préfixe, les salles — et
+  demande de recopier RAZ. Un clic de trop ne suffit donc pas : il faut avoir
+  lu, et avoir tapé. C'est le seul geste du système dont on ne revient pas, et
+  la modale de resynchronisation d'à côté, qui se confirme d'un bouton, ne
+  détruit rien.
+-->
+<div class="fixed inset-0 z-50 items-center justify-center bg-black/65 p-4" id="confirmer-raz">
+  <div class="panneau w-full max-w-[460px]">
+    <h2 class="titre-panneau">Tout remettre à zéro ?</h2>
+    <div class="text-sm leading-relaxed" id="raz-texte"></div>
+    <div class="aide mt-3">
+      <strong>Irréversible.</strong> Les objets du préfixe sont supprimés chez le
+      stockage, et chaque salle efface ses rushes, leurs sidecars et ses
+      verdicts de relecture. Rien de tout cela ne se rattrape.
+    </div>
+    <div class="mt-3">
+      <label for="raz-mot">Recopier <strong>RAZ</strong> pour confirmer</label>
+      <input id="raz-mot" type="text" autocomplete="off" placeholder="RAZ">
+    </div>
+    <div class="mt-3.5 flex justify-end gap-1.5">
+      <button id="raz-annuler">Annuler</button>
+      <button class="principal" id="raz-confirmer" disabled>Remettre à zéro</button>
+    </div>
+  </div>
+</div>
+
 <div id="avis"></div>
+
+<!--
+  L'automate d'une salle, inliné.
+
+  La console n'a pas d'étape de build : elle ne peut pas importer. Le même
+  module sert au hub qui calcule l'état et à la régie qui l'affiche — voir
+  @cloudnord/etat-salle. Sans ce partage, la table état → couleur vivait ici et
+  en régie, et les deux avaient déjà cessé de dire la même chose.
+-->
+<script>${MACHINE_JS}</script>
 
 <script>
 (() => {
@@ -1259,19 +1451,7 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
        * salle. Une pastille qui ne portait que la connectivité affichait une
        * salle verte alors qu'elle débordait de dix minutes.
        */
-      const CONFERENCE = {
-        aucune: ['hors', 'rien au programme', 'text-attenue'],
-        // Un créneau commun n'est pas un état de la salle : il n'y a personne.
-        // « pause » laissait croire à une conférence en suspens.
-        pause: ['hors', 'rien dans la salle', 'text-attenue'],
-        'pas-commencee': ['pas-commencee', 'pas commencée', 'text-attenue'],
-        retard: ['retard', 'retard au démarrage', 'text-attention'],
-        'en-cours': ['', 'en cours', 'text-attenue'],
-        'fin-proche': ['fin-proche', 'vers la fin', 'text-attention'],
-        terminee: ['terminee', 'terminée en avance', 'text-attenue'],
-        depassement: ['depassement', 'dépassement', 'text-alerte'],
-      }
-      const [teinte, mot, couleurTexte] = CONFERENCE[salle.conference] || CONFERENCE.aucune
+      const { teinte, mot, texte: couleurTexte } = EtatSalle.apparenceDe(salle.conference)
       const contour = salle.connectivity === 'DEGRADED' ? ' doute'
         : salle.connectivity === 'ONLINE' ? '' : ' muette'
       const classe = teinte + contour
@@ -1764,7 +1944,14 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
         '<td>' + resteAuProgramme(etat) + '</td>' +
         '<td><span class="badge ' + echapper(etat.status) + '">' +
         (etat.status === 'running' ? 'en cours' : 'terminée') + '</span>' +
-        (etat.decidedBy === 'auto' ? ' <span class="text-attenue">auto</span>' : '') + '</td>' +
+        // L'auteur, et pas seulement le fait que ce soit automatique. Une case
+        // vide sur une décision humaine laissait « je n'ai pas fait ça » sans
+        // réponse : c'est la première question posée devant cette ligne.
+        (etat.decidedBy == null
+          ? ''
+          : ' <span class="text-attenue">' +
+            echapper(etat.decidedBy === 'auto' ? 'auto' : etat.decidedBy) +
+            '</span>') + '</td>' +
         '<td></td>'
 
       const actions = document.createElement('div')
@@ -1782,9 +1969,23 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
         }
         actions.appendChild(bouton)
       }
-      if (etat.status === 'running') ajouter('Terminer', '', 'end')
-      else ajouter('Relancer', '', 'start')
-      ajouter('Remettre à venir', 'danger', 'reset')
+      /**
+       * Les actions suivent la table du cycle de vie, pas une condition écrite
+       * ici.
+       *
+       * C'est celle que le hub applique en écriture et que la régie lit pour
+       * griser ses boutons. Elle disait la même chose que la condition écrite
+       * à la main qu'il y avait là — mais par une coïncidence entretenue, et
+       * c'est précisément ce genre de coïncidence qui cesse d'être vraie le
+       * jour où la table change.
+       */
+      if (EtatSalle.transitionAutorisee(etat.status, 'end')) ajouter('Terminer', '', 'end')
+      if (EtatSalle.transitionAutorisee(etat.status, 'start')) {
+        ajouter(etat.status === 'ended' ? 'Relancer' : 'Commencer', '', 'start')
+      }
+      if (EtatSalle.transitionAutorisee(etat.status, 'reset')) {
+        ajouter('Remettre à venir', 'danger', 'reset')
+      }
 
       ligne.lastElementChild.appendChild(actions)
       corps.appendChild(ligne)
@@ -1855,7 +2056,7 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
     // qu'un menu d'action est déplié refermerait le menu sous le curseur.
     if (corps.contains(document.activeElement)) return
     if (planning == null || planning.sessions.length === 0) {
-      corps.innerHTML = '<tr><td colspan="5" class="vide">Aucun programme actif. ' +
+      corps.innerHTML = '<tr><td colspan="6" class="vide">Aucun programme actif. ' +
         'Il s\u2019importe depuis les réglages.</td></tr>'
       return
     }
@@ -1864,7 +2065,7 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
     const creneaux = planning.sessions.filter(
       (session) => salleChoisie === '' || session.roomId === salleChoisie)
     if (creneaux.length === 0) {
-      corps.innerHTML = '<tr><td colspan="5" class="vide">Aucun créneau dans cette salle.</td></tr>'
+      corps.innerHTML = '<tr><td colspan="6" class="vide">Aucun créneau dans cette salle.</td></tr>'
       return
     }
 
@@ -1937,6 +2138,7 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
 
       return '<tr' + ligne + '>' +
         '<td class="' + horaire + '">' + marque + creneau + '</td>' +
+        '<td class="whitespace-nowrap tabular-nums">' + vecu(session) + '</td>' +
         '<td class="whitespace-nowrap">' + echapper(session.roomName ?? '—') + '</td>' +
         // Les pauses restent dans la liste — elles font partie de la journée —
         // mais en retrait : ce n'est pas ce qu'on cherche en ouvrant le planning.
@@ -1959,6 +2161,37 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
         '<td>' + actionDuCreneau(session) + '</td>' +
         '</tr>'
     }).join('')
+  }
+
+  /**
+   * Ce qui s'est réellement passé sur un créneau, en regard de ce qui était prévu.
+   *
+   * Le hub joint le cycle de vie au programme : ces deux instants sont ceux du
+   * « Commencer » et du « Terminer », clôture automatique comprise. Ce qui
+   * intéresse ici est l'écart — un démarrage en retard, un dépassement, une
+   * durée réelle pour le montage —, et il ne se lit que si les deux colonnes
+   * sont côte à côte.
+   *
+   * Rien à dire sur un créneau que personne n'a piloté : un tiret, plutôt
+   * qu'une heure fabriquée depuis le programme, qui affirmerait qu'un talk
+   * s'est tenu quand rien ne l'atteste.
+   */
+  function vecu(session) {
+    if (session.startedAt == null) return '<span class="text-attenue">—</span>'
+
+    const debut = heureEvenement(session.startedAt)
+    // Encore en cours : on ne referme pas le créneau à la place de l'opérateur.
+    const fin = session.endedAt == null
+      ? '<span class="text-marque">en cours</span>'
+      : heureEvenement(session.endedAt)
+    // L'instant complet en infobulle : l'heure suffit pour lire la journée, la
+    // date entière sert au montage et à l'export VOD.
+    const par = session.decidedBy == null
+      ? ''
+      : ' · décidé par ' + (session.decidedBy === 'auto' ? 'la règle horaire' : session.decidedBy)
+    const complet = session.startedAt +
+      (session.endedAt == null ? '' : ' → ' + session.endedAt) + par
+    return '<span title="' + echapper(complet) + '">' + debut + '–' + fin + '</span>'
   }
 
   /**
@@ -2548,6 +2781,280 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
     }
   }
 
+  /**
+   * Le stockage des rushes, tel que le hub le connaît — panneau des Réglages.
+   *
+   * Répond même quand rien n'est configuré : c'est le cas normal d'un hub qu'on
+   * vient d'allumer, et le dire vaut mieux qu'un panneau dont chaque bouton
+   * échouerait.
+   */
+  async function chargerStockageVod() {
+    const statut = await appeler('vod/status')
+
+    const etat = $('vod-etat')
+    if (statut.endpoint == null) {
+      // Pas de clés : rien à régler ici, et le dire évite qu'on remplisse le
+      // formulaire en se demandant pourquoi rien ne part.
+      etat.innerHTML = 'Aucun stockage S3 configuré sur ce hub. Les clés se posent dans ' +
+        'son environnement (<code>S3_ENDPOINT</code>, <code>S3_ACCESS_KEY_ID</code>, ' +
+        '<code>S3_SECRET_ACCESS_KEY</code>) et demandent un redémarrage — ' +
+        'c\u2019est le seul réglage de cette page qui ne se change pas en cours d\u2019événement.'
+    } else if (!statut.configure) {
+      // Le cas le plus déroutant des trois : les clés sont là, la page est
+      // ouverte, et rien ne part parce qu'il manque un nom de bucket.
+      etat.innerHTML = 'Clés en place sur <strong>' + echapper(statut.endpoint) +
+        '</strong>, mais <strong>aucun bucket</strong> : renseignez-le ci-dessous.'
+    } else {
+      etat.innerHTML = 'Stockage prêt sur <strong>' + echapper(statut.endpoint) + '</strong>, bucket <strong>' +
+        echapper(statut.bucket ?? '') + '</strong>.' +
+        (statut.politique.actif ? '' : ' Le téléversement automatique est éteint : rien ne part sans demande.')
+    }
+
+    // Sans écraser une saisie en cours : cette vue se rafraîchit toutes les dix
+    // secondes, et rien n'est plus déroutant qu'un champ qui se réécrit pendant
+    // qu'on tape dedans.
+    const politique = statut.politique
+    const poser = (id, valeur) => {
+      if (document.activeElement !== $(id)) $(id).value = valeur
+    }
+    poser('vod-bucket', statut.bucket ?? '')
+    poser('vod-prefixe', statut.prefix ?? '')
+    if (document.activeElement !== $('vod-auto')) $('vod-auto').checked = politique.actif
+    poser('vod-debit', politique.debitMaxOctetsS == null ? '' : Math.round(politique.debitMaxOctetsS / 1024))
+    poser('vod-cpu', Math.round(politique.cpuMax * 100))
+    poser('vod-marge', politique.margeConferenceMinutes)
+    poser('vod-part', politique.taillePartMo)
+
+    // Le bouton n'a de sens que si le hub a des clés : sans elles, il n'y a
+    // rien à éprouver, et le panneau le dit déjà en haut.
+    $('btn-vod-eprouver').disabled = statut.endpoint == null
+  }
+
+  /**
+   * Ce que les salles ont fait de leurs rushes — onglet VOD.
+   *
+   * Séparé du panneau de stockage depuis que celui-ci vit dans les Réglages :
+   * les deux ne se regardent plus au même moment, et charger l'un n'a plus à
+   * interroger le hub pour l'autre.
+   */
+  async function chargerVod() {
+    const lignes = await appeler('vod/uploads', { roomId: $('vod-salle').value || null }).catch(() => [])
+    await remplirSallesVod()
+    rendreTeleversements(lignes)
+  }
+
+  async function remplirSallesVod() {
+    const salles = await appeler('rooms/list')
+    const choix = $('vod-salle')
+    const attendu = salles.map((salle) => salle.id).join('|')
+    if (choix.dataset.salles === attendu) return
+    choix.dataset.salles = attendu
+    const garde = choix.value
+    choix.innerHTML = '<option value="">Toutes les salles</option>' +
+      salles.map((salle) =>
+        '<option value="' + echapper(salle.id) + '">' + echapper(salle.name) + '</option>').join('')
+    if (salles.some((salle) => salle.id === garde)) choix.value = garde
+  }
+
+  const ETATS_VOD = {
+    'en-cours': ['en cours', ''],
+    termine: ['terminé', 'text-attenue'],
+    abandonne: ['abandonné', 'text-attention'],
+    echoue: ['en échec', 'text-alerte'],
+  }
+
+  function rendreTeleversements(lignes) {
+    const corps = $('vod-lignes')
+    if (lignes.length === 0) {
+      corps.innerHTML = '<tr><td colspan="5" class="text-attenue">Aucun téléversement.</td></tr>'
+      return
+    }
+    corps.innerHTML = lignes.map((ligne) => {
+      const etat = ETATS_VOD[ligne.state] ?? [ligne.state, '']
+      const pourcent = ligne.sizeBytes > 0
+        ? Math.min(100, Math.round((ligne.bytesSent / ligne.sizeBytes) * 100))
+        : 0
+      const debit = ligne.debitOctetsS == null
+        ? ''
+        : ' \u00b7 ' + Math.round(ligne.debitOctetsS / 1024) + ' Ko/s'
+      // L'erreur du stockage est reprise telle quelle : « AccessDenied » est le
+      // seul mot qu'on puisse porter à qui tient le bucket.
+      const erreur = ligne.lastError == null
+        ? ''
+        : '<div class="text-[11px] text-alerte">' + echapper(ligne.lastError) + '</div>'
+      const relance = ligne.state === 'termine'
+        ? ''
+        : '<button class="btn btn-petit" data-vod-relancer="' + echapper(ligne.roomId) +
+          '" data-vod-fichier="' + echapper(ligne.file) + '">Relancer</button>'
+      return '<tr>' +
+        '<td>' + echapper(ligne.roomName ?? ligne.roomId) + '</td>' +
+        '<td class="font-mono text-[11px]">' + echapper(ligne.file) + erreur + '</td>' +
+        '<td class="' + etat[1] + '">' + etat[0] + '</td>' +
+        '<td>' + pourcent + ' %' + debit + '</td>' +
+        '<td>' + relance + '</td>' +
+      '</tr>'
+    }).join('')
+
+    for (const bouton of corps.querySelectorAll('[data-vod-relancer]')) {
+      bouton.onclick = () => void demanderVod(bouton.dataset.vodRelancer, bouton.dataset.vodFichier)
+    }
+  }
+
+  async function demanderVod(roomId, fichier) {
+    try {
+      await appeler('vod/request', { roomId, file: fichier ?? null })
+      avis(fichier == null ? 'Rapatriement demandé' : 'Relance demandée')
+      await chargerVod()
+    } catch (cause) {
+      avis(cause.message, true)
+    }
+  }
+
+  $('btn-vod-relancer').onclick = async () => {
+    const salle = $('vod-salle').value
+    if (salle === '') {
+      // La demande vise une salle : sans elle, on ne saurait pas à qui parler.
+      // Le dire vaut mieux qu'un bouton qui ne fait rien.
+      avis('Choisissez une salle : la demande part vers une machine précise.', true)
+      return
+    }
+    await demanderVod(salle, null)
+  }
+
+  const ETAPES_VOD = {
+    joindre: 'Joindre le stockage',
+    authentifier: 'Clés et bucket',
+    signer: 'Adresse signée',
+    nettoyer: 'Nettoyage',
+  }
+
+  $('btn-vod-eprouver').onclick = async () => {
+    const bouton = $('btn-vod-eprouver')
+    bouton.disabled = true
+    // Le contrôle fait quatre allers-retours réseau : sans ce mot, on croit que
+    // le bouton n'a rien fait et on reclique.
+    $('vod-controle').innerHTML = '<div class="aide">Contrôle en cours…</div>'
+    try {
+      const controle = await appeler('vod/check')
+      rendreControleVod(controle)
+    } catch (cause) {
+      rendreControleVod({ ok: false, etapes: [{ nom: 'joindre', ok: false, detail: cause.message }] })
+    } finally {
+      bouton.disabled = false
+    }
+  }
+
+  function rendreControleVod(controle) {
+    // La dernière étape tentée porte le motif ; les précédentes disent jusqu'où
+    // on est allé, ce qui est la moitié de l'information.
+    const lignes = controle.etapes.map((etape) =>
+      '<div class="flex items-baseline gap-2 text-[12px]">' +
+        '<span>' + (etape.ok ? '\u2713' : '\u2717') + '</span>' +
+        '<span class="' + (etape.ok ? '' : 'text-alerte') + '">' +
+          echapper(ETAPES_VOD[etape.nom] ?? etape.nom) + '</span>' +
+        (etape.detail == null
+          ? ''
+          : '<span class="min-w-0 flex-1 break-words text-attenue">' + echapper(etape.detail) + '</span>') +
+      '</div>').join('')
+
+    $('vod-controle').innerHTML =
+      '<div class="rounded-lg border p-2 ' +
+      (controle.ok ? 'border-bord' : 'border-alerte/40') + '">' +
+      '<div class="mb-1 text-[11px] font-semibold tracking-[.08em] uppercase ' +
+      (controle.ok ? 'text-attenue' : 'text-alerte') + '">' +
+      (controle.ok ? 'Stockage joignable et accessible en écriture' : 'Contrôle interrompu') +
+      '</div>' + lignes + '</div>'
+  }
+
+  /**
+   * Remise à zéro : la modale nomme la cible, le mot arme le bouton.
+   *
+   * Le bouton vit dans un panneau que la production ne rend pas — d'où la garde
+   * sur son existence, qui évite de câbler un bouton absent. Les verrous qui
+   * comptent sont ailleurs : le hub refuse la procédure, et le contrat exige le
+   * mot recopié. Ceci n'est que la politesse d'une interface qui dit ce qu'elle
+   * va détruire.
+   */
+  if ($('btn-raz') != null) {
+    const fermerRaz = () => {
+      document.body.dataset.raz = 'fermee'
+      $('raz-mot').value = ''
+      $('raz-confirmer').disabled = true
+    }
+
+    $('btn-raz').onclick = async () => {
+      let cible = 'le préfixe du bucket'
+      try {
+        const statut = await appeler('vod/status')
+        cible = statut.prefix == null || statut.prefix === ''
+          ? 'AUCUN PRÉFIXE RÉGLÉ'
+          : echapper(statut.bucket ?? '?') + ' / ' + echapper(statut.prefix)
+      } catch (cause) {
+        // Le hub ne répond pas : on ouvre quand même, il refusera lui-même.
+      }
+      const salles = await appeler('rooms/list').catch(() => [])
+      $('raz-texte').innerHTML =
+        'Tout ce qui est sous <strong>' + cible + '</strong> sera supprimé, ' +
+        'et <strong>' + salles.length + ' salle' + (salles.length > 1 ? 's' : '') +
+        '</strong> effaceront leurs rushes.'
+      document.body.dataset.raz = 'ouverte'
+      $('raz-mot').focus()
+    }
+
+    // Le bouton ne s'arme qu'au mot exact : c'est ce qui distingue « avoir lu »
+    // de « avoir cliqué ».
+    $('raz-mot').oninput = () => {
+      $('raz-confirmer').disabled = $('raz-mot').value.trim() !== 'RAZ'
+    }
+    $('raz-annuler').onclick = fermerRaz
+    $('confirmer-raz').onclick = (evenement) => {
+      if (evenement.target === $('confirmer-raz')) fermerRaz()
+    }
+
+    $('raz-confirmer').onclick = async () => {
+      $('raz-confirmer').disabled = true
+      try {
+        const bilan = await appeler('vod/reset', { confirmation: 'RAZ' })
+        fermerRaz()
+        $('raz-resultat').innerHTML =
+          '<div class="rounded-lg border border-bord p-2 text-[12px]">' +
+          bilan.objets + ' objet' + (bilan.objets > 1 ? 's' : '') + ' supprimé' +
+          (bilan.objets > 1 ? 's' : '') + ', ' + bilan.multiparts +
+          ' téléversement' + (bilan.multiparts > 1 ? 's' : '') + ' abandonné' +
+          (bilan.multiparts > 1 ? 's' : '') + ', ' + bilan.salles + ' salle' +
+          (bilan.salles > 1 ? 's' : '') + ' prévenue' + (bilan.salles > 1 ? 's' : '') +
+          '.</div>'
+        avis('Remise à zéro effectuée')
+      } catch (cause) {
+        $('raz-confirmer').disabled = false
+        avis(cause.message, true)
+      }
+    }
+  }
+
+  $('vod-salle').onchange = () => void chargerVod()
+
+  $('btn-vod-reglages').onclick = async () => {
+    try {
+      const debit = $('vod-debit').value
+      await appeler('settings/update', {
+        vodBucket: $('vod-bucket').value.trim() || null,
+        vodPrefix: $('vod-prefixe').value.trim() || null,
+        vodPolitique: {
+          actif: $('vod-auto').checked,
+          debitMaxOctetsS: debit === '' || Number(debit) <= 0 ? null : Number(debit) * 1024,
+          cpuMax: Math.min(1, Math.max(0.1, Number($('vod-cpu').value) / 100)),
+          margeConferenceMinutes: Number($('vod-marge').value),
+          taillePartMo: Number($('vod-part').value),
+        },
+      })
+      avis('Stockage enregistré')
+      await chargerStockageVod()
+    } catch (cause) {
+      avis(cause.message, true)
+    }
+  }
+
   $('btn-reglages').onclick = async () => {
     try {
       await appeler('settings/update', {
@@ -2580,10 +3087,12 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
         await chargerModeration()
       } else if (vueCourante === 'messages') {
         await Promise.all([chargerMessages(), chargerBandeaux()])
+      } else if (vueCourante === 'vod') {
+        await chargerVod()
       } else if (vueCourante === 'developpement') {
         await chargerDeveloppement()
       } else {
-        await Promise.all([chargerSnapshots(), chargerReglages()])
+        await Promise.all([chargerSnapshots(), chargerReglages(), chargerStockageVod()])
       }
     } catch (cause) {
       avis(cause.message, true)

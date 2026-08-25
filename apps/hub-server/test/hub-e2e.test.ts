@@ -694,6 +694,47 @@ describe('planning du programme actif', () => {
     )
   })
 
+  /**
+   * Le vécu de la journée, joint au programme par le hub.
+   *
+   * Centralisé ici parce que le cycle de vie est écrit ici et vaut pour toutes
+   * les salles à la fois : une console qui recroiserait elle-même deux listes
+   * finirait par en afficher une version qui n'est celle de personne.
+   */
+  it('joint le début et la fin réels de chaque conférence', async () => {
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    const talk = (await admin.program.planning()).sessions.find(
+      (session) => session.kind === 'talk' && session.roomId === TRACK_1,
+    )!
+
+    // Rien tant que personne n'a piloté : reprendre l'horaire du programme
+    // affirmerait qu'un talk s'est tenu quand rien ne l'atteste.
+    expect(talk.startedAt).toBeNull()
+    expect(talk.endedAt).toBeNull()
+
+    const lancee = await admin.sessions.start({ sessionId: talk.id })
+    const apresDepart = (await admin.program.planning()).sessions.find((s) => s.id === talk.id)!
+    expect(apresDepart.startedAt).toBe(lancee.startedAt)
+    // Toujours ouverte : on ne referme pas le créneau à la place de l'opérateur.
+    expect(apresDepart.endedAt).toBeNull()
+    // Le prévu reste le prévu : les deux se lisent côte à côte, et c'est
+    // l'écart qui intéresse.
+    expect(apresDepart.startsAt).toBe(talk.startsAt)
+
+    const close = await admin.sessions.end({ sessionId: talk.id })
+    const apresFin = (await admin.program.planning()).sessions.find((s) => s.id === talk.id)!
+    expect(apresFin.startedAt).toBe(lancee.startedAt)
+    expect(apresFin.endedAt).toBe(close.endedAt)
+    // Qui a décidé : la seule chose qui réponde à « je n'ai pas fait ça ».
+    expect(apresFin.decidedBy).toBe(OPERATOR.email)
+
+    // Remise à venir : le vécu disparaît avec la décision qui le portait.
+    await admin.sessions.reset({ sessionId: talk.id })
+    const apresAnnulation = (await admin.program.planning()).sessions.find((s) => s.id === talk.id)!
+    expect(apresAnnulation.startedAt).toBeNull()
+    expect(apresAnnulation.endedAt).toBeNull()
+  })
+
   it('ne propose rien à noter tant que le projet OpenFeedback n\'est pas réglé', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
 

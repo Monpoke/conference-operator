@@ -35,6 +35,9 @@ importers:
       '@cloudnord/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@cloudnord/etat-salle':
+        specifier: workspace:*
+        version: link:../../packages/etat-salle
       '@cloudnord/program':
         specifier: workspace:*
         version: link:../../packages/program
@@ -56,6 +59,9 @@ importers:
       fastify:
         specifier: 5.12.1
         version: 5.12.1
+      tsx:
+        specifier: 4.23.12
+        version: 4.23.12
       ulid:
         specifier: 3.0.2
         version: 3.0.2
@@ -90,9 +96,6 @@ importers:
       happy-dom:
         specifier: 20.11.6
         version: 20.11.6
-      tsx:
-        specifier: 4.23.12
-        version: 4.23.12
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -108,6 +111,9 @@ importers:
       '@cloudnord/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@cloudnord/etat-salle':
+        specifier: workspace:*
+        version: link:../../packages/etat-salle
       '@cloudnord/program':
         specifier: workspace:*
         version: link:../../packages/program
@@ -187,6 +193,9 @@ importers:
 
   packages/contract:
     dependencies:
+      '@cloudnord/etat-salle':
+        specifier: workspace:*
+        version: link:../etat-salle
       '@cloudnord/program':
         specifier: workspace:*
         version: link:../program
@@ -222,6 +231,28 @@ importers:
       drizzle-kit:
         specifier: 0.31.10
         version: 0.31.10
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 4.1.11
+        version: 4.1.11(@types/node@26.2.0)(happy-dom@20.11.6)(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12))
+
+  packages/etat-salle:
+    dependencies:
+      '@cloudnord/program':
+        specifier: workspace:*
+        version: link:../program
+    devDependencies:
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
+      happy-dom:
+        specifier: 20.11.6
+        version: 20.11.6
+      tsx:
+        specifier: 4.23.12
+        version: 4.23.12
       typescript:
         specifier: 7.0.2
         version: 7.0.2

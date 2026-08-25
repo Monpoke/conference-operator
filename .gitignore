@@ -1,6 +1,9 @@
 node_modules/
 dist/
 out/
+# Sortie d'electron-builder (`directories.output` du client de salle) : une
+# centaine de mégaoctets d'installeur, régénérés par `package:win`.
+release/
 .turbo/
 *.tsbuildinfo
 .env
@@ -17,3 +20,6 @@ preview/
 # Données d'exécution d'une salle : identité de la machine appairée, captations.
 # Elles n'appartiennent qu'au poste qui les a produites.
 .donnees-locales/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/

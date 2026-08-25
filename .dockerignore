@@ -1,0 +1,47 @@
+# Tout ce qui n'a rien à faire dans le contexte de build du hub.
+# Règle : on n'envoie que les sources du monorepo — le hub tourne en TypeScript
+# via tsx, il n'y a pas d'étape de build à préserver.
+
+.git
+.github
+node_modules
+**/node_modules
+dist
+**/dist
+out
+**/out
+release
+**/release
+.turbo
+**/.turbo
+*.tsbuildinfo
+
+# Données d'exécution : une base de dev copiée dans l'image serait pire qu'inutile.
+data
+**/data
+*.db
+*.db-wal
+*.db-shm
+.donnees-locales
+**/.donnees-locales
+
+# Secrets : jamais dans une image.
+.env
+.env.*
+!.env.example
+
+# Aperçus HTML régénérés, cache graft, outillage d'agent.
+**/preview/
+graft
+.claude
+.mcp.json
+.ignore
+
+# Le client de salle et les spikes ne sont pas installés (filtre pnpm) mais
+# leurs manifestes le sont — voir le Dockerfile. Le reste ne sert à rien ici.
+apps/room-client/src
+apps/room-client/test
+apps/room-client/scripts
+apps/room-client/build
+spikes/*/src
+spikes/*/test

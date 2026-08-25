@@ -114,6 +114,15 @@ const REPONSES: Record<string, unknown> = {
     eventName: null,
     eventShortName: null,
     openFeedbackProjectId: 'cloud-nord-2026',
+    vodBucket: 'rushes-cloudnord',
+    vodPrefix: 'cn26',
+    vodPolitique: {
+      actif: true,
+      debitMaxOctetsS: 2_000_000,
+      cpuMax: 0.7,
+      margeConferenceMinutes: 10,
+      taillePartMo: 8,
+    },
     socialLinks: [
       { network: 'Bluesky', handle: '@cloudnord.fr', url: 'https://bsky.app/profile/cloudnord.fr' },
       { network: 'LinkedIn', handle: 'Cloud Nord', url: 'https://www.linkedin.com/company/cloud-nord' },
@@ -137,6 +146,41 @@ const REPONSES: Record<string, unknown> = {
     },
     next: null,
   },
+  'vod/status': {
+    configure: true,
+    endpoint: 'https://s3.gra.io.cloud.ovh.net',
+    bucket: 'rushes-cloudnord',
+    prefix: 'cn26',
+    politique: {
+      actif: true,
+      debitMaxOctetsS: 2_000_000,
+      cpuMax: 0.7,
+      margeConferenceMinutes: 10,
+      taillePartMo: 8,
+    },
+  },
+  /**
+   * Les trois états qu'un téléversement peut prendre sous les yeux.
+   *
+   * Un terminé, un en cours, un en échec avec le code du stockage : c'est cette
+   * dernière ligne qu'on relit à l'œil, parce qu'elle est la seule qui demande
+   * une décision — et la seule dont le rendu peut se dégrader sans qu'un test
+   * le voie.
+   */
+  'vod/check': {
+    ok: true,
+    etapes: [
+      { nom: 'joindre', ok: true, detail: null },
+      { nom: 'authentifier', ok: true, detail: null },
+      { nom: 'signer', ok: true, detail: null },
+      { nom: 'nettoyer', ok: true, detail: null },
+    ],
+  },
+  'vod/uploads': [
+    { roomId: SALLES[0]!.id, roomName: SALLES[0]!.name, file: '2026-10-30_track1_1000_honeyswamp.mkv', kind: 'rush', sessionId: 'ses-1', objectKey: 'cn26/2026-10-30/track-1/2026-10-30_track1_1000_honeyswamp.mkv', state: 'termine', sizeBytes: 2_700_000_000, bytesSent: 2_700_000_000, debitOctetsS: 1_900_000, startedAt: '2026-10-30T10:55:00.000Z', lastProgressAt: '2026-10-30T11:18:00.000Z', finishedAt: '2026-10-30T11:18:00.000Z', attempts: 1, lastError: null },
+    { roomId: SALLES[1]!.id, roomName: SALLES[1]!.name, file: '2026-10-30_track2_1000_open-source.mkv', kind: 'rush', sessionId: 'ses-2', objectKey: 'cn26/2026-10-30/track-2/2026-10-30_track2_1000_open-source.mkv', state: 'en-cours', sizeBytes: 3_100_000_000, bytesSent: 1_300_000_000, debitOctetsS: 1_400_000, startedAt: '2026-10-30T11:02:00.000Z', lastProgressAt: '2026-10-30T11:19:00.000Z', finishedAt: null, attempts: 1, lastError: null },
+    { roomId: SALLES[2]!.id, roomName: SALLES[2]!.name, file: '2026-10-30_handson_0900_atelier.mkv', kind: 'rush', sessionId: 'ses-3', objectKey: 'cn26/2026-10-30/hands-on/2026-10-30_handson_0900_atelier.mkv', state: 'echoue', sizeBytes: 5_400_000_000, bytesSent: 210_000_000, debitOctetsS: null, startedAt: '2026-10-30T11:05:00.000Z', lastProgressAt: '2026-10-30T11:09:00.000Z', finishedAt: null, attempts: 4, lastError: 'Le stockage a refusé (AccessDenied) : quota dépassé sur le bucket' },
+  ],
   'questions/list': [
     { id: 'q1', roomId: SALLES[0]!.id, sessionId: 'ses-1', author: 'Camille', text: 'Comment gérez-vous les faux positifs ?', votes: 7, status: 'open', createdAt: '2026-10-30T10:12:00.000Z' },
   ],
@@ -167,6 +211,7 @@ const VUES: [string, string | null][] = [
   ['console-conferences', 'conferences'],
   ['console-moderation', 'moderation'],
   ['console-messages', 'messages'],
+  ['console-vod', 'vod'],
   ['console-reglages', 'reglages'],
 ]
 

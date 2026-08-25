@@ -21,6 +21,14 @@ import {
   syncResultSchema,
 } from './room-state.js'
 import { commentSchema, commentSourceSchema, questionSchema } from './wall.js'
+import {
+  controleStockageSchema,
+  genreVodSchema,
+  partSigneeSchema,
+  planTeleversementSchema,
+  politiqueVodSchema,
+  televersementVuSchema,
+} from './vod.js'
 
 /**
  * Contrat unique du système, monté sur trois transports :
@@ -82,6 +90,32 @@ const planningSessionSchema = sessionApercuSchema.extend({
    * suit.
    */
   sharedFrom: z.string().nullable().default(null),
+  /**
+   * Quand la conférence a **réellement** commencé et fini, ou `null`.
+   *
+   * Les `startsAt` / `endsAt` ci-dessus sont ceux du programme : ce qui était
+   * prévu. Ceux-ci sont ce qui s'est passé — l'instant du « Commencer » et
+   * celui du « Terminer », clôture automatique comprise. Les deux se lisent
+   * côte à côte, et c'est l'écart qui intéresse : un retard au démarrage, un
+   * dépassement, une durée réelle pour le montage.
+   *
+   * Joints **par le hub**, pas par la console. Le cycle de vie est écrit ici,
+   * il vaut pour toutes les salles à la fois, et une console qui recroiserait
+   * elle-même deux listes finirait par en afficher une version qui n'est celle
+   * de personne. `null` sur un créneau que personne n'a piloté — ce qui est le
+   * cas de toutes les pauses, et des conférences encore à venir.
+   */
+  startedAt: isoDateTimeSchema.nullable().default(null),
+  endedAt: isoDateTimeSchema.nullable().default(null),
+  /**
+   * Qui a décidé, ou `null` si personne n'a rien décidé.
+   *
+   * `auto` pour la règle horaire, l'adresse de l'opérateur sinon. C'est la
+   * seule chose qui répond à « je n'ai pas fait ça » — une conférence marquée
+   * terminée sans qu'on s'en souvienne se retrouve dans un journal, ou nulle
+   * part.
+   */
+  decidedBy: z.string().nullable().default(null),
 })
 
 export const contract = {
@@ -607,6 +641,200 @@ export const contract = {
       )
       .output(z.object({ ok: z.boolean() })),
     unsubscribe: oc.input(z.object({ endpoint: z.url() })).output(z.object({ ok: z.boolean() })),
+  },
+
+  /**
+   * Rapatriement des rushes vers le stockage S3 du hub.
+   *
+   * Le hub détient les clés et ne les donne jamais : il signe des adresses à
+   * durée de vie courte, la salle téléverse dessus. Une machine de salle volée
+   * ne donne accès à aucun bucket, et révoquer une salle suffit à la couper du
+   * stockage — c'est la même raison qui fait qu'une salle a son propre jeton
+   * plutôt que celui d'un opérateur.
+   *
+   * Toutes les procédures de salle sont bornées à la salle appelante par
+   * `roomOnly` : le `roomId` vient du jeton, jamais de l'entrée.
+   */
+  vod: {
+    /**
+     * Ouvre — ou **reprend** — le téléversement d'un fichier.
+     *
+     * Idempotente sur `(salle, fichier)` : rappeler ne recommence rien, elle
+     * rend le plan déjà ouvert avec la liste des parts arrivées. C'est ce qui
+     * rend une machine redémarrée en pleine montée capable de repartir d'où
+     * elle en était, au lieu de refaire trois gigaoctets.
+     *
+     * C'est aussi la **notification de début** : le hub n'apprend pas
+     * autrement qu'une salle s'est mise à monter quelque chose.
+     */
+    begin: oc
+      .input(
+        z.object({
+          /** Chemin relatif à la racine des enregistrements, tel que la salle le nomme. */
+          file: z.string().min(1).max(400),
+          sizeBytes: z.number().int().nonnegative(),
+          kind: genreVodSchema,
+          sessionId: sessionIdSchema.nullable().default(null),
+        }),
+      )
+      .output(planTeleversementSchema),
+
+    /**
+     * Signe les adresses d'un lot de parts.
+     *
+     * Par petits lots et à la demande, jamais toutes d'avance : une adresse
+     * signée périme, et en presigner cinq cents pour un rush de deux heures,
+     * c'est en périmer quatre cent quatre-vingts avant qu'on y arrive.
+     */
+    parts: oc
+      .input(
+        z.object({
+          uploadId: z.string(),
+          numeros: z.array(z.number().int().positive()).min(1).max(20),
+        }),
+      )
+      .output(z.array(partSigneeSchema)),
+
+    /**
+     * Une part est arrivée.
+     *
+     * L'`etag` n'est pas de la comptabilité : S3 le réclame, part par part, au
+     * moment de clore le téléversement. Sans lui l'objet ne se recompose pas.
+     * La durée sert au régulateur de la salle, qui décide de continuer ou de
+     * lever le pied sur ce qu'il constate, pas sur ce qu'on lui promet.
+     */
+    progress: oc
+      .input(
+        z.object({
+          uploadId: z.string(),
+          numero: z.number().int().positive(),
+          etag: z.string().min(1),
+          octets: z.number().int().positive(),
+          dureeMs: z.number().int().nonnegative(),
+        }),
+      )
+      .output(z.object({ ok: z.boolean() })),
+
+    /** Recompose l'objet chez le stockage. **C'est la notification de fin.** */
+    complete: oc
+      .input(z.object({ uploadId: z.string() }))
+      .output(z.object({ ok: z.boolean(), objectKey: z.string() })),
+
+    /**
+     * Renonce, et le dit.
+     *
+     * Un multipart abandonné en silence reste facturé indéfiniment chez le
+     * stockage. La salle le signale donc quand elle peut ; le ménage du hub
+     * couvre le cas où elle ne le peut plus.
+     */
+    abort: oc
+      .input(z.object({ uploadId: z.string(), raison: z.string().max(300) }))
+      .output(z.object({ ok: z.boolean() })),
+
+    /** Ce que le hub sait des téléversements. `roomId` nul = toutes les salles. */
+    uploads: oc
+      .input(z.object({ roomId: roomIdSchema.nullable().default(null) }))
+      .output(z.array(televersementVuSchema)),
+
+    /**
+     * Le stockage est-il configuré, et comment. Admin.
+     *
+     * Sans entrée : la console la demande pour savoir si elle a quelque chose à
+     * montrer. Répondre « non configuré » vaut mieux qu'un panneau de réglages
+     * dont chaque bouton échouerait — et dit du même coup quelles variables
+     * manquent, ce qui ne se devine pas depuis un navigateur.
+     */
+    status: oc.output(
+      z.object({
+        /**
+         * Le hub sait où écrire : clés **et** bucket.
+         *
+         * Un seul booléen pour les deux, parce que rien ne part sans les deux —
+         * mais `endpoint` nul distingue les deux causes, et la console ne dit
+         * pas la même chose dans un cas et dans l'autre : l'un se règle dans un
+         * fichier d'environnement, l'autre dans le champ juste au-dessus.
+         */
+        configure: z.boolean(),
+        /** `null` = aucune clé configurée sur ce hub, donc rien à régler ici. */
+        endpoint: z.string().nullable(),
+        bucket: z.string().nullable(),
+        prefix: z.string().nullable(),
+        politique: politiqueVodSchema,
+      }),
+    ),
+
+    /**
+     * Éprouve la connexion au stockage, pour de vrai. Admin.
+     *
+     * Elle ne sonde pas : elle **fait le vrai geste**. Ouvrir un téléversement,
+     * signer une adresse de part, y écrire quelques octets, tout abandonner.
+     * C'est la seule façon de distinguer un bucket qui existe d'un bucket où
+     * l'on a le droit d'écrire, et une clé valide d'une signature juste.
+     *
+     * Elle ne lève jamais : le diagnostic **est** la réponse. Une erreur HTTP
+     * ferait perdre l'étape à laquelle on s'est arrêté, qui est tout ce qu'on
+     * venait chercher.
+     *
+     * Ce qu'elle ne dit pas, et qu'il faut savoir : elle éprouve le chemin
+     * **depuis le hub**. Les salles écrivent les parts elles-mêmes, sur un autre
+     * réseau et parfois derrière un autre pare-feu.
+     */
+    check: oc.output(controleStockageSchema),
+
+    /**
+     * Efface tout : le préfixe du bucket, et les rushes des salles. **Dev seulement.**
+     *
+     * Outil de développement, et refusé côté serveur hors `MODE=dev` — pas
+     * seulement absent de la console. Une vue masquée reste à un `hidden` près
+     * de quelqu'un qui inspecte la page ; celle-ci détruit une journée de
+     * captation.
+     *
+     * Trois garde-fous, et chacun a sa raison :
+     *
+     * - **un préfixe est exigé.** Sans lui, « le préfixe » et « le bucket
+     *   entier » sont la même chose, et un bucket partagé avec autre chose y
+     *   passerait ;
+     * - **côté salle, seul ce que l'application connaît est effacé** — les
+     *   conteneurs vidéo, leurs sidecars, le fichier de verdicts. La racine des
+     *   captations est parfois un disque partagé ;
+     * - **`confirmation` doit valoir `RAZ`.** Le contrat le vérifie, donc le
+     *   hub aussi : un appel direct, sans passer par la console et sa modale,
+     *   ne peut pas se faire par distraction.
+     */
+    reset: oc
+      .input(
+        z.object({
+          /** Recopié dans la console. Le contrat en fait une garde du hub. */
+          confirmation: z.literal('RAZ'),
+        }),
+      )
+      .output(
+        z.object({
+          /** Objets supprimés sous le préfixe. */
+          objets: z.number().int().nonnegative(),
+          /** Téléversements en cours abandonnés au passage. */
+          multiparts: z.number().int().nonnegative(),
+          /** Salles à qui l'ordre a été envoyé. Elles effacent chacune chez elles. */
+          salles: z.number().int().nonnegative(),
+        }),
+      ),
+
+    /**
+     * Demande à une salle de téléverser. Admin.
+     *
+     * La console ne détient pas les fichiers : elle ne peut que demander. La
+     * salle repasse par son propre régulateur — mais une demande explicite
+     * vaut accord pour ne pas attendre la prochaine fenêtre.
+     */
+    request: oc
+      .input(
+        z.object({
+          roomId: roomIdSchema,
+          /** `null` = tout ce qui n'est pas encore monté. */
+          file: z.string().max(400).nullable().default(null),
+        }),
+      )
+      .output(z.object({ ok: z.boolean() })),
   },
 
   questions: {

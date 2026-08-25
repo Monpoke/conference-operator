@@ -1,0 +1,1 @@
+ALTER TABLE `room_settings` ADD `vod_json` text;

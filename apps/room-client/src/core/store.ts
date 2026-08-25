@@ -18,9 +18,11 @@ import {
   IDENTITE_PAR_DEFAUT,
   roomConfigSchema,
   socialLinkSchema,
+  vodSyncSchema,
   type EventIdentity,
   type RoomConfig,
   type SocialLink,
+  type VodSync,
 } from '@cloudnord/contract'
 
 /**
@@ -46,6 +48,24 @@ function lireReseaux(brut: string | null): SocialLink[] {
  * synchronisée ne sait pas encore où elle est, et afficher le nom d'une autre
  * édition serait pire que ne rien affirmer. Le premier sync corrige.
  */
+/**
+ * Réglages de rapatriement relus du cache.
+ *
+ * `null` — cache absent, illisible, ou schéma qui a bougé — vaut « pas de
+ * destination », donc rien ne part. C'est le repli qu'on veut : une salle qui
+ * ne sait plus ce que le hub attend d'elle ne doit pas se mettre à téléverser
+ * sur une supposition.
+ */
+function lireVod(brut: string | null): VodSync | null {
+  if (brut == null) return null
+  try {
+    const lu = vodSyncSchema.safeParse(JSON.parse(brut))
+    return lu.success ? lu.data : null
+  } catch {
+    return null
+  }
+}
+
 function lireIdentite(brut: string | null): EventIdentity {
   if (brut == null) return IDENTITE_PAR_DEFAUT
   try {
@@ -92,6 +112,8 @@ export interface RoomSettings {
    * autre sans réinstallation.
    */
   event: EventIdentity
+  /** Destination et politique de rapatriement, poussées par le hub. */
+  vod: VodSync | null
   nextSeq: number
   lastCommandSeq: number
   clockOffsetMs: number
@@ -160,6 +182,7 @@ export class LocalStore {
       // démarrer, la boucle sautera simplement sa page réseaux.
       socialLinks: lireReseaux(row?.socialLinksJson ?? null),
       event: lireIdentite(row?.eventIdentityJson ?? null),
+      vod: lireVod(row?.vodJson ?? null),
       nextSeq: row?.nextSeq ?? 1,
       lastCommandSeq: row?.lastCommandSeq ?? 0,
       clockOffsetMs: row?.clockOffsetMs ?? 0,
@@ -174,6 +197,7 @@ export class LocalStore {
     if (patch.activeContentHash !== undefined) update.activeContentHash = patch.activeContentHash
     if (patch.socialLinks !== undefined) update.socialLinksJson = JSON.stringify(patch.socialLinks)
     if (patch.event !== undefined) update.eventIdentityJson = JSON.stringify(patch.event)
+    if (patch.vod !== undefined) update.vodJson = patch.vod == null ? null : JSON.stringify(patch.vod)
     if (patch.lastCommandSeq !== undefined) update.lastCommandSeq = patch.lastCommandSeq
     if (patch.clockOffsetMs !== undefined) update.clockOffsetMs = patch.clockOffsetMs
 

@@ -1,9 +1,5 @@
-import {
-  currentSession,
-  roomBreak,
-  roomConferenceState,
-  type SessionStatuses,
-} from '@cloudnord/program'
+import { roomBreak, roomConferenceState, type SessionStatuses } from '@cloudnord/etat-salle'
+import { currentSession } from '@cloudnord/program'
 import type { RoomStatus } from '@cloudnord/contract'
 import type { Services } from './context.js'
 import type { PushPayload } from './services/push.js'

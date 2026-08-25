@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { normalizeProgram, sessionsForRoom, type Program } from '@cloudnord/program'
+import { POLITIQUE_VOD_PAR_DEFAUT } from '@cloudnord/contract'
 import { openHubDatabase, type HubDatabase } from '../src/db.js'
 import { SessionStateService, SettingsService } from '../src/services/sessions.js'
 import { RoomService } from '../src/services/rooms.js'
@@ -216,6 +217,11 @@ describe('réglages du hub', () => {
       eventName: null,
       eventShortName: null,
       openFeedbackProjectId: null,
+      // Aucun stockage, et surtout rien qui parte tout seul : le défaut doit
+      // être celui où aucun octet ne quitte une salle sans qu'on l'ait demandé.
+      vodBucket: null,
+      vodPrefix: null,
+      vodPolitique: POLITIQUE_VOD_PAR_DEFAUT,
     })
   })
 
@@ -228,6 +234,9 @@ describe('réglages du hub', () => {
       eventName: null,
       eventShortName: null,
       openFeedbackProjectId: null,
+      vodBucket: null,
+      vodPrefix: null,
+      vodPolitique: POLITIQUE_VOD_PAR_DEFAUT,
     })
     expect(settings.get().autoEndGraceMinutes).toBe(15)
   })
@@ -235,6 +244,16 @@ describe('réglages du hub', () => {
   it('refuse une valeur hors bornes', () => {
     expect(() => settings.update({ autoEndGraceMinutes: -1 })).toThrow()
     expect(() => settings.update({ autoEndGraceMinutes: 999 })).toThrow()
+  })
+
+  it('garde le reste de la politique VOD quand on n\'en change qu\'un réglage', () => {
+    settings.update({ vodPolitique: { actif: true, debitMaxOctetsS: 2_000_000 } })
+    // Le formulaire de la console n'envoie que ce qu'il porte. Sans ce report,
+    // corriger le plafond de débit en cours d'événement rendrait au passage la
+    // taille de part et le seuil CPU à leurs valeurs d'usine — silencieusement.
+    const apres = settings.update({ vodPolitique: { debitMaxOctetsS: 500_000 } })
+    expect(apres.vodPolitique.debitMaxOctetsS).toBe(500_000)
+    expect(apres.vodPolitique.actif).toBe(true)
   })
 })
 
@@ -274,5 +293,138 @@ describe('vues enrichies du programme', () => {
     const vue = sessions.views(TRACK_1, program).find((e) => e.sessionId === 'session-hors-programme')!
     expect(vue.scheduledEndsAt).toBeNull()
     expect(vue.remainingMs).toBeNull()
+  })
+})
+
+/**
+ * Le hub applique la table du cycle de vie, comme la régie.
+ *
+ * L'IHM grisait déjà « Terminer » sur une conférence non lancée ; la procédure,
+ * elle, l'acceptait. Rien ne cassait — on écrivait simplement `ended` sur un
+ * talk qui ne s'était pas tenu. La table vit désormais dans
+ * `@cloudnord/etat-salle`, et les deux côtés la lisent.
+ */
+describe('gestes refusés par le cycle de vie', () => {
+  it('ne termine pas une conférence que personne n\'a lancée', () => {
+    expect(() => sessions.end(TALK.id, TRACK_1, 'op')).toThrow(/pas été lancée/)
+    // Et rien n'est écrit : le refus ne laisse pas de trace à moitié posée.
+    expect(sessions.get(TALK.id)).toBeNull()
+  })
+
+  it('ne lance pas deux fois la même conférence', () => {
+    const premier = sessions.start(TALK.id, TRACK_1, 'op')
+    expect(() => sessions.start(TALK.id, TRACK_1, 'op')).toThrow(/déjà lancée/)
+    // L'heure de début réelle reste celle du premier départ.
+    expect(sessions.get(TALK.id)?.startedAt).toBe(premier.startedAt)
+  })
+
+  it('ne termine pas deux fois', () => {
+    sessions.start(TALK.id, TRACK_1, 'op')
+    sessions.end(TALK.id, TRACK_1, 'op')
+    expect(() => sessions.end(TALK.id, TRACK_1, 'op')).toThrow(/déjà terminée/)
+  })
+
+  it('relance une conférence close par erreur, sans détour', () => {
+    // La règle horaire clôt un talk qui débordait mais n'était pas fini : le
+    // rattraper doit tenir en un geste, pas en un « Remettre à venir » suivi
+    // d'un « Commencer ».
+    sessions.start(TALK.id, TRACK_1, 'op')
+    sessions.end(TALK.id, TRACK_1, 'auto')
+    expect(sessions.start(TALK.id, TRACK_1, 'op').status).toBe('running')
+  })
+
+  it('laisse « Remettre à venir » ouvert, y compris sur un talk en cours', () => {
+    // L'échappatoire ne se conditionne pas : elle sert précisément quand on
+    // s'est trompé de conférence.
+    sessions.start(TALK.id, TRACK_1, 'op')
+    sessions.reset(TALK.id)
+    expect(sessions.get(TALK.id)).toBeNull()
+  })
+
+  it('laisse la clôture automatique faire son travail', () => {
+    // Le balayage ne vise que ce qui est en cours : la table ne lui interdit
+    // rien de ce qu'il fait déjà.
+    sessions.start(TALK.id, TRACK_1, 'op')
+    horloge = FIN + 10 * 60_000
+    expect(sessions.sweep(program).ended.map((e) => e.sessionId)).toEqual([TALK.id])
+  })
+})
+
+/**
+ * La règle horaire lit la même fin que le dépassement.
+ *
+ * Elle exigeait `endsAt` là où l'état de la salle se contente d'une fin
+ * déduite : un créneau dont l'export ne donne que l'heure de début passait en
+ * dépassement sans que le balayage ne le voie jamais. La salle restait en
+ * rouge pour le reste de la journée — le dépassement est évalué en premier et
+ * masque tous les créneaux suivants — et rien ne pouvait l'en sortir qu'un
+ * opérateur appuyant sur « Terminer ».
+ */
+describe('clôture automatique sur une fin déduite', () => {
+  /** Le programme, mais avec un créneau qui ne porte que son heure de début. */
+  function programmeSansFin(): Program {
+    return {
+      ...program,
+      sessions: program.sessions.map((session) =>
+        session.id === TALK.id
+          ? { ...session, endsAt: null, endsAtMs: null }
+          : session,
+      ),
+    }
+  }
+
+  it('ferme un créneau dont seule la durée est connue', () => {
+    const servi = programmeSansFin()
+    sessions.start(TALK.id, TRACK_1, 'op')
+
+    // La durée vaut fin : 10:00 + 50 min, plus cinq minutes de grâce.
+    horloge = FIN + 4 * 60_000
+    expect(sessions.sweep(servi).ended).toEqual([])
+
+    horloge = FIN + 6 * 60_000
+    expect(sessions.sweep(servi).ended.map((e) => e.sessionId)).toEqual([TALK.id])
+  })
+
+  it('ferme un créneau que seul le suivant ferme', () => {
+    const servi = programmeSansFin()
+    servi.sessions = servi.sessions.map((session) =>
+      session.id === TALK.id ? { ...session, durationMinutes: null } : session,
+    )
+    sessions.start(TALK.id, TRACK_1, 'op')
+
+    // Reste le début du créneau suivant. Il vient après la fin prévue de
+    // celui-ci, donc la clôture arrive plus tard — mais elle arrive.
+    horloge = FIN + 60 * 60_000
+    expect(sessions.sweep(servi).ended.map((e) => e.sessionId)).toEqual([TALK.id])
+  })
+
+  it('ne ferme pas ce qu\'aucune des trois règles ne ferme', () => {
+    // Un créneau sans heure de fin, sans durée, et sans suivant : personne ne
+    // sait quand il finit, et le clore reviendrait à inventer une heure.
+    const dernier = sessionsForRoom(program, TRACK_1).at(-1)!
+    const servi: Program = {
+      ...program,
+      sessions: program.sessions
+        .filter((session) => session.roomId !== TRACK_1 || session.id === dernier.id)
+        .map((session) =>
+          session.id === dernier.id
+            ? { ...session, endsAt: null, endsAtMs: null, durationMinutes: null }
+            : session,
+        ),
+    }
+    sessions.start(dernier.id, TRACK_1, 'op')
+
+    horloge = dernier.startsAtMs + 12 * 60 * 60_000
+    expect(sessions.sweep(servi).ended).toEqual([])
+  })
+
+  it('ne décide rien sur une conférence absente du programme', () => {
+    // Réimport, annulation : sans créneau de référence, on ne touche à rien.
+    sessions.start('session-hors-programme', TRACK_1, 'op')
+    horloge = FIN + 60 * 60_000
+
+    expect(sessions.sweep(program).ended.map((e) => e.sessionId)).not.toContain(
+      'session-hors-programme',
+    )
   })
 })

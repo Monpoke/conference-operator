@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -28,6 +28,53 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 describe('OBS simulé', () => {
+  /**
+   * Le cas signalé en régie : la captation était déjà « en cours » à
+   * l'allumage, sans que personne ne l'ait lancée, et il fallait l'arrêter
+   * avant de pouvoir en démarrer une.
+   *
+   * Adopter la prise d'OBS à la connexion existe pour l'appli redémarrée au
+   * milieu d'un talk. Une instance simulée n'a pas de talk derrière elle : ce
+   * qu'elle garde d'une connexion à l'autre n'est le souvenir d'aucune vidéo.
+   */
+  it("coupe une captation en cours au lieu de l'adopter", async () => {
+    const transport = createMockObsTransport({ instance: 'B', recordingDir: join(dir, 'rec') })
+    await transport.call('StartRecord')
+
+    const obs = new ObsController({
+      instance: 'B',
+      url: 'mock',
+      sceneRoles: {},
+      transport,
+    })
+    const etat = await obs.connect()
+
+    expect(etat.recording).toBe(false)
+    // Coupée pour de bon, et pas seulement masquée : sans ça, le prochain
+    // « Enregistrer » échouerait sur un « déjà en cours » que l'écran contredit.
+    expect(await transport.call('GetRecordStatus')).toMatchObject({ outputActive: false })
+  })
+
+  it("adopte la captation d'une instance réelle", async () => {
+    /**
+     * Le garde-fou du garde-fou : la règle ne vaut que pour le simulé. Une
+     * vraie prise en cours retrouvée au redémarrage doit rester adoptée, sinon
+     * la régie annoncerait une VOD perdue qui tourne pourtant.
+     */
+    const transport = createMockObsTransport({ instance: 'B', recordingDir: join(dir, 'rec') })
+    await transport.call('StartRecord')
+    const commeReel = { ...transport, simule: false }
+
+    const obs = new ObsController({
+      instance: 'B',
+      url: 'ws://127.0.0.1:4456',
+      sceneRoles: {},
+      transport: commeReel,
+    })
+
+    expect((await obs.connect()).recording).toBe(true)
+  })
+
   it('se déclare simulé, pour que la régie puisse le dire', async () => {
     // Rien ne distingue à l'écran un enregistrement simulé d'un vrai : le
     // transport porte l'information lui-même, plutôt qu'une variable
@@ -143,6 +190,31 @@ describe('OBS simulé', () => {
     const sidecar = JSON.parse(readFileSync(resultat.sidecarPath!, 'utf8')) as { markers: unknown[] }
     expect(sidecar.markers).toHaveLength(1)
     store.close()
+  })
+
+  it("n'écrase jamais un fichier déjà là", async () => {
+    /**
+     * Le poste simulé écrit dans le dossier des captations, et deux arrêts sur
+     * la même conférence donnent le même nom de fichier. Anecdotique tant que
+     * ce dossier ne contenait que des fichiers de cinquante octets ; depuis que
+     * la régie sait les relire, on y dépose de vraies vidéos — et un
+     * « Arrêter » de trop les effaçait sans rien dire.
+     */
+    const rec = join(dir, 'rec')
+    mkdirSync(rec, { recursive: true })
+    const transport = createMockObsTransport({ instance: 'B', recordingDir: rec })
+    await transport.call('SetProfileParameter', {
+      parameterCategory: 'Output',
+      parameterName: 'FilenameFormatting',
+      parameterValue: 'keynote',
+    })
+    writeFileSync(join(rec, 'keynote.mkv'), 'une vraie vidéo, posée à la main')
+
+    await transport.call('StartRecord')
+    await transport.call('StopRecord')
+
+    expect(readFileSync(join(rec, 'keynote.mkv'), 'utf8')).toBe('une vraie vidéo, posée à la main')
+    expect(readdirSync(rec).sort()).toEqual(['keynote-2.mkv', 'keynote.mkv'])
   })
 
   it('simule la diffusion et sa télémétrie', async () => {

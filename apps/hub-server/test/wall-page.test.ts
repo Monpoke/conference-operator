@@ -3,6 +3,7 @@
 // code serveur appeler `document` sans que rien ne proteste.
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { attendreRendu } from './helpers/attendre.js'
 import { aplatirCouchesHtml } from '@cloudnord/ui'
 import { renderWallPage } from '../src/pages/wall-page.js'
 
@@ -58,7 +59,7 @@ function monterMur(
 }
 
 const $ = (id: string) => document.getElementById(id)!
-const attendre = () => new Promise((resolve) => setTimeout(resolve, 20))
+const attendre = attendreRendu
 
 beforeEach(() => {
   localStorage.clear()

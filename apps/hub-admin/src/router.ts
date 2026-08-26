@@ -1,6 +1,10 @@
-import { isMigratedView, viewPath } from '@cloudnord/contract'
+import { PAIRING_ALIAS, isMigratedView, viewPath } from '@cloudnord/contract'
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import MessagesView from './views/MessagesView.vue'
+import PairingView from './views/PairingView.vue'
 import ModerationView from './views/ModerationView.vue'
+import { useMessagesStore } from './stores/messages.js'
+import { usePairingStore } from './stores/pairing.js'
 import { useModerationStore } from './stores/moderation.js'
 
 /**
@@ -40,6 +44,35 @@ const routes: RouteRecordRaw[] = [
     meta: {
       view: 'moderation',
       refresh: () => useModerationStore().load(),
+      intervalMs: 10_000,
+    },
+  },
+  {
+    path: viewPath('messages'),
+    name: 'messages',
+    component: MessagesView,
+    meta: {
+      view: 'messages',
+      refresh: () => useMessagesStore().load(),
+      intervalMs: 10_000,
+    },
+  },
+  {
+    path: viewPath('appairage'),
+    /*
+     * Un **alias**, jamais une redirection.
+     *
+     * `/admin/devices?user_code=…` est l'adresse que Better Auth donne aux
+     * machines. Réécrire l'URL vers `/admin/appairage` effacerait le code que
+     * l'opérateur s'apprête à approuver — au chargement, c'est-à-dire au seul
+     * moment où quelqu'un en a besoin.
+     */
+    alias: PAIRING_ALIAS,
+    name: 'appairage',
+    component: PairingView,
+    meta: {
+      view: 'appairage',
+      refresh: () => usePairingStore().load(),
       intervalMs: 10_000,
     },
   },

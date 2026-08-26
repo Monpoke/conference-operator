@@ -3,6 +3,7 @@
 // code serveur appeler `document` sans que rien ne proteste.
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { attendreRendu } from './helpers/attendre.js'
 import { aplatirCouchesHtml } from '@cloudnord/ui'
 import { renderAdminPage } from '../src/pages/admin-page.js'
 
@@ -440,7 +441,7 @@ describe('notifications', () => {
       return new Response(JSON.stringify({ json: chemin === 'rooms/statuses' ? salles : [] }), { status: 200 })
     }))
     $('btn-rafraichir').click()
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await attendreRendu()
   }
 
   const SALLE = {
@@ -879,7 +880,7 @@ describe('programme', () => {
     $('nav-reglages').click()
   }
 
-  const attendre = () => new Promise((resolve) => setTimeout(resolve, 20))
+  const attendre = attendreRendu
 
   it('tient dans les réglages, source et versions ensemble', () => {
     brancher(REGLAGES)
@@ -992,7 +993,7 @@ describe('liste des salles', () => {
     }))
     localStorage.setItem('hub-admin', 'jeton')
     monterConsole()
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await attendreRendu()
   }
 
   beforeEach(async () => {
@@ -1147,7 +1148,7 @@ describe('liste des salles', () => {
       return new Response(JSON.stringify({ json }), { status: 200 })
     }))
     monterConsole()
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await attendreRendu()
 
     expect($('salles').querySelector('.pastille')?.className).toContain('retard')
     expect($('salles').textContent).toContain('retard au démarrage')
@@ -1162,7 +1163,7 @@ describe('liste des salles', () => {
       return new Response(JSON.stringify({ json }), { status: 200 })
     }))
     monterConsole()
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await attendreRendu()
 
     expect($('salles').querySelector('.pastille')?.className).toContain('depassement')
     // Le mot accompagne la couleur : la carte se regarde de loin, et tout le
@@ -1282,7 +1283,7 @@ describe('vue Conférences', () => {
     localStorage.setItem('hub-admin', 'jeton')
     monterConsole()
     $('nav-conferences').click()
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await attendreRendu()
   }
 
   /** Le menu d'actions d'une ligne du planning, repéré par son créneau. */
@@ -1494,7 +1495,7 @@ describe('vue Conférences', () => {
     await ouvrir()
 
     $('btn-controle-feedback').click()
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await attendreRendu()
 
     const zone = $('controle-feedback') as HTMLElement
     expect(zone.hidden).toBe(false)
@@ -1515,7 +1516,7 @@ describe('vue Conférences', () => {
     await ouvrir()
 
     $('btn-controle-feedback').click()
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await attendreRendu()
 
     const texte = $('controle-feedback').textContent ?? ''
     expect(texte).toContain('Projet trouvé')
@@ -1573,7 +1574,7 @@ describe('vue Conférences', () => {
     ;($('feedback-champ') as HTMLInputElement).value = 'of-42'
 
     $('feedback-enregistrer').click()
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await attendreRendu()
 
     expect(appels).toContainEqual({
       chemin: 'sessions/feedbackId',
@@ -1587,7 +1588,7 @@ describe('vue Conférences', () => {
     ;($('planning').querySelector('[data-feedback-session="ses-1"]') as HTMLElement).click()
 
     $('feedback-rendre').click()
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await attendreRendu()
 
     // `null`, pas la chaîne vide : c'est ce qui supprime la ligne côté hub.
     expect(appels).toContainEqual({
@@ -1631,7 +1632,7 @@ describe('vue Conférences', () => {
     const bouton = $('planning').querySelector('[data-vod-session="ses-1"]') as HTMLElement
     expect(bouton).not.toBeNull()
     bouton.click()
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await attendreRendu()
 
     expect(document.body.dataset.vod).toBe('ouvert')
     expect($('vod-titre').textContent).toBe('HoneySwamp')
@@ -1654,7 +1655,7 @@ describe('vue Conférences', () => {
     await ouvrir()
 
     ;($('planning').querySelector('[data-vod-session="ses-1"]') as HTMLElement).click()
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await attendreRendu()
 
     const corps = $('vod-corps').textContent ?? ''
     expect(corps).toContain('Aucune prise remontée')
@@ -1673,7 +1674,7 @@ describe('vue Conférences', () => {
   it('referme le dossier VOD sur Échap', async () => {
     await ouvrir()
     ;($('planning').querySelector('[data-vod-session="ses-1"]') as HTMLElement).click()
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await attendreRendu()
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
 
@@ -1774,7 +1775,7 @@ describe('vue Conférences', () => {
       const menu = menuDe('pause')!
       menu.value = 'talk'
       menu.dispatchEvent(new Event('change', { bubbles: true }))
-      await new Promise((resolve) => setTimeout(resolve, 20))
+      await attendreRendu()
 
       expect(appels).toContainEqual({
         chemin: 'sessions/override',
@@ -1810,7 +1811,7 @@ describe('vue Conférences', () => {
       const menu = menuDe('ses-1')!
       menu.value = 'break'
       menu.dispatchEvent(new Event('change', { bubbles: true }))
-      await new Promise((resolve) => setTimeout(resolve, 20))
+      await attendreRendu()
 
       expect(appels).toContainEqual({
         chemin: 'sessions/override',
@@ -1839,7 +1840,7 @@ describe('vue Conférences', () => {
       appels.length = 0
       menu.value = ''
       menu.dispatchEvent(new Event('change', { bubbles: true }))
-      await new Promise((resolve) => setTimeout(resolve, 20))
+      await attendreRendu()
 
       expect(appels).toContainEqual({
         chemin: 'sessions/override',
@@ -1878,7 +1879,7 @@ describe('vue Conférences', () => {
       const menu = menuDe('ses-1')!
       menu.value = 'break'
       menu.dispatchEvent(new Event('change', { bubbles: true }))
-      await new Promise((resolve) => setTimeout(resolve, 20))
+      await attendreRendu()
 
       expect(menu.value).toBe('')
       expect($('avis').className).toContain('erreur')
@@ -1918,7 +1919,7 @@ describe('réseaux de l\'événement', () => {
     $('nav-reglages').click()
   }
 
-  const attendre = () => new Promise((resolve) => setTimeout(resolve, 20))
+  const attendre = attendreRendu
 
   it('affiche les comptes déjà enregistrés', async () => {
     brancher()
@@ -2028,7 +2029,7 @@ describe('identité de l\'événement, dans la console', () => {
     $('nav-reglages').click()
   }
 
-  const attendre = () => new Promise((resolve) => setTimeout(resolve, 20))
+  const attendre = attendreRendu
 
   it('laisse les champs vides et montre la déduction en repère', async () => {
     brancher()
@@ -2120,7 +2121,7 @@ describe('resynchronisation des salles', () => {
     $('nav-reglages').click()
   }
 
-  const attendre = () => new Promise((resolve) => setTimeout(resolve, 20))
+  const attendre = attendreRendu
 
   it('propose les salles du hub, « toutes » en tête', async () => {
     brancher()

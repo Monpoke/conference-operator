@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { attendreRendu } from './helpers/attendre.js'
 import { openHubDatabase, type HubDatabase } from '../src/db.js'
 import { ProgramService } from '../src/services/program.js'
 import { CommandService } from '../src/services/commands.js'
@@ -138,7 +139,7 @@ describe('CommandService', () => {
     })()
 
     // Laisse le rattrapage s'écouler avant de publier en direct.
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await attendreRendu()
     const live = commands.publish(TRACK_1, { type: 'scene.force', role: 'LIVE' }, null)
     await consumer
 

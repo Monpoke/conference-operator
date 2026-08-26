@@ -561,6 +561,49 @@ describe('notifications', () => {
     expect(NotificationFactice.envoyees).toHaveLength(1)
   })
 
+  it("montre l'avis en page, sans permission ni activation", async () => {
+    // Ni Notification.permission, ni réglage écrit : la console reste muette
+    // côté système, et c'est justement le cas où l'écran doit parler.
+    monterConsole()
+    await avecSalles([SALLE])
+    await avecSalles([{ ...SALLE, conference: 'depassement' }])
+
+    expect(NotificationFactice.envoyees).toEqual([])
+    const blocs = [...$('signalements').children] as HTMLElement[]
+    expect(blocs).toHaveLength(1)
+    expect(blocs[0]!.textContent).toContain('Track #1 déborde')
+    // Un dépassement appelle un geste : fond d'attention.
+    expect(blocs[0]!.className).toContain('bg-attention')
+  })
+
+  it("peint l'encart selon le type, et remplace l'avis de la même salle", async () => {
+    monterConsole()
+    await avecSalles([SALLE])
+
+    await avecSalles([{ ...SALLE, conference: 'fin-proche' }])
+    let blocs = [...$('signalements').children] as HTMLElement[]
+    expect(blocs).toHaveLength(1)
+    // Le rythme de la journée : fond de marque, pas d'alerte.
+    expect(blocs[0]!.className).toContain('bg-marque')
+
+    await avecSalles([{ ...SALLE, conference: 'depassement' }])
+    blocs = [...$('signalements').children] as HTMLElement[]
+    // Un seul encart, remplacé : empiler les états successifs d'une même salle
+    // ferait une colonne d'historique là où on veut l'état du moment.
+    expect(blocs).toHaveLength(1)
+    expect(blocs[0]!.textContent).toContain('déborde')
+    expect(blocs[0]!.className).toContain('bg-attention')
+  })
+
+  it("place la pile en bas de l'écran, avis local au-dessus", () => {
+    monterConsole()
+    expect($('pile-bas').className).toContain('bottom-6')
+    expect($('pile-bas').contains($('signalements'))).toBe(true)
+    // L'avis des actions locales est le premier enfant : un avis invisible
+    // garde sa place, et le mettre dessous décollerait les encarts du bord.
+    expect($('pile-bas').firstElementChild?.id).toBe('avis')
+  })
+
   it('prévient quand une salle tombe, puis quand elle revient', async () => {
     // « Revenue » est un soulagement, pas une décision : il faut « tout ».
     localStorage.setItem('hub-notifs', JSON.stringify({ technique: 'tout', exploitation: 'tout' }))

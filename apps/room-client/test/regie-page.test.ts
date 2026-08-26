@@ -434,6 +434,36 @@ describe('signalements', () => {
     expect($('signalements').textContent).toContain('vient de se terminer')
   })
 
+  it('sort les signalements du flux, en bas de l\'écran', () => {
+    monterRegie(a('2026-10-30T10:50:20Z', {
+      notifications: [{ id: 'n1', level: 'info', text: 'coucou', at: '2026-10-30T10:50:00.000Z' }],
+    }))
+
+    // Dans la pile ancrée en bas, et non plus en troisième rangée de la grille :
+    // la place ainsi rendue revient aux commandes, qui ne doivent pas défiler.
+    expect($('pile-bas').contains($('signalements'))).toBe(true)
+    expect($('pile-bas').className).toContain('bottom-6')
+    expect(document.body.className).toContain('grid-rows-[auto_auto_1fr]')
+  })
+
+  it('peint le fond à la couleur du type', () => {
+    monterRegie(a('2026-10-30T10:50:20Z', {
+      notifications: [
+        { id: 'n1', level: 'info', text: 'une info', at: '2026-10-30T10:50:00.000Z' },
+        { id: 'n2', level: 'warning', text: 'un avertissement', at: '2026-10-30T10:50:00.000Z' },
+      ],
+    }))
+
+    const blocs = [...$('signalements').children] as HTMLElement[]
+    expect(blocs).toHaveLength(2)
+    // Un fond plein, pas une teinte sourde : ces encarts doivent se lire du coin
+    // de l'œil, par un opérateur qui regarde la salle.
+    expect(blocs[0]!.className).toContain('bg-marque')
+    expect(blocs[1]!.className).toContain('bg-attention')
+    // Et un texte sombre, seule paire lisible sur de l'ambre.
+    expect(blocs[1]!.className).toContain('text-[#05070d]')
+  })
+
   it('permet d\'écarter un signalement lu', async () => {
     monterRegie(a('2026-10-30T10:50:20Z', {
       notifications: [{ id: 'n1', level: 'info', text: 'coucou', at: '2026-10-30T10:50:00.000Z' }],
@@ -2172,6 +2202,21 @@ describe('enregistrements produits', () => {
     // c'est une absence de fonctionnalité, et l'annoncer en ambre trois fois
     // par jour la ferait passer pour une panne.
     expect($('vod-regulateur').className).toContain('hidden')
+
+    // « Tout téléverser » non plus. Laissé actif, il donnait à lire « on peut
+    // tout envoyer, mais rien en particulier » — et le motif ne s'obtenait
+    // qu'en cliquant. Grisé, il devient le seul endroit qui l'explique.
+    const monterTout = $('btn-vod-monter-tout') as HTMLButtonElement
+    expect(monterTout.disabled).toBe(true)
+    expect(monterTout.title).toContain('Aucun stockage configuré sur le hub')
+  })
+
+  it('rend « Tout téléverser » dès que le hub a une destination', async () => {
+    await ouvrir(RUSHES, 'D:\\captations', OUTILS, AVEC_STOCKAGE)
+
+    const monterTout = $('btn-vod-monter-tout') as HTMLButtonElement
+    expect(monterTout.disabled).toBe(false)
+    expect(monterTout.title).toContain('Envoyer tous les rushes')
   })
 
   it('propose de téléverser dès que le hub a une destination', async () => {

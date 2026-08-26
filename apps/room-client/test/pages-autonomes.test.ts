@@ -7,6 +7,7 @@ const ACCENT = String.fromCharCode(96)
 import { renderProjectorPage } from '../src/core/display-page.js'
 import { renderOverlayPage } from '../src/core/overlay-page.js'
 import { renderRegiePage } from '../src/core/regie-page.js'
+import { renderAdresseHubPage } from '../src/core/adresse-hub-page.js'
 import { analyserScripts, extraireScripts } from './helpers/inline-scripts.js'
 
 /**
@@ -20,6 +21,7 @@ const PAGES: [string, string][] = [
   ['projection', renderProjectorPage()],
   ['habillage', renderOverlayPage()],
   ['régie', renderRegiePage()],
+  ['adresse du hub', renderAdresseHubPage({ valeurInitiale: 'http://localhost:8787' })],
 ]
 
 /**
@@ -33,6 +35,7 @@ const SOURCES = [
   'overlay-page.ts',
   'overlay-live-page.ts',
   'regie-page.ts',
+  'adresse-hub-page.ts',
 ].map((nom) => [nom, readFileSync(fileURLToPath(new URL('../src/core/' + nom, import.meta.url)), 'utf8')] as const)
 
 describe('écriture des gabarits', () => {
@@ -86,6 +89,25 @@ describe('pages servies par le client', () => {
     const html = renderRegiePage({ initialPayload: { state: { mode: 'sponsors' } } })
     expect(html).toContain('id="etat-initial"')
     expect(html).toContain("new EventSource('/display/state?vue=regie')")
+  })
+
+  it("l'écran d'adresse échappe la valeur qu'on lui remet sous les yeux", () => {
+    // Elle vient du disque ou de la ligne de commande : elle n'a rien à
+    // pouvoir refermer l'attribut qui la porte.
+    const html = renderAdresseHubPage({ valeurInitiale: 'http://hub"><script>x' })
+    expect(html).toContain('value="http://hub&quot;&gt;&lt;script&gt;x"')
+  })
+
+  it("l'écran d'adresse ne conditionne jamais « Continuer » à une réponse du hub", () => {
+    // Un poste de régie se prépare la veille, hub éteint : la sonde informe,
+    // elle n'autorise pas. Un bouton désactivable ici serait une panne un matin
+    // d'événement.
+    const html = renderAdresseHubPage({ valeurInitiale: 'http://localhost:8787' })
+    // Le corps seul : la feuille Tailwind, en tête, parle de `:disabled` pour
+    // tous les boutons de l'application.
+    const corps = html.slice(html.indexOf('<body'))
+    expect(corps).toMatch(/<button[^>]*type="submit"/)
+    expect(corps).not.toMatch(/disabled/)
   })
 
   it('la régie ouvre les écrans dans un nouvel onglet', () => {

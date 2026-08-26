@@ -65,6 +65,14 @@ const base: DisplayPayload = {
         // montrer un de deux minutes donnerait une image impossible.
         at: new Date(AT - 12_000).toISOString(),
       },
+      {
+        id: 'n2',
+        level: 'warning' as const,
+        // Les deux niveaux dans l'aperçu : le fond porte le type, et c'est
+        // justement ce qu'on vient relire ici avant le jour J.
+        text: 'Track #2 dépasse son créneau de 4 minutes',
+        at: new Date(AT - 6_000).toISOString(),
+      },
     ],
   },
   roomName: 'Track #1 — Teilhard de Chardin',

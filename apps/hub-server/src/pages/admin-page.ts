@@ -227,8 +227,8 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
    * Ce qui reste hors Tailwind : l'avis flottant, dont l'apparition se pilote
    * par une classe posée depuis le JavaScript.
    */
-  #avis { opacity: 0; }
-  #avis.visible { opacity: 1; }
+  #avis { opacity: 0; transform: translateY(20px); }
+  #avis.visible { opacity: 1; transform: translateY(0); }
   #avis.erreur { border-color: var(--color-alerte); background: #35161a; }
 
   /*
@@ -1030,7 +1030,23 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
   </div>
 </div>
 
-<div id="avis"></div>
+<!--
+  Pile du bas — la même qu'en régie, et pour la même raison.
+
+  Les avis de la console ne partaient jusqu'ici qu'en notifications système :
+  permission du navigateur, activation explicite, réglage par famille. Trois
+  conditions avant qu'une salle qui se tait le dise — et rien du tout à l'écran
+  pendant qu'on le regarde. L'encart, lui, ne demande rien à personne.
+
+  L'ordre importe : l'avis des actions locales passe au-dessus, les encarts
+  restent collés au bas de l'écran. Un avis invisible garde sa place dans la
+  colonne, et le mettre en dessous aurait fait flotter les encarts en
+  permanence pour un élément qui ne s'affiche que quatre secondes.
+-->
+<div class="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex flex-col items-center gap-2 px-4" id="pile-bas">
+  <div class="max-w-[70vw] rounded-[9px] border border-bord bg-surface2 px-5 py-3 text-sm transition-[opacity,transform] duration-200" id="avis"></div>
+  <div class="pointer-events-auto flex max-h-[40vh] w-[min(620px,90vw)] flex-col gap-2 overflow-y-auto" id="signalements"></div>
+</div>
 
 <!--
   L'automate d'une salle, inliné.
@@ -1050,7 +1066,10 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
   function avis(message, erreur) {
     const el = $('avis')
     el.textContent = message
-    el.className = 'visible' + (erreur ? ' erreur' : '')
+    // classList, et non className : l'élément porte maintenant les classes
+    // qui le placent dans la pile, et les réécrire le sortait de l'écran.
+    el.classList.toggle('erreur', Boolean(erreur))
+    el.classList.add('visible')
     clearTimeout(el.__t)
     el.__t = setTimeout(() => el.classList.remove('visible'), 3800)
   }
@@ -1457,6 +1476,9 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
    * @param niveau Niveau minimal auquel cet avis part.
    */
   function prevenir(titre, corps, cle, vue, famille, niveau) {
+    // En page d'abord, et sans condition : c'est l'écran qu'on regarde.
+    encart(titre, corps, cle, vue, niveau)
+
     if (!notifsDisponibles() || Notification.permission !== 'granted') return
     /*
      * Il ne suffit pas que le navigateur autorise : il faut que quelqu'un
@@ -1477,6 +1499,86 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
       // worker. Rien à faire ici : la console reste utilisable, et insister
       // ferait une erreur toutes les dix secondes.
     }
+  }
+
+  /**
+   * Durée de vie d'un encart.
+   *
+   * Même valeur qu'en régie, et pour la même raison : un bandeau qui ne part
+   * pas cesse d'être lu. Trente secondes suffisent à voir passer un fait
+   * ponctuel ; ce qui doit rester consultable — l'état des salles — est de
+   * toute façon dans la vue Exploitation, qui ne périme pas.
+   */
+  const DUREE_ENCART_MS = 30_000
+
+  /**
+   * Fond par type d'avis.
+   *
+   * Le type, ici, c'est le niveau auquel l'avis part : « essentiel » réunit ce
+   * qui appelle un geste — une salle muette, un créneau dépassé, une
+   * conférence qui n'a pas démarré — et « tout » le récit ordinaire de la
+   * journée. Un fond plein, parce que ces encarts doivent se lire du coin de
+   * l'œil, et un texte sombre : la seule paire lisible sur de l'ambre, et
+   * celle que le bouton actif de la console utilise déjà.
+   */
+  const TEINTES_ENCART = {
+    essentiel: 'bg-attention text-[#05070d]',
+    tout: 'bg-marque text-[#05070d]',
+  }
+
+  /**
+   * Avis affiché en bas de la console.
+   *
+   * Volontairement sans horloge, contrairement à la régie : celle-ci date des
+   * faits venus d'autres salles, avec l'heure qu'ils portent. Ici l'encart
+   * paraît à l'instant où la console constate le changement, et l'heure du
+   * navigateur ne vaut rien face à une horloge de hub simulée.
+   *
+   * @param cle Regroupe les avis d'une même salle, comme l'étiquette d'une
+   *   notification système : le nouveau remplace le précédent au lieu
+   *   d'empiler une colonne d'états successifs du même poste.
+   */
+  function encart(titre, corps, cle, vue, niveau) {
+    const zone = $('signalements')
+    if (zone == null) return
+
+    if (cle) {
+      // Comparé sur le dataset plutôt que par sélecteur : une clé porte un
+      // identifiant de salle, et rien ne garantit qu'il tienne dans un
+      // sélecteur d'attribut.
+      for (const ancien of [...zone.children]) {
+        if (ancien.dataset.cle === cle) ancien.remove()
+      }
+    }
+
+    const bloc = document.createElement('div')
+    if (cle) bloc.dataset.cle = cle
+    bloc.className = 'flex shrink-0 items-start gap-2.5 rounded-lg px-3.5 py-2 text-[13px] ' +
+      'shadow-[0_10px_30px_rgba(0,0,0,.45)] ' + (TEINTES_ENCART[niveau] ?? TEINTES_ENCART.tout)
+    bloc.innerHTML = '<div class="min-w-0 flex-1">' +
+      '<div class="font-semibold">' + echapper(titre) + '</div>' +
+      (corps ? '<div class="opacity-75">' + echapper(corps) + '</div>' : '') +
+      '</div>'
+
+    // Cliquable comme la notification système l'est : elle amène sur l'onglet
+    // concerné, et un encart qui dit « Track #2 déborde » sans y conduire
+    // laisse chercher.
+    if (vue) {
+      bloc.classList.add('cursor-pointer')
+      bloc.onclick = (evenement) => {
+        if (evenement.target.closest('.fermer') != null) return
+        basculerVue(vue)
+      }
+    }
+
+    const fermer = document.createElement('button')
+    fermer.className = 'fermer cursor-pointer border-0 bg-transparent px-1.5 py-0.5 text-current opacity-60'
+    fermer.textContent = '×'
+    fermer.onclick = () => bloc.remove()
+    bloc.appendChild(fermer)
+
+    zone.appendChild(bloc)
+    setTimeout(() => bloc.remove(), DUREE_ENCART_MS)
   }
 
   /**

@@ -8,8 +8,20 @@ l'opérateur a l'application ouverte et rien d'autre.
 ## Mise en route (à faire la veille, pas le jour J)
 
 1. Brancher capture HDMI, caméra, projecteur. Lancer **OBS-A** puis **OBS-B**.
-2. Lancer **Régie de salle**. Deux fenêtres s'ouvrent : la régie sur l'écran
-   opérateur, la projection sur l'écran secondaire.
+2. Lancer **Régie de salle**.
+
+   Une fenêtre demande **l'adresse du hub** — par exemple
+   `http://192.168.1.10:8787`. Elle est reposée à chaque lancement, avec
+   l'adresse de la veille déjà dans le champ : en temps normal, **Continuer**
+   suffit. Un « pas de réponse » sous le champ n'empêche pas de continuer : le
+   hub peut être allumé après les salles.
+
+   La régie s'ouvre ensuite sur l'écran opérateur, en grand. **Alt+Entrée** (ou
+   F11) la passe en plein écran, et l'en sort.
+
+   C'est la seule fenêtre au démarrage. Les autres écrans s'ouvrent à la
+   demande, par le menu **Écrans** en haut à droite — dont la **Projection**,
+   qui s'ouvre en plein écran sur l'écran secondaire quand il y en a un.
 3. Au premier lancement, la régie demande **quelle salle dessert ce poste**.
    Choisir la bonne : la console la retrouvera pré-sélectionnée.
 4. La régie affiche ensuite un **code d'appairage**. Le donner à la personne qui
@@ -92,10 +104,10 @@ du hub, et ce qui continue de fonctionner sans lui.
 La salle voit un écran noir ou figé.
 
 1. Relancer OBS-A. L'application s'y reconnecte seule (quelques secondes).
-2. **Si c'est trop long** : passer la fenêtre de projection de l'application en
-   plein écran sur la sortie vidéoprojecteur. Elle affiche le même contenu et ne
-   dépend pas d'OBS.
-3. Rebasculer sur OBS quand il est revenu.
+2. **Si c'est trop long** : menu **Écrans** de la régie, puis **Projection**.
+   La fenêtre s'ouvre en plein écran sur l'écran secondaire — au besoin,
+   **Alt+Entrée** dessus. Elle affiche le même contenu et ne dépend pas d'OBS.
+3. Rebasculer sur OBS quand il est revenu, et refermer la fenêtre de projection.
 
 ## OBS-B plante pendant un enregistrement
 

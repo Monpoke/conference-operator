@@ -155,12 +155,12 @@ export function renderRegiePage(options: RegiePageOptions = {}): string {
   #appairage { display: none; }
   body[data-appairage="requis"] #appairage { display: flex; }
 
-  #toast { opacity: 0; transform: translateX(-50%) translateY(20px); }
-  #toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #toast { opacity: 0; transform: translateY(20px); }
+  #toast.visible { opacity: 1; transform: translateY(0); }
   #toast.erreur { border-color: var(--color-alerte); background: #3a1519; }
 </style>
 </head>
-<body class="grid h-screen grid-rows-[auto_auto_auto_1fr] bg-fond font-sans text-texte" data-appairage="ok" data-modale="fermee" data-config="fermee" data-rec="fermee" data-fin="fermee" data-tot="fermee" data-vod="fermee">
+<body class="grid h-screen grid-rows-[auto_auto_1fr] bg-fond font-sans text-texte" data-appairage="ok" data-modale="fermee" data-config="fermee" data-rec="fermee" data-fin="fermee" data-tot="fermee" data-vod="fermee">
 ${etatInitial}
 <header class="flex items-center gap-3 border-b border-bord bg-surface px-3 py-2">
   <div class="truncate text-[15px] font-semibold" id="salle">—</div>
@@ -226,8 +226,6 @@ ${etatInitial}
   Le détail — le programme complet d'une salle — est à un clic, en modale.
 -->
 <div class="flex items-center gap-1.5 overflow-x-auto border-b border-bord bg-surface px-3 py-1.5" id="flux-salles"></div>
-
-<div class="flex max-h-[22vh] flex-col gap-1 overflow-y-auto px-3 pt-2" id="signalements"></div>
 
 <!--
   Les commandes. Trois colonnes qui ne défilent pas : au-dessous de 1024 px de
@@ -524,7 +522,20 @@ ${etatInitial}
   </div>
 </div>
 
-<div class="fixed bottom-6 left-1/2 z-50 max-w-[70vw] rounded-[9px] border border-bord bg-surface2 px-5 py-3 text-sm transition-[opacity,transform] duration-200 pointer-events-none" id="toast"></div>
+<!--
+  Pile du bas.
+
+  Deux choses s'y empilent, et l'ordre n'est pas indifférent. Le toast des
+  actions locales passe **au-dessus**, les signalements du hub restent collés au
+  bas de l'écran : un toast invisible garde sa place dans la colonne, et le
+  mettre en dessous aurait fait flotter les signalements quarante pixels
+  au-dessus du bord, en permanence, pour un élément qui ne s'affiche que trois
+  secondes.
+-->
+<div class="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex flex-col items-center gap-2 px-4" id="pile-bas">
+  <div class="max-w-[70vw] rounded-[9px] border border-bord bg-surface2 px-5 py-3 text-sm transition-[opacity,transform] duration-200" id="toast"></div>
+  <div class="pointer-events-auto flex max-h-[40vh] w-[min(620px,90vw)] flex-col gap-2 overflow-y-auto" id="signalements"></div>
+</div>
 
 <!--
   L'automate d'une salle, inliné.
@@ -1482,6 +1493,27 @@ ${etatInitial}
   }
 
   /**
+   * Ce qui empêche tout téléversement, individuel comme global — ou rien.
+   *
+   * Une seule règle pour les deux boutons. Séparées, elles avaient divergé :
+   * les lignes n'offraient plus de ⬆ faute de destination, pendant que « Tout
+   * téléverser » restait actif en en-tête. La régie donnait donc à lire
+   * « on peut tout envoyer, mais rien en particulier » — l'inverse exact de
+   * l'état réel, et la seule explication disponible était de cliquer.
+   *
+   * Ne couvre que l'indisponibilité de fond. Une attente passagère — captation
+   * en cours, débit plafonné — laisse les boutons : la demande est mise en
+   * file, et le bandeau au-dessus dit ce qu'on attend.
+   */
+  function blocageTeleversement() {
+    if (vodMontees == null) return 'État des téléversements indisponible'
+    if (vodMontees.verdict?.raison === 'desactive') {
+      return vodMontees.verdict.texte ?? 'aucun stockage configuré sur le hub'
+    }
+    return null
+  }
+
+  /**
    * Le bouton de téléversement d'une ligne.
    *
    * Trois états, et un seul bouton : rien (⬆), en cours (Annuler), terminé
@@ -1493,7 +1525,7 @@ ${etatInitial}
    * chaque clic est pire qu'un bouton absent, et l'en-tête dit déjà pourquoi.
    */
   function boutonMontee(entree, montee) {
-    if (vodMontees == null || vodMontees.verdict?.raison === 'desactive') return ''
+    if (blocageTeleversement() != null) return ''
 
     if (montee?.state === 'en-cours' || montee?.state === 'attente') {
       return '<button class="btn btn-petit" title="Renoncer à ce téléversement" ' +
@@ -1565,6 +1597,15 @@ ${etatInitial}
   function rendreVod() {
     const conteneur = $('vod-contenu')
     $('vod-racine').textContent = vod?.root ?? ''
+
+    // Le seul endroit qui reste pour dire pourquoi les ⬆ ont disparu des
+    // lignes : le bouton qui ferait la même chose, grisé, avec le motif.
+    const blocage = blocageTeleversement()
+    const monterTout = $('btn-vod-monter-tout')
+    monterTout.disabled = blocage != null
+    monterTout.title = blocage == null
+      ? 'Envoyer tous les rushes non montés au stockage'
+      : blocage.charAt(0).toUpperCase() + blocage.slice(1) + ' — téléversements indisponibles'
 
     if (vod == null) {
       conteneur.innerHTML = '<div class="text-xs text-attenue">Lecture du dossier…</div>'
@@ -1964,6 +2005,22 @@ ${etatInitial}
     return lignes + perime
   }
 
+  /**
+   * Fond d'un signalement, par type.
+   *
+   * Un fond **plein**, et pas une teinte sourde comme le reste de la page : ces
+   * encarts apparaissent trente secondes en bas d'un écran qu'on ne regarde pas
+   * — pendant un talk, l'opérateur regarde la salle. Ce qui doit se voir du coin
+   * de l'œil se voit à la couleur, pas au texte.
+   *
+   * Le texte passe en sombre : c'est la paire déjà tenue par le bouton actif de
+   * la page, et la seule qui reste lisible sur de l'ambre.
+   */
+  const TEINTES_SIGNALEMENT = {
+    info: 'bg-marque text-[#05070d]',
+    warning: 'bg-attention text-[#05070d]',
+  }
+
   function rendreSignalements() {
     const zone = $('signalements')
     const limite = maintenant() - PEREMPTION_MS
@@ -1982,14 +2039,15 @@ ${etatInitial}
     zone.innerHTML = ''
     for (const signalement of liste) {
       const bloc = document.createElement('div')
-      const teinte = signalement.level === 'warning'
-        ? 'border-[#6b5220] bg-[#2f2412]' : 'border-bord bg-[#1b2536]'
-      bloc.className = 'flex shrink-0 items-center gap-2.5 rounded-lg border px-3 py-1.5 text-[13px] ' + teinte
+      bloc.className = 'flex shrink-0 items-center gap-2.5 rounded-lg px-3.5 py-2 text-[13px] font-medium ' +
+        'shadow-[0_10px_30px_rgba(0,0,0,.45)] ' + (TEINTES_SIGNALEMENT[signalement.level] ?? TEINTES_SIGNALEMENT.info)
       bloc.innerHTML =
-        '<span class="text-xs text-attenue tabular-nums">' + heure(signalement.at, donnees.timezone) + '</span>' +
+        '<span class="text-xs tabular-nums opacity-60">' + heure(signalement.at, donnees.timezone) + '</span>' +
         '<span>' + echapper(signalement.text) + '</span>'
       const fermer = document.createElement('button')
-      fermer.className = 'fermer ml-auto cursor-pointer px-1.5 py-0.5 text-attenue'
+      // Hérite de la couleur du bloc : « attenue » est lisible sur le fond
+      // sombre de la page, pas sur un fond plein.
+      fermer.className = 'fermer ml-auto cursor-pointer border-0 bg-transparent px-1.5 py-0.5 text-current opacity-60'
       fermer.textContent = '×'
       fermer.onclick = () => {
         bloc.remove()

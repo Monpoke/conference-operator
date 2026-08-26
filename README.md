@@ -145,6 +145,9 @@ Electron, c'est ce qui rend ce mode possible.
 MODE=dev HUB_ORIGIN=http://localhost:8787 pnpm --filter @cloudnord/room-client dev
 ```
 
+Sans `HUB_ORIGIN` ni `--hub`, l'application **demande l'adresse du hub** dans une
+petite fenêtre à chaque démarrage — voir « L'adresse du hub » plus bas.
+
 Dans les deux cas, le client affiche un **code d'appairage** : le saisir dans la
 console (« Machines en attente »), choisir une salle, approuver.
 
@@ -207,6 +210,24 @@ leur code d'appairage. `HUB_ORIGIN`, `SALLE_1`, `SALLE_2`, `PORT_1` et `PORT_2`
 restent réglables. Ctrl-C arrête tout le monde, en laissant au hub le temps de
 refermer sa base (voir « Arrêt du hub »).
 
+**Repartir d'un environnement vierge** — applications arrêtées :
+
+```bash
+pnpm raz:dev          # liste ce qui part, demande confirmation
+pnpm raz:dev --oui    # sans la question
+```
+
+Efface la base du hub (`apps/hub-server/data/`), celles des salles headless
+(`apps/room-client/.donnees-locales/`) et, pour la salle Electron, les seuls
+fichiers qu'elle écrit dans le dossier de données du système — base, identité
+machine, jeton, adresse du hub mémorisée, cache d'assets, captations simulées.
+Le dossier lui-même n'est pas supprimé : hors empaquetage, Electron le nomme
+« Electron » et le partage avec toute autre application Electron de la machine.
+
+Les `.env`, les migrations et les sorties de build ne sont pas touchés. Après
+coup, les salles devront être réapprouvées dans la console, et le hub réimportera
+le programme depuis `PROGRAM_SOURCE_URL` à son premier démarrage.
+
 **Pour dérouler la journée du 30 octobre**, ajouter l'heure sur le hub — les
 salles s'alignent, il n'y a rien à régler de leur côté :
 
@@ -239,6 +260,36 @@ qu'on cherche à éviter, pas la variable.
 
 Les réglages qui n'ont rien de dangereux restent libres : `DISPLAY_PORT` (port
 du serveur local, défaut 7788), `DATA_DIR`, `ROOM_ID`, `HUB_ORIGIN`.
+
+### L'adresse du hub
+
+Sur un poste de salle, l'application se lance depuis un raccourci du bureau posé
+par l'installeur : personne n'ira y éditer une variable d'environnement la veille
+de l'événement. Le client Electron **demande donc l'adresse du hub à chaque
+démarrage**, dans une fenêtre qui précède tout le reste, avec la dernière adresse
+retenue déjà dans le champ — valider repart sur le même hub, et rebrancher la
+salle ailleurs (répétition, hub de secours, poste déplacé) ne demande rien de
+plus qu'une saisie. Un lancement de plus coûte une touche Entrée ; se tromper de
+hub coûte une demi-journée de captation envoyée au mauvais événement.
+
+Deux sources la dictent et sautent la fenêtre — un raccourci ou un script n'a
+personne pour répondre à une question :
+
+| Source | Ce à quoi elle sert |
+|---|---|
+| `--hub=<url>` sur la ligne de commande | provisionner un poste, ou le déployer en série |
+| `HUB_ORIGIN` dans l'environnement | développer, et `pnpm dev` |
+
+Le champ pardonne ce qu'on tape vraiment sur un poste de salle : un schéma
+manquant est complété en `http://`, un chemin collé par erreur est retiré, et le
+hub est sondé au fil de la frappe **sans jamais bloquer « Continuer »** — un poste
+se prépare la veille, hub éteint, et rejoint tout seul le lendemain.
+
+L'adresse retenue est mémorisée dans `hub`, à côté de `client-id`, dans le dossier
+de données de l'application — hors base SQLite, comme l'identité de la machine :
+une remise à zéro du cache ne doit pas faire oublier au poste où était son hub.
+Une adresse dictée est mémorisée elle aussi : elle devient la proposition du
+lancement suivant.
 
 **Les deux côtés se surveillent.** Le hub annonce son mode à chaque `sync` ; la
 salle le compare au sien et affiche un badge en régie : `MODE DEV` en ambre

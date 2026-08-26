@@ -6,8 +6,11 @@
 # Dockerfile Node habituel :
 #
 #  1. **Le hub n'a pas d'étape de build.** Il démarre en TypeScript via `tsx`
-#     (`pnpm start`). Il n'y a donc rien à compiler, et rien à copier d'un
-#     `dist/` — ce sont les sources qui partent dans l'image.
+#     (`pnpm start`) : ce sont ses sources qui partent dans l'image, pas un
+#     `dist/`. Une seule chose est compilée ici, et c'est la console — une
+#     application Vue, donc un bundle. Elle a son étape à elle, jetée après
+#     coup ; le hub reçoit un dossier d'assets qu'il sert, et n'importe rien
+#     d'elle.
 #  2. **La disposition du monorepo doit être préservée.** `apps/hub-server/src/db.ts`
 #     résout ses migrations en `../../../packages/db/migrations/hub`, relativement
 #     à sa propre position. Aplatir l'arborescence — ce que ferait un
@@ -30,6 +33,44 @@
 # subi.
 ARG NODE_VERSION=22-bookworm-slim
 
+# --- Console --------------------------------------------------------------
+# La seule étape de ce fichier qui compile quelque chose, et elle ne survit pas.
+#
+# La console est une application Vue : elle a un bundle, contrairement au hub
+# qui démarre en TypeScript via `tsx`. Le construire ici plutôt que de committer
+# sa sortie garde le dépôt lisible — un bundle minifié réécrit à chaque retouche
+# d'interface transforme chaque relecture en diff illisible — et garde l'image
+# finale exempte de Vue, de Vite et de leur outillage : rien de cette étape n'y
+# entre, sinon le dossier `dist`.
+FROM node:${NODE_VERSION} AS spa
+RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
+WORKDIR /repo
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/hub-admin/package.json apps/hub-admin/
+COPY apps/hub-server/package.json apps/hub-server/
+COPY apps/room-client/package.json apps/room-client/
+COPY packages/contract/package.json packages/contract/
+COPY packages/db/package.json packages/db/
+COPY packages/etat-salle/package.json packages/etat-salle/
+COPY packages/format/package.json packages/format/
+COPY packages/components/package.json packages/components/
+COPY packages/hub-client/package.json packages/hub-client/
+COPY packages/program/package.json packages/program/
+COPY packages/ui/package.json packages/ui/
+COPY spikes/orpc-v2/package.json spikes/orpc-v2/
+COPY spikes/vue-tsc/package.json spikes/vue-tsc/
+
+# Pas de `--prod` ici : il faut justement l'outillage de construction. Le filtre
+# limite l'installation au graphe de la console.
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    pnpm install --frozen-lockfile --ignore-scripts --filter @cloudnord/hub-admin...
+
+COPY packages/ packages/
+COPY apps/hub-admin/ apps/hub-admin/
+RUN pnpm --filter @cloudnord/hub-admin build
+
+
 # --- Construction ---------------------------------------------------------
 # Tout ce qui suit est jeté : seul `/repo` sera repris dans l'image finale.
 FROM node:${NODE_VERSION} AS builder
@@ -48,14 +89,19 @@ WORKDIR /repo
 # trouvés. Un manifeste manquant se lit comme un verrou périmé, et l'installation
 # échoue sur un message qui ne dit pas ça.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/hub-admin/package.json apps/hub-admin/
 COPY apps/hub-server/package.json apps/hub-server/
 COPY apps/room-client/package.json apps/room-client/
 COPY packages/contract/package.json packages/contract/
 COPY packages/db/package.json packages/db/
 COPY packages/etat-salle/package.json packages/etat-salle/
+COPY packages/format/package.json packages/format/
+COPY packages/components/package.json packages/components/
+COPY packages/hub-client/package.json packages/hub-client/
 COPY packages/program/package.json packages/program/
 COPY packages/ui/package.json packages/ui/
 COPY spikes/orpc-v2/package.json spikes/orpc-v2/
+COPY spikes/vue-tsc/package.json spikes/vue-tsc/
 
 # `--prod` : ni typescript, ni turbo, ni les tests. `tsx` y survit parce qu'il
 # est déclaré en dépendance de production du hub — ce qu'il est réellement,
@@ -75,6 +121,11 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 # rien à compiler ici non plus.
 COPY packages/ packages/
 COPY apps/hub-server/ apps/hub-server/
+
+# Le bundle de la console, construit à l'étape précédente. Le hub le sert, il ne
+# l'importe pas : c'est ce qui permet à `pnpm typecheck` et `pnpm test` de ne
+# jamais déclencher de build Vite, et à la CI de tenir sous la minute.
+COPY --from=spa /repo/apps/hub-admin/dist apps/hub-admin/dist
 
 # Ce que `--prod` ne suffit pas à écarter : une centaine de mégaoctets
 # d'outillage de test et de build, que `better-auth` impose en peer dependencies

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { PAIRING_ALIAS, consoleViews, viewPath } from '@cloudnord/contract'
 import { createHub, type Hub } from '../src/server.js'
 import { renderAdminPage } from '../src/pages/admin-page.js'
 import { renderWallPage } from '../src/pages/wall-page.js'
@@ -92,11 +93,25 @@ describe('pages publiques', () => {
      * Chaque onglet est une adresse : sans route côté hub, une console
      * rafraîchie sur `/admin/moderation` répondrait 404 — exactement là où
      * l'opérateur l'avait laissée ouverte.
+     *
+     * Les adresses sont énumérées depuis le contrat plutôt qu'écrites ici :
+     * c'est la même liste que le hub emploie pour enregistrer ses routes et que
+     * le routeur de la console emploie pour naviguer, donc une vue ajoutée sans
+     * route se voit ici.
+     *
+     * Ce que sert chaque adresse dépend de l'avancement de la migration : le
+     * gabarit pour les vues qui n'ont pas encore basculé, la coquille du bundle
+     * pour celles qui l'ont fait. Le test accepte les deux **et rien d'autre** —
+     * une page blanche à la place d'une console passerait autrement.
      */
-    for (const chemin of ['/admin', '/admin/appairage', '/admin/moderation', '/admin/reglages']) {
+    for (const chemin of [...consoleViews(false).map(viewPath), PAIRING_ALIAS]) {
       const reponse = await fetch(`${origin}${chemin}`)
       expect(reponse.status, chemin).toBe(200)
-      expect(await reponse.text()).toContain('console hub')
+      const html = await reponse.text()
+      expect(
+        html.includes('console hub') || html.includes('id="console-boot"'),
+        `${chemin} ne sert ni le gabarit ni la coquille`,
+      ).toBe(true)
     }
   })
 

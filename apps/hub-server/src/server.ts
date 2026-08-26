@@ -1,4 +1,8 @@
 import Fastify, { type FastifyInstance } from 'fastify'
+import fastifyProxy from '@fastify/http-proxy'
+import fastifyStatic from '@fastify/static'
+import { join } from 'node:path'
+import { bundledConsolePaths, legacyConsolePaths } from '@cloudnord/contract'
 import { WebSocketServer, type WebSocket as NodeWebSocket } from 'ws'
 import { RPCHandler as FastifyRPCHandler } from '@orpc/server/fastify'
 import { RPCHandler as WebSocketRPCHandler } from '@orpc/server/websocket'
@@ -26,7 +30,13 @@ import {
   type SocialSource,
 } from './services/social.js'
 import { renderWallPage } from './pages/wall-page.js'
-import { ALIAS_APPAIRAGE, cheminDeVue, renderAdminPage, vuesConsole } from './pages/admin-page.js'
+import { renderAdminPage } from './pages/admin-page.js'
+import {
+  assetsDeDeveloppement,
+  assetsDeProduction,
+  renderConsoleShell,
+  resoudreConsole,
+} from './pages/console-shell.js'
 import { renderServiceWorker } from './pages/service-worker.js'
 import { PushService } from './services/push.js'
 import { statutsDesSalles, VeilleSupervision } from './supervision.js'
@@ -311,10 +321,112 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
    * pré-remplit, ce qui évite de le recopier à la main depuis un écran de régie
    * à l'autre bout de la salle.
    */
-  const cheminsConsole = [
-    ...vuesConsole(config.mode === 'dev').map(cheminDeVue),
-    ALIAS_APPAIRAGE,
-  ]
+  const dev = config.mode === 'dev'
+  /*
+   * Deux familles d'adresses, le temps de la migration.
+   *
+   * La liste des vues reprises par le bundle vient du contrat : le hub et le
+   * routeur de la console la lisent tous les deux, et aucun des deux ne peut la
+   * posséder sans forcer l'autre à en dépendre — faire dépendre le hub de la
+   * console ferait entrer Vue dans l'image.
+   *
+   * **Sans bundle, ces adresses retombent sur le gabarit.** Ce n'est pas un
+   * repli de fortune : la page existe toujours, elle fonctionne, et c'est le
+   * comportement juste tant que les deux cohabitent. Un 503 ou un refus de
+   * démarrer punirait l'exploitation pour un artefact manquant, alors qu'il y a
+   * quelque chose à servir. En développement, le serveur de Vite prend le
+   * relais sans qu'aucun fichier ne soit construit.
+   */
+  const bundle = resoudreConsole()
+  const bundleServi = bundle != null || dev
+  const cheminsBundle = bundleServi ? bundledConsolePaths(dev) : []
+  const cheminsConsole = bundleServi
+    ? legacyConsolePaths(dev)
+    : [...legacyConsolePaths(dev), ...bundledConsolePaths(dev)]
+
+  /*
+   * Assets de la console, servis par le hub lui-même.
+   *
+   * C'est ce qui remplace l'invariant « aucune dépendance externe » sans le
+   * trahir : rien n'est demandé à une autre origine que celle qui a servi la
+   * page, et une coupure du réseau de l'événement ne peut donc pas les faire
+   * disparaître. Les noms portent une empreinte, d'où `immutable` — c'est ce
+   * qui supprime les 45 Ko de CSS retéléchargés à chaque navigation.
+   */
+  if (bundle != null) {
+    await app.register(fastifyStatic, {
+      root: join(bundle.dossier, 'assets'),
+      prefix: '/admin/assets/',
+      wildcard: false,
+      immutable: true,
+      maxAge: '1y',
+      decorateReply: false,
+    })
+  }
+
+  /*
+   * En développement, le hub proxifie Vite — jamais l'inverse.
+   *
+   * Le sens est imposé, et pas par commodité. Le hub porte les cookies de
+   * Better Auth, `/rpc`, le WebSocket des salles, et surtout `/sw.js`, dont la
+   * **portée dépend du chemin depuis lequel il est servi**. Mettre Vite devant
+   * casserait la portée du service worker et l'origine des cookies, et les deux
+   * pannes se diagnostiquent mal.
+   *
+   * `websocket` pour le rechargement à chaud : sans lui la console se recharge
+   * à la main, ce qui est précisément ce qu'on vient chercher.
+   */
+  if (bundle == null && dev && cheminsBundle.length > 0) {
+    await app.register(fastifyProxy, {
+      upstream: config.viteOrigin,
+      prefix: '/admin/',
+      rewritePrefix: '/admin/',
+      websocket: true,
+      // Les adresses de vues sont servies par la coquille juste en dessous : le
+      // proxy ne prend que ce que Vite sait rendre.
+      httpMethods: ['GET'],
+      preHandler: (request, reply, done) => {
+        if (cheminsBundle.includes(request.url.split('?')[0] ?? '')) {
+          return reply.callNotFound()
+        }
+        done()
+      },
+    })
+  }
+
+  for (const chemin of cheminsBundle) {
+    app.get(chemin, async (_request, reply) => {
+      reply.header('content-type', 'text/html; charset=utf-8')
+      // Jamais `immutable` sur la coquille : une console mise à jour qui ne
+      // l'est jamais sur le poste d'un opérateur est pire que la retélécharger.
+      reply.header('cache-control', 'no-store')
+      return reply.send(
+        renderConsoleShell({
+          mode: config.mode,
+          event: services.identity.get(),
+          google: config.googleClientId == null ? null : { domaine: config.googleHostedDomain! },
+          assets: bundle == null ? assetsDeDeveloppement() : assetsDeProduction(bundle.manifeste),
+        }),
+      )
+    })
+  }
+
+  for (const chemin of cheminsConsole) {
+    app.get(chemin, async (_request, reply) => {
+      reply.header('content-type', 'text/html; charset=utf-8')
+      return reply.send(
+        renderAdminPage({
+          mode: config.mode,
+          event: { resolved: services.identity.get(), derived: services.identity.derived() },
+          ignores: config.ignores,
+          // Le bouton n'est rendu que si le hub sait s'en servir : proposer une
+          // connexion qui échoue au clic vaut moins que ne rien proposer.
+          google: config.googleClientId == null ? null : { domaine: config.googleHostedDomain! },
+        }),
+      )
+    })
+  }
+
   /**
    * Service worker des notifications, servi à la racine.
    *
@@ -333,22 +445,6 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     // renommage suit donc au premier passage de l'opérateur.
     return reply.send(renderServiceWorker({ event: services.identity.get() }))
   })
-
-  for (const chemin of cheminsConsole) {
-    app.get(chemin, async (_request, reply) => {
-      reply.header('content-type', 'text/html; charset=utf-8')
-      return reply.send(
-        renderAdminPage({
-          mode: config.mode,
-          event: { resolved: services.identity.get(), derived: services.identity.derived() },
-          ignores: config.ignores,
-          // Le bouton n'est rendu que si le hub sait s'en servir : proposer une
-          // connexion qui échoue au clic vaut moins que ne rien proposer.
-          google: config.googleClientId == null ? null : { domaine: config.googleHostedDomain! },
-        }),
-      )
-    })
-  }
 
   // WebSocket : le transport des salles. Les en-têtes ne sont disponibles qu'à
   // l'upgrade, donc le contexte (session, appareil) est figé pour toute la

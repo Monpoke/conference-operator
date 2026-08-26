@@ -1,0 +1,77 @@
+/*
+ * Pont vers les composants copiés de shadcn-vue.
+ *
+ * Ils arrivent écrits sur `bg-background`, `text-muted-foreground`,
+ * `border-input`… qui n'existent pas ici : la palette du dépôt est en français
+ * (`bg-fond`, `text-attenue`, `border-bord`). Les traduire à la main à chaque
+ * copie fabriquerait le défaut le plus coûteux de ce dépôt — une classe
+ * Tailwind inconnue ne lève rien, elle ne peint simplement pas.
+ *
+ * `inline` et non `@theme` : la valeur est résolue à la compilation, donc
+ * `bg-primary` produit `background-color: var(--color-marque)`. C'est ce qui
+ * laisse une page redéfinir la couleur de marque sur `:root` — elles viennent
+ * du programme de l'événement, voir `base.css` — et voir les composants
+ * suivre. Un niveau d'indirection de plus les aurait figés sur la valeur du
+ * thème le jour où l'événement change de couleur.
+ *
+ * Corollaire à connaître : `--color-primary` n'existe pas comme variable CSS.
+ * Un `<style>` de page qui écrirait `var(--color-primary)` obtiendrait du vide,
+ * sans erreur. Le CSS écrit à la main reste donc sur les noms français.
+ *
+ * Ce fichier est un échafaudage. `test/pont-shadcn.test.ts` échoue le jour où
+ * plus aucun composant ne s'en sert : c'est le signal de le supprimer.
+ *
+ * Ni l'échelle de rayons de shadcn (`--radius-*`), ni son bloc `:root` clair ne
+ * sont repris — voir la note en bas de fichier.
+ */
+@theme inline {
+  --color-background: var(--color-fond);
+  --color-foreground: var(--color-texte);
+
+  --color-card: var(--color-surface);
+  --color-card-foreground: var(--color-texte);
+
+  --color-popover: var(--color-surface2);
+  --color-popover-foreground: var(--color-texte);
+
+  /*
+   * `primary-foreground` est le noir de `.btn.actif` (`components.css`), pas du
+   * blanc : la couleur de marque est claire, et du texte blanc dessus tombait
+   * sous le seuil de contraste dans une salle sombre.
+   */
+  --color-primary: var(--color-marque);
+  --color-primary-foreground: #05070d;
+
+  --color-secondary: var(--color-surface2);
+  --color-secondary-foreground: var(--color-texte);
+
+  --color-muted: var(--color-surface2);
+  --color-muted-foreground: var(--color-attenue);
+
+  --color-accent: var(--color-bord);
+  --color-accent-foreground: var(--color-texte);
+
+  --color-destructive: var(--color-alerte);
+  --color-destructive-foreground: #ffffff;
+
+  --color-border: var(--color-bord);
+  --color-input: var(--color-bord);
+  --color-ring: var(--color-marque);
+}
+
+/*
+ * Deux choses à retirer de chaque composant copié, systématiquement.
+ *
+ * 1. **L'échelle de rayons.** Le préréglage Tailwind v4 de shadcn pose
+ *    `--radius` puis `--radius-sm/md/lg/xl`. Or `--radius-*` est un espace de
+ *    nom de thème : les redéfinir **redéfinit l'utilitaire `rounded-lg`**, qui
+ *    sert à `.btn`, `.champ`, et aux `button`/`input` nus. L'arrondi de toute
+ *    la console et de toute la régie changerait sans qu'une ligne le demande.
+ *    Les rayons se codent en clair dans les composants copiés.
+ *
+ * 2. **Le bloc `:root` clair et la classe `.dark`.** Le thème est sombre, et
+ *    seulement sombre : la régie est un poste en salle noire, et la console est
+ *    tenue par les mêmes personnes le même jour. Garder le modèle de shadcn
+ *    laisserait une palette claire morte dans la feuille et une classe qu'un
+ *    oubli sur `<html>` suffirait à faire virer au blanc.
+ */

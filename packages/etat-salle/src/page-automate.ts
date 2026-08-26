@@ -95,7 +95,18 @@ export function renderAutomatePage(options: AutomatePageOptions): string {
   .attention { color: var(--attention); }
   .num { font-variant-numeric: tabular-nums; }
 
-  /* Pastille : mêmes teintes que la régie et la console. */
+  /*
+   * Pastille : mêmes teintes que la régie et la console, dans la palette du
+   * banc d'essai.
+   *
+   * Ce banc a sa propre palette — plus contrastée, pensée pour être lue à côté
+   * d'un diagramme, pas dans une salle sombre. Ce qui doit correspondre, ce sont
+   * les *noms* : ils viennent de la table des apparences, et cette liste doit
+   * les couvrir tous. Le contour de confiance (doute, muette) n'y figure pas, et
+   * c'est volontaire — ce banc ne rend qu'un état de conférence, jamais une
+   * connectivité. Le test « vocabulaire de la pastille », dans le paquet ui,
+   * tient la correspondance.
+   */
   .pastille { width: 14px; height: 14px; border-radius: 999px; background: var(--ok); display: inline-block; }
   .pastille.hors { background: var(--hors); }
   .pastille.pas-commencee { background: var(--hors); }

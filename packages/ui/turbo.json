@@ -11,6 +11,12 @@
      * La classe n'avait alors aucun style — exactement la panne silencieuse
      * contre laquelle ce test existe. Les chemins suivent les `@source` de
      * `src/theme.css` : les changer ici sans les changer là ne servirait à rien.
+     *
+     * Ils ne suivent **pas** ceux de `src/apps.css`, et c'est voulu : cette
+     * feuille-là est compilée par Vite, à la demande de chaque application Vue,
+     * et ne passe jamais par `src/generated/`. Y ajouter les répertoires de
+     * composants ferait recompiler la feuille figée — et la ferait grossir de
+     * tous les utilitaires des applications — à chaque retouche d'un `.vue`.
      */
     "build": {
       "inputs": [

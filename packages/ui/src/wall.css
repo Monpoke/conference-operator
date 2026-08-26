@@ -1,0 +1,57 @@
+/*
+ * Mur public : surface mobile, servie par le hub.
+ *
+ * Ces classes sont posées depuis le JavaScript de la page sur du markup
+ * construit à la volée (avis, questions, bouton de vote).
+ */
+@layer components {
+  .onglets button {
+    @apply flex-1 rounded-[10px] border border-bord bg-surface p-3 text-attenue;
+  }
+  .onglets button.actif {
+    @apply border-marque bg-marque text-[#05070d];
+  }
+
+  .carte {
+    @apply rounded-xl border border-bord bg-surface p-4;
+  }
+
+  .envoyer {
+    @apply w-full rounded-[10px] border-none bg-marque p-[15px] text-base font-semibold text-[#05070d];
+  }
+  .envoyer:disabled {
+    @apply opacity-50;
+  }
+
+  .question {
+    @apply flex items-start gap-3 rounded-xl border border-bord bg-surface p-3.5;
+  }
+  .question .texte {
+    @apply flex-1 text-[15px] leading-snug;
+  }
+  .question .auteur {
+    @apply mt-[5px] text-xs text-attenue;
+  }
+
+  .voter {
+    @apply flex min-w-[52px] cursor-pointer flex-col items-center gap-0.5 rounded-[10px]
+           border border-bord bg-fond px-1.5 py-[9px] text-texte;
+  }
+  .voter.vote {
+    @apply border-marque text-marque;
+  }
+
+  /* Avis de dépôt : caché tant qu'il n'y a rien à dire. */
+  .avis {
+    @apply mt-3.5 hidden rounded-[10px] p-[13px] text-sm;
+  }
+  .avis.visible {
+    @apply block;
+  }
+  .avis.ok {
+    @apply bg-[#102e22] text-ok;
+  }
+  .avis.ko {
+    @apply bg-[#35161a] text-alerte;
+  }
+}

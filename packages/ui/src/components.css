@@ -1,0 +1,84 @@
+/*
+ * Couche « composants ».
+ *
+ * Ces classes sont basculées **depuis le JavaScript** des pages
+ * (`classList.toggle('actif')`, `className = 'badge ' + statut`). Les exprimer
+ * en utilitaires obligerait chaque bascule à réécrire une liste de classes, ce
+ * qui est fragile et illisible ; `@apply` garde le style dans Tailwind tout en
+ * laissant aux pages un nom stable à manipuler.
+ *
+ * Elles sont partagées entre la régie et la console : les deux surfaces sont
+ * utilisées par les mêmes personnes le même jour, et doivent se ressembler.
+ */
+@layer components {
+  /* — Surfaces — */
+  /*
+   * Panneau.
+   *
+   * Pas de `min-h-0` ici : dans une colonne défilante, il autorise le panneau à
+   * se comprimer sous la taille de son contenu, et les panneaux se chevauchent.
+   * Les rares panneaux qui doivent rétrécir pour défiler à l'intérieur le
+   * demandent explicitement.
+   */
+  .panneau {
+    @apply flex shrink-0 flex-col rounded-xl border border-bord bg-surface p-4;
+  }
+
+  /* Chronomètre au repos : la classe est basculée depuis le JavaScript. */
+  .inactif {
+    @apply text-attenue;
+  }
+
+  /*
+   * Rappel de raccourci clavier.
+   *
+   * Détaché du libellé et encadré : collé au texte, il se lisait comme une
+   * lettre de plus — « EnregistrerR ».
+   */
+  .touche {
+    @apply ml-2 rounded border border-current/30 px-1 py-px text-[10px] font-semibold opacity-60;
+  }
+  .titre-panneau {
+    @apply mb-2.5 text-[11px] font-semibold tracking-[.14em] text-attenue uppercase;
+  }
+
+  /* — Boutons — */
+  .btn {
+    @apply cursor-pointer rounded-lg border border-bord bg-surface2 px-2.5 py-3.5
+           text-sm font-semibold text-texte transition-colors;
+  }
+  .btn:hover:not(:disabled) {
+    @apply border-marque bg-bord;
+  }
+  .btn:disabled {
+    @apply cursor-not-allowed opacity-40;
+  }
+  .btn.actif {
+    @apply border-marque bg-marque text-[#05070d];
+  }
+  .btn.danger {
+    @apply border-[#6c2027] bg-[#3a1519];
+  }
+  .btn.danger.actif {
+    @apply border-alerte bg-alerte text-white;
+  }
+  /* Bouton de barre d'outils : même famille, densité réduite. */
+  .btn-petit {
+    @apply px-3 py-2 text-[13px];
+  }
+  /* Onglet : plat au repos, encadré une fois actif. */
+  .btn-onglet {
+    @apply border-transparent bg-transparent px-3 py-2 text-[13px] text-attenue;
+  }
+  .btn-onglet.actif {
+    @apply border-bord bg-surface2 text-texte;
+  }
+
+  /* — Saisies — */
+  .champ {
+    @apply min-w-0 rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte;
+  }
+  .champ:focus {
+    @apply border-marque outline-none;
+  }
+}

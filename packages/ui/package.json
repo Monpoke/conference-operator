@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./apps.css": "./src/apps.css",
+    "./theme.css": "./src/theme.css",
+    "./status.css": "./src/status.css"
   },
   "scripts": {
     "build": "node scripts/build-css.mjs",
@@ -12,6 +15,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@cloudnord/etat-salle": "workspace:*",
     "@tailwindcss/cli": "4.3.3",
     "tailwindcss": "4.3.3"
   }

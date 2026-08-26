@@ -1,0 +1,38 @@
+/*
+ * Palette.
+ *
+ * Les trois couleurs de marque viennent du programme (`event.color`,
+ * `colorSecondary`, `colorBackground`) et changent donc d'un événement à
+ * l'autre. Les déclarer ici comme variables permet aux pages de les redéfinir
+ * en ligne sur `:root` : toutes les utilitaires `bg-marque`, `text-marque`…
+ * suivent sans qu'aucune classe ne soit recalculée.
+ */
+@theme {
+  --color-marque: #5b7cfa;
+  --color-marque2: #22d3ee;
+  --color-fond: #0b0d14;
+  --color-surface: #151a27;
+  --color-surface2: #1d2334;
+  --color-bord: #2b3348;
+  --color-texte: #e8ecf7;
+  --color-attenue: #97a1bd;
+  --color-ok: #34d399;
+  --color-attention: #fbbf24;
+  --color-alerte: #fb7185;
+
+  --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, monospace;
+}
+
+/*
+ * `[hidden]` doit gagner contre toute règle d'affichage.
+ *
+ * Une classe utilitaire `flex` ou `grid` bat la règle `[hidden]` de la feuille
+ * du navigateur, qui n'est pas marquée `!important` : sans cette ligne, les
+ * onglets s'empilent tous à l'écran. Le défaut a déjà été rencontré une fois.
+ */
+@layer base {
+  [hidden] {
+    display: none !important;
+  }
+}

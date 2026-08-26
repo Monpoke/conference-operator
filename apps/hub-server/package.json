@@ -16,8 +16,11 @@
     "@cloudnord/contract": "workspace:*",
     "@cloudnord/db": "workspace:*",
     "@cloudnord/etat-salle": "workspace:*",
+    "@cloudnord/format": "workspace:*",
     "@cloudnord/program": "workspace:*",
     "@cloudnord/ui": "workspace:*",
+    "@fastify/http-proxy": "11.3.0",
+    "@fastify/static": "8.2.0",
     "@orpc/server": "2.0.0-beta.29",
     "better-auth": "1.7.1",
     "better-sqlite3": "13.0.3",
@@ -30,6 +33,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@cloudnord/hub-client": "workspace:*",
     "@orpc/client": "2.0.0-beta.29",
     "@orpc/contract": "2.0.0-beta.29",
     "@types/better-sqlite3": "7.6.13",

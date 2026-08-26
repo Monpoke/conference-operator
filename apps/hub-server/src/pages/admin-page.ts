@@ -1,6 +1,15 @@
 import { MACHINE_JS } from '@cloudnord/etat-salle'
+import { escapeHtml } from '@cloudnord/format'
 import { TAILWIND_CSS } from '@cloudnord/ui'
-import { IDENTITE_PAR_DEFAUT, MODELES_BANDEAU, type EventIdentity, type ModeExecution } from '@cloudnord/contract'
+import {
+  IDENTITE_PAR_DEFAUT,
+  MODELES_BANDEAU,
+  PAIRING_ALIAS as ALIAS_APPAIRAGE,
+  viewPath as cheminDeVue,
+  consoleViews as vuesConsole,
+  type EventIdentity,
+  type ModeExecution,
+} from '@cloudnord/contract'
 import type { IgnoreConfig } from '../config.js'
 
 /**
@@ -45,40 +54,17 @@ export interface AdminPageOptions {
  * avoir d'exception — c'est l'exception qu'on oublie de rouvrir le jour où la
  * valeur vient d'ailleurs.
  */
-function echapperServeur(valeur: string): string {
-  return valeur.replace(/[&<>"']/g, (caractere) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[caractere]!)
-}
+const echapperServeur = escapeHtml
 
-/**
- * Vues de la console, dans l'ordre des onglets.
+/*
+ * Les adresses de la console vivent dans le contrat.
  *
- * `developpement` n'existe qu'en mode dev — la console ne le rend pas, et le
- * hub ne sert pas son adresse : une vue masquée reste à un `hidden` près de
- * quelqu'un qui inspecte la page.
+ * Le serveur les énumère pour enregistrer ses routes, et le routeur de la
+ * console les déclare pour naviguer : une seule liste, qu'aucun des deux ne
+ * peut posséder sans forcer l'autre à en dépendre. Réexportées ici sous leurs
+ * anciens noms, le temps que la page cède la place.
  */
-export function vuesConsole(dev: boolean): string[] {
-  const vues = ['exploitation', 'appairage', 'conferences', 'moderation', 'messages', 'vod', 'reglages']
-  return dev ? [...vues, 'developpement'] : vues
-}
-
-/**
- * Adresse d'une vue.
- *
- * L'exploitation vit à la racine : c'est la vue par défaut, et `/admin` est
- * l'adresse qu'on écrit de mémoire ou qu'on met en favori.
- */
-export function cheminDeVue(vue: string): string {
-  return vue === 'exploitation' ? '/admin' : `/admin/${vue}`
-}
-
-/**
- * Adresse de l'appairage imposée par Better Auth.
- *
- * C'est celle qu'il donne aux machines (`/admin/devices?user_code=…`) : elle ne
- * se renomme pas, elle s'ajoute. Elle ouvre la même vue que `/admin/appairage`.
- */
-export const ALIAS_APPAIRAGE = '/admin/devices'
+export { vuesConsole, cheminDeVue, ALIAS_APPAIRAGE }
 
 export function renderAdminPage(options: AdminPageOptions = {}): string {
   const identite = options.event?.resolved ?? IDENTITE_PAR_DEFAUT
@@ -1688,9 +1674,7 @@ export function renderAdminPage(options: AdminPageOptions = {}): string {
        * salle verte alors qu'elle débordait de dix minutes.
        */
       const { teinte, mot, texte: couleurTexte } = EtatSalle.apparenceDe(salle.conference)
-      const contour = salle.connectivity === 'DEGRADED' ? ' doute'
-        : salle.connectivity === 'ONLINE' ? '' : ' muette'
-      const classe = teinte + contour
+      const classe = teinte + EtatSalle.contourDe(salle.connectivity)
       const etiquette = (texte, teinte) =>
         '<span class="rounded bg-surface2 px-1.5 py-0.5 text-[11px] ' + (teinte || 'text-attenue') + '">' + texte + '</span>'
 

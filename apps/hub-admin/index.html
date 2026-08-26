@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Console — Cloud Nord</title>
+  </head>
+  <body class="bg-fond font-sans text-texte">
+    <!--
+      Développement seulement.
+
+      En production le hub rend cette coquille lui-même, parce qu'il y injecte
+      ce que la console doit connaître avant son premier appel : le mode, le nom
+      de l'événement, et si le bouton Google a une raison d'exister. Ce fichier
+      n'existe que pour que `vite dev` ait une porte d'entrée.
+    -->
+    <div id="console-root"></div>
+    <script id="console-boot" type="application/json">{"mode":"dev","event":{"name":"Cloud Nord (dev)","shortName":"Cloud Nord"},"google":null}</script>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

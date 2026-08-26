@@ -29,6 +29,14 @@ const configSchema = z.object({
   databasePath: z.string().default('./data/hub.db'),
   /** Base publique du hub, utilisée par Better Auth et l'URI de vérification device. */
   publicUrl: z.url().default('http://localhost:8787'),
+  /**
+   * Serveur de développement de la console, proxifié par le hub.
+   *
+   * Lu en mode dev seulement, et seulement tant qu'aucun bundle n'a été
+   * construit. Le sens du proxy — le hub devant Vite — est imposé par les
+   * cookies de Better Auth et par la portée de `/sw.js` ; voir `server.ts`.
+   */
+  viteOrigin: z.url().default('http://127.0.0.1:5173'),
   authSecret: z.string().min(32, 'BETTER_AUTH_SECRET doit faire au moins 32 caractères'),
   /** URL de l'export « conference-center » importé par défaut. */
   programSourceUrl: z.url().optional(),
@@ -333,6 +341,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     host: env.HOST,
     databasePath: env.DATABASE_PATH,
     publicUrl: env.PUBLIC_URL,
+    viteOrigin: env.VITE_ORIGIN,
     authSecret: env.BETTER_AUTH_SECRET,
     programSourceUrl: env.PROGRAM_SOURCE_URL,
     logLevel: env.LOG_LEVEL,

@@ -1,3 +1,4 @@
+import { escapeHtml } from '@cloudnord/format'
 import { TAILWIND_CSS } from '@cloudnord/ui'
 import { IDENTITE_PAR_DEFAUT, type EventIdentity } from '@cloudnord/contract'
 
@@ -21,11 +22,12 @@ export interface WallPageOptions {
  * Le nom de l'événement vient de l'export amont ou d'un réglage de la console :
  * deux sources de confiance, mais aucune raison de faire une exception à la
  * règle dans une page construite par concaténation.
+ *
+ * Cette moitié-ci est du TypeScript ordinaire, hors du gabarit : elle peut
+ * importer. Le JavaScript embarqué dans la page, lui, garde sa propre copie —
+ * il n'a pas d'étape de build et ne peut rien importer du tout.
  */
-function echapperServeur(valeur: string): string {
-  return valeur.replace(/[&<>"']/g, (caractere) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[caractere]!)
-}
+const echapperServeur = escapeHtml
 
 /**
  * Mur public, scanné au QR code depuis un mobile.

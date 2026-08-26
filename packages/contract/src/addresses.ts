@@ -1,0 +1,78 @@
+/**
+ * The console's addresses — one per tab.
+ *
+ * They live in the contract because two sides need the exact same list and
+ * neither can own it: the hub enumerates them to register its routes, and the
+ * console's router declares them to navigate. Putting them in the console would
+ * force the hub to depend on it — and drag Vue into the server image; putting
+ * them in the hub would force the console to depend on a Fastify package.
+ *
+ * The hub registers **one route per view** rather than a `/admin/*` wildcard,
+ * on purpose: an unknown view must answer 404, not silently render a console
+ * with no tab selected. A test pins that.
+ */
+
+/**
+ * Views, in tab order.
+ *
+ * `developpement` exists in dev mode only — the console does not render it and
+ * the hub does not serve its address: a hidden view is one `hidden` attribute
+ * away from whoever opens the inspector. In a bundle the same reasoning applies
+ * to its module, which the router must import lazily rather than statically.
+ */
+export function consoleViews(dev: boolean): string[] {
+  const views = ['exploitation', 'appairage', 'conferences', 'moderation', 'messages', 'vod', 'reglages']
+  return dev ? [...views, 'developpement'] : views
+}
+
+/**
+ * A view's address.
+ *
+ * Operations lives at the root: it is the default view, and `/admin` is the
+ * address people type from memory or bookmark.
+ */
+export function viewPath(view: string): string {
+  return view === 'exploitation' ? '/admin' : `/admin/${view}`
+}
+
+/**
+ * The pairing address Better Auth imposes.
+ *
+ * It is the one handed to machines (`/admin/devices?user_code=…`): it does not
+ * get renamed, it gets added. It opens the same view as `/admin/appairage`.
+ *
+ * For a router this is an **alias**, never a redirect: rewriting the URL would
+ * drop the `user_code` the operator is about to approve, which is the whole
+ * reason somebody followed the link.
+ */
+export const PAIRING_ALIAS = '/admin/devices'
+
+/**
+ * Views the console bundle has taken over.
+ *
+ * The migration boundary itself, and it lives here for the same reason the
+ * addresses do: the hub reads it to decide which handler answers, and the
+ * console's router reads it to decide between a route and a plain link. The hub
+ * cannot import it from the console — that would pull Vue into the server
+ * image, and the Dockerfile's whole shape exists to keep it out.
+ *
+ * Moving a view across is one entry. So is moving it back, which is what makes
+ * this the only screen-by-screen migration in the project that is free: no
+ * bridge, no shared state, and a rollback that fits on one line.
+ */
+export const MIGRATED_VIEWS: readonly string[] = ['moderation']
+
+/** True when this view is served by the bundle rather than the string template. */
+export function isMigratedView(view: string): boolean {
+  return MIGRATED_VIEWS.includes(view)
+}
+
+/** Addresses the hub still serves from the string template, given the mode. */
+export function legacyConsolePaths(dev: boolean): string[] {
+  return [...consoleViews(dev).filter((view) => !isMigratedView(view)).map(viewPath), PAIRING_ALIAS]
+}
+
+/** Addresses the hub serves from the bundle, given the mode. */
+export function bundledConsolePaths(dev: boolean): string[] {
+  return consoleViews(dev).filter(isMigratedView).map(viewPath)
+}

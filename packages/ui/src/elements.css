@@ -1,0 +1,50 @@
+/*
+ * Styles d'éléments nus.
+ *
+ * Les deux consoles construisent beaucoup de markup en JavaScript, souvent
+ * sans y poser de classe (`document.createElement('button')`). Tailwind
+ * remet ces éléments à plat : sans ces règles, un bouton créé à l'exécution
+ * n'aurait aucun style — défaut invisible au typage, visible seulement à
+ * l'écran, et seulement dans la branche de code qui le crée.
+ *
+ * Les classes de la couche `components` (`.btn`, `.champ`…) restent
+ * prioritaires : elles servent à s'écarter de ces défauts, pas à les répéter.
+ */
+@layer base {
+  button {
+    @apply cursor-pointer rounded-lg border border-bord bg-surface2 px-[15px] py-2.5
+           text-sm font-semibold whitespace-nowrap text-texte;
+  }
+  button:hover:not(:disabled) {
+    @apply border-marque;
+  }
+  button:disabled {
+    @apply cursor-not-allowed opacity-45;
+  }
+
+  input,
+  select {
+    @apply w-full rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte;
+  }
+  input:focus,
+  select:focus {
+    @apply border-marque outline-none;
+  }
+  input[type='checkbox'] {
+    @apply w-auto;
+  }
+
+  label {
+    @apply mb-[5px] block text-xs text-attenue;
+  }
+
+  table {
+    @apply w-full border-collapse text-[13px];
+  }
+  th {
+    @apply pr-2.5 pb-2 text-left text-[11px] font-semibold tracking-[.08em] text-attenue uppercase;
+  }
+  td {
+    @apply border-t border-bord py-[9px] pr-2.5 align-middle;
+  }
+}

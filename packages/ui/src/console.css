@@ -1,0 +1,64 @@
+/*
+ * Composants propres aux consoles (hub et régie).
+ *
+ * Mêmes raisons que plus haut : ces noms sont posés depuis le JavaScript sur du
+ * markup construit à la volée.
+ */
+@layer components {
+  /* Bouton d'action principale d'un formulaire. */
+  .btn.principal,
+  button.principal {
+    @apply border-marque bg-marque text-[#05070d];
+  }
+  button.danger {
+    @apply border-[#6c2027] bg-[#3a1519];
+  }
+  button.petit {
+    @apply px-[11px] py-[7px] text-[13px];
+  }
+
+  /* Carte d'un message en attente de modération. */
+  .message {
+    @apply mb-2.5 rounded-[9px] border border-bord p-3;
+  }
+  .message .meta {
+    @apply mb-1.5 flex gap-2 text-xs text-attenue;
+  }
+  .message .corps {
+    @apply mb-2.5 text-sm leading-snug break-words;
+  }
+  .message .actions {
+    @apply flex gap-2;
+  }
+  .source {
+    @apply rounded bg-surface2 px-1.5 py-0.5 text-[10px] tracking-[.08em] uppercase;
+  }
+
+  /* Ligne de réglage : libellé à gauche, contrôle à droite. */
+  .reglage {
+    @apply flex items-center gap-3 border-t border-bord py-3;
+  }
+  .reglage:first-of-type {
+    @apply border-t-0;
+  }
+  .reglage .libelle {
+    @apply flex-1;
+  }
+  .reglage .libelle strong {
+    @apply mb-[3px] block text-sm;
+  }
+  .reglage .libelle span {
+    @apply text-xs text-attenue;
+  }
+  .reglage input[type='number'] {
+    @apply w-[92px];
+  }
+
+  /* États et textes secondaires récurrents. */
+  .vide {
+    @apply py-3.5 text-[13px] text-attenue;
+  }
+  .aide {
+    @apply mt-2.5 text-[13px] leading-relaxed text-attenue;
+  }
+}

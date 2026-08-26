@@ -46,6 +46,28 @@ export function apparenceDe(etat: string | null | undefined): Apparence {
 }
 
 /**
+ * Ce que le contour de la pastille dit de la salle, par-dessus son remplissage.
+ *
+ * Deuxième moitié de la table ci-dessus, et pour la même raison : elle vivait
+ * en double — une copie en régie, une dans la console — et les deux avaient
+ * déjà cessé de dire la même chose. Sur une salle dont la connectivité est
+ * inconnue, la régie peignait une pastille pleine et la console une pastille
+ * creuse : deux écrans côte à côte affirmaient l'un qu'une salle allait bien,
+ * l'autre qu'on n'en savait rien.
+ *
+ * C'est la version creuse qui est retenue. Le contour ne dit pas l'état de la
+ * conférence, il dit la confiance qu'on accorde à ce qu'on affiche ; ne rien
+ * savoir et le peindre en couleur est précisément ce contre quoi il existe.
+ * Une valeur absente n'arrive pas d'un hub à jour — `connectivitySchema` est
+ * un énuméré obligatoire — mais elle arrive d'une salle que le hub n'a pas
+ * encore vue, et c'est là que la question se pose.
+ */
+export function contourDe(connectivity: string | null | undefined): string {
+  if (connectivity === 'DEGRADED') return ' doute'
+  return connectivity === 'ONLINE' ? '' : ' muette'
+}
+
+/**
  * États que seul le hub peut constater : ils tiennent au cycle de vie des
  * conférences, que la régie ne reçoit pas pour les autres salles.
  */

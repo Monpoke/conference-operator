@@ -35,7 +35,14 @@ export type {
   SessionStatuses,
 } from './conference.js'
 
-export { APPARENCE, ETATS_DU_HUB, VUE_PERIMEE_MS, apparenceDe, etatFaisantFoi } from './apparence.js'
+export {
+  APPARENCE,
+  ETATS_DU_HUB,
+  VUE_PERIMEE_MS,
+  apparenceDe,
+  contourDe,
+  etatFaisantFoi,
+} from './apparence.js'
 export type { Apparence } from './apparence.js'
 
 export {

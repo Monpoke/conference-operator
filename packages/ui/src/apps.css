@@ -1,0 +1,43 @@
+/*
+ * Feuille des applications Vue — console du hub, régie.
+ *
+ * Compilée par Vite (`@tailwindcss/vite`), pas par le CLI : elle ne passe pas
+ * par `src/generated/`, et le test de fraîcheur ne la regarde pas. C'est
+ * `theme.css` qui sert les pages restées des gabarits littéraux.
+ *
+ * Les deux feuilles partagent leurs morceaux, donc leurs tokens et leurs
+ * pastilles ne peuvent pas diverger. Elles diffèrent par ce qu'elles scannent,
+ * et par deux absences délibérées :
+ *
+ *  - **`elements.css` n'est pas là.** Il style les `button`, `input`, `select`
+ *    nus, parce que les consoles construisaient leur markup en JavaScript sans
+ *    y poser de classe. Les composants suppriment cette cause — et surtout, ces
+ *    règles casseraient les primitives copiées de shadcn-vue : Reka rend des
+ *    `<button>` pour `DialogTrigger`, `DialogClose`, `TabsTrigger`, et toute
+ *    variante qui ne pose pas de fond (`ghost`, `link`, la croix de fermeture)
+ *    hériterait d'un gros bouton gris encadré. Rien ne l'aurait signalé : ni le
+ *    typage, ni un test — seulement l'écran.
+ *  - **`console.css` et `wall.css` non plus.** Leurs classes sont remplacées
+ *    par des composants ; `wall.css` ne sert qu'au mur, qui reste un gabarit.
+ *
+ * `status.css` est là, en revanche : `apparenceDe()` renvoie littéralement les
+ * noms de teintes de `.pastille`, et c'est du code métier partagé avec des
+ * pages qui ne seront jamais en Vue.
+ */
+@import "tailwindcss" source(none);
+
+@import "./base.css";
+@import "./status.css";
+@import "./shadcn.css";
+
+/*
+ * Sources scannées : les composants partagés, puis les deux applications.
+ *
+ * Ces chemins ne doivent **jamais** être recopiés dans `theme.css` — la feuille
+ * figée y gagnerait tous les utilitaires des applications Vue, et le test de
+ * fraîcheur produirait un diff de plusieurs dizaines de kilo-octets à chaque
+ * retouche de composant.
+ */
+@source "../../../packages/components/src";
+@source "../../../apps/hub-admin/src";
+@source "../../../apps/regie-web/src";

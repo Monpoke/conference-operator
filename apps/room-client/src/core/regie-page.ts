@@ -763,10 +763,7 @@ ${etatInitial}
     return sessionId == null ? null : sessions.find((s) => s.id === sessionId) ?? null
   }
 
-  function confiance(connectivity) {
-    if (connectivity === 'DEGRADED') return ' doute'
-    return connectivity == null || connectivity === 'ONLINE' ? '' : ' muette'
-  }
+  const confiance = EtatSalle.contourDe
 
   /** Onglet affiché dans la modale de consultation. */
   let encart = 'programme'

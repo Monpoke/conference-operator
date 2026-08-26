@@ -1,9 +1,11 @@
 import { PAIRING_ALIAS, isMigratedView, viewPath } from '@cloudnord/contract'
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import ConferencesView from './views/ConferencesView.vue'
 import MessagesView from './views/MessagesView.vue'
 import PairingView from './views/PairingView.vue'
 import VodView from './views/VodView.vue'
 import ModerationView from './views/ModerationView.vue'
+import { useConferencesStore } from './stores/conferences.js'
 import { useMessagesStore } from './stores/messages.js'
 import { usePairingStore } from './stores/pairing.js'
 import { useVodStore } from './stores/vod.js'
@@ -83,6 +85,12 @@ const routes: RouteRecordRaw[] = [
     name: 'vod',
     component: VodView,
     meta: { view: 'vod', refresh: () => useVodStore().load(), intervalMs: 10_000 },
+  },
+  {
+    path: viewPath('conferences'),
+    name: 'conferences',
+    component: ConferencesView,
+    meta: { view: 'conferences', refresh: () => useConferencesStore().load(), intervalMs: 10_000 },
   },
   /*
    * Anything not migrated is not a route: it is another page.

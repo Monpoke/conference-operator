@@ -32,6 +32,9 @@ importers:
       '@cloudnord/contract':
         specifier: workspace:*
         version: link:../../packages/contract
+      '@cloudnord/etat-salle':
+        specifier: workspace:*
+        version: link:../../packages/etat-salle
       '@cloudnord/format':
         specifier: workspace:*
         version: link:../../packages/format

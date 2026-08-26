@@ -60,7 +60,7 @@ export const PAIRING_ALIAS = '/admin/devices'
  * this the only screen-by-screen migration in the project that is free: no
  * bridge, no shared state, and a rollback that fits on one line.
  */
-export const MIGRATED_VIEWS: readonly string[] = ['moderation', 'messages', 'appairage', 'vod']
+export const MIGRATED_VIEWS: readonly string[] = ['moderation', 'messages', 'appairage', 'vod', 'conferences']
 
 /** True when this view is served by the bundle rather than the string template. */
 export function isMigratedView(view: string): boolean {

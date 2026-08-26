@@ -12,6 +12,7 @@
   "dependencies": {
     "@cloudnord/components": "workspace:*",
     "@cloudnord/contract": "workspace:*",
+    "@cloudnord/etat-salle": "workspace:*",
     "@cloudnord/format": "workspace:*",
     "@cloudnord/hub-client": "workspace:*",
     "pinia": "3.0.3",

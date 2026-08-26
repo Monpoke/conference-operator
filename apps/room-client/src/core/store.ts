@@ -84,6 +84,14 @@ function lireIdentite(brut: string | null): EventIdentity {
  * `resources/`. Résoudre uniquement le premier produirait une application qui
  * démarre en développement et plante à l'installation — le genre de panne qu'on
  * découvre la veille.
+ *
+ * Le chemin du monorepo est **cherché**, pas compté. Ce fichier est chargé de
+ * deux profondeurs différentes : `src/core/store.ts` sous `tsx`, et
+ * `dist/main.cjs` une fois bundlé pour Electron, où tout le cœur applicatif est
+ * aplati dans un seul fichier. Un nombre de `..` juste pour l'un est faux pour
+ * l'autre — et c'est ce qui faisait planter le client Electron au démarrage,
+ * sur un « Can't find meta/_journal.json » qui ne nomme ni le dossier cherché
+ * ni la raison.
  */
 function resolveMigrationsFolder(): string {
   const empaquete = process.resourcesPath
@@ -91,7 +99,29 @@ function resolveMigrationsFolder(): string {
     const candidat = join(empaquete, 'migrations', 'client')
     if (existsSync(candidat)) return candidat
   }
-  return fileURLToPath(new URL('../../../../packages/db/migrations/client', import.meta.url))
+
+  const visites: string[] = []
+  let dossier = dirname(fileURLToPath(import.meta.url))
+  for (;;) {
+    const candidat = join(dossier, 'packages', 'db', 'migrations', 'client')
+    visites.push(candidat)
+    if (existsSync(candidat)) return candidat
+    const parent = dirname(dossier)
+    if (parent === dossier) break
+    dossier = parent
+  }
+
+  // Dit franchement, et avec ce qui a été essayé : sans migrations, la base
+  // locale n'existe pas, et sans base locale il n'y a pas de salle.
+  throw new Error(
+    [
+      'Migrations locales introuvables : la salle ne peut pas ouvrir sa base.',
+      "Dans l'application installée, elles voyagent sous resources/migrations/client",
+      "(extraResources d'electron-builder) ; depuis les sources, dans packages/db/migrations/client.",
+      'Cherchées ici :',
+      ...visites.map((chemin) => `    ${chemin}`),
+    ].join('\n'),
+  )
 }
 
 /** Ligne unique : les réglages de la salle tiennent en un enregistrement. */

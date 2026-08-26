@@ -60,19 +60,36 @@ export const PAIRING_ALIAS = '/admin/devices'
  * this the only screen-by-screen migration in the project that is free: no
  * bridge, no shared state, and a rollback that fits on one line.
  */
-export const MIGRATED_VIEWS: readonly string[] = ['moderation']
+export const MIGRATED_VIEWS: readonly string[] = ['moderation', 'messages', 'appairage']
 
 /** True when this view is served by the bundle rather than the string template. */
 export function isMigratedView(view: string): boolean {
   return MIGRATED_VIEWS.includes(view)
 }
 
+/**
+ * The pairing alias follows the view it opens.
+ *
+ * `/admin/devices` is not a view of its own — it is a second door onto
+ * `appairage`. Leaving it on the string template after that view had moved
+ * would send every machine Better Auth redirects to the page that no longer
+ * knows how to read the code, and only the machines: an operator clicking the
+ * tab would never see it.
+ */
+function aliasPaths(view: string): string[] {
+  return view === 'appairage' ? [PAIRING_ALIAS] : []
+}
+
 /** Addresses the hub still serves from the string template, given the mode. */
 export function legacyConsolePaths(dev: boolean): string[] {
-  return [...consoleViews(dev).filter((view) => !isMigratedView(view)).map(viewPath), PAIRING_ALIAS]
+  return consoleViews(dev)
+    .filter((view) => !isMigratedView(view))
+    .flatMap((view) => [viewPath(view), ...aliasPaths(view)])
 }
 
 /** Addresses the hub serves from the bundle, given the mode. */
 export function bundledConsolePaths(dev: boolean): string[] {
-  return consoleViews(dev).filter(isMigratedView).map(viewPath)
+  return consoleViews(dev)
+    .filter(isMigratedView)
+    .flatMap((view) => [viewPath(view), ...aliasPaths(view)])
 }

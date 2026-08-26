@@ -149,7 +149,10 @@ describe('pages publiques', () => {
      */
     const reponse = await fetch(`${origin}/admin/devices?user_code=R6A67TTS`)
     expect(reponse.status).toBe(200)
-    expect(await reponse.text()).toContain('console hub')
+    // Gabarit ou coquille selon l'avancement de la migration — mais une console,
+    // et le code doit rester dans l'URL pour qu'elle sache quoi vérifier.
+    const html = await reponse.text()
+    expect(html.includes('console hub') || html.includes('id="console-boot"')).toBe(true)
   })
 
   it("annonce une adresse de vérification que le hub sert réellement", async () => {

@@ -20,5 +20,17 @@ export { default as Field } from './common/Field.vue'
 export { default as Hint } from './common/Hint.vue'
 export { default as Key } from './common/Key.vue'
 export { default as Panel } from './common/Panel.vue'
+export { default as Select } from './common/Select.vue'
 export { default as Toaster } from './common/Toaster.vue'
 export { useToast, NOTICE_MS, type Notice } from './common/toast.js'
+
+/*
+ * Primitives, montées sur Reka.
+ *
+ * Elles ne sont posées qu'au fur et à mesure des vues qui en ont besoin. Copier
+ * les six entrées d'un coup ferait entrer une cinquantaine de fichiers à
+ * relire sans qu'aucun ne soit exercé — et une primitive qu'aucune vue ne monte
+ * n'a jamais rencontré ni le verrou de défilement, ni le focus automatique, ni
+ * l'écran tactile de la régie.
+ */
+export { default as Dialog } from './ui/Dialog.vue'

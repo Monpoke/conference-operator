@@ -34,3 +34,4 @@ export { useToast, NOTICE_MS, type Notice } from './common/toast.js'
  * l'écran tactile de la régie.
  */
 export { default as Dialog } from './ui/Dialog.vue'
+export { default as ConfirmDialog } from './ui/ConfirmDialog.vue'

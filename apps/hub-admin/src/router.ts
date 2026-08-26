@@ -3,11 +3,13 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import ConferencesView from './views/ConferencesView.vue'
 import MessagesView from './views/MessagesView.vue'
 import PairingView from './views/PairingView.vue'
+import SettingsView from './views/SettingsView.vue'
 import VodView from './views/VodView.vue'
 import ModerationView from './views/ModerationView.vue'
 import { useConferencesStore } from './stores/conferences.js'
 import { useMessagesStore } from './stores/messages.js'
 import { usePairingStore } from './stores/pairing.js'
+import { useSettingsStore } from './stores/settings.js'
 import { useVodStore } from './stores/vod.js'
 import { useModerationStore } from './stores/moderation.js'
 
@@ -91,6 +93,12 @@ const routes: RouteRecordRaw[] = [
     name: 'conferences',
     component: ConferencesView,
     meta: { view: 'conferences', refresh: () => useConferencesStore().load(), intervalMs: 10_000 },
+  },
+  {
+    path: viewPath('reglages'),
+    name: 'reglages',
+    component: SettingsView,
+    meta: { view: 'reglages', refresh: () => useSettingsStore().load(), intervalMs: 10_000 },
   },
   /*
    * Anything not migrated is not a route: it is another page.

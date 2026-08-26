@@ -1811,7 +1811,9 @@ describe('vue Conférences', () => {
       const menu = menuDe('ses-1')!
       menu.value = 'break'
       menu.dispatchEvent(new Event('change', { bubbles: true }))
-      await attendreRendu()
+      // Deux allers-retours s'enchaînent — la décision, puis le planning relu.
+      // Le nombre de tours nécessaires dépend de la machine ; la condition, non.
+      await attendreRendu(() => appels.some((appel) => appel.chemin === 'program/planning'))
 
       expect(appels).toContainEqual({
         chemin: 'sessions/override',

@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../src/App.vue'
+import { useConferenceStore } from '../src/stores/conference.js'
 import { useRoomStore } from '../src/stores/room.js'
 import { payload } from './fixtures.js'
 
@@ -138,6 +139,71 @@ describe('raccourcis de la page', () => {
     // Écrire « le micro coupe » dans le message à la console ne doit pas
     // basculer la projection en direct au premier caractère.
     expect(envois.filter((envoi) => envoi.url === '/control/action')).toEqual([])
+  })
+})
+
+describe('une question ouverte prend le clavier', () => {
+  it('répond « oui » à la fin anticipée, et rien d’autre ne passe', async () => {
+    await monter()
+    const conference = useConferenceStore()
+    conference.endEarlyOpen = true
+    await flushPromises()
+
+    frappe('r')
+    frappe('y')
+    await flushPromises()
+
+    /*
+     * Un « r » réflexe pendant qu'on demande s'il faut terminer basculerait la
+     * captation sous la question elle-même. La couche avale ce qu'elle n'a pas
+     * lié — c'est ce que six `return` par modale faisaient dans la page
+     * d'origine, et qu'il fallait penser à écrire à chaque nouvelle.
+     */
+    expect(envois.filter((envoi) => envoi.url === '/control/action').map((e) => e.body)).toEqual([
+      { action: 'session.end' },
+    ])
+  })
+
+  it('accepte « o » autant que « y »', async () => {
+    await monter()
+    const conference = useConferenceStore()
+    conference.endEarlyOpen = true
+    await flushPromises()
+
+    frappe('o')
+    await flushPromises()
+
+    // La moitié des opérateurs tape l'un, l'autre moitié l'autre, et se tromper
+    // de lettre sur cette question-là coûte un talk.
+    expect(envois.at(-1)?.body).toEqual({ action: 'session.end' })
+  })
+
+  it('referme sur « n » sans rien envoyer', async () => {
+    await monter()
+    const conference = useConferenceStore()
+    conference.endEarlyOpen = true
+    await flushPromises()
+
+    frappe('n')
+    await flushPromises()
+
+    expect(conference.endEarlyOpen).toBe(false)
+    expect(envois.filter((envoi) => envoi.url === '/control/action')).toEqual([])
+  })
+
+  it('n’ouvre aucune issue au clavier sur l’avertissement de captation', async () => {
+    await monter()
+    const conference = useConferenceStore()
+    conference.recordingOpen = true
+    await flushPromises()
+
+    for (const touche of ['y', 'o', 'n', 'r', 'l']) frappe(touche)
+    await flushPromises()
+
+    // Trois issues nommées, dont aucune ne s'atteint par réflexe : la couche
+    // est là pour ce qu'elle avale.
+    expect(envois.filter((envoi) => envoi.url === '/control/action')).toEqual([])
+    expect(conference.recordingOpen).toBe(true)
   })
 })
 

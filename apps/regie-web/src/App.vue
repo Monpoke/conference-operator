@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { Panel, Toaster } from '@cloudnord/components'
+import { Toaster } from '@cloudnord/components'
 import { computed, onBeforeUnmount, onMounted, useTemplateRef } from 'vue'
 import CapturePanel from './components/CapturePanel.vue'
-import Countdown from './components/Countdown.vue'
+import ConferenceDialogs from './components/ConferenceDialogs.vue'
+import ConferencePanel from './components/ConferencePanel.vue'
 import LevelMeters from './components/LevelMeters.vue'
 import MessagePanel from './components/MessagePanel.vue'
 import ProjectionPanel from './components/ProjectionPanel.vue'
@@ -70,9 +71,7 @@ useKeyboardLayer(() => ({
       class="grid min-h-0 gap-2.5 overflow-y-auto p-2.5 lg:grid-cols-3 lg:overflow-hidden"
     >
       <div class="flex min-h-0 flex-col gap-2.5 lg:overflow-y-auto">
-        <Panel title="Conférence">
-          <Countdown :payload="payload" :at-ms="room.now" />
-        </Panel>
+        <ConferencePanel :payload="payload" :now-ms="room.now" />
       </div>
 
       <div class="flex min-h-0 flex-col gap-2.5 lg:overflow-y-auto">
@@ -108,5 +107,6 @@ useKeyboardLayer(() => ({
     Connexion au poste de salle…
   </div>
 
+  <ConferenceDialogs />
   <Toaster />
 </template>

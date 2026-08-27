@@ -9,6 +9,7 @@ import {
   AlertDialogRoot,
   AlertDialogTitle,
 } from 'reka-ui'
+import Key from '../common/Key.vue'
 
 /**
  * A decision that has to be made, not dismissed.
@@ -38,6 +39,26 @@ defineProps<{
    * button, which is what separates having read from having clicked.
    */
   confirmDisabled?: boolean
+  /**
+   * Raises the title, for a question asked in a dark room mid-talk.
+   *
+   * The default reads as a section heading, which is right for a console
+   * confirming an administrative gesture. It is wrong for a question that
+   * interrupts: "Terminer en avance ?" has to be read before the buttons under
+   * it are, and in a room lit only by the screen the size and the amber are
+   * what does that.
+   */
+  tone?: 'quiet' | 'attention'
+  /**
+   * Keyboard letters printed on the two buttons.
+   *
+   * Only where a layer actually binds them. A printed key that does nothing is
+   * worse than none: it gets pressed, nothing happens, and the operator stops
+   * trusting the other ones — in the middle of the talk this dialog
+   * interrupted.
+   */
+  cancelKey?: string
+  confirmKey?: string
 }>()
 
 const emit = defineEmits<{ confirm: [] }>()
@@ -50,7 +71,13 @@ const emit = defineEmits<{ confirm: [] }>()
       <AlertDialogContent
         class="fixed top-1/2 left-1/2 z-50 w-[calc(100vw-2rem)] max-w-[440px] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-bord bg-surface p-4"
       >
-        <h2 class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-attenue uppercase">
+        <h2
+          :class="
+            tone === 'attention'
+              ? 'mb-1.5 text-[17px] font-semibold text-attention'
+              : 'mb-2.5 text-[11px] font-semibold tracking-[.14em] text-attenue uppercase'
+          "
+        >
           <AlertDialogTitle>{{ title }}</AlertDialogTitle>
         </h2>
         <AlertDialogDescription v-if="detail != null" class="text-sm leading-relaxed">
@@ -58,12 +85,21 @@ const emit = defineEmits<{ confirm: [] }>()
         </AlertDialogDescription>
         <div class="text-sm leading-relaxed"><slot /></div>
 
-        <div class="mt-3.5 flex justify-end gap-1.5">
+        <div class="mt-3.5 flex flex-wrap justify-end gap-1.5">
           <AlertDialogCancel
             class="cursor-pointer rounded-lg border border-bord bg-surface2 px-3 py-2 text-[13px] font-semibold text-texte"
           >
-            {{ cancelLabel ?? 'Annuler' }}
+            {{ cancelLabel ?? 'Annuler' }}<Key v-if="cancelKey != null">{{ cancelKey }}</Key>
           </AlertDialogCancel>
+          <!--
+            A third way out, between cancelling and confirming.
+
+            "Commencer sans enregistrer" is neither: it is the action, taken
+            with one guarantee dropped. Offering it as a second confirm button
+            would read as two ways to say yes; offering it only as cancel would
+            lose the gesture entirely.
+          -->
+          <slot name="other" />
           <AlertDialogAction
             :disabled="confirmDisabled === true"
             class="cursor-pointer rounded-lg border px-3 py-2 text-[13px] font-semibold disabled:cursor-not-allowed disabled:opacity-40"
@@ -74,7 +110,7 @@ const emit = defineEmits<{ confirm: [] }>()
             "
             @click="emit('confirm')"
           >
-            {{ confirmLabel }}
+            {{ confirmLabel }}<Key v-if="confirmKey != null">{{ confirmKey }}</Key>
           </AlertDialogAction>
         </div>
       </AlertDialogContent>

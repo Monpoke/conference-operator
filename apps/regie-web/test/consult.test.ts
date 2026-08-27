@@ -7,9 +7,10 @@ import QuestionsTab from '../src/components/QuestionsTab.vue'
 import RoomsStrip from '../src/components/RoomsStrip.vue'
 import RoomsTab from '../src/components/RoomsTab.vue'
 import Timeline from '../src/components/Timeline.vue'
+import type { Session } from '@cloudnord/program'
 import { stripEntry } from '../src/lib/rooms.js'
 import { useProgramsStore } from '../src/stores/programs.js'
-import { DEBUT_MS, FIN_MS, payload, talk } from './fixtures.js'
+import { DEBUT_MS, FIN_MS, obsState, payload, talk } from './fixtures.js'
 
 /**
  * Ce qu'on va chercher, et ce qui vient à soi.
@@ -25,7 +26,7 @@ interface Envoi {
 
 let envois: Envoi[]
 
-const VOISINE = [
+const VOISINE: Session[] = [
   talk({ id: 'v-1', title: 'Terraform sans peur', startsAtMs: DEBUT_MS, endsAtMs: FIN_MS }),
   talk({
     id: 'v-2',
@@ -71,7 +72,7 @@ function voisine(overrides: Record<string, unknown> = {}) {
     { id: 'track-1', name: 'Track #1' },
     { id: 'track-2', name: 'Track #2' },
   ]
-  programs.sessions = { 'track-2': VOISINE as never }
+  programs.sessions = { 'track-2': VOISINE }
   return etat
 }
 
@@ -79,7 +80,7 @@ describe('ce que dit une case du bandeau', () => {
   const salle = { id: 'track-2', name: 'Track #2', connectivity: 'ONLINE' }
 
   it('annonce la fin quand elle approche, avec le nombre qui décide', () => {
-    const entry = stripEntry(voisine({ conference: 'fin-proche' }), salle, VOISINE as never, FIN_MS - 180_000)
+    const entry = stripEntry(voisine({ conference: 'fin-proche' }), salle, VOISINE, FIN_MS - 180_000)
 
     // « L'autre salle finit dans 3 minutes » est la phrase qui fait attendre ou
     // lancer, et elle ne se déduit d'aucun autre écran.
@@ -88,7 +89,7 @@ describe('ce que dit une case du bandeau', () => {
   })
 
   it('donne l’heure de reprise pendant une pause, pas le nom du repas', () => {
-    const entry = stripEntry(voisine({ conference: 'pause' }), salle, VOISINE as never, FIN_MS + 60_000)
+    const entry = stripEntry(voisine({ conference: 'pause' }), salle, VOISINE, FIN_MS + 60_000)
 
     /*
      * « Déjeuner » à la place d'un titre de conférence se lisait comme une
@@ -100,7 +101,7 @@ describe('ce que dit une case du bandeau', () => {
 
   it('nomme le talk qui déborde, et le peint en alerte', () => {
     const etat = voisine({ conference: 'depassement', currentSessionId: 'v-1' })
-    const entry = stripEntry(etat, salle, VOISINE as never, FIN_MS + 600_000)
+    const entry = stripEntry(etat, salle, VOISINE, FIN_MS + 600_000)
 
     // Le programme est passé au créneau suivant ; la salle, non. C'est elle qui
     // a raison, et c'est ce qui décale toute la journée.
@@ -120,7 +121,7 @@ describe('ce que dit une case du bandeau', () => {
     const entry = stripEntry(
       voisine({ connectivity: 'OFFLINE' }),
       { ...salle, connectivity: 'OFFLINE' },
-      VOISINE as never,
+      VOISINE,
       DEBUT_MS + 60_000,
     )
 
@@ -130,7 +131,7 @@ describe('ce que dit une case du bandeau', () => {
   })
 
   it('annonce un break à venir pendant qu’une conférence court encore', () => {
-    const entry = stripEntry(voisine(), salle, VOISINE as never, FIN_MS - 300_000)
+    const entry = stripEntry(voisine(), salle, VOISINE, FIN_MS - 300_000)
     expect(entry.breakTag).toEqual({ text: 'BREAK à venir', tint: 'text-attention' })
   })
 })
@@ -158,7 +159,7 @@ describe('timeline', () => {
   it('surligne le créneau en cours, et atténue ce qui est passé', () => {
     const wrapper = mount(Timeline, {
       props: {
-        sessions: VOISINE as never,
+        sessions: VOISINE,
         timeZone: 'Europe/Paris',
         currentId: 'v-2',
         nowMs: FIN_MS + 60_000,
@@ -217,7 +218,7 @@ describe('onglet des questions', () => {
     const etat = payload()
     etat.diagnostics!.questions = QUESTIONS
     etat.diagnostics!.questionsSession = { id: 'talk-1', title: 'Ce que le flux ne dit pas' }
-    etat.state.question = onAir == null ? null : ({ text: onAir, author: null } as never)
+    etat.state.question = onAir == null ? null : { text: onAir, author: null, sessionId: null }
     return mount(QuestionsTab, { props: { payload: etat } })
   }
 
@@ -288,7 +289,7 @@ describe('signalements', () => {
     const etat = payload()
     etat.state.notifications = [
       { id: 'n-1', level: 'warning', text: 'Track #2 vient de terminer', at: new Date(atMs).toISOString() },
-    ] as never
+    ]
     return mount(NotificationStack, { props: { payload: etat, nowMs } })
   }
 
@@ -314,7 +315,7 @@ describe('signalements', () => {
     etat.state.notifications = [
       { id: 'n-1', level: 'info', text: 'une info', at: new Date(DEBUT_MS).toISOString() },
       { id: 'n-2', level: 'warning', text: 'un avertissement', at: new Date(DEBUT_MS).toISOString() },
-    ] as never
+    ]
     const wrapper = mount(NotificationStack, { props: { payload: etat, nowMs: DEBUT_MS + 1000 } })
 
     // Un fond plein, pas une teinte sourde : ces encarts doivent se lire du
@@ -340,10 +341,7 @@ describe('signalements', () => {
 describe('diagnostic', () => {
   it('signale un rôle configuré qu’OBS ne connaît pas', () => {
     const etat = payload()
-    etat.diagnostics!.obs = {
-      A: { connected: true, currentSceneName: 'Scène 1', unresolvedRoles: ['RELAY'] } as never,
-      B: null,
-    }
+    etat.diagnostics!.obs = { A: obsState({ unresolvedRoles: ['RELAY'] }), B: null }
     const wrapper = mount(DiagnosticsPanel, { props: { payload: etat } })
 
     // Ça ne se voit nulle part ailleurs : la bascule échouera au milieu d'un

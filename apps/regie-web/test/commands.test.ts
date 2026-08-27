@@ -1,3 +1,4 @@
+import type { ControlDiagnostics } from '@cloudnord/contract'
 import { useToast } from '@cloudnord/components'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -8,7 +9,7 @@ import ProjectionPanel from '../src/components/ProjectionPanel.vue'
 import ScreenPanel from '../src/components/ScreenPanel.vue'
 import { useActionsStore } from '../src/stores/actions.js'
 import { useRoomStore } from '../src/stores/room.js'
-import { payload } from './fixtures.js'
+import { obsState, payload } from './fixtures.js'
 
 /**
  * Les commandes, et la règle qui les gouverne toutes.
@@ -124,7 +125,7 @@ describe('projection', () => {
       props: {
         sceneRole: 'LIVE',
         relaySourceRoomId: null,
-        obs: { simulated: true } as never,
+        obs: obsState({ simulated: true }),
       },
     })
 
@@ -167,9 +168,12 @@ describe('message à la console', () => {
 describe('captation', () => {
   const REC = { active: true, markers: 2, startedAtMs: 1_000, startedAtCorrigeMs: null }
 
-  function monter(recording: unknown, streaming = false): ReturnType<typeof mount> {
+  function monter(
+    recording: ControlDiagnostics['recording'] | null,
+    streaming = false,
+  ): ReturnType<typeof mount> {
     return mount(CapturePanel, {
-      props: { recording, streaming, obs: null, realMs: 61_000, roomMs: 61_000 } as never,
+      props: { recording, streaming, obs: null, realMs: 61_000, roomMs: 61_000 },
     })
   }
 

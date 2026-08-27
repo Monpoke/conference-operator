@@ -1,3 +1,4 @@
+import type { ConfigVisible, ObsState } from '@cloudnord/contract'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -5,7 +6,7 @@ import ObsConfigBlock from '../src/components/ObsConfigBlock.vue'
 import ScreensMenu from '../src/components/ScreensMenu.vue'
 import { useConfigStore } from '../src/stores/config.js'
 import { useRoomStore } from '../src/stores/room.js'
-import { payload } from './fixtures.js'
+import { obsState, payload } from './fixtures.js'
 
 /**
  * La configuration de la salle, saisie sur un brouillon.
@@ -15,12 +16,12 @@ import { payload } from './fixtures.js'
  * les doigts effacerait la saisie en cours.
  */
 
-const CONFIG = {
+const CONFIG: ConfigVisible = {
   obs: {
     A: { url: 'ws://127.0.0.1:4455', hasPassword: true, pending: false },
     B: { url: 'ws://127.0.0.1:4456', hasPassword: false, pending: false },
   },
-  sceneRoles: { A: { LIVE: 'Direct', PIP: 'Incrustation' }, B: {} },
+  sceneRoles: { A: { LIVE: 'Direct', TALK: 'Plan large' }, B: {} },
   displayPort: 7788,
   recordingRoot: null,
   fileSlug: null,
@@ -37,9 +38,9 @@ interface Envoi {
 let envois: Envoi[]
 let refuse: boolean
 
-function salle(overrides: Record<string, unknown> = {}) {
+function salle(overrides: Partial<ConfigVisible> = {}) {
   const etat = payload()
-  etat.diagnostics!.config = { ...CONFIG, ...overrides } as never
+  etat.diagnostics!.config = { ...CONFIG, ...overrides }
   useRoomStore().seed(etat)
   return etat
 }
@@ -65,7 +66,7 @@ describe('brouillon', () => {
     config.draft!.fileSlug = 'track-1'
     // Un nouvel état arrive : la régie en reçoit un toutes les quelques
     // secondes, et repeupler effacerait la saisie en cours.
-    useRoomStore().payload!.diagnostics!.config = { ...CONFIG, fileSlug: 'autre' } as never
+    useRoomStore().payload!.diagnostics!.config = { ...CONFIG, fileSlug: 'autre' }
 
     expect(config.draft?.fileSlug).toBe('track-1')
   })
@@ -106,19 +107,21 @@ describe('ce que le formulaire envoie', () => {
     expect((config.patch() as { obs: { A: { password: unknown } } }).obs.A.password).toBe(null)
   })
 
-  it('garde un rôle mappé hors des trois proposés', () => {
+  it('garde un rôle mappé hors des trois proposés pour l’instance', () => {
     salle()
     const config = useConfigStore()
     config.show()
     config.draft!.sceneRoles.A.LIVE = 'Antenne'
 
     /*
-     * Cas rare mais légitime : le brouillon repart de l'existant plutôt que de
-     * le remplacer, sinon ouvrir la modale et enregistrer suffirait à perdre un
+     * `TALK` sur OBS-A : les trois rôles offerts par instance sont une
+     * convention du formulaire, pas une contrainte du modèle — la carte accepte
+     * n'importe lequel des six des deux côtés. Le brouillon repart de
+     * l'existant, sinon ouvrir la modale et enregistrer suffirait à perdre un
      * réglage qu'on n'a pas touché.
      */
     const patch = config.patch() as { sceneRoles: { A: Record<string, string> } }
-    expect(patch.sceneRoles.A).toEqual({ LIVE: 'Antenne', PIP: 'Incrustation' })
+    expect(patch.sceneRoles.A).toEqual({ LIVE: 'Antenne', TALK: 'Plan large' })
   })
 
   it('efface un rôle qu’on remet à « non configuré »', () => {
@@ -128,7 +131,7 @@ describe('ce que le formulaire envoie', () => {
     config.draft!.sceneRoles.A.LIVE = ''
 
     expect((config.patch() as { sceneRoles: { A: Record<string, string> } }).sceneRoles.A).toEqual({
-      PIP: 'Incrustation',
+      TALK: 'Plan large',
     })
   })
 
@@ -228,7 +231,7 @@ describe('enregistrer', () => {
 })
 
 describe('bloc OBS', () => {
-  function bloc(obs: unknown, config: unknown = CONFIG) {
+  function bloc(obs: Partial<ObsState>, config: ConfigVisible = CONFIG) {
     salle()
     const store = useConfigStore()
     store.show()
@@ -238,8 +241,8 @@ describe('bloc OBS', () => {
         title: 'OBS-A — projection',
         draft: store.draft!,
         config,
-        obs,
-      } as never,
+        obs: obsState(obs),
+      },
     })
   }
 

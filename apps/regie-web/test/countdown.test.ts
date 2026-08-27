@@ -43,7 +43,7 @@ describe('ce que compte le chronomètre', () => {
 
   it('vise la conférence suivante dès que celle-ci est terminée', () => {
     const suivante = talk({ id: 'talk-2', startsAtMs: FIN_MS + 15 * 60_000, endsAtMs: null })
-    const etat = payload({ sessions: [talk(), suivante] as never })
+    const etat = payload({ sessions: [talk(), suivante] })
     etat.state.sessionStates = { 'talk-1': 'ended' }
 
     /*
@@ -64,7 +64,7 @@ describe('ce que compte le chronomètre', () => {
   it('saute une pause : un déjeuner n’est pas ce qu’on attend', () => {
     const pause = talk({ id: 'pause-1', kind: 'break', startsAtMs: FIN_MS + 60_000 })
     const suivante = talk({ id: 'talk-2', startsAtMs: FIN_MS + 45 * 60_000, endsAtMs: null })
-    const etat = payload({ sessions: [talk(), pause, suivante] as never })
+    const etat = payload({ sessions: [talk(), pause, suivante] })
     etat.state.sessionStates = { 'talk-1': 'ended' }
 
     expect(countdownFor(etat, FIN_MS)?.ms).toBe(45 * 60_000)

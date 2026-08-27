@@ -163,7 +163,7 @@ describe('heure de la salle', () => {
   it('porte le décalage du hub, pas l’heure du poste', () => {
     const clock = useClockStore()
     const room = useRoomStore()
-    room.seed(payload({ state: { ...payload().state, serverTimeOffsetMs: 3_600_000 } } as never))
+    room.seed(payload({ state: { ...payload().state, serverTimeOffsetMs: 3_600_000 } }))
 
     // Le décalage est ce qui explique un compte à rebours qui ne colle pas à la
     // montre de l'opérateur — il ne peut donc pas être perdu en route.

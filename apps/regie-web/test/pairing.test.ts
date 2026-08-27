@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { DisplayPayload } from '@cloudnord/contract'
 import App from '../src/App.vue'
 import PairingVeil from '../src/components/PairingVeil.vue'
 import { useRoomStore } from '../src/stores/room.js'
@@ -52,8 +53,8 @@ afterEach(() => {
   for (const montee of montees.splice(0)) montee.unmount()
 })
 
-function veil(pairing: unknown): ReturnType<typeof mount> {
-  return mount(PairingVeil, { props: { pairing } as never })
+function veil(pairing: DisplayPayload['pairing']): ReturnType<typeof mount> {
+  return mount(PairingVeil, { props: { pairing } })
 }
 
 describe('choix de la salle', () => {
@@ -91,7 +92,10 @@ describe('code d’appairage', () => {
   })
 
   it('ne prétend pas connaître un code qu’il n’a pas', () => {
-    const wrapper = veil({ status: 'waiting', userCode: null, rooms: [] })
+    // Le champ est **absent**, et non nul : c'est ce que la salle produit, et
+    // le typage l'a rappelé — un `null` écrit ici décrivait un état qu'elle
+    // n'émet jamais.
+    const wrapper = veil({ status: 'waiting', rooms: [] })
     expect(wrapper.find('[data-role="pairing-code"]').exists()).toBe(false)
   })
 
@@ -113,9 +117,9 @@ describe('code d’appairage', () => {
 })
 
 describe('ce que le voile recouvre', () => {
-  async function monter(pairing: unknown): Promise<ReturnType<typeof mount>> {
+  async function monter(pairing: DisplayPayload['pairing']): Promise<ReturnType<typeof mount>> {
     const etat = payload()
-    etat.pairing = pairing as never
+    etat.pairing = pairing
     useRoomStore().seed(etat)
     const wrapper = mount(App, { attachTo: document.body })
     montees.push(wrapper)

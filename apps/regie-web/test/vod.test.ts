@@ -1,3 +1,4 @@
+import type { EntreeVod } from '@cloudnord/contract'
 import { useToast } from '@cloudnord/components'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -18,7 +19,7 @@ import { payload } from './fixtures.js'
  * quand la salle n'existe plus.
  */
 
-const RUSH = {
+const RUSH: EntreeVod = {
   file: 'track-1/2026-10-30-09h00.mkv',
   sizeBytes: 4_200_000_000,
   modifiedAtMs: 0,
@@ -146,7 +147,7 @@ describe('téléversement', () => {
       verdict: { autorise: false, raison: 'desactive', texte: 'aucun stockage configuré sur le hub' },
     }
     const vod = await ouvrir()
-    const wrapper = mount(VodRow, { props: { entry: RUSH as never, timeZone: 'Europe/Paris' } })
+    const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
 
     /*
      * Une seule règle pour les deux boutons : séparées, elles avaient divergé,
@@ -190,7 +191,7 @@ describe('téléversement', () => {
       verdict: { autorise: true, raison: null, texte: '' },
     }
     await ouvrir()
-    const wrapper = mount(VodRow, { props: { entry: RUSH as never, timeZone: 'Europe/Paris' } })
+    const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
 
     // Un bouton repaierait trois gigaoctets sur le réseau de l'événement au
     // premier clic distrait.
@@ -206,7 +207,7 @@ describe('téléversement', () => {
       verdict: { autorise: true, raison: null, texte: '' },
     }
     await ouvrir()
-    const wrapper = mount(VodRow, { props: { entry: RUSH as never, timeZone: 'Europe/Paris' } })
+    const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
 
     expect(wrapper.text()).toContain('téléversement en cours — 42 %')
     await wrapper.get('[data-vod-annuler]').trigger('click')
@@ -221,7 +222,7 @@ describe('téléversement', () => {
       verdict: { autorise: true, raison: null, texte: '' },
     }
     await ouvrir()
-    const wrapper = mount(VodRow, { props: { entry: RUSH as never, timeZone: 'Europe/Paris' } })
+    const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
 
     // Le seul mot qu'on puisse porter à qui tient le bucket.
     expect(wrapper.text()).toContain('AccessDenied')
@@ -328,7 +329,7 @@ describe('ligne d’un rush', () => {
   it('lit d’un coup d’œil quand, combien, et ce qui manque déjà', async () => {
     await ouvrir()
     const wrapper = mount(VodRow, {
-      props: { entry: { ...RUSH, enEcriture: true } as never, timeZone: 'Europe/Paris' },
+      props: { entry: { ...RUSH, enEcriture: true }, timeZone: 'Europe/Paris' },
     })
 
     const texte = wrapper.text()
@@ -341,7 +342,7 @@ describe('ligne d’un rush', () => {
   it('dit le sidecar absent, qui est justement le cas qu’on cherche', async () => {
     await ouvrir()
     const wrapper = mount(VodRow, {
-      props: { entry: { ...RUSH, sidecar: null } as never, timeZone: 'Europe/Paris' },
+      props: { entry: { ...RUSH, sidecar: null }, timeZone: 'Europe/Paris' },
     })
 
     // OBS tué en plein arrêt : le rush est là, ce qui le décrit ne l'est pas.
@@ -356,7 +357,7 @@ describe('ligne d’un rush', () => {
         entry: {
           ...RUSH,
           check: { status: 'illisible', at: '', by: 'auto', reasons: ['conteneur illisible'], probe: null },
-        } as never,
+        },
         timeZone: 'Europe/Paris',
       },
     })

@@ -7,6 +7,7 @@ import CpuIndicator from './CpuIndicator.vue'
 import HubIndicator from './HubIndicator.vue'
 import ModeBadge from './ModeBadge.vue'
 import RoomClock from './RoomClock.vue'
+import ScreensMenu from './ScreensMenu.vue'
 
 const props = defineProps<{
   payload: DisplayPayload
@@ -16,7 +17,7 @@ const props = defineProps<{
   streamDead: boolean
 }>()
 
-const emit = defineEmits<{ open: [tab: 'programme' | 'salles'] }>()
+const emit = defineEmits<{ open: [tab: 'programme' | 'salles']; config: [] }>()
 
 const host = useHostStore()
 
@@ -81,6 +82,15 @@ const queueDepth = computed(
       <Button id="btn-salles" size="small" @click="emit('open', 'salles')">
         Salles<Key>S</Key>
       </Button>
+      <Button
+        id="btn-config"
+        size="small"
+        title="Configuration de la salle"
+        @click="emit('config')"
+      >
+        ⚙
+      </Button>
+      <ScreensMenu :payload="payload" />
     </div>
   </header>
 </template>

@@ -1,4 +1,4 @@
-import type { ObsInstance, ObsState, SceneRole } from '@cloudnord/contract'
+import { PLANCHER_DB, type NiveauEntree, type ObsInstance, type ObsState, type SceneRole } from '@cloudnord/contract'
 
 /**
  * Surface d'OBS dont on a réellement besoin.
@@ -71,22 +71,7 @@ export type ObsControllerEvent =
   | { type: 'streaming'; active: boolean }
   | { type: 'audio'; inputs: NiveauEntree[] }
 
-/**
- * Niveau d'une entrée audio, en dBFS.
- *
- * OBS envoie des multiplicateurs linéaires ; on convertit ici parce que c'est
- * l'échelle sur laquelle un ingénieur du son raisonne, et celle qu'affiche OBS
- * lui-même. `-60` sert de plancher : en dessous, c'est du silence, et un
- * `-Infinity` casserait tout calcul de largeur de barre côté page.
- */
-export interface NiveauEntree {
-  nom: string
-  /** Un élément par canal : mono en a un, stéréo deux. */
-  canaux: { magnitude: number; crete: number }[]
-}
-
-/** Plancher d'affichage, en dBFS. */
-export const PLANCHER_DB = -60
+export { PLANCHER_DB, type NiveauEntree }
 
 /** Multiplicateur linéaire d'OBS vers des dBFS bornés. */
 export function multiplicateurEnDb(mul: number): number {

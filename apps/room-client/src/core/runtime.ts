@@ -1,10 +1,14 @@
 import { EventEmitter } from 'node:events'
 import {
   isCommandExpired,
+  type AiredQuestion,
+  type BroadcastMessage,
   type Comment,
   type Command,
   type Connectivity,
   type DisplayMode,
+  type DisplayState,
+  type Notification,
   type SceneRole,
   type SessionStatus,
 } from '@cloudnord/contract'
@@ -18,123 +22,12 @@ import {
 } from '@cloudnord/program'
 import type { LocalStore } from './store.js'
 
-export interface BroadcastMessage {
-  text: string
-  level: 'info' | 'warning' | 'urgent'
-  /** Expiration absolue : une commande rattrapée en retard ne réapparaît pas. */
-  expiresAtMs: number | null
-}
-
-/**
- * Question du public mise à l'antenne depuis la régie.
- *
- * **Canal distinct de `liveMessage`, et c'est tout l'objet du type.** Les deux
- * ont longtemps partagé un seul champ : un « on reprend dans 5 minutes » envoyé
- * du hub s'affichait alors à la place de la question sur l'écran de salle, et
- * surtout, aucune surface ne pouvait montrer l'un sans risquer l'autre. Or ils
- * ne vont pas au même endroit — la question a sa place dans la VOD, le message
- * d'exploitation non.
+/*
+ * Réexportés, et non redéfinis : les définitions sont dans `@cloudnord/contract`
+ * depuis que la régie est un paquet à part. Les garder visibles ici évite de
+ * toucher aux imports de tout ce qui lit l'état d'une salle.
  */
-export interface AiredQuestion {
-  text: string
-  author: string | null
-  /**
-   * Conférence à laquelle elle se rattache.
-   *
-   * Sert à la faire tomber d'elle-même au talk suivant : une question restée à
-   * l'antenne au changement de conférence serait incrustée dans la VOD du
-   * mauvais speaker.
-   */
-  sessionId: string | null
-}
-
-/** Ce que la page d'affichage doit rendre à un instant donné. */
-export interface DisplayState {
-  mode: DisplayMode
-  message: BroadcastMessage | null
-  /**
-   * Bandeau superposé aux scènes live.
-   *
-   * Distinct de `message` : celui-ci **remplace** l'écran de salle, le bandeau
-   * se pose par-dessus la vidéo sans rien interrompre. Les deux coexistent
-   * donc, et c'est voulu.
-   *
-   * Distinct de `question` aussi : ce bandeau-ci vient de la console et ne doit
-   * jamais atteindre l'habillage de captation — il ne parle pas au public de la
-   * VOD, il parle à la salle de maintenant.
-   */
-  liveMessage: BroadcastMessage | null
-  /** Question du public à l'antenne. Va dans la VOD, contrairement au bandeau. */
-  question: AiredQuestion | null
-  sceneRole: SceneRole | null
-  connectivity: Connectivity
-  roomId: string | null
-  contentHash: string | null
-  currentSession: Session | null
-  nextSession: Session | null
-  outboxDepth: number
-  serverTimeOffsetMs: number
-  /**
-   * État réel d'OBS-B, observé et non supposé.
-   *
-   * Sert au témoin de la régie, jamais à l'habillage : ce qui est dans
-   * l'habillage part dans le master, et un point rouge gravé dans la VOD n'a
-   * rien à y faire.
-   */
-  recording: boolean
-  streaming: boolean
-  /**
-   * Derniers messages approuvés. Bornés : un mur qui défile sans fin devient
-   * illisible à dix mètres, et la mémoire du client n'a pas à tout garder.
-   */
-  comments: Comment[]
-  /**
-   * État des conférences, par identifiant. Absent = « à venir ».
-   * Seul ce qui s'est produit est stocké, ici comme sur le hub.
-   */
-  sessionStates: Record<string, SessionStatus>
-  /** Faits récents dignes d'être signalés en régie. Bornés et périssables. */
-  notifications: Notification[]
-  /**
-   * L'heure vient d'un hub à horloge simulée.
-   *
-   * Affiché en régie : voir 11:00 un matin d'août sans explication ferait
-   * douter de tout le reste de l'écran.
-   */
-  /**
-   * Conférence sur laquelle portent les commandes de régie.
-   *
-   * Rarement la même que `currentSession` : entre deux talks, pendant une
-   * pause, ou quelques minutes avant le début, `currentSession` est vide ou
-   * désigne un créneau sans speaker. Or c'est exactement à ces moments-là que
-   * l'opérateur veut appuyer sur « Commencer » — le speaker s'installe.
-   */
-  targetSession: Session | null
-  /**
-   * Break de la salle, en cours ou imminent — ou `null`.
-   *
-   * À part de la session en cours : les deux cohabitent, et « BREAK à venir »
-   * s'affiche pendant qu'une conférence court encore.
-   */
-  breakBadge: { state: 'en-cours' | 'a-venir'; title: string; startsAt: string } | null
-  /** La cible n'a pas encore commencé au programme : l'écran doit le dire. */
-  targetIsUpcoming: boolean
-  simulatedClock: boolean
-}
-
-/**
- * Signalement affiché en haut de la régie.
- *
- * Sert surtout aux autres salles : savoir qu'un talk vient de se terminer à
- * côté permet d'anticiper un enchaînement ou une bascule, sans avoir à
- * surveiller le panneau des salles en permanence.
- */
-export interface Notification {
-  id: string
-  level: 'info' | 'warning'
-  text: string
-  at: string
-}
+export type { AiredQuestion, BroadcastMessage, DisplayState, Notification }
 
 /**
  * Durée de vie d'un signalement.

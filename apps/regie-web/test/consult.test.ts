@@ -1,3 +1,4 @@
+import { useToast } from '@cloudnord/components'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -25,6 +26,7 @@ interface Envoi {
 }
 
 let envois: Envoi[]
+let refuse: boolean
 
 const VOISINE: Session[] = [
   talk({ id: 'v-1', title: 'Terraform sans peur', startsAtMs: DEBUT_MS, endsAtMs: FIN_MS }),
@@ -41,9 +43,11 @@ const VOISINE: Session[] = [
 beforeEach(() => {
   setActivePinia(createPinia())
   envois = []
+  refuse = false
+  useToast().clear()
   vi.stubGlobal('fetch', async (_url: string, init?: RequestInit) => {
     envois.push({ body: init?.body == null ? null : JSON.parse(String(init.body)) })
-    return new Response(JSON.stringify({ ok: true }), {
+    return new Response(JSON.stringify({ ok: !refuse, message: refuse ? 'Refusé' : undefined }), {
       headers: { 'content-type': 'application/json' },
     })
   })
@@ -326,15 +330,58 @@ describe('signalements', () => {
     expect(wrapper.get('[data-notification="n-2"]').classes()).toContain('text-[#05070d]')
   })
 
-  it('reste écarté le temps que le retrait fasse le tour', async () => {
+  it('s’écarte d’un clic n’importe où, pas seulement sur la croix', async () => {
     const wrapper = avecSignalement(DEBUT_MS, DEBUT_MS + 5_000)
 
-    await wrapper.get('[data-notification="n-1"] button').trigger('click')
+    /*
+     * Viser une croix de douze pixels dans une salle sombre demande de
+     * s'arrêter et de regarder — c'est-à-dire de quitter des yeux ce qui se
+     * passe sur scène, pour un geste qui ne mérite pas ça.
+     */
+    await wrapper.get('[data-notification="n-1"]').trigger('click')
 
-    // L'état continue de le pousser le temps que la demande atteigne le
-    // runtime : sans la liste locale, la croix le rendrait pour une seconde.
+    // Et l'état continue de le pousser le temps que la demande atteigne le
+    // runtime : sans la liste locale, il reparaîtrait pour une seconde.
     expect(wrapper.find('[data-notification="n-1"]').exists()).toBe(false)
     expect(envois[0]?.body).toEqual({ action: 'notification.dismiss', id: 'n-1' })
+  })
+
+  it('se met au clavier, comme tout ce qui agit', async () => {
+    const wrapper = avecSignalement(DEBUT_MS, DEBUT_MS + 5_000)
+    // Un `<div>` qui écoute le clic ne s'atteint pas à la tabulation et ne
+    // répond pas à Entrée.
+    expect(wrapper.get('[data-notification="n-1"]').element.tagName).toBe('BUTTON')
+  })
+
+  it('n’annonce pas le retrait : l’encart qui disparaît le dit déjà', async () => {
+    const wrapper = avecSignalement(DEBUT_MS, DEBUT_MS + 5_000)
+
+    await wrapper.get('[data-notification="n-1"]').trigger('click')
+    await flushPromises()
+
+    /*
+     * La pile des signalements et les avis partagent le bas de l'écran : un
+     * « Fait » reparaissait à l'endroit exact de ce qu'on venait de fermer, et
+     * se lisait comme un nouveau signalement.
+     */
+    expect(useToast().notices.value).toEqual([])
+  })
+
+  it('remet le signalement quand le poste refuse de l’oublier', async () => {
+    refuse = true
+    const wrapper = avecSignalement(DEBUT_MS, DEBUT_MS + 5_000)
+
+    await wrapper.get('[data-notification="n-1"]').trigger('click')
+    await flushPromises()
+
+    /*
+     * L'écart local couvre l'aller-retour, il n'efface pas ce que le runtime a
+     * gardé : sans ce retour en arrière, un signalement refusé resterait
+     * invisible jusqu'au rechargement — caché à celui qui l'a écarté, et
+     * toujours là pour tous les autres.
+     */
+    expect(wrapper.find('[data-notification="n-1"]').exists()).toBe(true)
+    expect(useToast().notices.value.at(-1)?.failed).toBe(true)
   })
 })
 

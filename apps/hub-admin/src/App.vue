@@ -21,7 +21,7 @@ import { useSessionStore } from './stores/session.js'
  */
 const session = useSessionStore()
 const notifications = useNotificationsStore()
-const { signedIn, eventName, mode } = storeToRefs(session)
+const { signedIn, eventName, mode, identity } = storeToRefs(session)
 const { supported, on } = storeToRefs(notifications)
 const route = useRoute()
 
@@ -94,6 +94,14 @@ function rafraichir(): void {
         {{ eventName }} — console hub
       </h1>
       <Badge v-if="mode !== 'production'" id="badge-mode" variant="warning">{{ mode }}</Badge>
+      <!--
+        Qui est connecté, quand le hub le dit. Le retour de Google ne laisse
+        aucun jeton derrière lui : c'est la seule confirmation qu'on a bien
+        atterri avec le bon compte.
+      -->
+      <div v-if="identity != null" id="identite" class="hidden text-[13px] text-attenue sm:block">
+        {{ identity }}
+      </div>
       <div class="ml-auto flex gap-1.5">
         <!--
           Le bouton n'apparaît que si le navigateur sait notifier. Le point

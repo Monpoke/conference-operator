@@ -64,7 +64,7 @@ interface EntreeManifeste {
  * permet de les servir en `immutable` — sur un poste de salle, la régie est
  * rouverte plusieurs fois par jour.
  */
-export function assetsDeProduction(manifeste: string, base = '/regie-v2/'): RegieAssets {
+export function assetsDeProduction(manifeste: string, base = '/regie/'): RegieAssets {
   const contenu = JSON.parse(readFileSync(manifeste, 'utf8')) as Record<string, EntreeManifeste>
   const entree = contenu['index.html']
   if (entree == null) {
@@ -84,7 +84,7 @@ export function assetsDeProduction(manifeste: string, base = '/regie-v2/'): Regi
  * devant demanderait de proxifier un flux SSE et un WebSocket OBS pour le seul
  * confort du rechargement à chaud.
  */
-export function assetsDeDeveloppement(base = '/regie-v2/'): RegieAssets {
+export function assetsDeDeveloppement(base = '/regie/'): RegieAssets {
   return { scripts: [`${base}@vite/client`, `${base}src/main.ts`], styles: [] }
 }
 

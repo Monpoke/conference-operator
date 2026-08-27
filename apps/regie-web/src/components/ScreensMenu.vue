@@ -18,7 +18,7 @@ const SCREENS = [
     'Encart live',
     'Question en carte, en bas à droite — par-dessus des slides',
   ],
-  ['/regie-v2', 'Régie', 'Cette page, dans une autre fenêtre'],
+  ['/regie', 'Régie', 'Cette page, dans une autre fenêtre'],
 ] as const
 
 const props = defineProps<{ payload: DisplayPayload }>()

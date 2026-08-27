@@ -17,7 +17,7 @@ import {
 } from '../src/core/regie-shell.js'
 
 /**
- * La régie refaite, servie à côté de l'ancienne.
+ * La fenêtre de l'opérateur, servie par le poste.
  *
  * Ce qui est vérifié ici n'est pas le rendu — il l'est chez `@cloudnord/regie-web`,
  * qui monte les composants — mais les deux choses que seul le poste de salle
@@ -74,7 +74,7 @@ async function demarrer(
 }
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'cloudnord-regie-v2-'))
+  dir = mkdtempSync(join(tmpdir(), 'cloudnord-regie-'))
   store = new LocalStore(':memory:')
   store.saveProgram('hash-1', program)
 })
@@ -85,27 +85,44 @@ afterEach(async () => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-describe('adresse parallèle', () => {
-  it('sert une coquille distincte, sans toucher à l’ancienne régie', async () => {
+describe('la coquille', () => {
+  it('rend le point de montage du bundle, et plus le gabarit', async () => {
     await demarrer({ viteOrigin: 'http://127.0.0.1:5174' })
 
-    const ancienne = await fetch(`${origin}/regie`)
-    const nouvelle = await fetch(`${origin}/regie-v2`)
+    const reponse = await fetch(`${origin}/regie`)
+    const html = await reponse.text()
 
+    expect(reponse.status).toBe(200)
+    expect(html).toContain('id="regie-root"')
     /*
-     * Les deux répondent, et c'est tout l'objet de la coexistence : les deux
-     * fenêtres s'ouvrent côte à côte sur la même salle et le même flux, une
-     * journée d'exploitation réelle décide, et la bascule ne se fait qu'après.
+     * L'ancienne page inlinait tout : la feuille figée dans un `<style>`, la
+     * machine à états et trois mille lignes de code dans deux `<script>`, et le
+     * balisage des sept modales. Rien de cela ne doit plus partir — ce qui
+     * reste est la coquille, l'état de la salle, et des balises vers des
+     * fichiers servis par ce même poste.
      */
-    expect(ancienne.status).toBe(200)
-    expect(nouvelle.status).toBe(200)
-    expect(await nouvelle.text()).toContain('id="regie-root"')
+    expect(html).not.toContain('<style>')
+    expect(html).not.toContain('id="modale-vod"')
+    // L'état embarqué domine désormais la page, et c'est le but.
+    const etat = /<script id="etat-initial"[^>]*>(.*?)<\/script>/s.exec(html)![1]!
+    expect(html.length - etat.length).toBeLessThan(1_500)
+  })
+
+  it('rend un document complet et clos', async () => {
+    // Repris des garde-fous des pages-gabarits : une coquille tronquée se
+    // rendait quand même, en partie, et le défaut se voyait à l'écran sans
+    // qu'on sache d'où il venait.
+    await demarrer({ viteOrigin: 'http://127.0.0.1:5174' })
+    const html = await (await fetch(`${origin}/regie`)).text()
+
+    expect(html.startsWith('<!doctype html>')).toBe(true)
+    expect(html.trimEnd().endsWith('</html>')).toBe(true)
   })
 
   it('embarque l’état complet, parce qu’un F5 arrive toujours en plein talk', async () => {
     await demarrer({ viteOrigin: 'http://127.0.0.1:5174' })
 
-    const html = await (await fetch(`${origin}/regie-v2`)).text()
+    const html = await (await fetch(`${origin}/regie`)).text()
     const brut = /<script id="etat-initial" type="application\/json">(.*?)<\/script>/s.exec(html)
     const etat = JSON.parse(brut![1]!.replace(/\\u003c/g, '<')) as { roomName: string }
 
@@ -117,7 +134,7 @@ describe('adresse parallèle', () => {
 
   it('ne se laisse jamais mettre en cache : elle porte l’état de la salle', async () => {
     await demarrer({ viteOrigin: 'http://127.0.0.1:5174' })
-    const reponse = await fetch(`${origin}/regie-v2`)
+    const reponse = await fetch(`${origin}/regie`)
     expect(reponse.headers.get('cache-control')).toBe('no-store')
   })
 
@@ -125,11 +142,11 @@ describe('adresse parallèle', () => {
     const bundle = bundleFactice()
     await demarrer({ bundleRegie: () => bundle })
 
-    const html = await (await fetch(`${origin}/regie-v2`)).text()
-    expect(html).toContain('src="/regie-v2/assets/index-abc123.js"')
-    expect(html).toContain('href="/regie-v2/assets/index-def456.css"')
+    const html = await (await fetch(`${origin}/regie`)).text()
+    expect(html).toContain('src="/regie/assets/index-abc123.js"')
+    expect(html).toContain('href="/regie/assets/index-def456.css"')
 
-    const asset = await fetch(`${origin}/regie-v2/assets/index-abc123.js`)
+    const asset = await fetch(`${origin}/regie/assets/index-abc123.js`)
     expect(asset.status).toBe(200)
     /*
      * Les noms portent une empreinte, d'où `immutable` : la régie est rouverte
@@ -142,7 +159,7 @@ describe('adresse parallèle', () => {
   it('dit quoi faire quand le bundle manque, plutôt que de rendre un 404', async () => {
     await demarrer()
 
-    const reponse = await fetch(`${origin}/regie-v2`)
+    const reponse = await fetch(`${origin}/regie`)
 
     // Ce n'est pas un état d'exploitation : l'empaquetage embarque le bundle.
     // Un 404 enverrait chercher du côté de l'adresse.
@@ -160,7 +177,7 @@ describe('développement', () => {
      * du rechargement à chaud.
      */
     const vite = Fastify({ logger: false })
-    vite.get('/regie-v2/src/main.ts', async (_request, reply) => {
+    vite.get('/regie/src/main.ts', async (_request, reply) => {
       reply.header('content-type', 'text/javascript')
       return reply.send('// servi par Vite')
     })
@@ -169,12 +186,12 @@ describe('développement', () => {
     try {
       await demarrer({ viteOrigin: origineVite })
 
-      const html = await (await fetch(`${origin}/regie-v2`)).text()
-      expect(html).toContain('src="/regie-v2/@vite/client"')
-      expect(html).toContain('src="/regie-v2/src/main.ts"')
+      const html = await (await fetch(`${origin}/regie`)).text()
+      expect(html).toContain('src="/regie/@vite/client"')
+      expect(html).toContain('src="/regie/src/main.ts"')
 
       // Et le poste sert vraiment ce que Vite lui donne, sur sa propre origine.
-      const module = await fetch(`${origin}/regie-v2/src/main.ts`)
+      const module = await fetch(`${origin}/regie/src/main.ts`)
       expect(module.status).toBe(200)
       expect(await module.text()).toBe('// servi par Vite')
     } finally {
@@ -186,12 +203,12 @@ describe('développement', () => {
     // Elle porte l'état embarqué : la laisser au proxy rendrait la page que
     // Vite sert depuis `index.html`, sans état dedans.
     const vite = Fastify({ logger: false })
-    vite.get('/regie-v2', async (_request, reply) => reply.send('coquille de Vite'))
+    vite.get('/regie', async (_request, reply) => reply.send('coquille de Vite'))
     const origineVite = await vite.listen({ host: '127.0.0.1', port: 0 })
 
     try {
       await demarrer({ viteOrigin: origineVite })
-      const html = await (await fetch(`${origin}/regie-v2`)).text()
+      const html = await (await fetch(`${origin}/regie`)).text()
       expect(html).toContain('id="etat-initial"')
       expect(html).not.toContain('coquille de Vite')
     } finally {
@@ -205,8 +222,8 @@ describe('développement', () => {
 
     // Un poste installé n'a pas de Vite ; si la variable traîne dans un
     // environnement, elle ne doit pas détourner une régie qui a son bundle.
-    const html = await (await fetch(`${origin}/regie-v2`)).text()
-    expect(html).toContain('/regie-v2/assets/index-abc123.js')
+    const html = await (await fetch(`${origin}/regie`)).text()
+    expect(html).toContain('/regie/assets/index-abc123.js')
     expect(html).not.toContain('@vite/client')
   })
 })
@@ -232,7 +249,7 @@ describe('autonomie de la page', () => {
   it('donne à Vite le même préfixe, pour que le développement ne triche pas', () => {
     const assets = assetsDeDeveloppement()
     for (const url of [...assets.scripts, ...assets.styles]) {
-      expect(url.startsWith('/regie-v2/')).toBe(true)
+      expect(url.startsWith('/regie/')).toBe(true)
     }
   })
 

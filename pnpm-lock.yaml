@@ -288,6 +288,9 @@ importers:
       '@cloudnord/hub-server':
         specifier: workspace:*
         version: link:../hub-server
+      '@cloudnord/regie-web':
+        specifier: workspace:*
+        version: link:../regie-web
       '@types/better-sqlite3':
         specifier: 7.6.13
         version: 7.6.13

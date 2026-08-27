@@ -1,3 +1,4 @@
+import type { ChargeHote } from '@cloudnord/contract'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -129,8 +130,8 @@ describe('charge du poste', () => {
 describe('charge du poste, en détail', () => {
   const MEMOIRE_SAINE = { occupeeOctets: 4_000_000_000, totalOctets: 16_000_000_000 }
 
-  function poste(load: unknown): ReturnType<typeof mount> {
-    return mount(CpuIndicator, { props: { load } as never })
+  function poste(load: ChargeHote | null): ReturnType<typeof mount> {
+    return mount(CpuIndicator, { props: { load } })
   }
 
   it('reste verte tant que le poste a de la marge', () => {

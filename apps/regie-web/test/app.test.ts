@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ControlDiagnostics } from '@cloudnord/contract'
 import App from '../src/App.vue'
 import { useConferenceStore } from '../src/stores/conference.js'
 import { useConsultStore } from '../src/stores/consult.js'
@@ -57,9 +58,11 @@ beforeEach(() => {
   })
 })
 
-async function monter(recording: unknown = null): Promise<ReturnType<typeof mount>> {
+async function monter(
+  recording: ControlDiagnostics['recording'] | null = null,
+): Promise<ReturnType<typeof mount>> {
   const etat = payload()
-  etat.diagnostics!.recording = recording as never
+  etat.diagnostics!.recording = recording ?? { active: false, markers: 0, startedAtMs: null, startedAtCorrigeMs: null }
   useRoomStore().seed(etat)
   const wrapper = mount(App, { attachTo: document.body })
   montees.push(wrapper)

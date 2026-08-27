@@ -1,3 +1,4 @@
+import type { SessionStatus } from '@cloudnord/contract'
 import { useToast } from '@cloudnord/components'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -5,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ConferencePanel from '../src/components/ConferencePanel.vue'
 import { TOO_EARLY_MS, useConferenceStore } from '../src/stores/conference.js'
 import { useRoomStore } from '../src/stores/room.js'
-import { DEBUT_MS, FIN_MS, payload, talk } from './fixtures.js'
+import { DEBUT_MS, FIN_MS, config, payload, speaker, talk } from './fixtures.js'
 
 /**
  * Commencer et terminer, et les trois questions qui se mettent en travers.
@@ -145,7 +146,7 @@ describe('l’avertissement de captation', () => {
   it('se tait quand la salle a décoché le garde-fou', async () => {
     salleA(DEBUT_MS)
     const room = useRoomStore()
-    room.payload!.diagnostics!.config = { promptRecordingOnStart: false } as never
+    room.payload!.diagnostics!.config = config({ promptRecordingOnStart: false })
     const conference = useConferenceStore()
 
     conference.askStart()
@@ -191,7 +192,7 @@ describe('l’avertissement de captation', () => {
 
   it('ne bascule aucune scène quand la salle a choisi de ne pas basculer', async () => {
     salleA(DEBUT_MS)
-    useRoomStore().payload!.diagnostics!.config = { sceneOnStart: null } as never
+    useRoomStore().payload!.diagnostics!.config = config({ sceneOnStart: null })
     const conference = useConferenceStore()
 
     await conference.launch(false)
@@ -229,8 +230,8 @@ describe('terminer', () => {
   })
 
   it('ne demande rien sur un créneau sans heure de fin', async () => {
-    const etat = payload({ sessions: [talk({ endsAtMs: null })] as never })
-    etat.state.targetSession = talk({ endsAtMs: null }) as never
+    const etat = payload({ sessions: [talk({ endsAtMs: null })] })
+    etat.state.targetSession = talk({ endsAtMs: null })
     etat.state.serverTimeOffsetMs = DEBUT_MS - Date.now()
     useRoomStore().seed(etat)
     const conference = useConferenceStore()
@@ -245,9 +246,9 @@ describe('terminer', () => {
 })
 
 describe('panneau de la conférence', () => {
-  function monter(atMs: number, states: Record<string, string> = {}) {
+  function monter(atMs: number, states: Record<string, SessionStatus> = {}) {
     const etat = payload()
-    etat.state.sessionStates = states as never
+    etat.state.sessionStates = states
     return mount(ConferencePanel, { props: { payload: etat, nowMs: atMs } })
   }
 
@@ -263,8 +264,8 @@ describe('panneau de la conférence', () => {
 
   it('nomme ce que le décompte vise une fois la conférence terminée', () => {
     const suivante = talk({ id: 'talk-2', startsAtMs: FIN_MS + 900_000, endsAtMs: null })
-    const etat = payload({ sessions: [talk(), suivante] as never })
-    etat.state.sessionStates = { 'talk-1': 'ended' } as never
+    const etat = payload({ sessions: [talk(), suivante] })
+    etat.state.sessionStates = { 'talk-1': 'ended' }
     const wrapper = mount(ConferencePanel, { props: { payload: etat, nowMs: FIN_MS } })
 
     /*
@@ -316,8 +317,8 @@ describe('intervenants', () => {
   it('les sépare quand ils sont plusieurs', () => {
     const etat = payload()
     etat.state.targetSession = talk({
-      speakers: [{ name: 'Steven' }, { name: 'Nuno' }],
-    }) as never
+      speakers: [speaker('Steven'), speaker('Nuno')],
+    })
     const wrapper = mount(ConferencePanel, { props: { payload: etat, nowMs: DEBUT_MS } })
 
     expect(wrapper.text()).toContain('Steven · Nuno')
@@ -326,7 +327,7 @@ describe('intervenants', () => {
   it('se retire sur un créneau sans speaker, plutôt que de laisser un vide', () => {
     // Une ligne vide sous « Pause déjeuner » ferait chercher un nom absent.
     const etat = payload()
-    etat.state.targetSession = talk({ kind: 'break', speakers: [] }) as never
+    etat.state.targetSession = talk({ kind: 'break', speakers: [] })
     const wrapper = mount(ConferencePanel, { props: { payload: etat, nowMs: DEBUT_MS } })
 
     expect(wrapper.text()).not.toContain('·')
@@ -338,9 +339,9 @@ describe('intervenants', () => {
       title: 'Blind ops',
       startsAtMs: FIN_MS + 600_000,
       endsAtMs: null,
-      speakers: [{ name: 'Nuno' }],
+      speakers: [speaker('Nuno')],
     })
-    const etat = payload({ sessions: [talk(), suivante] as never })
+    const etat = payload({ sessions: [talk(), suivante] })
     const wrapper = mount(ConferencePanel, { props: { payload: etat, nowMs: DEBUT_MS } })
 
     expect(wrapper.get('[data-role="next"]').text()).toContain('Blind ops')
@@ -349,9 +350,9 @@ describe('intervenants', () => {
 })
 
 describe('les deux boutons suivent la table du cycle de vie', () => {
-  function boutons(statut: string | null) {
+  function boutons(statut: SessionStatus | null) {
     const etat = payload()
-    etat.state.sessionStates = (statut == null ? {} : { 'talk-1': statut }) as never
+    etat.state.sessionStates = statut == null ? {} : { 'talk-1': statut }
     const wrapper = mount(ConferencePanel, { props: { payload: etat, nowMs: DEBUT_MS } })
     return {
       demarrer: wrapper.get('#btn-conf-demarrer'),
@@ -388,7 +389,7 @@ describe('les deux boutons suivent la table du cycle de vie', () => {
 
 describe('terminée avant son créneau', () => {
   /** Le talk de 09:00 n'a pas commencé, et un autre suit à 11:00. */
-  function avantLeCreneau(statuts: Record<string, string>) {
+  function avantLeCreneau(statuts: Record<string, SessionStatus>) {
     const apres = talk({
       id: 'talk-2',
       title: 'Le talk suivant',
@@ -396,9 +397,9 @@ describe('terminée avant son créneau', () => {
       startsAtMs: Date.parse('2026-10-30T11:00:00Z'),
       endsAtMs: Date.parse('2026-10-30T11:50:00Z'),
     })
-    const etat = payload({ sessions: [talk(), apres] as never })
+    const etat = payload({ sessions: [talk(), apres] })
     etat.state.targetIsUpcoming = true
-    etat.state.sessionStates = statuts as never
+    etat.state.sessionStates = statuts
     return etat
   }
 

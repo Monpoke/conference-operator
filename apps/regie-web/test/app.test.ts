@@ -147,6 +147,20 @@ describe('raccourcis de la page', () => {
   })
 })
 
+describe('titre de la fenêtre', () => {
+  it('suit l’événement, et se corrige à un sync', async () => {
+    await monter()
+    expect(document.title).toBe('Régie — Cloud Nord 2026')
+
+    useRoomStore().payload!.eventIdentity = { name: 'Cloud Nord 2027', shortName: 'CN27' }
+    await flushPromises()
+
+    // C'est la même machine qui servira l'édition suivante, et la barre de
+    // fenêtre est le premier endroit où un nom périmé se remarque.
+    expect(document.title).toBe('Régie — Cloud Nord 2027')
+  })
+})
+
 describe('programmes des salles voisines', () => {
   it('ne les relit pas tant que l’empreinte du programme ne change pas', async () => {
     await monter()

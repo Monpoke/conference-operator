@@ -62,6 +62,20 @@ onBeforeUnmount(() => {
 
 const payload = computed(() => room.payload)
 
+/**
+ * Le titre suit l'événement, pas la coquille.
+ *
+ * La coquille en pose un au rendu, ce qui évite le flash — mais il est figé à
+ * cet instant-là. C'est la même machine qui servira l'édition suivante, le nom
+ * peut changer à un sync en pleine journée, et la barre de fenêtre est le
+ * premier endroit où un nom périmé se remarque. Un opérateur qui aligne trois
+ * fenêtres de salles n'a que ça pour les distinguer.
+ */
+watchEffect(() => {
+  const nom = payload.value?.eventIdentity?.name
+  if (nom != null && nom !== '') document.title = `Régie — ${nom}`
+})
+
 /*
  * Les programmes des salles voisines suivent l'empreinte, pas le flux.
  *

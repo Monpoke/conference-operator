@@ -43,6 +43,46 @@ VITE_REGIE="${VITE_REGIE:-http://127.0.0.1:5174}"
 
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# Les ports sont vérifiés **avant** de lancer quoi que ce soit.
+#
+# Sans ça, une application meurt sur EADDRINUSE dans un coin du terminal et le
+# script continue : le hub proxifie alors vers ce qui occupe le port, et sert
+# des 404 que rien ne rattache à la cause. C'est arrivé — un Vite lancé à la
+# racine du dépôt, resté là dix-sept heures, servait `/@vite/client` quand la
+# console demandait `/admin/@vite/client`. Le message d'erreur parlait de la
+# console ; le coupable était un processus oublié la veille.
+# Qui tient un port, avec son âge : c'est l'âge qui trahit l'oubli. Muet si les
+# outils réseau manquent — le port reste signalé, seul le nom du coupable
+# s'absente.
+occupant() {
+  local pid
+  pid="$( (ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null) |
+    grep -E "[0-9.:]:${1}[[:space:]]" |
+    grep -oE 'pid=[0-9]+' | head -1 | cut -d= -f2 )"
+  [ -n "$pid" ] && ps -o pid=,etimes=,cmd= -p "$pid" 2>/dev/null | head -1
+}
+
+verifier_ports() {
+  local port libre=1
+  for port in "$@"; do
+    if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then
+      exec 3>&- 3<&-
+      libre=0
+      echo "  Port ${port} déjà pris." >&2
+      local qui
+      qui="$(occupant "$port")"
+      [ -n "$qui" ] && echo "      $qui" >&2
+    fi
+  done
+  if [ "$libre" -eq 0 ]; then
+    echo "" >&2
+    echo "  Rien n'est lancé. Arrêtez ce qui occupe ces ports — souvent une" >&2
+    echo "  session précédente — puis relancez." >&2
+    echo "" >&2
+    exit 1
+  fi
+}
+
 # Le contrôle de tâches, dans un script : chaque application lancée en
 # arrière-plan obtient **son propre groupe de processus**. C'est ce qui rend
 # l'arrêt propre possible, et c'est le point délicat de ce script.
@@ -103,6 +143,10 @@ arreter() {
   for pid in "${processus[@]}"; do wait "$pid" 2>/dev/null || true; done
 }
 trap arreter EXIT INT TERM
+
+PORTS=(5173 5174 "$PORT_1")
+[ "$NB_SALLES" -ge 2 ] && PORTS+=("$PORT_2")
+verifier_ports "${PORTS[@]}"
 
 echo ""
 echo "  Hub         ${HUB_ORIGIN}/admin"

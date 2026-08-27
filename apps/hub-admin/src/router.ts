@@ -123,6 +123,27 @@ const routes: RouteRecordRaw[] = [
     meta: {
       view: 'developpement',
       refresh: async () => {
+        /*
+         * Le planning, en plus de l'horloge.
+         *
+         * La vue en tire deux choses, et elle ne le chargeait pas : les
+         * raccourcis vers les moments du programme — déduits des créneaux, donc
+         * absents quand le planning l'est — et le fuseau dans lequel l'heure du
+         * hub s'affiche. Sans lui, cette heure se lit dans le fuseau du poste
+         * d'où l'on regarde, ce qui est précisément l'erreur que ce réglage
+         * sert à débusquer.
+         *
+         * On ne voyait rien de tout ça en venant de l'onglet Conférences, qui
+         * l'avait chargé au passage : les boutons apparaissaient ou non selon
+         * le chemin emprunté.
+         *
+         * Chargé une seule fois, s'il manque : le programme ne bouge pas
+         * pendant qu'on pousse l'horloge, et le relire toutes les dix secondes
+         * ferait trois appels pour une réponse identique.
+         */
+        const conferences = useConferencesStore()
+        if (conferences.planning == null) await conferences.load()
+
         const { useDevStore } = await import('./stores/dev.js')
         await useDevStore().load()
       },

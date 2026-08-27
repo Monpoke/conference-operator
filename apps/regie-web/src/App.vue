@@ -6,6 +6,7 @@ import ConferenceDialogs from './components/ConferenceDialogs.vue'
 import ConferencePanel from './components/ConferencePanel.vue'
 import LevelMeters from './components/LevelMeters.vue'
 import MessagePanel from './components/MessagePanel.vue'
+import PairingVeil from './components/PairingVeil.vue'
 import ProjectionPanel from './components/ProjectionPanel.vue'
 import RegieHeader from './components/RegieHeader.vue'
 import ScreenPanel from './components/ScreenPanel.vue'
@@ -48,6 +49,17 @@ onBeforeUnmount(() => {
 const payload = computed(() => room.payload)
 
 /**
+ * Une machine non appairée n'a rien à piloter.
+ *
+ * Le voile n'est pas posé « par-dessus » la page : il la remplace. `paired` est
+ * la seule valeur qui le lève, et l'absence de bloc `pairing` aussi — une salle
+ * déjà liée n'en reçoit pas.
+ */
+const pairingRequired = computed(
+  () => payload.value?.pairing != null && payload.value.pairing.status !== 'paired',
+)
+
+/**
  * Les raccourcis de la page, sur la couche du fond.
  *
  * Dans une salle sombre, viser un bouton coûte plus cher qu'appuyer sur une
@@ -55,16 +67,29 @@ const payload = computed(() => room.payload)
  * c'est ce qui empêche un « r » réflexe de lancer une captation sous une
  * question ouverte.
  */
-useKeyboardLayer(() => ({
-  l: () => void actions.act({ action: 'scene.set', role: 'LIVE' }),
-  h: () => void actions.act({ action: 'scene.set', role: 'HOLD' }),
-  r: () => capture.value?.toggleRecording(),
-  m: () => capture.value?.mark(),
-}))
+useKeyboardLayer(
+  () => ({
+    l: () => void actions.act({ action: 'scene.set', role: 'LIVE' }),
+    h: () => void actions.act({ action: 'scene.set', role: 'HOLD' }),
+    r: () => capture.value?.toggleRecording(),
+    m: () => capture.value?.mark(),
+  }),
+  /*
+   * Rien sous le voile d'appairage.
+   *
+   * La page d'origine gardait ses raccourcis vivants derrière lui — son
+   * écouteur était global et le voile n'était qu'un attribut sur le `<body>`.
+   * Taper « l » sur une machine non appairée postait une bascule de scène vers
+   * un OBS qu'elle n'a pas, et récoltait un échec rouge pour toute réponse.
+   */
+  () => !pairingRequired.value,
+)
 </script>
 
 <template>
-  <template v-if="payload != null">
+  <PairingVeil v-if="pairingRequired && payload != null" :pairing="payload.pairing" />
+
+  <template v-else-if="payload != null">
     <RegieHeader :payload="payload" :now-ms="room.now" :stream-dead="room.dead" />
 
     <main

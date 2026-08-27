@@ -31,6 +31,13 @@ defineProps<{
   confirmLabel: string
   cancelLabel?: string
   danger?: boolean
+  /**
+   * Holds the action back until something has been done.
+   *
+   * For the gesture there is no coming back from: typing a word arms the
+   * button, which is what separates having read from having clicked.
+   */
+  confirmDisabled?: boolean
 }>()
 
 const emit = defineEmits<{ confirm: [] }>()
@@ -58,7 +65,8 @@ const emit = defineEmits<{ confirm: [] }>()
             {{ cancelLabel ?? 'Annuler' }}
           </AlertDialogCancel>
           <AlertDialogAction
-            class="cursor-pointer rounded-lg border px-3 py-2 text-[13px] font-semibold"
+            :disabled="confirmDisabled === true"
+            class="cursor-pointer rounded-lg border px-3 py-2 text-[13px] font-semibold disabled:cursor-not-allowed disabled:opacity-40"
             :class="
               danger === true
                 ? 'border-[#6c2027] bg-[#3a1519] text-texte'

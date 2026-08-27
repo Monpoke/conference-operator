@@ -414,13 +414,21 @@ async function confirmerResync(): Promise<void> {
     </Panel>
 
     <Panel title="Clôture automatique">
-      <label class="flex items-center gap-2 text-sm">
+      <div class="flex items-center gap-3 border-b border-bord pb-3">
+        <div class="flex-1">
+          <strong class="mb-[3px] block text-sm">Clôturer les conférences dépassées</strong>
+          <span class="text-xs text-attenue">
+            Sans elle, un talk lancé reste « en cours » indéfiniment.
+          </span>
+        </div>
         <input id="auto-actif" v-model="autoActif" type="checkbox" class="w-auto" />
-        Terminer les conférences que personne n'a terminées
-      </label>
-      <label class="mt-2 block text-xs text-attenue" for="auto-delai">
-        Délai de courtoisie (minutes)
-      </label>
+      </div>
+      <div class="flex items-baseline gap-3 pt-3">
+        <label class="flex-1" for="auto-delai">
+          <strong class="mb-[3px] block text-sm">Délai de grâce</strong>
+          <span class="text-xs text-attenue">Minutes après la fin du créneau avant clôture.</span>
+        </label>
+      </div>
       <input
         id="auto-delai"
         v-model="autoDelai"

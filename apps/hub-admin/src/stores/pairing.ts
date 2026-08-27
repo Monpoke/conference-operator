@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useNotificationsStore } from './notifications.js'
 import { useSessionStore } from './session.js'
 
 /**
@@ -37,6 +38,7 @@ export const usePairingStore = defineStore('pairing', () => {
   const rooms = ref<Room[]>([])
 
   const session = useSessionStore()
+  const notifications = useNotificationsStore()
 
   async function load(): Promise<void> {
     const [attente, salles, machines] = await Promise.all([
@@ -45,6 +47,9 @@ export const usePairingStore = defineStore('pairing', () => {
       session.client.rpc.devices.list(),
     ])
     pending.value = attente as PendingDevice[]
+    // Une machine qui attend son code est la seule chose de cette vue qui doive
+    // atteindre quelqu'un qui ne la regarde pas.
+    notifications.observePairings(pending.value)
     rooms.value = salles as Room[]
     devices.value = machines as PairedDevice[]
   }

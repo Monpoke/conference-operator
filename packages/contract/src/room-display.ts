@@ -356,6 +356,23 @@ export interface DisplayPayload {
 }
 
 /**
+ * Niveau d'une entrée audio, en dBFS.
+ *
+ * OBS envoie des multiplicateurs linéaires ; on convertit ici parce que c'est
+ * l'échelle sur laquelle un ingénieur du son raisonne, et celle qu'affiche OBS
+ * lui-même. `-60` sert de plancher : en dessous, c'est du silence, et un
+ * `-Infinity` casserait tout calcul de largeur de barre côté page.
+ */
+export interface NiveauEntree {
+  nom: string
+  /** Un élément par canal : mono en a un, stéréo deux. */
+  canaux: { magnitude: number; crete: number }[]
+}
+
+/** Plancher d'affichage, en dBFS. */
+export const PLANCHER_DB = -60
+
+/**
  * Charge du poste de régie, relevée hors du flux d'état.
  *
  * Servie à part sur `/control/host` : la mesure est une moyenne sur sa propre

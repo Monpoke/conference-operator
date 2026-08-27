@@ -33,5 +33,12 @@ export { useToast, NOTICE_MS, type Notice } from './common/toast.js'
  * n'a jamais rencontré ni le verrou de défilement, ni le focus automatique, ni
  * l'écran tactile de la régie.
  */
+/*
+ * Composants métier : ce que la console et la régie montrent réellement du même
+ * objet. Rien n'y entre avant que les deux en aient besoin — un composant
+ * partagé qu'une seule surface emploie n'est qu'un fichier de plus.
+ */
+export { default as StatusDot } from './domain/StatusDot.vue'
+
 export { default as Dialog } from './ui/Dialog.vue'
 export { default as ConfirmDialog } from './ui/ConfirmDialog.vue'

@@ -440,3 +440,151 @@ export const CHAMPS_PAR_VUE: Record<VueAffichage, readonly (keyof DisplayPayload
   bandeau: ['state', 'eventIdentity'],
   regie: ['state', 'roomName', 'timezone', 'sessions', 'diagnostics', 'pairing', 'eventIdentity'],
 }
+
+/*
+ * Les rushes tels que la régie les voit.
+ *
+ * Même raison que le reste de ce fichier : ces types décrivent ce que le poste
+ * répond sur `/control/recordings` et `/control/uploads`, et ils ont désormais
+ * deux lecteurs — le poste qui les produit, et le bundle de la régie qui les
+ * lit. Déplacés tels quels ; les fichiers d'origine les réexportent.
+ */
+
+export interface Marker {
+  label: string
+  /** Décalage depuis le début de l'enregistrement — ce qui sert au montage. */
+  offsetMs: number
+  at: string
+}
+
+/** Métadonnées écrites à côté du master, pour le montage et l'upload. */
+export interface Sidecar {
+  sessionId: string | null
+  title: string
+  speakers: { name: string; company: string | null }[]
+  roomId: string | null
+  trackTitle: string | null
+  category: string | null
+  startedAt: string
+  endedAt: string
+  durationMs: number
+  markers: Marker[]
+  /** Nom final du fichier vidéo, une fois renommé. */
+  videoFile: string | null
+}
+
+
+/**
+ * Ce que la régie sait dire d'un fichier produit dans la journée.
+ *
+ * `illisible` est un constat technique — le conteneur ne s'ouvre pas, la piste
+ * vidéo manque, le fichier est vide ; `suspect` veut dire « regardez-le
+ * vous-même » : il s'ouvre, mais quelque chose ne colle pas avec ce que la
+ * régie croyait enregistrer. Les deux méritent d'être vus avant de démonter
+ * la salle, pas la veille du montage.
+ */
+export type VerdictVod = 'ok' | 'suspect' | 'illisible'
+
+/** Ce que ffprobe a lu du fichier. Absent quand l'outil n'est pas installé. */
+export interface SondageVod {
+  /**
+   * ffprobe a reconnu le conteneur.
+   *
+   * Faux, tout le reste est nul — et il faut le dire ainsi : « aucune piste
+   * vidéo » laisse croire à un fichier valide amputé de son image, alors que
+   * c'est le conteneur entier qui ne s'ouvre pas. Les deux ne se réparent pas
+   * de la même façon.
+   */
+  ouvert: boolean
+  durationMs: number | null
+  video: { codec: string; width: number; height: number; fps: number | null } | null
+  audio: { codec: string; channels: number } | null
+  bitrateKbps: number | null
+}
+
+export interface ControleVod {
+  status: VerdictVod
+  /** Instant du contrôle : un verdict d'il y a trois heures ne vaut plus rien. */
+  at: string
+  /** `auto` = la vérification technique ; `operateur` = quelqu'un a ouvert le fichier. */
+  by: 'auto' | 'operateur'
+  /** Ce qui a motivé le verdict, en clair : un badge rouge sans raison ne sert personne. */
+  reasons: string[]
+  probe: SondageVod | null
+}
+
+export interface EntreeVod {
+  /** Chemin relatif à la racine, séparateurs normalisés — c'est aussi la clé. */
+  file: string
+  sizeBytes: number
+  modifiedAtMs: number
+  /**
+   * Le fichier a bougé il y a quelques secondes : la prise est probablement
+   * encore en cours. Le contrôler maintenant dirait « tronqué » d'un
+   * enregistrement qui se porte très bien.
+   */
+  enEcriture: boolean
+  sidecar: Sidecar | null
+  check: ControleVod | null
+}
+
+
+/**
+ * Pourquoi rien ne part.
+ *
+ * Rendu jusqu'à l'écran de régie, et c'est sa raison d'être : une attente sans
+ * motif se lit comme une panne, et le bouton qu'on vient de presser passe pour
+ * mort. « en attente — conférence dans 6 min » ne demande aucune explication.
+ */
+export type RaisonAttente =
+  | 'desactive'
+  | 'enregistrement'
+  | 'conference'
+  | 'fenetre'
+  | 'charge'
+  | 'debit'
+
+export interface VerdictTeleversement {
+  autorise: boolean
+  /** `null` quand c'est autorisé : il n'y a alors rien à expliquer. */
+  raison: RaisonAttente | null
+  /** Plafond à appliquer, en octets par seconde. `null` = pas de plafond. */
+  debitMaxOctetsS: number | null
+  /** Ce que la régie affiche, en clair. */
+  texte: string
+}
+
+
+/** Ce que la régie affiche pour un fichier. */
+export interface EtatTeleversementVu {
+  file: string
+  state: string
+  pourcent: number
+  debitOctetsS: number | null
+  erreur: string | null
+  manuel: boolean
+}
+
+export interface VueTeleversements {
+  entrees: EtatTeleversementVu[]
+  verdict: VerdictTeleversement
+}
+
+/**
+ * Ce que la modale des enregistrements reçoit.
+ *
+ * `root` est repris tel quel — nul, la liste est vide et la page doit dire
+ * pourquoi plutôt que d'afficher « aucun enregistrement », qui se lirait comme
+ * une journée perdue.
+ */
+export interface VodListe {
+  root: string | null
+  entries: EntreeVod[]
+  /**
+   * Outils externes réellement présents sur la machine.
+   *
+   * La page s'en sert pour ne pas proposer un lecteur qui ne démarrera jamais :
+   * ni ffmpeg ni ffprobe ne sont des dépendances du poste.
+   */
+  outils: { ffmpeg: boolean; ffprobe: boolean }
+}

@@ -15,6 +15,7 @@ import ProjectionPanel from './components/ProjectionPanel.vue'
 import RegieHeader from './components/RegieHeader.vue'
 import RoomsStrip from './components/RoomsStrip.vue'
 import ScreenPanel from './components/ScreenPanel.vue'
+import VodDialog from './components/VodDialog.vue'
 import { useActionsStore } from './stores/actions.js'
 import { useAudioStore } from './stores/audio.js'
 import { useClockStore } from './stores/clock.js'
@@ -24,6 +25,7 @@ import { useHostStore } from './stores/host.js'
 import { useKeyboardLayer } from './stores/keyboard.js'
 import { useProgramsStore } from './stores/programs.js'
 import { useRoomStore } from './stores/room.js'
+import { useVodStore } from './stores/vod.js'
 
 /**
  * La régie refaite.
@@ -40,6 +42,7 @@ const actions = useActionsStore()
 const consult = useConsultStore()
 const config = useConfigStore()
 const programs = useProgramsStore()
+const vod = useVodStore()
 
 const capture = useTemplateRef<InstanceType<typeof CapturePanel>>('capture')
 
@@ -151,6 +154,7 @@ useKeyboardLayer(
           :obs="payload.diagnostics?.obs.B ?? null"
           :real-ms="clock.real"
           :room-ms="room.now"
+          @vod="vod.show()"
         />
         <LevelMeters />
       </div>
@@ -158,6 +162,7 @@ useKeyboardLayer(
 
     <ConsultDialog :payload="payload" :now-ms="room.now" />
     <ConfigDialog :payload="payload" />
+    <VodDialog :time-zone="payload.timezone" />
     <NotificationStack :payload="payload" :now-ms="room.now" />
   </template>
 

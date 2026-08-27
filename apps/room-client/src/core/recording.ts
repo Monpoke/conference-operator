@@ -1,28 +1,9 @@
 import { basename, dirname, extname, join } from 'node:path'
 import type { Session } from '@cloudnord/program'
 
-export interface Marker {
-  label: string
-  /** Décalage depuis le début de l'enregistrement — ce qui sert au montage. */
-  offsetMs: number
-  at: string
-}
+import type { Marker, Sidecar } from '@cloudnord/contract'
 
-/** Métadonnées écrites à côté du master, pour le montage et l'upload. */
-export interface Sidecar {
-  sessionId: string | null
-  title: string
-  speakers: { name: string; company: string | null }[]
-  roomId: string | null
-  trackTitle: string | null
-  category: string | null
-  startedAt: string
-  endedAt: string
-  durationMs: number
-  markers: Marker[]
-  /** Nom final du fichier vidéo, une fois renommé. */
-  videoFile: string | null
-}
+export type { Marker, Sidecar }
 
 export interface RecordingFs {
   rename(from: string, to: string): Promise<void>

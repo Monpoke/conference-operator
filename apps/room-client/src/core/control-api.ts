@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { displayModeSchema, obsInstanceSchema, roomConfigPatchSchema, sceneRoleSchema } from '@cloudnord/contract'
 import type {
   ConfigVisible,
+  VodListe,
   ControlDiagnostics,
   ModeExecution,
   ObsInstance,
@@ -157,24 +158,7 @@ export interface ControlTarget {
 
 export type { ConfigVisible, ControlDiagnostics, PointObsVisible }
 
-/**
- * Ce que la modale des enregistrements reçoit.
- *
- * `root` est repris tel quel — nul, la liste est vide et la page doit dire
- * pourquoi plutôt que d'afficher « aucun enregistrement », qui se lirait comme
- * une journée perdue.
- */
-export interface VodListe {
-  root: string | null
-  entries: EntreeVod[]
-  /**
-   * Outils externes réellement présents sur la machine.
-   *
-   * La page s'en sert pour ne pas proposer un lecteur qui ne démarrera jamais :
-   * ni ffmpeg ni ffprobe ne sont des dépendances du poste.
-   */
-  outils: { ffmpeg: boolean; ffprobe: boolean }
-}
+export type { VodListe }
 
 export interface ControlOutcome {
   ok: boolean

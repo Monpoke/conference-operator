@@ -1,61 +1,15 @@
 import { createReadStream } from 'node:fs'
 import { extname, join, relative, resolve, sep } from 'node:path'
 import type { Readable } from 'node:stream'
-import type { Sidecar } from './recording.js'
+import type {
+  ControleVod,
+  EntreeVod,
+  SondageVod,
+  Sidecar,
+  VerdictVod,
+} from '@cloudnord/contract'
 
-/**
- * Ce que la régie sait dire d'un fichier produit dans la journée.
- *
- * `illisible` est un constat technique — le conteneur ne s'ouvre pas, la piste
- * vidéo manque, le fichier est vide ; `suspect` veut dire « regardez-le
- * vous-même » : il s'ouvre, mais quelque chose ne colle pas avec ce que la
- * régie croyait enregistrer. Les deux méritent d'être vus avant de démonter
- * la salle, pas la veille du montage.
- */
-export type VerdictVod = 'ok' | 'suspect' | 'illisible'
-
-/** Ce que ffprobe a lu du fichier. Absent quand l'outil n'est pas installé. */
-export interface SondageVod {
-  /**
-   * ffprobe a reconnu le conteneur.
-   *
-   * Faux, tout le reste est nul — et il faut le dire ainsi : « aucune piste
-   * vidéo » laisse croire à un fichier valide amputé de son image, alors que
-   * c'est le conteneur entier qui ne s'ouvre pas. Les deux ne se réparent pas
-   * de la même façon.
-   */
-  ouvert: boolean
-  durationMs: number | null
-  video: { codec: string; width: number; height: number; fps: number | null } | null
-  audio: { codec: string; channels: number } | null
-  bitrateKbps: number | null
-}
-
-export interface ControleVod {
-  status: VerdictVod
-  /** Instant du contrôle : un verdict d'il y a trois heures ne vaut plus rien. */
-  at: string
-  /** `auto` = la vérification technique ; `operateur` = quelqu'un a ouvert le fichier. */
-  by: 'auto' | 'operateur'
-  /** Ce qui a motivé le verdict, en clair : un badge rouge sans raison ne sert personne. */
-  reasons: string[]
-  probe: SondageVod | null
-}
-
-export interface EntreeVod {
-  /** Chemin relatif à la racine, séparateurs normalisés — c'est aussi la clé. */
-  file: string
-  sizeBytes: number
-  modifiedAtMs: number
-  /**
-   * Le fichier a bougé il y a quelques secondes : la prise est probablement
-   * encore en cours. Le contrôler maintenant dirait « tronqué » d'un
-   * enregistrement qui se porte très bien.
-   */
-  enEcriture: boolean
-  sidecar: Sidecar | null
-  check: ControleVod | null
-}
+export type { ControleVod, EntreeVod, SondageVod, VerdictVod }
 
 /** Conteneurs qu'OBS sait écrire. Le reste du dossier ne nous regarde pas. */
 const EXTENSIONS = new Set(['.mkv', '.mp4', '.mov', '.flv', '.ts', '.m4v', '.webm', '.mpegts'])

@@ -88,21 +88,9 @@ export interface TeleversementDeps {
   now?: () => number
   onLog?: (niveau: 'info' | 'warn' | 'error', message: string, contexte?: unknown) => void
 }
+import type { EtatTeleversementVu, VueTeleversements } from '@cloudnord/contract'
 
-/** Ce que la régie affiche pour un fichier. */
-export interface EtatTeleversementVu {
-  file: string
-  state: string
-  pourcent: number
-  debitOctetsS: number | null
-  erreur: string | null
-  manuel: boolean
-}
-
-export interface VueTeleversements {
-  entrees: EtatTeleversementVu[]
-  verdict: VerdictTeleversement
-}
+export type { EtatTeleversementVu, VueTeleversements }
 
 /** Parts signées demandées d'un coup. Assez pour ne pas bavarder, pas assez pour périmer. */
 const LOT_DE_PARTS = 5

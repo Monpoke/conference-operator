@@ -14,6 +14,8 @@ const props = defineProps<{
   roomMs: number
 }>()
 
+const emit = defineEmits<{ vod: [] }>()
+
 const actions = useActionsStore()
 const label = ref('')
 
@@ -55,9 +57,27 @@ defineExpose({ toggleRecording, mark })
 
 <template>
   <Panel>
-    <h2 class="mb-1.5 text-[11px] font-semibold tracking-[.14em] text-attenue uppercase">
-      Captation — OBS&nbsp;B<SimulatedBadge :when="obs?.simulated === true" />
-    </h2>
+    <div class="mb-1.5 flex items-center gap-2">
+      <h2 class="flex-1 text-[11px] font-semibold tracking-[.14em] text-attenue uppercase">
+        Captation — OBS&nbsp;B<SimulatedBadge :when="obs?.simulated === true" />
+      </h2>
+      <!--
+        Vérifier les rushes se fait pendant l'événement ou jamais : la salle est
+        démontée bien avant que quiconque ouvre les fichiers. Discret pour
+        autant — ce n'est pas une commande de la conférence en cours, et rien ne
+        doit le faire confondre avec « Enregistrer ».
+      -->
+      <button
+        type="button"
+        class="shrink-0 cursor-pointer rounded border border-transparent px-1.5 py-0.5 text-[13px] leading-none opacity-60 hover:border-bord hover:opacity-100"
+        aria-label="Vérifier les enregistrements"
+        title="Lister, contrôler et prévisualiser les enregistrements déjà produits"
+        data-role="btn-vod"
+        @click="emit('vod')"
+      >
+        🎞
+      </button>
+    </div>
 
     <div class="mb-2 flex items-baseline gap-2.5">
       <RecordingTimer :recording="recording" :real-ms="realMs" :room-ms="roomMs" />

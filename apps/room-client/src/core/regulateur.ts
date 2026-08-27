@@ -14,31 +14,9 @@ import type { PolitiqueVod } from '@cloudnord/contract'
  * qui permet de dérouler la journée entière dans un test, minute par minute,
  * sans monter une salle.
  */
+import type { RaisonAttente, VerdictTeleversement } from '@cloudnord/contract'
 
-/**
- * Pourquoi rien ne part.
- *
- * Rendu jusqu'à l'écran de régie, et c'est sa raison d'être : une attente sans
- * motif se lit comme une panne, et le bouton qu'on vient de presser passe pour
- * mort. « en attente — conférence dans 6 min » ne demande aucune explication.
- */
-export type RaisonAttente =
-  | 'desactive'
-  | 'enregistrement'
-  | 'conference'
-  | 'fenetre'
-  | 'charge'
-  | 'debit'
-
-export interface VerdictTeleversement {
-  autorise: boolean
-  /** `null` quand c'est autorisé : il n'y a alors rien à expliquer. */
-  raison: RaisonAttente | null
-  /** Plafond à appliquer, en octets par seconde. `null` = pas de plafond. */
-  debitMaxOctetsS: number | null
-  /** Ce que la régie affiche, en clair. */
-  texte: string
-}
+export type { RaisonAttente, VerdictTeleversement }
 
 export interface EntreesRegulateur {
   /** Le hub a un stockage prêt. Faux : il n'y a nulle part où envoyer. */

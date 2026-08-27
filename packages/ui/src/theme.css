@@ -54,5 +54,18 @@
  * l'écran projeté, et le test de fraîcheur produirait un diff à chaque retouche
  * de composant. Ces répertoires sont déclarés dans `apps.css`.
  */
+/*
+ * Le vocabulaire des états, là où il est écrit.
+ *
+ * `APPARENCE` et `contourDe` produisent des noms de classes — `text-attenue`,
+ * `depassement`, `muette` — que trois surfaces se contentent de rendre. Ces
+ * chaînes vivent dans `etat-salle`, et rien ne les scannait : elles ne
+ * survivaient que parce que les mêmes utilitaires étaient écrits à la main
+ * ailleurs. La dernière retouche qui aurait fait disparaître ces occurrences
+ * aurait éteint les couleurs d'état sans qu'aucun test ne bouge.
+ *
+ * Pas de SFC ici, seulement du TypeScript : la mise en garde ci-dessus tient.
+ */
+@source "../../../packages/etat-salle/src";
 @source "../../../apps/room-client/src/core";
 @source "../../../apps/hub-server/src/pages";

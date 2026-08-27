@@ -135,6 +135,22 @@ describe('vide contre absent', () => {
 })
 
 describe('vue des réglages', () => {
+  it('nomme la clôture automatique comme la page le faisait', async () => {
+    /*
+     * Repris mot pour mot, et tenu ici parce que le test HTTP du hub ne peut
+     * plus le faire : ces libellés vivent désormais dans le bundle.
+     *
+     * Une migration n'a pas à reformuler ce que lit un opérateur. « Délai de
+     * grâce » est le terme des conversations de la journée ; le remplacer par un
+     * synonyme obligerait à traduire mentalement à chaque fois.
+     */
+    const { wrapper } = await monter()
+    const texte = wrapper.text()
+    expect(texte).toContain('Clôture automatique')
+    expect(texte).toContain('Clôturer les conférences dépassées')
+    expect(texte).toContain('Délai de grâce')
+  })
+
   it("n'écrase pas un champ pendant qu'on tape dedans", async () => {
     const { wrapper } = await monter()
 

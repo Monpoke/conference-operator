@@ -82,10 +82,26 @@ describe('pages publiques', () => {
     expect(html).toContain('Track #1 - Teilhard de Chardin')
   })
 
-  it('sert la console d\'administration', async () => {
+  it('sert la console, sans rien demander hors de son origine', async () => {
+    /**
+     * L'invariant d'autonomie, reformulé — et c'est ici qu'il se vérifie.
+     *
+     * L'ancienne règle interdisait toute balise `src` ou `href`, pour une
+     * raison écrite noir sur blanc : « une balise vers un CDN casserait la page
+     * dès la première coupure ». Ce que cette raison vise, c'est **le réseau**,
+     * pas la balise. La console charge désormais un bundle, mais servi par le
+     * hub lui-même : une coupure du réseau de l'événement ne peut pas le faire
+     * disparaître, alors qu'elle emporterait n'importe quelle autre origine.
+     *
+     * Le mur, lui, garde la règle à la lettre — il n'a pas d'étape de build et
+     * s'ouvre sur la 4G d'une salle.
+     */
     const html = await (await fetch(`${origin}/admin`)).text()
-    expect(html).toContain('console hub')
-    expect(html).not.toMatch(/<script[^>]+src=|<link[^>]+href=/)
+    expect(html).toContain('id="console-boot"')
+
+    const adresses = [...html.matchAll(/(?:src|href)="([^"]+)"/g)].map((trouve) => trouve[1]!)
+    expect(adresses.length).toBeGreaterThan(0)
+    for (const adresse of adresses) expect(adresse.startsWith('/'), adresse).toBe(true)
   })
 
   it('sert une adresse par onglet de la console', async () => {
@@ -305,10 +321,17 @@ describe('cycle de vie des conférences depuis la console', () => {
     expect(hub.services.settings.get().autoEndGraceMinutes).toBe(12)
   })
 
-  it('sert la page de réglages dans la console', async () => {
-    const html = await (await fetch(`${origin}/admin`)).text()
-    expect(html).toContain('Clôture automatique')
-    expect(html).toContain('Délai de grâce')
+  it('sert la coquille de la console sur l’adresse des réglages', async () => {
+    /*
+     * Le contenu du panneau n'est plus dans le HTML : il vit dans le bundle, et
+     * c'est `apps/hub-admin/test/settings.test.ts` qui le tient — jusqu'aux
+     * libellés « Clôture automatique » et « Délai de grâce » que ce test
+     * vérifiait ici. Ce qui reste à vérifier de ce côté-ci, c'est que l'adresse
+     * répond et sert bien une console.
+     */
+    const reponse = await fetch(`${origin}/admin/reglages`)
+    expect(reponse.status).toBe(200)
+    expect(await reponse.text()).toContain('id="console-boot"')
   })
 })
 

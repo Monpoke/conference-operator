@@ -1,12 +1,14 @@
 import { PAIRING_ALIAS, isMigratedView, viewPath } from '@cloudnord/contract'
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import ConferencesView from './views/ConferencesView.vue'
+import OperationsView from './views/OperationsView.vue'
 import MessagesView from './views/MessagesView.vue'
 import PairingView from './views/PairingView.vue'
 import SettingsView from './views/SettingsView.vue'
 import VodView from './views/VodView.vue'
 import ModerationView from './views/ModerationView.vue'
 import { useConferencesStore } from './stores/conferences.js'
+import { useOperationsStore } from './stores/operations.js'
 import { useMessagesStore } from './stores/messages.js'
 import { usePairingStore } from './stores/pairing.js'
 import { useSettingsStore } from './stores/settings.js'
@@ -99,6 +101,33 @@ const routes: RouteRecordRaw[] = [
     name: 'reglages',
     component: SettingsView,
     meta: { view: 'reglages', refresh: () => useSettingsStore().load(), intervalMs: 10_000 },
+  },
+  {
+    path: viewPath('exploitation'),
+    name: 'exploitation',
+    component: OperationsView,
+    meta: { view: 'exploitation', refresh: () => useOperationsStore().load(), intervalMs: 10_000 },
+  },
+  {
+    path: viewPath('developpement'),
+    name: 'developpement',
+    /*
+     * Importé à la demande, et c'est un verrou, pas une optimisation.
+     *
+     * `consoleViews(dev)` empêche déjà le hub de servir cette adresse en
+     * production. Mais un `import` statique ferait entrer le code qui déplace
+     * l'heure de tout le système — et celui qui efface les rushes — dans le
+     * bundle servi le jour J, à un `fetch` de distance de qui inspecte la page.
+     */
+    component: () => import('./views/DevelopmentView.vue'),
+    meta: {
+      view: 'developpement',
+      refresh: async () => {
+        const { useDevStore } = await import('./stores/dev.js')
+        await useDevStore().load()
+      },
+      intervalMs: 10_000,
+    },
   },
   /*
    * Anything not migrated is not a route: it is another page.

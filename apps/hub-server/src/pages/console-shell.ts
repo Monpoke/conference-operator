@@ -117,7 +117,7 @@ export function renderConsoleShell(options: ConsoleShellOptions): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>${nom} — console</title>
+<title>${nom} — console hub</title>
 ${styles}
 </head>
 <body class="bg-fond font-sans text-texte">

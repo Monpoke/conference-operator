@@ -41,7 +41,20 @@ export interface RegieAssets {
  * nombre de `..` juste pour l'un est faux pour les autres.
  */
 export function resoudreRegie(): { dossier: string; manifeste: string } | null {
-  let dossier = dirname(fileURLToPath(import.meta.url))
+  return resoudreRegieDepuis(dirname(fileURLToPath(import.meta.url)))
+}
+
+/**
+ * La remontée elle-même, séparée pour être éprouvée.
+ *
+ * Le chemin qu'elle finit par trouver sur un poste installé est écrit ailleurs :
+ * dans `extraResources` de `electron-builder.yml`. Deux fichiers doivent
+ * s'accorder, et leur désaccord ne se verrait qu'au montage d'une salle — la
+ * régie répondrait 503 sur une machine où tout le reste marche. Un test noue
+ * les deux.
+ */
+export function resoudreRegieDepuis(depart: string): { dossier: string; manifeste: string } | null {
+  let dossier = depart
   for (;;) {
     const candidat = join(dossier, 'apps', 'regie-web', 'dist')
     const manifeste = join(candidat, '.vite', 'manifest.json')

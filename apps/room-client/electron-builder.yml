@@ -58,8 +58,16 @@ extraResources:
   # Bundle de la régie. Hors de l'asar, et à cette place précise : `resoudreRegie`
   # remonte les dossiers depuis le bundle du processus principal jusqu'à trouver
   # `apps/regie-web/dist`, exactement comme il le fait depuis les sources.
+  #
+  # Sans sa source map, pour la même raison que celle du processus principal :
+  # deux mégaoctets que personne n'ouvre sur un poste de salle. Elle reste sur la
+  # machine de build, où une trace remontée se relit après coup — à condition de
+  # garder la sortie de build de la version installée.
   - from: ../regie-web/dist
     to: apps/regie-web/dist
+    filter:
+      - "**/*"
+      - "!**/*.map"
 
 win:
   target:

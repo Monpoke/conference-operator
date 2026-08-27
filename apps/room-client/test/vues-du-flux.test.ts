@@ -11,11 +11,14 @@ import { CHAMPS_PAR_VUE, type VueAffichage } from '../src/core/display-server.js
  * oublié dans `CHAMPS_PAR_VUE` ne lève rien, il affiche du vide. Ce test relit
  * donc les sources des pages et compare ce qu'elles consultent à ce qu'elles
  * reçoivent.
+ *
+ * La régie n'y figure plus : c'est un bundle, pas un gabarit, et son garde-fou
+ * vit chez elle — `apps/regie-web/test/champs-du-flux.test.ts`, qui relit ses
+ * sources de la même façon.
  */
 const PAGES: { vue: VueAffichage; fichier: string }[] = [
   { vue: 'projecteur', fichier: 'display-page.ts' },
   { vue: 'overlay', fichier: 'overlay-page.ts' },
-  { vue: 'regie', fichier: 'regie-page.ts' },
 ]
 
 /**

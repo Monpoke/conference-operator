@@ -13,7 +13,6 @@ import { resoudreIdentiteEvenement } from '@cloudnord/contract'
 import { renderProjectorPage } from '../src/core/display-page.js'
 import { renderOverlayPage } from '../src/core/overlay-page.js'
 import { renderOverlayLivePage } from '../src/core/overlay-live-page.js'
-import { renderRegiePage } from '../src/core/regie-page.js'
 import type { DisplayPayload } from '../src/core/display-server.js'
 
 const outDir = resolve(process.argv[2] ?? './preview')
@@ -309,69 +308,6 @@ const overlayQuestion = renderOverlayPage({
 writeFileSync(join(outDir, 'overlay-captation-question.html'), overlayQuestion)
 console.log(`écrit ${join(outDir, 'overlay-captation-question.html')}`)
 
-// Panneau des salles ouvert dans l'aperçu, sinon on ne le verrait pas.
-// Choix de la salle : premier écran d'une machine neuve.
-const SALLES = [
-  { id: 'track-1-teilhard-de-chardin', name: 'Track #1 — Teilhard de Chardin' },
-  { id: 'track-2-mf-1092', name: 'Track #2 — MF 1092' },
-  { id: 'hands-on', name: 'Hands on' },
-]
-/**
- * Rend la régie hors ligne.
- *
- * Le voile d'appairage et les onglets se posent tout seuls au premier rendu, à
- * partir de la charge utile : seul le flux SSE est neutralisé. Les aperçus
- * accrochaient auparavant le markup exact du `<body>`, qu'une retouche de mise
- * en page suffisait à faire diverger sans que rien ne le signale.
- */
-function apercuRegie(payload: DisplayPayload, prelude = ''): string {
-  return renderRegiePage({ initialPayload: payload }).replace(
-    '<body ',
-    `<script>window.__APERCU__ = true${prelude}</script><body `,
-  )
-}
-
-const choix = apercuRegie({
-  ...base,
-  pairing: { status: 'idle', rooms: SALLES, requestedRoomId: null },
-})
-writeFileSync(join(outDir, 'regie-choix-salle.html'), choix)
-console.log(`écrit ${join(outDir, 'regie-choix-salle.html')}`)
-
-// Écran d'appairage : la machine n'est pas encore liée à une salle.
-const appairage = apercuRegie({
-  ...base,
-  pairing: {
-    status: 'waiting',
-    userCode: 'FH9BAXGZ',
-    verificationUri: 'http://hub.cloudnord.fr/admin',
-    rooms: SALLES,
-    requestedRoomId: 'track-2-mf-1092',
-  },
-})
-writeFileSync(join(outDir, 'regie-appairage.html'), appairage)
-console.log(`écrit ${join(outDir, 'regie-appairage.html')}`)
-
-/** Niveaux figés pour l'aperçu : un micro qui parle, une ambiance, un retour muet. */
-const NIVEAUX = [
-  { nom: 'Micro cravate', canaux: [{ magnitude: -14, crete: -8 }] },
-  { nom: 'Ambiance salle', canaux: [{ magnitude: -38, crete: -34 }, { magnitude: -36, crete: -33 }] },
-  { nom: 'Retour régie', canaux: [{ magnitude: -60, crete: -60 }, { magnitude: -60, crete: -60 }] },
-]
-
-/**
- * Programmes des autres salles, pour le flux d'en-tête.
- *
- * La page les récupère normalement du serveur local ; l'aperçu tourne sur
- * `file://`, où aucun `fetch` n'aboutit. Sans eux, le flux afficherait
- * « programme inconnu » et l'aperçu ne dirait rien de la seule ligne qui
- * regarde les autres salles en continu.
- */
-const PROGRAMMES = {
-  rooms: program.rooms.map((salle) => ({ id: salle.id, name: salle.name })),
-  sessions: Object.fromEntries(program.rooms.map((salle) => [salle.id, sessionsForRoom(program, salle.id)])),
-}
-
 // Bandeau live : la seule surface qu'un aperçu peut montrer en situation,
 // puisqu'elle ne s'affiche que sur ordre de la console.
 /** Les deux présentations du bandeau, côte à côte dans les aperçus. */
@@ -410,33 +346,6 @@ const bandeau = renderOverlayLivePage({
 }).replace('<body ', `<script>window.__APERCU__ = true</script>${damier}<body `)
 writeFileSync(join(outDir, 'overlay-bandeau-live.html'), bandeau)
 console.log(`écrit ${join(outDir, 'overlay-bandeau-live.html')}`)
-
-const regie = apercuRegie(
-  base,
-  `; window.__NIVEAUX__ = ${JSON.stringify(NIVEAUX)}` +
-    `; window.__PROGRAMMES__ = ${JSON.stringify(PROGRAMMES)}`,
-)
-writeFileSync(join(outDir, 'regie.html'), regie)
-console.log(`écrit ${join(outDir, 'regie.html')}`)
-
-// Le panneau de configuration, ouvert : c'est là que se règlent les deux OBS,
-// et un aperçu qui ne le montre pas laisse le formulaire sans relecture.
-const config = regie.replace(
-  '</body>',
-  '<script>document.getElementById("btn-config").click()</script></body>',
-)
-writeFileSync(join(outDir, 'regie-configuration.html'), config)
-console.log(`écrit ${join(outDir, 'regie-configuration.html')}`)
-
-// La modale de consultation, ouverte : sinon rien dans l'aperçu ne montre les
-// programmes ni l'état des salles, qui ne s'affichent plus qu'à la demande.
-// Ouverte par un vrai clic sur le vrai bouton, pour ne rien avoir à simuler.
-const modale = regie.replace(
-  '</body>',
-  '<script>document.getElementById("btn-programme").click()</script></body>',
-)
-writeFileSync(join(outDir, 'regie-programme.html'), modale)
-console.log(`écrit ${join(outDir, 'regie-programme.html')}`)
 
 /**
  * Le début de la balise `body` de l'écran, tel que la page l'écrit.

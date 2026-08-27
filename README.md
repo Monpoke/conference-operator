@@ -560,22 +560,26 @@ des exemples, pas des constantes du code.
   `ROOM_ID=<id>` court-circuite l'écran pour un poste provisionné d'avance.
 - **Un jeton refusé relance l'appairage** au lieu de boucler : la régie affiche un
   écran avec le code à saisir dans la console, qui disparaît à l'approbation.
-- **Le JavaScript des pages est analysé par un test.** Il vit dans un template
-  literal, où TypeScript ne voit qu'une chaîne : une apostrophe mal échappée y
-  casse *toute* la page sans que rien ne proteste. Chaque page est parsée, et
-  les comportements clés (onglets, menus, boutons) sont testés dans un DOM réel
-  via happy-dom. C'est le prix de l'absence d'étape de build, et il se paie une fois.
+- **Le JavaScript des pages restées des gabarits est analysé par un test.** Il
+  vit dans un template literal, où TypeScript ne voit qu'une chaîne : une
+  apostrophe mal échappée y casse *toute* la page sans que rien ne proteste.
+  Chaque page est parsée, et les comportements clés testés dans un DOM réel via
+  happy-dom. C'est le prix de l'absence d'étape de build, et il se paie une fois.
 - **Les pages d'affichage sont autonomes et sans étape de build.** Écran,
-  overlays, régie et mur s'ouvrent même quand tout le reste va mal, et se
-  testent en HTTP.
-- **La console du hub est une application Vue.** Elle avait dépassé le seuil où
-  le gabarit littéral coûte plus qu'il ne rapporte : 3 800 lignes dont 2 750 de
-  JavaScript qu'aucun compilateur ne voyait, cinq échappements HTML, deux
-  `duree()` qui avaient divergé. Le hub rend une coquille et sert le bundle.
-  L'invariant d'autonomie n'est pas abandonné mais **reformulé** — aucune
-  ressource hors de l'origine — parce que ce qu'il protégeait était le réseau,
-  pas la balise : un asset servi par le processus qui sert déjà la page ne
-  disparaît pas d'une coupure de l'événement.
+  overlays et mur s'ouvrent même quand tout le reste va mal, et se testent en
+  HTTP.
+- **La console du hub et la régie sont des applications Vue.** Toutes deux
+  avaient dépassé le seuil où le gabarit littéral coûte plus qu'il ne rapporte —
+  3 800 lignes pour la console, 3 150 pour la régie, dont l'essentiel en
+  JavaScript qu'aucun compilateur ne voyait. Le processus qui les sert rend une
+  coquille et sert le bundle. L'invariant d'autonomie n'est pas abandonné mais
+  **reformulé** — aucune ressource hors de l'origine — parce que ce qu'il
+  protégeait était le réseau, pas la balise : un asset servi par le processus
+  qui sert déjà la page ne disparaît pas d'une coupure de l'événement.
+- **La régie embarque son état dans sa coquille.** Un F5 en régie arrive
+  presque toujours au pire moment — la fenêtre a gelé, et c'est en plein talk.
+  Attendre le premier message du flux donnerait une demi-seconde d'écran vide à
+  cet instant-là.
 - **Le vérificateur de gabarits Vue impose TypeScript 6 aux paquets front.**
   `vue-tsc` ne démarre pas sur TypeScript 7 : le compilateur natif n'expose plus
   d'API programmatique, et Volar l'intègre au lieu de l'appeler. Le reste du

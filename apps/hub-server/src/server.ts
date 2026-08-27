@@ -366,7 +366,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
    * disparaître. Les noms portent une empreinte, d'où `immutable` — c'est ce
    * qui supprime les 45 Ko de CSS retéléchargés à chaque navigation.
    */
-  if (bundle != null) {
+  if (!dev && bundle != null) {
     await app.register(fastifyStatic, {
       root: join(bundle.dossier, 'assets'),
       prefix: '/admin/assets/',
@@ -388,8 +388,16 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
    *
    * `websocket` pour le rechargement à chaud : sans lui la console se recharge
    * à la main, ce qui est précisément ce qu'on vient chercher.
+   *
+   * En mode dev, Vite passe **devant** le bundle. L'ordre contraire rendait le
+   * développement impossible dès qu'un `dist/` traînait : `pnpm test` en
+   * construit un, et une console compilée de la veille prenait le pas sur le
+   * serveur qui tourne — sans rechargement à chaud, et avec une extension Vue
+   * qui refuse d'inspecter une page qu'elle voit en mode production. Un `dist/`
+   * est un artefact ; `MODE=dev` est une intention.
    */
-  if (bundle == null && dev) {
+  if (dev) {
+    const avant = app.server.listenerCount('upgrade')
     await app.register(fastifyProxy, {
       upstream: config.viteOrigin,
       prefix: '/admin/',
@@ -404,6 +412,35 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
         }
         done()
       },
+    })
+
+    /*
+     * Le proxy ne doit voir que ce qui le regarde.
+     *
+     * `@fastify/http-proxy` pose son propre écouteur `upgrade` et route **tout**
+     * ce qui arrive par le routeur Fastify — y compris `/ws`, le transport des
+     * salles, qui n'y a pas de route. Il part donc en 404, et le proxy détruit
+     * son socket à la fin de la réponse. Résultat : aucune salle ne peut se
+     * connecter dès que le proxy est monté, ce qui en développement était le
+     * cas exact où personne ne regardait — il ne se montait que faute de bundle
+     * construit, donc surtout sur un dépôt fraîchement cloné.
+     *
+     * On lui retire donc les adresses qui ne sont pas les siennes. Aucun symbole
+     * privé : l'écouteur qu'il vient d'ajouter est le seul de plus, et on le
+     * remplace par une version filtrée.
+     */
+    const ajoutes = app.server.listeners('upgrade').slice(avant)
+    if (ajoutes.length !== 1) {
+      throw new Error(
+        `Le proxy Vite a posé ${ajoutes.length} écouteurs « upgrade » au lieu d'un : ` +
+          'le filtre qui protège le transport des salles ne sait plus lequel envelopper.',
+      )
+    }
+    const dispatch = ajoutes[0] as (...args: unknown[]) => void
+    app.server.removeListener('upgrade', dispatch)
+    app.server.on('upgrade', (request, socket, head) => {
+      if (request.url?.startsWith('/ws') === true) return
+      dispatch(request, socket, head)
     })
   }
 
@@ -433,7 +470,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
           mode: config.mode,
           event: services.identity.get(),
           google: config.googleClientId == null ? null : { domaine: config.googleHostedDomain! },
-          assets: bundle == null ? assetsDeDeveloppement() : assetsDeProduction(bundle.manifeste),
+          assets: dev ? assetsDeDeveloppement() : assetsDeProduction(bundle!.manifeste),
         }),
       )
     })
@@ -456,7 +493,13 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
 
   app.server.on('upgrade', (request, socket, head) => {
     if (!request.url?.startsWith('/ws')) {
-      socket.destroy()
+      /*
+       * En développement, `/admin/` appartient au proxy Vite : le rechargement
+       * à chaud passe par un WebSocket, et le détruire ici couperait exactement
+       * ce qu'on vient chercher. Ailleurs, rien d'autre n'écoute — un socket
+       * laissé ouvert fuirait.
+       */
+      if (!dev) socket.destroy()
       return
     }
     const headers = headersOf(request.headers)

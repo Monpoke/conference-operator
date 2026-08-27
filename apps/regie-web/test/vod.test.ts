@@ -227,6 +227,23 @@ describe('téléversement', () => {
     expect(wrapper.text()).toContain('AccessDenied')
   })
 
+  it('met un fichier en file, ou tout ce qui reste', async () => {
+    const vod = await ouvrir()
+    appels = []
+
+    await vod.upload(RUSH.file)
+    await vod.upload(null)
+
+    // `null` vaut « tout ce qui reste » : c'est ce que fait « Tout téléverser ».
+    const demandes = appels
+      .map((appel) => appel.body as { action?: string; file?: unknown } | null)
+      .filter((corps) => corps?.action === 'vod.upload')
+    expect(demandes).toEqual([
+      { action: 'vod.upload', file: RUSH.file },
+      { action: 'vod.upload', file: null },
+    ])
+  })
+
   it('prévient qu’une captation en cours retient le départ', async () => {
     useRoomStore().payload!.state.recording = true
     const vod = await ouvrir()

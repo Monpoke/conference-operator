@@ -53,9 +53,19 @@ const LEVELS = {
 
 const appearance = computed(() => apparenceDe(props.state))
 
+/*
+ * L'outline ne s'applique qu'à une salle.
+ *
+ * `contourDe` rend « muette » pour une connectivité absente, et c'est juste
+ * pour une *salle* — ne rien savoir d'elle et le peindre en plein serait pire
+ * que de se taire. Mais un `level` décrit une machine : un processeur, un lien
+ * avec le hub. Il n'y a aucune salle derrière, donc rien à mettre en doute, et
+ * lui appliquer la règle rendait creuses les deux pastilles de l'en-tête de
+ * régie — un anneau vert à la place d'un disque vert.
+ */
 const classes = computed(() => {
-  const fill = props.level == null ? appearance.value.teinte : LEVELS[props.level]
-  return `pastille ${fill}${contourDe(props.connectivity)}`.trim()
+  if (props.level != null) return `pastille ${LEVELS[props.level]}`.trim()
+  return `pastille ${appearance.value.teinte}${contourDe(props.connectivity)}`.trim()
 })
 </script>
 

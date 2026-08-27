@@ -126,6 +126,80 @@ describe('charge du poste', () => {
   })
 })
 
+describe('charge du poste, en détail', () => {
+  const MEMOIRE_SAINE = { occupeeOctets: 4_000_000_000, totalOctets: 16_000_000_000 }
+
+  function poste(load: unknown): ReturnType<typeof mount> {
+    return mount(CpuIndicator, { props: { load } as never })
+  }
+
+  it('reste verte tant que le poste a de la marge', () => {
+    const wrapper = poste({ cpu: 0.31, coeurs: 8, fenetreMs: 5_000, memoire: MEMOIRE_SAINE })
+
+    expect(wrapper.attributes('data-niveau')).toBe('ok')
+    expect(wrapper.get('.pastille').classes()).toEqual(['pastille'])
+    expect(wrapper.text()).toContain('31 %')
+    expect(wrapper.text()).toContain('8 cœurs')
+    expect(wrapper.text()).toContain('sans forcer')
+  })
+
+  it('passe à l’orange sur une charge soutenue', () => {
+    const wrapper = poste({ cpu: 0.78, coeurs: 8, fenetreMs: 5_000, memoire: null })
+
+    expect(wrapper.attributes('data-niveau')).toBe('attention')
+    expect(wrapper.get('.pastille').classes()).toContain('degraded')
+    expect(wrapper.text()).toContain('charge soutenue')
+  })
+
+  it('passe au rouge, et dit ce que ça coûte', () => {
+    const wrapper = poste({ cpu: 0.96, coeurs: 4, fenetreMs: 5_000, memoire: null })
+
+    expect(wrapper.attributes('data-niveau')).toBe('alerte')
+    expect(wrapper.get('.pastille').classes()).toContain('offline')
+    // Une couleur seule ne dit pas quoi faire : la bulle nomme le risque.
+    expect(wrapper.text()).toContain('images')
+  })
+
+  it('colore la pastille et la jauge depuis la même décision', () => {
+    // Deux chemins finiraient par se contredire — pastille verte, jauge rouge —
+    // et c'est dans ce désaccord qu'on cesserait de croire l'indicateur.
+    const wrapper = poste({ cpu: 0.96, coeurs: 4, fenetreMs: 5_000, memoire: null })
+
+    expect(wrapper.get('.jauge > span').attributes('style')).toContain('96%')
+  })
+
+  it('montre la mémoire à côté du processeur', () => {
+    const wrapper = poste({ cpu: 0.31, coeurs: 8, fenetreMs: 5_000, memoire: MEMOIRE_SAINE })
+
+    expect(wrapper.text()).toContain('Mémoire')
+    expect(wrapper.text()).toContain('25 %')
+    expect(wrapper.text()).toContain('4,0 Go occupés sur 16,0')
+  })
+
+  it('ne prend pas une mémoire illisible pour une mémoire pleine', () => {
+    const wrapper = poste({ cpu: 0.31, coeurs: 8, fenetreMs: 5_000, memoire: null })
+
+    expect(wrapper.attributes('data-niveau')).toBe('ok')
+    expect(wrapper.text()).toContain('mémoire illisible')
+  })
+
+  it('n’ajoute pas de bulle native par-dessus la sienne', () => {
+    const wrapper = poste({ cpu: 0.31, coeurs: 8, fenetreMs: 5_000, memoire: MEMOIRE_SAINE })
+
+    // Un `title` restant afficherait les deux, l'une sur l'autre, à une seconde
+    // d'intervalle. L'annonce vocale, elle, passe par `aria-label`.
+    expect(wrapper.attributes('title')).toBeUndefined()
+    expect(wrapper.attributes('aria-label')).toContain('31 %')
+    expect(wrapper.get('.bulle').attributes('aria-hidden')).toBe('true')
+  })
+
+  it('se laisse ouvrir au clavier, sans souris', () => {
+    // La régie se tient aussi au clavier pendant un talk : une bulle qui ne
+    // s'ouvre qu'au survol serait invisible à qui n'a pas lâché les raccourcis.
+    expect(poste(null).attributes('tabindex')).toBe('0')
+  })
+})
+
 describe('mode d’exécution', () => {
   it('se tait quand tout est en production', () => {
     const wrapper = mount(ModeBadge, { props: { mode: { salle: 'production', hub: 'production' } } })
@@ -139,6 +213,25 @@ describe('mode d’exécution', () => {
     // de vraies commandes depuis un poste qui simule tout.
     expect(wrapper.text()).toBe('dev · hub en production')
     expect(wrapper.html()).toContain('text-alerte')
+  })
+
+  it('crie aussi dans l’autre sens', () => {
+    const wrapper = mount(ModeBadge, { props: { mode: { salle: 'production', hub: 'dev' } } })
+    expect(wrapper.text()).toBe('hub en dev')
+    expect(wrapper.html()).toContain('text-alerte')
+  })
+
+  it('signale une salle de développement, sans alerter', () => {
+    const wrapper = mount(ModeBadge, { props: { mode: { salle: 'dev', hub: 'dev' } } })
+    expect(wrapper.text()).toBe('mode dev')
+    expect(wrapper.html()).toContain('text-attention')
+  })
+
+  it('attend le premier sync avant de conclure', () => {
+    // Hub pas encore joint : rien à comparer, et une alerte prématurée
+    // apprendrait à ignorer le badge.
+    const wrapper = mount(ModeBadge, { props: { mode: { salle: 'production', hub: null } } })
+    expect(wrapper.text()).toBe('')
   })
 })
 

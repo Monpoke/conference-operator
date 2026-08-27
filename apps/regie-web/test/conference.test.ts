@@ -311,3 +311,121 @@ describe('panneau de la conférence', () => {
     expect(monter(DEBUT_MS).get('[data-role="next"]').text()).toBe('Plus rien après au programme.')
   })
 })
+
+describe('intervenants', () => {
+  it('les sépare quand ils sont plusieurs', () => {
+    const etat = payload()
+    etat.state.targetSession = talk({
+      speakers: [{ name: 'Steven' }, { name: 'Nuno' }],
+    }) as never
+    const wrapper = mount(ConferencePanel, { props: { payload: etat, nowMs: DEBUT_MS } })
+
+    expect(wrapper.text()).toContain('Steven · Nuno')
+  })
+
+  it('se retire sur un créneau sans speaker, plutôt que de laisser un vide', () => {
+    // Une ligne vide sous « Pause déjeuner » ferait chercher un nom absent.
+    const etat = payload()
+    etat.state.targetSession = talk({ kind: 'break', speakers: [] }) as never
+    const wrapper = mount(ConferencePanel, { props: { payload: etat, nowMs: DEBUT_MS } })
+
+    expect(wrapper.text()).not.toContain('·')
+  })
+
+  it('donne aussi celui de la conférence suivante', () => {
+    const suivante = talk({
+      id: 'talk-2',
+      title: 'Blind ops',
+      startsAtMs: FIN_MS + 600_000,
+      endsAtMs: null,
+      speakers: [{ name: 'Nuno' }],
+    })
+    const etat = payload({ sessions: [talk(), suivante] as never })
+    const wrapper = mount(ConferencePanel, { props: { payload: etat, nowMs: DEBUT_MS } })
+
+    expect(wrapper.get('[data-role="next"]').text()).toContain('Blind ops')
+    expect(wrapper.get('[data-role="next"]').text()).toContain('Nuno')
+  })
+})
+
+describe('les deux boutons suivent la table du cycle de vie', () => {
+  function boutons(statut: string | null) {
+    const etat = payload()
+    etat.state.sessionStates = (statut == null ? {} : { 'talk-1': statut }) as never
+    const wrapper = mount(ConferencePanel, { props: { payload: etat, nowMs: DEBUT_MS } })
+    return {
+      demarrer: wrapper.get('#btn-conf-demarrer'),
+      terminer: wrapper.get('#btn-conf-terminer'),
+    }
+  }
+
+  it('dit pourquoi « Terminer » est fermé sur une conférence non lancée', () => {
+    const { demarrer, terminer } = boutons(null)
+
+    expect(terminer.attributes('disabled')).toBeDefined()
+    expect(terminer.attributes('title')).toContain("n'a pas été lancée")
+    // Le geste possible, lui, n'a rien à expliquer.
+    expect(demarrer.attributes('disabled')).toBeUndefined()
+    expect(demarrer.attributes('title')).toBeUndefined()
+  })
+
+  it('dit pourquoi « Commencer » est fermé sur un talk en cours', () => {
+    const { demarrer, terminer } = boutons('running')
+
+    expect(demarrer.attributes('title')).toContain('déjà lancée')
+    expect(terminer.attributes('title')).toBeUndefined()
+  })
+
+  it('rouvre « Commencer » après une clôture, sans passer par « Remettre à venir »', () => {
+    // Une conférence close par la règle horaire alors qu'elle n'était pas finie
+    // se rattrape d'un geste.
+    const { demarrer, terminer } = boutons('ended')
+
+    expect(demarrer.attributes('disabled')).toBeUndefined()
+    expect(terminer.attributes('title')).toContain('déjà terminée')
+  })
+})
+
+describe('terminée avant son créneau', () => {
+  /** Le talk de 09:00 n'a pas commencé, et un autre suit à 11:00. */
+  function avantLeCreneau(statuts: Record<string, string>) {
+    const apres = talk({
+      id: 'talk-2',
+      title: 'Le talk suivant',
+      startsAt: '2026-10-30T11:00:00.000Z',
+      startsAtMs: Date.parse('2026-10-30T11:00:00Z'),
+      endsAtMs: Date.parse('2026-10-30T11:50:00Z'),
+    })
+    const etat = payload({ sessions: [talk(), apres] as never })
+    etat.state.targetIsUpcoming = true
+    etat.state.sessionStates = statuts as never
+    return etat
+  }
+
+  it('ne se désigne pas elle-même comme prochaine conférence', () => {
+    const etat = avantLeCreneau({ 'talk-1': 'ended' })
+    const wrapper = mount(ConferencePanel, {
+      props: { payload: etat, nowMs: Date.parse('2026-10-30T08:00:00Z') },
+    })
+
+    /*
+     * La salle se désignait elle-même : le détail annonçait « prochaine
+     * conférence à 09:50 » sur la conférence de 09:50 qu'on venait de terminer.
+     * 11:00 UTC, soit 12:00 à Paris.
+     */
+    expect(wrapper.get('[data-role="conference-badge"]').text()).toBe('terminée')
+    expect(wrapper.get('[data-role="conference-detail"]').text()).toContain('12:00')
+    expect(wrapper.get('[data-role="conference-detail"]').text()).not.toContain('10:00')
+  })
+
+  it('ne saute rien tant que la conférence tient toujours', () => {
+    // Sans décision, la prochaine conférence reste celle du créneau — c'est ce
+    // que vise « Commencer », et les deux doivent désigner le même.
+    const wrapper = mount(ConferencePanel, {
+      props: { payload: avantLeCreneau({}), nowMs: Date.parse('2026-10-30T08:00:00Z') },
+    })
+
+    expect(wrapper.get('[data-role="conference-badge"]').text()).toBe('à venir')
+    expect(wrapper.get('[data-role="conference-detail"]').text()).toContain('Commencer')
+  })
+})

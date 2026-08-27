@@ -141,8 +141,8 @@ cd apps/room-client
 HUB_ORIGIN=http://localhost:8787 HEURE_SIMULEE=2026-10-30T10:20:00Z pnpm dev:headless
 ```
 
-Les pages s'ouvrent dans un navigateur : `/regie`, `/display/projector`,
-`/display/overlay` sur le port affiché. Toute la logique du client vit hors
+Les pages s'ouvrent dans un navigateur : `/regie` (ou `/regie-v2`),
+`/display/projector`, `/display/overlay` sur le port affiché. Toute la logique du client vit hors
 Electron, c'est ce qui rend ce mode possible.
 
 **Avec Electron** :
@@ -358,6 +358,30 @@ Le client sert trois surfaces sur son serveur local :
 | `/display/overlay` | Browser Source transparente d'OBS-B (habillage VOD, question du public) |
 | `/display/overlay-live` | Browser Source transparente d'OBS-A — question du public et messages de la console |
 | `/regie` | Fenêtre de l'opérateur : scènes, enregistrement, marqueurs, diagnostic |
+| `/regie-v2` | La même, refaite en Vue. Servie en parallèle le temps de la comparer |
+
+### `/regie-v2` : la même régie, sur le même flux
+
+Les deux adresses servent la même salle et lisent le même flux d'état. Ouvrir
+les deux fenêtres côte à côte est exactement ce pour quoi la seconde existe :
+une migration de régie n'a pas de retour arrière le jour J, où la page pilote
+OBS pendant qu'une salle est pleine.
+
+`/regie-v2` charge un bundle construit depuis `apps/regie-web`. En production
+il voyage dans l'installeur ; depuis les sources il faut le construire, sans
+quoi l'adresse répond 503 en le disant :
+
+```bash
+pnpm --filter @cloudnord/regie-web build
+```
+
+Pour la développer avec rechargement à chaud, le poste proxifie Vite — jamais
+l'inverse : c'est lui qui porte le flux d'état, les actions et le vumètre.
+
+```bash
+pnpm --filter @cloudnord/regie-web dev          # dans un terminal
+REGIE_VITE_ORIGIN=http://127.0.0.1:5174 pnpm dev:headless   # dans l'autre
+```
 
 ## L'écran d'attente : une boucle
 
@@ -596,6 +620,7 @@ des exemples, pas des constantes du code.
 | hub | `/admin/devices?user_code=…` | L'onglet Appairage, code pré-rempli (lien affiché par la régie) et verdict du code en modale |
 | hub | `/mur?salle=<id>` | Mur public (commun à l'événement) et questions de la salle, scanné au QR |
 | client | `/regie` | Fenêtre opérateur |
+| client | `/regie-v2` | La même, refaite en Vue — servie en parallèle |
 | client | `/display/projector` | Browser Source OBS-A, ou plein écran de secours |
 | client | `/display/overlay` | Browser Source transparente OBS-B : titrage **et question du public** |
 | client | `/display/overlay-live` | Bandeau live d'OBS-A : question du public et messages de la console |

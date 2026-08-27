@@ -33,6 +33,16 @@ describe('StatusDot', () => {
     expect(wrapper.classes()).toContain('offline')
   })
 
+  it('leaves a machine dot solid: there is no room to doubt', () => {
+    /*
+     * The outline says what we know of a *room*. A CPU is not a room — nothing
+     * about it is uncertain in that sense. Applying the rule turned both header
+     * dots of the room control hollow: a green ring where a green disc belongs.
+     */
+    expect(mount(StatusDot, { props: { level: 'ok' } }).classes()).toEqual(['pastille'])
+    expect(mount(StatusDot, { props: { level: 'alerte' } }).classes()).not.toContain('muette')
+  })
+
   it('names a machine level in the machine vocabulary', () => {
     /*
      * `offline` and `depassement` paint the same red, so nothing would look

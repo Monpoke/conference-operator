@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest'
 import { aplatirCouchesHtml } from '@cloudnord/ui'
 import { renderProjectorPage } from '../src/core/display-page.js'
 import { renderOverlayPage } from '../src/core/overlay-page.js'
-import { renderRegiePage } from '../src/core/regie-page.js'
 
 /**
  * Visibilité **effective**, feuille de style comprise.
@@ -20,7 +19,6 @@ import { renderRegiePage } from '../src/core/regie-page.js'
 const PAGES: [string, () => string][] = [
   ['projection', renderProjectorPage],
   ['habillage', renderOverlayPage],
-  ['régie', renderRegiePage],
 ]
 
 function monter(html: string): void {
@@ -55,8 +53,7 @@ describe('visibilité effective', () => {
 describe('fond de page', () => {
   const OPAQUE = [
     ['projection', renderProjectorPage],
-    ['régie', renderRegiePage],
-  ] as [string, () => string][]
+    ] as [string, () => string][]
 
   it.each(OPAQUE)('%s : peint son propre fond', (_nom, rendre) => {
     // Le fond venait d'une règle `body` des anciennes feuilles. La console du

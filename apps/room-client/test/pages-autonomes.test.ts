@@ -6,7 +6,6 @@ import { describe, expect, it } from 'vitest'
 const ACCENT = String.fromCharCode(96)
 import { renderProjectorPage } from '../src/core/display-page.js'
 import { renderOverlayPage } from '../src/core/overlay-page.js'
-import { renderRegiePage } from '../src/core/regie-page.js'
 import { renderAdresseHubPage } from '../src/core/adresse-hub-page.js'
 import { analyserScripts, extraireScripts } from './helpers/inline-scripts.js'
 
@@ -16,11 +15,16 @@ import { analyserScripts, extraireScripts } from './helpers/inline-scripts.js'
  * Elles sont écrites comme des template literals : un backtick oublié dans un
  * commentaire coupe la chaîne et casse le fichier. Le compilateur l'attrape,
  * mais seulement après coup — ces tests disent *quelle* propriété on tient.
+ *
+ * La régie en est sortie : c'est un bundle. Ceux de ses garde-fous qui ont
+ * encore un sens l'ont suivie — l'origine des ressources et le document clos
+ * dans `regie-servie.test.ts`, le fond et la disposition dans
+ * `apps/regie-web/test/cadre.test.ts`. Les autres ne visaient que le gabarit
+ * littéral, et Vite les rend sans objet.
  */
 const PAGES: [string, string][] = [
   ['projection', renderProjectorPage()],
   ['habillage', renderOverlayPage()],
-  ['régie', renderRegiePage()],
   ['adresse du hub', renderAdresseHubPage({ valeurInitiale: 'http://localhost:8787' })],
 ]
 
@@ -34,7 +38,6 @@ const SOURCES = [
   'display-page.ts',
   'overlay-page.ts',
   'overlay-live-page.ts',
-  'regie-page.ts',
   'adresse-hub-page.ts',
 ].map((nom) => [nom, readFileSync(fileURLToPath(new URL('../src/core/' + nom, import.meta.url)), 'utf8')] as const)
 
@@ -85,12 +88,6 @@ describe('pages servies par le client', () => {
     expect(extraireScripts(html).length).toBeGreaterThan(0)
   })
 
-  it('la régie embarque son état initial et se reconnecte seule', () => {
-    const html = renderRegiePage({ initialPayload: { state: { mode: 'sponsors' } } })
-    expect(html).toContain('id="etat-initial"')
-    expect(html).toContain("new EventSource('/display/state?vue=regie')")
-  })
-
   it("l'écran d'adresse échappe la valeur qu'on lui remet sous les yeux", () => {
     // Elle vient du disque ou de la ligne de commande : elle n'a rien à
     // pouvoir refermer l'attribut qui la porte.
@@ -108,12 +105,6 @@ describe('pages servies par le client', () => {
     const corps = html.slice(html.indexOf('<body'))
     expect(corps).toMatch(/<button[^>]*type="submit"/)
     expect(corps).not.toMatch(/disabled/)
-  })
-
-  it('la régie ouvre les écrans dans un nouvel onglet', () => {
-    // Ouvrir la projection dans la fenêtre de régie remplacerait les commandes
-    // par l'écran de salle, en pleine intervention.
-    expect(renderRegiePage()).toContain("lien.target = '_blank'")
   })
 })
 

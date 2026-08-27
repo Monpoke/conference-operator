@@ -53,7 +53,7 @@ spikes/vue-tsc      pourquoi les paquets front épinglent TypeScript 6 — voir 
 
 ```bash
 corepack enable && pnpm install
-pnpm test            # 1218 tests
+pnpm test            # 1227 tests
 pnpm typecheck
 ```
 

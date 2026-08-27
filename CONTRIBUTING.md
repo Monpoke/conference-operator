@@ -9,7 +9,7 @@ quatre cents personnes.
 
 ```bash
 corepack enable && pnpm install
-pnpm test        # 1218 tests
+pnpm test        # 1227 tests
 pnpm typecheck
 ```
 

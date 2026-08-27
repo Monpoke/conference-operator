@@ -23,13 +23,14 @@ function submit(): void {
 }
 
 /**
- * Une navigation complète, pas un appel.
+ * Le store porte l'appel : il faut un POST, puis une navigation.
  *
- * Google renvoie sur `/api/auth/callback/google`, hors de l'application : c'est
- * le navigateur qui doit partir, pas le routeur.
+ * Better Auth ne redirige pas depuis un GET sur cette adresse — il répond
+ * `null`. C'est la réponse à laquelle mène un `location.assign` naïf, et elle
+ * ne dit rien de ce qui a manqué.
  */
 function signInWithGoogle(): void {
-  globalThis.location.assign('/api/auth/sign-in/social?provider=google')
+  void session.signInWithGoogle()
 }
 </script>
 

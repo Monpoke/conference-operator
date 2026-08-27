@@ -35,9 +35,10 @@
   --color-popover-foreground: var(--color-texte);
 
   /*
-   * `primary-foreground` est le noir de `.btn.actif` (`components.css`), pas du
-   * blanc : la couleur de marque est claire, et du texte blanc dessus tombait
-   * sous le seuil de contraste dans une salle sombre.
+   * `primary-foreground` est un noir, pas du blanc : la couleur de marque est
+   * claire, et du texte blanc dessus tombait sous le seuil de contraste dans
+   * une salle sombre. La même valeur est portée par la variante `primary` de
+   * `Button`, d'où elle vient — c'était le noir de l'ancien `.btn.actif`.
    */
   --color-primary: var(--color-marque);
   --color-primary-foreground: #05070d;

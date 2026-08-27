@@ -13,11 +13,20 @@
  * prothèse pour du markup construit à la volée, et les composants suppriment la
  * cause.
  *
- * Ce qui reste, et pourquoi : `components.css` sert encore à la **régie**, qui
- * n'a pas d'étape de build et bascule ses classes depuis son JavaScript ;
- * `wall.css` au mur, pour la même raison ; et `status.css` a quitté cette
- * feuille pour `apps.css` seule — plus aucun gabarit ne pose de pastille, mais
- * du code métier partagé en nomme littéralement les teintes.
+ * `components.css` a suivi la régie : c'était sa dernière lectrice, et ses huit
+ * classes — `.btn`, `.champ`, `.panneau`, `.touche` et leurs variantes —
+ * étaient une prothèse pour du markup construit à la volée depuis du
+ * JavaScript. Les composants suppriment la cause. Vérifié sur le HTML
+ * réellement produit par les cinq pages restantes, et pas seulement sur leurs
+ * sources : c'est la concaténation de classes qui avait masqué le contraire la
+ * première fois.
+ *
+ * Ce qui reste, et pourquoi : `elements.css` habille les éléments nus —
+ * `button`, `select`, `label`, `table` —, dont l'écran d'adresse du hub et le
+ * mur se servent sans poser une seule classe ; `wall.css` au mur ; et
+ * `status.css` a quitté cette feuille pour `apps.css` seule — plus aucun
+ * gabarit ne pose de pastille, mais du code métier partagé en nomme
+ * littéralement les teintes.
  *
  * Le découpage en morceaux existe pour cette raison, et pour elle seule. Les
  * `@import` sont ordonnés comme l'était le fichier d'un seul tenant : les
@@ -38,7 +47,6 @@
 
 @import "./base.css";
 @import "./elements.css";
-@import "./components.css";
 @import "./wall.css";
 
 /*

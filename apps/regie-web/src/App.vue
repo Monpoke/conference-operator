@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, onMounted, useTemplateRef, watchEffect } fro
 import CapturePanel from './components/CapturePanel.vue'
 import ConferenceDialogs from './components/ConferenceDialogs.vue'
 import ConferencePanel from './components/ConferencePanel.vue'
+import ConfigDialog from './components/ConfigDialog.vue'
 import ConsultDialog from './components/ConsultDialog.vue'
 import DiagnosticsPanel from './components/DiagnosticsPanel.vue'
 import LevelMeters from './components/LevelMeters.vue'
@@ -17,6 +18,7 @@ import ScreenPanel from './components/ScreenPanel.vue'
 import { useActionsStore } from './stores/actions.js'
 import { useAudioStore } from './stores/audio.js'
 import { useClockStore } from './stores/clock.js'
+import { useConfigStore } from './stores/config.js'
 import { useConsultStore } from './stores/consult.js'
 import { useHostStore } from './stores/host.js'
 import { useKeyboardLayer } from './stores/keyboard.js'
@@ -36,6 +38,7 @@ const host = useHostStore()
 const audio = useAudioStore()
 const actions = useActionsStore()
 const consult = useConsultStore()
+const config = useConfigStore()
 const programs = useProgramsStore()
 
 const capture = useTemplateRef<InstanceType<typeof CapturePanel>>('capture')
@@ -117,6 +120,7 @@ useKeyboardLayer(
       :now-ms="room.now"
       :stream-dead="room.dead"
       @open="consult.show($event)"
+      @config="config.show()"
     />
 
     <RoomsStrip :payload="payload" :now-ms="room.now" @open="consult.follow($event)" />
@@ -153,6 +157,7 @@ useKeyboardLayer(
     </main>
 
     <ConsultDialog :payload="payload" :now-ms="room.now" />
+    <ConfigDialog :payload="payload" />
     <NotificationStack :payload="payload" :now-ms="room.now" />
   </template>
 

@@ -37,7 +37,8 @@ export function renderAdresseHubPage({ valeurInitiale }: AdresseHubPageOptions):
   </p>
 
   <label for="adresse">Adresse du hub</label>
-  <input class="champ w-full" id="adresse" type="text" spellcheck="false" autocomplete="off"
+  <input class="w-full min-w-0 rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte focus:border-marque focus:outline-none"
+         id="adresse" type="text" spellcheck="false" autocomplete="off"
          placeholder="http://192.168.1.10:8787" value="${echapperAttribut(valeurInitiale)}">
 
   <div class="mt-2.5 min-h-5 text-[13px] text-attenue" id="etat"></div>
@@ -47,7 +48,8 @@ export function renderAdresseHubPage({ valeurInitiale }: AdresseHubPageOptions):
     <span class="text-[12px] leading-snug text-attenue">
       Le hub peut être lancé après les salles&nbsp;: continuer sans réponse ne bloque rien.
     </span>
-    <button class="btn actif px-6" type="submit">Continuer</button>
+    <button class="cursor-pointer rounded-lg border border-marque bg-marque px-6 py-3.5 text-sm font-semibold text-[#05070d]"
+            type="submit">Continuer</button>
   </div>
 </form>
 

@@ -2,7 +2,7 @@ import Fastify, { type FastifyInstance } from 'fastify'
 import fastifyProxy from '@fastify/http-proxy'
 import fastifyStatic from '@fastify/static'
 import { join } from 'node:path'
-import { bundledConsolePaths, legacyConsolePaths } from '@cloudnord/contract'
+import { bundledConsolePaths } from '@cloudnord/contract'
 import { WebSocketServer, type WebSocket as NodeWebSocket } from 'ws'
 import { RPCHandler as FastifyRPCHandler } from '@orpc/server/fastify'
 import { RPCHandler as WebSocketRPCHandler } from '@orpc/server/websocket'
@@ -30,7 +30,6 @@ import {
   type SocialSource,
 } from './services/social.js'
 import { renderWallPage } from './pages/wall-page.js'
-import { renderAdminPage } from './pages/admin-page.js'
 import {
   assetsDeDeveloppement,
   assetsDeProduction,
@@ -323,26 +322,40 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
    */
   const dev = config.mode === 'dev'
   /*
-   * Deux familles d'adresses, le temps de la migration.
+   * Les adresses de la console, toutes servies par le bundle.
    *
-   * La liste des vues reprises par le bundle vient du contrat : le hub et le
-   * routeur de la console la lisent tous les deux, et aucun des deux ne peut la
-   * posséder sans forcer l'autre à en dépendre — faire dépendre le hub de la
+   * La liste vient du contrat : le hub l'énumère pour enregistrer ses routes et
+   * le routeur de la console la déclare pour naviguer. Aucun des deux ne peut
+   * la posséder sans forcer l'autre à en dépendre — faire dépendre le hub de la
    * console ferait entrer Vue dans l'image.
    *
-   * **Sans bundle, ces adresses retombent sur le gabarit.** Ce n'est pas un
-   * repli de fortune : la page existe toujours, elle fonctionne, et c'est le
-   * comportement juste tant que les deux cohabitent. Un 503 ou un refus de
-   * démarrer punirait l'exploitation pour un artefact manquant, alors qu'il y a
-   * quelque chose à servir. En développement, le serveur de Vite prend le
-   * relais sans qu'aucun fichier ne soit construit.
+   * Énumérées et non prises au joker : `/admin/moderationn` doit répondre 404,
+   * pas ouvrir une console muette. Et `developpement` n'est servie qu'en mode
+   * dev, comme son module n'est chargé qu'à la demande.
    */
+  /**
+   * Service worker des notifications, servi à la racine.
+   *
+   * La portée d'un service worker est celle de son chemin : servi sous
+   * `/admin/`, il ne couvrirait pas le reste du hub. C'est aussi la raison pour
+   * laquelle le serveur de Vite est proxifié **derrière** celui-ci en
+   * développement, et jamais l'inverse. Sans cache, il ne sert qu'à recevoir
+   * les avis poussés quand la console est fermée.
+   */
+  app.get('/sw.js', async (_request, reply) => {
+    reply.header('content-type', 'text/javascript; charset=utf-8')
+    // Le navigateur revérifie le worker à chaque chargement de page ; le
+    // laisser en cache retarderait toute correction d'un jour d'événement.
+    reply.header('cache-control', 'no-cache')
+    // Le nom de l'événement est figé dans le worker au moment où il est servi :
+    // un avis poussé console fermée n'a pas d'autre source pour se titrer, et
+    // le navigateur revérifie le worker à chaque chargement de page — un
+    // renommage suit donc au premier passage de l'opérateur.
+    return reply.send(renderServiceWorker({ event: services.identity.get() }))
+  })
+
   const bundle = resoudreConsole()
-  const bundleServi = bundle != null || dev
-  const cheminsBundle = bundleServi ? bundledConsolePaths(dev) : []
-  const cheminsConsole = bundleServi
-    ? legacyConsolePaths(dev)
-    : [...legacyConsolePaths(dev), ...bundledConsolePaths(dev)]
+  const cheminsConsole = bundledConsolePaths(dev)
 
   /*
    * Assets de la console, servis par le hub lui-même.
@@ -376,7 +389,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
    * `websocket` pour le rechargement à chaud : sans lui la console se recharge
    * à la main, ce qui est précisément ce qu'on vient chercher.
    */
-  if (bundle == null && dev && cheminsBundle.length > 0) {
+  if (bundle == null && dev) {
     await app.register(fastifyProxy, {
       upstream: config.viteOrigin,
       prefix: '/admin/',
@@ -386,7 +399,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       // proxy ne prend que ce que Vite sait rendre.
       httpMethods: ['GET'],
       preHandler: (request, reply, done) => {
-        if (cheminsBundle.includes(request.url.split('?')[0] ?? '')) {
+        if (cheminsConsole.includes(request.url.split('?')[0] ?? '')) {
           return reply.callNotFound()
         }
         done()
@@ -394,12 +407,27 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     })
   }
 
-  for (const chemin of cheminsBundle) {
+  for (const chemin of cheminsConsole) {
     app.get(chemin, async (_request, reply) => {
       reply.header('content-type', 'text/html; charset=utf-8')
       // Jamais `immutable` sur la coquille : une console mise à jour qui ne
       // l'est jamais sur le poste d'un opérateur est pire que la retélécharger.
       reply.header('cache-control', 'no-store')
+      if (bundle == null && !dev) {
+        /*
+         * Le bundle manque, et il n'y a plus de gabarit derrière.
+         *
+         * Ce n'est pas un état d'exploitation : l'image du hub construit la
+         * console à l'étape « Console » du Dockerfile, donc l'absence signale
+         * un déploiement incomplet. Le dire en toutes lettres vaut mieux qu'un
+         * 404, qui enverrait chercher du côté de l'adresse.
+         */
+        reply.status(503)
+        return reply.send(
+          'Console non construite. Depuis les sources : ' +
+            'pnpm --filter @cloudnord/hub-admin build',
+        )
+      }
       return reply.send(
         renderConsoleShell({
           mode: config.mode,
@@ -410,41 +438,6 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       )
     })
   }
-
-  for (const chemin of cheminsConsole) {
-    app.get(chemin, async (_request, reply) => {
-      reply.header('content-type', 'text/html; charset=utf-8')
-      return reply.send(
-        renderAdminPage({
-          mode: config.mode,
-          event: { resolved: services.identity.get(), derived: services.identity.derived() },
-          ignores: config.ignores,
-          // Le bouton n'est rendu que si le hub sait s'en servir : proposer une
-          // connexion qui échoue au clic vaut moins que ne rien proposer.
-          google: config.googleClientId == null ? null : { domaine: config.googleHostedDomain! },
-        }),
-      )
-    })
-  }
-
-  /**
-   * Service worker des notifications, servi à la racine.
-   *
-   * La portée d'un service worker est celle de son chemin : servi sous
-   * `/admin/`, il ne couvrirait pas le reste du hub. Sans cache, il ne sert
-   * qu'à recevoir les avis poussés quand la console est fermée.
-   */
-  app.get('/sw.js', async (_request, reply) => {
-    reply.header('content-type', 'text/javascript; charset=utf-8')
-    // Le navigateur revérifie le worker à chaque chargement de page ; le
-    // laisser en cache retarderait toute correction d'un jour d'événement.
-    reply.header('cache-control', 'no-cache')
-    // Le nom de l'événement est figé dans le worker au moment où il est servi :
-    // un avis poussé console fermée n'a pas d'autre source pour se titrer, et
-    // le navigateur revérifie le worker à chaque chargement de page — un
-    // renommage suit donc au premier passage de l'opérateur.
-    return reply.send(renderServiceWorker({ event: services.identity.get() }))
-  })
 
   // WebSocket : le transport des salles. Les en-têtes ne sont disponibles qu'à
   // l'upgrade, donc le contexte (session, appareil) est figé pour toute la

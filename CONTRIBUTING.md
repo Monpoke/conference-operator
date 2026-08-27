@@ -9,7 +9,7 @@ quatre cents personnes.
 
 ```bash
 corepack enable && pnpm install
-pnpm test        # 642 tests
+pnpm test        # 1218 tests
 pnpm typecheck
 ```
 
@@ -25,31 +25,81 @@ aperçus HTML statiques à partir des **vraies** pages et des **vraies** donnée
 
 ```bash
 pnpm --filter @cloudnord/room-client preview ./apercu   # écran de salle, régie, habillages
-pnpm --filter @cloudnord/hub-server  preview ./apercu   # console, mur public
+pnpm --filter @cloudnord/hub-server  preview ./apercu   # mur public
 ```
 
 Ouvrez-les dans un navigateur. Toute modification qui touche à une page doit
 être relue là avant d'être proposée. Les aperçus sont ignorés par git : ce sont
 des artefacts, pas des sources.
 
+**La console fait exception, et c'est structurel.** Un fichier HTML autonome
+s'ouvre depuis le disque ; une application Vue, non — le navigateur refuse ses
+modules servis en `file://`. La remplacer par un aperçu qui ne serait plus la
+page servie ferait perdre exactement ce qui rendait ces fichiers utiles. On la
+relit donc en la lançant :
+
+```bash
+pnpm --filter @cloudnord/hub-admin dev   # puis MODE=dev pnpm dev côté hub
+```
+
+Le jeu de données figé qui alimentait ses dix aperçus n'a pas été perdu : il vit
+dans `apps/hub-admin/test/fixtures/console.ts`, où il sert aux tests.
+
 ## Conventions
 
-### Le français, et le *pourquoi*
+### Le *pourquoi*, toujours
 
-Le code, les identifiants et les commentaires sont en français. Les commentaires
-ne décrivent pas ce que fait la ligne suivante — ils disent **pourquoi elle est
-comme ça** : quelle contrainte, quel défaut déjà rencontré, quel arbitrage. Un
-commentaire qui paraphrase le code sera retiré en relecture ; un bloc de code
-non évident qui n'explique pas son pourquoi se verra demander le sien.
+Les commentaires ne décrivent pas ce que fait la ligne suivante — ils disent
+**pourquoi elle est comme ça** : quelle contrainte, quel défaut déjà rencontré,
+quel arbitrage. Un commentaire qui paraphrase le code sera retiré en relecture ;
+un bloc de code non évident qui n'explique pas son pourquoi se verra demander le
+sien.
 
-### Les pages servies n'ont pas d'étape de build
+### La langue : code en anglais, libellés en français
 
-L'écran de salle, la régie, la console et le mur public sont des gabarits
-littéraux TypeScript qui produisent un document HTML complet et autonome. Ils
-doivent s'ouvrir sans réseau, sans CDN et sans bundler — c'est ce qui fait
-qu'une salle continue de fonctionner quand le réseau de l'événement tombe.
+**Tout ce qui s'écrit aujourd'hui est en anglais** — identifiants, noms de
+fichiers, commentaires. C'est la langue de `packages/format`,
+`packages/hub-client`, `packages/components` et des applications Vue, et celle
+des bibliothèques qu'on y assemble : garder deux langues dans un même fichier
+coûte plus que d'en choisir une.
 
-En conséquence :
+**Ce que lit un opérateur reste en français, sans exception.** Une migration n'a
+pas à reformuler ce qui s'affiche : « Délai de grâce » est le terme des
+conversations de la journée, et le remplacer par un synonyme obligerait à
+traduire mentalement à chaque fois.
+
+Deux frontières, pour que la règle ne se transforme pas en chantier :
+
+- **les modules français existants ne sont pas renommés.** Renommer l'API de
+  `@cloudnord/etat-salle` — `apparenceDe`, `etatDesCreneaux`,
+  `conferenceAPiloter` — se propagerait au contrat, au hub, au client et à un
+  millier de tests, pour un gain nul. Une fonction ajoutée à un fichier français
+  suit la convention de son fichier ;
+- **le vocabulaire métier reste français** là où il nomme le produit : `regie`,
+  `salle`, `conference`, `creneau` sont les mots du RUNBOOK et de l'étiquette
+  collée sur la machine.
+
+### Les pages d'affichage n'ont pas d'étape de build
+
+L'écran de salle, la régie, les deux habillages, le mur public et l'écran
+d'adresse du hub sont des gabarits littéraux TypeScript qui produisent un
+document HTML complet et autonome. Ils doivent s'ouvrir sans réseau, sans CDN et
+sans bundler — c'est ce qui fait qu'une salle continue de fonctionner quand le
+réseau de l'événement tombe.
+
+**La console du hub, elle, est une application Vue** (`apps/hub-admin`) : le hub
+rend une coquille et sert son bundle. L'invariant n'est pas abandonné pour
+autant, il est reformulé — parce que ce qu'il protégeait était le réseau, pas la
+balise :
+
+> Une page servie ne référence **aucune ressource hors de son origine**. Tout
+> `src` et tout `href` est relatif.
+
+Un asset servi par le processus qui sert déjà la page ne peut pas disparaître
+d'une coupure du réseau de l'événement ; n'importe quelle autre origine, si.
+Vérifié par `apps/hub-server/test/public-pages.test.ts`.
+
+En conséquence, pour les pages restées des gabarits :
 
 - **aucun `<script src>`, aucun `<link href>`, aucun `@import url`.** Tout est
   inliné. Vérifié par `apps/room-client/test/pages-autonomes.test.ts` ;

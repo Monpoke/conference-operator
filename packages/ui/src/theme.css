@@ -7,6 +7,18 @@
  * hub. Les surfaces passées à Vue ne lisent pas ce fichier : elles compilent
  * `apps.css`, qui partage les mêmes morceaux mais scanne d'autres sources.
  *
+ * Ce qu'elle ne contient plus, depuis que la console est en Vue : les classes
+ * qui n'étaient posées que par elle — `.message`, `.source`, `.reglage`,
+ * `.vide`, `.aide` et les variantes de boutons de formulaire. Elles étaient une
+ * prothèse pour du markup construit à la volée, et les composants suppriment la
+ * cause.
+ *
+ * Ce qui reste, et pourquoi : `components.css` sert encore à la **régie**, qui
+ * n'a pas d'étape de build et bascule ses classes depuis son JavaScript ;
+ * `wall.css` au mur, pour la même raison ; et `status.css` a quitté cette
+ * feuille pour `apps.css` seule — plus aucun gabarit ne pose de pastille, mais
+ * du code métier partagé en nomme littéralement les teintes.
+ *
  * Le découpage en morceaux existe pour cette raison, et pour elle seule. Les
  * `@import` sont ordonnés comme l'était le fichier d'un seul tenant : les
  * changer de place réordonne la sortie compilée, et le test de fraîcheur
@@ -27,8 +39,6 @@
 @import "./base.css";
 @import "./elements.css";
 @import "./components.css";
-@import "./status.css";
-@import "./console.css";
 @import "./wall.css";
 
 /*

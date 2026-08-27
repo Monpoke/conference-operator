@@ -1,53 +1,32 @@
 /**
- * Écrit des aperçus statiques de la console et du mur.
+ * Un hub d'événement, tel qu'il répond un 30 octobre à 10 h 12.
  *
- * Permet de relire l'habillage sans démarrer un hub, sans base et sans compte —
- * utile pour juger la mise en page, et pour comparer deux états d'un écran
- * (file de modération vide ou pleine) qu'on ne reproduit pas à la demande le
- * jour J.
+ * Ces réponses servaient à figer les aperçus statiques de la console, du temps
+ * où elle était un gabarit littéral qu'on pouvait ouvrir en `file://`. Une
+ * application Vue ne s'ouvre pas ainsi — ses modules sont refusés depuis le
+ * disque — et les aperçus ont donc cédé la place à `pnpm --filter
+ * @cloudnord/hub-admin dev`, qui montre la vraie console.
  *
- *   pnpm --filter @cloudnord/hub-server preview [dossier]
- *
- * Le mur seulement, désormais.
- *
- * La console avait ses dix aperçus tant qu'elle était un gabarit littéral :
- * un fichier HTML autonome s'ouvre depuis le disque, et se relit sans rien
- * lancer. Une application Vue ne le permet pas — le navigateur refuse ses
- * modules servis en `file://` — et la remplacer par un aperçu qui ne serait
- * plus la page servie ferait perdre exactement ce qui rendait ces fichiers
- * utiles.
- *
- * Ce qu'on regarde à leur place : `pnpm --filter @cloudnord/hub-admin dev`,
- * qui montre la vraie console. Le jeu de données figé, lui, a déménagé dans
- * `apps/hub-admin/test/fixtures/console.ts` plutôt que d'être perdu.
+ * Le jeu de données, lui, méritait de survivre : trois salles dans trois états
+ * différents, des téléversements aux trois stades, une horloge simulée, un
+ * programme complet. Le rassembler prend une heure ; le retrouver après coup,
+ * beaucoup plus. Il alimente maintenant les tests de la console.
  */
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
-import { renderWallPage } from '../src/pages/wall-page.js'
 
-const outDir = resolve(process.argv[2] ?? './preview')
-mkdirSync(outDir, { recursive: true })
-
-/**
- * Identité de l'événement, telle que le hub la tranche du programme importé.
- *
- * L'aperçu la fournit comme le ferait un vrai hub : c'est la même valeur qui
- * titre les pages, et une constante d'aperçu masquerait le jour où le
- * mécanisme se casse.
- */
-const EVENEMENT = {
+/** L'identité tranchée par le hub, et celle qu'il déduirait du programme. */
+export const EVENEMENT = {
   resolved: { name: 'Cloud Nord 2026', shortName: 'Cloud Nord' },
   derived: { name: 'Cloud Nord 2026', shortName: 'Cloud Nord' },
 }
 
-const SALLES = [
+export const SALLES = [
   { id: 'track-1-teilhard-de-chardin', name: 'Track #1 — Teilhard de Chardin' },
   { id: 'track-2-mf-1092', name: 'Track #2 — MF 1092' },
   { id: 'hands-on', name: 'Hands on' },
 ]
 
 /** Réponses servies à la place du hub, par procédure oRPC. */
-const REPONSES: Record<string, unknown> = {
+export const REPONSES: Record<string, unknown> = {
   'rooms/list': SALLES,
   'rooms/statuses': [
     {
@@ -216,24 +195,3 @@ const REPONSES: Record<string, unknown> = {
     { id: 'q1', roomId: SALLES[0]!.id, sessionId: 'ses-1', author: 'Camille', text: 'Comment gérez-vous les faux positifs ?', votes: 7, status: 'open', createdAt: '2026-10-30T10:12:00.000Z' },
   ],
 }
-
-/**
- * Injecte un hub simulé **avant** le script de la page.
- *
- * Évite d'ajouter un mode aperçu dans le code de production : la page reste
- * exactement celle qui est servie, seul son environnement est truqué.
- */
-function figer(html: string): string {
-  const amorce = `<script>
-    window.fetch = async (url) => {
-      const chemin = String(url).replace('/rpc/', '')
-      const json = ${JSON.stringify(REPONSES)}[chemin] ?? []
-      return new Response(JSON.stringify({ json }), { status: 200, headers: { 'content-type': 'application/json' } })
-    }
-  </script>`
-  return html.replace('<body', `${amorce}<body`)
-}
-
-const mur = join(outDir, 'mur-public.html')
-writeFileSync(mur, figer(renderWallPage({ roomId: SALLES[0]!.id, rooms: SALLES, event: EVENEMENT.resolved })))
-console.log(`écrit ${mur}`)

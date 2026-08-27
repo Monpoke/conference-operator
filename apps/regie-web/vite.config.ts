@@ -18,7 +18,7 @@ import { defineConfig } from 'vite'
  * vide au milieu d'un talk.
  */
 export default defineConfig({
-  base: '/regie-v2/',
+  base: '/regie/',
   plugins: [vue(), tailwindcss()],
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },

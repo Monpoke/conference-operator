@@ -166,14 +166,25 @@ const agir = async (payload: unknown) => {
 const etat = async () => (await (await fetch(`${regie}/display/data`)).json()) as DisplayPayload
 
 describe('fenêtre de régie', () => {
-  it('sert une page autonome, sans étape de build', async () => {
+  it('sert une page qui ne sort pas de son origine', async () => {
     const html = await (await fetch(`${regie}/regie`)).text()
-    // Titre d'amorçage neutre : le nom de l'événement arrive avec la charge
-    // utile, tranché par le hub. L'écrire dans le HTML servi le figerait dans
-    // le binaire installé sur la machine de salle.
-    expect(html).toContain('<title>Régie de salle</title>')
-    // Une dépendance externe casserait la régie dès la première coupure.
-    expect(html).not.toMatch(/<script[^>]+src=|<link[^>]+href=/)
+
+    /*
+     * L'invariant d'autonomie, sous la forme qu'il a prise avec le bundle :
+     * **aucune ressource hors de l'origine servie**. La formulation d'avant —
+     * tout inliné, aucune balise `src` ni `href` — visait la même chose, mais
+     * ce qu'elle protégeait était le réseau, pas la balise : un fichier servi
+     * par le processus qui sert déjà la page ne peut pas disparaître à une
+     * coupure. Ici, ce n'est pas un test de forme mais de dernier recours — la
+     * machine de salle tourne parfois sans réseau du tout.
+     */
+    const ressources = [...html.matchAll(/(?:src|href)="([^"]+)"/g)].map((trouve) => trouve[1]!)
+    expect(ressources.length).toBeGreaterThan(0)
+    for (const url of ressources) expect(url.startsWith('/')).toBe(true)
+
+    // Le nom de l'événement est relu du cache à chaque requête, jamais figé
+    // dans le binaire installé sur la machine de salle.
+    expect(html).toMatch(/<title>Régie — .+<\/title>/)
   }, 40_000)
 
   it('bascule l\'écran de salle', async () => {

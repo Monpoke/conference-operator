@@ -23,7 +23,6 @@ import type { DisplayState, RoomRuntime } from './runtime.js'
 import { renderProjectorPage } from './display-page.js'
 import { renderOverlayPage } from './overlay-page.js'
 import { renderOverlayLivePage } from './overlay-live-page.js'
-import { renderRegiePage } from './regie-page.js'
 import {
   assetsDeDeveloppement,
   assetsDeProduction,
@@ -61,7 +60,7 @@ export interface DisplayServerOptions {
   /**
    * Serveur Vite de la régie, en développement seulement.
    *
-   * Renseigné, le poste proxifie Vite sous `/regie-v2/` et la coquille pointe
+   * Renseigné, le poste proxifie Vite sous `/regie/` et la coquille pointe
    * sur lui : le rechargement à chaud fonctionne sans que la page ait à sortir
    * de son origine. Absent — le cas de tout poste installé — c'est le bundle
    * construit qui est servi, et rien d'autre n'est possible.
@@ -374,15 +373,14 @@ export class DisplayServer {
   }
 
   /**
-   * La régie refaite, sur une adresse parallèle.
+   * La fenêtre de l'opérateur.
    *
-   * `/regie` et `/regie-v2` servent la même salle sur le même flux, et c'est
-   * tout l'objet de la coexistence : les deux fenêtres s'ouvrent côte à côte,
-   * une journée d'exploitation réelle décide, et la bascule ne se fait qu'après.
-   * Une migration de régie qui se découvre le jour J n'a pas de retour arrière —
-   * la page pilote OBS pendant qu'une salle est pleine.
+   * Un bundle, et non plus un gabarit d'une seule pièce : la page pilote OBS
+   * pendant qu'une salle est pleine, et trois mille lignes de chaînes de
+   * caractères ne se relisaient plus. Le poste rend toujours la coquille
+   * lui-même, avec l'état complet dedans — voir `regie-shell.ts`.
    */
-  private registerRegieV2(): void {
+  private registerRegie(): void {
     const bundle = (this.options.bundleRegie ?? resoudreRegie)()
     const vite = this.options.viteOrigin ?? null
 
@@ -396,7 +394,7 @@ export class DisplayServer {
     if (bundle != null) {
       void this.app.register(fastifyStatic, {
         root: join(bundle.dossier, 'assets'),
-        prefix: '/regie-v2/assets/',
+        prefix: '/regie/assets/',
         wildcard: false,
         immutable: true,
         maxAge: '1y',
@@ -410,20 +408,20 @@ export class DisplayServer {
     if (bundle == null && vite != null) {
       void this.app.register(fastifyProxy, {
         upstream: vite,
-        prefix: '/regie-v2/',
-        rewritePrefix: '/regie-v2/',
+        prefix: '/regie/',
+        rewritePrefix: '/regie/',
         websocket: true,
         httpMethods: ['GET'],
         preHandler: (request, reply, done) => {
           // La coquille est rendue ici : le proxy ne prend que ce que Vite sait
           // rendre, et surtout pas l'adresse qui porte l'état embarqué.
-          if ((request.url.split('?')[0] ?? '') === '/regie-v2') return reply.callNotFound()
+          if ((request.url.split('?')[0] ?? '') === '/regie') return reply.callNotFound()
           done()
         },
       })
     }
 
-    this.app.get('/regie-v2', async (_request, reply) => {
+    this.app.get('/regie', async (_request, reply) => {
       reply.header('content-type', 'text/html; charset=utf-8')
       // Jamais `immutable` sur la coquille : elle porte l'état de la salle, qui
       // change à chaque seconde de la journée.
@@ -477,12 +475,7 @@ export class DisplayServer {
       return reply.send(renderOverlayPage({ initialPayload: this.payload() }))
     })
 
-    this.app.get('/regie', async (_request, reply) => {
-      reply.header('content-type', 'text/html; charset=utf-8')
-      return reply.send(renderRegiePage({ initialPayload: this.payload() }))
-    })
-
-    this.registerRegieV2()
+    this.registerRegie()
 
     /**
      * Actions de régie.

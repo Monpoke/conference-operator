@@ -39,6 +39,7 @@
         "HOST",
         "DATABASE_PATH",
         "VITE_ORIGIN",
+        "REGIE_VITE_ORIGIN",
         "S3_ENDPOINT",
         "S3_REGION",
         "S3_BUCKET",

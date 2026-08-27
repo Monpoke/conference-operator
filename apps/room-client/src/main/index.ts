@@ -76,6 +76,7 @@ async function main(): Promise<void> {
     hubOrigin,
     clientId,
     roomId: process.env.ROOM_ID,
+    regieViteOrigin: process.env.REGIE_VITE_ORIGIN ?? null,
     obsTransportFactory: MODE.obsSimule
       ? (instance) =>
           createMockObsTransport({

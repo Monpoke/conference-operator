@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Régie de salle</title>
+  </head>
+  <body class="grid h-screen grid-rows-[auto_1fr] bg-fond font-sans text-texte">
+    <!--
+      Développement seulement.
+
+      En production, c'est le poste de salle qui rend cette coquille : il y
+      embarque l'état complet de la salle, pour qu'un rechargement en plein talk
+      n'affiche jamais d'écran vide le temps d'un aller-retour. Ici, pas d'état
+      embarqué — la page se remplit à l'ouverture du flux.
+    -->
+    <div id="regie-root" class="contents"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

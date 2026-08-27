@@ -1,4 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify'
+import fastifyProxy from '@fastify/http-proxy'
+import fastifyStatic from '@fastify/static'
+import { join } from 'node:path'
 import {
   CHAMPS_PAR_VUE,
   IDENTITE_PAR_DEFAUT,
@@ -21,6 +24,12 @@ import { renderProjectorPage } from './display-page.js'
 import { renderOverlayPage } from './overlay-page.js'
 import { renderOverlayLivePage } from './overlay-live-page.js'
 import { renderRegiePage } from './regie-page.js'
+import {
+  assetsDeDeveloppement,
+  assetsDeProduction,
+  renderRegieShell,
+  resoudreRegie,
+} from './regie-shell.js'
 import {
   controlActionSchema,
   runControlAction,
@@ -49,6 +58,24 @@ export interface DisplayServerOptions {
   roomConfig?: () => { openFeedbackProjectId: string | null } | null
   /** Origine publique du hub, pour construire l'URL du mur affichée en QR. */
   hubOrigin?: string
+  /**
+   * Serveur Vite de la régie, en développement seulement.
+   *
+   * Renseigné, le poste proxifie Vite sous `/regie-v2/` et la coquille pointe
+   * sur lui : le rechargement à chaud fonctionne sans que la page ait à sortir
+   * de son origine. Absent — le cas de tout poste installé — c'est le bundle
+   * construit qui est servi, et rien d'autre n'est possible.
+   */
+  viteOrigin?: string | null
+  /**
+   * Où trouver le bundle de la régie refaite.
+   *
+   * Injectable, et pas par goût de l'injection : `resoudreRegie()` remonte les
+   * dossiers jusqu'à tomber sur un `dist/`, si bien qu'un test passait ou non
+   * selon qu'un build traînait sur la machine. Le hub s'est fait prendre au
+   * même piège avec la console, et le défaut ne se voit qu'en CI, une fois.
+   */
+  bundleRegie?: () => { dossier: string; manifeste: string } | null
   /** Cible des actions de régie. Absente, l'interface reste en lecture seule. */
   control?: ControlTarget
   /** État d'appairage, relu à chaque envoi. */
@@ -346,6 +373,87 @@ export class DisplayServer {
     }
   }
 
+  /**
+   * La régie refaite, sur une adresse parallèle.
+   *
+   * `/regie` et `/regie-v2` servent la même salle sur le même flux, et c'est
+   * tout l'objet de la coexistence : les deux fenêtres s'ouvrent côte à côte,
+   * une journée d'exploitation réelle décide, et la bascule ne se fait qu'après.
+   * Une migration de régie qui se découvre le jour J n'a pas de retour arrière —
+   * la page pilote OBS pendant qu'une salle est pleine.
+   */
+  private registerRegieV2(): void {
+    const bundle = (this.options.bundleRegie ?? resoudreRegie)()
+    const vite = this.options.viteOrigin ?? null
+
+    /*
+     * Assets du bundle, servis par le poste lui-même.
+     *
+     * Les noms portent une empreinte, d'où `immutable` : la régie est rouverte
+     * plusieurs fois par jour sur un poste de salle, et rien ne justifie de
+     * relire le même mégaoctet à chaque fois.
+     */
+    if (bundle != null) {
+      void this.app.register(fastifyStatic, {
+        root: join(bundle.dossier, 'assets'),
+        prefix: '/regie-v2/assets/',
+        wildcard: false,
+        immutable: true,
+        maxAge: '1y',
+        decorateReply: false,
+      })
+    }
+
+    // Développement : Vite derrière le poste, jamais devant. Le poste porte le
+    // flux d'état, les actions et le vumètre ; les faire transiter par Vite
+    // pour le seul confort du rechargement à chaud serait payer cher.
+    if (bundle == null && vite != null) {
+      void this.app.register(fastifyProxy, {
+        upstream: vite,
+        prefix: '/regie-v2/',
+        rewritePrefix: '/regie-v2/',
+        websocket: true,
+        httpMethods: ['GET'],
+        preHandler: (request, reply, done) => {
+          // La coquille est rendue ici : le proxy ne prend que ce que Vite sait
+          // rendre, et surtout pas l'adresse qui porte l'état embarqué.
+          if ((request.url.split('?')[0] ?? '') === '/regie-v2') return reply.callNotFound()
+          done()
+        },
+      })
+    }
+
+    this.app.get('/regie-v2', async (_request, reply) => {
+      reply.header('content-type', 'text/html; charset=utf-8')
+      // Jamais `immutable` sur la coquille : elle porte l'état de la salle, qui
+      // change à chaque seconde de la journée.
+      reply.header('cache-control', 'no-store')
+
+      if (bundle == null && vite == null) {
+        /*
+         * Le bundle manque, et aucun Vite n'est annoncé.
+         *
+         * Ce n'est pas un état d'exploitation : l'empaquetage embarque le
+         * bundle. Le dire en toutes lettres vaut mieux qu'un 404, qui enverrait
+         * chercher du côté de l'adresse.
+         */
+        reply.status(503)
+        return reply.send(
+          'Régie non construite. Depuis les sources : ' +
+            'pnpm --filter @cloudnord/regie-web build',
+        )
+      }
+
+      return reply.send(
+        renderRegieShell({
+          initialPayload: this.payload(),
+          eventName: this.options.event?.().name ?? null,
+          assets: bundle == null ? assetsDeDeveloppement() : assetsDeProduction(bundle.manifeste),
+        }),
+      )
+    })
+  }
+
   private registerRoutes(): void {
     this.app.get('/health', async () => ({ ok: true }))
 
@@ -373,6 +481,8 @@ export class DisplayServer {
       reply.header('content-type', 'text/html; charset=utf-8')
       return reply.send(renderRegiePage({ initialPayload: this.payload() }))
     })
+
+    this.registerRegieV2()
 
     /**
      * Actions de régie.

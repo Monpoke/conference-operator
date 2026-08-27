@@ -355,6 +355,35 @@ export interface DisplayPayload {
   } | null
 }
 
+/**
+ * Charge du poste de régie, relevée hors du flux d'état.
+ *
+ * Servie à part sur `/control/host` : la mesure est une moyenne sur sa propre
+ * fenêtre, et une salle dont la régie est fermée ne doit émettre aucun trafic.
+ */
+export interface ChargeHote {
+  /**
+   * Part occupée du processeur sur la fenêtre observée, entre 0 et 1.
+   *
+   * `null` tant qu'aucune fenêtre n'a pu être mesurée — au démarrage, ou sur
+   * une machine dont Node ne sait pas lire les compteurs. C'est un aveu, pas un
+   * zéro : afficher « 0 % » d'un processeur qu'on n'a pas su lire ferait
+   * exactement le contraire de ce qu'on cherche.
+   */
+  cpu: number | null
+  coeurs: number
+  /** Durée réellement couverte par la mesure, en ms — l'info-bulle la cite. */
+  fenetreMs: number
+  /**
+   * Mémoire vive occupée et totale, en octets. `null` si illisible.
+   *
+   * L'autre façon dont un poste lâche, et la plus sournoise : la machine ne
+   * ralentit pas franchement, elle commence à échanger sur le disque — celui-là
+   * même qui écrit le rush.
+   */
+  memoire: { occupeeOctets: number; totalOctets: number } | null
+}
+
 /** Les trois pages servies, chacune n'ayant pas les mêmes besoins. */
 export type VueAffichage = 'projecteur' | 'overlay' | 'bandeau' | 'regie'
 

@@ -60,6 +60,9 @@ const room = new RoomApp({
   mode: mode.mode,
   // `ROOM_ID` court-circuite l'écran de choix, pour un poste provisionné.
   roomId: process.env.ROOM_ID,
+  // Renseigner pour développer la régie refaite avec rechargement à chaud :
+  // REGIE_VITE_ORIGIN=http://127.0.0.1:5174, `pnpm --filter @cloudnord/regie-web dev` à côté.
+  regieViteOrigin: process.env.REGIE_VITE_ORIGIN ?? null,
   hubOrigin,
   clientId,
   displayPort: port,

@@ -116,6 +116,14 @@ export interface RoomAppOptions {
    * réussie et écraserait toute valeur posée à la main.
    */
   now?: () => number
+  /**
+   * Serveur Vite de la régie refaite. **Développement seulement.**
+   *
+   * Décidé par le point d'entrée, comme le mode : le cœur applicatif ne lit pas
+   * `process.env`. Absent — le cas de tout poste installé — le poste sert le
+   * bundle construit, et rien d'autre n'est possible.
+   */
+  regieViteOrigin?: string | null
 }
 
 /**
@@ -247,6 +255,7 @@ export class RoomApp implements ControlTarget {
       },
       hote: this.hote,
       port: options.displayPort ?? 7788,
+      viteOrigin: options.regieViteOrigin ?? null,
     })
 
     this.niveaux = new AgregateurNiveaux((inputs) => this.display.publierNiveaux(inputs))

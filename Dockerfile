@@ -49,6 +49,7 @@ WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/hub-admin/package.json apps/hub-admin/
 COPY apps/hub-server/package.json apps/hub-server/
+COPY apps/regie-web/package.json apps/regie-web/
 COPY apps/room-client/package.json apps/room-client/
 COPY packages/contract/package.json packages/contract/
 COPY packages/db/package.json packages/db/
@@ -91,6 +92,7 @@ WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/hub-admin/package.json apps/hub-admin/
 COPY apps/hub-server/package.json apps/hub-server/
+COPY apps/regie-web/package.json apps/regie-web/
 COPY apps/room-client/package.json apps/room-client/
 COPY packages/contract/package.json packages/contract/
 COPY packages/db/package.json packages/db/

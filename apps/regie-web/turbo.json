@@ -1,0 +1,22 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    /*
+     * Même arbitrage que pour la console : le bundle est un artefact.
+     *
+     * `room-client` ne dépend pas de cette tâche — il cherche un dossier au
+     * moment de servir, il n'importe rien d'ici. C'est ce qui garde `pnpm test`
+     * hors de tout build Vite. Le build a lieu là où il sert : dans
+     * l'empaquetage Electron, qui embarque le résultat.
+     */
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    }
+  }
+}

@@ -30,7 +30,20 @@ describe('StatusDot', () => {
     // things, and offering both would let one be painted with the other's
     // meaning.
     const wrapper = mount(StatusDot, { props: { level: 'alerte', connectivity: 'ONLINE' } })
-    expect(wrapper.classes()).toContain('depassement')
+    expect(wrapper.classes()).toContain('offline')
+  })
+
+  it('names a machine level in the machine vocabulary', () => {
+    /*
+     * `offline` and `depassement` paint the same red, so nothing would look
+     * wrong either way. The stylesheet keeps the two families apart all the
+     * same, and says why: one describes a machine, the other a talk. A CPU at
+     * 95 % called « depassement » would send whoever reads the sheet next
+     * looking for a conference that is not there.
+     */
+    const machine = mount(StatusDot, { props: { level: 'attention' } }).classes()
+    expect(machine).toContain('degraded')
+    expect(machine).not.toContain('fin-proche')
   })
 
   it('carries the word when asked, because not everyone tells tints apart', () => {

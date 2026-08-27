@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { cpus, freemem, platform, totalmem } from 'node:os'
+import type { ChargeHote } from '@cloudnord/contract'
 
 /**
  * Charge du poste qui fait tourner la salle.
@@ -10,28 +11,7 @@ import { cpus, freemem, platform, totalmem } from 'node:os'
  * montage. C'est la seule raison d'être de ce module : rendre visible, en
  * régie, ce que la salle ne peut pas entendre.
  */
-export interface ChargeHote {
-  /**
-   * Part occupée du processeur sur la fenêtre observée, entre 0 et 1.
-   *
-   * `null` tant qu'aucune fenêtre n'a pu être mesurée — au démarrage, ou sur
-   * une machine dont Node ne sait pas lire les compteurs. C'est un aveu, pas un
-   * zéro : afficher « 0 % » d'un processeur qu'on n'a pas su lire ferait
-   * exactement le contraire de ce qu'on cherche.
-   */
-  cpu: number | null
-  coeurs: number
-  /** Durée réellement couverte par la mesure, en ms — l'info-bulle la cite. */
-  fenetreMs: number
-  /**
-   * Mémoire vive occupée et totale, en octets. `null` si illisible.
-   *
-   * L'autre façon dont un poste lâche, et la plus sournoise : la machine ne
-   * ralentit pas franchement, elle commence à échanger sur le disque — celui-là
-   * même qui écrit le rush.
-   */
-  memoire: { occupeeOctets: number; totalOctets: number } | null
-}
+export type { ChargeHote }
 
 export interface MoniteurHoteDeps {
   lireCpus?: () => { times: { user: number; nice: number; sys: number; idle: number; irq: number } }[]

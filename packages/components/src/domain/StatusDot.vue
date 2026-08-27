@@ -35,10 +35,19 @@ const props = defineProps<{
   class?: string
 }>()
 
+/*
+ * The machine vocabulary, not the conference one.
+ *
+ * `degraded` and `offline` render the same two tints as `fin-proche` and
+ * `depassement` — the stylesheet keeps them apart on purpose, and says so: one
+ * pair describes a machine, the other a talk. A dot over a saturated CPU has no
+ * conference behind it, and naming it `depassement` would make the next reader
+ * of the stylesheet believe otherwise.
+ */
 const LEVELS = {
   ok: '',
-  attention: 'fin-proche',
-  alerte: 'depassement',
+  attention: 'degraded',
+  alerte: 'offline',
   inconnu: 'hors',
 } as const
 

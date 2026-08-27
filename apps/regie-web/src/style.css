@@ -1,0 +1,9 @@
+/*
+ * Feuille de la régie.
+ *
+ * Même entrée que la console : palette, pastilles et pont shadcn viennent de
+ * `@cloudnord/ui/apps.css`, qui déclare aussi les sources scannées. Ce qui est
+ * propre à la régie — l'info-bulle des indicateurs, l'horloge simulée — vit
+ * dans le `<style scoped>` du composant qui le rend, et nulle part ailleurs.
+ */
+@import "@cloudnord/ui/apps.css";

@@ -3,7 +3,42 @@
  *
  * Même entrée que la console : palette, pastilles et pont shadcn viennent de
  * `@cloudnord/ui/apps.css`, qui déclare aussi les sources scannées. Ce qui est
- * propre à la régie — l'info-bulle des indicateurs, l'horloge simulée — vit
- * dans le `<style scoped>` du composant qui le rend, et nulle part ailleurs.
+ * propre à un composant vit dans son `<style scoped>`, et nulle part ailleurs.
  */
 @import "@cloudnord/ui/apps.css";
+
+/*
+ * Le cadre de la page, en règles et non en utilitaires.
+ *
+ * Le `<body>` est rendu par le poste de salle, pas par ce paquet : ses classes
+ * ne sont scannées par personne — ni par le bundle, qui ne regarde que `src`,
+ * ni par la feuille figée, qui sert les pages restées des gabarits. Une
+ * `grid-rows-[auto_1fr]` posée là n'existait donc dans aucune feuille, et la
+ * régie s'affichait sans grille. Vérifié : la classe était absente du CSS
+ * construit.
+ *
+ * Décrire le cadre ici le met hors de portée de ce piège, et le met au bon
+ * endroit — c'est la page qui sait comment elle se tient, pas la coquille qui
+ * la transporte.
+ */
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    display: grid;
+    /* En-tête, puis tout le reste. Ce qui déborde défile dans le reste. */
+    grid-template-rows: auto 1fr;
+    overflow: hidden;
+    background: var(--color-fond);
+    color: var(--color-texte);
+    font-family: var(--font-sans);
+  }
+
+  /* La racine du montage n'est pas une boîte : la grille est celle du body. */
+  #regie-root {
+    display: contents;
+  }
+}

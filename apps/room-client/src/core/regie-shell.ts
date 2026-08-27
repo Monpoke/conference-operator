@@ -108,8 +108,8 @@ export function renderRegieShell(options: RegieShellOptions): string {
 <title>${escapeHtml(titre)}</title>
 ${styles}
 </head>
-<body class="grid h-screen grid-rows-[auto_1fr] bg-fond font-sans text-texte">
-<div id="regie-root" class="contents"></div>
+<body>
+<div id="regie-root"></div>
 <script id="etat-initial" type="application/json">${etat}</script>
 ${scripts}
 </body>

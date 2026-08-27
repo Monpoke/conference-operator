@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
 import {
+  DUREE_SIGNALEMENT_MS,
   isCommandExpired,
   type AiredQuestion,
   type BroadcastMessage,
@@ -27,18 +28,9 @@ import type { LocalStore } from './store.js'
  * depuis que la régie est un paquet à part. Les garder visibles ici évite de
  * toucher aux imports de tout ce qui lit l'état d'une salle.
  */
+export { DUREE_SIGNALEMENT_MS }
 export type { AiredQuestion, BroadcastMessage, DisplayState, Notification }
 
-/**
- * Durée de vie d'un signalement.
- *
- * Un bandeau qui ne part pas cesse d'être lu : la régie finissait la journée
- * avec cinq signalements empilés au-dessus des commandes, tous périmés depuis
- * longtemps. Trente secondes suffisent à voir passer un fait ponctuel — et ce
- * qui doit rester consultable, l'état des autres salles, est de toute façon
- * dans le flux d'en-tête, qui lui ne périme pas.
- */
-export const DUREE_SIGNALEMENT_MS = 30_000
 
 export interface RuntimeEffects {
   /** Bascule OBS-A. Séparé du runtime pour rester testable sans OBS. */

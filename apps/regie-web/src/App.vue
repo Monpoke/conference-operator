@@ -1,20 +1,26 @@
 <script setup lang="ts">
 import { Toaster } from '@cloudnord/components'
-import { computed, onBeforeUnmount, onMounted, useTemplateRef } from 'vue'
+import { computed, onBeforeUnmount, onMounted, useTemplateRef, watchEffect } from 'vue'
 import CapturePanel from './components/CapturePanel.vue'
 import ConferenceDialogs from './components/ConferenceDialogs.vue'
 import ConferencePanel from './components/ConferencePanel.vue'
+import ConsultDialog from './components/ConsultDialog.vue'
+import DiagnosticsPanel from './components/DiagnosticsPanel.vue'
 import LevelMeters from './components/LevelMeters.vue'
 import MessagePanel from './components/MessagePanel.vue'
+import NotificationStack from './components/NotificationStack.vue'
 import PairingVeil from './components/PairingVeil.vue'
 import ProjectionPanel from './components/ProjectionPanel.vue'
 import RegieHeader from './components/RegieHeader.vue'
+import RoomsStrip from './components/RoomsStrip.vue'
 import ScreenPanel from './components/ScreenPanel.vue'
 import { useActionsStore } from './stores/actions.js'
 import { useAudioStore } from './stores/audio.js'
 import { useClockStore } from './stores/clock.js'
+import { useConsultStore } from './stores/consult.js'
 import { useHostStore } from './stores/host.js'
 import { useKeyboardLayer } from './stores/keyboard.js'
+import { useProgramsStore } from './stores/programs.js'
 import { useRoomStore } from './stores/room.js'
 
 /**
@@ -29,6 +35,8 @@ const clock = useClockStore()
 const host = useHostStore()
 const audio = useAudioStore()
 const actions = useActionsStore()
+const consult = useConsultStore()
+const programs = useProgramsStore()
 
 const capture = useTemplateRef<InstanceType<typeof CapturePanel>>('capture')
 
@@ -47,6 +55,18 @@ onBeforeUnmount(() => {
 })
 
 const payload = computed(() => room.payload)
+
+/*
+ * Les programmes des salles voisines suivent l'empreinte, pas le flux.
+ *
+ * La régie reçoit un état toutes les quelques secondes ; relire une dizaine de
+ * programmes à chaque fois coûterait autant de requêtes pour une réponse
+ * identique. Le store ne recharge que si l'empreinte a changé.
+ */
+watchEffect(() => {
+  const state = payload.value?.state
+  if (state != null) void programs.load(state.contentHash, state.roomId)
+})
 
 /**
  * Une machine non appairée n'a rien à piloter.
@@ -73,6 +93,8 @@ useKeyboardLayer(
     h: () => void actions.act({ action: 'scene.set', role: 'HOLD' }),
     r: () => capture.value?.toggleRecording(),
     m: () => capture.value?.mark(),
+    s: () => consult.show('salles'),
+    p: () => consult.show('programme'),
   }),
   /*
    * Rien sous le voile d'appairage.
@@ -90,13 +112,21 @@ useKeyboardLayer(
   <PairingVeil v-if="pairingRequired && payload != null" :pairing="payload.pairing" />
 
   <template v-else-if="payload != null">
-    <RegieHeader :payload="payload" :now-ms="room.now" :stream-dead="room.dead" />
+    <RegieHeader
+      :payload="payload"
+      :now-ms="room.now"
+      :stream-dead="room.dead"
+      @open="consult.show($event)"
+    />
+
+    <RoomsStrip :payload="payload" :now-ms="room.now" @open="consult.follow($event)" />
 
     <main
       class="grid min-h-0 gap-2.5 overflow-y-auto p-2.5 lg:grid-cols-3 lg:overflow-hidden"
     >
       <div class="flex min-h-0 flex-col gap-2.5 lg:overflow-y-auto">
         <ConferencePanel :payload="payload" :now-ms="room.now" />
+        <DiagnosticsPanel :payload="payload" />
       </div>
 
       <div class="flex min-h-0 flex-col gap-2.5 lg:overflow-y-auto">
@@ -121,6 +151,9 @@ useKeyboardLayer(
         <LevelMeters />
       </div>
     </main>
+
+    <ConsultDialog :payload="payload" :now-ms="room.now" />
+    <NotificationStack :payload="payload" :now-ms="room.now" />
   </template>
 
   <!--
@@ -128,7 +161,7 @@ useKeyboardLayer(
     coquille sans rien dedans. En salle, le poste embarque l'état dans la page
     et cet écran n'apparaît jamais.
   -->
-  <div v-else class="flex items-center justify-center p-6 text-sm text-attenue">
+  <div v-else class="flex flex-1 items-center justify-center p-6 text-sm text-attenue">
     Connexion au poste de salle…
   </div>
 

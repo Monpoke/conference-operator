@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../src/App.vue'
 import { useConferenceStore } from '../src/stores/conference.js'
+import { useConsultStore } from '../src/stores/consult.js'
 import { useRoomStore } from '../src/stores/room.js'
 import { payload } from './fixtures.js'
 
@@ -139,6 +140,56 @@ describe('raccourcis de la page', () => {
     // Écrire « le micro coupe » dans le message à la console ne doit pas
     // basculer la projection en direct au premier caractère.
     expect(envois.filter((envoi) => envoi.url === '/control/action')).toEqual([])
+  })
+})
+
+describe('consultation', () => {
+  it('s’ouvre au clavier, sur l’onglet que la touche nomme', async () => {
+    await monter()
+    const consult = useConsultStore()
+
+    frappe('p')
+    await flushPromises()
+    expect(consult.open).toBe(true)
+    expect(consult.tab).toBe('programme')
+
+    consult.open = false
+    // La couche de la modale se retire au prochain cycle réactif : taper dans
+    // l'intervalle, ce serait taper pendant qu'elle est encore à l'écran.
+    await flushPromises()
+    frappe('s')
+    await flushPromises()
+    expect(consult.tab).toBe('salles')
+  })
+
+  it('avale les raccourcis pendant qu’on lit', async () => {
+    await monter()
+    const consult = useConsultStore()
+    consult.show('programme')
+    await flushPromises()
+
+    frappe('l')
+    frappe('r')
+    await flushPromises()
+
+    /*
+     * `l` et `h` basculent la projection devant du public, et une modale
+     * ouverte est exactement le moment où l'on tape sans regarder.
+     */
+    expect(envois.filter((envoi) => envoi.url === '/control/action')).toEqual([])
+  })
+
+  it('suit une salle voisine et charge son programme à la demande', async () => {
+    await monter()
+    const consult = useConsultStore()
+
+    await consult.follow('track-2')
+    await flushPromises()
+
+    // Pas dans le flux d'état : le programme d'une salle qu'on ne regarde pas
+    // n'a rien à circuler à chaque changement de scène.
+    expect(consult.tab).toBe('autre')
+    expect(envois.some((envoi) => envoi.url === '/display/sessions?salle=track-2')).toBe(true)
   })
 })
 

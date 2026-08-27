@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { DisplayPayload } from '@cloudnord/contract'
 import { computed } from 'vue'
+import { Button, Key } from '@cloudnord/components'
 import { useHostStore } from '../stores/host.js'
 import CpuIndicator from './CpuIndicator.vue'
 import HubIndicator from './HubIndicator.vue'
@@ -14,6 +15,8 @@ const props = defineProps<{
   /** Le flux de la page est coupé depuis assez longtemps pour le dire. */
   streamDead: boolean
 }>()
+
+const emit = defineEmits<{ open: [tab: 'programme' | 'salles'] }>()
 
 const host = useHostStore()
 
@@ -70,5 +73,14 @@ const queueDepth = computed(
       :time-zone="payload.timezone"
       :simulated="payload.state.simulatedClock"
     />
+
+    <div class="flex shrink-0 items-center gap-1.5">
+      <Button id="btn-programme" size="small" @click="emit('open', 'programme')">
+        Programme<Key>P</Key>
+      </Button>
+      <Button id="btn-salles" size="small" @click="emit('open', 'salles')">
+        Salles<Key>S</Key>
+      </Button>
+    </div>
   </header>
 </template>

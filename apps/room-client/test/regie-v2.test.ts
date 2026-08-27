@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import Fastify from 'fastify'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { normalizeProgram } from '@cloudnord/program'
 import { AssetCache } from '../src/core/assets.js'
@@ -147,6 +148,66 @@ describe('adresse parallèle', () => {
     // Un 404 enverrait chercher du côté de l'adresse.
     expect(reponse.status).toBe(503)
     expect(await reponse.text()).toContain('pnpm --filter @cloudnord/regie-web build')
+  })
+})
+
+describe('développement', () => {
+  it('pointe la coquille sur Vite, et proxifie ce que Vite sait rendre', async () => {
+    /*
+     * Le sens du proxy est imposé : c'est le poste qui porte le flux d'état,
+     * les actions et le vumètre, tous sur son origine. Mettre Vite devant
+     * demanderait de proxifier un SSE et un WebSocket OBS pour le seul confort
+     * du rechargement à chaud.
+     */
+    const vite = Fastify({ logger: false })
+    vite.get('/regie-v2/src/main.ts', async (_request, reply) => {
+      reply.header('content-type', 'text/javascript')
+      return reply.send('// servi par Vite')
+    })
+    const origineVite = await vite.listen({ host: '127.0.0.1', port: 0 })
+
+    try {
+      await demarrer({ viteOrigin: origineVite })
+
+      const html = await (await fetch(`${origin}/regie-v2`)).text()
+      expect(html).toContain('src="/regie-v2/@vite/client"')
+      expect(html).toContain('src="/regie-v2/src/main.ts"')
+
+      // Et le poste sert vraiment ce que Vite lui donne, sur sa propre origine.
+      const module = await fetch(`${origin}/regie-v2/src/main.ts`)
+      expect(module.status).toBe(200)
+      expect(await module.text()).toBe('// servi par Vite')
+    } finally {
+      await vite.close()
+    }
+  })
+
+  it('garde la coquille pour lui, même derrière le proxy', async () => {
+    // Elle porte l'état embarqué : la laisser au proxy rendrait la page que
+    // Vite sert depuis `index.html`, sans état dedans.
+    const vite = Fastify({ logger: false })
+    vite.get('/regie-v2', async (_request, reply) => reply.send('coquille de Vite'))
+    const origineVite = await vite.listen({ host: '127.0.0.1', port: 0 })
+
+    try {
+      await demarrer({ viteOrigin: origineVite })
+      const html = await (await fetch(`${origin}/regie-v2`)).text()
+      expect(html).toContain('id="etat-initial"')
+      expect(html).not.toContain('coquille de Vite')
+    } finally {
+      await vite.close()
+    }
+  })
+
+  it('préfère le bundle construit à Vite quand les deux sont là', async () => {
+    const bundle = bundleFactice()
+    await demarrer({ bundleRegie: () => bundle, viteOrigin: 'http://127.0.0.1:1' })
+
+    // Un poste installé n'a pas de Vite ; si la variable traîne dans un
+    // environnement, elle ne doit pas détourner une régie qui a son bundle.
+    const html = await (await fetch(`${origin}/regie-v2`)).text()
+    expect(html).toContain('/regie-v2/assets/index-abc123.js')
+    expect(html).not.toContain('@vite/client')
   })
 })
 

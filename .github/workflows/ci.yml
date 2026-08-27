@@ -46,3 +46,13 @@ jobs:
       # aucun style, et rien d'autre ne l'attraperait.
       - name: Tests
         run: pnpm test
+
+      # Les bundles, parce que ni le typage ni les tests ne les construisent.
+      #
+      # Vite et Tailwind échouent sur des choses qu'aucun des deux ne voit : un
+      # `@source` vers un dossier disparu, un import que le bundler ne résout
+      # pas, une feuille qui ne compile plus. Sans cette étape, la panne
+      # n'apparaît qu'au déploiement du hub ou à l'empaquetage du client — chez
+      # quelqu'un, sur sa machine, la semaine d'avant l'événement.
+      - name: Bundles
+        run: pnpm build

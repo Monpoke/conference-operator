@@ -28,17 +28,30 @@
   }
 
   body {
-    display: grid;
-    /* En-tête, puis tout le reste. Ce qui déborde défile dans le reste. */
-    grid-template-rows: auto 1fr;
+    /*
+     * Une colonne flex, et non une grille.
+     *
+     * Le bandeau des salles voisines disparaît complètement sur un événement
+     * d'une seule salle. Une grille à trois rangées nommées laisserait alors le
+     * contenu dans la rangée du bandeau — celle qui se dimensionne sur son
+     * contenu — et le bas de l'écran vide. La page d'origine avait ce défaut.
+     */
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
     background: var(--color-fond);
     color: var(--color-texte);
     font-family: var(--font-sans);
   }
 
-  /* La racine du montage n'est pas une boîte : la grille est celle du body. */
+  /* La racine du montage n'est pas une boîte : la colonne est celle du body. */
   #regie-root {
     display: contents;
+  }
+
+  /* Tout ce qui reste après l'en-tête et le bandeau. */
+  body > main {
+    min-height: 0;
+    flex: 1;
   }
 }

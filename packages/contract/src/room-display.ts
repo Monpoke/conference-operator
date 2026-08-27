@@ -356,6 +356,17 @@ export interface DisplayPayload {
 }
 
 /**
+ * Durée de vie d'un signalement.
+ *
+ * Un bandeau qui ne part pas cesse d'être lu : la régie finissait la journée
+ * avec cinq signalements empilés au-dessus des commandes, tous périmés depuis
+ * longtemps. Trente secondes suffisent à voir passer un fait ponctuel — et ce
+ * qui doit rester consultable, l'état des autres salles, est de toute façon
+ * dans le flux d'en-tête, qui lui ne périme pas.
+ */
+export const DUREE_SIGNALEMENT_MS = 30_000
+
+/**
  * Niveau d'une entrée audio, en dBFS.
  *
  * OBS envoie des multiplicateurs linéaires ; on convertit ici parce que c'est

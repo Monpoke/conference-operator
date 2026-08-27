@@ -108,6 +108,43 @@ describe('pages servies par le client', () => {
   })
 })
 
+/**
+ * Les classes de l'ancienne feuille de composants, et pourquoi elles reviennent.
+ *
+ * `.btn`, `.champ`, `.panneau` ont été l'idiome de ce dépôt pendant toute la
+ * vie des pages-gabarits. La feuille qui les définissait a suivi la régie, sa
+ * dernière lectrice — mais l'habitude, elle, reste : ajouter un bouton à
+ * l'écran d'adresse du hub et écrire `class="btn"` donne un bouton nu, sans
+ * qu'aucune erreur ne parte.
+ *
+ * Le garde-fou est étroit à dessein. Sa forme générale — toute classe posée
+ * doit exister dans la feuille — a été essayée : la page de projection a son
+ * propre `<style>` et une douzaine de classes qui ne servent que de prise à son
+ * JavaScript, et il aurait fallu les maintenir à la main dans une liste. C'est
+ * exactement le genre de liste qui finit par manquer quelque chose.
+ */
+const CLASSES_DISPARUES = [
+  'btn',
+  'btn-onglet',
+  'btn-petit',
+  'champ',
+  'inactif',
+  'panneau',
+  'titre-panneau',
+  'touche',
+]
+
+describe('classes de la feuille de composants supprimée', () => {
+  it.each(PAGES)('%s : n\'en pose aucune', (_nom, html) => {
+    const corps = html.slice(html.indexOf('<body'))
+    const posees = new Set<string>()
+    for (const attribut of corps.matchAll(/class="([^"]*)"/g)) {
+      for (const nom of attribut[1]!.split(/\s+/)) posees.add(nom)
+    }
+    expect(CLASSES_DISPARUES.filter((classe) => posees.has(classe))).toEqual([])
+  })
+})
+
 describe("l'attribut hidden est rendu prioritaire", () => {
   /**
    * Piège rencontré sur la console : `[hidden] { display: none }` vient de la

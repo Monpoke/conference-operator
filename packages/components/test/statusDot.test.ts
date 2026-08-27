@@ -1,0 +1,48 @@
+import { mount } from '@vue/test-utils'
+import { describe, expect, it } from 'vitest'
+import StatusDot from '../src/domain/StatusDot.vue'
+
+/**
+ * The two-part dot, and the confusion it exists to prevent.
+ *
+ * Fill says where the conference is; outline says what we know of the room. A
+ * dot carrying only connectivity showed a room in green while it was ten
+ * minutes over its slot — "green" only ever meant "the machine answers".
+ */
+describe('StatusDot', () => {
+  it('paints the conference and outlines the room, separately', () => {
+    const wrapper = mount(StatusDot, {
+      props: { state: 'depassement', connectivity: 'DEGRADED' },
+    })
+
+    expect(wrapper.classes()).toContain('depassement')
+    expect(wrapper.classes()).toContain('doute')
+  })
+
+  it('leaves an unknown room hollow rather than claiming a colour', () => {
+    // Not knowing and painting it in colour is exactly what the outline exists
+    // to prevent.
+    expect(mount(StatusDot, { props: { state: 'en-cours' } }).classes()).toContain('muette')
+  })
+
+  it('takes no fill from the appearance table when given a machine level', () => {
+    // A machine has no conference: `level` and `state` describe different
+    // things, and offering both would let one be painted with the other's
+    // meaning.
+    const wrapper = mount(StatusDot, { props: { level: 'alerte', connectivity: 'ONLINE' } })
+    expect(wrapper.classes()).toContain('depassement')
+  })
+
+  it('carries the word when asked, because not everyone tells tints apart', () => {
+    const wrapper = mount(StatusDot, { props: { state: 'retard', connectivity: 'ONLINE', word: true } })
+    expect(wrapper.text()).toBe('retard au démarrage')
+  })
+
+  it('does not invent the vocabulary', () => {
+    // The class names come from shared business code that a page which will
+    // never be Vue also reads. This component renders them; it does not decide
+    // them.
+    expect(mount(StatusDot, { props: { state: 'fin-proche', connectivity: 'ONLINE' } }).classes())
+      .toContain('fin-proche')
+  })
+})

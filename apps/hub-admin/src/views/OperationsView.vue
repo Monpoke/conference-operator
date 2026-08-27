@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { apparenceDe, contourDe } from '@cloudnord/etat-salle'
-import { Badge, Empty, Panel } from '@cloudnord/components'
+import { apparenceDe } from '@cloudnord/etat-salle'
+import { Badge, Empty, Panel, StatusDot } from '@cloudnord/components'
 import { time, timeAgo } from '@cloudnord/format'
 import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
@@ -26,16 +26,6 @@ const { rooms, globalBreak } = storeToRefs(store)
  * concernée : les cartes ne portent aucune heure absolue, seulement des durées.
  */
 const fuseau = computed(() => useConferencesStore().planning?.timezone)
-
-/**
- * Remplissage : où en est la conférence. Contour : ce qu'on sait de la salle.
- *
- * Une pastille qui ne portait que la connectivité affichait une salle verte
- * alors qu'elle débordait de dix minutes.
- */
-function pastille(salle: RoomStatus): string {
-  return apparenceDe(salle.conference).teinte + contourDe(salle.connectivity)
-}
 
 function apparence(salle: RoomStatus): { mot: string; texte: string } {
   const { mot, texte } = apparenceDe(salle.conference)
@@ -79,6 +69,11 @@ const detailGlobal = computed(() => {
   >
     <Panel v-if="globalBreak != null" id="encart-global" class="col-span-full" title="Global">
       <div class="flex items-center gap-2">
+        <!--
+          Le créneau commun n'est pas une conférence : sa teinte est posée à la
+          main, et ne vient pas de la table des apparences — `APPARENCE.pause`
+          décrit une *salle* en pause, pas le créneau lui-même.
+        -->
         <span
           id="global-pastille"
           class="pastille"
@@ -109,7 +104,7 @@ const detailGlobal = computed(() => {
           :data-salle="salle.roomId"
         >
           <div class="flex items-center gap-2">
-            <span class="pastille" :class="pastille(salle)"></span>
+            <StatusDot :state="salle.conference" :connectivity="salle.connectivity" />
             <span class="min-w-0 flex-1 truncate font-semibold">{{ salle.name }}</span>
             <Badge
               v-if="salle.breakBadge != null"

@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { globSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { APPARENCE, contourDe } from '@cloudnord/etat-salle'
 import { describe, expect, it } from 'vitest'
@@ -28,19 +29,39 @@ const peintes = new Set(
 /**
  * Modificateurs réellement posés par le code.
  *
- * Le remplissage vient de la table des apparences, le contour de `contourDe()`
- * — dont la sortie est préfixée d'une espace, puisqu'elle se concatène. Les
- * deux dernières ne viennent d'aucune table : ce sont les pastilles de
- * *machine*, posées à la main là où l'on n'affiche qu'une connectivité (l'état
- * du hub en régie, par exemple), et le commentaire de `status.css` les
- * distingue explicitement d'un état de conférence.
+ * Trois sources, et la troisième est celle que j'avais manquée. Le remplissage
+ * vient de la table des apparences ; le contour de `contourDe()`, dont la
+ * sortie est préfixée d'une espace puisqu'elle se concatène. Mais certaines
+ * pastilles sont posées **à la main**, sans passer par aucune table : celles
+ * d'une machine, où l'on n'affiche qu'une connectivité, et celle du créneau
+ * commun, qui n'est pas une conférence.
+ *
+ * Les énumérer en dur ici revenait à tenir une quatrième liste à jour, et c'est
+ * précisément ce qui a échoué : `.pastille.pause` a été supprimée comme morte
+ * alors que l'encart Global la posait, et l'encart est passé au vert par
+ * défaut. On les relève donc dans les sources.
  */
+const SOURCES = globSync('{apps,packages}/*/{src,test}/**/*.{ts,vue}', {
+  cwd: fileURLToPath(new URL('../../../', import.meta.url)),
+})
+
+const RACINE = fileURLToPath(new URL('../../../', import.meta.url))
+
+const aLaMain = new Set(
+  SOURCES.flatMap((fichier) =>
+    [
+      ...readFileSync(RACINE + fichier, 'utf8').matchAll(
+        /pastille[^\n]{0,80}?\b(hors|pause|fin-proche|pas-commencee|terminee|retard|depassement|degraded|offline|doute|muette)\b/g,
+      ),
+    ].map((trouve) => trouve[1] as string),
+  ),
+)
+
 const posees = new Set(
   [
     ...Object.values(APPARENCE).map((apparence) => apparence.teinte),
     ...['ONLINE', 'DEGRADED', 'OFFLINE', null].map((c) => contourDe(c).trim()),
-    'degraded',
-    'offline',
+    ...aLaMain,
   ].filter((nom) => nom !== ''),
 )
 

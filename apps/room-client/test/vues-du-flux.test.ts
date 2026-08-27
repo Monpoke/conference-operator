@@ -18,10 +18,19 @@ const PAGES: { vue: VueAffichage; fichier: string }[] = [
   { vue: 'regie', fichier: 'regie-page.ts' },
 ]
 
-/** Champs de la charge utile consultés par une page, par lecture de sa source. */
+/**
+ * Champs de la charge utile consultés par une page, par lecture de sa source.
+ *
+ * `donnees?.champ` autant que `donnees.champ`, et l'optionnel n'est pas un
+ * détail : la première version du motif l'ignorait, et le seul champ qu'une
+ * page lisait ainsi — le mur, dans le menu des écrans de la régie — était
+ * absent de `CHAMPS_PAR_VUE` sans que rien ne le dise. Le lien « Mur public »
+ * ne tenait que par accident : l'état embarqué dans la coquille n'est pas
+ * filtré, et la liste des écrans n'était construite qu'une fois.
+ */
 function champsLus(fichier: string): string[] {
   const source = readFileSync(join(import.meta.dirname, '..', 'src', 'core', fichier), 'utf8')
-  const trouves = source.matchAll(/\bdonnees\.([a-zA-Z]+)/g)
+  const trouves = source.matchAll(/\bdonnees\??\.([a-zA-Z]+)/g)
   return [...new Set([...trouves].map((m) => m[1]!))].sort()
 }
 

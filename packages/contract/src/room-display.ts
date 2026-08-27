@@ -438,7 +438,13 @@ export const CHAMPS_PAR_VUE: Record<VueAffichage, readonly (keyof DisplayPayload
   // Le bandeau ne lit que `state.liveMessage` : lui pousser le programme et
   // les sponsors coûterait trente kilo-octets par changement d'écran.
   bandeau: ['state', 'eventIdentity'],
-  regie: ['state', 'roomName', 'timezone', 'sessions', 'diagnostics', 'pairing', 'eventIdentity'],
+  regie: [
+    'state', 'roomName', 'timezone', 'sessions', 'diagnostics', 'pairing', 'eventIdentity',
+    // L'adresse du mur, pour le menu des écrans. Le QR voyage avec, ce qui est
+    // du gaspillage — mais il ne change qu'au sync, et scinder le champ en deux
+    // coûterait plus cher à lire qu'il ne fait économiser.
+    'wall',
+  ],
 }
 
 /*

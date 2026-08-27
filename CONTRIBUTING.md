@@ -24,7 +24,7 @@ Les pages n'ont pas de suite de tests visuels. Deux générateurs produisent des
 aperçus HTML statiques à partir des **vraies** pages et des **vraies** données :
 
 ```bash
-pnpm --filter @cloudnord/room-client preview ./apercu   # écran de salle, régie, habillages
+pnpm --filter @cloudnord/room-client preview ./apercu   # écran de salle, habillages
 pnpm --filter @cloudnord/hub-server  preview ./apercu   # mur public
 ```
 
@@ -32,18 +32,26 @@ Ouvrez-les dans un navigateur. Toute modification qui touche à une page doit
 être relue là avant d'être proposée. Les aperçus sont ignorés par git : ce sont
 des artefacts, pas des sources.
 
-**La console fait exception, et c'est structurel.** Un fichier HTML autonome
-s'ouvre depuis le disque ; une application Vue, non — le navigateur refuse ses
-modules servis en `file://`. La remplacer par un aperçu qui ne serait plus la
-page servie ferait perdre exactement ce qui rendait ces fichiers utiles. On la
-relit donc en la lançant :
+**La console et la régie font exception, et c'est structurel.** Un fichier HTML
+autonome s'ouvre depuis le disque ; une application Vue, non — le navigateur
+refuse ses modules servis en `file://`. Les remplacer par des aperçus qui ne
+seraient plus les pages servies ferait perdre exactement ce qui rendait ces
+fichiers utiles. On les relit donc en les lançant :
 
 ```bash
 pnpm --filter @cloudnord/hub-admin dev   # puis MODE=dev pnpm dev côté hub
+
+# La régie a besoin d'une salle derrière elle : le poste proxifie Vite, jamais
+# l'inverse — c'est lui qui porte le flux d'état, les actions et le vumètre.
+pnpm --filter @cloudnord/regie-web dev
+REGIE_VITE_ORIGIN=http://127.0.0.1:5174 pnpm --filter @cloudnord/room-client dev:headless
 ```
 
-Le jeu de données figé qui alimentait ses dix aperçus n'a pas été perdu : il vit
-dans `apps/hub-admin/test/fixtures/console.ts`, où il sert aux tests.
+Les jeux de données figés qui alimentaient leurs aperçus n'ont pas été perdus :
+ils vivent dans `apps/hub-admin/test/fixtures/console.ts` et
+`apps/regie-web/test/fixtures.ts`, où ils servent aux tests — et où le
+compilateur vérifie qu'ils décrivent des états que le hub et la salle peuvent
+réellement produire.
 
 ## Conventions
 
@@ -81,23 +89,25 @@ Deux frontières, pour que la règle ne se transforme pas en chantier :
 
 ### Les pages d'affichage n'ont pas d'étape de build
 
-L'écran de salle, la régie, les deux habillages, le mur public et l'écran
-d'adresse du hub sont des gabarits littéraux TypeScript qui produisent un
-document HTML complet et autonome. Ils doivent s'ouvrir sans réseau, sans CDN et
-sans bundler — c'est ce qui fait qu'une salle continue de fonctionner quand le
-réseau de l'événement tombe.
+L'écran de salle, les deux habillages, le mur public et l'écran d'adresse du hub
+sont des gabarits littéraux TypeScript qui produisent un document HTML complet et
+autonome. Ils doivent s'ouvrir sans réseau, sans CDN et sans bundler — c'est ce
+qui fait qu'une salle continue de fonctionner quand le réseau de l'événement
+tombe.
 
-**La console du hub, elle, est une application Vue** (`apps/hub-admin`) : le hub
-rend une coquille et sert son bundle. L'invariant n'est pas abandonné pour
-autant, il est reformulé — parce que ce qu'il protégeait était le réseau, pas la
-balise :
+**La console du hub et la régie, elles, sont des applications Vue**
+(`apps/hub-admin`, `apps/regie-web`) : le processus qui les sert rend une
+coquille et sert leur bundle. L'invariant n'est pas abandonné pour autant, il est
+reformulé — parce que ce qu'il protégeait était le réseau, pas la balise :
 
 > Une page servie ne référence **aucune ressource hors de son origine**. Tout
 > `src` et tout `href` est relatif.
 
 Un asset servi par le processus qui sert déjà la page ne peut pas disparaître
 d'une coupure du réseau de l'événement ; n'importe quelle autre origine, si.
-Vérifié par `apps/hub-server/test/public-pages.test.ts`.
+Vérifié par `apps/hub-server/test/public-pages.test.ts` pour la console, et par
+`apps/room-client/test/regie-servie.test.ts` pour la régie — où il pèse plus
+lourd encore : la machine de salle tourne parfois sans réseau du tout.
 
 En conséquence, pour les pages restées des gabarits :
 

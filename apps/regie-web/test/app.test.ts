@@ -22,6 +22,7 @@ interface Envoi {
 }
 
 let envois: Envoi[]
+let appels: number
 
 /*
  * Montée puis démontée, sans exception.
@@ -143,6 +144,45 @@ describe('raccourcis de la page', () => {
     // Écrire « le micro coupe » dans le message à la console ne doit pas
     // basculer la projection en direct au premier caractère.
     expect(envois.filter((envoi) => envoi.url === '/control/action')).toEqual([])
+  })
+})
+
+describe('programmes des salles voisines', () => {
+  it('ne les relit pas tant que l’empreinte du programme ne change pas', async () => {
+    await monter()
+    appels = envois.filter((envoi) => envoi.url.startsWith('/display/sessions')).length
+
+    // Un état arrive toutes les quelques secondes ; relire une dizaine de
+    // programmes à chaque fois coûterait autant de requêtes pour une réponse
+    // identique.
+    useRoomStore().payload!.state.outboxDepth = 3
+    await flushPromises()
+
+    expect(envois.filter((envoi) => envoi.url.startsWith('/display/sessions'))).toHaveLength(appels)
+  })
+
+  it('ne charge la liste qu’une fois au montage', async () => {
+    await monter()
+
+    // Un effet qui suit ce qu'il écrit se déclenche deux fois : le second tour
+    // ne coûte rien de visible, mais il double les requêtes de la journée sur
+    // une machine qui n'a rien demandé.
+    expect(envois.filter((envoi) => envoi.url === '/display/sessions')).toHaveLength(1)
+  })
+})
+
+describe('régie en lecture seule', () => {
+  it('se monte sans diagnostic, plutôt que d’échouer', async () => {
+    const etat = payload({ diagnostics: null })
+    useRoomStore().seed(etat)
+    const wrapper = mount(App, { attachTo: document.body })
+    montees.push(wrapper)
+    await flushPromises()
+
+    // Une deuxième fenêtre ouverte pour regarder : le poste ne pilote rien, et
+    // la moitié de la charge utile est absente.
+    expect(wrapper.text()).toContain('Régie en lecture seule')
+    expect(wrapper.find('#btn-rec').exists()).toBe(true)
   })
 })
 

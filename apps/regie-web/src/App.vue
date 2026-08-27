@@ -67,7 +67,8 @@ const payload = computed(() => room.payload)
  *
  * La régie reçoit un état toutes les quelques secondes ; relire une dizaine de
  * programmes à chaque fois coûterait autant de requêtes pour une réponse
- * identique. Le store ne recharge que si l'empreinte a changé.
+ * identique. Le store ne recharge que si l'empreinte a changé — l'effet se
+ * redéclenche à chaque charge utile, et c'est `load` qui s'arrête tout de suite.
  */
 watchEffect(() => {
   const state = payload.value?.state

@@ -216,12 +216,31 @@ describe('développement', () => {
     }
   })
 
-  it('préfère le bundle construit à Vite quand les deux sont là', async () => {
+  it('préfère Vite au bundle construit quand les deux sont là', async () => {
     const bundle = bundleFactice()
     await demarrer({ bundleRegie: () => bundle, viteOrigin: 'http://127.0.0.1:1' })
 
-    // Un poste installé n'a pas de Vite ; si la variable traîne dans un
-    // environnement, elle ne doit pas détourner une régie qui a son bundle.
+    /*
+     * L'ordre inverse semblait plus prudent — un poste installé n'a pas de
+     * Vite, une variable qui traîne ne doit pas le détourner — et il rendait le
+     * développement impossible. `pnpm test` construit le bundle : un `dist/`
+     * vieux de trois jours prenait alors le pas sur le serveur qui tourne. On
+     * développait sur une régie compilée, sans rechargement à chaud, et
+     * l'extension Vue refusait d'inspecter une page qu'elle voyait en mode
+     * production.
+     *
+     * Un `dist/` est un artefact ; une origine Vite est une intention.
+     */
+    const html = await (await fetch(`${origin}/regie`)).text()
+    expect(html).toContain('@vite/client')
+    expect(html).not.toContain('/regie/assets/index-abc123.js')
+  })
+
+  it('sert le bundle dès qu’aucune origine Vite n’est annoncée', async () => {
+    // Le cas du poste installé : la variable n'y est jamais posée.
+    const bundle = bundleFactice()
+    await demarrer({ bundleRegie: () => bundle })
+
     const html = await (await fetch(`${origin}/regie`)).text()
     expect(html).toContain('/regie/assets/index-abc123.js')
     expect(html).not.toContain('@vite/client')

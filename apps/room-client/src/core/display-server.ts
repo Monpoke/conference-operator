@@ -385,13 +385,20 @@ export class DisplayServer {
     const vite = this.options.viteOrigin ?? null
 
     /*
-     * Assets du bundle, servis par le poste lui-même.
+     * Vite passe devant le bundle, et non l'inverse.
      *
-     * Les noms portent une empreinte, d'où `immutable` : la régie est rouverte
-     * plusieurs fois par jour sur un poste de salle, et rien ne justifie de
-     * relire le même mégaoctet à chaque fois.
+     * L'ordre contraire semblait plus prudent — un poste installé n'a pas de
+     * Vite, une variable qui traîne ne doit pas le détourner. Il rendait en
+     * fait le développement impossible : `pnpm test` construit le bundle, et un
+     * `dist/` vieux de trois jours prenait alors le pas sur le serveur qui
+     * tourne. On développait sur une régie compilée, sans rechargement à chaud,
+     * et l'extension Vue refusait d'inspecter une page qu'elle voyait en mode
+     * production.
+     *
+     * Un `dist/` est un artefact ; une origine Vite est une intention. C'est
+     * l'intention qui gagne.
      */
-    if (bundle != null) {
+    if (vite == null && bundle != null) {
       void this.app.register(fastifyStatic, {
         root: join(bundle.dossier, 'assets'),
         prefix: '/regie/assets/',
@@ -405,7 +412,7 @@ export class DisplayServer {
     // Développement : Vite derrière le poste, jamais devant. Le poste porte le
     // flux d'état, les actions et le vumètre ; les faire transiter par Vite
     // pour le seul confort du rechargement à chaud serait payer cher.
-    if (bundle == null && vite != null) {
+    if (vite != null) {
       void this.app.register(fastifyProxy, {
         upstream: vite,
         prefix: '/regie/',
@@ -427,7 +434,7 @@ export class DisplayServer {
       // change à chaque seconde de la journée.
       reply.header('cache-control', 'no-store')
 
-      if (bundle == null && vite == null) {
+      if (vite == null && bundle == null) {
         /*
          * Le bundle manque, et aucun Vite n'est annoncé.
          *
@@ -446,7 +453,7 @@ export class DisplayServer {
         renderRegieShell({
           initialPayload: this.payload(),
           eventName: this.options.event?.().name ?? null,
-          assets: bundle == null ? assetsDeDeveloppement() : assetsDeProduction(bundle.manifeste),
+          assets: vite != null ? assetsDeDeveloppement() : assetsDeProduction(bundle!.manifeste),
         }),
       )
     })

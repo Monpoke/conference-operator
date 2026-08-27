@@ -1,4 +1,4 @@
-import type { ObsInstance, SceneRole } from '@cloudnord/contract'
+import type { ObsInstance, ObsState, SceneRole } from '@cloudnord/contract'
 
 /**
  * Surface d'OBS dont on a réellement besoin.
@@ -46,32 +46,7 @@ export interface ObsControllerOptions {
   onEvent?: (event: ObsControllerEvent) => void
 }
 
-export interface ObsState {
-  instance: ObsInstance
-  connected: boolean
-  /** Scène courante telle qu'annoncée par OBS, jamais supposée par nous. */
-  currentSceneName: string | null
-  currentRole: SceneRole | null
-  /** Rôles configurés mais absents d'OBS : à afficher en rouge dans la régie. */
-  unresolvedRoles: SceneRole[]
-  /**
-   * L'instance est simulée.
-   *
-   * À signaler partout où l'on croit piloter OBS : un enregistrement simulé
-   * ressemble en tout point à un vrai, sauf qu'il ne capte rien.
-   */
-  simulated: boolean
-  /**
-   * Scènes réellement déclarées dans cette instance.
-   *
-   * Sert au formulaire de configuration de la régie : choisir un nom de scène
-   * dans une liste lue sur OBS vaut mieux que le retaper, puisque c'est
-   * justement la faute de frappe qui produit un rôle introuvable.
-   */
-  scenes: string[]
-  recording: boolean
-  streaming: boolean
-}
+export type { ObsState }
 
 export type ObsControllerEvent =
   | {

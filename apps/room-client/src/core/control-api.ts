@@ -1,6 +1,14 @@
 import { z } from 'zod'
 import { displayModeSchema, obsInstanceSchema, roomConfigPatchSchema, sceneRoleSchema } from '@cloudnord/contract'
-import type { ModeExecution, ObsInstance, RoomConfigPatch, SceneRoleMap } from '@cloudnord/contract'
+import type {
+  ConfigVisible,
+  ControlDiagnostics,
+  ModeExecution,
+  ObsInstance,
+  PointObsVisible,
+  RoomConfigPatch,
+  SceneRoleMap,
+} from '@cloudnord/contract'
 import type { ObsState } from './obs.js'
 import type { StopResult } from './recording.js'
 import type { ControleVod, EntreeVod, Extrait, FluxFichier, VerdictVod } from './vod-index.js'
@@ -147,128 +155,7 @@ export interface ControlTarget {
   diagnostics(): ControlDiagnostics
 }
 
-/**
- * Configuration de la salle telle que la régie la voit.
- *
- * Les mots de passe OBS n'en font pas partie : seulement le fait qu'il y en a
- * un. Le formulaire n'a pas besoin de les relire pour les garder — un champ
- * laissé vide vaut « inchangé » — et une page servie en HTTP n'est pas
- * l'endroit où faire réapparaître un secret déjà enregistré.
- */
-export interface ConfigVisible {
-  obs: { A: PointObsVisible; B: PointObsVisible }
-  sceneRoles: SceneRoleMap
-  displayPort: number
-  recordingRoot: string | null
-  fileSlug: string | null
-  relaySourceRoomId: string | null
-  /** Projet OpenFeedback, pour le QR « Notez le talk ». */
-  openFeedbackProjectId: string | null
-  /** Avertir au « Commencer » si rien n'enregistre. */
-  promptRecordingOnStart: boolean
-  /** Scène prise automatiquement au « Commencer ». `null` = aucune bascule. */
-  sceneOnStart: string | null
-}
-
-export interface PointObsVisible {
-  url: string
-  hasPassword: boolean
-  /**
-   * La connexion en cours n'a pas été ouverte avec ces réglages-là.
-   *
-   * Enregistrer ne reconnecte pas : c'est à l'opérateur de choisir quand
-   * couper une instance. Encore faut-il qu'il voie qu'il reste à le faire.
-   */
-  pending: boolean
-}
-
-export interface ControlDiagnostics {
-  obs: { A: ObsState | null; B: ObsState | null }
-  /**
-   * Questions posées dans cette salle, les plus votées d'abord.
-   *
-   * Relues à la demande plutôt que poussées : la régie ne les regarde qu'en
-   * fin de talk, et les faire circuler en continu chargerait le flux d'état
-   * pour rien.
-   */
-  questions: { id: string; text: string; author: string | null; votes: number }[]
-  /** Instant de la dernière relecture, pour dire une liste datée. */
-  questionsRefreshedAt: string | null
-  /**
-   * Conférence à laquelle se rapportent les questions listées.
-   *
-   * Affiché en régie : une liste vide ne dit pas la même chose selon qu'aucune
-   * question n'a été posée sur ce talk, ou qu'aucun talk n'est piloté. `null`
-   * dans le second cas.
-   */
-  questionsSession: { id: string; title: string } | null
-  /** Réglages de la salle, pour le panneau de configuration. `null` avant le premier sync. */
-  config: ConfigVisible | null
-  /**
-   * Modes d'exécution, celui de la salle et celui du hub.
-   *
-   * `hub` reste `null` tant qu'aucune synchronisation n'a abouti. Les deux sont
-   * affichés ensemble parce que c'est leur **désaccord** qui compte : une salle
-   * de développement branchée sur le hub de l'événement enverrait de vraies
-   * commandes depuis un poste qui simule tout.
-   */
-  mode: { salle: ModeExecution; hub: ModeExecution | null }
-  /** Salle relayée, `null` si le relais n'est pas configuré pour cette salle. */
-  relaySourceRoomId: string | null
-  /**
-   * État des autres salles, tel que le hub le connaît.
-   *
-   * Rafraîchi périodiquement et **mis en cache** : l'opérateur doit pouvoir
-   * jeter un œil aux autres salles sans que chaque rendu d'écran déclenche un
-   * appel réseau.
-   */
-  rooms: {
-    roomId: string
-    name: string
-    connectivity: string
-    sceneRole: string | null
-    recording: boolean
-    outboxDepth: number
-    lastSeenAt: string | null
-    /**
-     * Conférence que la salle pilote réellement, `null` si elle n'en pilote
-     * aucune.
-     *
-     * Distinct de ce que dit le programme : c'est la seule façon de savoir
-     * qu'une salle **déborde** — son créneau est fini, elle tourne encore. Le
-     * programme seul ne le dira jamais, il passe simplement au suivant.
-     */
-    currentSessionId: string | null
-    /**
-     * Où en est la salle, calculé par le hub.
-     *
-     * Lui seul croise le programme, son horloge — qui peut être simulée — et le
-     * cycle de vie des conférences des autres salles. La régie s'en sert tant
-     * que cette vue est fraîche, et retombe sur son propre cache dès qu'elle
-     * date : pendant une coupure, la salle d'à côté finit quand même à l'heure
-     * prévue.
-     */
-    conference: string
-  }[]
-  /** Instant du dernier rafraîchissement des salles, pour signaler une vue périmée. */
-  roomsRefreshedAt: string | null
-  outboxDepth: number
-  journal: { level: string; message: string; createdAt: string }[]
-  /** Enregistrement en cours côté client, et nombre de marqueurs posés. */
-  recording: {
-    active: boolean
-    markers: number
-    startedAtMs: number | null
-    /**
-     * Départ sur l'horloge corrigée, ou `null` si le temps réel fait foi.
-     *
-     * Porte la valeur **et** la règle : la régie compte sur l'horloge du hub
-     * quand ce champ est renseigné — le cas du développement, où l'on déroule
-     * une journée en poussant l'horloge — et en temps réel sinon.
-     */
-    startedAtCorrigeMs: number | null
-  }
-}
+export type { ConfigVisible, ControlDiagnostics, PointObsVisible }
 
 /**
  * Ce que la modale des enregistrements reçoit.

@@ -1,5 +1,10 @@
 import Fastify, { type FastifyInstance } from 'fastify'
-import { IDENTITE_PAR_DEFAUT } from '@cloudnord/contract'
+import {
+  CHAMPS_PAR_VUE,
+  IDENTITE_PAR_DEFAUT,
+  type DisplayPayload,
+  type VueAffichage,
+} from '@cloudnord/contract'
 import { timelinePosition } from '@cloudnord/program/selectors'
 import {
   FUSEAU_PAR_DEFAUT,
@@ -24,91 +29,7 @@ import {
 } from './control-api.js'
 import { moniteurHote, type ChargeHote } from './hote.js'
 
-export interface DisplayPayload {
-  state: DisplayState
-  /** Nom lisible de la salle. `state.roomId` est un identifiant technique. */
-  roomName: string | null
-  event: Program['event'] | null
-  timezone: string
-  sessions: Session[]
-  sponsorTiers: SponsorTier[]
-  /** Présent seulement pour la régie ; l'écran projeté n'en a pas besoin. */
-  diagnostics: ControlDiagnostics | null
-  /** Adresse du mur public et son QR (SVG en ligne), pour l'écran de salle. */
-  wall: { url: string; qrSvg: string } | null
-  /**
-   * Ce qui arrive dans les **autres** salles.
-   *
-   * Calculé ici, depuis le programme déjà en cache : le hub n'a rien à en dire
-   * que la salle ne sache déjà, et la boucle d'attente doit se dérouler entière
-   * sans réseau. Sert à la page « pendant ce temps, à côté » — la seule chose
-   * qu'un participant en salle ne peut pas deviner.
-   */
-  otherRooms: {
-    roomId: string
-    name: string
-    /** Prochaine conférence à commencer, ou celle en cours si elle court. */
-    session: { id: string; title: string; startsAt: string; speakers: string[] } | null
-    /** Vrai si elle a déjà commencé : « en ce moment » plutôt que « à HH:MM ». */
-    enCours: boolean
-  }[]
-  /** Comptes de l'événement, réglés sur le hub. Vide = la boucle saute cette page. */
-  socialLinks: { network: string; handle: string; url: string }[]
-  /**
-   * Nom de l'événement, tranché par le hub et relu du cache local.
-   *
-   * Distinct de `event.name` du programme : le hub peut le contredire par
-   * réglage, et surtout il est connu **sans** programme — une machine tout
-   * juste appairée doit déjà titrer ses fenêtres correctement.
-   */
-  eventIdentity: { name: string; shortName: string }
-  /**
-   * QR OpenFeedback du talk en cours.
-   *
-   * Fabriqué hors ligne : OpenFeedback réutilise les identifiants de session de
-   * l'export amont, donc l'adresse se déduit du programme déjà en cache. `null`
-   * quand aucune conférence ne court, ou sans projet configuré.
-   */
-  feedback: { url: string; qrSvg: string } | null
-  /** Appairage de la machine : la régie s'en sert pour afficher le code. */
-  pairing: {
-    status: string
-    userCode?: string
-    verificationUri?: string
-    message?: string
-    rooms?: { id: string; name: string }[]
-    requestedRoomId?: string | null
-  } | null
-}
-
-/** Les trois pages servies, chacune n'ayant pas les mêmes besoins. */
-export type VueAffichage = 'projecteur' | 'overlay' | 'bandeau' | 'regie'
-
-/**
- * Ce que chaque vue reçoit réellement.
- *
- * L'overlay ne lit que deux champs sur neuf : lui pousser le programme complet
- * de la salle, les sponsors et le QR du mur à chaque changement d'état coûte
- * une trentaine de kilo-octets pour rien. Le test `vues-du-flux` vérifie que
- * ces listes couvrent bien ce que chaque page consulte — un champ ajouté à une
- * page sans l'être ici produirait un rendu muet, pas une erreur.
- */
-export const CHAMPS_PAR_VUE: Record<VueAffichage, readonly (keyof DisplayPayload)[]> = {
-  projecteur: [
-    'state', 'roomName', 'event', 'timezone', 'sessions', 'sponsorTiers', 'wall', 'feedback',
-    // Deux champs pour la seule boucle d'attente : ils ne bougent qu'au
-    // changement de créneau et au sync, donc ils ne coûtent rien au flux.
-    'otherRooms', 'socialLinks',
-    // Le nom de l'événement : deux mots qui ne bougent qu'au sync, et sans
-    // lesquels chaque page se retitrerait avec une constante compilée.
-    'eventIdentity',
-  ],
-  overlay: ['state', 'event', 'eventIdentity'],
-  // Le bandeau ne lit que `state.liveMessage` : lui pousser le programme et
-  // les sponsors coûterait trente kilo-octets par changement d'écran.
-  bandeau: ['state', 'eventIdentity'],
-  regie: ['state', 'roomName', 'timezone', 'sessions', 'diagnostics', 'pairing', 'eventIdentity'],
-}
+export { CHAMPS_PAR_VUE, type DisplayPayload, type VueAffichage }
 
 /** Un abonné au flux : sa vue, et la dernière valeur qu'il a reçue par champ. */
 interface AbonneFlux {

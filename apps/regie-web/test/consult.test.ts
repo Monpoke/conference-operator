@@ -254,6 +254,19 @@ describe('onglet des questions', () => {
     })
   })
 
+  it('relit la liste, parce qu’une liste d’il y a une heure ne vaut rien', async () => {
+    const wrapper = avecQuestions()
+
+    await wrapper.findAll('button')[0]!.trigger('click')
+    await flushPromises()
+
+    expect(envois[0]?.body).toEqual({ action: 'questions.refresh' })
+  })
+
+  it('date la dernière relecture, ou dit qu’il n’y en a jamais eu', () => {
+    expect(avecQuestions().text()).toContain('Jamais relues')
+  })
+
   it('retire de l’antenne sans rien afficher d’autre', async () => {
     const wrapper = avecQuestions('Et le coût ?')
 
@@ -288,6 +301,28 @@ describe('signalements', () => {
     expect(avecSignalement(DEBUT_MS, DEBUT_MS + 5_000).find('[data-notification="n-1"]').exists()).toBe(
       true,
     )
+  })
+
+  it('n’affiche rien quand il n’y a rien à signaler', () => {
+    const wrapper = mount(NotificationStack, { props: { payload: payload(), nowMs: DEBUT_MS } })
+    // Un conteneur vide occuperait sa place dans la pile du bas, en permanence.
+    expect(wrapper.find('[data-role="notifications"]').exists()).toBe(false)
+  })
+
+  it('peint le fond à la couleur du type, et le texte en sombre', () => {
+    const etat = payload()
+    etat.state.notifications = [
+      { id: 'n-1', level: 'info', text: 'une info', at: new Date(DEBUT_MS).toISOString() },
+      { id: 'n-2', level: 'warning', text: 'un avertissement', at: new Date(DEBUT_MS).toISOString() },
+    ] as never
+    const wrapper = mount(NotificationStack, { props: { payload: etat, nowMs: DEBUT_MS + 1000 } })
+
+    // Un fond plein, pas une teinte sourde : ces encarts doivent se lire du
+    // coin de l'œil, par un opérateur qui regarde la salle.
+    expect(wrapper.get('[data-notification="n-1"]').classes()).toContain('bg-marque')
+    expect(wrapper.get('[data-notification="n-2"]').classes()).toContain('bg-attention')
+    // Et un texte sombre, seule paire lisible sur de l'ambre.
+    expect(wrapper.get('[data-notification="n-2"]').classes()).toContain('text-[#05070d]')
   })
 
   it('reste écarté le temps que le retrait fasse le tour', async () => {

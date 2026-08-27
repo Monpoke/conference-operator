@@ -33,6 +33,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@cloudnord/hub-admin": "workspace:*",
     "@cloudnord/hub-client": "workspace:*",
     "@orpc/client": "2.0.0-beta.29",
     "@orpc/contract": "2.0.0-beta.29",

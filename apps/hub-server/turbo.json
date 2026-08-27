@@ -1,0 +1,21 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    /*
+     * Les tests du hub ont besoin du bundle de la console.
+     *
+     * Le hub ne l'importe pas — il lit un dossier au moment de servir — mais ce
+     * qu'on vérifie ici, c'est justement qu'il le sert. Faire dépendre le test
+     * d'un `dist/` présent par hasard donnerait une suite qui passe ou échoue
+     * selon ce qui traîne sur la machine : c'était le cas, et ça ne se voyait
+     * qu'en intégration continue.
+     *
+     * Le coût est un `vite build` de trois secondes, mis en cache par turbo
+     * tant que la console ne change pas.
+     */
+    "test": {
+      "dependsOn": ["^build"]
+    }
+  }
+}

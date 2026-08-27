@@ -29,6 +29,7 @@ contribuer : [CONTRIBUTING.md](CONTRIBUTING.md).
 | 3 | Chaîne OBS complète : OBS-B, VOD, sidecars, streaming | ✅ |
 | 4 | Social : mur, Q&A, modération, console hub | ✅ |
 | 5 | Exploitation : packaging, supervision, runbook | ✅ (répétition à faire) |
+| 6 | Console du hub en Vue 3 — huit vues, socle partagé | ✅ |
 
 ## Structure
 
@@ -37,17 +38,22 @@ packages/program    parseur/normaliseur de l'export « conference-center » + s�
 packages/etat-salle automate d'une salle : états, transitions, apparence — partagé hub ↔ régie
 packages/contract   contrat oRPC v2 (zod) : procédures, événements, commandes
 packages/db         schémas Drizzle + migrations (hub et client), helper SQLite
+packages/format     formateurs partagés : durées, instants, tailles, échappement
+packages/hub-client client oRPC typé, côté navigateur : jeton, session expirée
+packages/components composants Vue : primitives Reka retravaillées + design system
 apps/hub-server     Fastify + oRPC + SQLite + Better Auth : programme, salles, commandes, appairage
+                    sert /mur (gabarit) et la coquille de la console
+apps/hub-admin      console d'exploitation — Vue 3 + Vite, servie par le hub
 apps/room-client    Electron — écran de salle, pilotage OBS, appairage, cache local
 spikes/orpc-v2      spike jetable de validation des adapters — voir FINDINGS.md
-                    plus les pages servies : /mur (public, QR), /admin (console)
+spikes/vue-tsc      pourquoi les paquets front épinglent TypeScript 6 — voir FINDINGS.md
 ```
 
 ## Démarrer
 
 ```bash
 corepack enable && pnpm install
-pnpm test            # 898 tests
+pnpm test            # 1218 tests
 pnpm typecheck
 ```
 
@@ -536,10 +542,21 @@ des exemples, pas des constantes du code.
   casse *toute* la page sans que rien ne proteste. Chaque page est parsée, et
   les comportements clés (onglets, menus, boutons) sont testés dans un DOM réel
   via happy-dom. C'est le prix de l'absence d'étape de build, et il se paie une fois.
-- **Les trois pages sont autonomes et sans étape de build.** Écran, overlay et
-  régie s'ouvrent même quand tout le reste va mal, et se testent en HTTP. Le
-  contrat oRPC sur MessagePort prévu au plan reste disponible le jour où une UI
-  plus riche justifiera un bundler.
+- **Les pages d'affichage sont autonomes et sans étape de build.** Écran,
+  overlays, régie et mur s'ouvrent même quand tout le reste va mal, et se
+  testent en HTTP.
+- **La console du hub est une application Vue.** Elle avait dépassé le seuil où
+  le gabarit littéral coûte plus qu'il ne rapporte : 3 800 lignes dont 2 750 de
+  JavaScript qu'aucun compilateur ne voyait, cinq échappements HTML, deux
+  `duree()` qui avaient divergé. Le hub rend une coquille et sert le bundle.
+  L'invariant d'autonomie n'est pas abandonné mais **reformulé** — aucune
+  ressource hors de l'origine — parce que ce qu'il protégeait était le réseau,
+  pas la balise : un asset servi par le processus qui sert déjà la page ne
+  disparaît pas d'une coupure de l'événement.
+- **Le vérificateur de gabarits Vue impose TypeScript 6 aux paquets front.**
+  `vue-tsc` ne démarre pas sur TypeScript 7 : le compilateur natif n'expose plus
+  d'API programmatique, et Volar l'intègre au lieu de l'appeler. Le reste du
+  dépôt reste sur 7 ; `spikes/vue-tsc` le mesure et le dira quand ce sera levé.
 - **Le hub tient les clés du stockage, la salle tient les fichiers.** Aucune clé
   S3 ne descend en salle : le hub signe des adresses à durée de vie courte, et
   c'est tout ce qu'une machine de régie détient. Elle vit dans un couloir,

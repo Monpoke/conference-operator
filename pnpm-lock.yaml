@@ -139,6 +139,9 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
     devDependencies:
+      '@cloudnord/hub-admin':
+        specifier: workspace:*
+        version: link:../hub-admin
       '@cloudnord/hub-client':
         specifier: workspace:*
         version: link:../../packages/hub-client

@@ -3,7 +3,6 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { PAIRING_ALIAS, consoleViews, viewPath } from '@cloudnord/contract'
 import { createHub, type Hub } from '../src/server.js'
-import { renderAdminPage } from '../src/pages/admin-page.js'
 import { renderWallPage } from '../src/pages/wall-page.js'
 import { provisionOperator } from '../src/operators.js'
 
@@ -337,13 +336,18 @@ describe('cycle de vie des conférences depuis la console', () => {
 
 describe('JavaScript embarqué des pages du hub', () => {
   /**
-   * Ces pages n'ont pas d'étape de build : leur script vit dans un template
-   * literal, où TypeScript ne voit qu'une chaîne. Une erreur y casse toute la
-   * page — cas déjà rencontré côté régie, avec une apostrophe dont l'antislash
+   * Ce qu'il reste de gabarits littéraux, et pourquoi ce test survit.
+   *
+   * Le mur n'a pas d'étape de build : son script vit dans un template literal,
+   * où TypeScript ne voit qu'une chaîne. Une erreur y casse toute la page — cas
+   * déjà rencontré côté régie, avec une apostrophe dont l'antislash
    * s'effondrait dans le template.
+   *
+   * La console a quitté cette liste en passant à Vue : son code est désormais
+   * vu par un compilateur, ce qui est précisément le bénéfice qu'on est venu
+   * chercher. Ce test n'a plus rien à en dire.
    */
   const pages: [string, string][] = [
-    ['console', renderAdminPage()],
     ['mur', renderWallPage({ roomId: 'r', rooms: [{ id: 'r', name: 'R' }] })],
   ]
 

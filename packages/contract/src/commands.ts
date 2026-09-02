@@ -12,7 +12,7 @@ import { sessionStatusSchema } from './room-state.js'
  *
  * Transportées par un Event Iterator estampillé avec `seq` : à la reconnexion,
  * oRPC renvoie le dernier `lastEventId` reçu et le hub reprend juste après. Pas
- * de compteur de rattrapage maison — voir `spikes/orpc-v2/FINDINGS.md`.
+ * de compteur de rattrapage maison.
  */
 
 /** Ce qu'un bandeau live affiche. Court : il partage l'écran avec la vidéo. */

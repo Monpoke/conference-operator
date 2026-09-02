@@ -47,9 +47,6 @@ apps/hub-server     Fastify + oRPC + SQLite + Better Auth : programme, salles, c
 apps/hub-admin      console d'exploitation — Vue 3 + Vite, servie par le hub
 apps/regie-web      écran de régie — Vue 3 + Vite, servi par la salle et, en mobile, par le hub
 apps/room-client    Electron — écran de salle, pilotage OBS, appairage, cache local
-spikes/orpc-v2      spike jetable de validation des adapters — voir FINDINGS.md
-spikes/vue-tsc      pourquoi les paquets front épinglent TypeScript 6 — voir FINDINGS.md
-spikes/anim-slides  Motion et GSAP face aux keyframes de l'écran de salle — voir FINDINGS.md
 ```
 
 ## Démarrer
@@ -393,21 +390,6 @@ fenêtre ne s'ouvre (pas de serveur X), utiliser `dev:headless`.
 pnpm --filter @cloudnord/room-client preview ./apercu
 ```
 
-Rejouer le spike de validation oRPC :
-
-```bash
-pnpm --filter @cloudnord/spike-orpc-v2 spike     # 8/8 attendus
-```
-
-Rejouer la comparaison des moteurs d'animation de l'écran de salle :
-
-```bash
-pnpm --filter @cloudnord/spike-anim-slides mesure      # poids, fluidité, chevauchement
-pnpm --filter @cloudnord/spike-anim-slides pellicule   # les transitions figées, image par image
-pnpm --filter @cloudnord/spike-anim-slides nuancier    # les presets d'entrée des éléments, côte à côte
-pnpm --filter @cloudnord/spike-anim-slides spike       # sert les pages, à pointer depuis OBS
-```
-
 Régénérer les migrations après modification d'un schéma :
 
 ```bash
@@ -721,7 +703,7 @@ des exemples, pas des constantes du code.
 - **Le vérificateur de gabarits Vue impose TypeScript 6 aux paquets front.**
   `vue-tsc` ne démarre pas sur TypeScript 7 : le compilateur natif n'expose plus
   d'API programmatique, et Volar l'intègre au lieu de l'appeler. Le reste du
-  dépôt reste sur 7 ; `spikes/vue-tsc` le mesure et le dira quand ce sera levé.
+  dépôt reste sur 7, et y repassera quand `vue-tsc` saura démarrer dessus.
 - **Le hub tient les clés du stockage, la salle tient les fichiers.** Aucune clé
   S3 ne descend en salle : le hub signe des adresses à durée de vie courte, et
   c'est tout ce qu'une machine de régie détient. Elle vit dans un couloir,

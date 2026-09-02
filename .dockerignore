@@ -17,8 +17,12 @@ release
 *.tsbuildinfo
 
 # Données d'exécution : une base de dev copiée dans l'image serait pire qu'inutile.
+# `.out` est le dossier de captation d'OBS en développement — plusieurs centaines
+# de mégaoctets de rushes, que `out` (sans point) ne filtre pas.
 data
 **/data
+.out
+**/.out
 *.db
 *.db-wal
 *.db-shm
@@ -37,11 +41,13 @@ graft
 .mcp.json
 .ignore
 
-# Le client de salle et les spikes ne sont pas installés (filtre pnpm) mais
-# leurs manifestes le sont — voir le Dockerfile. Le reste ne sert à rien ici.
+# Le client de salle n'est pas installé (filtre pnpm) mais son manifeste l'est —
+# voir le Dockerfile. Le reste ne sert à rien ici.
 apps/room-client/src
 apps/room-client/test
 apps/room-client/scripts
 apps/room-client/build
-spikes/*/src
-spikes/*/test
+
+# Bacs à sable locaux : hors dépôt depuis qu'ils sont gitignorés, mais présents
+# sur le poste qui les a joués — et le contexte de build les enverrait.
+spikes

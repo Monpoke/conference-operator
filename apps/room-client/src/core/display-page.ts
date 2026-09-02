@@ -124,7 +124,7 @@ export function renderProjectorPage(options: ProjectorPageOptions = {}): string 
    * meme sens au pire moment — une entree en ease-out raide (67 % en un
    * cinquieme de sa duree) pendant que la sortie en ease-in s'attardait encore
    * a 87 %. Au pic, les deux pages etaient visibles a plus de 80 % chacune.
-   * Mesure a 0,838 en calcul, 0,836 en relevé ; voir spikes/anim-slides.
+   * Mesure a 0,838 en calcul, 0,836 en relevé.
    *
    * Meme duree ET meme courbe pour les deux : un ecart ouvre un vide entre les
    * couches, ou les fait se chevaucher.

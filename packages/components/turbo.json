@@ -5,7 +5,7 @@
     /*
      * Aucune sortie : les composants sont consommés en source par Vite, comme
      * tous les paquets de cet espace de travail. Seul `typecheck` a un coût, et
-     * il passe par `vue-tsc` — voir spikes/vue-tsc/FINDINGS.md.
+     * il passe par `vue-tsc`, qui impose TypeScript 6 à ce paquet.
      */
     "typecheck": {}
   }

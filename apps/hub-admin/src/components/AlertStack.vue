@@ -2,7 +2,6 @@
 import { viewPath } from '@cloudnord/contract'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
-import { isMigrated } from '../router.js'
 import { useNotificationsStore } from '../stores/notifications.js'
 
 /**
@@ -27,10 +26,7 @@ const TEINTES = {
 
 function aller(vue: string | null): void {
   if (vue == null) return
-  // Une vue encore servie par le gabarit se rejoint par une navigation
-  // complète : le routeur ne la connaît pas.
-  if (isMigrated(vue)) void router.push(viewPath(vue))
-  else globalThis.location.assign(viewPath(vue))
+  void router.push(viewPath(vue))
 }
 </script>
 

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { bundledConsolePaths } from '@cloudnord/contract'
+import { consolePaths } from '@cloudnord/contract'
 import { createHub, type Hub } from '../src/server.js'
 import { resoudreConsole } from '../src/pages/console-shell.js'
 
@@ -49,11 +49,11 @@ describe('adresses reprises par le bundle', () => {
   it('en sert au moins une', () => {
     // Garde-fou du garde-fou : une liste vide ferait passer tout ce qui suit
     // sans rien exercer.
-    expect(bundledConsolePaths(false).length).toBeGreaterThan(0)
+    expect(consolePaths(false).length).toBeGreaterThan(0)
   })
 
   it('répond, quel que soit l’état du bundle', async () => {
-    for (const chemin of bundledConsolePaths(false)) {
+    for (const chemin of consolePaths(false)) {
       const reponse = await fetch(`${origin}${chemin}`)
       // Jamais 404 et jamais 503 : l'adresse existe, et il y a toujours quelque
       // chose à servir — la coquille si le bundle est là, le gabarit sinon.
@@ -63,7 +63,7 @@ describe('adresses reprises par le bundle', () => {
 
   it('sert la coquille quand le bundle est construit, le gabarit sinon', async () => {
     const bundle = resoudreConsole()
-    const chemin = bundledConsolePaths(false)[0]!
+    const chemin = consolePaths(false)[0]!
     const html = await (await fetch(`${origin}${chemin}`)).text()
 
     if (bundle == null) {
@@ -82,7 +82,7 @@ describe('adresses reprises par le bundle', () => {
   })
 
   it('ne met jamais la coquille en cache', async () => {
-    const chemin = bundledConsolePaths(false)[0]!
+    const chemin = consolePaths(false)[0]!
     const reponse = await fetch(`${origin}${chemin}`)
     if (resoudreConsole() != null) {
       // Une console mise à jour qui ne l'est jamais sur le poste d'un opérateur

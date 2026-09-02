@@ -1,4 +1,4 @@
-import { PAIRING_ALIAS, isMigratedView, viewPath } from '@cloudnord/contract'
+import { PAIRING_ALIAS, viewPath } from '@cloudnord/contract'
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import ConferencesView from './views/ConferencesView.vue'
 import OperationsView from './views/OperationsView.vue'
@@ -14,19 +14,6 @@ import { usePairingStore } from './stores/pairing.js'
 import { useSettingsStore } from './stores/settings.js'
 import { useVodStore } from './stores/vod.js'
 import { useModerationStore } from './stores/moderation.js'
-
-/**
- * Which views belong to this bundle is decided in the contract.
- *
- * Both sides need the same answer and neither can own it: the hub reads it to
- * pick a handler, this router reads it to pick between a route and a plain
- * link. Re-exported here so components have one import to reach for.
- *
- * The cost of the boundary is a full page load when crossing it. It is real,
- * and it is visible — which is the point: nobody forgets a migration that
- * reloads.
- */
-export const isMigrated = isMigratedView
 
 declare module 'vue-router' {
   interface RouteMeta {

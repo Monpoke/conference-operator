@@ -63,3 +63,37 @@ jobs:
       # quelqu'un, sur sa machine, la semaine d'avant l'événement.
       - name: Bundles
         run: pnpm build
+
+  # Les messages de commit de la proposition, contre `commitlint.config.js`.
+  #
+  # Sur proposition seulement. L'historique d'avant la convention ne la suit
+  # pas, et une plage calculée sur une poussée directe le rejouerait. C'est le
+  # hook `commit-msg` qui couvre les commits poussés sans passer par une
+  # proposition — il est posé par `prepare`, donc à l'installation.
+  messages:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # commitlint lit une plage de commits : un clone superficiel n'a pas
+          # la base de la proposition.
+          fetch-depth: 0
+
+      - run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # `--ignore-scripts` : ce job ne construit rien, et le seul script du
+      # graphe compile better-sqlite3.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Messages de commit
+        run: >
+          pnpm exec commitlint --verbose
+          --from ${{ github.event.pull_request.base.sha }}
+          --to ${{ github.event.pull_request.head.sha }}

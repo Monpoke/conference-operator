@@ -1,0 +1,4 @@
+#!/bin/sh
+# Un message fautif ne se corrige qu'avant d'être poussé : après, il faut
+# réécrire l'historique. Le contrôle a donc lieu ici, pas seulement en CI.
+exec pnpm exec commitlint --edit "$1"

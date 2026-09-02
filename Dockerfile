@@ -60,8 +60,6 @@ COPY packages/components/package.json packages/components/
 COPY packages/hub-client/package.json packages/hub-client/
 COPY packages/program/package.json packages/program/
 COPY packages/ui/package.json packages/ui/
-COPY spikes/orpc-v2/package.json spikes/orpc-v2/
-COPY spikes/vue-tsc/package.json spikes/vue-tsc/
 
 # Pas de `--prod` ici : il faut justement l'outillage de construction. Le filtre
 # limite l'installation aux graphes des deux applications.
@@ -110,8 +108,6 @@ COPY packages/components/package.json packages/components/
 COPY packages/hub-client/package.json packages/hub-client/
 COPY packages/program/package.json packages/program/
 COPY packages/ui/package.json packages/ui/
-COPY spikes/orpc-v2/package.json spikes/orpc-v2/
-COPY spikes/vue-tsc/package.json spikes/vue-tsc/
 
 # `--prod` : ni typescript, ni turbo, ni les tests. `tsx` y survit parce qu'il
 # est déclaré en dépendance de production du hub — ce qu'il est réellement,

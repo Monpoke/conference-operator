@@ -26,7 +26,7 @@ const listes = new Set(
 
 /** Projets réellement présents, selon les groupes de `pnpm-workspace.yaml`. */
 const presents = new Set(
-  ['apps', 'packages', 'spikes'].flatMap((groupe) =>
+  ['apps', 'packages'].flatMap((groupe) =>
     readdirSync(join(racine, groupe))
       .map((nom) => `${groupe}/${nom}`)
       .filter((chemin) => {

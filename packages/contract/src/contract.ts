@@ -45,7 +45,7 @@ import {
  *  - WebSocket     → room-client ↔ hub
  *  - MessagePort   → Electron main ↔ renderers (régie, display, overlay)
  *
- * Une seule définition, aucune duplication : validé par `spikes/orpc-v2`.
+ * Une seule définition, aucune duplication.
  */
 
 /** Ce qu'une surface publique a besoin de savoir d'une conférence. */

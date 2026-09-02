@@ -183,6 +183,27 @@ Une correction de défaut arrive avec le test qui échouait avant elle.
 4. dans la description : ce qui change à l'écran, et ce que vous avez vérifié —
    la case « lancé pour de vrai » vaut plus que la case « les tests passent ».
 
-Les messages de commit sont en français, à l'impératif, et disent l'intention
-plutôt que le geste : « ne plus répéter le logo d'un sponsor multi-paliers »
-plutôt que « modifie rendreSponsors ».
+## Les messages de commit
+
+Format Conventional Commits, en français : `type(scope): sujet`.
+`commitlint.config.js` porte la règle, le hook `commit-msg` la vérifie au
+moment du commit, et la CI la rejoue sur les commits d'une proposition.
+
+```
+feat(regie): couches de raccourcis clavier
+fix(hub): le RAZ efface les prises du journal d'ingestion
+refactor(ui): supprime components.css, plus aucune page ne le lit
+```
+
+Le sujet dit l'intention plutôt que le geste : « ne plus répéter le logo d'un
+sponsor multi-paliers » plutôt que « modifie rendreSponsors ». Sans majuscule
+initiale ni point final, 72 caractères au plus, type et scope compris. Deux
+« et » dans un sujet valent deux commits.
+
+Les scopes sont fermés, et la liste vit dans `commitlint.config.js` : les douze
+répertoires de `apps/` et `packages/` — `console` pour `hub-admin`, `hub` pour
+`hub-server`, `regie` pour `regie-web` — plus `vod`, `deps`, `dev`, `docker` et
+`repo`.
+
+Le hook est posé par `prepare`, donc par n'importe quel `pnpm install`. Il ne
+part pas avec le dépôt : un clone qui n'a jamais installé ne l'a pas.

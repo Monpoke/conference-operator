@@ -11,11 +11,14 @@
     "dev": "turbo run dev",
     "dev:duo": "bash scripts/dev-salles.sh 1",
     "dev:trio": "bash scripts/dev-salles.sh 2",
+    "prepare": "node scripts/hooks-git.mjs",
     "raz:dev": "bash scripts/raz-dev.sh",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
+    "@commitlint/cli": "21.2.2",
+    "@commitlint/config-conventional": "21.2.2",
     "@types/node": "26.2.0",
     "tsx": "4.23.12",
     "turbo": "2.10.11",

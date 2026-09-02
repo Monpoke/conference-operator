@@ -6,8 +6,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { bundledConsolePaths, consoleViews, legacyConsolePaths, viewPath } from '@cloudnord/contract'
-import { isMigrated } from '../src/router.js'
+import { consolePaths, consoleViews, viewPath } from '@cloudnord/contract'
 
 /**
  * Les adresses de la console, et ce qui les sert.
@@ -23,7 +22,7 @@ describe('vues de développement', () => {
     // rushes : le hub ne sert pas leur adresse hors mode dev.
     expect(consoleViews(false)).not.toContain('developpement')
     expect(consoleViews(true)).toContain('developpement')
-    expect(bundledConsolePaths(false)).not.toContain(viewPath('developpement'))
+    expect(consolePaths(false)).not.toContain(viewPath('developpement'))
   })
 
   it("n'entrent pas dans le bundle servi le jour J", () => {
@@ -44,11 +43,12 @@ describe('vues de développement', () => {
   })
 })
 
-describe('frontière de migration', () => {
-  it('couvre toutes les vues, sans en laisser derrière', () => {
-    // La console est entièrement passée en Vue : plus aucune adresse ne doit
-    // retomber sur le gabarit. Le jour où l'on en ressort une, ce test le dit.
-    expect(legacyConsolePaths(true)).toEqual([])
-    for (const vue of consoleViews(true)) expect(isMigrated(vue), vue).toBe(true)
+describe('adresses servies', () => {
+  it('couvre chaque vue du mode, sans en laisser derrière', () => {
+    // Le hub enregistre une route par vue plutôt qu'un joker `/admin/*` : une
+    // vue ajoutée sans son adresse répondrait 404 sans que rien ne le dise.
+    for (const vue of consoleViews(true)) {
+      expect(consolePaths(true), vue).toContain(viewPath(vue))
+    }
   })
 })

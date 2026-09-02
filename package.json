@@ -13,8 +13,7 @@
     "dev:trio": "bash scripts/dev-salles.sh 2",
     "raz:dev": "bash scripts/raz-dev.sh",
     "test": "turbo run test",
-    "typecheck": "turbo run typecheck",
-    "lint": "turbo run lint"
+    "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
     "@types/node": "26.2.0",

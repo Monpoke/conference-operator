@@ -1,12 +1,8 @@
-import type { Program, Room, Session } from './model.js'
+import type { Program, Session } from './model.js'
 
 /** Sessions d'une salle, triées par heure de début (le tri vient du normaliseur). */
 export function sessionsForRoom(program: Program, roomId: string): Session[] {
   return program.sessions.filter((session) => session.roomId === roomId)
-}
-
-export function roomById(program: Program, roomId: string): Room | null {
-  return program.rooms.find((room) => room.id === roomId) ?? null
 }
 
 /**

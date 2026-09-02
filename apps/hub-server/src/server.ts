@@ -2,7 +2,7 @@ import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify'
 import fastifyProxy from '@fastify/http-proxy'
 import fastifyStatic from '@fastify/static'
 import { join } from 'node:path'
-import { bundledConsolePaths, REGIE_PATH, regieRoomIdFromPath } from '@cloudnord/contract'
+import { consolePaths, REGIE_PATH, regieRoomIdFromPath } from '@cloudnord/contract'
 import { WebSocketServer, type WebSocket as NodeWebSocket } from 'ws'
 import { RPCHandler as FastifyRPCHandler } from '@orpc/server/fastify'
 import { RPCHandler as WebSocketRPCHandler } from '@orpc/server/websocket'
@@ -363,7 +363,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   })
 
   const bundle = resoudreConsole()
-  const cheminsConsole = bundledConsolePaths(dev)
+  const cheminsConsole = consolePaths(dev)
 
   /*
    * La régie mobile : le même bundle que sert une machine de salle.

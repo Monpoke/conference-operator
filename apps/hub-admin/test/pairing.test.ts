@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { PAIRING_ALIAS, bundledConsolePaths, legacyConsolePaths, viewPath } from '@cloudnord/contract'
+import { PAIRING_ALIAS, consolePaths, viewPath } from '@cloudnord/contract'
 import { createConsoleRouter } from '../src/router.js'
 import PairingView from '../src/views/PairingView.vue'
 import { usePairingStore } from '../src/stores/pairing.js'
@@ -108,15 +108,15 @@ beforeEach(() => {
 })
 
 describe('adresse d’appairage', () => {
-  it('suit la vue quand elle bascule, au lieu de rester derrière', () => {
+  it('est servie au même titre que la vue qu’elle ouvre', () => {
     /*
      * `/admin/devices` n'est pas une vue : c'est une seconde porte sur
-     * `appairage`. La laisser sur le gabarit après la bascule enverrait toutes
-     * les machines vers la page qui ne sait plus lire le code — et seulement
-     * les machines : un opérateur qui clique l'onglet ne le verrait jamais.
+     * `appairage`. Oublier de l'enregistrer enverrait toutes les machines que
+     * Better Auth redirige sur un 404 — et seulement les machines : un
+     * opérateur qui clique l'onglet ne le verrait jamais.
      */
-    expect(bundledConsolePaths(false)).toContain(PAIRING_ALIAS)
-    expect(legacyConsolePaths(false)).not.toContain(PAIRING_ALIAS)
+    expect(consolePaths(false)).toContain(PAIRING_ALIAS)
+    expect(consolePaths(false)).toContain(viewPath('appairage'))
   })
 })
 

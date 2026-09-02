@@ -48,59 +48,21 @@ export function viewPath(view: string): string {
 export const PAIRING_ALIAS = '/admin/devices'
 
 /**
- * Views the console bundle has taken over.
- *
- * The migration boundary itself, and it lives here for the same reason the
- * addresses do: the hub reads it to decide which handler answers, and the
- * console's router reads it to decide between a route and a plain link. The hub
- * cannot import it from the console — that would pull Vue into the server
- * image, and the Dockerfile's whole shape exists to keep it out.
- *
- * Moving a view across is one entry. So is moving it back, which is what makes
- * this the only screen-by-screen migration in the project that is free: no
- * bridge, no shared state, and a rollback that fits on one line.
- */
-export const MIGRATED_VIEWS: readonly string[] = [
-  'exploitation',
-  'appairage',
-  'conferences',
-  'moderation',
-  'messages',
-  'vod',
-  'reglages',
-  'developpement',
-]
-
-/** True when this view is served by the bundle rather than the string template. */
-export function isMigratedView(view: string): boolean {
-  return MIGRATED_VIEWS.includes(view)
-}
-
-/**
- * The pairing alias follows the view it opens.
+ * The pairing alias travels with the view it opens.
  *
  * `/admin/devices` is not a view of its own — it is a second door onto
- * `appairage`. Leaving it on the string template after that view had moved
- * would send every machine Better Auth redirects to the page that no longer
- * knows how to read the code, and only the machines: an operator clicking the
- * tab would never see it.
+ * `appairage`, and it has to open on the same handler. A door left on another
+ * one would send every machine Better Auth redirects to a page that cannot read
+ * the code it arrives with, and only the machines: an operator clicking the tab
+ * would never see it.
  */
 function aliasPaths(view: string): string[] {
   return view === 'appairage' ? [PAIRING_ALIAS] : []
 }
 
-/** Addresses the hub still serves from the string template, given the mode. */
-export function legacyConsolePaths(dev: boolean): string[] {
-  return consoleViews(dev)
-    .filter((view) => !isMigratedView(view))
-    .flatMap((view) => [viewPath(view), ...aliasPaths(view)])
-}
-
-/** Addresses the hub serves from the bundle, given the mode. */
-export function bundledConsolePaths(dev: boolean): string[] {
-  return consoleViews(dev)
-    .filter(isMigratedView)
-    .flatMap((view) => [viewPath(view), ...aliasPaths(view)])
+/** Every address the hub serves from the console bundle, given the mode. */
+export function consolePaths(dev: boolean): string[] {
+  return consoleViews(dev).flatMap((view) => [viewPath(view), ...aliasPaths(view)])
 }
 
 /**

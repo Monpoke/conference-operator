@@ -25,15 +25,4 @@ export function openDatabase({ path, busyTimeoutMs = 5_000, readonly = false }: 
   return db
 }
 
-/**
- * Sérialise les écritures et garde les transactions courtes.
- *
- * SQLite n'accepte qu'un seul writer : toute écriture doit passer par ici, et
- * surtout **aucun appel réseau à l'intérieur** — c'est le piège classique avec
- * les ingesteurs sociaux, qui bloquerait la base le temps d'un timeout HTTP.
- */
-export function transact<T>(db: Database.Database, work: () => T): T {
-  return db.transaction(work)()
-}
-
 export type SqliteDatabase = Database.Database

@@ -122,10 +122,18 @@ async function masquerBandeau(): Promise<void> {
         ]"
       />
       <Select id="msg-niveau" v-model="niveau" label="Niveau" :options="NIVEAUX" />
+      <!--
+        `inputmode` et non `type="number"` : Vue applique un cast numérique
+        implicite aux `input[type=number]`, et rendait donc un `number` au
+        `defineModel<string>` de `Field` — un avertissement à chaque frappe, et
+        un modèle qui ment sur son type. Le champ reste numérique là où ça
+        compte, le clavier du téléphone, et il peut être réellement vide : c'est
+        cette valeur-là qui signifie « jusqu'à remplacement ».
+      -->
       <Field
         id="msg-duree"
         v-model="duree"
-        type="number"
+        inputmode="numeric"
         label="Durée d'affichage (minutes, vide = jusqu'à remplacement)"
         placeholder="10"
       />

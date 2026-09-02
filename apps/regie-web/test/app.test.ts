@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ControlDiagnostics } from '@cloudnord/contract'
+import { SANS_REPERES } from '@cloudnord/contract'
 import App from '../src/App.vue'
 import { useConferenceStore } from '../src/stores/conference.js'
 import { useConsultStore } from '../src/stores/consult.js'
@@ -63,7 +64,7 @@ async function monter(
   recording: ControlDiagnostics['recording'] | null = null,
 ): Promise<ReturnType<typeof mount>> {
   const etat = payload()
-  etat.diagnostics!.recording = recording ?? { active: false, markers: 0, startedAtMs: null, startedAtCorrigeMs: null }
+  etat.diagnostics!.recording = recording ?? { active: false, markers: 0, startedAtMs: null, startedAtCorrigeMs: null, montage: SANS_REPERES }
   useRoomStore().seed(etat)
   const wrapper = mount(App, { attachTo: document.body })
   montees.push(wrapper)
@@ -105,7 +106,7 @@ describe('raccourcis de la page', () => {
   })
 
   it('arrête celle qui tourne', async () => {
-    await monter({ active: true, markers: 0, startedAtMs: 0, startedAtCorrigeMs: null })
+    await monter({ active: true, markers: 0, startedAtMs: 0, startedAtCorrigeMs: null, montage: SANS_REPERES })
 
     frappe('r')
     await flushPromises()
@@ -114,12 +115,37 @@ describe('raccourcis de la page', () => {
   })
 
   it('pose un marqueur pendant une prise', async () => {
-    await monter({ active: true, markers: 0, startedAtMs: 0, startedAtCorrigeMs: null })
+    await monter({ active: true, markers: 0, startedAtMs: 0, startedAtCorrigeMs: null, montage: SANS_REPERES })
 
     frappe('m')
     await flushPromises()
 
     expect(envois.at(-1)?.body).toEqual({ action: 'recording.mark', label: 'Chapitre' })
+  })
+
+  it('pose les deux repères de montage au clavier', async () => {
+    await monter({ active: true, markers: 0, startedAtMs: 0, startedAtCorrigeMs: null, montage: SANS_REPERES })
+
+    // Ce sont des gestes qu'on fait en regardant la salle, pas l'écran :
+    // l'orateur commence, l'orateur finit. Passer par le champ de libellé
+    // ferait rater l'instant, qui est ici toute l'information.
+    frappe('d')
+    await flushPromises()
+    expect(envois.at(-1)?.body).toEqual({ action: 'recording.mark', label: 'Début', role: 'debut' })
+
+    frappe('f')
+    await flushPromises()
+    expect(envois.at(-1)?.body).toEqual({ action: 'recording.mark', label: 'Fin', role: 'fin' })
+  })
+
+  it('ne pose pas de repère quand rien n’enregistre', async () => {
+    await monter()
+
+    frappe('d')
+    frappe('f')
+    await flushPromises()
+
+    expect(envois.filter((envoi) => envoi.url === '/control/action')).toEqual([])
   })
 
   it('ne pose pas de marqueur quand rien n’enregistre', async () => {
@@ -299,17 +325,43 @@ describe('une question ouverte prend le clavier', () => {
     expect(envois.filter((envoi) => envoi.url === '/control/action')).toEqual([])
   })
 
-  it('n’ouvre aucune issue au clavier sur l’avertissement de captation', async () => {
+  it('répond au clavier sur l’avertissement de captation aussi', async () => {
+    /*
+     * Cette question-là ne répondait à rien, quand les deux autres répondaient
+     * à `y` et `n` : deux questions sur quatre au clavier, et rien à l'écran
+     * pour les distinguer. Les touches sont désormais liées par `ConfirmDialog`
+     * lui-même, avec le libellé qu'il imprime — donc partout, ou nulle part.
+     */
     await monter()
     const conference = useConferenceStore()
     conference.recordingOpen = true
     await flushPromises()
 
-    for (const touche of ['y', 'o', 'n', 'r', 'l']) frappe(touche)
+    frappe('y')
     await flushPromises()
 
-    // Trois issues nommées, dont aucune ne s'atteint par réflexe : la couche
-    // est là pour ce qu'elle avale.
+    expect(conference.recordingOpen).toBe(false)
+    expect(envois.filter((envoi) => envoi.url === '/control/action').map((e) => e.body)).toEqual([
+      { action: 'recording.start' },
+      { action: 'session.start' },
+      { action: 'scene.set', role: 'LIVE' },
+    ])
+  })
+
+  it('laisse la troisième issue à la souris', async () => {
+    // « Commencer sans enregistrer » n'est ni annuler ni confirmer : lui donner
+    // une lettre en ferait une seconde façon de dire oui, à une question dont
+    // la réponse par défaut coûte une VOD.
+    await monter()
+    const conference = useConferenceStore()
+    conference.recordingOpen = true
+    await flushPromises()
+
+    for (const touche of ['r', 'l', 'm']) frappe(touche)
+    await flushPromises()
+
+    // Et la couche avale toujours ce qu'elle n'a pas lié : un « r » réflexe
+    // basculerait la captation sous la question elle-même.
     expect(envois.filter((envoi) => envoi.url === '/control/action')).toEqual([])
     expect(conference.recordingOpen).toBe(true)
   })

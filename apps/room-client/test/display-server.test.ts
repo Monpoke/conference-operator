@@ -131,11 +131,19 @@ async function compterSse(url: string, dureeMs: number): Promise<number> {
 }
 
 describe('serveur d\'affichage local', () => {
-  it('sert une page autonome, sans dépendance externe', async () => {
+  it('sert une page autonome, à un script facultatif près', async () => {
     const html = await (await fetch(`${origin}/display/projector`)).text()
     expect(html).toContain('<!doctype html>')
-    // Une balise vers un CDN casserait l'écran dès la première coupure réseau.
-    expect(html).not.toMatch(/<script[^>]+src=|<link[^>]+href=/)
+    /*
+     * Une balise vers un CDN casserait l'écran dès la première coupure réseau.
+     * Seul le bouton de X y échappe : chargé en `async`, en dernier, et rien
+     * de ce qui se lit n'en dépend — la slide Réseaux porte le hashtag en
+     * grand, qui reste là sans lui.
+     */
+    const externes = [...html.matchAll(/<(?:script|link)\b[^>]*\b(?:src|href)="([^"]+)"/g)]
+      .map((trouve) => trouve[1]!)
+      .filter((adresse) => /^(?:https?:)?\/\//.test(adresse))
+    expect(externes).toEqual(['https://platform.x.com/widgets.js'])
     expect(html).toContain("new EventSource('/display/state?vue=projecteur')")
   })
 

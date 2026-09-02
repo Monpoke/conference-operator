@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -46,7 +46,14 @@ function fakeObs(scenes = ['Capture HDMI', 'Habillage']) {
       handlers.set(event, list)
     },
   }
-  return { transport, get currentScene() { return current } }
+  return {
+    transport,
+    get currentScene() { return current },
+    /** Ce qu'OBS pousse de lui-même : un enregistrement lancé sur la machine. */
+    emettre(event: string, payload: unknown) {
+      for (const h of handlers.get(event) ?? []) h(payload)
+    },
+  }
 }
 
 let hub: Hub
@@ -149,6 +156,34 @@ describe('machine de salle, démarrage complet', () => {
     expect(token).toBeNull()
   }, 20_000)
 
+  it('annonce au transport les scènes que la salle attend', async () => {
+    /*
+     * Le vrai client les ignore — un OBS a les scènes qu'on y a créées, et
+     * c'est justement l'écart qui doit se voir en rouge. Le simulateur, lui,
+     * s'en sert pour exister avec les scènes qu'on attend de lui : sans ça,
+     * tout nom un peu personnel ressortait « rôle introuvable » sur une
+     * instance qui n'existe pas.
+     */
+    const recus: [string, string[]][] = []
+    room = makeApp()
+    ;(room as unknown as { options: { obsTransportFactory: unknown } }).options.obsTransportFactory =
+      (instance: string, scenes: string[]) => {
+        recus.push([instance, scenes])
+        return obs.transport
+      }
+
+    await room.startDisplay()
+    const token = await room.ensurePaired()
+    await room.connectHub(token!)
+    await room.connectObs()
+
+    // Les noms de la configuration de la salle, pas ceux d'une constante.
+    expect(recus).toEqual([
+      ['A', ['Capture HDMI', 'Habillage']],
+      ['B', ['Talk']],
+    ])
+  }, 20_000)
+
   it('s\'appaire, synchronise, pilote OBS et reçoit les commandes', async () => {
     room = makeApp()
     const url = await room.startDisplay()
@@ -188,6 +223,117 @@ describe('machine de salle, démarrage complet', () => {
     const cached = room.store.activeProgram()
     expect(cached).not.toBeNull()
     expect(room.assets.localize(cached!.program).sponsorTiers[0]?.name).toBe('Gold')
+  }, 30_000)
+})
+
+/**
+ * Ce que la salle remonte au hub, et pourquoi ça compte maintenant.
+ *
+ * `room_state` n'était lu que par la console de supervision, qui regarde. La
+ * régie mobile s'en sert pour **peindre des boutons** : ce qui y arrive faux
+ * n'est plus une ligne de tableau discutable, c'est un témoin éteint sur une
+ * salle qui enregistre.
+ */
+describe('le battement', () => {
+  /** Deux instances, deux transports : c'est tout l'objet de ces tests. */
+  async function salleAvecDeuxObs() {
+    const a = fakeObs()
+    const b = fakeObs(['Talk'])
+    room = makeApp()
+    ;(room as unknown as { options: { obsTransportFactory: unknown } }).options.obsTransportFactory =
+      (instance: string) => (instance === 'A' ? a.transport : b.transport)
+
+    await room.startDisplay()
+    const token = await room.ensurePaired()
+    await room.connectHub(token!)
+    await room.connectObs()
+    return { a, b }
+  }
+
+  const statut = () => hub.services.rooms.statuses().find((s) => s.roomId === TRACK_1)
+
+  it("porte la captation d'OBS-B, pas celle d'OBS-A", async () => {
+    /*
+     * Le défaut qu'on fige ici : le battement interrogeait `obsA`.
+     *
+     * OBS-A projette, OBS-B enregistre. Le battement remontait donc `false`
+     * toutes les dix secondes, écrasant chez le hub le `recording` que
+     * `recording.started` venait d'y écrire — la régie mobile montrait un
+     * témoin éteint sur une salle en pleine captation, et la console avec elle.
+     */
+    const { b } = await salleAvecDeuxObs()
+
+    // Lancé depuis OBS lui-même : aucun `recording.started` n'est émis, ce fait
+    // ne voyage que par le battement. C'est le pire cas, donc le bon test.
+    b.emettre('RecordStateChanged', { outputActive: true })
+    await sleep(800)
+
+    expect(room.runtime.state().recording).toBe(true)
+    expect(statut()?.recording).toBe(true)
+  }, 30_000)
+
+  it('écrit le sidecar quand la captation est arrêtée depuis OBS', async () => {
+    /*
+     * Le geste est courant et légitime : la main est déjà dans OBS, on y appuie
+     * sur « Arrêter l'enregistrement ». La régie n'a alors rien demandé et
+     * n'attend aucun chemin — et tout ce que la prise savait d'elle-même
+     * partait à la poubelle, marqueurs compris, qui n'existent nulle part
+     * ailleurs.
+     */
+    const { b } = await salleAvecDeuxObs()
+    await room.startRecording()
+    room.mark('démo')
+
+    const master = join(dir, 'depuis-obs.mkv')
+    writeFileSync(master, 'FAUX')
+    b.emettre('RecordStateChanged', {
+      outputActive: false,
+      outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPED',
+      outputPath: master,
+    })
+    await sleep(300)
+
+    const sidecars = readdirSync(dir).filter((nom) => nom.endsWith('.json'))
+    expect(sidecars).toHaveLength(1)
+    const sidecar = JSON.parse(readFileSync(join(dir, sidecars[0]!), 'utf8')) as {
+      markers: { label: string }[]
+    }
+    expect(sidecar.markers.map((marqueur) => marqueur.label)).toEqual(['démo'])
+    // La prise est close : la régie ne croit pas qu'un enregistrement court encore.
+    expect(room.runtime.state().recording).toBe(false)
+  }, 30_000)
+
+  it('n’écrit pas de second sidecar quand l’arrêt vient de la régie', async () => {
+    // Les deux chemins mènent au sidecar et peuvent se croiser : l'événement
+    // d'OBS arrive dans la foulée de `StopRecord`, la prise étant encore ouverte.
+    const { b } = await salleAvecDeuxObs()
+    await room.startRecording()
+
+    const master = join(dir, 'depuis-regie.mkv')
+    writeFileSync(master, 'FAUX')
+    const arret = room.stopRecording()
+    b.emettre('RecordStateChanged', {
+      outputActive: false,
+      outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPED',
+      outputPath: master,
+    })
+    await arret
+    await sleep(300)
+
+    expect(readdirSync(dir).filter((nom) => nom.endsWith('.json'))).toHaveLength(1)
+  }, 30_000)
+
+  it("remonte l'écran de salle, pour que le téléphone sache quel bouton allumer", async () => {
+    await salleAvecDeuxObs()
+
+    // Le geste d'une régie mobile : le hub publie, la salle applique, et la
+    // salle le dit — sans attendre le tic suivant, sinon le bouton reste mort
+    // dix secondes et on appuie une seconde fois.
+    hub.services.commands.publish(TRACK_1, { type: 'display.set', mode: 'programme' }, null)
+    await sleep(800)
+
+    expect(room.runtime.state().mode).toBe('programme')
+    expect(statut()?.displayMode).toBe('programme')
   }, 30_000)
 })
 

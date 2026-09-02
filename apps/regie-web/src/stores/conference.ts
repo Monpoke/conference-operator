@@ -18,11 +18,12 @@ export const TOO_EARLY_MS = 15 * 60_000
 /**
  * Commencer et terminer, avec ce qui se met en travers.
  *
- * Trois questions, et leur ordre est le fond du sujet. Celle du démarrage très
- * en avance passe **avant** celle de l'enregistrement : la première porte sur
- * la conférence qu'on est en train de lancer, la seconde sur la manière de la
- * lancer. Les poser dans l'autre ordre ferait démarrer une captation pour un
- * talk qu'on va renoncer à lancer.
+ * Quatre questions, et leur ordre est le fond du sujet. De chaque côté, celle
+ * qui porte sur **la conférence** passe avant celle qui porte sur la
+ * **captation** : « commencer très en avance ? » avant « rien n'enregistre »,
+ * « terminer en avance ? » avant « la captation tourne encore ». Dans l'autre
+ * sens, on démarrerait une captation pour un talk qu'on va renoncer à lancer,
+ * et on couperait la captation d'un talk qu'on va renoncer à terminer.
  *
  * Le flux vit dans un store et non dans le panneau parce que ce sont des
  * enchaînements, pas un rendu : « si l'enregistrement ne part pas, ne commence
@@ -35,6 +36,7 @@ export const useConferenceStore = defineStore('conference', () => {
   const tooEarlyOpen = ref(false)
   const recordingOpen = ref(false)
   const endEarlyOpen = ref(false)
+  const stopRecordingOpen = ref(false)
 
   const session = computed(() => room.payload?.state.targetSession ?? null)
 
@@ -51,6 +53,7 @@ export const useConferenceStore = defineStore('conference', () => {
     const config = room.payload?.diagnostics?.config
     return {
       warn: config?.promptRecordingOnStart !== false,
+      warnOnStop: config?.promptRecordingOnStop !== false,
       scene: config?.sceneOnStart === undefined ? 'LIVE' : config.sceneOnStart,
     }
   })
@@ -64,6 +67,9 @@ export const useConferenceStore = defineStore('conference', () => {
   const leftMs = computed(() =>
     session.value?.endsAtMs == null ? null : session.value.endsAtMs - room.now,
   )
+
+  /** Ce qu'OBS-B fait réellement, observé et non supposé. */
+  const recording = computed(() => room.payload?.diagnostics?.recording?.active === true)
 
   const tooEarlyDetail = computed(() => {
     const target = session.value
@@ -88,6 +94,16 @@ export const useConferenceStore = defineStore('conference', () => {
     )
   })
 
+  const stopRecordingDetail = computed(() => {
+    const target = session.value
+    return (
+      `OBS-B enregistre encore${target == null ? '' : ` « ${target.title} »`}. ` +
+      'Laisser tourner écrira le talk suivant dans le même fichier, sous le titre ' +
+      'et les intervenants de celui-ci — et le garde-fou du démarrage se taira, ' +
+      'puisqu’une captation tourne.'
+    )
+  })
+
   /** Premier garde-fou : vise-t-on bien cette conférence-là ? */
   function askStart(): void {
     const early = earlyByMs.value
@@ -101,8 +117,7 @@ export const useConferenceStore = defineStore('conference', () => {
   /** Second garde-fou : la VOD, qui ne se rattrape pas le soir. */
   async function start(): Promise<void> {
     tooEarlyOpen.value = false
-    const recording = room.payload?.diagnostics?.recording?.active === true
-    if (settings.value.warn && !recording) {
+    if (settings.value.warn && !recording.value) {
       // La question n'a de sens qu'avant : une fois la conférence lancée,
       // l'enregistrement démarré manquera toujours les premières minutes.
       recordingOpen.value = true
@@ -138,14 +153,37 @@ export const useConferenceStore = defineStore('conference', () => {
   function askEnd(): void {
     const left = leftMs.value
     if (left == null || left <= 0) {
-      void actions.act({ action: 'session.end' })
+      void end()
       return
     }
     endEarlyOpen.value = true
   }
 
+  /**
+   * La conférence est bien celle qu'on termine : reste la captation.
+   *
+   * La question ne se pose qu'ici. À l'arrêt près, une captation oubliée ne se
+   * voit nulle part : rien ne clignote, le témoin dit « enregistre » comme il
+   * le disait pendant le talk, et le prix ne se découvre qu'au montage.
+   */
   async function end(): Promise<void> {
     endEarlyOpen.value = false
+    if (settings.value.warnOnStop && recording.value) {
+      stopRecordingOpen.value = true
+      return
+    }
+    await finish(false)
+  }
+
+  /** @param stop Arrêter la captation d'abord, puis terminer la conférence. */
+  async function finish(stop: boolean): Promise<void> {
+    stopRecordingOpen.value = false
+    if (stop) {
+      const result = await actions.act({ action: 'recording.stop' })
+      // L'arrêt d'abord, et seulement s'il aboutit : terminer quand même
+      // laisserait la captation courir sans que rien ne le repose jamais.
+      if (!result.ok) return
+    }
     await actions.act({ action: 'session.end' })
   }
 
@@ -158,16 +196,20 @@ export const useConferenceStore = defineStore('conference', () => {
     tooEarlyOpen,
     recordingOpen,
     endEarlyOpen,
+    stopRecordingOpen,
     settings,
+    recording,
     earlyByMs,
     leftMs,
     tooEarlyDetail,
     endEarlyDetail,
+    stopRecordingDetail,
     askStart,
     start,
     launch,
     askEnd,
     end,
+    finish,
     reset,
   }
 })

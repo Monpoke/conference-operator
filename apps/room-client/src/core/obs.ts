@@ -79,6 +79,39 @@ export function multiplicateurEnDb(mul: number): number {
   return Math.max(PLANCHER_DB, 20 * Math.log10(mul))
 }
 
+interface EtatSortie {
+  outputActive: boolean
+  /** Absent des simulateurs, toujours présent sur un vrai OBS. */
+  outputState?: string
+}
+
+/** Les deux seuls états qui concluent une transition de sortie. */
+const ETATS_ABOUTIS = new Set(['OBS_WEBSOCKET_OUTPUT_STARTED', 'OBS_WEBSOCKET_OUTPUT_STOPPED'])
+
+/**
+ * Vrai quand l'événement conclut la transition, et pas quand il l'annonce.
+ *
+ * Un vrai OBS émet `RecordStateChanged` **deux fois** par transition :
+ * `STOPPING` puis `STOPPED`, `STARTING` puis `STARTED`. Seul le second porte le
+ * résultat — le chemin du fichier n'est renseigné que sur `STOPPED`. Le premier
+ * annonce pourtant déjà `outputActive: false`, et le prendre au mot faisait
+ * résoudre l'attente du chemin avec `null` : le master était bien écrit, son
+ * sidecar jamais, et la modale VOD disait « sidecar absent » sur des captations
+ * parfaitement saines.
+ *
+ * Le défaut ne pouvait pas se voir en développement : les simulateurs n'émettent
+ * qu'un seul événement, celui qui porte le chemin, et ne remplissent pas
+ * `outputState` du tout — d'où le repli sur « abouti » quand le champ manque.
+ *
+ * `PAUSED` / `RESUMED` et les `RECONNECTING` / `RECONNECTED` de la diffusion
+ * tombent au même endroit, et c'est voulu : la sortie n'a pas changé d'état,
+ * la répercuter ferait clignoter la régie et, pour la diffusion, annoncerait au
+ * hub un arrêt « opérateur » à chaque reconnexion du flux.
+ */
+function transitionAboutie(outputState: string | undefined): boolean {
+  return outputState == null || ETATS_ABOUTIS.has(outputState)
+}
+
 /**
  * Pilote une instance OBS en raisonnant par **rôles**, jamais par noms de scènes.
  *
@@ -144,7 +177,8 @@ export class ObsController {
     })
 
     transport.on('RecordStateChanged', (payload: never) => {
-      const event = payload as unknown as { outputActive: boolean; outputPath?: string }
+      const event = payload as unknown as EtatSortie & { outputPath?: string }
+      if (!transitionAboutie(event.outputState)) return
       this.patch({ recording: event.outputActive })
       this.options.onEvent?.({
         type: 'recording',
@@ -154,7 +188,8 @@ export class ObsController {
     })
 
     transport.on('StreamStateChanged', (payload: never) => {
-      const event = payload as unknown as { outputActive: boolean }
+      const event = payload as unknown as EtatSortie
+      if (!transitionAboutie(event.outputState)) return
       this.patch({ streaming: event.outputActive })
       this.options.onEvent?.({ type: 'streaming', active: event.outputActive })
     })

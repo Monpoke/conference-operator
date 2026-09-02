@@ -2,16 +2,18 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createHub, type Hub } from '@cloudnord/hub-server/server'
 import { provisionOperator } from '@cloudnord/hub-server/operators'
 import { createORPCClient } from '@orpc/client'
 import { RPCLink } from '@orpc/client/fetch'
 import type { ContractRouterClient } from '@orpc/contract'
-import { contract } from '@cloudnord/contract'
+import { contract, REGIE_SESSION_HEADER } from '@cloudnord/contract'
 import { httpPairingTransport, runPairing } from '../src/core/pairing.js'
 import { LocalStore } from '../src/core/store.js'
-import { RoomRuntime } from '../src/core/runtime.js'
+import { RoomRuntime, type RuntimeEffects } from '../src/core/runtime.js'
+import { Outbox } from '../src/core/outbox.js'
+import { OutboxPump, buildHeartbeat, heartbeatDedupKey } from '../src/core/outbox-pump.js'
 import { HubLink } from '../src/core/hub-link.js'
 
 const rawProgram = readFileSync(
@@ -120,13 +122,29 @@ async function signInOperator(): Promise<string> {
   return ((await response.json()) as { token: string }).token
 }
 
-function makeClient(token: string, dbPath = ':memory:') {
+function makeClient(token: string, dbPath = ':memory:', effects: RuntimeEffects = {}) {
   const store = new LocalStore(dbPath)
   openStores.push(store)
-  const runtime = new RoomRuntime(store)
+  const runtime = new RoomRuntime(store, effects)
   const link = new HubLink({ hubOrigin: origin, clientId: CLIENT_ID, token, store, runtime })
   openLinks.push(link)
   return { store, runtime, link }
+}
+
+/**
+ * Une salle branchée, prête à recevoir. Les effets tiennent lieu d'OBS.
+ *
+ * Le runtime ne connaît pas OBS — il décide *quoi* faire, la machine sait
+ * *comment* —, ce qui permet d'exercer la chaîne entière sans instance.
+ */
+async function salleBranchee(effects: RuntimeEffects) {
+  const token = await pair()
+  const { runtime, link, store } = makeClient(token, ':memory:', effects)
+  await link.sync()
+  const controller = new AbortController()
+  void link.consumeCommands(controller.signal)
+  await sleep(200)
+  return { runtime, controller, token, store }
 }
 
 describe('salle et hub, chaîne complète', () => {
@@ -248,5 +266,142 @@ describe('salle et hub, chaîne complète', () => {
     expect(runtime.state().roomId).toBe(TRACK_1)
 
 
+  }, 25_000)
+})
+
+/**
+ * La régie mobile, de bout en bout.
+ *
+ * Le maillon qu'aucun test unitaire ne couvre : un opérateur pose un geste en
+ * HTTP sur le hub, la commande traverse le WebSocket, et la salle l'applique.
+ * Chacun des trois côtés est vérifié ailleurs ; ce qui se casse en silence,
+ * c'est la jointure.
+ */
+describe('régie mobile, du téléphone à la salle', () => {
+  /**
+   * Ce que fait la page : se connecter, s'annoncer, puis appeler le contrat.
+   *
+   * L'en-tête de session est ce que le verrou retient — un compte peut avoir
+   * deux onglets ouverts, et ils ne doivent pas se croire porteurs tous les
+   * deux. `session` permet d'en simuler un second.
+   */
+  async function commePhone(token: string, session = 'session-telephone') {
+    const client: ContractRouterClient<typeof contract> = createORPCClient(
+      new RPCLink({
+        origin,
+        url: '/rpc',
+        headers: () => ({
+          authorization: `Bearer ${token}`,
+          [REGIE_SESSION_HEADER]: session,
+        }),
+      }),
+    )
+    return client
+  }
+
+  it('porte scène, captation et verrou jusqu\'à la salle', async () => {
+    const scenes: string[] = []
+    const captations: boolean[] = []
+    const { runtime, controller } = await salleBranchee({
+      setSceneRole: async (role) => {
+        scenes.push(role)
+        runtime.observeSceneRole(role)
+      },
+      setRecording: (on) => {
+        captations.push(on)
+        runtime.observeCapture({ recording: on })
+      },
+    })
+
+    const phone = await commePhone(await signInOperator())
+    await phone.regie.hold({ roomId: TRACK_1, force: false })
+    await phone.regie.command({ roomId: TRACK_1, action: { type: 'scene.set', role: 'LIVE' } })
+    await phone.regie.command({ roomId: TRACK_1, action: { type: 'recording.set', on: true } })
+    await sleep(500)
+
+    expect(scenes).toEqual(['LIVE'])
+    expect(captations).toEqual([true])
+    // Le badge de l'écran de régie : il ne grise rien, il dit qui pilote.
+    expect(runtime.state().remoteHolder).toBe(OPERATOR.email)
+    // Et le signalement nomme l'auteur, pour qu'on ne cherche pas une panne.
+    expect(runtime.state().notifications.map((n) => n.text).join(' ')).toContain(OPERATOR.email)
+
+    controller.abort()
+  }, 25_000)
+
+  it('rend au téléphone ce que la salle a remonté', async () => {
+    /*
+     * L'aller-retour complet, et la propriété dont dépend « Commencer ».
+     *
+     * La régie mobile ne peint jamais d'avance : elle confirme l'enregistrement
+     * par l'**observation**, en sondant jusqu'à voir `recording` passer à vrai.
+     * Encore faut-il que ce que la salle constate remonte jusqu'à la vue —
+     * sinon la confirmation expire sur une captation qui tourne, et
+     * « Commencer » renonce pour rien.
+     *
+     * La remontée est montée ici comme la monte `RoomApp` : la file locale, la
+     * pompe, et `ingest.push` au bout. C'est le chemin réel, sans le serveur
+     * d'affichage dont ce test n'a que faire.
+     */
+    const { runtime, controller, store } = await salleBranchee({
+      setRecording: (on) => runtime.observeCapture({ recording: on }),
+    })
+    const lien = openLinks.at(-1)!
+    const outbox = new Outbox(store, TRACK_1)
+    const pump = new OutboxPump({
+      outbox,
+      store,
+      push: (batch) => lien.client.ingest.push({ batch }),
+    })
+
+    const phone = await commePhone(await signInOperator())
+    await phone.regie.hold({ roomId: TRACK_1, force: false })
+    expect((await phone.regie.view({ roomId: TRACK_1 })).recording).toBe(false)
+
+    await phone.regie.command({ roomId: TRACK_1, action: { type: 'recording.set', on: true } })
+    await sleep(400)
+    expect(runtime.state().recording).toBe(true)
+
+    // Le battement porte ce que la salle constate : c'est lui qui peint
+    // `room_state`, et c'est `room_state` que relit la vue du téléphone.
+    outbox.enqueue(
+      buildHeartbeat({
+        connectivity: 'ONLINE',
+        sceneRole: runtime.state().sceneRole,
+        recording: runtime.state().recording,
+        streaming: runtime.state().streaming,
+        outboxDepth: 0,
+        programContentHash: runtime.state().contentHash,
+        displayMode: runtime.state().mode,
+      }),
+      { dedupKey: heartbeatDedupKey(TRACK_1) },
+    )
+    await pump.drainOnce()
+
+    const vue = await phone.regie.view({ roomId: TRACK_1 })
+    expect(vue.recording).toBe(true)
+    expect(vue.connectivity).toBe('ONLINE')
+
+    controller.abort()
+  }, 30_000)
+
+  it('refuse le geste de qui ne tient pas la salle, sans rien envoyer', async () => {
+    const scenes: string[] = []
+    const { controller } = await salleBranchee({
+      setSceneRole: async (role) => {
+        scenes.push(role)
+      },
+    })
+
+    const phone = await commePhone(await signInOperator())
+    // Aucune prise : le hub refuse, et rien ne descend. Sans ce refus, deux
+    // téléphones basculeraient la même salle en sens contraire.
+    await expect(
+      phone.regie.command({ roomId: TRACK_1, action: { type: 'scene.set', role: 'LIVE' } }),
+    ).rejects.toThrow()
+    await sleep(300)
+    expect(scenes).toEqual([])
+
+    controller.abort()
   }, 25_000)
 })

@@ -15,6 +15,15 @@ const props = defineProps<{
   nowMs: number
   /** Le flux de la page est coupé depuis assez longtemps pour le dire. */
   streamDead: boolean
+  /**
+   * Servie par le hub, sur un téléphone.
+   *
+   * Tombent alors : les boutons qui ouvrent des modales de poste (programme,
+   * salles, ⚙, écrans) et la charge de l'hôte, servie par la machine de salle.
+   * Reste tout ce qui dit **où en est la salle** — c'est la seule raison de
+   * regarder cette ligne.
+   */
+  distant?: boolean
 }>()
 
 const emit = defineEmits<{ open: [tab: 'programme' | 'salles']; config: [] }>()
@@ -45,7 +54,25 @@ const queueDepth = computed(
       :simulated-clock="payload.state.simulatedClock"
     />
 
-    <CpuIndicator :load="host.load" />
+    <CpuIndicator v-if="distant !== true" :load="host.load" />
+
+    <!--
+      Le pilotage distant, vu de la salle.
+
+      Il ne grise rien : l'opérateur qui est là garde toutes ses commandes, quoi
+      qu'il arrive à un téléphone parti dans un couloir. Il est ici parce que
+      c'est la ligne qu'on lit pour savoir dans quel état est la salle — et
+      qu'une scène qui bascule sans que personne n'ait touché au clavier se lit
+      sinon comme une panne, en plein talk.
+    -->
+    <div
+      v-if="payload.state.remoteHolder != null && distant !== true"
+      class="shrink-0 truncate text-xs text-attention"
+      data-role="remote-holder"
+      :title="`${payload.state.remoteHolder} pilote cette salle depuis la régie mobile. Vos commandes restent actives.`"
+    >
+      pilotée à distance — {{ payload.state.remoteHolder }}
+    </div>
 
     <div v-if="queueDepth > 0" class="shrink-0 text-xs text-attention" data-role="queue">
       {{ queueDepth }} en attente
@@ -75,7 +102,7 @@ const queueDepth = computed(
       :simulated="payload.state.simulatedClock"
     />
 
-    <div class="flex shrink-0 items-center gap-1.5">
+    <div v-if="distant !== true" class="flex shrink-0 items-center gap-1.5">
       <Button id="btn-programme" size="small" @click="emit('open', 'programme')">
         Programme<Key>P</Key>
       </Button>

@@ -1,0 +1,250 @@
+# Ship a version: one hub image, one control-room installer.
+#
+# The hub and the room client speak the same oRPC contract, versioned nowhere
+# but in this repository. Shipping them separately would raise the question
+# "which image goes with which installer?", and nothing here could answer it. So
+# a tag produces both, together, under the same number.
+#
+# That number exists only here. The `package.json` files stay at `0.0.0` and
+# `private: true` — none of them is published to an npm registry, and keeping
+# version bookkeeping nobody reads would be worse than having none. The git tag
+# is the single source, injected at packaging time.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  # The rehearsal. Builds both packages without publishing anything: the
+  # installer goes out as an artifact (90 days), the image never leaves the
+  # runner. This is what lets the packaging chain be exercised the week before,
+  # without burning a version number or pushing anything public.
+  workflow_dispatch:
+
+concurrency:
+  # No cancellation here, unlike CI: a half-finished release would leave an
+  # image without its installer, or the other way round.
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Types, tests and bundles, exactly as for any pull request. Nothing ships
+  # behind a red suite.
+  verify:
+    uses: ./.github/workflows/ci.yml
+
+  image:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # `GITHUB_TOKEN` is enough: GHCR asks for no third-party account, and
+      # hosting a public package there is free. No login on a rehearsal — there
+      # is nothing to push.
+      - uses: docker/login-action@v3
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tags and OCI labels are derived from the git tag; the Dockerfile knows
+      # nothing about any of it. `latest` follows stable versions only — a
+      # `v1.2.0-rc.1` does not move it, which `metadata-action` handles on its
+      # own.
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/hub
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=rehearsal,enable=${{ github.event_name == 'workflow_dispatch' }}
+
+      # `linux/amd64` only, and deliberately so. The Dockerfile carries just the
+      # linux-x64 and linuxmusl-x64 `better-sqlite3` binaries — the other six are
+      # fifteen megabytes that would never be used. An arm64 image built from
+      # this recipe would stop at the module's first load, on startup, inside a
+      # container. Opening up the architecture means reopening that pruning
+      # first — and building on an ARM runner, since QEMU translation costs more
+      # here than it returns.
+      #
+      # On the cache: the pnpm install layers are already isolated in the
+      # Dockerfile — manifests first, sources after. A release that only changes
+      # code therefore reuses the whole install.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Provenance and SBOM only mean something attached to a pushed image:
+          # a rehearsal produces no manifest to attach them to.
+          provenance: ${{ startsWith(github.ref, 'refs/tags/v') && 'mode=max' || 'false' }}
+          sbom: ${{ startsWith(github.ref, 'refs/tags/v') }}
+
+  installer:
+    needs: verify
+    # Windows rather than Ubuntu, even though packaging does work from Linux
+    # (see the README). It saves installing 32-bit wine and its opaque "exit
+    # status 123", and a Windows runner is free on a public repository. The
+    # Linux recipe keeps its purpose — packaging from a dev machine — but it
+    # does not have to be the path a release takes.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # No `ELECTRON_SKIP_BINARY_DOWNLOAD` here, unlike CI: that binary is
+      # precisely what is being packaged.
+      - run: pnpm install --frozen-lockfile
+
+      # `0.0.0` in the manifests, the real number here. It names the installer
+      # and the Windows "Add/Remove programs" entry; without it three successive
+      # versions would install over one another under the same name, and nobody
+      # on site could say which one is running.
+      - id: version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "number=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "number=0.0.0-rehearsal.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # What `package:win` does, plus the version number. Order matters: the
+      # control-room bundle travels inside the installer's `resources`, so it has
+      # to exist before electron-builder goes looking for it.
+      - shell: bash
+        run: |
+          pnpm --filter @cloudnord/regie-web build
+          pnpm --filter @cloudnord/room-client build
+          pnpm --filter @cloudnord/room-client exec electron-builder \
+            --win --publish never \
+            -c.extraMetadata.version=${{ steps.version.outputs.number }}
+
+      # The binary is unsigned — SmartScreen will warn on first launch. A
+      # published checksum is the least that can be offered to whoever copies the
+      # installer onto a USB stick on the morning of an event. Written with LF
+      # endings, so that `sha256sum -c` can read it back outside Windows.
+      - shell: pwsh
+        working-directory: apps/room-client/release
+        run: |
+          $exe = Get-ChildItem -Filter *.exe | Select-Object -First 1
+          $digest = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
+          [IO.File]::WriteAllText("$PWD/SHA256SUMS.txt", "$digest  $($exe.Name)`n")
+          Get-Content SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: regie-${{ steps.version.outputs.number }}
+          path: |
+            apps/room-client/release/*.exe
+            apps/room-client/release/SHA256SUMS.txt
+          retention-days: 90
+
+      # Source maps, kept out of the release on purpose. Nothing installs them —
+      # no code turns on `--enable-source-maps` on a room machine — and they are
+      # not lost either: `build-main.mjs` has no non-deterministic input and the
+      # toolchain is pinned by the lockfile, so building this tag again
+      # regenerates them, `sourcesContent` included.
+      #
+      # Ninety days is the ceiling a public repository allows, and it happens to
+      # be the window that matters: the event, and the weeks after it, when a
+      # trace coming back from a room is still worth reading without rebuilding
+      # anything.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sourcemaps-${{ steps.version.outputs.number }}
+          path: |
+            apps/room-client/dist/*.map
+            apps/regie-web/dist/**/*.map
+          retention-days: 90
+
+  release:
+    # A rehearsal stops here: both packages were built, neither is published.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [image, installer]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: regie-*
+          merge-multiple: true
+          path: artifacts
+
+      # The release notes stay in French, like the README and the RUNBOOK: they
+      # are read by the people who run the event, not by the people who maintain
+      # the workflow.
+      - shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          # GHCR only accepts lowercase; the repository name need not be.
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/hub:${version}"
+          runbook="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/apps/room-client/RUNBOOK.md"
+
+          # A tag carrying a dash (`v1.2.0-rc.1`) is a pre-release: it does not
+          # show up as the repository's latest version.
+          prerelease=()
+          if [[ "$version" == *-* ]]; then
+            prerelease=(--prerelease)
+          fi
+
+          cat > notes.md <<EOF
+          ## Le hub
+
+          \`\`\`bash
+          docker run -d --name hub -p 8787:8787 \\
+            -e BETTER_AUTH_SECRET="\$(openssl rand -base64 48)" \\
+            -e PUBLIC_URL=https://hub.exemple.fr \\
+            -v hub-data:/data \\
+            ${image}
+          \`\`\`
+
+          Image \`linux/amd64\`. La console et la régie mobile y sont, servies par
+          le hub — il n'y a rien d'autre à déployer de ce côté.
+
+          ## La régie de salle
+
+          Installeur NSIS x64. Vérifier l'empreinte avant de recopier le fichier :
+
+          \`\`\`bash
+          sha256sum -c SHA256SUMS.txt
+          \`\`\`
+
+          ⚠️ Le binaire n'est pas signé : SmartScreen avertira au premier
+          lancement. Installer les machines **avant** le jour J, pas devant une
+          salle qui attend. Procédures d'exploitation : [RUNBOOK](${runbook}).
+
+          ---
+
+          Cette image et cet installeur vont ensemble : ils partagent le même
+          contrat oRPC. Les mélanger entre deux versions n'est pas prévu.
+          EOF
+
+          gh release create "$GITHUB_REF_NAME" artifacts/* \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            "${prerelease[@]}"

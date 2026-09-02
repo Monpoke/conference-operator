@@ -55,6 +55,8 @@ export const roomState = sqliteTable('room_state', {
   connectivity: text('connectivity').notNull().default('OFFLINE'),
   lastSeenAt: text('last_seen_at'),
   sceneRole: text('scene_role'),
+  /** Ce que l'écran de la salle affiche, remonté au battement. */
+  displayMode: text('display_mode'),
   currentSessionId: text('current_session_id'),
   recording: integer('recording', { mode: 'boolean' }).notNull().default(false),
   streaming: integer('streaming', { mode: 'boolean' }).notNull().default(false),
@@ -302,6 +304,41 @@ export const sessionState = sqliteTable(
   },
   (table) => [index('session_state_room_idx').on(table.roomId, table.status)],
 )
+
+/**
+ * Qui tient la régie mobile d'une salle.
+ *
+ * Une ligne par salle **tenue**, et rien pour les autres : comme
+ * `session_state`, la table ne contient que ce qui s'est produit. La rendre
+ * exhaustive obligerait à créer une ligne par salle à l'import du programme,
+ * pour un état dont la valeur par défaut est « personne ».
+ *
+ * Pas de colonne d'expiration : elle se calcule à la lecture
+ * (`last_seen_at + REGIE_LOCK_TTL_MS`). Une colonne écrite demanderait qu'un
+ * balayage la tienne à jour, et un verrou dont l'échéance est passée mais dont
+ * la ligne dit le contraire est exactement le genre d'état qu'on ne veut pas
+ * pouvoir fabriquer.
+ */
+export const regieLock = sqliteTable('regie_lock', {
+  roomId: text('room_id')
+    .primaryKey()
+    .references(() => room.id, { onDelete: 'cascade' }),
+  /** L'adresse de l'opérateur, comme `session_state.decided_by`. */
+  holder: text('holder').notNull(),
+  /**
+   * L'onglet qui tient la salle, et non le compte.
+   *
+   * Deux onglets d'une même personne pilotaient sinon la même salle en se
+   * croyant seuls — la situation que le verrou existe pour supprimer. Le défaut
+   * vide couvre les lignes d'avant cette colonne : un verrou vit trente
+   * secondes, il n'y en a aucune à la migration.
+   */
+  holderId: text('holder_id').notNull().default(''),
+  /** Depuis quand cette personne-là tient la salle. Une reprise le réinitialise. */
+  heldSince: text('held_since').notNull().default(now),
+  /** Dernier battement reçu. C'est lui qui fait vivre le verrou. */
+  lastSeenAt: text('last_seen_at').notNull().default(now),
+})
 
 /**
  * Réglages du hub, en clé/valeur JSON.

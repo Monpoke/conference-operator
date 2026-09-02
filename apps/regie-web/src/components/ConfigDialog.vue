@@ -45,6 +45,33 @@ const FIELD =
     </p>
 
     <template v-else>
+      <!--
+        Ce qui manque, avant les champs qui le corrigent.
+
+        Affiché quel que soit celui qui a ouvert le panneau : l'opérateur venu
+        changer un port profite de la même liste. La phrase de tête change,
+        elle, parce qu'un panneau qui s'ouvre tout seul se lit comme une fausse
+        manœuvre tant qu'il n'a pas dit pourquoi il est là.
+      -->
+      <div
+        v-if="config.manques.length > 0"
+        class="mb-2.5 rounded-lg border border-attention/40 px-2.5 py-2 text-[11px] text-attention"
+        data-role="config-manques"
+      >
+        <p class="font-semibold">
+          {{
+            config.ouvertAuDemarrage
+              ? 'Cette salle n’est pas prête : ouvert au démarrage pour ces raisons.'
+              : 'Cette salle n’est pas prête.'
+          }}
+        </p>
+        <ul class="mt-1 list-disc pl-4">
+          <li v-for="manque in config.manques" :key="manque.code" :data-manque="manque.code">
+            {{ manque.texte }}
+          </li>
+        </ul>
+      </div>
+
       <ObsConfigBlock
         instance="A"
         title="OBS-A — projection"
@@ -84,7 +111,23 @@ const FIELD =
           </div>
           <div>
             <label class="mb-0.5 block text-xs text-attenue" for="cfg-root">Dossier des VOD</label>
-            <input id="cfg-root" v-model="config.draft.recordingRoot" :class="FIELD" />
+            <div class="flex gap-1.5">
+              <input id="cfg-root" v-model="config.draft.recordingRoot" :class="FIELD" />
+              <!--
+                Le sélecteur parcourt le disque **du poste**, où qu'on lise cette
+                page : c'est là que les rushes s'écrivent, et ce champ n'a jamais
+                désigné autre chose. D'où le mot « poste » sur le bouton.
+              -->
+              <Button
+                v-if="config.peutParcourir"
+                id="btn-parcourir-vod"
+                class="shrink-0"
+                title="Choisir le dossier sur le poste de la salle"
+                @click="config.parcourir()"
+              >
+                Parcourir…
+              </Button>
+            </div>
             <p class="mt-0.5 text-[11px] text-attenue">
               Où la régie relit les enregistrements (🎞 dans le panneau Captation). Vide : le
               dossier d’OBS-B, qu’elle lui demande. Ce champ ne déplace rien : c’est OBS-B qui
@@ -116,7 +159,7 @@ const FIELD =
           commence.
         -->
         <h3 class="mt-3.5 mb-2.5 text-[11px] font-semibold tracking-[.14em] text-attenue uppercase">
-          Au démarrage d’une conférence
+          Au démarrage et à la fin d’une conférence
         </h3>
         <label class="flex items-start gap-2 text-sm">
           <input id="cfg-prompt-rec" v-model="config.draft.promptRecordingOnStart" type="checkbox" class="mt-0.5" />
@@ -124,6 +167,15 @@ const FIELD =
             Avertir si l’enregistrement n’est pas lancé
             <span class="block text-[11px] text-attenue">
               Une VOD manquante ne se rattrape pas le soir.
+            </span>
+          </span>
+        </label>
+        <label class="mt-2 flex items-start gap-2 text-sm">
+          <input id="cfg-prompt-rec-stop" v-model="config.draft.promptRecordingOnStop" type="checkbox" class="mt-0.5" />
+          <span>
+            Proposer d’arrêter l’enregistrement en terminant
+            <span class="block text-[11px] text-attenue">
+              Sans quoi le talk suivant s’écrit dans le même fichier, sous le titre de celui-ci.
             </span>
           </span>
         </label>

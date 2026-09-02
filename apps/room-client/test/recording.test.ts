@@ -131,6 +131,64 @@ describe('cycle d\'enregistrement', () => {
     expect(session.markerCount).toBe(2)
   })
 
+  /*
+   * Les deux repères de montage, et la seule règle qui les distingue d'un
+   * chapitre : il n'y en a qu'un de chaque, et c'est le dernier posé qui vaut.
+   *
+   * Ce qui se joue ici tient à trois semaines de distance. Le montage lit le
+   * sidecar longtemps après que la salle a été démontée : ce qu'il y trouve
+   * doit se lire sans arbitrage, parce que plus personne ne pourra dire lequel
+   * des deux « Début » était le bon.
+   */
+  it('ne garde qu’un repère de chaque, et c’est le dernier posé', async () => {
+    const { fs } = fakeFs()
+    const { session } = makeSession(fs)
+    await session.start(START)
+
+    clockMs += 30_000
+    session.mark('Début', 'debut')
+    // Faux départ : l'orateur reprend une minute plus tard, on repose le début.
+    clockMs += 60_000
+    session.mark('Début', 'debut')
+    clockMs += 1_800_000
+    session.mark('Fin', 'fin')
+
+    expect(session.montage).toEqual({ debutMs: 90_000, finMs: 1_890_000 })
+  })
+
+  it('ne compte pas les repères parmi les marqueurs de chapitre', async () => {
+    const { fs } = fakeFs()
+    const { session } = makeSession(fs)
+    await session.start(START)
+
+    session.mark('Début', 'debut')
+    session.mark('Fin', 'fin')
+    // Sans quoi la régie affiche « 2 marqueur(s) » sans qu'aucun chapitre ait
+    // été posé, juste à côté d'une ligne qui dit déjà que les repères sont là.
+    expect(session.markerCount).toBe(0)
+
+    session.mark('Questions')
+    expect(session.markerCount).toBe(1)
+  })
+
+  it('range les marqueurs par décalage quand un repère est reposé', async () => {
+    const { fs } = fakeFs()
+    const { session } = makeSession(fs)
+    await session.start(START)
+
+    session.mark('Début', 'debut')
+    clockMs += 60_000
+    session.mark('Introduction')
+    // Le début repart derrière le chapitre : posé en dernier, il tombe en
+    // premier. Un sidecar en désordre demanderait au montage de réparer
+    // là-bas ce qui se range ici.
+    clockMs += 60_000
+    session.mark('Début', 'debut')
+
+    const result = await session.stop(async () => null)
+    expect(result.sidecar.markers.map((marker) => marker.offsetMs)).toEqual([60_000, 120_000])
+  })
+
   it('refuse un marqueur hors enregistrement', () => {
     const { fs } = fakeFs()
     const { session } = makeSession(fs)
@@ -169,6 +227,36 @@ describe('sidecar', () => {
       expect.objectContaining({ label: 'début démo', offsetMs: 60_000 }),
     ])
     expect(sidecar.videoFile).toMatch(/\.mkv$/)
+  })
+
+  it('porte le rôle des repères, et rien du tout sur un chapitre', async () => {
+    const { fs, files } = fakeFs(['/rec/prise.mkv'])
+    const { session } = makeSession(fs)
+
+    await session.start(START)
+    clockMs += 40_000
+    session.mark('Début', 'debut')
+    clockMs += 200_000
+    session.mark('Questions')
+    clockMs += 400_000
+    session.mark('Fin', 'fin')
+
+    const result = await session.stop(async () => '/rec/prise.mkv')
+    const sidecar = JSON.parse(files.get(result.sidecarPath!)!) as Sidecar
+
+    /*
+     * Ce que lit le montage, et la raison d'être du champ : un rôle, pas un
+     * libellé à reconnaître. « Début », « debut », « DÉBUT » et le jour où
+     * quelqu'un tapera « Départ » se ressemblent trop pour qu'on parie dessus.
+     */
+    expect(sidecar.markers.map((marker) => [marker.role ?? null, marker.offsetMs])).toEqual([
+      ['debut', 40_000],
+      [null, 240_000],
+      ['fin', 640_000],
+    ])
+    // Absent, et non pas nul : un `"role": null` sur chaque chapitre ferait
+    // croire à un rôle qu'on aurait effacé.
+    expect(Object.keys(sidecar.markers[1]!)).not.toContain('role')
   })
 
   it('renomme quand OBS a ignoré le format', async () => {
@@ -212,6 +300,107 @@ describe('sidecar', () => {
     // Le contenu reste disponible pour l'appelant, qui peut le remonter au hub.
     expect(result.sidecar.title).toContain('HoneySwamp')
   })
+
+  it('retrouve le master quand OBS annonce un chemin d’un autre OS', async () => {
+    /*
+     * Le cas vu en clair : OBS sous Windows enregistrant dans un dossier WSL,
+     * et annonçant `//wsl.localhost/distro/home/…`. Le fichier était bien là, à
+     * un chemin Linux ordinaire ; le sidecar partait à côté d'un chemin qui
+     * n'existe pas de ce côté-ci, l'écriture échouait, et chaque prise de la
+     * journée perdait titre, intervenants et marqueurs.
+     */
+    const attendu = buildFilenameFormat(START)
+    // Le « (2) » est d'OBS : il l'ajoute quand le nom est déjà pris — la
+    // première prise du même talk est là, et c'est ce qui interdit de renommer.
+    // OBS reste la source du nom ; seul le dossier change de côté.
+    const { fs, files } = fakeFs([`/rec/${attendu}.mp4`, `/rec/${attendu} (2).mp4`])
+    const onLog = vi.fn()
+    const { session } = makeSession(fs, { onLog, recordingRoot: async () => '/rec' })
+
+    await session.start(START)
+    const result = await session.stop(
+      async () => `//wsl.localhost/distro/ailleurs/${attendu} (2).mp4`,
+    )
+
+    expect(result.videoPath).toBe(`/rec/${attendu} (2).mp4`)
+    expect(result.sidecarPath).toBe(`/rec/${attendu} (2).json`)
+    const ecrit = JSON.parse(files.get(result.sidecarPath!)!) as Sidecar
+    expect(ecrit.title).toContain('HoneySwamp')
+    expect(onLog).toHaveBeenCalledWith(
+      'info',
+      expect.stringContaining('sous la racine des captations'),
+      expect.anything(),
+    )
+  })
+
+  it('découpe aussi un chemin Windows, que `basename` rendrait entier', async () => {
+    // `basename` de Node ne connaît que le séparateur de la plateforme
+    // courante : sous Linux il rend `C:\prises\talk.mkv` en entier.
+    const attendu = buildFilenameFormat(START)
+    const { fs } = fakeFs([`/rec/${attendu}.mkv`])
+    const { session } = makeSession(fs, { recordingRoot: async () => '/rec' })
+
+    await session.start(START)
+    const result = await session.stop(async () => `C:\\prises\\${attendu}.mkv`)
+
+    expect(result.sidecarPath).toBe(`/rec/${attendu}.json`)
+  })
+
+  it('garde le chemin annoncé quand il désigne un fichier que nous voyons', async () => {
+    // Le cas le plus courant — OBS et la salle sur la même machine — et la
+    // réponse exacte : lui seul sait ce qui a été écrit.
+    const { fs } = fakeFs(['/ailleurs/brut.mkv'])
+    const racine = vi.fn(async () => '/rec')
+    const { session } = makeSession(fs, { recordingRoot: racine })
+
+    await session.start(START)
+    const result = await session.stop(async () => '/ailleurs/brut.mkv')
+
+    expect(result.videoPath).toBe(`/ailleurs/${buildFilenameFormat(START)}.mkv`)
+    expect(racine).not.toHaveBeenCalled()
+  })
+
+  it('retrouve le master par son nom quand OBS n’annonce rien', async () => {
+    /*
+     * L'événement d'OBS peut se perdre, arriver trop tard, ou ne pas porter de
+     * chemin. Le fichier, lui, est là et porte le nom qu'on a demandé à OBS
+     * d'écrire : perdre titre, intervenants et marqueurs pour un événement
+     * manquant serait payer très cher une seconde d'attente.
+     */
+    const attendu = buildFilenameFormat(START)
+    const { fs, files } = fakeFs([`/rec/${attendu}.mp4`])
+    const onLog = vi.fn()
+    const { session } = makeSession(fs, { onLog, recordingRoot: async () => '/rec' })
+
+    await session.start(START)
+    const result = await session.stop(async () => null)
+
+    expect(result.videoPath).toBe(`/rec/${attendu}.mp4`)
+    expect(result.sidecarPath).toBe(`/rec/${attendu}.json`)
+    const ecrit = JSON.parse(files.get(result.sidecarPath!)!) as Sidecar
+    expect(ecrit.title).toContain('HoneySwamp')
+    expect(ecrit.videoFile).toBe(`${attendu}.mp4`)
+    expect(onLog).toHaveBeenCalledWith(
+      'info',
+      expect.stringContaining('sous la racine des captations'),
+      expect.anything(),
+    )
+  })
+
+  it('n’écrit pas de sidecar orphelin quand aucun master ne porte ce nom', async () => {
+    // Faute de fichier à côté duquel se poser, on renonce : semer un sidecar
+    // seul dans le dossier des captations tromperait la chaîne de montage.
+    const { fs, files } = fakeFs(['/rec/autre-chose.mkv'])
+    const { session } = makeSession(fs, { recordingRoot: async () => '/rec' })
+
+    await session.start(START)
+    const result = await session.stop(async () => null)
+
+    expect(result.sidecarPath).toBeNull()
+    expect(files.has('/rec/autre-chose.json')).toBe(false)
+  })
+
+
 
   it('suit l\'horloge simulée en développement', async () => {
     /*

@@ -1,5 +1,6 @@
 import type { ConfigVisible, ObsState } from '@cloudnord/contract'
 import { flushPromises, mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ObsConfigBlock from '../src/components/ObsConfigBlock.vue'
@@ -17,6 +18,8 @@ import { obsState, payload } from './fixtures.js'
  */
 
 const CONFIG: ConfigVisible = {
+  // Poste installé : c'est lui qui sait ouvrir un sélecteur.
+  peutParcourir: true,
   obs: {
     A: { url: 'ws://127.0.0.1:4455', hasPassword: true, pending: false },
     B: { url: 'ws://127.0.0.1:4456', hasPassword: false, pending: false },
@@ -28,6 +31,7 @@ const CONFIG: ConfigVisible = {
   relaySourceRoomId: null,
   openFeedbackProjectId: null,
   promptRecordingOnStart: true,
+  promptRecordingOnStop: true,
   sceneOnStart: 'LIVE',
 }
 
@@ -37,6 +41,8 @@ interface Envoi {
 
 let envois: Envoi[]
 let refuse: boolean
+/** Ce que le poste répond, quand le geste rapporte quelque chose. */
+let reponse: { ok: boolean; detail?: unknown } | null
 
 function salle(overrides: Partial<ConfigVisible> = {}) {
   const etat = payload()
@@ -49,9 +55,11 @@ beforeEach(() => {
   setActivePinia(createPinia())
   envois = []
   refuse = false
+  reponse = null
   vi.stubGlobal('fetch', async (_url: string, init?: RequestInit) => {
     envois.push({ body: JSON.parse(String(init?.body)) })
-    return new Response(JSON.stringify({ ok: !refuse, message: refuse ? 'Refusé' : 'Fait' }), {
+    const corps = reponse ?? { ok: !refuse, message: refuse ? 'Refusé' : 'Fait' }
+    return new Response(JSON.stringify(corps), {
       headers: { 'content-type': 'application/json' },
     })
   })
@@ -302,5 +310,206 @@ describe('menu des écrans', () => {
     // Ouvrir la projection dans la fenêtre de régie remplacerait les commandes
     // par l'écran de salle, en pleine intervention.
     for (const lien of wrapper.findAll('a')) expect(lien.attributes('target')).toBe('_blank')
+  })
+})
+
+/**
+ * Le dossier des VOD, choisi plutôt que retapé.
+ *
+ * Un chemin de disque se saisit à la main sans erreur seulement quand on l'a
+ * sous les yeux — et c'est justement le disque de la **machine de salle** qu'il
+ * désigne, pas celui d'où l'on regarde la page.
+ */
+describe('choisir le dossier des VOD', () => {
+  function ouvrir(overrides: Partial<ConfigVisible> = {}) {
+    salle(overrides)
+    const config = useConfigStore()
+    config.show()
+    return config
+  }
+
+  it('remplit le champ avec ce que le poste a choisi', async () => {
+    reponse = { ok: true, detail: 'D:\\captations\\2026' }
+    const config = ouvrir()
+
+    await config.parcourir()
+
+    expect(envois.at(-1)?.body).toEqual({ action: 'config.chooseFolder' })
+    expect(config.draft?.recordingRoot).toBe('D:\\captations\\2026')
+  })
+
+  it('n’enregistre rien au passage', async () => {
+    reponse = { ok: true, detail: 'D:\\captations\\2026' }
+    const config = ouvrir()
+
+    await config.parcourir()
+
+    /*
+     * C'est « Enregistrer » qui décide, comme pour tout le reste du panneau.
+     * Un sélecteur qui écrirait dans la foulée ferait d'un coup d'œil dans
+     * l'arborescence une modification de la salle.
+     */
+    expect(envois.map((envoi) => (envoi.body as { action: string }).action)).toEqual([
+      'config.chooseFolder',
+    ])
+  })
+
+  it('laisse le champ tel quel quand on renonce', async () => {
+    // Fermer un sélecteur est un geste, pas une panne.
+    reponse = { ok: true, detail: null }
+    const config = ouvrir({ recordingRoot: 'D:\\déjà\\là' })
+
+    await config.parcourir()
+
+    expect(config.draft?.recordingRoot).toBe('D:\\déjà\\là')
+  })
+
+  it('n’offre pas le geste quand le poste ne sait pas l’ouvrir', () => {
+    /*
+     * `dev:headless`, ou la régie ouverte depuis un navigateur : il n'y a pas
+     * de sélecteur à ouvrir. Un bouton qui ne répond pas vaut moins qu'un champ
+     * à remplir à la main — la modale le masque sur cette valeur.
+     */
+    expect(ouvrir({ peutParcourir: false }).peutParcourir).toBe(false)
+    expect(ouvrir({ peutParcourir: true }).peutParcourir).toBe(true)
+  })
+})
+
+/**
+ * Ce qui manque pour piloter la salle, et le panneau qui s'ouvre pour le dire.
+ *
+ * Le verdict est pris sans attendre : l'installation d'une salle se fait avant
+ * la première conférence, pas pendant, et une salle mal réglée doit le dire
+ * quand quelqu'un est encore devant l'écran. Ce qui se répare tout seul — le
+ * poste rebranche OBS toutes les trois secondes — s'efface de la liste, panneau
+ * ouvert, sans le refermer sous les doigts.
+ */
+describe('salle incomplète au démarrage', () => {
+  /** Une salle réglée et branchée : le point de départ, qu'on abîme champ par champ. */
+  function salleReglee(
+    overrides: Partial<ConfigVisible> = {},
+    obs: { A?: ObsState | null; B?: ObsState | null } = {},
+  ) {
+    const etat = payload()
+    etat.diagnostics!.config = {
+      ...CONFIG,
+      recordingRoot: 'D:\\captations',
+      sceneRoles: { A: { LIVE: 'Direct' }, B: {} },
+      ...overrides,
+    }
+    etat.diagnostics!.obs = {
+      A: obs.A === undefined ? obsState({ instance: 'A' }) : obs.A,
+      B: obs.B === undefined ? obsState({ instance: 'B' }) : obs.B,
+    }
+    useRoomStore().seed(etat)
+    return useConfigStore()
+  }
+
+  const codes = (config: ReturnType<typeof useConfigStore>) =>
+    config.manques.map((manque) => manque.code)
+
+  it('ne reproche rien à une salle réglée et branchée', () => {
+    expect(salleReglee().manques).toEqual([])
+  })
+
+  it('nomme les deux OBS absents et le dossier des VOD', () => {
+    const config = salleReglee({ recordingRoot: null }, { A: null, B: obsState({ connected: false }) })
+
+    expect(codes(config)).toEqual(['obs-A', 'obs-B', 'vod'])
+  })
+
+  it('dit l’adresse manquante plutôt que la déconnexion', () => {
+    // « Pas connecté » sur une instance dont l'adresse est vide enverrait
+    // chercher du côté du réseau.
+    const config = salleReglee(
+      { obs: { A: { url: '', hasPassword: false, pending: false }, B: CONFIG.obs.B } },
+      { A: null },
+    )
+
+    expect(codes(config)).toContain('obs-A-url')
+    expect(codes(config)).not.toContain('obs-A')
+  })
+
+  it('signale un rôle configuré mais introuvable dans OBS', () => {
+    const config = salleReglee({}, { B: obsState({ unresolvedRoles: ['TALK'] }) })
+
+    expect(config.manques).toEqual([
+      { code: 'roles-B', texte: 'Rôles introuvables dans OBS-B : TALK.' },
+    ])
+  })
+
+  it('ne reproche pas à la captation de n’avoir aucun rôle mappé', () => {
+    // Beaucoup de salles ne changent jamais de plan pendant un talk : ce serait
+    // un faux motif. La projection sans rôle, elle, n'a aucun bouton.
+    expect(salleReglee({ sceneRoles: { A: { LIVE: 'Direct' }, B: {} } }).manques).toEqual([])
+    expect(codes(salleReglee({ sceneRoles: { A: {}, B: {} } }))).toEqual(['scenes-A'])
+  })
+
+  it('ouvre le panneau sans attendre sur une salle incomplète', () => {
+    const config = salleReglee({ recordingRoot: null }, { B: obsState({ connected: false }) })
+
+    config.verifierAuDemarrage()
+
+    expect(config.open).toBe(true)
+    // Le bandeau dit pourquoi : un panneau qui s'ouvre tout seul se lit comme
+    // une fausse manœuvre tant qu'il n'a pas donné sa raison.
+    expect(config.ouvertAuDemarrage).toBe(true)
+    expect(codes(config)).toEqual(['obs-B', 'vod'])
+  })
+
+  it('n’ouvre rien sur une salle réglée et branchée', () => {
+    const config = salleReglee()
+
+    config.verifierAuDemarrage()
+
+    expect(config.open).toBe(false)
+  })
+
+  it('efface de la liste ce que le poste répare tout seul', () => {
+    // OBS est souvent lancé après la régie et le poste réessaie sans fin. La
+    // ligne s'en va d'elle-même, sans que le panneau se referme sous les doigts.
+    const config = salleReglee({}, { B: obsState({ connected: false }) })
+    config.verifierAuDemarrage()
+    expect(codes(config)).toEqual(['obs-B'])
+
+    salleReglee()
+
+    expect(config.manques).toEqual([])
+    expect(config.open).toBe(true)
+  })
+
+  it('ne rouvre pas le panneau que l’opérateur vient de fermer', () => {
+    const config = salleReglee({ recordingRoot: null })
+    config.verifierAuDemarrage()
+    expect(config.open).toBe(true)
+
+    config.open = false
+    // Une salle sans dossier de VOD reste pilotable pour tout le reste : un
+    // panneau qui se rouvre n'est plus un rappel, c'est un obstacle.
+    config.verifierAuDemarrage()
+
+    expect(config.open).toBe(false)
+  })
+
+  it('juge dès que le hub rend enfin la configuration', async () => {
+    const etat = payload()
+    etat.diagnostics!.config = null
+    useRoomStore().seed(etat)
+    const config = useConfigStore()
+
+    config.verifierAuDemarrage()
+    // Une salle dont on ne sait rien n'est pas une salle mal réglée.
+    expect(config.open).toBe(false)
+
+    salleReglee({ recordingRoot: null })
+    await nextTick()
+
+    expect(config.open).toBe(true)
+  })
+
+  it('ne présente pas comme un rappel un panneau ouvert à la main', () => {
+    const config = salleReglee()
+    config.show()
+    expect(config.ouvertAuDemarrage).toBe(false)
   })
 })

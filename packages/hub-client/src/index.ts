@@ -12,3 +12,9 @@ export {
   type HubClientOptions,
 } from './client.js'
 export { anonymousTokenStore, browserTokenStore, type TokenStore } from './token.js'
+export {
+  createHubAuth,
+  type HubAuth,
+  type HubAuthOptions,
+  type ResultatConnexion,
+} from './auth.js'

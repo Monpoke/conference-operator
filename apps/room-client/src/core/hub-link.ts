@@ -4,6 +4,7 @@ import { RPCLink } from '@orpc/client/websocket'
 import type { ContractRouterClient } from '@orpc/contract'
 import {
   contract,
+  type Command,
   type Connectivity,
   type ModeExecution,
   type Question,
@@ -33,6 +34,16 @@ export interface HubLinkOptions {
    * dans les enregistrements.
    */
   onHubMode?: (mode: ModeExecution) => void
+  /**
+   * Une commande descendante vient d'être appliquée.
+   *
+   * Sert à remonter tout de suite ce qui a changé. Une régie mobile ne peint
+   * jamais d'avance : elle a posé le geste, et tant que la salle n'a pas
+   * confirmé, son bouton décrit encore l'état d'avant. Attendre le battement
+   * suivant, c'est jusqu'à dix secondes de bouton mort — le temps qu'il faut
+   * pour appuyer une seconde fois.
+   */
+  onCommandApplied?: (command: Command) => void
   /**
    * Échéance d'un `sync`.
    *
@@ -259,7 +270,8 @@ export class HubLink {
         }
 
         for await (const command of iterator) {
-          await runtime.applyCommand(command)
+          const issue = await runtime.applyCommand(command)
+          if (issue.applied) this.options.onCommandApplied?.(command)
         }
       } catch (cause) {
         if (isAborted() || this.stopped) return

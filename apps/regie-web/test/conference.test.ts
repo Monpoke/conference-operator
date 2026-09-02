@@ -1,4 +1,5 @@
 import type { SessionStatus } from '@cloudnord/contract'
+import { SANS_REPERES } from '@cloudnord/contract'
 import { useToast } from '@cloudnord/components'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -9,7 +10,7 @@ import { useRoomStore } from '../src/stores/room.js'
 import { DEBUT_MS, FIN_MS, config, payload, speaker, talk } from './fixtures.js'
 
 /**
- * Commencer et terminer, et les trois questions qui se mettent en travers.
+ * Commencer et terminer, et les quatre questions qui se mettent en travers.
  *
  * Ce sont les deux gestes de la journée qu'on ne peut pas défaire d'un clic :
  * l'un inscrit un talk comme tenu à une heure, l'autre le clôt devant les
@@ -65,6 +66,7 @@ describe('commencer', () => {
       markers: 0,
       startedAtMs: 0,
       startedAtCorrigeMs: null,
+      montage: SANS_REPERES,
     }
     const conference = useConferenceStore()
 
@@ -133,6 +135,7 @@ describe('l’avertissement de captation', () => {
       markers: 0,
       startedAtMs: 0,
       startedAtCorrigeMs: null,
+      montage: SANS_REPERES,
     }
     const conference = useConferenceStore()
 
@@ -242,6 +245,132 @@ describe('terminer', () => {
     // Pas d'avance possible : rien à demander.
     expect(conference.endEarlyOpen).toBe(false)
     expect(actions()).toEqual(['session.end'])
+  })
+})
+
+/**
+ * La captation oubliée au « Terminer ».
+ *
+ * Elle ne se voit nulle part : rien ne clignote, le témoin dit « enregistre »
+ * comme il le disait pendant le talk. Elle court pendant la pause, le talk
+ * suivant s'écrit dans le même fichier — sous le titre et les intervenants du
+ * précédent — et le garde-fou du démarrage se tait, puisqu'une captation
+ * tourne. Le prix ne se découvre qu'au montage.
+ */
+describe('arrêter la captation en terminant', () => {
+  /** Une salle en fin de créneau, captation en cours. */
+  function enCaptation(atMs = FIN_MS + 60_000): void {
+    salleA(atMs)
+    useRoomStore().payload!.diagnostics!.recording = {
+      active: true,
+      markers: 2,
+      startedAtMs: DEBUT_MS,
+      startedAtCorrigeMs: null,
+      montage: SANS_REPERES,
+    }
+  }
+
+  it('propose d’arrêter, et ne termine rien avant la réponse', async () => {
+    enCaptation()
+    const conference = useConferenceStore()
+
+    conference.askEnd()
+    await flushPromises()
+
+    expect(conference.stopRecordingOpen).toBe(true)
+    expect(actions()).toEqual([])
+    expect(conference.stopRecordingDetail).toContain('enregistre encore')
+    expect(conference.stopRecordingDetail).toContain('le même fichier')
+  })
+
+  it('arrête d’abord, et termine ensuite', async () => {
+    enCaptation()
+    const conference = useConferenceStore()
+    conference.askEnd()
+    await flushPromises()
+
+    await conference.finish(true)
+
+    // L'ordre compte : terminer d'abord laisserait la captation courir sans que
+    // rien ne le repose jamais.
+    expect(actions()).toEqual(['recording.stop', 'session.end'])
+    expect(conference.stopRecordingOpen).toBe(false)
+  })
+
+  it('ne termine pas si l’arrêt échoue', async () => {
+    enCaptation()
+    refuse = 'recording.stop'
+    const conference = useConferenceStore()
+
+    await conference.finish(true)
+
+    expect(actions()).toEqual(['recording.stop'])
+  })
+
+  it('laisse terminer sans arrêter, pour un talk enregistré d’une traite', async () => {
+    enCaptation()
+    const conference = useConferenceStore()
+    conference.askEnd()
+    await flushPromises()
+
+    await conference.finish(false)
+
+    expect(actions()).toEqual(['session.end'])
+  })
+
+  it('ne demande rien quand aucune captation ne tourne', async () => {
+    salleA(FIN_MS + 60_000)
+    const conference = useConferenceStore()
+
+    conference.askEnd()
+    await flushPromises()
+
+    expect(conference.stopRecordingOpen).toBe(false)
+    expect(actions()).toEqual(['session.end'])
+  })
+
+  it('pose la question de l’avance avant celle de la captation', async () => {
+    // La première porte sur la conférence qu'on termine, la seconde sur la
+    // manière de la terminer : couper la captation d'un talk qu'on va renoncer
+    // à terminer serait le pire des deux ordres.
+    enCaptation(FIN_MS - 8 * 60_000)
+    const conference = useConferenceStore()
+
+    conference.askEnd()
+    await flushPromises()
+    expect(conference.endEarlyOpen).toBe(true)
+    expect(conference.stopRecordingOpen).toBe(false)
+
+    await conference.end()
+
+    expect(conference.endEarlyOpen).toBe(false)
+    expect(conference.stopRecordingOpen).toBe(true)
+    expect(actions()).toEqual([])
+  })
+
+  it('se tait quand la salle a décoché le garde-fou', async () => {
+    enCaptation()
+    useRoomStore().payload!.diagnostics!.config = config({ promptRecordingOnStop: false })
+    const conference = useConferenceStore()
+
+    conference.askEnd()
+    await flushPromises()
+
+    expect(conference.stopRecordingOpen).toBe(false)
+    expect(actions()).toEqual(['session.end'])
+  })
+
+  it('garde le garde-fou quand le réglage n’est pas encore arrivé', async () => {
+    enCaptation()
+    useRoomStore().payload!.diagnostics!.config = null
+    const conference = useConferenceStore()
+
+    conference.askEnd()
+    await flushPromises()
+
+    // Lire un champ absent comme « ne rien faire » désactiverait un garde-fou
+    // en silence, ce qui est exactement ce qu'il est censé empêcher.
+    expect(conference.stopRecordingOpen).toBe(true)
   })
 })
 

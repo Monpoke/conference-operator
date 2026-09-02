@@ -141,6 +141,7 @@ describe('surface du contrat', () => {
       // supervision se regarde sur un téléphone rangé dans une poche.
       'push',
       'questions',
+      'regie',
       'rooms',
       'sessions',
       'settings',

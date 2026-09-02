@@ -1,9 +1,9 @@
 import { basename, dirname, extname, join } from 'node:path'
 import type { Session } from '@cloudnord/program'
 
-import type { Marker, Sidecar } from '@cloudnord/contract'
+import type { Marker, MarkerRole, ReperesMontage, Sidecar } from '@cloudnord/contract'
 
-export type { Marker, Sidecar }
+export type { Marker, MarkerRole, ReperesMontage, Sidecar }
 
 export interface RecordingFs {
   rename(from: string, to: string): Promise<void>
@@ -17,6 +17,14 @@ export interface RecordingDeps {
   startRecord: () => Promise<void>
   stopRecord: () => Promise<void>
   fs: RecordingFs
+  /**
+   * Où OBS écrit ses masters.
+   *
+   * Sert **uniquement de repli**, quand OBS n'a pas annoncé le fichier produit.
+   * Le chemin qu'il annonce reste la source : lui seul dit ce qui a réellement
+   * été écrit, y compris quand le format de nom n'a pas pris.
+   */
+  recordingRoot?: () => Promise<string | null>
   now: () => number
   /** Horloge corrigée de l'offset serveur : les timecodes en dépendent. */
   correctedNow: () => number
@@ -43,6 +51,14 @@ export interface RecordingDeps {
   onLog?: (level: 'info' | 'warn' | 'error', message: string, context?: unknown) => void
 }
 
+/**
+ * Conteneurs qu'OBS sait écrire, dans l'ordre où on les cherche.
+ *
+ * Sert au repli : sans le chemin annoncé, on connaît le nom attendu mais pas
+ * l'extension, qui dépend du réglage de sortie d'OBS.
+ */
+const EXTENSIONS_MASTER = ['.mkv', '.mp4', '.mov', '.flv', '.ts', '.m4v', '.webm']
+
 export interface StartInput {
   session: Session | null
   roomId: string | null
@@ -55,6 +71,21 @@ export interface StopResult {
   sidecarPath: string | null
   videoPath: string | null
   sidecar: Sidecar
+}
+
+export interface StopOptions {
+  /**
+   * OBS s'est déjà arrêté tout seul : ne pas lui redemander.
+   *
+   * Le cas de l'opérateur qui appuie sur « Arrêter l'enregistrement » dans OBS
+   * plutôt que dans la régie. `StopRecord` sur une sortie déjà inactive est une
+   * erreur d'OBS, et cette erreur emporterait tout le reste de l'arrêt — le
+   * sidecar en premier, c'est-à-dire précisément ce qu'on est venu sauver.
+   *
+   * Faux par défaut, et il faut que ça le reste : avaler l'échec de `StopRecord`
+   * sur le chemin normal ferait écrire le sidecar d'une prise encore en cours.
+   */
+  dejaArrete?: boolean
 }
 
 /**
@@ -78,8 +109,16 @@ export class RecordingSession {
     return this.startedAtMs != null
   }
 
+  /**
+   * Les marqueurs de chapitre, les deux repères de montage exclus.
+   *
+   * Ce compte s'affiche en régie juste à côté de l'état des repères : y
+   * inclure le début et la fin faisait passer « aucun marqueur » à
+   * « 2 marqueur(s) » sans qu'aucun chapitre ait été posé, à côté d'une ligne
+   * qui disait déjà que les deux repères étaient là.
+   */
   get markerCount(): number {
-    return this.markers.length
+    return this.markers.filter((marker) => marker.role == null).length
   }
 
   /** Instant de départ, pour le chronomètre affiché en régie. */
@@ -151,8 +190,18 @@ export class RecordingSession {
     return Math.max(0, this.deps.now() - this.startedAtMs)
   }
 
-  /** Pose un marqueur de chapitre à l'instant courant. */
-  mark(label: string): Marker {
+  /**
+   * Pose un marqueur à l'instant courant.
+   *
+   * `role` distingue les deux repères de montage du chapitre ordinaire, et ils
+   * ne se comportent pas pareil : **reposer un repère remplace le précédent**.
+   * C'est le geste qu'on fait réellement — on repose le début parce que
+   * l'orateur a eu un faux départ, on repose la fin parce que les questions ont
+   * repris après ce qu'on croyait être le mot de la fin. En empiler deux
+   * laisserait au montage, trois semaines plus tard, un arbitrage que seule la
+   * régie pouvait trancher, sur l'instant.
+   */
+  mark(label: string, role: MarkerRole | null = null): Marker {
     if (this.startedAtMs == null) throw new Error('Aucun enregistrement en cours')
     const marker: Marker = {
       label,
@@ -160,9 +209,36 @@ export class RecordingSession {
       // doit tomber au même endroit que ce que la prise annonce durer.
       offsetMs: this.ecouleMs(),
       at: new Date(this.deps.correctedNow()).toISOString(),
+      // Le champ n'apparaît pas sur un chapitre : un sidecar où chaque marqueur
+      // porte `"role": null` ferait croire à un rôle qu'on aurait effacé.
+      ...(role == null ? {} : { role }),
     }
+    if (role != null) this.markers = this.markers.filter((pose) => pose.role !== role)
     this.markers.push(marker)
+    /*
+     * Rangés par décalage, et non par ordre de pose.
+     *
+     * Les deux coïncident tant qu'on empile, et divergent dès qu'un repère est
+     * reposé : un début redéplacé à 2 min se retrouvait derrière le chapitre
+     * de 1 min. Le sidecar est lu par un montage qui en tire des chapitres —
+     * lui livrer une liste en désordre revient à lui demander de réparer là-bas
+     * ce qui se range ici en une ligne.
+     */
+    this.markers.sort((a, b) => a.offsetMs - b.offsetMs)
     return marker
+  }
+
+  /**
+   * Où tombent les deux repères, pour que la régie les montre.
+   *
+   * Le compte de marqueurs ne répondait pas à la question qu'on se pose avant
+   * d'arrêter une prise — « est-ce que j'ai posé le début ? » —, puisque trois
+   * marqueurs peuvent être trois chapitres.
+   */
+  get montage(): ReperesMontage {
+    const de = (role: MarkerRole): number | null =>
+      this.markers.find((marker) => marker.role === role)?.offsetMs ?? null
+    return { debutMs: de('debut'), finMs: de('fin') }
   }
 
   /**
@@ -173,32 +249,44 @@ export class RecordingSession {
    * `RecordStateChanged` qui suit l'arrêt. Le lire avant donnerait toujours
    * `null`, et aucun sidecar ne serait jamais écrit.
    *
-   * Ce chemin est la seule source fiable, le format de nom ayant pu ne pas
-   * s'appliquer — auquel cas on renomme nous-mêmes.
+   * Ce chemin dit ce qu'OBS a réellement écrit, le format de nom ayant pu ne
+   * pas s'appliquer — mais il le dit **dans l'espace de nommage de la machine
+   * qui fait tourner OBS**, qui n'est pas toujours la nôtre. Voir
+   * `resoudreMaster`.
    */
-  async stop(resolveOutputPath: () => Promise<string | null>): Promise<StopResult> {
+  async stop(
+    resolveOutputPath: () => Promise<string | null>,
+    options: StopOptions = {},
+  ): Promise<StopResult> {
     if (this.startedAtMs == null || this.input == null) {
       throw new Error('Aucun enregistrement en cours')
     }
 
-    await this.deps.stopRecord()
+    if (options.dejaArrete !== true) await this.deps.stopRecord()
     const outputPath = await resolveOutputPath()
     const endedAtIso = new Date(this.deps.correctedNow()).toISOString()
     const durationMs = this.ecouleMs()
     const input = this.input
     const session = input.session
 
-    let videoPath = outputPath
-    if (outputPath != null) {
-      const attendu = buildFilenameFormat(input) + extname(outputPath)
-      const cible = join(dirname(outputPath), attendu)
-      if (basename(outputPath) !== attendu && !(await this.deps.fs.exists(cible))) {
+    let videoPath = await this.resoudreMaster(outputPath, input)
+    if (videoPath != null && videoPath !== outputPath) {
+      this.deps.onLog?.('info', 'master retrouvé sous la racine des captations', {
+        annonce: outputPath,
+        retenu: videoPath,
+      })
+    }
+
+    if (videoPath != null) {
+      const attendu = buildFilenameFormat(input) + extname(videoPath)
+      const cible = join(dirname(videoPath), attendu)
+      if (basename(videoPath) !== attendu && !(await this.deps.fs.exists(cible))) {
         try {
-          await this.deps.fs.rename(outputPath, cible)
+          await this.deps.fs.rename(videoPath, cible)
           videoPath = cible
         } catch (cause) {
           this.deps.onLog?.('warn', 'renommage impossible, chemin OBS conservé', {
-            from: outputPath,
+            from: videoPath,
             message: (cause as Error).message,
           })
         }
@@ -244,6 +332,69 @@ export class RecordingSession {
     this.input = null
     return { sidecarPath, videoPath, sidecar }
   }
+
+  /**
+   * Le master, tel que **nous** pouvons l'ouvrir.
+   *
+   * OBS annonce un chemin dans l'espace de nommage de la machine qui le fait
+   * tourner, et ce n'est pas toujours la nôtre. Le cas s'est vu en clair : OBS
+   * sous Windows enregistrant dans un dossier WSL, et annonçant
+   * `//wsl.localhost/distro/home/…/prise.mp4`. Le fichier était bien là, à un
+   * chemin Linux parfaitement ordinaire ; nous écrivions le sidecar à côté d'un
+   * chemin qui n'existe pas de ce côté-ci, l'écriture échouait, et chaque prise
+   * de la journée perdait titre, intervenants et marqueurs. La même chose
+   * arrive avec un dossier réseau monté différemment sur les deux machines.
+   *
+   * Trois sources, dans cet ordre, et l'ordre porte le sens :
+   *
+   * 1. **Le chemin annoncé, s'il désigne un fichier que nous voyons.** C'est le
+   *    cas de loin le plus courant — OBS et la salle sur la même machine — et
+   *    c'est la réponse exacte : lui seul sait ce qui a été écrit.
+   * 2. **Le nom annoncé, sous la racine des captations.** OBS reste la source
+   *    du *nom* — y compris le « (2) » qu'il ajoute sur une collision — mais le
+   *    *dossier* vient du réglage de la salle, qui est un chemin de notre côté.
+   * 3. **Le nom que nous avons dicté à OBS**, si rien n'a été annoncé du tout.
+   *
+   * Prudent de bout en bout : faute de trouver un conteneur, on renonce plutôt
+   * que de semer un sidecar orphelin dans le dossier des captations.
+   */
+  private async resoudreMaster(annonce: string | null, input: StartInput): Promise<string | null> {
+    if (annonce != null && (await this.deps.fs.exists(annonce))) return annonce
+
+    let racine: string | null = null
+    try {
+      racine = (await this.deps.recordingRoot?.()) ?? null
+    } catch {
+      racine = null
+    }
+    if (racine == null) return null
+
+    if (annonce != null) {
+      const nom = nomDeFichier(annonce)
+      const candidat = join(racine, nom)
+      if (nom !== '' && (await this.deps.fs.exists(candidat))) return candidat
+    }
+
+    const attendu = buildFilenameFormat(input)
+    for (const extension of EXTENSIONS_MASTER) {
+      const candidat = join(racine, attendu + extension)
+      if (await this.deps.fs.exists(candidat)) return candidat
+    }
+    return null
+  }
+}
+
+/**
+ * Le dernier segment d'un chemin, quel que soit l'OS qui l'a écrit.
+ *
+ * `basename` de Node ne connaît que le séparateur de la plateforme courante :
+ * sous Linux, il rend `C:\prises\talk.mkv` en entier, faute d'y voir la
+ * moindre barre. Or le chemin que nous découpons ici vient de la machine
+ * **d'OBS**, pas de la nôtre.
+ */
+function nomDeFichier(chemin: string): string {
+  const morceaux = chemin.split(/[\\/]/)
+  return morceaux[morceaux.length - 1] ?? ''
 }
 
 /**

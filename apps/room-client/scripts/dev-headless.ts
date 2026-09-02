@@ -70,9 +70,13 @@ const room = new RoomApp({
   writeToken: (jeton) => writeFileSync(cheminJeton, jeton),
   obsTransportFactory: !mode.obsSimule
     ? undefined
-    : (instance) =>
+    : (instance, scenes) =>
         createMockObsTransport({
           instance,
+          // Les scènes que la salle a configurées : un OBS simulé qui ne les
+          // aurait pas ferait sortir chaque nom un peu personnel en « rôle
+          // introuvable », rouge, sur une instance qui n'existe pas.
+          scenes,
           recordingDir: join(dataDir, 'enregistrements'),
           onLog: (message) => console.log(formaterLigneJournal('info', message)),
         }),

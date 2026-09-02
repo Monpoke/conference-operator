@@ -19,7 +19,15 @@ import { useSessionStore } from '../src/stores/session.js'
  * l'erreur que ce réglage sert à débusquer.
  */
 
+/**
+ * Une journée réaliste : elle **s'ouvre sur un accueil**.
+ *
+ * C'est ce que fait l'export amont, et ce que la fixture d'origine n'avait pas
+ * — elle commençait par un talk, si bien que « Première conférence » pouvait
+ * viser le premier créneau venu sans que rien ne le signale.
+ */
 const CRENEAUX = [
+  { id: 'accueil', startsAt: '2026-10-30T07:30:00.000Z', endsAt: '2026-10-30T08:00:00.000Z', kind: 'break' },
   { id: 'a', startsAt: '2026-10-30T08:00:00.000Z', endsAt: '2026-10-30T08:45:00.000Z', kind: 'talk' },
   { id: 'b', startsAt: '2026-10-30T12:00:00.000Z', endsAt: '2026-10-30T13:00:00.000Z', kind: 'break' },
   { id: 'c', startsAt: '2026-10-30T16:00:00.000Z', endsAt: '2026-10-30T16:45:00.000Z', kind: 'talk' },
@@ -86,6 +94,31 @@ describe('moments du programme', () => {
     // Le milieu vise un talk, pas le déjeuner : c'est un talk qu'on vient
     // regarder se dérouler.
     expect(moments[2]?.[1]).toBe('2026-10-30T16:05:00.000Z')
+  })
+
+  it('vise la première conférence, pas l’accueil qui ouvre la journée', () => {
+    /*
+     * Le défaut qu'on vient corriger : une journée s'ouvre sur un accueil ou un
+     * petit déjeuner, qui sont des pauses. Le bouton menait donc trente minutes
+     * avant la première conférence, et l'on croyait l'horloge fausse alors que
+     * c'était l'étiquette.
+     */
+    const moments = programMoments(CRENEAUX)
+    expect(moments[1]?.[1]).toBe('2026-10-30T08:05:00.000Z')
+  })
+
+  it('garde « avant ouverture » sur le premier créneau, pause comprise', () => {
+    // Celui-là vise bien l'accueil : « avant ouverture », c'est avant que la
+    // salle n'ouvre ses portes, pas avant le premier talk.
+    expect(programMoments(CRENEAUX)[0]?.[1]).toBe('2026-10-30T07:00:00.000Z')
+  })
+
+  it('retombe sur le premier créneau quand la journée n’a que des pauses', () => {
+    // Quatre boutons valent mieux que trois, même si celui-ci vise alors un
+    // déjeuner : un programme sans conférence est un programme incomplet, pas
+    // une raison de retirer un outil.
+    const pauses = CRENEAUX.filter((creneau) => creneau.kind === 'break')
+    expect(programMoments(pauses)[1]?.[1]).toBe('2026-10-30T07:35:00.000Z')
   })
 })
 

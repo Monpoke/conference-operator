@@ -333,6 +333,7 @@ function projectionFor(payload: RoomEventPayload): Record<string, unknown> {
         streaming: payload.streaming,
         outboxDepth: payload.outboxDepth,
         programContentHash: payload.programContentHash,
+        displayMode: payload.displayMode,
       }
     case 'scene.changed':
       return payload.role != null ? { sceneRole: payload.role } : {}

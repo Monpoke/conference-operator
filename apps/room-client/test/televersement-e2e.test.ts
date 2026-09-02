@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -279,7 +279,21 @@ afterEach(async () => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-/** Enregistre un talk : le mock OBS écrit un vrai fichier à l'arrêt. */
+/**
+ * Enregistre un talk : le mock OBS écrit un vrai fichier à l'arrêt.
+ *
+ * Puis **vieillit les fichiers produits**, et c'est nécessaire depuis que la
+ * fenêtre d'écriture se juge sur l'heure du poste : un rush arrêté à l'instant
+ * est, à juste titre, « encore en écriture » pendant trente secondes, et le
+ * téléverseur passe son tour dessus. Ces tests-là portent sur ce qui arrive à
+ * un rush **fini** ; les faire attendre une demi-minute ne dirait rien de plus.
+ *
+ * Ce détour ne masque rien : avant, ils ne passaient que parce que l'horloge
+ * corrigée du hub — deux mois d'avance sur celle du poste, journée simulée
+ * oblige — faisait paraître vieux tout ce qui venait d'être écrit. C'est
+ * exactement le défaut qui montrait une prise en cours comme un rush prêt à
+ * partir dans la modale VOD.
+ */
 async function enregistrerUnTalk(): Promise<void> {
   expect((await agir({ action: 'recording.start' })).ok).toBe(true)
   await sleep(50)
@@ -287,6 +301,15 @@ async function enregistrerUnTalk(): Promise<void> {
   // La racine des captations est celle qu'annonce OBS-B : on laisse le temps à
   // l'arrêt de rendre son chemin, sans quoi le rush n'est pas encore listé.
   await sleep(100)
+  vieillirLesRushes(join(dir, 'rec'))
+}
+
+/** Une heure en arrière sur tout le dossier : des fichiers que plus rien n'écrit. */
+function vieillirLesRushes(racine: string): void {
+  const jadis = new Date(Date.now() - 3_600_000)
+  for (const nom of readdirSync(racine)) {
+    utimesSync(join(racine, nom), jadis, jadis)
+  }
 }
 
 describe('du rush au stockage', () => {
@@ -547,6 +570,9 @@ describe('stockage derrière une CA interne', () => {
     await sleep(50)
     await agirTls({ action: 'recording.stop' })
     await sleep(100)
+    // Même raison qu'au-dessus : un rush arrêté à l'instant reste « encore en
+    // écriture » une demi-minute, et le téléverseur passe son tour dessus.
+    vieillirLesRushes(join(dirTls, 'rec'))
     const liste = await roomTls.listRecordings()
     return liste.entries[0]!.file
   }

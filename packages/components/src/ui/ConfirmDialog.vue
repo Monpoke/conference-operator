@@ -9,6 +9,7 @@ import {
   AlertDialogRoot,
   AlertDialogTitle,
 } from 'reka-ui'
+import { onBeforeUnmount, onMounted } from 'vue'
 import Key from '../common/Key.vue'
 
 /**
@@ -25,7 +26,7 @@ import Key from '../common/Key.vue'
  */
 const open = defineModel<boolean>('open', { required: true })
 
-defineProps<{
+const props = withDefaults(defineProps<{
   title: string
   /** What exactly is about to happen, in a full sentence. */
   detail?: string
@@ -50,18 +51,80 @@ defineProps<{
    */
   tone?: 'quiet' | 'attention'
   /**
-   * Keyboard letters printed on the two buttons.
+   * Keyboard letters printed on the two buttons — **and bound here**.
    *
-   * Only where a layer actually binds them. A printed key that does nothing is
-   * worse than none: it gets pressed, nothing happens, and the operator stops
-   * trusting the other ones — in the middle of the talk this dialog
-   * interrupted.
+   * They used to be labels only, with the binding left to whoever mounted the
+   * dialog. Two dialogs out of four had one, so two out of four answered to the
+   * keyboard, and nothing on screen told them apart. The rule that made that
+   * necessary still holds — a printed key that does nothing is worse than none,
+   * it gets pressed, nothing happens, and the operator stops trusting the other
+   * ones — so the label and the binding now come from the same place and cannot
+   * drift apart.
+   *
+   * `Y` and `N` by default, on every dialog. Pass `null` to print and bind
+   * nothing.
    */
-  cancelKey?: string
-  confirmKey?: string
-}>()
+  cancelKey?: string | null
+  confirmKey?: string | null
+}>(), { cancelKey: 'N', confirmKey: 'Y' })
 
 const emit = defineEmits<{ confirm: [] }>()
+
+/**
+ * The two answers, from the keyboard.
+ *
+ * In a dark room, aiming at a button costs more than pressing a key — the
+ * reason the whole console has one-letter shortcuts. A dialog that interrupts a
+ * talk is exactly where that matters most.
+ *
+ * Three guards, each paid for once already elsewhere:
+ *
+ * - **A key held with Ctrl, Cmd or Alt belongs to the browser.** `Ctrl+N` opens
+ *   a window; reading the letter alone would cancel the dialog on the way out.
+ * - **A keystroke aimed at a field belongs to the field.** The reset dialog
+ *   arms its button by having a word typed into it, and `<select>` counts as
+ *   much as a text input — the letter you press to reach an option must not
+ *   answer the question behind it.
+ * - **A disabled confirm stays disabled.** The key is the button, not a way
+ *   around it.
+ *
+ * `o` confirms as well as `y`: half the operators type one and half the other,
+ * and being wrong about the letter on this particular question costs a talk.
+ * Only `Y` is printed — two letters on a button read as a word.
+ */
+function auClavier(event: KeyboardEvent): void {
+  if (!open.value) return
+  if (event.ctrlKey || event.metaKey || event.altKey) return
+
+  const cible = event.target as { tagName?: string; isContentEditable?: boolean } | null
+  if (cible?.isContentEditable === true) return
+  const balise = cible?.tagName
+  if (balise === 'INPUT' || balise === 'SELECT' || balise === 'TEXTAREA') return
+
+  const touche = event.key.toLowerCase()
+  const confirmer = props.confirmKey != null && (touche === props.confirmKey.toLowerCase() || touche === 'o')
+  const annuler = props.cancelKey != null && touche === props.cancelKey.toLowerCase()
+  if (!confirmer && !annuler) return
+
+  event.preventDefault()
+  if (annuler) {
+    open.value = false
+    return
+  }
+  if (props.confirmDisabled === true) return
+  // Fermée d'abord, comme le fait le clic sur le bouton : ce que le geste
+  // déclenche peut ouvrir la question suivante, et elle ne doit pas se faire
+  // recouvrir par celle qu'on vient de refermer.
+  open.value = false
+  emit('confirm')
+}
+
+onMounted(() => {
+  if (typeof document !== 'undefined') document.addEventListener('keydown', auClavier)
+})
+onBeforeUnmount(() => {
+  if (typeof document !== 'undefined') document.removeEventListener('keydown', auClavier)
+})
 </script>
 
 <template>

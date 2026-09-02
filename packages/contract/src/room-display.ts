@@ -132,6 +132,18 @@ export interface DisplayState {
   /** La cible n'a pas encore commencé au programme : l'écran doit le dire. */
   targetIsUpcoming: boolean
   simulatedClock: boolean
+  /**
+   * Qui tient la régie mobile de cette salle, ou `null` si personne.
+   *
+   * Il ne **grise rien**. La régie de la salle garde toutes ses commandes : la
+   * personne qui est physiquement là ne doit jamais dépendre d'un téléphone
+   * parti dans un couloir, ni d'un verrou qu'on a oublié de rendre.
+   *
+   * Il sert à ce que l'écran puisse le dire. Sans lui, une scène qui bascule et
+   * un enregistrement qui démarre sans que personne n'ait touché au clavier se
+   * lisent comme une panne — et c'est en plein talk qu'on s'en inquiéterait.
+   */
+  remoteHolder: string | null
 }
 
 /**
@@ -194,8 +206,23 @@ export interface ConfigVisible {
   openFeedbackProjectId: string | null
   /** Avertir au « Commencer » si rien n'enregistre. */
   promptRecordingOnStart: boolean
+  /** Proposer au « Terminer » d'arrêter la captation qui tourne encore. */
+  promptRecordingOnStop: boolean
   /** Scène prise automatiquement au « Commencer ». `null` = aucune bascule. */
   sceneOnStart: string | null
+  /**
+   * Le poste sait ouvrir un sélecteur de dossier natif.
+   *
+   * Vrai sous Electron, faux partout ailleurs — `dev:headless`, ou la régie
+   * ouverte depuis un navigateur. C'est le poste qui répond, et pas la page :
+   * elle ne peut pas deviner sous quoi elle tourne, et un bouton qui échoue
+   * une fois sur deux vaut moins qu'un champ à remplir à la main.
+   *
+   * Le dossier parcouru est celui de **la machine de salle**, où qu'on lise
+   * cette page : c'est là que les rushes s'écrivent, et ce champ n'a jamais
+   * désigné autre chose.
+   */
+  peutParcourir: boolean
 }
 
 export interface PointObsVisible {
@@ -282,9 +309,10 @@ export interface ControlDiagnostics {
   roomsRefreshedAt: string | null
   outboxDepth: number
   journal: { level: string; message: string; createdAt: string }[]
-  /** Enregistrement en cours côté client, et nombre de marqueurs posés. */
+  /** Enregistrement en cours côté client, et ce qui a été posé pendant. */
   recording: {
     active: boolean
+    /** Marqueurs de chapitre. Les deux repères de montage ont leur propre champ. */
     markers: number
     startedAtMs: number | null
     /**
@@ -295,6 +323,16 @@ export interface ControlDiagnostics {
      * une journée en poussant l'horloge — et en temps réel sinon.
      */
     startedAtCorrigeMs: number | null
+    /**
+     * Où tombent les deux repères de montage, `null` tant qu'ils manquent.
+     *
+     * Le compte de marqueurs ne suffisait pas à répondre à la seule question
+     * qu'on se pose en régie avant d'arrêter la prise : « est-ce que j'ai posé
+     * le début ? ». Trois marqueurs peuvent être trois chapitres. Et un repère
+     * se repose — la valeur dit alors où il vient d'atterrir, ce qu'un
+     * booléen ne dirait pas.
+     */
+    montage: ReperesMontage
   }
 }
 
@@ -456,11 +494,56 @@ export const CHAMPS_PAR_VUE: Record<VueAffichage, readonly (keyof DisplayPayload
  * lit. Déplacés tels quels ; les fichiers d'origine les réexportent.
  */
 
+/**
+ * Les deux repères que le montage cherche, et qu'il ne peut pas deviner.
+ *
+ * Un marqueur ordinaire dit « il se passe quelque chose ici » ; ces deux-là
+ * disent où commence et où finit ce qu'on publie. La différence n'est pas
+ * cosmétique : sans eux, le rognage des blancs de début et de fin se fait par
+ * détection de silence, sur un micro de salle qui ne descend jamais vraiment à
+ * zéro — et couper les trois premiers mots d'un talk est un défaut qui ne se
+ * rattrape qu'en remontant le fichier à la main.
+ *
+ * Un champ plutôt qu'un libellé convenu : le montage lit `role`, et n'a donc
+ * pas à reconnaître « Début », « debut », « DÉBUT », ni le jour où quelqu'un
+ * aura tapé « Départ ».
+ *
+ * Sans accent, comme `illisible`, `abandonne` et `termine` : ce sont des clés
+ * lues par une machine, pas des libellés — ce que lit l'opérateur est écrit
+ * dans la régie.
+ */
+export type MarkerRole = 'debut' | 'fin'
+
+/** Où tombent les deux repères d'une prise. `null` : celui-là n'a pas été posé. */
+export interface ReperesMontage {
+  debutMs: number | null
+  finMs: number | null
+}
+
+/**
+ * Aucun repère posé.
+ *
+ * Nommé plutôt que répété, comme `POLITIQUE_VOD_PAR_DEFAUT` : c'est à la fois
+ * ce que rend une prise où personne n'a encore rien posé, et ce qu'affiche une
+ * régie tenue à distance — le hub ne stocke qu'un booléen d'enregistrement, il
+ * ne sait rien des repères. Les deux doivent continuer de dire la même chose.
+ */
+export const SANS_REPERES: ReperesMontage = { debutMs: null, finMs: null }
+
 export interface Marker {
   label: string
   /** Décalage depuis le début de l'enregistrement — ce qui sert au montage. */
   offsetMs: number
   at: string
+  /**
+   * Rôle au montage, absent sur un marqueur de chapitre ordinaire.
+   *
+   * Optionnel, et il le restera : les sidecars écrits avant l'introduction du
+   * champ n'en portent pas, et ceux-là sont déjà sur le disque des salles et
+   * dans le stockage. Un montage qui ne trouve pas de repère retombe sur la
+   * détection — c'est le comportement d'avant, et il reste le filet.
+   */
+  role?: MarkerRole
 }
 
 /** Métadonnées écrites à côté du master, pour le montage et l'upload. */
@@ -517,6 +600,20 @@ export interface ControleVod {
   /** Ce qui a motivé le verdict, en clair : un badge rouge sans raison ne sert personne. */
   reasons: string[]
   probe: SondageVod | null
+  /**
+   * Le fichier tel qu'il était quand le verdict a été posé.
+   *
+   * Un verdict est indexé par le nom du fichier, et ce nom se réutilise : le
+   * format demandé à OBS est déterminant — date, salle, heure, titre — donc
+   * rejouer la même conférence réécrit au même endroit. Sans cette empreinte,
+   * le verdict de la prise précédente s'affichait sur la nouvelle, avec la
+   * lecture ffprobe de l'ancienne : « sidecar absent » sur un rush qui, lui,
+   * avait le sien.
+   *
+   * Absente sur les verdicts écrits avant son introduction : ceux-là ne
+   * décrivent peut-être plus rien et ne sont plus affichés.
+   */
+  fichier?: { sizeBytes: number; modifiedAtMs: number }
 }
 
 export interface EntreeVod {
@@ -543,7 +640,25 @@ export interface EntreeVod {
  * mort. « en attente — conférence dans 6 min » ne demande aucune explication.
  */
 export type RaisonAttente =
-  | 'desactive'
+  /**
+   * Aucune destination : le hub n'a pas de stockage.
+   *
+   * Le seul refus qu'une demande manuelle ne lève pas — ce n'est pas un mauvais
+   * moment, c'est l'absence d'un endroit où envoyer. La régie retire ses
+   * boutons : un bouton qui échoue à chaque clic vaut moins qu'un bouton absent.
+   */
+  | 'sans-stockage'
+  /**
+   * Le stockage existe, l'automatisme est éteint.
+   *
+   * **Distinct du précédent, et c'est tout l'objet de la séparation.** Les deux
+   * ont longtemps partagé un seul code, et la régie retirait ses boutons dans
+   * les deux cas — y compris sur le réglage par défaut, qui est justement
+   * « rien ne part sans qu'on l'ait demandé ». Un hub parfaitement configuré
+   * n'offrait donc aucun moyen d'envoyer quoi que ce soit, alors que le
+   * régulateur, lui, acceptait déjà les demandes manuelles.
+   */
+  | 'auto-desactive'
   | 'enregistrement'
   | 'conference'
   | 'fenetre'
@@ -566,6 +681,15 @@ export interface EtatTeleversementVu {
   file: string
   state: string
   pourcent: number
+  /**
+   * Ce qu'il reste à envoyer, en octets.
+   *
+   * Le pourcentage ne suffit pas à en déduire un temps : arrondi à l'entier, il
+   * vaut trente méga-octets par point sur un rush de trois gigas, et une
+   * estimation calculée dessus se tromperait d'autant. Les octets restants sont
+   * le seul terme qui, divisé par un débit, donne une durée.
+   */
+  restantOctets: number
   debitOctetsS: number | null
   erreur: string | null
   manuel: boolean

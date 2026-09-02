@@ -77,10 +77,18 @@ let origin: string
 let dir: string
 let room: RoomApp
 let regie: string
+/** Ce que le faux sélecteur de dossier rend, et le point de départ reçu. */
+let dossierChoisi: string | null
+let dossierDemandeAvec: string | null | undefined
+/** Le dossier que la salle a en configuration, pour comparer. */
+let recordingRootConfigure: string
 
 beforeEach(async () => {
+  dossierChoisi = null
+  dossierDemandeAvec = undefined
   dir = mkdtempSync(join(tmpdir(), 'cloudnord-regie-'))
   const recDir = join(dir, 'rec')
+  recordingRootConfigure = recDir
   mkdirSync(recDir, { recursive: true })
 
   hub = await createHub({
@@ -120,6 +128,12 @@ beforeEach(async () => {
     roomId: TRACK_1,
     displayPort: 0,
     obsTransportFactory: fakeObsPair(recDir),
+    // Le sélecteur de dossier du poste. Fourni par Electron en vrai ; ici par
+    // le test, qui décide ce que l'opérateur choisit — ou s'il renonce.
+    choisirDossier: async (initial) => {
+      dossierDemandeAvec = initial
+      return dossierChoisi
+    },
     readToken: () => token,
     writeToken: (value) => {
       token = value
@@ -212,6 +226,25 @@ describe('fenêtre de régie', () => {
     const arret = await agir({ action: 'recording.stop' })
     expect(arret.body.message).toContain('.mkv')
     expect((await etat()).diagnostics?.recording.active).toBe(false)
+  }, 40_000)
+
+  it('pose les repères de montage, et les tient à part des chapitres', async () => {
+    await agir({ action: 'recording.start' })
+
+    await agir({ action: 'recording.mark', label: 'Début', role: 'debut' })
+    // Reposé aussitôt : c'est le geste du faux départ, et il ne doit rien
+    // empiler. Ce que la régie lit, c'est un repère, pas deux.
+    await agir({ action: 'recording.mark', label: 'Début', role: 'debut' })
+    await agir({ action: 'recording.mark', label: 'Questions' })
+
+    const vue = await etat()
+    expect(vue.diagnostics?.recording.montage.debutMs).not.toBeNull()
+    expect(vue.diagnostics?.recording.montage.finMs).toBeNull()
+    // Les deux repères ne se comptent pas parmi les chapitres : seul
+    // « Questions » en est un.
+    expect(vue.diagnostics?.recording.markers).toBe(1)
+
+    await agir({ action: 'recording.stop' })
   }, 40_000)
 
   it('renvoie un message lisible plutôt qu\'une page cassée', async () => {
@@ -360,6 +393,50 @@ describe('configuration de la salle depuis la régie', () => {
  * la modale. C'est le seul moment où l'on peut encore refaire une prise — le
  * soir, la salle est démontée.
  */
+/**
+ * Le dossier des VOD, choisi sur le poste.
+ *
+ * Un chemin de disque se saisit à la main sans erreur seulement quand on l'a
+ * sous les yeux — et c'est le disque de **la machine de salle** qu'il désigne,
+ * où qu'on lise la page.
+ */
+describe('sélecteur de dossier', () => {
+  it('rend le chemin choisi, et part du dossier déjà saisi', async () => {
+    dossierChoisi = '/media/rushes/2026'
+    const resultat = await agir({ action: 'config.chooseFolder' })
+
+    expect(resultat.body.ok).toBe(true)
+    expect((resultat.body as { detail?: unknown }).detail).toBe('/media/rushes/2026')
+    // Corriger un chemin, c'est presque toujours en changer une branche : le
+    // sélecteur s'ouvre là où l'on regardait, pas à la racine.
+    expect(dossierDemandeAvec).toBe(recordingRootConfigure)
+  })
+
+  it('ne traite pas un renoncement comme un échec', async () => {
+    dossierChoisi = null
+    const resultat = await agir({ action: 'config.chooseFolder' })
+
+    // Fermer un sélecteur est un geste, pas une panne : un rouge à ce
+    // moment-là se lirait comme un refus du poste.
+    expect(resultat.body.ok).toBe(true)
+    expect((resultat.body as { detail?: unknown }).detail).toBeNull()
+  })
+
+  it('n’écrit rien dans la configuration de la salle', async () => {
+    dossierChoisi = '/media/rushes/2026'
+    await agir({ action: 'config.chooseFolder' })
+
+    // C'est « Enregistrer » qui décide, comme pour tout le reste du panneau.
+    expect(room.diagnostics().config?.recordingRoot).toBe(recordingRootConfigure)
+  })
+
+  it('annonce à la régie que ce poste sait l’ouvrir', () => {
+    // La page ne peut pas le deviner : elle tourne aussi bien dans la fenêtre
+    // Electron du poste que dans un navigateur ouvert à côté.
+    expect(room.diagnostics().config?.peutParcourir).toBe(true)
+  })
+})
+
 describe('contrôle des enregistrements', () => {
   const lister = async () =>
     (await (await fetch(`${regie}/control/recordings`)).json()) as {

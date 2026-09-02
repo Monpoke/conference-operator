@@ -156,6 +156,77 @@ describe('pilotage OBS par rôles', () => {
     })
   })
 
+  it('attend `STOPPED` pour livrer le chemin, et ignore `STOPPING`', async () => {
+    const obs = fakeObs(['Talk'])
+    const events: unknown[] = []
+    const controller = new ObsController({
+      instance: 'B',
+      url: 'ws://127.0.0.1:4456',
+      sceneRoles: { TALK: 'Talk' },
+      transport: obs.transport,
+      onEvent: (event) => events.push(event),
+    })
+    await controller.connect()
+
+    // La séquence d'un vrai OBS, que les simulateurs ne reproduisent pas.
+    obs.emit('RecordStateChanged', {
+      outputActive: false,
+      outputState: 'OBS_WEBSOCKET_OUTPUT_STARTING',
+    })
+    obs.emit('RecordStateChanged', {
+      outputActive: true,
+      outputState: 'OBS_WEBSOCKET_OUTPUT_STARTED',
+    })
+    expect(controller.snapshot().recording).toBe(true)
+    expect(events.filter((event) => (event as { type: string }).type === 'recording')).toHaveLength(1)
+
+    // `STOPPING` dit déjà « inactif » mais ne porte aucun chemin : le laisser
+    // passer résolvait l'attente avec `null`, et le sidecar n'était pas écrit.
+    obs.emit('RecordStateChanged', {
+      outputActive: false,
+      outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPING',
+    })
+    expect(controller.snapshot().recording).toBe(true)
+
+    obs.emit('RecordStateChanged', {
+      outputActive: false,
+      outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPED',
+      outputPath: '/rec/talk.mkv',
+    })
+    expect(controller.snapshot().recording).toBe(false)
+    expect(events.at(-1)).toEqual({
+      type: 'recording',
+      active: false,
+      outputPath: '/rec/talk.mkv',
+    })
+  })
+
+  it('ne signale pas un arrêt de diffusion pendant une reconnexion', async () => {
+    const obs = fakeObs(['Talk'])
+    const events: unknown[] = []
+    const controller = new ObsController({
+      instance: 'B',
+      url: 'ws://127.0.0.1:4456',
+      sceneRoles: { TALK: 'Talk' },
+      transport: obs.transport,
+      onEvent: (event) => events.push(event),
+    })
+    await controller.connect()
+
+    obs.emit('StreamStateChanged', {
+      outputActive: true,
+      outputState: 'OBS_WEBSOCKET_OUTPUT_STARTED',
+    })
+    // Le flux tombe et OBS le rattrape seul : annoncer un arrêt « opérateur »
+    // au hub à chaque hoquet réseau serait un mensonge.
+    obs.emit('StreamStateChanged', {
+      outputActive: false,
+      outputState: 'OBS_WEBSOCKET_OUTPUT_RECONNECTING',
+    })
+    expect(controller.snapshot().streaming).toBe(true)
+    expect(events.filter((event) => (event as { type: string }).type === 'streaming')).toHaveLength(1)
+  })
+
   it('repasse déconnecté quand OBS ferme la connexion', async () => {
     const obs = fakeObs(['Capture HDMI', 'Habillage web'])
     const controller = new ObsController({

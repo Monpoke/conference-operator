@@ -37,6 +37,15 @@ const configSchema = z.object({
    * cookies de Better Auth et par la portée de `/sw.js` ; voir `server.ts`.
    */
   viteOrigin: z.url().default('http://127.0.0.1:5173'),
+  /**
+   * Serveur de développement de la régie, proxifié par le hub.
+   *
+   * Distinct de `viteOrigin` : ce sont deux applications, deux ports, et elles
+   * se développent ensemble — une salle de démonstration branchée sur un hub
+   * local. Le même serveur Vite sert la régie au poste de salle et au hub ; les
+   * deux la servent sous `/regie/`, donc la même `base` convient aux deux.
+   */
+  regieViteOrigin: z.url().default('http://127.0.0.1:5174'),
   authSecret: z.string().min(32, 'BETTER_AUTH_SECRET doit faire au moins 32 caractères'),
   /** URL de l'export « conference-center » importé par défaut. */
   programSourceUrl: z.url().optional(),
@@ -342,6 +351,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     databasePath: env.DATABASE_PATH,
     publicUrl: env.PUBLIC_URL,
     viteOrigin: env.VITE_ORIGIN,
+    regieViteOrigin: env.REGIE_VITE_ORIGIN,
     authSecret: env.BETTER_AUTH_SECRET,
     programSourceUrl: env.PROGRAM_SOURCE_URL,
     logLevel: env.LOG_LEVEL,

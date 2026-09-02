@@ -1,5 +1,7 @@
 import { TAILWIND_CSS } from '@cloudnord/ui'
 
+import { OBS_ANTENNE_CSS, OBS_ANTENNE_JS } from './obs-browser.js'
+
 /**
  * Bandeau superposé aux scènes live.
  *
@@ -32,7 +34,8 @@ export function renderOverlayLivePage(options: OverlayLivePageOptions = {}): str
 <head>
 <meta charset="utf-8">
 <title>Bandeau live</title>
-<style>${TAILWIND_CSS}</style>
+<style>${TAILWIND_CSS}  ${OBS_ANTENNE_CSS}
+</style>
 <style>
   /* Fond réellement transparent : OBS compose cette page par-dessus la vidéo. */
   html, body { height: 100%; background: transparent; overflow: hidden; }
@@ -181,6 +184,7 @@ ${etatInitial}
   }
 })()
 </script>
+<script>${OBS_ANTENNE_JS}</script>
 </body>
 </html>`
 }

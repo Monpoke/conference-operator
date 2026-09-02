@@ -1,8 +1,8 @@
-import Fastify, { type FastifyInstance } from 'fastify'
+import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify'
 import fastifyProxy from '@fastify/http-proxy'
 import fastifyStatic from '@fastify/static'
 import { join } from 'node:path'
-import { bundledConsolePaths } from '@cloudnord/contract'
+import { bundledConsolePaths, REGIE_PATH, regieRoomIdFromPath } from '@cloudnord/contract'
 import { WebSocketServer, type WebSocket as NodeWebSocket } from 'ws'
 import { RPCHandler as FastifyRPCHandler } from '@orpc/server/fastify'
 import { RPCHandler as WebSocketRPCHandler } from '@orpc/server/websocket'
@@ -17,6 +17,7 @@ import { IngestService } from './services/ingest.js'
 import { DeviceService, RoomService } from './services/rooms.js'
 import { QuestionService, WallService } from './services/wall.js'
 import { RateLimiter } from './services/rate-limit.js'
+import { RegieService } from './services/regie.js'
 import { SessionStateService, SettingsService } from './services/sessions.js'
 import { readFileSync } from 'node:fs'
 import { clesS3, VodService } from './services/vod.js'
@@ -36,6 +37,12 @@ import {
   renderConsoleShell,
   resoudreConsole,
 } from './pages/console-shell.js'
+import {
+  assetsDeDeveloppementRegie,
+  assetsDeProductionRegie,
+  renderRegieMobileShell,
+  resoudreRegie,
+} from './pages/regie-shell.js'
 import { renderServiceWorker } from './pages/service-worker.js'
 import { PushService } from './services/push.js'
 import { statutsDesSalles, VeilleSupervision } from './supervision.js'
@@ -87,6 +94,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     settings,
     identity: new EventIdentityService(settings, programs),
     sessions: new SessionStateService(orm, settings, () => clock.now()),
+    regie: new RegieService(orm, () => clock.now()),
     push,
     // Renseigné juste après la création du serveur : le service journalise,
     // et son journal est celui de Fastify.
@@ -358,6 +366,16 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   const cheminsConsole = bundledConsolePaths(dev)
 
   /*
+   * La régie mobile : le même bundle que sert une machine de salle.
+   *
+   * Deux adresses seulement — `/regie` choisit une salle, `/regie/<id>` la
+   * pilote. Énumérées comme celles de la console plutôt que prises au joker :
+   * `/regie/assets/...` doit atteindre les fichiers, pas rendre la coquille à
+   * leur place, et une salle inconnue doit le dire.
+   */
+  const bundleRegie = resoudreRegie()
+
+  /*
    * Assets de la console, servis par le hub lui-même.
    *
    * C'est ce qui remplace l'invariant « aucune dépendance externe » sans le
@@ -370,6 +388,17 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     await app.register(fastifyStatic, {
       root: join(bundle.dossier, 'assets'),
       prefix: '/admin/assets/',
+      wildcard: false,
+      immutable: true,
+      maxAge: '1y',
+      decorateReply: false,
+    })
+  }
+
+  if (!dev && bundleRegie != null) {
+    await app.register(fastifyStatic, {
+      root: join(bundleRegie.dossier, 'assets'),
+      prefix: '/regie/assets/',
       wildcard: false,
       immutable: true,
       maxAge: '1y',
@@ -429,10 +458,51 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
      * privé : l'écouteur qu'il vient d'ajouter est le seul de plus, et on le
      * remplace par une version filtrée.
      */
+    /*
+     * La régie a son propre Vite, sur son propre port.
+     *
+     * Le même serveur sert la régie au poste de salle et au hub, et les deux la
+     * servent sous `/regie/` : la `base` du bundle convient donc telle quelle.
+     * `preHandler` exclut les deux adresses de coquille, que le hub rend
+     * lui-même — c'est là que vit l'amorce de portée, et Vite n'en sait rien.
+     */
+    await app.register(fastifyProxy, {
+      upstream: config.regieViteOrigin,
+      prefix: `${REGIE_PATH}/`,
+      rewritePrefix: `${REGIE_PATH}/`,
+      websocket: true,
+      httpMethods: ['GET'],
+      preHandler: (request, reply, done) => {
+        const chemin = request.url.split('?')[0] ?? ''
+        if (chemin === REGIE_PATH || regieRoomIdFromPath(chemin) != null) {
+          return reply.callNotFound()
+        }
+        done()
+      },
+    })
+
+    /*
+     * Le proxy ne doit voir que ce qui le regarde.
+     *
+     * `@fastify/http-proxy` pose son propre écouteur `upgrade` et route **tout**
+     * ce qui arrive par le routeur Fastify — y compris `/ws`, le transport des
+     * salles, qui n'y a pas de route. Il part donc en 404, et le proxy détruit
+     * son socket à la fin de la réponse. Résultat : aucune salle ne peut se
+     * connecter dès que le proxy est monté, ce qui en développement était le
+     * cas exact où personne ne regardait — il ne se montait que faute de bundle
+     * construit, donc surtout sur un dépôt fraîchement cloné.
+     *
+     * **Un seul écouteur pour les deux proxys**, et c'est le plugin qui en
+     * décide : il le pose une fois par serveur (`kWsUpgradeListener`) puis
+     * dispatche par le routeur, si bien que la console et la régie le
+     * partagent. Compter ici reste le garde-fou — le jour où le plugin en pose
+     * un par instance, le filtre ne couvrirait plus que le premier, et les
+     * salles retomberaient dans la panne muette qu'il existe pour éviter.
+     */
     const ajoutes = app.server.listeners('upgrade').slice(avant)
     if (ajoutes.length !== 1) {
       throw new Error(
-        `Le proxy Vite a posé ${ajoutes.length} écouteurs « upgrade » au lieu d'un : ` +
+        `Les proxys Vite ont posé ${ajoutes.length} écouteurs « upgrade » au lieu d'un : ` +
           'le filtre qui protège le transport des salles ne sait plus lequel envelopper.',
       )
     }
@@ -475,6 +545,58 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       )
     })
   }
+
+  /**
+   * La régie mobile : l'écran de choix, puis une salle.
+   *
+   * Deux adresses parce que **chaque écran est une adresse**, comme les onglets
+   * de la console : la page rafraîchie rouvre la salle qu'on pilotait, le lien
+   * se met en favori et s'envoie à un collègue, et le bouton Retour ramène au
+   * choix plutôt que de quitter.
+   *
+   * Rien n'est vérifié ici sur la salle ni sur l'opérateur : la coquille est
+   * publique, comme celle de la console, et c'est le premier appel oRPC qui
+   * demande une session. Résoudre une salle avant de rendre la page rendrait un
+   * 404 à qui n'est pas connecté, ce qui se lit comme une adresse morte.
+   */
+  const rendreRegie = async (roomId: string | null, reply: FastifyReply): Promise<unknown> => {
+    reply.header('content-type', 'text/html; charset=utf-8')
+    // Jamais `immutable` : la coquille porte l'amorce de portée, et la salle
+    // qu'elle nomme change d'une adresse à l'autre.
+    reply.header('cache-control', 'no-store')
+
+    if (bundleRegie == null && !dev) {
+      /*
+       * Le bundle manque, et il n'y a pas de gabarit derrière.
+       *
+       * Le dire en toutes lettres vaut mieux qu'un 404, qui enverrait chercher
+       * du côté de l'adresse — c'est la même réponse que sert un poste de salle
+       * dans le même cas.
+       */
+      reply.status(503)
+      return reply.send(
+        'Régie non construite. Depuis les sources : ' +
+          'pnpm --filter @cloudnord/regie-web build',
+      )
+    }
+
+    return reply.send(
+      renderRegieMobileShell({
+        event: services.identity.get(),
+        roomId,
+        salles: services.rooms.list().map((salle) => ({ id: salle.id, name: salle.name })),
+        google: config.googleClientId == null ? null : { domaine: config.googleHostedDomain! },
+        assets: dev
+          ? assetsDeDeveloppementRegie()
+          : assetsDeProductionRegie(bundleRegie!.manifeste),
+      }),
+    )
+  }
+
+  app.get(REGIE_PATH, async (_request, reply) => rendreRegie(null, reply))
+  app.get<{ Params: { roomId: string } }>('/regie/:roomId', async (request, reply) =>
+    rendreRegie(request.params.roomId, reply),
+  )
 
   // WebSocket : le transport des salles. Les en-têtes ne sont disponibles qu'à
   // l'upgrade, donc le contexte (session, appareil) est figé pour toute la
@@ -544,6 +666,20 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
    */
   const veille = new VeilleSupervision()
   const surveillance = setInterval(() => {
+    /*
+     * Les verrous de régie mobile périmés, **avant** le retour anticipé.
+     *
+     * Ce balayage n'a rien à voir avec le push, et il doit tourner même quand
+     * personne n'est abonné — c'est le cas normal d'un hub de développement.
+     * Il ne décide de rien : `regie.lock()` écarte déjà un verrou périmé à la
+     * lecture. Il éteint le badge « pilotée à distance » resté allumé en salle,
+     * ce que seule une commande peut faire.
+     */
+    for (const roomId of services.regie.sweep()) {
+      services.commands.publish(roomId, { type: 'regie.hold', holder: null }, null)
+      app.log.info({ roomId }, 'verrou de régie mobile expiré')
+    }
+
     if (services.push.publicKey() == null || services.push.count() === 0) return
     const snapshot = services.programs.active()
     const statuts = statutsDesSalles(services, clock.now())

@@ -63,12 +63,32 @@ describe('écriture des gabarits', () => {
 })
 
 describe('pages servies par le client', () => {
-  it.each(PAGES)('%s : aucune dépendance externe', (_nom, html) => {
-    // Une balise vers un CDN casserait la page dès la première coupure —
-    // c'est-à-dire exactement quand on en a besoin.
-    expect(html).not.toMatch(/<script[^>]+src=/)
-    expect(html).not.toMatch(/<link[^>]+href=/)
+  it.each(PAGES)('%s : aucune dépendance externe, hors exception nommée', (nom, html) => {
+    /*
+     * Une balise vers un CDN casse la page dès la première coupure —
+     * c'est-à-dire exactement quand on en a besoin.
+     *
+     * **Une seule exception, nommée ici** : le bouton de X sur la slide
+     * Réseaux de la projection. Le test ne disparaît pas pour autant, et c'est
+     * le point : il liste les origines externes et refuse toute autre que
+     * celle-là. Une seconde dépendance qui s'inviterait — une police, une
+     * analytique — échouerait ici, et la première reste tenue à sa page et à
+     * son `async`.
+     */
+    const AUTORISEES: Record<string, string[]> = {
+      projection: ['https://platform.x.com/widgets.js'],
+    }
+    const externes = [...html.matchAll(/<(?:script|link)\b[^>]*\b(?:src|href)="([^"]+)"/g)]
+      .map((trouve) => trouve[1]!)
+      .filter((adresse) => /^(?:https?:)?\/\//.test(adresse))
+
+    expect(externes).toEqual(AUTORISEES[nom] ?? [])
     expect(html).not.toMatch(/@import\s+url/)
+
+    // Chargée en `async` : rien de ce qui se lit ne doit attendre le réseau.
+    for (const adresse of externes) {
+      expect(html).toMatch(new RegExp('<script async src="' + adresse.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '"'))
+    }
   })
 
   it.each(PAGES)('%s : document complet et clos', (_nom, html) => {

@@ -1,6 +1,10 @@
 import { useToast } from '@cloudnord/components'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import type { ActionResult } from '../lib/porte.js'
+import { usePorteStore } from './porte.js'
+
+export type { ActionResult }
 
 /** Ce qu'on peut demander d'une action, en plus de la poster. */
 export interface ActOptions {
@@ -19,12 +23,6 @@ export interface ActOptions {
   silent?: boolean
 }
 
-/** Ce que le poste répond à une action. Le message est écrit pour l'opérateur. */
-export interface ActionResult {
-  ok: boolean
-  message?: string
-}
-
 /**
  * Les commandes de régie, et la règle qui les gouverne toutes.
  *
@@ -37,39 +35,35 @@ export interface ActionResult {
  *
  * Le prix est un aller-retour de latence sur chaque geste. En salle, il se
  * mesure en millisecondes : le poste sert la page et pilote OBS depuis la même
- * machine.
+ * machine. Depuis un téléphone, il se compte en secondes — d'où le réveil de la
+ * file de remontée côté salle, sans lequel un bouton resterait dix secondes à
+ * décrire l'état d'avant et se ferait appuyer une seconde fois.
  */
 export const useActionsStore = defineStore('actions', () => {
   const toast = useToast()
+  const porte = usePorteStore()
 
   /** Commandes en vol, par action. Sert à désarmer un bouton le temps du geste. */
   const pending = ref(0)
 
   async function act(
-    payload: Record<string, unknown>,
+    geste: Record<string, unknown>,
     options: ActOptions = {},
   ): Promise<ActionResult> {
     pending.value += 1
     try {
-      const response = await fetch('/control/action', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const result = (await response.json()) as ActionResult
+      /*
+       * Le transport vit dans la porte ; ici on ne garde que ce qui se voit.
+       *
+       * Les deux portes rendent la même forme et n'échouent jamais par
+       * exception : un échec revient à l'opérateur en message, pas en page
+       * cassée au milieu d'une intervention.
+       */
+      const result = await porte.act(geste)
       const message = result.message ?? (result.ok ? 'Fait' : 'Échec')
       if (!result.ok) toast.fail(message)
       else if (options.silent !== true) toast.say(message)
       return result
-    } catch {
-      /*
-       * La régie tourne en local : un échec ici ne veut pas dire « le hub est
-       * loin », il veut dire que le cœur applicatif de la salle ne répond plus.
-       * C'est la panne qui arrête tout, et elle doit se lire immédiatement.
-       */
-      const message = 'Le service local ne répond pas'
-      toast.fail(message)
-      return { ok: false, message }
     } finally {
       pending.value -= 1
     }

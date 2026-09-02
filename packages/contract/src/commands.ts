@@ -42,6 +42,51 @@ export const commandPayloadSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('scene.force'),
     role: sceneRoleSchema,
+    /**
+     * Qui a demandé la bascule, ou `null` pour une décision du hub lui-même.
+     *
+     * Même raison que sur `room.resync` : une salle dont l'habillage bascule
+     * sans que personne ne l'ait touchée sur place se lit comme un incident. La
+     * régie de la salle le signale dans son bandeau, avec l'adresse de qui l'a
+     * demandé.
+     */
+    requestedBy: z.string().nullable().default(null),
+  }),
+  z.object({
+    /**
+     * Captation d'OBS-B, pilotée à distance.
+     *
+     * **Un état, pas un verbe** : `on` plutôt que `recording.start` et
+     * `recording.stop`. Une commande rattrapée décrit alors une intention encore
+     * lisible, et l'appliquer deux fois ne coûte rien — ce qui compte sur un
+     * flux au-moins-une-fois. Demander ce qui tourne déjà est un succès
+     * silencieux, pas un incident.
+     */
+    type: z.literal('recording.set'),
+    on: z.boolean(),
+    requestedBy: z.string().nullable().default(null),
+  }),
+  z.object({
+    /** Diffusion d'OBS-B. Même forme et mêmes raisons que `recording.set`. */
+    type: z.literal('stream.set'),
+    on: z.boolean(),
+    requestedBy: z.string().nullable().default(null),
+  }),
+  z.object({
+    /**
+     * Qui tient la régie mobile de cette salle, ou `null` si personne.
+     *
+     * Diffusée à chaque **changement** de porteur, jamais au battement : un
+     * renouvellement par seconde et par salle tenue remplirait la table des
+     * commandes pour une information qui n'a pas bougé.
+     *
+     * Elle ne verrouille rien en salle — l'opérateur qui est physiquement là
+     * n'est jamais bloqué par un téléphone parti dans un couloir. Elle sert à
+     * ce que l'écran de régie puisse le **dire**, faute de quoi une scène qui
+     * bascule toute seule se lirait comme une panne.
+     */
+    type: z.literal('regie.hold'),
+    holder: z.string().nullable(),
   }),
   z.object({
     type: z.literal('display.set'),
@@ -206,6 +251,28 @@ export const commandSchema = z.object({
   payload: commandPayloadSchema,
 })
 export type Command = z.infer<typeof commandSchema>
+
+/**
+ * Durée de validité des gestes de régie mobile, par commande.
+ *
+ * Elles vivent dans le contrat parce que les deux côtés les lisent : le hub
+ * pour estampiller ce qu'il publie, les tests pour épingler des valeurs dont
+ * l'écart se paierait devant une salle.
+ *
+ * Une bascule de scène est la plus courte — rattrapée dix minutes plus tard,
+ * elle met la salle à l'antenne sur rien. L'écran de salle partage sa durée
+ * pour la même raison : c'est aussi ce que le public voit, et un « notez le
+ * talk » rattrapé au milieu du suivant est le mauvais écran devant les
+ * mauvaises personnes. La captation tient plus longtemps : une salle coupée
+ * trente secondes doit rattraper, mais une salle coupée dix minutes ne doit pas
+ * se mettre à enregistrer toute seule.
+ */
+export const TTL_COMMANDE_REGIE = {
+  'scene.force': 30,
+  'display.set': 30,
+  'recording.set': 90,
+  'stream.set': 90,
+} as const
 
 /** Une commande est-elle encore applicable ? Utilisé au rattrapage. */
 export function isCommandExpired(command: Command, nowMs: number): boolean {

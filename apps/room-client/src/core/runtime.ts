@@ -62,6 +62,17 @@ export interface RuntimeEffects {
    */
   razVod?: () => void
   /**
+   * Captation d'OBS-B, demandée à distance.
+   *
+   * Séparé du runtime comme `setSceneRole`, et pour la même raison : ce module
+   * décide *quoi* faire, la machine sait *comment*. Demander ce qui tourne déjà
+   * doit être un succès silencieux — une commande rejouée à la reconnexion ne
+   * doit pas produire un incident dans la pile de la régie.
+   */
+  setRecording?: (on: boolean) => void
+  /** Diffusion d'OBS-B. Même forme et mêmes raisons que `setRecording`. */
+  setStreaming?: (on: boolean) => void
+  /**
    * Redemande au hub l'état des autres salles, sans attendre le tour de sonde.
    *
    * Ce que fait une salle voisine arrive déjà poussé sur le flux de commandes ;
@@ -124,6 +135,7 @@ export class RoomRuntime extends EventEmitter {
       simulatedClock: false,
       targetSession: null,
       targetIsUpcoming: false,
+      remoteHolder: null,
       breakBadge: null,
     }
     this.refreshSessions()
@@ -515,6 +527,47 @@ export class RoomRuntime extends EventEmitter {
         })
         this.effects.razVod?.()
         break
+      case 'recording.set':
+        /**
+         * Signalé en régie, comme la resynchronisation et pour la même raison.
+         *
+         * Un enregistrement qui démarre — ou pire, qui s'arrête — sans que
+         * personne n'ait touché au clavier de la salle se lit comme une panne
+         * d'OBS. Nommer qui l'a demandé évite qu'on aille chercher un défaut à
+         * l'endroit où il n'y en a pas.
+         */
+        this.notify({
+          level: 'info',
+          text: `${payload.on ? 'Enregistrement démarré' : 'Enregistrement arrêté'} ${demandePar(payload.requestedBy)}`,
+        })
+        this.effects.setRecording?.(payload.on)
+        break
+      case 'stream.set':
+        this.notify({
+          level: 'info',
+          text: `${payload.on ? 'Diffusion démarrée' : 'Diffusion arrêtée'} ${demandePar(payload.requestedBy)}`,
+        })
+        this.effects.setStreaming?.(payload.on)
+        break
+      case 'regie.hold':
+        /**
+         * Qui pilote la salle à distance — un affichage, et rien d'autre.
+         *
+         * Aucun bouton ne se grise ici : l'opérateur qui est dans la salle ne
+         * doit jamais dépendre d'un téléphone parti dans un couloir, ni d'un
+         * verrou qu'on a oublié de rendre. Ce que la commande change est ce
+         * que l'écran *dit*, faute de quoi une scène qui bascule toute seule
+         * s'interprète comme un incident — en plein talk.
+         */
+        this.patch({ remoteHolder: payload.holder })
+        this.notify({
+          level: 'info',
+          text:
+            payload.holder == null
+              ? 'La régie mobile a rendu la salle'
+              : `Salle pilotée à distance par ${payload.holder}`,
+        })
+        break
       case 'session.state': {
         const notre = this.display.roomId
         if (payload.roomId == null || payload.roomId === notre) {
@@ -609,4 +662,16 @@ export class RoomRuntime extends EventEmitter {
     const restants = notifications.filter((signalement) => Date.parse(signalement.at) > limite)
     if (restants.length !== notifications.length) this.patch({ notifications: restants })
   }
+}
+
+/**
+ * D'où vient un geste posé à distance.
+ *
+ * `null` n'arrive que d'un hub plus ancien que cette commande — le champ a un
+ * défaut. On dit alors « depuis le hub » plutôt que d'inventer un nom : le
+ * signalement sert à ce que l'opérateur cesse de chercher une panne, et « par
+ * personne » relancerait exactement la recherche qu'il doit clore.
+ */
+function demandePar(requestedBy: string | null): string {
+  return requestedBy == null ? 'depuis le hub' : `par ${requestedBy}`
 }

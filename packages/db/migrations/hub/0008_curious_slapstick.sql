@@ -1,0 +1,1 @@
+ALTER TABLE `room_state` ADD `display_mode` text;

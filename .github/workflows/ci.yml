@@ -8,11 +8,18 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Appelée telle quelle par `release.yml`. Rien ne se publie sans avoir passé
+  # exactement la vérification d'une proposition ordinaire, et il n'y a qu'un
+  # seul endroit qui la décrit.
+  workflow_call:
 
 # Une proposition qu'on pousse trois fois de suite n'occupe qu'un coureur : les
 # exécutions précédentes n'ont plus rien à dire.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Préfixe littéral, et non `github.workflow` : appelée depuis `release.yml`,
+  # cette expression rendrait « Release » et le groupe se confondrait avec celui
+  # de l'appelant — qui s'annulerait lui-même en lançant sa propre vérification.
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

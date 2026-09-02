@@ -91,3 +91,82 @@ describe('adresses reprises par le bundle', () => {
     }
   })
 })
+
+/**
+ * La régie mobile, servie par le hub.
+ *
+ * Deux adresses, et l'écart entre elles est ce qui compte : `/regie` choisit une
+ * salle, `/regie/<id>` en pilote une. Elles sont **énumérées** comme celles de
+ * la console, jamais prises au joker — `/regie/assets/…` doit atteindre les
+ * fichiers, pas rendre la coquille à leur place.
+ *
+ * Comme pour la console, les deux situations sont décrites : le bundle est
+ * construit dans l'image, il ne l'est pas en intégration continue.
+ */
+describe('la régie mobile', () => {
+  it('répond aux deux adresses', async () => {
+    for (const chemin of ['/regie', '/regie/track-1-teilhard-de-chardin']) {
+      const reponse = await fetch(`${origin}${chemin}`)
+      /*
+       * 200 avec le bundle, 503 sans — et jamais 404.
+       *
+       * L'absence de bundle n'est pas un état d'exploitation : l'image le
+       * construit, donc elle signale un déploiement incomplet. Un 404 enverrait
+       * chercher du côté de l'adresse, qui est la seule chose qui va bien.
+       */
+      expect([200, 503], chemin).toContain(reponse.status)
+      if (reponse.status === 503) {
+        expect(await reponse.text()).toContain('pnpm --filter @cloudnord/regie-web build')
+      }
+    }
+  })
+
+  it('ne résout pas la salle avant de rendre la page', async () => {
+    /*
+     * La coquille est publique, comme celle de la console : c'est le premier
+     * appel oRPC qui demande une session. Refuser ici rendrait un 404 à qui
+     * n'est pas encore connecté, ce qui se lit comme une adresse morte.
+     */
+    const reponse = await fetch(`${origin}/regie/salle-fantome`)
+    expect(reponse.status).not.toBe(404)
+  })
+
+  it('embarque la portée et les salles, jamais l’état d’une salle', async () => {
+    const reponse = await fetch(`${origin}/regie`)
+    if (reponse.status !== 200) return
+    const html = await reponse.text()
+
+    expect(html).toContain('id="regie-portee"')
+    expect(html).toContain('"portee":"distante"')
+    /*
+     * Aucun `#etat-initial` ici, et c'est délibéré.
+     *
+     * Le poste de salle inline son état entier parce qu'un F5 arrive en plein
+     * talk et que sa fenêtre pilote le vidéoprojecteur. Un téléphone qui ne
+     * pilote rien tant que personne n'a pris la salle n'a pas cet argument — et
+     * l'embarquer exigerait de résoudre l'opérateur avant de rendre la page.
+     */
+    expect(html).not.toContain('id="etat-initial"')
+  })
+
+  it('ne référence aucune ressource hors de son origine', async () => {
+    const reponse = await fetch(`${origin}/regie`)
+    if (reponse.status !== 200) return
+    const html = await reponse.text()
+    /*
+     * Le même invariant que la console et les pages d'affichage, sous la forme
+     * qu'il a prise : tout `src` et tout `href` est relatif. Un asset servi par
+     * le processus qui sert déjà la page ne peut pas disparaître d'une coupure
+     * du réseau de l'événement ; n'importe quelle autre origine, si.
+     */
+    expect(html).not.toMatch(/(?:src|href)="https?:\/\//)
+  })
+
+  it('ne met jamais la coquille en cache', async () => {
+    const reponse = await fetch(`${origin}/regie/track-1-teilhard-de-chardin`)
+    if (reponse.status !== 200) return
+    // Elle porte l'amorce de portée, et la salle qu'elle nomme change d'une
+    // adresse à l'autre.
+    expect(reponse.headers.get('cache-control')).toBe('no-store')
+  })
+})

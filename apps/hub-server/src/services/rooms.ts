@@ -267,6 +267,7 @@ export class RoomService {
               : (state?.connectivity ?? 'OFFLINE'),
           lastSeenAt: state?.lastSeenAt ?? null,
           sceneRole: state?.sceneRole ?? null,
+          displayMode: state?.displayMode ?? null,
           currentSessionId: state?.currentSessionId ?? null,
           recording: state?.recording ?? false,
           streaming: state?.streaming ?? false,

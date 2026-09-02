@@ -41,7 +41,31 @@ export interface VodIndexDeps {
   /** Racine des enregistrements. Sans elle, il n'y a rien à lister. */
   root: string
   fs: VodFs
+  /**
+   * L'horloge de la salle, corrigée sur celle du hub.
+   *
+   * Elle date les verdicts, et c'est ce qu'on veut : « relu il y a trois
+   * minutes » se lit à côté d'un chronomètre et d'un programme qui sont sur
+   * cette heure-là. Elle ne sert **qu'à ça**.
+   */
   now: () => number
+  /**
+   * L'heure réelle du poste, la seule qui vaille face au disque.
+   *
+   * Les `mtime` viennent du système de fichiers : ils sont sur l'heure de la
+   * machine, pas sur celle du hub. Les comparer à l'horloge corrigée revenait à
+   * soustraire deux heures qui ne mesurent pas la même chose — sans conséquence
+   * le jour J, où l'écart se compte en millisecondes, mais dévastateur en
+   * développement, où le hub déroule une journée d'octobre depuis un poste qui
+   * est en septembre. L'écart valait alors des semaines, la fenêtre d'écriture
+   * n'était jamais atteinte, et **une prise en cours s'affichait en régie comme
+   * un rush terminé, prêt à partir**, avec un verdict rendu sur un fichier
+   * qu'OBS était encore en train d'écrire.
+   *
+   * `Date.now` par défaut : c'est la bonne réponse partout sauf en test.
+   */
+  maintenantReel?: () => number
+
   /**
    * Lecture technique du conteneur. `null` = pas d'outil disponible, le
    * contrôle se rabat alors sur ce que le disque et le sidecar racontent.
@@ -90,9 +114,9 @@ export async function listerEnregistrements(deps: VodIndexDeps): Promise<EntreeV
         file: cle,
         sizeBytes: stat.size,
         modifiedAtMs: stat.mtimeMs,
-        enEcriture: deps.now() - stat.mtimeMs < FENETRE_ECRITURE_MS,
+        enEcriture: enEcriture(deps, stat),
         sidecar: await lireSidecar(deps, chemin),
-        check: controles[cle] ?? null,
+        check: verdictEncoreValable(controles[cle], stat),
       })
     }
   }
@@ -130,15 +154,37 @@ export async function inspecterEnregistrement(
     return controle
   }
 
+  /**
+   * Une prise en cours ne se juge pas, et on s'arrête là.
+   *
+   * Le contrôle continuait, et ce qu'il rendait était vrai mais trompeur : le
+   * sidecar n'est écrit qu'à l'arrêt, donc « sidecar absent » est certain ; le
+   * débit se calcule sur un fichier à moitié écrit, donc « image probablement
+   * inexploitable » aussi. Trois motifs pour une seule cause, dont le premier
+   * — le seul qui explique les deux autres — se lisait au milieu des autres.
+   *
+   * Ni sonde, non plus : ouvrir avec ffprobe le conteneur dans lequel OBS
+   * écrit coûte des entrées-sorties sur le disque du master, en pleine
+   * captation, pour une lecture qui sera fausse de toute façon.
+   */
+  if (enEcriture(deps, stat)) {
+    const controle: ControleVod = {
+      status: 'suspect',
+      at,
+      by: 'auto',
+      reasons: ['prise en cours : à contrôler une fois l’enregistrement arrêté'],
+      probe: null,
+      fichier: { sizeBytes: stat.size, modifiedAtMs: stat.mtimeMs },
+    }
+    await retenir(deps, racine, file, controle)
+    return controle
+  }
+
   const raisons: string[] = []
   let statut: VerdictVod = 'ok'
   const abaisser = (vers: VerdictVod, raison: string): void => {
     raisons.push(raison)
     if (vers === 'illisible' || statut === 'ok') statut = vers
-  }
-
-  if (deps.now() - stat.mtimeMs < FENETRE_ECRITURE_MS) {
-    abaisser('suspect', 'fichier encore en écriture : à recontrôler une fois la prise arrêtée')
   }
 
   const sidecar = await lireSidecar(deps, chemin)
@@ -196,6 +242,7 @@ export async function inspecterEnregistrement(
     by: 'auto',
     reasons: raisons,
     probe: probe == null ? null : { ...probe, bitrateKbps: probe.bitrateKbps ?? debit },
+    fichier: { sizeBytes: stat.size, modifiedAtMs: stat.mtimeMs },
   }
   await retenir(deps, racine, file, controle)
   return controle
@@ -214,13 +261,14 @@ export async function poserVerdict(
   status: VerdictVod | null,
 ): Promise<ControleVod | null> {
   const racine = resolve(deps.root)
-  cheminSur(racine, file)
+  const chemin = cheminSur(racine, file)
   if (status == null) {
     await retenir(deps, racine, file, null)
     return null
   }
 
   const precedent = (await lireControles(deps, racine))[file] ?? null
+  const stat = await deps.fs.stat(chemin)
   const controle: ControleVod = {
     status,
     at: new Date(deps.now()).toISOString(),
@@ -229,6 +277,9 @@ export async function poserVerdict(
     // Ce que la sonde avait lu reste affiché : le verdict humain le complète,
     // il ne l'efface pas.
     probe: precedent?.probe ?? null,
+    // Estampillé comme le verdict automatique : « relu en régie » ne doit pas
+    // survivre à la prise qui a été relue.
+    fichier: stat == null ? undefined : { sizeBytes: stat.size, modifiedAtMs: stat.mtimeMs },
   }
   await retenir(deps, racine, file, controle)
   return controle
@@ -271,6 +322,48 @@ async function lireControles(
   } catch {
     return {}
   }
+}
+
+/**
+ * OBS écrit-il encore dedans ?
+ *
+ * Sur la date de modification, et sur l'heure **du poste** : elles viennent
+ * toutes deux du même système de fichiers. Reconnaître au passage la prise en
+ * cours à son nom a été essayé et retiré — le format dicté à OBS ne dépend que
+ * de la conférence, si bien qu'une seconde prise du même talk porte le nom de
+ * la première, et la première, terminée, se retrouvait marquée en écriture.
+ */
+function enEcriture(deps: VodIndexDeps, stat: { mtimeMs: number }): boolean {
+  const maintenant = (deps.maintenantReel ?? Date.now)()
+  return maintenant - stat.mtimeMs < FENETRE_ECRITURE_MS
+}
+
+/**
+ * Le verdict décrit-il encore le fichier qui est là ?
+ *
+ * Le nom d'un master se réutilise : le format demandé à OBS est déterminant —
+ * date, salle, heure, titre — donc rejouer la même conférence réécrit au même
+ * endroit. Le verdict de la prise précédente s'affichait alors sur la nouvelle,
+ * avec la lecture ffprobe de l'ancienne : « sidecar absent » sur un rush qui,
+ * lui, avait le sien, et une durée qui n'était pas la sienne.
+ *
+ * Taille et date de modification suffisent à trancher — et c'est volontairement
+ * strict : un fichier réécrit à l'octet près et à la seconde près n'existe pas
+ * ici, alors qu'un verdict qui survit à sa prise, si.
+ *
+ * Sans empreinte — verdict écrit avant que ce champ existe — on ne peut rien
+ * affirmer : la ligne repasse « non vérifié » plutôt que d'afficher un jugement
+ * dont on ignore sur quoi il portait.
+ */
+function verdictEncoreValable(
+  controle: ControleVod | undefined,
+  stat: { size: number; mtimeMs: number },
+): ControleVod | null {
+  if (controle == null) return null
+  const empreinte = controle.fichier
+  if (empreinte == null) return null
+  if (empreinte.sizeBytes !== stat.size || empreinte.modifiedAtMs !== stat.mtimeMs) return null
+  return controle
 }
 
 async function lireSidecar(deps: VodIndexDeps, cheminVideo: string): Promise<Sidecar | null> {

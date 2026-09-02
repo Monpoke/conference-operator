@@ -1,6 +1,8 @@
 import { MACHINE_JS } from '@cloudnord/etat-salle'
 import { TAILWIND_CSS } from '@cloudnord/ui'
 
+import { OBS_ANTENNE_CSS, OBS_ANTENNE_JS } from './obs-browser.js'
+
 /**
  * Page projetée en salle.
  *
@@ -8,6 +10,12 @@ import { TAILWIND_CSS } from '@cloudnord/ui'
  * d'OBS-A (ou une fenêtre Electron de secours), doit tenir sans étape de build,
  * sans réseau, et rester lisible à dix mètres. D'où du HTML autonome, un
  * `EventSource` qui se reconnecte tout seul, et aucune dépendance externe.
+ *
+ * **Une exception, et une seule** : le bouton de X sur la slide Réseaux, dont
+ * le script est servi par X. Il est chargé en `async`, en dernier, et rien
+ * n'en dépend — la slide porte le hashtag en grand, qui reste lisible quand le
+ * script ne charge pas. La règle « sans réseau » n'est donc pas levée : elle
+ * couvre toujours tout ce qui se lit.
  *
  * **Tout est dimensionné en `vmin`**, y compris via Tailwind. L'écran passe
  * d'un vidéoprojecteur 1024×768 à un 4K selon les salles : des tailles en `rem`
@@ -104,23 +112,37 @@ export function renderProjectorPage(options: ProjectorPageOptions = {}): string 
   }
 
   /*
-   * Couches empilées : le fondu enchaîné.
+   * Couches empilées : la page suivante pousse la précédente.
    *
-   * La page sortante est regreffée par-dessus la nouvelle le temps de
-   * s'effacer. Les deux sont donc à la même place, d'où le positionnement
-   * absolu — et seules opacity et transform sont animées, les deux propriétés
-   * que le compositeur sait traiter sans repasser par la mise en page. C'est
-   * ce qui tient dans une Browser Source OBS en 4K.
+   * La sortante part vers la gauche pendant que l'entrante arrive par la
+   * droite, a la meme vitesse et sur la meme courbe. A tout instant elles sont
+   * exactement adjacentes : rien ne se recouvre, jamais. Les deux occupent la
+   * meme case, d'ou le positionnement absolu, et le cadre les clippe.
+   *
+   * C'est un remplacement du fondu enchaine qui etait la avant, et qui laissait
+   * lire les deux slides en meme temps : ses deux courbes montaient dans le
+   * meme sens au pire moment — une entree en ease-out raide (67 % en un
+   * cinquieme de sa duree) pendant que la sortie en ease-in s'attardait encore
+   * a 87 %. Au pic, les deux pages etaient visibles a plus de 80 % chacune.
+   * Mesure a 0,838 en calcul, 0,836 en relevé ; voir spikes/anim-slides.
+   *
+   * Meme duree ET meme courbe pour les deux : un ecart ouvre un vide entre les
+   * couches, ou les fait se chevaucher.
+   *
+   * Seul transform est anime, la propriete que le compositeur traite sans
+   * repasser par la mise en page — et une translation lui coute moins cher que
+   * la recomposition de deux couches translucides. C'est ce qui tient dans une
+   * Browser Source OBS en 4K.
    */
-  .calque { animation: entree .55s cubic-bezier(.22, 1, .36, 1) both; }
-  .calque.sortante { animation: sortie .5s ease-in both; pointer-events: none; }
+  .calque { animation: entree .55s cubic-bezier(.4, 0, .2, 1) both; }
+  .calque.sortante { animation: sortie .55s cubic-bezier(.4, 0, .2, 1) both; pointer-events: none; }
   @keyframes entree {
-    from { opacity: 0; transform: translateY(2.5vmin) scale(.985); }
-    to { opacity: 1; transform: none; }
+    from { transform: translateX(100%); }
+    to { transform: none; }
   }
   @keyframes sortie {
-    from { opacity: 1; transform: none; }
-    to { opacity: 0; transform: translateY(-1.5vmin) scale(1.015); }
+    from { transform: none; }
+    to { transform: translateX(-100%); }
   }
 
   /*
@@ -131,13 +153,54 @@ export function renderProjectorPage(options: ProjectorPageOptions = {}): string 
    * chose qu'on est en train de vous montrer. Le pas se règle par élément
    * parent : vingt-sept créneaux de programme ont besoin d'un pas plus court
    * que quatre cartes.
+   *
+   * Le decalage est lateral, et non vertical comme il l'etait : la page entiere
+   * arrive maintenant par la droite, et des lignes qui monteraient pendant que
+   * leur cadre glisse feraient deux gestes au lieu d'un. Elles trainent donc
+   * derriere la poussee et se posent apres elle.
    */
   .cascade > * {
-    animation: monter .5s cubic-bezier(.22, 1, .36, 1) both;
+    animation: poser .5s cubic-bezier(.22, 1, .36, 1) both;
     animation-delay: calc(var(--pas, 55ms) * var(--i, 0));
   }
-  @keyframes monter {
-    from { opacity: 0; transform: translateY(2.5vmin); }
+  @keyframes poser {
+    from { opacity: 0; transform: translateX(3vmin); }
+    to { opacity: 1; transform: none; }
+  }
+
+  /*
+   * Cartes : elles se posent au lieu de glisser.
+   *
+   * Une carte encadree qui arrive en glissant se lit comme une ligne de liste ;
+   * la meme avec un soupcon d'echelle se lit comme un objet qui se pose.
+   *
+   * Reserve aux listes de cartes, et c'est tout l'interet d'un modificateur a
+   * poser a la main : sur vingt-sept lignes de programme, vingt-sept changements
+   * d'echelle feraient du bruit, pas un effet.
+   */
+  .cascade.cartes > * {
+    animation-name: poser-carte;
+  }
+  @keyframes poser-carte {
+    from { opacity: 0; transform: translateX(2vmin) scale(.965); }
+    to { opacity: 1; transform: none; }
+  }
+
+  /*
+   * Le creneau en cours se pose en dernier, et d'un peu plus loin.
+   *
+   * Rien de clignotant ni de repetitif : il vient de la meme direction que ses
+   * voisins, un peu plus lentement et d'un peu plus loin. L'oeil suit le dernier
+   * mouvement, et le dernier mouvement est celui qui dit ou on en est de la
+   * journee. La mise en avant permanente — fond teinte, barre d'accroche — reste
+   * ce qu'elle etait ; ceci ne joue qu'a l'arrivee de la page.
+   */
+  .cascade > .en-cours {
+    animation-name: poser-en-cours;
+    animation-duration: .72s;
+  }
+  @keyframes poser-en-cours {
+    from { opacity: 0; transform: translateX(6vmin); }
     to { opacity: 1; transform: none; }
   }
 
@@ -229,6 +292,8 @@ export function renderProjectorPage(options: ProjectorPageOptions = {}): string 
    * Ne concerne pas le vidéoprojecteur, mais bien les machines d'où l'on
    * relit ces pages.
    */
+  ${OBS_ANTENNE_CSS}
+
   @media (prefers-reduced-motion: reduce) {
     *, *::after {
       animation-duration: .01ms !important;
@@ -259,8 +324,13 @@ ${etatInitial}
     </div>
   </header>
 
-  <!-- Pile de couches : la page sortante y reste le temps de s'effacer. -->
-  <main id="contenu" class="relative flex min-h-0 flex-1 flex-col"></main>
+  <!--
+    Pile de couches : la page sortante y reste le temps de sortir du cadre.
+
+    overflow-hidden n'est pas decoratif : sans lui, la couche qui glisse
+    deborde sur l'en-tete et le pied de page au lieu d'etre coupee au bord.
+  -->
+  <main id="contenu" class="relative flex min-h-0 flex-1 flex-col overflow-hidden"></main>
 
   <footer class="flex flex-none items-center justify-between gap-[2vmin] border-t border-white/10 pt-[2vmin] text-[2.2vmin] text-attenue">
     <div id="prochain"></div>
@@ -282,11 +352,17 @@ ${etatInitial}
 -->
 <script>${MACHINE_JS}</script>
 
+<!--
+  L'état de la scène OBS, avant tout le reste : la page doit savoir si elle est
+  à l'antenne dès sa première image, pas après le premier changement de scène.
+-->
+<script>${OBS_ANTENNE_JS}</script>
+
 <script>
 (() => {
   const contenu = document.getElementById('contenu')
   let dernier = null
-  // Ce qui est actuellement à l'écran : sert à décider d'un fondu enchaîné.
+  // Ce qui est actuellement à l'écran : sert à décider d'une transition.
   let modeAffiche = null
   let rangAffiche = -1
 
@@ -487,7 +563,7 @@ ${etatInitial}
       '<section class="palier-tete rounded-[2vmin] border px-[4vmin] py-[3vmin]">' +
       '<div class="intitule mb-[2.2vmin] text-center text-[2.4vmin] tracking-[.2em] uppercase">' +
       echapper(tete.name) + '</div>' +
-      '<div class="cascade flex flex-wrap items-center justify-center gap-[3vmin]" style="--pas:70ms">' +
+      '<div class="cascade cartes flex flex-wrap items-center justify-center gap-[3vmin]" style="--pas:70ms">' +
       tete.sponsors.map((s, rang) =>
         pastille(s, dense ? 'h-[10vmin]' : 'h-[13vmin]', 'max-w-[24vw]', rang)).join('') +
       '</div></section>'
@@ -523,7 +599,7 @@ ${etatInitial}
       '<section class="mt-[3.5vmin]">' +
       '<div class="mb-[2vmin] text-[2.4vmin] tracking-[.2em] text-attenue uppercase">' +
       (surTousLesFronts ? 'Et sur tous les fronts' : 'Et aussi') + '</div>' +
-      '<div class="cascade flex flex-wrap items-stretch justify-center gap-[2.5vmin]" style="--pas:70ms">' +
+      '<div class="cascade cartes flex flex-wrap items-stretch justify-center gap-[2.5vmin]" style="--pas:70ms">' +
       rangee + '</div></section>'
   }
 
@@ -563,7 +639,7 @@ ${etatInitial}
         const fin = EtatSalle.finEffectiveA(donnees.sessions, rang)
         // Une seule mise en avant possible : en cours, sinon passée, sinon à venir.
         const etat = session.id === encours
-          ? "bg-[color-mix(in_srgb,var(--couleur)_26%,transparent)] shadow-[inset_.5vmin_0_0_var(--couleur)]"
+          ? "en-cours bg-[color-mix(in_srgb,var(--couleur)_26%,transparent)] shadow-[inset_.5vmin_0_0_var(--couleur)]"
           : fin != null && fin < maintenant ? "opacity-35" : ""
         const pause = session.kind === 'break' ? "opacity-55" : ""
         const heureTeinte = session.id === encours ? "text-texte" : "text-attenue"
@@ -729,7 +805,7 @@ ${etatInitial}
     if (salles.length === 0) return '<div class="' + TITRE_MODE + '">Pendant ce temps…</div>'
 
     return '<div class="' + TITRE_MODE + '">Pendant ce temps, à côté</div>' +
-      '<div class="cascade grid gap-[2.5vmin] ' +
+      '<div class="cascade cartes grid gap-[2.5vmin] ' +
       (salles.length > 2 ? 'grid-cols-2' : 'grid-cols-1') + '">' +
       salles.map((salle, rang) => \`<article style="--i:\${rang}" class="rounded-[1.6vmin] border border-white/10 bg-white/5 px-[3vmin] py-[2.4vmin]">
         <div class="flex items-baseline justify-between gap-[2vmin]">
@@ -745,23 +821,40 @@ ${etatInitial}
   }
 
   /**
-   * Les comptes de l'événement.
+   * Les comptes de l'événement, et le hashtag.
    *
    * Réglés sur le hub et descendus au sync : l'export amont ne porte que les
    * réseaux des speakers. Le handle est écrit en grand parce que c'est ce qu'on
    * retape sur son téléphone depuis le fond de la salle — l'URL, elle, ne se
    * recopie pas.
+   *
+   * **La carte du hashtag est écrite en dur**, contrairement aux comptes : elle
+   * porte le bouton officiel de X, dont le script vit chez
+   * \`platform.x.com\` (voir la note en bas de page). Le hashtag en grand est ce
+   * qui reste quand ce script ne charge pas — c'est-à-dire hors ligne, c'est-à-
+   * dire tous les cas pour lesquels cette page est bâtie. Le bouton se pose
+   * dessus quand il peut ; il ne porte jamais la lisibilité de la slide.
    */
   function rendreReseaux(donnees) {
     const liens = donnees.socialLinks ?? []
     const nom = nomCourt(donnees)
-    if (liens.length === 0) return '<div class="' + TITRE_MODE + '">' + echapper(nom) + '</div>'
-    return '<div class="' + TITRE_MODE + '">Suivez ' + echapper(nom) + '</div>' +
-      '<div class="cascade flex flex-wrap items-stretch justify-center gap-[3vmin]">' +
-      liens.map((lien, rang) => \`<article style="--i:\${rang}" class="rounded-[1.6vmin] border border-white/10 bg-white/5 px-[4vmin] py-[3vmin] text-center">
+    const cartes = liens.map((lien, rang) => \`<article style="--i:\${rang}" class="rounded-[1.6vmin] border border-white/10 bg-white/5 px-[4vmin] py-[3vmin] text-center">
         <div class="text-[2.4vmin] tracking-[.16em] text-attenue uppercase">\${echapper(lien.network)}</div>
         <div class="mt-[1.2vmin] text-[4.2vmin] leading-none font-bold">\${echapper(lien.handle)}</div>
-      </article>\`).join('') + '</div>'
+      </article>\`).join('')
+
+    const hashtag = \`<article style="--i:\${liens.length}" class="rounded-[1.6vmin] border border-white/10 bg-white/5 px-[4vmin] py-[3vmin] text-center">
+        <div class="text-[2.4vmin] tracking-[.16em] text-attenue uppercase">X</div>
+        <div class="mt-[1.2vmin] text-[4.2vmin] leading-none font-bold">#CloudNord</div>
+        <div class="mt-[1.8vmin] flex min-h-[3.6vmin] items-center justify-center">
+          <a href="https://x.com/intent/tweet?button_hashtag=CloudNord&amp;ref_src=twsrc%5Etfw" class="twitter-hashtag-button" data-related="@Cloud_Nord" data-dnt="true" data-show-count="false">Post #CloudNord</a>
+        </div>
+      </article>\`
+
+    const titre = liens.length === 0 ? echapper(nom) : 'Suivez ' + echapper(nom)
+    return '<div class="' + TITRE_MODE + '">' + titre + '</div>' +
+      '<div class="cascade cartes flex flex-wrap items-stretch justify-center gap-[3vmin]">' +
+      cartes + hashtag + '</div>'
   }
 
   /**
@@ -789,14 +882,14 @@ ${etatInitial}
    * contenu — le dernier talk des autres salles se termine — ou en gagnait un
    * au sync, la liste filtrée changeait de longueur et le même indice désignait
    * soudain une autre page. L'écran changeait alors en plein milieu, en gardant
-   * l'échéance de la page précédente, et sans fondu puisque l'indice, lui,
-   * n'avait pas bougé. Un rang qui désigne toujours la même page ne peut pas
+   * l'échéance de la page précédente, et sans transition puisque l'indice,
+   * lui, n'avait pas bougé. Un rang qui désigne toujours la même page ne peut pas
    * glisser sous nos pieds.
    */
   let boucleRang = 0
   let boucleJusqua = 0
-  // Rang et durée réellement affichés : c'est sur eux que se décide un fondu
-  // enchaîné, et sur eux que se calent la jauge et le défilement du programme.
+  // Rang et durée réellement affichés : c'est sur eux que se décide une
+  // transition, et sur eux que se calent la jauge et le défilement du programme.
   let boucleRangAffiche = 0
   let boucleDuree = 0
 
@@ -842,7 +935,7 @@ ${etatInitial}
      * La durée est écrite ici parce qu'elle ne bouge pas de toute la page ; le
      * temps déjà écoulé, lui, est posé après coup depuis le script — l'inscrire
      * dans le html le ferait changer à chaque seconde, et le moindre état reçu
-     * relancerait un fondu enchaîné en plein milieu.
+     * relancerait une transition en plein milieu.
      */
     const position = pages.indexOf(page)
     const points = pages.map((_, index) => index === position
@@ -872,12 +965,16 @@ ${etatInitial}
   }
 
   /**
-   * Écrit une page, en croisant l'ancienne avec la nouvelle si demandé.
+   * Écrit une page, en poussant l'ancienne hors du cadre si demandé.
    *
    * innerHTML détruit tout ce qui était là : la couche sortante est donc mise
-   * de côté avant, puis regreffée par-dessus la nouvelle le temps de son
-   * animation de sortie. Elle s'enlève sur animationend, et de toute façon à
-   * la réécriture suivante — il ne peut jamais y en avoir deux.
+   * de côté avant, puis regreffée le temps de son animation de sortie. Elle
+   * s'enlève sur animationend, et de toute façon à la réécriture suivante — il
+   * ne peut jamais y en avoir deux.
+   *
+   * Regreffée en tête, donc peinte *sous* la nouvelle. Sans importance depuis
+   * le passage au latéral, où les deux couches sont adjacentes et ne se
+   * recouvrent jamais ; ça comptait du temps du fondu.
    */
   function ecrire(html, croiser) {
     if (html === contenu.__html) return
@@ -1012,7 +1109,7 @@ ${etatInitial}
       : '<div class="calque absolute inset-0 flex flex-col justify-center overflow-hidden">' + corps + '</div>'
 
     /**
-     * Le fondu enchaîné, seulement là où il veut dire quelque chose.
+     * La transition, seulement là où elle veut dire quelque chose.
      *
      * On croise à un vrai changement de page — un autre mode, ou la page
      * suivante de la boucle. Pas sur un message de plus au mur ni sur une
@@ -1043,6 +1140,20 @@ ${etatInitial}
      * Toujours sur la couche vivante, jamais sur celle qui s'efface.
      */
     const vivante = contenu.querySelector('.calque:not(.sortante)')
+    /**
+     * Le bouton de X, à chaque fois que la slide Réseaux revient.
+     *
+     * \`widgets.js\` remplace l'ancre par une iframe **au chargement du script**,
+     * une fois. Or la couche est réécrite entièrement à chaque retour de la
+     * boucle : sans ce rappel, le bouton n'apparaîtrait qu'au tout premier
+     * passage et la slide retomberait ensuite sur son lien nu.
+     *
+     * Optionnel de bout en bout : \`twttr\` n'existe pas si le script n'a pas pu
+     * être chargé, ce qui est le cas normal d'une salle hors ligne.
+     */
+    if (vivante?.querySelector('.twitter-hashtag-button')) {
+      try { window.twttr?.widgets?.load(vivante) } catch { /* le hashtag reste lisible */ }
+    }
     // Le document entier, et non la seule couche : le logo de l'événement vit
     // dans l'en-tête. Le résultat étant gardé par URL, le balayage ne coûte
     // rien de plus.
@@ -1103,6 +1214,20 @@ ${etatInitial}
   }
 })()
 </script>
+
+<!--
+  La seule dépendance externe de cette page, et elle est facultative.
+
+  Le reste du fichier tient sans réseau, par construction — c'est la raison
+  d'être de l'état embarqué et des assets mis en cache. Ce script-ci ne peut
+  pas : le bouton officiel de X est servi par X. Il est donc chargé en
+  \`async\`, en dernier, et **rien n'en dépend** : sans lui la slide Réseaux
+  affiche le hashtag en grand, ce qui est de toute façon ce qui se retape
+  depuis le fond de la salle. Une salle coupée d'Internet perd un bouton sur
+  lequel personne ne peut cliquer — un écran projeté n'a pas de souris — et
+  garde tout ce qui se lit.
+-->
+<script async src="https://platform.x.com/widgets.js" charset="utf-8"></script>
 </body>
 </html>`
 }

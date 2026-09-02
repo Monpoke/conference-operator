@@ -611,3 +611,87 @@ describe('cible des commandes et cycle de vie', () => {
     expect(runtime.state().targetSession?.id).toBe(terminee.id)
   })
 })
+
+/**
+ * Les gestes venus d'une régie mobile.
+ *
+ * Ils empruntent le flux descendant comme le reste, donc les deux filtres qui le
+ * gouvernent : l'expiration d'abord, le rejeu ensuite. Ce qui compte ici est
+ * qu'ils s'y plient — un « enregistre » rattrapé une demi-heure plus tard, ou
+ * appliqué deux fois à la reconnexion, coûterait une prise.
+ */
+describe('commandes de régie mobile', () => {
+  it('lance et arrête la captation, en nommant qui l’a demandé', async () => {
+    const captations: boolean[] = []
+    const runtime = makeRuntime({ setRecording: (on: boolean) => captations.push(on) })
+
+    await runtime.applyCommand(
+      command({ type: 'recording.set', on: true, requestedBy: 'regie@cloudnord.fr' }, 90),
+    )
+    await runtime.applyCommand(
+      command({ type: 'recording.set', on: false, requestedBy: 'regie@cloudnord.fr' }, 90),
+    )
+
+    expect(captations).toEqual([true, false])
+    /*
+     * Signalé en régie, et pas seulement au journal.
+     *
+     * Un enregistrement qui démarre sans que personne n'ait touché au clavier de
+     * la salle se lit comme une panne d'OBS. Nommer qui l'a demandé évite qu'on
+     * aille chercher le défaut là où il n'y en a pas.
+     */
+    const dernier = runtime.state().notifications.at(-1)
+    expect(dernier?.text).toContain('regie@cloudnord.fr')
+    expect(dernier?.text).toContain('Enregistrement arrêté')
+  })
+
+  it('bascule la diffusion de la même façon', async () => {
+    const diffusions: boolean[] = []
+    const runtime = makeRuntime({ setStreaming: (on: boolean) => diffusions.push(on) })
+
+    await runtime.applyCommand(
+      command({ type: 'stream.set', on: true, requestedBy: 'regie@cloudnord.fr' }, 90),
+    )
+    expect(diffusions).toEqual([true])
+  })
+
+  it('écarte une captation rattrapée trop tard, mais la marque quand même', async () => {
+    const captations: boolean[] = []
+    const runtime = makeRuntime({ setRecording: (on: boolean) => captations.push(on) })
+
+    // Émise il y a plus longtemps que sa durée de validité : une salle coupée
+    // dix minutes ne doit pas se mettre à enregistrer toute seule au retour.
+    clockMs = Date.parse(ISSUED_AT) + 91_000
+    const outcome = await runtime.applyCommand(
+      command({ type: 'recording.set', on: true, requestedBy: 'regie@cloudnord.fr' }, 90),
+    )
+
+    expect(outcome).toEqual({ applied: false, reason: 'expired' })
+    expect(captations).toEqual([])
+  })
+
+  it('ne rejoue pas une commande déjà appliquée', async () => {
+    const captations: boolean[] = []
+    const runtime = makeRuntime({ setRecording: (on: boolean) => captations.push(on) })
+    const rejouee = command({ type: 'recording.set', on: true, requestedBy: null }, 90)
+
+    await runtime.applyCommand(rejouee)
+    // Le rattrapage d'une reconnexion peut relivrer ce qui est déjà appliqué.
+    const seconde = await runtime.applyCommand(rejouee)
+
+    expect(seconde).toEqual({ applied: false, reason: 'already-applied' })
+    expect(captations).toEqual([true])
+  })
+
+  it('affiche qui pilote la salle à distance, sans rien verrouiller', async () => {
+    const runtime = makeRuntime()
+
+    await runtime.applyCommand(command({ type: 'regie.hold', holder: 'regie@cloudnord.fr' }))
+    expect(runtime.state().remoteHolder).toBe('regie@cloudnord.fr')
+
+    // Rendu : le badge s'éteint. C'est ce que publie le balayage du hub quand
+    // un verrou expire, faute de quoi l'écran garderait un porteur parti.
+    await runtime.applyCommand(command({ type: 'regie.hold', holder: null }))
+    expect(runtime.state().remoteHolder).toBeNull()
+  })
+})

@@ -15,6 +15,15 @@ const props = defineProps<{
   /** Salle relayée, `null` si le relais n'est pas configuré pour cette salle. */
   relaySourceRoomId: string | null
   obs: ObsState | null
+  /**
+   * Les rôles réellement mappés, quand l'appelant les connaît.
+   *
+   * À distance, le hub les sert : la salle n'est pas sous la main, et sa
+   * configuration non plus. En local le panneau garde sa règle — le relais
+   * apparaît dès qu'une source est configurée —, parce que c'est la même
+   * machine qui la porte.
+   */
+  roles?: string[]
 }>()
 
 /*
@@ -22,11 +31,16 @@ const props = defineProps<{
  * « Relais → track-2 » plutôt qu'un bouton dont personne ne sait ce qu'il
  * montre.
  */
-const commands = computed<Command[]>(() =>
-  props.relaySourceRoomId == null
-    ? BASE
-    : [...BASE, { value: 'RELAY', label: `Relais → ${props.relaySourceRoomId}` }],
-)
+const commands = computed<Command[]>(() => {
+  const relais: Command[] =
+    props.relaySourceRoomId == null
+      ? []
+      : [{ value: 'RELAY', label: `Relais → ${props.relaySourceRoomId}` }]
+  const toutes = [...BASE, ...relais]
+  // Une liste fournie **filtre**, elle ne remplace pas : elle dit ce que la
+  // salle sait faire, pas comment on le nomme ni dans quel ordre on l'offre.
+  return props.roles == null ? toutes : toutes.filter((c) => props.roles!.includes(c.value))
+})
 </script>
 
 <template>

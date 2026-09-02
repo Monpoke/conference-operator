@@ -30,6 +30,7 @@ contribuer : [CONTRIBUTING.md](CONTRIBUTING.md).
 | 4 | Social : mur, Q&A, modération, console hub | ✅ |
 | 5 | Exploitation : packaging, supervision, runbook | ✅ (répétition à faire) |
 | 6 | Console du hub en Vue 3 — huit vues, socle partagé | ✅ |
+| 7 | Régie mobile — piloter une salle depuis un téléphone, par le hub | ✅ (répétition à faire) |
 
 ## Structure
 
@@ -42,18 +43,20 @@ packages/format     formateurs partagés : durées, instants, tailles, échappem
 packages/hub-client client oRPC typé, côté navigateur : jeton, session expirée
 packages/components composants Vue : primitives Reka retravaillées + design system
 apps/hub-server     Fastify + oRPC + SQLite + Better Auth : programme, salles, commandes, appairage
-                    sert /mur (gabarit) et la coquille de la console
+                    sert /mur (gabarit), la coquille de la console et celle de la régie mobile
 apps/hub-admin      console d'exploitation — Vue 3 + Vite, servie par le hub
+apps/regie-web      écran de régie — Vue 3 + Vite, servi par la salle et, en mobile, par le hub
 apps/room-client    Electron — écran de salle, pilotage OBS, appairage, cache local
 spikes/orpc-v2      spike jetable de validation des adapters — voir FINDINGS.md
 spikes/vue-tsc      pourquoi les paquets front épinglent TypeScript 6 — voir FINDINGS.md
+spikes/anim-slides  Motion et GSAP face aux keyframes de l'écran de salle — voir FINDINGS.md
 ```
 
 ## Démarrer
 
 ```bash
 corepack enable && pnpm install
-pnpm test            # 1227 tests
+pnpm test            # 1471 tests
 pnpm typecheck
 ```
 
@@ -141,6 +144,12 @@ cd apps/room-client
 HUB_ORIGIN=http://localhost:8787 HEURE_SIMULEE=2026-10-30T10:20:00Z pnpm dev:headless
 ```
 
+`dev:headless` est un script de `apps/room-client`, pas de la racine — depuis la
+racine, `pnpm --filter @cloudnord/room-client dev:headless` fait la même chose.
+Il ne lance **que la salle** : le hub, les deux Vite et une seconde salle sont
+l'affaire de `pnpm dev:duo` / `dev:trio`, ci-dessous, qui les montent tous
+headless d'un seul terminal.
+
 Les pages s'ouvrent dans un navigateur : `/regie`, `/display/projector`,
 `/display/overlay` sur le port affiché. Toute la logique du client vit hors
 Electron, c'est ce qui rend ce mode possible.
@@ -199,7 +208,7 @@ Une variable posée sur la ligne de commande l'emporte sur le `.env` : garder
 `MODE=production` dans `apps/hub-server/.env` n'empêche pas `MODE=dev pnpm …`
 de fonctionner.
 
-**Le hub et les salles d'un seul terminal**, sans Electron :
+**Le hub et les salles d'un seul terminal** :
 
 ```bash
 pnpm dev:duo    # hub + une salle   (7788)
@@ -212,9 +221,47 @@ la console, la modération : ces bugs-là ne se voient pas à une salle.
 
 Chaque salle a son `DATA_DIR`, donc sa propre identité machine, et son
 `ROOM_ID`, ce qui évite l'écran de choix de salle : elles affichent directement
-leur code d'appairage. `HUB_ORIGIN`, `SALLE_1`, `SALLE_2`, `PORT_1` et `PORT_2`
-restent réglables. Ctrl-C arrête tout le monde, en laissant au hub le temps de
-refermer sa base (voir « Arrêt du hub »).
+leur code d'appairage. `HUB_ORIGIN`, `SALLE_1`, `SALLE_2`, `PORT_1`, `PORT_2`,
+`OBS_REEL` et `SIMULATED_TIME` restent réglables — elles descendent aux
+processus par l'environnement. Ctrl-C arrête tout le monde, en laissant au hub
+le temps de refermer sa base (voir « Arrêt du hub »).
+
+```bash
+OBS_REEL=1 SIMULATED_TIME=2026-10-30T10:20:00Z pnpm dev:duo
+```
+
+`SIMULATED_TIME` va au **hub** et non aux salles, qui s'alignent sur son heure :
+c'est `HEURE_SIMULEE` qu'il ne faut pas poser en même temps, sous peine de faire
+diverger deux horloges que tout le reste compare. Et la variable posée devant la
+commande l'emporte sur celle du `.env` du hub — `node --env-file-if-exists` ne
+recouvre jamais ce qui est déjà dans l'environnement.
+
+**Avec le vrai client Electron**, `--electron` remplace la première salle :
+
+```bash
+pnpm dev:duo --electron    # hub + une salle Electron
+pnpm dev:trio --electron   # hub + une salle Electron + une salle headless
+```
+
+C'est ce qu'il faut pour tout ce que `dev:headless` ne peut pas rendre : les
+fenêtres, le menu « Écrans » qui place la projection en plein écran sur la
+sortie vidéoprojecteur, le sélecteur de dossier des VOD, le coffre du jeton.
+Deux différences à connaître, parce qu'elles viennent du processus principal et
+non du script : Electron **ignore `DATA_DIR`** — il range ses données dans le
+dossier du système, celui que `pnpm raz:dev` sait nettoyer — et **ignore
+`DISPLAY_PORT`**, son serveur d'écrans étant figé sur 7788. Une seule salle
+Electron à la fois, donc. Sous WSL, il faut WSLg ou un serveur X.
+
+**Avec de vraies instances OBS** — `OBS_REEL=1`, dans les deux formes :
+
+```bash
+OBS_REEL=1 pnpm dev:duo --electron
+```
+
+Sans elle, `MODE=dev` simule OBS, ce qui est le cas courant. Avec deux salles,
+leur donner des ports OBS distincts dans les Réglages de la console : elles sont
+provisionnées avec les mêmes adresses par défaut (`ws://127.0.0.1:4455` et
+`:4456`) et piloteraient sinon les deux mêmes instances en se croyant seules.
 
 **Repartir d'un environnement vierge** — applications arrêtées :
 
@@ -304,6 +351,14 @@ Une salle de développement branchée sur le hub de l'événement enverrait de
 vraies commandes depuis un poste qui simule tout — c'est exactement ce qu'on
 veut voir de loin. La console du hub porte le même badge, rendu côté serveur.
 
+**L'OBS simulé porte les scènes de la salle**, en plus des siennes. Il n'a pas
+de scènes à lui : il a celles qu'on attend de lui. Sans cela, tout nom un peu
+personnel — « Direct 4K », le nom d'un studio, une convention d'événement —
+ressortait en « rôle introuvable », rouge dans la régie, sur une instance qui
+n'existe pas : on débogue alors la faute de frappe d'un OBS qu'on n'a pas
+installé. Les scènes plausibles restent à côté, pour que le sélecteur du ⚙ ait
+toujours une liste où choisir.
+
 Un talk complet avec OBS simulé produit exactement ce qu'il produirait en salle :
 
 ```
@@ -313,7 +368,17 @@ Un talk complet avec OBS simulé produit exactement ce qu'il produirait en salle
    speakers  : Steven LE ROUX
    catégorie : Sécurité
    marqueurs : ['début de la démo']
+   repères   : début 00:52, fin 44:20
 ```
+
+Les deux **repères de montage** — `D` et `F` en régie — sont des marqueurs à
+part : le sidecar les porte avec un champ `role`, et il n'y en a qu'un de
+chaque, le dernier posé. Ils disent où commence et où finit ce qu'on publie,
+c'est-à-dire ce qu'un montage automatique doit couper aux deux bouts. Un champ
+plutôt qu'un libellé convenu, parce que « Début », « debut » et « DÉBUT » se
+ressemblent trop pour qu'on parie dessus trois semaines plus tard. Absents, le
+montage retombe sur la détection de silence et de noir — le comportement
+d'avant, et un filet qui se trompe sur un micro de salle qui respire.
 
 ### Sous WSL
 
@@ -332,6 +397,15 @@ Rejouer le spike de validation oRPC :
 
 ```bash
 pnpm --filter @cloudnord/spike-orpc-v2 spike     # 8/8 attendus
+```
+
+Rejouer la comparaison des moteurs d'animation de l'écran de salle :
+
+```bash
+pnpm --filter @cloudnord/spike-anim-slides mesure      # poids, fluidité, chevauchement
+pnpm --filter @cloudnord/spike-anim-slides pellicule   # les transitions figées, image par image
+pnpm --filter @cloudnord/spike-anim-slides nuancier    # les presets d'entrée des éléments, côte à côte
+pnpm --filter @cloudnord/spike-anim-slides spike       # sert les pages, à pointer depuis OBS
 ```
 
 Régénérer les migrations après modification d'un schéma :
@@ -380,6 +454,15 @@ l'inverse : c'est lui qui porte le flux d'état, les actions et le vumètre.
 ```bash
 pnpm --filter @cloudnord/regie-web dev          # dans un terminal
 REGIE_VITE_ORIGIN=http://127.0.0.1:5174 pnpm dev:headless   # dans l'autre
+```
+
+Le hub proxifie **le même** serveur Vite pour la régie mobile — les deux hôtes
+servent la régie sous `/regie/`, donc la même `base` convient aux deux. En
+production il lit `apps/regie-web/dist`, construit par l'image ; sans bundle,
+`/regie` répond 503 en le disant, comme le fait un poste de salle.
+
+```bash
+REGIE_VITE_ORIGIN=http://127.0.0.1:5174 MODE=dev pnpm --filter @cloudnord/hub-server dev
 ```
 
 ## L'écran d'attente : une boucle
@@ -475,6 +558,28 @@ cache local** comme le programme. L'export amont ne porte que les réseaux des
 doit pas demander de rejouer une release sur les trois machines de salle. Le nom
 écrit au-dessus (« Suivez … ») vient de la même descente, et suit l'événement.
 
+**Le hashtag y a sa carte**, à la suite des comptes : `#CloudNord` en grand, et
+sous lui le bouton officiel de X (« Post #CloudNord »). C'est la **seule
+dépendance externe** de l'écran de salle — `platform.x.com/widgets.js` — et elle
+est tenue à trois règles :
+
+- **chargée en `async`, en dernier, et rien n'en dépend.** Sans elle la carte
+  affiche le hashtag, qui est de toute façon ce qu'on retape depuis le fond de
+  la salle : un écran projeté n'a pas de souris, et le bouton n'est cliquable
+  que sur les surfaces où cette page est ouverte dans un navigateur ;
+- **rappelée à chaque retour de la slide.** `widgets.js` remplace l'ancre par
+  son iframe au chargement du script, une fois ; or la boucle réécrit la couche
+  entière à chaque passage. Sans le rappel, le bouton n'apparaîtrait qu'au
+  premier tour ;
+- **surveillée par les tests d'autonomie**, qui n'ont pas été assouplis mais
+  resserrés : ils listent les origines externes de chaque page et refusent tout
+  ce qui n'est pas cette adresse-là, sur cette page-là, en `async`.
+
+Le hashtag et le compte associé sont écrits dans `display-page.ts`, contrairement
+aux comptes qui descendent du hub. Les remonter en réglage demanderait de les
+faire voyager dans la charge utile ; ils y gagneraient de survivre à un
+changement d'événement.
+
 ## Servir un autre événement
 
 Le dépôt ne connaît pas l'événement qu'il sert. Le hub **déduit son identité du
@@ -568,6 +673,39 @@ des exemples, pas des constantes du code.
 - **Les pages d'affichage sont autonomes et sans étape de build.** Écran,
   overlays et mur s'ouvrent même quand tout le reste va mal, et se testent en
   HTTP.
+- **Une régie mobile est la même régie, derrière une seconde porte.** Le
+  transport est la seule chose qui change entre le poste de salle et le
+  téléphone : `apps/regie-web` ne sait pas d'où vient son état ni où part son
+  geste. Le prix est un périmètre plus étroit à distance — le hub ne connaît ni
+  les vumètres, ni les rushes, ni l'état détaillé des deux OBS —, et il est
+  payé en ne montant pas les panneaux qui liraient du vide.
+- **Le verrou de régie mobile n'exclut que les mobiles entre eux.** Une salle
+  n'est jamais bridée par un téléphone : l'opérateur qui est physiquement là
+  reste maître de ses commandes, quoi qu'il arrive à un onglet parti dans un
+  couloir. Le verrou tient une seule surface, `regie.command` — la console
+  garde ses gestes, et deux portes vers le même geste dont une seule
+  verrouillée n'auraient verrouillé personne.
+- **Il retient une session, pas un compte.** Deux onglets d'une même personne se
+  croyaient porteurs et pilotaient la même salle en s'ignorant. Chaque onglet
+  s'annonce donc par `x-regie-session`, gardé en `sessionStorage` — il survit à
+  un F5, meurt avec l'onglet —, et le hub refuse le geste plutôt que de retomber
+  sur l'adresse.
+- **Une salle qu'on ne tient pas est un état, pas une mention.** D'où un voile
+  plein écran plutôt qu'un bouton en barre : laisser la page entière active
+  quand chaque commande sera refusée fait appuyer avant de lire. Il laisse voir
+  l'état de la salle en dessous — regarder une salle qu'un collègue pilote est
+  un usage normal — et porte la seule décision, une fois.
+- **Un verrou périmé n'est jamais rendu, et rien ne le décide.** L'échéance se
+  calcule à la lecture, comme `roomConferenceState` se calcule à chaque
+  lecture. Un balayage la retire et éteint le badge en salle, mais il ne fait
+  pas autorité : sinon un verrou mort resterait opposable les quinze secondes
+  qui le séparent du tour suivant.
+- **Le hub ne promet qu'une mise en file.** Le cycle de vie s'écrit chez lui —
+  acquis au retour —, mais une scène ou un enregistrement part sur le flux
+  descendant et ne s'observe que sur la vue suivante. Les gestes dont dépend
+  une étape suivante se confirment donc par l'**observation**, avec un délai de
+  garde : sans cela, la règle « si l'enregistrement ne part pas, ne commence
+  pas » disparaissait sans que rien ne le dise.
 - **La console du hub et la régie sont des applications Vue.** Toutes deux
   avaient dépassé le seuil où le gabarit littéral coûte plus qu'il ne rapporte —
   3 800 lignes pour la console, 3 150 pour la régie, dont l'essentiel en
@@ -596,7 +734,30 @@ des exemples, pas des constantes du code.
 - **Le chemin du fichier enregistré ne se connaît qu'après `StopRecord`.** OBS ne
   l'annonce que dans l'événement `RecordStateChanged` qui suit l'arrêt, et il faut
   armer l'attente *avant* de demander l'arrêt. Le lire avant donne toujours `null`
-  — et aucun sidecar ne serait jamais écrit.
+  — et aucun sidecar ne serait jamais écrit. Cet événement arrive **deux fois**
+  par transition (`STOPPING` puis `STOPPED`) et seul le second porte le chemin,
+  d'où le filtrage sur `outputState`.
+- **Et ce chemin est celui de la machine d'OBS, pas de la nôtre.** OBS sous
+  Windows enregistrant dans un dossier WSL annonce
+  `//wsl.localhost/distro/home/…/prise.mp4` : le fichier est bien là, à un
+  chemin Linux ordinaire, mais le sidecar partait à côté d'un chemin qui
+  n'existe pas de ce côté-ci — l'écriture échouait et chaque prise de la journée
+  perdait titre, intervenants et marqueurs. Même chose avec un dossier réseau
+  monté différemment des deux côtés. Le master se résout donc en trois temps :
+  le chemin annoncé s'il désigne un fichier qu'on voit ; sinon le **nom**
+  annoncé — OBS reste la source du nom, « (2) » de collision compris — sous la
+  **racine des captations**, qui est un chemin de notre côté ; sinon le nom
+  qu'on avait dicté à OBS. Faute de conteneur, on renonce : un sidecar orphelin
+  tromperait la chaîne de montage.
+- **Un arrêt déclenché depuis OBS clôt quand même la prise.** L'opérateur a
+  souvent la main dans OBS et y appuie sur « Arrêter l'enregistrement » : la
+  régie n'a alors rien demandé, personne n'attend le chemin du fichier, et le
+  titre, les intervenants et les marqueurs posés pendant le talk partaient avec.
+  L'événement d'OBS suffit à écrire le sidecar et à remonter `recording.stopped`
+  au hub — sans redemander `StopRecord`, qui échouerait sur une sortie déjà
+  inactive et emporterait tout le reste. Une captation *lancée* depuis OBS n'est
+  en revanche pas adoptée : sans début ni conférence de notre côté, il n'y
+  aurait rien à écrire dedans.
 - **Trois états réseau, pas deux.** `OFFLINE` (rien ne répond) et `DEGRADED` (le
   hub répond en HTTP mais le temps réel est tombé) n'appellent pas la même
   réaction en régie. On ne se fie jamais à `navigator.onLine`, qui ne dit rien de
@@ -622,6 +783,8 @@ des exemples, pas des constantes du code.
 | hub | `/admin` | Console : supervision. Un onglet par adresse — `/admin/moderation`, `/admin/conferences`, `/admin/appairage`, `/admin/messages`, `/admin/vod`, `/admin/reglages` |
 | hub | `/admin/devices?user_code=…` | L'onglet Appairage, code pré-rempli (lien affiché par la régie) et verdict du code en modale |
 | hub | `/mur?salle=<id>` | Mur public (commun à l'événement) et questions de la salle, scanné au QR |
+| hub | `/regie` | Régie mobile : choisir une salle |
+| hub | `/regie/<id>` | Régie mobile : piloter cette salle-là |
 | client | `/regie` | Fenêtre opérateur |
 | client | `/display/projector` | Browser Source OBS-A, ou plein écran de secours |
 | client | `/display/overlay` | Browser Source transparente OBS-B : titrage **et question du public** |
@@ -668,6 +831,18 @@ redemande un sous 15 s et la régie affiche le nouveau.
 traverser une salle : l'opérateur qui recopie le code sur l'écran de régie et
 marche jusqu'à la console peut arriver après sa mort. La modale le dira, mais
 c'est un aller-retour de perdu — et il se paie devant une salle qui attend.
+
+C'est aussi trop court pour **appairer deux salles d'affilée**, ce que
+`pnpm dev:trio` demande à chaque lancement : le temps d'approuver la seconde, le
+code de la première est mort. Le script pose donc `DEVICE_CODE_TTL=30m` lui
+aussi, et la variable reste surchargeable pour éprouver l'expiration exprès.
+
+Quand un code meurt, **il n'y a rien à refaire** : la boucle de supervision en
+redemande un sous quinze secondes et la régie l'affiche. Elle le dit désormais
+en toutes lettres — « un nouveau code apparaîtra ici dans quelques secondes ».
+Elle repartait auparavant demander quelle salle dessert le poste, une question
+déjà tranchée : on recliquait sur la salle, et le clic paraissait avoir réparé
+ce qui se réparait tout seul.
 
 ## Superviser depuis un téléphone
 
@@ -764,6 +939,148 @@ salle déborde — et non comme un canal d'alerte sur lequel s'appuyer le jour J
 Sans push disponible, le bouton reste, avec les notifications de page seules —
 un avertissement qui ne traverse pas le verrouillage vaut mieux que pas
 d'avertissement — et la console dit laquelle des deux portées elle a obtenue.
+
+## Piloter depuis un téléphone
+
+La supervision ci-dessus **regarde** une salle. La régie mobile la **pilote** :
+lancer la conférence depuis le fond de la salle, basculer l'habillage pendant
+qu'on raccompagne un speaker, vérifier que l'enregistrement tourne depuis le
+couloir. Adresse `/regie` sur le hub, connexion opérateur — la même que la
+console, et sur le même appareil c'est la même session.
+
+**C'est la même application que l'écran de régie**, `apps/regie-web`, servie
+cette fois par le hub. Trois propriétés rendent cette réutilisation possible,
+et il faut les tenir : les panneaux prennent des `props` et non le store, le
+store d'état ne contient qu'un `DisplayPayload` — que la porte distante
+**synthétise** depuis la vue du hub —, et tout geste passe par `actions.act()`.
+Ce qui ne se réutilise pas, c'est la disposition : une fenêtre de poste et un
+écran de pouce ne se rangent pas de la même façon, et prétendre le contraire
+donne une page qui n'est bien nulle part.
+
+| | Régie de salle | Régie mobile |
+|---|---|---|
+| État | SSE `/display/state?vue=regie` | `regie.view`, sondée à 1 Hz |
+| Gestes | `POST /control/action` | `regie.command` → flux descendant |
+| Servie par | la machine de salle | le hub |
+| Identité | aucune (boucle locale) | opérateur Better Auth |
+
+**Ce qu'elle porte**, et rien d'autre : le cycle de vie (Commencer / Terminer /
+Remettre à venir), les scènes d'OBS-A, l'enregistrement et la diffusion d'OBS-B.
+Pas l'écran de salle, pas les marqueurs, pas la VOD, pas le ⚙, pas les vumètres.
+Ce sont des gestes de poste, ou des gestes dont le hub n'a pas la matière — les
+monter vides serait pire que de ne pas les monter.
+
+Le compte à rebours, l'avertissement d'enregistrement, la confirmation de fin
+anticipée : tout cela est le **même code**, `stores/conference.ts`. Un opérateur
+sur un téléphone et un opérateur devant la machine voient la même question.
+
+### Une salle, un **onglet** à la fois
+
+Une seule régie mobile tient une salle. **La régie de la salle, elle, n'est
+jamais bridée** : l'opérateur qui est physiquement là ne doit dépendre ni d'un
+téléphone parti dans un couloir, ni d'un verrou qu'on a oublié de rendre. Le
+verrou n'exclut que les mobiles entre eux, et il ne garde qu'une surface —
+`regie.command`. La console garde tous ses gestes.
+
+**Ce qu'il retient est une session, pas un compte.** On ouvre la régie sur son
+téléphone, puis sur la tablette posée sur la table : sur le compte, les deux se
+croyaient porteurs et pilotaient la salle en s'ignorant — deux bascules de
+scène contradictoires, et aucun écran pour le dire. Chaque onglet s'annonce donc
+par un en-tête `x-regie-session`, tiré d'un identifiant gardé en
+`sessionStorage` : il survit à un F5 — un rechargement en plein talk ne doit pas
+faire perdre la salle — et meurt avec l'onglet. Le hub **refuse** les gestes de
+verrou sans cet en-tête plutôt que de retomber sur l'adresse : un repli
+silencieux ne se découvrirait que le jour où deux onglets pilotent la même salle.
+
+L'écran de choix nomme qui tient chaque salle, et depuis quand. « Occupée » seul
+enverrait chercher qui, à deux salles de là. Mais **il ne prend rien** : on entre
+toujours en regardant, et c'est le voile qui porte la décision.
+
+| | Ce qui se passe |
+|---|---|
+| Ouvrir une salle, libre ou tenue | on entre, on regarde ; rien n'est pris |
+| Un onglet qui ne tient pas la salle | **un voile**, avec « Prendre » ou « Reprendre le contrôle » |
+| Rendre | bouton « ‹ Salles », ou fermeture de l'onglet |
+| Ne plus donner de nouvelles | le verrou tombe seul au bout de **30 s** |
+
+Le battement voyage dans le sondage d'état : `regie.view` renouvelle la prise de
+son porteur — et seulement de lui, session comprise. Un second minuteur serait
+un geste de plus à ne pas oublier d'arrêter, et un verrou qui survit à la page
+qui le tenait.
+
+### Le voile, et pas un bouton dans un coin
+
+Quand cet onglet ne tient pas la salle, **rien de ce que la page montre n'est
+utilisable** : chaque commande partirait au hub pour se faire refuser. Un petit
+« Reprendre » en barre laissait pourtant « Commencer » et « Enregistrer » actifs
+en apparence — on appuie d'abord, on lit ensuite, et c'est en plein talk qu'on
+découvre pourquoi rien ne s'est passé.
+
+C'est donc un voile, de la même famille que celui de l'appairage : il occupe
+l'écran tant que la condition dure, disparaît quand elle cesse, et n'a pas de
+bouton fermer. Il laisse voir l'état de la salle en dessous, atténué — venir
+regarder une salle qu'un collègue pilote est un usage normal, c'est même ce que
+fait quelqu'un qui hésite à la reprendre.
+
+Trois situations, trois phrases, parce qu'elles n'appellent pas la même lecture :
+
+| Le verrou | Ce que dit le voile |
+|---|---|
+| personne | « Cette salle n'est pas prise » — prise expirée, ou pas encore prise. Le bouton dit **Prendre** |
+| un autre onglet du même compte | « Vous pilotez déjà cette salle ailleurs » |
+| quelqu'un d'autre | « Cette salle est pilotée par quelqu'un d'autre », nommé, avec depuis quand |
+
+Son propre nom affiché comme celui d'un tiers se lit comme une panne : on
+cherche le second compte, et il n'existe pas. C'est ce que la deuxième ligne
+évite.
+
+**Le voile est la question, et il ne la repose pas** en modale : reprendre se
+fait d'un geste, à un seul endroit, qu'on arrive sur une salle libre, tenue par
+un collègue ou tenue par son propre téléphone.
+
+**L'écran de régie de la salle le dit**, dans son en-tête : « pilotée à distance
+— <adresse> ». Il ne grise rien. Il est là parce qu'une scène qui bascule sans
+que personne n'ait touché au clavier se lit sinon comme une panne, en plein
+talk. Chaque geste distant laisse aussi un signalement nommant qui l'a demandé,
+comme le fait déjà une resynchronisation venue de la console.
+
+### Ce que le hub peut promettre, et ce qu'il ne peut pas
+
+Le cycle de vie s'écrit **chez le hub** : c'est acquis au retour de l'appel, et
+il aboutit même sur une salle coupée. Une scène ou un enregistrement, non : la
+commande part sur le flux descendant, et c'est tout. Que la salle ait obéi ne
+s'observe que sur la vue suivante.
+
+La distinction n'est pas cosmétique. « Commencer » **abandonne le démarrage si
+l'enregistrement refuse de partir** — c'est ce qui rend l'avertissement honnête.
+Prise telle quelle, la réponse du hub aurait suffi à faire croire que
+l'enregistrement tourne. La régie mobile **confirme donc par l'observation** :
+elle sonde jusqu'à voir `recording` passer à vrai, avec un délai de garde de
+cinq secondes, et déclare le geste manqué au bout. Sans cela, la garantie
+disparaissait sans que rien ne le dise, et on l'aurait découvert le soir devant
+une VOD absente.
+
+Corollaire côté salle : après une bascule d'OBS, le poste **réveille sa file de
+remontée** au lieu d'attendre son tic. Sans ce réveil, un bouton resterait
+plusieurs secondes à décrire l'état d'avant — sur une page dont toute la
+discipline est de ne jamais peindre d'avance — et on appuierait une seconde fois.
+
+### Ce qu'une commande de régie mobile vaut dans le temps
+
+Elles empruntent le flux descendant comme le reste, donc son rattrapage. Les
+durées de validité ne sont pas égales, et l'écart *est* la règle :
+
+| Commande | Validité | Pourquoi |
+|---|---|---|
+| `scene.force` | 30 s | Une bascule rattrapée dix minutes plus tard met la salle à l'antenne sur rien. |
+| `recording.set` | 90 s | Une salle coupée trente secondes doit rattraper ; une salle coupée dix minutes ne doit pas se mettre à enregistrer toute seule. |
+| `stream.set` | 90 s | Idem, et un direct qui repart seul est pire. |
+| `regie.hold` | — | Changement d'état durable, comme `session.state`. |
+
+Elles portent un **état** et non un verbe — `recording.set {on}` plutôt que
+`start`/`stop` : une commande rattrapée décrit alors une intention encore
+lisible, et l'appliquer deux fois ne coûte rien. Demander à la salle ce qu'elle
+fait déjà est un succès silencieux, pas un incident.
 
 ### Corriger un créneau que l'export raconte mal
 
@@ -1083,8 +1400,10 @@ Le petit **🎞** en haut à droite du panneau « Captation » — discret, parc
 ce n'est pas une commande de la conférence en cours et que rien ne doit le faire
 confondre avec « Enregistrer » — ouvre une liste plein cadre de tout ce qui a
 été enregistré : le fichier, le titre tiré du
-sidecar, la durée, la taille, les marqueurs. Un rush **sans sidecar** y figure
-comme les autres — c'est même celui qu'on cherche.
+sidecar, la durée, la taille, les marqueurs, et le **rognage** que les deux
+repères annoncent (« rognage 00:52 → 44:20 ») quand la régie les a posés. Un
+rush **sans sidecar** y figure comme les autres — c'est même celui qu'on
+cherche.
 
 « Vérifier » ouvre le conteneur avec **ffprobe** et pose un verdict :
 
@@ -1093,6 +1412,34 @@ comme les autres — c'est même celui qu'on cherche.
 | **Exploitable** | pistes vidéo et audio présentes, durée conforme au chronomètre, débit crédible |
 | **À revoir** | sidecar absent, moins de cinq secondes, fin manquante par rapport au chronomètre, débit très bas, fichier encore en écriture |
 | **Illisible** | fichier vide ou absent, pas de piste vidéo, pas de piste audio, durée illisible (conteneur tronqué) |
+
+**Une prise en cours ne se juge pas, et le contrôle s'arrête là.** Le verdict
+rend un seul motif — « prise en cours : à contrôler une fois l'enregistrement
+arrêté » — et ne lance pas ffprobe. Il continuait, et ce qu'il rendait était
+vrai mais trompeur : le sidecar n'est écrit qu'à l'arrêt, donc « sidecar
+absent » est certain ; le débit se calcule sur un fichier à moitié écrit, donc
+« image probablement inexploitable » aussi. Trois motifs pour une seule cause,
+dont le premier — le seul qui explique les deux autres — se lisait au milieu des
+autres.
+
+**La fenêtre d'écriture se juge sur l'heure du poste, pas sur celle du hub.** Les
+`mtime` viennent du système de fichiers : les comparer à l'horloge corrigée de la
+salle revenait à soustraire deux heures qui ne mesurent pas la même chose. Sans
+conséquence le jour J, où l'écart se compte en millisecondes ; dévastateur en
+développement, où le hub déroule une journée d'octobre depuis un poste qui est en
+septembre. L'écart valait des semaines, la fenêtre n'était jamais atteinte, et la
+régie présentait comme un rush prêt à partir un fichier qu'OBS était en train
+d'écrire.
+
+**Un verdict décrit une prise, pas un nom de fichier.** Le format de nom demandé
+à OBS est déterminant — date, salle, heure, titre — donc rejouer la même
+conférence réécrit au même endroit. Le verdict est estampillé de la taille et de
+la date du fichier qu'il a jugé ; dès que l'une des deux bouge, il cesse d'être
+affiché et la ligne repasse « non vérifié ». Sans cela, la relecture de la
+première prise s'affichait sur la seconde — « sidecar absent » sur un rush qui
+avait le sien, et une durée qui n'était pas la sienne. Vaut aussi pour les
+verdicts posés à la main : « relu en régie » ne se transmet pas à la prise
+suivante.
 
 Ni ffprobe ni ffmpeg ne sont des dépendances du poste : ils arrivent avec la
 plupart des installations d'OBS, et pas avec toutes. Leur absence n'est pas une
@@ -1377,9 +1724,36 @@ Le programme, les salles, les comptes et l'appairage ne sont pas touchés.
 #### Deux endroits pour le déclencher
 
 En **régie**, modale 🎞 : un ⬆ par ligne, « Tout téléverser » à côté de « Tout
-vérifier », « Annuler » pendant la montée, et ☁ sur ce qui est déjà arrivé — pas
-de bouton, parce que repayer trois gigaoctets au premier clic distrait est
-exactement ce qu'on évite.
+vérifier », et ☁ sur ce qui est déjà arrivé — pas de bouton, parce que repayer
+trois gigaoctets au premier clic distrait est exactement ce qu'on évite.
+
+**Pendant la montée, un témoin prend la place du ⬆** — il tourne quand des
+octets partent, il bat quand la ligne attend une fenêtre, et il porte le
+pourcentage au survol. Le ⬆ s'effaçait auparavant au profit d'« Annuler », et la
+ligne perdait d'un coup le seul repère disant où en était ce fichier-là : sur
+une modale qui en aligne quinze, il fallait relire le détail en petit pour
+retrouver celui qui montait. Le témoin **n'est pas cliquable** ; « Annuler »
+reste un bouton nommé, à côté. Un témoin qui annulerait au clic ferait perdre
+trois gigaoctets déjà montés à un doigt distrait — la même précaution que le ☁
+sans bouton, à l'autre bout de la vie du fichier.
+
+**Ces boutons ne dépendent pas du téléversement automatique.** Dès que le hub a
+une destination, l'envoi à la main est possible — et c'est même le cas
+*nominal*, puisque l'automatique est éteint par défaut : rien ne doit quitter
+une salle sans que quelqu'un l'ait décidé. Le régulateur l'a toujours su, une
+demande manuelle passant outre la politique ; la régie, elle, confondait les
+deux refus sous un même motif et retirait ses boutons dans les deux cas. Une
+installation parfaitement configurée n'offrait donc aucun moyen d'envoyer quoi
+que ce soit. Deux motifs distincts depuis :
+
+| Motif | Ce que la régie fait |
+|---|---|
+| `sans-stockage` — le hub n'a pas de destination | boutons retirés, raison dite en en-tête : un bouton qui échoue à chaque clic vaut moins qu'un bouton absent |
+| `auto-desactive` — stockage prêt, automatique éteint | **boutons gardés**, et une ligne discrète en tête de modale rappelle que les envois se font à la main |
+
+La seconde n'est pas une attente et ne s'affiche pas en ambre : c'est un réglage
+assumé, et l'annoncer comme une panne toute la journée userait le bandeau avant
+le jour où il dit vrai.
 
 En **console**, onglet **VOD** : la liste des téléversements de toutes les
 salles, avec « Relancer » — l'état du stockage et la politique, eux, se règlent
@@ -1564,8 +1938,8 @@ rôle absent.
 ### Ce que « Commencer » entraîne
 
 Deux gestes que la régie faisait de mémoire, et qu'elle oubliait aux moments les
-plus coûteux. Les deux sont dans le **⚙**, panneau « Au démarrage d'une
-conférence », **actifs par défaut** :
+plus coûteux. Les deux sont dans le **⚙**, panneau « Au démarrage et à la fin
+d'une conférence », **actifs par défaut** :
 
 - **Avertir si l'enregistrement n'est pas lancé.** Appuyer sur Commencer alors
   qu'OBS-B n'enregistre pas ouvre une modale : *Enregistrer et commencer* /
@@ -1617,8 +1991,66 @@ au clavier** : un `r` réflexe basculerait la captation sous la question, et un
 d'enregistrement, qui a gagné au passage la fermeture par `Échap` — une modale
 qu'Échap ne ferme pas est un piège.
 
+**`Y` et `N` sur toutes les modales de décision**, régie comme console, imprimés
+sur les deux boutons. Les lettres étaient auparavant des *étiquettes*, liées par
+qui montait la modale : deux questions sur quatre en avaient, donc deux sur
+quatre répondaient au clavier, et rien à l'écran ne les distinguait. Le libellé
+et la liaison viennent maintenant du même endroit — `ConfirmDialog` — et ne
+peuvent plus diverger. Trois gardes voyagent avec :
+
+- **une touche tenue avec Ctrl, Cmd ou Alt appartient au navigateur** — `Ctrl+N`
+  ouvre une fenêtre, il n'annule pas la question au passage ;
+- **une frappe destinée à un champ lui appartient** — la modale de remise à zéro
+  arme son bouton en faisant taper un mot, et un `<select>` compte autant qu'un
+  champ texte ;
+- **un bouton désarmé le reste** : la touche est le bouton, pas un moyen de
+  passer devant.
+
+`o` confirme autant que `y`, sans être imprimé : la moitié des opérateurs tape
+l'un, l'autre moitié l'autre. Et une troisième issue — « Commencer sans
+enregistrer », « Terminer sans arrêter » — reste à la souris : lui donner une
+lettre en ferait une seconde façon de dire oui.
+
 Une salle qui n'enregistre pas du tout décoche l'avertissement, sinon il devient
 un clic de plus à chaque conférence.
+
+### Et la captation qu'on oublie d'arrêter
+
+Une fois la conférence terminée — à l'heure comme en avance — si OBS-B enregistre
+encore, une seconde question arrive :
+
+```
+La captation tourne encore
+OBS-B enregistre encore « IA for OPS on Scaleway ». Laisser tourner
+écrira le talk suivant dans le même fichier, sous le titre et les
+intervenants de celui-ci — et le garde-fou du démarrage se taira,
+puisqu'une captation tourne.
+
+     [ Annuler ]  [ Terminer sans arrêter ]  [ Arrêter et terminer ]
+```
+
+**C'est l'angle mort que l'avertissement du démarrage laissait passer.** Une
+captation qu'on n'arrête pas ne se voit nulle part : rien ne clignote, le témoin
+dit « enregistre » comme il le disait pendant le talk. Elle court pendant la
+pause, puis le talk suivant s'écrit dans le même master — et au « Commencer », le
+premier garde-fou se tait justement parce qu'un enregistrement tourne. La salle
+finit la journée avec un fichier de trois heures dont le sidecar porte le titre,
+les intervenants et l'identifiant de session du **premier** talk. Rien de tout
+cela ne se rattrape au montage.
+
+**L'ordre, encore.** La question de l'avance passe avant celle de la captation :
+la première porte sur la conférence qu'on termine, la seconde sur la manière de
+la terminer. Couper la captation d'un talk qu'on va renoncer à terminer serait le
+pire des deux ordres.
+
+**L'arrêt d'abord, la fin ensuite** — et seulement s'il aboutit : terminer quand
+même laisserait la captation courir sans que rien ne repose jamais la question.
+
+**« Terminer sans arrêter » est nommé, pas caché.** C'est l'issue du talk
+enregistré d'une traite, questions du public comprises, qui déborde du créneau.
+La retirer obligerait à annuler, terminer, puis se souvenir d'arrêter plus tard —
+c'est-à-dire à reproduire l'oubli qu'on essaie d'éviter. Une salle qui travaille
+toujours ainsi décoche le réglage.
 
 ## Écran de régie
 
@@ -2058,10 +2490,44 @@ Trois propriétés qui expliquent la forme :
   l'insu de l'opérateur. « Relire les scènes d'OBS » rafraîchit la liste après
   un renommage, sans rien reconnecter.
 
+**Le panneau s'ouvre seul quand la salle n'est pas prête.** Dès la machine
+appairée — sans attendre — la régie du poste dresse la liste de ce qui manque :
+OBS non connecté ou sans adresse, rôle configuré introuvable dans OBS, aucune
+scène associée aux rôles d'OBS-A, dossier des VOD non renseigné. Elle ouvre le ⚙
+dessus, la liste en tête du panneau. L'installation d'une salle se fait avant la
+première conférence, pas pendant : le défaut doit se voir tant que quelqu'un est
+devant l'écran.
+
+- **La liste se vide toute seule.** OBS est souvent lancé *après* la régie et le
+  poste réessaie toutes les trois secondes ; c'est un calcul sur l'état courant,
+  donc les lignes « pas connecté » disparaissent à mesure que les instances se
+  branchent, panneau ouvert, sans qu'il se referme sous les doigts.
+- **Une seule fois par démarrage.** Fermé, il ne revient pas : une salle sans
+  OBS-B reste pilotable pour tout le reste, et un rappel qui se rouvre n'est
+  plus un rappel.
+- **Rien à distance, et rien sans le hub.** Le ⚙ n'est pas monté sur téléphone,
+  et une salle dont la configuration n'est pas encore descendue n'est pas une
+  salle mal réglée — le verdict attend qu'elle arrive.
+
+La liste s'affiche aussi quand c'est l'opérateur qui ouvre le panneau : elle
+décrit la salle, pas la façon dont on est arrivé là.
+
 Le mot de passe OBS ne redescend jamais jusqu'à la page : elle sait seulement
 qu'il y en a un. Un champ laissé vide vaut « inchangé » — corriger un port
 n'efface pas le mot de passe au passage — et une case explicite sert à le
 retirer.
+
+**Le dossier des VOD se choisit, il ne se retape pas.** Un bouton « Parcourir… »
+ouvre le sélecteur de dossier **du poste** — c'est son disque que ce champ a
+toujours désigné, où qu'on lise la page. Il ne fait que remplir le champ :
+« Enregistrer » décide, comme pour le reste du panneau, sinon un coup d'œil dans
+l'arborescence deviendrait une modification de la salle. Renoncer laisse le
+champ tel quel.
+
+Le bouton n'apparaît que si le poste sait l'ouvrir — c'est-à-dire sous Electron.
+En `dev:headless`, ou depuis un navigateur, il n'y a pas de sélecteur à ouvrir
+et le champ reste à remplir à la main : un bouton qui ne répond pas coûte plus
+qu'un champ.
 
 ## Niveaux audio en régie
 
@@ -2247,3 +2713,72 @@ que ça a marché.
 `HEALTHCHECK` interroge `/health`, qui ne touche ni la base ni le programme : il
 répond tant que Fastify écoute, ce qui est bien la question posée à un
 orchestrateur.
+
+## Publier une version
+
+```bash
+git tag v1.2.0 && git push origin v1.2.0
+```
+
+`.github/workflows/release.yml` en tire deux paquets et la release qui les
+porte :
+
+| | Où | Quoi |
+|---|---|---|
+| Hub | `ghcr.io/monpoke/conference-operator/hub` | image `linux/amd64`, taguée `1.2.0`, `1.2` et `latest` |
+| Régie de salle | pièces jointes de la release | `regie-de-salle-1.2.0.exe` et son `SHA256SUMS.txt` |
+
+**Un tag, un couple.** Le hub et le client de salle parlent le même contrat
+oRPC, versionné nulle part ailleurs que dans ce dépôt. Les publier séparément
+ferait naître la question « quelle image va avec quel installeur ? », à laquelle
+rien ne saurait répondre. Le tag est donc l'unité d'exploitation : qui installe
+`v1.2.0` sur trois postes sait quel hub va avec.
+
+La régie web, elle, n'est pas un paquet — elle n'a pas d'existence autonome. Le
+hub la sert (régie mobile) et l'installeur l'embarque dans ses `resources` :
+c'est le même bundle, publié deux fois parce qu'il est utilisé de deux façons.
+
+**Le numéro n'existe que dans le tag.** Les `package.json` restent à `0.0.0` et
+`private: true` — aucun n'est publié sur un registre npm, leur tenir une
+comptabilité de versions serait entretenir quelque chose que personne ne lit.
+`docker/metadata-action` en dérive les tags et les labels OCI ; electron-builder
+le reçoit par `-c.extraMetadata.version`, ce qui nomme l'installeur et l'entrée
+« Ajout/Suppression de programmes » sans qu'aucun fichier n'ait à être committé.
+
+**`linux/amd64` seul.** Le `Dockerfile` n'emporte que les binaires
+`better-sqlite3` linux-x64 et linuxmusl-x64 ; une image arm64 construite depuis
+cette recette s'arrêterait au premier chargement du module, au démarrage, dans
+un conteneur. Ouvrir l'architecture demande d'abord de rouvrir cet élagage — et
+de construire sur un coureur ARM, la traduction QEMU coûtant plus que ce qu'elle
+rapporte ici.
+
+**L'installeur se construit sous Windows**, alors que l'empaquetage marche
+depuis Linux (voir plus haut). Ça épargne l'installation de wine 32 bits et son
+« exit status 123 », et un coureur Windows est gratuit sur un dépôt public. La
+recette Linux garde sa raison d'être — empaqueter depuis un poste de
+développement — mais elle n'a pas à être le chemin d'une publication.
+
+**La répétition.** Le même workflow se déclenche à la main
+(`workflow_dispatch`) : il construit les deux paquets, dépose l'installeur en
+artefact pour 90 jours, et ne publie rien. C'est ce qui permet d'éprouver la
+chaîne d'empaquetage la semaine d'avant sans brûler un numéro de version.
+
+**Les source maps ne sont pas dans les paquets**, et c'est déjà le cas depuis
+que l'installeur existe : rien n'active `--enable-source-maps` sur un poste de
+salle. Ce qui change avec la CI, c'est où elles vivent — « la machine de build »
+est désormais un coureur détruit à la fin du job. Elles partent donc en artefact
+`sourcemaps-X.Y.Z`, gardé 90 jours : l'événement et les semaines d'après, quand
+une trace remontée d'une salle mérite d'être lue tout de suite. Passé ce délai,
+on reconstruit — `build-main.mjs` n'a aucune entrée non déterministe, esbuild est
+figé par le lockfile, et un build sur le tag redonne la même map,
+`sourcesContent` compris.
+
+**Ce qui n'y est pas, et pourquoi.**
+
+- *La signature de code.* Sans elle, SmartScreen avertit au premier lancement —
+  d'où l'empreinte SHA-256 publiée à côté du binaire, et le rappel d'installer
+  les machines avant le jour J. C'est un pis-aller assumé, pas un oubli.
+- *La mise à jour automatique.* Publier sur les releases rendrait
+  `electron-updater` presque gratuit. Mais un client de salle qui se met à jour
+  seul contredit frontalement ce que promet le reste du logiciel : réseau coupé,
+  la régie continue. La mise à jour est un geste d'avant-veille.

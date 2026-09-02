@@ -102,3 +102,42 @@ export function bundledConsolePaths(dev: boolean): string[] {
     .filter(isMigratedView)
     .flatMap((view) => [viewPath(view), ...aliasPaths(view)])
 }
+
+/**
+ * La régie, servie deux fois.
+ *
+ * Le poste de salle la sert pour sa propre salle (`/regie`, sans plus) ; le hub
+ * la sert pour n'importe laquelle (`/regie` = choisir, `/regie/<id>` = piloter).
+ * Le même bundle, la même `base` Vite, deux hôtes — d'où ces trois fonctions
+ * ici plutôt que dans l'un des deux : le hub les énumère pour enregistrer ses
+ * routes, l'application les lit pour naviguer, et aucun des deux ne peut
+ * dépendre de l'autre.
+ */
+export const REGIE_PATH = '/regie'
+
+/** L'adresse d'une salle, ou celle de l'écran de choix. */
+export function regiePath(roomId: string | null): string {
+  return roomId == null ? REGIE_PATH : `${REGIE_PATH}/${encodeURIComponent(roomId)}`
+}
+
+/**
+ * La salle que désigne une adresse, ou `null` pour l'écran de choix.
+ *
+ * Rend `null` aussi sur tout ce qui n'est pas une adresse de régie : appelée
+ * sur `/admin`, elle ne doit pas inventer une salle nommée `admin`.
+ */
+export function regieRoomIdFromPath(pathname: string): string | null {
+  if (pathname === REGIE_PATH || pathname === `${REGIE_PATH}/`) return null
+  const prefix = `${REGIE_PATH}/`
+  if (!pathname.startsWith(prefix)) return null
+  const rest = pathname.slice(prefix.length)
+  /*
+   * Un seul segment, et pas un joker.
+   *
+   * `/regie/track-1/assets/x.js` est une requête d'asset, pas une salle nommée
+   * `track-1/assets`. Le hub sert les assets sous ce préfixe, et les confondre
+   * ferait rendre la coquille à la place d'un module.
+   */
+  if (rest === '' || rest.includes('/')) return null
+  return decodeURIComponent(rest)
+}

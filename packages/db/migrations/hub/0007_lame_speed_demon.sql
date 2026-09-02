@@ -1,0 +1,1 @@
+ALTER TABLE `regie_lock` ADD `holder_id` text DEFAULT '' NOT NULL;

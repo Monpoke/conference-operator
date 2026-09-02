@@ -84,14 +84,31 @@ export function programMoments(
   const premier = tries[0]!
   const dernier = tries[tries.length - 1]!
   const talks = tries.filter((session) => session.kind !== 'break')
+  /**
+   * La première **conférence**, pas le premier créneau de la journée.
+   *
+   * Une journée s'ouvre sur un accueil ou un petit déjeuner, qui sont des
+   * pauses : le bouton menait donc à 08:35 sur un export dont la première
+   * conférence est à 09:00, et l'on croyait l'horloge fausse alors que c'était
+   * l'étiquette. C'est la même règle que le milieu de journée juste en dessous,
+   * et que `conferenceAPiloter` en régie — un créneau qu'on ne peut pas lancer
+   * n'est pas un moment vers lequel se déplacer.
+   *
+   * Le repli sur le premier créneau couvre le programme qui n'aurait que des
+   * pauses : quatre boutons valent mieux que trois, même si celui-ci vise alors
+   * un déjeuner.
+   */
+  const premiereConference = talks[0] ?? premier
   const milieu = talks[Math.floor(talks.length / 2)] ?? tries[Math.floor(tries.length / 2)]!
 
   const decale = (iso: string, minutes: number): string =>
     new Date(Date.parse(iso) + minutes * 60_000).toISOString()
 
   const moments: [string, string][] = [
+    // Celui-ci vise bien le **premier créneau**, pause comprise : « avant
+    // ouverture », c'est avant que la salle n'ouvre ses portes.
     ['Avant ouverture', decale(premier.startsAt, -30)],
-    ['Première conférence', decale(premier.startsAt, 5)],
+    ['Première conférence', decale(premiereConference.startsAt, 5)],
     ['Milieu de journée', decale(milieu.startsAt, 5)],
     // Cinq minutes après la fin du dernier créneau : c'est là que la clôture
     // automatique se déclenche, et c'est ce qu'on vient vérifier.

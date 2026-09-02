@@ -5,6 +5,19 @@
 #   pnpm dev:duo    — hub + une salle
 #   pnpm dev:trio   — hub + deux salles
 #
+# Ajouter `--electron` remplace la **première** salle par le vrai client
+# Electron, celui du jour J. Ce qu'on y gagne : les fenêtres, le menu « Écrans »
+# qui place la projection en plein écran sur la bonne sortie, le sélecteur de
+# dossier des VOD, le coffre du jeton — tout ce que `dev-headless` ne peut pas
+# rendre, et qui ne se teste donc nulle part ailleurs.
+#
+#   pnpm dev:duo --electron    — hub + une salle Electron
+#   pnpm dev:trio --electron   — hub + une salle Electron + une salle headless
+#
+# Sous WSL, il faut WSLg ou un serveur X : sans lui aucune fenêtre ne s'ouvre,
+# et rien ne le dit clairement. C'est la raison pour laquelle le défaut reste
+# headless.
+#
 # Une salle suffit pour développer une régie. Il en faut deux dès qu'on touche
 # à ce qui est commun à l'événement — le mur des questions, un message poussé
 # depuis la console, la modération : ces bugs-là ne se voient pas à une salle,
@@ -32,12 +45,40 @@
 # erreurs.
 #
 # Variables acceptées : HUB_ORIGIN, SALLE_1, SALLE_2, PORT_1, PORT_2,
-# VITE_CONSOLE, VITE_REGIE.
-# Pour dérouler la journée du 30 octobre, poser `SIMULATED_TIME` dans le `.env`
-# du hub : les salles s'alignent sur son heure, il n'y a rien à régler ici.
+# VITE_CONSOLE, VITE_REGIE, OBS_REEL, SIMULATED_TIME.
+#
+# `OBS_REEL=1` branche les salles sur de vraies instances obs-websocket au lieu
+# du simulateur. Attention avec deux salles : elles sont provisionnées avec les
+# mêmes adresses par défaut (`ws://127.0.0.1:4455` et `:4456`), et piloteraient
+# donc les deux mêmes instances en se croyant seules. Leur donner des ports
+# distincts se fait dans les Réglages de la console.
+# Pour dérouler la journée du 30 octobre, `SIMULATED_TIME` — au choix dans le
+# `.env` du hub, ou devant cette commande pour un lancement : la variable
+# d'environnement l'emporte, `node --env-file-if-exists` ne recouvrant jamais ce
+# qui est déjà posé.
+#
+#   SIMULATED_TIME=2026-10-30T10:20:00Z pnpm dev:duo
+#
+# Sur le **hub** et non sur les salles : elles s'alignent sur son heure, et il
+# n'y a donc rien à régler de leur côté. Le `HEURE_SIMULEE` de `dev-headless`
+# ne sert qu'à travailler sans hub — dès qu'un hub répond, il est ignoré, et
+# poser les deux ferait diverger deux horloges que tout le reste compare.
 set -euo pipefail
 
-NB_SALLES="${1:-2}"
+NB_SALLES=2
+ELECTRON=0
+for argument in "$@"; do
+  case "$argument" in
+    --electron) ELECTRON=1 ;;
+    [0-9]*) NB_SALLES="$argument" ;;
+    *)
+      echo "  Argument inconnu : ${argument}" >&2
+      echo "  Attendus : un nombre de salles, et --electron." >&2
+      exit 1
+      ;;
+  esac
+done
+
 HUB_ORIGIN="${HUB_ORIGIN:-http://localhost:8787}"
 SALLE_1="${SALLE_1:-track-1-teilhard-de-chardin}"
 SALLE_2="${SALLE_2:-track-2-mf-1092}"
@@ -171,6 +212,22 @@ arreter() {
 }
 trap arreter EXIT INT TERM
 
+# Electron ne lit ni `DATA_DIR` ni `DISPLAY_PORT`.
+#
+# Son dossier de données est celui du système (`app.getPath('userData')`) — le
+# même que `pnpm dev` et que `pnpm raz:dev` savent nettoyer, et c'est pourquoi
+# on ne le déplace pas ici : une salle Electron rangée ailleurs survivrait à une
+# remise à zéro sans que personne ne comprenne pourquoi elle est encore appairée.
+# Et son port d'affichage est figé à 7788 dans le processus principal. `PORT_1`
+# n'a donc rien à commander, et le dire vaut mieux que de le laisser croire.
+PORT_ELECTRON=7788
+if [ "$ELECTRON" -eq 1 ]; then
+  if [ "$PORT_1" != "$PORT_ELECTRON" ]; then
+    echo "  PORT_1 ignoré : la salle Electron sert toujours sur ${PORT_ELECTRON}." >&2
+  fi
+  PORT_1="$PORT_ELECTRON"
+fi
+
 PORTS=("$(port_de "$VITE_CONSOLE")" "$(port_de "$VITE_REGIE")" "$PORT_1")
 [ "$NB_SALLES" -ge 2 ] && PORTS+=("$PORT_2")
 # Le hub tient son port de sa propre configuration, pas d'ici — mais `HUB_ORIGIN`
@@ -180,11 +237,30 @@ PORT_HUB="$(port_de "$HUB_ORIGIN")"
 [[ "$PORT_HUB" =~ ^[0-9]+$ ]] && PORTS+=("$PORT_HUB")
 verifier_ports "${PORTS[@]}"
 
+# Le bundle du processus principal, avant tout lancement.
+#
+# `tsx` ne tourne pas dans Electron : le processus principal doit être bundlé en
+# CommonJS. Fait ici plutôt que dans un `&&` de la commande lancée, parce que
+# `demarrer` fait un `exec` unique — et parce qu'un échec de build doit arrêter
+# le script, pas laisser un hub tourner devant une salle qui n'existe pas.
+if [ "$ELECTRON" -eq 1 ]; then
+  echo ""
+  echo "  Bundle du processus principal…"
+  ( cd apps/room-client && node scripts/build-main.mjs )
+fi
+
 echo ""
 echo "  Hub         ${HUB_ORIGIN}/admin"
-echo "  Salle 1     http://127.0.0.1:${PORT_1}/regie      ${SALLE_1}"
+if [ "$ELECTRON" -eq 1 ]; then
+  echo "  Salle 1     Electron — fenêtre de régie      ${SALLE_1}"
+  echo "              écrans aussi sur http://127.0.0.1:${PORT_1}/"
+  echo "              dossier de données du système, pas ./.donnees-locales"
+else
+  echo "  Salle 1     http://127.0.0.1:${PORT_1}/regie      ${SALLE_1}"
+fi
 [ "$NB_SALLES" -ge 2 ] && echo "  Salle 2     http://127.0.0.1:${PORT_2}/regie      ${SALLE_2}"
 echo "  Mur public  ${HUB_ORIGIN}/mur?salle=${SALLE_1}"
+echo "  Régie mobile ${HUB_ORIGIN}/regie" 
 echo ""
 # Les deux Vite ne s'annoncent plus eux-mêmes : on le fait pour eux, sans quoi
 # rien à l'écran ne dit qu'ils tournent — ni où regarder s'ils tombent.
@@ -201,15 +277,37 @@ demarrer apps/hub-admin node_modules/.bin/vite \
 demarrer apps/regie-web node_modules/.bin/vite \
   --port "$(port_de "$VITE_REGIE")" --strictPort --clearScreen false --logLevel warn
 
-demarrer apps/hub-server MODE=dev VITE_ORIGIN="$VITE_CONSOLE" \
+# Le hub proxifie **les deux** Vite : celui de la console, et celui de la régie
+# — qu'il sert aussi, pour la régie mobile. Le même serveur convient aux deux
+# hôtes, puisque tous deux servent la régie sous `/regie/`.
+# `DEVICE_CODE_TTL` : la même valeur que le jour J, et pour la même raison.
+#
+# Deux minutes — le défaut — ne suffisent pas à ce que ce script fait pourtant
+# à chaque lancement : appairer une salle, puis une seconde. Le temps
+# d'approuver la deuxième, le code de la première est mort, et la régie
+# repartait en attente d'un nouveau code sans qu'on comprenne pourquoi.
+demarrer apps/hub-server MODE=dev VITE_ORIGIN="$VITE_CONSOLE" REGIE_VITE_ORIGIN="$VITE_REGIE" \
+  DEVICE_CODE_TTL="${DEVICE_CODE_TTL:-30m}" \
   node --watch --env-file-if-exists=.env --import tsx src/main.ts
 
 # Les salles démarrent tout de suite : un hub absent ne les condamne pas, elles
 # le rejoignent dès qu'il répond. Il n'y a donc rien à attendre ici.
-demarrer apps/room-client \
-  HUB_ORIGIN="$HUB_ORIGIN" ROOM_ID="$SALLE_1" REGIE_VITE_ORIGIN="$VITE_REGIE" \
-  DATA_DIR=./.donnees-locales/salle-1 DISPLAY_PORT="$PORT_1" \
-  node_modules/.bin/tsx scripts/dev-headless.ts
+if [ "$ELECTRON" -eq 1 ]; then
+  # `MODE=dev` explicite, et c'est la différence qui coûte cher.
+  #
+  # `dev-headless.ts` se met de lui-même en développement — c'est ce qu'il sert
+  # à faire. Le processus principal d'Electron, lui, lit l'environnement brut :
+  # sans cette variable il démarre en production, attend deux vraies instances
+  # OBS, et n'affiche aucun avertissement pour le dire.
+  demarrer apps/room-client \
+    MODE=dev HUB_ORIGIN="$HUB_ORIGIN" ROOM_ID="$SALLE_1" REGIE_VITE_ORIGIN="$VITE_REGIE" \
+    node_modules/.bin/electron dist/main.cjs
+else
+  demarrer apps/room-client \
+    HUB_ORIGIN="$HUB_ORIGIN" ROOM_ID="$SALLE_1" REGIE_VITE_ORIGIN="$VITE_REGIE" \
+    DATA_DIR=./.donnees-locales/salle-1 DISPLAY_PORT="$PORT_1" \
+    node_modules/.bin/tsx scripts/dev-headless.ts
+fi
 
 if [ "$NB_SALLES" -ge 2 ]; then
   demarrer apps/room-client \

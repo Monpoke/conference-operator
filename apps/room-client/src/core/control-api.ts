@@ -4,6 +4,7 @@ import type {
   ConfigVisible,
   VodListe,
   ControlDiagnostics,
+  MarkerRole,
   ModeExecution,
   ObsInstance,
   PointObsVisible,
@@ -27,7 +28,20 @@ export const controlActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('scene.set'), role: sceneRoleSchema }),
   z.object({ action: z.literal('recording.start') }),
   z.object({ action: z.literal('recording.stop') }),
-  z.object({ action: z.literal('recording.mark'), label: z.string().min(1).max(80) }),
+  /**
+   * Marqueur posé pendant la prise.
+   *
+   * `role` nul : un chapitre, qu'on empile autant qu'on veut. `debut` et `fin`
+   * sont les deux **repères de montage**, et le poste n'en garde qu'un de
+   * chaque — les reposer corrige, ce qui est exactement le geste qu'on fait
+   * quand l'orateur a eu un faux départ. Le libellé reste libre : c'est lui
+   * qu'on relit dans le journal.
+   */
+  z.object({
+    action: z.literal('recording.mark'),
+    label: z.string().min(1).max(80),
+    role: z.enum(['debut', 'fin']).nullable().default(null),
+  }),
   /**
    * Contrôle des rushes déjà produits.
    *
@@ -103,6 +117,18 @@ export const controlActionSchema = z.discriminatedUnion('action', [
   /** Relit les scènes déclarées dans OBS, sans rien reconnecter. */
   z.object({ action: z.literal('obs.refreshScenes') }),
   /**
+   * Ouvre le sélecteur de dossier du poste, pour le chemin des rushes.
+   *
+   * Le geste vit ici et non dans la page : un chemin de disque se saisit à la
+   * main sans erreur seulement quand on l'a sous les yeux, et c'est justement
+   * la machine de salle qu'il désigne — pas celle d'où l'on regarde. Le poste
+   * répond le chemin choisi, ou rien si l'opérateur a renoncé.
+   *
+   * Ne **modifie pas** la configuration : le champ se remplit, et c'est
+   * « Enregistrer » qui décide, comme pour tout le reste du panneau.
+   */
+  z.object({ action: z.literal('config.chooseFolder') }),
+  /**
    * Ouvre (ou rouvre) **une** instance OBS.
    *
    * Instance par instance, et jamais les deux ensemble : couper la captation
@@ -124,7 +150,8 @@ export interface ControlTarget {
   setSceneRole(role: z.infer<typeof sceneRoleSchema>): Promise<void>
   startRecording(): Promise<void>
   stopRecording(): Promise<StopResult>
-  mark(label: string): void
+  /** `role` nul = chapitre ; `debut`/`fin` = repère de montage, unique et remplaçable. */
+  mark(label: string, role: MarkerRole | null): void
   /** Rushes produits sous la racine d'enregistrement, et leur dernier contrôle. */
   listRecordings(): Promise<VodListe>
   inspectRecording(file: string): Promise<ControleVod>
@@ -153,6 +180,8 @@ export interface ControlTarget {
   configureRoom(patch: RoomConfigPatch): Promise<void>
   connectObsInstance(instance: ObsInstance): Promise<void>
   refreshObsScenes(): Promise<void>
+  /** Chemin choisi, ou `null` si l'opérateur a renoncé ou si le poste ne sait pas. */
+  chooseFolder(): Promise<string | null>
   diagnostics(): ControlDiagnostics
 }
 
@@ -200,8 +229,21 @@ export async function runControlAction(
         }
       }
       case 'recording.mark':
-        target.mark(action.label)
-        return { ok: true, message: `Marqueur « ${action.label} »` }
+        target.mark(action.label, action.role)
+        /*
+         * Deux phrases, parce que ce sont deux gestes.
+         *
+         * « Marqueur « Début » » ne dirait pas que le repère précédent vient
+         * d'être effacé — et c'est précisément ce qu'on veut lire quand on
+         * repose le début après un faux départ.
+         */
+        return {
+          ok: true,
+          message:
+            action.role == null
+              ? `Marqueur « ${action.label} »`
+              : `Repère de ${action.role === 'debut' ? 'début' : 'fin'} posé`,
+        }
       case 'vod.inspect': {
         const controle = await target.inspectRecording(action.file)
         return {
@@ -266,6 +308,12 @@ export async function runControlAction(
       case 'room.configure':
         await target.configureRoom(action.patch)
         return { ok: true, message: 'Configuration enregistrée' }
+      case 'config.chooseFolder': {
+        const dossier = await target.chooseFolder()
+        // Renoncer n'est pas un échec : fermer un sélecteur est un geste, pas
+        // une panne, et un rouge à ce moment-là se lit comme un refus du poste.
+        return { ok: true, detail: dossier, message: dossier ?? 'Aucun dossier choisi' }
+      }
       case 'obs.refreshScenes':
         await target.refreshObsScenes()
         return { ok: true, message: 'Scènes relues dans OBS' }

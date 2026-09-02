@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import {
   deliverySchema,
+  displayModeSchema,
   isoDateTimeSchema,
   obsInstanceSchema,
   roomIdSchema,
@@ -90,6 +91,18 @@ export const roomEventPayloadSchema = z.discriminatedUnion('type', [
     /** Profondeur de l'outbox : c'est l'indicateur à surveiller dans l'admin. */
     outboxDepth: z.number().int().nonnegative(),
     programContentHash: z.string().nullable(),
+    /**
+     * Ce que l'écran de la salle affiche en ce moment.
+     *
+     * Remonté parce qu'il se pilote maintenant de loin : une régie mobile ne
+     * peint jamais d'avance, donc sans ce champ aucun bouton d'écran ne
+     * s'allume et l'opérateur ne sait pas ce que le public voit.
+     *
+     * Facultatif à l'entrée : une salle d'une version antérieure continue de
+     * battre sans lui, et son écran se lit simplement « inconnu » plutôt que de
+     * faire échouer tout son lot.
+     */
+    displayMode: displayModeSchema.nullable().default(null),
   }),
   z.object({
     type: z.literal('stream.telemetry'),

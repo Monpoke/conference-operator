@@ -1,4 +1,5 @@
 import type { ControlDiagnostics } from '@cloudnord/contract'
+import { SANS_REPERES } from '@cloudnord/contract'
 import { useToast } from '@cloudnord/components'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -166,7 +167,7 @@ describe('message à la console', () => {
 })
 
 describe('captation', () => {
-  const REC = { active: true, markers: 2, startedAtMs: 1_000, startedAtCorrigeMs: null }
+  const REC = { active: true, markers: 2, startedAtMs: 1_000, startedAtCorrigeMs: null, montage: SANS_REPERES }
 
   function monter(
     recording: ControlDiagnostics['recording'] | null,
@@ -227,6 +228,43 @@ describe('captation', () => {
 
     expect(envois[0]?.body).toEqual({ action: 'recording.mark', label: 'Questions' })
     expect((wrapper.get('#label-marqueur').element as HTMLInputElement).value).toBe('')
+  })
+
+  /*
+   * Les deux repères de montage, vus du panneau.
+   *
+   * Ce qui compte ici : le rôle part avec le geste, et le libellé n'est pas
+   * saisi. Le poste ne lit que `role` ; le libellé, lui, se relit dans le
+   * journal du hub et doit dire la même chose d'une salle à l'autre.
+   */
+  it('poste les deux repères avec leur rôle, sans passer par le champ', async () => {
+    const envois = stubFetch()
+    const wrapper = monter(REC)
+
+    await wrapper.get('#btn-repere-debut').trigger('click')
+    await wrapper.get('#btn-repere-fin').trigger('click')
+    await flushPromises()
+
+    expect(envois.map((envoi) => envoi.body)).toEqual([
+      { action: 'recording.mark', label: 'Début', role: 'debut' },
+      { action: 'recording.mark', label: 'Fin', role: 'fin' },
+    ])
+  })
+
+  it('montre où le repère est tombé, pas seulement qu’il est posé', () => {
+    const wrapper = monter({ ...REC, montage: { debutMs: 52_000, finMs: null } })
+
+    // « Posé » et « posé où » sont deux questions, et la seconde est celle
+    // qu'on se pose quand on hésite à reposer le repère.
+    expect(wrapper.get('#btn-repere-debut').text()).toContain('Début · 00:52')
+    expect(wrapper.get('#btn-repere-fin').text()).not.toContain('·')
+  })
+
+  it('ne laisse pas poser de repère hors enregistrement', () => {
+    const wrapper = monter(null)
+
+    expect(wrapper.get('#btn-repere-debut').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('#btn-repere-fin').attributes('disabled')).toBeDefined()
   })
 
   it('compte les marqueurs posés', () => {

@@ -4,49 +4,39 @@ import { useConferenceStore } from '../stores/conference.js'
 import { useKeyboardLayer } from '../stores/keyboard.js'
 
 /**
- * Les trois questions qui se mettent en travers d'un démarrage ou d'une fin.
+ * Les quatre questions qui se mettent en travers d'un démarrage ou d'une fin.
  *
- * Ensemble ici parce qu'elles s'enchaînent : le garde-fou d'avance ouvre celui
- * de l'enregistrement, qui lance la conférence. Éparpillées dans les panneaux,
- * l'ordre — qui est le fond du sujet — ne se lirait nulle part.
+ * Ensemble ici parce qu'elles s'enchaînent, deux par deux : le garde-fou
+ * d'avance ouvre celui de l'enregistrement, qui lance la conférence ; celui de
+ * la fin anticipée ouvre celui de la captation, qui la termine. Éparpillées
+ * dans les panneaux, l'ordre — qui est le fond du sujet — ne se lirait nulle
+ * part.
  *
- * Chacune pose une couche clavier, et ce n'est pas du confort : les raccourcis
- * de la page agissent sur la conférence, et un « r » réflexe pendant qu'on
- * demande s'il faut enregistrer basculerait la captation sous la question
- * elle-même. Une couche avale tout ce qu'elle n'a pas lié.
+ * Chacune pose une couche clavier vide, et ce n'est pas du confort : les
+ * raccourcis de la page agissent sur la conférence, et un « r » réflexe pendant
+ * qu'on demande s'il faut enregistrer basculerait la captation sous la question
+ * elle-même. Une couche avale tout ce qu'elle n'a pas lié — et celles-ci ne
+ * lient rien, `ConfirmDialog` s'occupant lui-même du `Y` et du `N` qu'il
+ * imprime.
  */
 const conference = useConferenceStore()
 
-// Deux touches plutôt qu'une souris : on a le micro dans une main.
-useKeyboardLayer(
-  () => ({
-    y: () => void conference.start(),
-    // « o » comme oui : la moitié des opérateurs tape l'un, l'autre moitié
-    // l'autre, et se tromper de lettre sur cette question-là coûte un talk.
-    o: () => void conference.start(),
-    n: () => {
-      conference.tooEarlyOpen = false
-    },
-  }),
-  () => conference.tooEarlyOpen,
-)
-
-useKeyboardLayer(
-  () => ({
-    y: () => void conference.end(),
-    o: () => void conference.end(),
-    n: () => {
-      conference.endEarlyOpen = false
-    },
-  }),
-  () => conference.endEarlyOpen,
-)
-
 /*
- * Rien de lié, et c'est le geste : trois issues nommées, dont aucune ne
- * s'atteint par réflexe. La couche est là pour ce qu'elle avale.
+ * Des couches vides, et c'est tout ce qu'il faut.
+ *
+ * `Y` et `N` sont désormais liés par `ConfirmDialog` lui-même, avec le libellé
+ * qu'il imprime : les deux ne peuvent plus diverger, et les quatre questions
+ * répondent au clavier de la même façon — ce qui n'était le cas que de deux
+ * d'entre elles quand chaque appelant câblait les siennes.
+ *
+ * La couche reste, pour ce qu'elle **avale** : un « r » réflexe pendant qu'on
+ * demande s'il faut enregistrer basculerait la captation sous la question
+ * elle-même, et un « l » mettrait la salle à l'antenne. Elle ne lie plus rien.
  */
+useKeyboardLayer(() => ({}), () => conference.tooEarlyOpen)
+useKeyboardLayer(() => ({}), () => conference.endEarlyOpen)
 useKeyboardLayer(() => ({}), () => conference.recordingOpen)
+useKeyboardLayer(() => ({}), () => conference.stopRecordingOpen)
 </script>
 
 <template>
@@ -63,9 +53,7 @@ useKeyboardLayer(() => ({}), () => conference.recordingOpen)
     title="Commencer très en avance ?"
     :detail="conference.tooEarlyDetail"
     cancel-label="Non"
-    cancel-key="N"
     confirm-label="Commencer"
-    confirm-key="Y"
     @confirm="conference.start()"
   />
 
@@ -81,11 +69,41 @@ useKeyboardLayer(() => ({}), () => conference.recordingOpen)
     title="Terminer en avance ?"
     :detail="conference.endEarlyDetail"
     cancel-label="Non"
-    cancel-key="N"
     confirm-label="Terminer"
-    confirm-key="Y"
     @confirm="conference.end()"
   />
+
+  <!--
+    Le pendant de « Rien n'enregistre », et il couvre l'oubli que celui-ci
+    laisse passer : une captation qu'on n'arrête pas ne se voit nulle part. Elle
+    court pendant la pause, le talk suivant s'écrit dans le même fichier, et le
+    garde-fou du démarrage se tait puisqu'un enregistrement tourne. Le prix ne
+    se découvre qu'au montage, quand la salle est démontée.
+  -->
+  <ConfirmDialog
+    v-model:open="conference.stopRecordingOpen"
+    tone="attention"
+    title="La captation tourne encore"
+    :detail="conference.stopRecordingDetail"
+    cancel-label="Annuler"
+    confirm-label="Arrêter et terminer"
+    @confirm="conference.finish(true)"
+  >
+    <template #other>
+      <!--
+        L'issue du talk enregistré d'une traite, questions du public comprises,
+        qui déborde du créneau. Elle est nommée, pas cachée : la retirer
+        obligerait à annuler, terminer, puis se souvenir d'arrêter plus tard.
+      -->
+      <button
+        type="button"
+        class="cursor-pointer rounded-lg border border-bord bg-surface2 px-3 py-2 text-[13px] font-semibold text-texte"
+        @click="conference.finish(false)"
+      >
+        Terminer sans arrêter
+      </button>
+    </template>
+  </ConfirmDialog>
 
   <ConfirmDialog
     v-model:open="conference.recordingOpen"

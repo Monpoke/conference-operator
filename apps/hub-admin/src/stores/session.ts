@@ -1,4 +1,4 @@
-import { createHubClient, type HubClient } from '@cloudnord/hub-client'
+import { createHubAuth, createHubClient, type HubClient } from '@cloudnord/hub-client'
 import { useToast } from '@cloudnord/components'
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
@@ -44,6 +44,15 @@ export const useSessionStore = defineStore('session', () => {
     }),
   )
 
+  /**
+   * Better Auth vit dans `@cloudnord/hub-client`, à côté du jeton.
+   *
+   * La régie mobile fait exactement les mêmes appels, et ce sont ceux où une
+   * seconde copie coûte cher — un `signOut` qui oublie de prévenir le hub
+   * laisse une session Google se rouvrir au rechargement.
+   */
+  const hubAuth = createHubAuth({ token: client.value.token })
+
   const mode = computed(() => boot.value?.mode ?? 'production')
   const dev = computed(() => mode.value === 'dev')
   const eventName = computed(() => boot.value?.event.name ?? '')
@@ -80,17 +89,10 @@ export const useSessionStore = defineStore('session', () => {
    * the first attempt.
    */
   async function resume(): Promise<void> {
-    try {
-      const response = await fetch('/api/auth/get-session')
-      if (!response.ok) return
-      const body = (await response.json().catch(() => null)) as { user?: { email?: string } } | null
-      if (body?.user == null) return
-      identity.value = body.user.email ?? null
-      signedIn.value = true
-    } catch {
-      // Hub injoignable au chargement : l'écran de connexion est la bonne
-      // réponse, il redira ce qu'il faut au premier essai.
-    }
+    const email = await hubAuth.resume()
+    if (email == null) return
+    identity.value = email
+    signedIn.value = true
   }
 
   /**
@@ -107,23 +109,12 @@ export const useSessionStore = defineStore('session', () => {
    */
   async function signInWithGoogle(): Promise<void> {
     error.value = null
-    try {
-      const response = await fetch('/api/auth/sign-in/social', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ provider: 'google', callbackURL: '/admin' }),
-      })
-      const body = (await response.json().catch(() => null)) as
-        | { url?: string; message?: string }
-        | null
-      if (!response.ok || body?.url == null) {
-        error.value = body?.message ?? 'Google indisponible.'
-        return
-      }
-      globalThis.location.assign(body.url)
-    } catch {
-      error.value = 'Le hub est injoignable.'
+    const resultat = await hubAuth.googleUrl('/admin')
+    if (!resultat.ok) {
+      error.value = resultat.message
+      return
     }
+    globalThis.location.assign(resultat.url)
   }
 
   /**
@@ -138,20 +129,12 @@ export const useSessionStore = defineStore('session', () => {
     signingIn.value = true
     error.value = null
     try {
-      const response = await fetch('/api/auth/sign-in/email', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      })
-      const body = (await response.json().catch(() => null)) as { token?: string } | null
-      if (!response.ok || body?.token == null) {
-        error.value = 'Identifiants refusés.'
+      const resultat = await hubAuth.signIn(email, password)
+      if (!resultat.ok) {
+        error.value = resultat.message
         return
       }
-      client.value.token.write(body.token)
       signedIn.value = true
-    } catch {
-      error.value = 'Le hub est injoignable.'
     } finally {
       signingIn.value = false
     }
@@ -178,20 +161,7 @@ export const useSessionStore = defineStore('session', () => {
    * the next reload — a sign-out button that visibly does nothing.
    */
   async function signOut(): Promise<void> {
-    const bearer = client.value.token.read()
-    try {
-      await fetch('/api/auth/sign-out', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          ...(bearer == null ? {} : { authorization: `Bearer ${bearer}` }),
-        },
-        body: '{}',
-      })
-    } catch {
-      // Fermée ici quand même : rester connecté parce que le hub n'a pas
-      // répondu est le contraire de ce qu'on demande en cliquant.
-    }
+    await hubAuth.signOut()
     forget()
   }
 

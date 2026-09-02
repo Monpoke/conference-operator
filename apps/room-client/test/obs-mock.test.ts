@@ -101,6 +101,63 @@ describe('OBS simulé', () => {
     expect(reel.snapshot().simulated).toBe(false)
   })
 
+  it('porte les scènes que la salle a configurées, si personnelles soient-elles', async () => {
+    /*
+     * Un OBS simulé n'a pas de scènes à lui : il a celles qu'on attend de lui.
+     *
+     * Sans ça, tout nom un peu personnel — « Direct 4K », le nom d'un studio,
+     * une convention d'événement — ressortait en « rôle introuvable », rouge
+     * dans la régie, sur une instance qui n'existe pas. On ne débogue pas la
+     * faute de frappe d'un OBS qu'on n'a pas installé.
+     */
+    const PERSO = { LIVE: 'Direct 4K — régie mobile', HOLD: 'Mon habillage à moi' }
+    const controller = new ObsController({
+      instance: 'A',
+      url: 'mock',
+      sceneRoles: PERSO,
+      transport: createMockObsTransport({
+        instance: 'A',
+        scenes: Object.values(PERSO),
+        recordingDir: join(dir, 'rec'),
+      }),
+    })
+
+    const state = await controller.connect()
+    expect(state.unresolvedRoles).toEqual([])
+
+    // Et la bascule passe : c'est le geste que le rouge annonçait comme voué à
+    // l'échec. L'état suit l'événement d'OBS, jamais l'appel — la régie ne
+    // peint pas d'avance.
+    await controller.setRole('LIVE')
+    await sleep(30)
+    expect(controller.snapshot().currentSceneName).toBe(PERSO.LIVE)
+    expect(controller.snapshot().currentRole).toBe('LIVE')
+  })
+
+  it('garde les scènes plausibles à côté de celles de la salle', async () => {
+    /*
+     * Elles s'ajoutent, elles ne remplacent pas : le sélecteur du ⚙ doit garder
+     * une liste où choisir, y compris sur une salle dont la configuration ne
+     * couvre qu'un rôle.
+     */
+    const transport = createMockObsTransport({
+      instance: 'A',
+      scenes: ['Direct 4K — régie mobile'],
+      recordingDir: join(dir, 'rec'),
+    })
+    await transport.connect('mock')
+    const { scenes } = (await transport.call('GetSceneList')) as {
+      scenes: { sceneName: string }[]
+    }
+    const noms = scenes.map((scene) => scene.sceneName)
+
+    expect(noms).toContain('Direct 4K — régie mobile')
+    for (const plausible of SCENES_PAR_DEFAUT.A) expect(noms).toContain(plausible)
+    // Dédoublonnées : une salle configurée sur les noms par défaut ne doit pas
+    // les voir deux fois dans le sélecteur.
+    expect(new Set(noms).size).toBe(noms.length)
+  })
+
   it('expose les mêmes scènes que le mapping posé à la création d\'une salle', async () => {
     const controller = new ObsController({
       instance: 'A',

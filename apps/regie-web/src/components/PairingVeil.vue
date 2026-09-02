@@ -32,20 +32,39 @@ const props = defineProps<{ pairing: DisplayPayload['pairing'] }>()
 
 const actions = useActionsStore()
 
-/** Tant qu'aucun code n'a été demandé, c'est la salle qu'on choisit. */
-const choosing = computed(() => props.pairing?.userCode == null)
-
 const rooms = computed(() => props.pairing?.rooms ?? [])
 
 const requested = computed(
   () => rooms.value.find((room) => room.id === props.pairing?.requestedRoomId) ?? null,
 )
 
-const title = computed(() =>
-  choosing.value
-    ? 'Quelle salle dessert ce poste ?'
-    : (TITLES[props.pairing?.status ?? ''] ?? 'Appairage de la salle'),
-)
+/**
+ * On choisit une salle tant qu'aucune n'est choisie — et pas tant qu'aucun code
+ * n'est affiché.
+ *
+ * La nuance a coûté cher. Un code vit deux minutes ; appairer une salle puis
+ * une seconde suffit à laisser mourir le premier, et la boucle de supervision
+ * en redemande un sous quinze secondes. Pendant ce trou il n'y a pas de code,
+ * et l'écran repartait demander quelle salle dessert le poste — une question
+ * déjà tranchée, dont la réponse voyage toujours dans `requestedRoomId`. On
+ * recliquait sur la salle, ce qui relançait l'appairage et donnait
+ * l'impression que c'était le clic qui avait réparé.
+ */
+const choosing = computed(() => props.pairing?.requestedRoomId == null)
+
+/**
+ * Salle choisie, pas encore de code : un nouveau arrive.
+ *
+ * Le seul état que l'écran ne nommait pas. Sans lui, un appairage qui se répare
+ * tout seul ressemble à un appairage cassé.
+ */
+const attente = computed(() => !choosing.value && props.pairing?.userCode == null)
+
+const title = computed(() => {
+  if (choosing.value) return 'Quelle salle dessert ce poste ?'
+  if (attente.value) return 'Nouveau code en préparation'
+  return TITLES[props.pairing?.status ?? ''] ?? 'Appairage de la salle'
+})
 </script>
 
 <template>
@@ -83,13 +102,31 @@ const title = computed(() =>
         <p v-if="requested != null" class="mb-3.5 text-sm text-attenue">
           Salle demandée : <strong class="text-texte">{{ requested.name }}</strong>
         </p>
+
+        <!--
+          Le trou entre deux codes, nommé.
+
+          La boucle de supervision en redemande un toutes les quinze secondes :
+          il n'y a rien à faire, et surtout rien à recliquer. Le dire évite de
+          reprendre un geste qui n'a jamais manqué.
+        -->
+        <p
+          v-if="attente"
+          class="mb-5 rounded-xl border border-bord bg-fond px-[26px] py-5 text-[15px] leading-relaxed text-attenue"
+          data-role="pairing-attente"
+        >
+          Le code précédent n’est plus valable. Un nouveau code apparaîtra ici
+          dans quelques secondes — rien à faire.
+        </p>
+
         <div
+          v-else
           class="mb-5 rounded-xl border border-bord bg-fond px-[26px] py-5 text-[52px] font-bold tracking-[.16em] tabular-nums select-all"
           data-role="pairing-code"
         >
           {{ pairing?.userCode ?? '········' }}
         </div>
-        <p class="text-sm leading-relaxed text-attenue">
+        <p v-if="!attente" class="text-sm leading-relaxed text-attenue">
           Saisissez ce code dans la console du hub, onglet « Machines en attente », puis
           choisissez la salle desservie par ce poste.<br />
           <a

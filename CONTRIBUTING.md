@@ -9,7 +9,7 @@ quatre cents personnes.
 
 ```bash
 corepack enable && pnpm install
-pnpm test        # 1227 tests
+pnpm test        # 1391 tests
 pnpm typecheck
 ```
 
@@ -45,7 +45,15 @@ pnpm --filter @cloudnord/hub-admin dev   # puis MODE=dev pnpm dev côté hub
 # l'inverse — c'est lui qui porte le flux d'état, les actions et le vumètre.
 pnpm --filter @cloudnord/regie-web dev
 REGIE_VITE_ORIGIN=http://127.0.0.1:5174 pnpm --filter @cloudnord/room-client dev:headless
+
+# La régie **mobile** est la même application, servie par le hub sur /regie.
+# Le même serveur Vite convient : les deux hôtes la servent sous /regie/.
+REGIE_VITE_ORIGIN=http://127.0.0.1:5174 MODE=dev pnpm --filter @cloudnord/hub-server dev
 ```
+
+Les deux portées se relisent séparément, et il le faut : la disposition mobile
+n'est pas la disposition de poste réduite par masquage, et un panneau qui rend
+du vide à distance ne se voit pas en local.
 
 Les jeux de données figés qui alimentaient leurs aperçus n'ont pas été perdus :
 ils vivent dans `apps/hub-admin/test/fixtures/console.ts` et
@@ -97,7 +105,8 @@ tombe.
 
 **La console du hub et la régie, elles, sont des applications Vue**
 (`apps/hub-admin`, `apps/regie-web`) : le processus qui les sert rend une
-coquille et sert leur bundle. L'invariant n'est pas abandonné pour autant, il est
+coquille et sert leur bundle. La régie en a **deux** — la machine de salle et le
+hub —, et l'invariant vaut pour les deux coquilles. L'invariant n'est pas abandonné pour autant, il est
 reformulé — parce que ce qu'il protégeait était le réseau, pas la balise :
 
 > Une page servie ne référence **aucune ressource hors de son origine**. Tout

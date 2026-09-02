@@ -8,6 +8,7 @@ import type { QuestionService, WallService } from './services/wall.js'
 import type { RateLimiter } from './services/rate-limit.js'
 import type { PushService } from './services/push.js'
 import type { VodService } from './services/vod.js'
+import type { RegieService } from './services/regie.js'
 import type { SessionStateService, SettingsService } from './services/sessions.js'
 import type { EventIdentityService } from './services/event-identity.js'
 import type { MutableClock } from './services/clock.js'
@@ -23,6 +24,14 @@ export interface Services {
   questions: QuestionService
   limiter: RateLimiter
   sessions: SessionStateService
+  /**
+   * Le verrou de la régie mobile : qui pilote quelle salle depuis un téléphone.
+   *
+   * Un service et non un champ de `rooms` : ce qu'il garde n'est pas la salle
+   * mais **une surface**, `regie.command`. La console et la machine de salle
+   * gardent leurs gestes intacts.
+   */
+  regie: RegieService
   settings: SettingsService
   /**
    * Qui est l'événement — nom complet et nom court.

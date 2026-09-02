@@ -21,6 +21,13 @@ import {
   sessionStateViewSchema,
   syncResultSchema,
 } from './room-state.js'
+import {
+  regieCommandResultSchema,
+  regieCommandSchema,
+  regieLockSchema,
+  regieRoomSchema,
+  regieViewSchema,
+} from './regie.js'
 import { commentSchema, commentSourceSchema, questionSchema } from './wall.js'
 import {
   controleStockageSchema,
@@ -931,6 +938,65 @@ export const contract = {
         }),
       )
       .output(z.object({ ok: z.boolean() })),
+  },
+
+  /**
+   * Régie mobile : piloter une salle depuis un téléphone, par le hub.
+   *
+   * Un namespace à part, et non des procédures greffées sur `rooms` ou
+   * `sessions`, parce que c'est **la seule surface que le verrou garde**. Le
+   * cycle de vie y repasse alors même que `sessions.start` accepte déjà un
+   * opérateur : deux portes vers le même geste, dont une seule verrouillée,
+   * n'aurait verrouillé personne.
+   *
+   * Ce que le verrou ne garde pas, et c'est délibéré : la console reste libre
+   * de ses gestes, et la régie de la salle ne passe pas par le hub du tout —
+   * elle poste sur sa propre boucle locale. L'opérateur qui est physiquement
+   * devant la machine n'est jamais bloqué par un téléphone parti dans un
+   * couloir.
+   */
+  regie: {
+    /**
+     * Les salles et leur verrou, pour l'écran de choix.
+     *
+     * Un verrou périmé n'est pas rendu : ce que la liste montre est ce qu'on
+     * peut prendre sans déposséder personne.
+     */
+    locks: oc.output(z.array(regieRoomSchema)),
+    /**
+     * Prend la salle, ou renouvelle sa prise.
+     *
+     * Sans `force`, une salle déjà tenue par quelqu'un d'autre répond
+     * `CONFLICT` en nommant le porteur — la reprise est une décision, pas un
+     * effet de bord d'un rechargement de page. Avec `force`, elle dépossède ;
+     * c'est ce que fait le bouton « Reprendre la salle », sous une modale.
+     */
+    hold: oc
+      .input(z.object({ roomId: roomIdSchema, force: z.boolean().default(false) }))
+      .output(regieLockSchema),
+    /** Rend la salle. Sans effet si l'appelant ne la tenait pas. */
+    release: oc.input(z.object({ roomId: roomIdSchema })).output(z.object({ ok: z.boolean() })),
+    /**
+     * L'état d'une salle, **et le battement du verrou**.
+     *
+     * Les deux dans le même appel, à dessein. Un sondage d'une seconde dit déjà
+     * « je suis là » ; en faire un second geste, c'est un battement de plus
+     * qu'on peut oublier d'arrêter — et un verrou qui survit à la page qui le
+     * tenait. Un appelant qui ne tient pas la salle ne fait que lire.
+     */
+    view: oc.input(z.object({ roomId: roomIdSchema })).output(regieViewSchema),
+    /**
+     * Un geste de régie. Réservé au porteur du verrou.
+     *
+     * Deux natures de réponse derrière une seule procédure, et `applied` les
+     * distingue : le cycle de vie s'écrit chez le hub — c'est acquis au retour
+     * —, une scène ou un enregistrement part sur le flux descendant et ne
+     * s'observe que sur la vue. Confondre les deux ferait croire qu'un
+     * enregistrement tourne parce qu'un appel a répondu.
+     */
+    command: oc
+      .input(z.object({ roomId: roomIdSchema, action: regieCommandSchema }))
+      .output(regieCommandResultSchema),
   },
 
   questions: {

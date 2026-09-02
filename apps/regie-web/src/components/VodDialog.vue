@@ -68,6 +68,22 @@ const timeZone = computed(() => props.timeZone)
       Une attente muette se lit comme un bouton mort : on reclique, puis on
       cherche la panne. « conférence dans 6 min » se lit comme une décision.
     -->
+    <!--
+      Le hub sait où envoyer, mais n'envoie rien de lui-même — le réglage par
+      défaut. Les boutons restent : le régulateur accepte les demandes
+      manuelles dans cet état. Reste à le dire, sans ambre, sinon l'opérateur
+      qui vient d'en monter un à la main se demande pourquoi les suivants ne
+      partent pas seuls.
+    -->
+    <div
+      v-if="vod.manualOnly"
+      class="mb-2.5 border-b border-bord pb-1.5 text-[11px] text-attenue"
+      data-role="vod-manuel"
+    >
+      Téléversement automatique désactivé sur le hub : les envois se font à la main, ⬆ par ligne
+      ou « Tout téléverser ».
+    </div>
+
     <div
       v-if="vod.waitReason != null"
       class="mb-2.5 border-b border-bord pb-1.5 text-[11px] text-attention"

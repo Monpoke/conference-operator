@@ -49,14 +49,22 @@ describe('ce qui interdit de téléverser', () => {
     // quelqu'un l'ait décidé.
     expect(verdictTeleversement(entrees({ politique: POLITIQUE_VOD_PAR_DEFAUT }))).toMatchObject({
       autorise: false,
-      raison: 'desactive',
+      raison: 'auto-desactive',
     })
+  })
+
+  it('laisse passer une demande manuelle quand l\'automatique est éteint', () => {
+    // Le motif est distinct de l'absence de stockage, et c'est ce qui permet à
+    // la régie de garder ses boutons sur le réglage par défaut du hub.
+    expect(
+      verdictTeleversement(entrees({ politique: POLITIQUE_VOD_PAR_DEFAUT, manuel: true })),
+    ).toMatchObject({ autorise: true, raison: null })
   })
 
   it('ne part nulle part quand le hub n\'a pas de stockage', () => {
     expect(
       verdictTeleversement(entrees({ stockagePret: false, manuel: true })),
-    ).toMatchObject({ autorise: false, raison: 'desactive' })
+    ).toMatchObject({ autorise: false, raison: 'sans-stockage' })
   })
 
   it('refuse pendant un enregistrement, avant toute autre raison', () => {

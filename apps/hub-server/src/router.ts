@@ -3,6 +3,7 @@ import { ORPCError } from '@orpc/server'
 import {
   POLITIQUE_VOD_PAR_DEFAUT,
   PROTOCOL_VERSION,
+  REGIE_SESSION_HEADER,
   contract,
   isCommandExpired,
   type CaptationVue,
@@ -18,6 +19,13 @@ import {
 } from '@cloudnord/program'
 import type { CaptationBrute } from './services/ingest.js'
 import { controlerOpenFeedback } from './services/openfeedback.js'
+import {
+  commandeDeRegie,
+  sallesDeRegie,
+  SalleInconnue,
+  VerrouTenu,
+  vueDeRegie,
+} from './services/regie.js'
 import { TransitionRefusee } from './services/sessions.js'
 import { StockageIncomplet, type VodService } from './services/vod.js'
 import { ErreurS3 } from './services/s3.js'
@@ -1229,6 +1237,114 @@ export const router = os.router({
     }),
   },
 
+  /**
+   * Régie mobile.
+   *
+   * Une seule surface verrouillée, et c'est ce qui rend le verrou tenable :
+   * `sessions.start` reste ouverte à la console, `rooms.resync` aussi, et la
+   * machine de salle ne passe pas par le hub pour piloter son OBS. Le verrou
+   * n'exclut que les régies mobiles entre elles.
+   */
+  regie: {
+    locks: os.regie.locks
+      .use(operatorOnly)
+      .handler(({ context }) => sallesDeRegie(context.services, context.services.clock.now())),
+
+    hold: os.regie.hold.use(operatorOnly).handler(({ input, context }) => {
+      const avant = context.services.regie.lock(input.roomId)
+      const verrou = surVerrou(() =>
+        context.services.regie.hold(
+          input.roomId,
+          context.operator.email,
+          sessionDeRegie(context),
+          input.force,
+        ),
+      )
+      /*
+       * Diffuser seulement sur un **changement** de porteur.
+       *
+       * Le renouvellement passe par ici quand la page reprend la main après une
+       * coupure, et il ne change rien à ce que la salle affiche. Publier à
+       * chaque fois remplirait la table des commandes d'une information
+       * identique — et ferait clignoter le badge en salle.
+       */
+      /*
+       * Sur le **porteur affiché**, pas sur la session.
+       *
+       * Reprendre une salle d'un onglet à l'autre du même opérateur ne change
+       * rien à ce que la salle affiche : republier ferait clignoter le badge
+       * sur une information identique.
+       */
+      if (avant?.holder !== verrou.holder) diffuserVerrou(context, input.roomId, verrou.holder)
+      return verrou
+    }),
+
+    release: os.regie.release.use(operatorOnly).handler(({ input, context }) => {
+      const rendu = context.services.regie.release(input.roomId, sessionDeRegie(context))
+      if (rendu) diffuserVerrou(context, input.roomId, null)
+      return { ok: rendu }
+    }),
+
+    /**
+     * L'état de la salle, et le battement du verrou dans le même appel.
+     *
+     * Le battement d'abord : une vue rendue à un porteur dont le verrou vient
+     * d'expirer entre deux sondages le laisserait dépossédé sans qu'il ait rien
+     * fait. Renouveler avant de lire referme cette fenêtre.
+     *
+     * Un appelant qui ne tient pas la salle ne fait que lire — c'est ce qui
+     * permet de regarder une salle tenue par quelqu'un d'autre sans la lui
+     * prendre.
+     */
+    view: os.regie.view.use(operatorOnly).handler(({ input, context }) => {
+      const verrou = context.services.regie.lock(input.roomId)
+      /*
+       * Seul le porteur renouvelle, et « le porteur » est une session.
+       *
+       * Un second onglet du même opérateur ne fait que lire : le contraire
+       * ferait vivre indéfiniment un verrou que la page qui l'a pris a cessé
+       * de tenir.
+       */
+      if (verrou != null && verrou.holderId === context.headers.get(REGIE_SESSION_HEADER)) {
+        context.services.regie.hold(input.roomId, verrou.holder, verrou.holderId, false)
+      }
+      return surSalle(() =>
+        vueDeRegie(context.services, input.roomId, context.services.clock.now()),
+      )
+    }),
+
+    command: os.regie.command.use(operatorOnly).handler(({ input, context }) => {
+      exigerVerrou(context, input.roomId)
+
+      const resultat = surTransition(() =>
+        surSalle(() =>
+          commandeDeRegie(context.services, input.roomId, input.action, context.operator.email),
+        ),
+      )
+
+      /*
+       * Une décision de cycle de vie se diffuse comme celle d'une régie de
+       * salle, par le même chemin : les autres salles doivent l'apprendre, et
+       * la console la voir sans attendre son tour de sondage. La faire
+       * autrement aurait donné deux façons d'annoncer le même fait.
+       */
+      const action = input.action
+      if ('sessionId' in action) {
+        const etat = context.services.sessions.get(action.sessionId)
+        diffuserEtat(context, {
+          sessionId: action.sessionId,
+          roomId: input.roomId,
+          // `reset` supprime la ligne : l'absence *est* « à venir », ici comme
+          // dans la table. Sans ce repli, l'annulation ne s'annoncerait pas.
+          status: etat?.status ?? 'scheduled',
+          decidedBy: context.operator.email,
+        })
+      }
+
+      return { ok: true, ...resultat }
+    }),
+  },
+
   questions: {
     post: os.questions.post.handler(({ input, context }) => {
       if (!context.services.limiter.take(publicIdentity(context))) {
@@ -1449,6 +1565,91 @@ function surTransition<T>(geste: () => T): T {
     }
     throw erreur
   }
+}
+
+/**
+ * Traduit une salle inconnue en `NOT_FOUND`.
+ *
+ * Une adresse `/regie/<id>` se met en favori et se partage : un identifiant qui
+ * ne désigne plus rien — salle renommée, programme réimporté — doit le dire,
+ * pas rendre une vue vide qu'on lirait comme une salle éteinte.
+ */
+function surSalle<T>(geste: () => T): T {
+  try {
+    return geste()
+  } catch (erreur) {
+    if (erreur instanceof SalleInconnue) {
+      throw new ORPCError('NOT_FOUND', { message: erreur.message })
+    }
+    throw erreur
+  }
+}
+
+/** Traduit une salle déjà tenue en `CONFLICT`, en nommant le porteur. */
+function surVerrou<T>(geste: () => T): T {
+  try {
+    return geste()
+  } catch (erreur) {
+    if (erreur instanceof VerrouTenu) {
+      throw new ORPCError('CONFLICT', { message: erreur.message })
+    }
+    throw erreur
+  }
+}
+
+/**
+ * Refuse un geste à qui ne tient pas la salle.
+ *
+ * Le message nomme le porteur : « refusé » sans dire par qui envoie chercher un
+ * défaut là où il n'y a qu'un collègue à l'autre bout du bâtiment. Et il
+ * distingue le verrou absent du verrou d'autrui — le premier se répare d'un
+ * clic sur « Prendre la salle », le second demande une décision.
+ */
+function exigerVerrou(context: HubContext, roomId: string): void {
+  const verrou = context.services.regie.lock(roomId)
+  if (verrou == null) {
+    throw new ORPCError('FORBIDDEN', {
+      message: "Prenez la salle avant de la piloter : personne ne la tient",
+    })
+  }
+  if (verrou.holderId !== context.headers.get(REGIE_SESSION_HEADER)) {
+    throw new ORPCError('FORBIDDEN', {
+      message: `${verrou.holder} tient la régie de cette salle`,
+    })
+  }
+}
+
+/**
+ * L'onglet qui parle, ou un refus.
+ *
+ * Exigé plutôt que déduit du compte : retomber sur l'adresse en l'absence de
+ * l'en-tête dégraderait l'exclusivité en silence, et c'est le genre de repli
+ * qu'on ne découvre que le jour où deux onglets pilotent la même salle.
+ */
+function sessionDeRegie(context: HubContext): string {
+  const session = context.headers.get(REGIE_SESSION_HEADER)
+  if (session == null || session === '') {
+    throw new ORPCError('BAD_REQUEST', {
+      message: `En-tête ${REGIE_SESSION_HEADER} absent : la régie ne s'identifie pas`,
+    })
+  }
+  return session
+}
+
+/**
+ * Annonce à la salle qui la pilote à distance, ou que personne ne le fait.
+ *
+ * Durable (`ttl` nul) comme `session.state` : c'est un changement d'état, pas
+ * un message d'un instant. Une salle momentanément coupée doit le retrouver à
+ * sa reconnexion — sinon son écran de régie affiche un porteur parti depuis une
+ * heure, ou n'en affiche aucun alors qu'on la pilote.
+ */
+function diffuserVerrou(
+  context: { services: HubContext['services'] },
+  roomId: string,
+  holder: string | null,
+): void {
+  context.services.commands.publish(roomId, { type: 'regie.hold', holder }, null)
 }
 
 function exigerMemeSalle(context: ActorContext, roomId: string | null): void {

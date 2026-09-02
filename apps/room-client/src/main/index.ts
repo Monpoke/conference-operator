@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, safeStorage, screen } from 'electron'
+import { app, BrowserWindow, dialog, safeStorage, screen } from 'electron'
 import { RoomApp } from '../core/room-app.js'
 import { formaterLigneJournal } from '../core/journal-console.js'
 import { createMockObsTransport } from '../core/obs-mock.js'
@@ -78,13 +78,34 @@ async function main(): Promise<void> {
     roomId: process.env.ROOM_ID,
     regieViteOrigin: process.env.REGIE_VITE_ORIGIN ?? null,
     obsTransportFactory: MODE.obsSimule
-      ? (instance) =>
+      ? (instance, scenes) =>
           createMockObsTransport({
             instance,
+            // Voir `dev-headless.ts` : le simulateur porte les scènes de la
+            // salle, sans quoi il râle sur des noms qu'il est seul à ignorer.
+            scenes,
             recordingDir: join(dataDir, 'enregistrements'),
             onLog: (message) => console.log(message),
           })
       : undefined,
+    /**
+     * Le sélecteur de dossier, fourni par Electron seulement.
+     *
+     * `dev:headless` tourne sous Node nu et ne le fournit pas : la régie masque
+     * alors le bouton, parce qu'un bouton qui ne répond pas coûte plus qu'un
+     * champ à remplir à la main.
+     *
+     * `defaultPath` sur le dossier déjà saisi : corriger un chemin, c'est
+     * presque toujours en changer une branche, pas repartir de la racine.
+     */
+    choisirDossier: async (initial) => {
+      const resultat = await dialog.showOpenDialog({
+        title: 'Dossier des VOD',
+        properties: ['openDirectory', 'createDirectory'],
+        ...(initial == null || initial === '' ? {} : { defaultPath: initial }),
+      })
+      return resultat.canceled ? null : (resultat.filePaths[0] ?? null)
+    },
     readToken: () => vault.read(),
     writeToken: (token) => vault.write(token),
     onLog: (level, message, context) =>

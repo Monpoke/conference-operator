@@ -82,10 +82,10 @@ const minutes = (ms: number): number => Math.max(0, Math.round(ms / 60_000))
  */
 export function verdictTeleversement(e: EntreesRegulateur): VerdictTeleversement {
   if (!e.stockagePret) {
-    return attente('desactive', 'aucun stockage configuré sur le hub')
+    return attente('sans-stockage', 'aucun stockage configuré sur le hub')
   }
   if (!e.politique.actif && !e.manuel) {
-    return attente('desactive', 'téléversement automatique désactivé')
+    return attente('auto-desactive', 'téléversement automatique désactivé')
   }
   if (e.enregistre) {
     return attente('enregistrement', 'enregistrement en cours')

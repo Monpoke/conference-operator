@@ -14,13 +14,34 @@ directories:
   output: release
   buildResources: build
 
+# Le nom par défaut — `${productName} Setup ${version}.exe` — porte un espace et
+# un accent : lisible dans un dossier, il devient une URL de release échappée de
+# part en part, et un nom de fichier que `sha256sum -c` fait trébucher. Le
+# produit garde son nom partout où quelqu'un le lit : raccourci, menu Démarrer,
+# désinstalleur. Ici, c'est un nom de fichier.
+#
+# `${version}` vaut `0.0.0` depuis le dépôt, et le vrai numéro en publication —
+# `release.yml` l'injecte par `-c.extraMetadata.version`, les manifestes du
+# monorepo n'ayant pas de version à eux.
+artifactName: regie-de-salle-${version}.${ext}
+
 files:
   - dist/**
-  # La source map reste sur la machine de build, pas sur le poste de régie :
-  # rien n'active `--enable-source-maps` dans le client, elle y serait cinq
-  # mégaoctets illisibles. `dist/main.cjs.map` survit à l'empaquetage — une
-  # trace remontée d'une salle se relit donc après coup, à condition de garder
-  # la sortie de build de la version installée.
+  # La source map ne part pas sur le poste de régie : rien n'active
+  # `--enable-source-maps` dans le client, elle y serait huit mégaoctets que
+  # personne n'ouvre.
+  #
+  # Elle n'est pas perdue pour autant, et ce n'est plus « la machine de build »
+  # qui la garde — depuis que `release.yml` empaquette, cette machine est un
+  # coureur détruit à la fin du job. Deux chemins la retrouvent :
+  #
+  #  - **Reconstruire depuis le tag.** `scripts/build-main.mjs` n'a aucune
+  #    entrée non déterministe et esbuild est figé par le lockfile : un
+  #    `pnpm --filter @cloudnord/room-client build` sur `vX.Y.Z` redonne la même
+  #    map. Elle embarque `sourcesContent`, elle se relit donc seule.
+  #  - **L'artefact `sourcemaps-X.Y.Z`** de l'exécution qui a publié la version,
+  #    90 jours durant — l'événement et les semaines d'après, quand une trace
+  #    remontée d'une salle mérite d'être lue sans rien reconstruire.
   - "!dist/*.map"
   - package.json
   # Migrations du schéma local : lues au démarrage depuis le paquet.
@@ -59,10 +80,11 @@ extraResources:
   # remonte les dossiers depuis le bundle du processus principal jusqu'à trouver
   # `apps/regie-web/dist`, exactement comme il le fait depuis les sources.
   #
-  # Sans sa source map, pour la même raison que celle du processus principal :
-  # deux mégaoctets que personne n'ouvre sur un poste de salle. Elle reste sur la
-  # machine de build, où une trace remontée se relit après coup — à condition de
-  # garder la sortie de build de la version installée.
+  # Sans sa source map, pour la même raison que celle du processus principal, et
+  # elle se retrouve par les deux mêmes chemins — reconstruction depuis le tag,
+  # ou artefact `sourcemaps-X.Y.Z`. Celle-ci a une troisième vie : le hub sert le
+  # même bundle pour la régie mobile, et le `Dockerfile` y copie `dist` entier,
+  # map comprise.
   - from: ../regie-web/dist
     to: apps/regie-web/dist
     filter:

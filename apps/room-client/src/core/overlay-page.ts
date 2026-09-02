@@ -1,5 +1,7 @@
 import { TAILWIND_CSS } from '@cloudnord/ui'
 
+import { OBS_ANTENNE_CSS, OBS_ANTENNE_JS } from './obs-browser.js'
+
 /**
  * Habillage transparent superposé à la captation dans OBS-B.
  *
@@ -35,7 +37,8 @@ export function renderOverlayPage(options: OverlayPageOptions = {}): string {
 <head>
 <meta charset="utf-8">
 <title>Habillage captation</title>
-<style>${TAILWIND_CSS}</style>
+<style>${TAILWIND_CSS}  ${OBS_ANTENNE_CSS}
+</style>
 <style>
   :root { --couleur: #1c71d8; --categorie: #1c71d8; }
   /* Fond réellement transparent : OBS compose cette page par-dessus la vidéo. */
@@ -161,6 +164,7 @@ ${etatInitial}
   }
 })()
 </script>
+<script>${OBS_ANTENNE_JS}</script>
 </body>
 </html>`
 }

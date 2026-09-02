@@ -1,6 +1,7 @@
 import type { DisplayPayload } from '@cloudnord/contract'
 import type { ConfigVisible, ObsState } from '@cloudnord/contract'
 import type { Session, Speaker } from '@cloudnord/program'
+import { SANS_REPERES } from '@cloudnord/contract'
 
 /**
  * Une salle plausible, et **typée sans échappatoire**.
@@ -86,6 +87,10 @@ export function config(overrides: Partial<ConfigVisible> = {}): ConfigVisible {
     relaySourceRoomId: null,
     openFeedbackProjectId: null,
     promptRecordingOnStart: true,
+    promptRecordingOnStop: true,
+    // Le poste installé sait ouvrir un sélecteur ; la régie ouverte dans un
+    // navigateur, non. Les deux se testent en surchargeant ce champ.
+    peutParcourir: true,
     sceneOnStart: 'LIVE',
     ...overrides,
   }
@@ -104,7 +109,7 @@ export function diagnostics(): NonNullable<DisplayPayload['diagnostics']> {
     roomsRefreshedAt: null,
     outboxDepth: 0,
     journal: [],
-    recording: { active: false, markers: 0, startedAtMs: null, startedAtCorrigeMs: null },
+    recording: { active: false, markers: 0, startedAtMs: null, startedAtCorrigeMs: null, montage: SANS_REPERES },
   }
 }
 
@@ -131,6 +136,7 @@ export function state(): DisplayPayload['state'] {
     breakBadge: null,
     targetIsUpcoming: false,
     simulatedClock: false,
+    remoteHolder: null,
   }
 }
 

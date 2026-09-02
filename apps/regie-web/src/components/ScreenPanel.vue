@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Panel } from '@cloudnord/components'
+import { computed } from 'vue'
 import CommandGrid, { type Command } from './CommandGrid.vue'
 
 /**
@@ -22,13 +23,39 @@ const MODES: Command[] = [
   { value: 'question', label: 'Question choisie' },
 ]
 
-defineProps<{ mode: string | null }>()
+/**
+ * Les deux modes qui affichent une chose choisie ailleurs.
+ *
+ * `message` montre le bandeau saisi dans le panneau Message, `question` la
+ * question retenue dans la modération de la régie de salle — ni l'un ni l'autre
+ * n'est offert à distance. Les proposer quand même donnerait un bouton qui
+ * prend l'écran de la salle pour y projeter « Aucune question affichée » devant
+ * le public : le geste réussirait, et c'est bien ce qui le rend mauvais.
+ */
+const SANS_MATIERE_A_DISTANCE = ['message', 'question']
+
+const props = defineProps<{
+  mode: string | null
+  /**
+   * Servi par le hub, sur un téléphone.
+   *
+   * Le mode y arrive par le battement de la salle, donc avec un peu de retard
+   * sur une bascule décidée sur place. Le bouton n'anticipe pas pour autant —
+   * ici comme ailleurs, un bouton allumé décrit ce que la salle montre, pas ce
+   * qu'on lui a demandé.
+   */
+  distant?: boolean
+}>()
+
+const commands = computed<Command[]>(() =>
+  props.distant === true ? MODES.filter((m) => !SANS_MATIERE_A_DISTANCE.includes(m.value)) : MODES,
+)
 </script>
 
 <template>
   <Panel title="Écran de salle">
     <CommandGrid
-      :commands="MODES"
+      :commands="commands"
       :current="mode"
       :build="(value) => ({ action: 'display.set', mode: value })"
     />

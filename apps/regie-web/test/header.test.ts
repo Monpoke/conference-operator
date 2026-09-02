@@ -284,3 +284,61 @@ describe('bandeau complet', () => {
     expect(wrapper.get('[data-role="queue"]').text()).toBe('4 en attente')
   })
 })
+
+/**
+ * Le pilotage à distance, vu de la salle.
+ *
+ * La propriété à tenir n'est pas « le badge s'affiche » mais **« il n'enlève
+ * rien »** : l'opérateur qui est dans la salle garde toutes ses commandes, quoi
+ * qu'il arrive à un téléphone parti dans un couloir ou à un verrou qu'on a
+ * oublié de rendre.
+ */
+describe('pilotée à distance', () => {
+  function avecPorteur(holder: string | null) {
+    const base = payload()
+    return { ...base, state: { ...base.state, remoteHolder: holder } }
+  }
+
+  it('nomme qui pilote, plutôt que d’annoncer « occupée »', () => {
+    const wrapper = mount(RegieHeader, {
+      props: { payload: avecPorteur('regie@cloudnord.fr'), nowMs: Date.now(), streamDead: false },
+    })
+
+    // Sans le nom, une scène qui bascule toute seule se lit comme une panne —
+    // et on va la chercher là où elle n'est pas, en plein talk.
+    expect(wrapper.get('[data-role="remote-holder"]').text()).toContain('regie@cloudnord.fr')
+  })
+
+  it('ne grise aucune commande de la salle', () => {
+    const wrapper = mount(RegieHeader, {
+      props: { payload: avecPorteur('regie@cloudnord.fr'), nowMs: Date.now(), streamDead: false },
+    })
+
+    // Les boutons du bandeau restent tous actifs : le verrou n'exclut que les
+    // régies mobiles entre elles.
+    for (const bouton of wrapper.findAll('button')) {
+      expect(bouton.attributes('disabled')).toBeUndefined()
+    }
+  })
+
+  it('se tait quand personne ne pilote à distance', () => {
+    const wrapper = mount(RegieHeader, {
+      props: { payload: avecPorteur(null), nowMs: Date.now(), streamDead: false },
+    })
+    expect(wrapper.find('[data-role="remote-holder"]').exists()).toBe(false)
+  })
+
+  it('ne se montre pas à lui-même sur le téléphone qui pilote', () => {
+    const wrapper = mount(RegieHeader, {
+      props: {
+        payload: avecPorteur('regie@cloudnord.fr'),
+        nowMs: Date.now(),
+        streamDead: false,
+        distant: true,
+      },
+    })
+    // Le bandeau de verrou dit déjà qui tient la salle ; le répéter ici ferait
+    // deux fois la même information sur un écran qui en a la place d'une.
+    expect(wrapper.find('[data-role="remote-holder"]').exists()).toBe(false)
+  })
+})

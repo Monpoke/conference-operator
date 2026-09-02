@@ -16,6 +16,18 @@ import type { ObsTransport } from './obs.js'
  */
 export interface MockObsOptions {
   instance: ObsInstance
+  /**
+   * Scènes que cette salle attend, en plus des plausibles.
+   *
+   * Elles **s'ajoutent**, elles ne remplacent pas : un OBS simulé doit porter
+   * ce que la salle a configuré — sinon chaque nom de scène un peu personnel
+   * ressort en « rôle introuvable », rouge dans la régie, sur une instance qui
+   * n'existe pas. On ne débogue pas la faute de frappe d'un OBS qu'on n'a pas.
+   *
+   * Les plausibles restent, pour que le sélecteur du ⚙ ait toujours une liste
+   * où choisir, y compris sur une salle qu'aucune configuration n'a encore
+   * touchée.
+   */
   scenes?: string[]
   /** Dossier où déposer les faux enregistrements. */
   recordingDir: string
@@ -29,7 +41,13 @@ export const SCENES_PAR_DEFAUT: Record<ObsInstance, string[]> = {
 }
 
 export function createMockObsTransport(options: MockObsOptions): ObsTransport {
-  const scenes = options.scenes ?? SCENES_PAR_DEFAUT[options.instance]
+  /*
+   * Les plausibles d'abord : c'est ce qui garde `scenes[1]` sur l'habillage,
+   * donc une salle qui s'allume sur son écran plutôt qu'à l'antenne.
+   */
+  const scenes = [
+    ...new Set([...SCENES_PAR_DEFAUT[options.instance], ...(options.scenes ?? [])]),
+  ]
   const handlers = new Map<string, ((payload: unknown) => void)[]>()
 
   let sceneCourante = scenes[1] ?? scenes[0]!
@@ -149,7 +167,14 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
           if (enregistre) throw new Error('Enregistrement déjà en cours')
           enregistre = true
           journal('enregistrement démarré')
-          emettre('RecordStateChanged', { outputActive: true })
+          emettre('RecordStateChanged', {
+            outputActive: false,
+            outputState: 'OBS_WEBSOCKET_OUTPUT_STARTING',
+          })
+          emettre('RecordStateChanged', {
+            outputActive: true,
+            outputState: 'OBS_WEBSOCKET_OUTPUT_STARTED',
+          })
           return {}
 
         case 'StopRecord': {
@@ -159,7 +184,18 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
           // Fichier réel : la chaîne VOD va le renommer et écrire son sidecar.
           writeFileSync(chemin, `enregistrement simulé — ${new Date().toISOString()}\n`)
           journal(`enregistrement arrêté → ${chemin}`)
-          emettre('RecordStateChanged', { outputActive: false, outputPath: chemin })
+          // Les deux temps d'un vrai OBS, chemin sur le second seulement.
+          // Le simulateur n'en émettait qu'un, et c'est exactement ce qui a
+          // laissé passer un défaut ne se voyant que sur une vraie instance.
+          emettre('RecordStateChanged', {
+            outputActive: false,
+            outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPING',
+          })
+          emettre('RecordStateChanged', {
+            outputActive: false,
+            outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPED',
+            outputPath: chemin,
+          })
           return {}
         }
 
@@ -170,13 +206,19 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
         case 'StartStream':
           diffuse = true
           journal('diffusion démarrée')
-          emettre('StreamStateChanged', { outputActive: true })
+          emettre('StreamStateChanged', {
+            outputActive: true,
+            outputState: 'OBS_WEBSOCKET_OUTPUT_STARTED',
+          })
           return {}
 
         case 'StopStream':
           diffuse = false
           journal('diffusion arrêtée')
-          emettre('StreamStateChanged', { outputActive: false })
+          emettre('StreamStateChanged', {
+            outputActive: false,
+            outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPED',
+          })
           return {}
 
         case 'GetRecordDirectory':

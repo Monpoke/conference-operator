@@ -8,6 +8,16 @@ defineProps<{
   hint?: string
   type?: string
   placeholder?: string
+  /**
+   * Ce que le trousseau doit proposer, et quel clavier ouvrir.
+   *
+   * Sans importance sur un poste de régie, décisifs sur un téléphone : c'est ce
+   * qui décide si l'on tape une adresse à la main au fond d'une salle sombre ou
+   * si le gestionnaire de mots de passe la remplit. Passés à l'`input` et non
+   * laissés en attributs de repli, qui atterriraient sur le `div`.
+   */
+  autocomplete?: string
+  inputmode?: 'text' | 'email' | 'numeric' | 'tel' | 'url' | 'search' | 'none' | 'decimal'
 }>()
 </script>
 
@@ -23,6 +33,8 @@ defineProps<{
       v-model="model"
       :type="type ?? 'text'"
       :placeholder="placeholder"
+      :autocomplete="autocomplete"
+      :inputmode="inputmode"
       class="w-full min-w-0 rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte focus:border-marque focus:outline-none"
     />
     <p v-if="hint != null" class="mt-1 text-xs text-attenue">{{ hint }}</p>

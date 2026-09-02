@@ -19,13 +19,26 @@ let origin: string
 let jetonOperateur: string
 let jetonSalle: string
 
-async function rpc(chemin: string, entree: unknown, jeton?: string, clientId?: string) {
+async function rpc(
+  chemin: string,
+  entree: unknown,
+  jeton?: string,
+  clientId?: string,
+  /**
+   * L'onglet de régie mobile, quand il y en a un.
+   *
+   * Le verrou porte une session, pas un compte : les procédures qui le
+   * manipulent exigent cet en-tête plutôt que de retomber sur l'adresse.
+   */
+  session?: string,
+) {
   const response = await fetch(`${origin}/rpc/${chemin}`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       ...(jeton != null ? { authorization: `Bearer ${jeton}` } : {}),
       ...(clientId != null ? { 'x-room-client-id': clientId } : {}),
+      ...(session != null ? { 'x-regie-session': session } : {}),
     },
     body: JSON.stringify({ json: entree }),
   })
@@ -356,5 +369,166 @@ describe('téléversement des rushes', () => {
   it('n\'ouvre le réglage du stockage qu\'à la console', async () => {
     expect((await enSalle('settings/update', { vodBucket: 'pirate' })).status).toBe(403)
     expect((await enConsole('settings/update', { vodBucket: 'rushes' })).status).toBe(200)
+  })
+})
+
+/**
+ * La régie mobile, et ce que son verrou garde.
+ *
+ * La question n'est pas « qui peut piloter » mais **où le verrou s'arrête**. Il
+ * tient `regie.command` et rien d'autre : la console garde ses gestes, et une
+ * machine de salle ne passe pas par ici du tout. Un verrou qui déborderait sur
+ * `sessions.start` briderait la console ; un verrou qui ne tiendrait pas
+ * `regie.command` ne servirait à rien.
+ */
+describe('régie mobile : ce que le verrou garde', () => {
+  /** L'onglet du premier opérateur, et celui d'un second appareil. */
+  const TEL = 'session-telephone'
+  const TABLETTE = 'session-tablette'
+
+  const enSalle = (chemin: string, entree: unknown) =>
+    rpc(chemin, entree, jetonSalle, undefined, TEL)
+  const enConsole = (chemin: string, entree: unknown) =>
+    rpc(chemin, entree, jetonOperateur, undefined, TEL)
+
+  it("n'ouvre aucune procédure de régie mobile à une machine de salle", async () => {
+    // Une salle agit en son nom propre, pas au nom d'un opérateur : `regie.*`
+    // décrit ce qu'un humain décide depuis un téléphone.
+    expect((await enSalle('regie/locks', {})).status).toBe(403)
+    expect((await enSalle('regie/hold', { roomId: TRACK_1 })).status).toBe(403)
+    expect((await enSalle('regie/view', { roomId: TRACK_1 })).status).toBe(403)
+    expect(
+      (await enSalle('regie/command', { roomId: TRACK_1, action: { type: 'scene.set', role: 'LIVE' } }))
+        .status,
+    ).toBe(403)
+  })
+
+  it('refuse un geste tant que personne ne tient la salle', async () => {
+    const resultat = await enConsole('regie/command', {
+      roomId: TRACK_1,
+      action: { type: 'scene.set', role: 'LIVE' },
+    })
+    expect(resultat.status).toBe(403)
+    // Le message distingue « personne ne la tient » de « quelqu'un d'autre la
+    // tient » : le premier se répare d'un clic, le second demande une décision.
+    expect(JSON.stringify(resultat.body)).toContain('Prenez la salle')
+  })
+
+  it('accepte le geste du porteur, et lui seul', async () => {
+    expect((await enConsole('regie/hold', { roomId: TRACK_1 })).status).toBe(200)
+    expect(
+      (await enConsole('regie/command', {
+        roomId: TRACK_1,
+        action: { type: 'scene.set', role: 'LIVE' },
+      })).status,
+    ).toBe(200)
+
+    // Un second opérateur, sur la même salle : lecture seule.
+    await provisionOperator(hub.auth, {
+      email: 'second@cloudnord.fr',
+      name: 'Second',
+      password: 'motdepasse-second-2026',
+    })
+    const connexion = await fetch(`${origin}/api/auth/sign-in/email`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'second@cloudnord.fr', password: 'motdepasse-second-2026' }),
+    })
+    const jetonSecond = ((await connexion.json()) as { token: string }).token
+
+    const refus = await rpc(
+      'regie/command',
+      { roomId: TRACK_1, action: { type: 'scene.set', role: 'HOLD' } },
+      jetonSecond,
+      undefined,
+      TABLETTE,
+    )
+    expect(refus.status).toBe(403)
+    // Le porteur est nommé : « refusé » sans dire par qui envoie chercher un
+    // défaut là où il n'y a qu'un collègue à l'autre bout du bâtiment.
+    expect(JSON.stringify(refus.body)).toContain(OPERATOR.email)
+
+    // Lire, en revanche, reste ouvert : on regarde une salle sans la prendre.
+    expect(
+      (await rpc('regie/view', { roomId: TRACK_1 }, jetonSecond, undefined, TABLETTE)).status,
+    ).toBe(200)
+
+    // Et la reprise, elle, passe — sous confirmation côté page.
+    expect(
+      (await rpc('regie/hold', { roomId: TRACK_1, force: true }, jetonSecond, undefined, TABLETTE))
+        .status,
+    ).toBe(200)
+    expect(
+      (await rpc(
+        'regie/command',
+        { roomId: TRACK_1, action: { type: 'scene.set', role: 'HOLD' } },
+        jetonSecond,
+        undefined,
+        TABLETTE,
+      )).status,
+    ).toBe(200)
+  })
+
+  it("refuse de prendre une salle sans dire quel onglet parle", async () => {
+    /*
+     * Exigé plutôt que déduit du compte.
+     *
+     * Retomber sur l'adresse en l'absence d'en-tête dégraderait l'exclusivité
+     * en silence : deux onglets d'une même personne se croiraient porteurs, et
+     * on ne le découvrirait que le jour où ils basculent la même salle en sens
+     * contraire.
+     */
+    const sansEntete = await rpc('regie/hold', { roomId: TRACK_1 }, jetonOperateur)
+    expect(sansEntete.status).toBe(400)
+    expect(JSON.stringify(sansEntete.body)).toContain('x-regie-session')
+  })
+
+  it("exclut un second onglet du même opérateur", async () => {
+    expect((await enConsole('regie/hold', { roomId: TRACK_1 })).status).toBe(200)
+
+    // Même compte, autre appareil : refusé comme n'importe qui, et le message
+    // nomme le porteur — qui se trouve être soi-même.
+    const tablette = await rpc(
+      'regie/hold',
+      { roomId: TRACK_1, force: false },
+      jetonOperateur,
+      undefined,
+      TABLETTE,
+    )
+    expect(tablette.status).toBe(409)
+
+    const geste = await rpc(
+      'regie/command',
+      { roomId: TRACK_1, action: { type: 'scene.set', role: 'LIVE' } },
+      jetonOperateur,
+      undefined,
+      TABLETTE,
+    )
+    expect(geste.status).toBe(403)
+  })
+
+  it('ne bride pas la console : le cycle de vie reste ouvert hors verrou', async () => {
+    /*
+     * Le verrou ne doit pas déborder de sa surface.
+     *
+     * `sessions.start` est le geste de la console et de la régie de salle ; le
+     * fermer parce qu'un téléphone tient la salle rendrait l'organisateur
+     * dépendant d'un onglet ouvert quelque part.
+     */
+    await enConsole('regie/hold', { roomId: TRACK_1 })
+    const creneau = hub.services.programs
+      .active()!
+      .program.sessions.find((session) => session.roomId === TRACK_2 && session.kind === 'talk')!
+    expect((await enConsole('sessions/start', { sessionId: creneau.id })).status).toBe(200)
+  })
+
+  it("ne bride pas la salle : elle décide de ses conférences même sous verrou", async () => {
+    // L'opérateur qui est physiquement là ne doit jamais dépendre d'un téléphone
+    // parti dans un couloir.
+    await enConsole('regie/hold', { roomId: TRACK_1 })
+    const creneau = hub.services.programs
+      .active()!
+      .program.sessions.find((session) => session.roomId === TRACK_1 && session.kind === 'talk')!
+    expect((await enSalle('sessions/start', { sessionId: creneau.id })).status).toBe(200)
   })
 })

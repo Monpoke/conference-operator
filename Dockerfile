@@ -7,10 +7,11 @@
 #
 #  1. **Le hub n'a pas d'étape de build.** Il démarre en TypeScript via `tsx`
 #     (`pnpm start`) : ce sont ses sources qui partent dans l'image, pas un
-#     `dist/`. Une seule chose est compilée ici, et c'est la console — une
-#     application Vue, donc un bundle. Elle a son étape à elle, jetée après
-#     coup ; le hub reçoit un dossier d'assets qu'il sert, et n'importe rien
-#     d'elle.
+#     `dist/`. Deux choses sont compilées ici — la console et la régie, deux
+#     applications Vue, donc deux bundles. Elles partagent une étape, jetée après
+#     coup ; le hub reçoit deux dossiers d'assets qu'il sert, et n'importe rien
+#     d'elles. La régie y figure parce que le hub la sert aussi, pour la régie
+#     mobile : le même bundle que celui qu'embarque l'installeur d'une salle.
 #  2. **La disposition du monorepo doit être préservée.** `apps/hub-server/src/db.ts`
 #     résout ses migrations en `../../../packages/db/migrations/hub`, relativement
 #     à sa propre position. Aplatir l'arborescence — ce que ferait un
@@ -36,7 +37,7 @@ ARG NODE_VERSION=22-bookworm-slim
 # --- Console --------------------------------------------------------------
 # La seule étape de ce fichier qui compile quelque chose, et elle ne survit pas.
 #
-# La console est une application Vue : elle a un bundle, contrairement au hub
+# La console et la régie sont des applications Vue : elles ont un bundle, contrairement au hub
 # qui démarre en TypeScript via `tsx`. Le construire ici plutôt que de committer
 # sa sortie garde le dépôt lisible — un bundle minifié réécrit à chaque retouche
 # d'interface transforme chaque relecture en diff illisible — et garde l'image
@@ -63,13 +64,20 @@ COPY spikes/orpc-v2/package.json spikes/orpc-v2/
 COPY spikes/vue-tsc/package.json spikes/vue-tsc/
 
 # Pas de `--prod` ici : il faut justement l'outillage de construction. Le filtre
-# limite l'installation au graphe de la console.
+# limite l'installation aux graphes des deux applications.
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm install --frozen-lockfile --ignore-scripts --filter @cloudnord/hub-admin...
+    pnpm install --frozen-lockfile --ignore-scripts \
+      --filter @cloudnord/hub-admin... --filter @cloudnord/regie-web...
 
 COPY packages/ packages/
 COPY apps/hub-admin/ apps/hub-admin/
+COPY apps/regie-web/ apps/regie-web/
 RUN pnpm --filter @cloudnord/hub-admin build
+# La régie, servie par le hub pour la régie mobile — le même bundle que celui
+# qu'embarque l'installeur d'une machine de salle. Sans lui, `/regie` répond 503
+# en le disant, ce qui est un déploiement incomplet et non un état
+# d'exploitation.
+RUN pnpm --filter @cloudnord/regie-web build
 
 
 # --- Construction ---------------------------------------------------------
@@ -124,10 +132,11 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 COPY packages/ packages/
 COPY apps/hub-server/ apps/hub-server/
 
-# Le bundle de la console, construit à l'étape précédente. Le hub le sert, il ne
-# l'importe pas : c'est ce qui permet à `pnpm typecheck` et `pnpm test` de ne
+# Les deux bundles, construits à l'étape précédente. Le hub les sert, il ne les
+# importe pas : c'est ce qui permet à `pnpm typecheck` et `pnpm test` de ne
 # jamais déclencher de build Vite, et à la CI de tenir sous la minute.
 COPY --from=spa /repo/apps/hub-admin/dist apps/hub-admin/dist
+COPY --from=spa /repo/apps/regie-web/dist apps/regie-web/dist
 
 # Ce que `--prod` ne suffit pas à écarter : une centaine de mégaoctets
 # d'outillage de test et de build, que `better-auth` impose en peer dependencies

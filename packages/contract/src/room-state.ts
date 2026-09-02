@@ -4,6 +4,7 @@ import { programSchema } from '@cloudnord/program'
 import { eventIdentitySchema, IDENTITE_PAR_DEFAUT } from './event-identity.js'
 import {
   connectivitySchema,
+  displayModeSchema,
   isoDateTimeSchema,
   modeExecutionSchema,
   roomIdSchema,
@@ -93,6 +94,21 @@ export const roomConfigSchema = z.object({
    */
   promptRecordingOnStart: z.boolean().default(true),
   /**
+   * Au « Terminer », proposer d'arrêter la captation qui tourne encore.
+   *
+   * Le pendant du précédent, et il couvre l'oubli que celui-ci laissait passer.
+   * Une captation qu'on n'arrête pas ne se voit pas : elle continue pendant la
+   * pause, puis le talk suivant s'écrit dans le même fichier — sous le titre,
+   * les intervenants et l'identifiant de session du **précédent**. Le
+   * garde-fou du démarrage se tait alors, puisqu'un enregistrement tourne, et
+   * la salle finit la journée avec un master de trois heures dont le sidecar
+   * ment sur son contenu.
+   *
+   * Activé par défaut. Se coupe pour une salle qui enregistre volontairement
+   * d'une traite, questions du public comprises, au-delà du créneau.
+   */
+  promptRecordingOnStop: z.boolean().default(true),
+  /**
    * Scène prise automatiquement au « Commencer ».
    *
    * Lancer la conférence et passer à l'antenne sont deux gestes qui vont
@@ -148,6 +164,7 @@ export const roomConfigPatchSchema = z
     fileSlug: z.string().max(24).nullable(),
     relaySourceRoomId: roomIdSchema.nullable(),
     promptRecordingOnStart: z.boolean(),
+    promptRecordingOnStop: z.boolean(),
     sceneOnStart: sceneRoleSchema.nullable(),
   })
   .partial()
@@ -462,6 +479,14 @@ export const roomStatusSchema = z.object({
   currentSessionId: sessionIdSchema.nullable(),
   recording: z.boolean(),
   streaming: z.boolean(),
+  /**
+   * L'écran de la salle, tel qu'elle l'a remonté. `null` = jamais dit.
+   *
+   * Distinct de `sceneRole`, et les confondre projetterait l'un pour l'autre :
+   * la scène est ce qu'OBS-A envoie au vidéoprojecteur pendant un talk, le mode
+   * est ce que la page d'affichage montre le reste du temps.
+   */
+  displayMode: displayModeSchema.nullable().default(null),
   outboxDepth: z.number().int().nonnegative(),
   programContentHash: z.string().nullable(),
   /**

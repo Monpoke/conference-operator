@@ -112,7 +112,7 @@ export class Televersements {
   private enVol: Promise<void> | null = null
   private dernierVerdict: VerdictTeleversement = {
     autorise: false,
-    raison: 'desactive',
+    raison: 'sans-stockage',
     debitMaxOctetsS: null,
     texte: 'aucun stockage configuré sur le hub',
   }
@@ -194,6 +194,10 @@ export class Televersements {
           ligne.tailleOctets > 0
             ? Math.min(100, Math.round((ligne.octetsEnvoyes / ligne.tailleOctets) * 100))
             : 0,
+        // Borné à zéro comme le pourcentage l'est à cent, et pour la même
+        // raison : un rush qui a grossi entre la mise en file et l'envoi rendrait
+        // sinon un reste négatif, donc un temps restant négatif.
+        restantOctets: Math.max(0, ligne.tailleOctets - ligne.octetsEnvoyes),
         debitOctetsS: ligne.debitOctetsS,
         erreur: ligne.lastError,
         manuel: ligne.manuel,

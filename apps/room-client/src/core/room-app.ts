@@ -7,7 +7,7 @@ import { httpPairingTransport, runPairing, type DeviceCodeResponse } from './pai
 import { createORPCClient } from '@orpc/client'
 import { RPCLink as FetchLink } from '@orpc/client/fetch'
 import type { ContractRouterClient } from '@orpc/contract'
-import { contract } from '@cloudnord/contract'
+import { contract, SANS_REPERES } from '@cloudnord/contract'
 import { FUSEAU_PAR_DEFAUT } from '@cloudnord/program'
 import { RoomRuntime } from './runtime.js'
 import { LocalStore } from './store.js'
@@ -15,7 +15,7 @@ import { createObsTransport, keepObsConnected } from './obs-transport.js'
 import type { ObsTransport } from './obs.js'
 import type { ObsInstance } from '@cloudnord/contract'
 import { ConnectivityTracker, probeConnectivity } from './connectivity.js'
-import { RecordingSession, slugify, type StopResult } from './recording.js'
+import { RecordingSession, slugify, type MarkerRole, type StopResult } from './recording.js'
 import type { ControlDiagnostics, ControlTarget, PointObsVisible, VodListe } from './control-api.js'
 import {
   ffprobeSonde,
@@ -89,10 +89,29 @@ export interface RoomAppOptions {
    * un OBS-B branché sur les scènes d'OBS-A serait une panne difficile à voir.
    * Par défaut, le vrai client obs-websocket.
    */
-  obsTransportFactory?: (instance: ObsInstance) => ObsTransport
+  /**
+   * Fabrique le transport d'une instance.
+   *
+   * `scenes` porte les noms que la salle a configurés pour cette instance-là.
+   * Le vrai client les ignore — un OBS a les scènes qu'on y a créées, et c'est
+   * justement l'écart qui doit se voir. Le simulateur, lui, s'en sert pour
+   * exister avec les scènes qu'on attend de lui.
+   */
+  obsTransportFactory?: (instance: ObsInstance, scenes: string[]) => ObsTransport
   onLog?: (level: 'info' | 'warn' | 'error', message: string, context?: unknown) => void
   /** Affiche le code d'appairage sur l'écran de régie. */
   onPairingCode?: (code: DeviceCodeResponse) => void
+  /**
+   * Ouvre le sélecteur de dossier du système, pour le chemin des rushes.
+   *
+   * Fourni par Electron seulement : `dev:headless` tourne sous Node nu, où il
+   * n'y a pas de sélecteur à ouvrir. Son absence est ce que `peutParcourir`
+   * annonce à la régie — qui masque alors le bouton plutôt que d'en offrir un
+   * qui ne répondrait pas.
+   *
+   * @param initial Le dossier déjà saisi, pour ouvrir là où l'on regardait.
+   */
+  choisirDossier?: (initial: string | null) => Promise<string | null>
   /**
    * Salle desservie, connue d'avance.
    *
@@ -150,6 +169,15 @@ export class RoomApp implements ControlTarget {
    * OBS n'annonce le fichier qu'après `StopRecord`, il faut donc l'attendre.
    */
   private pendingOutputPath: ((path: string | null) => void) | null = null
+  /**
+   * Une clôture de captation à la fois.
+   *
+   * Deux chemins mènent au sidecar — l'arrêt demandé en régie et l'arrêt
+   * constaté depuis OBS — et ils peuvent se croiser : un `RecordStateChanged`
+   * qui arrive après le délai d'attente de la régie trouverait la prise encore
+   * ouverte et en écrirait un second.
+   */
+  private clotureCaptation = false
   private outbox: Outbox | null = null
   private pump: OutboxPump | null = null
   /**
@@ -221,6 +249,39 @@ export class RoomApp implements ControlTarget {
         },
         refreshRoomStatuses: () => {
           void this.refreshRoomStatuses()
+        },
+        /**
+         * Captation demandée depuis une régie mobile.
+         *
+         * **Demander ce qui tourne déjà est un succès silencieux.** Le flux de
+         * commandes est au-moins-une-fois : une reconnexion peut relivrer un
+         * « enregistre » alors qu'OBS enregistre, et lever ici remplirait la
+         * pile de signalements d'incidents qui n'en sont pas.
+         *
+         * Un échec réel, lui, part au journal et non en exception : ce chemin
+         * est une commande descendante, personne n'attend une réponse au bout.
+         * C'est la vue qui dira que l'enregistrement n'a pas démarré — la régie
+         * mobile ne peint jamais d'avance, exactement comme celle de la salle.
+         */
+        setRecording: (on) => {
+          if (this.runtime.state().recording === on) return
+          const geste = on ? this.startRecording() : this.stopRecording()
+          void geste.catch((cause: Error) => {
+            this.options.onLog?.('warn', "captation : commande distante refusée", {
+              on,
+              message: cause.message,
+            })
+          })
+        },
+        setStreaming: (on) => {
+          if (this.runtime.state().streaming === on) return
+          const geste = on ? this.startStreaming() : this.stopStreaming()
+          void geste.catch((cause: Error) => {
+            this.options.onLog?.('warn', "diffusion : commande distante refusée", {
+              on,
+              message: cause.message,
+            })
+          })
         },
       },
       options.now,
@@ -614,6 +675,19 @@ export class RoomApp implements ControlTarget {
         // d'erreur du lien qu'on s'apprête à fermer.
         setTimeout(() => void this.repair(raison), 0)
       },
+      /*
+       * Confirmer ce qu'on vient d'appliquer, tout de suite.
+       *
+       * Le geste vient d'une régie mobile, qui ne peint jamais d'avance :
+       * l'écran de salle qu'elle a demandé reste éteint sur son téléphone tant
+       * que la salle ne l'a pas remonté. Une bascule de scène s'annonce toute
+       * seule — OBS émet —, un mode d'écran non : il ne voyage que par le
+       * battement.
+       */
+      onCommandApplied: () => {
+        this.battre()
+        this.reveillerRemontee()
+      },
     })
 
     await this.synchroniserTout()
@@ -756,21 +830,51 @@ export class RoomApp implements ControlTarget {
 
     // Battement régulier, collapsé : une heure hors ligne laisse une seule
     // occurrence en file, pas 720.
-    this.heartbeat = setInterval(() => {
-      const state = this.runtime.state()
-      this.emit(
-        buildHeartbeat({
-          connectivity: state.connectivity,
-          sceneRole: state.sceneRole,
-          recording: this.obsA?.snapshot().recording ?? false,
-          streaming: this.obsA?.snapshot().streaming ?? false,
-          outboxDepth: outbox.backlog(),
-          programContentHash: state.contentHash,
-        }),
-        heartbeatDedupKey(roomId),
-      )
-    }, 10_000)
+    this.heartbeat = setInterval(() => this.battre(), 10_000)
     this.heartbeat.unref?.()
+  }
+
+  /**
+   * Remonte au hub ce qui ne voyage que par le battement.
+   *
+   * Appelée par le tic, et **tout de suite** quand l'un de ces faits change.
+   * Une régie mobile ne peint jamais d'avance : tant que la salle n'a pas
+   * remonté, son bouton décrit encore l'état d'avant, et dix secondes de
+   * retard suffisent à le faire appuyer une seconde fois.
+   *
+   * Gratuit à répéter : `heartbeatDedupKey` collapse la file — c'est la même
+   * mécanique qui évite 720 battements après une heure hors ligne.
+   */
+  private battre(): void {
+    const roomId = this.store.settings().roomId
+    if (roomId == null) return
+    const state = this.runtime.state()
+    this.emit(
+      buildHeartbeat({
+        connectivity: state.connectivity,
+        sceneRole: state.sceneRole,
+        /*
+         * L'état de la captation, lu sur le runtime.
+         *
+         * C'est **OBS-B** qui enregistre et qui diffuse ; OBS-A ne fait que
+         * projeter. Le battement interrogeait pourtant `obsA` : il remontait
+         * donc `false` toutes les dix secondes, écrasant chez le hub le
+         * `recording` que `recording.started` venait d'y écrire. La régie
+         * mobile montrait un témoin éteint sur une salle en pleine captation,
+         * et la console de supervision avec elle.
+         *
+         * Le runtime plutôt que `obsB` directement : c'est la source que lit
+         * déjà la régie de la salle, et elle adopte ce qu'OBS enregistrait
+         * avant la connexion. Une seule vérité, celle qui est à l'écran.
+         */
+        recording: state.recording,
+        streaming: state.streaming,
+        outboxDepth: this.outboxDepth(),
+        programContentHash: state.contentHash,
+        displayMode: state.mode,
+      }),
+      heartbeatDedupKey(roomId),
+    )
   }
 
   /**
@@ -856,6 +960,23 @@ export class RoomApp implements ControlTarget {
    * rien ne change. D'où la comparaison, doublée d'un rappel périodique pour
    * l'horodatage.
    */
+  /**
+   * Remonte tout de suite ce qui vient de changer dans OBS.
+   *
+   * Pour ce qui se pilote de loin. Une régie mobile lit l'état de la salle par
+   * le hub, qui le tient du battement : sans réveil, une bascule de scène met
+   * jusqu'à un tic de pompe plus un tour de sondage à se voir sur le téléphone.
+   * Or la régie ne peint jamais d'avance — c'est le flux qui repeint le bouton
+   * —, si bien que ce délai se lit comme un geste manqué, et qu'on appuie une
+   * seconde fois.
+   *
+   * Trois transitions seulement, et OBS ne les émet que sur changement réel :
+   * ce n'est pas un flot, c'est un fait par bascule.
+   */
+  private reveillerRemontee(): void {
+    this.pump?.reveiller()
+  }
+
   private async refreshRoomStatuses(): Promise<void> {
     if (this.link == null) return
     // Un seul appel en vol : une rafale de décisions ne doit pas ouvrir dix
@@ -989,7 +1110,10 @@ export class RoomApp implements ControlTarget {
   }
 
   private async connectProjection(config: ConfigSalle, manuel = false): Promise<void> {
-    const transport = (this.options.obsTransportFactory ?? createObsTransport)('A')
+    const transport = (this.options.obsTransportFactory ?? createObsTransport)(
+      'A',
+      nomsDeScenes(config.sceneRoles.A),
+    )
     this.obsA = new ObsController({
       instance: 'A',
       url: config.obs.A.url,
@@ -1001,6 +1125,7 @@ export class RoomApp implements ControlTarget {
           case 'scene':
             this.runtime.observeSceneRole(event.role)
             this.emit({ type: 'scene.changed', obs: 'A', role: event.role, sceneName: event.sceneName })
+            this.reveillerRemontee()
             break
           case 'connected':
             // Adopter l'état constaté : sans ça, la régie et la console
@@ -1036,7 +1161,10 @@ export class RoomApp implements ControlTarget {
    * mêmes scènes, ni les mêmes conséquences — une erreur ici coûte une VOD.
    */
   private async connectCapture(config: ConfigSalle, manuel = false): Promise<void> {
-    const transport = (this.options.obsTransportFactory ?? createObsTransport)('B')
+    const transport = (this.options.obsTransportFactory ?? createObsTransport)(
+      'B',
+      nomsDeScenes(config.sceneRoles.B),
+    )
     this.obsB = new ObsController({
       instance: 'B',
       url: config.obs.B.url,
@@ -1050,14 +1178,30 @@ export class RoomApp implements ControlTarget {
             break
           case 'recording':
             this.runtime.observeCapture({ recording: event.active })
+            /*
+             * Le battement, pas seulement la vidange.
+             *
+             * Une captation lancée depuis OBS lui-même n'émet aucun
+             * `recording.started` : elle ne remonte que par le battement. Sans
+             * ce rappel, la file qu'on réveille ici ne contient rien à dire.
+             */
+            this.battre()
+            this.reveillerRemontee()
             // Le chemin n'arrive qu'à l'arrêt : il débloque l'écriture du sidecar.
-            if (!event.active && this.pendingOutputPath != null) {
-              this.pendingOutputPath(event.outputPath)
-              this.pendingOutputPath = null
+            if (!event.active) {
+              if (this.pendingOutputPath != null) {
+                this.pendingOutputPath(event.outputPath)
+                this.pendingOutputPath = null
+              } else {
+                // Personne n'attend ce chemin en régie : l'arrêt vient d'OBS.
+                void this.cloreArretDepuisObs(event.outputPath)
+              }
             }
             break
           case 'streaming':
             this.runtime.observeCapture({ streaming: event.active })
+            this.battre()
+            this.reveillerRemontee()
             this.emit(
               event.active
                 ? { type: 'stream.started', obs: 'B', sessionId: this.runtime.state().currentSession?.id ?? null }
@@ -1076,6 +1220,9 @@ export class RoomApp implements ControlTarget {
               recording: event.recording,
               streaming: event.streaming,
             })
+            // Adopté ici, donc à dire ici : la console et la régie mobile
+            // partaient sinon de « rien en cours » pendant dix secondes.
+            this.battre()
             this.emit({
               type: 'obs.connection',
               obs: 'B',
@@ -1105,6 +1252,9 @@ export class RoomApp implements ControlTarget {
       },
       startRecord: () => this.obsB!.startRecording(),
       stopRecord: () => this.obsB!.stopRecording(),
+      // Repli : sans chemin annoncé par OBS, le master se retrouve par son nom
+      // dans la racine des captations — celle-là même que relit la modale VOD.
+      recordingRoot: () => this.racineCaptations(),
       fs: nodeRecordingFs(),
       now: () => Date.now(),
       correctedNow: () => this.runtime.correctedNow(),
@@ -1206,10 +1356,23 @@ export class RoomApp implements ControlTarget {
     }
   }
 
-  /** Pose un marqueur de chapitre. */
-  mark(label: string): void {
+  /** Pose un chapitre, ou l'un des deux repères de montage. Voir `RecordingSession.mark`. */
+  mark(label: string, role: MarkerRole | null = null): void {
     if (this.recording == null || !this.recording.active) throw new Error('Aucun enregistrement en cours')
-    const marker = this.recording.mark(label)
+    const marker = this.recording.mark(label, role)
+    /*
+     * Le rôle ne monte pas au hub, et n'a pas à y monter.
+     *
+     * Ce que le montage lit, c'est le sidecar : écrit sur le disque de la salle,
+     * téléversé avec le rush, il porte `role`. L'événement, lui, alimente le
+     * journal que quelqu'un relit — et « Marqueur « Début » » s'y lit déjà.
+     * Un second champ pour la même chose ferait deux vérités à tenir d'accord,
+     * dont une que personne ne lit.
+     *
+     * Un repère reposé émet donc un second événement, sans que le premier
+     * disparaisse. C'est juste : le journal raconte les gestes, et reposer le
+     * début *est* un geste.
+     */
     this.emit({
       type: 'talk.marker',
       sessionId: this.runtime.state().currentSession?.id ?? null,
@@ -1230,7 +1393,13 @@ export class RoomApp implements ControlTarget {
     // Armé **avant** `StopRecord` : l'événement d'OBS peut arriver dans la
     // foulée de la requête, et un résolveur posé après le manquerait.
     const outputPath = this.awaitOutputPath()
-    const result = await this.recording.stop(() => outputPath)
+    this.clotureCaptation = true
+    let result: StopResult
+    try {
+      result = await this.recording.stop(() => outputPath)
+    } finally {
+      this.clotureCaptation = false
+    }
     this.options.onLog?.('info', 'captation arrêtée depuis la régie', {
       duree: Math.round(result.sidecar.durationMs / 1000) + ' s',
       fichier: result.sidecar.videoFile,
@@ -1244,6 +1413,56 @@ export class RoomApp implements ControlTarget {
       sidecarWritten: result.sidecarPath != null,
     })
     return result
+  }
+
+  /**
+   * Clôt une prise que l'opérateur a arrêtée **depuis OBS**.
+   *
+   * Le geste est courant et parfaitement légitime : la main est déjà dans OBS,
+   * on y appuie sur « Arrêter l'enregistrement ». La régie n'a alors rien
+   * demandé, donc personne n'attendait le chemin du fichier — et jusqu'ici tout
+   * ce que la prise savait d'elle-même partait à la poubelle : le titre, les
+   * intervenants, et surtout les marqueurs posés pendant le talk, qui
+   * n'existent nulle part ailleurs.
+   *
+   * Ce que ce repli ne fait **pas** : adopter une captation *lancée* depuis
+   * OBS. Celle-là n'a ni début, ni conférence, ni marqueurs de notre côté — il
+   * n'y aurait rien à écrire dans le sidecar, et en fabriquer un vide
+   * tromperait le montage plus sûrement que son absence.
+   *
+   * `dejaArrete` est ici indispensable : redemander `StopRecord` à une sortie
+   * déjà inactive est une erreur d'OBS, qui emporterait l'écriture du sidecar.
+   */
+  private async cloreArretDepuisObs(outputPath: string | null): Promise<void> {
+    if (this.recording == null || !this.recording.active || this.clotureCaptation) return
+    this.clotureCaptation = true
+    try {
+      const result = await this.recording.stop(async () => outputPath, { dejaArrete: true })
+      this.options.onLog?.(
+        result.sidecarPath == null ? 'warn' : 'info',
+        result.sidecarPath == null
+          ? 'captation arrêtée depuis OBS, sidecar non écrit'
+          : 'captation arrêtée depuis OBS, sidecar écrit',
+        {
+          duree: Math.round(result.sidecar.durationMs / 1000) + ' s',
+          fichier: result.sidecar.videoFile,
+        },
+      )
+      this.emit({
+        type: 'recording.stopped',
+        obs: 'B',
+        sessionId: result.sidecar.sessionId,
+        outputPath: result.videoPath,
+        durationMs: result.sidecar.durationMs,
+        sidecarWritten: result.sidecarPath != null,
+      })
+    } catch (cause) {
+      this.options.onLog?.('error', "arrêt constaté depuis OBS : sidecar non écrit", {
+        message: (cause as Error).message,
+      })
+    } finally {
+      this.clotureCaptation = false
+    }
   }
 
   /**
@@ -1268,7 +1487,12 @@ export class RoomApp implements ControlTarget {
     return {
       root,
       fs: nodeVodFs(),
+      // L'horloge de la salle date les verdicts, celle du poste juge des
+      // `mtime` : ce sont deux mesures différentes, et les confondre faisait
+      // passer une prise en cours pour un rush terminé dès que le hub déroulait
+      // une journée simulée.
       now: () => this.runtime.correctedNow(),
+      maintenantReel: () => Date.now(),
       probe: ffprobeSonde(),
       onLog: this.options.onLog,
     }
@@ -1512,6 +1736,10 @@ export class RoomApp implements ControlTarget {
   /** Bascule l'écran de salle. */
   async setDisplayMode(mode: Parameters<RoomRuntime['setDisplayMode']>[0]): Promise<void> {
     await this.runtime.setDisplayMode(mode)
+    // L'écran de salle se pilote aussi de loin : ce que montre la salle doit
+    // se lire sur le téléphone sans attendre le tic suivant.
+    this.battre()
+    this.reveillerRemontee()
   }
 
   /** Bascule la scène de projection. */
@@ -1700,6 +1928,7 @@ export class RoomApp implements ControlTarget {
         markers: this.recording?.markerCount ?? 0,
         startedAtMs: this.recording?.startedAt ?? null,
         startedAtCorrigeMs: this.recording?.startedAtCorrige ?? null,
+        montage: this.recording?.montage ?? SANS_REPERES,
       },
     }
   }
@@ -1720,8 +1949,24 @@ export class RoomApp implements ControlTarget {
       relaySourceRoomId: config.relaySourceRoomId,
       openFeedbackProjectId: config.openFeedbackProjectId,
       promptRecordingOnStart: config.promptRecordingOnStart,
+      promptRecordingOnStop: config.promptRecordingOnStop,
       sceneOnStart: config.sceneOnStart,
+      peutParcourir: this.options.choisirDossier != null,
     }
+  }
+
+  /**
+   * Ouvre le sélecteur du poste et rend le dossier choisi.
+   *
+   * Ne touche à rien : le chemin remonte à la page, qui remplit son champ. Ce
+   * sera « Enregistrer » qui l'écrira chez le hub, comme le reste du panneau —
+   * un sélecteur qui enregistrerait au passage ferait d'un coup d'œil dans
+   * l'arborescence une modification de la salle.
+   */
+  async chooseFolder(): Promise<string | null> {
+    const ouvrir = this.options.choisirDossier
+    if (ouvrir == null) return null
+    return ouvrir(this.store.settings().config?.recordingRoot ?? null)
   }
 
   private pointVisible(config: ConfigSalle, instance: ObsInstance): PointObsVisible {
@@ -1754,6 +1999,17 @@ export class RoomApp implements ControlTarget {
   }
 }
 
+
+/**
+ * Les noms de scènes qu'une instance a réellement mappés.
+ *
+ * Les rôles laissés vides sortent : un mapping partiel est le cas normal — une
+ * salle sans relais n'a pas de `RELAY` —, et faire exister une scène nommée
+ * `undefined` dans un OBS simulé serait pire que de ne rien passer.
+ */
+function nomsDeScenes(roles: Partial<Record<string, string>>): string[] {
+  return Object.values(roles).filter((nom): nom is string => nom != null && nom !== '')
+}
 
 /** Accès disque réel pour les sidecars. Injecté, donc remplaçable en test. */
 function nodeRecordingFs() {

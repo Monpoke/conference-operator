@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, truncateSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { execFile } from 'node:child_process'
 import {
   ffprobeSonde,
@@ -45,8 +45,16 @@ const SIDECAR: Sidecar = {
 /** Une heure plus tard : rien de ce qu'on écrit ici n'est « encore en écriture ». */
 const PLUS_TARD = () => Date.now() + 3_600_000
 
+/**
+ * Les deux horloges, avancées ensemble.
+ *
+ * `now` date les verdicts, `maintenantReel` juge des `mtime` — et c'est la
+ * seconde qui décide de la fenêtre d'écriture. Les fichiers de ces tests sont
+ * écrits à l'instant : sans l'avancer elle aussi, tous seraient « encore en
+ * écriture » et aucun contrôle ne dirait autre chose.
+ */
 function deps(options: Partial<VodIndexDeps> = {}): VodIndexDeps {
-  return { root: racine, fs: nodeVodFs(), now: PLUS_TARD, ...options }
+  return { root: racine, fs: nodeVodFs(), now: PLUS_TARD, maintenantReel: PLUS_TARD, ...options }
 }
 
 /**
@@ -127,9 +135,56 @@ describe('liste des enregistrements', () => {
   it('signale un fichier encore en écriture plutôt que de le juger', async () => {
     video('prise.mkv')
 
-    const entree = (await listerEnregistrements(deps({ now: () => Date.now() })))[0]!
+    const entree = (await listerEnregistrements(deps({ maintenantReel: () => Date.now() })))[0]!
 
     expect(entree.enEcriture).toBe(true)
+  })
+
+  it('juge la fenêtre d’écriture sur l’heure du poste, pas sur celle du hub', async () => {
+    /*
+     * Le défaut qui faisait passer une prise en cours pour un rush terminé.
+     *
+     * Les `mtime` viennent du système de fichiers, donc de l'heure de la
+     * machine ; l'horloge de la salle, elle, est corrigée sur celle du hub. Sans
+     * conséquence le jour J, où l'écart se compte en millisecondes — dévastateur
+     * en développement, où le hub déroule une journée d'octobre depuis un poste
+     * qui est en septembre : l'écart valait des semaines, la fenêtre n'était
+     * jamais atteinte, et la régie proposait d'envoyer un fichier qu'OBS était
+     * en train d'écrire.
+     */
+    video('prise.mkv')
+
+    const entree = (
+      await listerEnregistrements(
+        deps({ now: () => Date.now() + 60 * 24 * 3_600_000, maintenantReel: () => Date.now() }),
+      )
+    )[0]!
+
+    expect(entree.enEcriture).toBe(true)
+  })
+
+  it('ne juge pas une prise en cours, et ne l’accuse de rien', async () => {
+    /*
+     * Le contrôle continuait, et ce qu'il rendait était vrai mais trompeur : le
+     * sidecar n'est écrit qu'à l'arrêt, donc « sidecar absent » est certain ; le
+     * débit se calcule sur un fichier à moitié écrit. Trois motifs pour une
+     * seule cause, dont le premier — le seul qui explique les deux autres — se
+     * lisait au milieu des autres.
+     */
+    video('prise.mkv')
+    const sonde = vi.fn(async () => null)
+
+    const controle = await inspecterEnregistrement(
+      deps({ maintenantReel: () => Date.now(), probe: sonde }),
+      'prise.mkv',
+    )
+
+    expect(controle.status).toBe('suspect')
+    expect(controle.reasons).toEqual(['prise en cours : à contrôler une fois l’enregistrement arrêté'])
+    // Ni sonde : ouvrir le conteneur dans lequel OBS écrit coûte des
+    // entrées-sorties sur le disque du master, pour une lecture fausse.
+    expect(sonde).not.toHaveBeenCalled()
+    expect(controle.probe).toBeNull()
   })
 
   it('ne casse pas sur un dossier absent', async () => {
@@ -261,6 +316,65 @@ describe('verdict de l’opérateur', () => {
 
     expect(entrees.find((entree) => entree.file === 'a.mkv')?.check?.status).toBe('ok')
     expect(entrees.find((entree) => entree.file === 'b.mkv')?.check?.status).toBe('illisible')
+  })
+})
+
+/**
+ * Un verdict décrit **une prise**, pas un nom de fichier.
+ *
+ * Le format demandé à OBS est déterminant — date, salle, heure, titre — donc
+ * rejouer la même conférence réécrit au même endroit. Le verdict de la
+ * première prise s'affichait alors sur la seconde, avec la lecture ffprobe de
+ * la première : « sidecar absent » sur un rush qui avait le sien.
+ */
+describe('péremption d’un verdict', () => {
+  it('ne survit pas à la prise qu’il jugeait', async () => {
+    video('prise.mkv')
+    await inspecterEnregistrement(deps({ probe: sonde() }), 'prise.mkv')
+    expect((await listerEnregistrements(deps()))[0]!.check?.status).toBe('suspect')
+
+    // Deuxième prise du même talk : OBS réécrit sous le même nom.
+    video('prise.mkv', 1_900_000_000)
+    sidecar('prise.json')
+
+    expect((await listerEnregistrements(deps()))[0]!.check).toBeNull()
+  })
+
+  it('ne survit pas non plus quand c’est l’opérateur qui l’a posé', async () => {
+    video('prise.mkv')
+    await poserVerdict(deps(), 'prise.mkv', 'ok')
+    expect((await listerEnregistrements(deps()))[0]!.check?.status).toBe('ok')
+
+    video('prise.mkv', 1_900_000_000)
+
+    // « Relu en régie » ne doit pas se transmettre à la prise suivante : c'est
+    // le seul verdict que personne ne songerait à remettre en cause.
+    expect((await listerEnregistrements(deps()))[0]!.check).toBeNull()
+  })
+
+  it('tient tant que le fichier ne bouge pas', async () => {
+    video('prise.mkv')
+    sidecar('prise.json')
+    await inspecterEnregistrement(deps({ probe: sonde() }), 'prise.mkv')
+
+    expect((await listerEnregistrements(deps()))[0]!.check?.status).toBe('ok')
+  })
+
+  it('écarte un verdict écrit avant que l’empreinte existe', async () => {
+    video('prise.mkv')
+    // Le format d'avant : aucun moyen de savoir sur quoi il portait, donc la
+    // ligne repasse « non vérifié » plutôt que d'afficher un jugement aveugle.
+    writeFileSync(
+      join(racine, '.controles-vod.json'),
+      JSON.stringify({
+        version: 1,
+        entries: {
+          'prise.mkv': { status: 'suspect', at: '2026-10-30T08:00:00.000Z', by: 'auto', reasons: ['sidecar absent'], probe: null },
+        },
+      }),
+    )
+
+    expect((await listerEnregistrements(deps()))[0]!.check).toBeNull()
   })
 })
 

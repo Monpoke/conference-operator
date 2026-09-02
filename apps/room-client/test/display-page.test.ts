@@ -141,6 +141,19 @@ function rendreMinuteurs(): void {
   globalThis.EventSource = VRAI_EVENTSOURCE
 }
 
+/**
+ * Les minuteurs que la page a réellement démarrés, à éteindre après le test.
+ *
+ * La page projetée pose ses propres `setInterval` — la boucle d'attente, entre
+ * autres. Hors des blocs qui neutralisent l'horloge, ce sont de vrais
+ * minuteurs, et rien ne les arrêtait : ils continuaient de battre après que
+ * happy-dom a démonté le document, et tombaient sur un `document is not
+ * defined` qu'aucun test n'attrapait. La suite sortait alors en rouge une fois
+ * sur trois, sans qu'aucun test n'ait échoué — le pire des deux, puisque ça
+ * finit par masquer un vrai échec.
+ */
+const MINUTEURS_REELS: number[] = []
+
 function monterEcran(payload: DisplayPayload = ETAT): void {
   centre = null
   document.documentElement.innerHTML = aplatirCouchesHtml(
@@ -151,9 +164,26 @@ function monterEcran(payload: DisplayPayload = ETAT): void {
   Element.prototype.scrollIntoView = function (options?: unknown) {
     centre = { element: this as Element, options }
   }
-  for (const script of document.querySelectorAll('script:not([type])')) {
-    // eslint-disable-next-line no-new-func
-    new Function(script.textContent ?? '')()
+
+  /*
+   * On enveloppe ce qui est en place, quel qu'il soit : selon le bloc, c'est
+   * le vrai `setInterval` ou celui que `poserMinuteurs` a substitué. Retenir
+   * les identifiants suffit dans les deux cas.
+   */
+  const pose = globalThis.setInterval
+  globalThis.setInterval = ((fn: () => void, ms?: number, ...args: unknown[]) => {
+    const id = (pose as (...a: unknown[]) => unknown)(fn, ms, ...args)
+    MINUTEURS_REELS.push(id as number)
+    return id
+  }) as typeof setInterval
+
+  try {
+    for (const script of document.querySelectorAll('script:not([type])')) {
+      // eslint-disable-next-line no-new-func
+      new Function(script.textContent ?? '')()
+    }
+  } finally {
+    globalThis.setInterval = pose
   }
 }
 
@@ -170,6 +200,10 @@ const vivante = () => contenu().querySelector('.calque:not(.sortante)')!
 
 beforeEach(() => {
   monterEcran()
+})
+
+afterEach(() => {
+  for (const id of MINUTEURS_REELS.splice(0)) clearInterval(id)
 })
 
 /**
@@ -550,6 +584,33 @@ describe('boucle d\'attente', () => {
     expect(vivante().textContent).toContain('Pendant ce temps')
     avancer(13)
     expect(vivante().textContent).toContain('Suivez Cloud Nord')
+  })
+
+  it('porte le hashtag en clair, bouton de X chargé ou non', () => {
+    /*
+     * Le script du bouton vit chez `platform.x.com` : une salle coupée
+     * d'Internet ne l'aura jamais, et c'est le cas pour lequel cette page est
+     * bâtie. Ce qui se lit depuis le fond de la salle — le hashtag en grand —
+     * ne doit donc dépendre de rien.
+     */
+    monterEcran(enBoucle())
+    avancer(13 + 16 + 13)
+
+    expect(vivante().textContent).toContain('#CloudNord')
+    // L'ancre officielle est bien posée : c'est elle que `widgets.js` remplace
+    // par son iframe quand il arrive à charger.
+    const bouton = vivante().querySelector('a.twitter-hashtag-button')
+    expect(bouton?.getAttribute('href')).toContain('button_hashtag=CloudNord')
+    expect(bouton?.getAttribute('data-related')).toBe('@Cloud_Nord')
+  })
+
+  it('n’ouvre pas la page des réseaux sur la seule carte du hashtag', () => {
+    // La règle de la boucle ne change pas : une page sans contenu se saute.
+    // Le hashtag accompagne les comptes, il ne fabrique pas une page à lui seul.
+    monterEcran(enBoucle({ socialLinks: [] }))
+    avancer(13 + 16 + 13)
+
+    expect(vivante().textContent).not.toContain('#CloudNord')
   })
 
   it('revient au début après le dernier écran', () => {

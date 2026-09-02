@@ -32,6 +32,9 @@ export const UPLOADS_POLL_MS = 3000
 /** Vingt secondes : assez pour entendre le son et voir le cadrage, pas plus. */
 export const EXTRACT_MS = 20_000
 
+/** Poids du dernier relevé de débit dans la moyenne mobile — voir `lisser`. */
+export const LISSAGE = 1 / 3
+
 export const VERDICT_BADGES: Record<string, [string, string]> = {
   ok: ['Exploitable', 'border-ok/50 text-ok'],
   suspect: ['À revoir', 'border-attention/50 text-attention'],
@@ -58,6 +61,8 @@ export const useVodStore = defineStore('vod', () => {
   const preview = ref<{ file: string; at: number } | null>(null)
   const checking = ref(false)
   const progress = ref('')
+  /** Débit lissé par fichier, en octets par seconde — voir `lisser`. */
+  const debits = ref(new Map<string, number>())
 
   let timer: ReturnType<typeof setInterval> | null = null
 
@@ -85,8 +90,40 @@ export const useVodStore = defineStore('vod', () => {
       const response = await fetch('/control/uploads')
       const body = (await response.json()) as VueTeleversements & { ok?: boolean }
       uploads.value = body.ok === false ? null : body
+      lisser()
     } catch {
       uploads.value = null
+    }
+  }
+
+  /**
+   * Reprend le débit de chaque fichier en vol, en le lissant.
+   *
+   * `debitOctetsS` est le débit de la **dernière part**, mesurée seule. Sur le
+   * réseau d'un événement il varie du simple au triple d'une part à l'autre, et
+   * un temps restant calculé dessus sauterait de « 4 min » à « 11 min » toutes
+   * les trois secondes. Un chiffre qui danse ne se lit pas : on cesse de le
+   * regarder, et autant ne pas l'afficher.
+   *
+   * Un tiers de poids au dernier relevé : assez réactif pour suivre un uplink
+   * qui se dégage en quelques dizaines de secondes, assez lent pour ne pas
+   * suivre une part malchanceuse.
+   *
+   * Oublié dès que le fichier n'est plus en vol : une reprise après coupure
+   * repart sur le réseau du moment, et hériter du débit d'hier soir annoncerait
+   * un temps qui n'a jamais existé.
+   */
+  function lisser(): void {
+    for (const entree of uploads.value?.entrees ?? []) {
+      if (entree.state !== 'en-cours' || entree.debitOctetsS == null || entree.debitOctetsS <= 0) {
+        debits.value.delete(entree.file)
+        continue
+      }
+      const passe = debits.value.get(entree.file)
+      debits.value.set(
+        entree.file,
+        passe == null ? entree.debitOctetsS : passe + (entree.debitOctetsS - passe) * LISSAGE,
+      )
     }
   }
 
@@ -105,23 +142,45 @@ export const useVodStore = defineStore('vod', () => {
    */
   const blocked = computed<string | null>(() => {
     if (uploads.value == null) return 'État des téléversements indisponible'
-    if (uploads.value.verdict?.raison === 'desactive') {
+    if (uploads.value.verdict?.raison === 'sans-stockage') {
       return uploads.value.verdict.texte ?? 'aucun stockage configuré sur le hub'
     }
     return null
   })
 
   /**
+   * Le hub sait où envoyer, mais n'envoie rien de lui-même.
+   *
+   * Ne bloque **rien** : c'est le réglage par défaut du hub — « rien ne part
+   * sans qu'on l'ait demandé » — et le régulateur accepte déjà les demandes
+   * manuelles dans cet état. Les deux motifs ont longtemps partagé un code, et
+   * la régie retirait ses boutons ici comme sur un hub sans stockage : une
+   * installation parfaitement configurée n'offrait alors aucun moyen d'envoyer
+   * quoi que ce soit.
+   *
+   * Reste à le dire, en une ligne discrète : sinon l'opérateur qui monte un
+   * rush à la main se demande pourquoi les suivants ne partent pas seuls.
+   */
+  const manualOnly = computed<boolean>(
+    () => uploads.value?.verdict?.raison === 'auto-desactive',
+  )
+
+  /**
    * Rien à dire quand tout va, ni quand il n'y a rien à faire aller.
    *
-   * « desactive » n'est pas une attente : c'est un hub sans stockage, donc une
-   * fonctionnalité que personne n'a demandée. L'annoncer en ambre à chaque
-   * ouverture de la modale, toute la journée, la ferait passer pour une panne —
-   * et userait le bandeau avant le jour où il dit vrai.
+   * Ni « sans-stockage » ni « auto-desactive » ne sont des attentes : le
+   * premier est un hub sans destination, donc une fonctionnalité que personne
+   * n'a demandée ; le second est un réglage assumé, celui par défaut. Les
+   * annoncer en ambre à chaque ouverture de la modale, toute la journée, les
+   * ferait passer pour des pannes — et userait le bandeau avant le jour où il
+   * dit vrai.
    */
   const waitReason = computed<string | null>(() => {
     const verdict = uploads.value?.verdict
-    if (verdict == null || verdict.autorise || verdict.raison === 'desactive') return null
+    if (verdict == null || verdict.autorise) return null
+    // Ni l'absence de stockage ni l'automatisme éteint ne sont des attentes :
+    // le premier est dit en en-tête, le second est un réglage assumé.
+    if (verdict.raison === 'sans-stockage' || verdict.raison === 'auto-desactive') return null
     return `Téléversement en attente — ${verdict.texte}.`
   })
 
@@ -130,12 +189,41 @@ export const useVodStore = defineStore('vod', () => {
     return (uploads.value?.entrees ?? []).find((entry) => entry.file === file) ?? null
   }
 
+  /**
+   * Ce qu'il reste à attendre sur un fichier, en millisecondes — ou rien.
+   *
+   * La question du démontage n'est pas « où en est-il ? » mais « est-ce que je
+   * peux débrancher ce disque avant de partir ? », et un pourcentage n'y répond
+   * pas : 60 % sur un rush de quatre gigas, c'est deux minutes ou quarante,
+   * selon un débit que l'opérateur n'a aucune raison de connaître.
+   *
+   * Le plafond du hub entre dans le calcul, et il le faut : le débit remonté est
+   * celui de l'envoi d'une part, mesuré **avant** la pause qui applique le
+   * plafond. Sur un hub réglé à un méga-octet par seconde, un uplink capable de
+   * dix fois plus annoncerait donc dix fois moins de temps que la réalité — une
+   * estimation trop courte est pire que pas d'estimation, c'est elle qui fait
+   * ranger le disque trop tôt.
+   *
+   * Nul tant qu'aucune part n'est partie : « ça y est dans un instant » sur une
+   * file d'attente qui n'a pas commencé serait une promesse inventée.
+   */
+  function etaOf(file: string): number | null {
+    const entry = uploadOf(file)
+    if (entry == null || entry.state !== 'en-cours') return null
+    const lisse = debits.value.get(file)
+    if (lisse == null || lisse <= 0 || !(entry.restantOctets > 0)) return null
+    const plafond = uploads.value?.verdict?.debitMaxOctetsS ?? null
+    const debit = plafond != null && plafond > 0 ? Math.min(lisse, plafond) : lisse
+    return Math.round((entry.restantOctets / debit) * 1000)
+  }
+
   function show(): void {
     open.value = true
     // Relu à chaque ouverture : le dossier s'est rempli depuis la dernière fois.
     listing.value = null
     preview.value = null
     uploads.value = null
+    debits.value.clear()
     void loadListing()
     void loadUploads()
     // Coupé à la fermeture, sans quoi il survivrait à toutes les ouvertures de
@@ -282,6 +370,8 @@ export const useVodStore = defineStore('vod', () => {
     loadListing,
     loadUploads,
     uploadOf,
+    etaOf,
+    manualOnly,
     entryOf,
     togglePreview,
     inspect,

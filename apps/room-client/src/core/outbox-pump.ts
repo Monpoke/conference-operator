@@ -1,4 +1,4 @@
-import type { Connectivity, Envelope, RoomEventPayload, SceneRole } from '@cloudnord/contract'
+import type { Connectivity, DisplayMode, Envelope, RoomEventPayload, SceneRole } from '@cloudnord/contract'
 import { heartbeatDedupKey, type Outbox } from './outbox.js'
 
 // Réexportée ici : c'est la pompe qui l'utilise à l'émission.
@@ -43,6 +43,14 @@ export interface DrainOutcome {
 export class OutboxPump {
   private timer: NodeJS.Timeout | null = null
   private draining = false
+  /**
+   * La pompe a été arrêtée, et un lot est peut-être encore en vol.
+   *
+   * Distinct de `timer == null` : ce qui compte n'est pas qu'il n'y ait plus de
+   * tic, mais qu'une vidange partie **avant** l'arrêt ne revienne pas écrire
+   * après lui. Voir `drainOnce`.
+   */
+  private arretee = false
   private connectivity: Connectivity = 'OFFLINE'
 
   constructor(private readonly options: OutboxPumpOptions) {}
@@ -72,6 +80,7 @@ export class OutboxPump {
 
     try {
       const result = await push(batch)
+      if (this.arretee) return this.abandonne(batch.length)
 
       // Acquittés et doublons sortent pareillement : dans les deux cas le hub
       // les détient. C'est ce qui rend le rejeu inoffensif après reconnexion.
@@ -99,6 +108,7 @@ export class OutboxPump {
         connectivity: 'ONLINE',
       }
     } catch (cause) {
+      if (this.arretee) return this.abandonne(batch.length)
       outbox.defer(batch.map((envelope) => envelope.id))
       this.setConnectivity('OFFLINE')
       this.options.store.log('warn', 'remontée impossible, lot reporté', {
@@ -115,23 +125,80 @@ export class OutboxPump {
     }
   }
 
+  /**
+   * Le lot revient après l'arrêt : on ne touche plus à rien.
+   *
+   * La base est fermée — ou sur le point de l'être —, et l'écriture échouerait
+   * dans le `catch` qui existe précisément pour rattraper les échecs, d'où un
+   * rejet non géré qui remontait jusqu'au processus.
+   *
+   * **Rien n'est perdu.** `claimBatch` ne marque pas ce qu'il lit : il rend ce
+   * dont l'échéance est passée. Un lot qu'on renonce à reporter reste donc
+   * éligible tel quel, et repart au premier tour de la prochaine ouverture —
+   * ce qui est exactement le comportement voulu après un redémarrage.
+   */
+  private abandonne(taille: number): DrainOutcome {
+    return {
+      sent: 0,
+      duplicates: 0,
+      rejected: 0,
+      deferred: taille,
+      connectivity: this.connectivity,
+    }
+  }
+
+  /**
+   * Une passe, au plus une à la fois.
+   *
+   * Le garde protège l'ordre des `seq` : sans lui, un réseau lent ferait partir
+   * deux lots en parallèle et le hub les appliquerait dans le désordre. Il vaut
+   * pour le tic **et** pour le réveil — c'est justement quand les deux se
+   * croisent qu'il compte.
+   */
+  private passe(): void {
+    if (this.draining) return
+    this.draining = true
+    void this.drainOnce().finally(() => {
+      this.draining = false
+    })
+  }
+
+  /**
+   * Vide la file maintenant, sans attendre le tic.
+   *
+   * Pour ce qui se regarde de loin. Une régie mobile ne peint jamais d'avance —
+   * un bouton décrit OBS, pas ce qu'on lui a demandé —, si bien que le geste
+   * reste sans effet visible tant que la salle n'a pas remonté ce qui a changé.
+   * Deux secondes de tic plus une seconde de sondage, et l'on appuie une
+   * seconde fois en croyant avoir raté le bouton.
+   *
+   * Appelé sur les changements d'OBS, pas sur chaque remontée : c'est un fait
+   * par bascule, pas un flot. L'invariant d'autonomie tient — rien ici ne
+   * bloque, et un réseau absent laisse simplement le lot en file.
+   *
+   * **Sans effet tant que la pompe ne tourne pas**, et le garde n'est pas
+   * cosmétique : OBS continue d'émettre pendant l'arrêt de l'application, et
+   * une vidange lancée après la fermeture de la base échoue dans son propre
+   * `catch` — qui écrit lui-même en base pour reporter le lot. Le réveil n'a de
+   * sens qu'entre `start()` et `stop()` ; en dehors, il n'y a plus de tic à
+   * devancer.
+   */
+  reveiller(): void {
+    if (this.timer == null) return
+    this.passe()
+  }
+
   start(): void {
     if (this.timer != null) return
+    this.arretee = false
     const interval = this.options.intervalMs ?? 2_000
-    this.timer = setInterval(() => {
-      // Un seul passage à la fois : sans ce garde, un réseau lent ferait
-      // partir deux lots en parallèle et casserait l'ordre des `seq`.
-      if (this.draining) return
-      this.draining = true
-      void this.drainOnce().finally(() => {
-        this.draining = false
-      })
-    }, interval)
+    this.timer = setInterval(() => this.passe(), interval)
     // Ne retient pas le process : l'application doit pouvoir se fermer.
     this.timer.unref?.()
   }
 
   stop(): void {
+    this.arretee = true
     if (this.timer != null) clearInterval(this.timer)
     this.timer = null
   }
@@ -146,6 +213,8 @@ export interface HeartbeatInput {
   streaming: boolean
   outboxDepth: number
   programContentHash: string | null
+  /** Ce que l'écran de salle affiche : il ne remonte que par le battement. */
+  displayMode: DisplayMode
 }
 
 export function buildHeartbeat(input: HeartbeatInput): RoomEventPayload {

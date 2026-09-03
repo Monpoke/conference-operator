@@ -386,7 +386,7 @@ describe('panneau de la conférence', () => {
 
     // La table du cycle de vie est celle que le hub applique en écriture : un
     // bouton actif dont la procédure refuserait le geste n'est plus possible.
-    const terminer = wrapper.get('#btn-conf-terminer')
+    const terminer = wrapper.get('#btn-talk-end')
     expect(terminer.attributes('disabled')).toBeDefined()
     expect(terminer.attributes('title')).toBeTruthy()
   })
@@ -402,17 +402,17 @@ describe('panneau de la conférence', () => {
      * « Suivant » annonce le prochain *créneau* — qui peut être une pause. Les
      * deux différaient sans que rien ne l'explique.
      */
-    expect(wrapper.get('[data-role="conference-detail"]').text()).toContain(
+    expect(wrapper.get('[data-role="talk-detail"]').text()).toContain(
       'Prochaine conférence à',
     )
-    expect(wrapper.get('[data-role="conference-detail"]').text()).toContain('Remettre à venir')
+    expect(wrapper.get('[data-role="talk-detail"]').text()).toContain('Remettre à venir')
   })
 
   it('peint le dépassement en alerte : c’est lui qui déclenche une décision', () => {
     const wrapper = monter(FIN_MS + 600_000, { 'talk-1': 'running' })
 
-    expect(wrapper.get('[data-role="conference-detail"]').text()).toContain('dépassement de')
-    expect(wrapper.get('[data-role="conference-detail"]').classes()).toContain('text-alert')
+    expect(wrapper.get('[data-role="talk-detail"]').text()).toContain('dépassement de')
+    expect(wrapper.get('[data-role="talk-detail"]').classes()).toContain('text-alert')
   })
 
   it('dit qu’il n’y a rien à piloter plutôt que de laisser un titre vide', () => {
@@ -420,10 +420,10 @@ describe('panneau de la conférence', () => {
     etat.state.targetSession = null
     const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: DEBUT_MS } })
 
-    expect(wrapper.get('[data-role="conference-title"]').text()).toBe(
+    expect(wrapper.get('[data-role="talk-title"]').text()).toBe(
       'Aucune conférence à piloter',
     )
-    expect(wrapper.get('#btn-conf-demarrer').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('#btn-talk-start').attributes('disabled')).toBeDefined()
   })
 
   it('annonce l’heure devant le titre tant que le créneau n’a pas commencé', () => {
@@ -431,8 +431,8 @@ describe('panneau de la conférence', () => {
     etat.state.targetIsUpcoming = true
     const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: DEBUT_MS - 600_000 } })
 
-    expect(wrapper.get('[data-role="conference-title"]').text()).toContain('·')
-    expect(wrapper.get('[data-role="conference-detail"]').text()).toContain(
+    expect(wrapper.get('[data-role="talk-title"]').text()).toContain('·')
+    expect(wrapper.get('[data-role="talk-detail"]').text()).toContain(
       'Pas encore commencée au programme',
     )
   })
@@ -484,8 +484,8 @@ describe('les deux boutons suivent la table du cycle de vie', () => {
     etat.state.sessionStates = statut == null ? {} : { 'talk-1': statut }
     const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: DEBUT_MS } })
     return {
-      demarrer: wrapper.get('#btn-conf-demarrer'),
-      terminer: wrapper.get('#btn-conf-terminer'),
+      demarrer: wrapper.get('#btn-talk-start'),
+      terminer: wrapper.get('#btn-talk-end'),
     }
   }
 
@@ -543,9 +543,9 @@ describe('terminée avant son créneau', () => {
      * conférence à 09:50 » sur la conférence de 09:50 qu'on venait de terminer.
      * 11:00 UTC, soit 12:00 à Paris.
      */
-    expect(wrapper.get('[data-role="conference-badge"]').text()).toBe('terminée')
-    expect(wrapper.get('[data-role="conference-detail"]').text()).toContain('12:00')
-    expect(wrapper.get('[data-role="conference-detail"]').text()).not.toContain('10:00')
+    expect(wrapper.get('[data-role="talk-badge"]').text()).toBe('terminée')
+    expect(wrapper.get('[data-role="talk-detail"]').text()).toContain('12:00')
+    expect(wrapper.get('[data-role="talk-detail"]').text()).not.toContain('10:00')
   })
 
   it('ne saute rien tant que la conférence tient toujours', () => {
@@ -555,7 +555,7 @@ describe('terminée avant son créneau', () => {
       props: { payload: avantLeCreneau({}), nowMs: Date.parse('2026-10-30T08:00:00Z') },
     })
 
-    expect(wrapper.get('[data-role="conference-badge"]').text()).toBe('à venir')
-    expect(wrapper.get('[data-role="conference-detail"]').text()).toContain('Commencer')
+    expect(wrapper.get('[data-role="talk-badge"]').text()).toBe('à venir')
+    expect(wrapper.get('[data-role="talk-detail"]').text()).toContain('Commencer')
   })
 })

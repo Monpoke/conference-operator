@@ -281,7 +281,7 @@ describe('le voile de verrou', () => {
 
     expect(wrapper.find('[data-role="lock-veil"]').exists()).toBe(false)
     // Et les commandes sont là : c'est bien la même page dessous.
-    expect(wrapper.find('#btn-conf-demarrer').exists()).toBe(true)
+    expect(wrapper.find('#btn-talk-start').exists()).toBe(true)
   })
 
   it('reprend sans reposer la question', async () => {

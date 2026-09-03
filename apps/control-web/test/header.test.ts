@@ -334,7 +334,7 @@ describe('pilotée à distance', () => {
         payload: withHolder('regie@cloudnord.fr'),
         nowMs: Date.now(),
         streamDead: false,
-        distant: true,
+        remote: true,
       },
     })
     // Le bandeau de verrou dit déjà qui tient la salle ; le répéter ici ferait

@@ -24,12 +24,12 @@ const consult = useConsultStore()
 const programs = useProgramsStore()
 
 /*
- * Une couche vide, et c'est tout ce qu'on lui demande.
+ * An empty layer, and that is all that is asked of it.
  *
- * Elle avale les raccourcis de la page pendant qu'on lit un programme : `l` et
- * `h` basculent la projection devant du public, et une modale ouverte est
- * exactement le moment où l'on tape sans regarder. Échap reste à Reka, qui ne
- * ferme que la couche du dessus.
+ * It swallows the page's shortcuts while a program is being read: `l` and `h`
+ * switch the projection in front of an audience, and an open modal is exactly the
+ * moment one types without looking. Escape stays with Reka, which closes only the
+ * top layer.
  */
 useKeyboardLayer(() => ({}), () => consult.open)
 
@@ -38,12 +38,12 @@ const followedSessions = computed(() =>
 )
 
 /**
- * Ce qui se joue à côté, déduit du programme et de l'heure du hub.
+ * What is playing next door, deduced from the program and the hub's time.
  *
- * On ne reçoit pas l'état de l'autre salle ici — et on n'en veut pas : le
- * programme mis en cache répond même pendant une coupure, et l'heure du hub
- * porte le décalage, heure simulée comprise. Sans ce calcul, la modale
- * déroulait une liste sans dire où on en était.
+ * We do not receive the other room's state here — and we do not want it: the
+ * cached program answers even during an outage, and the hub's time carries the
+ * offset, simulated clock included. Without this computation, the modal unrolled a
+ * list without saying where one stood in it.
  */
 const followedCurrentId = computed(
   () => timelinePosition(followedSessions.value, props.nowMs).current?.id ?? null,
@@ -61,7 +61,7 @@ const followable = computed(() => otherRooms(props.payload, programs.rooms))
         variant="tab"
         size="small"
         :active="consult.tab === name"
-        :data-onglet="name"
+        :data-tab="name"
         @click="consult.tab = name"
       >
         {{ LABELS[name] }}
@@ -69,7 +69,7 @@ const followable = computed(() => otherRooms(props.payload, programs.rooms))
       <select
         v-if="consult.tab === 'other'"
         class="max-w-[220px] rounded-lg border border-edge bg-canvas px-3 py-2 text-[13px] text-text focus:border-brand focus:outline-none"
-        data-role="choix-autre-salle"
+        data-role="other-room-choice"
         :value="consult.followed ?? ''"
         @change="consult.follow(($event.target as HTMLSelectElement).value)"
       >

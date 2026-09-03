@@ -35,22 +35,21 @@ import { useLockStore } from './stores/lock.js'
 import { useVodStore } from './stores/vod.js'
 
 /**
- * La régie, servie de deux endroits.
+ * The control app, served from two places.
  *
- * **Locale** — le poste de salle : trois colonnes qui ne défilent pas, tout
- * visible, rien à chercher. C'est la disposition visée, et au-dessous de
- * 1024 px elle retombe sur une colonne défilante faute de mieux.
+ * **Local** — the room machine: three columns that do not scroll, everything
+ * visible, nothing to hunt for. That is the intended layout, and below 1024 px it
+ * falls back on a single scrolling column for want of anything better.
  *
- * **Distante** — le hub, sur un téléphone : une colonne, et seulement les
- * panneaux dont le hub a la matière. Pas une version réduite de la première par
- * masquage, mais une disposition à part : la fenêtre d'un poste et l'écran d'un
- * pouce ne se rangent pas de la même façon, et prétendre le contraire donne une
- * page qui n'est bien nulle part.
+ * **Remote** — the hub, on a phone: one column, and only the panels the hub has
+ * the material for. Not a reduced version of the first obtained by hiding things,
+ * but a layout of its own: a machine's window and a thumb's screen are not
+ * arranged the same way, and pretending otherwise gives a page that is right
+ * nowhere.
  *
- * Ce qui n'est **pas** offert à distance : les marqueurs, la VOD, le ⚙, les
- * vumètres, le diagnostic. Ce sont des gestes de poste, ou des gestes dont le
- * hub n'a pas la matière — les monter vides serait pire que de ne pas les
- * monter.
+ * What is **not** offered remotely: the markers, the VOD, the ⚙, the VU meters,
+ * the diagnostics. These are machine gestures, or gestures the hub has no material
+ * for — mounting them empty would be worse than not mounting them.
  */
 const room = useRoomStore()
 const gateway = useGatewayStore()
@@ -67,32 +66,32 @@ const vod = useVodStore()
 
 const capture = useTemplateRef<InstanceType<typeof CapturePanel>>('capture')
 
-/** Écouteurs posés seulement à distance ; rendus pour être retirés. */
-let retirerHistorique: (() => void) | null = null
-let retirerDepart: (() => void) | null = null
+/** Listeners laid down only remotely; returned so they can be removed. */
+let removeHistory: (() => void) | null = null
+let removeLeave: (() => void) | null = null
 
 onMounted(() => {
   clock.start()
   room.connect()
   /*
-   * Le vumètre et la charge de l'hôte n'existent qu'en local.
+   * The VU meter and the host load only exist locally.
    *
-   * Les deux sont servis par la machine de salle, sur son origine : les ouvrir
-   * depuis un téléphone ferait deux requêtes qui échouent en boucle contre le
-   * hub, pour des panneaux que la disposition mobile ne monte pas.
+   * Both are served by the room machine, on its own origin: opening them from a
+   * phone would make two requests that fail in a loop against the hub, for panels
+   * the mobile layout does not mount.
    */
   if (!gateway.remote) {
     audio.connect()
     host.start()
     return
   }
-  retirerHistorique = gateway.followHistory()
-  retirerDepart = lock.releaseOnLeave()
+  removeHistory = gateway.followHistory()
+  removeLeave = lock.releaseOnLeave()
 })
 
 onBeforeUnmount(() => {
-  retirerHistorique?.()
-  retirerDepart?.()
+  removeHistory?.()
+  removeLeave?.()
   host.stop()
   audio.disconnect()
   room.disconnect()
@@ -102,94 +101,93 @@ onBeforeUnmount(() => {
 const payload = computed(() => room.payload)
 
 /**
- * Le titre suit l'événement, pas la coquille.
+ * The title follows the event, not the shell.
  *
- * La coquille en pose un au rendu, ce qui évite le flash — mais il est figé à
- * cet instant-là. C'est la même machine qui servira l'édition suivante, le nom
- * peut changer à un sync en pleine journée, et la barre de fenêtre est le
- * premier endroit où un nom périmé se remarque. Un opérateur qui aligne trois
- * fenêtres de salles n'a que ça pour les distinguer.
+ * The shell sets one at render time, which avoids the flash — but it is frozen at
+ * that instant. The same machine will serve next year's edition, the name can
+ * change on a sync mid-day, and the window bar is the first place a stale name
+ * gets noticed. An operator lining up three room windows has only that to tell
+ * them apart.
  */
 watchEffect(() => {
-  const nom = payload.value?.eventIdentity?.name
-  if (nom == null || nom === '') return
+  const name = payload.value?.eventIdentity?.name
+  if (name == null || name === '') return
   /*
-   * À distance, la salle passe devant l'événement.
+   * Remotely, the room comes before the event.
    *
-   * Un opérateur qui aligne trois onglets sur trois salles n'a que le titre
-   * pour les distinguer, et l'événement est le même pour les trois.
+   * An operator lining up three tabs on three rooms has only the title to tell
+   * them apart, and the event is the same for all three.
    */
   document.title = gateway.remote
-    ? `${payload.value?.roomName ?? 'Régie'} — ${nom}`
-    : `Régie — ${nom}`
+    ? `${payload.value?.roomName ?? 'Régie'} — ${name}`
+    : `Régie — ${name}`
 })
 
 /*
- * Les programmes des salles voisines suivent l'empreinte, pas le flux.
+ * The neighbouring rooms' programs follow the fingerprint, not the stream.
  *
- * La régie reçoit un état toutes les quelques secondes ; relire une dizaine de
- * programmes à chaque fois coûterait autant de requêtes pour une réponse
- * identique. Le store ne recharge que si l'empreinte a changé — l'effet se
- * redéclenche à chaque charge utile, et c'est `load` qui s'arrête tout de suite.
+ * The control app receives a state every few seconds; re-reading a dozen programs
+ * each time would cost as many requests for an identical answer. The store only
+ * reloads if the fingerprint has changed — the effect re-fires on every payload,
+ * and it is `load` that stops straight away.
  */
 watchEffect(() => {
   const state = payload.value?.state
-  // Servis par la machine de salle : hors de portée d'un téléphone, et le
-  // panneau qui les lit n'est pas monté à distance.
+  // Served by the room machine: out of a phone's reach, and the panel that reads
+  // them is not mounted remotely.
   if (state != null && !gateway.remote) void programs.load(state.contentHash, state.roomId)
 })
 
 /**
- * Les rôles de scène que la salle a réellement mappés.
+ * The scene roles the room has actually mapped.
  *
- * Servis par le hub et non déduits d'une constante : une salle sans `RELAY`
- * configuré n'affiche pas le bouton, exactement comme en régie de salle. En
- * local, le panneau garde sa propre règle — la configuration est sous sa main.
+ * Served by the hub and not deduced from a constant: a room with no `RELAY`
+ * configured does not show the button, exactly as in the room's own control app.
+ * Locally the panel keeps its own rule — the configuration is at hand.
  */
-const rolesDistants = computed(() =>
+const remoteRoles = computed(() =>
   Object.keys(payload.value?.diagnostics?.config?.sceneRoles.A ?? {}),
 )
 
 /**
- * Une machine non appairée n'a rien à piloter.
+ * An unpaired machine has nothing to drive.
  *
- * Le voile n'est pas posé « par-dessus » la page : il la remplace. `paired` est
- * la seule valeur qui le lève, et l'absence de bloc `pairing` aussi — une salle
- * déjà liée n'en reçoit pas.
+ * The veil is not laid "over" the page: it replaces it. `paired` is the only value
+ * that lifts it, and so is the absence of a `pairing` block — a room already
+ * linked receives none.
  */
 const pairingRequired = computed(
   () => payload.value?.pairing != null && payload.value.pairing.status !== 'paired',
 )
 
 /**
- * La configuration passe devant si la salle n'est pas prête.
+ * The configuration comes to the front if the room is not ready.
  *
- * Au démarrage du poste et **une fois la machine appairée** : avant, il n'y a
- * ni salle, ni configuration, et le voile occupe de toute façon l'écran. C'est
- * le premier instant où le panneau a quelque chose à montrer.
+ * At the machine's start-up and **once it is paired**: before that there is no
+ * room and no configuration, and the veil takes the screen anyway. That is the
+ * first moment the panel has something to show.
  *
- * Le store tient le reste : le verdict, pris sans attendre, et le fait que cela
- * n'arrive qu'une fois par chargement de page.
+ * The store holds the rest: the verdict, taken without waiting, and the fact that
+ * this happens only once per page load.
  *
- * Rien à distance : le panneau de configuration n'y est pas monté, et un
- * téléphone n'est pas l'endroit d'où l'on branche un OBS.
+ * Nothing remotely: the configuration panel is not mounted there, and a phone is
+ * not where one plugs in an OBS.
  */
 watch(
   [() => gateway.remote, pairingRequired, payload],
-  ([distante, appairageRequis, recu]) => {
-    if (distante || appairageRequis || recu == null) return
+  ([remote, needsPairing, received]) => {
+    if (remote || needsPairing || received == null) return
     config.checkAtStartup()
   },
   { immediate: true },
 )
 
 /**
- * Les raccourcis de la page, sur la couche du fond.
+ * The page's shortcuts, on the bottom layer.
  *
- * Dans une salle sombre, viser un bouton coûte plus cher qu'appuyer sur une
- * touche. Toute modale posera une couche par-dessus celle-ci et les avalera :
- * c'est ce qui empêche un « r » réflexe de lancer une captation sous une
- * question ouverte.
+ * In a dark room, aiming at a button costs more than pressing a key. Any modal
+ * will lay a layer over this one and swallow them: that is what stops a reflex "r"
+ * starting a take underneath an open question.
  */
 useKeyboardLayer(
   () => ({
@@ -198,12 +196,12 @@ useKeyboardLayer(
     r: () => capture.value?.toggleRecording(),
     m: () => capture.value?.mark(),
     /*
-     * Les deux repères de editing ont leur touche, comme la captation.
+     * The two editing anchors have their key, like the take.
      *
-     * Ce sont des gestes qu'on fait pendant qu'on regarde la salle, pas
-     * l'écran : l'orateur commence, l'orateur finit. Passer par le champ de
-     * libellé pour taper « Début » ferait rater l'instant qu'on voulait
-     * marquer — et c'est l'instant, ici, qui est toute l'information.
+     * These are gestures made while watching the room, not the screen: the speaker
+     * starts, the speaker finishes. Going through the label field to type "Début"
+     * would miss the very instant one wanted to mark — and here the instant is all
+     * the information there is.
      */
     d: () => capture.value?.anchor('debut'),
     f: () => capture.value?.anchor('fin'),
@@ -211,15 +209,15 @@ useKeyboardLayer(
     p: () => consult.show('program'),
   }),
   /*
-   * Rien sous le voile d'appairage, et rien sur un téléphone.
+   * Nothing under the pairing veil, and nothing on a phone.
    *
-   * La page d'origine gardait ses raccourcis vivants derrière le voile — son
-   * écouteur était global et le voile n'était qu'un attribut sur le `<body>`.
-   * Taper « l » sur une machine non appairée postait une bascule de scène vers
-   * un OBS qu'elle n'a pas, et récoltait un échec rouge pour toute réponse.
+   * The original page kept its shortcuts alive behind the veil — its listener was
+   * global and the veil was only an attribute on the `<body>`. Typing "l" on an
+   * unpaired machine posted a scene switch towards an OBS it does not have, and
+   * collected a red failure for an answer.
    *
-   * À distance, `m`, `d`, `f`, `s` et `p` visent des panneaux absents — et un clavier
-   * logiciel qui s'ouvre sur un champ de recherche déclencherait le reste.
+   * Remotely, `m`, `d`, `f`, `s` and `p` aim at panels that are absent — and a soft
+   * keyboard opening on a search field would fire the rest.
    */
   () => !pairingRequired.value && !gateway.remote,
 )
@@ -227,9 +225,9 @@ useKeyboardLayer(
 
 <template>
   <!--
-    À distance, trois écrans avant la régie, dans cet ordre : se connecter,
-    choisir une salle, la piloter. Chacun remplace le précédent — un pupitre
-    tenu d'une main n'a pas de place pour deux choses à la fois.
+    Remotely, three screens before the control app, in this order: sign in, choose
+    a room, drive it. Each replaces the previous one — a desk held in one hand has
+    no room for two things at once.
   -->
   <template v-if="gateway.remote">
     <SignInScreen v-if="!session.signedIn" />
@@ -239,12 +237,12 @@ useKeyboardLayer(
       <LockBanner :now-ms="room.now" />
 
       <!--
-        Le voile de verrou par-dessus, et pas à la place.
+        The lock veil over the top, and not in its place.
 
-        L'état de la salle reste lisible en dessous : venir regarder une salle
-        qu'un collègue pilote est un usage normal — c'est même ce que fait
-        quelqu'un qui hésite à la reprendre. Ce qui est coupé, ce sont les
-        gestes, qui partiraient tous se faire refuser.
+        The room's state stays readable underneath: coming to look at a room a
+        colleague is driving is a normal use — it is even what somebody hesitating
+        to take it over does. What is cut off are the gestures, which would all
+        leave only to be refused.
       -->
       <LockVeil v-if="lock.blocked" :now-ms="room.now" />
 
@@ -259,17 +257,16 @@ useKeyboardLayer(
         <main class="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto p-2.5">
           <TalkPanel :payload="payload" :now-ms="room.now" />
           <!--
-            L'écran de salle passe par le flux de commandes descendant, comme la
-            scène : c'est ce qui permet de le piloter sans rien ajouter entre un
-            téléphone et la machine de salle. Amputé de deux modes — voir le
-            panneau.
+            The room screen goes through the downstream command flow, like the
+            scene: that is what lets it be driven with nothing added between a phone
+            and the room machine. Short of two modes — see the panel.
           -->
           <ScreenPanel :mode="payload.state.mode" :remote="true" />
           <ProjectionPanel
             :scene-role="payload.state.sceneRole"
             :relay-source-room-id="payload.diagnostics?.relaySourceRoomId ?? null"
             :obs="null"
-            :roles="rolesDistants"
+            :roles="remoteRoles"
           />
           <CapturePanel
             :recording="payload.diagnostics?.recording ?? null"
@@ -283,8 +280,8 @@ useKeyboardLayer(
       </template>
 
       <!--
-        Rien encore reçu : le premier sondage n'a pas répondu. Distinct d'une
-        salle vide — c'est un état d'attente, et il dure une seconde.
+        Nothing received yet: the first poll has not answered. Distinct from an
+        empty room — it is a waiting state, and it lasts a second.
       -->
       <div v-else class="flex flex-1 items-center justify-center p-6 text-sm text-dim">
         Lecture de la salle…
@@ -348,9 +345,9 @@ useKeyboardLayer(
   </template>
 
   <!--
-    Aucun état reçu : c'est le cas du développement, où `vite dev` sert la
-    coquille sans rien dedans. En salle, le poste embarque l'état dans la page
-    et cet écran n'apparaît jamais.
+    No state received: the development case, where `vite dev` serves the shell with
+    nothing inside. In a room the machine embeds the state in the page and this
+    screen never appears.
   -->
   <div v-else class="flex flex-1 items-center justify-center p-6 text-sm text-dim">
     Connexion au poste de salle…

@@ -10,11 +10,11 @@ const props = defineProps<{ payload: DisplayPayload }>()
 
 const config = useConfigStore()
 
-// Une couche vide : on tape des adresses et des mots de passe ici, et un « r »
-// hors champ ne doit pas lancer une captation derrière la modale.
+// An empty layer: addresses and passwords are typed here, and an "r" outside a
+// field must not start a take behind the modal.
 useKeyboardLayer(() => ({}), () => config.open)
 
-/** Les autres salles, pour le relais. Une salle ne se relaie pas elle-même. */
+/** The other rooms, for the relay. A room does not relay itself. */
 const others = computed(() =>
   (props.payload.diagnostics?.rooms ?? []).filter(
     (room) => room.roomId !== props.payload.state.roomId,
@@ -22,8 +22,8 @@ const others = computed(() =>
 )
 
 const noticeTone = computed(() => {
-  // Hors ligne passe devant : c'est la raison pour laquelle le bouton est
-  // désarmé, et elle prime sur le résultat du dernier enregistrement.
+  // Offline comes first: it is the reason the button is disarmed, and it outranks
+  // the result of the last save.
   if (!config.online) return 'text-warn'
   if (config.notice?.tone === 'ok') return 'text-ok'
   return config.notice?.tone === 'alert' ? 'text-alert' : 'text-dim'
@@ -36,8 +36,8 @@ const FIELD =
 <template>
   <Dialog v-model:open="config.open" title="Configuration de la salle" width="full">
     <!--
-      Rien à configurer sans le hub : c'est lui qui détient la configuration de
-      la salle. Un formulaire vide se remplirait de zéros et les enverrait.
+      Nothing to configure without the hub: it is the hub that holds the room's
+      configuration. An empty form would fill itself with zeros and send them.
     -->
     <p v-if="config.draft == null || config.config == null" class="text-sm text-dim">
       Rien à configurer tant que le hub n'a pas répondu : c'est lui qui détient la configuration
@@ -114,9 +114,9 @@ const FIELD =
             <div class="flex gap-1.5">
               <input id="cfg-root" v-model="config.draft.recordingRoot" :class="FIELD" />
               <!--
-                Le sélecteur parcourt le disque **du poste**, où qu'on lise cette
-                page : c'est là que les rushes s'écrivent, et ce champ n'a jamais
-                désigné autre chose. D'où le mot « poste » sur le bouton.
+                The picker browses **the machine's** disk, wherever this page is
+                read: that is where the footage is written, and this field has never
+                named anything else. Hence the word "poste" on the button.
               -->
               <Button
                 v-if="config.canBrowse"
@@ -150,13 +150,12 @@ const FIELD =
         </div>
 
         <!--
-          Ce que « Commencer » entraîne.
+          What "Commencer" brings with it.
 
-          Deux gestes que la régie faisait de mémoire, et qu'elle oubliait aux
-          moments les plus coûteux : lancer l'enregistrement, et passer à
-          l'antenne. Les rattacher au démarrage de la conférence les met là où
-          l'information existe — c'est le seul instant où l'on sait qu'un talk
-          commence.
+          Two gestures the control app used to do from memory, and forgot at the
+          costliest moments: starting the recording, and going on air. Tying them to
+          the talk's start puts them where the information exists — it is the only
+          instant at which one knows a talk is beginning.
         -->
         <h3 class="mt-3.5 mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
           Au démarrage et à la fin d’une conférence

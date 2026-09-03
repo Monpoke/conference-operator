@@ -2,23 +2,23 @@ import type { DisplayPayload } from '@cloudnord/contract'
 import { nextTalk } from '@cloudnord/room-state'
 
 /**
- * Ce que compte le grand chronomètre.
+ * What the large stopwatch counts.
  *
- * Avant le créneau, le temps qui reste **avant** de commencer ; à partir de son
- * heure, ce qu'il reste du créneau. Compter d'emblée vers la fin donnait
- * « 2:01:59 » en gros caractères à 8h38 sur la conférence de 9h50 : un chiffre
- * qui se lit comme un talk en cours, et qui a été lu ainsi.
+ * Before the slot, the time left **before** starting; from its hour on, what is
+ * left of the slot. Counting towards the end from the outset gave "2:01:59" in
+ * large type at 8:38 on the 9:50 talk: a figure that reads as a talk under way,
+ * and that was read that way.
  *
- * Un talk lancé en avance compte vers sa fin sans attendre son heure : dès
- * qu'on a appuyé sur « Commencer », c'est l'écart au programme qui décide de la
- * suite de la journée.
+ * A talk started early counts towards its end without waiting for its hour: once
+ * "Commencer" has been pressed, it is the gap against the program that decides
+ * the rest of the day.
  *
- * Hors composant, parce que c'est une règle et non un rendu : elle se vérifie
- * sur des instants choisis, sans monter quoi que ce soit.
+ * Outside any component, because it is a rule and not a rendering: it can be
+ * checked on chosen instants, without mounting anything.
  */
 export interface Countdown {
   ms: number
-  /** Le décompte vise un début, pas une fin. Le badge le dit à côté du nombre. */
+  /** The countdown aims at a start, not an end. The badge says so beside the number. */
   beforeStart: boolean
 }
 
@@ -28,12 +28,12 @@ export function countdownFor(payload: DisplayPayload, atMs: number): Countdown |
   const status = payload.state.sessionStates?.[session.id] ?? 'scheduled'
 
   /*
-   * Une conférence terminée ne décompte plus rien.
+   * An ended talk counts nothing down any more.
    *
-   * Le chronomètre continuait sur son créneau : « Terminer » appuyé à 10:35, il
-   * restait quinze minutes à l'écran sur un talk que la salle venait de
-   * quitter. Ce qu'on vient y chercher à ce moment-là est la seule chose qui
-   * décide de la suite — dans combien de temps la prochaine commence.
+   * The stopwatch used to carry on over its slot: "Terminer" pressed at 10:35,
+   * and fifteen minutes were left on screen for a talk the room had just left.
+   * What one comes looking for at that moment is the only thing that decides
+   * what follows — how long until the next one starts.
    */
   if (status === 'ended') {
     const next = nextTalkFor(payload, atMs)
@@ -47,11 +47,11 @@ export function countdownFor(payload: DisplayPayload, atMs: number): Countdown |
 }
 
 /**
- * La prochaine conférence de la salle : celle qui va encore se tenir.
+ * The room's next talk: the one that will still take place.
  *
- * Pauses sautées — un déjeuner n'est pas ce qu'on attend — et conférences déjà
- * terminées sautées aussi. La règle est celle de l'automate, la même que le
- * banc d'essai déroule ; la page ne tranche pas elle-même.
+ * Breaks skipped — a lunch is not what one is waiting for — and already ended
+ * talks skipped too. The rule is the state machine's, the same one the test
+ * bench runs through; the page does not decide for itself.
  */
 export function nextTalkFor(
   payload: DisplayPayload,
@@ -61,10 +61,10 @@ export function nextTalkFor(
 }
 
 /**
- * Temps qu'il devrait rester d'après le programme.
+ * The time that should be left according to the program.
  *
- * Pas le temps écoulé depuis le début réel : c'est l'écart au créneau prévu qui
- * compte, parce que c'est lui qui décale la suite de la journée.
+ * Not the time elapsed since the real start: it is the gap against the scheduled
+ * slot that counts, because that is what shifts the rest of the day.
  */
 export function scheduleGapMs(payload: DisplayPayload, atMs: number): number | null {
   const session = payload.state.targetSession

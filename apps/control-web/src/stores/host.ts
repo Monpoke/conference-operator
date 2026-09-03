@@ -3,22 +3,22 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 /**
- * Un relevé toutes les cinq secondes, et pas un champ de plus dans le flux.
+ * One reading every five seconds, and not one more field in the stream.
  *
- * La mesure est déjà une moyenne sur son intervalle : interroger plus souvent
- * ne dirait rien de plus. Surtout, une salle dont la régie est fermée continue
- * ainsi de n'émettre aucun trafic — c'est le seul trafic d'une salle au repos
- * qu'on ait accepté d'ajouter, et il s'arrête avec la fenêtre.
+ * The measurement is already an average over its interval: polling more often
+ * would say nothing more. Above all, a room whose control window is closed thus
+ * goes on emitting no traffic — it is the only traffic from a room at rest we
+ * agreed to add, and it stops with the window.
  */
 export const POLL_MS = 5000
 
 /**
- * Charge du poste, relevée hors du flux d'état.
+ * The machine's load, read outside the state stream.
  *
- * `null` couvre deux cas que la vue distingue : le serveur local n'a pas
- * répondu, ou il a répondu sans mesure — la première fenêtre n'est pas encore
- * écoulée. Les confondre ferait passer un poste qui vient de démarrer pour un
- * poste qui ne répond plus.
+ * `null` covers two cases the view tells apart: the local server did not answer,
+ * or it answered with no measurement — the first window has not elapsed yet.
+ * Confusing them would make a machine that has just started look like one that
+ * no longer answers.
  */
 export const useHostStore = defineStore('host', () => {
   const load = ref<HostLoad | null>(null)

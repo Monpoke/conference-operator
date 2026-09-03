@@ -2,20 +2,19 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 /**
- * Le battement d'une seconde, tenu à un seul endroit.
+ * The one-second beat, kept in a single place.
  *
- * Cinq affichages en dépendent — l'horloge, le compte à rebours du créneau, le
- * chronomètre de prise, la péremption des signalements, la détection d'un flux
- * mort — et chacun tenait son propre `setInterval` dans la page d'origine.
- * Cinq réveils par seconde sur une machine qui encode, pour cinq lectures de la
- * même valeur.
+ * Five displays depend on it — the clock, the slot countdown, the take
+ * stopwatch, the expiry of notices, the detection of a dead stream — and each
+ * held its own `setInterval` in the original page. Five wake-ups a second on a
+ * machine that encodes, for five reads of the same value.
  *
- * Un store plutôt qu'un module : un `ref` de portée module survivrait d'un
- * fichier de test au suivant, avec son intervalle, et le défaut ne se verrait
- * qu'en exécution parallèle.
+ * A store rather than a module: a module-scoped `ref` would survive from one
+ * test file to the next, along with its interval, and the defect would only show
+ * up under parallel execution.
  */
 export const useClockStore = defineStore('clock', () => {
-  /** Temps réel de la machine. Le décalage du hub s'ajoute chez qui l'affiche. */
+  /** The machine's real time. The hub's offset is added by whoever displays it. */
   const real = ref(Date.now())
 
   let timer: ReturnType<typeof setInterval> | null = null
@@ -33,7 +32,7 @@ export const useClockStore = defineStore('clock', () => {
     timer = null
   }
 
-  /** Avance le battement à la main. Réservé aux tests, qui ne dorment pas. */
+  /** Advances the beat by hand. Reserved for tests, which do not sleep. */
   function advance(ms: number): void {
     real.value += ms
   }

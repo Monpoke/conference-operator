@@ -21,7 +21,7 @@ import { useLockStore } from '../stores/lock.js'
 const props = defineProps<{ nowMs: number }>()
 
 const session = useSessionStore()
-const verrou = useLockStore()
+const lock = useLockStore()
 </script>
 
 <template>
@@ -29,12 +29,12 @@ const verrou = useLockStore()
     class="flex items-center gap-2 border-b border-edge bg-surface px-3 py-2 text-xs"
     data-role="verrou"
   >
-    <Button class="shrink-0" @click="verrou.quitter()">‹ Salles</Button>
+    <Button class="shrink-0" @click="lock.leave()">‹ Salles</Button>
 
-    <span v-if="verrou.jeTiens" class="min-w-0 flex-1 truncate text-dim">
+    <span v-if="lock.iHold" class="min-w-0 flex-1 truncate text-dim">
       Vous pilotez cette salle
-      <span v-if="verrou.verrou != null">
-        · depuis {{ timeAgo(verrou.verrou.heldSince, props.nowMs) }}
+      <span v-if="lock.lock != null">
+        · depuis {{ timeAgo(lock.lock.heldSince, props.nowMs) }}
       </span>
     </span>
 
@@ -43,11 +43,11 @@ const verrou = useLockStore()
       mention, pour que la ligne ne se contredise pas quand le voile se referme.
     -->
     <span
-      v-else-if="verrou.tenueAilleurs"
+      v-else-if="lock.heldElsewhere"
       class="min-w-0 flex-1 truncate text-warn"
       data-role="verrou-porteur"
     >
-      Lecture seule — {{ verrou.monAutreSession ? 'un autre de vos onglets' : verrou.porteur }}
+      Lecture seule — {{ lock.myOtherSession ? 'un autre de vos onglets' : lock.holder }}
     </span>
 
     <span v-else class="min-w-0 flex-1 truncate text-dim">Salle non prise</span>

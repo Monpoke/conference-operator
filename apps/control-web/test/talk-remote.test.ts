@@ -3,7 +3,7 @@ import { useToast } from '@cloudnord/components'
 import { flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { payloadDepuisVue } from '../src/lib/gateway.js'
+import { payloadFromView } from '../src/lib/gateway.js'
 import { useTalkStore } from '../src/stores/conference.js'
 import { useGatewayStore } from '../src/stores/gateway.js'
 import { useRoomStore } from '../src/stores/room.js'
@@ -14,7 +14,7 @@ import { talk } from './fixtures.js'
  * Les garde-fous de « Commencer » ne dépendent pas du transport.
  *
  * `conference.ts` est un seul chemin, en salle comme sur un téléphone : c'est
- * tout l'intérêt de la porte. Ce fichier vérifie qu'il le reste — et surtout que
+ * tout l'intérêt de la gateway. Ce fichier vérifie qu'il le reste — et surtout que
  * la règle qui coûte une VOD quand elle tombe tient encore de l'autre côté :
  * **si l'enregistrement ne part pas, la conférence ne commence pas.**
  *
@@ -67,8 +67,8 @@ function distante(vues: ControlView[]): void {
   commandes = []
   let restantes = [...vues]
 
-  const porte = useGatewayStore()
-  porte.start({ portee: 'distante', roomId: 'track-1', salles: [], google: null })
+  const gateway = useGatewayStore()
+  gateway.start({ portee: 'distante', roomId: 'track-1', salles: [], google: null })
 
   const session = useSessionStore()
   session.client = {
@@ -85,7 +85,7 @@ function distante(vues: ControlView[]): void {
 
   // L'état que le premier sondage aurait posé : les garde-fous le lisent, et
   // c'est exactement la charge utile que la porte synthétise en vrai.
-  useRoomStore().seed(payloadDepuisVue(vues[0]!, Date.now()))
+  useRoomStore().seed(payloadFromView(vues[0]!, Date.now()))
 
   /*
    * L'horloge est substituée, et le sondage n'est pas lancé.
@@ -96,9 +96,9 @@ function distante(vues: ControlView[]): void {
    * arrive en vrai quand un bouton est pressé avant que le flux ne soit branché.
    */
   let horloge = Date.now()
-  porte.configurer({
-    maintenant: () => horloge,
-    attendre: async (ms) => {
+  gateway.configure({
+    now: () => horloge,
+    wait: async (ms) => {
       horloge += ms
     },
   })

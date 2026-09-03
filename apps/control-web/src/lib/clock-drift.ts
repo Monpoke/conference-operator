@@ -1,13 +1,13 @@
 /**
- * L'écart avec l'horloge du hub, dans une unité qu'on puisse se représenter.
+ * The offset from the hub's clock, in a unit one can picture.
  *
- * « décalée de +5 693 432,6 s » est exact et illisible. Au-delà de la minute
- * seul l'ordre de grandeur compte : un poste à deux heures du hub n'a pas le
- * même problème qu'un poste à deux secondes, et c'est ce qu'il faut lire.
+ * "décalée de +5 693 432,6 s" is exact and unreadable. Past the minute only the
+ * order of magnitude counts: a machine two hours from the hub does not have the
+ * same problem as one two seconds away, and that is what needs reading.
  *
- * Ici plutôt que dans `@cloudnord/format` : la régie est la seule surface qui
- * l'affiche, parce qu'elle est la seule à devoir expliquer un compte à rebours
- * qui ne colle pas à la montre de l'opérateur.
+ * Here rather than in `@cloudnord/format`: the control app is the only surface
+ * that displays it, because it is the only one that has to explain a countdown
+ * that does not match the operator's watch.
  */
 export function clockDrift(ms: number): string {
   const seconds = Math.abs(ms) / 1000

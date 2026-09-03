@@ -2,9 +2,9 @@ import type { ControlCommand, ControlView } from '@cloudnord/contract'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   OBSERVATION_MS,
-  payloadDepuisVue,
+  payloadFromView,
   remoteGateway,
-  traduire,
+  translate,
   type ActionResult,
   type StateSink,
 } from '../src/lib/gateway.js'
@@ -82,18 +82,18 @@ function clientFactice(vues: ControlView[]) {
 
 const silentStream: StateSink = { onPayload: () => {}, onOutage: () => {} }
 
-describe('traduire un geste de régie', () => {
+describe('translate un geste de régie', () => {
   it('porte la cible du cycle de vie, prise sur la vue', () => {
     // La cible voyage explicitement : le créneau visé peut tourner entre le
     // rendu et le clic, et c'est là qu'une cible implicite lance le mauvais talk.
-    expect(traduire({ action: 'session.start' }, vue())).toEqual({
+    expect(translate({ action: 'session.start' }, vue())).toEqual({
       type: 'session.start',
       sessionId: 'talk-1',
     })
   })
 
   it('refuse le cycle de vie quand la salle ne pilote aucune conférence', () => {
-    expect(traduire({ action: 'session.end' }, vue({ targetSession: null }))).toBeNull()
+    expect(translate({ action: 'session.end' }, vue({ targetSession: null }))).toBeNull()
   })
 
   it('rend un état plutôt qu’un verbe pour la captation et la diffusion', () => {
@@ -102,11 +102,11 @@ describe('traduire un geste de régie', () => {
      * une intention encore lisible, et l'appliquer deux fois ne coûte rien — ce
      * qui compte sur un flux au-moins-une-fois.
      */
-    expect(traduire({ action: 'recording.start' }, vue())).toEqual({
+    expect(translate({ action: 'recording.start' }, vue())).toEqual({
       type: 'recording.set',
       on: true,
     })
-    expect(traduire({ action: 'stream.stop' }, vue())).toEqual({ type: 'stream.set', on: false })
+    expect(translate({ action: 'stream.stop' }, vue())).toEqual({ type: 'stream.set', on: false })
   })
 
   it('emporte l’écran de salle, qui passe par le flux descendant', () => {
@@ -116,7 +116,7 @@ describe('traduire un geste de régie', () => {
      * permet de le piloter d'un téléphone sans rien ajouter entre lui et la
      * machine de salle.
      */
-    expect(traduire({ action: 'display.set', mode: 'sponsors' }, vue())).toEqual({
+    expect(translate({ action: 'display.set', mode: 'sponsors' }, vue())).toEqual({
       type: 'display.set',
       mode: 'sponsors',
     })
@@ -132,25 +132,25 @@ describe('traduire un geste de régie', () => {
       'obs.connect',
       'message.send',
     ]) {
-      expect(traduire({ action }, vue())).toBeNull()
+      expect(translate({ action }, vue())).toBeNull()
     }
   })
 })
 
 describe('poster un geste', () => {
-  let porte: ReturnType<typeof remoteGateway>
+  let gateway: ReturnType<typeof remoteGateway>
   let horloge: number
 
   function ouvrir(vues: ControlView[]) {
     horloge = AT
     const { client, commandes } = clientFactice(vues)
-    porte = remoteGateway({
+    gateway = remoteGateway({
       client,
       roomId: 'track-1',
-      maintenant: () => horloge,
+      now: () => horloge,
       // L'attente avance l'horloge de test plutôt que de dormir : le délai de
       // garde se vérifie en millisecondes simulées.
-      attendre: async (ms) => {
+      wait: async (ms) => {
         horloge += ms
       },
     })
@@ -163,7 +163,7 @@ describe('poster un geste', () => {
 
   it('refuse en toutes lettres ce qui demande la régie de la salle', async () => {
     ouvrir([vue()])
-    const resultat: ActionResult = await porte.act({ action: 'recording.mark', label: 'x' })
+    const resultat: ActionResult = await gateway.act({ action: 'recording.mark', label: 'x' })
     // Laisser l'appel échouer sur un refus du hub donnerait un rouge sans
     // explication, là où la raison tient en une phrase.
     expect(resultat).toEqual({ ok: false, message: 'Ce geste demande la régie de la salle' })
@@ -171,9 +171,9 @@ describe('poster un geste', () => {
 
   it('n’attend rien derrière une bascule de scène', async () => {
     const commandes = ouvrir([vue()])
-    porte.demarrer(silentStream)
-    const resultat = await porte.act({ action: 'scene.set', role: 'LIVE' })
-    porte.arreter()
+    gateway.start(silentStream)
+    const resultat = await gateway.act({ action: 'scene.set', role: 'LIVE' })
+    gateway.stop()
 
     expect(commandes).toEqual([{ type: 'scene.set', role: 'LIVE' }])
     // La bascule se lit sur le bouton au sondage suivant, comme en régie de
@@ -189,14 +189,14 @@ describe('poster un geste', () => {
      * un mensonge qu'on découvre le soir, devant une VOD absente.
      */
     ouvrir([vue({ recording: false }), vue({ recording: true })])
-    const resultat = await porte.act({ action: 'recording.start' })
+    const resultat = await gateway.act({ action: 'recording.start' })
     expect(resultat.ok).toBe(true)
   })
 
   it('déclare la captation manquée quand la salle ne confirme jamais', async () => {
     ouvrir([vue({ recording: false })])
     const debut = horloge
-    const resultat = await porte.act({ action: 'recording.start' })
+    const resultat = await gateway.act({ action: 'recording.start' })
 
     expect(resultat.ok).toBe(false)
     expect(resultat.message).toContain("n'a pas démarré")
@@ -209,25 +209,25 @@ describe('la vue rendue sous la forme que lisent les panneaux', () => {
   it('installe l’écart à l’horloge du hub, pas celle du téléphone', () => {
     // L'horloge du hub fait foi et peut être simulée : en développement l'écart
     // se compte en semaines, et le navigateur n'a que la sienne.
-    const rendue = payloadDepuisVue(vue(), AT - 60_000)
+    const rendue = payloadFromView(vue(), AT - 60_000)
     expect(rendue.state.serverTimeOffsetMs).toBe(60_000)
   })
 
   it('porte les garde-fous du démarrage, pour que la question soit la même qu’en salle', () => {
-    const rendue = payloadDepuisVue(vue({ promptRecordingOnStart: false, sceneOnStart: null }), AT)
+    const rendue = payloadFromView(vue({ promptRecordingOnStart: false, sceneOnStart: null }), AT)
     expect(rendue.diagnostics?.config?.promptRecordingOnStart).toBe(false)
     expect(rendue.diagnostics?.config?.sceneOnStart).toBeNull()
   })
 
   it('n’offre que les rôles de scène que la salle a mappés', () => {
-    const rendue = payloadDepuisVue(vue({ sceneRoles: ['LIVE', 'HOLD'] }), AT)
+    const rendue = payloadFromView(vue({ sceneRoles: ['LIVE', 'HOLD'] }), AT)
     expect(Object.keys(rendue.diagnostics!.config!.sceneRoles.A)).toEqual(['LIVE', 'HOLD'])
   })
 
   it('installe l’écran que la salle a remonté, pas celui qu’on a demandé', () => {
     // Le panneau lit `state.mode` : c'est lui qui décide quel bouton s'allume,
     // et il doit décrire la salle, jamais l'intention.
-    expect(payloadDepuisVue(vue({ displayMode: 'feedback' }), AT).state.mode).toBe('feedback')
+    expect(payloadFromView(vue({ displayMode: 'feedback' }), AT).state.mode).toBe('feedback')
   })
 
   it('retombe sur la boucle quand la salle n’a pas encore battu', () => {
@@ -236,11 +236,11 @@ describe('la vue rendue sous la forme que lisent les panneaux', () => {
      * démarre. Une salle qui n'a rien remonté montre donc bien la boucle — et
      * si elle est coupée, la connectivité le dit déjà à côté.
      */
-    expect(payloadDepuisVue(vue({ displayMode: null }), AT).state.mode).toBe('loop')
+    expect(payloadFromView(vue({ displayMode: null }), AT).state.mode).toBe('loop')
   })
 
   it('laisse vide ce que le hub ne sait pas, plutôt que de l’inventer', () => {
-    const rendue = payloadDepuisVue(vue({ recording: true }), AT)
+    const rendue = payloadFromView(vue({ recording: true }), AT)
     /*
      * Le hub ne stocke qu'un booléen. Une heure de départ plausible à côté d'un
      * point rouge juste ferait afficher une durée fausse — et douter des deux.

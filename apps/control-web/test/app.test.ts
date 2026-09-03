@@ -234,7 +234,7 @@ describe('consultation', () => {
     frappe('p')
     await flushPromises()
     expect(consult.open).toBe(true)
-    expect(consult.tab).toBe('programme')
+    expect(consult.tab).toBe('program')
 
     consult.open = false
     // La couche de la modale se retire au prochain cycle réactif : taper dans
@@ -242,13 +242,13 @@ describe('consultation', () => {
     await flushPromises()
     frappe('s')
     await flushPromises()
-    expect(consult.tab).toBe('salles')
+    expect(consult.tab).toBe('rooms')
   })
 
   it('avale les raccourcis pendant qu’on lit', async () => {
     await monter()
     const consult = useConsultStore()
-    consult.show('programme')
+    consult.show('program')
     await flushPromises()
 
     frappe('l')
@@ -271,7 +271,7 @@ describe('consultation', () => {
 
     // Pas dans le flux d'état : le programme d'une salle qu'on ne regarde pas
     // n'a rien à circuler à chaque changement de scène.
-    expect(consult.tab).toBe('autre')
+    expect(consult.tab).toBe('other')
     expect(envois.some((envoi) => envoi.url === '/display/sessions?salle=track-2')).toBe(true)
   })
 })

@@ -1,64 +1,67 @@
 import type { DisplayPayload } from '@cloudnord/contract'
 
 /**
- * L'état de la salle, embarqué dans la coquille.
+ * The room's state, embedded in the shell.
  *
- * Le poste de salle rend la page avec son état complet dedans, et c'est la
- * seule raison d'être de ce module. Un rechargement de la régie arrive presque
- * toujours au pire moment — la fenêtre a gelé, l'opérateur fait F5 pendant le
- * talk. Attendre le premier message du flux pour peindre quoi que ce soit
- * donnerait une demi-seconde d'écran vide à cet instant-là.
+ * The room machine renders the page with its complete state inside it, and that
+ * is this module's only reason for being. A reload of the control app almost
+ * always comes at the worst moment — the window has frozen, the operator hits F5
+ * during the talk. Waiting for the stream's first message to paint anything
+ * would give half a second of blank screen at that very instant.
  *
- * Absent en développement, où `vite dev` sert `index.html` tel quel : la page
- * se remplit alors à l'ouverture du flux, ce qui est le comportement dégradé
- * qu'on accepte hors salle.
+ * Absent in development, where `vite dev` serves `index.html` as is: the page
+ * then fills up when the stream opens, which is the degraded behaviour accepted
+ * outside a room.
  */
 export const BOOT_ELEMENT_ID = 'etat-initial'
 
 export function readInitialPayload(document: Document): DisplayPayload | null {
   const element = document.getElementById(BOOT_ELEMENT_ID)
-  const contenu = element?.textContent
-  if (contenu == null || contenu.trim() === '') return null
-  return JSON.parse(contenu) as DisplayPayload
+  const content = element?.textContent
+  if (content == null || content.trim() === '') return null
+  return JSON.parse(content) as DisplayPayload
 }
 
 /**
- * D'où la régie est servie, et pour quelle salle.
+ * Where the control app is served from, and for which room.
  *
- * Deux hôtes servent le même bundle : la machine de salle, qui n'a qu'une
- * salle et la connaît, et le hub, qui les a toutes et attend qu'on en choisisse
- * une. C'est la seule chose que l'application a besoin de savoir avant de se
- * monter — le reste suit du transport qu'elle choisit.
+ * Two hosts serve the same bundle: the room machine, which has only one room and
+ * knows it, and the hub, which has them all and waits for one to be chosen. That
+ * is the only thing the application needs to know before mounting — the rest
+ * follows from the transport it picks.
  *
- * **L'absence vaut « locale ».** C'est ce que sert un poste de salle, et aussi
- * ce que sert `vite dev` avec son `index.html` nu : le défaut est le cas où
- * personne n'a rien à dire.
+ * **Absence means "locale".** That is what a room machine serves, and also what
+ * `vite dev` serves with its bare `index.html`: the default is the case where
+ * nobody has anything to say.
+ *
+ * `portee`, `salles` and the two element ids are the boot contract shared with
+ * `hub-server` and `room-client`: they are not renamed.
  */
 export const SCOPE_ELEMENT_ID = 'regie-portee'
 
 export interface BootScope {
   portee: 'locale' | 'distante'
-  /** La salle pilotée, ou `null` pour l'écran de choix. */
+  /** The room being driven, or `null` for the choice screen. */
   roomId: string | null
-  /** Les salles connues, posées avant tout appel réseau. */
+  /** The known rooms, laid down before any network call. */
   salles: { id: string; name: string }[]
-  /** Domaine Google, ou `null` : le bouton n'apparaît que si le hub le sert. */
+  /** The Google domain, or `null`: the button only appears if the hub serves it. */
   google: { domain: string } | null
 }
 
 const LOCALE: BootScope = { portee: 'locale', roomId: null, salles: [], google: null }
 
 export function readScope(document: Document): BootScope {
-  const contenu = document.getElementById(SCOPE_ELEMENT_ID)?.textContent
-  if (contenu == null || contenu.trim() === '') return LOCALE
+  const content = document.getElementById(SCOPE_ELEMENT_ID)?.textContent
+  if (content == null || content.trim() === '') return LOCALE
   try {
-    return { ...LOCALE, ...(JSON.parse(contenu) as Partial<BootScope>) }
+    return { ...LOCALE, ...(JSON.parse(content) as Partial<BootScope>) }
   } catch {
     /*
-     * Une amorce illisible retombe en local, et ne casse rien.
+     * An unreadable boot payload falls back to local, and breaks nothing.
      *
-     * C'est le seul choix sûr : une page qui refuse de se monter parce qu'un
-     * JSON est tronqué laisse un écran noir là où l'on attendait une régie.
+     * It is the only safe choice: a page that refuses to mount because a JSON
+     * blob is truncated leaves a black screen where a control app was expected.
      */
     return LOCALE
   }

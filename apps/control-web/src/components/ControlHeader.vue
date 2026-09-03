@@ -26,7 +26,7 @@ const props = defineProps<{
   distant?: boolean
 }>()
 
-const emit = defineEmits<{ open: [tab: 'programme' | 'salles']; config: [] }>()
+const emit = defineEmits<{ open: [tab: 'program' | 'rooms']; config: [] }>()
 
 const host = useHostStore()
 
@@ -103,10 +103,10 @@ const queueDepth = computed(
     />
 
     <div v-if="distant !== true" class="flex shrink-0 items-center gap-1.5">
-      <Button id="btn-programme" size="small" @click="emit('open', 'programme')">
+      <Button id="btn-program" size="small" @click="emit('open', 'program')">
         Programme<Key>P</Key>
       </Button>
-      <Button id="btn-salles" size="small" @click="emit('open', 'salles')">
+      <Button id="btn-rooms" size="small" @click="emit('open', 'rooms')">
         Salles<Key>S</Key>
       </Button>
       <Button

@@ -3,20 +3,20 @@ import type { ProgramService } from './program.js'
 import type { SettingsService } from './sessions.js'
 
 /**
- * Qui est l'événement, pour tout ce que le hub affiche ou envoie.
+ * Who the event is, for everything the hub shows or sends.
  *
- * Le hub tranche, une fois, et tout le reste consomme le résultat : le mur
- * public, la console, le service worker des notifications, et le `sync` des
- * salles. Le déduire séparément dans chaque page rendait le produit
- * inrenommable — c'est exactement le défaut que ce service supprime.
+ * The hub decides, once, and everything else consumes the result: the public
+ * wall, the console, the notifications service worker, and the rooms' `sync`.
+ * Deriving it separately in each page made the product unrenameable — that is
+ * exactly the defect this service removes.
  *
- * Deux sources et un ordre : le réglage du hub s'il existe, sinon le programme
- * importé. Le second est le cas normal, et c'est lui qui rend le dépôt
- * agnostique : importer l'export d'un autre événement renomme tout.
+ * Two sources and one order: the hub's setting if there is one, else the
+ * imported program. The second is the normal case, and it is what makes the
+ * repository agnostic: importing another event's export renames everything.
  *
- * Lu à chaque usage plutôt que mis en cache, comme les réglages dont il
- * dépend : le nom se corrige en cours d'événement, et le voir persister dix
- * secondes après l'avoir changé ferait douter que le réglage soit pris.
+ * Read on every use rather than cached, like the settings it depends on: the
+ * name gets corrected during the event, and seeing it persist ten seconds after
+ * changing it would cast doubt on whether the setting was taken.
  */
 export class EventIdentityService {
   constructor(
@@ -25,21 +25,21 @@ export class EventIdentityService {
   ) {}
 
   /**
-   * Ce que le hub retiendrait **sans** réglage.
+   * What the hub would settle on **without** a setting.
    *
-   * Sert à la console, qui l'affiche en `placeholder` des champs laissés
-   * vides : sans elle, un opérateur ne peut pas savoir ce qu'il obtiendra en
-   * vidant le champ, donc n'ose pas le vider — et le réglage devient un
-   * aller sans retour.
+   * Used by the console, which shows it as the `placeholder` of fields left
+   * empty: without it, an operator cannot know what they will get by clearing
+   * the field, and so does not dare clear it — and the setting becomes a
+   * one-way trip.
    */
   derived(): EventIdentity {
     return resolveEventIdentity({ program: this.programs.activeEventName() })
   }
 
   get(): EventIdentity {
-    const reglages = this.settings.get()
+    const settings = this.settings.get()
     return resolveEventIdentity({
-      setting: { name: reglages.eventName, shortName: reglages.eventShortName },
+      setting: { name: settings.eventName, shortName: settings.eventShortName },
       program: this.programs.activeEventName(),
     })
   }

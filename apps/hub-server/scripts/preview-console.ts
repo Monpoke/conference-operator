@@ -1,25 +1,24 @@
 /**
- * Écrit des aperçus statiques de la console et du mur.
+ * Writes static previews of the console and of the wall.
  *
- * Permet de relire l'habillage sans démarrer un hub, sans base et sans compte —
- * utile pour juger la mise en page, et pour comparer deux états d'un écran
- * (file de modération vide ou pleine) qu'on ne reproduit pas à la demande le
- * jour J.
+ * Lets one review the styling without starting a hub, without a database and
+ * without an account — useful to judge the layout, and to compare two states of a
+ * screen (an empty or a full moderation queue) that cannot be reproduced on
+ * demand on the day.
  *
- *   pnpm --filter @cloudnord/hub-server preview [dossier]
+ *   pnpm --filter @cloudnord/hub-server preview [directory]
  *
- * Le mur seulement, désormais.
+ * The wall only, from now on.
  *
- * La console avait ses dix aperçus tant qu'elle était un gabarit littéral :
- * un fichier HTML autonome s'ouvre depuis le disque, et se relit sans rien
- * lancer. Une application Vue ne le permet pas — le navigateur refuse ses
- * modules servis en `file://` — et la remplacer par un aperçu qui ne serait
- * plus la page servie ferait perdre exactement ce qui rendait ces fichiers
- * utiles.
+ * The console had its ten previews for as long as it was a literal template: a
+ * standalone HTML file opens from disk, and is reviewed without launching
+ * anything. A Vue application does not allow that — the browser refuses its
+ * modules served over `file://` — and replacing it with a preview that would no
+ * longer be the served page would lose exactly what made those files useful.
  *
- * Ce qu'on regarde à leur place : `pnpm --filter @cloudnord/hub-admin dev`,
- * qui montre la vraie console. Le jeu de données figé, lui, a déménagé dans
- * `apps/hub-admin/test/fixtures/console.ts` plutôt que d'être perdu.
+ * What we look at instead: `pnpm --filter @cloudnord/hub-admin dev`, which shows
+ * the real console. The frozen dataset itself moved to
+ * `apps/hub-admin/test/fixtures/console.ts` rather than being lost.
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -29,52 +28,52 @@ const outDir = resolve(process.argv[2] ?? './preview')
 mkdirSync(outDir, { recursive: true })
 
 /**
- * Identité de l'événement, telle que le hub la tranche du programme importé.
+ * The event's identity, as the hub decides it from the imported program.
  *
- * L'aperçu la fournit comme le ferait un vrai hub : c'est la même valeur qui
- * titre les pages, et une constante d'aperçu masquerait le jour où le
- * mécanisme se casse.
+ * The preview supplies it the way a real hub would: it is the same value that
+ * titles the pages, and a preview constant would hide the day the mechanism
+ * breaks.
  */
-const EVENEMENT = {
+const EVENT = {
   resolved: { name: 'Cloud Nord 2026', shortName: 'Cloud Nord' },
   derived: { name: 'Cloud Nord 2026', shortName: 'Cloud Nord' },
 }
 
-const SALLES = [
+const ROOMS = [
   { id: 'track-1-teilhard-de-chardin', name: 'Track #1 — Teilhard de Chardin' },
   { id: 'track-2-mf-1092', name: 'Track #2 — MF 1092' },
   { id: 'hands-on', name: 'Hands on' },
 ]
 
-/** Réponses servies à la place du hub, par procédure oRPC. */
-const REPONSES: Record<string, unknown> = {
-  'rooms/list': SALLES,
+/** The responses served in place of the hub, by oRPC procedure. */
+const RESPONSES: Record<string, unknown> = {
+  'rooms/list': ROOMS,
   'rooms/statuses': [
     {
-      roomId: SALLES[0]!.id, name: SALLES[0]!.name, connectivity: 'ONLINE',
+      roomId: ROOMS[0]!.id, name: ROOMS[0]!.name, connectivity: 'ONLINE',
       sceneRole: 'LIVE', recording: true, streaming: false, outboxDepth: 0,
       lastSeenAt: '2026-10-30T10:12:00.000Z', programContentHash: 'a1b2c3d4e5',
       currentSession: { id: 'ses-1', title: 'HoneySwamp: Active Defense to Ruin Attackers', endsAt: '2026-10-30T10:50:00.000Z' },
     },
     {
-      roomId: SALLES[1]!.id, name: SALLES[1]!.name, connectivity: 'DEGRADED',
+      roomId: ROOMS[1]!.id, name: ROOMS[1]!.name, connectivity: 'DEGRADED',
       sceneRole: 'HOLD', recording: false, streaming: false, outboxDepth: 3,
       lastSeenAt: '2026-10-30T10:09:30.000Z', programContentHash: 'a1b2c3d4e5',
       currentSession: { id: 'ses-2', title: '100 % open source, au-dessus de la mêlée', endsAt: '2026-10-30T10:50:00.000Z' },
     },
     {
-      roomId: SALLES[2]!.id, name: SALLES[2]!.name, connectivity: 'OFFLINE',
+      roomId: ROOMS[2]!.id, name: ROOMS[2]!.name, connectivity: 'OFFLINE',
       sceneRole: null, recording: false, streaming: false, outboxDepth: 12,
       lastSeenAt: '2026-10-30T09:41:00.000Z', programContentHash: '9f8e7d6c5b',
       currentSession: null,
     },
   ],
   'devices/pending': [
-    { userCode: 'FH9BAXGZ', clientId: '01JBQ...9K2', requestedRoomId: SALLES[2]!.id, requestedAt: '2026-10-30T08:55:00.000Z' },
+    { userCode: 'FH9BAXGZ', clientId: '01JBQ...9K2', requestedRoomId: ROOMS[2]!.id, requestedAt: '2026-10-30T08:55:00.000Z' },
   ],
   'devices/list': [
-    { id: 'dev-1', label: 'Régie Track #1', roomId: SALLES[0]!.id, lastSeenAt: '2026-10-30T10:12:00.000Z' },
-    { id: 'dev-2', label: 'Régie Track #2', roomId: SALLES[1]!.id, lastSeenAt: '2026-10-30T10:09:30.000Z' },
+    { id: 'dev-1', label: 'Régie Track #1', roomId: ROOMS[0]!.id, lastSeenAt: '2026-10-30T10:12:00.000Z' },
+    { id: 'dev-2', label: 'Régie Track #2', roomId: ROOMS[1]!.id, lastSeenAt: '2026-10-30T10:09:30.000Z' },
   ],
   'program/snapshots': [
     { id: 'snap-2', contentHash: 'a1b2c3d4e5f6', sessions: 27, anomalies: 1, active: true, importedAt: '2026-10-29T18:02:00.000Z' },
@@ -85,50 +84,52 @@ const REPONSES: Record<string, unknown> = {
     { id: 'c-2', source: 'form', author: 'Sacha', text: 'Les slides seront-elles partagées après la conf ?', createdAt: '2026-10-30T10:07:30.000Z' },
   ],
   'messages/fromRooms': [
-    { id: 'm-1', roomId: SALLES[1]!.id, roomName: SALLES[1]!.name, text: 'Micro cravate HS, on passe sur le micro main', level: 'warning', at: '2026-10-30T10:03:00.000Z' },
-    { id: 'm-2', roomId: SALLES[0]!.id, roomName: SALLES[0]!.name, text: 'Speaker arrivé, tout est prêt', level: 'info', at: '2026-10-30T09:58:00.000Z' },
+    { id: 'm-1', roomId: ROOMS[1]!.id, roomName: ROOMS[1]!.name, text: 'Micro cravate HS, on passe sur le micro main', level: 'warning', at: '2026-10-30T10:03:00.000Z' },
+    { id: 'm-2', roomId: ROOMS[0]!.id, roomName: ROOMS[0]!.name, text: 'Speaker arrivé, tout est prêt', level: 'info', at: '2026-10-30T09:58:00.000Z' },
   ],
   'sessions/states': [
-    // `remainingMs` vient du hub : c'est lui qui tient l'heure qui fait foi, et
-    // elle peut être simulée. L'aperçu doit donc le fournir, sinon la colonne
-    // « Reste » y reste vide sans qu'on sache pourquoi.
-    { sessionId: 'ses-1', roomId: SALLES[0]!.id, roomName: SALLES[0]!.name, title: 'HoneySwamp : piéger les bots', status: 'running', scheduledStartsAt: '2026-10-30T10:00:00.000Z', scheduledEndsAt: '2026-10-30T10:50:00.000Z', remainingMs: 23 * 60_000, decidedBy: 'operator' },
-    { sessionId: 'ses-2', roomId: SALLES[1]!.id, roomName: SALLES[1]!.name, title: 'Observabilité sous pression', status: 'ended', scheduledStartsAt: '2026-10-30T09:00:00.000Z', scheduledEndsAt: '2026-10-30T09:50:00.000Z', remainingMs: -4 * 60_000, decidedBy: 'auto' },
+    // `remainingMs` comes from the hub: it is the hub that holds the authoritative
+    // time, and that time can be simulated. The preview must therefore supply it,
+    // otherwise the "Reste" column stays empty there with no way to know why.
+    { sessionId: 'ses-1', roomId: ROOMS[0]!.id, roomName: ROOMS[0]!.name, title: 'HoneySwamp : piéger les bots', status: 'running', scheduledStartsAt: '2026-10-30T10:00:00.000Z', scheduledEndsAt: '2026-10-30T10:50:00.000Z', remainingMs: 23 * 60_000, decidedBy: 'operator' },
+    { sessionId: 'ses-2', roomId: ROOMS[1]!.id, roomName: ROOMS[1]!.name, title: 'Observabilité sous pression', status: 'ended', scheduledStartsAt: '2026-10-30T09:00:00.000Z', scheduledEndsAt: '2026-10-30T09:50:00.000Z', remainingMs: -4 * 60_000, decidedBy: 'auto' },
   ],
   /**
-   * Planning du programme actif.
+   * The active program's schedule.
    *
-   * Une pause y figure : c'est le cas qui montre qu'une ligne sans intervenant
-   * ne propose pas de lien OpenFeedback — on ne note pas un déjeuner.
+   * A break appears in it: it is the case that shows a row with no speaker offers
+   * no OpenFeedback link — nobody rates a lunch.
    */
   'program/planning': {
     contentHash: 'a1b2c3d4e5f6',
     timezone: 'Europe/Paris',
-    // 10:12 UTC : le premier créneau est en cours, c'est lui que l'aperçu doit
-    // montrer surligné.
+    // 10:12 UTC: the first slot is running, and it is the one the preview must
+    // show highlighted.
     serverTime: '2026-10-30T10:12:00.000Z',
     openFeedbackProjectId: 'cloud-nord-2026',
-    rooms: SALLES,
+    rooms: ROOMS,
     sessions: [
-      { id: 'ses-1', title: 'HoneySwamp : piéger les bots', speakers: ['Steven LE ROUX'], startsAt: '2026-10-30T10:00:00.000Z', endsAt: '2026-10-30T10:50:00.000Z', roomId: SALLES[0]!.id, roomName: SALLES[0]!.name, kind: 'talk', feedbackUrl: 'https://openfeedback.io/cloud-nord-2026/2026-10-30/ses-1', feedbackId: 'ses-1', feedbackIdOverride: null },
-      { id: 'ses-2', title: '100 % open source, au-dessus de la mêlée', speakers: ['Camille Durand', 'Sacha Nguyen'], startsAt: '2026-10-30T10:00:00.000Z', endsAt: '2026-10-30T10:50:00.000Z', roomId: SALLES[1]!.id, roomName: SALLES[1]!.name, kind: 'talk', feedbackUrl: 'https://openfeedback.io/cloud-nord-2026/2026-10-30/of-42', feedbackId: 'of-42', feedbackIdOverride: 'of-42' },
+      { id: 'ses-1', title: 'HoneySwamp : piéger les bots', speakers: ['Steven LE ROUX'], startsAt: '2026-10-30T10:00:00.000Z', endsAt: '2026-10-30T10:50:00.000Z', roomId: ROOMS[0]!.id, roomName: ROOMS[0]!.name, kind: 'talk', feedbackUrl: 'https://openfeedback.io/cloud-nord-2026/2026-10-30/ses-1', feedbackId: 'ses-1', feedbackIdOverride: null },
+      { id: 'ses-2', title: '100 % open source, au-dessus de la mêlée', speakers: ['Camille Durand', 'Sacha Nguyen'], startsAt: '2026-10-30T10:00:00.000Z', endsAt: '2026-10-30T10:50:00.000Z', roomId: ROOMS[1]!.id, roomName: ROOMS[1]!.name, kind: 'talk', feedbackUrl: 'https://openfeedback.io/cloud-nord-2026/2026-10-30/of-42', feedbackId: 'of-42', feedbackIdOverride: 'of-42' },
       { id: 'pause-midi', title: 'Déjeuner', speakers: [], startsAt: '2026-10-30T11:00:00.000Z', endsAt: '2026-10-30T12:00:00.000Z', roomId: null, roomName: null, kind: 'break', feedbackUrl: null, feedbackId: 'pause-midi', feedbackIdOverride: null },
-      { id: 'ses-3', title: 'Event Iterators en production', speakers: ['Alex Martin'], startsAt: '2026-10-30T12:00:00.000Z', endsAt: '2026-10-30T12:50:00.000Z', roomId: SALLES[2]!.id, roomName: SALLES[2]!.name, kind: 'talk', feedbackUrl: 'https://openfeedback.io/cloud-nord-2026/2026-10-30/ses-3', feedbackId: 'ses-3', feedbackIdOverride: null },
+      { id: 'ses-3', title: 'Event Iterators en production', speakers: ['Alex Martin'], startsAt: '2026-10-30T12:00:00.000Z', endsAt: '2026-10-30T12:50:00.000Z', roomId: ROOMS[2]!.id, roomName: ROOMS[2]!.name, kind: 'talk', feedbackUrl: 'https://openfeedback.io/cloud-nord-2026/2026-10-30/ses-3', feedbackId: 'ses-3', feedbackIdOverride: null },
     ],
   },
-  'event/identity': EVENEMENT,
+  'event/identity': EVENT,
   'settings/get': {
     autoEndGraceMinutes: 5,
     autoEndEnabled: true,
     programSourceUrl: 'https://exemple.test/programme.json',
-    // Rien de réglé : les champs de l'onglet Réglages restent vides, et
-    // montrent en placeholder ce que le hub a déduit du programme. C'est l'état
-    // normal, et celui qu'il faut donner à relire.
+    // Nothing set: the fields of the Settings tab stay empty, and show as a
+    // placeholder what the hub derived from the program. That is the normal state,
+    // and the one worth giving to review.
     eventName: null,
     eventShortName: null,
     openFeedbackProjectId: 'cloud-nord-2026',
     vodBucket: 'rushes-cloudnord',
     vodPrefix: 'cn26',
+    // `vodPolitique` and the fields below are contract names: they do not get
+    // renamed.
     vodPolitique: {
       actif: true,
       debitMaxOctetsS: 2_000_000,
@@ -147,7 +148,7 @@ const REPONSES: Record<string, unknown> = {
   'clock/get': { now: '2026-10-30T10:12:00.000Z', simulated: true },
   'overlay/history': [
     { seq: 12, roomId: null, message: { text: 'Reprise dans 5 minutes', level: 'info' }, issuedAt: '2026-10-30T10:06:00.000Z', visible: true },
-    { seq: 9, roomId: SALLES[0]!.id, message: { text: 'Problème de son en cours de résolution', level: 'warning' }, issuedAt: '2026-10-30T09:41:00.000Z', visible: false },
+    { seq: 9, roomId: ROOMS[0]!.id, message: { text: 'Problème de son en cours de résolution', level: 'warning' }, issuedAt: '2026-10-30T09:41:00.000Z', visible: false },
   ],
   'rooms/current': {
     current: {
@@ -173,12 +174,11 @@ const REPONSES: Record<string, unknown> = {
     },
   },
   /**
-   * Les trois états qu'un téléversement peut prendre sous les yeux.
+   * The three states an upload can take before one's eyes.
    *
-   * Un terminé, un en cours, un en échec avec le code du stockage : c'est cette
-   * dernière ligne qu'on relit à l'œil, parce qu'elle est la seule qui demande
-   * une décision — et la seule dont le rendu peut se dégrader sans qu'un test
-   * le voie.
+   * One finished, one running, one failed with the storage's code: it is that last
+   * row one reviews by eye, because it is the only one that calls for a decision —
+   * and the only one whose rendering can degrade without a test seeing it.
    */
   'vod/check': {
     ok: true,
@@ -190,50 +190,50 @@ const REPONSES: Record<string, unknown> = {
     ],
   },
   'vod/uploads': [
-    { roomId: SALLES[0]!.id, roomName: SALLES[0]!.name, file: '2026-10-30_track1_1000_honeyswamp.mkv', kind: 'rush', sessionId: 'ses-1', objectKey: 'cn26/2026-10-30/track-1/2026-10-30_track1_1000_honeyswamp.mkv', state: 'termine', sizeBytes: 2_700_000_000, bytesSent: 2_700_000_000, debitOctetsS: 1_900_000, startedAt: '2026-10-30T10:55:00.000Z', lastProgressAt: '2026-10-30T11:18:00.000Z', finishedAt: '2026-10-30T11:18:00.000Z', attempts: 1, lastError: null },
-    { roomId: SALLES[1]!.id, roomName: SALLES[1]!.name, file: '2026-10-30_track2_1000_open-source.mkv', kind: 'rush', sessionId: 'ses-2', objectKey: 'cn26/2026-10-30/track-2/2026-10-30_track2_1000_open-source.mkv', state: 'en-cours', sizeBytes: 3_100_000_000, bytesSent: 1_300_000_000, debitOctetsS: 1_400_000, startedAt: '2026-10-30T11:02:00.000Z', lastProgressAt: '2026-10-30T11:19:00.000Z', finishedAt: null, attempts: 1, lastError: null },
-    { roomId: SALLES[2]!.id, roomName: SALLES[2]!.name, file: '2026-10-30_handson_0900_atelier.mkv', kind: 'rush', sessionId: 'ses-3', objectKey: 'cn26/2026-10-30/hands-on/2026-10-30_handson_0900_atelier.mkv', state: 'echoue', sizeBytes: 5_400_000_000, bytesSent: 210_000_000, debitOctetsS: null, startedAt: '2026-10-30T11:05:00.000Z', lastProgressAt: '2026-10-30T11:09:00.000Z', finishedAt: null, attempts: 4, lastError: 'Le stockage a refusé (AccessDenied) : quota dépassé sur le bucket' },
+    { roomId: ROOMS[0]!.id, roomName: ROOMS[0]!.name, file: '2026-10-30_track1_1000_honeyswamp.mkv', kind: 'rush', sessionId: 'ses-1', objectKey: 'cn26/2026-10-30/track-1/2026-10-30_track1_1000_honeyswamp.mkv', state: 'termine', sizeBytes: 2_700_000_000, bytesSent: 2_700_000_000, debitOctetsS: 1_900_000, startedAt: '2026-10-30T10:55:00.000Z', lastProgressAt: '2026-10-30T11:18:00.000Z', finishedAt: '2026-10-30T11:18:00.000Z', attempts: 1, lastError: null },
+    { roomId: ROOMS[1]!.id, roomName: ROOMS[1]!.name, file: '2026-10-30_track2_1000_open-source.mkv', kind: 'rush', sessionId: 'ses-2', objectKey: 'cn26/2026-10-30/track-2/2026-10-30_track2_1000_open-source.mkv', state: 'en-cours', sizeBytes: 3_100_000_000, bytesSent: 1_300_000_000, debitOctetsS: 1_400_000, startedAt: '2026-10-30T11:02:00.000Z', lastProgressAt: '2026-10-30T11:19:00.000Z', finishedAt: null, attempts: 1, lastError: null },
+    { roomId: ROOMS[2]!.id, roomName: ROOMS[2]!.name, file: '2026-10-30_handson_0900_atelier.mkv', kind: 'rush', sessionId: 'ses-3', objectKey: 'cn26/2026-10-30/hands-on/2026-10-30_handson_0900_atelier.mkv', state: 'echoue', sizeBytes: 5_400_000_000, bytesSent: 210_000_000, debitOctetsS: null, startedAt: '2026-10-30T11:05:00.000Z', lastProgressAt: '2026-10-30T11:09:00.000Z', finishedAt: null, attempts: 4, lastError: 'Le stockage a refusé (AccessDenied) : quota dépassé sur le bucket' },
   ],
   /**
-   * Le dossier VOD d'une conférence, tel que la modale du planning le montre.
+   * A talk's VOD folder, as the schedule's modal shows it.
    *
-   * Une prise et son objet chez le stockage : c'est le cas nominal, celui qui
-   * doit se relire d'un coup d'œil sur l'aperçu.
+   * One take and its object at the storage: it is the nominal case, the one that
+   * must be readable at a glance on the preview.
    */
   'vod/conference': {
     sessionId: 'ses-1',
-    roomId: SALLES[0]!.id,
-    roomName: SALLES[0]!.name,
+    roomId: ROOMS[0]!.id,
+    roomName: ROOMS[0]!.name,
     stockageConfigure: true,
     captations: [
-      { roomId: SALLES[0]!.id, obs: 'B', startedAt: '2026-10-30T10:02:00.000Z', endedAt: '2026-10-30T10:53:00.000Z', durationMs: 3_060_000, file: '/rushes/2026-10-30_track1_1000_honeyswamp.mkv', sidecarWritten: true, enCours: false, rattachement: 'session' },
+      { roomId: ROOMS[0]!.id, obs: 'B', startedAt: '2026-10-30T10:02:00.000Z', endedAt: '2026-10-30T10:53:00.000Z', durationMs: 3_060_000, file: '/rushes/2026-10-30_track1_1000_honeyswamp.mkv', sidecarWritten: true, enCours: false, rattachement: 'session' },
     ],
     televersements: [
-      { roomId: SALLES[0]!.id, roomName: SALLES[0]!.name, file: '2026-10-30_track1_1000_honeyswamp.mkv', kind: 'rush', sessionId: 'ses-1', objectKey: 'cn26/2026-10-30/track-1/2026-10-30_track1_1000_honeyswamp.mkv', state: 'termine', sizeBytes: 2_700_000_000, bytesSent: 2_700_000_000, debitOctetsS: 1_900_000, startedAt: '2026-10-30T10:55:00.000Z', lastProgressAt: '2026-10-30T11:18:00.000Z', finishedAt: '2026-10-30T11:18:00.000Z', attempts: 1, lastError: null },
+      { roomId: ROOMS[0]!.id, roomName: ROOMS[0]!.name, file: '2026-10-30_track1_1000_honeyswamp.mkv', kind: 'rush', sessionId: 'ses-1', objectKey: 'cn26/2026-10-30/track-1/2026-10-30_track1_1000_honeyswamp.mkv', state: 'termine', sizeBytes: 2_700_000_000, bytesSent: 2_700_000_000, debitOctetsS: 1_900_000, startedAt: '2026-10-30T10:55:00.000Z', lastProgressAt: '2026-10-30T11:18:00.000Z', finishedAt: '2026-10-30T11:18:00.000Z', attempts: 1, lastError: null },
     ],
   },
   'questions/list': [
-    { id: 'q1', roomId: SALLES[0]!.id, sessionId: 'ses-1', author: 'Camille', text: 'Comment gérez-vous les faux positifs ?', votes: 7, status: 'open', createdAt: '2026-10-30T10:12:00.000Z' },
+    { id: 'q1', roomId: ROOMS[0]!.id, sessionId: 'ses-1', author: 'Camille', text: 'Comment gérez-vous les faux positifs ?', votes: 7, status: 'open', createdAt: '2026-10-30T10:12:00.000Z' },
   ],
 }
 
 /**
- * Injecte un hub simulé **avant** le script de la page.
+ * Injects a simulated hub **before** the page's script.
  *
- * Évite d'ajouter un mode aperçu dans le code de production : la page reste
- * exactement celle qui est servie, seul son environnement est truqué.
+ * Avoids adding a preview mode to the production code: the page stays exactly the
+ * one that is served, only its environment is faked.
  */
-function figer(html: string): string {
-  const amorce = `<script>
+function freeze(html: string): string {
+  const preamble = `<script>
     window.fetch = async (url) => {
-      const chemin = String(url).replace('/rpc/', '')
-      const json = ${JSON.stringify(REPONSES)}[chemin] ?? []
+      const path = String(url).replace('/rpc/', '')
+      const json = ${JSON.stringify(RESPONSES)}[path] ?? []
       return new Response(JSON.stringify({ json }), { status: 200, headers: { 'content-type': 'application/json' } })
     }
   </script>`
-  return html.replace('<body', `${amorce}<body`)
+  return html.replace('<body', `${preamble}<body`)
 }
 
-const mur = join(outDir, 'mur-public.html')
-writeFileSync(mur, figer(renderWallPage({ roomId: SALLES[0]!.id, rooms: SALLES, event: EVENEMENT.resolved })))
-console.log(`écrit ${mur}`)
+const wall = join(outDir, 'mur-public.html')
+writeFileSync(wall, freeze(renderWallPage({ roomId: ROOMS[0]!.id, rooms: ROOMS, event: EVENT.resolved })))
+console.log(`written ${wall}`)

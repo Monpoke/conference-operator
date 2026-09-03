@@ -1,55 +1,57 @@
 import { describe, expect, it } from 'vitest'
-import { controlerOpenFeedback } from '../src/services/openfeedback.js'
+import { checkOpenFeedback } from '../src/services/openfeedback.js'
 
 /**
- * Le contrôle des liens « notez ce talk ».
+ * The check on the "rate this talk" links.
  *
- * Ce qui compte ici n'est pas de savoir compter : c'est de ne pas confondre les
- * trois issues. Un projet introuvable, un projet dont les talks vivent
- * ailleurs, et un projet dont certains créneaux manquent réellement se
- * corrigent à trois endroits différents — et la deuxième, prise pour la
- * troisième, ferait crier au loup sur un événement parfaitement configuré.
+ * What matters here is not being able to count: it is not confusing the three
+ * outcomes. A project that cannot be found, a project whose talks live elsewhere,
+ * and a project where some slots really are missing get fixed in three different
+ * places — and the second, taken for the third, would cry wolf about a perfectly
+ * configured event.
  */
 
 const BASE = 'https://exemple.test/projects'
 
-/** Répond comme Firestore : un document, une liste, ou un 404. */
+/** Answers like Firestore: a document, a list, or a 404. */
 function hubFirestore(routes: Record<string, { status?: number; body?: unknown }>): typeof fetch {
-  return (async (entree: URL | RequestInfo) => {
-    const url = new URL(String(entree))
-    const chemin = url.pathname
-    const route = routes[chemin]
+  return (async (input: URL | RequestInfo) => {
+    const url = new URL(String(input))
+    const path = url.pathname
+    const route = routes[path]
     if (route == null) return new Response('{}', { status: 404 })
     return new Response(JSON.stringify(route.body ?? {}), { status: route.status ?? 200 })
   }) as typeof fetch
 }
 
-const CRENEAUX = [
+const SLOTS = [
   { id: 'ses-1', title: 'HoneySwamp', feedbackId: 'ses-1' },
   { id: 'ses-2', title: 'Event Iterators', feedbackId: 'ses-2' },
 ]
 
-describe('contrôle OpenFeedback', () => {
-  it('signale un projet introuvable', async () => {
-    // La panne la plus bête et la plus totale : une faute de frappe dans un
-    // champ, et les vingt-sept adresses sont mortes d'un coup.
-    const controle = await controlerOpenFeedback('cloud-nrod-2026', CRENEAUX, {
+// `projetTrouve`, `talksConnus` and `manquants` are contract field names: they do
+// not get renamed.
+describe('OpenFeedback check', () => {
+  it('reports a project that cannot be found', async () => {
+    // The dumbest and most total failure: one typo in a field, and the
+    // twenty-seven addresses are dead at once.
+    const check = await checkOpenFeedback('cloud-nrod-2026', SLOTS, {
       base: BASE,
       fetchImpl: hubFirestore({}),
     })
 
-    expect(controle.projetTrouve).toBe(false)
-    expect(controle.talksConnus).toBeNull()
-    expect(controle.manquants).toEqual([])
+    expect(check.projetTrouve).toBe(false)
+    expect(check.talksConnus).toBeNull()
+    expect(check.manquants).toEqual([])
   })
 
-  it('distingue « aucun talk stocké » de « aucun talk trouvé »', async () => {
-    // Firestore rend `{}` — sans clé `documents` — quand la collection n'existe
-    // pas. C'est le cas d'un projet qui lit ses sessions d'une source externe :
-    // la concordance est alors vraie par construction. Le prendre pour un
-    // manque signalerait les vingt-sept créneaux, et un contrôle qui crie au
-    // loup ne se relance jamais.
-    const controle = await controlerOpenFeedback('cloud-nord-2026', CRENEAUX, {
+  it('tells "no talk stored" from "no talk found"', async () => {
+    // Firestore returns `{}` — with no `documents` key — when the collection does
+    // not exist. That is the case of a project reading its sessions from an
+    // external source: the match is then true by construction. Taking it for a
+    // gap would report the twenty-seven slots, and a check that cries wolf never
+    // gets run again.
+    const check = await checkOpenFeedback('cloud-nord-2026', SLOTS, {
       base: BASE,
       fetchImpl: hubFirestore({
         '/projects/cloud-nord-2026': { body: { name: 'projects/…/cloud-nord-2026' } },
@@ -57,14 +59,14 @@ describe('contrôle OpenFeedback', () => {
       }),
     })
 
-    expect(controle.projetTrouve).toBe(true)
-    expect(controle.talksConnus).toBeNull()
-    expect(controle.manquants).toEqual([])
-    expect(controle.detail).toContain('source externe')
+    expect(check.projetTrouve).toBe(true)
+    expect(check.talksConnus).toBeNull()
+    expect(check.manquants).toEqual([])
+    expect(check.detail).toContain('source externe')
   })
 
-  it('nomme les créneaux sans page chez OpenFeedback', async () => {
-    const controle = await controlerOpenFeedback('cloud-nord-2026', CRENEAUX, {
+  it('names the slots with no page at OpenFeedback', async () => {
+    const check = await checkOpenFeedback('cloud-nord-2026', SLOTS, {
       base: BASE,
       fetchImpl: hubFirestore({
         '/projects/cloud-nord-2026': { body: { name: 'projects/…/cloud-nord-2026' } },
@@ -74,17 +76,17 @@ describe('contrôle OpenFeedback', () => {
       }),
     })
 
-    expect(controle.talksConnus).toBe(1)
-    expect(controle.manquants).toEqual([
+    expect(check.talksConnus).toBe(1)
+    expect(check.manquants).toEqual([
       { sessionId: 'ses-2', title: 'Event Iterators', feedbackId: 'ses-2' },
     ])
   })
 
-  it('compare l\'identifiant **servi**, pas celui de l\'export', async () => {
-    // Tout l'intérêt de la correction : un créneau rendu à un autre identifiant
-    // doit être cherché sous celui-là, sinon le contrôle le déclarerait
-    // manquant alors qu'on vient justement de le réparer.
-    const controle = await controlerOpenFeedback(
+  it('compares the **served** identifier, not the export\'s', async () => {
+    // The whole point of the correction: a slot rendered under another identifier
+    // must be looked up under that one, otherwise the check would declare it
+    // missing just after it has been repaired.
+    const check = await checkOpenFeedback(
       'cloud-nord-2026',
       [{ id: 'ses-1', title: 'HoneySwamp', feedbackId: 'of-42' }],
       {
@@ -98,20 +100,20 @@ describe('contrôle OpenFeedback', () => {
       },
     )
 
-    expect(controle.manquants).toEqual([])
+    expect(check.manquants).toEqual([])
   })
 
-  it('suit la pagination avant de déclarer un manque', async () => {
-    // Déclarer « manquant » ce qui était simplement page deux serait pire
-    // qu'inutile : on corrigerait un identifiant qui allait très bien.
-    let appels = 0
-    const fetchImpl = (async (entree: URL | RequestInfo) => {
-      const url = new URL(String(entree))
+  it('follows the pagination before declaring a gap', async () => {
+    // Declaring "missing" what was simply on page two would be worse than
+    // useless: one would fix an identifier that was perfectly fine.
+    let calls = 0
+    const fetchImpl = (async (input: URL | RequestInfo) => {
+      const url = new URL(String(input))
       if (!url.pathname.endsWith('/talks')) {
         return new Response(JSON.stringify({ name: 'projects/…' }), { status: 200 })
       }
-      appels += 1
-      return appels === 1
+      calls += 1
+      return calls === 1
         ? new Response(
             JSON.stringify({
               documents: [{ name: 'projects/x/talks/ses-1' }],
@@ -125,20 +127,20 @@ describe('contrôle OpenFeedback', () => {
           )
     }) as typeof fetch
 
-    const controle = await controlerOpenFeedback('cloud-nord-2026', CRENEAUX, {
+    const check = await checkOpenFeedback('cloud-nord-2026', SLOTS, {
       base: BASE,
       fetchImpl,
     })
 
-    expect(appels).toBe(2)
-    expect(controle.talksConnus).toBe(2)
-    expect(controle.manquants).toEqual([])
+    expect(calls).toBe(2)
+    expect(check.talksConnus).toBe(2)
+    expect(check.manquants).toEqual([])
   })
 
-  it('décode un identifiant échappé dans le chemin Firestore', async () => {
-    // `name` est un chemin, et Firestore y encode ce qui doit l'être. Comparer
-    // la forme encodée à l'identifiant du programme ferait un faux manque.
-    const controle = await controlerOpenFeedback(
+  it('decodes an escaped identifier in the Firestore path', async () => {
+    // `name` is a path, and Firestore encodes in it what has to be. Comparing the
+    // encoded form to the program's identifier would make a false gap.
+    const check = await checkOpenFeedback(
       'cloud-nord-2026',
       [{ id: 'a b', title: 'Avec espace', feedbackId: 'a b' }],
       {
@@ -152,14 +154,14 @@ describe('contrôle OpenFeedback', () => {
       },
     )
 
-    expect(controle.manquants).toEqual([])
+    expect(check.manquants).toEqual([])
   })
 
-  it('lève quand OpenFeedback répond une erreur', async () => {
-    // Traduit en 502 par le routeur : un contrôle qui échoue doit dire
-    // pourquoi, sinon on ne le relance pas.
+  it('throws when OpenFeedback answers an error', async () => {
+    // Translated into a 502 by the router: a check that fails must say why,
+    // otherwise nobody runs it again.
     await expect(
-      controlerOpenFeedback('cloud-nord-2026', CRENEAUX, {
+      checkOpenFeedback('cloud-nord-2026', SLOTS, {
         base: BASE,
         fetchImpl: hubFirestore({
           '/projects/cloud-nord-2026': { status: 500 },

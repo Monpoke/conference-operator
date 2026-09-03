@@ -34,7 +34,7 @@ export function readInitialPayload(document: Document): DisplayPayload | null {
  * ce que sert `vite dev` avec son `index.html` nu : le défaut est le cas où
  * personne n'a rien à dire.
  */
-export const PORTEE_ELEMENT_ID = 'regie-portee'
+export const SCOPE_ELEMENT_ID = 'regie-portee'
 
 export interface AmorcePortee {
   portee: 'locale' | 'distante'
@@ -49,7 +49,7 @@ export interface AmorcePortee {
 const LOCALE: AmorcePortee = { portee: 'locale', roomId: null, salles: [], google: null }
 
 export function readPortee(document: Document): AmorcePortee {
-  const contenu = document.getElementById(PORTEE_ELEMENT_ID)?.textContent
+  const contenu = document.getElementById(SCOPE_ELEMENT_ID)?.textContent
   if (contenu == null || contenu.trim() === '') return LOCALE
   try {
     return { ...LOCALE, ...(JSON.parse(contenu) as Partial<AmorcePortee>) }

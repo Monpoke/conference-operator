@@ -15,13 +15,12 @@ export interface IngestOutcome {
 }
 
 /**
- * Une prise recomposée, avant tout rattachement à un créneau.
+ * A reconstructed take, before it is attached to any slot.
  *
- * `CaptureView` du contrat porte en plus le `rattachement`, qui n'a de sens
- * qu'une fois qu'on a choisi une conférence : c'est le routeur qui le pose, pas
- * le journal.
+ * The contract's `CaptureView` also carries `rattachement`, which only makes
+ * sense once a talk has been chosen: the router sets it, not the log.
  */
-export interface CaptationBrute {
+export interface RawCapture {
   roomId: string
   obs: ObsInstance
   sessionId: string | null
@@ -31,7 +30,7 @@ export interface CaptationBrute {
   file: string | null
   sidecarWritten: boolean
   enCours: boolean
-  /** Ouverte, puis supplantée par une autre : son arrêt ne viendra jamais. */
+  /** Opened, then superseded by another: its stop will never come. */
   finInconnue: boolean
 }
 
@@ -39,15 +38,14 @@ export class IngestService {
   constructor(private readonly db: HubDatabase) {}
 
   /**
-   * Applique un lot remonté par une salle.
+   * Applies a batch reported by a room.
    *
-   * Idempotent : la clé primaire `(room_id, id)` absorbe les rejeux, et un
-   * `onConflictDoNothing` les compte comme doublons plutôt que d'échouer. C'est
-   * ce qui autorise le client à rejouer sans réfléchir après une reconnexion.
+   * Idempotent: the `(room_id, id)` primary key absorbs replays, and an
+   * `onConflictDoNothing` counts them as duplicates rather than failing. That is
+   * what lets the client replay without thinking after a reconnection.
    *
-   * Un événement invalide **sort du lot** au lieu de le faire échouer : un seul
-   * message malformé ne doit jamais bloquer la remontée de tous les autres
-   * derrière lui.
+   * An invalid event **leaves the batch** instead of failing it: a single
+   * malformed message must never block the reporting of all the others behind it.
    */
   push(roomId: string, batch: unknown[]): IngestOutcome {
     const outcome: IngestOutcome = { acked: [], duplicates: [], rejected: [] }
@@ -61,7 +59,7 @@ export class IngestService {
         continue
       }
       if (parsed.data.roomId !== roomId) {
-        // Une salle ne remonte que ses propres événements.
+        // A room only reports its own events.
         outcome.rejected.push({ id: parsed.data.id, reason: 'unknown-room' })
         continue
       }
@@ -92,8 +90,8 @@ export class IngestService {
         else outcome.acked.push(envelope.id)
       }
 
-      // L'état de salle reflète le dernier événement du lot, doublons compris :
-      // un rejeu ne doit pas faire régresser la vue de supervision.
+      // The room state reflects the last event of the batch, duplicates included:
+      // a replay must not make the supervision view regress.
       const latest = valid.reduce((a, b) => (b.seq > a.seq ? b : a))
       applyToRoomState(tx, roomId, latest)
     })
@@ -102,29 +100,27 @@ export class IngestService {
   }
 
   /**
-   * Les prises d'une salle, recomposées depuis le journal d'ingestion.
+   * A room's takes, reconstructed from the ingestion log.
    *
-   * Le hub ne voit jamais le disque de la régie — les salles appellent, jamais
-   * l'inverse — mais il a mieux qu'un inventaire : il a les deux bouts de
-   * chaque prise. `recording.started` dit qu'OBS s'est mis en marche et sur
-   * quel créneau ; `recording.stopped` dit le fichier écrit, sa durée, et si le
-   * sidecar a suivi. Les apparier rend exactement ce qu'on cherche : la liste
-   * de ce qui existe sur cette machine-là.
+   * The hub never sees the control machine's disk — the rooms call, never the
+   * other way round — but it has better than an inventory: it has both ends of
+   * every take. `recording.started` says OBS got going and on which slot;
+   * `recording.stopped` says the file written, its duration, and whether the
+   * sidecar followed. Pairing them returns exactly what we are after: the list of
+   * what exists on that machine.
    *
-   * L'appariement se fait **par instance OBS** : les deux tournent en même
-   * temps sur certaines salles, et mélanger leurs paires attribuerait le
-   * fichier de l'une à la prise de l'autre. Un `started` sans `stopped` reste
-   * ouvert et sort marqué en cours — c'est le cas d'une conférence qui tourne,
-   * et celui d'une machine morte en pleine prise, qu'on veut voir tous les
-   * deux.
+   * Pairing is done **per OBS instance**: both run at the same time in some
+   * rooms, and mixing their pairs would attribute one's file to the other's take.
+   * A `started` with no `stopped` stays open and comes out marked as running —
+   * that is the case of a running talk, and that of a machine that died mid-take,
+   * and we want to see both.
    *
-   * Lu à la demande plutôt que projeté dans une table : les prises se comptent
-   * en dizaines sur une journée d'événement, là où les heartbeats se comptent
-   * en dizaines de milliers, et une projection de plus serait une chose de plus
-   * à garder juste.
+   * Read on demand rather than projected into a table: takes are counted in tens
+   * over an event day, where heartbeats are counted in tens of thousands, and one
+   * more projection would be one more thing to keep correct.
    */
-  captations(roomId: string): CaptationBrute[] {
-    const lignes = this.db
+  captations(roomId: string): RawCapture[] {
+    const rows = this.db
       .select({
         seq: ingestEvent.seq,
         type: ingestEvent.type,
@@ -141,12 +137,12 @@ export class IngestService {
       .orderBy(asc(ingestEvent.seq))
       .all()
 
-    const captations: CaptationBrute[] = []
-    /** La prise encore ouverte de chaque instance OBS, s'il y en a une. */
-    const ouvertes = new Map<string, CaptationBrute>()
+    const captures: RawCapture[] = []
+    /** The still-open take of each OBS instance, if there is one. */
+    const open = new Map<string, RawCapture>()
 
-    for (const ligne of lignes) {
-      const payload = JSON.parse(ligne.payloadJson) as Extract<
+    for (const row of rows) {
+      const payload = JSON.parse(row.payloadJson) as Extract<
         RoomEventPayload,
         { type: 'recording.started' | 'recording.stopped' }
       >
@@ -154,24 +150,23 @@ export class IngestService {
 
       if (payload.type === 'recording.started') {
         /*
-         * Deux `started` d'affilée sur la même instance : la salle a redémarré
-         * sans qu'on entende l'arrêt. La première prise reste dans la liste —
-         * perdre sa trace effacerait un fichier qui existe — mais elle cesse
-         * d'être « en cours » : son arrêt n'a pas été entendu, il ne se produira
-         * plus. Les laisser actives empilait, sur une salle de développement de
-         * trois jours, quatre faux enregistrements en cours au-dessus de la
-         * seule ligne qui disait quelque chose.
+         * Two `started` in a row on the same instance: the room restarted without
+         * us hearing the stop. The first take stays in the list — losing its
+         * trace would erase a file that exists — but it stops being "running":
+         * its stop was not heard, and will not happen. Leaving them active piled
+         * up, on a three-day development room, four false recordings in progress
+         * on top of the one row that said something.
          */
-        const precedente = ouvertes.get(obs)
-        if (precedente != null) {
-          precedente.enCours = false
-          precedente.finInconnue = true
+        const previous = open.get(obs)
+        if (previous != null) {
+          previous.enCours = false
+          previous.finInconnue = true
         }
-        const captation: CaptationBrute = {
+        const capture: RawCapture = {
           roomId,
           obs,
           sessionId: payload.sessionId,
-          startedAt: ligne.occurredAt,
+          startedAt: row.occurredAt,
           endedAt: null,
           durationMs: null,
           file: null,
@@ -179,24 +174,24 @@ export class IngestService {
           enCours: true,
           finInconnue: false,
         }
-        ouvertes.set(obs, captation)
-        captations.push(captation)
+        open.set(obs, capture)
+        captures.push(capture)
         continue
       }
 
-      const ouverte = ouvertes.get(obs)
-      if (ouverte == null) {
+      const current = open.get(obs)
+      if (current == null) {
         /*
-         * Un arrêt sans début connu : le journal commence au milieu d'une prise
-         * — hub réinstallé, base repartie de zéro. Le début manque, le fichier
-         * non : la ligne vaut d'être rendue, datée de son arrêt.
+         * A stop with no known start: the log begins in the middle of a take —
+         * hub reinstalled, database started from scratch. The start is missing,
+         * the file is not: the row is worth returning, dated from its stop.
          */
-        captations.push({
+        captures.push({
           roomId,
           obs,
           sessionId: payload.sessionId,
-          startedAt: ligne.occurredAt,
-          endedAt: ligne.occurredAt,
+          startedAt: row.occurredAt,
+          endedAt: row.occurredAt,
           durationMs: payload.durationMs,
           file: payload.outputPath,
           sidecarWritten: payload.sidecarWritten,
@@ -206,48 +201,46 @@ export class IngestService {
         continue
       }
 
-      ouverte.endedAt = ligne.occurredAt
-      ouverte.durationMs = payload.durationMs
-      ouverte.file = payload.outputPath
-      ouverte.sidecarWritten = payload.sidecarWritten
-      ouverte.enCours = false
-      // L'arrêt sait parfois le créneau que le démarrage ignorait : une prise
-      // lancée avant le « Commencer » de la régie n'est estampillée qu'à la fin.
-      ouverte.sessionId ??= payload.sessionId
-      ouvertes.delete(obs)
+      current.endedAt = row.occurredAt
+      current.durationMs = payload.durationMs
+      current.file = payload.outputPath
+      current.sidecarWritten = payload.sidecarWritten
+      current.enCours = false
+      // The stop sometimes knows the slot the start did not: a take launched
+      // before the control app's "Start" is only stamped at the end.
+      current.sessionId ??= payload.sessionId
+      open.delete(obs)
     }
 
-    return captations
+    return captures
   }
 
   /**
-   * Oublie tout ce que le hub sait des prises. **Remise à zéro uniquement.**
+   * Forgets everything the hub knows about the takes. **Reset only.**
    *
-   * Le RAZ efface le préfixe du bucket et les rushes des salles ; sans ce
-   * geste-ci, le hub gardait la mémoire de prises dont plus aucun fichier
-   * n'existe, et le dossier VOD d'une conférence continuait de lister des
-   * captations effacées la veille. Une remise à zéro qui laisse une moitié de
-   * l'état debout n'en est pas une : on la relance, elle ne change rien, et on
-   * finit par croire que c'est le bouton qui est cassé.
+   * The reset erases the bucket prefix and the rooms' rushes; without this
+   * gesture, the hub kept the memory of takes whose files no longer exist, and a
+   * talk's VOD folder kept listing captures erased the day before. A reset that
+   * leaves half the state standing is not one: you run it again, it changes
+   * nothing, and you end up believing the button is broken.
    *
-   * Seuls les deux types de la captation partent. Le reste du journal —
-   * heartbeats, messages des salles, changements de scène — n'a rien à voir
-   * avec les rushes, et l'effacer perdrait le diagnostic d'une journée sans
-   * rien libérer d'utile.
+   * Only the two capture types go. The rest of the log — heartbeats, room
+   * messages, scene changes — has nothing to do with the rushes, and erasing it
+   * would lose a day's diagnosis without freeing anything useful.
    */
-  oublierCaptations(): number {
-    const efface = this.db
+  forgetCaptures(): number {
+    const deleted = this.db
       .delete(ingestEvent)
       .where(inArray(ingestEvent.type, ['recording.started', 'recording.stopped']))
       .run()
-    return efface.changes
+    return deleted.changes
   }
 
   /**
-   * Événements remontés par une salle, dans l'ordre d'émission.
+   * Events reported by a room, in the order they were emitted.
    *
-   * Alimente le panneau de diagnostic de l'admin — et, plus tard, la
-   * reconstitution des timecodes d'un talk pour le montage.
+   * Feeds the admin console's diagnostics panel — and, later, the reconstruction
+   * of a talk's timecodes for editing.
    */
   eventsFor(roomId: string) {
     return this.db
@@ -265,11 +258,11 @@ export class IngestService {
   }
 
   /**
-   * Messages envoyés par les salles.
+   * Messages sent by the rooms.
    *
-   * Lus depuis le journal d'ingestion plutôt que d'une table dédiée : ils
-   * arrivent par l'outbox, donc un appel à l'aide émis pendant une coupure est
-   * déjà conservé et daté — dupliquer le stockage n'apporterait rien.
+   * Read from the ingestion log rather than a dedicated table: they arrive
+   * through the outbox, so a call for help sent during an outage is already kept
+   * and dated — duplicating the storage would bring nothing.
    */
   messagesFromRooms(limit = 50) {
     return this.db
@@ -299,7 +292,7 @@ export class IngestService {
   }
 }
 
-/** Projette un événement sur la vue de supervision de la salle. */
+/** Projects an event onto the room's supervision view. */
 function applyToRoomState(
   tx: HubTransaction,
   roomId: string,
@@ -314,8 +307,8 @@ function applyToRoomState(
       target: roomState.roomId,
       set: {
         lastSeenAt,
-        // `max(...)` ne peut référencer la ligne existante que dans le UPDATE :
-        // un lot rejoué dans le désordre ne doit pas faire régresser `last_seq`.
+        // `max(...)` can only reference the existing row in the UPDATE: a batch
+        // replayed out of order must not make `last_seq` regress.
         lastSeq: sql`max(${roomState.lastSeq}, ${envelope.seq})`,
         ...projection,
       },
@@ -350,7 +343,7 @@ function projectionFor(payload: RoomEventPayload): Record<string, unknown> {
   }
 }
 
-/** Récupère un id exploitable d'un événement rejeté, pour que le client le purge. */
+/** Gets a usable id from a rejected event, so the client can purge it. */
 function extractId(candidate: unknown): string {
   const id = (candidate as { id?: unknown } | null)?.id
   return typeof id === 'string' ? id : 'inconnu'

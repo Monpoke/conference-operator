@@ -18,12 +18,12 @@ import {
 import type { HubDatabase } from '../db.js'
 
 /**
- * Silence au-delà duquel une salle est déclarée hors ligne.
+ * Silence beyond which a room is declared offline.
  *
- * Les salles battent toutes les dix secondes ; trois battements manqués ne
- * laissent plus de doute, et restent assez courts pour qu'un opérateur le voie
- * avant de traverser le bâtiment. Sur l'horloge réelle, comme les battements
- * eux-mêmes : une heure simulée déclarerait tout le monde mort.
+ * The rooms beat every ten seconds; three missed beats leave no doubt, and stay
+ * short enough for an operator to see it before crossing the building. On the
+ * real clock, like the heartbeats themselves: a simulated time would declare
+ * everyone dead.
  */
 const SILENCE_MS = 35_000
 
@@ -31,7 +31,7 @@ export class RoomService {
   constructor(private readonly db: HubDatabase) {}
 
   upsert(input: RoomConfigInput): void {
-    // Normalisé à l'écriture : ce qui est stocké porte déjà tous les défauts.
+    // Normalized on write: what is stored already carries every default.
     const config = roomConfigSchema.parse(input)
     const values = {
       id: config.id,
@@ -47,13 +47,13 @@ export class RoomService {
   }
 
   /**
-   * Crée les salles manquantes à partir des tracks du programme.
+   * Creates the missing rooms from the program's tracks.
    *
-   * `event.tracks[]` **sont** les salles : c'est la décision fondatrice du
-   * projet, et il serait absurde de redemander à la main ce que l'export
-   * contient déjà. Les salles existantes ne sont pas touchées — leur
-   * configuration OBS, leur clé de diffusion et leur mapping de scènes sont
-   * saisis une fois et ne doivent pas être écrasés à chaque réimport.
+   * `event.tracks[]` **are** the rooms: that is the project's founding decision,
+   * and it would be absurd to ask again by hand for what the export already
+   * contains. Existing rooms are not touched — their OBS configuration, their
+   * stream key and their scene mapping are entered once and must not be
+   * overwritten on every reimport.
    */
   ensureFromTracks(tracks: { id: string; name: string }[]): { created: string[] } {
     const created: string[] = []
@@ -63,18 +63,18 @@ export class RoomService {
         id: track.id,
         name: track.name,
         trackId: track.id,
-        // Ports OBS par défaut, à ajuster par salle si les deux instances ne
-        // tournent pas sur la même machine.
+        // Default OBS ports, to be adjusted per room if the two instances do not
+        // run on the same machine.
         obs: {
           A: { url: 'ws://127.0.0.1:4455', password: null },
           B: { url: 'ws://127.0.0.1:4456', password: null },
         },
         /**
-         * Mapping par défaut plutôt que vide : une salle sans rôles n'a aucun
-         * bouton fonctionnel en régie, et le message d'erreur n'arrive qu'au
-         * moment où on en a besoin. Ces noms sont à ajuster par salle si OBS
-         * nomme ses scènes autrement — la régie signale les rôles introuvables
-         * dès la connexion.
+         * A default mapping rather than an empty one: a room with no roles has no
+         * working button in the control app, and the error message only arrives
+         * at the moment you need it. These names are to be adjusted per room if
+         * OBS names its scenes otherwise — the control app reports unresolvable
+         * roles as soon as it connects.
          */
         sceneRoles: {
           A: { LIVE: 'Direct — capture HDMI', HOLD: 'Habillage — écran de salle' },
@@ -105,65 +105,63 @@ export class RoomService {
   }
 
   /**
-   * Rapatrie vers le hub un projet OpenFeedback saisi jadis sur une régie.
+   * Brings back to the hub an OpenFeedback project once entered on a control app.
    *
-   * Le champ a été éditable dans le ⚙ de chaque salle. Il ne l'est plus — le
-   * projet est une propriété de l'événement —, mais les bases existantes en
-   * portent la trace, et sur le hub de développement c'était même la *seule*
-   * trace : réglage d'événement vide, salle 1 renseignée, deux salles muettes.
-   * Retirer le champ sans rien reprendre aurait éteint les liens de la seule
-   * salle qui en avait.
+   * The field used to be editable in each room's ⚙. It no longer is — the project
+   * is a property of the event —, but existing databases carry its trace, and on
+   * the development hub it was even the *only* trace: event setting empty, room 1
+   * filled in, two rooms silent. Removing the field without taking anything over
+   * would have switched off the links of the one room that had them.
    *
-   * Deux gestes, dans cet ordre. Adopter, si le hub n'a rien : la valeur d'une
-   * régie décrivait déjà l'événement entier, elle n'attendait qu'un endroit
-   * pour le dire. Puis effacer les valeurs de salle, toutes, y compris celle
-   * qu'on vient d'adopter : laisser en base un champ que plus rien ne lit est
-   * la meilleure façon de le voir ressusciter au prochain refactor.
+   * Two gestures, in this order. Adopt, if the hub has nothing: a control app's
+   * value already described the whole event, it was only waiting for a place to
+   * say so. Then erase the room values, all of them, including the one just
+   * adopted: leaving in the database a field nothing reads any more is the best
+   * way to see it resurrected at the next refactor.
    *
-   * Idempotent : au deuxième démarrage il n'y a plus rien à reprendre, et la
-   * méthode ne touche pas au disque.
+   * Idempotent: at the second startup there is nothing left to take over, and the
+   * method does not touch the disk.
    */
-  reprendreProjetOpenFeedback(settings: {
+  takeOverOpenFeedbackProject(settings: {
     get(): { openFeedbackProjectId: string | null }
     update(patch: { openFeedbackProjectId: string }): unknown
-  }): { adopte: string | null; sallesNettoyees: string[] } {
-    const salles = this.list()
-    const portees = salles.filter(
-      (salle) => (salle.openFeedbackProjectId ?? '').trim() !== '',
+  }): { adopted: string | null; cleanedRooms: string[] } {
+    const rooms = this.list()
+    const carrying = rooms.filter(
+      (item) => (item.openFeedbackProjectId ?? '').trim() !== '',
     )
-    if (portees.length === 0) return { adopte: null, sallesNettoyees: [] }
+    if (carrying.length === 0) return { adopted: null, cleanedRooms: [] }
 
-    const duHub = (settings.get().openFeedbackProjectId ?? '').trim()
-    let adopte: string | null = null
-    if (duHub === '') {
+    const fromHub = (settings.get().openFeedbackProjectId ?? '').trim()
+    let adopted: string | null = null
+    if (fromHub === '') {
       /*
-       * Le plus fréquent, salles parcourues dans l'ordre de leur identifiant.
+       * The most frequent one, rooms walked in identifier order.
        *
-       * Deux régies qui se contredisent doivent donner la même réponse à chaque
-       * démarrage : une reprise qui dépendrait de l'ordre de lecture de SQLite
-       * changerait de projet au redémarrage, et personne ne saurait lequel est
-       * le bon.
+       * Two control apps that contradict each other must give the same answer at
+       * every startup: a takeover that depended on SQLite's read order would
+       * change project on restart, and nobody would know which one was right.
        */
-      const comptes = new Map<string, number>()
-      for (const salle of [...portees].sort((a, b) => a.id.localeCompare(b.id))) {
-        const projet = salle.openFeedbackProjectId!.trim()
-        comptes.set(projet, (comptes.get(projet) ?? 0) + 1)
+      const counts = new Map<string, number>()
+      for (const item of [...carrying].sort((a, b) => a.id.localeCompare(b.id))) {
+        const project = item.openFeedbackProjectId!.trim()
+        counts.set(project, (counts.get(project) ?? 0) + 1)
       }
-      let meilleur = 0
-      for (const [projet, combien] of comptes) {
-        // Strict : à égalité, la première salle dans l'ordre garde la main.
-        if (combien > meilleur) {
-          adopte = projet
-          meilleur = combien
+      let best = 0
+      for (const [project, count] of counts) {
+        // Strict: on a tie, the first room in order keeps the hand.
+        if (count > best) {
+          adopted = project
+          best = count
         }
       }
-      if (adopte != null) settings.update({ openFeedbackProjectId: adopte })
+      if (adopted != null) settings.update({ openFeedbackProjectId: adopted })
     }
 
-    for (const salle of portees) {
-      this.upsert({ ...salle, openFeedbackProjectId: null })
+    for (const item of carrying) {
+      this.upsert({ ...item, openFeedbackProjectId: null })
     }
-    return { adopte, sallesNettoyees: portees.map((salle) => salle.id) }
+    return { adopted, cleanedRooms: carrying.map((item) => item.id) }
   }
 
   overrides(sessionIds?: string[]) {
@@ -179,12 +177,11 @@ export class RoomService {
   }
 
   /**
-   * Les identifiants OpenFeedback corrigés à la main, par créneau.
+   * The OpenFeedback identifiers corrected by hand, per slot.
    *
-   * Un dictionnaire et non une liste : les appelants cherchent tous « cette
-   * session a-t-elle une correction », jamais « donne-moi toutes les
-   * corrections dans l'ordre ». Vide dans le cas normal — l'export fait foi
-   * tant que personne ne l'a contredit.
+   * A dictionary and not a list: the callers all ask "does this session have a
+   * correction", never "give me every correction in order". Empty in the normal
+   * case — the export is authoritative until somebody contradicts it.
    */
   feedbackIds(): Record<string, string> {
     const rows = this.db.select().from(sessionFeedback).all()
@@ -192,21 +189,21 @@ export class RoomService {
   }
 
   /**
-   * Corrige — ou rend à l'export — l'identifiant OpenFeedback d'un créneau.
+   * Corrects — or gives back to the export — a slot's OpenFeedback identifier.
    *
-   * `null` supprime la ligne au lieu d'enregistrer une correction vide, pour la
-   * même raison que `setOverride` : une correction retirée doit être
-   * indistinguable d'une correction jamais posée. Une chaîne blanche vaut
-   * `null` — un identifiant fait d'espaces ne fabrique qu'une adresse morte, et
-   * c'est ce que le champ du formulaire renvoie quand on l'efface.
+   * `null` deletes the row instead of recording an empty correction, for the same
+   * reason as `setOverride`: a removed correction must be indistinguishable from
+   * a correction never made. A blank string counts as `null` — an identifier made
+   * of spaces only builds a dead address, and that is what the form field returns
+   * when it is cleared.
    */
   setFeedbackId(sessionId: string, feedbackId: string | null): void {
-    const propre = feedbackId?.trim() ?? ''
-    if (propre === '') {
+    const clean = feedbackId?.trim() ?? ''
+    if (clean === '') {
       this.db.delete(sessionFeedback).where(eq(sessionFeedback.sessionId, sessionId)).run()
       return
     }
-    const values = { sessionId, feedbackId: propre, updatedAt: new Date().toISOString() }
+    const values = { sessionId, feedbackId: clean, updatedAt: new Date().toISOString() }
     this.db
       .insert(sessionFeedback)
       .values(values)
@@ -215,12 +212,12 @@ export class RoomService {
   }
 
   /**
-   * Pose ou retire une décision sur un créneau.
+   * Sets or removes a decision on a slot.
    *
-   * `null` supprime la ligne plutôt que d'enregistrer un statut « rien » : une
-   * surcharge retirée doit être indistinguable d'une surcharge jamais posée,
-   * sinon l'empreinte du programme servi ne reviendrait pas à sa valeur d'avant
-   * et les salles retéléchargeraient pour rien.
+   * `null` deletes the row rather than record a "nothing" status: a removed
+   * override must be indistinguishable from an override never made, otherwise the
+   * served program's fingerprint would not come back to its previous value and
+   * the rooms would re-download for nothing.
    */
   setOverride(sessionId: string, status: 'talk' | 'break' | null): void {
     if (status == null) {
@@ -242,7 +239,7 @@ export class RoomService {
   }
 
   statuses(): RoomStatus[] {
-    const limite = Date.now() - SILENCE_MS
+    const limit = Date.now() - SILENCE_MS
     return this.db
       .select()
       .from(room)
@@ -253,16 +250,15 @@ export class RoomService {
           roomId: r.id,
           name: r.name,
           /**
-           * Une salle qui s'est tue est hors ligne, quoi qu'elle ait dit en
-           * dernier.
+           * A room that has gone quiet is offline, whatever it said last.
            *
-           * `connectivity` est ce que la salle a **remonté** : débrancher son PC
-           * laissait « ONLINE » en base pour toujours, et la console affichait
-           * une salle en pleine forme dont plus personne n'avait de nouvelles.
-           * Le silence est justement le symptôme qu'on veut voir.
+           * `connectivity` is what the room **reported**: unplugging its PC left
+           * "ONLINE" in the database forever, and the console showed a room in
+           * perfect health that nobody had heard from. Silence is precisely the
+           * symptom we want to see.
            */
           connectivity:
-            state?.lastSeenAt != null && Date.parse(state.lastSeenAt) < limite
+            state?.lastSeenAt != null && Date.parse(state.lastSeenAt) < limit
               ? 'OFFLINE'
               : (state?.connectivity ?? 'OFFLINE'),
           lastSeenAt: state?.lastSeenAt ?? null,
@@ -279,24 +275,24 @@ export class RoomService {
 }
 
 /**
- * Appairage des machines.
+ * Machine pairing.
  *
- * Better Auth couvre l'échange de jetons (RFC 8628) mais lie l'appareil à
- * l'opérateur qui approuve. Quelle salle une machine dessert relève d'ici.
+ * Better Auth covers the token exchange (RFC 8628) but binds the device to the
+ * operator who approves. Which room a machine serves belongs here.
  */
 export class DeviceService {
   /**
-   * @param ttlMs Durée de vie d'une demande, alignée sur celle du code
-   *   d'appairage (`DEVICE_CODE_TTL`). Sur l'horloge réelle, pas sur celle du
-   *   hub : les codes de Better Auth expirent eux aussi en temps réel, et une
-   *   heure simulée ne doit pas décider de la survie d'un appairage.
+   * @param ttlMs Lifetime of a request, aligned on that of the pairing code
+   *   (`DEVICE_CODE_TTL`). On the real clock, not on the hub's: Better Auth's
+   *   codes also expire in real time, and a simulated time must not decide
+   *   whether a pairing survives.
    */
   constructor(
     private readonly db: HubDatabase,
     private readonly ttlMs: number,
   ) {}
 
-  /** Alimenté par le hook `onDeviceAuthRequest` du plugin. */
+  /** Fed by the plugin's `onDeviceAuthRequest` hook. */
   recordRequest(clientId: string, scope: string | undefined): void {
     const values = { clientId, scope: scope ?? null, requestedAt: new Date().toISOString() }
     this.db
@@ -307,34 +303,34 @@ export class DeviceService {
   }
 
   /**
-   * Oublie les demandes dont le code ne vaut plus rien.
+   * Forgets the requests whose code is worth nothing any more.
    *
-   * Rien ne les effaçait : une machine dont le code a expiré, ou qu'on a
-   * refusée, restait dans la file jusqu'à ce que quelqu'un l'appaire — et une
-   * salle réinstallée revient sous une nouvelle identité, donc une ligne de
-   * plus. En développement, où chaque `DATA_DIR` neuf en produit une, la file
-   * finissait par masquer la seule demande qui comptait.
+   * Nothing erased them: a machine whose code expired, or which was refused,
+   * stayed in the queue until somebody paired it — and a reinstalled room comes
+   * back under a new identity, so one more row. In development, where every fresh
+   * `DATA_DIR` produces one, the queue ended up hiding the one request that
+   * mattered.
    *
-   * @returns Nombre de demandes oubliées, pour le journal.
+   * @returns Number of requests forgotten, for the log.
    */
   purgeExpired(): number {
-    const limite = new Date(Date.now() - this.ttlMs).toISOString()
-    // Les horodatages sont tous en ISO 8601 UTC : l'ordre lexicographique est
-    // l'ordre chronologique, et SQLite n'a pas de type date à comparer.
-    return this.db.delete(deviceRequest).where(lt(deviceRequest.requestedAt, limite)).run().changes
+    const limit = new Date(Date.now() - this.ttlMs).toISOString()
+    // The timestamps are all ISO 8601 UTC: lexicographic order is chronological
+    // order, and SQLite has no date type to compare.
+    return this.db.delete(deviceRequest).where(lt(deviceRequest.requestedAt, limit)).run().changes
   }
 
-  /** Oublie une demande précise — machine refusée, ou déjà traitée. */
+  /** Forgets one specific request — machine refused, or already dealt with. */
   forget(clientId: string): void {
     this.db.delete(deviceRequest).where(eq(deviceRequest.clientId, clientId)).run()
   }
 
   /**
-   * Demandes non encore rattachées à une salle.
+   * Requests not yet attached to a room.
    *
-   * La purge est faite ici plutôt que par un minuteur : c'est le seul appel
-   * qui regarde la file, la console l'interroge toutes les dix secondes, et
-   * une demande périmée que personne ne consulte ne gêne personne.
+   * The purge happens here rather than on a timer: it is the only call that looks
+   * at the queue, the console polls it every ten seconds, and an expired request
+   * nobody consults bothers nobody.
    */
   pending() {
     this.purgeExpired()
@@ -374,14 +370,14 @@ export class DeviceService {
   }
 
   /**
-   * Délivre un jeton de machine, en échange d'un appairage valide.
+   * Issues a machine token, in exchange for a valid pairing.
    *
-   * C'est le pivot du modèle de droits : la session Better Auth prouve qu'un
-   * opérateur a approuvé cette machine, et s'arrête là. Ce jeton-ci porte les
-   * droits d'une salle — sync, commandes, remontée, cycle de vie de *ses*
-   * conférences — et rien de plus.
+   * This is the pivot of the rights model: the Better Auth session proves an
+   * operator approved this machine, and stops there. This token carries a room's
+   * rights — sync, commands, reporting, lifecycle of *its* talks — and nothing
+   * more.
    *
-   * Le jeton n'est rendu qu'une fois ; seule son empreinte est conservée.
+   * The token is returned only once; only its fingerprint is kept.
    */
   issueToken(clientId: string): string | null {
     const roomId = this.roomFor(clientId)
@@ -397,10 +393,10 @@ export class DeviceService {
   }
 
   /**
-   * Résout une machine depuis son jeton.
+   * Resolves a machine from its token.
    *
-   * Comparaison sur l'empreinte : le jeton en clair n'existe nulle part côté
-   * hub, donc une fuite de la base ne permet pas d'usurper une salle.
+   * Comparison on the fingerprint: the clear token exists nowhere on the hub
+   * side, so a database leak does not allow a room to be impersonated.
    */
   fromToken(token: string): { clientId: string; roomId: string } | null {
     if (!token.startsWith('rt_')) return null
@@ -412,7 +408,7 @@ export class DeviceService {
     return row == null ? null : { clientId: row.clientId, roomId: row.roomId }
   }
 
-  /** Salle desservie par une machine, ou `null` si inconnue ou révoquée. */
+  /** Room served by a machine, or `null` if unknown or revoked. */
   roomFor(clientId: string): string | null {
     const row = this.db
       .select({ roomId: roomDevice.roomId })
@@ -429,8 +425,8 @@ export class DeviceService {
   revoke(clientId: string): void {
     this.db
       .update(roomDevice)
-      // Le jeton part avec la révocation : le laisser en base rendrait la
-      // machine réutilisable si `revoked_at` était un jour effacé par erreur.
+      // The token goes with the revocation: leaving it in the database would make
+      // the machine reusable if `revoked_at` were one day cleared by mistake.
       .set({ revokedAt: new Date().toISOString(), tokenHash: null })
       .where(eq(roomDevice.clientId, clientId))
       .run()
@@ -445,12 +441,13 @@ export class DeviceService {
   }
 
   isKnownClient(clientId: string): boolean {
-    // ULID : format imposé au client, filtre le bruit avant d'écrire en base.
+    // ULID: a format imposed on the client, filters the noise before writing to
+    // the database.
     return /^[0-9A-HJKMNP-TV-Z]{26}$/.test(clientId)
   }
 }
 
-/** SHA-256 : suffisant pour un secret aléatoire de 32 octets, sans coût inutile. */
+/** SHA-256: enough for a random 32-byte secret, with no needless cost. */
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex')
 }

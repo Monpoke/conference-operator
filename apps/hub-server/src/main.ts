@@ -5,23 +5,23 @@ const config = loadConfig()
 const hub = await createHub(config)
 
 /**
- * Source du programme : le réglage fait foi, l'environnement l'amorce.
+ * Program source: the setting is authoritative, the environment seeds it.
  *
- * `PROGRAM_SOURCE_URL` ne sert qu'au tout premier démarrage, quand la base est
- * vide. Ensuite c'est la console qui décide : une URL corrigée en cours
- * d'événement doit survivre au redémarrage qui suit, et un `.env` figé la
- * réécraserait à chaque fois.
+ * `PROGRAM_SOURCE_URL` only serves the very first startup, when the database is
+ * empty. After that the console decides: a URL corrected during the event must
+ * survive the restart that follows, and a frozen `.env` would overwrite it every
+ * time.
  */
-const reglages = hub.services.settings.get()
-const sourceProgramme = reglages.programSourceUrl ?? config.programSourceUrl ?? null
-if (reglages.programSourceUrl == null && sourceProgramme != null) {
-  hub.services.settings.update({ programSourceUrl: sourceProgramme })
+const settings = hub.services.settings.get()
+const programSource = settings.programSourceUrl ?? config.programSourceUrl ?? null
+if (settings.programSourceUrl == null && programSource != null) {
+  hub.services.settings.update({ programSourceUrl: programSource })
 }
 
-if (sourceProgramme != null && hub.services.programs.active() == null) {
-  // Premier démarrage : un hub sans programme ne sert à rien, autant l'importer
-  // tout de suite plutôt que d'attendre une action manuelle dans l'admin.
-  const snapshot = await hub.services.programs.importFrom(sourceProgramme)
+if (programSource != null && hub.services.programs.active() == null) {
+  // First startup: a hub with no program is useless, so import it right away
+  // rather than waiting for a manual action in the admin console.
+  const snapshot = await hub.services.programs.importFrom(programSource)
   const { created } = hub.services.rooms.ensureFromTracks(snapshot.program.rooms)
   hub.app.log.info(
     {
@@ -36,8 +36,8 @@ if (sourceProgramme != null && hub.services.programs.active() == null) {
 try {
   await hub.app.listen({ port: config.port, host: config.host })
 } catch (cause) {
-  // Message explicite plutôt qu'une trace `EADDRINUSE` : en développement, la
-  // cause est presque toujours une instance précédente encore ouverte.
+  // An explicit message rather than an `EADDRINUSE` trace: in development, the
+  // cause is almost always a previous instance still running.
   if ((cause as { code?: string }).code === 'EADDRINUSE') {
     console.error(
       `Le port ${config.port} est déjà utilisé — une autre instance du hub tourne probablement.\n` +
@@ -49,37 +49,37 @@ try {
 }
 
 /**
- * Arrêt propre.
+ * Clean shutdown.
  *
- * Deux niveaux, parce qu'un seul ne suffit pas :
+ * Two levels, because one is not enough:
  *
- * - **Gracieux**, sur SIGINT/SIGTERM : draine les requêtes en cours, coupe les
- *   WebSockets, referme la base. C'est le chemin normal, celui de `pnpm start`
- *   et de la production.
- * - **Synchrone**, sur `exit` : `tsx watch` — donc `pnpm dev` — coupe le
- *   processus sans laisser l'asynchrone se terminer, à chaque Ctrl-C **et à
- *   chaque sauvegarde de fichier**. Sans ce filet, la base ne serait jamais
- *   refermée proprement en développement.
+ * - **Graceful**, on SIGINT/SIGTERM: drains the requests in flight, cuts the
+ *   WebSockets, closes the database. That is the normal path, the one of
+ *   `pnpm start` and of production.
+ * - **Synchronous**, on `exit`: `tsx watch` — so `pnpm dev` — kills the process
+ *   without letting the asynchronous work finish, on every Ctrl-C **and on every
+ *   file save**. Without this safety net, the database would never be closed
+ *   properly in development.
  *
- * `SIGKILL` reste hors de portée : rien ne peut l'intercepter, et le mode WAL
- * de SQLite est précisément fait pour ce cas.
+ * `SIGKILL` stays out of reach: nothing can intercept it, and SQLite's WAL mode
+ * exists precisely for that case.
  */
 process.on('exit', () => hub.closeSync())
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {
     /**
-     * Échéance sur l'arrêt gracieux.
+     * Deadline on the graceful shutdown.
      *
-     * Une requête qui ne se termine pas laisserait le processus vivant
-     * indéfiniment. Passé ce délai, on sort : le gestionnaire `exit` ci-dessus
-     * referme la base au passage.
+     * A request that never finishes would leave the process alive indefinitely.
+     * Past this delay we exit: the `exit` handler above closes the database on
+     * the way out.
      */
-    const echeance = setTimeout(() => {
+    const deadline = setTimeout(() => {
       console.error("Arrêt gracieux trop long — fermeture forcée")
       process.exit(1)
     }, 5_000)
-    echeance.unref()
+    deadline.unref()
 
     void hub
       .close()

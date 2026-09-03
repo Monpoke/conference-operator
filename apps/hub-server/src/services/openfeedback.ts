@@ -2,46 +2,44 @@ import { z } from 'zod'
 import type { OpenFeedbackCheck } from '@cloudnord/contract'
 
 /**
- * Vérifier que les liens « notez ce talk » mènent quelque part.
+ * Checking that the "rate this talk" links lead somewhere.
  *
- * Le hub fabrique ces adresses hors ligne — `{projet}/{jour}/{id}` — en pariant
- * qu'OpenFeedback réutilise les identifiants de session de l'export amont. Le
- * pari tient, mais il se perd en silence : le lien reste cliquable, le QR reste
- * scannable, et les deux mènent à une page qui ne parle d'aucun talk. Personne
- * ne s'en aperçoit avant que les retours ne manquent, c'est-à-dire une fois
- * l'événement fini.
+ * The hub builds those addresses offline — `{project}/{day}/{id}` — betting that
+ * OpenFeedback reuses the session identifiers of the upstream export. The bet
+ * holds, but it is lost silently: the link stays clickable, the QR code stays
+ * scannable, and both lead to a page that talks about no talk. Nobody notices
+ * before the feedback is missing, which is to say once the event is over.
  *
- * Ce module est la seule chose du hub qui appelle OpenFeedback, et il ne le
- * fait que sur demande : rien ici ne tourne en tâche de fond. Un contrôle est
- * un geste d'avant-événement — on l'exécute une fois, quand le programme vient
- * d'être importé, et on corrige ce qu'il signale.
+ * This module is the only thing in the hub that calls OpenFeedback, and it only
+ * does so on demand: nothing here runs in the background. A check is a pre-event
+ * gesture — you run it once, when the program has just been imported, and you
+ * correct what it reports.
  *
- * **Lecture publique, sans clé.** OpenFeedback est une application Firebase, et
- * ses règles Firestore ouvrent `projects/{projet}` et `projects/{projet}/talks`
- * à tout le monde — ce sont les données que sa page publique affiche déjà. On
- * lit donc l'API REST de Firestore directement, sans compte et sans secret à
- * poser sur le hub. Il n'existe pas d'API REST documentée côté OpenFeedback :
- * c'est le seul chemin, et il est stable parce que ces règles sont la surface
- * publique du produit.
+ * **Public read, no key.** OpenFeedback is a Firebase application, and its
+ * Firestore rules open `projects/{project}` and `projects/{project}/talks` to
+ * everyone — that is the data its public page already shows. So we read
+ * Firestore's REST API directly, with no account and no secret to put on the hub.
+ * There is no documented REST API on the OpenFeedback side: this is the only
+ * path, and it is stable because those rules are the product's public surface.
  */
 
-/** Projet Firebase d'OpenFeedback. Public : il est dans leur dépôt et leurs SDK. */
-const PROJET_FIREBASE = 'open-feedback-42'
+/** OpenFeedback's Firebase project. Public: it is in their repository and SDKs. */
+const FIREBASE_PROJECT = 'open-feedback-42'
 
-const BASE = `https://firestore.googleapis.com/v1/projects/${PROJET_FIREBASE}/databases/(default)/documents/projects`
+const BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT}/databases/(default)/documents/projects`
 
-/** Au-delà, on rend la main : le contrôle est facultatif, l'attente ne l'est pas. */
-const DELAI_MS = 8_000
+/** Beyond this we give up: the check is optional, the wait is not. */
+const TIMEOUT_MS = 8_000
 
 /**
- * Réponse de listing Firestore, réduite à ce qu'on lit.
+ * Firestore listing response, reduced to what we read.
  *
- * `documents` est **absent** — et non vide — quand la collection n'existe pas :
- * Firestore rend alors `{}` avec un 200. C'est exactement le cas d'un projet
- * dont les talks vivent ailleurs, et il ne faut surtout pas le confondre avec
- * « aucun de vos vingt-sept créneaux n'existe ».
+ * `documents` is **absent** — and not empty — when the collection does not exist:
+ * Firestore then returns `{}` with a 200. That is exactly the case of a project
+ * whose talks live elsewhere, and it must on no account be confused with "none of
+ * your twenty-seven slots exists".
  */
-const listeTalksSchema = z.object({
+const talkListSchema = z.object({
   documents: z
     .array(z.object({ name: z.string() }))
     .optional(),
@@ -49,40 +47,39 @@ const listeTalksSchema = z.object({
 })
 
 /**
- * Le dernier segment du chemin d'un document Firestore, décodé.
+ * The last segment of a Firestore document's path, decoded.
  *
- * `name` est un chemin complet — `projects/…/documents/projects/x/talks/ses-1` —
- * et seul son dernier segment est l'identifiant qui apparaît dans l'URL
- * publique.
+ * `name` is a full path — `projects/…/documents/projects/x/talks/ses-1` — and
+ * only its last segment is the identifier that appears in the public URL.
  */
-function idDuDocument(name: string): string {
+function documentId(name: string): string {
   const segments = name.split('/')
   return decodeURIComponent(segments[segments.length - 1] ?? '')
 }
 
 export interface OpenFeedbackOptions {
   fetchImpl?: typeof fetch
-  /** Surchargeable pour les tests : rien d'autre ne doit pointer ailleurs. */
+  /** Overridable for the tests: nothing else must point elsewhere. */
   base?: string
 }
 
 /**
- * Confronte les identifiants du programme à ce qu'OpenFeedback connaît.
+ * Compares the program's identifiers with what OpenFeedback knows.
  *
- * Trois réponses possibles, et elles ne se valent pas :
+ * Three possible answers, and they are not equivalent:
  *
- * - **Projet introuvable** (404) : le slug réglé n'existe pas. C'est la panne
- *   la plus fréquente et la plus bête — une faute de frappe — et elle rend
- *   toutes les adresses mortes d'un coup.
- * - **Projet trouvé, talks absents** : OpenFeedback ne stocke pas les sessions
- *   de ce projet ; il les lit d'une source externe (l'export de l'organisateur).
- *   La concordance est alors vraie par construction, et il n'y a rien à
- *   comparer. On le **dit**, au lieu de signaler vingt-sept créneaux manquants
- *   qui ne manquent pas : un contrôle qui crie au loup ne se relance jamais.
- * - **Projet trouvé, talks listés** : on compare, et on nomme ceux qui n'ont
- *   pas de contrepartie. Ce sont eux dont le QR mène à une page vide.
+ * - **Project not found** (404): the configured slug does not exist. It is the
+ *   most frequent and the silliest failure — a typo — and it kills every address
+ *   at once.
+ * - **Project found, talks absent**: OpenFeedback does not store that project's
+ *   sessions; it reads them from an external source (the organizer's export). The
+ *   match is then true by construction, and there is nothing to compare. We **say
+ *   so**, instead of reporting twenty-seven slots as missing when they are not: a
+ *   check that cries wolf never gets run again.
+ * - **Project found, talks listed**: we compare, and we name those with no
+ *   counterpart. Those are the ones whose QR code leads to an empty page.
  */
-export async function controlerOpenFeedback(
+export async function checkOpenFeedback(
   projectId: string,
   sessions: { id: string; title: string; feedbackId: string }[],
   options: OpenFeedbackOptions = {},
@@ -91,10 +88,10 @@ export async function controlerOpenFeedback(
   const base = options.base ?? BASE
   const projet = projectId.trim()
 
-  const existe = await fetchImpl(`${base}/${encodeURIComponent(projet)}`, {
-    signal: AbortSignal.timeout(DELAI_MS),
+  const exists = await fetchImpl(`${base}/${encodeURIComponent(projet)}`, {
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   })
-  if (existe.status === 404) {
+  if (exists.status === 404) {
     return {
       projet,
       projetTrouve: false,
@@ -105,33 +102,33 @@ export async function controlerOpenFeedback(
         'mène donc à une page vide, et le QR projeté en salle aussi.',
     }
   }
-  if (!existe.ok) throw new Error(`OpenFeedback a répondu ${existe.status}`)
+  if (!exists.ok) throw new Error(`OpenFeedback a répondu ${exists.status}`)
 
   /*
-   * La liste des talks, paginée.
+   * The list of talks, paginated.
    *
-   * Un événement dépasse rarement la centaine de sessions, et Firestore en rend
-   * trois cents par page : la boucle ne tourne qu'une fois dans les faits. Elle
-   * existe pour ne pas déclarer « manquant » ce qui était simplement page deux.
+   * An event rarely exceeds a hundred sessions, and Firestore returns three
+   * hundred per page: in practice the loop runs once. It exists so as not to
+   * declare "missing" what was simply on page two.
    */
-  const connus = new Set<string>()
-  let listeVue = false
+  const known = new Set<string>()
+  let listSeen = false
   let pageToken: string | undefined
   do {
     const url = new URL(`${base}/${encodeURIComponent(projet)}/talks`)
     url.searchParams.set('pageSize', '300')
     if (pageToken != null) url.searchParams.set('pageToken', pageToken)
-    const reponse = await fetchImpl(url, { signal: AbortSignal.timeout(DELAI_MS) })
-    if (!reponse.ok) throw new Error(`OpenFeedback a répondu ${reponse.status}`)
-    const page = listeTalksSchema.parse(await reponse.json())
+    const response = await fetchImpl(url, { signal: AbortSignal.timeout(TIMEOUT_MS) })
+    if (!response.ok) throw new Error(`OpenFeedback a répondu ${response.status}`)
+    const page = talkListSchema.parse(await response.json())
     if (page.documents != null) {
-      listeVue = true
-      for (const document of page.documents) connus.add(idDuDocument(document.name))
+      listSeen = true
+      for (const document of page.documents) known.add(documentId(document.name))
     }
     pageToken = page.nextPageToken
   } while (pageToken != null)
 
-  if (!listeVue) {
+  if (!listSeen) {
     return {
       projet,
       projetTrouve: true,
@@ -144,17 +141,17 @@ export async function controlerOpenFeedback(
     }
   }
 
-  const manquants = sessions
-    .filter((session) => !connus.has(session.feedbackId))
+  const missing = sessions
+    .filter((session) => !known.has(session.feedbackId))
     .map((session) => ({ sessionId: session.id, title: session.title, feedbackId: session.feedbackId }))
 
   return {
     projet,
     projetTrouve: true,
-    talksConnus: connus.size,
-    manquants,
+    talksConnus: known.size,
+    manquants: missing,
     detail:
-      manquants.length === 0
+      missing.length === 0
         ? 'Tous les créneaux ont leur page chez OpenFeedback.'
         : 'Ces créneaux n’ont pas de page chez OpenFeedback : leur lien et leur QR ' +
           'mènent à une page vide. Corrigez leur identifiant depuis le planning.',

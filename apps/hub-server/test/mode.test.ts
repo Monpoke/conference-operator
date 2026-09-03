@@ -2,35 +2,35 @@ import { describe, expect, it } from 'vitest'
 import { configSchema } from '../src/config.js'
 
 /**
- * Garde-fou du mode production sur le hub.
+ * The production-mode guard on the hub.
  *
- * Les réglages de développement sont neutralisés plutôt que refusés : un hub
- * qui ne redémarre pas parce qu'une ligne traîne dans un `.env` serait pire que
- * le mal qu'on soigne — c'est justement en cours d'événement qu'on le relance.
+ * Development settings are neutralized rather than refused: a hub that does not
+ * restart because one line lingers in a `.env` would be worse than the ill it
+ * cures — it is precisely during an event that it gets restarted.
  */
 const BASE = { authSecret: 'x'.repeat(48) }
 
-describe('mode du hub', () => {
-  it('est en production quand rien n\'est demandé', () => {
+describe('hub mode', () => {
+  it('is in production when nothing is asked for', () => {
     const config = configSchema.parse(BASE)
 
     expect(config.mode).toBe('production')
     expect(config.ignores).toEqual([])
   })
 
-  it('neutralise l\'heure simulée en production', () => {
-    // Une erreur qu'on ne rattrape pas après coup : des timecodes faussés et
-    // des clôtures automatiques à contretemps.
+  it('neutralizes the simulated time in production', () => {
+    // A mistake that cannot be caught up afterwards: skewed timecodes and
+    // automatic closings at the wrong moment.
     const config = configSchema.parse({ ...BASE, simulatedTime: '2026-10-30T10:20:00.000Z' })
 
     expect(config.simulatedTime).toBeUndefined()
-    // Et le dit, avec la raison : sinon le garde-fou ne vaudrait rien.
+    // And says so, with the reason: otherwise the guard would be worth nothing.
     expect(config.ignores).toEqual([
-      { variable: 'SIMULATED_TIME', raison: 'réservé au mode développement (MODE=dev)' },
+      { variable: 'SIMULATED_TIME', reason: 'réservé au mode développement (MODE=dev)' },
     ])
   })
 
-  it('l\'applique en mode développement', () => {
+  it('applies it in development mode', () => {
     const config = configSchema.parse({
       ...BASE,
       mode: 'dev',
@@ -41,22 +41,21 @@ describe('mode du hub', () => {
     expect(config.ignores).toEqual([])
   })
 
-  it('signale CLOCK_CONTROL comme obsolète, dans les deux modes', () => {
-    // Un second interrupteur pour le réglage de l'heure laissait exister une
-    // combinaison absurde : un hub de production dont on pouvait quand même
-    // déplacer l'horloge. Le trouver dans un `.env` veut dire que quelqu'un
-    // croit avoir ouvert quelque chose.
+  it('reports CLOCK_CONTROL as obsolete, in both modes', () => {
+    // A second switch for the clock setting left an absurd combination possible:
+    // a production hub whose clock could be moved anyway. Finding it in a `.env`
+    // means someone believes they have opened something.
     for (const mode of ['production', 'dev'] as const) {
       const config = configSchema.parse({ ...BASE, mode, clockControl: '1' })
 
       expect(config.ignores).toContainEqual({
         variable: 'CLOCK_CONTROL',
-        raison: "remplacé par MODE=dev, qui ouvre le réglage de l'heure",
+        reason: "remplacé par MODE=dev, qui ouvre le réglage de l'heure",
       })
     }
   })
 
-  it('ne s\'alarme pas d\'un CLOCK_CONTROL laissé à zéro', () => {
+  it('does not fret over a CLOCK_CONTROL left at zero', () => {
     expect(configSchema.parse({ ...BASE, clockControl: '0' }).ignores).toEqual([])
   })
 })

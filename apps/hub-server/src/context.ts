@@ -8,7 +8,7 @@ import type { QuestionService, WallService } from './services/wall.js'
 import type { RateLimiter } from './services/rate-limit.js'
 import type { PushService } from './services/push.js'
 import type { VodService } from './services/vod.js'
-import type { RegieService } from './services/regie.js'
+import type { ControlService } from './services/control.js'
 import type { SessionStateService, SettingsService } from './services/sessions.js'
 import type { EventIdentityService } from './services/event-identity.js'
 import type { MutableClock } from './services/clock.js'
@@ -25,50 +25,48 @@ export interface Services {
   limiter: RateLimiter
   sessions: SessionStateService
   /**
-   * Le verrou de la régie mobile : qui pilote quelle salle depuis un téléphone.
+   * The mobile control lock: who is driving which room from a phone.
    *
-   * Un service et non un champ de `rooms` : ce qu'il garde n'est pas la salle
-   * mais **une surface**, `regie.command`. La console et la machine de salle
-   * gardent leurs gestes intacts.
+   * A service and not a field of `rooms`: what it guards is not the room but **a
+   * surface**, `regie.command`. The console and the room machine keep their
+   * gestures intact.
    */
-  regie: RegieService
+  regie: ControlService
   settings: SettingsService
   /**
-   * Qui est l'événement — nom complet et nom court.
+   * Who the event is — full name and short name.
    *
-   * Un service et non une constante : c'est ce qui permet au même binaire de
-   * servir deux événements différents, et le nom se corrige en cours de
-   * journée sans redémarrer le hub.
+   * A service and not a constant: that is what lets the same binary serve two
+   * different events, and the name gets corrected during the day without
+   * restarting the hub.
    */
   identity: EventIdentityService
   /**
-   * Rapatriement des rushes vers S3.
+   * Shipping the rushes back to S3.
    *
-   * `null` quand aucun stockage n'est configuré, et c'est le cas par défaut :
-   * un hub sans S3 ne doit pas porter une demi-fonctionnalité, avec une console
-   * qui annonce un stockage prêt et des boutons qui échouent. Chaque procédure
-   * refuse alors en le disant.
+   * `null` when no storage is configured, and that is the default: a hub with no
+   * S3 must not carry half a feature, with a console announcing storage is ready
+   * and buttons that fail. Every procedure then refuses and says so.
    */
   vod: VodService | null
   push: PushService
   clock: MutableClock
   /**
-   * Mode d'exécution, annoncé aux salles à chaque synchronisation.
+   * Execution mode, announced to the rooms at every synchronization.
    *
-   * Commande aussi ce que la console a le droit de faire : le réglage de
-   * l'heure n'est ouvert qu'en développement. Un second interrupteur pour ça
-   * — l'ancien `CLOCK_CONTROL` — laissait exister une combinaison absurde, un
-   * hub de production dont on pouvait quand même déplacer l'horloge.
+   * It also governs what the console is allowed to do: setting the time is only
+   * open in development. A second switch for that — the old `CLOCK_CONTROL` —
+   * left an absurd combination possible, a production hub whose clock could
+   * still be moved.
    */
   mode: ExecutionMode
 }
 
 /**
- * Contexte de requête.
+ * Request context.
  *
- * `headers` est conservé tel quel : Better Auth s'en sert pour résoudre la
- * session, et les endpoints device en ont besoin pour approuver au nom de
- * l'opérateur connecté.
+ * `headers` is kept as is: Better Auth uses it to resolve the session, and the
+ * device endpoints need it to approve on behalf of the signed-in operator.
  */
 export interface HubContext {
   auth: Auth
@@ -77,10 +75,10 @@ export interface HubContext {
 }
 
 /**
- * Identité d'un déposant public, pour la limitation de débit.
+ * Identity of a public poster, for rate limiting.
  *
- * L'IP seule ne suffit pas : tout un public derrière le même WiFi la partage.
- * On combine donc l'IP et l'identifiant d'appareil fourni par la page.
+ * The IP alone is not enough: a whole audience behind the same WiFi shares it.
+ * So we combine the IP with the device identifier the page provides.
  */
 export function publicIdentity(context: HubContext, deviceId?: string | null): string {
   const ip =
@@ -95,26 +93,26 @@ export interface OperatorContext extends HubContext {
 }
 
 /**
- * Contexte d'une machine de salle.
+ * A room machine's context.
  *
- * **N'étend pas `OperatorContext`** : c'est tout l'objet du changement. Une
- * salle n'agit pas au nom d'un opérateur, elle agit en son nom propre, avec des
- * droits qui s'arrêtent à sa salle.
+ * **Does not extend `OperatorContext`** — that is the whole point of the change.
+ * A room does not act on behalf of an operator, it acts in its own name, with
+ * rights that stop at its room.
  */
 export interface RoomContext extends HubContext {
   roomId: string
   clientId: string
 }
 
-/** En-tête par lequel une machine annonce son identité d'appareil. */
+/** Header by which a machine announces its device identity. */
 export const CLIENT_ID_HEADER = 'x-room-client-id'
 
 /**
- * Appelant d'une procédure ouverte aux deux.
+ * Caller of a procedure open to both.
  *
- * Un seul type plutôt qu'une union : oRPC infère le contexte d'un middleware à
- * partir d'une seule forme, et surtout, aplatir ici évite que chaque handler
- * ait à distinguer les cas — `roomId` non nul *est* la marque d'une salle.
+ * A single type rather than a union: oRPC infers a middleware's context from a
+ * single shape, and above all, flattening here saves each handler from having to
+ * tell the cases apart — a non-null `roomId` *is* the mark of a room.
  */
 export interface ActorContext extends HubContext {
   operator: { id: string; email: string } | null
@@ -122,23 +120,23 @@ export interface ActorContext extends HubContext {
   clientId: string | null
 }
 
-/** Jeton porteur présenté par l'appelant, quel qu'il soit. */
+/** Bearer token presented by the caller, whoever it is. */
 function bearer(context: HubContext): string | null {
-  const entete = context.headers.get('authorization')
-  if (entete == null) return null
-  const [schema, valeur] = entete.split(' ')
-  return schema?.toLowerCase() === 'bearer' && valeur != null ? valeur : null
+  const header = context.headers.get('authorization')
+  if (header == null) return null
+  const [scheme, value] = header.split(' ')
+  return scheme?.toLowerCase() === 'bearer' && value != null ? value : null
 }
 
-/** Un jeton de machine se reconnaît à son préfixe, sans requête. */
-export function estJetonDeSalle(context: HubContext): boolean {
+/** A machine token is recognised by its prefix, with no query. */
+export function isRoomToken(context: HubContext): boolean {
   return bearer(context)?.startsWith('rt_') === true
 }
 
 export async function resolveOperator(context: HubContext): Promise<OperatorContext> {
-  if (estJetonDeSalle(context)) {
-    // Refus explicite plutôt que « session requise » : une machine qui tente
-    // une procédure d'opérateur signale un problème, pas un oubli de connexion.
+  if (isRoomToken(context)) {
+    // An explicit refusal rather than "session required": a machine attempting an
+    // operator procedure signals a problem, not a forgotten sign-in.
     throw new ORPCError('FORBIDDEN', {
       message: "Cette opération est réservée à la console : une machine de salle n'y a pas accès",
     })
@@ -155,10 +153,10 @@ export async function resolveOperator(context: HubContext): Promise<OperatorCont
 }
 
 /**
- * Session d'approbation, le temps d'un échange.
+ * Approval session, for the length of one exchange.
  *
- * Le seul usage légitime d'une session Better Auth par une machine : réclamer
- * son jeton de salle juste après l'appairage. Elle ne sert à rien d'autre.
+ * The only legitimate use of a Better Auth session by a machine: claiming its
+ * room token right after pairing. It serves nothing else.
  */
 export async function resolveClaim(
   context: HubContext,
@@ -174,11 +172,11 @@ export async function resolveClaim(
 }
 
 /**
- * Résout la salle desservie par la machine appelante.
+ * Resolves the room the calling machine serves.
  *
- * Deux conditions distinctes, et le message doit les distinguer : une session
- * valide sans appareil appairé n'est pas la même panne qu'un appareil révoqué,
- * et l'opérateur en régie doit savoir laquelle il regarde.
+ * Two distinct conditions, and the message must tell them apart: a valid session
+ * with no paired device is not the same failure as a revoked device, and the
+ * operator in the control room needs to know which one they are looking at.
  */
 export async function resolveRoom(context: HubContext): Promise<RoomContext> {
   const token = bearer(context)
@@ -189,10 +187,10 @@ export async function resolveRoom(context: HubContext): Promise<RoomContext> {
   const machine = context.services.devices.fromToken(token)
   if (machine == null) {
     /**
-     * Un message distinct de « non appairée » : ce cas se produit quand le
-     * jeton a été révoqué, ou quand la base du hub a été recréée. Le client
-     * doit alors relancer l'appairage, pas réessayer indéfiniment — d'où un
-     * code que le client reconnaît.
+     * A message distinct from "not paired": this case happens when the token has
+     * been revoked, or when the hub's database has been recreated. The client
+     * must then restart pairing, not retry indefinitely — hence a code the client
+     * recognises.
      */
     throw new ORPCError('UNAUTHORIZED', {
       message: "Jeton de salle inconnu ou révoqué : réappairage nécessaire",
@@ -203,17 +201,17 @@ export async function resolveRoom(context: HubContext): Promise<RoomContext> {
   return { ...context, roomId: machine.roomId, clientId: machine.clientId }
 }
 
-/** Résout l'appelant, console ou salle, sous une forme unique. */
+/** Resolves the caller, console or room, in a single shape. */
 export async function resolveActor(context: HubContext): Promise<ActorContext> {
-  if (estJetonDeSalle(context)) {
-    const salle = await resolveRoom(context)
-    return { ...salle, operator: null }
+  if (isRoomToken(context)) {
+    const room = await resolveRoom(context)
+    return { ...room, operator: null }
   }
-  const operateur = await resolveOperator(context)
-  return { ...operateur, roomId: null, clientId: null }
+  const operator = await resolveOperator(context)
+  return { ...operator, roomId: null, clientId: null }
 }
 
-/** Qui a pris la décision, pour la trace d'imputabilité. */
-export function auteurDe(context: ActorContext): string {
+/** Who took the decision, for the accountability trace. */
+export function authorOf(context: ActorContext): string {
   return context.operator?.email ?? `salle:${context.roomId ?? 'inconnue'}`
 }

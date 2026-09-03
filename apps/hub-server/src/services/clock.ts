@@ -1,19 +1,19 @@
 /**
- * Horloge du hub.
+ * The hub's clock.
  *
- * Une seule source de temps pour tout ce qui est daté côté serveur : heure de
- * synchronisation, émission des commandes, décisions sur les conférences,
- * clôture automatique. Les salles s'alignent dessus via l'offset qu'elles
- * mesurent à chaque `sync` — simuler ici suffit donc à déplacer tout le système.
+ * A single source of time for everything dated on the server side: sync time,
+ * command issuing, decisions about talks, automatic closing. The rooms align on
+ * it through the offset they measure at every `sync` — so simulating here is
+ * enough to move the whole system.
  *
- * C'est ce qui manquait : une horloge simulée uniquement côté salle diverge de
- * celle du hub, et tout ce qui compare les deux — l'obsolescence d'une commande,
- * par exemple — se met à mentir.
+ * That is what was missing: a clock simulated on the room side alone diverges
+ * from the hub's, and everything that compares the two — a command's staleness,
+ * for instance — starts to lie.
  */
 export interface Clock {
   now(): number
   nowIso(): string
-  /** Vrai quand l'heure est simulée : à signaler, sinon personne ne comprendra. */
+  /** True when the time is simulated: to be flagged, or nobody will understand. */
   readonly simulated: boolean
 }
 
@@ -26,19 +26,19 @@ export function systemClock(): Clock {
 }
 
 /**
- * Horloge décalée vers un instant donné, qui avance ensuite au rythme réel.
+ * A clock shifted to a given instant, which then advances at real speed.
  *
- * Avancer plutôt que figer est délibéré : un compte à rebours figé ne se
- * distingue pas d'un écran planté, et la clôture automatique ne se
- * déclencherait jamais.
+ * Advancing rather than freezing is deliberate: a frozen countdown is
+ * indistinguishable from a crashed screen, and automatic closing would never
+ * fire.
  */
 export function simulatedClock(target: string, base: () => number = Date.now): Clock {
-  const cible = Date.parse(target)
-  if (Number.isNaN(cible)) {
+  const targetMs = Date.parse(target)
+  if (Number.isNaN(targetMs)) {
     throw new Error(`Heure simulée illisible : ${target}`)
   }
-  const depart = base()
-  const now = (): number => cible + (base() - depart)
+  const start = base()
+  const now = (): number => targetMs + (base() - start)
 
   return {
     now,
@@ -48,31 +48,31 @@ export function simulatedClock(target: string, base: () => number = Date.now): C
 }
 
 /**
- * Horloge réglable à chaud.
+ * A clock that can be set at runtime.
  *
- * Permet de déplacer tout le système depuis la console, sans redémarrer le hub.
- * Chaque changement doit être suivi d'une diffusion aux salles : elles calent
- * leur offset sur `serverTime` et resteraient sinon sur l'ancienne heure
- * jusqu'à leur prochaine synchronisation.
+ * Lets the whole system be moved from the console, without restarting the hub.
+ * Every change must be followed by a broadcast to the rooms: they align their
+ * offset on `serverTime` and would otherwise stay on the old time until their
+ * next synchronization.
  */
 export interface MutableClock extends Clock {
-  /** `null` revient à l'heure réelle. */
+  /** `null` goes back to real time. */
   setSimulated(target: string | null): void
 }
 
 export function mutableClock(initial: string | null = null): MutableClock {
-  let interne: Clock = initial == null ? systemClock() : simulatedClock(initial)
+  let inner: Clock = initial == null ? systemClock() : simulatedClock(initial)
 
   return {
-    now: () => interne.now(),
-    nowIso: () => interne.nowIso(),
+    now: () => inner.now(),
+    nowIso: () => inner.nowIso(),
     get simulated() {
-      return interne.simulated
+      return inner.simulated
     },
     setSimulated(target) {
-      // Validation avant remplacement : une heure illisible ne doit pas laisser
-      // le hub sans horloge.
-      interne = target == null ? systemClock() : simulatedClock(target)
+      // Validation before replacement: an unreadable time must not leave the hub
+      // without a clock.
+      inner = target == null ? systemClock() : simulatedClock(target)
     },
   }
 }

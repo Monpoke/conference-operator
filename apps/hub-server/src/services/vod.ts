@@ -12,30 +12,30 @@ import {
 import { vodUpload } from '@cloudnord/db/hub'
 import type { HubDatabase } from '../db.js'
 import type { Config } from '../config.js'
-import { ClientS3, ErreurS3, transportNode, type ClesS3, type TransportS3 } from './s3.js'
+import { S3Client, S3Error, nodeTransport, type S3Keys, type S3Transport } from './s3.js'
 import type { SettingsService } from './sessions.js'
 
 /**
- * Rapatriement des rushes : le registre, et le ménage.
+ * Shipping the rushes back: the register, and the housekeeping.
  *
- * Le hub tient ce registre parce qu'il tient les clés. C'est lui qui ouvre un
- * multipart chez le stockage, lui qui collecte les ETags — S3 les redemande
- * tous au moment de recomposer l'objet, et les perdre rend l'objet
- * irrécupérable alors que tous ses octets y sont déjà —, et lui qui abandonne
- * ce qui traîne.
+ * The hub keeps this register because it holds the keys. It is the one that opens
+ * a multipart at the storage, the one that collects the ETags — S3 asks for all
+ * of them again when reassembling the object, and losing them makes the object
+ * unrecoverable even though all its bytes are already there — and the one that
+ * abandons what is left hanging.
  *
- * Le service n'existe pas quand le stockage n'est pas configuré : c'est
- * `null` dans le sac de services, et chaque procédure refuse alors en le
- * disant. Un hub sans S3 ne doit pas porter une demi-fonctionnalité.
+ * The service does not exist when the storage is not configured: it is `null` in
+ * the services bag, and every procedure then refuses and says so. A hub with no
+ * S3 must not carry half a feature.
  */
 
-/** Adresses signées : assez pour un lot de parts, jamais pour la journée. */
-const DUREE_SIGNATURE_S = 3600
+/** Signed addresses: enough for a batch of parts, never for the day. */
+const SIGNATURE_TTL_S = 3600
 
-/** Au-delà, la salle a probablement redémarré : le plan se rouvre. */
-const EXPIRATION_MULTIPART_ORPHELIN_MS = 24 * 3600_000
+/** Beyond this, the room has probably restarted: the plan is reopened. */
+const ORPHAN_MULTIPART_MS = 24 * 3600_000
 
-/** Types que le stockage annoncera à qui téléchargera. */
+/** Types the storage will announce to whoever downloads. */
 const TYPES: Record<string, string> = {
   '.mkv': 'video/x-matroska',
   '.mp4': 'video/mp4',
@@ -52,7 +52,7 @@ export interface VodStatus {
   politique: VodPolicy
 }
 
-export function clesS3(config: Config, caCert: string | null = null): ClesS3 | null {
+export function s3Keys(config: Config, caCert: string | null = null): S3Keys | null {
   if (config.s3Endpoint == null || config.s3AccessKeyId == null || config.s3SecretAccessKey == null) {
     return null
   }
@@ -66,95 +66,93 @@ export function clesS3(config: Config, caCert: string | null = null): ClesS3 | n
   }
 }
 
-/** Erreur de domaine : le hub sait signer, mais il ne sait pas encore où écrire. */
-export class StockageIncomplet extends Error {
+/** Domain error: the hub knows how to sign, but does not yet know where to write. */
+export class IncompleteStorage extends Error {
   constructor(message: string) {
     super(message)
-    this.name = 'StockageIncomplet'
+    this.name = 'IncompleteStorage'
   }
 }
 
 export class VodService {
-  private menage: NodeJS.Timeout | null = null
+  private housekeeping: NodeJS.Timeout | null = null
 
   constructor(
     private readonly db: HubDatabase,
     private readonly settings: SettingsService,
-    private readonly cles: ClesS3,
+    private readonly keys: S3Keys,
     private readonly abandonMinutes: number,
     private readonly nowIso: () => string,
     private readonly onLog: (
-      niveau: 'info' | 'warn',
+      level: 'info' | 'warn',
       message: string,
-      contexte?: unknown,
+      context?: unknown,
     ) => void = () => {},
-    private readonly transport: TransportS3 = transportNode,
+    private readonly transport: S3Transport = nodeTransport,
   ) {}
 
-  /** Adresse du stockage, pour la nommer dans un message d'erreur. */
+  /** The storage's address, to name it in an error message. */
   endpoint(): string {
-    return this.cles.endpoint
+    return this.keys.endpoint
   }
 
   /**
-   * Ce que le hub descend aux salles au sync.
+   * What the hub sends down to the rooms at sync.
    *
-   * La CA voyage avec : c'est elle qui évite d'aller poser une variable
-   * d'environnement sur chaque machine de salle. Les clés, elles, ne descendent
-   * jamais — la salle ne reçoit que des adresses déjà signées.
+   * The CA travels with it: that is what saves going and setting an environment
+   * variable on every room machine. The keys, on the other hand, never go down —
+   * the room only receives already signed addresses.
    */
   sync(): { actif: boolean; politique: VodPolicy; caCert: string | null } {
-    return { actif: true, politique: this.politique(), caCert: this.cles.caCert ?? null }
+    return { actif: true, politique: this.policy(), caCert: this.keys.caCert ?? null }
   }
 
-  politique(): VodPolicy {
+  policy(): VodPolicy {
     return this.settings.get().vodPolitique ?? DEFAULT_VOD_POLICY
   }
 
-  /** Le bucket est-il réglé ? Les clés ne suffisent pas : il faut savoir où écrire. */
-  pret(): boolean {
+  /** Is the bucket set? The keys are not enough: we need to know where to write. */
+  ready(): boolean {
     const bucket = this.settings.get().vodBucket
     return bucket != null && bucket.trim().length > 0
   }
 
   status(): VodStatus {
-    const reglages = this.settings.get()
+    const settings = this.settings.get()
     return {
-      configure: this.pret(),
-      endpoint: this.cles.endpoint,
-      bucket: reglages.vodBucket,
-      prefix: reglages.vodPrefix,
-      politique: this.politique(),
+      configure: this.ready(),
+      endpoint: this.keys.endpoint,
+      bucket: settings.vodBucket,
+      prefix: settings.vodPrefix,
+      politique: this.policy(),
     }
   }
 
   /**
-   * Éprouve la connexion, en faisant le vrai geste.
+   * Tests the connection by performing the real gesture.
    *
-   * Ouvrir un multipart, signer une adresse de part, y écrire quelques octets,
-   * tout abandonner. Rien de moins ne répond à la question : un `HEAD` sur le
-   * bucket dirait qu'il existe, pas qu'on a le droit d'y écrire ; et une clé
-   * acceptée ne prouve pas qu'une **adresse presignée** sera acceptée — or
-   * c'est la signature des parts qui porte tout le téléversement, et c'est la
-   * plus délicate.
+   * Open a multipart, sign a part address, write a few bytes to it, abandon
+   * everything. Nothing less answers the question: a `HEAD` on the bucket would
+   * say it exists, not that we are allowed to write to it; and an accepted key
+   * does not prove a **presigned address** will be accepted — yet it is the
+   * signing of the parts that carries the whole upload, and it is the trickiest.
    *
-   * Rien ne reste : un multipart abandonné ne laisse aucun objet, et c'est le
-   * même appel que celui du ménage.
+   * Nothing remains: an abandoned multipart leaves no object, and it is the same
+   * call as the housekeeping's.
    *
-   * Ne lève jamais. Le diagnostic **est** la réponse : une erreur HTTP ferait
-   * perdre l'étape à laquelle on s'est arrêté, qui est tout ce qu'on venait
-   * chercher.
+   * Never throws. The diagnosis **is** the answer: an HTTP error would lose the
+   * step we stopped at, which is all we came for.
    */
   async check(): Promise<StorageCheck> {
-    const etapes: StorageCheck['etapes'] = []
+    const steps: StorageCheck['etapes'] = []
     /**
-     * L'action S3 que chaque étape exerce.
+     * The S3 action each step exercises.
      *
-     * Un `AccessDenied` nu ne dit pas *laquelle* manque, et une policy en
-     * autorise cinq ou six : on relit la liste sans savoir ce qu'on y cherche.
-     * Ce sont les deux dernières qui manquent le plus souvent, parce qu'aucune
-     * n'est évidente — `PutObject` couvre l'ouverture d'un multipart et l'envoi
-     * des parts, mais **pas** leur abandon, qui a son action propre.
+     * A bare `AccessDenied` does not say *which* one is missing, and a policy
+     * grants five or six: you re-read the list without knowing what you are
+     * looking for. It is the last two that are most often missing, because
+     * neither is obvious — `PutObject` covers opening a multipart and sending the
+     * parts, but **not** abandoning them, which has its own action.
      */
     const ACTION: Record<string, string> = {
       joindre: 's3:ListBucket',
@@ -162,213 +160,213 @@ export class VodService {
       signer: 's3:PutObject (UploadPart)',
       nettoyer: 's3:AbortMultipartUpload',
     }
-    const franchie = (nom: StorageCheck['etapes'][number]['nom']): void => {
-      etapes.push({ nom, ok: true, detail: null })
+    const passed = (nom: StorageCheck['etapes'][number]['nom']): void => {
+      steps.push({ nom, ok: true, detail: null })
     }
-    const echouee = (
+    const failed = (
       nom: StorageCheck['etapes'][number]['nom'],
       cause: unknown,
     ): StorageCheck => {
-      const brut =
-        cause instanceof ErreurS3 ? `${cause.code} : ${cause.message}` : causeLisible(cause)
+      const raw =
+        cause instanceof S3Error ? `${cause.code} : ${cause.message}` : readableCause(cause)
       /**
-       * Un défaut de confiance TLS se dit avec sa réparation.
+       * A TLS trust failure is said together with its repair.
        *
-       * `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` est exact et illisible : il ne dit
-       * pas que Node ignore le magasin du système, ni où poser la CA. Et il ne
-       * se cherche pas au même endroit selon qu'une CA est déjà configurée — si
-       * elle l'est, c'est qu'elle ne couvre pas ce certificat, ce qui est une
-       * tout autre piste que « il en manque une ».
+       * `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` is exact and unreadable: it does not
+       * say that Node ignores the system store, nor where to put the CA. And it
+       * is not looked for in the same place depending on whether a CA is already
+       * configured — if it is, then it does not cover this certificate, which is a
+       * quite different lead from "one is missing".
        */
-      const certificat = /CERT|SELF_SIGNED|SIGNATURE/.test(brut)
-        ? `${brut} — ${
-            this.cles.caCert == null
+      const certificate = /CERT|SELF_SIGNED|SIGNATURE/.test(raw)
+        ? `${raw} — ${
+            this.keys.caCert == null
               ? "le certificat du stockage n'est signé par aucune CA publique : renseigner S3_CA_CERT sur le hub"
               : 'la CA fournie par S3_CA_CERT ne couvre pas ce certificat'
           }`
-        : brut
+        : raw
       /**
-       * Un refus de droits se dit avec l'action qu'il manquait.
+       * A permission refusal is said together with the action that was missing.
        *
-       * `AccessDenied` seul fait relire une policy sans savoir ce qu'on y
-       * cherche. Nommer l'action transforme une enquête en une ligne à ajouter.
+       * `AccessDenied` alone makes you re-read a policy without knowing what you
+       * are looking for. Naming the action turns an investigation into one line to
+       * add.
        */
-      const detail = /AccessDenied|Forbidden|HTTP 403/.test(certificat)
-        ? `${certificat} — action requise : ${ACTION[nom] ?? '?'}`
-        : certificat
-      etapes.push({ nom, ok: false, detail })
-      return { ok: false, etapes }
+      const detail = /AccessDenied|Forbidden|HTTP 403/.test(certificate)
+        ? `${certificate} — action requise : ${ACTION[nom] ?? '?'}`
+        : certificate
+      steps.push({ nom, ok: false, detail })
+      return { ok: false, etapes: steps }
     }
 
-    if (!this.pret()) {
-      return echouee('joindre', new Error("aucun bucket réglé : renseignez-le avant d'éprouver la connexion"))
+    if (!this.ready()) {
+      return failed('joindre', new Error("aucun bucket réglé : renseignez-le avant d'éprouver la connexion"))
     }
 
     /**
-     * Joindre, d'abord et séparément.
+     * Reaching it, first and separately.
      *
-     * Une requête nue sur l'adresse du stockage : le refus qu'elle vaudra —
-     * 403, 404, peu importe — prouve déjà ce qu'on cherche, à savoir que le
-     * réseau passe, que le nom résout et que le certificat est accepté. Sans
-     * cette étape à part, un pare-feu et une clé fausse se seraient présentés
-     * de la même façon, et on les aurait cherchés au même endroit.
+     * A bare request on the storage's address: the refusal it earns — 403, 404,
+     * whatever — already proves what we are after, namely that the network gets
+     * through, that the name resolves and that the certificate is accepted.
+     * Without that separate step, a firewall and a wrong key would have looked the
+     * same, and we would have looked for them in the same place.
      */
     try {
-      await this.transport(new URL(this.cles.endpoint).origin, {
+      await this.transport(new URL(this.keys.endpoint).origin, {
         method: 'GET',
         headers: {},
-        // La CA vaut ici comme partout ailleurs. L'oublier faisait échouer le
-        // contrôle sur un défaut de confiance que la configuration corrigeait
-        // déjà — un diagnostic qui accuse ce qu'on vient de réparer est pire
-        // que pas de diagnostic.
-        ca: this.cles.caCert ?? null,
+        // The CA counts here as everywhere else. Forgetting it made the check fail
+        // on a trust failure the configuration already fixed — a diagnosis that
+        // blames what you have just repaired is worse than no diagnosis.
+        ca: this.keys.caCert ?? null,
       })
-      franchie('joindre')
+      passed('joindre')
     } catch (cause) {
-      return echouee('joindre', cause)
+      return failed('joindre', cause)
     }
 
     const client = this.client()
-    const prefixe = (this.settings.get().vodPrefix ?? '').replace(/^\/+|\/+$/g, '')
-    const key = [prefixe, '.controle-de-connexion', ulid()].filter((part) => part !== '').join('/')
+    const prefix = (this.settings.get().vodPrefix ?? '').replace(/^\/+|\/+$/g, '')
+    const key = [prefix, '.controle-de-connexion', ulid()].filter((part) => part !== '').join('/')
 
     let uploadId: string
     try {
-      uploadId = await client.creerMultipart(key, 'application/octet-stream')
-      franchie('authentifier')
+      uploadId = await client.createMultipart(key, 'application/octet-stream')
+      passed('authentifier')
     } catch (cause) {
-      return echouee('authentifier', cause)
+      return failed('authentifier', cause)
     }
 
     try {
-      const reponse = await this.transport(client.presignerPart(key, uploadId, 1, 300), {
+      const response = await this.transport(client.presignPart(key, uploadId, 1, 300), {
         method: 'PUT',
         headers: {},
         body: 'controle-de-connexion',
-        ca: this.cles.caCert ?? null,
+        ca: this.keys.caCert ?? null,
       })
-      if (reponse.status >= 300) {
-        throw new ErreurS3(
-          `HTTP ${reponse.status}`,
+      if (response.status >= 300) {
+        throw new S3Error(
+          `HTTP ${response.status}`,
           "le stockage a refusé l'adresse signée",
-          reponse.status,
+          response.status,
         )
       }
-      franchie('signer')
+      passed('signer')
     } catch (cause) {
-      const echec = echouee('signer', cause)
-      // Abandonner quand même, et le dire : un multipart ouvert par un contrôle
-      // raté resterait facturé, ce qui serait un comble pour une fonctionnalité
-      // dont la moitié est un ménage. L'étape est rendue après celle qui a
-      // échoué, dans l'ordre où les choses se sont passées.
-      await this.abandonnerChezS3(key, uploadId)
-      franchie('nettoyer')
-      return echec
+      const failure = failed('signer', cause)
+      // Abandon it anyway, and say so: a multipart opened by a failed check would
+      // stay billed, which would be rich for a feature half of which is
+      // housekeeping. The step is returned after the one that failed, in the order
+      // things happened.
+      await this.abortAtS3(key, uploadId)
+      passed('nettoyer')
+      return failure
     }
 
     try {
-      await client.abandonnerMultipart(key, uploadId)
-      franchie('nettoyer')
+      await client.abortMultipart(key, uploadId)
+      passed('nettoyer')
     } catch (cause) {
-      return echouee('nettoyer', cause)
+      return failed('nettoyer', cause)
     }
 
-    return { ok: true, etapes }
+    return { ok: true, etapes: steps }
   }
 
   /**
-   * Vide le préfixe du bucket. **Développement seulement** — le routeur le garde.
+   * Empties the bucket's prefix. **Development only** — the router guards it.
    *
-   * Un préfixe est **exigé**, et c'est le garde-fou qui compte : sans lui,
-   * « vider le préfixe » et « vider le bucket » sont le même geste, et un
-   * bucket qui sert aussi à autre chose y passerait. Refuser est le seul
-   * comportement rattrapable des deux.
+   * A prefix is **required**, and that is the guard rail that matters: without it,
+   * "empty the prefix" and "empty the bucket" are the same gesture, and a bucket
+   * that also serves something else would go too. Refusing is the only recoverable
+   * behaviour of the two.
    *
-   * Les multiparts ouverts partent avec : ils ne figurent dans aucune liste
-   * d'objets — ils n'existent pas encore comme objets — et survivraient donc à
-   * une remise à zéro qui prétend tout effacer.
+   * The open multiparts go with it: they appear in no object listing — they do not
+   * yet exist as objects — and would therefore survive a reset that claims to
+   * erase everything.
    */
-  async raz(): Promise<{ objets: number; multiparts: number }> {
-    const prefixe = (this.settings.get().vodPrefix ?? '').replace(/^\/+|\/+$/g, '')
-    if (prefixe === '') {
-      throw new StockageIncomplet(
+  async reset(): Promise<{ objets: number; multiparts: number }> {
+    const prefix = (this.settings.get().vodPrefix ?? '').replace(/^\/+|\/+$/g, '')
+    if (prefix === '') {
+      throw new IncompleteStorage(
         "aucun préfixe réglé : la remise à zéro effacerait le bucket entier, ce qu'elle refuse de faire",
       )
     }
     const client = this.client()
-    const sous = `${prefixe}/`
+    const under = `${prefix}/`
 
-    const cles = await client.listerObjets(sous)
-    for (const key of cles) await client.supprimerObjet(key)
+    const keys = await client.listObjects(under)
+    for (const key of keys) await client.deleteObject(key)
 
-    const ouverts = await client.listerMultiparts(sous)
-    for (const multipart of ouverts) {
-      await this.abandonnerChezS3(multipart.key, multipart.uploadId)
+    const open = await client.listMultiparts(under)
+    for (const multipart of open) {
+      await this.abortAtS3(multipart.key, multipart.uploadId)
     }
 
-    // Le registre part avec : garder des lignes « terminé » pointant des objets
-    // qui n'existent plus ferait dire à la console que tout est rapatrié.
+    // The register goes with it: keeping "done" rows pointing at objects that no
+    // longer exist would make the console say everything has been shipped back.
     this.db.delete(vodUpload).run()
 
     this.onLog('info', 'remise à zéro du stockage', {
-      prefixe: sous,
-      objets: cles.length,
-      multiparts: ouverts.length,
+      prefixe: under,
+      objets: keys.length,
+      multiparts: open.length,
     })
-    return { objets: cles.length, multiparts: ouverts.length }
+    return { objets: keys.length, multiparts: open.length }
   }
 
-  private client(): ClientS3 {
+  private client(): S3Client {
     const bucket = this.settings.get().vodBucket
     if (bucket == null || bucket.trim().length === 0) {
-      throw new StockageIncomplet(
+      throw new IncompleteStorage(
         'aucun bucket réglé : console → VOD → Stockage, avant de téléverser quoi que ce soit',
       )
     }
-    return new ClientS3(this.cles, bucket.trim(), this.transport)
+    return new S3Client(this.keys, bucket.trim(), this.transport)
   }
 
   /**
-   * `<prefixe>/<aaaa-mm-jj>/<salle>/<fichier>`.
+   * `<prefix>/<yyyy-mm-dd>/<room>/<file>`.
    *
-   * Le nom de fichier produit par la salle porte déjà date, salle, heure et
-   * titre : le préfixe ne sert qu'à faire tenir plusieurs éditions dans un même
-   * bucket. La date en tête vient du **nom du fichier** quand il en porte une,
-   * et de l'heure du hub sinon — ranger un rush du 30 octobre sous la date du
-   * jour où on l'a rapatrié le rendrait introuvable.
+   * The file name produced by the room already carries date, room, time and
+   * title: the prefix only serves to fit several editions in one bucket. The
+   * leading date comes from the **file name** when it carries one, and from the
+   * hub's time otherwise — filing a rush from 30 October under the date it was
+   * shipped back would make it impossible to find.
    */
-  cleObjet(roomId: string, file: string): string {
-    const nom = file.split('/').pop() ?? file
-    const date = nom.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? this.nowIso().slice(0, 10)
-    const prefixe = (this.settings.get().vodPrefix ?? '').replace(/^\/+|\/+$/g, '')
-    return [prefixe, date, roomId, nom].filter((part) => part !== '').join('/')
+  objectKeyFor(roomId: string, file: string): string {
+    const name = file.split('/').pop() ?? file
+    const date = name.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? this.nowIso().slice(0, 10)
+    const prefix = (this.settings.get().vodPrefix ?? '').replace(/^\/+|\/+$/g, '')
+    return [prefix, date, roomId, name].filter((part) => part !== '').join('/')
   }
 
-  private typeDe(file: string): string {
-    const point = file.lastIndexOf('.')
-    return (point >= 0 ? TYPES[file.slice(point).toLowerCase()] : undefined) ?? 'application/octet-stream'
+  private contentTypeOf(file: string): string {
+    const dot = file.lastIndexOf('.')
+    return (dot >= 0 ? TYPES[file.slice(dot).toLowerCase()] : undefined) ?? 'application/octet-stream'
   }
 
-  private partsDe(json: string): { n: number; etag: string }[] {
+  private partsFrom(json: string): { n: number; etag: string }[] {
     try {
-      const lu: unknown = JSON.parse(json)
-      return Array.isArray(lu) ? (lu as { n: number; etag: string }[]) : []
+      const read: unknown = JSON.parse(json)
+      return Array.isArray(read) ? (read as { n: number; etag: string }[]) : []
     } catch {
       return []
     }
   }
 
   /**
-   * Ouvre — ou reprend — le téléversement d'un fichier.
+   * Opens — or resumes — the upload of a file.
    *
-   * L'unicité `(salle, fichier)` en base fait tout le travail : rappeler sur un
-   * fichier déjà en cours retrouve la ligne, rend le même plan et la liste des
-   * parts arrivées. C'est ce qui permet à une machine redémarrée en pleine
-   * montée de repartir de la part suivante plutôt que du premier octet — sur un
-   * rush de trois gigaoctets et un réseau d'événement, c'est la différence
-   * entre « ça finira » et « ça ne finira jamais ».
+   * The `(room, file)` uniqueness in the database does all the work: calling again
+   * on a file already in progress finds the row, returns the same plan and the
+   * list of parts that have arrived. That is what lets a machine rebooted
+   * mid-upload restart from the next part rather than from the first byte — on a
+   * three-gigabyte rush and an event network, that is the difference between "it
+   * will finish" and "it will never finish".
    */
-  async begin(entree: {
+  async begin(input: {
     roomId: string
     file: string
     sizeBytes: number
@@ -376,82 +374,82 @@ export class VodService {
     sessionId: string | null
   }): Promise<UploadPlan> {
     const client = this.client()
-    const existante = this.db
+    const existing = this.db
       .select()
       .from(vodUpload)
-      .where(and(eq(vodUpload.roomId, entree.roomId), eq(vodUpload.file, entree.file)))
+      .where(and(eq(vodUpload.roomId, input.roomId), eq(vodUpload.file, input.file)))
       .get()
 
-    // Déjà monté, et la taille n'a pas bougé : rien à refaire. Un rush ne se
-    // réécrit pas — s'il a changé de taille, c'est un autre fichier sous le même
-    // nom, et il repart de zéro.
+    // Already uploaded, and the size has not moved: nothing to redo. A rush is not
+    // rewritten — if its size changed, it is another file under the same name, and
+    // it starts from scratch.
     if (
-      existante != null &&
-      existante.state === 'termine' &&
-      existante.sizeBytes === entree.sizeBytes
+      existing != null &&
+      existing.state === 'termine' &&
+      existing.sizeBytes === input.sizeBytes
     ) {
-      return existante.s3UploadId == null
+      return existing.s3UploadId == null
         ? {
             mode: 'direct',
-            uploadId: existante.id,
-            url: client.presignerPut(existante.objectKey, DUREE_SIGNATURE_S),
-            expiresAt: new Date(Date.now() + DUREE_SIGNATURE_S * 1000).toISOString(),
+            uploadId: existing.id,
+            url: client.presignPut(existing.objectKey, SIGNATURE_TTL_S),
+            expiresAt: new Date(Date.now() + SIGNATURE_TTL_S * 1000).toISOString(),
           }
         : {
             mode: 'multipart',
-            uploadId: existante.id,
-            taillePartOctets: existante.partSizeBytes,
-            parts: Math.max(1, Math.ceil(existante.sizeBytes / existante.partSizeBytes)),
-            recues: this.partsDe(existante.partsJson).map((part) => part.n),
+            uploadId: existing.id,
+            taillePartOctets: existing.partSizeBytes,
+            parts: Math.max(1, Math.ceil(existing.sizeBytes / existing.partSizeBytes)),
+            recues: this.partsFrom(existing.partsJson).map((part) => part.n),
           }
     }
 
-    const taillePart = Math.max(5, this.politique().taillePartMo) * 1024 * 1024
-    const reprenable =
-      existante != null &&
-      existante.sizeBytes === entree.sizeBytes &&
-      existante.s3UploadId != null &&
-      existante.partSizeBytes === taillePart &&
-      existante.state !== 'termine'
+    const partSize = Math.max(5, this.policy().taillePartMo) * 1024 * 1024
+    const resumable =
+      existing != null &&
+      existing.sizeBytes === input.sizeBytes &&
+      existing.s3UploadId != null &&
+      existing.partSizeBytes === partSize &&
+      existing.state !== 'termine'
 
-    if (reprenable && existante != null) {
+    if (resumable && existing != null) {
       this.db
         .update(vodUpload)
         .set({ state: 'en-cours', lastProgressAt: this.nowIso(), lastError: null })
-        .where(eq(vodUpload.id, existante.id))
+        .where(eq(vodUpload.id, existing.id))
         .run()
       return {
         mode: 'multipart',
-        uploadId: existante.id,
-        taillePartOctets: existante.partSizeBytes,
-        parts: Math.max(1, Math.ceil(entree.sizeBytes / existante.partSizeBytes)),
-        recues: this.partsDe(existante.partsJson).map((part) => part.n),
+        uploadId: existing.id,
+        taillePartOctets: existing.partSizeBytes,
+        parts: Math.max(1, Math.ceil(input.sizeBytes / existing.partSizeBytes)),
+        recues: this.partsFrom(existing.partsJson).map((part) => part.n),
       }
     }
 
-    // Un plan qu'on remplace laisse un multipart ouvert chez le stockage : on
-    // l'abandonne tout de suite plutôt que d'attendre le ménage, sinon changer
-    // la taille de part dans la console facturerait un rush entier par essai.
-    if (existante?.s3UploadId != null) {
-      await this.abandonnerChezS3(existante.objectKey, existante.s3UploadId)
+    // A plan we replace leaves a multipart open at the storage: we abandon it
+    // right away rather than wait for the housekeeping, otherwise changing the
+    // part size in the console would bill a whole rush per attempt.
+    if (existing?.s3UploadId != null) {
+      await this.abortAtS3(existing.objectKey, existing.s3UploadId)
     }
 
-    const objectKey = this.cleObjet(entree.roomId, entree.file)
-    const direct = entree.kind === 'sidecar' || entree.sizeBytes <= taillePart
-    const id = existante?.id ?? ulid()
+    const objectKey = this.objectKeyFor(input.roomId, input.file)
+    const direct = input.kind === 'sidecar' || input.sizeBytes <= partSize
+    const id = existing?.id ?? ulid()
     const s3UploadId = direct
       ? null
-      : await client.creerMultipart(objectKey, this.typeDe(entree.file))
+      : await client.createMultipart(objectKey, this.contentTypeOf(input.file))
 
-    const ligne = {
+    const row = {
       id,
-      roomId: entree.roomId,
-      file: entree.file,
-      kind: entree.kind,
-      sessionId: entree.sessionId,
+      roomId: input.roomId,
+      file: input.file,
+      kind: input.kind,
+      sessionId: input.sessionId,
       objectKey,
-      sizeBytes: entree.sizeBytes,
-      partSizeBytes: taillePart,
+      sizeBytes: input.sizeBytes,
+      partSizeBytes: partSize,
       bytesSent: 0,
       s3UploadId,
       partsJson: '[]',
@@ -460,49 +458,49 @@ export class VodService {
       startedAt: this.nowIso(),
       lastProgressAt: this.nowIso(),
       finishedAt: null,
-      attempts: (existante?.attempts ?? 0) + 1,
+      attempts: (existing?.attempts ?? 0) + 1,
       lastError: null,
     }
     this.db
       .insert(vodUpload)
-      .values(ligne)
-      .onConflictDoUpdate({ target: vodUpload.id, set: ligne })
+      .values(row)
+      .onConflictDoUpdate({ target: vodUpload.id, set: row })
       .run()
 
     if (direct) {
       return {
         mode: 'direct',
         uploadId: id,
-        url: client.presignerPut(objectKey, DUREE_SIGNATURE_S),
-        expiresAt: new Date(Date.now() + DUREE_SIGNATURE_S * 1000).toISOString(),
+        url: client.presignPut(objectKey, SIGNATURE_TTL_S),
+        expiresAt: new Date(Date.now() + SIGNATURE_TTL_S * 1000).toISOString(),
       }
     }
     return {
       mode: 'multipart',
       uploadId: id,
-      taillePartOctets: taillePart,
-      parts: Math.max(1, Math.ceil(entree.sizeBytes / taillePart)),
+      taillePartOctets: partSize,
+      parts: Math.max(1, Math.ceil(input.sizeBytes / partSize)),
       recues: [],
     }
   }
 
-  /** Signe un lot de parts. Toujours à la demande : une adresse signée périme. */
+  /** Signs a batch of parts. Always on demand: a signed address expires. */
   parts(roomId: string, uploadId: string, numeros: number[]): SignedPart[] {
-    const ligne = this.ligne(roomId, uploadId)
-    if (ligne.s3UploadId == null) {
-      throw new StockageIncomplet('ce téléversement est direct : il n\'a pas de parts')
+    const row = this.row(roomId, uploadId)
+    if (row.s3UploadId == null) {
+      throw new IncompleteStorage('ce téléversement est direct : il n\'a pas de parts')
     }
     const client = this.client()
-    const expiresAt = new Date(Date.now() + DUREE_SIGNATURE_S * 1000).toISOString()
+    const expiresAt = new Date(Date.now() + SIGNATURE_TTL_S * 1000).toISOString()
     return numeros.map((numero) => ({
       numero,
-      url: client.presignerPart(ligne.objectKey, ligne.s3UploadId as string, numero, DUREE_SIGNATURE_S),
+      url: client.presignPart(row.objectKey, row.s3UploadId as string, numero, SIGNATURE_TTL_S),
       expiresAt,
     }))
   }
 
-  /** Une part est arrivée : on retient son ETag, sans lequel rien ne se recompose. */
-  progress(entree: {
+  /** A part has arrived: we keep its ETag, without which nothing reassembles. */
+  progress(input: {
     roomId: string
     uploadId: string
     numero: number
@@ -510,66 +508,66 @@ export class VodService {
     octets: number
     dureeMs: number
   }): void {
-    const ligne = this.ligne(entree.roomId, entree.uploadId)
-    const parts = this.partsDe(ligne.partsJson).filter((part) => part.n !== entree.numero)
-    parts.push({ n: entree.numero, etag: entree.etag })
+    const row = this.row(input.roomId, input.uploadId)
+    const parts = this.partsFrom(row.partsJson).filter((part) => part.n !== input.numero)
+    parts.push({ n: input.numero, etag: input.etag })
 
     this.db
       .update(vodUpload)
       .set({
         partsJson: JSON.stringify(parts.sort((a, b) => a.n - b.n)),
-        // Recompté sur les parts acquittées, pas cumulé : une part rejouée
-        // après échec ferait sinon dépasser la taille du fichier, et la console
-        // afficherait 112 %.
-        bytesSent: Math.min(ligne.sizeBytes, parts.length * ligne.partSizeBytes),
+        // Recounted from the acknowledged parts, not accumulated: a part replayed
+        // after a failure would otherwise exceed the file's size, and the console
+        // would show 112%.
+        bytesSent: Math.min(row.sizeBytes, parts.length * row.partSizeBytes),
         debitOctetsS:
-          entree.dureeMs > 0 ? Math.round((entree.octets * 1000) / entree.dureeMs) : null,
+          input.dureeMs > 0 ? Math.round((input.octets * 1000) / input.dureeMs) : null,
         lastProgressAt: this.nowIso(),
         state: 'en-cours',
         lastError: null,
       })
-      .where(eq(vodUpload.id, ligne.id))
+      .where(eq(vodUpload.id, row.id))
       .run()
   }
 
   async complete(roomId: string, uploadId: string): Promise<string> {
-    const ligne = this.ligne(roomId, uploadId)
-    if (ligne.s3UploadId != null) {
-      await this.client().terminerMultipart(
-        ligne.objectKey,
-        ligne.s3UploadId,
-        this.partsDe(ligne.partsJson),
+    const row = this.row(roomId, uploadId)
+    if (row.s3UploadId != null) {
+      await this.client().completeMultipart(
+        row.objectKey,
+        row.s3UploadId,
+        this.partsFrom(row.partsJson),
       )
     }
     this.db
       .update(vodUpload)
       .set({
         state: 'termine',
-        bytesSent: ligne.sizeBytes,
+        bytesSent: row.sizeBytes,
         finishedAt: this.nowIso(),
         lastProgressAt: this.nowIso(),
         lastError: null,
       })
-      .where(eq(vodUpload.id, ligne.id))
+      .where(eq(vodUpload.id, row.id))
       .run()
-    this.onLog('info', 'rush téléversé', { roomId, file: ligne.file, objectKey: ligne.objectKey })
-    return ligne.objectKey
+    this.onLog('info', 'rush téléversé', { roomId, file: row.file, objectKey: row.objectKey })
+    return row.objectKey
   }
 
   async abort(roomId: string, uploadId: string, raison: string): Promise<void> {
-    const ligne = this.ligne(roomId, uploadId)
-    if (ligne.s3UploadId != null) {
-      await this.abandonnerChezS3(ligne.objectKey, ligne.s3UploadId)
+    const row = this.row(roomId, uploadId)
+    if (row.s3UploadId != null) {
+      await this.abortAtS3(row.objectKey, row.s3UploadId)
     }
     this.db
       .update(vodUpload)
       .set({ state: 'abandonne', lastError: raison, finishedAt: this.nowIso() })
-      .where(eq(vodUpload.id, ligne.id))
+      .where(eq(vodUpload.id, row.id))
       .run()
   }
 
-  uploads(roomId: string | null, nomDeSalle: (id: string) => string | null): UploadView[] {
-    const lignes = roomId == null
+  uploads(roomId: string | null, roomName: (id: string) => string | null): UploadView[] {
+    const rows = roomId == null
       ? this.db.select().from(vodUpload).orderBy(desc(vodUpload.startedAt)).all()
       : this.db
           .select()
@@ -578,84 +576,83 @@ export class VodService {
           .orderBy(desc(vodUpload.startedAt))
           .all()
 
-    return lignes.map((ligne) => ({
-      roomId: ligne.roomId,
-      roomName: nomDeSalle(ligne.roomId),
-      file: ligne.file,
-      kind: ligne.kind as VodKind,
-      sessionId: ligne.sessionId,
-      objectKey: ligne.objectKey,
-      state: ligne.state as UploadView['state'],
-      sizeBytes: ligne.sizeBytes,
-      bytesSent: ligne.bytesSent,
-      debitOctetsS: ligne.debitOctetsS,
-      startedAt: ligne.startedAt,
-      lastProgressAt: ligne.lastProgressAt,
-      finishedAt: ligne.finishedAt,
-      attempts: ligne.attempts,
-      lastError: ligne.lastError,
+    return rows.map((row) => ({
+      roomId: row.roomId,
+      roomName: roomName(row.roomId),
+      file: row.file,
+      kind: row.kind as VodKind,
+      sessionId: row.sessionId,
+      objectKey: row.objectKey,
+      state: row.state as UploadView['state'],
+      sizeBytes: row.sizeBytes,
+      bytesSent: row.bytesSent,
+      debitOctetsS: row.debitOctetsS,
+      startedAt: row.startedAt,
+      lastProgressAt: row.lastProgressAt,
+      finishedAt: row.finishedAt,
+      attempts: row.attempts,
+      lastError: row.lastError,
     }))
   }
 
   /**
-   * Les téléversements d'**une** conférence, toutes salles et tous essais.
+   * The uploads of **one** talk, across every room and every attempt.
    *
-   * Sans filtre de salle : un créneau relayé, ou une salle renommée en cours de
-   * route, laisse des lignes sous deux identifiants, et n'en montrer qu'une
-   * moitié serait pire que de ne rien montrer. Le rush et son sidecar arrivent
-   * ensemble, les plus récents d'abord — ce qui met en tête l'essai en cours
-   * quand un premier a échoué.
+   * With no room filter: a relayed slot, or a room renamed along the way, leaves
+   * rows under two identifiers, and showing only half of them would be worse than
+   * showing nothing. The rush and its sidecar arrive together, most recent first —
+   * which puts the current attempt at the top when a first one failed.
    */
-  pourSession(sessionId: string, nomDeSalle: (id: string) => string | null): UploadView[] {
-    return this.uploads(null, nomDeSalle).filter((ligne) => ligne.sessionId === sessionId)
+  forSession(sessionId: string, roomName: (id: string) => string | null): UploadView[] {
+    return this.uploads(null, roomName).filter((row) => row.sessionId === sessionId)
   }
 
   /**
-   * Abandonne un multipart sans jamais lever.
+   * Abandons a multipart without ever throwing.
    *
-   * Le ménage tourne en fond : un stockage momentanément injoignable ne doit
-   * pas arrêter la boucle, et la ligne sera reprise au tour suivant. C'est la
-   * même règle que partout ailleurs ici.
+   * The housekeeping runs in the background: a momentarily unreachable storage
+   * must not stop the loop, and the row will be picked up on the next pass. It is
+   * the same rule as everywhere else here.
    */
-  private async abandonnerChezS3(objectKey: string, s3UploadId: string): Promise<void> {
+  private async abortAtS3(objectKey: string, s3UploadId: string): Promise<void> {
     try {
-      await this.client().abandonnerMultipart(objectKey, s3UploadId)
+      await this.client().abortMultipart(objectKey, s3UploadId)
     } catch (cause) {
-      const code = cause instanceof ErreurS3 ? cause.code : (cause as Error).message
+      const code = cause instanceof S3Error ? cause.code : (cause as Error).message
       this.onLog('warn', 'abandon du multipart refusé par le stockage', { objectKey, code })
     }
   }
 
-  private ligne(roomId: string, uploadId: string) {
-    const trouvee = this.db
+  private row(roomId: string, uploadId: string) {
+    const found = this.db
       .select()
       .from(vodUpload)
       .where(and(eq(vodUpload.id, uploadId), eq(vodUpload.roomId, roomId)))
       .get()
-    if (trouvee == null) {
-      throw new StockageIncomplet('téléversement inconnu — le redemander par `vod.begin`')
+    if (found == null) {
+      throw new IncompleteStorage('téléversement inconnu — le redemander par `vod.begin`')
     }
-    return trouvee
+    return found
   }
 
   /**
-   * Une passe de ménage : ce qui ne progresse plus est abandonné.
+   * One housekeeping pass: what no longer progresses is abandoned.
    *
-   * Une salle éteinte en pleine montée ne dit rien. Sans cette échéance, son
-   * multipart resterait ouvert — et facturé — indéfiniment, et personne ne le
-   * saurait avant la facture.
+   * A room switched off mid-upload says nothing. Without this deadline, its
+   * multipart would stay open — and billed — indefinitely, and nobody would know
+   * before the invoice.
    */
-  async menageUneFois(): Promise<number> {
-    if (!this.pret()) return 0
-    const limite = new Date(Date.now() - this.abandonMinutes * 60_000).toISOString()
-    const muettes = this.db
+  async housekeepingPass(): Promise<number> {
+    if (!this.ready()) return 0
+    const limit = new Date(Date.now() - this.abandonMinutes * 60_000).toISOString()
+    const silent = this.db
       .select()
       .from(vodUpload)
-      .where(and(eq(vodUpload.state, 'en-cours'), lt(vodUpload.lastProgressAt, limite)))
+      .where(and(eq(vodUpload.state, 'en-cours'), lt(vodUpload.lastProgressAt, limit)))
       .all()
 
-    for (const ligne of muettes) {
-      if (ligne.s3UploadId != null) await this.abandonnerChezS3(ligne.objectKey, ligne.s3UploadId)
+    for (const row of silent) {
+      if (row.s3UploadId != null) await this.abortAtS3(row.objectKey, row.s3UploadId)
       this.db
         .update(vodUpload)
         .set({
@@ -663,109 +660,109 @@ export class VodService {
           lastError: `sans nouvelle depuis ${this.abandonMinutes} min`,
           finishedAt: this.nowIso(),
         })
-        .where(eq(vodUpload.id, ligne.id))
+        .where(eq(vodUpload.id, row.id))
         .run()
     }
-    if (muettes.length > 0) {
-      this.onLog('info', 'téléversements muets abandonnés', { nombre: muettes.length })
+    if (silent.length > 0) {
+      this.onLog('info', 'téléversements muets abandonnés', { nombre: silent.length })
     }
-    return muettes.length
+    return silent.length
   }
 
   /**
-   * Les multiparts que plus personne ne réclame.
+   * The multiparts nobody claims any more.
    *
-   * Le registre ne connaît que ce que *ce* hub a ouvert. Une base recréée — le
-   * cas d'école — laisse chez le stockage des multiparts dont plus aucune ligne
-   * ne parle, et que rien n'abandonnerait jamais. On ne touche qu'à ceux de
-   * plus de vingt-quatre heures : en deçà, une salle est peut-être en train de
-   * les alimenter, et un rush de deux heures se monte lentement.
+   * The register only knows what *this* hub opened. A recreated database — the
+   * textbook case — leaves at the storage multiparts no row talks about any more,
+   * and that nothing would ever abandon. We only touch those older than
+   * twenty-four hours: below that, a room may still be feeding them, and a
+   * two-hour rush uploads slowly.
    */
-  async menageDesOrphelins(): Promise<number> {
-    if (!this.pret()) return 0
-    const prefixe = (this.settings.get().vodPrefix ?? '').replace(/^\/+|\/+$/g, '')
-    let ouverts
+  async sweepOrphans(): Promise<number> {
+    if (!this.ready()) return 0
+    const prefix = (this.settings.get().vodPrefix ?? '').replace(/^\/+|\/+$/g, '')
+    let open
     try {
-      ouverts = await this.client().listerMultiparts(prefixe === '' ? '' : `${prefixe}/`)
+      open = await this.client().listMultiparts(prefix === '' ? '' : `${prefix}/`)
     } catch (cause) {
-      const code = cause instanceof ErreurS3 ? cause.code : (cause as Error).message
+      const code = cause instanceof S3Error ? cause.code : (cause as Error).message
       this.onLog('warn', 'inventaire des téléversements ouverts impossible', { code })
       return 0
     }
 
-    const connus = new Set(
+    const known = new Set(
       this.db
         .select({ s3UploadId: vodUpload.s3UploadId })
         .from(vodUpload)
         .where(ne(vodUpload.state, 'termine'))
         .all()
-        .map((ligne) => ligne.s3UploadId)
-        .filter((valeur): valeur is string => valeur != null),
+        .map((row) => row.s3UploadId)
+        .filter((value): value is string => value != null),
     )
 
-    const limite = Date.now() - EXPIRATION_MULTIPART_ORPHELIN_MS
-    let abandonnes = 0
-    for (const ouvert of ouverts) {
-      if (connus.has(ouvert.uploadId)) continue
-      // Sans date d'ouverture on ne tranche pas : mieux vaut laisser traîner un
-      // multipart que d'en supprimer un qu'une salle alimente en ce moment.
-      const ouvertA = ouvert.initiatedAt == null ? null : Date.parse(ouvert.initiatedAt)
-      if (ouvertA == null || Number.isNaN(ouvertA) || ouvertA > limite) continue
-      await this.abandonnerChezS3(ouvert.key, ouvert.uploadId)
-      abandonnes += 1
+    const limit = Date.now() - ORPHAN_MULTIPART_MS
+    let abandoned = 0
+    for (const item of open) {
+      if (known.has(item.uploadId)) continue
+      // With no opening date we do not decide: better to leave a multipart lying
+      // around than delete one a room is feeding right now.
+      const openedAt = item.initiatedAt == null ? null : Date.parse(item.initiatedAt)
+      if (openedAt == null || Number.isNaN(openedAt) || openedAt > limit) continue
+      await this.abortAtS3(item.key, item.uploadId)
+      abandoned += 1
     }
-    if (abandonnes > 0) {
-      this.onLog('info', 'multiparts orphelins abandonnés', { nombre: abandonnes })
+    if (abandoned > 0) {
+      this.onLog('info', 'multiparts orphelins abandonnés', { nombre: abandoned })
     }
-    return abandonnes
+    return abandoned
   }
 
   /**
-   * Démarre la boucle de ménage.
+   * Starts the housekeeping loop.
    *
-   * Dix minutes, et non quinze secondes comme la supervision : rien ici ne se
-   * regarde en direct, et interroger le stockage en boucle coûterait des
-   * requêtes facturées pour un problème qui se mesure en heures.
+   * Ten minutes, and not fifteen seconds like supervision: nothing here is watched
+   * live, and querying the storage in a loop would cost billed requests for a
+   * problem measured in hours.
    */
-  demarrerMenage(intervalMs = 600_000): void {
-    if (this.menage != null) return
-    let enCours = false
-    const passe = (): void => {
-      if (enCours) return
-      enCours = true
-      void this.menageUneFois()
+  startHousekeeping(intervalMs = 600_000): void {
+    if (this.housekeeping != null) return
+    let running = false
+    const pass = (): void => {
+      if (running) return
+      running = true
+      void this.housekeepingPass()
         .catch(() => {})
         .finally(() => {
-          enCours = false
+          running = false
         })
     }
-    this.menage = setInterval(passe, intervalMs)
-    this.menage.unref?.()
+    this.housekeeping = setInterval(pass, intervalMs)
+    this.housekeeping.unref?.()
   }
 
-  arreterMenage(): void {
-    if (this.menage != null) clearInterval(this.menage)
-    this.menage = null
+  stopHousekeeping(): void {
+    if (this.housekeeping != null) clearInterval(this.housekeeping)
+    this.housekeeping = null
   }
 }
 
 /**
- * Le vrai motif d'un échec réseau, sous la couche du transport.
+ * The real reason for a network failure, under the transport layer.
  *
- * Le code errno distingue un service éteint (`ECONNREFUSED`) d'un nom qui ne
- * résout pas (`ENOTFOUND`), d'un certificat qu'on ne sait pas vérifier
- * (`UNABLE_TO_GET_ISSUER_CERT_LOCALLY`) et d'un pare-feu qui laisse pendre
- * (`ETIMEDOUT`). Quatre pannes, quatre endroits différents où aller regarder.
+ * The errno code tells a switched-off service (`ECONNREFUSED`) from a name that
+ * does not resolve (`ENOTFOUND`), from a certificate we cannot verify
+ * (`UNABLE_TO_GET_ISSUER_CERT_LOCALLY`) and from a firewall that leaves it
+ * hanging (`ETIMEDOUT`). Four failures, four different places to go and look.
  */
-function causeLisible(erreur: unknown): string {
-  const chaine: string[] = []
-  let courant: unknown = erreur
-  for (let profondeur = 0; courant != null && profondeur < 4; profondeur += 1) {
-    const noeud = courant as { message?: string; code?: string; cause?: unknown }
-    const code = typeof noeud.code === 'string' ? noeud.code : null
-    if (code != null) chaine.push(code)
-    else if (typeof noeud.message === 'string' && noeud.message !== '') chaine.push(noeud.message)
-    courant = noeud.cause
+function readableCause(error: unknown): string {
+  const chain: string[] = []
+  let current: unknown = error
+  for (let depth = 0; current != null && depth < 4; depth += 1) {
+    const node = current as { message?: string; code?: string; cause?: unknown }
+    const code = typeof node.code === 'string' ? node.code : null
+    if (code != null) chain.push(code)
+    else if (typeof node.message === 'string' && node.message !== '') chain.push(node.message)
+    current = node.cause
   }
-  return chaine.length === 0 ? String(erreur) : chaine.join(' — ')
+  return chain.length === 0 ? String(error) : chain.join(' — ')
 }

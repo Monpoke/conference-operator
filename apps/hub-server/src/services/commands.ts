@@ -4,7 +4,7 @@ import { commandSchema, type Command, type CommandPayloadInput } from '@cloudnor
 import { command } from '@cloudnord/db/hub'
 import type { HubDatabase } from '../db.js'
 
-/** Enveloppe interne : la commande plus sa cible, pour filtrer le fanout. */
+/** Internal envelope: the command plus its target, to filter the fanout. */
 interface Dispatched {
   roomId: string | null
   command: Command
@@ -13,48 +13,41 @@ interface Dispatched {
 const CHANNEL = 'command'
 
 /**
- * Bus de commandes descendantes.
+ * Downstream command bus.
  *
- * Le fanout est un simple `EventEmitter` en process : le hub tourne en instance
- * unique (contrainte assumée du choix SQLite), donc toutes les connexions
- * WebSocket vivent dans le même processus. Pas de Redis à maintenir pour
- * diffuser vers trois salles.
+ * The fanout is a plain in-process `EventEmitter`: the hub runs as a single
+ * instance (an assumed constraint of the SQLite choice), so every WebSocket
+ * connection lives in the same process. No Redis to maintain in order to
+ * broadcast to three rooms.
  *
- * Un seul canal pour tout le monde, avec filtrage par salle à la consommation :
- * une diffusion globale doit atteindre les trois salles, et un canal par salle
- * obligerait le publieur à connaître la liste des salles connectées.
+ * One channel for everyone, with filtering by room at consumption time: a global
+ * broadcast must reach all three rooms, and one channel per room would force the
+ * publisher to know the list of connected rooms.
  */
 export class CommandService {
   private readonly emitter = new EventEmitter()
 
   constructor(
     private readonly db: HubDatabase,
-    /** Datation des commandes : c'est elle qui sert au filtre d'obsolescence. */
+    /** Command timestamping: it is what the staleness filter works from. */
     private readonly now: () => number = Date.now,
   ) {
-    // Trois salles, plus les écrans et l'admin : la limite par défaut de 10 est vite atteinte.
+    // Three rooms, plus the screens and the admin console: the default limit of
+    // 10 is reached quickly.
     this.emitter.setMaxListeners(64)
   }
 
   /**
-   * Publie une commande. `roomId === null` diffuse à toutes les salles.
+   * Banners that have already been on air, most recent first.
    *
-   * Le `seq` est attribué par la base (clé auto-incrémentée, globalement
-   * monotone) et sert d'identifiant d'événement oRPC : c'est lui que le client
-   * renvoie en `lastEventId` pour reprendre après une coupure.
+   * Read from the commands issued rather than copied elsewhere: they are already
+   * persisted, dated and ordered. A second table could only diverge from what
+   * actually went out to the rooms.
+   *
+   * Removals (`message: null`) are not history — you do not put "nothing" back on
+   * air — but the most recent one says **which** banner is still shown.
    */
-  /**
-   * Bandeaux déjà passés à l'antenne, du plus récent au plus ancien.
-   *
-   * Lus dans les commandes émises plutôt que recopiés ailleurs : elles sont
-   * déjà persistées, datées et ordonnées. Une seconde table ne pourrait que
-   * diverger de ce qui est réellement parti dans les salles.
-   *
-   * Les retraits (`message: null`) ne sont pas de l'historique — on ne remet
-   * pas « rien » à l'antenne — mais le plus récent dit **lequel** des bandeaux
-   * est encore affiché.
-   */
-  bandeauxPasses(roomId: string | null, limit: number): {
+  pastBanners(roomId: string | null, limit: number): {
     seq: number
     roomId: string | null
     payload: { type: 'overlay.set'; message: { text: string; level: string } | null }
@@ -67,18 +60,25 @@ export class CommandService {
       .orderBy(desc(command.seq))
       .limit(limit * 2)
       .all()
-      .filter((ligne) => roomId == null || ligne.roomId == null || ligne.roomId === roomId)
-      .map((ligne) => ({
-        seq: ligne.seq,
-        roomId: ligne.roomId,
-        payload: JSON.parse(ligne.payloadJson) as {
+      .filter((row) => roomId == null || row.roomId == null || row.roomId === roomId)
+      .map((row) => ({
+        seq: row.seq,
+        roomId: row.roomId,
+        payload: JSON.parse(row.payloadJson) as {
           type: 'overlay.set'
           message: { text: string; level: string } | null
         },
-        issuedAt: ligne.issuedAt,
+        issuedAt: row.issuedAt,
       }))
   }
 
+  /**
+   * Publishes a command. `roomId === null` broadcasts to every room.
+   *
+   * The `seq` is assigned by the database (auto-incremented key, globally
+   * monotonic) and acts as the oRPC event identifier: it is what the client sends
+   * back as `lastEventId` to resume after an outage.
+   */
   publish(
     roomId: string | null,
     payload: CommandPayloadInput,
@@ -102,7 +102,7 @@ export class CommandService {
     return issued
   }
 
-  /** Commandes de la salle postérieures à `sinceSeq`, diffusions globales comprises. */
+  /** A room's commands after `sinceSeq`, global broadcasts included. */
   backlog(roomId: string, sinceSeq: number): Command[] {
     return this.db
       .select()
@@ -123,14 +123,14 @@ export class CommandService {
   }
 
   /**
-   * Flux d'une salle : rattrapage puis temps réel, par le même chemin.
+   * A room's flow: catch-up then real time, through the same path.
    *
-   * `sinceSeq` vient du `lastEventId` fourni par oRPC à la reconnexion — le
-   * client n'a aucun compteur de rattrapage à gérer lui-même.
+   * `sinceSeq` comes from the `lastEventId` oRPC provides on reconnection — the
+   * client has no catch-up counter to manage itself.
    */
   async *stream(roomId: string, sinceSeq: number, signal?: AbortSignal): AsyncGenerator<Command> {
-    // S'abonner *avant* de lire le backlog : une commande publiée entre les deux
-    // tomberait sinon dans un trou dont personne ne se rendrait compte.
+    // Subscribe *before* reading the backlog: a command published between the two
+    // would otherwise fall into a gap nobody would notice.
     const live = on(this.emitter, CHANNEL, { signal })
 
     let lastSeq = sinceSeq
@@ -143,13 +143,13 @@ export class CommandService {
       for await (const [event] of live) {
         const { roomId: target, command: issued } = event as Dispatched
         if (target != null && target !== roomId) continue
-        // Le backlog a pu déjà livrer cette commande : ne pas la répéter.
+        // The backlog may already have delivered this command: do not repeat it.
         if (issued.seq <= lastSeq) continue
         lastSeq = issued.seq
         yield issued
       }
     } catch (cause) {
-      // `on()` rejette avec AbortError à la déconnexion : c'est une fin normale.
+      // `on()` rejects with AbortError on disconnection: that is a normal end.
       if ((cause as Error)?.name !== 'AbortError') throw cause
     }
   }

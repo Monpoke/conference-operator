@@ -21,50 +21,49 @@ import { hubSetting, sessionState } from '@cloudnord/db/hub'
 import type { Program } from '@cloudnord/program'
 import type { HubDatabase } from '../db.js'
 
-const CLE_REGLAGES = 'hub'
+const SETTINGS_KEY = 'hub'
 
 /**
- * Réglages du hub.
+ * The hub's settings.
  *
- * Lus à chaque usage plutôt que mis en cache : ils se modifient en cours
- * d'événement, et une valeur périmée de dix secondes sur une règle de clôture
- * automatique serait déroutante pour qui vient de la changer.
+ * Read on every use rather than cached: they get changed during the event, and a
+ * value ten seconds out of date on an automatic-closing rule would be confusing
+ * for whoever has just changed it.
  */
 export class SettingsService {
   constructor(private readonly db: HubDatabase) {}
 
   get(): HubSettings {
-    const row = this.db.select().from(hubSetting).where(eq(hubSetting.key, CLE_REGLAGES)).get()
+    const row = this.db.select().from(hubSetting).where(eq(hubSetting.key, SETTINGS_KEY)).get()
     if (row == null) return hubSettingsSchema.parse({})
     const parsed = hubSettingsSchema.safeParse(JSON.parse(row.valueJson))
-    // Réglages corrompus : on retombe sur les valeurs par défaut plutôt que de
-    // faire échouer tout ce qui en dépend.
+    // Corrupted settings: we fall back on the defaults rather than fail
+    // everything that depends on them.
     return parsed.success ? parsed.data : hubSettingsSchema.parse({})
   }
 
   update(patch: Partial<HubSettingsInput>): HubSettings {
-    const courant = this.get()
+    const current = this.get()
     /**
-     * La politique VOD se fusionne champ par champ, pas en bloc.
+     * The VOD policy merges field by field, not as a block.
      *
-     * Partout ailleurs, « la valeur envoyée est la valeur » : `socialLinks` est
-     * une liste, et n'en envoyer qu'un élément veut bien dire qu'il n'en reste
-     * qu'un. Une politique, non — c'est un panneau de réglages, et un
-     * formulaire n'envoie que ce qu'il porte. Fusionnée à plat, elle repassait
-     * par ses valeurs par défaut : corriger le plafond de débit en cours
-     * d'événement rendait au passage `actif` à faux et la taille de part à huit
-     * mégaoctets, sans que rien ne le dise. Un réglage qui se défait tout seul
-     * est pire qu'un réglage absent.
+     * Everywhere else, "the value sent is the value": `socialLinks` is a list, and
+     * sending only one element really does mean only one is left. A policy, no —
+     * it is a settings panel, and a form only sends what it carries. Merged flat,
+     * it went back through its default values: correcting the throughput ceiling
+     * during the event set `actif` back to false and the part size back to eight
+     * megabytes along the way, with nothing to say so. A setting that undoes
+     * itself is worse than a missing setting.
      */
     const vodPolitique =
       patch.vodPolitique == null
-        ? courant.vodPolitique
-        : { ...courant.vodPolitique, ...patch.vodPolitique }
+        ? current.vodPolitique
+        : { ...current.vodPolitique, ...patch.vodPolitique }
 
-    const suivant = hubSettingsSchema.parse({ ...courant, ...patch, vodPolitique })
+    const next = hubSettingsSchema.parse({ ...current, ...patch, vodPolitique })
     const values = {
-      key: CLE_REGLAGES,
-      valueJson: JSON.stringify(suivant),
+      key: SETTINGS_KEY,
+      valueJson: JSON.stringify(next),
       updatedAt: new Date().toISOString(),
     }
     this.db
@@ -72,40 +71,40 @@ export class SettingsService {
       .values(values)
       .onConflictDoUpdate({ target: hubSetting.key, set: values })
       .run()
-    return suivant
+    return next
   }
 }
 
 /**
- * Geste refusé par le cycle de vie.
+ * A gesture refused by the lifecycle.
  *
- * Une erreur de domaine, et pas une `ORPCError` : le service se teste et
- * s'appelle sans passer par le transport, et c'est le routeur qui sait quel
- * code HTTP dire à qui. Le message, lui, est déjà celui qu'un opérateur peut
- * lire — il vient de la table partagée avec la régie.
+ * A domain error, and not an `ORPCError`: the service is tested and called
+ * without going through the transport, and it is the router that knows which
+ * HTTP code to tell whom. The message, on the other hand, is already one an
+ * operator can read — it comes from the table shared with the control app.
  */
-export class TransitionRefusee extends Error {
+export class TransitionRefused extends Error {
   constructor(
-    readonly depuis: SessionStatus,
+    readonly from: SessionStatus,
     readonly action: SessionAction,
     message: string,
   ) {
     super(message)
-    this.name = 'TransitionRefusee'
+    this.name = 'TransitionRefused'
   }
 }
 
 export interface SweepResult {
-  /** Sessions clôturées par la règle horaire lors de cette passe. */
+  /** Sessions closed by the scheduling rule during this pass. */
   ended: SessionState[]
 }
 
 /**
- * Cycle de vie des conférences.
+ * Talk lifecycle.
  *
- * Deux chemins mènent au même état : une décision d'opérateur, ou la règle
- * horaire. Le second existe parce que personne ne pense à appuyer sur
- * « Terminer » quand un talk déborde et que la salle applaudit.
+ * Two paths lead to the same state: an operator's decision, or the scheduling
+ * rule. The second exists because nobody thinks of pressing "End" when a talk
+ * overruns and the room is applauding.
  */
 export class SessionStateService {
   constructor(
@@ -115,33 +114,33 @@ export class SessionStateService {
   ) {}
 
   /**
-   * États enrichis du programme.
+   * States enriched with the program.
    *
-   * Le titre et les horaires prévus sont résolus ici : la console ne détient
-   * pas le programme, et un identifiant opaque ne se lit pas.
+   * The title and the scheduled times are resolved here: the console does not
+   * hold the program, and an opaque identifier cannot be read.
    *
-   * Le temps restant aussi, et pour une raison plus forte : le calculer dans le
-   * navigateur revenait à le soustraire de l'heure du poste, alors que l'heure
-   * qui fait foi est celle du hub — laquelle peut être simulée. La console
-   * affichait donc « +6010 min » sur un talk parfaitement à l'heure dès qu'on
-   * déplaçait l'horloge depuis le menu Développement.
+   * The remaining time too, and for a stronger reason: computing it in the
+   * browser meant subtracting it from the machine's time, whereas the
+   * authoritative time is the hub's — which may be simulated. So the console
+   * showed "+6010 min" on a perfectly on-time talk as soon as the clock was moved
+   * from the Development menu.
    */
   views(roomId: string | null, program: Program | null): SessionStateView[] {
-    const parId = new Map((program?.sessions ?? []).map((session) => [session.id, session]))
-    const sallesParId = new Map((program?.rooms ?? []).map((salle) => [salle.id, salle.name]))
-    const maintenant = this.now()
+    const byId = new Map((program?.sessions ?? []).map((session) => [session.id, session]))
+    const roomNames = new Map((program?.rooms ?? []).map((room) => [room.id, room.name]))
+    const now = this.now()
 
-    return this.states(roomId).map((etat) => {
-      const session = parId.get(etat.sessionId)
+    return this.states(roomId).map((state) => {
+      const session = byId.get(state.sessionId)
       return sessionStateViewSchema.parse({
-        ...etat,
+        ...state,
         title: session?.title ?? null,
-        roomName: etat.roomId == null ? null : (sallesParId.get(etat.roomId) ?? etat.roomId),
+        roomName: state.roomId == null ? null : (roomNames.get(state.roomId) ?? state.roomId),
         scheduledStartsAt: session?.startsAt ?? null,
         scheduledEndsAt: session?.endsAt ?? null,
-        // `null` sur un créneau de fin inconnue, qu'on ne veut pas afficher
-        // comme « 0 min ».
-        remainingMs: session?.endsAtMs == null ? null : session.endsAtMs - maintenant,
+        // `null` on a slot with an unknown end, which we do not want to show as
+        // "0 min".
+        remainingMs: session?.endsAtMs == null ? null : session.endsAtMs - now,
       })
     })
   }
@@ -157,7 +156,7 @@ export class SessionStateService {
       )
       .all()
       .map(toState)
-      .filter((etat) => this.applicable(etat))
+      .filter((state) => this.applicable(state))
   }
 
   get(sessionId: string): SessionState | null {
@@ -167,29 +166,29 @@ export class SessionStateService {
       .where(eq(sessionState.sessionId, sessionId))
       .get()
     if (row == null) return null
-    const etat = toState(row)
-    return this.applicable(etat) ? etat : null
+    const state = toState(row)
+    return this.applicable(state) ? state : null
   }
 
   /**
-   * Une décision prise *après* l'instant du hub ne s'applique pas.
+   * A decision taken *after* the hub's instant does not apply.
    *
-   * Elle appartient à une journée qui n'a pas encore eu lieu — ce qui n'arrive
-   * qu'en développement, quand on recule l'horloge depuis la console. Le talk
-   * de 09:50 lancé lors d'un essai à 11 h restait « en cours » en revenant à
-   * 08:38 : la régie affichait « en cours » et deux heures de compte à rebours
-   * sur une conférence que personne n'avait démarrée.
+   * It belongs to a day that has not happened yet — which only occurs in
+   * development, when the clock is wound back from the console. The 09:50 talk
+   * launched during an 11:00 rehearsal stayed "running" when going back to 08:38:
+   * the control app showed "running" and two hours of countdown on a talk nobody
+   * had started.
    *
-   * On filtre à la lecture plutôt que d'effacer la ligne : ré-avancer l'horloge
-   * doit retrouver la journée exactement là où on l'avait laissée. Sous une
-   * horloge réelle, rien ne change — aucune décision n'est datée du futur.
+   * We filter on read rather than delete the row: winding the clock forward again
+   * must find the day exactly where it was left. Under a real clock nothing
+   * changes — no decision is dated in the future.
    *
-   * Une date illisible reste applicable : un état qu'on ne sait pas situer dans
-   * le temps est un problème de données, pas une raison de le faire disparaître.
+   * An unreadable date stays applicable: a state we cannot place in time is a
+   * data problem, not a reason to make it disappear.
    */
-  private applicable(etat: SessionState): boolean {
-    const decide = etat.status === 'ended' ? etat.endedAt : etat.startedAt
-    return isDecisionApplicable(decide == null ? null : Date.parse(decide), this.now())
+  private applicable(state: SessionState): boolean {
+    const decided = state.status === 'ended' ? state.endedAt : state.startedAt
+    return isDecisionApplicable(decided == null ? null : Date.parse(decided), this.now())
   }
 
   start(sessionId: string, roomId: string | null, decidedBy: string): SessionState {
@@ -200,19 +199,19 @@ export class SessionStateService {
     return this.write(sessionId, roomId, 'end', decidedBy)
   }
 
-  /** Ramène une conférence à « à venir » — pour corriger une fausse manœuvre. */
+  /** Brings a talk back to "upcoming" — to correct a slip. */
   reset(sessionId: string): void {
     this.db.delete(sessionState).where(eq(sessionState.sessionId, sessionId)).run()
   }
 
   /**
-   * Applique un geste, si le cycle de vie l'autorise depuis l'état constaté.
+   * Applies a gesture, if the lifecycle allows it from the observed state.
    *
-   * Le service prend une **action** et non un statut : c'est la table partagée
-   * qui dit ce que l'action produit, et c'est elle qui refuse. Sans ce
-   * passage obligé, la régie grisait « Terminer » sur une conférence non lancée
-   * pendant que cette procédure l'acceptait — on écrivait `ended` sur un talk
-   * qui ne s'était pas tenu, et l'historique mentait sans que rien ne casse.
+   * The service takes an **action** and not a status: it is the shared table that
+   * says what the action produces, and it is the one that refuses. Without that
+   * mandatory step, the control app greyed out "End" on a talk that had not been
+   * launched while this procedure accepted it — we wrote `ended` on a talk that
+   * had not happened, and the history lied without anything breaking.
    */
   private write(
     sessionId: string,
@@ -220,25 +219,25 @@ export class SessionStateService {
     action: SessionAction,
     decidedBy: string,
   ): SessionState {
-    const maintenant = new Date(this.now()).toISOString()
-    const existant = this.get(sessionId)
-    const depuis = existant?.status ?? 'scheduled'
+    const now = new Date(this.now()).toISOString()
+    const existing = this.get(sessionId)
+    const from = existing?.status ?? 'scheduled'
 
-    const status = statusAfter(depuis, action)
+    const status = statusAfter(from, action)
     if (status == null) {
-      throw new TransitionRefusee(depuis, action, transitionRefusal(depuis, action) ?? 'Geste refusé')
+      throw new TransitionRefused(from, action, transitionRefusal(from, action) ?? 'Geste refusé')
     }
 
     const values = {
       sessionId,
       roomId,
       status,
-      // On conserve l'heure de début réelle : la réécrire à la clôture ferait
-      // perdre la durée effective du talk.
-      startedAt: status === 'running' ? maintenant : (existant?.startedAt ?? null),
-      endedAt: status === 'ended' ? maintenant : null,
+      // We keep the real start time: rewriting it at closing time would lose the
+      // talk's effective duration.
+      startedAt: status === 'running' ? now : (existing?.startedAt ?? null),
+      endedAt: status === 'ended' ? now : null,
       decidedBy,
-      updatedAt: maintenant,
+      updatedAt: now,
     }
 
     this.db
@@ -251,32 +250,30 @@ export class SessionStateService {
   }
 
   /**
-   * Clôture les conférences dont le créneau est dépassé.
+   * Closes the talks whose slot is over.
    *
-   * N'agit que sur ce qui est explicitement **en cours** : une session jamais
-   * démarrée reste « à venir » plutôt que d'être déclarée terminée. Affirmer
-   * qu'un talk s'est tenu alors que personne ne l'a lancé serait un mensonge
-   * dans l'historique, et fausserait la VOD.
+   * Only acts on what is explicitly **running**: a session never started stays
+   * "upcoming" rather than being declared ended. Claiming a talk took place when
+   * nobody launched it would be a lie in the history, and would skew the VOD.
    */
   sweep(program: Program | null): SweepResult {
-    const reglages = this.settings.get()
-    if (!reglages.autoEndEnabled || program == null) return { ended: [] }
+    const settings = this.settings.get()
+    if (!settings.autoEndEnabled || program == null) return { ended: [] }
 
-    const reglage = { enabled: true, graceMinutes: reglages.autoEndGraceMinutes }
-    const maintenant = this.now()
+    const setting = { enabled: true, graceMinutes: settings.autoEndGraceMinutes }
+    const now = this.now()
     const ended: SessionState[] = []
 
-    for (const etat of this.states(null)) {
+    for (const state of this.states(null)) {
       /**
-       * La règle vit dans `@cloudnord/room-state`, et la fin qu'elle lit est
-       * celle du dépassement : heure explicite, sinon durée, sinon début du
-       * créneau suivant. Les deux règles parlaient d'horaires différents, et
-       * une salle pouvait rester en dépassement toute la journée sans que ce
-       * balayage ne la voie jamais.
+       * The rule lives in `@cloudnord/room-state`, and the end it reads is the
+       * overrun's: explicit time, else duration, else start of the next slot. The
+       * two rules used to speak of different times, and a room could stay in
+       * overrun all day without this sweep ever seeing it.
        */
-      const fin = effectiveEndInProgram(program, etat.sessionId)
-      if (!shouldAutoEnd(fin, etat.status, maintenant, reglage)) continue
-      ended.push(this.end(etat.sessionId, etat.roomId, 'auto'))
+      const end = effectiveEndInProgram(program, state.sessionId)
+      if (!shouldAutoEnd(end, state.status, now, setting)) continue
+      ended.push(this.end(state.sessionId, state.roomId, 'auto'))
     }
     return { ended }
   }

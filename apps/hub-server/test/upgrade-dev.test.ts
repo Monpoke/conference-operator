@@ -3,24 +3,24 @@ import { WebSocket } from 'ws'
 import { createHub, type Hub } from '../src/server.js'
 
 /**
- * Le transport des salles survit au proxy Vite.
+ * The rooms' transport survives the Vite proxy.
  *
- * `@fastify/http-proxy` pose son propre écouteur `upgrade` et route **tout** ce
- * qui arrive par le routeur Fastify — `/ws` compris, qui n'y a pas de route.
- * Il part donc en 404, et le proxy détruit son socket à la fin de la réponse :
- * aucune salle ne peut se connecter tant qu'il est monté.
+ * `@fastify/http-proxy` installs its own `upgrade` listener and routes
+ * **everything** that arrives through the Fastify router — `/ws` included, which
+ * has no route there. It therefore leaves as a 404, and the proxy destroys its
+ * socket at the end of the response: no room can connect while it is mounted.
  *
- * Le défaut a vécu longtemps sans se voir, parce que le proxy ne se montait
- * qu'en l'absence de bundle construit — c'est-à-dire sur un dépôt fraîchement
- * cloné, où personne ne s'étonne qu'une salle mette du temps à joindre le hub.
- * Il est devenu permanent le jour où Vite est passé devant le bundle en
- * développement, ce qui est le bon ordre pour tout le reste.
+ * The defect lived a long time without being seen, because the proxy was only
+ * mounted in the absence of a built bundle — that is, on a freshly cloned
+ * repository, where nobody is surprised that a room takes a while to reach the
+ * hub. It became permanent the day Vite went in front of the bundle in
+ * development, which is the right order for everything else.
  */
 
 let hub: Hub
 let port: number
 
-async function demarrer(mode: 'dev' | 'production'): Promise<void> {
+async function start(mode: 'dev' | 'production'): Promise<void> {
   hub = await createHub({
     port: 0,
     host: '127.0.0.1',
@@ -35,14 +35,14 @@ async function demarrer(mode: 'dev' | 'production'): Promise<void> {
   port = typeof address === 'object' && address != null ? address.port : 0
 }
 
-/** Ouvre un WebSocket et dit ce qui s'est passé : accepté, ou coupé. */
-async function tenter(chemin: string): Promise<'ouvert' | 'coupé'> {
-  const socket = new WebSocket(`ws://127.0.0.1:${port}${chemin}`)
+/** Opens a WebSocket and says what happened: accepted, or cut. */
+async function attempt(path: string): Promise<'open' | 'cut'> {
+  const socket = new WebSocket(`ws://127.0.0.1:${port}${path}`)
   try {
-    return await new Promise<'ouvert' | 'coupé'>((resolve) => {
-      socket.on('open', () => resolve('ouvert'))
-      socket.on('error', () => resolve('coupé'))
-      socket.on('close', () => resolve('coupé'))
+    return await new Promise<'open' | 'cut'>((resolve) => {
+      socket.on('open', () => resolve('open'))
+      socket.on('error', () => resolve('cut'))
+      socket.on('close', () => resolve('cut'))
     })
   } finally {
     socket.close()
@@ -53,20 +53,20 @@ afterEach(async () => {
   await hub.close()
 })
 
-describe('upgrade WebSocket', () => {
-  it('accepte le transport des salles en développement, proxy monté', async () => {
-    await demarrer('dev')
-    expect(await tenter('/ws')).toBe('ouvert')
+describe('WebSocket upgrade', () => {
+  it('accepts the rooms transport in development, with the proxy mounted', async () => {
+    await start('dev')
+    expect(await attempt('/ws')).toBe('open')
   })
 
-  it('l’accepte aussi en production, où aucun proxy n’est monté', async () => {
-    await demarrer('production')
-    expect(await tenter('/ws')).toBe('ouvert')
+  it('accepts it in production too, where no proxy is mounted', async () => {
+    await start('production')
+    expect(await attempt('/ws')).toBe('open')
   })
 
-  it('coupe une adresse sans destinataire en production', async () => {
-    // Rien d'autre n'écoute : un socket laissé ouvert fuirait.
-    await demarrer('production')
-    expect(await tenter('/inconnu')).toBe('coupé')
+  it('cuts an address with no recipient in production', async () => {
+    // Nothing else is listening: a socket left open would leak.
+    await start('production')
+    expect(await attempt('/inconnu')).toBe('cut')
   })
 })

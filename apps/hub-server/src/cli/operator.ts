@@ -1,10 +1,10 @@
 /**
- * Création d'un compte opérateur.
+ * Creation of an operator account.
  *
- * L'inscription publique est fermée sur le hub : sans cette commande, personne
- * ne peut ouvrir la console, et donc ni approuver une machine ni modérer.
+ * Public sign-up is closed on the hub: without this command, nobody can open the
+ * console, and so nobody can approve a machine or moderate.
  *
- *   pnpm --filter @cloudnord/hub-server operator <email> "<nom>" <mot-de-passe>
+ *   pnpm --filter @cloudnord/hub-server operator <email> "<name>" <password>
  */
 import { loadConfig } from '../config.js'
 import { openHubDatabase } from '../db.js'
@@ -27,7 +27,7 @@ if (password.length < 8) {
 const config = loadConfig()
 const { sqlite } = openHubDatabase(config.databasePath)
 
-// Mêmes options que le serveur : la commande écrit dans la base qu'il lira.
+// The same options as the server: the command writes into the database it reads.
 const options = createAuthOptions({
   sqlite,
   secret: config.authSecret,

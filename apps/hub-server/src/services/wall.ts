@@ -19,26 +19,26 @@ export interface PostInput {
   text: string
   roomId?: string | null
   sessionId?: string | null
-  /** Identifiant du post chez la source, pour dédupliquer les relivraisons. */
+  /** The post's identifier at the source, to deduplicate redeliveries. */
   externalId?: string | null
   authorHandle?: string | null
 }
 
 /**
- * Mur de commentaires et modération.
+ * Comment wall and moderation.
  *
- * Toutes les sources — formulaire, Bluesky, Mastodon, X — convergent vers la
- * même file `pending`. Rien n'atteint un écran de salle sans passer par une
- * décision humaine : c'est projeté devant le public.
+ * Every source — form, Bluesky, Mastodon, X — converges on the same `pending`
+ * queue. Nothing reaches a room screen without going through a human decision:
+ * it is projected in front of the audience.
  */
 export class WallService {
   private readonly emitter = new EventEmitter()
   /**
-   * Instantané des messages approuvés, tenu en mémoire.
+   * In-memory snapshot of the approved messages.
    *
-   * Le mur public est la seule charge non bornée du hub (quelques centaines de
-   * mobiles quand le QR est à l'écran). On ne le sert donc pas par requête SQL :
-   * on recalcule à l'écriture, on lit depuis la mémoire.
+   * The public wall is the hub's only unbounded load (a few hundred phones when
+   * the QR code is on screen). So we do not serve it with a SQL query: we
+   * recompute on write, and read from memory.
    */
   private approvedSnapshot: Comment[] = []
 
@@ -51,10 +51,10 @@ export class WallService {
   }
 
   /**
-   * Dépose un message. Toujours en `pending`.
+   * Posts a message. Always as `pending`.
    *
-   * Retourne le message existant si la source l'a déjà livré : un firehose
-   * peut relivrer, et un polling recouvre toujours la fenêtre précédente.
+   * Returns the existing message if the source has already delivered it: a
+   * firehose can redeliver, and polling always overlaps the previous window.
    */
   post(input: PostInput): Comment {
     if (input.externalId != null) {
@@ -100,7 +100,7 @@ export class WallService {
     return rows.map(toComment)
   }
 
-  /** Approuve ou rejette. Un message approuvé part immédiatement vers les écrans. */
+  /** Approves or rejects. An approved message leaves for the screens immediately. */
   moderate(id: string, decision: 'approve' | 'reject', moderatedBy: string): Comment | null {
     const row = this.db
       .update(comment)
@@ -122,26 +122,26 @@ export class WallService {
     return approved
   }
 
-  /** Derniers messages approuvés, servis depuis la mémoire. */
+  /** Latest approved messages, served from memory. */
   approved(roomId?: string | null): Comment[] {
     if (roomId == null) return [...this.approvedSnapshot]
-    // Un message sans salle s'affiche partout ; un message ciblé, dans sa salle.
+    // A message with no room shows everywhere; a targeted one, in its room.
     return this.approvedSnapshot.filter((entry) => entry.roomId == null || entry.roomId === roomId)
   }
 
   /**
-   * Flux des messages approuvés : rattrapage puis temps réel.
+   * Flow of approved messages: catch-up then real time.
    *
-   * Même mécanique que les commandes — le `seq` sert d'identifiant d'événement,
-   * la reprise passe par `lastEventId`.
+   * The same mechanics as the commands — the `seq` acts as the event identifier,
+   * resumption goes through `lastEventId`.
    */
   async *stream(
     roomId: string | null,
     sinceSeq: number,
     signal?: AbortSignal,
   ): AsyncGenerator<{ seq: number; comment: Comment }> {
-    // S'abonner avant de lire le backlog, sinon un message approuvé entre les
-    // deux tomberait dans un trou.
+    // Subscribe before reading the backlog, otherwise a message approved between
+    // the two would fall into a gap.
     const live = on(this.emitter, CHANNEL, { signal })
 
     let lastSeq = sinceSeq
@@ -194,11 +194,11 @@ export class WallService {
 }
 
 /**
- * Questions au speaker, votables.
+ * Questions to the speaker, votable.
  *
- * Le vote est borné par `deviceId` plutôt que par un compte : demander une
- * inscription à un public de conférence, pour voter une question, garantirait
- * que personne ne vote.
+ * The vote is bounded by `deviceId` rather than by an account: asking a
+ * conference audience to sign up in order to vote on a question would guarantee
+ * that nobody votes.
  */
 export class QuestionService {
   constructor(private readonly db: HubDatabase) {}
@@ -218,7 +218,7 @@ export class QuestionService {
     return toQuestion(row)
   }
 
-  /** Un vote par appareil. Un second appel est sans effet, pas une erreur. */
+  /** One vote per device. A second call is a no-op, not an error. */
   vote(id: string, deviceId: string): number {
     return this.db.transaction((tx) => {
       const inserted = tx
@@ -242,7 +242,7 @@ export class QuestionService {
     })
   }
 
-  /** Triées par votes : c'est l'ordre dans lequel le speaker doit les voir. */
+  /** Sorted by votes: that is the order the speaker must see them in. */
   list(roomId: string, sessionId: string | null): Question[] {
     return this.db
       .select()

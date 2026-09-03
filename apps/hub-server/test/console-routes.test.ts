@@ -3,18 +3,18 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { consolePaths } from '@cloudnord/contract'
 import { createHub, type Hub } from '../src/server.js'
-import { resoudreConsole } from '../src/pages/console-shell.js'
+import { resolveConsoleBundle } from '../src/pages/console-shell.js'
 
 /**
- * Ce que sert le hub sur les adresses reprises par le bundle.
+ * What the hub serves on the addresses claimed by the bundle.
  *
- * Le test décrit les **deux** situations, parce que les deux existent pour de
- * vrai : la console est construite dans l'image, elle ne l'est pas en intégration
- * continue — `dist/` n'est pas versionné et `pnpm test` ne déclenche aucun build
- * Vite, ce qui est précisément ce qui garde la suite dans la minute revendiquée.
+ * The test describes **both** situations, because both really exist: the console
+ * is built in the image, it is not in continuous integration — `dist/` is not
+ * versioned and `pnpm test` triggers no Vite build, which is precisely what keeps
+ * the suite inside the minute it claims.
  *
- * Faire dépendre ces assertions d'un artefact construit ou non les rendrait
- * ingérables ; les écrire pour les deux dit ce que le hub promet dans chacune.
+ * Making these assertions depend on whether an artifact is built would make them
+ * unmanageable; writing them for both says what the hub promises in each.
  */
 
 const rawProgram = readFileSync(
@@ -45,128 +45,130 @@ afterEach(async () => {
   await hub.close()
 })
 
-describe('adresses reprises par le bundle', () => {
-  it('en sert au moins une', () => {
-    // Garde-fou du garde-fou : une liste vide ferait passer tout ce qui suit
-    // sans rien exercer.
+describe('addresses claimed by the bundle', () => {
+  it('serves at least one', () => {
+    // A guard for the guard: an empty list would let everything below pass
+    // without exercising anything.
     expect(consolePaths(false).length).toBeGreaterThan(0)
   })
 
-  it('répond, quel que soit l’état du bundle', async () => {
-    for (const chemin of consolePaths(false)) {
-      const reponse = await fetch(`${origin}${chemin}`)
-      // Jamais 404 et jamais 503 : l'adresse existe, et il y a toujours quelque
-      // chose à servir — la coquille si le bundle est là, le gabarit sinon.
-      expect(reponse.status, chemin).toBe(200)
+  it('answers, whatever the state of the bundle', async () => {
+    for (const path of consolePaths(false)) {
+      const response = await fetch(`${origin}${path}`)
+      // Never a 404 and never a 503: the address exists, and there is always
+      // something to serve — the shell if the bundle is there, the template
+      // otherwise.
+      expect(response.status, path).toBe(200)
     }
   })
 
-  it('sert la coquille quand le bundle est construit, le gabarit sinon', async () => {
-    const bundle = resoudreConsole()
-    const chemin = consolePaths(false)[0]!
-    const html = await (await fetch(`${origin}${chemin}`)).text()
+  it('serves the shell when the bundle is built, the template otherwise', async () => {
+    const bundle = resolveConsoleBundle()
+    const path = consolePaths(false)[0]!
+    const html = await (await fetch(`${origin}${path}`)).text()
 
     if (bundle == null) {
       /*
-       * Le repli n'est pas une consolation : le gabarit existe toujours et
-       * fonctionne. Refuser de servir parce qu'un artefact manque punirait
-       * l'exploitation pour un défaut de construction, alors qu'il y a une
-       * console parfaitement utilisable sous la main.
+       * The fallback is not a consolation: the template still exists and works.
+       * Refusing to serve because an artifact is missing would punish operations
+       * for a build defect, when there is a perfectly usable console at hand.
        */
       expect(html).toContain('console hub')
     } else {
       expect(html).toContain('id="console-boot"')
-      // Empreinte dans le nom : c'est ce qui rend `immutable` sûr côté assets.
+      // The fingerprint in the name: it is what makes `immutable` safe on the
+      // assets side.
       expect(html).toMatch(/src="\/admin\/assets\/[^"]+\.js"/)
     }
   })
 
-  it('ne met jamais la coquille en cache', async () => {
-    const chemin = consolePaths(false)[0]!
-    const reponse = await fetch(`${origin}${chemin}`)
-    if (resoudreConsole() != null) {
-      // Une console mise à jour qui ne l'est jamais sur le poste d'un opérateur
-      // est pire que la retélécharger à chaque ouverture.
-      expect(reponse.headers.get('cache-control')).toBe('no-store')
+  it('never caches the shell', async () => {
+    const path = consolePaths(false)[0]!
+    const response = await fetch(`${origin}${path}`)
+    if (resolveConsoleBundle() != null) {
+      // An updated console that never is on an operator's machine is worse than
+      // re-downloading it on every opening.
+      expect(response.headers.get('cache-control')).toBe('no-store')
     }
   })
 })
 
 /**
- * La régie mobile, servie par le hub.
+ * The mobile control app, served by the hub.
  *
- * Deux adresses, et l'écart entre elles est ce qui compte : `/regie` choisit une
- * salle, `/regie/<id>` en pilote une. Elles sont **énumérées** comme celles de
- * la console, jamais prises au joker — `/regie/assets/…` doit atteindre les
- * fichiers, pas rendre la coquille à leur place.
+ * Two addresses, and the gap between them is what counts: `/regie` picks a room,
+ * `/regie/<id>` drives one. They are **enumerated** like the console's, never
+ * taken by a wildcard — `/regie/assets/…` must reach the files, not render the
+ * shell in their place.
  *
- * Comme pour la console, les deux situations sont décrites : le bundle est
- * construit dans l'image, il ne l'est pas en intégration continue.
+ * As for the console, both situations are described: the bundle is built in the
+ * image, it is not in continuous integration.
  */
-describe('la régie mobile', () => {
-  it('répond aux deux adresses', async () => {
-    for (const chemin of ['/regie', '/regie/track-1-teilhard-de-chardin']) {
-      const reponse = await fetch(`${origin}${chemin}`)
+describe('the mobile control app', () => {
+  it('answers on both addresses', async () => {
+    for (const path of ['/regie', '/regie/track-1-teilhard-de-chardin']) {
+      const response = await fetch(`${origin}${path}`)
       /*
-       * 200 avec le bundle, 503 sans — et jamais 404.
+       * 200 with the bundle, 503 without — and never a 404.
        *
-       * L'absence de bundle n'est pas un état d'exploitation : l'image le
-       * construit, donc elle signale un déploiement incomplet. Un 404 enverrait
-       * chercher du côté de l'adresse, qui est la seule chose qui va bien.
+       * The absence of a bundle is not an operational state: the image builds it,
+       * so it signals an incomplete deployment. A 404 would send one looking at
+       * the address, which is the only thing that is fine.
        */
-      expect([200, 503], chemin).toContain(reponse.status)
-      if (reponse.status === 503) {
-        expect(await reponse.text()).toContain('pnpm --filter @cloudnord/regie-web build')
+      expect([200, 503], path).toContain(response.status)
+      if (response.status === 503) {
+        expect(await response.text()).toContain('pnpm --filter @cloudnord/regie-web build')
       }
     }
   })
 
-  it('ne résout pas la salle avant de rendre la page', async () => {
+  it('does not resolve the room before rendering the page', async () => {
     /*
-     * La coquille est publique, comme celle de la console : c'est le premier
-     * appel oRPC qui demande une session. Refuser ici rendrait un 404 à qui
-     * n'est pas encore connecté, ce qui se lit comme une adresse morte.
+     * The shell is public, like the console's: it is the first oRPC call that
+     * demands a session. Refusing here would return a 404 to someone who is not
+     * signed in yet, which reads as a dead address.
      */
-    const reponse = await fetch(`${origin}/regie/salle-fantome`)
-    expect(reponse.status).not.toBe(404)
+    const response = await fetch(`${origin}/regie/salle-fantome`)
+    expect(response.status).not.toBe(404)
   })
 
-  it('embarque la portée et les salles, jamais l’état d’une salle', async () => {
-    const reponse = await fetch(`${origin}/regie`)
-    if (reponse.status !== 200) return
-    const html = await reponse.text()
+  it('embeds the scope and the rooms, never a room\'s state', async () => {
+    const response = await fetch(`${origin}/regie`)
+    if (response.status !== 200) return
+    const html = await response.text()
 
+    // `regie-portee` and `portee`/`distante` are contract names and values.
     expect(html).toContain('id="regie-portee"')
     expect(html).toContain('"portee":"distante"')
     /*
-     * Aucun `#etat-initial` ici, et c'est délibéré.
+     * No `#etat-initial` here, and that is deliberate.
      *
-     * Le poste de salle inline son état entier parce qu'un F5 arrive en plein
-     * talk et que sa fenêtre pilote le vidéoprojecteur. Un téléphone qui ne
-     * pilote rien tant que personne n'a pris la salle n'a pas cet argument — et
-     * l'embarquer exigerait de résoudre l'opérateur avant de rendre la page.
+     * The room machine inlines its whole state because an F5 lands in the middle
+     * of a talk and its window drives the video projector. A phone that drives
+     * nothing until someone has taken the room does not have that argument — and
+     * embedding it would require resolving the operator before rendering the page.
      */
     expect(html).not.toContain('id="etat-initial"')
   })
 
-  it('ne référence aucune ressource hors de son origine', async () => {
-    const reponse = await fetch(`${origin}/regie`)
-    if (reponse.status !== 200) return
-    const html = await reponse.text()
+  it('references no resource outside its own origin', async () => {
+    const response = await fetch(`${origin}/regie`)
+    if (response.status !== 200) return
+    const html = await response.text()
     /*
-     * Le même invariant que la console et les pages d'affichage, sous la forme
-     * qu'il a prise : tout `src` et tout `href` est relatif. Un asset servi par
-     * le processus qui sert déjà la page ne peut pas disparaître d'une coupure
-     * du réseau de l'événement ; n'importe quelle autre origine, si.
+     * The same invariant as the console and the display pages, in the shape it
+     * has taken: every `src` and every `href` is relative. An asset served by the
+     * process that already serves the page cannot disappear because the event's
+     * network is cut; any other origin can.
      */
     expect(html).not.toMatch(/(?:src|href)="https?:\/\//)
   })
 
-  it('ne met jamais la coquille en cache', async () => {
-    const reponse = await fetch(`${origin}/regie/track-1-teilhard-de-chardin`)
-    if (reponse.status !== 200) return
-    // Elle porte l'amorce de portée, et la salle qu'elle nomme change d'une
-    // adresse à l'autre.
-    expect(reponse.headers.get('cache-control')).toBe('no-store')
+  it('never caches the shell', async () => {
+    const response = await fetch(`${origin}/regie/track-1-teilhard-de-chardin`)
+    if (response.status !== 200) return
+    // It carries the scope boot payload, and the room it names changes from one
+    // address to the next.
+    expect(response.headers.get('cache-control')).toBe('no-store')
   })
 })

@@ -3,14 +3,14 @@ import type { CommentSource } from '@cloudnord/contract'
 import type { PostInput, WallService } from './wall.js'
 
 /**
- * Une source sociale.
+ * A social source.
  *
- * Toutes convergent vers la même file de modération : ce qui vient de Bluesky
- * n'a pas plus de droits qu'un message déposé au formulaire.
+ * They all converge on the same moderation queue: what comes from Bluesky has no
+ * more rights than a message posted through the form.
  */
 export interface SocialSource {
   readonly id: CommentSource
-  /** Messages récents. Ne lève pas : une source en panne ne doit pas arrêter les autres. */
+  /** Recent messages. Does not throw: one broken source must not stop the others. */
   poll(): Promise<PostInput[]>
 }
 
@@ -27,10 +27,10 @@ const blueskyResponseSchema = z.object({
 })
 
 /**
- * Bluesky, via l'AppView publique.
+ * Bluesky, through the public AppView.
  *
- * Pas de clé, pas de compte : l'endpoint de recherche public suffit, ce qui
- * évite d'avoir à gérer un secret de plus le jour J.
+ * No key, no account: the public search endpoint is enough, which saves having
+ * one more secret to manage on the day.
  */
 export function blueskySource(options: {
   hashtag: string
@@ -60,7 +60,7 @@ export function blueskySource(options: {
           author: post.author.displayName?.trim() || post.author.handle,
           authorHandle: post.author.handle,
           text: String(post.record.text),
-          // L'URI du post : stable, et c'est elle qui déduplique les relivraisons.
+          // The post's URI: stable, and it is what deduplicates redeliveries.
           externalId: post.uri,
         }))
     },
@@ -76,11 +76,10 @@ const mastodonStatusSchema = z.array(
 )
 
 /**
- * Mastodon, via la timeline publique d'un hashtag.
+ * Mastodon, through a hashtag's public timeline.
  *
- * L'API renvoie du HTML : on le réduit en texte, parce qu'un mur de salle
- * affiche du texte et qu'injecter du HTML tiers sur un vidéoprojecteur est une
- * mauvaise idée par principe.
+ * The API returns HTML: we reduce it to text, because a room wall shows text and
+ * injecting third-party HTML onto a projector is a bad idea on principle.
  */
 export function mastodonSource(options: {
   instance: string
@@ -116,10 +115,10 @@ export function mastodonSource(options: {
 /**
  * X / Twitter.
  *
- * **Nécessite un plan payant** : la recherche par hashtag n'est plus accessible
- * au niveau gratuit. L'adapter existe pour que le jour où le budget est validé
- * il n'y ait qu'une clé à poser — et il échoue avec un message explicite plutôt
- * que de laisser croire à une panne.
+ * **Requires a paid plan**: hashtag search is no longer available on the free
+ * tier. The adapter exists so that the day the budget is approved there is only a
+ * key to set — and it fails with an explicit message rather than let a failure be
+ * assumed.
  */
 export function xSource(options: {
   hashtag: string
@@ -172,11 +171,11 @@ export interface IngestorReport {
 }
 
 /**
- * Interroge les sources et dépose dans la file de modération.
+ * Polls the sources and posts into the moderation queue.
  *
- * Les sources sont interrogées **séquentiellement et hors transaction** : un
- * appel réseau dans une transaction SQLite bloquerait la base le temps d'un
- * timeout HTTP, et c'est le piège classique avec ce genre d'ingestion.
+ * The sources are polled **sequentially and outside any transaction**: a network
+ * call inside a SQLite transaction would lock the database for the length of an
+ * HTTP timeout, and that is the classic trap with this kind of ingestion.
  */
 export class SocialIngestor {
   private timer: NodeJS.Timeout | null = null
@@ -197,8 +196,8 @@ export class SocialIngestor {
     for (const source of this.sources) {
       try {
         const posts = await source.poll()
-        // Le dépôt est idempotent sur `externalId` : relire la même fenêtre est
-        // sans conséquence, ce qui autorise un recouvrement généreux.
+        // Posting is idempotent on `externalId`: re-reading the same window has no
+        // consequence, which allows a generous overlap.
         for (const post of posts) this.wall.post(post)
         report.bySource[source.id] = { collected: posts.length, error: null }
       } catch (cause) {
@@ -228,7 +227,7 @@ export class SocialIngestor {
   }
 }
 
-/** Réduit le HTML de Mastodon en texte affichable. */
+/** Reduces Mastodon's HTML to displayable text. */
 export function htmlToText(html: string): string {
   return html
     .replace(/<br\s*\/?>/gi, ' ')

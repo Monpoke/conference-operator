@@ -9,18 +9,18 @@ import { hubSchema } from '@cloudnord/db/hub'
 export type HubDatabase = ReturnType<typeof drizzle<typeof hubSchema>>
 
 /**
- * Handle transactionnel. Drizzle en fait un type distinct de la base : les
- * fonctions qui doivent tourner *dans* une transaction s'annotent avec celui-ci.
+ * Transaction handle. Drizzle makes it a distinct type from the database: the
+ * functions that must run *inside* a transaction are annotated with this one.
  */
 export type HubTransaction = Parameters<Parameters<HubDatabase['transaction']>[0]>[0]
 
-/** Dossier de migrations de `@cloudnord/db`, résolu depuis ce package. */
+/** `@cloudnord/db`'s migrations folder, resolved from this package. */
 const migrationsFolder = fileURLToPath(
   new URL('../../../packages/db/migrations/hub', import.meta.url),
 )
 
 export interface OpenHubDbResult {
-  /** Connexion brute : Better Auth la réutilise, pour un seul fichier et un seul verrou. */
+  /** Raw connection: Better Auth reuses it, for a single file and a single lock. */
   sqlite: SqliteDatabase
   orm: HubDatabase
 }
@@ -34,21 +34,21 @@ export function openHubDatabase(path: string): OpenHubDbResult {
     migrate(orm, { migrationsFolder })
   } catch (cause) {
     sqlite.close()
-    throw expliquerEchecMigration(cause, path)
+    throw explainMigrationFailure(cause, path)
   }
 
   return { sqlite, orm }
 }
 
 /**
- * Traduit un échec de migration en instruction actionnable.
+ * Turns a migration failure into an actionable instruction.
  *
- * Le cas courant en développement : la ligne de base a été régénérée pendant
- * que la base existait déjà. Drizzle ne reconnaît plus la migration appliquée
- * et rejoue les `CREATE TABLE`, qui échouent. La trace brute ne dit rien de ce
- * qu'il faut faire — c'est le rôle de ce message.
+ * The common case in development: the baseline was regenerated while the
+ * database already existed. Drizzle no longer recognises the applied migration
+ * and replays the `CREATE TABLE`s, which fail. The raw trace says nothing about
+ * what to do — that is this message's job.
  */
-function expliquerEchecMigration(cause: unknown, path: string): Error {
+function explainMigrationFailure(cause: unknown, path: string): Error {
   const message = String((cause as { cause?: { message?: string } })?.cause?.message ?? '')
 
   if (/already exists/i.test(message)) {
@@ -62,7 +62,7 @@ function expliquerEchecMigration(cause: unknown, path: string): Error {
         '    git checkout -- packages/db/migrations',
         '',
         "Si le schéma a réellement évolué, la migration doit s'ajouter, jamais remplacer :",
-        '    pnpm --filter @cloudnord/db generate:hub && pnpm --filter @cloudnord/db sceller',
+        '    pnpm --filter @cloudnord/db generate:hub && pnpm --filter @cloudnord/db seal',
         '',
         'En dernier recours seulement, et seulement si cette base est jetable :',
         `    rm -rf ${dirname(path)}`,

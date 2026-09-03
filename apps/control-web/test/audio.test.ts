@@ -5,68 +5,68 @@ import LevelMeters from '../src/components/LevelMeters.vue'
 import { PEAK_HOLD_MS, useAudioStore } from '../src/stores/audio.js'
 
 /**
- * Le vumètre, qui dit ce qu'aucune image ne dira.
+ * The VU meter, which says what no picture will.
  *
- * Une salle dont le micro coupe garde la même projection, le même chronomètre
- * et le même bouton rouge. Le seul endroit où ça se voit est ici.
+ * A room whose microphone cuts out keeps the same projection, the same stopwatch
+ * and the same red button. The only place it shows is here.
  */
 
-const ENTREE = { name: 'Micro HF', channels: [{ magnitude: -30, peak: -28 }] }
+const INPUT = { name: 'Micro HF', channels: [{ magnitude: -30, peak: -28 }] }
 
 beforeEach(() => {
   setActivePinia(createPinia())
 })
 
-describe('maintien de crête', () => {
-  it('garde une saturation assez longtemps pour qu’on la voie', () => {
+describe('peak hold', () => {
+  it('holds a clip long enough to be seen', () => {
     const audio = useAudioStore()
 
     audio.apply([{ name: 'Micro HF', channels: [{ magnitude: -30, peak: -3 }] }], 0)
-    audio.apply([ENTREE], 500)
+    audio.apply([INPUT], 500)
 
-    // Une saturation d'un dixième de seconde passe entre deux rendus : sans
-    // maintien, personne ne la voit jamais.
+    // A tenth-of-a-second clip slips between two renders: with no hold, nobody
+    // ever sees it.
     expect(audio.peaks['Micro HF']?.db).toBe(-3)
   })
 
-  it('relâche la crête une fois le maintien écoulé', () => {
+  it('releases the peak once the hold has elapsed', () => {
     const audio = useAudioStore()
 
     audio.apply([{ name: 'Micro HF', channels: [{ magnitude: -30, peak: -3 }] }], 0)
-    audio.apply([ENTREE], PEAK_HOLD_MS + 1)
+    audio.apply([INPUT], PEAK_HOLD_MS + 1)
 
     expect(audio.peaks['Micro HF']?.db).toBe(-28)
   })
 
-  it('remonte tout de suite sur une crête plus haute', () => {
+  it('rises at once on a higher peak', () => {
     const audio = useAudioStore()
 
-    audio.apply([ENTREE], 0)
+    audio.apply([INPUT], 0)
     audio.apply([{ name: 'Micro HF', channels: [{ magnitude: -10, peak: -6 }] }], 100)
 
     expect(audio.peaks['Micro HF']?.db).toBe(-6)
   })
 
-  it('oublie une entrée qui disparaît d’OBS', () => {
+  it('forgets an input that disappears from OBS', () => {
     const audio = useAudioStore()
 
-    audio.apply([ENTREE], 0)
+    audio.apply([INPUT], 0)
     audio.apply([], 100)
 
-    // Une crête gardée pour une entrée débranchée s'afficherait sur la suivante
-    // qui reprendrait son nom.
+    // A peak kept for an unplugged input would show up on the next one to take
+    // over its name.
     expect(audio.peaks['Micro HF']).toBeUndefined()
   })
 })
 
-describe('panneau des niveaux', () => {
-  it('distingue « en attente » de « aucune entrée »', async () => {
+describe('levels panel', () => {
+  it('tells "waiting" apart from "no input"', async () => {
     const audio = useAudioStore()
     const wrapper = mount(LevelMeters)
 
-    // Le premier est un OBS qu'on n'a pas encore entendu, le second un OBS qui
-    // répond et n'a rien à faire écouter. Les confondre enverrait chercher la
-    // panne au mauvais endroit.
+    // The first is an OBS we have not heard yet, the second an OBS that answers
+    // and has nothing to let us listen to. Confusing them would send people looking
+    // for the fault in the wrong place.
     expect(wrapper.text()).toContain("En attente d'OBS")
 
     audio.apply([], 0)
@@ -74,7 +74,7 @@ describe('panneau des niveaux', () => {
     expect(wrapper.text()).toContain('Aucune entrée audio')
   })
 
-  it('dessine une jauge par canal, parce que mono et stéréo coexistent', async () => {
+  it('draws one gauge per channel, because mono and stereo coexist', async () => {
     const audio = useAudioStore()
     audio.apply(
       [{ name: 'Salle', channels: [{ magnitude: -30, peak: -30 }, { magnitude: -12, peak: -12 }] }],
@@ -86,7 +86,7 @@ describe('panneau des niveaux', () => {
     expect(wrapper.findAll('[data-role="levels"] .rounded-full')).toHaveLength(4)
   })
 
-  it('alerte sur la crête, sans attendre que la barre y soit encore', async () => {
+  it('alerts on the peak, without waiting for the bar to still be there', async () => {
     const audio = useAudioStore()
     audio.apply([{ name: 'Salle', channels: [{ magnitude: -40, peak: -3 }] }], 0)
     const wrapper = mount(LevelMeters)
@@ -96,14 +96,14 @@ describe('panneau des niveaux', () => {
     expect(wrapper.text()).toContain('-3 dB')
   })
 
-  it('dit « — » plutôt que « −60 dB » sur une entrée muette', async () => {
+  it('says "—" rather than "−60 dB" on a silent input', async () => {
     const audio = useAudioStore()
     audio.apply([{ name: 'Salle', channels: [{ magnitude: -60, peak: -60 }] }], 0)
     const wrapper = mount(LevelMeters)
     await wrapper.vm.$nextTick()
 
-    // Le plancher n'est pas une mesure : c'est l'aveu qu'il n'y a rien à
-    // mesurer, et un chiffre s'y lirait comme un signal faible.
+    // The floor is not a measurement: it is the admission that there is nothing to
+    // measure, and a figure there would read as a weak signal.
     expect(wrapper.text()).toContain('—')
   })
 })

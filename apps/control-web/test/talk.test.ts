@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import TalkPanel from '../src/components/TalkPanel.vue'
 import { TOO_EARLY_MS, useTalkStore } from '../src/stores/talk.js'
 import { useRoomStore } from '../src/stores/room.js'
-import { DEBUT_MS, FIN_MS, config, payload, speaker, talk } from './fixtures.js'
+import { START_MS, END_MS, config, payload, speaker, talk } from './fixtures.js'
 
 /**
  * Commencer et terminer, et les quatre questions qui se mettent en travers.
@@ -58,7 +58,7 @@ beforeEach(() => {
 
 describe('commencer', () => {
   it('démarre sans rien demander quand l’heure est proche', async () => {
-    salleA(DEBUT_MS - 60_000)
+    salleA(START_MS - 60_000)
     // La captation tourne déjà : l'autre garde-fou n'a rien à dire, et c'est
     // celui de l'avance qu'on regarde ici.
     useRoomStore().payload!.diagnostics!.recording = {
@@ -80,7 +80,7 @@ describe('commencer', () => {
   })
 
   it('demande confirmation très en avance, et dit de combien', async () => {
-    salleA(DEBUT_MS - TOO_EARLY_MS - 60_000)
+    salleA(START_MS - TOO_EARLY_MS - 60_000)
     const conference = useTalkStore()
 
     conference.askStart()
@@ -97,7 +97,7 @@ describe('commencer', () => {
   })
 
   it('pose la question de l’avance avant celle de l’enregistrement', async () => {
-    salleA(DEBUT_MS - TOO_EARLY_MS - 60_000)
+    salleA(START_MS - TOO_EARLY_MS - 60_000)
     const conference = useTalkStore()
 
     conference.askStart()
@@ -115,7 +115,7 @@ describe('commencer', () => {
 
 describe('l’avertissement de captation', () => {
   it('se pose quand rien n’enregistre', async () => {
-    salleA(DEBUT_MS)
+    salleA(START_MS)
     const conference = useTalkStore()
 
     conference.askStart()
@@ -128,7 +128,7 @@ describe('l’avertissement de captation', () => {
   })
 
   it('se tait quand la captation tourne déjà', async () => {
-    salleA(DEBUT_MS)
+    salleA(START_MS)
     const room = useRoomStore()
     room.payload!.diagnostics!.recording = {
       active: true,
@@ -147,7 +147,7 @@ describe('l’avertissement de captation', () => {
   })
 
   it('se tait quand la salle a décoché le garde-fou', async () => {
-    salleA(DEBUT_MS)
+    salleA(START_MS)
     const room = useRoomStore()
     room.payload!.diagnostics!.config = config({ promptRecordingOnStart: false })
     const conference = useTalkStore()
@@ -159,7 +159,7 @@ describe('l’avertissement de captation', () => {
   })
 
   it('garde le garde-fou quand le réglage n’est pas encore arrivé', async () => {
-    salleA(DEBUT_MS)
+    salleA(START_MS)
     const conference = useTalkStore()
 
     conference.askStart()
@@ -171,7 +171,7 @@ describe('l’avertissement de captation', () => {
   })
 
   it('enregistre d’abord, et seulement s’il part', async () => {
-    salleA(DEBUT_MS)
+    salleA(START_MS)
     const conference = useTalkStore()
     refuse = 'recording.start'
 
@@ -183,7 +183,7 @@ describe('l’avertissement de captation', () => {
   })
 
   it('enchaîne captation, conférence, puis scène', async () => {
-    salleA(DEBUT_MS)
+    salleA(START_MS)
     const conference = useTalkStore()
 
     await conference.launch(true)
@@ -194,7 +194,7 @@ describe('l’avertissement de captation', () => {
   })
 
   it('ne bascule aucune scène quand la salle a choisi de ne pas basculer', async () => {
-    salleA(DEBUT_MS)
+    salleA(START_MS)
     useRoomStore().payload!.diagnostics!.config = config({ sceneOnStart: null })
     const conference = useTalkStore()
 
@@ -207,7 +207,7 @@ describe('l’avertissement de captation', () => {
 
 describe('terminer', () => {
   it('termine sans rien demander à l’heure ou en dépassement', async () => {
-    salleA(FIN_MS + 60_000)
+    salleA(END_MS + 60_000)
     const conference = useTalkStore()
 
     conference.askEnd()
@@ -220,7 +220,7 @@ describe('terminer', () => {
   })
 
   it('demande confirmation en avance, et dit ce que ça change', async () => {
-    salleA(FIN_MS - 8 * 60_000)
+    salleA(END_MS - 8 * 60_000)
     const conference = useTalkStore()
 
     conference.askEnd()
@@ -235,7 +235,7 @@ describe('terminer', () => {
   it('ne demande rien sur un créneau sans heure de fin', async () => {
     const etat = payload({ sessions: [talk({ endsAtMs: null })] })
     etat.state.targetSession = talk({ endsAtMs: null })
-    etat.state.serverTimeOffsetMs = DEBUT_MS - Date.now()
+    etat.state.serverTimeOffsetMs = START_MS - Date.now()
     useRoomStore().seed(etat)
     const conference = useTalkStore()
 
@@ -259,12 +259,12 @@ describe('terminer', () => {
  */
 describe('arrêter la captation en terminant', () => {
   /** Une salle en fin de créneau, captation en cours. */
-  function enCaptation(atMs = FIN_MS + 60_000): void {
+  function enCaptation(atMs = END_MS + 60_000): void {
     salleA(atMs)
     useRoomStore().payload!.diagnostics!.recording = {
       active: true,
       markers: 2,
-      startedAtMs: DEBUT_MS,
+      startedAtMs: START_MS,
       startedAtCorrectedMs: null,
       editing: NO_EDITING_MARKS,
     }
@@ -319,7 +319,7 @@ describe('arrêter la captation en terminant', () => {
   })
 
   it('ne demande rien quand aucune captation ne tourne', async () => {
-    salleA(FIN_MS + 60_000)
+    salleA(END_MS + 60_000)
     const conference = useTalkStore()
 
     conference.askEnd()
@@ -333,7 +333,7 @@ describe('arrêter la captation en terminant', () => {
     // La première porte sur la conférence qu'on termine, la seconde sur la
     // manière de la terminer : couper la captation d'un talk qu'on va renoncer
     // à terminer serait le pire des deux ordres.
-    enCaptation(FIN_MS - 8 * 60_000)
+    enCaptation(END_MS - 8 * 60_000)
     const conference = useTalkStore()
 
     conference.askEnd()
@@ -382,7 +382,7 @@ describe('panneau de la conférence', () => {
   }
 
   it('refuse un geste que le hub refuserait, et dit pourquoi', () => {
-    const wrapper = monter(DEBUT_MS)
+    const wrapper = monter(START_MS)
 
     // La table du cycle de vie est celle que le hub applique en écriture : un
     // bouton actif dont la procédure refuserait le geste n'est plus possible.
@@ -392,10 +392,10 @@ describe('panneau de la conférence', () => {
   })
 
   it('nomme ce que le décompte vise une fois la conférence terminée', () => {
-    const suivante = talk({ id: 'talk-2', startsAtMs: FIN_MS + 900_000, endsAtMs: null })
+    const suivante = talk({ id: 'talk-2', startsAtMs: END_MS + 900_000, endsAtMs: null })
     const etat = payload({ sessions: [talk(), suivante] })
     etat.state.sessionStates = { 'talk-1': 'ended' }
-    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: FIN_MS } })
+    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: END_MS } })
 
     /*
      * Le grand nombre compte jusqu'à la prochaine conférence, la ligne
@@ -409,7 +409,7 @@ describe('panneau de la conférence', () => {
   })
 
   it('peint le dépassement en alerte : c’est lui qui déclenche une décision', () => {
-    const wrapper = monter(FIN_MS + 600_000, { 'talk-1': 'running' })
+    const wrapper = monter(END_MS + 600_000, { 'talk-1': 'running' })
 
     expect(wrapper.get('[data-role="talk-detail"]').text()).toContain('dépassement de')
     expect(wrapper.get('[data-role="talk-detail"]').classes()).toContain('text-alert')
@@ -418,7 +418,7 @@ describe('panneau de la conférence', () => {
   it('dit qu’il n’y a rien à piloter plutôt que de laisser un titre vide', () => {
     const etat = payload()
     etat.state.targetSession = null
-    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: DEBUT_MS } })
+    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: START_MS } })
 
     expect(wrapper.get('[data-role="talk-title"]').text()).toBe(
       'Aucune conférence à piloter',
@@ -429,7 +429,7 @@ describe('panneau de la conférence', () => {
   it('annonce l’heure devant le titre tant que le créneau n’a pas commencé', () => {
     const etat = payload()
     etat.state.targetIsUpcoming = true
-    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: DEBUT_MS - 600_000 } })
+    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: START_MS - 600_000 } })
 
     expect(wrapper.get('[data-role="talk-title"]').text()).toContain('·')
     expect(wrapper.get('[data-role="talk-detail"]').text()).toContain(
@@ -438,7 +438,7 @@ describe('panneau de la conférence', () => {
   })
 
   it('dit que plus rien ne suit, plutôt que de ne rien dire', () => {
-    expect(monter(DEBUT_MS).get('[data-role="next"]').text()).toBe('Plus rien après au programme.')
+    expect(monter(START_MS).get('[data-role="next"]').text()).toBe('Plus rien après au programme.')
   })
 })
 
@@ -448,7 +448,7 @@ describe('intervenants', () => {
     etat.state.targetSession = talk({
       speakers: [speaker('Steven'), speaker('Nuno')],
     })
-    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: DEBUT_MS } })
+    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: START_MS } })
 
     expect(wrapper.text()).toContain('Steven · Nuno')
   })
@@ -457,7 +457,7 @@ describe('intervenants', () => {
     // Une ligne vide sous « Pause déjeuner » ferait chercher un nom absent.
     const etat = payload()
     etat.state.targetSession = talk({ kind: 'break', speakers: [] })
-    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: DEBUT_MS } })
+    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: START_MS } })
 
     expect(wrapper.text()).not.toContain('·')
   })
@@ -466,12 +466,12 @@ describe('intervenants', () => {
     const suivante = talk({
       id: 'talk-2',
       title: 'Blind ops',
-      startsAtMs: FIN_MS + 600_000,
+      startsAtMs: END_MS + 600_000,
       endsAtMs: null,
       speakers: [speaker('Nuno')],
     })
     const etat = payload({ sessions: [talk(), suivante] })
-    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: DEBUT_MS } })
+    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: START_MS } })
 
     expect(wrapper.get('[data-role="next"]').text()).toContain('Blind ops')
     expect(wrapper.get('[data-role="next"]').text()).toContain('Nuno')
@@ -482,7 +482,7 @@ describe('les deux boutons suivent la table du cycle de vie', () => {
   function boutons(statut: SessionStatus | null) {
     const etat = payload()
     etat.state.sessionStates = statut == null ? {} : { 'talk-1': statut }
-    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: DEBUT_MS } })
+    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: START_MS } })
     return {
       demarrer: wrapper.get('#btn-talk-start'),
       terminer: wrapper.get('#btn-talk-end'),

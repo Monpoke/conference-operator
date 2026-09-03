@@ -5,15 +5,15 @@ import { STREAM_DEAD_MS, useRoomStore, type StateStream } from '../src/stores/ro
 import { payload } from './fixtures.js'
 
 /**
- * Le flux d'état, et la seule panne que la page ait à diagnostiquer elle-même.
+ * The state stream, and the only failure the page has to diagnose itself.
  *
- * `EventSource` se reconnecte tout seul et ne lève rien : un poste de salle
- * redémarré sous une fenêtre ouverte laisse cette fenêtre vivante en apparence
- * — l'horloge tourne, le compte à rebours descend — et figée en fait. C'est
- * exactement ce qu'on ne peut pas voir depuis la salle.
+ * `EventSource` reconnects on its own and raises nothing: a room machine restarted
+ * under an open window leaves that window apparently alive — the clock ticks, the
+ * countdown descends — and in fact frozen. That is exactly what cannot be seen
+ * from the room.
  */
 
-/** Un flux qu'on ouvre, coupe et rouvre à la main. */
+/** A stream opened, cut and reopened by hand. */
 function fakeStream(): StateStream & {
   emit: (data: unknown) => void
   emitDelta: (data: unknown) => void
@@ -53,17 +53,17 @@ beforeEach(() => {
   setActivePinia(createPinia())
 })
 
-describe('état de la salle', () => {
-  it('part de l’état embarqué dans la coquille, avant tout octet du flux', () => {
+describe('room state', () => {
+  it('starts from the state embedded in the shell, before any byte of the stream', () => {
     const room = useRoomStore()
     room.seed(payload({ roomName: 'Track #2' }))
 
-    // Un F5 arrive presque toujours au pire moment : la fenêtre a gelé, et
-    // c'est en plein talk. Attendre le flux donnerait un écran vide là.
+    // An F5 almost always comes at the worst moment: the window has frozen, and it
+    // is mid-talk. Waiting for the stream would give a blank screen there.
     expect(room.payload?.roomName).toBe('Track #2')
   })
 
-  it('remplace tout sur un instantané, fusionne sur un delta', () => {
+  it('replaces everything on a snapshot, merges on a delta', () => {
     const room = useRoomStore()
     const stream = fakeStream()
     room.connect(() => stream)
@@ -72,26 +72,26 @@ describe('état de la salle', () => {
     stream.emitDelta({ roomName: 'Track #7' })
 
     expect(room.payload?.roomName).toBe('Track #7')
-    // Le delta ne portait que le nom : le reste doit avoir survécu.
+    // The delta carried only the name: the rest must have survived.
     expect(room.payload?.state.roomId).toBe('track-1')
   })
 
-  it('ignore un delta arrivé avant tout instantané', () => {
+  it('ignores a delta arriving before any snapshot', () => {
     const room = useRoomStore()
     const stream = fakeStream()
     room.connect(() => stream)
 
     stream.emitDelta({ roomName: 'Track #7' })
 
-    // Un delta seul décrit une salle dont on ne connaît pas le reste. Le
-    // peindre à moitié serait pire que d'attendre l'instantané, qui suit de
-    // toute façon toute reconnexion.
+    // A delta on its own describes a room whose rest is unknown. Painting it
+    // half-way would be worse than waiting for the snapshot, which follows every
+    // reconnection anyway.
     expect(room.payload).toBe(null)
   })
 })
 
-describe('flux mort', () => {
-  it('ne crie pas sur une reconnexion d’une seconde', () => {
+describe('dead stream', () => {
+  it('does not cry out on a one-second reconnection', () => {
     const clock = useClockStore()
     const room = useRoomStore()
     const stream = fakeStream()
@@ -103,7 +103,7 @@ describe('flux mort', () => {
     expect(room.dead).toBe(false)
   })
 
-  it('le dit passé le délai de grâce', () => {
+  it('says so once the grace period has passed', () => {
     const clock = useClockStore()
     const room = useRoomStore()
     const stream = fakeStream()
@@ -115,7 +115,7 @@ describe('flux mort', () => {
     expect(room.dead).toBe(true)
   })
 
-  it('se tait dès qu’un message repasse, sans attendre la réouverture', () => {
+  it('goes quiet as soon as a message comes back, without waiting for the reopening', () => {
     const clock = useClockStore()
     const room = useRoomStore()
     const stream = fakeStream()
@@ -128,7 +128,7 @@ describe('flux mort', () => {
     expect(room.dead).toBe(false)
   })
 
-  it('ne compte pas deux coupures pour une', () => {
+  it('does not count two outages as one', () => {
     const clock = useClockStore()
     const room = useRoomStore()
     const stream = fakeStream()
@@ -136,16 +136,16 @@ describe('flux mort', () => {
 
     stream.fail()
     clock.advance(3000)
-    // `onerror` repart à chaque tentative de reconnexion : redémarrer le
-    // décompte à chacune repousserait l'avertissement indéfiniment sur une
-    // machine éteinte, ce qui est précisément le cas qu'il doit couvrir.
+    // `onerror` fires again on every reconnection attempt: restarting the count on
+    // each would push the warning back indefinitely on a machine that is switched
+    // off, which is precisely the case it has to cover.
     stream.fail()
     clock.advance(2000)
 
     expect(room.dead).toBe(true)
   })
 
-  it('repart à zéro après une vraie réouverture', () => {
+  it('starts over after a real reopening', () => {
     const clock = useClockStore()
     const room = useRoomStore()
     const stream = fakeStream()
@@ -159,20 +159,20 @@ describe('flux mort', () => {
   })
 })
 
-describe('heure de la salle', () => {
-  it('porte le décalage du hub, pas l’heure du poste', () => {
+describe("the room's time", () => {
+  it("carries the hub's offset, not the machine's time", () => {
     const clock = useClockStore()
     const room = useRoomStore()
     room.seed(payload({ state: { ...payload().state, serverTimeOffsetMs: 3_600_000 } }))
 
-    // Le décalage est ce qui explique un compte à rebours qui ne colle pas à la
-    // montre de l'opérateur — il ne peut donc pas être perdu en route.
+    // The offset is what explains a countdown that does not match the operator's
+    // watch — so it cannot be lost along the way.
     expect(room.now).toBe(clock.real + 3_600_000)
   })
 })
 
-describe('ouverture', () => {
-  it('n’ouvre qu’un flux, même appelé deux fois', () => {
+describe('opening', () => {
+  it('opens only one stream, even when called twice', () => {
     const room = useRoomStore()
     const streams: StateStream[] = []
     const open = (): StateStream => {

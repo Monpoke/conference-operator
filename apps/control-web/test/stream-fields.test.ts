@@ -4,77 +4,77 @@ import { FIELDS_BY_VIEW } from '@cloudnord/contract'
 import { describe, expect, it } from 'vitest'
 
 /**
- * Le flux d'état ne pousse à la régie que les champs qu'elle lit.
+ * The state stream only pushes the control app the fields it reads.
  *
- * Le risque de ce découpage est silencieux : un champ ajouté à la page mais
- * oublié dans `FIELDS_BY_VIEW` ne lève rien, il affiche du vide. Ce test relit
- * donc les sources et compare ce qu'elles consultent à ce qu'elles reçoivent.
+ * The risk in that split is silent: a field added to the page but forgotten in
+ * `FIELDS_BY_VIEW` raises nothing, it displays blanks. So this test reads the
+ * sources back and compares what they consult with what they receive.
  *
- * Hérité du garde-fou de la page qu'elle remplace, avec la correction qui l'a
- * accompagné : `payload?.champ` compte autant que `payload.champ`. Le motif
- * d'origine ignorait l'optionnel, et le seul champ qu'une page lisait ainsi —
- * le mur, dans le menu des écrans — manquait à la liste sans que rien ne le
- * dise. L'ancienne page n'en souffrait pas par accident : elle ne construisait
- * ce menu qu'une fois, sur l'état embarqué, qui n'est pas filtré. Celle-ci le
- * recalcule, et le lien aurait disparu à la première seconde.
+ * Inherited from the guard of the page it replaces, along with the correction that
+ * came with it: `payload?.field` counts as much as `payload.field`. The original
+ * pattern ignored the optional form, and the only field a page read that way — the
+ * wall, in the screens menu — was missing from the list with nothing to say so.
+ * The old page did not suffer from it by accident: it built that menu only once,
+ * from the embedded state, which is not filtered. This one recomputes it, and the
+ * link would have disappeared within the first second.
  */
-const RACINE = join(import.meta.dirname, '..', 'src')
+const ROOT = join(import.meta.dirname, '..', 'src')
 
-function sources(dossier: string): string[] {
-  return readdirSync(dossier, { withFileTypes: true }).flatMap((entree) => {
-    const chemin = join(dossier, entree.name)
-    if (entree.isDirectory()) return sources(chemin)
-    return /\.(ts|vue)$/.test(entree.name) ? [chemin] : []
+function sources(folder: string): string[] {
+  return readdirSync(folder, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(folder, entry.name)
+    if (entry.isDirectory()) return sources(path)
+    return /\.(ts|vue)$/.test(entry.name) ? [path] : []
   })
 }
 
 /**
- * Ce que la régie consulte dans la charge utile.
+ * What the control app consults in the payload.
  *
- * Trois façons de la nommer, parce qu'elle traverse trois couches : `payload`
- * dans les composants qui la reçoivent en prop, `payload.value` dans le store
- * qui la tient, et `room.payload` chez qui lit le store.
+ * Three ways of naming it, because it crosses three layers: `payload` in the
+ * components that receive it as a prop, `payload.value` in the store that holds
+ * it, and `room.payload` wherever the store is read.
  */
 function fieldsRead(): string[] {
-  const trouves = new Set<string>()
-  for (const fichier of sources(RACINE)) {
-    const source = readFileSync(fichier, 'utf8')
-    for (const motif of [
+  const found = new Set<string>()
+  for (const file of sources(ROOT)) {
+    const source = readFileSync(file, 'utf8')
+    for (const pattern of [
       /\bpayload[!?]?\.(?:value[!?]?\.)?([a-zA-Z]+)/g,
       /\bpayload\.value[!?]?\.([a-zA-Z]+)/g,
     ]) {
-      for (const trouve of source.matchAll(motif)) trouves.add(trouve[1]!)
+      for (const match of source.matchAll(pattern)) found.add(match[1]!)
     }
   }
-  // `value` est l'accès au ref, pas un champ ; le reste est du bruit de nommage.
-  trouves.delete('value')
-  return [...trouves].sort()
+  // `value` is the ref's accessor, not a field; the rest is naming noise.
+  found.delete('value')
+  return [...found].sort()
 }
 
-describe('champs du flux', () => {
-  const recus = new Set<string>(FIELDS_BY_VIEW.regie as readonly string[])
+describe('stream fields', () => {
+  const received = new Set<string>(FIELDS_BY_VIEW.regie as readonly string[])
 
-  it('la régie reçoit tout ce qu’elle consulte', () => {
-    const manquants = fieldsRead().filter((champ) => !recus.has(champ))
+  it('the control app receives everything it consults', () => {
+    const missing = fieldsRead().filter((field) => !received.has(field))
     expect(
-      manquants,
-      manquants.length === 0
+      missing,
+      missing.length === 0
         ? ''
-        : `la régie lit ${manquants.join(', ')} — à ajouter dans FIELDS_BY_VIEW.regie, ` +
-          "sinon la page rend du vide sans lever d'erreur.",
+        : `the control app reads ${missing.join(', ')} — add them to FIELDS_BY_VIEW.regie, ` +
+          'otherwise the page renders blanks without raising an error.',
     ).toEqual([])
   })
 
-  it('ne reçoit rien d’inutile', () => {
-    // L'inverse compte aussi : un champ envoyé sans être lu est du trafic pur,
-    // à chaque changement d'état, sur une machine qui encode.
-    const lus = new Set(fieldsRead())
-    expect([...recus].filter((champ) => !lus.has(champ))).toEqual([])
+  it('receives nothing useless', () => {
+    // The reverse counts too: a field sent without being read is pure traffic, on
+    // every state change, on a machine that encodes.
+    const read = new Set(fieldsRead())
+    expect([...received].filter((field) => !read.has(field))).toEqual([])
   })
 
-  it('la lecture des sources trouve bien quelque chose', () => {
-    // Garde-fou du garde-fou : une extraction devenue muette ferait passer les
-    // deux tests précédents en ne vérifiant rien.
+  it('reading the sources does find something', () => {
+    // A guard for the guard: an extraction gone silent would make the previous two
+    // tests pass while checking nothing.
     expect(fieldsRead().length).toBeGreaterThan(3)
   })
 })

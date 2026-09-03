@@ -4,109 +4,108 @@ import { describe, expect, it } from 'vitest'
 import Countdown from '../src/components/Countdown.vue'
 import RecordingTimer from '../src/components/RecordingTimer.vue'
 import { countdownFor } from '../src/lib/countdown.js'
-import { DEBUT_MS, FIN_MS, payload, talk } from './fixtures.js'
+import { START_MS, END_MS, payload, talk } from './fixtures.js'
 
 /**
- * Le grand nombre, et ce qu'il vise.
+ * The large number, and what it aims at.
  *
- * C'est le seul chiffre que l'opérateur lit en continu dans les deux dernières
- * minutes d'un talk. Se tromper de cible — compter vers une fin quand ce qu'on
- * attend est un début — le rend faux sans le rendre visible : il descend, donc
- * il a l'air juste.
+ * It is the only figure the operator reads continuously in a talk's last two
+ * minutes. Aiming at the wrong thing — counting towards an end when what is
+ * awaited is a start — makes it wrong without making it visible: it descends, so
+ * it looks right.
  */
 
-describe('ce que compte le chronomètre', () => {
-  it('compte vers le début tant que le créneau n’a pas commencé', () => {
-    const compte = countdownFor(payload(), DEBUT_MS - 10 * 60_000)
+describe('what the stopwatch counts', () => {
+  it('counts towards the start while the slot has not begun', () => {
+    const count = countdownFor(payload(), START_MS - 10 * 60_000)
 
-    // Compter d'emblée vers la fin donnait « 2:01:59 » en gros caractères à
-    // 8h38 sur la conférence de 9h50 : un chiffre qui se lit comme un talk en
-    // cours, et qui a été lu ainsi.
-    expect(compte).toEqual({ ms: 10 * 60_000, beforeStart: true })
+    // Counting towards the end from the outset gave "2:01:59" in large type at
+    // 8:38 for the 9:50 talk: a figure that reads as a talk under way, and that was
+    // read that way.
+    expect(count).toEqual({ ms: 10 * 60_000, beforeStart: true })
   })
 
-  it('compte vers la fin dès qu’un talk est lancé, même en avance', () => {
-    const etat = payload()
-    etat.state.sessionStates = { 'talk-1': 'running' }
+  it('counts towards the end as soon as a talk is started, even early', () => {
+    const state = payload()
+    state.state.sessionStates = { 'talk-1': 'running' }
 
-    // Dès qu'on a appuyé sur « Commencer », c'est l'écart au programme qui
-    // décide de la suite de la journée.
-    const compte = countdownFor(etat, DEBUT_MS - 10 * 60_000)
-    expect(compte?.beforeStart).toBe(false)
-    expect(compte?.ms).toBe(FIN_MS - (DEBUT_MS - 10 * 60_000))
+    // Once "Commencer" has been pressed, it is the gap against the program that
+    // decides the rest of the day.
+    const count = countdownFor(state, START_MS - 10 * 60_000)
+    expect(count?.beforeStart).toBe(false)
+    expect(count?.ms).toBe(END_MS - (START_MS - 10 * 60_000))
   })
 
-  it('passe en négatif sur un dépassement, plutôt que de s’arrêter à zéro', () => {
-    const etat = payload()
-    etat.state.sessionStates = { 'talk-1': 'running' }
-    expect(countdownFor(etat, FIN_MS + 90_000)?.ms).toBe(-90_000)
+  it('goes negative on an overrun, rather than stopping at zero', () => {
+    const state = payload()
+    state.state.sessionStates = { 'talk-1': 'running' }
+    expect(countdownFor(state, END_MS + 90_000)?.ms).toBe(-90_000)
   })
 
-  it('vise la conférence suivante dès que celle-ci est terminée', () => {
-    const suivante = talk({ id: 'talk-2', startsAtMs: FIN_MS + 15 * 60_000, endsAtMs: null })
-    const etat = payload({ sessions: [talk(), suivante] })
-    etat.state.sessionStates = { 'talk-1': 'ended' }
+  it('aims at the next talk as soon as this one has ended', () => {
+    const next = talk({ id: 'talk-2', startsAtMs: END_MS + 15 * 60_000, endsAtMs: null })
+    const state = payload({ sessions: [talk(), next] })
+    state.state.sessionStates = { 'talk-1': 'ended' }
 
     /*
-     * Le chronomètre continuait sur son créneau : « Terminer » appuyé à 10:35,
-     * il restait quinze minutes à l'écran sur un talk que la salle venait de
-     * quitter.
+     * The stopwatch used to carry on over its slot: "Terminer" pressed at 10:35,
+     * and fifteen minutes were left on screen for a talk the room had just left.
      */
-    const compte = countdownFor(etat, FIN_MS)
-    expect(compte).toEqual({ ms: 15 * 60_000, beforeStart: true })
+    const count = countdownFor(state, END_MS)
+    expect(count).toEqual({ ms: 15 * 60_000, beforeStart: true })
   })
 
-  it('ne décompte plus rien quand plus rien ne suit', () => {
-    const etat = payload()
-    etat.state.sessionStates = { 'talk-1': 'ended' }
-    expect(countdownFor(etat, FIN_MS)).toBe(null)
+  it('counts nothing down any more when nothing follows', () => {
+    const state = payload()
+    state.state.sessionStates = { 'talk-1': 'ended' }
+    expect(countdownFor(state, END_MS)).toBe(null)
   })
 
-  it('saute une pause : un déjeuner n’est pas ce qu’on attend', () => {
-    const pause = talk({ id: 'pause-1', kind: 'break', startsAtMs: FIN_MS + 60_000 })
-    const suivante = talk({ id: 'talk-2', startsAtMs: FIN_MS + 45 * 60_000, endsAtMs: null })
-    const etat = payload({ sessions: [talk(), pause, suivante] })
-    etat.state.sessionStates = { 'talk-1': 'ended' }
+  it('skips a break: a lunch is not what one is waiting for', () => {
+    const brk = talk({ id: 'pause-1', kind: 'break', startsAtMs: END_MS + 60_000 })
+    const next = talk({ id: 'talk-2', startsAtMs: END_MS + 45 * 60_000, endsAtMs: null })
+    const state = payload({ sessions: [talk(), brk, next] })
+    state.state.sessionStates = { 'talk-1': 'ended' }
 
-    expect(countdownFor(etat, FIN_MS)?.ms).toBe(45 * 60_000)
+    expect(countdownFor(state, END_MS)?.ms).toBe(45 * 60_000)
   })
 })
 
-describe('rendu du chronomètre', () => {
-  it('atténue un décompte qui ne réclame rien, alerte sur un dépassement', () => {
-    const avant = mount(Countdown, { props: { payload: payload(), atMs: DEBUT_MS - 600_000 } })
-    expect(avant.get('[data-role="countdown"]').classes()).toContain('text-dim')
-    // Le badge dit ce que le nombre décompte : les deux se lisent pareil sans lui.
-    expect(avant.text()).toContain('à venir')
+describe('rendering the stopwatch', () => {
+  it('dims a countdown that demands nothing, alerts on an overrun', () => {
+    const before = mount(Countdown, { props: { payload: payload(), atMs: START_MS - 600_000 } })
+    expect(before.get('[data-role="countdown"]').classes()).toContain('text-dim')
+    // The badge says what the number counts down: the two read alike without it.
+    expect(before.text()).toContain('à venir')
 
-    const etat = payload()
-    etat.state.sessionStates = { 'talk-1': 'running' }
-    const apres = mount(Countdown, { props: { payload: etat, atMs: FIN_MS + 60_000 } })
-    expect(apres.get('[data-role="countdown"]').classes()).toContain('text-alert')
-    expect(apres.text()).not.toContain('à venir')
+    const state = payload()
+    state.state.sessionStates = { 'talk-1': 'running' }
+    const after = mount(Countdown, { props: { payload: state, atMs: END_MS + 60_000 } })
+    expect(after.get('[data-role="countdown"]').classes()).toContain('text-alert')
+    expect(after.text()).not.toContain('à venir')
   })
 
-  it('prévient dans les cinq dernières minutes, où l’on ne le quitte plus des yeux', () => {
-    const etat = payload()
-    etat.state.sessionStates = { 'talk-1': 'running' }
-    const wrapper = mount(Countdown, { props: { payload: etat, atMs: FIN_MS - 120_000 } })
+  it('warns in the last five minutes, when one no longer looks away', () => {
+    const state = payload()
+    state.state.sessionStates = { 'talk-1': 'running' }
+    const wrapper = mount(Countdown, { props: { payload: state, atMs: END_MS - 120_000 } })
 
     expect(wrapper.get('[data-role="countdown"]').classes()).toContain('text-warn')
     expect(wrapper.text()).toContain('2:00')
   })
 
-  it('dit « --:-- » plutôt que zéro quand il n’y a rien à piloter', () => {
-    const etat = payload()
-    etat.state.targetSession = null
-    const wrapper = mount(Countdown, { props: { payload: etat, atMs: DEBUT_MS } })
+  it('says "--:--" rather than zero when there is nothing to drive', () => {
+    const state = payload()
+    state.state.targetSession = null
+    const wrapper = mount(Countdown, { props: { payload: state, atMs: START_MS } })
     expect(wrapper.get('[data-role="countdown"]').text()).toBe('--:--')
   })
 })
 
-describe('chronomètre de prise', () => {
+describe('take stopwatch', () => {
   const REC = { active: true, markers: 0, startedAtMs: 1_000_000, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS }
 
-  it('reste éteint hors enregistrement', () => {
+  it('stays dark outside a recording', () => {
     const wrapper = mount(RecordingTimer, {
       props: { recording: null, realMs: 1_000_000, roomMs: 1_000_000 },
     })
@@ -114,16 +113,16 @@ describe('chronomètre de prise', () => {
     expect(wrapper.classes()).toContain('text-dim')
   })
 
-  it('compte en temps réel quand la charge utile ne dit rien d’autre', () => {
+  it('counts in real time when the payload says nothing else', () => {
     const wrapper = mount(RecordingTimer, {
       props: { recording: REC, realMs: 1_000_000 + 95_000, roomMs: 9_999_999 },
     })
     expect(wrapper.text()).toBe('01:35')
   })
 
-  it('suit l’horloge du hub quand le départ y est daté', () => {
-    // Le cas du développement, où l'on déroule une journée en la poussant : le
-    // chronomètre doit dire la même chose que la durée finalement enregistrée.
+  it('follows the hub\'s clock when the start is dated against it', () => {
+    // The development case, where a day is run through by pushing it: the
+    // stopwatch must say the same thing as the duration finally recorded.
     const wrapper = mount(RecordingTimer, {
       props: {
         recording: { ...REC, startedAtCorrectedMs: 5_000_000 },
@@ -134,8 +133,8 @@ describe('chronomètre de prise', () => {
     expect(wrapper.text()).toBe('01:02')
   })
 
-  it('ne compte jamais à l’envers', () => {
-    // Une horloge poussée en arrière rendait un négatif, affiché « -1:-5 ».
+  it('never counts backwards', () => {
+    // A clock pushed backwards returned a negative, displayed as "-1:-5".
     const wrapper = mount(RecordingTimer, {
       props: { recording: REC, realMs: 900_000, roomMs: 900_000 },
     })

@@ -1,4 +1,4 @@
-import { regiePath, regieRoomIdFromPath, type RegieLock } from '@cloudnord/contract'
+import { controlPath, controlRoomIdFromPath, type ControlLock } from '@cloudnord/contract'
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
 import type { AmorcePortee } from '../boot.js'
@@ -48,7 +48,7 @@ export const usePorteStore = defineStore('porte', () => {
    * pilote ne se serait vue nulle part. C'est le champ qui doit réagir à la
    * seconde — c'est lui qui lève le voile.
    */
-  const verrouCourant = shallowRef<RegieLock | null>(null)
+  const verrouCourant = shallowRef<ControlLock | null>(null)
   let flux: FluxEtat | null = null
   /** Les substitutions de la dernière ouverture, rejouées à chaque changement de salle. */
   let ouverture: Ouverture = {}
@@ -141,13 +141,13 @@ export const usePorteStore = defineStore('porte', () => {
     // le garder ferait clignoter un voile le temps du premier sondage.
     verrouCourant.value = null
     roomId.value = salle
-    if (pousser) globalThis.history.pushState({}, '', regiePath(salle))
+    if (pousser) globalThis.history.pushState({}, '', controlPath(salle))
     if (flux != null) ouvrir(flux, ouverture)
   }
 
   /** Suit le bouton Retour du navigateur. Rendue pour être retirée au démontage. */
   function suivreHistorique(): () => void {
-    const surRetour = (): void => choisir(regieRoomIdFromPath(globalThis.location.pathname), false)
+    const surRetour = (): void => choisir(controlRoomIdFromPath(globalThis.location.pathname), false)
     globalThis.addEventListener('popstate', surRetour)
     return () => globalThis.removeEventListener('popstate', surRetour)
   }

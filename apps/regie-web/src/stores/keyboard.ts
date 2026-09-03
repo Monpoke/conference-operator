@@ -107,7 +107,7 @@ export const useKeyboardStore = defineStore('keyboard', () => {
  *
  * `active` permet à une modale de garder son composant monté sans prendre le
  * clavier : Reka rend souvent le contenu avant de l'ouvrir, et une couche posée
- * dès le montage volerait les touches à la page derrière.
+ * dès le editing volerait les touches à la page derrière.
  */
 export function useKeyboardLayer(
   bindings: MaybeRefOrGetter<Bindings>,

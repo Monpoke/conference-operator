@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { REGIE_LOCK_TTL_MS, TTL_COMMANDE_REGIE } from '@cloudnord/contract'
+import { CONTROL_LOCK_TTL_MS, CONTROL_COMMAND_TTL } from '@cloudnord/contract'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createHub, type Hub } from '../src/server.js'
 import { provisionOperator } from '../src/operators.js'
@@ -103,7 +103,7 @@ describe('le verrou', () => {
      * quinze secondes qui le séparent du tour suivant.
      */
     hub.services.regie.hold(TRACK_1, OPERATOR.email, TEL, false)
-    avancerDe(REGIE_LOCK_TTL_MS + 1_000)
+    avancerDe(CONTROL_LOCK_TTL_MS + 1_000)
 
     expect(hub.services.regie.lock(TRACK_1)).toBeNull()
     // Et la salle redevient prenable sans forcer.
@@ -152,7 +152,7 @@ describe('le verrou', () => {
     hub.services.regie.hold(TRACK_1, OPERATOR.email, TEL, false)
     expect(hub.services.regie.sweep()).toEqual([])
 
-    avancerDe(REGIE_LOCK_TTL_MS + 1_000)
+    avancerDe(CONTROL_LOCK_TTL_MS + 1_000)
     // La liste rendue est ce qui décide quelles salles voient leur badge
     // s'éteindre : sans elle, l'écran de régie garderait un porteur parti.
     expect(hub.services.regie.sweep()).toEqual([TRACK_1])
@@ -179,12 +179,12 @@ describe('ce que la salle reçoit', () => {
     hub.services.commands.publish(
       TRACK_1,
       { type: 'scene.force', role: 'LIVE', requestedBy: OPERATOR.email },
-      TTL_COMMANDE_REGIE['scene.force'],
+      CONTROL_COMMAND_TTL['scene.force'],
     )
     hub.services.commands.publish(
       TRACK_1,
       { type: 'recording.set', on: true, requestedBy: OPERATOR.email },
-      TTL_COMMANDE_REGIE['recording.set'],
+      CONTROL_COMMAND_TTL['recording.set'],
     )
 
     const scene = commandes().find((c) => c.payload.type === 'scene.force')
@@ -224,15 +224,15 @@ describe('ce que la salle reçoit', () => {
      * « notez le talk » rattrapé au milieu du suivant est le mauvais écran
      * devant les mauvaises personnes.
      */
-    expect(ecran?.ttlSeconds).toBe(TTL_COMMANDE_REGIE['display.set'])
-    expect(ecran?.ttlSeconds).toBe(TTL_COMMANDE_REGIE['scene.force'])
+    expect(ecran?.ttlSeconds).toBe(CONTROL_COMMAND_TTL['display.set'])
+    expect(ecran?.ttlSeconds).toBe(CONTROL_COMMAND_TTL['scene.force'])
   })
 
   it("qui a demandé le geste, pour que la régie de la salle puisse le dire", () => {
     hub.services.commands.publish(
       TRACK_1,
       { type: 'recording.set', on: true, requestedBy: OPERATOR.email },
-      TTL_COMMANDE_REGIE['recording.set'],
+      CONTROL_COMMAND_TTL['recording.set'],
     )
     const commande = commandes().find((c) => c.payload.type === 'recording.set')
     // Sans ce nom, un enregistrement qui démarre tout seul se lit comme une

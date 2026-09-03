@@ -495,7 +495,7 @@ describe('question à l\'antenne', () => {
 /**
  * La conférence pilotée saute ce qui ne se tiendra plus.
  *
- * La régie autorise « Commencer » — puis « Terminer » — sur une conférence
+ * La régie allowed « Commencer » — puis « Terminer » — sur une conférence
  * dont le créneau n'a pas encore commencé. La cible restait ensuite collée
  * dessus jusqu'à l'heure prévue : une heure pendant laquelle l'opérateur ne
  * pouvait pas piloter la conférence suivante, et pendant laquelle le grand

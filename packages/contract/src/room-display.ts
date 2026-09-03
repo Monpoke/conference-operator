@@ -3,7 +3,7 @@ import type { EventIdentity } from './event-identity.js'
 import type {
   Connectivity,
   DisplayMode,
-  ModeExecution,
+  ExecutionMode,
   ObsInstance,
   SceneRole,
 } from './primitives.js'
@@ -11,72 +11,69 @@ import type { SceneRoleMap, SessionStatus } from './room-state.js'
 import type { Comment } from './wall.js'
 
 /**
- * Ce qu'une salle dit d'elle-même, et ce que ses pages en lisent.
+ * What a room says about itself, and what its pages read from it.
  *
- * Ces types vivaient dans le client de salle, chez le processus qui les
- * produit. Ils en sortent parce qu'ils ont maintenant **deux** lecteurs : le
- * processus lui-même, et la régie, devenue un paquet à part avec sa propre
- * compilation. Un type recopié entre les deux dériverait — c'est déjà arrivé
- * une fois, entre la régie et la console, sur les seuils d'un même état.
+ * These types used to live in the room client, next to the process that produces
+ * them. They moved out because they now have **two** readers: the process itself,
+ * and the control app, which became a separate package with its own compilation.
+ * A type copied between the two would drift — that has already happened once,
+ * between the control app and the console, on the thresholds of the same state.
  *
- * Rien n'est ajouté ni renommé au passage : les définitions sont celles de
- * `runtime.ts`, `obs.ts`, `control-api.ts` et `display-server.ts`, déplacées
- * telles quelles. Ces quatre fichiers les réexportent, pour qu'aucun appelant
- * n'ait à changer d'import.
+ * Nothing is added or renamed on the way: the definitions are those of
+ * `runtime.ts`, `obs.ts`, `control-api.ts` and `display-server.ts`, moved as is.
+ * Those four files re-export them, so that no caller has to change an import.
  *
- * Ce sont des interfaces et non des schémas Zod, délibérément : rien ne les
- * valide au passage. Elles décrivent un flux **local** — le processus de la
- * salle vers les pages qu'il sert lui-même sur sa boucle locale — pas une
- * frontière réseau franchie par autrui.
+ * They are interfaces and not Zod schemas, deliberately: nothing validates them
+ * on the way. They describe a **local** flow — the room process towards the pages
+ * it serves itself on its own loopback — not a network boundary crossed by
+ * someone else.
  */
 
 export interface BroadcastMessage {
   text: string
   level: 'info' | 'warning' | 'urgent'
-  /** Expiration absolue : une commande rattrapée en retard ne réapparaît pas. */
+  /** Absolute expiry: a command caught up late does not reappear. */
   expiresAtMs: number | null
 }
 
 /**
- * Question du public mise à l'antenne depuis la régie.
+ * An audience question put on air from the control app.
  *
- * **Canal distinct de `liveMessage`, et c'est tout l'objet du type.** Les deux
- * ont longtemps partagé un seul champ : un « on reprend dans 5 minutes » envoyé
- * du hub s'affichait alors à la place de la question sur l'écran de salle, et
- * surtout, aucune surface ne pouvait montrer l'un sans risquer l'autre. Or ils
- * ne vont pas au même endroit — la question a sa place dans la VOD, le message
- * d'exploitation non.
+ * **A distinct channel from `liveMessage`, and that is the whole purpose of the
+ * type.** The two long shared a single field: a "back in 5 minutes" sent from the
+ * hub then showed up in place of the question on the room screen, and above all
+ * no surface could show one without risking the other. Yet they do not go to the
+ * same place — the question belongs in the VOD, the operations message does not.
  */
 export interface AiredQuestion {
   text: string
   author: string | null
   /**
-   * Conférence à laquelle elle se rattache.
+   * The talk it attaches to.
    *
-   * Sert à la faire tomber d'elle-même au talk suivant : une question restée à
-   * l'antenne au changement de conférence serait incrustée dans la VOD du
-   * mauvais speaker.
+   * Used to make it fall away by itself at the next talk: a question left on air
+   * across a change of talk would be burnt into the wrong speaker's VOD.
    */
   sessionId: string | null
 }
 
-/** Ce que la page d'affichage doit rendre à un instant donné. */
+/** What the display page must render at a given instant. */
 export interface DisplayState {
   mode: DisplayMode
   message: BroadcastMessage | null
   /**
-   * Bandeau superposé aux scènes live.
+   * Banner overlaid on the live scenes.
    *
-   * Distinct de `message` : celui-ci **remplace** l'écran de salle, le bandeau
-   * se pose par-dessus la vidéo sans rien interrompre. Les deux coexistent
-   * donc, et c'est voulu.
+   * Distinct from `message`: that one **replaces** the room screen, the banner
+   * sits on top of the video without interrupting anything. So the two coexist,
+   * and that is deliberate.
    *
-   * Distinct de `question` aussi : ce bandeau-ci vient de la console et ne doit
-   * jamais atteindre l'habillage de captation — il ne parle pas au public de la
-   * VOD, il parle à la salle de maintenant.
+   * Distinct from `question` too: this banner comes from the console and must
+   * never reach the capture overlay — it does not talk to the VOD audience, it
+   * talks to the room right now.
    */
   liveMessage: BroadcastMessage | null
-  /** Question du public à l'antenne. Va dans la VOD, contrairement au bandeau. */
+  /** Audience question on air. Goes into the VOD, unlike the banner. */
   question: AiredQuestion | null
   sceneRole: SceneRole | null
   connectivity: Connectivity
@@ -87,71 +84,72 @@ export interface DisplayState {
   outboxDepth: number
   serverTimeOffsetMs: number
   /**
-   * État réel d'OBS-B, observé et non supposé.
+   * OBS-B's real state, observed and not assumed.
    *
-   * Sert au témoin de la régie, jamais à l'habillage : ce qui est dans
-   * l'habillage part dans le master, et un point rouge gravé dans la VOD n'a
-   * rien à y faire.
+   * Used for the control app's indicator, never for the overlay: what is in the
+   * overlay goes into the master, and a red dot burnt into the VOD has no
+   * business there.
    */
   recording: boolean
   streaming: boolean
   /**
-   * Derniers messages approuvés. Bornés : un mur qui défile sans fin devient
-   * illisible à dix mètres, et la mémoire du client n'a pas à tout garder.
+   * Latest approved messages. Bounded: a wall that scrolls endlessly becomes
+   * unreadable from ten metres, and the client's memory does not have to keep
+   * everything.
    */
   comments: Comment[]
   /**
-   * État des conférences, par identifiant. Absent = « à venir ».
-   * Seul ce qui s'est produit est stocké, ici comme sur le hub.
+   * Talk states, by identifier. Absent = "upcoming".
+   * Only what happened is stored, here as on the hub.
    */
   sessionStates: Record<string, SessionStatus>
-  /** Faits récents dignes d'être signalés en régie. Bornés et périssables. */
+  /** Recent facts worth reporting in the control app. Bounded and perishable. */
   notifications: Notification[]
   /**
-   * L'heure vient d'un hub à horloge simulée.
+   * The talk the control commands act on.
    *
-   * Affiché en régie : voir 11:00 un matin d'août sans explication ferait
-   * douter de tout le reste de l'écran.
-   */
-  /**
-   * Conférence sur laquelle portent les commandes de régie.
-   *
-   * Rarement la même que `currentSession` : entre deux talks, pendant une
-   * pause, ou quelques minutes avant le début, `currentSession` est vide ou
-   * désigne un créneau sans speaker. Or c'est exactement à ces moments-là que
-   * l'opérateur veut appuyer sur « Commencer » — le speaker s'installe.
+   * Rarely the same as `currentSession`: between two talks, during a break, or a
+   * few minutes before the start, `currentSession` is empty or points at a slot
+   * with no speaker. Yet those are exactly the moments when the operator wants to
+   * press "Start" — the speaker is settling in.
    */
   targetSession: Session | null
   /**
-   * Break de la salle, en cours ou imminent — ou `null`.
+   * The room's break, running or imminent — or `null`.
    *
-   * À part de la session en cours : les deux cohabitent, et « BREAK à venir »
-   * s'affiche pendant qu'une conférence court encore.
+   * Separate from the current session: the two coexist, and "BREAK coming up"
+   * shows while a talk is still running.
    */
   breakBadge: { state: 'en-cours' | 'a-venir'; title: string; startsAt: string } | null
-  /** La cible n'a pas encore commencé au programme : l'écran doit le dire. */
+  /** The target has not started in the program yet: the screen must say so. */
   targetIsUpcoming: boolean
+  /**
+   * The time comes from a hub with a simulated clock.
+   *
+   * Shown in the control app: seeing 11:00 on an August morning with no
+   * explanation would cast doubt on the rest of the screen.
+   */
   simulatedClock: boolean
   /**
-   * Qui tient la régie mobile de cette salle, ou `null` si personne.
+   * Who holds this room's mobile control app, or `null` if nobody.
    *
-   * Il ne **grise rien**. La régie de la salle garde toutes ses commandes : la
-   * personne qui est physiquement là ne doit jamais dépendre d'un téléphone
-   * parti dans un couloir, ni d'un verrou qu'on a oublié de rendre.
+   * It **greys out nothing**. The room's control app keeps all its commands: the
+   * person who is physically there must never depend on a phone that has wandered
+   * off down a corridor, nor on a lock somebody forgot to release.
    *
-   * Il sert à ce que l'écran puisse le dire. Sans lui, une scène qui bascule et
-   * un enregistrement qui démarre sans que personne n'ait touché au clavier se
-   * lisent comme une panne — et c'est en plein talk qu'on s'en inquiéterait.
+   * It exists so the screen can say it. Without it, a scene switching and a
+   * recording starting without anyone touching the keyboard read as a failure —
+   * and you would worry about it in the middle of a talk.
    */
   remoteHolder: string | null
 }
 
 /**
- * Signalement affiché en haut de la régie.
+ * A notice shown at the top of the control app.
  *
- * Sert surtout aux autres salles : savoir qu'un talk vient de se terminer à
- * côté permet d'anticiper un enchaînement ou une bascule, sans avoir à
- * surveiller le panneau des salles en permanence.
+ * Mostly useful for the other rooms: knowing a talk has just ended next door lets
+ * you anticipate a handover or a switch, without having to watch the rooms panel
+ * all the time.
  */
 export interface Notification {
   id: string
@@ -163,24 +161,24 @@ export interface Notification {
 export interface ObsState {
   instance: ObsInstance
   connected: boolean
-  /** Scène courante telle qu'annoncée par OBS, jamais supposée par nous. */
+  /** Current scene as announced by OBS, never assumed by us. */
   currentSceneName: string | null
   currentRole: SceneRole | null
-  /** Rôles configurés mais absents d'OBS : à afficher en rouge dans la régie. */
+  /** Roles configured but missing from OBS: to be shown red in the control app. */
   unresolvedRoles: SceneRole[]
   /**
-   * L'instance est simulée.
+   * The instance is simulated.
    *
-   * À signaler partout où l'on croit piloter OBS : un enregistrement simulé
-   * ressemble en tout point à un vrai, sauf qu'il ne capte rien.
+   * To be flagged everywhere we believe we are driving OBS: a simulated recording
+   * looks exactly like a real one, except it captures nothing.
    */
   simulated: boolean
   /**
-   * Scènes réellement déclarées dans cette instance.
+   * Scenes actually declared in this instance.
    *
-   * Sert au formulaire de configuration de la régie : choisir un nom de scène
-   * dans une liste lue sur OBS vaut mieux que le retaper, puisque c'est
-   * justement la faute de frappe qui produit un rôle introuvable.
+   * Used by the control app's configuration form: picking a scene name from a
+   * list read off OBS beats typing it again, since a typo is precisely what
+   * produces an unresolvable role.
    */
   scenes: string[]
   recording: boolean
@@ -188,51 +186,51 @@ export interface ObsState {
 }
 
 /**
- * Configuration de la salle telle que la régie la voit.
+ * The room's configuration as the control app sees it.
  *
- * Les mots de passe OBS n'en font pas partie : seulement le fait qu'il y en a
- * un. Le formulaire n'a pas besoin de les relire pour les garder — un champ
- * laissé vide vaut « inchangé » — et une page servie en HTTP n'est pas
- * l'endroit où faire réapparaître un secret déjà enregistré.
+ * OBS passwords are not part of it: only the fact that there is one. The form
+ * does not need to read them back to keep them — a field left empty means
+ * "unchanged" — and a page served over HTTP is not the place to bring an already
+ * saved secret back into view.
  */
-export interface ConfigVisible {
-  obs: { A: PointObsVisible; B: PointObsVisible }
+export interface VisibleConfig {
+  obs: { A: VisibleObsEndpoint; B: VisibleObsEndpoint }
   sceneRoles: SceneRoleMap
   displayPort: number
   recordingRoot: string | null
   fileSlug: string | null
   relaySourceRoomId: string | null
-  /** Projet OpenFeedback, pour le QR « Notez le talk ». */
+  /** OpenFeedback project, for the "rate this talk" QR code. */
   openFeedbackProjectId: string | null
-  /** Avertir au « Commencer » si rien n'enregistre. */
+  /** Warn on "Start" if nothing is recording. */
   promptRecordingOnStart: boolean
-  /** Proposer au « Terminer » d'arrêter la captation qui tourne encore. */
+  /** Offer on "End" to stop the capture that is still running. */
   promptRecordingOnStop: boolean
-  /** Scène prise automatiquement au « Commencer ». `null` = aucune bascule. */
+  /** Scene taken automatically on "Start". `null` = no switch. */
   sceneOnStart: string | null
   /**
-   * Le poste sait ouvrir un sélecteur de dossier natif.
+   * The machine can open a native folder picker.
    *
-   * Vrai sous Electron, faux partout ailleurs — `dev:headless`, ou la régie
-   * ouverte depuis un navigateur. C'est le poste qui répond, et pas la page :
-   * elle ne peut pas deviner sous quoi elle tourne, et un bouton qui échoue
-   * une fois sur deux vaut moins qu'un champ à remplir à la main.
+   * True under Electron, false everywhere else — `dev:headless`, or the control
+   * app opened from a browser. It is the machine that answers, not the page: it
+   * cannot guess what it is running under, and a button that fails one time in
+   * two is worth less than a field filled in by hand.
    *
-   * Le dossier parcouru est celui de **la machine de salle**, où qu'on lise
-   * cette page : c'est là que les rushes s'écrivent, et ce champ n'a jamais
-   * désigné autre chose.
+   * The folder browsed is the one on **the room machine**, wherever this page is
+   * read: that is where the rushes are written, and this field has never
+   * designated anything else.
    */
-  peutParcourir: boolean
+  canBrowse: boolean
 }
 
-export interface PointObsVisible {
+export interface VisibleObsEndpoint {
   url: string
   hasPassword: boolean
   /**
-   * La connexion en cours n'a pas été ouverte avec ces réglages-là.
+   * The current connection was not opened with these settings.
    *
-   * Enregistrer ne reconnecte pas : c'est à l'opérateur de choisir quand
-   * couper une instance. Encore faut-il qu'il voie qu'il reste à le faire.
+   * Saving does not reconnect: it is up to the operator to choose when to cut an
+   * instance. But they still have to see that it remains to be done.
    */
   pending: boolean
 }
@@ -240,42 +238,41 @@ export interface PointObsVisible {
 export interface ControlDiagnostics {
   obs: { A: ObsState | null; B: ObsState | null }
   /**
-   * Questions posées dans cette salle, les plus votées d'abord.
+   * Questions asked in this room, most voted first.
    *
-   * Relues à la demande plutôt que poussées : la régie ne les regarde qu'en
-   * fin de talk, et les faire circuler en continu chargerait le flux d'état
-   * pour rien.
+   * Read on demand rather than pushed: the control app only looks at them at the
+   * end of a talk, and streaming them continuously would load the state flow for
+   * nothing.
    */
   questions: { id: string; text: string; author: string | null; votes: number }[]
-  /** Instant de la dernière relecture, pour dire une liste datée. */
+  /** Instant of the last read, so we can present a dated list. */
   questionsRefreshedAt: string | null
   /**
-   * Conférence à laquelle se rapportent les questions listées.
+   * The talk the listed questions relate to.
    *
-   * Affiché en régie : une liste vide ne dit pas la même chose selon qu'aucune
-   * question n'a été posée sur ce talk, ou qu'aucun talk n'est piloté. `null`
-   * dans le second cas.
+   * Shown in the control app: an empty list does not say the same thing depending
+   * on whether no question was asked on this talk, or no talk is being driven.
+   * `null` in the second case.
    */
   questionsSession: { id: string; title: string } | null
-  /** Réglages de la salle, pour le panneau de configuration. `null` avant le premier sync. */
-  config: ConfigVisible | null
+  /** The room's settings, for the configuration panel. `null` before the first sync. */
+  config: VisibleConfig | null
   /**
-   * Modes d'exécution, celui de la salle et celui du hub.
+   * Execution modes, the room's and the hub's.
    *
-   * `hub` reste `null` tant qu'aucune synchronisation n'a abouti. Les deux sont
-   * affichés ensemble parce que c'est leur **désaccord** qui compte : une salle
-   * de développement branchée sur le hub de l'événement enverrait de vraies
-   * commandes depuis un poste qui simule tout.
+   * `hub` stays `null` as long as no synchronization has succeeded. Both are shown
+   * together because it is their **disagreement** that matters: a development room
+   * plugged into the event hub would send real commands from a machine that
+   * simulates everything.
    */
-  mode: { salle: ModeExecution; hub: ModeExecution | null }
-  /** Salle relayée, `null` si le relais n'est pas configuré pour cette salle. */
+  mode: { room: ExecutionMode; hub: ExecutionMode | null }
+  /** Relayed room, `null` if relaying is not configured for this room. */
   relaySourceRoomId: string | null
   /**
-   * État des autres salles, tel que le hub le connaît.
+   * State of the other rooms, as the hub knows it.
    *
-   * Rafraîchi périodiquement et **mis en cache** : l'opérateur doit pouvoir
-   * jeter un œil aux autres salles sans que chaque rendu d'écran déclenche un
-   * appel réseau.
+   * Refreshed periodically and **cached**: the operator must be able to glance at
+   * the other rooms without every screen render triggering a network call.
    */
   rooms: {
     roomId: string
@@ -286,103 +283,100 @@ export interface ControlDiagnostics {
     outboxDepth: number
     lastSeenAt: string | null
     /**
-     * Conférence que la salle pilote réellement, `null` si elle n'en pilote
-     * aucune.
+     * The talk the room is really driving, `null` if it is driving none.
      *
-     * Distinct de ce que dit le programme : c'est la seule façon de savoir
-     * qu'une salle **déborde** — son créneau est fini, elle tourne encore. Le
-     * programme seul ne le dira jamais, il passe simplement au suivant.
+     * Distinct from what the program says: it is the only way to know a room is
+     * **overrunning** — its slot is over, it is still running. The program alone
+     * will never say so, it simply moves on to the next one.
      */
     currentSessionId: string | null
     /**
-     * Où en est la salle, calculé par le hub.
+     * Where the room stands, computed by the hub.
      *
-     * Lui seul croise le programme, son horloge — qui peut être simulée — et le
-     * cycle de vie des conférences des autres salles. La régie s'en sert tant
-     * que cette vue est fraîche, et retombe sur son propre cache dès qu'elle
-     * date : pendant une coupure, la salle d'à côté finit quand même à l'heure
-     * prévue.
+     * It alone crosses the program, its clock — which can be simulated — and the
+     * talk lifecycle of the other rooms. The control app uses it as long as this
+     * view is fresh, and falls back on its own cache as soon as it is stale:
+     * during an outage, the room next door still finishes on schedule.
      */
     conference: string
   }[]
-  /** Instant du dernier rafraîchissement des salles, pour signaler une vue périmée. */
+  /** Instant of the last rooms refresh, to flag a stale view. */
   roomsRefreshedAt: string | null
   outboxDepth: number
-  journal: { level: string; message: string; createdAt: string }[]
-  /** Enregistrement en cours côté client, et ce qui a été posé pendant. */
+  log: { level: string; message: string; createdAt: string }[]
+  /** Recording in progress on the client side, and what was marked during it. */
   recording: {
     active: boolean
-    /** Marqueurs de chapitre. Les deux repères de montage ont leur propre champ. */
+    /** Chapter markers. The two editing marks have their own field. */
     markers: number
     startedAtMs: number | null
     /**
-     * Départ sur l'horloge corrigée, ou `null` si le temps réel fait foi.
+     * Start on the corrected clock, or `null` if real time is authoritative.
      *
-     * Porte la valeur **et** la règle : la régie compte sur l'horloge du hub
-     * quand ce champ est renseigné — le cas du développement, où l'on déroule
-     * une journée en poussant l'horloge — et en temps réel sinon.
+     * Carries the value **and** the rule: the control app counts on the hub's
+     * clock when this field is set — the development case, where a day is played
+     * out by pushing the clock — and on real time otherwise.
      */
-    startedAtCorrigeMs: number | null
+    startedAtCorrectedMs: number | null
     /**
-     * Où tombent les deux repères de montage, `null` tant qu'ils manquent.
+     * Where the two editing marks fall, `null` while they are missing.
      *
-     * Le compte de marqueurs ne suffisait pas à répondre à la seule question
-     * qu'on se pose en régie avant d'arrêter la prise : « est-ce que j'ai posé
-     * le début ? ». Trois marqueurs peuvent être trois chapitres. Et un repère
-     * se repose — la valeur dit alors où il vient d'atterrir, ce qu'un
-     * booléen ne dirait pas.
+     * The marker count was not enough to answer the one question you ask yourself
+     * in the control room before stopping a take: "did I set the start?". Three
+     * markers can be three chapters. And a mark gets reset — the value then says
+     * where it has just landed, which a boolean would not.
      */
-    montage: ReperesMontage
+    editing: EditingMarks
   }
 }
 
 export interface DisplayPayload {
   state: DisplayState
-  /** Nom lisible de la salle. `state.roomId` est un identifiant technique. */
+  /** Readable room name. `state.roomId` is a technical identifier. */
   roomName: string | null
   event: Program['event'] | null
   timezone: string
   sessions: Session[]
   sponsorTiers: SponsorTier[]
-  /** Présent seulement pour la régie ; l'écran projeté n'en a pas besoin. */
+  /** Only present for the control app; the projected screen does not need it. */
   diagnostics: ControlDiagnostics | null
-  /** Adresse du mur public et son QR (SVG en ligne), pour l'écran de salle. */
+  /** Public wall address and its QR code (inline SVG), for the room screen. */
   wall: { url: string; qrSvg: string } | null
   /**
-   * Ce qui arrive dans les **autres** salles.
+   * What is happening in the **other** rooms.
    *
-   * Calculé ici, depuis le programme déjà en cache : le hub n'a rien à en dire
-   * que la salle ne sache déjà, et la boucle d'attente doit se dérouler entière
-   * sans réseau. Sert à la page « pendant ce temps, à côté » — la seule chose
-   * qu'un participant en salle ne peut pas deviner.
+   * Computed here, from the already cached program: the hub has nothing to say
+   * about it that the room does not already know, and the waiting loop must run
+   * through in full without a network. Used by the "meanwhile, next door" page —
+   * the one thing an attendee in a room cannot guess.
    */
   otherRooms: {
     roomId: string
     name: string
-    /** Prochaine conférence à commencer, ou celle en cours si elle court. */
+    /** Next talk to start, or the running one if it is on. */
     session: { id: string; title: string; startsAt: string; speakers: string[] } | null
-    /** Vrai si elle a déjà commencé : « en ce moment » plutôt que « à HH:MM ». */
-    enCours: boolean
+    /** True if it has already started: "right now" rather than "at HH:MM". */
+    running: boolean
   }[]
-  /** Comptes de l'événement, réglés sur le hub. Vide = la boucle saute cette page. */
+  /** The event's accounts, set on the hub. Empty = the loop skips this page. */
   socialLinks: { network: string; handle: string; url: string }[]
   /**
-   * Nom de l'événement, tranché par le hub et relu du cache local.
+   * Event name, decided by the hub and read back from the local cache.
    *
-   * Distinct de `event.name` du programme : le hub peut le contredire par
-   * réglage, et surtout il est connu **sans** programme — une machine tout
-   * juste appairée doit déjà titrer ses fenêtres correctement.
+   * Distinct from the program's `event.name`: the hub can contradict it by
+   * setting, and above all it is known **without** a program — a machine that has
+   * just been paired must already title its windows correctly.
    */
   eventIdentity: { name: string; shortName: string }
   /**
-   * QR OpenFeedback du talk en cours.
+   * OpenFeedback QR code for the running talk.
    *
-   * Fabriqué hors ligne : OpenFeedback réutilise les identifiants de session de
-   * l'export amont, donc l'adresse se déduit du programme déjà en cache. `null`
-   * quand aucune conférence ne court, ou sans projet configuré.
+   * Built offline: OpenFeedback reuses the session identifiers of the upstream
+   * export, so the address is derived from the already cached program. `null` when
+   * no talk is running, or with no project configured.
    */
   feedback: { url: string; qrSvg: string } | null
-  /** Appairage de la machine : la régie s'en sert pour afficher le code. */
+  /** The machine's pairing: the control app uses it to show the code. */
   pairing: {
     status: string
     userCode?: string
@@ -394,159 +388,156 @@ export interface DisplayPayload {
 }
 
 /**
- * Durée de vie d'un signalement.
+ * Lifetime of a notice.
  *
- * Un bandeau qui ne part pas cesse d'être lu : la régie finissait la journée
- * avec cinq signalements empilés au-dessus des commandes, tous périmés depuis
- * longtemps. Trente secondes suffisent à voir passer un fait ponctuel — et ce
- * qui doit rester consultable, l'état des autres salles, est de toute façon
- * dans le flux d'en-tête, qui lui ne périme pas.
+ * A banner that does not go away stops being read: the control app used to end
+ * the day with five notices stacked above the commands, all long expired. Thirty
+ * seconds is enough to catch a one-off fact — and what must stay consultable, the
+ * state of the other rooms, is in the header flow anyway, which does not expire.
  */
-export const DUREE_SIGNALEMENT_MS = 30_000
+export const NOTIFICATION_TTL_MS = 30_000
 
 /**
- * Niveau d'une entrée audio, en dBFS.
+ * Level of an audio input, in dBFS.
  *
- * OBS envoie des multiplicateurs linéaires ; on convertit ici parce que c'est
- * l'échelle sur laquelle un ingénieur du son raisonne, et celle qu'affiche OBS
- * lui-même. `-60` sert de plancher : en dessous, c'est du silence, et un
- * `-Infinity` casserait tout calcul de largeur de barre côté page.
+ * OBS sends linear multipliers; we convert here because that is the scale a sound
+ * engineer thinks on, and the one OBS itself displays. `-60` acts as the floor:
+ * below that it is silence, and an `-Infinity` would break any bar-width
+ * computation on the page side.
  */
-export interface NiveauEntree {
-  nom: string
-  /** Un élément par canal : mono en a un, stéréo deux. */
-  canaux: { magnitude: number; crete: number }[]
+export interface InputLevel {
+  name: string
+  /** One element per channel: mono has one, stereo two. */
+  channels: { magnitude: number; peak: number }[]
 }
 
-/** Plancher d'affichage, en dBFS. */
-export const PLANCHER_DB = -60
+/** Display floor, in dBFS. */
+export const DB_FLOOR = -60
 
 /**
- * Charge du poste de régie, relevée hors du flux d'état.
+ * Load of the control machine, read outside the state flow.
  *
- * Servie à part sur `/control/host` : la mesure est une moyenne sur sa propre
- * fenêtre, et une salle dont la régie est fermée ne doit émettre aucun trafic.
+ * Served separately on `/control/host`: the measurement is an average over its own
+ * window, and a room whose control app is closed must emit no traffic.
  */
-export interface ChargeHote {
+export interface HostLoad {
   /**
-   * Part occupée du processeur sur la fenêtre observée, entre 0 et 1.
+   * Share of the CPU used over the observed window, between 0 and 1.
    *
-   * `null` tant qu'aucune fenêtre n'a pu être mesurée — au démarrage, ou sur
-   * une machine dont Node ne sait pas lire les compteurs. C'est un aveu, pas un
-   * zéro : afficher « 0 % » d'un processeur qu'on n'a pas su lire ferait
-   * exactement le contraire de ce qu'on cherche.
+   * `null` while no window could be measured — at startup, or on a machine whose
+   * counters Node cannot read. It is an admission, not a zero: showing "0%" for a
+   * CPU we failed to read would do exactly the opposite of what we are after.
    */
   cpu: number | null
-  coeurs: number
-  /** Durée réellement couverte par la mesure, en ms — l'info-bulle la cite. */
-  fenetreMs: number
+  cores: number
+  /** Duration actually covered by the measurement, in ms — the tooltip quotes it. */
+  windowMs: number
   /**
-   * Mémoire vive occupée et totale, en octets. `null` si illisible.
+   * RAM used and total, in bytes. `null` if unreadable.
    *
-   * L'autre façon dont un poste lâche, et la plus sournoise : la machine ne
-   * ralentit pas franchement, elle commence à échanger sur le disque — celui-là
-   * même qui écrit le rush.
+   * The other way a machine gives way, and the sneakiest: the machine does not
+   * slow down outright, it starts swapping to disk — the very disk writing the
+   * rush.
    */
-  memoire: { occupeeOctets: number; totalOctets: number } | null
+  memory: { usedBytes: number; totalBytes: number } | null
 }
 
-/** Les trois pages servies, chacune n'ayant pas les mêmes besoins. */
-export type VueAffichage = 'projecteur' | 'overlay' | 'bandeau' | 'regie'
+/** The pages served, each with different needs. */
+export type DisplayView = 'projecteur' | 'overlay' | 'bandeau' | 'regie'
 
 /**
- * Ce que chaque vue reçoit réellement.
+ * What each view actually receives.
  *
- * L'overlay ne lit que deux champs sur neuf : lui pousser le programme complet
- * de la salle, les sponsors et le QR du mur à chaque changement d'état coûte
- * une trentaine de kilo-octets pour rien. Le test `vues-du-flux` vérifie que
- * ces listes couvrent bien ce que chaque page consulte — un champ ajouté à une
- * page sans l'être ici produirait un rendu muet, pas une erreur.
+ * The overlay only reads two fields out of nine: pushing it the room's whole
+ * program, the sponsors and the wall QR code on every state change costs some
+ * thirty kilobytes for nothing. The `vues-du-flux` test checks that these lists
+ * really cover what each page consults — a field added to a page without being
+ * added here would produce a silent render, not an error.
  */
-export const CHAMPS_PAR_VUE: Record<VueAffichage, readonly (keyof DisplayPayload)[]> = {
+export const FIELDS_BY_VIEW: Record<DisplayView, readonly (keyof DisplayPayload)[]> = {
   projecteur: [
     'state', 'roomName', 'event', 'timezone', 'sessions', 'sponsorTiers', 'wall', 'feedback',
-    // Deux champs pour la seule boucle d'attente : ils ne bougent qu'au
-    // changement de créneau et au sync, donc ils ne coûtent rien au flux.
+    // Two fields for the waiting loop alone: they only move at a slot change and
+    // at sync, so they cost the flow nothing.
     'otherRooms', 'socialLinks',
-    // Le nom de l'événement : deux mots qui ne bougent qu'au sync, et sans
-    // lesquels chaque page se retitrerait avec une constante compilée.
+    // The event name: two words that only move at sync, and without which every
+    // page would retitle itself with a compiled-in constant.
     'eventIdentity',
   ],
   overlay: ['state', 'event', 'eventIdentity'],
-  // Le bandeau ne lit que `state.liveMessage` : lui pousser le programme et
-  // les sponsors coûterait trente kilo-octets par changement d'écran.
+  // The banner only reads `state.liveMessage`: pushing it the program and the
+  // sponsors would cost thirty kilobytes per screen change.
   bandeau: ['state', 'eventIdentity'],
   regie: [
     'state', 'roomName', 'timezone', 'sessions', 'diagnostics', 'pairing', 'eventIdentity',
-    // L'adresse du mur, pour le menu des écrans. Le QR voyage avec, ce qui est
-    // du gaspillage — mais il ne change qu'au sync, et scinder le champ en deux
-    // coûterait plus cher à lire qu'il ne fait économiser.
+    // The wall address, for the screens menu. The QR code travels with it, which
+    // is waste — but it only changes at sync, and splitting the field in two would
+    // cost more to read than it saves.
     'wall',
   ],
 }
 
 /*
- * Les rushes tels que la régie les voit.
+ * The rushes as the control app sees them.
  *
- * Même raison que le reste de ce fichier : ces types décrivent ce que le poste
- * répond sur `/control/recordings` et `/control/uploads`, et ils ont désormais
- * deux lecteurs — le poste qui les produit, et le bundle de la régie qui les
- * lit. Déplacés tels quels ; les fichiers d'origine les réexportent.
+ * Same reason as the rest of this file: these types describe what the machine
+ * answers on `/control/recordings` and `/control/uploads`, and they now have two
+ * readers — the machine that produces them, and the control app bundle that reads
+ * them. Moved as is; the original files re-export them.
  */
 
 /**
- * Les deux repères que le montage cherche, et qu'il ne peut pas deviner.
+ * The two marks editing looks for, and cannot guess.
  *
- * Un marqueur ordinaire dit « il se passe quelque chose ici » ; ces deux-là
- * disent où commence et où finit ce qu'on publie. La différence n'est pas
- * cosmétique : sans eux, le rognage des blancs de début et de fin se fait par
- * détection de silence, sur un micro de salle qui ne descend jamais vraiment à
- * zéro — et couper les trois premiers mots d'un talk est un défaut qui ne se
- * rattrape qu'en remontant le fichier à la main.
+ * An ordinary marker says "something happens here"; these two say where what we
+ * publish starts and ends. The difference is not cosmetic: without them, trimming
+ * the blank at the start and end is done by silence detection, on a room
+ * microphone that never really goes down to zero — and cutting the first three
+ * words of a talk is a defect that can only be repaired by re-editing the file by
+ * hand.
  *
- * Un champ plutôt qu'un libellé convenu : le montage lit `role`, et n'a donc
- * pas à reconnaître « Début », « debut », « DÉBUT », ni le jour où quelqu'un
- * aura tapé « Départ ».
+ * A field rather than an agreed label: editing reads `role`, and so does not have
+ * to recognise "Début", "debut", "DÉBUT", nor the day somebody types "Départ".
  *
- * Sans accent, comme `illisible`, `abandonne` et `termine` : ce sont des clés
- * lues par une machine, pas des libellés — ce que lit l'opérateur est écrit
- * dans la régie.
+ * Unaccented, like `illisible`, `abandonne` and `termine`: these are keys read by
+ * a machine, not labels — what the operator reads is written in the control app.
+ * They are written into the sidecars on disk, so they do not change.
  */
 export type MarkerRole = 'debut' | 'fin'
 
-/** Où tombent les deux repères d'une prise. `null` : celui-là n'a pas été posé. */
-export interface ReperesMontage {
-  debutMs: number | null
-  finMs: number | null
+/** Where a take's two marks fall. `null`: that one was not set. */
+export interface EditingMarks {
+  startMs: number | null
+  endMs: number | null
 }
 
 /**
- * Aucun repère posé.
+ * No mark set.
  *
- * Nommé plutôt que répété, comme `POLITIQUE_VOD_PAR_DEFAUT` : c'est à la fois
- * ce que rend une prise où personne n'a encore rien posé, et ce qu'affiche une
- * régie tenue à distance — le hub ne stocke qu'un booléen d'enregistrement, il
- * ne sait rien des repères. Les deux doivent continuer de dire la même chose.
+ * Named rather than repeated, like `DEFAULT_VOD_POLICY`: it is at once what a take
+ * where nobody has set anything returns, and what a remotely held control app
+ * shows — the hub only stores a recording boolean, it knows nothing of the marks.
+ * The two must keep saying the same thing.
  */
-export const SANS_REPERES: ReperesMontage = { debutMs: null, finMs: null }
+export const NO_EDITING_MARKS: EditingMarks = { startMs: null, endMs: null }
 
 export interface Marker {
   label: string
-  /** Décalage depuis le début de l'enregistrement — ce qui sert au montage. */
+  /** Offset from the start of the recording — what editing works from. */
   offsetMs: number
   at: string
   /**
-   * Rôle au montage, absent sur un marqueur de chapitre ordinaire.
+   * Editing role, absent on an ordinary chapter marker.
    *
-   * Optionnel, et il le restera : les sidecars écrits avant l'introduction du
-   * champ n'en portent pas, et ceux-là sont déjà sur le disque des salles et
-   * dans le stockage. Un montage qui ne trouve pas de repère retombe sur la
-   * détection — c'est le comportement d'avant, et il reste le filet.
+   * Optional, and it will stay so: the sidecars written before the field was
+   * introduced do not carry it, and those are already on the rooms' disks and in
+   * the storage. Editing that finds no mark falls back on detection — that is the
+   * behaviour from before, and it remains the safety net.
    */
   role?: MarkerRole
 }
 
-/** Métadonnées écrites à côté du master, pour le montage et l'upload. */
+/** Metadata written next to the master, for editing and upload. */
 export interface Sidecar {
   sessionId: string | null
   title: string
@@ -558,31 +549,37 @@ export interface Sidecar {
   endedAt: string
   durationMs: number
   markers: Marker[]
-  /** Nom final du fichier vidéo, une fois renommé. */
+  /** Final name of the video file, once renamed. */
   videoFile: string | null
 }
 
 
 /**
- * Ce que la régie sait dire d'un fichier produit dans la journée.
+ * What the control app can say about a file produced during the day.
  *
- * `illisible` est un constat technique — le conteneur ne s'ouvre pas, la piste
- * vidéo manque, le fichier est vide ; `suspect` veut dire « regardez-le
- * vous-même » : il s'ouvre, mais quelque chose ne colle pas avec ce que la
- * régie croyait enregistrer. Les deux méritent d'être vus avant de démonter
- * la salle, pas la veille du montage.
+ * `illisible` is a technical finding — the container does not open, the video
+ * track is missing, the file is empty; `suspect` means "look at it yourself": it
+ * opens, but something does not match what the control app thought it was
+ * recording. Both deserve to be seen before dismantling the room, not the day
+ * before editing.
+ *
+ * The values are written into the verdicts file on the room's disk, so they stay
+ * as they are.
  */
-export type VerdictVod = 'ok' | 'suspect' | 'illisible'
+export type VodVerdict = 'ok' | 'suspect' | 'illisible'
 
-/** Ce que ffprobe a lu du fichier. Absent quand l'outil n'est pas installé. */
-export interface SondageVod {
+/**
+ * What ffprobe read from the file. Absent when the tool is not installed.
+ *
+ * Field names are those written into the verdicts file: they do not change.
+ */
+export interface VodProbe {
   /**
-   * ffprobe a reconnu le conteneur.
+   * ffprobe recognised the container.
    *
-   * Faux, tout le reste est nul — et il faut le dire ainsi : « aucune piste
-   * vidéo » laisse croire à un fichier valide amputé de son image, alors que
-   * c'est le conteneur entier qui ne s'ouvre pas. Les deux ne se réparent pas
-   * de la même façon.
+   * When false, everything else is null — and it has to be said that way: "no
+   * video track" suggests a valid file stripped of its picture, whereas it is the
+   * whole container that does not open. The two are not repaired the same way.
    */
   ouvert: boolean
   durationMs: number | null
@@ -591,72 +588,75 @@ export interface SondageVod {
   bitrateKbps: number | null
 }
 
-export interface ControleVod {
-  status: VerdictVod
-  /** Instant du contrôle : un verdict d'il y a trois heures ne vaut plus rien. */
+/**
+ * A file's verdict, as written to the verdicts file on the room's disk.
+ *
+ * Field names are frozen for that reason: a rename would make every verdict
+ * already written unreadable.
+ */
+export interface VodCheck {
+  status: VodVerdict
+  /** Instant of the check: a verdict from three hours ago is worth nothing. */
   at: string
-  /** `auto` = la vérification technique ; `operateur` = quelqu'un a ouvert le fichier. */
+  /** `auto` = the technical check; `operateur` = somebody opened the file. */
   by: 'auto' | 'operateur'
-  /** Ce qui a motivé le verdict, en clair : un badge rouge sans raison ne sert personne. */
+  /** What motivated the verdict, in plain words: a red badge with no reason serves nobody. */
   reasons: string[]
-  probe: SondageVod | null
+  probe: VodProbe | null
   /**
-   * Le fichier tel qu'il était quand le verdict a été posé.
+   * The file as it was when the verdict was made.
    *
-   * Un verdict est indexé par le nom du fichier, et ce nom se réutilise : le
-   * format demandé à OBS est déterminant — date, salle, heure, titre — donc
-   * rejouer la même conférence réécrit au même endroit. Sans cette empreinte,
-   * le verdict de la prise précédente s'affichait sur la nouvelle, avec la
-   * lecture ffprobe de l'ancienne : « sidecar absent » sur un rush qui, lui,
-   * avait le sien.
+   * A verdict is indexed by the file name, and that name gets reused: the format
+   * asked of OBS is deterministic — date, room, time, title — so replaying the
+   * same talk rewrites in the same place. Without this fingerprint, the previous
+   * take's verdict showed on the new one, with the old ffprobe reading: "sidecar
+   * missing" on a rush that had its own.
    *
-   * Absente sur les verdicts écrits avant son introduction : ceux-là ne
-   * décrivent peut-être plus rien et ne sont plus affichés.
+   * Absent on verdicts written before it was introduced: those may no longer
+   * describe anything and are not shown any more.
    */
   fichier?: { sizeBytes: number; modifiedAtMs: number }
 }
 
-export interface EntreeVod {
-  /** Chemin relatif à la racine, séparateurs normalisés — c'est aussi la clé. */
+export interface VodEntry {
+  /** Path relative to the root, separators normalized — it is also the key. */
   file: string
   sizeBytes: number
   modifiedAtMs: number
   /**
-   * Le fichier a bougé il y a quelques secondes : la prise est probablement
-   * encore en cours. Le contrôler maintenant dirait « tronqué » d'un
-   * enregistrement qui se porte très bien.
+   * The file moved a few seconds ago: the take is probably still running.
+   * Checking it now would call a recording that is doing fine "truncated".
    */
-  enEcriture: boolean
+  beingWritten: boolean
   sidecar: Sidecar | null
-  check: ControleVod | null
+  check: VodCheck | null
 }
 
 
 /**
- * Pourquoi rien ne part.
+ * Why nothing is leaving.
  *
- * Rendu jusqu'à l'écran de régie, et c'est sa raison d'être : une attente sans
- * motif se lit comme une panne, et le bouton qu'on vient de presser passe pour
- * mort. « en attente — conférence dans 6 min » ne demande aucune explication.
+ * Rendered all the way to the control screen, and that is its reason to exist: a
+ * wait with no motive reads as a failure, and the button you have just pressed
+ * passes for dead. "waiting — talk in 6 min" needs no explanation.
  */
-export type RaisonAttente =
+export type WaitReason =
   /**
-   * Aucune destination : le hub n'a pas de stockage.
+   * No destination: the hub has no storage.
    *
-   * Le seul refus qu'une demande manuelle ne lève pas — ce n'est pas un mauvais
-   * moment, c'est l'absence d'un endroit où envoyer. La régie retire ses
-   * boutons : un bouton qui échoue à chaque clic vaut moins qu'un bouton absent.
+   * The only refusal a manual request does not lift — it is not a bad moment, it
+   * is the absence of anywhere to send to. The control app removes its buttons: a
+   * button that fails on every click is worth less than an absent button.
    */
   | 'sans-stockage'
   /**
-   * Le stockage existe, l'automatisme est éteint.
+   * Storage exists, automation is off.
    *
-   * **Distinct du précédent, et c'est tout l'objet de la séparation.** Les deux
-   * ont longtemps partagé un seul code, et la régie retirait ses boutons dans
-   * les deux cas — y compris sur le réglage par défaut, qui est justement
-   * « rien ne part sans qu'on l'ait demandé ». Un hub parfaitement configuré
-   * n'offrait donc aucun moyen d'envoyer quoi que ce soit, alors que le
-   * régulateur, lui, acceptait déjà les demandes manuelles.
+   * **Distinct from the previous one, and that is the whole point of the split.**
+   * The two long shared a single code, and the control app removed its buttons in
+   * both cases — including on the default setting, which is precisely "nothing
+   * leaves unless asked". A perfectly configured hub therefore offered no way to
+   * send anything, while the regulator itself already accepted manual requests.
    */
   | 'auto-desactive'
   | 'enregistrement'
@@ -665,56 +665,55 @@ export type RaisonAttente =
   | 'charge'
   | 'debit'
 
-export interface VerdictTeleversement {
-  autorise: boolean
-  /** `null` quand c'est autorisé : il n'y a alors rien à expliquer. */
-  raison: RaisonAttente | null
-  /** Plafond à appliquer, en octets par seconde. `null` = pas de plafond. */
+export interface UploadVerdict {
+  allowed: boolean
+  /** `null` when it is allowed: there is then nothing to explain. */
+  reason: WaitReason | null
+  /** Ceiling to apply, in bytes per second. `null` = no ceiling. */
   debitMaxOctetsS: number | null
-  /** Ce que la régie affiche, en clair. */
-  texte: string
+  /** What the control app shows, in plain words. */
+  text: string
 }
 
 
-/** Ce que la régie affiche pour un fichier. */
-export interface EtatTeleversementVu {
+/** What the control app shows for one file. */
+export interface UploadRow {
   file: string
   state: string
-  pourcent: number
+  percent: number
   /**
-   * Ce qu'il reste à envoyer, en octets.
+   * What is left to send, in bytes.
    *
-   * Le pourcentage ne suffit pas à en déduire un temps : arrondi à l'entier, il
-   * vaut trente méga-octets par point sur un rush de trois gigas, et une
-   * estimation calculée dessus se tromperait d'autant. Les octets restants sont
-   * le seul terme qui, divisé par un débit, donne une durée.
+   * The percentage is not enough to derive a time from: rounded to an integer, it
+   * is worth thirty megabytes per point on a three-gigabyte rush, and an estimate
+   * computed on it would be off by as much. The remaining bytes are the only term
+   * that, divided by a throughput, gives a duration.
    */
-  restantOctets: number
+  remainingBytes: number
   debitOctetsS: number | null
-  erreur: string | null
-  manuel: boolean
+  error: string | null
+  manual: boolean
 }
 
-export interface VueTeleversements {
-  entrees: EtatTeleversementVu[]
-  verdict: VerdictTeleversement
+export interface UploadsView {
+  entries: UploadRow[]
+  verdict: UploadVerdict
 }
 
 /**
- * Ce que la modale des enregistrements reçoit.
+ * What the recordings dialog receives.
  *
- * `root` est repris tel quel — nul, la liste est vide et la page doit dire
- * pourquoi plutôt que d'afficher « aucun enregistrement », qui se lirait comme
- * une journée perdue.
+ * `root` is passed through as is — null, the list is empty and the page must say
+ * why rather than showing "no recording", which would read as a lost day.
  */
-export interface VodListe {
+export interface VodList {
   root: string | null
-  entries: EntreeVod[]
+  entries: VodEntry[]
   /**
-   * Outils externes réellement présents sur la machine.
+   * External tools actually present on the machine.
    *
-   * La page s'en sert pour ne pas proposer un lecteur qui ne démarrera jamais :
-   * ni ffmpeg ni ffprobe ne sont des dépendances du poste.
+   * The page uses it so as not to offer a player that will never start: neither
+   * ffmpeg nor ffprobe is a dependency of the machine.
    */
-  outils: { ffmpeg: boolean; ffprobe: boolean }
+  tools: { ffmpeg: boolean; ffprobe: boolean }
 }

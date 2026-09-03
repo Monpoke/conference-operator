@@ -1,14 +1,14 @@
 import { eq } from 'drizzle-orm'
 import {
-  REGIE_LOCK_TTL_MS,
-  TTL_COMMANDE_REGIE,
-  regieLockSchema,
-  regieViewSchema,
+  CONTROL_LOCK_TTL_MS,
+  CONTROL_COMMAND_TTL,
+  controlLockSchema,
+  controlViewSchema,
   type CommandPayloadInput,
-  type RegieCommand,
-  type RegieLock,
-  type RegieRoom,
-  type RegieView,
+  type ControlCommand,
+  type ControlLock,
+  type ControlRoom,
+  type ControlView,
   type SceneRole,
 } from '@cloudnord/contract'
 import {
@@ -36,7 +36,7 @@ import type { Services } from '../context.js'
 
 /** Refus d'un geste, à traduire en `CONFLICT` par le routeur. */
 export class VerrouTenu extends Error {
-  constructor(readonly lock: RegieLock) {
+  constructor(readonly lock: ControlLock) {
     super(`${lock.holder} tient la régie de cette salle`)
     this.name = 'VerrouTenu'
   }
@@ -65,12 +65,12 @@ export class RegieService {
    * qui fait autorité — sans quoi un verrou mort resterait opposable pendant
    * les quinze secondes qui le séparent du tour suivant.
    */
-  lock(roomId: string): RegieLock | null {
+  lock(roomId: string): ControlLock | null {
     const row = this.db.select().from(regieLock).where(eq(regieLock.roomId, roomId)).get()
     if (row == null) return null
-    const expiresAtMs = Date.parse(row.lastSeenAt) + REGIE_LOCK_TTL_MS
+    const expiresAtMs = Date.parse(row.lastSeenAt) + CONTROL_LOCK_TTL_MS
     if (expiresAtMs <= this.now()) return null
-    return regieLockSchema.parse({
+    return controlLockSchema.parse({
       roomId: row.roomId,
       holder: row.holder,
       holderId: row.holderId,
@@ -95,7 +95,7 @@ export class RegieService {
    *
    * Une reprise, elle, le réinitialise : c'est une autre prise.
    */
-  hold(roomId: string, holder: string, holderId: string, force: boolean): RegieLock {
+  hold(roomId: string, holder: string, holderId: string, force: boolean): ControlLock {
     const actuel = this.lock(roomId)
     if (actuel != null && actuel.holderId !== holderId && !force) throw new VerrouTenu(actuel)
 
@@ -108,9 +108,9 @@ export class RegieService {
       .onConflictDoUpdate({ target: regieLock.roomId, set: values })
       .run()
 
-    return regieLockSchema.parse({
+    return controlLockSchema.parse({
       ...values,
-      expiresAt: new Date(this.now() + REGIE_LOCK_TTL_MS).toISOString(),
+      expiresAt: new Date(this.now() + CONTROL_LOCK_TTL_MS).toISOString(),
     })
   }
 
@@ -141,7 +141,7 @@ export class RegieService {
    * plus lire.
    */
   sweep(): string[] {
-    const limite = this.now() - REGIE_LOCK_TTL_MS
+    const limite = this.now() - CONTROL_LOCK_TTL_MS
     const perimes = this.db
       .select()
       .from(regieLock)
@@ -164,7 +164,7 @@ export class RegieService {
  * lectures divergentes de la même salle sont exactement ce que ce dépôt évite
  * partout ailleurs.
  */
-export function sallesDeRegie(services: Services, at: number): RegieRoom[] {
+export function sallesDeRegie(services: Services, at: number): ControlRoom[] {
   const snapshot = services.programs.active()
   return services.rooms.statuses().map((statut) => ({
     roomId: statut.roomId,
@@ -194,7 +194,7 @@ export function sallesDeRegie(services: Services, at: number): RegieRoom[] {
  * peut être simulée ; en développement l'écart se compte en semaines, et le
  * navigateur n'a que la sienne.
  */
-export function vueDeRegie(services: Services, roomId: string, at: number): RegieView {
+export function vueDeRegie(services: Services, roomId: string, at: number): ControlView {
   const salle = services.rooms.get(roomId)
   if (salle == null) throw new SalleInconnue(roomId)
 
@@ -204,7 +204,7 @@ export function vueDeRegie(services: Services, roomId: string, at: number): Regi
   const statuts = statutsDeLaSalle(services, roomId)
   const cible = talkToControl(creneaux, at, statuts)
 
-  return regieViewSchema.parse({
+  return controlViewSchema.parse({
     roomId,
     roomName: salle.name,
     event: services.identity.get(),
@@ -267,7 +267,7 @@ export function vueDeRegie(services: Services, roomId: string, at: number): Regi
 export function commandeDeRegie(
   services: Services,
   roomId: string,
-  action: RegieCommand,
+  action: ControlCommand,
   auteur: string,
 ): { applied: 'now' | 'queued' } {
   switch (action.type) {
@@ -316,7 +316,7 @@ function publier(
     { type: 'scene.force' | 'display.set' | 'recording.set' | 'stream.set' }
   >,
 ): void {
-  services.commands.publish(roomId, payload, TTL_COMMANDE_REGIE[payload.type])
+  services.commands.publish(roomId, payload, CONTROL_COMMAND_TTL[payload.type])
 }
 
 function statutsDeLaSalle(services: Services, roomId: string): SessionStatuses {

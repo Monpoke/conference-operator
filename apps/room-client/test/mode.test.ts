@@ -7,7 +7,7 @@ import { decalageDuMode, lireMode } from '../src/core/mode.js'
  * Le garde-fou qui compte : les commodités de développement ne s'appliquent
  * **que** en `MODE=dev`. Un `OBS_MOCK=1` oublié dans un raccourci, c'est une
  * journée entière filmée par une instance OBS qui n'existe pas, et la panne se
- * découvre au montage — quand il n'y a plus rien à rattraper.
+ * découvre au editing — quand il n'y a plus rien à rattraper.
  */
 describe('mode de la salle', () => {
   it('est en production quand rien n\'est demandé', () => {

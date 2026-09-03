@@ -12,7 +12,7 @@ import type { RegieService } from './services/regie.js'
 import type { SessionStateService, SettingsService } from './services/sessions.js'
 import type { EventIdentityService } from './services/event-identity.js'
 import type { MutableClock } from './services/clock.js'
-import type { ModeExecution } from '@cloudnord/contract'
+import type { ExecutionMode } from '@cloudnord/contract'
 
 export interface Services {
   programs: ProgramService
@@ -60,7 +60,7 @@ export interface Services {
    * — l'ancien `CLOCK_CONTROL` — laissait exister une combinaison absurde, un
    * hub de production dont on pouvait quand même déplacer l'horloge.
    */
-  mode: ModeExecution
+  mode: ExecutionMode
 }
 
 /**

@@ -8,34 +8,34 @@ import {
 import { sessionStatusSchema } from './room-state.js'
 
 /**
- * Commandes descendantes (hub → salle).
+ * Downstream commands (hub → room).
  *
- * Transportées par un Event Iterator estampillé avec `seq` : à la reconnexion,
- * oRPC renvoie le dernier `lastEventId` reçu et le hub reprend juste après. Pas
- * de compteur de rattrapage maison.
+ * Carried by an Event Iterator stamped with `seq`: on reconnection, oRPC sends
+ * back the last `lastEventId` received and the hub resumes just after it. No
+ * home-made catch-up counter.
  */
 
-/** Ce qu'un bandeau live affiche. Court : il partage l'écran avec la vidéo. */
-export const bandeauSchema = z.object({
+/** What a live banner shows. Short: it shares the screen with the video. */
+export const bannerSchema = z.object({
   text: z.string().min(1).max(240),
   level: z.enum(['info', 'warning', 'urgent']),
 })
-export type Bandeau = z.infer<typeof bandeauSchema>
+export type Banner = z.infer<typeof bannerSchema>
 
 /**
- * Modèles de bandeau, prêts à envoyer.
+ * Banner templates, ready to send.
  *
- * Constants et partagés plutôt que stockés : ce sont les quelques phrases
- * qu'on met à l'antenne sans réfléchir, un jour d'événement, et les retaper
- * sous pression est le meilleur moyen de les rater. Le texte reste modifiable
- * avant envoi — ce sont des points de départ, pas des rails.
+ * Constant and shared rather than stored: these are the few sentences you put on
+ * air without thinking on an event day, and retyping them under pressure is the
+ * best way to get them wrong. The text stays editable before sending — these are
+ * starting points, not rails.
  */
-export const MODELES_BANDEAU: { nom: string; message: Bandeau }[] = [
-  { nom: 'Questions', message: { text: 'Posez vos questions sur le mur — QR code à l\'écran', level: 'info' } },
-  { nom: 'Pause', message: { text: 'Pause de 15 minutes — reprise juste après', level: 'info' } },
-  { nom: 'Micro', message: { text: 'Problème de son en cours de résolution', level: 'warning' } },
-  { nom: 'Retard', message: { text: 'La conférence commencera avec quelques minutes de retard', level: 'warning' } },
-  { nom: 'Enregistrement', message: { text: 'Cette session est enregistrée et sera disponible en ligne', level: 'info' } },
+export const BANNER_TEMPLATES: { name: string; message: Banner }[] = [
+  { name: 'Questions', message: { text: 'Posez vos questions sur le mur — QR code à l\'écran', level: 'info' } },
+  { name: 'Pause', message: { text: 'Pause de 15 minutes — reprise juste après', level: 'info' } },
+  { name: 'Micro', message: { text: 'Problème de son en cours de résolution', level: 'warning' } },
+  { name: 'Retard', message: { text: 'La conférence commencera avec quelques minutes de retard', level: 'warning' } },
+  { name: 'Enregistrement', message: { text: 'Cette session est enregistrée et sera disponible en ligne', level: 'info' } },
 ]
 
 export const commandPayloadSchema = z.discriminatedUnion('type', [
@@ -43,47 +43,46 @@ export const commandPayloadSchema = z.discriminatedUnion('type', [
     type: z.literal('scene.force'),
     role: sceneRoleSchema,
     /**
-     * Qui a demandé la bascule, ou `null` pour une décision du hub lui-même.
+     * Who asked for the switch, or `null` for a decision by the hub itself.
      *
-     * Même raison que sur `room.resync` : une salle dont l'habillage bascule
-     * sans que personne ne l'ait touchée sur place se lit comme un incident. La
-     * régie de la salle le signale dans son bandeau, avec l'adresse de qui l'a
-     * demandé.
+     * Same reason as on `room.resync`: a room whose overlay switches without
+     * anyone touching it on site reads as an incident. The room's control screen
+     * reports it in its banner, with the address of whoever asked.
      */
     requestedBy: z.string().nullable().default(null),
   }),
   z.object({
     /**
-     * Captation d'OBS-B, pilotée à distance.
+     * OBS-B capture, driven remotely.
      *
-     * **Un état, pas un verbe** : `on` plutôt que `recording.start` et
-     * `recording.stop`. Une commande rattrapée décrit alors une intention encore
-     * lisible, et l'appliquer deux fois ne coûte rien — ce qui compte sur un
-     * flux au-moins-une-fois. Demander ce qui tourne déjà est un succès
-     * silencieux, pas un incident.
+     * **A state, not a verb**: `on` rather than `recording.start` and
+     * `recording.stop`. A command caught up later then describes an intent that
+     * is still readable, and applying it twice costs nothing — which matters on
+     * an at-least-once stream. Asking for what is already running is a silent
+     * success, not an incident.
      */
     type: z.literal('recording.set'),
     on: z.boolean(),
     requestedBy: z.string().nullable().default(null),
   }),
   z.object({
-    /** Diffusion d'OBS-B. Même forme et mêmes raisons que `recording.set`. */
+    /** OBS-B streaming. Same shape and same reasons as `recording.set`. */
     type: z.literal('stream.set'),
     on: z.boolean(),
     requestedBy: z.string().nullable().default(null),
   }),
   z.object({
     /**
-     * Qui tient la régie mobile de cette salle, ou `null` si personne.
+     * Who holds this room's mobile control app, or `null` if nobody.
      *
-     * Diffusée à chaque **changement** de porteur, jamais au battement : un
-     * renouvellement par seconde et par salle tenue remplirait la table des
-     * commandes pour une information qui n'a pas bougé.
+     * Broadcast on every **change** of holder, never on the heartbeat: one
+     * renewal per second per held room would fill the command table for a piece
+     * of information that has not moved.
      *
-     * Elle ne verrouille rien en salle — l'opérateur qui est physiquement là
-     * n'est jamais bloqué par un téléphone parti dans un couloir. Elle sert à
-     * ce que l'écran de régie puisse le **dire**, faute de quoi une scène qui
-     * bascule toute seule se lirait comme une panne.
+     * It locks nothing in the room — the operator who is physically there is
+     * never blocked by a phone that has wandered off down a corridor. It exists
+     * so the control screen can **say** it, failing which a scene switching by
+     * itself would read as a failure.
      */
     type: z.literal('regie.hold'),
     holder: z.string().nullable(),
@@ -98,49 +97,49 @@ export const commandPayloadSchema = z.discriminatedUnion('type', [
     text: z.string().min(1).max(500),
     level: z.enum(['info', 'warning', 'urgent']),
     /**
-     * Qui doit voir ce message.
+     * Who is meant to see this message.
      *
-     * Distinction essentielle : `operator` se contente du bandeau de la régie,
-     * `audience` prend l'écran de la salle. Sans elle, une note adressée à
-     * l'opérateur — « ton speaker est arrivé » — s'afficherait en grand devant
-     * le public.
+     * An essential distinction: `operator` settles for the control app's banner,
+     * `audience` takes over the room screen. Without it, a note addressed to the
+     * operator — "your speaker has arrived" — would show up in large type in
+     * front of the audience.
      */
     target: z.enum(['operator', 'audience']).default('operator'),
-    /** Auteur affiché, pour qu'on sache à qui répondre. */
+    /** Author shown, so we know who to answer. */
     from: z.string().max(80).nullable().default(null),
   }),
   z.object({
     /**
-     * Bandeau des scènes live.
+     * Banner on the live scenes.
      *
-     * À ne pas confondre avec `message.broadcast`, qui **prend** l'écran de la
-     * salle : celui-ci se superpose à la vidéo sans rien interrompre. Le
-     * speaker continue, ses slides restent visibles, et le bandeau part dans
-     * le direct et la VOD comme le reste de l'habillage.
+     * Not to be confused with `message.broadcast`, which **takes over** the room
+     * screen: this one overlays the video without interrupting anything. The
+     * speaker carries on, the slides stay visible, and the banner goes out live
+     * and to the VOD like the rest of the overlay.
      */
     type: z.literal('overlay.set'),
-    /** `null` retire le bandeau. C'est le « masquer » de la console. */
-    message: bandeauSchema.nullable(),
+    /** `null` removes the banner. That is the console's "hide". */
+    message: bannerSchema.nullable(),
   }),
   z.object({
-    /** Un nouveau snapshot est disponible : le client resynchronise. */
+    /** A new snapshot is available: the client resynchronizes. */
     type: z.literal('program.invalidate'),
     contentHash: z.string(),
   }),
   z.object({
     /**
-     * Resynchronisation complète demandée depuis la console.
+     * Full resynchronization requested from the console.
      *
-     * Distincte de `program.invalidate`, qui annonce un fait — le programme a
-     * changé — et laisse la salle ne retélécharger que ce qui a bougé. Ici rien
-     * n'a changé sur le hub : c'est la salle qu'on soupçonne d'avoir dérivé, et
-     * on lui demande de tout relire sans se fier à ce qu'elle a en cache.
+     * Distinct from `program.invalidate`, which announces a fact — the program
+     * has changed — and lets the room re-download only what moved. Here nothing
+     * has changed on the hub: it is the room we suspect of having drifted, and we
+     * ask it to read everything again without trusting its cache.
      *
-     * Le geste existe parce qu'il n'y en avait pas d'autre : remettre une salle
-     * d'aplomb demandait de la redémarrer, donc de couper sa captation.
+     * The gesture exists because there was no other: putting a room straight
+     * meant restarting it, and so cutting its capture.
      */
     type: z.literal('room.resync'),
-    /** Qui l'a demandée : la salle le trace, on saura d'où vient le geste. */
+    /** Who asked for it: the room traces it, so we know where the gesture came from. */
     requestedBy: z.string().nullable().default(null),
   }),
   z.object({
@@ -149,37 +148,35 @@ export const commandPayloadSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     /**
-     * Téléverser les rushes, demandé depuis la console.
+     * Upload the rushes, requested from the console.
      *
-     * La console ne détient pas les fichiers : elle ne peut que demander, et
-     * c'est la salle qui décide *quand*, en repassant par son régulateur. Une
-     * demande venue d'ici porte la même urgence qu'un clic en régie — elle
-     * passe donc outre les règles d'attente, mais pas outre l'absence de
-     * stockage configuré.
+     * The console does not hold the files: it can only ask, and it is the room
+     * that decides *when*, by going back through its regulator. A request from
+     * here carries the same urgency as a click in the control app — so it
+     * overrides the waiting rules, but not the absence of configured storage.
      *
-     * Elle emprunte le flux descendant comme `room.resync`, et pour la même
-     * raison : une salle momentanément coupée la rattrape à sa reconnexion au
-     * lieu de la perdre.
+     * It takes the downstream flow like `room.resync`, and for the same reason: a
+     * room momentarily cut off catches up on reconnection instead of losing it.
      */
     type: z.literal('vod.upload'),
-    /** Fichier visé. `null` = tout ce qui n'est pas encore monté. */
+    /** Target file. `null` = everything not yet uploaded. */
     file: z.string().nullable().default(null),
-    /** Qui l'a demandée : la régie l'affiche, comme pour une resynchronisation. */
+    /** Who asked for it: the control app shows it, as for a resynchronization. */
     requestedBy: z.string().nullable().default(null),
   }),
   z.object({
     /**
-     * Efface les rushes de la salle. **Développement seulement.**
+     * Erases the room's rushes. **Development only.**
      *
-     * Le hub refuse de l'émettre hors `MODE=dev`, et la salle la refuse à son
-     * tour : deux verrous plutôt qu'un, parce qu'une salle de développement et
-     * un hub d'événement peuvent se retrouver branchés l'un à l'autre — c'est
-     * même l'accident que le badge de mode existe pour rendre visible.
+     * The hub refuses to emit it outside `MODE=dev`, and the room refuses it in
+     * turn: two locks rather than one, because a development room and an event
+     * hub can end up plugged into each other — that is even the accident the mode
+     * badge exists to make visible.
      *
-     * Seul ce que l'application connaît est effacé : conteneurs vidéo,
-     * sidecars, fichier de verdicts. La racine des captations est parfois un
-     * disque partagé, et vider un dossier qu'on ne possède pas entièrement
-     * n'est pas un geste qu'on rattrape.
+     * Only what the application knows about is erased: video containers,
+     * sidecars, verdict file. The capture root is sometimes a shared disk, and
+     * emptying a folder you do not entirely own is not a gesture you can take
+     * back.
      */
     type: z.literal('vod.reset'),
     requestedBy: z.string().nullable().default(null),
@@ -192,16 +189,15 @@ export const commandPayloadSchema = z.discriminatedUnion('type', [
     note: z.string().max(300).optional(),
   }),
   z.object({
-    /** L'état d'une conférence a changé — décidé ailleurs, ou par la règle horaire. */
+    /** A talk's state changed — decided elsewhere, or by the scheduling rule. */
     type: z.literal('session.state'),
     sessionId: sessionIdSchema,
     /**
-     * Salle concernée.
+     * Room concerned.
      *
-     * La commande est diffusée à **toutes** les salles : une régie doit pouvoir
-     * signaler « Track #2 vient de terminer » sans interroger le hub. Chaque
-     * salle décide ensuite si l'événement la concerne ou relève de la
-     * notification.
+     * The command is broadcast to **every** room: a control app must be able to
+     * report "Track #2 has just finished" without asking the hub. Each room then
+     * decides whether the event concerns it or belongs to notifications.
      */
     roomId: z.string().nullable(),
     sessionTitle: z.string().nullable(),
@@ -210,11 +206,11 @@ export const commandPayloadSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     /**
-     * L'heure du hub a changé.
+     * The hub's clock changed.
      *
-     * Les salles calent leur offset sur `serverTime` à chaque synchronisation ;
-     * sans cette diffusion, elles resteraient sur l'ancienne heure jusqu'à la
-     * suivante — soit un écran qui affiche un autre moment que la console.
+     * Rooms align their offset on `serverTime` at every synchronization; without
+     * this broadcast they would stay on the old time until the next one — that
+     * is, a screen showing a different moment than the console.
      */
     type: z.literal('clock.changed'),
     serverTime: isoDateTimeSchema,
@@ -230,22 +226,22 @@ export type CommandPayload = z.infer<typeof commandPayloadSchema>
 export type CommandType = CommandPayload['type']
 
 /**
- * Forme *avant* validation : les champs à valeur par défaut y sont facultatifs.
+ * Shape *before* validation: fields with a default are optional there.
  *
- * C'est ce que doivent accepter les publieurs — exiger `sessionId: null` sur un
- * `display.set` alors que le schéma le remplit tout seul serait un faux
- * frottement à chaque appel.
+ * That is what publishers must accept — requiring `sessionId: null` on a
+ * `display.set` when the schema fills it in by itself would be false friction on
+ * every call.
  */
 export type CommandPayloadInput = z.input<typeof commandPayloadSchema>
 
 export const commandSchema = z.object({
-  /** Monotone par salle. Sert aussi d'`id` d'événement pour la reprise oRPC. */
+  /** Monotonic per room. Also serves as the event `id` for oRPC resumption. */
   seq: z.number().int().positive(),
   issuedAt: isoDateTimeSchema,
   /**
-   * Durée de validité. Une commande rattrapée après expiration est *écartée* :
-   * un « pause déjeuner » reçu 40 minutes en retard ne doit pas s'afficher.
-   * `null` = pas d'expiration (changement d'état durable).
+   * Validity window. A command caught up after expiry is *discarded*: a "lunch
+   * break" received 40 minutes late must not be shown. `null` = no expiry
+   * (durable state change).
    */
   ttlSeconds: z.number().int().positive().nullable(),
   payload: commandPayloadSchema,
@@ -253,28 +249,27 @@ export const commandSchema = z.object({
 export type Command = z.infer<typeof commandSchema>
 
 /**
- * Durée de validité des gestes de régie mobile, par commande.
+ * Validity window of mobile control gestures, per command.
  *
- * Elles vivent dans le contrat parce que les deux côtés les lisent : le hub
- * pour estampiller ce qu'il publie, les tests pour épingler des valeurs dont
- * l'écart se paierait devant une salle.
+ * They live in the contract because both sides read them: the hub to stamp what
+ * it publishes, the tests to pin down values whose drift would be paid for in
+ * front of a room.
  *
- * Une bascule de scène est la plus courte — rattrapée dix minutes plus tard,
- * elle met la salle à l'antenne sur rien. L'écran de salle partage sa durée
- * pour la même raison : c'est aussi ce que le public voit, et un « notez le
- * talk » rattrapé au milieu du suivant est le mauvais écran devant les
- * mauvaises personnes. La captation tient plus longtemps : une salle coupée
- * trente secondes doit rattraper, mais une salle coupée dix minutes ne doit pas
- * se mettre à enregistrer toute seule.
+ * A scene switch is the shortest — caught up ten minutes later, it puts the room
+ * on air over nothing. The room screen shares its window for the same reason:
+ * that is also what the audience sees, and a "rate this talk" caught up in the
+ * middle of the next one is the wrong screen in front of the wrong people.
+ * Capture holds longer: a room cut off for thirty seconds must catch up, but a
+ * room cut off for ten minutes must not start recording on its own.
  */
-export const TTL_COMMANDE_REGIE = {
+export const CONTROL_COMMAND_TTL = {
   'scene.force': 30,
   'display.set': 30,
   'recording.set': 90,
   'stream.set': 90,
 } as const
 
-/** Une commande est-elle encore applicable ? Utilisé au rattrapage. */
+/** Is a command still applicable? Used when catching up. */
 export function isCommandExpired(command: Command, nowMs: number): boolean {
   if (command.ttlSeconds == null) return false
   return nowMs > Date.parse(command.issuedAt) + command.ttlSeconds * 1000

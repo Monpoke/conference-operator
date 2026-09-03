@@ -198,7 +198,7 @@ useKeyboardLayer(
     r: () => capture.value?.toggleRecording(),
     m: () => capture.value?.mark(),
     /*
-     * Les deux repères de montage ont leur touche, comme la captation.
+     * Les deux repères de editing ont leur touche, comme la captation.
      *
      * Ce sont des gestes qu'on fait pendant qu'on regarde la salle, pas
      * l'écran : l'orateur commence, l'orateur finit. Passer par le champ de

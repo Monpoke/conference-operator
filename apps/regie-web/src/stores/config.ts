@@ -1,4 +1,4 @@
-import type { ConfigVisible, ObsInstance } from '@cloudnord/contract'
+import type { VisibleConfig, ObsInstance } from '@cloudnord/contract'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { useActionsStore } from './actions.js'
@@ -315,7 +315,7 @@ export const useConfigStore = defineStore('config', () => {
    * Electron du poste que dans un navigateur ouvert à côté, et le même bundle
    * sert les deux. C'est le poste qui répond.
    */
-  const peutParcourir = computed(() => config.value?.peutParcourir === true)
+  const canBrowse = computed(() => config.value?.canBrowse === true)
 
   /**
    * Ouvre le sélecteur du **poste** et remplit le champ du dossier des VOD.
@@ -344,7 +344,7 @@ export const useConfigStore = defineStore('config', () => {
     notice,
     config,
     online,
-    peutParcourir,
+    canBrowse,
     manques,
     ouvertAuDemarrage,
     show,

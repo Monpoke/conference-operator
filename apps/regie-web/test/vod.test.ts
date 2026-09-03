@@ -1,4 +1,4 @@
-import type { EntreeVod } from '@cloudnord/contract'
+import type { VodEntry } from '@cloudnord/contract'
 import { useToast } from '@cloudnord/components'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -15,15 +15,15 @@ import { payload } from './fixtures.js'
  * « Est-ce qu'on a bien tout ? » Le chronomètre de la régie a dit qu'on
  * enregistrait ; il ne dit pas qu'OBS écrivait quelque chose d'exploitable.
  * Entre les deux : un disque plein, un encodeur qui a lâché, une carte
- * d'acquisition débranchée — et personne ne s'en aperçoit avant le montage,
+ * d'acquisition débranchée — et personne ne s'en aperçoit avant le editing,
  * quand la salle n'existe plus.
  */
 
-const RUSH: EntreeVod = {
+const RUSH: VodEntry = {
   file: 'track-1/2026-10-30-09h00.mkv',
   sizeBytes: 4_200_000_000,
   modifiedAtMs: 0,
-  enEcriture: false,
+  beingWritten: false,
   sidecar: {
     sessionId: 'talk-1',
     title: 'Ce que le flux ne dit pas',
@@ -64,8 +64,8 @@ beforeEach(() => {
   setActivePinia(createPinia())
   useToast().clear()
   appels = []
-  listing = { root: '/rushes', entries: [RUSH], outils: OUTILS }
-  uploads = { ok: true, entrees: [], verdict: { autorise: true, raison: null, texte: '' } }
+  listing = { root: '/rushes', entries: [RUSH], tools: OUTILS }
+  uploads = { ok: true, entries: [], verdict: { allowed: true, reason: null, text: '' } }
   useRoomStore().seed(payload())
   stub()
 })
@@ -119,7 +119,7 @@ describe('ouverture', () => {
 
 describe('ce que la modale dit quand il n’y a rien', () => {
   it('nomme la cause d’un dossier inconnu, plutôt qu’une liste vide', async () => {
-    listing = { root: null, entries: [], outils: OUTILS }
+    listing = { root: null, entries: [], tools: OUTILS }
     await ouvrir()
     const wrapper = mount(VodDialog, { props: { timeZone: 'Europe/Paris' }, attachTo: document.body })
     await flushPromises()
@@ -130,7 +130,7 @@ describe('ce que la modale dit quand il n’y a rien', () => {
   })
 
   it('signale une machine sans ffprobe, une fois en haut', async () => {
-    listing = { root: '/rushes', entries: [RUSH], outils: { ffmpeg: true, ffprobe: false } }
+    listing = { root: '/rushes', entries: [RUSH], tools: { ffmpeg: true, ffprobe: false } }
     const vod = await ouvrir()
 
     // Dit une fois plutôt que découvert bouton par bouton.
@@ -143,8 +143,8 @@ describe('téléversement', () => {
   it('retire les boutons partout quand il n’y a nulle part où envoyer', async () => {
     uploads = {
       ok: true,
-      entrees: [],
-      verdict: { autorise: false, raison: 'sans-stockage', texte: 'aucun stockage configuré sur le hub' },
+      entries: [],
+      verdict: { allowed: false, reason: 'sans-stockage', text: 'aucun stockage configuré sur le hub' },
     }
     const vod = await ouvrir()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
@@ -168,11 +168,11 @@ describe('téléversement', () => {
      */
     uploads = {
       ok: true,
-      entrees: [],
+      entries: [],
       verdict: {
-        autorise: false,
-        raison: 'auto-desactive',
-        texte: 'téléversement automatique désactivé',
+        allowed: false,
+        reason: 'auto-desactive',
+        text: 'téléversement automatique désactivé',
       },
     }
     const vod = await ouvrir()
@@ -188,11 +188,11 @@ describe('téléversement', () => {
   it('dit en haut que les envois se font à la main', async () => {
     uploads = {
       ok: true,
-      entrees: [],
+      entries: [],
       verdict: {
-        autorise: false,
-        raison: 'auto-desactive',
-        texte: 'téléversement automatique désactivé',
+        allowed: false,
+        reason: 'auto-desactive',
+        text: 'téléversement automatique désactivé',
       },
     }
     await ouvrir()
@@ -213,8 +213,8 @@ describe('téléversement', () => {
   it('se tait sur une absence de stockage, et parle d’une attente', async () => {
     uploads = {
       ok: true,
-      entrees: [],
-      verdict: { autorise: false, raison: 'sans-stockage', texte: 'aucun stockage' },
+      entries: [],
+      verdict: { allowed: false, reason: 'sans-stockage', text: 'aucun stockage' },
     }
     let vod = await ouvrir()
 
@@ -229,8 +229,8 @@ describe('téléversement', () => {
     useRoomStore().seed(payload())
     uploads = {
       ok: true,
-      entrees: [],
-      verdict: { autorise: false, raison: 'conference', texte: 'conférence dans 6 min' },
+      entries: [],
+      verdict: { allowed: false, reason: 'conference', text: 'conférence dans 6 min' },
     }
     vod = await ouvrir()
     expect(vod.waitReason).toBe('Téléversement en attente — conférence dans 6 min.')
@@ -239,8 +239,8 @@ describe('téléversement', () => {
   it('ne propose pas de renvoyer un rush déjà chez le stockage', async () => {
     uploads = {
       ok: true,
-      entrees: [{ file: RUSH.file, state: 'termine', pourcent: 100, restantOctets: 0, debitOctetsS: null, erreur: null, manuel: false }],
-      verdict: { autorise: true, raison: null, texte: '' },
+      entries: [{ file: RUSH.file, state: 'termine', percent: 100, remainingBytes: 0, debitOctetsS: null, error: null, manual: false }],
+      verdict: { allowed: true, reason: null, text: '' },
     }
     await ouvrir()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
@@ -255,8 +255,8 @@ describe('téléversement', () => {
   it('offre d’annuler ce qui est en vol, sans perdre le témoin', async () => {
     uploads = {
       ok: true,
-      entrees: [{ file: RUSH.file, state: 'en-cours', pourcent: 42, restantOctets: 2_400_000_000, debitOctetsS: 12_000_000, erreur: null, manuel: true }],
-      verdict: { autorise: true, raison: null, texte: '' },
+      entries: [{ file: RUSH.file, state: 'en-cours', percent: 42, remainingBytes: 2_400_000_000, debitOctetsS: 12_000_000, error: null, manual: true }],
+      verdict: { allowed: true, reason: null, text: '' },
     }
     await ouvrir()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
@@ -283,8 +283,8 @@ describe('téléversement', () => {
     // qui n'avance pas : ça tourne quand des octets partent, ça bat sinon.
     uploads = {
       ok: true,
-      entrees: [{ file: RUSH.file, state: 'attente', pourcent: 0, restantOctets: 4_200_000_000, debitOctetsS: null, erreur: null, manuel: true }],
-      verdict: { autorise: false, raison: 'conference', texte: 'conférence en cours' },
+      entries: [{ file: RUSH.file, state: 'attente', percent: 0, remainingBytes: 4_200_000_000, debitOctetsS: null, error: null, manual: true }],
+      verdict: { allowed: false, reason: 'conference', text: 'conférence en cours' },
     }
     await ouvrir()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
@@ -306,18 +306,18 @@ describe('téléversement', () => {
      */
     uploads = {
       ok: true,
-      entrees: [
+      entries: [
         {
           file: RUSH.file,
           state: 'en-cours',
-          pourcent: 40,
-          restantOctets: 60_000_000,
+          percent: 40,
+          remainingBytes: 60_000_000,
           debitOctetsS: 1_000_000,
-          erreur: null,
-          manuel: true,
+          error: null,
+          manual: true,
         },
       ],
-      verdict: { autorise: true, raison: null, texte: '', debitMaxOctetsS: null },
+      verdict: { allowed: true, reason: null, text: '', debitMaxOctetsS: null },
     }
     await ouvrir()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
@@ -340,18 +340,18 @@ describe('téléversement', () => {
      */
     uploads = {
       ok: true,
-      entrees: [
+      entries: [
         {
           file: RUSH.file,
           state: 'en-cours',
-          pourcent: 40,
-          restantOctets: 60_000_000,
+          percent: 40,
+          remainingBytes: 60_000_000,
           debitOctetsS: 10_000_000,
-          erreur: null,
-          manuel: true,
+          error: null,
+          manual: true,
         },
       ],
-      verdict: { autorise: true, raison: null, texte: '', debitMaxOctetsS: 1_000_000 },
+      verdict: { allowed: true, reason: null, text: '', debitMaxOctetsS: 1_000_000 },
     }
     const vod = await ouvrir()
 
@@ -367,18 +367,18 @@ describe('téléversement', () => {
      */
     const ligne = (debitOctetsS: number): Record<string, unknown> => ({
       ok: true,
-      entrees: [
+      entries: [
         {
           file: RUSH.file,
           state: 'en-cours',
-          pourcent: 40,
-          restantOctets: 60_000_000,
+          percent: 40,
+          remainingBytes: 60_000_000,
           debitOctetsS,
-          erreur: null,
-          manuel: true,
+          error: null,
+          manual: true,
         },
       ],
-      verdict: { autorise: true, raison: null, texte: '', debitMaxOctetsS: null },
+      verdict: { allowed: true, reason: null, text: '', debitMaxOctetsS: null },
     })
 
     uploads = ligne(1_000_000)
@@ -398,18 +398,18 @@ describe('téléversement', () => {
     // serait une promesse inventée : rien n'est parti, rien n'a été mesuré.
     uploads = {
       ok: true,
-      entrees: [
+      entries: [
         {
           file: RUSH.file,
           state: 'attente',
-          pourcent: 0,
-          restantOctets: 4_200_000_000,
+          percent: 0,
+          remainingBytes: 4_200_000_000,
           debitOctetsS: null,
-          erreur: null,
-          manuel: true,
+          error: null,
+          manual: true,
         },
       ],
-      verdict: { autorise: false, raison: 'conference', texte: 'conférence dans 6 min' },
+      verdict: { allowed: false, reason: 'conference', text: 'conférence dans 6 min' },
     }
     const vod = await ouvrir()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
@@ -421,8 +421,8 @@ describe('téléversement', () => {
   it('n’annule pas au clic sur le témoin', async () => {
     uploads = {
       ok: true,
-      entrees: [{ file: RUSH.file, state: 'en-cours', pourcent: 80, restantOctets: 840_000_000, debitOctetsS: 12_000_000, erreur: null, manuel: true }],
-      verdict: { autorise: true, raison: null, texte: '' },
+      entries: [{ file: RUSH.file, state: 'en-cours', percent: 80, remainingBytes: 840_000_000, debitOctetsS: 12_000_000, error: null, manual: true }],
+      verdict: { allowed: true, reason: null, text: '' },
     }
     await ouvrir()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
@@ -448,8 +448,8 @@ describe('téléversement', () => {
      */
     uploads = {
       ok: true,
-      entrees: [],
-      verdict: { autorise: true, raison: null, texte: '' },
+      entries: [],
+      verdict: { allowed: true, reason: null, text: '' },
     }
     await ouvrir()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
@@ -475,8 +475,8 @@ describe('téléversement', () => {
   it('garde la colonne à la même largeur pendant la montée', async () => {
     uploads = {
       ok: true,
-      entrees: [{ file: RUSH.file, state: 'en-cours', pourcent: 42, restantOctets: 2_400_000_000, debitOctetsS: 12_000_000, erreur: null, manuel: true }],
-      verdict: { autorise: true, raison: null, texte: '' },
+      entries: [{ file: RUSH.file, state: 'en-cours', percent: 42, remainingBytes: 2_400_000_000, debitOctetsS: 12_000_000, error: null, manual: true }],
+      verdict: { allowed: true, reason: null, text: '' },
     }
     await ouvrir()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
@@ -493,8 +493,8 @@ describe('téléversement', () => {
     // est ce qu'on évite — mais il occupe la même case, sinon la ligne se décale.
     uploads = {
       ok: true,
-      entrees: [{ file: RUSH.file, state: 'termine', pourcent: 100, restantOctets: 0, debitOctetsS: null, erreur: null, manuel: false }],
-      verdict: { autorise: true, raison: null, texte: '' },
+      entries: [{ file: RUSH.file, state: 'termine', percent: 100, remainingBytes: 0, debitOctetsS: null, error: null, manual: false }],
+      verdict: { allowed: true, reason: null, text: '' },
     }
     await ouvrir()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
@@ -515,8 +515,8 @@ describe('téléversement', () => {
   it('reprend l’erreur du stockage telle quelle', async () => {
     uploads = {
       ok: true,
-      entrees: [{ file: RUSH.file, state: 'echoue', pourcent: 12, restantOctets: 3_696_000_000, debitOctetsS: null, erreur: 'AccessDenied', manuel: false }],
-      verdict: { autorise: true, raison: null, texte: '' },
+      entries: [{ file: RUSH.file, state: 'echoue', percent: 12, remainingBytes: 3_696_000_000, debitOctetsS: null, error: 'AccessDenied', manual: false }],
+      verdict: { allowed: true, reason: null, text: '' },
     }
     await ouvrir()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
@@ -564,13 +564,13 @@ describe('verdict de la régie', () => {
     listing = {
       root: '/rushes',
       entries: [{ ...RUSH, check: { status: 'ok', at: '', by: 'operateur', reasons: [], probe: null } }],
-      outils: OUTILS,
+      tools: OUTILS,
     }
     await vod.loadListing()
     await vod.verdict(RUSH.file, 'ok')
 
     // Sans le retrait, une fausse manœuvre resterait à l'écran sans moyen de la
-    // reprendre — et se relirait au montage comme une information.
+    // reprendre — et se relirait au editing comme une information.
     expect(appels.at(-2)?.body).toEqual({ action: 'vod.verdict', file: RUSH.file, status: null })
   })
 })
@@ -580,7 +580,7 @@ describe('contrôle de tout le dossier', () => {
     listing = {
       root: '/rushes',
       entries: [RUSH, { ...RUSH, file: 'b.mkv' }, { ...RUSH, file: 'c.mkv' }],
-      outils: OUTILS,
+      tools: OUTILS,
     }
     const vod = await ouvrir()
     appels = []
@@ -609,7 +609,7 @@ describe('contrôle de tout le dossier', () => {
         { ...RUSH, check: { status: 'ok', at: '', by: 'auto', reasons: [], probe: null } },
         { ...RUSH, file: 'b.mkv', check: { status: 'illisible', at: '', by: 'auto', reasons: ['vide'], probe: null } },
       ],
-      outils: OUTILS,
+      tools: OUTILS,
     }
     const vod = await ouvrir()
 
@@ -626,7 +626,7 @@ describe('ligne d’un rush', () => {
   it('lit d’un coup d’œil quand, combien, et ce qui manque déjà', async () => {
     await ouvrir()
     const wrapper = mount(VodRow, {
-      props: { entry: { ...RUSH, enEcriture: true }, timeZone: 'Europe/Paris' },
+      props: { entry: { ...RUSH, beingWritten: true }, timeZone: 'Europe/Paris' },
     })
 
     const texte = wrapper.text()
@@ -639,7 +639,7 @@ describe('ligne d’un rush', () => {
     expect(texte).not.toContain('rognage')
   })
 
-  it('dit ce que le montage coupera, tant que le fichier est encore là', async () => {
+  it('dit ce que le editing coupera, tant que le fichier est encore là', async () => {
     await ouvrir()
     const entry = {
       ...RUSH,
@@ -673,7 +673,7 @@ describe('ligne d’un rush', () => {
     }
     const wrapper = mount(VodRow, { props: { entry, timeZone: 'Europe/Paris' } })
 
-    // Le montage ira jusqu'au bout du fichier, blancs de fin compris : le dire
+    // Le editing ira jusqu'au bout du fichier, blancs de fin compris : le dire
     // pendant que la salle est encore montée vaut mieux que de le découvrir
     // sur la vidéo publiée.
     expect(wrapper.text()).toContain('rognage 00:52 → ?')

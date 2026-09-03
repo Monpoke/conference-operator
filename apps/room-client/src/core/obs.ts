@@ -1,4 +1,4 @@
-import { PLANCHER_DB, type NiveauEntree, type ObsInstance, type ObsState, type SceneRole } from '@cloudnord/contract'
+import { DB_FLOOR, type InputLevel, type ObsInstance, type ObsState, type SceneRole } from '@cloudnord/contract'
 
 /**
  * Surface d'OBS dont on a réellement besoin.
@@ -69,14 +69,14 @@ export type ObsControllerEvent =
   | { type: 'scene'; sceneName: string; role: SceneRole | null }
   | { type: 'recording'; active: boolean; outputPath: string | null }
   | { type: 'streaming'; active: boolean }
-  | { type: 'audio'; inputs: NiveauEntree[] }
+  | { type: 'audio'; inputs: InputLevel[] }
 
-export { PLANCHER_DB, type NiveauEntree }
+export { DB_FLOOR, type InputLevel }
 
 /** Multiplicateur linéaire d'OBS vers des dBFS bornés. */
 export function multiplicateurEnDb(mul: number): number {
-  if (!Number.isFinite(mul) || mul <= 0) return PLANCHER_DB
-  return Math.max(PLANCHER_DB, 20 * Math.log10(mul))
+  if (!Number.isFinite(mul) || mul <= 0) return DB_FLOOR
+  return Math.max(DB_FLOOR, 20 * Math.log10(mul))
 }
 
 interface EtatSortie {
@@ -165,12 +165,12 @@ export class ObsController {
       this.options.onEvent?.({
         type: 'audio',
         inputs: inputs.map((entree) => ({
-          nom: entree.inputName,
+          name: entree.inputName,
           // OBS donne [magnitude, crête, crête d'entrée] par canal ; les deux
           // premières suffisent à afficher une barre et son pic.
-          canaux: (entree.inputLevelsMul ?? []).map((canal) => ({
+          channels: (entree.inputLevelsMul ?? []).map((canal) => ({
             magnitude: multiplicateurEnDb(canal[0] ?? 0),
-            crete: multiplicateurEnDb(canal[1] ?? canal[0] ?? 0),
+            peak: multiplicateurEnDb(canal[1] ?? canal[0] ?? 0),
           })),
         })),
       })

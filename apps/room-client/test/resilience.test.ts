@@ -192,7 +192,7 @@ describe('coupure réseau en plein enregistrement', () => {
     expect(new Set(recus.map((e) => e.id)).size).toBe(recus.length)
 
     // Les `seq` sont strictement croissants : l'ordre d'émission est préservé,
-    // condition pour que les timecodes du talk restent exploitables au montage.
+    // condition pour que les timecodes du talk restent exploitables au editing.
     const seqs = recus.map((e) => e.seq)
     expect(seqs).toEqual([...seqs].sort((a, b) => a - b))
 

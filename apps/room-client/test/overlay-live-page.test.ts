@@ -170,13 +170,13 @@ describe('changement de question', () => {
 })
 
 /**
- * Les deux canaux sur une seule place.
+ * Les deux channels sur une seule place.
  *
  * Cette page est posée dans les scènes d'OBS-A : elle est vue par la salle, pas
  * par la VOD. Elle a donc le droit de montrer les deux — contrairement à
  * l'habillage de captation, qui ne montre que la question.
  */
-describe('question et bandeau, deux canaux', () => {
+describe('question et bandeau, deux channels', () => {
   it('affiche la question quand rien ne vient de la console', () => {
     monterBandeau(etatQuestion({ text: 'Et les faux positifs ?', author: 'Camille', sessionId: 's-3' }))
 

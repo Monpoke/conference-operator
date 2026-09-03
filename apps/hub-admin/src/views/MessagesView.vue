@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { MODELES_BANDEAU, type Bandeau } from '@cloudnord/contract'
+import { BANNER_TEMPLATES, type Banner } from '@cloudnord/contract'
 import { Badge, Button, Empty, Field, Hint, Panel, Select, useToast } from '@cloudnord/components'
 import { timeAgo } from '@cloudnord/format'
 import { storeToRefs } from 'pinia'
@@ -76,7 +76,7 @@ async function envoyer(): Promise<void> {
  * C'est un point de départ, pas un rail : la date, la durée, le nom de la
  * salle changent à chaque fois.
  */
-function appliquerModele(modele: Bandeau): void {
+function appliquerModele(modele: Banner): void {
   bandeauTexte.value = modele.text
   bandeauNiveau.value = modele.level
 }
@@ -186,12 +186,12 @@ async function masquerBandeau(): Promise<void> {
 
       <div id="bandeau-modeles" class="mb-[11px] flex flex-wrap gap-1.5">
         <Button
-          v-for="modele in MODELES_BANDEAU"
-          :key="modele.nom"
+          v-for="modele in BANNER_TEMPLATES"
+          :key="modele.name"
           size="small"
           @click="appliquerModele(modele.message)"
         >
-          {{ modele.nom }}
+          {{ modele.name }}
         </Button>
       </div>
 

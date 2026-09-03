@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { EntreeVod } from '@cloudnord/contract'
+import type { VodEntry } from '@cloudnord/contract'
 import { Button } from '@cloudnord/components'
 import { computed, ref } from 'vue'
 import { EXTRACT_MS, useVodStore } from '../stores/vod.js'
@@ -13,7 +13,7 @@ import { EXTRACT_MS, useVodStore } from '../stores/vod.js'
  * le disque. Les points de départ sautent aux endroits où une prise se casse
  * d'habitude — le tout début, et la fin.
  */
-const props = defineProps<{ entry: EntreeVod }>()
+const props = defineProps<{ entry: VodEntry }>()
 
 const vod = useVodStore()
 
@@ -38,7 +38,7 @@ const points = computed(() => {
   ]
 })
 
-const ffmpeg = computed(() => vod.listing?.outils?.ffmpeg === true)
+const ffmpeg = computed(() => vod.listing?.tools?.ffmpeg === true)
 
 /*
  * Sans ffmpeg, on sert le fichier tel quel : le navigateur lira un MP4 et

@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import webpush from 'web-push'
 import { hubSetting, pushSubscription } from '@cloudnord/db/hub'
-import type { NiveauxNotif } from '@cloudnord/contract'
+import type { NotifLevels } from '@cloudnord/contract'
 import type { HubDatabase } from '../db.js'
 
 /**
@@ -131,7 +131,7 @@ export class PushService {
     auth: string
     userId: string | null
     label: string | null
-    levels: NiveauxNotif
+    levels: NotifLevels
   }): void {
     const values = {
       endpoint: input.endpoint,

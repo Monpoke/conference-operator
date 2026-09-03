@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { ControleOpenFeedback } from '@cloudnord/contract'
+import type { OpenFeedbackCheck } from '@cloudnord/contract'
 
 /**
  * Vérifier que les liens « notez ce talk » mènent quelque part.
@@ -86,7 +86,7 @@ export async function controlerOpenFeedback(
   projectId: string,
   sessions: { id: string; title: string; feedbackId: string }[],
   options: OpenFeedbackOptions = {},
-): Promise<ControleOpenFeedback> {
+): Promise<OpenFeedbackCheck> {
   const fetchImpl = options.fetchImpl ?? fetch
   const base = options.base ?? BASE
   const projet = projectId.trim()

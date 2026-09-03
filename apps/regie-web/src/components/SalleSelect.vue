@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { RegieRoom } from '@cloudnord/contract'
+import type { ControlRoom } from '@cloudnord/contract'
 import { Button, Panel, StatusDot } from '@cloudnord/components'
 import { appearanceOf } from '@cloudnord/room-state'
 import { timeAgo } from '@cloudnord/format'
@@ -45,7 +45,7 @@ onBeforeUnmount(() => {
  * répondu, et les cartes le disent en restant neutres plutôt qu'en affirmant
  * « hors créneau ».
  */
-const salles = computed<RegieRoom[]>(() =>
+const salles = computed<ControlRoom[]>(() =>
   verrou.salles.length > 0
     ? verrou.salles
     : porte.amorce.salles.map((salle) => ({
@@ -67,7 +67,7 @@ onBeforeUnmount(() => {
 })
 
 /** Le porteur, ou `null` : c'est ce mot-là qui décide s'il faut reprendre. */
-function tenuePar(salle: RegieRoom): string | null {
+function tenuePar(salle: ControlRoom): string | null {
   return salle.lock?.holder ?? null
 }
 
@@ -78,7 +78,7 @@ function tenuePar(salle: RegieRoom): string | null {
  * et le voile de la salle dira ensuite s'il s'agit de cet onglet ou d'un autre
  * de vos appareils. Écrire « vous la tenez » ici mentirait la moitié du temps.
  */
-function moi(salle: RegieRoom): boolean {
+function moi(salle: ControlRoom): boolean {
   return tenuePar(salle) != null && tenuePar(salle) === session.identity
 }
 
@@ -94,7 +94,7 @@ function moi(salle: RegieRoom): boolean {
  * Il est faible : le voile s'ouvre déjà rempli, et son bouton est le premier
  * sous le pouce.
  */
-function ouvrir(salle: RegieRoom): void {
+function ouvrir(salle: ControlRoom): void {
   verrou.regarder(salle.roomId)
 }
 </script>

@@ -17,7 +17,7 @@ export interface IngestOutcome {
 /**
  * Une prise recomposée, avant tout rattachement à un créneau.
  *
- * `CaptationVue` du contrat porte en plus le `rattachement`, qui n'a de sens
+ * `CaptureView` du contrat porte en plus le `rattachement`, qui n'a de sens
  * qu'une fois qu'on a choisi une conférence : c'est le routeur qui le pose, pas
  * le journal.
  */

@@ -1,20 +1,20 @@
 import { z } from 'zod'
 import { displayModeSchema, obsInstanceSchema, roomConfigPatchSchema, sceneRoleSchema } from '@cloudnord/contract'
 import type {
-  ConfigVisible,
-  VodListe,
+  VisibleConfig,
+  VodList,
   ControlDiagnostics,
   MarkerRole,
-  ModeExecution,
+  ExecutionMode,
   ObsInstance,
-  PointObsVisible,
+  VisibleObsEndpoint,
   RoomConfigPatch,
   SceneRoleMap,
 } from '@cloudnord/contract'
 import type { ObsState } from './obs.js'
 import type { StopResult } from './recording.js'
-import type { ControleVod, EntreeVod, Extrait, FluxFichier, VerdictVod } from './vod-index.js'
-import type { VueTeleversements } from './televersement.js'
+import type { VodCheck, VodEntry, Extrait, FluxFichier, VodVerdict } from './vod-index.js'
+import type { UploadsView } from './televersement.js'
 
 /**
  * Actions que la fenêtre de régie peut déclencher.
@@ -32,7 +32,7 @@ export const controlActionSchema = z.discriminatedUnion('action', [
    * Marqueur posé pendant la prise.
    *
    * `role` nul : un chapitre, qu'on empile autant qu'on veut. `debut` et `fin`
-   * sont les deux **repères de montage**, et le poste n'en garde qu'un de
+   * sont les deux **repères de editing**, et le poste n'en garde qu'un de
    * chaque — les reposer corrige, ce qui est exactement le geste qu'on fait
    * quand l'orateur a eu un faux départ. Le libellé reste libre : c'est lui
    * qu'on relit dans le journal.
@@ -150,14 +150,14 @@ export interface ControlTarget {
   setSceneRole(role: z.infer<typeof sceneRoleSchema>): Promise<void>
   startRecording(): Promise<void>
   stopRecording(): Promise<StopResult>
-  /** `role` nul = chapitre ; `debut`/`fin` = repère de montage, unique et remplaçable. */
+  /** `role` nul = chapitre ; `debut`/`fin` = repère de editing, unique et remplaçable. */
   mark(label: string, role: MarkerRole | null): void
   /** Rushes produits sous la racine d'enregistrement, et leur dernier contrôle. */
-  listRecordings(): Promise<VodListe>
-  inspectRecording(file: string): Promise<ControleVod>
-  setRecordingVerdict(file: string, status: VerdictVod | null): Promise<ControleVod | null>
+  listRecordings(): Promise<VodList>
+  inspectRecording(file: string): Promise<VodCheck>
+  setRecordingVerdict(file: string, status: VodVerdict | null): Promise<VodCheck | null>
   /** Téléversements en cours et raison d'attente, pour la modale des rushes. */
-  vodUploads(): VueTeleversements
+  vodUploads(): UploadsView
   /** Met un rush en file. `file` nul = tout ce qui reste. Rend le nombre visé. */
   uploadRecording(file: string | null): Promise<number>
   cancelUpload(file: string): Promise<void>
@@ -185,9 +185,9 @@ export interface ControlTarget {
   diagnostics(): ControlDiagnostics
 }
 
-export type { ConfigVisible, ControlDiagnostics, PointObsVisible }
+export type { VisibleConfig, ControlDiagnostics, VisibleObsEndpoint }
 
-export type { VodListe }
+export type { VodList }
 
 export interface ControlOutcome {
   ok: boolean

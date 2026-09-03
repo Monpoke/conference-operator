@@ -1,5 +1,5 @@
 import type { SessionStatus } from '@cloudnord/contract'
-import { SANS_REPERES } from '@cloudnord/contract'
+import { NO_EDITING_MARKS } from '@cloudnord/contract'
 import { useToast } from '@cloudnord/components'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -65,8 +65,8 @@ describe('commencer', () => {
       active: true,
       markers: 0,
       startedAtMs: 0,
-      startedAtCorrigeMs: null,
-      montage: SANS_REPERES,
+      startedAtCorrectedMs: null,
+      editing: NO_EDITING_MARKS,
     }
     const conference = useConferenceStore()
 
@@ -134,8 +134,8 @@ describe('l’avertissement de captation', () => {
       active: true,
       markers: 0,
       startedAtMs: 0,
-      startedAtCorrigeMs: null,
-      montage: SANS_REPERES,
+      startedAtCorrectedMs: null,
+      editing: NO_EDITING_MARKS,
     }
     const conference = useConferenceStore()
 
@@ -255,7 +255,7 @@ describe('terminer', () => {
  * comme il le disait pendant le talk. Elle court pendant la pause, le talk
  * suivant s'écrit dans le même fichier — sous le titre et les intervenants du
  * précédent — et le garde-fou du démarrage se tait, puisqu'une captation
- * tourne. Le prix ne se découvre qu'au montage.
+ * tourne. Le prix ne se découvre qu'au editing.
  */
 describe('arrêter la captation en terminant', () => {
   /** Une salle en fin de créneau, captation en cours. */
@@ -265,8 +265,8 @@ describe('arrêter la captation en terminant', () => {
       active: true,
       markers: 2,
       startedAtMs: DEBUT_MS,
-      startedAtCorrigeMs: null,
-      montage: SANS_REPERES,
+      startedAtCorrectedMs: null,
+      editing: NO_EDITING_MARKS,
     }
   }
 

@@ -11,7 +11,7 @@ import { PEAK_HOLD_MS, useAudioStore } from '../src/stores/audio.js'
  * et le même bouton rouge. Le seul endroit où ça se voit est ici.
  */
 
-const ENTREE = { nom: 'Micro HF', canaux: [{ magnitude: -30, crete: -28 }] }
+const ENTREE = { name: 'Micro HF', channels: [{ magnitude: -30, peak: -28 }] }
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -21,7 +21,7 @@ describe('maintien de crête', () => {
   it('garde une saturation assez longtemps pour qu’on la voie', () => {
     const audio = useAudioStore()
 
-    audio.apply([{ nom: 'Micro HF', canaux: [{ magnitude: -30, crete: -3 }] }], 0)
+    audio.apply([{ name: 'Micro HF', channels: [{ magnitude: -30, peak: -3 }] }], 0)
     audio.apply([ENTREE], 500)
 
     // Une saturation d'un dixième de seconde passe entre deux rendus : sans
@@ -32,7 +32,7 @@ describe('maintien de crête', () => {
   it('relâche la crête une fois le maintien écoulé', () => {
     const audio = useAudioStore()
 
-    audio.apply([{ nom: 'Micro HF', canaux: [{ magnitude: -30, crete: -3 }] }], 0)
+    audio.apply([{ name: 'Micro HF', channels: [{ magnitude: -30, peak: -3 }] }], 0)
     audio.apply([ENTREE], PEAK_HOLD_MS + 1)
 
     expect(audio.peaks['Micro HF']?.db).toBe(-28)
@@ -42,7 +42,7 @@ describe('maintien de crête', () => {
     const audio = useAudioStore()
 
     audio.apply([ENTREE], 0)
-    audio.apply([{ nom: 'Micro HF', canaux: [{ magnitude: -10, crete: -6 }] }], 100)
+    audio.apply([{ name: 'Micro HF', channels: [{ magnitude: -10, peak: -6 }] }], 100)
 
     expect(audio.peaks['Micro HF']?.db).toBe(-6)
   })
@@ -77,7 +77,7 @@ describe('panneau des niveaux', () => {
   it('dessine une jauge par canal, parce que mono et stéréo coexistent', async () => {
     const audio = useAudioStore()
     audio.apply(
-      [{ nom: 'Salle', canaux: [{ magnitude: -30, crete: -30 }, { magnitude: -12, crete: -12 }] }],
+      [{ name: 'Salle', channels: [{ magnitude: -30, peak: -30 }, { magnitude: -12, peak: -12 }] }],
       0,
     )
     const wrapper = mount(LevelMeters)
@@ -88,7 +88,7 @@ describe('panneau des niveaux', () => {
 
   it('alerte sur la crête, sans attendre que la barre y soit encore', async () => {
     const audio = useAudioStore()
-    audio.apply([{ nom: 'Salle', canaux: [{ magnitude: -40, crete: -3 }] }], 0)
+    audio.apply([{ name: 'Salle', channels: [{ magnitude: -40, peak: -3 }] }], 0)
     const wrapper = mount(LevelMeters)
     await wrapper.vm.$nextTick()
 
@@ -98,7 +98,7 @@ describe('panneau des niveaux', () => {
 
   it('dit « — » plutôt que « −60 dB » sur une entrée muette', async () => {
     const audio = useAudioStore()
-    audio.apply([{ nom: 'Salle', canaux: [{ magnitude: -60, crete: -60 }] }], 0)
+    audio.apply([{ name: 'Salle', channels: [{ magnitude: -60, peak: -60 }] }], 0)
     const wrapper = mount(LevelMeters)
     await wrapper.vm.$nextTick()
 

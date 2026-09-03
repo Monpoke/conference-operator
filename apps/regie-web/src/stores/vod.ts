@@ -1,4 +1,4 @@
-import type { EntreeVod, EtatTeleversementVu, VodListe, VueTeleversements } from '@cloudnord/contract'
+import type { VodEntry, UploadRow, VodList, UploadsView } from '@cloudnord/contract'
 import { useToast } from '@cloudnord/components'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
@@ -13,7 +13,7 @@ import { useRoomStore } from './room.js'
  * qu'on enregistrait ; il ne dit pas qu'OBS écrivait vraiment quelque chose
  * d'exploitable. Entre les deux, il y a un disque plein, un encodeur qui a
  * lâché, une carte d'acquisition débranchée — et personne ne s'en aperçoit
- * avant le montage, quand la salle n'existe plus.
+ * avant le editing, quand la salle n'existe plus.
  *
  * Rien n'est chargé tant qu'on n'ouvre pas : lire le dossier des captations à
  * chaque tic d'horloge coûterait un accès disque par seconde pour une liste
@@ -55,8 +55,8 @@ export const useVodStore = defineStore('vod', () => {
   const toast = useToast()
 
   const open = ref(false)
-  const listing = ref<VodListe | null>(null)
-  const uploads = ref<VueTeleversements | null>(null)
+  const listing = ref<VodList | null>(null)
+  const uploads = ref<UploadsView | null>(null)
   /** Rush déplié pour aperçu, et l'endroit du fichier qu'on regarde. */
   const preview = ref<{ file: string; at: number } | null>(null)
   const checking = ref(false)
@@ -69,11 +69,11 @@ export const useVodStore = defineStore('vod', () => {
   async function loadListing(): Promise<void> {
     try {
       const response = await fetch('/control/recordings')
-      const body = (await response.json()) as VodListe & { ok?: boolean; message?: string }
-      listing.value = { root: body.root ?? null, entries: body.entries ?? [], outils: body.outils }
+      const body = (await response.json()) as VodList & { ok?: boolean; message?: string }
+      listing.value = { root: body.root ?? null, entries: body.entries ?? [], tools: body.tools }
       if (body.ok === false && body.message != null) toast.fail(body.message)
     } catch {
-      listing.value = { root: null, entries: [], outils: null as never }
+      listing.value = { root: null, entries: [], tools: null as never }
       toast.fail('Le service local ne répond pas')
     }
   }
@@ -88,7 +88,7 @@ export const useVodStore = defineStore('vod', () => {
   async function loadUploads(): Promise<void> {
     try {
       const response = await fetch('/control/uploads')
-      const body = (await response.json()) as VueTeleversements & { ok?: boolean }
+      const body = (await response.json()) as UploadsView & { ok?: boolean }
       uploads.value = body.ok === false ? null : body
       lisser()
     } catch {
@@ -114,7 +114,7 @@ export const useVodStore = defineStore('vod', () => {
    * un temps qui n'a jamais existé.
    */
   function lisser(): void {
-    for (const entree of uploads.value?.entrees ?? []) {
+    for (const entree of uploads.value?.entries ?? []) {
       if (entree.state !== 'en-cours' || entree.debitOctetsS == null || entree.debitOctetsS <= 0) {
         debits.value.delete(entree.file)
         continue
@@ -142,8 +142,8 @@ export const useVodStore = defineStore('vod', () => {
    */
   const blocked = computed<string | null>(() => {
     if (uploads.value == null) return 'État des téléversements indisponible'
-    if (uploads.value.verdict?.raison === 'sans-stockage') {
-      return uploads.value.verdict.texte ?? 'aucun stockage configuré sur le hub'
+    if (uploads.value.verdict?.reason === 'sans-stockage') {
+      return uploads.value.verdict.text ?? 'aucun stockage configuré sur le hub'
     }
     return null
   })
@@ -162,7 +162,7 @@ export const useVodStore = defineStore('vod', () => {
    * rush à la main se demande pourquoi les suivants ne partent pas seuls.
    */
   const manualOnly = computed<boolean>(
-    () => uploads.value?.verdict?.raison === 'auto-desactive',
+    () => uploads.value?.verdict?.reason === 'auto-desactive',
   )
 
   /**
@@ -177,16 +177,16 @@ export const useVodStore = defineStore('vod', () => {
    */
   const waitReason = computed<string | null>(() => {
     const verdict = uploads.value?.verdict
-    if (verdict == null || verdict.autorise) return null
+    if (verdict == null || verdict.allowed) return null
     // Ni l'absence de stockage ni l'automatisme éteint ne sont des attentes :
     // le premier est dit en en-tête, le second est un réglage assumé.
-    if (verdict.raison === 'sans-stockage' || verdict.raison === 'auto-desactive') return null
-    return `Téléversement en attente — ${verdict.texte}.`
+    if (verdict.reason === 'sans-stockage' || verdict.reason === 'auto-desactive') return null
+    return `Téléversement en attente — ${verdict.text}.`
   })
 
   /** État de montée d'un fichier, ou nul s'il n'a jamais été mis en file. */
-  function uploadOf(file: string): EtatTeleversementVu | null {
-    return (uploads.value?.entrees ?? []).find((entry) => entry.file === file) ?? null
+  function uploadOf(file: string): UploadRow | null {
+    return (uploads.value?.entries ?? []).find((entry) => entry.file === file) ?? null
   }
 
   /**
@@ -211,10 +211,10 @@ export const useVodStore = defineStore('vod', () => {
     const entry = uploadOf(file)
     if (entry == null || entry.state !== 'en-cours') return null
     const lisse = debits.value.get(file)
-    if (lisse == null || lisse <= 0 || !(entry.restantOctets > 0)) return null
+    if (lisse == null || lisse <= 0 || !(entry.remainingBytes > 0)) return null
     const plafond = uploads.value?.verdict?.debitMaxOctetsS ?? null
     const debit = plafond != null && plafond > 0 ? Math.min(lisse, plafond) : lisse
-    return Math.round((entry.restantOctets / debit) * 1000)
+    return Math.round((entry.remainingBytes / debit) * 1000)
   }
 
   function show(): void {
@@ -251,7 +251,7 @@ export const useVodStore = defineStore('vod', () => {
    * Le même bouton pose et retire le verdict.
    *
    * Sans le retrait, une fausse manœuvre resterait à l'écran sans moyen de la
-   * reprendre — et c'est le genre de marque qu'on relit au montage comme une
+   * reprendre — et c'est le genre de marque qu'on relit au editing comme une
    * information.
    */
   async function verdict(file: string, status: 'ok' | 'illisible'): Promise<void> {
@@ -336,7 +336,7 @@ export const useVodStore = defineStore('vod', () => {
    * bouton par bouton.
    */
   const missingTools = computed<string | null>(() => {
-    const tools = listing.value?.outils
+    const tools = listing.value?.tools
     if (tools == null) return null
     const consequences: string[] = []
     if (!tools.ffprobe) consequences.push('« Vérifier » se limite à la taille et au sidecar')
@@ -351,7 +351,7 @@ export const useVodStore = defineStore('vod', () => {
     return `${head}${consequences.join(', ')}.`
   })
 
-  function entryOf(file: string): EntreeVod | null {
+  function entryOf(file: string): VodEntry | null {
     return (listing.value?.entries ?? []).find((entry) => entry.file === file) ?? null
   }
 

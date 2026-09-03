@@ -193,7 +193,7 @@ describe('serveur d\'affichage local', () => {
   })
 
   it('sert la charge utile complète à qui ne précise pas de vue', async () => {
-    // `/display/data` et les outils de diagnostic n'ont pas à connaître les vues.
+    // `/display/data` et les tools de diagnostic n'ont pas à connaître les vues.
     const messages = await readSse(`${origin}/display/state`, 1)
     expect(Object.keys(messages[0]!.raw)).toContain('sessions')
     expect(Object.keys(messages[0]!.raw)).toContain('diagnostics')
@@ -261,7 +261,7 @@ describe('vumètre', () => {
       // L'abonnement est posé à l'ouverture du flux.
       await vi.waitFor(() => expect(demandes).toEqual([true]))
 
-      local.publierNiveaux([{ nom: 'Micro', canaux: [{ magnitude: -18, crete: -16 }] }])
+      local.publierNiveaux([{ name: 'Micro', channels: [{ magnitude: -18, peak: -16 }] }])
 
       // Le premier bloc est le commentaire d'ouverture, qui pousse les
       // en-têtes ; on lit jusqu'à la première mesure.
@@ -270,7 +270,7 @@ describe('vumètre', () => {
       while (!recu.includes('data: ')) {
         recu += decodeur.decode((await lecteur.read()).value, { stream: true })
       }
-      expect(recu).toContain('"nom":"Micro"')
+      expect(recu).toContain('"name":"Micro"')
       expect(recu).toContain('-18')
 
       controleur.abort()
@@ -354,7 +354,7 @@ describe('autres salles, fin effective', () => {
     // 09:40, et c'est celui de 10:00 qui se joue.
     const vue = await voisine()
     expect(vue?.session?.id).toBe(MIDI)
-    expect(vue?.enCours).toBe(true)
+    expect(vue?.running).toBe(true)
   })
 
   it('donne la conférence suivante quand rien ne se joue à côté', async () => {
@@ -363,7 +363,7 @@ describe('autres salles, fin effective', () => {
     runtime.setServerTime(new Date(Date.parse('2026-10-30T09:50:00.000Z')).toISOString(), true)
 
     const vue = await voisine()
-    expect(vue?.enCours).toBe(false)
+    expect(vue?.running).toBe(false)
     expect(vue?.session?.id).toBe(MIDI)
   })
 })
@@ -382,14 +382,14 @@ describe('charge du poste', () => {
 
     const charge = (await reponse.json()) as {
       cpu: number | null
-      coeurs: number
-      fenetreMs: number
-      memoire: { occupeeOctets: number; totalOctets: number } | null
+      cores: number
+      windowMs: number
+      memory: { usedBytes: number; totalBytes: number } | null
     }
-    expect(charge.coeurs).toBeGreaterThan(0)
+    expect(charge.cores).toBeGreaterThan(0)
     // La mémoire, elle, se lit dès le premier appel : c'est un instantané.
-    expect(charge.memoire?.totalOctets).toBeGreaterThan(0)
-    expect(charge.memoire?.occupeeOctets).toBeLessThanOrEqual(charge.memoire?.totalOctets ?? 0)
+    expect(charge.memory?.totalBytes).toBeGreaterThan(0)
+    expect(charge.memory?.usedBytes).toBeLessThanOrEqual(charge.memory?.totalBytes ?? 0)
     // Au premier relevé, aucune fenêtre n'est écoulée : le serveur l'avoue
     // plutôt que d'annoncer une machine au repos.
     expect(charge.cpu === null || (charge.cpu >= 0 && charge.cpu <= 1)).toBe(true)
@@ -398,7 +398,7 @@ describe('charge du poste', () => {
   it('reste hors de la charge utile envoyée aux pages', async () => {
     const payload = (await (await fetch(`${origin}/display/data`)).json()) as Record<string, unknown>
     expect(payload).not.toHaveProperty('hote')
-    expect(JSON.stringify(payload)).not.toContain('coeurs')
+    expect(JSON.stringify(payload)).not.toContain('cores')
   })
 
   it('relaie le relevé qu\'on lui confie', async () => {
@@ -408,9 +408,9 @@ describe('charge du poste', () => {
       program: () => store.activeProgram(),
       hote: () => ({
         cpu: 0.42,
-        coeurs: 8,
-        fenetreMs: 5_000,
-        memoire: { occupeeOctets: 11_000_000_000, totalOctets: 16_000_000_000 },
+        cores: 8,
+        windowMs: 5_000,
+        memory: { usedBytes: 11_000_000_000, totalBytes: 16_000_000_000 },
       }),
       port: 0,
     })
@@ -418,9 +418,9 @@ describe('charge du poste', () => {
     try {
       expect(await (await fetch(`${adresse}/control/host`)).json()).toEqual({
         cpu: 0.42,
-        coeurs: 8,
-        fenetreMs: 5_000,
-        memoire: { occupeeOctets: 11_000_000_000, totalOctets: 16_000_000_000 },
+        cores: 8,
+        windowMs: 5_000,
+        memory: { usedBytes: 11_000_000_000, totalBytes: 16_000_000_000 },
       })
     } finally {
       await local.close()

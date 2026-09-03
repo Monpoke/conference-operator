@@ -1,5 +1,5 @@
-import type { ChargeHote } from './hote.js'
-import type { PolitiqueVod } from '@cloudnord/contract'
+import type { HostLoad } from './hote.js'
+import type { VodPolicy } from '@cloudnord/contract'
 
 /**
  * Quand une salle a le droit de téléverser ses rushes.
@@ -8,20 +8,20 @@ import type { PolitiqueVod } from '@cloudnord/contract'
  * refait pas. Tout ce module tient dans cette hiérarchie : au moindre doute, on
  * ne téléverse pas. Un transfert qui lit le disque pendant qu'OBS-B y écrit, ou
  * qui sature l'uplink pendant un direct, serait un remède pire que le mal — et
- * la panne se découvrirait au montage, quand la salle est démontée.
+ * la panne se découvrirait au editing, quand la salle est démontée.
  *
  * Le module est **pur** : il ne lit ni disque, ni horloge, ni réseau. C'est ce
  * qui permet de dérouler la journée entière dans un test, minute par minute,
  * sans monter une salle.
  */
-import type { RaisonAttente, VerdictTeleversement } from '@cloudnord/contract'
+import type { WaitReason, UploadVerdict } from '@cloudnord/contract'
 
-export type { RaisonAttente, VerdictTeleversement }
+export type { WaitReason, UploadVerdict }
 
 export interface EntreesRegulateur {
   /** Le hub a un stockage prêt. Faux : il n'y a nulle part où envoyer. */
   stockagePret: boolean
-  politique: PolitiqueVod
+  politique: VodPolicy
   /** Un humain a demandé ce téléversement — ici, ou depuis la console. */
   manuel: boolean
   /** OBS-B enregistre en ce moment. */
@@ -37,7 +37,7 @@ export interface EntreesRegulateur {
    * compte en semaines.
    */
   msAvantProchaine: number | null
-  charge: ChargeHote
+  charge: HostLoad
   /** Débit constaté sur la dernière part. `null` avant la première. */
   debitConstateOctetsS: number | null
 }
@@ -55,16 +55,16 @@ export const DEBIT_PLANCHER_OCTETS_S = 200 * 1024
 const MEMOIRE_MAX = 0.9
 
 const attente = (
-  raison: RaisonAttente,
-  texte: string,
-): VerdictTeleversement => ({ autorise: false, raison, debitMaxOctetsS: null, texte })
+  reason: WaitReason,
+  text: string,
+): UploadVerdict => ({ allowed: false, reason, debitMaxOctetsS: null, text })
 
 const minutes = (ms: number): number => Math.max(0, Math.round(ms / 60_000))
 
 /**
  * Le verdict, en six règles ordonnées.
  *
- * L'ordre porte le sens : la première qui refuse donne la raison affichée, et
+ * L'ordre porte le sens : la première qui refuse donne la reason affichée, et
  * c'est celle qu'on veut lire. Une salle qui enregistre *et* dont le poste est
  * chargé doit dire « enregistrement en cours », parce que c'est ce qui
  * s'expliquerait le moins bien autrement.
@@ -80,7 +80,7 @@ const minutes = (ms: number): number => Math.max(0, Math.round(ms / 60_000))
  * captation elle-même. La régie prévient avant d'envoyer la demande, pour que
  * le refus ne surprenne personne.
  */
-export function verdictTeleversement(e: EntreesRegulateur): VerdictTeleversement {
+export function verdictTeleversement(e: EntreesRegulateur): UploadVerdict {
   if (!e.stockagePret) {
     return attente('sans-stockage', 'aucun stockage configuré sur le hub')
   }
@@ -96,7 +96,7 @@ export function verdictTeleversement(e: EntreesRegulateur): VerdictTeleversement
 
   const plafond = e.politique.debitMaxOctetsS
   if (e.manuel) {
-    return { autorise: true, raison: null, debitMaxOctetsS: plafond, texte: 'demandé' }
+    return { allowed: true, reason: null, debitMaxOctetsS: plafond, text: 'demandé' }
   }
 
   const marge = e.politique.margeConferenceMinutes * 60_000
@@ -104,7 +104,7 @@ export function verdictTeleversement(e: EntreesRegulateur): VerdictTeleversement
     return attente('fenetre', `conférence dans ${minutes(e.msAvantProchaine)} min`)
   }
 
-  const { cpu, memoire } = e.charge
+  const { cpu, memory } = e.charge
   // `cpu` nul est un aveu, pas un zéro : on ne sait pas lire les compteurs, et
   // s'autoriser à charger la machine sur cette ignorance serait exactement le
   // mauvais pari — c'est l'encodeur qui paierait.
@@ -112,7 +112,7 @@ export function verdictTeleversement(e: EntreesRegulateur): VerdictTeleversement
     const dit = cpu == null ? 'charge du poste illisible' : `poste à ${Math.round(cpu * 100)} %`
     return attente('charge', dit)
   }
-  if (memoire != null && memoire.occupeeOctets / memoire.totalOctets > MEMOIRE_MAX) {
+  if (memory != null && memory.usedBytes / memory.totalBytes > MEMOIRE_MAX) {
     return attente('charge', 'mémoire du poste saturée')
   }
 
@@ -120,7 +120,7 @@ export function verdictTeleversement(e: EntreesRegulateur): VerdictTeleversement
     return attente('debit', 'réseau trop lent, nouvelle tentative plus tard')
   }
 
-  return { autorise: true, raison: null, debitMaxOctetsS: plafond, texte: 'en cours' }
+  return { allowed: true, reason: null, debitMaxOctetsS: plafond, text: 'en cours' }
 }
 
 /**
@@ -132,7 +132,7 @@ export function verdictTeleversement(e: EntreesRegulateur): VerdictTeleversement
  * lui, ne guérit pas parce qu'on redemande, et insister est précisément ce qui
  * le garde saturé.
  */
-export function attenteApres(raison: RaisonAttente, echecs: number): number {
-  if (raison !== 'debit') return 15_000
+export function attenteApres(reason: WaitReason, echecs: number): number {
+  if (reason !== 'debit') return 15_000
   return Math.min(15 * 60_000, 30_000 * 2 ** Math.min(echecs, 5))
 }

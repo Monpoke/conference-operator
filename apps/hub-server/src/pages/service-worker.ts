@@ -1,4 +1,4 @@
-import { IDENTITE_PAR_DEFAUT, type EventIdentity } from '@cloudnord/contract'
+import { DEFAULT_EVENT_IDENTITY, type EventIdentity } from '@cloudnord/contract'
 
 export interface ServiceWorkerOptions {
   /**
@@ -25,7 +25,7 @@ export interface ServiceWorkerOptions {
  * couvrirait pas les autres pages du hub.
  */
 export function renderServiceWorker(options: ServiceWorkerOptions = {}): string {
-  const identite = options.event ?? IDENTITE_PAR_DEFAUT
+  const identite = options.event ?? DEFAULT_EVENT_IDENTITY
   return `/* Généré par le hub — voir src/pages/service-worker.ts */
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', (evenement) => evenement.waitUntil(self.clients.claim()))

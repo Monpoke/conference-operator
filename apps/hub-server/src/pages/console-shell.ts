@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { IDENTITE_PAR_DEFAUT, type EventIdentity, type ModeExecution } from '@cloudnord/contract'
+import { DEFAULT_EVENT_IDENTITY, type EventIdentity, type ExecutionMode } from '@cloudnord/contract'
 import { escapeHtml } from '@cloudnord/format'
 
 /**
@@ -20,7 +20,7 @@ import { escapeHtml } from '@cloudnord/format'
  * par le processus qui sert déjà la page ne le peut pas.
  */
 export interface ConsoleShellOptions {
-  mode?: ModeExecution
+  mode?: ExecutionMode
   event?: EventIdentity
   google?: { domaine: string } | null
   /** Assets à charger. Résolus par `resoudreConsole()`, ou pointés sur Vite en dev. */
@@ -96,7 +96,7 @@ export function assetsDeDeveloppement(base = '/admin/'): ConsoleAssets {
 }
 
 export function renderConsoleShell(options: ConsoleShellOptions): string {
-  const identite = options.event ?? IDENTITE_PAR_DEFAUT
+  const identite = options.event ?? DEFAULT_EVENT_IDENTITY
   const nom = escapeHtml(identite.name)
   const amorce = JSON.stringify({
     mode: options.mode ?? 'production',

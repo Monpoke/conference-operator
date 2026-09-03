@@ -278,7 +278,7 @@ describe('vue des conférences', () => {
     expect(wrapper.get('#controle-feedback').text()).toContain('27 talks')
   })
 
-  it('offre les actions que la table du cycle de vie autorise, et pas d’autres', async () => {
+  it('offre les actions que la table du cycle de vie allowed, et pas d’autres', async () => {
     const { wrapper } = await monter({
       states: [
         {

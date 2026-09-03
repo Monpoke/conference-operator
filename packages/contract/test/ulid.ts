@@ -1,6 +1,6 @@
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
 
-/** ULID minimal, suffisant pour les fixtures de test. */
+/** Minimal ULID, enough for test fixtures. */
 export function ulid(): string {
   let out = ''
   for (let i = 0; i < 26; i += 1) {

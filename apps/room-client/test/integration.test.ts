@@ -8,7 +8,7 @@ import { provisionOperator } from '@cloudnord/hub-server/operators'
 import { createORPCClient } from '@orpc/client'
 import { RPCLink } from '@orpc/client/fetch'
 import type { ContractRouterClient } from '@orpc/contract'
-import { contract, REGIE_SESSION_HEADER } from '@cloudnord/contract'
+import { contract, CONTROL_SESSION_HEADER } from '@cloudnord/contract'
 import { httpPairingTransport, runPairing } from '../src/core/pairing.js'
 import { LocalStore } from '../src/core/store.js'
 import { RoomRuntime, type RuntimeEffects } from '../src/core/runtime.js'
@@ -292,7 +292,7 @@ describe('régie mobile, du téléphone à la salle', () => {
         url: '/rpc',
         headers: () => ({
           authorization: `Bearer ${token}`,
-          [REGIE_SESSION_HEADER]: session,
+          [CONTROL_SESSION_HEADER]: session,
         }),
       }),
     )

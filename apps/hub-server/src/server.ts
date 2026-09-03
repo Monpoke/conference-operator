@@ -2,7 +2,7 @@ import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify'
 import fastifyProxy from '@fastify/http-proxy'
 import fastifyStatic from '@fastify/static'
 import { join } from 'node:path'
-import { consolePaths, REGIE_PATH, regieRoomIdFromPath } from '@cloudnord/contract'
+import { consolePaths, CONTROL_PATH, controlRoomIdFromPath } from '@cloudnord/contract'
 import { WebSocketServer, type WebSocket as NodeWebSocket } from 'ws'
 import { RPCHandler as FastifyRPCHandler } from '@orpc/server/fastify'
 import { RPCHandler as WebSocketRPCHandler } from '@orpc/server/websocket'
@@ -468,13 +468,13 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
      */
     await app.register(fastifyProxy, {
       upstream: config.regieViteOrigin,
-      prefix: `${REGIE_PATH}/`,
-      rewritePrefix: `${REGIE_PATH}/`,
+      prefix: `${CONTROL_PATH}/`,
+      rewritePrefix: `${CONTROL_PATH}/`,
       websocket: true,
       httpMethods: ['GET'],
       preHandler: (request, reply, done) => {
         const chemin = request.url.split('?')[0] ?? ''
-        if (chemin === REGIE_PATH || regieRoomIdFromPath(chemin) != null) {
+        if (chemin === CONTROL_PATH || controlRoomIdFromPath(chemin) != null) {
           return reply.callNotFound()
         }
         done()
@@ -593,7 +593,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     )
   }
 
-  app.get(REGIE_PATH, async (_request, reply) => rendreRegie(null, reply))
+  app.get(CONTROL_PATH, async (_request, reply) => rendreRegie(null, reply))
   app.get<{ Params: { roomId: string } }>('/regie/:roomId', async (request, reply) =>
     rendreRegie(request.params.roomId, reply),
   )

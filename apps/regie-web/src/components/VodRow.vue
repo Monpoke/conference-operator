@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import type { EntreeVod } from '@cloudnord/contract'
+import type { VodEntry } from '@cloudnord/contract'
 import { Button } from '@cloudnord/components'
 import { fileSize, remaining, shortDuration, time } from '@cloudnord/format'
 import { computed } from 'vue'
 import { UPLOAD_WORDS, VERDICT_BADGES, useVodStore } from '../stores/vod.js'
 import VodPreview from './VodPreview.vue'
 
-const props = defineProps<{ entry: EntreeVod; timeZone: string }>()
+const props = defineProps<{ entry: VodEntry; timeZone: string }>()
 
 const vod = useVodStore()
 
@@ -53,7 +53,7 @@ const details = computed(() => {
     if (chapitres > 0) parts.push(`${chapitres} marqueur${chapitres > 1 ? 's' : ''}`)
 
     /*
-     * Ce que le montage coupera, quand la régie le lui a dit.
+     * Ce que le editing coupera, quand la régie le lui a dit.
      *
      * C'est la seule fenêtre où l'information est encore vérifiable : le rush
      * s'ouvre ici, et l'aperçu est à un clic. Trois semaines plus tard, un
@@ -73,7 +73,7 @@ const details = computed(() => {
   }
   if (durationMs.value != null) parts.push(shortDuration(durationMs.value))
   parts.push(fileSize(props.entry.sizeBytes))
-  if (props.entry.enEcriture) parts.push('encore en écriture')
+  if (props.entry.beingWritten) parts.push('encore en écriture')
   if (check.value?.by === 'operateur') parts.push('verdict de la régie')
 
   /*
@@ -87,7 +87,7 @@ const details = computed(() => {
     if (state !== 'en-cours') parts.push(word)
     else {
       const reste = eta.value == null ? '' : ` · reste ${eta.value}`
-      parts.push(`${word} — ${upload.value?.pourcent} %${reste}`)
+      parts.push(`${word} — ${upload.value?.percent} %${reste}`)
     }
   }
   return parts.join(' · ')
@@ -109,7 +109,7 @@ const progressTitle = computed(() => {
     return 'En file : le téléversement partira dès que la salle le permet'
   }
   const reste = eta.value == null ? '' : `, reste environ ${eta.value}`
-  return `Téléversement en cours — ${upload.value?.pourcent ?? 0} %${reste}`
+  return `Téléversement en cours — ${upload.value?.percent ?? 0} %${reste}`
 })
 
 /**
@@ -181,8 +181,8 @@ function posed(status: string): boolean {
 
       <!-- « AccessDenied » est le seul mot qu'on puisse porter à qui tient le
            bucket : le traduire ferait perdre la seule prise sur le problème. -->
-      <div v-if="upload?.erreur != null" class="mt-1 text-[11px] text-alerte">
-        Téléversement : {{ upload.erreur }}
+      <div v-if="upload?.error != null" class="mt-1 text-[11px] text-alerte">
+        Téléversement : {{ upload.error }}
       </div>
     </div>
 
@@ -266,7 +266,7 @@ function posed(status: string): boolean {
           size="small"
           :class="CASE_ICONE"
           :title="
-            entry.enEcriture
+            entry.beingWritten
               ? 'Prise encore en cours : le fichier partira une fois arrêtée'
               : 'Envoyer ce rush et son sidecar au stockage'
           "

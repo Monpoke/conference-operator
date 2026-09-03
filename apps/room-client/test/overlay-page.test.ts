@@ -134,7 +134,7 @@ describe('question du public sur la captation', () => {
 
   it('ne laisse jamais passer le bandeau de la console', () => {
     // « On reprend dans 5 minutes » gravé dans la VOD d'un talk : c'est
-    // exactement ce que la séparation des deux canaux évite.
+    // exactement ce que la séparation des deux channels évite.
     monterHabillage(avec({
       question: null,
       liveMessage: { text: 'Reprise dans 5 minutes', level: 'urgent', expiresAtMs: null },

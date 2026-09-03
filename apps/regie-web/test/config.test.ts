@@ -1,4 +1,4 @@
-import type { ConfigVisible, ObsState } from '@cloudnord/contract'
+import type { VisibleConfig, ObsState } from '@cloudnord/contract'
 import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
@@ -17,9 +17,9 @@ import { obsState, payload } from './fixtures.js'
  * les doigts effacerait la saisie en cours.
  */
 
-const CONFIG: ConfigVisible = {
+const CONFIG: VisibleConfig = {
   // Poste installé : c'est lui qui sait ouvrir un sélecteur.
-  peutParcourir: true,
+  canBrowse: true,
   obs: {
     A: { url: 'ws://127.0.0.1:4455', hasPassword: true, pending: false },
     B: { url: 'ws://127.0.0.1:4456', hasPassword: false, pending: false },
@@ -44,7 +44,7 @@ let refuse: boolean
 /** Ce que le poste répond, quand le geste rapporte quelque chose. */
 let reponse: { ok: boolean; detail?: unknown } | null
 
-function salle(overrides: Partial<ConfigVisible> = {}) {
+function salle(overrides: Partial<VisibleConfig> = {}) {
   const etat = payload()
   etat.diagnostics!.config = { ...CONFIG, ...overrides }
   useRoomStore().seed(etat)
@@ -239,7 +239,7 @@ describe('enregistrer', () => {
 })
 
 describe('bloc OBS', () => {
-  function bloc(obs: Partial<ObsState>, config: ConfigVisible = CONFIG) {
+  function bloc(obs: Partial<ObsState>, config: VisibleConfig = CONFIG) {
     salle()
     const store = useConfigStore()
     store.show()
@@ -321,7 +321,7 @@ describe('menu des écrans', () => {
  * désigne, pas celui d'où l'on regarde la page.
  */
 describe('choisir le dossier des VOD', () => {
-  function ouvrir(overrides: Partial<ConfigVisible> = {}) {
+  function ouvrir(overrides: Partial<VisibleConfig> = {}) {
     salle(overrides)
     const config = useConfigStore()
     config.show()
@@ -370,8 +370,8 @@ describe('choisir le dossier des VOD', () => {
      * de sélecteur à ouvrir. Un bouton qui ne répond pas vaut moins qu'un champ
      * à remplir à la main — la modale le masque sur cette valeur.
      */
-    expect(ouvrir({ peutParcourir: false }).peutParcourir).toBe(false)
-    expect(ouvrir({ peutParcourir: true }).peutParcourir).toBe(true)
+    expect(ouvrir({ canBrowse: false }).canBrowse).toBe(false)
+    expect(ouvrir({ canBrowse: true }).canBrowse).toBe(true)
   })
 })
 
@@ -387,7 +387,7 @@ describe('choisir le dossier des VOD', () => {
 describe('salle incomplète au démarrage', () => {
   /** Une salle réglée et branchée : le point de départ, qu'on abîme champ par champ. */
   function salleReglee(
-    overrides: Partial<ConfigVisible> = {},
+    overrides: Partial<VisibleConfig> = {},
     obs: { A?: ObsState | null; B?: ObsState | null } = {},
   ) {
     const etat = payload()

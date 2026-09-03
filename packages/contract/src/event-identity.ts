@@ -1,102 +1,101 @@
 import { z } from 'zod'
 
 /**
- * Identité de l'événement, telle que l'affichent toutes les surfaces.
+ * The event's identity, as every surface displays it.
  *
- * Une seule source pour le mur public, la console, l'écran de salle, les
- * titres de fenêtre et les notifications poussées. Sans elle, le nom de
- * l'événement était écrit en dur à une douzaine d'endroits : changer d'édition
- * — ou faire tourner le produit sur un autre événement — demandait de relire
- * tout le dépôt et de rejouer une release sur les machines de salle.
+ * A single source for the public wall, the console, the room screen, window
+ * titles and pushed notifications. Without it, the event name was hard-coded in
+ * a dozen places: changing edition — or running the product on another event —
+ * meant reading through the whole repository and shipping a new release to the
+ * room machines.
  *
- * Elle n'est pas saisie dans un fichier de configuration : le hub la **déduit
- * du programme importé**, qui porte déjà `event.name`. Le réglage n'existe que
- * pour les cas où l'export amont ne dit pas ce qu'on veut lire à l'écran.
+ * It is not entered in a configuration file: the hub **derives it from the
+ * imported program**, which already carries `event.name`. The setting only
+ * exists for cases where the upstream export does not say what we want to read
+ * on screen.
  */
 export const eventIdentitySchema = z.object({
   /**
-   * Nom complet, millésime compris : « Cloud Nord 2026 ».
+   * Full name, year included: "Cloud Nord 2026".
    *
-   * C'est ce qu'on écrit en tête du mur public et de la console — les deux
-   * endroits où quelqu'un peut arriver sans savoir où il est tombé.
+   * That is what goes at the top of the public wall and of the console — the two
+   * places someone can land on without knowing where they have ended up.
    */
   name: z.string().min(1).max(80),
   /**
-   * Nom court, sans millésime : « Cloud Nord ».
+   * Short name, without the year: "Cloud Nord".
    *
-   * Pour les endroits où la place manque et où l'année n'apprend rien : titre
-   * de la fenêtre de régie, titre d'une notification poussée sur un téléphone,
-   * boucle d'attente projetée (« Suivez … »). Déduit du nom complet à défaut
-   * d'être réglé.
+   * For places where space is short and the year teaches nothing: control app
+   * window title, title of a notification pushed to a phone, projected waiting
+   * loop ("Suivez …"). Derived from the full name when not configured.
    */
   shortName: z.string().min(1).max(40),
 })
 export type EventIdentity = z.infer<typeof eventIdentitySchema>
 
 /**
- * Ce qu'affichent les surfaces quand rien n'est connu : ni programme importé,
- * ni réglage.
+ * What the surfaces show when nothing is known: no imported program, no setting.
  *
- * Ce cas existe réellement — un hub qui vient d'être installé, avant le premier
- * import — et il vaut mieux un mot neutre qu'un nom d'événement écrit en dur
- * qui serait faux partout ailleurs.
+ * This case really happens — a hub that has just been installed, before the
+ * first import — and a neutral word beats a hard-coded event name that would be
+ * wrong everywhere else.
  */
-export const IDENTITE_PAR_DEFAUT: EventIdentity = { name: 'Événement', shortName: 'Événement' }
+export const DEFAULT_EVENT_IDENTITY: EventIdentity = { name: 'Événement', shortName: 'Événement' }
 
 /**
- * Retire d'un nom d'événement ce qui le date.
+ * Strips from an event name what dates it.
  *
- * « Cloud Nord 2026 » → « Cloud Nord », « DevFest Lille #12 » → « DevFest
- * Lille ». Heuristique assumée, et volontairement timide : elle ne coupe qu'un
- * suffixe reconnaissable en fin de chaîne, et rend le nom inchangé dès qu'elle
- * n'est sûre de rien. Un nom court faux se lirait sur chaque écran de la
- * journée ; un nom court trop long ne se remarque pas.
+ * "Cloud Nord 2026" → "Cloud Nord", "DevFest Lille #12" → "DevFest Lille". An
+ * assumed heuristic, and deliberately timid: it only cuts a recognisable suffix
+ * at the end of the string, and returns the name unchanged as soon as it is
+ * unsure. A wrong short name would be read on every screen of the day; a short
+ * name that is too long goes unnoticed.
  *
- * Le réglage `eventShortName` du hub existe pour les noms qu'elle rate.
+ * The hub's `eventShortName` setting exists for the names it misses.
  */
-export function nomCourtDeduit(nom: string): string {
-  const coupe = nom.replace(/[\s]*[—–\-·|,]?[\s]*(?:(?:19|20)\d{2}|#\d+|éd(?:ition)?\.?\s*\d+)\s*$/iu, '').trim()
-  // Un nom qui n'est *que* son millésime (« 2026 ») ne se raccourcit pas.
-  return coupe === '' ? nom.trim() : coupe
+export function derivedShortName(name: string): string {
+  const cut = name.replace(/[\s]*[—–\-·|,]?[\s]*(?:(?:19|20)\d{2}|#\d+|éd(?:ition)?\.?\s*\d+)\s*$/iu, '').trim()
+  // A name that is *only* its year ("2026") does not get shortened.
+  return cut === '' ? name.trim() : cut
 }
 
-/** Ce dont le hub dispose pour trancher, par ordre de priorité décroissante. */
-export interface SourcesIdentite {
+/** What the hub has to decide from, in decreasing order of priority. */
+export interface EventIdentitySources {
   /**
-   * Réglages du hub. Ce qui est saisi là gagne : c'est le seul endroit où
-   * quelqu'un a explicitement dit ce qu'il voulait lire.
+   * Hub settings. What is entered there wins: it is the only place where someone
+   * explicitly said what they wanted to read.
    */
-  reglage?: { name?: string | null; shortName?: string | null } | null
+  setting?: { name?: string | null; shortName?: string | null } | null
   /**
-   * `program.event.name` du snapshot actif.
+   * `program.event.name` of the active snapshot.
    *
-   * La source normale, et celle qui rend le produit agnostique sans rien
-   * demander : importer le programme d'un autre événement suffit à renommer
-   * toutes les surfaces.
+   * The normal source, and the one that makes the product agnostic without
+   * asking anything: importing another event's program is enough to rename every
+   * surface.
    */
-  programme?: string | null
+  program?: string | null
 }
 
 /**
- * Tranche l'identité affichée.
+ * Decides the displayed identity.
  *
- * Réglage explicite, sinon programme importé, sinon défaut neutre — et le nom
- * court se déduit du nom retenu, pas d'une autre source : régler le nom complet
- * sans penser au court doit donner un résultat cohérent.
+ * Explicit setting, else imported program, else neutral default — and the short
+ * name is derived from the chosen name, not from another source: setting the
+ * full name without thinking about the short one must give a coherent result.
  */
-export function resoudreIdentiteEvenement(sources: SourcesIdentite = {}): EventIdentity {
-  const propre = (valeur: string | null | undefined): string | null => {
-    const texte = valeur?.trim() ?? ''
-    return texte === '' ? null : texte
+export function resolveEventIdentity(sources: EventIdentitySources = {}): EventIdentity {
+  const clean = (value: string | null | undefined): string | null => {
+    const text = value?.trim() ?? ''
+    return text === '' ? null : text
   }
 
   const name =
-    propre(sources.reglage?.name) ?? propre(sources.programme) ?? IDENTITE_PAR_DEFAUT.name
-  const shortName = propre(sources.reglage?.shortName) ?? nomCourtDeduit(name)
+    clean(sources.setting?.name) ?? clean(sources.program) ?? DEFAULT_EVENT_IDENTITY.name
+  const shortName = clean(sources.setting?.shortName) ?? derivedShortName(name)
 
-  // Les bornes du schéma s'appliquent aussi à ce qui vient de l'export amont,
-  // qui n'a aucune raison de les respecter : un nom de 300 caractères ferait
-  // échouer la validation du `sync` de toutes les salles.
+  // The schema's bounds apply to what comes from the upstream export too, which
+  // has no reason to respect them: a 300-character name would fail the `sync`
+  // validation of every room.
   return eventIdentitySchema.parse({
     name: name.slice(0, 80),
     shortName: shortName.slice(0, 40),

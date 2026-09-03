@@ -66,39 +66,41 @@ export function consolePaths(dev: boolean): string[] {
 }
 
 /**
- * La régie, servie deux fois.
+ * The control app, served twice.
  *
- * Le poste de salle la sert pour sa propre salle (`/regie`, sans plus) ; le hub
- * la sert pour n'importe laquelle (`/regie` = choisir, `/regie/<id>` = piloter).
- * Le même bundle, la même `base` Vite, deux hôtes — d'où ces trois fonctions
- * ici plutôt que dans l'un des deux : le hub les énumère pour enregistrer ses
- * routes, l'application les lit pour naviguer, et aucun des deux ne peut
- * dépendre de l'autre.
+ * The room machine serves it for its own room (`/regie`, nothing more); the hub
+ * serves it for any room (`/regie` = pick one, `/regie/<id>` = drive it). Same
+ * bundle, same Vite `base`, two hosts — hence these three functions here rather
+ * than in either of them: the hub enumerates them to register its routes, the
+ * application reads them to navigate, and neither can depend on the other.
+ *
+ * The path itself stays `/regie`: it is bookmarked, and it is what an operator
+ * types from memory.
  */
-export const REGIE_PATH = '/regie'
+export const CONTROL_PATH = '/regie'
 
-/** L'adresse d'une salle, ou celle de l'écran de choix. */
-export function regiePath(roomId: string | null): string {
-  return roomId == null ? REGIE_PATH : `${REGIE_PATH}/${encodeURIComponent(roomId)}`
+/** A room's address, or that of the picker screen. */
+export function controlPath(roomId: string | null): string {
+  return roomId == null ? CONTROL_PATH : `${CONTROL_PATH}/${encodeURIComponent(roomId)}`
 }
 
 /**
- * La salle que désigne une adresse, ou `null` pour l'écran de choix.
+ * The room an address designates, or `null` for the picker screen.
  *
- * Rend `null` aussi sur tout ce qui n'est pas une adresse de régie : appelée
- * sur `/admin`, elle ne doit pas inventer une salle nommée `admin`.
+ * Returns `null` too for anything that is not a control address: called on
+ * `/admin`, it must not invent a room named `admin`.
  */
-export function regieRoomIdFromPath(pathname: string): string | null {
-  if (pathname === REGIE_PATH || pathname === `${REGIE_PATH}/`) return null
-  const prefix = `${REGIE_PATH}/`
+export function controlRoomIdFromPath(pathname: string): string | null {
+  if (pathname === CONTROL_PATH || pathname === `${CONTROL_PATH}/`) return null
+  const prefix = `${CONTROL_PATH}/`
   if (!pathname.startsWith(prefix)) return null
   const rest = pathname.slice(prefix.length)
   /*
-   * Un seul segment, et pas un joker.
+   * A single segment, and not a wildcard.
    *
-   * `/regie/track-1/assets/x.js` est une requête d'asset, pas une salle nommée
-   * `track-1/assets`. Le hub sert les assets sous ce préfixe, et les confondre
-   * ferait rendre la coquille à la place d'un module.
+   * `/regie/track-1/assets/x.js` is an asset request, not a room named
+   * `track-1/assets`. The hub serves assets under this prefix, and confusing the
+   * two would render the shell in place of a module.
    */
   if (rest === '' || rest.includes('/')) return null
   return decodeURIComponent(rest)

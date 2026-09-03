@@ -61,9 +61,9 @@ l'opérateur a l'application ouverte et rien d'autre.
 | Avant | Écran sur **Boucle** — le défaut —, projection sur **Habillage** (`H`) |
 | Le speaker branche | Projection sur **Direct** (`L`) |
 | Début du talk | **Commencer** puis **Enregistrer** (`R`) |
-| L'orateur entre dans le vif | **Début** (`D`) — le montage coupera tout ce qui précède |
+| L'orateur entre dans le vif | **Début** (`D`) — le editing coupera tout ce qui précède |
 | Moment marquant | **Marquer** (`M`) — saisir un libellé, ou laisser « Chapitre » |
-| Le dernier mot est dit | **Fin** (`F`) — le montage coupera tout ce qui suit |
+| Le dernier mot est dit | **Fin** (`F`) — le editing coupera tout ce qui suit |
 | Fin du talk | **Arrêter** (`R`), puis projection sur **Habillage** (`H`) |
 | Entre deux | Écran sur **Compte à rebours**, ou retour à la **Boucle** |
 
@@ -73,15 +73,15 @@ pause, « Commencer » reste donc disponible — avec l'horaire rappelé pour le
 toute ambiguïté sur laquelle on démarre.
 
 **`D` et `F` ne sont pas des marqueurs comme les autres.** Ce sont les deux
-bornes de ce qui sera publié : le montage jette ce qui précède `D` et ce qui
+bornes de ce qui sera publié : le editing jette ce qui précède `D` et ce qui
 suit `F`. Les poser franchement — au premier mot, au dernier — vaut mieux que
 de viser juste : le bouton affiche l'instant retenu, et **le reposer corrige**,
-il ne s'en ajoute jamais deux. Sans eux, le montage devra deviner les blancs
+il ne s'en ajoute jamais deux. Sans eux, le editing devra deviner les blancs
 d'entrée et de sortie tout seul, et il se trompera sur un micro de salle qui
 respire.
 
 Le message de confirmation à l'arrêt indique le nom du fichier produit. **S'il
-annonce « sidecar non écrit », le noter** : ce talk demandera un montage manuel.
+annonce « sidecar non écrit », le noter** : ce talk demandera un editing manuel.
 
 ---
 
@@ -125,7 +125,7 @@ La prise en cours est perdue à partir du plantage — OBS écrit au fil de l'ea
 le début est sur le disque.
 
 1. Relancer OBS-B, attendre le vert dans **Diagnostic**.
-2. Relancer un enregistrement. Prévenir le montage : ce talk sera en deux parties.
+2. Relancer un enregistrement. Prévenir le editing : ce talk sera en deux parties.
 
 ---
 
@@ -144,7 +144,7 @@ Processeur :
 - **Rouge** (au-delà de 90 %) : OBS **perd probablement des images**, et rien
   d'autre ne le signalera. Le rush est en train de s'abîmer. Fermer tout le
   reste immédiatement ; entre deux talks, baisser la résolution ou le débit de
-  l'encodage dans OBS-B, et prévenir le montage pour le talk déjà passé.
+  l'encodage dans OBS-B, et prévenir le editing pour le talk déjà passé.
 
 Mémoire — l'autre façon de lâcher, et la plus sournoise : la machine ne ralentit
 pas franchement, elle se met à **échanger sur le disque**, celui-là même qui
@@ -191,7 +191,7 @@ Tout message est relu avant affichage : c'est donc une erreur de modération.
    laisser la machine allumée et connectée jusqu'à ce qu'il descende.
 2. Ouvrir **🎞 Enregistrements** et contrôler ce qui a été produit. Chaque talk
    doit y avoir un `.mkv` **et** un `.json` du même nom. **Les deux sont
-   nécessaires au montage** — le `.json` contient les intervenants, les
+   nécessaires au editing** — le `.json` contient les intervenants, les
    marqueurs de chapitre et les deux bornes `D`/`F`. La ligne affiche
    « rognage 00:52 → 44:20 » quand elles y sont : c'est le dernier moment où
    elles se vérifient, l'aperçu étant à un clic.

@@ -1,26 +1,26 @@
 import { z } from 'zod'
 
 /**
- * Version du protocole, négociée à l'enrôlement et à chaque sync.
+ * Protocol version, negotiated at enrolment and on every sync.
  *
- * Le hub et un client de salle peuvent tourner sur des binaires différents le
- * jour J (une machine pas remise à jour, ça arrive) : le hub doit pouvoir le
- * détecter et refuser proprement plutôt que d'échouer sur un champ manquant.
+ * The hub and a room client may run different binaries on the day (a machine
+ * that was not updated — it happens): the hub must be able to detect that and
+ * refuse cleanly rather than fail on a missing field.
  */
 export const PROTOCOL_VERSION = 1
 
 export const roomIdSchema = z.string().min(1)
 export const sessionIdSchema = z.string().min(1)
 
-/** ULID généré côté client : trié par le temps, et donc utilisable comme clé d'ordre. */
+/** ULID generated client-side: time-sorted, and therefore usable as an order key. */
 export const ulidSchema = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{26}$/, 'ULID attendu')
 
 export const isoDateTimeSchema = z.iso.datetime({ offset: true })
 
 /**
- * Rôles de scène. Le client ne connaît que des rôles ; le mapping vers les noms
- * de scènes OBS réels vit dans la config de chaque salle, pour qu'une salle
- * puisse nommer ses scènes comme elle veut.
+ * Scene roles. The client only knows roles; the mapping to real OBS scene names
+ * lives in each room's config, so that a room can name its scenes however it
+ * likes.
  */
 export const sceneRoleSchema = z.enum([
   'LIVE',
@@ -33,48 +33,48 @@ export const sceneRoleSchema = z.enum([
 export type SceneRole = z.infer<typeof sceneRoleSchema>
 
 /**
- * Mode d'exécution d'un poste — hub comme salle.
+ * Execution mode of a machine — hub as well as room.
  *
- * `dev` déverrouille les commodités de développement (heure simulée, OBS
- * simulé) ; `production` les refuse, même laissées dans un fichier
- * d'environnement. Circule entre hub et salle pour que chacun sache dans quoi
- * il parle : une salle de développement branchée sur le hub de l'événement est
- * exactement le genre d'accident qu'on veut voir de loin.
+ * `dev` unlocks the development conveniences (simulated clock, simulated OBS);
+ * `production` refuses them, even when left in an environment file. Travels
+ * between hub and room so each knows what it is talking to: a development room
+ * plugged into the event hub is exactly the kind of accident you want to see
+ * from a distance.
  */
-export const modeExecutionSchema = z.enum(['production', 'dev'])
-export type ModeExecution = z.infer<typeof modeExecutionSchema>
+export const executionModeSchema = z.enum(['production', 'dev'])
+export type ExecutionMode = z.infer<typeof executionModeSchema>
 
-/** OBS-A = projection vidéoprojecteur, OBS-B = captation/VOD. */
+/** OBS-A = projector output, OBS-B = capture/VOD. */
 export const obsInstanceSchema = z.enum(['A', 'B'])
 export type ObsInstance = z.infer<typeof obsInstanceSchema>
 
 /**
- * Ce que la page display rend hors-live. Piloté par l'état, pas par des scènes
- * OBS : changer de contenu ne doit jamais demander de toucher à OBS.
+ * What the display page renders off air. Driven by state, not by OBS scenes:
+ * changing content must never require touching OBS.
  */
 export const displayModeSchema = z.enum([
   'sponsors',
   'programme',
-  /** QR OpenFeedback du talk en cours : « notez cette conférence ». */
+  /** OpenFeedback QR code for the running talk: "rate this talk". */
   'feedback',
   /**
-   * La question choisie en régie, en grand.
+   * The question picked in the control app, in large type.
    *
-   * Le bandeau vidéo ne touche que ceux qui regardent l'écran de captation ou
-   * la scène live ; ce mode-ci la met devant toute la salle, quel que soit ce
-   * qu'OBS diffuse au même moment.
+   * The video banner only reaches those watching the capture screen or the live
+   * scene; this mode puts it in front of the whole room, whatever OBS is
+   * broadcasting at the same moment.
    */
   'question',
   'countdown',
   'message',
   'wall',
   /**
-   * Boucle d'attente : sponsors, programme de la salle, autres salles, réseaux.
+   * Waiting loop: sponsors, room program, other rooms, social accounts.
    *
-   * Ce qu'on laisse tourner pendant les pauses. Les modes `sponsors` et
-   * `programme` restent disponibles seuls : quand quelque chose se passe, on
-   * veut pouvoir figer l'écran sur une page précise plutôt que d'attendre que
-   * la boucle y revienne.
+   * What you leave running during breaks. The `sponsors` and `programme` modes
+   * stay available on their own: when something happens, you want to be able to
+   * freeze the screen on a specific page rather than wait for the loop to come
+   * back to it.
    */
   'loop',
   'live',
@@ -85,9 +85,9 @@ export const connectivitySchema = z.enum(['ONLINE', 'DEGRADED', 'OFFLINE'])
 export type Connectivity = z.infer<typeof connectivitySchema>
 
 /**
- * `required` : persisté, rejoué jusqu'à `expiresAt`. Perdre l'événement fausserait
- * la VOD ou l'historique de la salle.
- * `best-effort` : télémétrie. Périmé vite, écrasé par `dedupKey`, jetable.
+ * `required`: persisted, replayed until `expiresAt`. Losing the event would skew
+ * the VOD or the room's history.
+ * `best-effort`: telemetry. Stale fast, overwritten by `dedupKey`, disposable.
  */
 export const deliverySchema = z.enum(['required', 'best-effort'])
 export type Delivery = z.infer<typeof deliverySchema>

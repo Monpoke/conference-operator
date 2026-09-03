@@ -15,7 +15,7 @@ import {
 import { programSchema, type Program } from '@cloudnord/program'
 import {
   eventIdentitySchema,
-  IDENTITE_PAR_DEFAUT,
+  DEFAULT_EVENT_IDENTITY,
   roomConfigSchema,
   socialLinkSchema,
   vodSyncSchema,
@@ -67,12 +67,12 @@ function lireVod(brut: string | null): VodSync | null {
 }
 
 function lireIdentite(brut: string | null): EventIdentity {
-  if (brut == null) return IDENTITE_PAR_DEFAUT
+  if (brut == null) return DEFAULT_EVENT_IDENTITY
   try {
     const lu = eventIdentitySchema.safeParse(JSON.parse(brut))
-    return lu.success ? lu.data : IDENTITE_PAR_DEFAUT
+    return lu.success ? lu.data : DEFAULT_EVENT_IDENTITY
   } catch {
-    return IDENTITE_PAR_DEFAUT
+    return DEFAULT_EVENT_IDENTITY
   }
 }
 

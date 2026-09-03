@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { POLITIQUE_VOD_PAR_DEFAUT, type PartSignee, type PlanTeleversement } from '@cloudnord/contract'
+import { DEFAULT_VOD_POLICY, type SignedPart, type UploadPlan } from '@cloudnord/contract'
 import { LocalStore } from '../src/core/store.js'
 import {
   Televersements,
@@ -36,7 +36,7 @@ function fauxHub(options: { recues?: number[] } = {}) {
     abort: [] as string[],
   }
   const hub: HubVod = {
-    async begin(entree): Promise<PlanTeleversement> {
+    async begin(entree): Promise<UploadPlan> {
       journal.begin.push({ file: entree.file, kind: entree.kind })
       if (entree.kind === 'sidecar') {
         return {
@@ -54,7 +54,7 @@ function fauxHub(options: { recues?: number[] } = {}) {
         recues: options.recues ?? [],
       }
     },
-    async parts(_uploadId, numeros): Promise<PartSignee[]> {
+    async parts(_uploadId, numeros): Promise<SignedPart[]> {
       journal.parts.push(...numeros)
       return numeros.map((numero) => ({
         numero,
@@ -90,7 +90,7 @@ async function demanderEtAttendre(m: Montage, file: string | null): Promise<void
 const UN_RUSH: CandidatVod = {
   file: '2026-10-30_track1_1100_honeyswamp.mkv',
   sizeBytes: TAILLE,
-  enEcriture: false,
+  beingWritten: false,
   sessionId: 'sess-1',
   sidecar: { file: '2026-10-30_track1_1100_honeyswamp.json', sizeBytes: 900 },
 }
@@ -114,8 +114,8 @@ function monter(
     store: new LocalStore(':memory:'),
     candidats: async () => candidats,
     hub: () => hub,
-    politique: () => ({ ...POLITIQUE_VOD_PAR_DEFAUT, actif: true }),
-    charge: () => ({ cpu: 0.1, coeurs: 8, fenetreMs: 2000, memoire: null }),
+    politique: () => ({ ...DEFAULT_VOD_POLICY, actif: true }),
+    charge: () => ({ cpu: 0.1, cores: 8, windowMs: 2000, memory: null }),
     enregistre: () => false,
     conferenceEnCours: () => false,
     msAvantProchaine: () => null,
@@ -145,7 +145,7 @@ describe('monter un rush', () => {
     expect(journal.parts).toEqual([1, 2, 3, 4])
     // Trois parts pleines et un reste. Se tromper d'un octet sur la dernière
     // produit un fichier que le stockage accepte et que personne ne relit avant
-    // le montage : c'est la borne qu'il faut tenir.
+    // le editing : c'est la borne qu'il faut tenir.
     expect(m.tranches.filter((t) => t.file === UN_RUSH.file)).toEqual([
       { file: UN_RUSH.file, debut: 0, fin: PART },
       { file: UN_RUSH.file, debut: PART, fin: PART * 2 },
@@ -188,7 +188,7 @@ describe('monter un rush', () => {
     await demanderEtAttendre(m, UN_RUSH.file)
 
     // Un sidecar arrivé seul décrirait une conférence dont la vidéo n'est pas
-    // là : le montage croirait le rush perdu.
+    // là : le editing croirait le rush perdu.
     expect(journal.begin.map((b) => b.kind)).toEqual(['rush', 'sidecar'])
     expect(journal.begin.at(-1)?.file).toBe(UN_RUSH.sidecar?.file)
     expect(m.envois.at(-1)?.url).toContain('.json')
@@ -204,12 +204,12 @@ describe('monter un rush', () => {
     await demanderEtAttendre(m, UN_RUSH.file)
 
     expect(journal.begin.map((b) => b.kind)).toEqual(['rush'])
-    expect(m.televersements.vue().entrees[0]?.erreur).toContain('503')
+    expect(m.televersements.vue().entries[0]?.error).toContain('503')
   })
 
   it('écarte une prise encore en cours d\'écriture', async () => {
     const { hub, journal } = fauxHub()
-    const m = monter(hub, {}, [{ ...UN_RUSH, enEcriture: true }])
+    const m = monter(hub, {}, [{ ...UN_RUSH, beingWritten: true }])
     await demanderEtAttendre(m, null)
 
     // Monter un fichier qu'OBS écrit encore produirait chez le stockage un rush
@@ -233,8 +233,8 @@ describe('le plafond de débit', () => {
     const { hub } = fauxHub()
     let horloge = 0
     const m = monter(hub, {
-      politique: () => ({ ...POLITIQUE_VOD_PAR_DEFAUT, actif: true, debitMaxOctetsS: PART / 2 }),
-      // Chaque envoi prend une seconde ; le plafond en autorise deux par part.
+      politique: () => ({ ...DEFAULT_VOD_POLICY, actif: true, debitMaxOctetsS: PART / 2 }),
+      // Chaque envoi prend une seconde ; le plafond en allowed deux par part.
       now: () => (horloge += 500),
     })
     await demanderEtAttendre(m, UN_RUSH.file)
@@ -262,22 +262,22 @@ describe('ce qui empêche de monter', () => {
 
     expect(journal.begin).toHaveLength(0)
     const vue = m.televersements.vue()
-    expect(vue.verdict.autorise).toBe(false)
+    expect(vue.verdict.allowed).toBe(false)
     // Le motif est rendu jusqu'à l'écran : une attente muette se lit comme un
     // bouton mort, et l'opérateur reclique.
-    expect(vue.verdict.texte).toContain('enregistrement')
+    expect(vue.verdict.text).toContain('enregistrement')
   })
 
   it('n\'envoie rien tant que le hub est injoignable', async () => {
     const m = monter(null)
     await demanderEtAttendre(m, UN_RUSH.file)
     expect(m.envois).toHaveLength(0)
-    expect(m.televersements.vue().entrees[0]?.state).toBe('attente')
+    expect(m.televersements.vue().entries[0]?.state).toBe('attente')
   })
 
   it('ne part pas tout seul quand l\'automatique est éteint', async () => {
     const { hub, journal } = fauxHub()
-    const m = monter(hub, { politique: () => POLITIQUE_VOD_PAR_DEFAUT })
+    const m = monter(hub, { politique: () => DEFAULT_VOD_POLICY })
     await m.televersements.passe()
     expect(journal.begin).toHaveLength(0)
   })
@@ -294,22 +294,22 @@ describe('annuler', () => {
   it('arrête entre deux parts et demande l\'abandon au hub', async () => {
     const { hub, journal } = fauxHub()
     let m: Montage
-    const montage = monter(hub, {
+    const editing = monter(hub, {
       envoyerPart: async (url, corps) => {
         // Annulation en pleine montée, comme un clic en régie.
         void m.televersements.annuler(UN_RUSH.file)
         return `"etag-${corps.byteLength}"`
       },
     })
-    m = montage
-    await demanderEtAttendre(montage, UN_RUSH.file)
+    m = editing
+    await demanderEtAttendre(editing, UN_RUSH.file)
 
     // Une part de plus, pas tout le rush : c'est ce qui rend l'annulation
     // effective en secondes plutôt qu'à la fin d'un fichier de trois gigaoctets.
-    expect(montage.envois.length).toBeLessThan(4)
+    expect(editing.envois.length).toBeLessThan(4)
     expect(journal.complete).toHaveLength(0)
     expect(journal.abort).toContain(`up-${UN_RUSH.file}`)
-    expect(montage.televersements.vue().entrees[0]?.state).toBe('abandonne')
+    expect(editing.televersements.vue().entries[0]?.state).toBe('abandonne')
   })
 })
 
@@ -319,10 +319,10 @@ describe('la vue de la régie', () => {
     const m = monter(hub)
     await demanderEtAttendre(m, UN_RUSH.file)
 
-    const [entree] = m.televersements.vue().entrees
+    const [entree] = m.televersements.vue().entries
     expect(entree?.state).toBe('termine')
-    expect(entree?.pourcent).toBe(100)
-    expect(entree?.erreur).toBeNull()
+    expect(entree?.percent).toBe(100)
+    expect(entree?.error).toBeNull()
   })
 
   it('oublie les fichiers que le disque n\'a plus', async () => {
@@ -330,13 +330,13 @@ describe('la vue de la régie', () => {
     let presents: CandidatVod[] = [UN_RUSH]
     const m = monter(hub, { candidats: async () => presents })
     await demanderEtAttendre(m, UN_RUSH.file)
-    expect(m.televersements.vue().entrees.length).toBeGreaterThan(0)
+    expect(m.televersements.vue().entries.length).toBeGreaterThan(0)
 
     // Le rush a été effacé après rapatriement : « terminé » sur un fichier
     // absent encombrerait la modale toute la journée.
     presents = []
     await m.televersements.oublierLesDisparus()
-    expect(m.televersements.vue().entrees).toEqual([])
+    expect(m.televersements.vue().entries).toEqual([])
   })
 })
 
@@ -371,7 +371,7 @@ describe('quand le stockage ne répond pas', () => {
 
     await demanderEtAttendre(m, UN_RUSH.file)
 
-    const erreur = m.televersements.vue().entrees[0]?.erreur ?? ''
+    const erreur = m.televersements.vue().entries[0]?.error ?? ''
     expect(erreur).toContain('Stockage injoignable')
     // L'hôte visé, sans la signature ni les identifiants de l'adresse : le
     // journal d'une salle se relit à plusieurs.

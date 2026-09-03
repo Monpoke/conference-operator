@@ -1,13 +1,13 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { CHAMPS_PAR_VUE } from '@cloudnord/contract'
+import { FIELDS_BY_VIEW } from '@cloudnord/contract'
 import { describe, expect, it } from 'vitest'
 
 /**
  * Le flux d'état ne pousse à la régie que les champs qu'elle lit.
  *
  * Le risque de ce découpage est silencieux : un champ ajouté à la page mais
- * oublié dans `CHAMPS_PAR_VUE` ne lève rien, il affiche du vide. Ce test relit
+ * oublié dans `FIELDS_BY_VIEW` ne lève rien, il affiche du vide. Ce test relit
  * donc les sources et compare ce qu'elles consultent à ce qu'elles reçoivent.
  *
  * Hérité du garde-fou de la page qu'elle remplace, avec la correction qui l'a
@@ -52,7 +52,7 @@ function champsLus(): string[] {
 }
 
 describe('champs du flux', () => {
-  const recus = new Set<string>(CHAMPS_PAR_VUE.regie as readonly string[])
+  const recus = new Set<string>(FIELDS_BY_VIEW.regie as readonly string[])
 
   it('la régie reçoit tout ce qu’elle consulte', () => {
     const manquants = champsLus().filter((champ) => !recus.has(champ))
@@ -60,7 +60,7 @@ describe('champs du flux', () => {
       manquants,
       manquants.length === 0
         ? ''
-        : `la régie lit ${manquants.join(', ')} — à ajouter dans CHAMPS_PAR_VUE.regie, ` +
+        : `la régie lit ${manquants.join(', ')} — à ajouter dans FIELDS_BY_VIEW.regie, ` +
           "sinon la page rend du vide sans lever d'erreur.",
     ).toEqual([])
   })

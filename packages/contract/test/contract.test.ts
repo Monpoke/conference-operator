@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ulid } from './ulid.js'
 import {
   DELIVERY_BY_EVENT,
-  POLITIQUE_VOD_PAR_DEFAUT,
+  DEFAULT_VOD_POLICY,
   PROTOCOL_VERSION,
   commandPayloadSchema,
   commandSchema,
@@ -30,8 +30,8 @@ const envelopeOf = (payload: unknown, overrides: Record<string, unknown> = {}) =
   ...overrides,
 })
 
-describe('enveloppe outbox', () => {
-  it('valide un événement d\'enregistrement complet', () => {
+describe('outbox envelope', () => {
+  it('validates a complete recording event', () => {
     const parsed = envelopeSchema.parse(
       envelopeOf({
         type: 'recording.stopped',
@@ -46,16 +46,16 @@ describe('enveloppe outbox', () => {
     expect(parsed.delivery).toBe('required')
   })
 
-  it('refuse un id qui n\'est pas un ULID', () => {
+  it('refuses an id that is not a ULID', () => {
     expect(() => envelopeSchema.parse(envelopeOf({ type: 'incident', level: 'warn', message: 'x' }, { id: 'pas-un-ulid' })))
       .toThrow()
   })
 
-  it('refuse un type d\'événement inconnu', () => {
+  it('refuses an unknown event type', () => {
     expect(() => envelopeSchema.parse(envelopeOf({ type: 'type.invente', foo: 1 }))).toThrow()
   })
 
-  it('survit à un aller-retour JSON', () => {
+  it('survives a JSON round trip', () => {
     const envelope = envelopeSchema.parse(
       envelopeOf({ type: 'talk.marker', sessionId: 'ses-1', label: 'démo', offsetMs: 90_000 }),
     )
@@ -63,15 +63,15 @@ describe('enveloppe outbox', () => {
   })
 })
 
-describe('politiques de livraison', () => {
-  it('couvre exhaustivement les types d\'événements', () => {
+describe('delivery policies', () => {
+  it('covers every event type exhaustively', () => {
     const declared = roomEventPayloadSchema.options
       .map((option) => option.shape.type.value as string)
       .sort()
     expect(Object.keys(DELIVERY_BY_EVENT).sort()).toEqual(declared)
   })
 
-  it('classe la télémétrie en best-effort et le reste en required', () => {
+  it('classes telemetry as best-effort and the rest as required', () => {
     expect(DELIVERY_BY_EVENT['room.heartbeat']).toBe('best-effort')
     expect(DELIVERY_BY_EVENT['stream.telemetry']).toBe('best-effort')
     expect(DELIVERY_BY_EVENT['recording.started']).toBe('required')
@@ -79,11 +79,11 @@ describe('politiques de livraison', () => {
   })
 })
 
-describe('commandes descendantes', () => {
+describe('downstream commands', () => {
   const command = (payload: unknown, ttlSeconds: number | null) =>
     commandSchema.parse({ seq: 7, issuedAt: NOW, ttlSeconds, payload })
 
-  it('valide chaque type de commande', () => {
+  it('validates every command type', () => {
     expect(() => commandPayloadSchema.parse({ type: 'scene.force', role: 'HOLD' })).not.toThrow()
     expect(() =>
       commandPayloadSchema.parse({ type: 'message.broadcast', text: 'Salle évacuée', level: 'urgent' }),
@@ -91,28 +91,28 @@ describe('commandes descendantes', () => {
     expect(() => commandPayloadSchema.parse({ type: 'scene.force', role: 'SCENE_INEXISTANTE' })).toThrow()
   })
 
-  it('applique `display.set` sans sessionId explicite', () => {
+  it('applies `display.set` with no explicit sessionId', () => {
     const parsed = commandPayloadSchema.parse({ type: 'display.set', mode: 'sponsors' })
     expect(parsed).toEqual({ type: 'display.set', mode: 'sponsors', sessionId: null })
   })
 
-  it('écarte une commande rattrapée après expiration', () => {
+  it('discards a command caught up after expiry', () => {
     const lunch = command({ type: 'message.broadcast', text: 'Pause déjeuner', level: 'info' }, 600)
     const issuedMs = Date.parse(NOW)
     expect(isCommandExpired(lunch, issuedMs + 5 * 60_000)).toBe(false)
-    // Reconnexion 40 minutes plus tard : le message ne doit plus s'afficher.
+    // Reconnection 40 minutes later: the message must no longer be shown.
     expect(isCommandExpired(lunch, issuedMs + 40 * 60_000)).toBe(true)
   })
 
-  it('garde indéfiniment une commande sans TTL', () => {
+  it('keeps a command with no TTL indefinitely', () => {
     const forced = command({ type: 'scene.force', role: 'LIVE' }, null)
     expect(isCommandExpired(forced, Date.parse(NOW) + 86_400_000)).toBe(false)
   })
 })
 
-describe('configuration de salle', () => {
-  it('accepte un mapping de rôles partiel', () => {
-    // OBS-A n'a que LIVE et HOLD : c'est le cas nominal, pas une erreur.
+describe('room configuration', () => {
+  it('accepts a partial role mapping', () => {
+    // OBS-A only has LIVE and HOLD: that is the nominal case, not an error.
     const parsed = sceneRoleMapSchema.parse({
       A: { LIVE: 'Capture HDMI', HOLD: 'Habillage web' },
       B: { TALK: 'Talk complet', CAM_ONLY: 'Caméra seule' },
@@ -122,41 +122,41 @@ describe('configuration de salle', () => {
   })
 })
 
-describe('surface du contrat', () => {
-  it('expose les procédures attendues par chaque application', () => {
+describe('contract surface', () => {
+  it('exposes the procedures each application expects', () => {
     expect(Object.keys(contract).sort()).toEqual([
       'clock',
       'devices',
-      // Identité de l'événement, en lecture : ce que le hub a tranché du nom
-      // affiché partout, et ce qu'il déduirait sans réglage.
+      // The event's identity, read-only: what the hub decided for the name shown
+      // everywhere, and what it would derive with no setting.
       'event',
       'ingest',
       'messages',
       'meta',
-      // Surface à part, et non un mode de plus sur l'écran de salle : le
-      // bandeau se superpose à la vidéo là où un message d'écran remplace tout.
+      // A surface of its own, and not one more mode on the room screen: the
+      // banner overlays the video where a screen message replaces everything.
       'overlay',
       'program',
-      // Notifications qui survivent à la fermeture de la console : la
-      // supervision se regarde sur un téléphone rangé dans une poche.
+      // Notifications that survive closing the console: supervision gets watched
+      // on a phone tucked in a pocket.
       'push',
       'questions',
       'regie',
       'rooms',
       'sessions',
       'settings',
-      // Rapatriement des rushes : le hub détient les clés du stockage et signe
-      // des adresses, la salle téléverse. Aucun secret ne descend en salle.
+      // Shipping the rushes back: the hub holds the storage keys and signs
+      // addresses, the room uploads. No secret goes down to a room.
       'vod',
       'wall',
     ])
-    // Le cycle de vie est pilotable des deux côtés : régie de salle et console.
-    // `override` corrige le programme lui-même — un déjeuner que l'export donne
-    // pour une conférence — là où les quatre autres pilotent son déroulé.
+    // The lifecycle is drivable from both sides: room control app and console.
+    // `override` corrects the program itself — a lunch break the export calls a
+    // talk — where the other four drive how it runs.
     expect(Object.keys(contract.sessions).sort()).toEqual([
       'end',
-      // Corrige l'identifiant OpenFeedback d'un créneau quand celui de l'export
-      // ne correspond pas : sans elle, un QR mort ne se répare pas.
+      // Corrects a slot's OpenFeedback identifier when the export's does not
+      // match: without it, a dead QR code cannot be repaired.
       'feedbackId',
       'override',
       'reset',
@@ -165,8 +165,8 @@ describe('surface du contrat', () => {
     ])
     expect(Object.keys(contract.program).sort()).toEqual([
       'activate',
-      // Le seul appel sortant de la console : confronte les identifiants du
-      // programme à ce qu'OpenFeedback connaît, sur demande et jamais en fond.
+      // The console's only outgoing call: compares the program's identifiers with
+      // what OpenFeedback knows, on demand and never in the background.
       'controleOpenFeedback',
       'globalBreak',
       'import',
@@ -175,22 +175,22 @@ describe('surface du contrat', () => {
     ])
     expect(Object.keys(contract.rooms).sort()).toEqual([
       'commands',
-      // Une salle se règle elle-même : les adresses OBS et les noms de scènes
-      // se constatent devant les machines, pas depuis la console.
+      // A room configures itself: the OBS addresses and the scene names are
+      // established in front of the machines, not from the console.
       'configure',
-      // Publique : le mur dit au participant ce qu'il est en train d'écouter.
+      // Public: the wall tells attendees what they are listening to.
       'current',
       'list',
-      // Publique : une machine non appairée doit pouvoir proposer un choix de salle.
+      // Public: an unpaired machine must be able to offer a room choice.
       'public',
-      // Geste de console : remettre une salle d'aplomb sans la redémarrer,
-      // donc sans couper sa captation.
+      // A console gesture: putting a room straight without restarting it, and so
+      // without cutting its capture.
       'resync',
       'statuses',
       'sync',
     ])
-    // L'appairage passe par Better Auth ; le contrat ne porte que la partie
-    // métier (quelle salle) que Better Auth ne connaît pas.
+    // Pairing goes through Better Auth; the contract only carries the business
+    // part (which room) that Better Auth does not know.
     expect(Object.keys(contract.devices).sort()).toEqual([
       'approve',
       'claim',
@@ -200,43 +200,43 @@ describe('surface du contrat', () => {
       'pending',
       'revoke',
     ])
-    // Cinq procédures de salle et quatre de console. Les premières sont bornées
-    // à la salle appelante par son jeton — aucune n'a de `roomId` en entrée —,
-    // les secondes ne font que regarder et demander : la console ne détient pas
-    // les fichiers, elle ne peut pas téléverser à la place de qui que ce soit.
+    // Five room procedures and four console ones. The former are bounded to the
+    // calling room by its token — none has a `roomId` in its input —, the latter
+    // only look and ask: the console does not hold the files, it cannot upload on
+    // anyone's behalf.
     expect(Object.keys(contract.vod).sort()).toEqual([
       'abort',
-      // Ouvre *ou reprend* : c'est ce qui rend une coupure à 90 % rattrapable.
+      // Opens *or resumes*: that is what makes an outage at 90% recoverable.
       'begin',
-      // Le vrai geste, pas une sonde : ouvrir, signer, écrire, abandonner.
+      // The real gesture, not a probe: open, sign, write, abandon.
       'check',
       'complete',
-      // Le dossier d'*une* conférence : prises de la régie et objets chez le
-      // stockage. L'autre sens de lecture que `uploads`, qui range par fichier.
+      // *One* talk's folder: the control app's takes and the objects at the
+      // storage. The other reading direction from `uploads`, which sorts by file.
       'conference',
       'parts',
       'progress',
       'request',
-      // Efface le préfixe du bucket et les rushes des salles. Développement
-      // seulement, et refusé côté serveur — pas seulement absent de la console.
+      // Erases the bucket prefix and the rooms' rushes. Development only, and
+      // refused on the server side — not merely absent from the console.
       'reset',
       'status',
       'uploads',
     ])
   })
 
-  it('n\'expose aucun paramètre de rattrapage sur le flux de commandes', () => {
-    // La reprise passe par `lastEventId` d'oRPC, pas par un `sinceSeq` maison.
+  it('exposes no catch-up parameter on the command flow', () => {
+    // Resumption goes through oRPC's `lastEventId`, not a home-made `sinceSeq`.
     const inputsOf = (procedure: unknown): unknown[] | undefined =>
       (procedure as { '~orpc': { inputSchemas?: unknown[] } })['~orpc'].inputSchemas
 
     expect(inputsOf(contract.rooms.commands)).toBeUndefined()
-    // Contrôle que l'introspection ci-dessus n'est pas vide de sens :
-    // une procédure qui prend bien une entrée doit, elle, en déclarer une.
+    // Check that the introspection above is not meaningless: a procedure that
+    // does take an input must declare one.
     expect(inputsOf(contract.rooms.sync)).toHaveLength(1)
   })
 
-  it('fige la version de protocole', () => {
+  it('pins the protocol version', () => {
     expect(PROTOCOL_VERSION).toBe(1)
     expect(() =>
       syncResultSchema.parse({
@@ -257,11 +257,11 @@ describe('surface du contrat', () => {
   })
 })
 
-describe('cycle de vie des conférences', () => {
-  it('n\'a pas d\'état « à venir » stocké', () => {
-    // `scheduled` est l'absence d'état : le stocker reviendrait à enregistrer
-    // que rien ne s'est produit.
-    const etat = sessionStateSchema.parse({
+describe('talk lifecycle', () => {
+  it('has no stored "upcoming" state', () => {
+    // `scheduled` is the absence of state: storing it would mean recording that
+    // nothing happened.
+    const state = sessionStateSchema.parse({
       sessionId: 'ses-1',
       roomId: 'track-1',
       status: 'running',
@@ -269,44 +269,44 @@ describe('cycle de vie des conférences', () => {
       endedAt: null,
       decidedBy: 'regie@cloudnord.fr',
     })
-    expect(etat.status).toBe('running')
-    expect(() => sessionStateSchema.parse({ ...etat, status: 'inventé' })).toThrow()
+    expect(state.status).toBe('running')
+    expect(() => sessionStateSchema.parse({ ...state, status: 'inventé' })).toThrow()
   })
 
-  it('borne le délai de clôture automatique', () => {
+  it('bounds the automatic closing delay', () => {
     expect(hubSettingsSchema.parse({})).toEqual({
       autoEndEnabled: true,
       autoEndGraceMinutes: 5,
-      // Aucun compte déclaré au départ : la boucle des salles saute sa page
-      // réseaux plutôt que d'afficher un cadre vide.
+      // No account declared to start with: the rooms' loop skips its social page
+      // rather than showing an empty frame.
       socialLinks: [],
       programSourceUrl: null,
-      // Rien de l'événement n'est réglé par défaut : le hub le déduit du
-      // programme importé, et c'est ce qui rend le dépôt agnostique.
+      // Nothing about the event is set by default: the hub derives it from the
+      // imported program, and that is what makes the repository agnostic.
       eventName: null,
       eventShortName: null,
       openFeedbackProjectId: null,
-      // Pas de stockage, et surtout : rien qui parte tout seul. Le défaut doit
-      // être le cas où aucun octet ne quitte une salle sans qu'on l'ait demandé.
+      // No storage, and above all: nothing that leaves on its own. The default
+      // must be the case where no byte leaves a room unless asked.
       vodBucket: null,
       vodPrefix: null,
-      vodPolitique: POLITIQUE_VOD_PAR_DEFAUT,
+      vodPolitique: DEFAULT_VOD_POLICY,
     })
-    expect(POLITIQUE_VOD_PAR_DEFAUT.actif).toBe(false)
-    expect(POLITIQUE_VOD_PAR_DEFAUT.debitMaxOctetsS).toBeNull()
-    // Cinq mégaoctets est le minimum d'une part multipart chez S3 : descendre
-    // en dessous produirait des téléversements refusés à la dernière étape.
+    expect(DEFAULT_VOD_POLICY.actif).toBe(false)
+    expect(DEFAULT_VOD_POLICY.debitMaxOctetsS).toBeNull()
+    // Five megabytes is S3's minimum multipart part size: going below would
+    // produce uploads refused at the last step.
     expect(() => hubSettingsSchema.parse({ vodPolitique: { taillePartMo: 4 } })).toThrow()
     expect(() => hubSettingsSchema.parse({ autoEndGraceMinutes: -1 })).toThrow()
-    // Deux heures de grâce n'auraient plus rien d'automatique.
+    // Two hours of grace would no longer be automatic in any sense.
     expect(() => hubSettingsSchema.parse({ autoEndGraceMinutes: 121 })).toThrow()
-    // L'URL est validée comme telle : un « oui » saisi dans la console ne doit
-    // pas se découvrir au démarrage suivant, quand le hub tente l'import.
+    // The URL is validated as such: a "yes" typed into the console must not be
+    // discovered at the next startup, when the hub attempts the import.
     expect(() => hubSettingsSchema.parse({ programSourceUrl: 'pas-une-url' })).toThrow()
   })
 
-  it('transporte un changement d\'état vers toutes les salles', () => {
-    const commande = commandPayloadSchema.parse({
+  it('carries a state change to every room', () => {
+    const command = commandPayloadSchema.parse({
       type: 'session.state',
       sessionId: 'ses-1',
       roomId: 'track-2-mf-1092',
@@ -314,18 +314,18 @@ describe('cycle de vie des conférences', () => {
       status: 'ended',
       decidedBy: 'auto',
     })
-    // La salle et le titre voyagent avec : une régie doit pouvoir signaler
-    // « HoneySwamp vient de terminer à côté » sans interroger le hub.
-    expect(commande).toMatchObject({
+    // The room and the title travel with it: a control app must be able to report
+    // "HoneySwamp has just finished next door" without asking the hub.
+    expect(command).toMatchObject({
       roomId: 'track-2-mf-1092',
       sessionTitle: 'HoneySwamp',
       decidedBy: 'auto',
     })
   })
 
-  it('enrichit l\'état des conférences pour la console', () => {
-    // Un identifiant opaque ne se lit pas, et ne permet aucun calcul de temps.
-    const vue = sessionStateViewSchema.parse({
+  it('enriches the talk state for the console', () => {
+    // An opaque identifier cannot be read, and allows no time computation.
+    const view = sessionStateViewSchema.parse({
       sessionId: 'ses-1',
       roomId: 'track-1',
       status: 'running',
@@ -337,22 +337,22 @@ describe('cycle de vie des conférences', () => {
       scheduledStartsAt: '2026-10-30T10:00:00.000+00:00',
       scheduledEndsAt: '2026-10-30T10:50:00.000+00:00',
     })
-    expect(vue.title).toBe('HoneySwamp')
-    expect(vue.scheduledEndsAt).toBeTruthy()
+    expect(view.title).toBe('HoneySwamp')
+    expect(view.scheduledEndsAt).toBeTruthy()
   })
 })
 
-describe("échange de messages", () => {
-  it("distingue le destinataire d'un message", () => {
-    const pourLOperateur = commandPayloadSchema.parse({
+describe('message exchange', () => {
+  it("tells a message's recipient apart", () => {
+    const forTheOperator = commandPayloadSchema.parse({
       type: 'message.broadcast',
       text: 'Ton speaker est arrivé',
       level: 'info',
       target: 'operator',
     })
-    // Sans cette distinction, une note à l'opérateur s'afficherait en grand
-    // devant le public.
-    expect(pourLOperateur).toMatchObject({ target: 'operator', from: null })
+    // Without this distinction, a note to the operator would show up in large
+    // type in front of the audience.
+    expect(forTheOperator).toMatchObject({ target: 'operator', from: null })
 
     expect(() =>
       commandPayloadSchema.parse({
@@ -364,18 +364,18 @@ describe("échange de messages", () => {
     ).toThrow()
   })
 
-  it("retient le bandeau de régie par défaut", () => {
-    // Le défaut le moins dommageable : un message qui n'atteint que
-    // l'opérateur se rattrape, un message projeté par erreur non.
-    const parDefaut = commandPayloadSchema.parse({
+  it('keeps the control app banner by default', () => {
+    // The least damaging default: a message that only reaches the operator can be
+    // recovered from, a message projected by mistake cannot.
+    const byDefault = commandPayloadSchema.parse({
       type: 'message.broadcast',
       text: 'coucou',
       level: 'info',
     })
-    expect(parDefaut).toMatchObject({ target: 'operator' })
+    expect(byDefault).toMatchObject({ target: 'operator' })
   })
 
-  it("classe un message de salle comme obligatoire", () => {
+  it('classes a room message as required', () => {
     const envelope = envelopeSchema.parse({
       id: '01JB2ZK5T7QW9V0YHRXM3N4P6C',
       roomId: 'track-1',
@@ -386,7 +386,7 @@ describe("échange de messages", () => {
       payload: { type: 'room.message', text: "Besoin d'aide", level: 'urgent' },
     })
     expect(envelope.payload.type).toBe('room.message')
-    // Un appel à l'aide émis pendant une coupure doit arriver, même en retard.
+    // A call for help sent during an outage must arrive, even late.
     expect(DELIVERY_BY_EVENT['room.message']).toBe('required')
   })
 })

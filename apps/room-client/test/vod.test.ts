@@ -228,7 +228,7 @@ describe('chaîne VOD', () => {
     const fin = types.indexOf('recording.stopped')
 
     expect(debut).toBeGreaterThanOrEqual(0)
-    // L'ordre est ce qui rend les timecodes exploitables au montage.
+    // L'ordre est ce qui rend les timecodes exploitables au editing.
     expect(marqueur).toBeGreaterThan(debut)
     expect(fin).toBeGreaterThan(marqueur)
   }, 40_000)

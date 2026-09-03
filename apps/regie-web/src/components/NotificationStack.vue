@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { DUREE_SIGNALEMENT_MS, type DisplayPayload } from '@cloudnord/contract'
+import { NOTIFICATION_TTL_MS, type DisplayPayload } from '@cloudnord/contract'
 import { time } from '@cloudnord/format'
 import { computed, ref } from 'vue'
 import { useActionsStore } from '../stores/actions.js'
@@ -40,7 +40,7 @@ const notices = computed(() =>
   (props.payload.state.notifications ?? []).filter(
     (notice) =>
       !dismissed.value.includes(notice.id) &&
-      Date.parse(notice.at) > props.nowMs - DUREE_SIGNALEMENT_MS,
+      Date.parse(notice.at) > props.nowMs - NOTIFICATION_TTL_MS,
   ),
 )
 

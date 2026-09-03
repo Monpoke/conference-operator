@@ -1,4 +1,4 @@
-import type { Bandeau } from '@cloudnord/contract'
+import type { Banner } from '@cloudnord/contract'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useSessionStore } from './session.js'
@@ -21,7 +21,7 @@ export interface RoomMessage {
 }
 
 export interface BannerPass {
-  message: Bandeau
+  message: Banner
   roomId: string | null
   issuedAt: string
   visible: boolean
@@ -79,7 +79,7 @@ export const useMessagesStore = defineStore('messages', () => {
     })
   }
 
-  async function showBanner(message: Bandeau): Promise<void> {
+  async function showBanner(message: Banner): Promise<void> {
     await session.client.rpc.overlay.show({ roomId: targetRoom(), message, ttlSeconds: null })
     await load()
   }

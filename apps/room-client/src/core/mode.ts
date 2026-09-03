@@ -1,4 +1,4 @@
-import type { ModeExecution } from '@cloudnord/contract'
+import type { ExecutionMode } from '@cloudnord/contract'
 
 /**
  * Mode d'exécution de la salle.
@@ -10,14 +10,14 @@ import type { ModeExecution } from '@cloudnord/contract'
  * 1. Le jour J, ce qu'on doit vérifier tient en une ligne.
  * 2. Les réglages de développement ne s'appliquent **que** dans ce mode. Un
  *    `OBS_MOCK=1` oublié dans un raccourci, c'est une journée entière filmée
- *    par une instance OBS qui n'existe pas — la panne se découvre au montage,
+ *    par une instance OBS qui n'existe pas — la panne se découvre au editing,
  *    quand il n'y a plus rien à rattraper.
  *
  * Le défaut est `production` : le défaut doit être le cas dangereux, pas le
  * cas confortable.
  */
 export interface ModeSalle {
-  mode: ModeExecution
+  mode: ExecutionMode
   /** OBS simulé plutôt que deux vraies instances. */
   obsSimule: boolean
   /** Heure locale simulée, pour développer sans hub. */

@@ -1,5 +1,5 @@
 import type { ControlDiagnostics } from '@cloudnord/contract'
-import { SANS_REPERES } from '@cloudnord/contract'
+import { NO_EDITING_MARKS } from '@cloudnord/contract'
 import { useToast } from '@cloudnord/components'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -167,7 +167,7 @@ describe('message à la console', () => {
 })
 
 describe('captation', () => {
-  const REC = { active: true, markers: 2, startedAtMs: 1_000, startedAtCorrigeMs: null, montage: SANS_REPERES }
+  const REC = { active: true, markers: 2, startedAtMs: 1_000, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS }
 
   function monter(
     recording: ControlDiagnostics['recording'] | null,
@@ -213,7 +213,7 @@ describe('captation', () => {
     await wrapper.get('#btn-marqueur').trigger('click')
     await flushPromises()
 
-    // Au montage, savoir *où* vaut déjà mieux que rien, et exiger un mot ferait
+    // Au editing, savoir *où* vaut déjà mieux que rien, et exiger un mot ferait
     // rater l'instant.
     expect(envois[0]?.body).toEqual({ action: 'recording.mark', label: 'Chapitre' })
   })
@@ -231,7 +231,7 @@ describe('captation', () => {
   })
 
   /*
-   * Les deux repères de montage, vus du panneau.
+   * Les deux repères de editing, vus du panneau.
    *
    * Ce qui compte ici : le rôle part avec le geste, et le libellé n'est pas
    * saisi. Le poste ne lit que `role` ; le libellé, lui, se relit dans le
@@ -252,7 +252,7 @@ describe('captation', () => {
   })
 
   it('montre où le repère est tombé, pas seulement qu’il est posé', () => {
-    const wrapper = monter({ ...REC, montage: { debutMs: 52_000, finMs: null } })
+    const wrapper = monter({ ...REC, editing: { startMs: 52_000, endMs: null } })
 
     // « Posé » et « posé où » sont deux questions, et la seconde est celle
     // qu'on se pose quand on hésite à reposer le repère.

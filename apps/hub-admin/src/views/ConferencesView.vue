@@ -130,7 +130,7 @@ async function agir(etat: SessionState, action: 'start' | 'end' | 'reset'): Prom
  * Le vécu : ce que le cycle de vie a réellement enregistré.
  *
  * L'instant complet passe en infobulle — l'heure suffit pour lire la journée,
- * la date entière sert au montage et à l'export VOD.
+ * la date entière sert au editing et à l'export VOD.
  */
 function vecu(session: PlannedSession): { texte: string; encours: boolean; titre: string } | null {
   if (session.startedAt == null) return null

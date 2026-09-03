@@ -34,8 +34,8 @@ describe('moniteurHote', () => {
     const charge = relever()
 
     expect(charge.cpu).toBeCloseTo(0.5, 5)
-    expect(charge.coeurs).toBe(2)
-    expect(charge.fenetreMs).toBe(2_000)
+    expect(charge.cores).toBe(2)
+    expect(charge.windowMs).toBe(2_000)
   })
 
   it('rend le relevé précédent quand deux consultations se suivent de trop près', () => {
@@ -60,24 +60,24 @@ describe('moniteurHote', () => {
     const relever = moniteurHote({
       lireCpus: () => [coeur(0, 0)],
       now: () => temps,
-      lireMemoire: () => ({ occupeeOctets: occupee, totalOctets: 16_000_000_000 }),
+      lireMemoire: () => ({ usedBytes: occupee, totalBytes: 16_000_000_000 }),
     })
 
     // La mémoire est un instantané, pas une différence : elle vaut dès le
     // premier appel, là où le processeur n'a encore rien à dire.
-    expect(relever()).toMatchObject({ cpu: null, memoire: { occupeeOctets: 4_000_000_000 } })
+    expect(relever()).toMatchObject({ cpu: null, memory: { usedBytes: 4_000_000_000 } })
 
     // Et elle suit, même quand deux relevés se suivent de trop près pour que la
     // fenêtre du processeur compte.
     temps = 100
     occupee = 15_000_000_000
-    expect(relever().memoire?.occupeeOctets).toBe(15_000_000_000)
+    expect(relever().memory?.usedBytes).toBe(15_000_000_000)
   })
 
   it('laisse la mémoire à null quand elle n’est pas lisible', () => {
     const relever = moniteurHote({ lireCpus: () => [coeur(0, 0)], now: () => 0, lireMemoire: () => null })
 
-    expect(relever().memoire).toBeNull()
+    expect(relever().memory).toBeNull()
   })
 
   it('garde le dernier chiffre honnête quand les compteurs n’avancent plus', () => {

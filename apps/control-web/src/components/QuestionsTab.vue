@@ -6,11 +6,11 @@ import { computed } from 'vue'
 import { useActionsStore } from '../stores/actions.js'
 
 /**
- * Les questions du public, et celle qui est à l'antenne.
+ * The audience's questions, and the one that is on air.
  *
- * La liste ne porte que celles de la conférence pilotée : sans le rappel écrit
- * en clair, une liste vide se lit « personne n'a rien demandé » alors qu'elle
- * veut parfois dire « aucun talk n'est piloté ».
+ * The list only carries those for the talk being driven: without the reminder
+ * written out plainly, an empty list reads as "nobody has asked anything" when it
+ * sometimes means "no talk is being driven".
  */
 const props = defineProps<{ payload: DisplayPayload }>()
 
@@ -22,10 +22,10 @@ const refreshedAt = computed(() => props.payload.diagnostics?.questionsRefreshed
 const onAir = computed(() => props.payload.state.question ?? null)
 
 /**
- * La question déjà à l'antenne se reconnaît.
+ * The question already on air can be recognised.
  *
- * Sinon on la remet, ou on cherche laquelle est projetée en relisant les trois
- * premières — pendant que le speaker attend.
+ * Otherwise one puts it up again, or hunts for which one is being projected by
+ * re-reading the first three — while the speaker waits.
  */
 function isOnAir(text: string): boolean {
   return onAir.value != null && onAir.value.text === text
@@ -87,8 +87,8 @@ function isOnAir(text: string): boolean {
   </div>
 
   <!--
-    Ce que « Afficher » fait, et ce qu'il ne fait pas : sans le dire, on clique
-    et on cherche la question sur le vidéoprojecteur.
+    What "Afficher" does, and what it does not: without saying so, one clicks and
+    then looks for the question on the projector.
   -->
   <p class="mt-2.5 text-[11px] leading-relaxed text-dim">
     Afficher met la question sur l’habillage de captation — elle part donc dans la VOD — et sur le

@@ -18,11 +18,11 @@ const emit = defineEmits<{ connect: [] }>()
 const connected = computed(() => props.obs?.connected === true)
 const missing = computed(() => (connected.value ? (props.obs?.unresolvedRoles ?? []) : []))
 /*
- * L'écart entre ce qui est enregistré et ce qui est branché.
+ * The gap between what is saved and what is plugged in.
  *
- * Sans le dire, un réglage juste resterait sans effet sans que personne ne voie
- * pourquoi : enregistrer ne reconnecte pas, c'est à l'opérateur de choisir
- * quand couper une instance.
+ * Without saying so, a correct setting would stay without effect with nobody
+ * seeing why: saving does not reconnect, it is up to the operator to choose when
+ * to cut an instance.
  */
 const pending = computed(() => props.config.obs[props.instance].pending)
 
@@ -44,19 +44,19 @@ const tone = computed(() =>
 )
 
 /*
- * Reconnecter, c'est couper : jamais sous une prise en cours.
+ * Reconnecting means cutting: never under a running take.
  *
- * Une instance déconnectée reste reconnectable, même si son dernier état connu
- * disait « enregistre » — il est justement périmé.
+ * A disconnected instance stays reconnectable, even if its last known state said
+ * "recording" — that state is precisely the stale one.
  */
 const taking = computed(() => connected.value && props.obs?.recording === true)
 
 /**
- * La scène configurée peut ne pas exister dans OBS.
+ * The configured scene may not exist in OBS.
  *
- * C'est même le défaut qu'on vient réparer ici : on la garde dans la liste,
- * dite pour ce qu'elle est, faute de quoi l'ouvrir effacerait le réglage fautif
- * sans le montrer.
+ * That is in fact the defect being repaired here: we keep it in the list, named
+ * for what it is, failing which opening the list would erase the offending setting
+ * without showing it.
  */
 function options(current: string): { value: string; label: string }[] {
   const scenes = props.obs?.scenes ?? []
@@ -78,7 +78,7 @@ const FIELD =
       <h3 class="text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
         {{ title }}<SimulatedBadge :when="obs?.simulated === true" />
       </h3>
-      <span class="flex-1 truncate text-xs" :class="tone" :data-etat="instance">{{ status }}</span>
+      <span class="flex-1 truncate text-xs" :class="tone" :data-state="instance">{{ status }}</span>
       <Button
         size="small"
         class="shrink-0"

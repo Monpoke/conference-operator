@@ -5,11 +5,11 @@ import { computed } from 'vue'
 import SimulatedBadge from './SimulatedBadge.vue'
 
 /**
- * L'état des deux OBS, et le journal du poste.
+ * Both OBS instances' state, and the machine's log.
  *
- * « Régie en lecture seule » quand le poste ne pilote rien : c'est un cas réel —
- * une deuxième fenêtre ouverte pour regarder — et le dire vaut mieux que deux
- * lignes vides qui se lisent comme deux OBS déconnectés.
+ * "Régie en lecture seule" when the machine drives nothing: it is a real case — a
+ * second window opened just to watch — and saying so beats two empty lines that
+ * read as two disconnected OBS instances.
  */
 const props = defineProps<{ payload: DisplayPayload }>()
 
@@ -21,8 +21,8 @@ const instances = computed(() =>
       connected: obs?.connected === true,
       simulated: obs?.simulated === true,
       scene: obs?.currentSceneName ?? 'scène inconnue',
-      // Un rôle configuré mais absent d'OBS ne se voit nulle part ailleurs : la
-      // bascule échouera au milieu d'un talk, sans autre signe avant-coureur.
+      // A role that is configured but absent from OBS is visible nowhere else: the
+      // switch will fail in the middle of a talk, with no other warning sign.
       missing: obs?.unresolvedRoles ?? [],
     }
   }),
@@ -59,7 +59,7 @@ const instances = computed(() =>
 
     <div
       class="mt-1.5 flex min-h-0 flex-1 flex-col gap-px overflow-y-auto text-[11px] text-dim"
-      data-role="journal"
+      data-role="log"
     >
       <div
         v-for="(entry, index) in payload.diagnostics?.log ?? []"

@@ -5,18 +5,17 @@ import { useSessionStore } from '../stores/session.js'
 import { useLockStore } from '../stores/lock.js'
 
 /**
- * Où l'on est, et sous quel compte. Rien de plus.
+ * Where one is, and under which account. Nothing more.
  *
- * La reprise **n'est pas ici**. Elle a vécu un temps dans ce bandeau, sous la
- * forme d'un bouton à côté du nom du porteur, et c'était l'erreur : la page
- * restait entièrement à l'écran, chaque commande partait au hub pour se faire
- * refuser, et on ne lisait la petite ligne qu'après avoir appuyé. Une salle
- * qu'on ne tient pas n'est pas un détail de bandeau, c'est un état — il vit
- * dans `LockVeil`.
+ * Taking over is **not here**. It lived in this banner for a while, as a button
+ * beside the holder's name, and that was the mistake: the page stayed entirely on
+ * screen, every command left for the hub only to be refused, and the small line
+ * was only read after pressing. A room one does not hold is not a banner detail,
+ * it is a state — it lives in `LockVeil`.
  *
- * Reste ce qui sert quel que soit l'état : revenir aux salles, et savoir sous
- * quel compte on est connecté — la question qu'on se pose justement quand on
- * découvre qu'un autre onglet tient la salle.
+ * What is left is what serves whatever the state: getting back to the rooms, and
+ * knowing which account one is signed in under — the very question one asks on
+ * discovering that another tab holds the room.
  */
 const props = defineProps<{ nowMs: number }>()
 
@@ -27,7 +26,7 @@ const lock = useLockStore()
 <template>
   <div
     class="flex items-center gap-2 border-b border-edge bg-surface px-3 py-2 text-xs"
-    data-role="verrou"
+    data-role="lock"
   >
     <Button class="shrink-0" @click="lock.leave()">‹ Salles</Button>
 
@@ -39,13 +38,13 @@ const lock = useLockStore()
     </span>
 
     <!--
-      Tenue ailleurs : le voile le dit en grand et porte la décision. Ici, une
-      mention, pour que la ligne ne se contredise pas quand le voile se referme.
+      Held elsewhere: the veil says so in large type and carries the decision.
+      Here, a mention, so the line does not contradict itself when the veil closes.
     -->
     <span
       v-else-if="lock.heldElsewhere"
       class="min-w-0 flex-1 truncate text-warn"
-      data-role="verrou-porteur"
+      data-role="lock-holder"
     >
       Lecture seule — {{ lock.myOtherSession ? 'un autre de vos onglets' : lock.holder }}
     </span>

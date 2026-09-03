@@ -275,7 +275,7 @@ describe('bloc OBS', () => {
 
     // Sans le dire, un réglage juste resterait sans effet sans que personne ne
     // voie pourquoi : enregistrer ne reconnecte pas.
-    expect(wrapper.get('[data-etat="A"]').text()).toContain('réglages non appliqués')
+    expect(wrapper.get('[data-state="A"]').text()).toContain('réglages non appliqués')
   })
 
   it('garde dans la liste une scène qu’OBS ne connaît pas, dite pour ce qu’elle est', () => {

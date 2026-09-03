@@ -31,7 +31,13 @@ export const DEFAULT_HUB_ADDRESS = 'http://localhost:8787'
 
 export interface ImposedAddress {
   value: string
-  source: 'argument' | 'environnement'
+  source: 'argument' | 'environment'
+}
+
+/** The French label naming the source in an operator-facing message. */
+const SOURCE_LABELS: Record<ImposedAddress['source'], string> = {
+  argument: 'argument',
+  environment: 'environnement',
 }
 
 /**
@@ -52,7 +58,7 @@ export function imposedAddress(
     if (argument === '--hub' && i + 1 < argv.length) return { value: argv[i + 1]!, source: 'argument' }
   }
   const fromEnv = env.HUB_ORIGIN?.trim()
-  return fromEnv != null && fromEnv !== '' ? { value: fromEnv, source: 'environnement' } : null
+  return fromEnv != null && fromEnv !== '' ? { value: fromEnv, source: 'environment' } : null
 }
 
 /**
@@ -120,7 +126,7 @@ export async function resolveHubAddress(options: HubAddressResolution): Promise<
   const imposed = imposedAddress(argv, env)
   if (imposed != null) {
     const origin = soundValue(imposed.value, (message) =>
-      onLog?.('error', `Adresse du hub passée en ${imposed.source} et refusée : ${message}`),
+      onLog?.('error', `Adresse du hub passée en ${SOURCE_LABELS[imposed.source]} et refusée : ${message}`),
     )
     // Kept without asking anything: a dictated address is dictated by a shortcut
     // or a script, where there is nobody to answer a window.

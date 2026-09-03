@@ -27,30 +27,30 @@ function screen(answer: string | null) {
   return { ask, offered }
 }
 
-describe("normalisation de l'adresse saisie", () => {
-  it('complète le schéma absent : on tape une IP et un port, pas une URL', () => {
+describe('normalizing the typed address', () => {
+  it('fills in the missing scheme: one types an IP and a port, not a URL', () => {
     expect(normalizeHubAddress('192.168.1.10:8787')).toBe('http://192.168.1.10:8787')
     expect(normalizeHubAddress('  hub.cloudnord.fr  ')).toBe('http://hub.cloudnord.fr')
   })
 
-  it('garde https quand il est écrit', () => {
+  it('keeps https when it is written', () => {
     expect(normalizeHubAddress('https://hub.cloudnord.fr')).toBe('https://hub.cloudnord.fr')
   })
 
-  it("retire path et barre finale : tout le client résout des chemins absolus", () => {
+  it('strips path and trailing slash: the whole client resolves absolute paths', () => {
     expect(normalizeHubAddress('http://hub:8787/admin')).toBe('http://hub:8787')
     expect(normalizeHubAddress('http://hub:8787/')).toBe('http://hub:8787')
   })
 
-  it('refuse, en disant pourquoi, ce qui ne peut pas joindre un hub', () => {
+  it('refuses, saying why, what cannot reach a hub', () => {
     expect(() => normalizeHubAddress('  ')).toThrow(/vide/i)
     expect(() => normalizeHubAddress('ftp://hub')).toThrow(/http/i)
     expect(() => normalizeHubAddress('http://')).toThrow()
   })
 })
 
-describe("adresse dictée du dehors", () => {
-  it("lit --hub par préfixe : l'argv d'un paquet et celui d'un `electron` diffèrent", () => {
+describe('address dictated from outside', () => {
+  it("reads --hub by prefix: a package's argv and an `electron` one differ", () => {
     expect(imposedAddress(['Régie de salle.exe', '--hub=http://hub:8787'], {})).toEqual({
       value: 'http://hub:8787',
       source: 'argument',
@@ -61,33 +61,33 @@ describe("adresse dictée du dehors", () => {
     })
   })
 
-  it("passe la main à HUB_ORIGIN, et l'argument l'emporte sur lui", () => {
+  it('hands over to HUB_ORIGIN, and the argument beats it', () => {
     expect(imposedAddress(['electron'], { HUB_ORIGIN: 'http://env:8787' })).toEqual({
       value: 'http://env:8787',
-      source: 'environnement',
+      source: 'environment',
     })
     expect(imposedAddress(['--hub=http://arg:8787'], { HUB_ORIGIN: 'http://env:8787' })?.value).toBe(
       'http://arg:8787',
     )
   })
 
-  it('ignore une variable vide plutôt que de la prendre pour une adresse', () => {
+  it('ignores an empty variable rather than taking it for an address', () => {
     expect(imposedAddress(['electron'], { HUB_ORIGIN: '   ' })).toBeNull()
   })
 })
 
-describe('résolution au démarrage', () => {
-  it('demande à chaque lancement, en proposant la dernière adresse retenue', async () => {
+describe('resolution at start-up', () => {
+  it('asks on every launch, offering the last address kept', async () => {
     const first = screen('192.168.1.10:8787')
     const address = await resolveHubAddress({ path, argv: [], env: {}, ask: first.ask })
 
     expect(address).toBe('http://192.168.1.10:8787')
-    // Proposé : le défaut de développement, faute de mieux à proposer.
+    // Offered: the development default, for want of anything better.
     expect(first.offered).toEqual([DEFAULT_HUB_ADDRESS])
     expect(readFileSync(path, 'utf8')).toBe('http://192.168.1.10:8787')
 
-    // Au lancement suivant, la question est reposée — mais la réponse est déjà
-    // dans le champ : valider repart sur le même hub.
+    // On the next launch the question is asked again — but the answer is already
+    // in the field: validating goes back to the same hub.
     const second = screen('http://192.168.1.10:8787')
     expect(
       await resolveHubAddress({ path, argv: [], env: {}, ask: second.ask }),
@@ -95,7 +95,7 @@ describe('résolution au démarrage', () => {
     expect(second.offered).toEqual(['http://192.168.1.10:8787'])
   })
 
-  it("n'ouvre aucune fenêtre quand l'adresse est dictée : un raccourci n'a personne pour répondre", async () => {
+  it('opens no window when the address is dictated: a shortcut has nobody to answer', async () => {
     const entry = screen(null)
     await resolveHubAddress({
       path,
@@ -106,13 +106,13 @@ describe('résolution au démarrage', () => {
     expect(entry.ask).not.toHaveBeenCalled()
   })
 
-  it("rend null quand l'opérateur ferme sans valider : il n'y a rien à démarrer", async () => {
+  it('returns null when the operator closes without validating: there is nothing to start', async () => {
     expect(
       await resolveHubAddress({ path, argv: [], env: {}, ask: screen(null).ask }),
     ).toBeNull()
   })
 
-  it("provisionne la machine à l'argument, et c'est aussi comme cela qu'on en change", async () => {
+  it('provisions the machine from the argument, and that is also how one changes it', async () => {
     writeFileSync(path, 'http://ancien:8787', 'utf8')
     const entry = screen(null)
 
@@ -128,7 +128,7 @@ describe('résolution au démarrage', () => {
     expect(entry.ask).not.toHaveBeenCalled()
   })
 
-  it("garde la main à l'opérateur : la mémorisée n'est qu'une proposition", async () => {
+  it('leaves the operator in charge: the remembered one is only a proposal', async () => {
     writeFileSync(path, 'http://ancien:8787', 'utf8')
     const entry = screen('http://nouveau:8787')
 
@@ -139,7 +139,7 @@ describe('résolution au démarrage', () => {
     expect(readFileSync(path, 'utf8')).toBe('http://nouveau:8787')
   })
 
-  it("dit à voix haute qu'un argument est refusé, plutôt que de démarrer sur celui d'hier", async () => {
+  it('says out loud that an argument is refused, rather than starting on yesterday\'s', async () => {
     writeFileSync(path, 'http://ancien:8787', 'utf8')
     const onLog = vi.fn()
     const entry = screen('http://choisi:8787')
@@ -153,12 +153,12 @@ describe('résolution au démarrage', () => {
     })
 
     expect(onLog).toHaveBeenCalledWith('error', expect.stringContaining('argument'))
-    // La valeur fautive est remise sous les yeux : c'est elle qu'on corrige.
+    // The offending value is put back in front of the eyes: it is the one to fix.
     expect(entry.offered).toEqual(['ftp://hub'])
     expect(address).toBe('http://choisi:8787')
   })
 
-  it('redemande quand le fichier mémorisé est illisible', async () => {
+  it('asks again when the remembered file is unreadable', async () => {
     writeFileSync(path, 'ftp://n-importe-quoi', 'utf8')
     const onLog = vi.fn()
     const entry = screen('http://hub:8787')

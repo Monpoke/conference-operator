@@ -72,7 +72,7 @@ beforeEach(async () => {
     dataDir: dir,
     hubOrigin: origin,
     clientId: CLIENT_ID,
-    // Salle connue d'avance : ces tests n'ont pas d'écran pour la choisir.
+    // Room known up front: these tests have no screen to choose it on.
     roomId: TRACK_1,
     displayPort: 0,
     obsTransportFactory: fakeObs,
@@ -97,8 +97,8 @@ beforeEach(async () => {
   })
 
   local = await room.startDisplay()
-  const jeton = await room.ensurePaired()
-  await room.connectHub(jeton!)
+  const pairedToken = await room.ensurePaired()
+  await room.connectHub(pairedToken!)
 })
 
 afterEach(async () => {
@@ -107,49 +107,49 @@ afterEach(async () => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-const etat = async () => (await (await fetch(`${local}/display/data`)).json()) as DisplayPayload
+const readState = async () => (await (await fetch(`${local}/display/data`)).json()) as DisplayPayload
 
-describe('mur social en salle', () => {
-  it('affiche un message dès qu\'il est modéré, et jamais avant', async () => {
-    const depose = hub.services.wall.post({ source: 'form', author: 'Alice', text: 'Bravo !' })
+describe('social wall in the room', () => {
+  it('displays a message as soon as it is moderated, and never before', async () => {
+    const posted = hub.services.wall.post({ source: 'form', author: 'Alice', text: 'Bravo !' })
     await sleep(300)
 
-    // En attente de relecture : l'écran ne doit rien montrer.
-    expect((await etat()).state.comments).toEqual([])
+    // Awaiting review: the screen must show nothing.
+    expect((await readState()).state.comments).toEqual([])
 
-    hub.services.wall.moderate(depose.id, 'approve', OPERATOR.email)
+    hub.services.wall.moderate(posted.id, 'approve', OPERATOR.email)
     await sleep(600)
 
-    expect((await etat()).state.comments.map((c) => c.text)).toEqual(['Bravo !'])
+    expect((await readState()).state.comments.map((c) => c.text)).toEqual(['Bravo !'])
   }, 40_000)
 
-  it('ne relivre pas un message déjà affiché', async () => {
-    const depose = hub.services.wall.post({ source: 'form', author: 'Alice', text: 'Bravo !' })
-    hub.services.wall.moderate(depose.id, 'approve', OPERATOR.email)
+  it('does not deliver an already displayed message twice', async () => {
+    const posted = hub.services.wall.post({ source: 'form', author: 'Alice', text: 'Bravo !' })
+    hub.services.wall.moderate(posted.id, 'approve', OPERATOR.email)
     await sleep(600)
 
-    // La reprise du flux après coupure peut relivrer : le mur ne doit pas doubler.
-    room.runtime.addComment((await etat()).state.comments[0]!)
-    expect((await etat()).state.comments).toHaveLength(1)
+    // Resuming the stream after a cut can deliver again: the wall must not double up.
+    room.runtime.addComment((await readState()).state.comments[0]!)
+    expect((await readState()).state.comments).toHaveLength(1)
   }, 40_000)
 
-  it('prépare le QR du mur de sa salle', async () => {
-    const payload = await etat()
+  it('prepares the QR code for its own room wall', async () => {
+    const payload = await readState()
     expect(payload.wall?.url).toContain('/mur?salle=')
     expect(payload.wall?.url).toContain(TRACK_1)
-    // Le QR est un SVG en ligne : la page n'a rien à télécharger.
+    // The QR code is an inline SVG: the page has nothing to download.
     expect(payload.wall?.qrSvg).toContain('<svg')
   }, 40_000)
 
-  it('borne le nombre de messages affichés', async () => {
+  it('bounds the number of displayed messages', async () => {
     for (let i = 0; i < 20; i += 1) {
-      const depose = hub.services.wall.post({ source: 'form', author: 'A', text: `message ${i}` })
-      hub.services.wall.moderate(depose.id, 'approve', OPERATOR.email)
+      const posted = hub.services.wall.post({ source: 'form', author: 'A', text: `message ${i}` })
+      hub.services.wall.moderate(posted.id, 'approve', OPERATOR.email)
     }
     await sleep(900)
 
-    // Un mur qui défile sans fin devient illisible à dix mètres.
-    const comments = (await etat()).state.comments
+    // A wall that scrolls endlessly becomes unreadable from ten metres away.
+    const comments = (await readState()).state.comments
     expect(comments.length).toBeLessThanOrEqual(12)
     expect(comments.at(-1)?.text).toBe('message 19')
   }, 40_000)

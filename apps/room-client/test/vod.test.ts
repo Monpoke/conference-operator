@@ -24,11 +24,11 @@ const TRACK_1 = 'track-1-teilhard-de-chardin'
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
- * OBS factice à deux instances.
+ * A fake OBS with two instances.
  *
- * Reproduit le comportement qui compte pour la VOD : `SetProfileParameter` est
- * accepté ou refusé selon le scénario, et `StopRecord` annonce le chemin de
- * sortie par événement — comme le vrai OBS.
+ * Reproduces the behaviour that matters for the VOD: `SetProfileParameter` is
+ * accepted or refused depending on the scenario, and `StopRecord` announces the
+ * output path by event — like the real OBS.
  */
 function fakeObsPair(recDir: string, options: { honorFilenameFormat?: boolean } = {}) {
   const honor = options.honorFilenameFormat ?? true
@@ -53,17 +53,17 @@ function fakeObsPair(recDir: string, options: { honorFilenameFormat?: boolean } 
               scenes: scenes.map((sceneName) => ({ sceneName })),
             }
           case 'SetProfileParameter':
-            if (!honor) throw new Error('paramètre inconnu')
+            if (!honor) throw new Error('unknown parameter')
             format = String(args!.parameterValue)
             return {}
           case 'StartRecord':
             emit('RecordStateChanged', { outputActive: true })
             return {}
           case 'StopRecord': {
-            // OBS écrit le fichier, puis annonce son chemin.
-            const chemin = join(recDir, `${honor ? format : '2026-10-30 12-00-00'}.mkv`)
-            writeFileSync(chemin, 'FAUX-MKV')
-            emit('RecordStateChanged', { outputActive: false, outputPath: chemin })
+            // OBS writes the file, then announces its path.
+            const path = join(recDir, `${honor ? format : '2026-10-30 12-00-00'}.mkv`)
+            writeFileSync(path, 'FAKE-MKV')
+            emit('RecordStateChanged', { outputActive: false, outputPath: path })
             return {}
           }
           default:
@@ -78,7 +78,7 @@ function fakeObsPair(recDir: string, options: { honorFilenameFormat?: boolean } 
     }
   }
 
-  // L'instance est explicite : plus de dépendance à l'ordre d'appel.
+  // The instance is explicit: no more dependency on the call order.
   return (instance: 'A' | 'B') =>
     instance === 'A' ? make(['Capture HDMI', 'Habillage']) : make(['Talk', 'Caméra seule'])
 }
@@ -136,7 +136,7 @@ async function bootRoom(obsFactory: (instance: 'A' | 'B') => ObsTransport): Prom
     dataDir: dir,
     hubOrigin: origin,
     clientId: CLIENT_ID,
-    // Salle connue d'avance : ces tests n'ont pas d'écran pour la choisir.
+    // Room known up front: these tests have no screen to choose it on.
     roomId: TRACK_1,
     displayPort: 0,
     obsTransportFactory: obsFactory,
@@ -170,17 +170,17 @@ async function bootRoom(obsFactory: (instance: 'A' | 'B') => ObsTransport): Prom
   })
 
   await app.startDisplay()
-  const token2 = await app.ensurePaired()
-  await app.connectHub(token2!)
+  const pairedToken = await app.ensurePaired()
+  await app.connectHub(pairedToken!)
   await app.connectObs()
-  // Le programme place la timeline sur un talk pour que le sidecar soit renseigné.
+  // The program puts the timeline on a talk so the sidecar is filled in.
   app.runtime.setClockOffset(Date.parse('2026-10-30T10:20:00.000Z') - Date.now())
   app.runtime.refreshSessions()
   return app
 }
 
-describe('chaîne VOD', () => {
-  it('produit un master nommé et son sidecar', async () => {
+describe('VOD chain', () => {
+  it('produces a named master and its sidecar', async () => {
     room = await bootRoom(fakeObsPair(recDir))
 
     await room.startRecording()
@@ -189,7 +189,7 @@ describe('chaîne VOD', () => {
     room.mark('questions')
     const result = await room.stopRecording()
 
-    // Le master porte un nom triable et lisible sans l'ouvrir.
+    // The master carries a sortable name, readable without opening it.
     expect(result.videoPath).toContain('2026-10-30_track1_1100_honeyswamp')
     expect(result.sidecarPath).toMatch(/\.json$/)
 
@@ -201,20 +201,20 @@ describe('chaîne VOD', () => {
     expect(sidecar.category).toBeTruthy()
   }, 40_000)
 
-  it('répare le nom quand OBS ignore le format', async () => {
+  it('repairs the name when OBS ignores the format', async () => {
     room = await bootRoom(fakeObsPair(recDir, { honorFilenameFormat: false }))
 
     await room.startRecording()
     const result = await room.stopRecording()
 
-    // Filet de sécurité : le chemin annoncé par OBS fait foi, on renomme.
+    // Safety net: the path announced by OBS is authoritative, we rename.
     expect(result.videoPath).toContain('2026-10-30_track1_1100_honeyswamp')
-    const fichiers = readdirSync(recDir)
-    expect(fichiers.some((f) => f.startsWith('2026-10-30 12-00-00'))).toBe(false)
-    expect(fichiers.filter((f) => f.endsWith('.json'))).toHaveLength(1)
+    const files = readdirSync(recDir)
+    expect(files.some((f) => f.startsWith('2026-10-30 12-00-00'))).toBe(false)
+    expect(files.filter((f) => f.endsWith('.json'))).toHaveLength(1)
   }, 40_000)
 
-  it('remonte le cycle d\'enregistrement au hub, dans l\'ordre', async () => {
+  it('reports the recording cycle to the hub, in order', async () => {
     room = await bootRoom(fakeObsPair(recDir))
 
     await room.startRecording()
@@ -223,22 +223,22 @@ describe('chaîne VOD', () => {
     await sleep(3_000)
 
     const types = hub.services.ingest.eventsFor(TRACK_1).map((e) => e.type)
-    const debut = types.indexOf('recording.started')
-    const marqueur = types.indexOf('talk.marker')
-    const fin = types.indexOf('recording.stopped')
+    const started = types.indexOf('recording.started')
+    const marker = types.indexOf('talk.marker')
+    const stopped = types.indexOf('recording.stopped')
 
-    expect(debut).toBeGreaterThanOrEqual(0)
-    // L'ordre est ce qui rend les timecodes exploitables au editing.
-    expect(marqueur).toBeGreaterThan(debut)
-    expect(fin).toBeGreaterThan(marqueur)
+    expect(started).toBeGreaterThanOrEqual(0)
+    // The order is what makes the timecodes usable at editing time.
+    expect(marker).toBeGreaterThan(started)
+    expect(stopped).toBeGreaterThan(marker)
   }, 40_000)
 
-  it('refuse un marqueur hors enregistrement plutôt que de l\'ignorer', async () => {
+  it('refuses a marker outside a recording rather than ignoring it', async () => {
     room = await bootRoom(fakeObsPair(recDir))
     expect(() => room!.mark('perdu')).toThrow(/Aucun enregistrement/)
   }, 40_000)
 
-  it('refuse de diffuser sans clé fournie par le hub', async () => {
+  it('refuses to stream without a key provided by the hub', async () => {
     room = await bootRoom(fakeObsPair(recDir))
     await expect(room.startStreaming()).rejects.toThrow(/clé de diffusion/)
   }, 40_000)

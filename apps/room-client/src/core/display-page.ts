@@ -1189,7 +1189,7 @@ ${initialState}
 
   // EventSource reconnects by itself: the screen cannot stay frozen after a
   // restart of the local application, with no line of resume code.
-  if (typeof EventSource !== 'undefined' && !window.__APERCU__) {
+  if (typeof EventSource !== 'undefined' && !window.__PREVIEW__) {
     const stream = new EventSource('/display/state?vue=projecteur')
     stream.onmessage = (event) => {
       currentState = JSON.parse(event.data); render(currentState); tick()

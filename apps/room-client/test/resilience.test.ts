@@ -154,7 +154,7 @@ describe('coupure réseau en plein enregistrement', () => {
     expect(room.outboxDepth()).toBe(0)
 
     // On débranche le câble en plein enregistrement.
-    proxy.debrancher()
+    proxy.unplug()
 
     room.emit(marker('démo-1'))
     room.emit(marker('démo-2'))
@@ -174,7 +174,7 @@ describe('coupure réseau en plein enregistrement', () => {
     expect(room.runtime.state().connectivity).toBe('OFFLINE')
 
     // On rebranche.
-    proxy.rebrancher()
+    proxy.plug()
     await sleep(6_000)
 
     expect(room.outboxDepth()).toBe(0)
@@ -209,7 +209,7 @@ describe('événements émis hors connexion', () => {
     amorce.saveSettings({ roomId: TRACK_1 })
     amorce.close()
 
-    proxy.debrancher()
+    proxy.unplug()
     room = new RoomApp({
       dataDir: dir,
       hubOrigin: proxy.origin,
@@ -236,7 +236,7 @@ describe('repli par fichier local', () => {
     const { writeFileSync } = await import('node:fs')
     writeFileSync(chemin, rawProgram)
 
-    proxy.debrancher()
+    proxy.unplug()
     room = new RoomApp({
       dataDir: dir,
       hubOrigin: proxy.origin,

@@ -7,7 +7,7 @@ const ACCENT = String.fromCharCode(96)
 import { renderProjectorPage } from '../src/core/display-page.js'
 import { renderOverlayPage } from '../src/core/overlay-page.js'
 import { renderHubAddressPage } from '../src/core/hub-address-page.js'
-import { analyserScripts, extraireScripts } from './helpers/inline-scripts.js'
+import { parseScripts, extractScripts } from './helpers/inline-scripts.js'
 
 /**
  * Garde-fous communs aux pages servies localement.
@@ -99,13 +99,13 @@ describe('pages servies par le client', () => {
   it.each(PAGES)('%s : le JavaScript embarqué est analysable', (_nom, html) => {
     // Sans ce test, rien ne vérifie ce code : il vit dans un template literal,
     // où TypeScript ne voit qu'une chaîne. Une erreur y casse *toute* la page.
-    expect(analyserScripts(html)).toEqual([])
+    expect(parseScripts(html)).toEqual([])
   })
 
   it.each(PAGES)('%s : contient bien du script à analyser', (_nom, html) => {
     // Garde-fou du garde-fou : si l'extraction cessait de trouver quoi que ce
     // soit, le test précédent passerait en ne vérifiant rien.
-    expect(extraireScripts(html).length).toBeGreaterThan(0)
+    expect(extractScripts(html).length).toBeGreaterThan(0)
   })
 
   it("l'écran d'adresse échappe la valeur qu'on lui remet sous les yeux", () => {

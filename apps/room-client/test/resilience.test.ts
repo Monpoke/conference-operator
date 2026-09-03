@@ -60,7 +60,7 @@ beforeEach(async () => {
   const port = typeof address === 'object' && address != null ? address.port : 0
   hubOrigin = `http://127.0.0.1:${port}`
 
-  // Toute la salle passe par le proxy : on peut débrancher le câble pour de vrai.
+  // The whole room goes through the proxy: we can really unplug the cable.
   proxy = new ToggleProxy(port)
   await proxy.listen()
 
@@ -88,14 +88,14 @@ afterEach(async () => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-/** Appairage réel via le proxy, approbation depuis l'admin. */
+/** Real pairing through the proxy, approved from the admin console. */
 async function bootRoom(dataDir = dir): Promise<RoomApp> {
   let token: string | null = null
   const app = new RoomApp({
     dataDir,
     hubOrigin: proxy.origin,
     clientId: CLIENT_ID,
-    // Salle connue d'avance : ces tests n'ont pas d'écran pour la choisir.
+    // Room known up front: these tests have no screen to choose it on.
     roomId: TRACK_1,
     displayPort: 0,
     obsTransportFactory: fakeObs,
@@ -142,18 +142,18 @@ const marker = (label: string): RoomEventPayload => ({
   offsetMs: 1_000,
 })
 
-describe('coupure réseau en plein enregistrement', () => {
-  it('ne perd rien et remonte tout dans l\'ordre à la reprise', async () => {
+describe('network cut in the middle of a recording', () => {
+  it('loses nothing and reports everything in order once back', async () => {
     room = await bootRoom()
 
     room.emit({ type: 'recording.started', obs: 'B', sessionId: 'ses-1' })
     room.emit(marker('intro'))
     await sleep(2_500)
 
-    // Le premier lot est passé.
+    // The first batch has gone through.
     expect(room.outboxDepth()).toBe(0)
 
-    // On débranche le câble en plein enregistrement.
+    // We unplug the cable in the middle of the recording.
     proxy.unplug()
 
     room.emit(marker('démo-1'))
@@ -167,20 +167,20 @@ describe('coupure réseau en plein enregistrement', () => {
       sidecarWritten: true,
     })
 
-    // La régie continue de fonctionner : les événements s'empilent localement.
+    // The control app keeps working: the events pile up locally.
     expect(room.outboxDepth()).toBe(3)
     await sleep(2_500)
     expect(room.outboxDepth()).toBe(3)
     expect(room.runtime.state().connectivity).toBe('OFFLINE')
 
-    // On rebranche.
+    // We plug it back in.
     proxy.plug()
     await sleep(6_000)
 
     expect(room.outboxDepth()).toBe(0)
     expect(room.runtime.state().connectivity).toBe('ONLINE')
 
-    // Côté hub : tout est là, une seule fois, dans l'ordre d'émission.
+    // Hub side: everything is there, once each, in emission order.
     const recus = hub.services.ingest.eventsFor(TRACK_1)
     const types = recus.map((e) => e.type)
 
@@ -188,23 +188,23 @@ describe('coupure réseau en plein enregistrement', () => {
     expect(types).toContain('recording.stopped')
     expect(types.filter((t) => t === 'talk.marker')).toHaveLength(3)
 
-    // Aucun doublon malgré les rejeux de la reconnexion.
+    // No duplicate despite the reconnection's replays.
     expect(new Set(recus.map((e) => e.id)).size).toBe(recus.length)
 
-    // Les `seq` sont strictement croissants : l'ordre d'émission est préservé,
-    // condition pour que les timecodes du talk restent exploitables au editing.
+    // The `seq` are strictly increasing: emission order is preserved, which is
+    // what keeps the talk's timecodes usable at editing time.
     const seqs = recus.map((e) => e.seq)
     expect(seqs).toEqual([...seqs].sort((a, b) => a - b))
 
-    // Le `recording.stopped` arrive bien après son `recording.started`.
+    // The `recording.stopped` does arrive after its `recording.started`.
     expect(types.indexOf('recording.stopped')).toBeGreaterThan(types.indexOf('recording.started'))
   }, 60_000)
 })
 
-describe('événements émis hors connexion', () => {
-  it('met en file dès que la salle est connue, sans réseau', async () => {
+describe('events emitted while offline', () => {
+  it('queues as soon as the room is known, with no network', async () => {
     const dbPath = join(dir, 'salle.db')
-    // Première mise en service : la salle est déjà connue du cache local.
+    // First commissioning: the room is already known to the local cache.
     const amorce = new LocalStore(dbPath)
     amorce.saveSettings({ roomId: TRACK_1 })
     amorce.close()
@@ -214,7 +214,7 @@ describe('événements émis hors connexion', () => {
       dataDir: dir,
       hubOrigin: proxy.origin,
       clientId: CLIENT_ID,
-      // Salle connue d'avance : ces tests n'ont pas d'écran pour la choisir.
+      // Room known up front: these tests have no screen to choose it on.
       roomId: TRACK_1,
       displayPort: 0,
       obsTransportFactory: fakeObs,
@@ -223,15 +223,15 @@ describe('événements émis hors connexion', () => {
     })
     await room.startDisplay()
 
-    // Aucun hub joignable, aucun lien ouvert : l'événement doit tout de même
-    // être capturé, sinon un redémarrage hors ligne perdrait le démarrage OBS.
+    // No hub reachable, no link open: the event must still be captured,
+    // otherwise an offline restart would lose the OBS start-up.
     room.emit({ type: 'obs.connection', obs: 'A', connected: true, unresolvedRoles: [] })
     expect(room.outboxDepth()).toBe(1)
   }, 30_000)
 })
 
-describe('repli par fichier local', () => {
-  it('ouvre une salle sans que le hub ait jamais répondu', async () => {
+describe('falling back to a local file', () => {
+  it('opens a room without the hub ever having answered', async () => {
     const chemin = join(dir, 'programme.json')
     const { writeFileSync } = await import('node:fs')
     writeFileSync(chemin, rawProgram)
@@ -241,7 +241,7 @@ describe('repli par fichier local', () => {
       dataDir: dir,
       hubOrigin: proxy.origin,
       clientId: CLIENT_ID,
-      // Salle connue d'avance : ces tests n'ont pas d'écran pour la choisir.
+      // Room known up front: these tests have no screen to choose it on.
       roomId: TRACK_1,
       displayPort: 0,
       obsTransportFactory: fakeObs,
@@ -250,7 +250,7 @@ describe('repli par fichier local', () => {
     })
     const url = await room.startDisplay()
 
-    // Dernier repli de la chaîne de démarrage : la clé USB.
+    // The start-up chain's last resort: the USB stick.
     const resultat = await room.importProgramFile(chemin)
     expect(resultat.sessions).toBe(27)
 
@@ -259,7 +259,7 @@ describe('repli par fichier local', () => {
     expect(payload.sessions).toHaveLength(15)
   }, 30_000)
 
-  it('produit la même empreinte que le hub, pour ne pas dupliquer la version', async () => {
+  it('produces the same fingerprint as the hub, so as not to duplicate the version', async () => {
     const chemin = join(dir, 'programme.json')
     const { writeFileSync } = await import('node:fs')
     writeFileSync(chemin, rawProgram)
@@ -268,7 +268,7 @@ describe('repli par fichier local', () => {
       dataDir: dir,
       hubOrigin: proxy.origin,
       clientId: CLIENT_ID,
-      // Salle connue d'avance : ces tests n'ont pas d'écran pour la choisir.
+      // Room known up front: these tests have no screen to choose it on.
       roomId: TRACK_1,
       displayPort: 0,
       obsTransportFactory: fakeObs,
@@ -283,8 +283,8 @@ describe('repli par fichier local', () => {
   }, 30_000)
 })
 
-describe('redémarrage brutal hors ligne', () => {
-  it('retrouve programme et file intacts', async () => {
+describe('hard restart while offline', () => {
+  it('finds program and queue intact', async () => {
     const dbPath = join(dir, 'salle.db')
     const store = new LocalStore(dbPath)
     store.saveSettings({ roomId: TRACK_1 })
@@ -295,13 +295,13 @@ describe('redémarrage brutal hors ligne', () => {
     const seqAvant = outbox.claimBatch().map((e) => e.seq)
     store.close()
 
-    // Coupure de courant : l'application n'a rien pu vider.
+    // Power cut: the application could flush nothing.
     const rouvert = new LocalStore(dbPath)
     const reprise = new Outbox(rouvert, TRACK_1)
 
     expect(reprise.depth()).toBe(2)
     expect(reprise.claimBatch().map((e) => e.seq)).toEqual(seqAvant)
-    // Le compteur ne repart pas de zéro : le hub verrait sinon des `seq` en doublon.
+    // The counter does not restart from zero: the hub would otherwise see duplicate `seq`.
     expect(rouvert.settings().nextSeq).toBeGreaterThan(seqAvant.at(-1)!)
     rouvert.close()
   })

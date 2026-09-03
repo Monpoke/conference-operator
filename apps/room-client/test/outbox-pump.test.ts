@@ -23,19 +23,19 @@ const marker = (label: string): RoomEventPayload => ({
   offsetMs: 1000,
 })
 
-/** Hub simulé : accepte tout, mémorise, et sait tomber en panne. */
+/** Simulated hub: accepts everything, remembers it, and knows how to break down. */
 function fakeHub() {
-  const recu = new Map<string, Envelope>()
-  let enPanne = false
+  const received = new Map<string, Envelope>()
+  let down = false
 
   const push = vi.fn(async (batch: Envelope[]): Promise<PushResult> => {
-    if (enPanne) throw new Error('réseau injoignable')
+    if (down) throw new Error('network unreachable')
     const acked: string[] = []
     const duplicates: string[] = []
     for (const envelope of batch) {
-      if (recu.has(envelope.id)) duplicates.push(envelope.id)
+      if (received.has(envelope.id)) duplicates.push(envelope.id)
       else {
-        recu.set(envelope.id, envelope)
+        received.set(envelope.id, envelope)
         acked.push(envelope.id)
       }
     }
@@ -44,96 +44,96 @@ function fakeHub() {
 
   return {
     push,
-    recu,
-    couper: () => {
-      enPanne = true
+    received,
+    cut: () => {
+      down = true
     },
-    retablir: () => {
-      enPanne = false
+    restore: () => {
+      down = false
     },
   }
 }
 
 function makePump(hub: ReturnType<typeof fakeHub>) {
-  const connectivites: Connectivity[] = []
+  const connectivities: Connectivity[] = []
   const pump = new OutboxPump({
     outbox,
     store,
     push: hub.push,
-    onConnectivity: (c) => connectivites.push(c),
+    onConnectivity: (c) => connectivities.push(c),
     now: () => clockMs,
   })
-  return { pump, connectivites }
+  return { pump, connectivities }
 }
 
-describe('vidange de la file', () => {
-  it('remonte les événements dans l\'ordre d\'émission', async () => {
+describe('draining the queue', () => {
+  it('reports the events in emission order', async () => {
     const hub = fakeHub()
     const { pump } = makePump(hub)
 
-    outbox.enqueue(marker('un'))
-    outbox.enqueue(marker('deux'))
-    outbox.enqueue(marker('trois'))
+    outbox.enqueue(marker('one'))
+    outbox.enqueue(marker('two'))
+    outbox.enqueue(marker('three'))
 
     const outcome = await pump.drainOnce()
     expect(outcome.sent).toBe(3)
     expect(outbox.depth()).toBe(0)
 
-    const labels = [...hub.recu.values()].map((e) => (e.payload as { label: string }).label)
-    expect(labels).toEqual(['un', 'deux', 'trois'])
+    const labels = [...hub.received.values()].map((e) => (e.payload as { label: string }).label)
+    expect(labels).toEqual(['one', 'two', 'three'])
   })
 
-  it('ne perd rien pendant une coupure et rattrape à la reprise', async () => {
+  it('loses nothing during a cut and catches up once back', async () => {
     const hub = fakeHub()
-    const { pump, connectivites } = makePump(hub)
+    const { pump, connectivities } = makePump(hub)
 
-    outbox.enqueue(marker('avant'))
+    outbox.enqueue(marker('before'))
     await pump.drainOnce()
-    expect(hub.recu.size).toBe(1)
+    expect(hub.received.size).toBe(1)
 
-    // Le réseau tombe : la régie continue d'émettre.
-    hub.couper()
-    outbox.enqueue(marker('pendant-1'))
-    outbox.enqueue(marker('pendant-2'))
-    const enPanne = await pump.drainOnce()
+    // The network drops: the control app keeps emitting.
+    hub.cut()
+    outbox.enqueue(marker('during-1'))
+    outbox.enqueue(marker('during-2'))
+    const down = await pump.drainOnce()
 
-    expect(enPanne.connectivity).toBe('OFFLINE')
-    expect(enPanne.deferred).toBe(2)
-    // Rien n'est perdu : les événements restent en file.
+    expect(down.connectivity).toBe('OFFLINE')
+    expect(down.deferred).toBe(2)
+    // Nothing is lost: the events stay queued.
     expect(outbox.depth()).toBe(2)
 
-    // Reprise, après le backoff.
-    hub.retablir()
+    // Back up, after the backoff.
+    hub.restore()
     clockMs += 5_000
-    const apres = await pump.drainOnce()
+    const after = await pump.drainOnce()
 
-    expect(apres.sent).toBe(2)
+    expect(after.sent).toBe(2)
     expect(outbox.depth()).toBe(0)
-    expect(connectivites).toEqual(['ONLINE', 'OFFLINE', 'ONLINE'])
+    expect(connectivities).toEqual(['ONLINE', 'OFFLINE', 'ONLINE'])
   })
 
-  it('traite un doublon comme un acquittement', async () => {
+  it('treats a duplicate as an acknowledgement', async () => {
     const hub = fakeHub()
     const { pump } = makePump(hub)
-    const envelope = outbox.enqueue(marker('démo'))
+    const envelope = outbox.enqueue(marker('demo'))
 
-    // Le hub l'a déjà reçu (l'acquittement s'était perdu au retour).
+    // The hub already received it (the acknowledgement was lost on the way back).
     await hub.push([envelope])
     const outcome = await pump.drainOnce()
 
     expect(outcome.duplicates).toBe(1)
-    // Dans les deux cas le hub le détient : l'événement doit sortir de la file.
+    // Either way the hub holds it: the event must leave the queue.
     expect(outbox.depth()).toBe(0)
   })
 
-  it('sort un événement rejeté sans bloquer les suivants', async () => {
-    const casse = outbox.enqueue(marker('malformé'))
-    const sain = outbox.enqueue(marker('sain'))
+  it('drops a rejected event without blocking the ones behind it', async () => {
+    const broken = outbox.enqueue(marker('malformed'))
+    const sound = outbox.enqueue(marker('sound'))
 
     const push = vi.fn(async (batch: Envelope[]): Promise<PushResult> => ({
-      acked: batch.filter((e) => e.id !== casse.id).map((e) => e.id),
+      acked: batch.filter((e) => e.id !== broken.id).map((e) => e.id),
       duplicates: [],
-      rejected: batch.filter((e) => e.id === casse.id).map((e) => ({ id: e.id, reason: 'invalid-schema' })),
+      rejected: batch.filter((e) => e.id === broken.id).map((e) => ({ id: e.id, reason: 'invalid-schema' })),
     }))
 
     const pump = new OutboxPump({ outbox, store, push, now: () => clockMs })
@@ -142,15 +142,15 @@ describe('vidange de la file', () => {
     expect(outcome).toMatchObject({ sent: 1, rejected: 1, deferred: 0 })
     expect(outbox.depth()).toBe(0)
     expect(store.recentLogs().some((l) => l.message.includes('rejeté'))).toBe(true)
-    expect(sain.id).toBeTruthy()
+    expect(sound.id).toBeTruthy()
   })
 
-  it('reporte ce que le hub n\'a ni acquitté ni rejeté', async () => {
-    outbox.enqueue(marker('un'))
-    outbox.enqueue(marker('deux'))
+  it('defers what the hub has neither acknowledged nor rejected', async () => {
+    outbox.enqueue(marker('one'))
+    outbox.enqueue(marker('two'))
 
-    // Hub qui ne traite que la moitié du lot : le reste doit être repris,
-    // pas considéré comme livré.
+    // A hub that only handles half the batch: the rest must be picked up again,
+    // not counted as delivered.
     const push = vi.fn(async (batch: Envelope[]): Promise<PushResult> => ({
       acked: [batch[0]!.id],
       duplicates: [],
@@ -164,23 +164,23 @@ describe('vidange de la file', () => {
     expect(outbox.depth()).toBe(1)
   })
 
-  it('mesure le décalage d\'horloge à chaque remontée réussie', async () => {
+  it('measures the clock offset on every successful uplink', async () => {
     const hub = fakeHub()
-    const heures: string[] = []
+    const times: string[] = []
     const pump = new OutboxPump({
       outbox,
       store,
       push: hub.push,
-      onServerTime: (t) => heures.push(t),
+      onServerTime: (t) => times.push(t),
       now: () => clockMs,
     })
 
-    outbox.enqueue(marker('démo'))
+    outbox.enqueue(marker('demo'))
     await pump.drainOnce()
-    expect(heures).toEqual(['2026-10-30T09:00:05.000Z'])
+    expect(times).toEqual(['2026-10-30T09:00:05.000Z'])
   })
 
-  it('ne fait rien quand la file est vide', async () => {
+  it('does nothing when the queue is empty', async () => {
     const hub = fakeHub()
     const { pump } = makePump(hub)
     expect(await pump.drainOnce()).toMatchObject({ sent: 0, deferred: 0 })
@@ -189,82 +189,82 @@ describe('vidange de la file', () => {
 })
 
 /**
- * Le réveil : remonter tout de suite ce qui vient de changer.
+ * The wake-up: reporting straight away what has just changed.
  *
- * Pour ce qui se pilote de loin. Une régie mobile lit l'état de la salle par le
- * hub, qui le tient du battement : sans réveil, une bascule de scène met
- * jusqu'à un tic de pompe à se voir sur le téléphone. Or la régie ne peint
- * jamais d'avance — c'est le flux qui repeint le bouton —, si bien que ce délai
- * se lit comme un geste manqué, et qu'on appuie une seconde fois.
+ * For what is driven from afar. A mobile control app reads the room's state
+ * through the hub, which gets it from the heartbeat: with no wake-up, a scene
+ * switch takes up to one pump tick to show on the phone. And the control app
+ * never paints ahead — it is the stream that repaints the button — so that delay
+ * reads as a missed gesture, and one presses a second time.
  */
-describe('réveil de la pompe', () => {
-  it('vide la file sans attendre le tic', async () => {
+describe('waking the pump', () => {
+  it('drains the queue without waiting for the tick', async () => {
     const hub = fakeHub()
     const { pump } = makePump(hub)
-    outbox.enqueue(marker('un'))
+    outbox.enqueue(marker('one'))
 
     pump.start()
     pump.wake()
-    await vi.waitFor(() => expect(hub.recu.size).toBe(1))
+    await vi.waitFor(() => expect(hub.received.size).toBe(1))
     pump.stop()
   })
 
-  it('ne réécrit pas en base quand le lot revient après la fermeture', async () => {
+  it('does not write to the database when the batch comes back after closing', async () => {
     /*
-     * La course qui tuait le processus, une fois sur trois.
+     * The race that killed the process, one time in three.
      *
-     * Un lot part, l'application se ferme pendant que le hub réfléchit, et la
-     * réponse — ou l'échec — revient sur une base close. `defer` écrivait alors
-     * depuis l'intérieur du `catch` qui existe pour rattraper les échecs : le
-     * rejet n'avait plus personne pour l'attraper et remontait au processus.
+     * A batch leaves, the application closes while the hub is thinking, and the
+     * answer — or the failure — comes back onto a closed database. `defer` then
+     * wrote from inside the very `catch` that exists to catch failures: the
+     * rejection had nobody left to catch it and reached the process.
      *
-     * Rien n'est perdu au passage : `claimBatch` ne marque pas ce qu'il lit, un
-     * lot non reporté reste éligible et repart à la prochaine ouverture.
+     * Nothing is lost along the way: `claimBatch` does not mark what it reads, an
+     * undeferred batch stays eligible and leaves again at the next opening.
      */
     const hub = fakeHub()
-    let repondre: (() => void) | null = null
-    const lent = new Promise<void>((resolve) => {
-      repondre = resolve
+    let respond: (() => void) | null = null
+    const slow = new Promise<void>((resolve) => {
+      respond = resolve
     })
     const pump = new OutboxPump({
       outbox,
       store,
       push: async (batch) => {
-        await lent
+        await slow
         return hub.push(batch)
       },
     })
-    outbox.enqueue(marker('un'))
+    outbox.enqueue(marker('one'))
 
     pump.start()
-    const vidange = pump.drainOnce()
+    const drain = pump.drainOnce()
     pump.stop()
     store.close()
-    repondre!()
+    respond!()
 
-    // Ne lève pas, et le dit : le lot est reporté à la prochaine ouverture.
-    await expect(vidange).resolves.toMatchObject({ sent: 0, deferred: 1 })
+    // Does not throw, and says so: the batch is deferred to the next opening.
+    await expect(drain).resolves.toMatchObject({ sent: 0, deferred: 1 })
   })
 
-  it('ne fait rien quand la pompe est arrêtée', async () => {
+  it('does nothing when the pump is stopped', async () => {
     /*
-     * Le garde n'est pas cosmétique.
+     * The guard is not cosmetic.
      *
-     * OBS continue d'émettre pendant l'arrêt de l'application, et une vidange
-     * lancée après la fermeture de la base échoue dans son propre `catch` — qui
-     * écrit lui-même en base pour reporter le lot. Le rejet remontait alors
-     * jusqu'au processus, sans que personne ne puisse l'attraper.
+     * OBS keeps emitting while the application shuts down, and a drain launched
+     * after the database is closed fails inside its own `catch` — which itself
+     * writes to the database to defer the batch. The rejection then reached the
+     * process, with nobody able to catch it.
      */
     const hub = fakeHub()
     const { pump } = makePump(hub)
-    outbox.enqueue(marker('un'))
+    outbox.enqueue(marker('one'))
 
-    // Jamais démarrée : il n'y a aucun tic à devancer.
+    // Never started: there is no tick to get ahead of.
     pump.wake()
     await Promise.resolve()
     expect(hub.push).not.toHaveBeenCalled()
 
-    // Et après un arrêt, non plus : c'est le cas de la fermeture.
+    // And not after a stop either: that is the shutdown case.
     pump.start()
     pump.stop()
     pump.wake()

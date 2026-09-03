@@ -11,11 +11,11 @@ import { clockDrift } from '../src/lib/clock-drift.js'
 import { payload } from './fixtures.js'
 
 /**
- * Le bandeau : ce qu'on lit sans le chercher.
+ * The header: what one reads without looking for it.
  *
- * Il ne pilote rien, et c'est justement pour cela qu'il compte — il porte les
- * trois pannes qu'une salle ne peut pas voir autrement : le hub perdu, le poste
- * saturé, la page figée.
+ * It drives nothing, and that is precisely why it counts — it carries the three
+ * failures a room cannot see any other way: the hub lost, the machine saturated,
+ * the page frozen.
  */
 
 beforeEach(() => {
@@ -23,35 +23,35 @@ beforeEach(() => {
 })
 
 describe('lien avec le hub', () => {
-  it('dit ce qui marche encore, plutôt que ce qui est cassé', () => {
+  it('says what still works, rather than what is broken', () => {
     const wrapper = mount(HubIndicator, {
       props: { connectivity: 'OFFLINE', queueDepth: 0, offsetMs: 0, simulatedClock: false },
     })
 
-    // La seule question de l'opérateur quand la pastille change en pleine
-    // journée, et la réponse est contre-intuitive : la salle continue seule.
+    // The operator's only question when the dot changes mid-day, and the answer is
+    // counter-intuitive: the room carries on by itself.
     expect(wrapper.text()).toContain('Projection et captation, elles, n’en dépendent pas')
   })
 
-  it('traite une connectivité inconnue comme une coupure', () => {
+  it('treats an unknown connectivity as an outage', () => {
     const wrapper = mount(HubIndicator, {
       props: { connectivity: null, queueDepth: 0, offsetMs: 0, simulatedClock: false },
     })
 
-    // Se taire sur un état qu'on ne sait pas nommer laisserait la pastille
-    // verte, qui est le seul contresens à ne pas commettre ici.
+    // Staying silent about a state one cannot name would leave the dot green,
+    // which is the one misreading not to allow here.
     expect(wrapper.attributes('data-level')).toBe('alert')
     expect(wrapper.text()).toContain('hors ligne')
   })
 
-  it('annonce la file plutôt que de la taire quand elle est vide', () => {
+  it('announces the queue rather than hide it when it is empty', () => {
     const wrapper = mount(HubIndicator, {
       props: { connectivity: 'DEGRADED', queueDepth: 12, offsetMs: 0, simulatedClock: false },
     })
     expect(wrapper.text()).toContain('12 en attente de remontée')
   })
 
-  it('dit l’horloge simulée à la place de l’écart, qui n’aurait aucun sens', () => {
+  it('says the simulated clock in place of the offset, which would mean nothing', () => {
     const wrapper = mount(HubIndicator, {
       props: { connectivity: 'ONLINE', queueDepth: 0, offsetMs: 5_400_000, simulatedClock: true },
     })
@@ -61,9 +61,9 @@ describe('lien avec le hub', () => {
   })
 })
 
-describe('écart d’horloge', () => {
-  it('ne rend jamais un nombre qu’on ne puisse pas se représenter', () => {
-    // « décalée de +5 693 432,6 s » est exact et illisible.
+describe('clock offset', () => {
+  it('never returns a number one cannot picture', () => {
+    // "décalée de +5 693 432,6 s" is exact and unreadable.
     expect(clockDrift(300)).toBe('horloge alignée')
     expect(clockDrift(2400)).toBe('horloge décalée de +2,4 s')
     expect(clockDrift(-600_000)).toBe('horloge décalée de −10 min')
@@ -72,14 +72,14 @@ describe('écart d’horloge', () => {
 })
 
 describe('charge du poste', () => {
-  it('avoue une mesure absente plutôt que d’afficher zéro', () => {
+  it('admits a missing measurement rather than display zero', () => {
     const wrapper = mount(CpuIndicator, { props: { load: null } })
 
     expect(wrapper.attributes('data-level')).toBe('unknown')
     expect(wrapper.text()).toContain('Pastille sans valeur, pas poste au repos')
   })
 
-  it('ne dit pas « le poste encaisse » sous une mémoire pleine', () => {
+  it('does not say "le poste encaisse" under a full memory', () => {
     const wrapper = mount(CpuIndicator, {
       props: {
         load: {
@@ -91,9 +91,9 @@ describe('charge du poste', () => {
       },
     })
 
-    // Le verdict revient à la mesure la plus grave : c'est l'autre façon dont
-    // un poste lâche, et la plus sournoise — il commence à échanger sur le
-    // disque qui écrit le rush.
+    // The verdict goes to the graver measurement: it is the other way a machine
+    // gives out, and the most insidious — it starts swapping to the disk that is
+    // writing the footage.
     expect(wrapper.attributes('data-level')).toBe('alert')
     expect(wrapper.text()).toContain('celui-là même qui écrit le rush')
   })
@@ -110,24 +110,24 @@ describe('charge du poste', () => {
       },
     })
 
-    // Un processeur au repos reste vert sous une pastille rouge de mémoire.
+    // A processor at rest stays green under a red memory dot.
     expect(wrapper.html()).toContain('level-ok')
   })
 
-  it('ne dit rien de la mémoire quand la première fenêtre n’est pas écoulée', () => {
+  it('says nothing about memory while the first window has not elapsed', () => {
     const wrapper = mount(CpuIndicator, {
       props: { load: { cpu: null, cores: 8, windowMs: 0, memory: null } },
     })
 
-    // Une mémoire non mesurée devenait « la plus grave » et la table des
-    // verdicts mémoire n'a rien à dire d'une mémoire qui va bien : la page
-    // d'origine affichait « undefined » pendant la première fenêtre.
+    // An unmeasured memory became "the gravest" and the memory verdict table has
+    // nothing to say about a memory that is fine: the original page displayed
+    // "undefined" during the first window.
     expect(wrapper.text()).not.toContain('undefined')
     expect(wrapper.text()).toContain('première mesure en cours')
   })
 })
 
-describe('charge du poste, en détail', () => {
+describe('machine load, in detail', () => {
   const MEMOIRE_SAINE = { usedBytes: 4_000_000_000, totalBytes: 16_000_000_000 }
 
   function poste(load: HostLoad | null): ReturnType<typeof mount> {
@@ -144,7 +144,7 @@ describe('charge du poste, en détail', () => {
     expect(wrapper.text()).toContain('sans forcer')
   })
 
-  it('passe à l’orange sur une charge soutenue', () => {
+  it('turns amber on a sustained load', () => {
     const wrapper = poste({ cpu: 0.78, cores: 8, windowMs: 5_000, memory: null })
 
     expect(wrapper.attributes('data-level')).toBe('warn')
@@ -152,7 +152,7 @@ describe('charge du poste, en détail', () => {
     expect(wrapper.text()).toContain('charge soutenue')
   })
 
-  it('passe au rouge, et dit ce que ça coûte', () => {
+  it('turns red, and says what it costs', () => {
     const wrapper = poste({ cpu: 0.96, cores: 4, windowMs: 5_000, memory: null })
 
     expect(wrapper.attributes('data-level')).toBe('alert')
@@ -161,15 +161,15 @@ describe('charge du poste, en détail', () => {
     expect(wrapper.text()).toContain('images')
   })
 
-  it('colore la pastille et la jauge depuis la même décision', () => {
+  it('colours the dot and the gauge from the same decision', () => {
     // Deux chemins finiraient par se contredire — pastille verte, jauge rouge —
-    // et c'est dans ce désaccord qu'on cesserait de croire l'indicateur.
+    // and it is in that disagreement that one would stop believing the indicator.
     const wrapper = poste({ cpu: 0.96, cores: 4, windowMs: 5_000, memory: null })
 
     expect(wrapper.get('.gauge > span').attributes('style')).toContain('96%')
   })
 
-  it('montre la mémoire à côté du processeur', () => {
+  it('shows the memory beside the processor', () => {
     const wrapper = poste({ cpu: 0.31, cores: 8, windowMs: 5_000, memory: MEMOIRE_SAINE })
 
     expect(wrapper.text()).toContain('Mémoire')
@@ -177,7 +177,7 @@ describe('charge du poste, en détail', () => {
     expect(wrapper.text()).toContain('4,0 Go occupés sur 16,0')
   })
 
-  it('ne prend pas une mémoire illisible pour une mémoire pleine', () => {
+  it('does not take an unreadable memory for a full one', () => {
     const wrapper = poste({ cpu: 0.31, cores: 8, windowMs: 5_000, memory: null })
 
     expect(wrapper.attributes('data-level')).toBe('ok')
@@ -187,7 +187,7 @@ describe('charge du poste, en détail', () => {
   it('n’ajoute pas de bulle native par-dessus la sienne', () => {
     const wrapper = poste({ cpu: 0.31, cores: 8, windowMs: 5_000, memory: MEMOIRE_SAINE })
 
-    // Un `title` restant afficherait les deux, l'une sur l'autre, à une seconde
+    // A leftover `title` would show both, one over the other, one second
     // d'intervalle. L'annonce vocale, elle, passe par `aria-label`.
     expect(wrapper.attributes('title')).toBeUndefined()
     expect(wrapper.attributes('aria-label')).toContain('31 %')
@@ -195,22 +195,22 @@ describe('charge du poste, en détail', () => {
   })
 
   it('se laisse ouvrir au clavier, sans souris', () => {
-    // La régie se tient aussi au clavier pendant un talk : une bulle qui ne
-    // s'ouvre qu'au survol serait invisible à qui n'a pas lâché les raccourcis.
+    // The control app is also driven from the keyboard during a talk: a tooltip
+    // that only opens on hover would be invisible to somebody still on shortcuts.
     expect(poste(null).attributes('tabindex')).toBe('0')
   })
 })
 
-describe('mode d’exécution', () => {
+describe('run mode', () => {
   it('se tait quand tout est en production', () => {
     const wrapper = mount(ModeBadge, { props: { mode: { room: 'production', hub: 'production' } } })
     expect(wrapper.text()).toBe('')
   })
 
-  it('crie quand la salle et le hub ne sont pas du même côté', () => {
+  it('cries out when the room and the hub are not on the same side', () => {
     const wrapper = mount(ModeBadge, { props: { mode: { room: 'dev', hub: 'production' } } })
 
-    // Une salle de développement branchée sur le hub de l'événement enverrait
+    // A development room plugged into the event's hub would send
     // de vraies commandes depuis un poste qui simule tout.
     expect(wrapper.text()).toBe('dev · hub en production')
     expect(wrapper.html()).toContain('text-alert')
@@ -222,35 +222,35 @@ describe('mode d’exécution', () => {
     expect(wrapper.html()).toContain('text-alert')
   })
 
-  it('signale une salle de développement, sans alerter', () => {
+  it('reports a development room, without alarming', () => {
     const wrapper = mount(ModeBadge, { props: { mode: { room: 'dev', hub: 'dev' } } })
     expect(wrapper.text()).toBe('mode dev')
     expect(wrapper.html()).toContain('text-warn')
   })
 
   it('attend le premier sync avant de conclure', () => {
-    // Hub pas encore joint : rien à comparer, et une alerte prématurée
-    // apprendrait à ignorer le badge.
+    // Hub not reached yet: nothing to compare, and a premature alert would teach
+    // people to ignore the badge.
     const wrapper = mount(ModeBadge, { props: { mode: { room: 'production', hub: null } } })
     expect(wrapper.text()).toBe('')
   })
 })
 
 describe('horloge', () => {
-  it('signale une heure simulée, sinon l’écart déroute', () => {
+  it('reports a simulated time, otherwise the offset confuses', () => {
     const wrapper = mount(RoomClock, {
       props: { atMs: Date.parse('2026-10-30T09:00:00Z'), timeZone: 'Europe/Paris', simulated: true },
     })
 
-    // Voir 11:00 un matin d'août sans explication ferait douter de tout le
-    // reste de l'écran.
+    // Seeing 11:00 on an August morning with no explanation would cast doubt on
+    // everything else on screen.
     expect(wrapper.text()).toContain('10:00:00')
     expect(wrapper.text()).toContain('simulée')
   })
 })
 
 describe('bandeau complet', () => {
-  it('nomme la salle, et le dit quand elle n’est appairée à rien', () => {
+  it('names the room, and says so when it is paired to nothing', () => {
     const sans = payload()
     sans.roomName = null
     sans.state.roomId = null
@@ -260,13 +260,13 @@ describe('bandeau complet', () => {
     expect(wrapper.get('[data-role="room"]').text()).toBe('Salle non appairée')
   })
 
-  it('dit l’écran figé, parce qu’une page morte ressemble à une page vivante', () => {
+  it('says the screen is frozen, because a dead page looks like a live one', () => {
     const wrapper = mount(ControlHeader, {
       props: { payload: payload(), nowMs: Date.now(), streamDead: true },
     })
 
-    // L'horloge et le compte à rebours se redessinent chaque seconde depuis la
-    // dernière charge utile reçue : seul l'état de la conférence reste bloqué.
+    // The clock and the countdown redraw every second from the last payload
+    // received: only the talk's state stays stuck.
     expect(wrapper.get('[data-role="stream-dead"]').text()).toContain('écran figé')
   })
 
@@ -286,26 +286,26 @@ describe('bandeau complet', () => {
 })
 
 /**
- * Le pilotage à distance, vu de la salle.
+ * Remote driving, seen from the room.
  *
- * La propriété à tenir n'est pas « le badge s'affiche » mais **« il n'enlève
- * rien »** : l'opérateur qui est dans la salle garde toutes ses commandes, quoi
- * qu'il arrive à un téléphone parti dans un couloir ou à un verrou qu'on a
- * oublié de rendre.
+ * The property to hold is not "the badge shows" but **"it takes nothing away"**:
+ * the operator who is in the room keeps every one of their commands, whatever
+ * happens to a phone gone off down a corridor or to a lock somebody forgot to
+ * release.
  */
-describe('pilotée à distance', () => {
+describe('driven remotely', () => {
   function withHolder(holder: string | null) {
     const base = payload()
     return { ...base, state: { ...base.state, remoteHolder: holder } }
   }
 
-  it('nomme qui pilote, plutôt que d’annoncer « occupée »', () => {
+  it('names who is driving, rather than announce "occupée"', () => {
     const wrapper = mount(ControlHeader, {
       props: { payload: withHolder('regie@cloudnord.fr'), nowMs: Date.now(), streamDead: false },
     })
 
-    // Sans le nom, une scène qui bascule toute seule se lit comme une panne —
-    // et on va la chercher là où elle n'est pas, en plein talk.
+    // Without the name, a scene switching on its own reads as a failure — and one
+    // goes looking for it where it is not, in the middle of a talk.
     expect(wrapper.get('[data-role="remote-holder"]').text()).toContain('regie@cloudnord.fr')
   })
 
@@ -315,20 +315,20 @@ describe('pilotée à distance', () => {
     })
 
     // Les boutons du bandeau restent tous actifs : le verrou n'exclut que les
-    // régies mobiles entre elles.
+    // mobile control apps among themselves.
     for (const bouton of wrapper.findAll('button')) {
       expect(bouton.attributes('disabled')).toBeUndefined()
     }
   })
 
-  it('se tait quand personne ne pilote à distance', () => {
+  it('stays silent when nobody is driving remotely', () => {
     const wrapper = mount(ControlHeader, {
       props: { payload: withHolder(null), nowMs: Date.now(), streamDead: false },
     })
     expect(wrapper.find('[data-role="remote-holder"]').exists()).toBe(false)
   })
 
-  it('ne se montre pas à lui-même sur le téléphone qui pilote', () => {
+  it('does not show itself on the phone that is driving', () => {
     const wrapper = mount(ControlHeader, {
       props: {
         payload: withHolder('regie@cloudnord.fr'),
@@ -337,8 +337,8 @@ describe('pilotée à distance', () => {
         remote: true,
       },
     })
-    // Le bandeau de verrou dit déjà qui tient la salle ; le répéter ici ferait
-    // deux fois la même information sur un écran qui en a la place d'une.
+    // The lock banner already says who holds the room; repeating it here would put
+    // the same information twice on a screen with space for one.
     expect(wrapper.find('[data-role="remote-holder"]').exists()).toBe(false)
   })
 })

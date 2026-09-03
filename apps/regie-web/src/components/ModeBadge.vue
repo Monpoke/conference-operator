@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ModeExecution } from '@cloudnord/contract'
+import type { ExecutionMode } from '@cloudnord/contract'
 import { computed } from 'vue'
 
 /**
@@ -10,17 +10,17 @@ import { computed } from 'vue'
  * simule tout. Deux modes de production ne méritent aucun bandeau — ce serait
  * du bruit permanent pour une information nulle.
  */
-const props = defineProps<{ mode: { salle: ModeExecution; hub: ModeExecution | null } | null }>()
+const props = defineProps<{ mode: { room: ExecutionMode; hub: ExecutionMode | null } | null }>()
 
-const divergent = computed(() => props.mode?.hub != null && props.mode.hub !== props.mode.salle)
+const divergent = computed(() => props.mode?.hub != null && props.mode.hub !== props.mode.room)
 
 const shown = computed(
-  () => props.mode != null && !(props.mode.salle === 'production' && (props.mode.hub ?? 'production') === 'production'),
+  () => props.mode != null && !(props.mode.room === 'production' && (props.mode.hub ?? 'production') === 'production'),
 )
 
 const text = computed(() => {
   if (!divergent.value) return 'mode dev'
-  return props.mode?.salle === 'dev' ? 'dev · hub en production' : 'hub en dev'
+  return props.mode?.room === 'dev' ? 'dev · hub en production' : 'hub en dev'
 })
 </script>
 

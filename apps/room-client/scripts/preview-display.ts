@@ -9,7 +9,7 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { toString } from 'qrcode'
 import { normalizeProgram, sessionsForRoom } from '@cloudnord/program'
-import { resoudreIdentiteEvenement } from '@cloudnord/contract'
+import { resolveEventIdentity } from '@cloudnord/contract'
 import { renderProjectorPage } from '../src/core/display-page.js'
 import { renderOverlayPage } from '../src/core/overlay-page.js'
 import { renderOverlayLivePage } from '../src/core/overlay-live-page.js'
@@ -96,7 +96,7 @@ const base: DisplayPayload = {
     },
     // L'aperçu est un artefact de développement de bout en bout : il le dit,
     // ce qui rend aussi le badge relisable avant le jour J.
-    mode: { salle: 'dev' as const, hub: 'dev' as const },
+    mode: { room: 'dev' as const, hub: 'dev' as const },
     /** Réglages de la salle : sans mots de passe, comme la régie les reçoit. */
     config: {
       obs: {
@@ -118,22 +118,22 @@ const base: DisplayPayload = {
       promptRecordingOnStop: true,
       sceneOnStart: 'LIVE',
       // L'aperçu montre le poste installé, celui qui sait ouvrir un sélecteur.
-      peutParcourir: true,
+      canBrowse: true,
     },
     outboxDepth: 3,
-    journal: [
+    log: [
       { level: 'warn', message: 'remontée impossible, lot reporté', createdAt: '2026-10-30T11:18:00.000Z' },
       { level: 'info', message: 'assets préchargés', createdAt: '2026-10-30T09:02:00.000Z' },
     ],
-    // `startedAtCorrigeMs` nul : l'aperçu montre le cas de production, où le
+    // `startedAtCorrectedMs` nul : l'aperçu montre le cas de production, où le
     // chronomètre compte en temps réel. Le début est posé, la fin non : c'est
     // l'état d'une prise en cours, celui qu'on veut voir sur un aperçu.
     recording: {
       active: true,
       markers: 2,
       startedAtMs: AT - 14 * 60_000,
-      startedAtCorrigeMs: null,
-      montage: { debutMs: 52_000, finMs: null },
+      startedAtCorrectedMs: null,
+      editing: { startMs: 52_000, endMs: null },
     },
     rooms: [
       { roomId: 'track-1-teilhard-de-chardin', name: 'Track #1 — Teilhard de Chardin', connectivity: 'ONLINE', sceneRole: 'LIVE', recording: true, outboxDepth: 3, lastSeenAt: new Date(AT - 4_000).toISOString(), currentSessionId: null, conference: 'en-cours' },
@@ -199,7 +199,7 @@ const base: DisplayPayload = {
         startsAt: new Date(AT + 18 * 60_000).toISOString(),
         speakers: ['Camille Durand'],
       },
-      enCours: false,
+      running: false,
     },
     {
       roomId: 'hands-on',
@@ -210,12 +210,12 @@ const base: DisplayPayload = {
         startsAt: new Date(AT - 12 * 60_000).toISOString(),
         speakers: ['Alex Martin', 'Sacha Nguyen'],
       },
-      enCours: true,
+      running: true,
     },
   ],
   // Déduite de la fixture, comme le hub la déduirait du programme importé :
   // l'aperçu montre alors le même enchaînement que la réalité.
-  eventIdentity: resoudreIdentiteEvenement({ programme: program.event.name }),
+  eventIdentity: resolveEventIdentity({ program: program.event.name }),
   socialLinks: [
     { network: 'Bluesky', handle: '@cloudnord.fr', url: 'https://bsky.app/profile/cloudnord.fr' },
     { network: 'LinkedIn', handle: 'Cloud Nord', url: 'https://www.linkedin.com/company/cloud-nord' },

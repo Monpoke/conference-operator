@@ -1,4 +1,4 @@
-import { PLANCHER_DB, type NiveauEntree } from './obs.js'
+import { DB_FLOOR, type InputLevel } from './obs.js'
 
 /**
  * Ramène le débit du vumètre à quelque chose d'affichable.
@@ -12,33 +12,33 @@ import { PLANCHER_DB, type NiveauEntree } from './obs.js'
  * voir. Le maximum sur l'intervalle conserve la saturation la plus brève.
  */
 export class AgregateurNiveaux {
-  private accumule = new Map<string, { magnitude: number; crete: number }[]>()
+  private accumule = new Map<string, { magnitude: number; peak: number }[]>()
   private dernierEnvoiMs = 0
 
   constructor(
-    private readonly emettre: (inputs: NiveauEntree[]) => void,
+    private readonly emettre: (inputs: InputLevel[]) => void,
     private readonly intervalMs = 100,
     private readonly now: () => number = Date.now,
   ) {}
 
-  pousser(inputs: NiveauEntree[]): void {
+  pousser(inputs: InputLevel[]): void {
     for (const entree of inputs) {
-      const courant = this.accumule.get(entree.nom)
+      const courant = this.accumule.get(entree.name)
       if (courant == null) {
         this.accumule.set(
-          entree.nom,
-          entree.canaux.map((canal) => ({ ...canal })),
+          entree.name,
+          entree.channels.map((canal) => ({ ...canal })),
         )
         continue
       }
-      entree.canaux.forEach((canal, index) => {
+      entree.channels.forEach((canal, index) => {
         const cible = courant[index]
         if (cible == null) {
           courant[index] = { ...canal }
           return
         }
         cible.magnitude = Math.max(cible.magnitude, canal.magnitude)
-        cible.crete = Math.max(cible.crete, canal.crete)
+        cible.peak = Math.max(cible.peak, canal.peak)
       })
     }
 
@@ -51,7 +51,7 @@ export class AgregateurNiveaux {
   /** Envoie ce qui est accumulé, puis repart de zéro. */
   private vider(): void {
     if (this.accumule.size === 0) return
-    const inputs = [...this.accumule.entries()].map(([nom, canaux]) => ({ nom, canaux }))
+    const inputs = [...this.accumule.entries()].map(([name, channels]) => ({ name, channels }))
     this.accumule.clear()
     this.emettre(inputs)
   }
@@ -70,6 +70,6 @@ export class AgregateurNiveaux {
 
 /** Position d'un niveau sur une échelle d'affichage, entre 0 et 1. */
 export function proportion(db: number): number {
-  if (db <= PLANCHER_DB) return 0
-  return Math.min(1, (db - PLANCHER_DB) / -PLANCHER_DB)
+  if (db <= DB_FLOOR) return 0
+  return Math.min(1, (db - DB_FLOOR) / -DB_FLOOR)
 }

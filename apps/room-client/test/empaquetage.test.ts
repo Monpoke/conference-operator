@@ -12,7 +12,7 @@ import { resoudreRegieDepuis } from '../src/core/regie-shell.js'
  * Deux fichiers doivent s'accorder sans se connaître : `electron-builder.yml`
  * décide **où** le bundle de la régie atterrit sur une machine installée, et
  * `resoudreRegieDepuis` remonte les dossiers pour l'y trouver. Leur désaccord
- * ne se verrait qu'au montage d'une salle — la régie répondrait 503 sur une
+ * ne se verrait qu'au editing d'une salle — la régie répondrait 503 sur une
  * machine où tout le reste marche, et personne ne relie ça à une ligne de YAML.
  *
  * Vérifié sur un arbre reconstitué plutôt que sur un vrai paquet : produire un

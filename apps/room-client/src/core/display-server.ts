@@ -3,10 +3,10 @@ import fastifyProxy from '@fastify/http-proxy'
 import fastifyStatic from '@fastify/static'
 import { join } from 'node:path'
 import {
-  CHAMPS_PAR_VUE,
-  IDENTITE_PAR_DEFAUT,
+  FIELDS_BY_VIEW,
+  DEFAULT_EVENT_IDENTITY,
   type DisplayPayload,
-  type VueAffichage,
+  type DisplayView,
 } from '@cloudnord/contract'
 import { timelinePosition } from '@cloudnord/program/selectors'
 import {
@@ -18,7 +18,7 @@ import {
   type SponsorTier,
 } from '@cloudnord/program'
 import type { AssetCache } from './assets.js'
-import type { NiveauEntree } from './obs.js'
+import type { InputLevel } from './obs.js'
 import type { DisplayState, RoomRuntime } from './runtime.js'
 import { renderProjectorPage } from './display-page.js'
 import { renderOverlayPage } from './overlay-page.js'
@@ -35,13 +35,13 @@ import {
   type ControlDiagnostics,
   type ControlTarget,
 } from './control-api.js'
-import { moniteurHote, type ChargeHote } from './hote.js'
+import { moniteurHote, type HostLoad } from './hote.js'
 
-export { CHAMPS_PAR_VUE, type DisplayPayload, type VueAffichage }
+export { FIELDS_BY_VIEW, type DisplayPayload, type DisplayView }
 
 /** Un abonné au flux : sa vue, et la dernière valeur qu'il a reçue par champ. */
 interface AbonneFlux {
-  vue: VueAffichage | null
+  vue: DisplayView | null
   dernier: Record<string, string>
   ecrire: (evenement: string | null, corps: string) => void
 }
@@ -92,7 +92,7 @@ export interface DisplayServerOptions {
    */
   onNiveauxDemandes?: (actif: boolean) => void
   /** Charge du poste, relevée à la demande. Par défaut, celle de cette machine. */
-  hote?: () => ChargeHote
+  hote?: () => HostLoad
   host?: string
   port?: number
 }
@@ -127,7 +127,7 @@ export class DisplayServer {
    * deux lectures des compteurs du noyau, donc elle n'existe que si quelqu'un
    * garde le repère précédent.
    */
-  private readonly hote: () => ChargeHote
+  private readonly hote: () => HostLoad
 
   constructor(private readonly options: DisplayServerOptions) {
     this.hote = options.hote ?? moniteurHote()
@@ -147,7 +147,7 @@ export class DisplayServer {
     const feedback = this.feedbackPour(state.currentSession?.id ?? null)
     const pairing = this.options.pairing?.() ?? null
     const socialLinks = this.options.socialLinks?.() ?? []
-    const eventIdentity = this.options.event?.() ?? IDENTITE_PAR_DEFAUT
+    const eventIdentity = this.options.event?.() ?? DEFAULT_EVENT_IDENTITY
     if (cached == null) {
       return {
         state,
@@ -228,7 +228,7 @@ export class DisplayServer {
                   startsAt: session.startsAt,
                   speakers: session.speakers.map((personne) => personne.name),
                 },
-          enCours: session != null && session === courant,
+          running: session != null && session === courant,
         }
       })
   }
@@ -334,10 +334,10 @@ export class DisplayServer {
   }
 
   /** Champs visibles par une vue, dans l'ordre de la charge utile. */
-  private static clesDeVue(champs: Record<string, string>, vue: VueAffichage | null): string[] {
+  private static clesDeVue(champs: Record<string, string>, vue: DisplayView | null): string[] {
     const cles = Object.keys(champs)
     if (vue == null) return cles
-    const autorises = new Set<string>(CHAMPS_PAR_VUE[vue] as readonly string[])
+    const autorises = new Set<string>(FIELDS_BY_VIEW[vue] as readonly string[])
     return cles.filter((cle) => autorises.has(cle))
   }
 
@@ -355,7 +355,7 @@ export class DisplayServer {
    * passer par la charge utile complète republierait tout l'état — programme
    * compris — cent fois plus souvent que nécessaire.
    */
-  publierNiveaux(inputs: NiveauEntree[]): void {
+  publierNiveaux(inputs: InputLevel[]): void {
     if (this.abonnesNiveaux.size === 0) return
     const corps = JSON.stringify({ inputs })
     for (const ecrire of this.abonnesNiveaux) ecrire(corps)
@@ -679,7 +679,7 @@ export class DisplayServer {
       })
 
       const demandee = (request.query as { vue?: string } | undefined)?.vue
-      const vue: VueAffichage | null =
+      const vue: DisplayView | null =
         demandee === 'projecteur' || demandee === 'overlay' || demandee === 'bandeau' || demandee === 'regie'
           ? demandee
           : null

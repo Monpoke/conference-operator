@@ -1,6 +1,6 @@
 import { escapeHtml } from '@cloudnord/format'
 import { TAILWIND_CSS } from '@cloudnord/ui'
-import { IDENTITE_PAR_DEFAUT, type EventIdentity } from '@cloudnord/contract'
+import { DEFAULT_EVENT_IDENTITY, type EventIdentity } from '@cloudnord/contract'
 
 export interface WallPageOptions {
   roomId: string | null
@@ -39,7 +39,7 @@ const echapperServeur = escapeHtml
  */
 export function renderWallPage({ roomId, rooms, event }: WallPageOptions): string {
   const donnees = JSON.stringify({ roomId, rooms }).replace(/</g, '\\u003c')
-  const identite = event ?? IDENTITE_PAR_DEFAUT
+  const identite = event ?? DEFAULT_EVENT_IDENTITY
   const nom = echapperServeur(identite.name)
 
   return `<!doctype html>

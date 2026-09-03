@@ -3,14 +3,14 @@ import { request as requeteHttp } from 'node:http'
 import { request as requeteHttps } from 'node:https'
 import { and, asc, eq, inArray, ne } from 'drizzle-orm'
 import { televersement } from '@cloudnord/db/client'
-import type { GenreVod, PartSignee, PlanTeleversement, PolitiqueVod } from '@cloudnord/contract'
+import type { VodKind, SignedPart, UploadPlan, VodPolicy } from '@cloudnord/contract'
 import type { LocalStore } from './store.js'
-import type { ChargeHote } from './hote.js'
+import type { HostLoad } from './hote.js'
 import {
   attenteApres,
   verdictTeleversement,
   type EntreesRegulateur,
-  type VerdictTeleversement,
+  type UploadVerdict,
 } from './regulateur.js'
 
 /**
@@ -36,7 +36,7 @@ export interface CandidatVod {
   file: string
   sizeBytes: number
   /** Le fichier a bougé il y a quelques secondes : la prise est peut-être en cours. */
-  enEcriture: boolean
+  beingWritten: boolean
   sessionId: string | null
   /** Sidecar existant à côté du rush, ou `null`. */
   sidecar: { file: string; sizeBytes: number } | null
@@ -47,10 +47,10 @@ export interface HubVod {
   begin(entree: {
     file: string
     sizeBytes: number
-    kind: GenreVod
+    kind: VodKind
     sessionId: string | null
-  }): Promise<PlanTeleversement>
-  parts(uploadId: string, numeros: number[]): Promise<PartSignee[]>
+  }): Promise<UploadPlan>
+  parts(uploadId: string, numeros: number[]): Promise<SignedPart[]>
   progress(entree: {
     uploadId: string
     numero: number
@@ -59,7 +59,7 @@ export interface HubVod {
     dureeMs: number
   }): Promise<void>
   complete(uploadId: string): Promise<void>
-  abort(uploadId: string, raison: string): Promise<void>
+  abort(uploadId: string, reason: string): Promise<void>
 }
 
 export interface TeleversementDeps {
@@ -67,8 +67,8 @@ export interface TeleversementDeps {
   /** Fichiers du disque, dans l'ordre où on souhaite les envoyer. */
   candidats: () => Promise<CandidatVod[]>
   hub: () => HubVod | null
-  politique: () => PolitiqueVod | null
-  charge: () => ChargeHote
+  politique: () => VodPolicy | null
+  charge: () => HostLoad
   /** OBS-B enregistre-t-il ? */
   enregistre: () => boolean
   conferenceEnCours: () => boolean
@@ -88,9 +88,9 @@ export interface TeleversementDeps {
   now?: () => number
   onLog?: (niveau: 'info' | 'warn' | 'error', message: string, contexte?: unknown) => void
 }
-import type { EtatTeleversementVu, VueTeleversements } from '@cloudnord/contract'
+import type { UploadRow, UploadsView } from '@cloudnord/contract'
 
-export type { EtatTeleversementVu, VueTeleversements }
+export type { UploadRow, UploadsView }
 
 /** Parts signées demandées d'un coup. Assez pour ne pas bavarder, pas assez pour périmer. */
 const LOT_DE_PARTS = 5
@@ -110,11 +110,11 @@ export class Televersements {
    * l'attendre sans deviner combien de temps ça prend.
    */
   private enVol: Promise<void> | null = null
-  private dernierVerdict: VerdictTeleversement = {
-    autorise: false,
-    raison: 'sans-stockage',
+  private dernierVerdict: UploadVerdict = {
+    allowed: false,
+    reason: 'sans-stockage',
     debitMaxOctetsS: null,
-    texte: 'aucun stockage configuré sur le hub',
+    text: 'aucun stockage configuré sur le hub',
   }
   private echecsDeDebit = 0
   /** Fichier en vol : c'est ce qui garantit qu'on n'en monte qu'un. */
@@ -183,24 +183,24 @@ export class Televersements {
     }
   }
 
-  vue(): VueTeleversements {
+  vue(): UploadsView {
     const lignes = this.db.select().from(televersement).orderBy(asc(televersement.demandeA)).all()
     return {
       verdict: this.dernierVerdict,
-      entrees: lignes.map((ligne) => ({
+      entries: lignes.map((ligne) => ({
         file: ligne.file,
         state: ligne.state,
-        pourcent:
+        percent:
           ligne.tailleOctets > 0
             ? Math.min(100, Math.round((ligne.octetsEnvoyes / ligne.tailleOctets) * 100))
             : 0,
         // Borné à zéro comme le pourcentage l'est à cent, et pour la même
         // raison : un rush qui a grossi entre la mise en file et l'envoi rendrait
         // sinon un reste négatif, donc un temps restant négatif.
-        restantOctets: Math.max(0, ligne.tailleOctets - ligne.octetsEnvoyes),
+        remainingBytes: Math.max(0, ligne.tailleOctets - ligne.octetsEnvoyes),
         debitOctetsS: ligne.debitOctetsS,
-        erreur: ligne.lastError,
-        manuel: ligne.manuel,
+        error: ligne.lastError,
+        manual: ligne.manuel,
       })),
     }
   }
@@ -233,7 +233,7 @@ export class Televersements {
    * écartés — monter une prise qui dure encore produirait un fichier tronqué
    * chez le stockage, et il aurait l'air complet.
    */
-  private async elire(): Promise<{ candidat: CandidatVod; manuel: boolean } | null> {
+  private async elire(): Promise<{ candidat: CandidatVod; manual: boolean } | null> {
     const candidats = await this.deps.candidats()
     const parFichier = new Map(candidats.map((c) => [c.file, c]))
     const maintenant = this.nowIso()
@@ -248,8 +248,8 @@ export class Televersements {
 
     for (const ligne of [...enFile].sort((a, b) => Number(b.manuel) - Number(a.manuel))) {
       const candidat = parFichier.get(ligne.file)
-      if (candidat == null || candidat.enEcriture) continue
-      return { candidat, manuel: ligne.manuel }
+      if (candidat == null || candidat.beingWritten) continue
+      return { candidat, manual: ligne.manuel }
     }
 
     if (!(this.deps.politique()?.actif ?? false)) return null
@@ -264,8 +264,8 @@ export class Televersements {
         .all()
         .map((ligne) => ligne.file),
     )
-    const neuf = candidats.find((c) => !c.enEcriture && !traites.has(c.file))
-    return neuf == null ? null : { candidat: neuf, manuel: false }
+    const neuf = candidats.find((c) => !c.beingWritten && !traites.has(c.file))
+    return neuf == null ? null : { candidat: neuf, manual: false }
   }
 
   /**
@@ -293,9 +293,9 @@ export class Televersements {
     return this.enVol
   }
 
-  private verdictPour(manuel: boolean): VerdictTeleversement {
+  private verdictPour(manual: boolean): UploadVerdict {
     const politique = this.deps.politique()
-    const entrees: EntreesRegulateur = {
+    const entries: EntreesRegulateur = {
       stockagePret: politique != null && this.deps.hub() != null,
       politique: politique ?? {
         actif: false,
@@ -304,14 +304,14 @@ export class Televersements {
         margeConferenceMinutes: 10,
         taillePartMo: 8,
       },
-      manuel,
+      manuel: manual,
       enregistre: this.deps.enregistre(),
       conferenceEnCours: this.deps.conferenceEnCours(),
       msAvantProchaine: this.deps.msAvantProchaine(),
       charge: this.deps.charge(),
       debitConstateOctetsS: null,
     }
-    return verdictTeleversement(entrees)
+    return verdictTeleversement(entries)
   }
 
   private async uneFois(): Promise<void> {
@@ -324,11 +324,11 @@ export class Televersements {
       return
     }
 
-    const verdict = this.verdictPour(elu.manuel)
+    const verdict = this.verdictPour(elu.manual)
     this.dernierVerdict = verdict
-    if (!verdict.autorise) {
-      if (verdict.raison === 'debit') this.echecsDeDebit += 1
-      const dans = attenteApres(verdict.raison ?? 'charge', this.echecsDeDebit)
+    if (!verdict.allowed) {
+      if (verdict.reason === 'debit') this.echecsDeDebit += 1
+      const dans = attenteApres(verdict.reason ?? 'charge', this.echecsDeDebit)
       this.db
         .update(televersement)
         .set({ nextAttemptAt: new Date(this.maintenant + dans).toISOString() })
@@ -457,9 +457,9 @@ export class Televersements {
     hub: HubVod,
     candidat: CandidatVod,
     file: string,
-    kind: GenreVod,
+    kind: VodKind,
     sizeBytes: number,
-    verdict: VerdictTeleversement,
+    verdict: UploadVerdict,
   ): Promise<void> {
     const plan = await hub.begin({ file, sizeBytes, kind, sessionId: candidat.sessionId })
 
@@ -670,9 +670,9 @@ function hoteDe(url: string): string {
  * pannes qui ne se corrigent pas au même endroit, là où « fetch failed » les
  * confond toutes.
  */
-function causeLisible(erreur: unknown): string {
+function causeLisible(error: unknown): string {
   const chaine: string[] = []
-  let courant: unknown = erreur
+  let courant: unknown = error
   for (let profondeur = 0; courant != null && profondeur < 4; profondeur += 1) {
     const noeud = courant as { message?: string; code?: string; cause?: unknown }
     const code = typeof noeud.code === 'string' ? noeud.code : null
@@ -680,5 +680,5 @@ function causeLisible(erreur: unknown): string {
     else if (typeof noeud.message === 'string' && noeud.message !== '') chaine.push(noeud.message)
     courant = noeud.cause
   }
-  return chaine.length === 0 ? String(erreur) : chaine.join(' — ')
+  return chaine.length === 0 ? String(error) : chaine.join(' — ')
 }

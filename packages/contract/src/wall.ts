@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { isoDateTimeSchema, roomIdSchema, sessionIdSchema } from './primitives.js'
 
-/** Toutes les sources convergent vers la même file de modération. */
+/** Every source converges on the same moderation queue. */
 export const commentSourceSchema = z.enum(['form', 'bluesky', 'mastodon', 'x'])
 export type CommentSource = z.infer<typeof commentSourceSchema>
 
@@ -11,7 +11,7 @@ export const commentSchema = z.object({
   id: z.string(),
   source: commentSourceSchema,
   author: z.string().max(80),
-  /** Handle d'origine pour les sources sociales, `null` pour le formulaire. */
+  /** Origin handle for social sources, `null` for the form. */
   authorHandle: z.string().nullable(),
   text: z.string().max(500),
   status: moderationStatusSchema,

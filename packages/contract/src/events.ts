@@ -12,10 +12,10 @@ import {
 } from './primitives.js'
 
 /**
- * Événements montants (outbox salle → hub).
+ * Upstream events (room outbox → hub).
  *
- * Union discriminée sur `type` : ajouter un événement sans mettre le hub à jour
- * fait échouer le typecheck des deux côtés, ce qui est exactement le but.
+ * Discriminated union on `type`: adding an event without updating the hub fails
+ * the typecheck on both sides, which is exactly the point.
  */
 
 export const roomEventPayloadSchema = z.discriminatedUnion('type', [
@@ -23,7 +23,7 @@ export const roomEventPayloadSchema = z.discriminatedUnion('type', [
     type: z.literal('scene.changed'),
     obs: obsInstanceSchema,
     role: sceneRoleSchema.nullable(),
-    /** Nom OBS réel, utile au diagnostic quand le mapping de rôles est faux. */
+    /** Real OBS name, useful for diagnosis when the role mapping is wrong. */
     sceneName: z.string(),
   }),
   z.object({
@@ -35,7 +35,7 @@ export const roomEventPayloadSchema = z.discriminatedUnion('type', [
     type: z.literal('recording.stopped'),
     obs: obsInstanceSchema,
     sessionId: sessionIdSchema.nullable(),
-    /** Chemin renvoyé par OBS (`RecordStateChanged`), après renommage éventuel. */
+    /** Path returned by OBS (`RecordStateChanged`), after any renaming. */
     outputPath: z.string().nullable(),
     durationMs: z.number().int().nonnegative(),
     sidecarWritten: z.boolean(),
@@ -44,7 +44,7 @@ export const roomEventPayloadSchema = z.discriminatedUnion('type', [
     type: z.literal('talk.marker'),
     sessionId: sessionIdSchema.nullable(),
     label: z.string(),
-    /** Décalage depuis le début de l'enregistrement — ce qui sert au montage. */
+    /** Offset from the start of the recording — what editing works from. */
     offsetMs: z.number().int().nonnegative(),
   }),
   z.object({
@@ -61,16 +61,16 @@ export const roomEventPayloadSchema = z.discriminatedUnion('type', [
     type: z.literal('obs.connection'),
     obs: obsInstanceSchema,
     connected: z.boolean(),
-    /** Rôles déclarés dans la config mais absents d'OBS : à voir en rouge en régie. */
+    /** Roles declared in the config but missing from OBS: shown red in the control app. */
     unresolvedRoles: z.array(sceneRoleSchema).default([]),
   }),
   z.object({
     /**
-     * Message d'une salle vers la console.
+     * Message from a room to the console.
      *
-     * Passe par l'outbox, donc `required` : un appel à l'aide envoyé pendant
-     * une coupure réseau doit arriver, même en retard. C'est exactement le
-     * moment où on en a le plus besoin.
+     * Goes through the outbox, so `required`: a call for help sent during a
+     * network outage must arrive, even late. That is exactly the moment it is
+     * needed most.
      */
     type: z.literal('room.message'),
     text: z.string().min(1).max(500),
@@ -81,26 +81,25 @@ export const roomEventPayloadSchema = z.discriminatedUnion('type', [
     level: z.enum(['warn', 'error']),
     message: z.string(),
   }),
-  // ── best-effort à partir d'ici ──
+  // ── best-effort from here on ──
   z.object({
     type: z.literal('room.heartbeat'),
     connectivity: connectivitySchema,
     sceneRole: sceneRoleSchema.nullable(),
     recording: z.boolean(),
     streaming: z.boolean(),
-    /** Profondeur de l'outbox : c'est l'indicateur à surveiller dans l'admin. */
+    /** Outbox depth: the indicator to watch in the admin console. */
     outboxDepth: z.number().int().nonnegative(),
     programContentHash: z.string().nullable(),
     /**
-     * Ce que l'écran de la salle affiche en ce moment.
+     * What the room's screen is showing right now.
      *
-     * Remonté parce qu'il se pilote maintenant de loin : une régie mobile ne
-     * peint jamais d'avance, donc sans ce champ aucun bouton d'écran ne
-     * s'allume et l'opérateur ne sait pas ce que le public voit.
+     * Reported because it is now driven from afar: a mobile control app never
+     * paints ahead, so without this field no screen button lights up and the
+     * operator does not know what the audience sees.
      *
-     * Facultatif à l'entrée : une salle d'une version antérieure continue de
-     * battre sans lui, et son écran se lit simplement « inconnu » plutôt que de
-     * faire échouer tout son lot.
+     * Optional on input: a room on an older version keeps beating without it,
+     * and its screen simply reads "unknown" rather than failing its whole batch.
      */
     displayMode: displayModeSchema.nullable().default(null),
   }),
@@ -115,20 +114,20 @@ export type RoomEventPayload = z.infer<typeof roomEventPayloadSchema>
 export type RoomEventType = RoomEventPayload['type']
 
 /**
- * Enveloppe de transport. `id` + `roomId` forment la clé d'idempotence côté hub :
- * un rejeu de batch après reconnexion ne doit jamais dupliquer une ligne.
+ * Transport envelope. `id` + `roomId` form the idempotency key on the hub side:
+ * replaying a batch after reconnection must never duplicate a row.
  */
 export const envelopeSchema = z.object({
   id: ulidSchema,
   roomId: roomIdSchema,
-  /** Monotone par salle, persisté : donne l'ordre d'application côté hub. */
+  /** Monotonic per room, persisted: gives the order of application on the hub. */
   seq: z.number().int().nonnegative(),
-  /** Horloge locale corrigée de l'offset serveur. */
+  /** Local clock corrected by the server offset. */
   occurredAt: isoDateTimeSchema,
-  /** Base monotone : reste juste même si l'horloge système saute. */
+  /** Monotonic base: stays correct even if the system clock jumps. */
   monotonicMs: z.number().nonnegative(),
   delivery: deliverySchema,
-  /** Collapse dans la file : seule la dernière occurrence non envoyée survit. */
+  /** Collapses in the queue: only the last unsent occurrence survives. */
   dedupKey: z.string().optional(),
   expiresAt: isoDateTimeSchema.optional(),
   payload: roomEventPayloadSchema,
@@ -136,8 +135,8 @@ export const envelopeSchema = z.object({
 export type Envelope = z.infer<typeof envelopeSchema>
 
 /**
- * Politique par type d'événement, définie une fois ici pour que le client n'ait
- * pas à la redécider à chaque `enqueue`.
+ * Policy per event type, defined once here so the client does not have to decide
+ * it again on every `enqueue`.
  */
 export const DELIVERY_BY_EVENT: Record<RoomEventType, z.infer<typeof deliverySchema>> = {
   'scene.changed': 'required',
@@ -153,7 +152,7 @@ export const DELIVERY_BY_EVENT: Record<RoomEventType, z.infer<typeof deliverySch
   'stream.telemetry': 'best-effort',
 }
 
-/** Motifs de rejet définitif : l'événement sort de la file au lieu de la bloquer. */
+/** Final rejection reasons: the event leaves the queue instead of blocking it. */
 export const rejectionReasonSchema = z.enum([
   'invalid-schema',
   'unknown-room',

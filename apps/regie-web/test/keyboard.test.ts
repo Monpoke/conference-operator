@@ -195,7 +195,7 @@ describe('couche liée à un composant', () => {
     expect(clavier.depth()).toBe(0)
   })
 
-  it('attend l’ouverture, plutôt que le montage', async () => {
+  it('attend l’ouverture, plutôt que le editing', async () => {
     const clavier = useKeyboardStore()
     const ouverte = ref(false)
     const scope = effectScope()
@@ -205,7 +205,7 @@ describe('couche liée à un composant', () => {
     })
 
     // Reka rend souvent le contenu avant de l'ouvrir : une couche posée dès le
-    // montage volerait les touches à la page derrière.
+    // editing volerait les touches à la page derrière.
     expect(clavier.depth()).toBe(0)
 
     ouverte.value = true

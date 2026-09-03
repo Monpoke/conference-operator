@@ -1,4 +1,4 @@
-import type { ChargeHote } from '@cloudnord/contract'
+import type { HostLoad } from '@cloudnord/contract'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
@@ -21,7 +21,7 @@ export const POLL_MS = 5000
  * poste qui ne répond plus.
  */
 export const useHostStore = defineStore('host', () => {
-  const load = ref<ChargeHote | null>(null)
+  const load = ref<HostLoad | null>(null)
 
   let timer: ReturnType<typeof setInterval> | null = null
 
@@ -29,7 +29,7 @@ export const useHostStore = defineStore('host', () => {
     try {
       const response = await fetch('/control/host')
       if (!response.ok) throw new Error('relevé indisponible')
-      load.value = (await response.json()) as ChargeHote
+      load.value = (await response.json()) as HostLoad
     } catch {
       load.value = null
     }

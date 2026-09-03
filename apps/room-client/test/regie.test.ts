@@ -228,7 +228,7 @@ describe('fenêtre de régie', () => {
     expect((await etat()).diagnostics?.recording.active).toBe(false)
   }, 40_000)
 
-  it('pose les repères de montage, et les tient à part des chapitres', async () => {
+  it('pose les repères de editing, et les tient à part des chapitres', async () => {
     await agir({ action: 'recording.start' })
 
     await agir({ action: 'recording.mark', label: 'Début', role: 'debut' })
@@ -238,8 +238,8 @@ describe('fenêtre de régie', () => {
     await agir({ action: 'recording.mark', label: 'Questions' })
 
     const vue = await etat()
-    expect(vue.diagnostics?.recording.montage.debutMs).not.toBeNull()
-    expect(vue.diagnostics?.recording.montage.finMs).toBeNull()
+    expect(vue.diagnostics?.recording.editing.startMs).not.toBeNull()
+    expect(vue.diagnostics?.recording.editing.endMs).toBeNull()
     // Les deux repères ne se comptent pas parmi les chapitres : seul
     // « Questions » en est un.
     expect(vue.diagnostics?.recording.markers).toBe(1)
@@ -272,7 +272,7 @@ describe('fenêtre de régie', () => {
   it('remonte la profondeur de file et le journal', async () => {
     const diagnostics = (await etat()).diagnostics
     expect(diagnostics?.outboxDepth).toBeGreaterThanOrEqual(0)
-    expect(Array.isArray(diagnostics?.journal)).toBe(true)
+    expect(Array.isArray(diagnostics?.log)).toBe(true)
   }, 40_000)
 })
 
@@ -433,7 +433,7 @@ describe('sélecteur de dossier', () => {
   it('annonce à la régie que ce poste sait l’ouvrir', () => {
     // La page ne peut pas le deviner : elle tourne aussi bien dans la fenêtre
     // Electron du poste que dans un navigateur ouvert à côté.
-    expect(room.diagnostics().config?.peutParcourir).toBe(true)
+    expect(room.diagnostics().config?.canBrowse).toBe(true)
   })
 })
 

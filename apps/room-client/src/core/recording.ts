@@ -1,9 +1,9 @@
 import { basename, dirname, extname, join } from 'node:path'
 import type { Session } from '@cloudnord/program'
 
-import type { Marker, MarkerRole, ReperesMontage, Sidecar } from '@cloudnord/contract'
+import type { Marker, MarkerRole, EditingMarks, Sidecar } from '@cloudnord/contract'
 
-export type { Marker, MarkerRole, ReperesMontage, Sidecar }
+export type { Marker, MarkerRole, EditingMarks, Sidecar }
 
 export interface RecordingFs {
   rename(from: string, to: string): Promise<void>
@@ -91,14 +91,14 @@ export interface StopOptions {
 /**
  * Pilote un enregistrement de talk et produit son sidecar.
  *
- * Le sidecar est ce qui rend le montage et l'upload quasi automatiques après
+ * Le sidecar est ce qui rend le editing et l'upload quasi automatiques après
  * l'événement — et il est écrit **en local**, donc produit même si le hub est
  * injoignable toute la journée.
  */
 export class RecordingSession {
   private startedAtMs: number | null = null
   /** Même départ, lu sur l'horloge corrigée : la base du temps de captation en dev. */
-  private startedAtCorrigeMs: number | null = null
+  private startedAtCorrectedMs: number | null = null
   private startedAtIso: string | null = null
   private markers: Marker[] = []
   private input: StartInput | null = null
@@ -110,7 +110,7 @@ export class RecordingSession {
   }
 
   /**
-   * Les marqueurs de chapitre, les deux repères de montage exclus.
+   * Les marqueurs de chapitre, les deux repères de editing exclus.
    *
    * Ce compte s'affiche en régie juste à côté de l'état des repères : y
    * inclure le début et la fin faisait passer « aucun marqueur » à
@@ -137,7 +137,7 @@ export class RecordingSession {
    * chiffres pour le même enregistrement, encore.
    */
   get startedAtCorrige(): number | null {
-    return this.deps.suitLHorloge === true ? this.startedAtCorrigeMs : null
+    return this.deps.suitLHorloge === true ? this.startedAtCorrectedMs : null
   }
 
   /**
@@ -163,7 +163,7 @@ export class RecordingSession {
     await this.deps.startRecord()
     this.startedAtMs = this.deps.now()
     const departCorrige = this.deps.correctedNow()
-    this.startedAtCorrigeMs = departCorrige
+    this.startedAtCorrectedMs = departCorrige
     this.startedAtIso = new Date(departCorrige).toISOString()
     this.markers = []
     this.input = input
@@ -184,8 +184,8 @@ export class RecordingSession {
    */
   private ecouleMs(): number {
     if (this.startedAtMs == null) return 0
-    if (this.deps.suitLHorloge === true && this.startedAtCorrigeMs != null) {
-      return Math.max(0, this.deps.correctedNow() - this.startedAtCorrigeMs)
+    if (this.deps.suitLHorloge === true && this.startedAtCorrectedMs != null) {
+      return Math.max(0, this.deps.correctedNow() - this.startedAtCorrectedMs)
     }
     return Math.max(0, this.deps.now() - this.startedAtMs)
   }
@@ -193,12 +193,12 @@ export class RecordingSession {
   /**
    * Pose un marqueur à l'instant courant.
    *
-   * `role` distingue les deux repères de montage du chapitre ordinaire, et ils
+   * `role` distingue les deux repères de editing du chapitre ordinaire, et ils
    * ne se comportent pas pareil : **reposer un repère remplace le précédent**.
    * C'est le geste qu'on fait réellement — on repose le début parce que
    * l'orateur a eu un faux départ, on repose la fin parce que les questions ont
    * repris après ce qu'on croyait être le mot de la fin. En empiler deux
-   * laisserait au montage, trois semaines plus tard, un arbitrage que seule la
+   * laisserait au editing, trois semaines plus tard, un arbitrage que seule la
    * régie pouvait trancher, sur l'instant.
    */
   mark(label: string, role: MarkerRole | null = null): Marker {
@@ -220,7 +220,7 @@ export class RecordingSession {
      *
      * Les deux coïncident tant qu'on empile, et divergent dès qu'un repère est
      * reposé : un début redéplacé à 2 min se retrouvait derrière le chapitre
-     * de 1 min. Le sidecar est lu par un montage qui en tire des chapitres —
+     * de 1 min. Le sidecar est lu par un editing qui en tire des chapitres —
      * lui livrer une liste en désordre revient à lui demander de réparer là-bas
      * ce qui se range ici en une ligne.
      */
@@ -235,10 +235,10 @@ export class RecordingSession {
    * d'arrêter une prise — « est-ce que j'ai posé le début ? » —, puisque trois
    * marqueurs peuvent être trois chapitres.
    */
-  get montage(): ReperesMontage {
+  get editing(): EditingMarks {
     const de = (role: MarkerRole): number | null =>
       this.markers.find((marker) => marker.role === role)?.offsetMs ?? null
-    return { debutMs: de('debut'), finMs: de('fin') }
+    return { startMs: de('debut'), endMs: de('fin') }
   }
 
   /**
@@ -316,7 +316,7 @@ export class RecordingSession {
       try {
         await this.deps.fs.writeFile(sidecarPath, JSON.stringify(sidecar, null, 2))
       } catch (cause) {
-        this.deps.onLog?.('error', "sidecar non écrit : le montage devra être fait à la main", {
+        this.deps.onLog?.('error', "sidecar non écrit : le editing devra être fait à la main", {
           path: sidecarPath,
           message: (cause as Error).message,
         })
@@ -327,7 +327,7 @@ export class RecordingSession {
     }
 
     this.startedAtMs = null
-    this.startedAtCorrigeMs = null
+    this.startedAtCorrectedMs = null
     this.startedAtIso = null
     this.input = null
     return { sidecarPath, videoPath, sidecar }

@@ -49,7 +49,7 @@ export function resoudreRegie(): { dossier: string; manifeste: string } | null {
  *
  * Le chemin qu'elle finit par trouver sur un poste installé est écrit ailleurs :
  * dans `extraResources` de `electron-builder.yml`. Deux fichiers doivent
- * s'accorder, et leur désaccord ne se verrait qu'au montage d'une salle — la
+ * s'accorder, et leur désaccord ne se verrait qu'au editing d'une salle — la
  * régie répondrait 503 sur une machine où tout le reste marche. Un test noue
  * les deux.
  */

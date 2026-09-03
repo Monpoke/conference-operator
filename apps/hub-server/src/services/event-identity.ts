@@ -1,4 +1,4 @@
-import { resoudreIdentiteEvenement, type EventIdentity } from '@cloudnord/contract'
+import { resolveEventIdentity, type EventIdentity } from '@cloudnord/contract'
 import type { ProgramService } from './program.js'
 import type { SettingsService } from './sessions.js'
 
@@ -33,14 +33,14 @@ export class EventIdentityService {
    * aller sans retour.
    */
   derived(): EventIdentity {
-    return resoudreIdentiteEvenement({ programme: this.programs.activeEventName() })
+    return resolveEventIdentity({ program: this.programs.activeEventName() })
   }
 
   get(): EventIdentity {
     const reglages = this.settings.get()
-    return resoudreIdentiteEvenement({
-      reglage: { name: reglages.eventName, shortName: reglages.eventShortName },
-      programme: this.programs.activeEventName(),
+    return resolveEventIdentity({
+      setting: { name: reglages.eventName, shortName: reglages.eventShortName },
+      program: this.programs.activeEventName(),
     })
   }
 }

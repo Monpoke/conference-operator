@@ -48,9 +48,9 @@ export function formaterLigneJournal(
 function detailler(contexte: unknown): string {
   if (typeof contexte === 'string') return contexte
   if (contexte != null && typeof contexte === 'object') {
-    const entrees = Object.entries(contexte as Record<string, unknown>)
-    if (entrees.length === 1 && typeof entrees[0]![1] === 'string') return `— ${entrees[0]![1]}`
-    return entrees.map(([cle, valeur]) => `${cle}=${JSON.stringify(valeur)}`).join(' ')
+    const entries = Object.entries(contexte as Record<string, unknown>)
+    if (entries.length === 1 && typeof entries[0]![1] === 'string') return `— ${entries[0]![1]}`
+    return entries.map(([cle, valeur]) => `${cle}=${JSON.stringify(valeur)}`).join(' ')
   }
   return String(contexte)
 }

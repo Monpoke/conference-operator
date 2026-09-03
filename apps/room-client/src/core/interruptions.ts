@@ -23,7 +23,7 @@ export interface EchecJournalise {
 
 export class SuiviInterruption {
   private tentatives = 0
-  private debutMs: number | null = null
+  private startMs: number | null = null
   private dernierJournalMs = 0
 
   constructor(
@@ -37,7 +37,7 @@ export class SuiviInterruption {
   echec(): EchecJournalise {
     const maintenant = this.now()
     this.tentatives += 1
-    if (this.debutMs == null) this.debutMs = maintenant
+    if (this.startMs == null) this.startMs = maintenant
 
     const premier = this.tentatives === 1
     if (premier || maintenant - this.dernierJournalMs >= this.rappelMs) {
@@ -46,7 +46,7 @@ export class SuiviInterruption {
         tentatives: this.tentatives,
         message: premier
           ? `${this.libelle} interrompu, nouvelle tentative`
-          : `${this.libelle} toujours interrompu — ${this.tentatives} tentatives depuis ${formaterDuree(maintenant - this.debutMs)}`,
+          : `${this.libelle} toujours interrompu — ${this.tentatives} tentatives depuis ${formaterDuree(maintenant - this.startMs)}`,
       }
     }
     return { message: null, tentatives: this.tentatives }
@@ -59,11 +59,11 @@ export class SuiviInterruption {
    * pas d'être annoncé comme un rétablissement.
    */
   retabli(): { message: string; tentatives: number } | null {
-    if (this.debutMs == null) return null
-    const duree = this.now() - this.debutMs
+    if (this.startMs == null) return null
+    const duree = this.now() - this.startMs
     const tentatives = this.tentatives
     this.tentatives = 0
-    this.debutMs = null
+    this.startMs = null
     this.dernierJournalMs = 0
     return {
       tentatives,

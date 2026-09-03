@@ -119,7 +119,7 @@ const FIELD =
                 désigné autre chose. D'où le mot « poste » sur le bouton.
               -->
               <Button
-                v-if="config.peutParcourir"
+                v-if="config.canBrowse"
                 id="btn-parcourir-vod"
                 class="shrink-0"
                 title="Choisir le dossier sur le poste de la salle"

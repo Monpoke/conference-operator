@@ -6,7 +6,7 @@ import {
   contract,
   type Command,
   type Connectivity,
-  type ModeExecution,
+  type ExecutionMode,
   type Question,
   type RoomConfigPatch,
 } from '@cloudnord/contract'
@@ -33,7 +33,7 @@ export interface HubLinkOptions {
    * de l'événement — ou l'inverse — doit se voir en régie, pas se découvrir
    * dans les enregistrements.
    */
-  onHubMode?: (mode: ModeExecution) => void
+  onHubMode?: (mode: ExecutionMode) => void
   /**
    * Une commande descendante vient d'être appliquée.
    *

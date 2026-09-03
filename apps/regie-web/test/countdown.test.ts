@@ -1,4 +1,4 @@
-import { SANS_REPERES } from '@cloudnord/contract'
+import { NO_EDITING_MARKS } from '@cloudnord/contract'
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import Countdown from '../src/components/Countdown.vue'
@@ -104,7 +104,7 @@ describe('rendu du chronomètre', () => {
 })
 
 describe('chronomètre de prise', () => {
-  const REC = { active: true, markers: 0, startedAtMs: 1_000_000, startedAtCorrigeMs: null, montage: SANS_REPERES }
+  const REC = { active: true, markers: 0, startedAtMs: 1_000_000, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS }
 
   it('reste éteint hors enregistrement', () => {
     const wrapper = mount(RecordingTimer, {
@@ -126,7 +126,7 @@ describe('chronomètre de prise', () => {
     // chronomètre doit dire la même chose que la durée finalement enregistrée.
     const wrapper = mount(RecordingTimer, {
       props: {
-        recording: { ...REC, startedAtCorrigeMs: 5_000_000 },
+        recording: { ...REC, startedAtCorrectedMs: 5_000_000 },
         realMs: 1_000_000,
         roomMs: 5_000_000 + 62_000,
       },

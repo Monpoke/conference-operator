@@ -115,7 +115,7 @@ ${etatInitial}
     const nomEvenement = donnees.eventIdentity?.name
     if (nomEvenement) document.title = nomEvenement + ' — bandeau live'
     /**
-     * Deux canaux, une seule place à l'écran.
+     * Deux channels, une seule place à l'écran.
      *
      * Le bandeau de la console passe devant la question : quand il y en a un,
      * c'est qu'il se passe quelque chose — « on reprend dans 5 minutes » — et

@@ -132,10 +132,10 @@ describe('cycle d\'enregistrement', () => {
   })
 
   /*
-   * Les deux repères de montage, et la seule règle qui les distingue d'un
+   * Les deux repères de editing, et la seule règle qui les distingue d'un
    * chapitre : il n'y en a qu'un de chaque, et c'est le dernier posé qui vaut.
    *
-   * Ce qui se joue ici tient à trois semaines de distance. Le montage lit le
+   * Ce qui se joue ici tient à trois semaines de distance. Le editing lit le
    * sidecar longtemps après que la salle a été démontée : ce qu'il y trouve
    * doit se lire sans arbitrage, parce que plus personne ne pourra dire lequel
    * des deux « Début » était le bon.
@@ -153,7 +153,7 @@ describe('cycle d\'enregistrement', () => {
     clockMs += 1_800_000
     session.mark('Fin', 'fin')
 
-    expect(session.montage).toEqual({ debutMs: 90_000, finMs: 1_890_000 })
+    expect(session.editing).toEqual({ startMs: 90_000, endMs: 1_890_000 })
   })
 
   it('ne compte pas les repères parmi les marqueurs de chapitre', async () => {
@@ -180,7 +180,7 @@ describe('cycle d\'enregistrement', () => {
     clockMs += 60_000
     session.mark('Introduction')
     // Le début repart derrière le chapitre : posé en dernier, il tombe en
-    // premier. Un sidecar en désordre demanderait au montage de réparer
+    // premier. Un sidecar en désordre demanderait au editing de réparer
     // là-bas ce qui se range ici.
     clockMs += 60_000
     session.mark('Début', 'debut')
@@ -204,7 +204,7 @@ describe('cycle d\'enregistrement', () => {
 })
 
 describe('sidecar', () => {
-  it('écrit les métadonnées nécessaires au montage', async () => {
+  it('écrit les métadonnées nécessaires au editing', async () => {
     const { fs, files } = fakeFs(['/rec/2026-10-30_track1_1100_honeyswamp-active-defense-to-ruin-attackers.mkv'])
     const { session } = makeSession(fs)
 
@@ -245,7 +245,7 @@ describe('sidecar', () => {
     const sidecar = JSON.parse(files.get(result.sidecarPath!)!) as Sidecar
 
     /*
-     * Ce que lit le montage, et la raison d'être du champ : un rôle, pas un
+     * Ce que lit le editing, et la raison d'être du champ : un rôle, pas un
      * libellé à reconnaître. « Début », « debut », « DÉBUT » et le jour où
      * quelqu'un tapera « Départ » se ressemblent trop pour qu'on parie dessus.
      */
@@ -389,7 +389,7 @@ describe('sidecar', () => {
 
   it('n’écrit pas de sidecar orphelin quand aucun master ne porte ce nom', async () => {
     // Faute de fichier à côté duquel se poser, on renonce : semer un sidecar
-    // seul dans le dossier des captations tromperait la chaîne de montage.
+    // seul dans le dossier des captations tromperait la chaîne de editing.
     const { fs, files } = fakeFs(['/rec/autre-chose.mkv'])
     const { session } = makeSession(fs, { recordingRoot: async () => '/rec' })
 

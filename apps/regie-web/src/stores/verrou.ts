@@ -1,4 +1,4 @@
-import type { RegieLock, RegieRoom } from '@cloudnord/contract'
+import type { ControlLock, ControlRoom } from '@cloudnord/contract'
 import { useToast } from '@cloudnord/components'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
@@ -26,7 +26,7 @@ export const useVerrouStore = defineStore('verrou', () => {
   const toast = useToast()
 
   /** Les salles et leur verrou, pour l'écran de choix. */
-  const salles = ref<RegieRoom[]>([])
+  const salles = ref<ControlRoom[]>([])
   const chargement = ref(false)
 
   /**
@@ -36,7 +36,7 @@ export const useVerrouStore = defineStore('verrou', () => {
    * rafraîchie chaque seconde. Un second exemplaire finirait par dire autre
    * chose que celui qu'on affiche à côté.
    */
-  const verrou = computed<RegieLock | null>(() => vueDuVerrou())
+  const verrou = computed<ControlLock | null>(() => vueDuVerrou())
 
   const porteur = computed(() => verrou.value?.holder ?? null)
 
@@ -92,7 +92,7 @@ export const useVerrouStore = defineStore('verrou', () => {
    * voir tout de suite, pas au tour de liste suivant. Sur la liste sinon, qui
    * est la seule source de l'écran de choix.
    */
-  function vueDuVerrou(): RegieLock | null {
+  function vueDuVerrou(): ControlLock | null {
     if (porte.roomId != null) return porte.verrouCourant
     const salle = salles.value.find((ligne) => ligne.roomId === porte.roomId)
     return salle?.lock ?? null

@@ -78,10 +78,10 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
    * Le micro respire, l'ambiance reste basse, et le retour est muet : trois
    * cas qu'on veut distinguer d'un coup d'œil sur l'écran.
    */
-  const ENTREES_AUDIO: { nom: string; base: number; amplitude: number; canaux: number }[] = [
-    { nom: 'Micro cravate', base: -18, amplitude: 10, canaux: 1 },
-    { nom: 'Ambiance salle', base: -38, amplitude: 6, canaux: 2 },
-    { nom: 'Retour régie', base: -60, amplitude: 0, canaux: 2 },
+  const ENTREES_AUDIO: { nom: string; base: number; amplitude: number; channels: number }[] = [
+    { nom: 'Micro cravate', base: -18, amplitude: 10, channels: 1 },
+    { nom: 'Ambiance salle', base: -38, amplitude: 6, channels: 2 },
+    { nom: 'Retour régie', base: -60, amplitude: 0, channels: 2 },
   ]
 
   let phase = 0
@@ -96,7 +96,7 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
         const mul = db <= -60 ? 0 : 10 ** (db / 20)
         return {
           inputName: entree.nom,
-          inputLevelsMul: Array.from({ length: entree.canaux }, () => [mul, mul * 1.1, mul * 1.1]),
+          inputLevelsMul: Array.from({ length: entree.channels }, () => [mul, mul * 1.1, mul * 1.1]),
         }
       }),
     }

@@ -1,4 +1,4 @@
-import type { ChargeHote } from '@cloudnord/contract'
+import type { HostLoad } from '@cloudnord/contract'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -84,9 +84,9 @@ describe('charge du poste', () => {
       props: {
         load: {
           cpu: 0.1,
-          coeurs: 8,
-          fenetreMs: 5000,
-          memoire: { occupeeOctets: 31_000_000_000, totalOctets: 32_000_000_000 },
+          cores: 8,
+          windowMs: 5000,
+          memory: { usedBytes: 31_000_000_000, totalBytes: 32_000_000_000 },
         },
       },
     })
@@ -103,9 +103,9 @@ describe('charge du poste', () => {
       props: {
         load: {
           cpu: 0.1,
-          coeurs: 8,
-          fenetreMs: 5000,
-          memoire: { occupeeOctets: 31_000_000_000, totalOctets: 32_000_000_000 },
+          cores: 8,
+          windowMs: 5000,
+          memory: { usedBytes: 31_000_000_000, totalBytes: 32_000_000_000 },
         },
       },
     })
@@ -116,7 +116,7 @@ describe('charge du poste', () => {
 
   it('ne dit rien de la mémoire quand la première fenêtre n’est pas écoulée', () => {
     const wrapper = mount(CpuIndicator, {
-      props: { load: { cpu: null, coeurs: 8, fenetreMs: 0, memoire: null } },
+      props: { load: { cpu: null, cores: 8, windowMs: 0, memory: null } },
     })
 
     // Une mémoire non mesurée devenait « la plus grave » et la table des
@@ -128,14 +128,14 @@ describe('charge du poste', () => {
 })
 
 describe('charge du poste, en détail', () => {
-  const MEMOIRE_SAINE = { occupeeOctets: 4_000_000_000, totalOctets: 16_000_000_000 }
+  const MEMOIRE_SAINE = { usedBytes: 4_000_000_000, totalBytes: 16_000_000_000 }
 
-  function poste(load: ChargeHote | null): ReturnType<typeof mount> {
+  function poste(load: HostLoad | null): ReturnType<typeof mount> {
     return mount(CpuIndicator, { props: { load } })
   }
 
   it('reste verte tant que le poste a de la marge', () => {
-    const wrapper = poste({ cpu: 0.31, coeurs: 8, fenetreMs: 5_000, memoire: MEMOIRE_SAINE })
+    const wrapper = poste({ cpu: 0.31, cores: 8, windowMs: 5_000, memory: MEMOIRE_SAINE })
 
     expect(wrapper.attributes('data-niveau')).toBe('ok')
     expect(wrapper.get('.pastille').classes()).toEqual(['pastille'])
@@ -145,7 +145,7 @@ describe('charge du poste, en détail', () => {
   })
 
   it('passe à l’orange sur une charge soutenue', () => {
-    const wrapper = poste({ cpu: 0.78, coeurs: 8, fenetreMs: 5_000, memoire: null })
+    const wrapper = poste({ cpu: 0.78, cores: 8, windowMs: 5_000, memory: null })
 
     expect(wrapper.attributes('data-niveau')).toBe('attention')
     expect(wrapper.get('.pastille').classes()).toContain('degraded')
@@ -153,7 +153,7 @@ describe('charge du poste, en détail', () => {
   })
 
   it('passe au rouge, et dit ce que ça coûte', () => {
-    const wrapper = poste({ cpu: 0.96, coeurs: 4, fenetreMs: 5_000, memoire: null })
+    const wrapper = poste({ cpu: 0.96, cores: 4, windowMs: 5_000, memory: null })
 
     expect(wrapper.attributes('data-niveau')).toBe('alerte')
     expect(wrapper.get('.pastille').classes()).toContain('offline')
@@ -164,13 +164,13 @@ describe('charge du poste, en détail', () => {
   it('colore la pastille et la jauge depuis la même décision', () => {
     // Deux chemins finiraient par se contredire — pastille verte, jauge rouge —
     // et c'est dans ce désaccord qu'on cesserait de croire l'indicateur.
-    const wrapper = poste({ cpu: 0.96, coeurs: 4, fenetreMs: 5_000, memoire: null })
+    const wrapper = poste({ cpu: 0.96, cores: 4, windowMs: 5_000, memory: null })
 
     expect(wrapper.get('.jauge > span').attributes('style')).toContain('96%')
   })
 
   it('montre la mémoire à côté du processeur', () => {
-    const wrapper = poste({ cpu: 0.31, coeurs: 8, fenetreMs: 5_000, memoire: MEMOIRE_SAINE })
+    const wrapper = poste({ cpu: 0.31, cores: 8, windowMs: 5_000, memory: MEMOIRE_SAINE })
 
     expect(wrapper.text()).toContain('Mémoire')
     expect(wrapper.text()).toContain('25 %')
@@ -178,14 +178,14 @@ describe('charge du poste, en détail', () => {
   })
 
   it('ne prend pas une mémoire illisible pour une mémoire pleine', () => {
-    const wrapper = poste({ cpu: 0.31, coeurs: 8, fenetreMs: 5_000, memoire: null })
+    const wrapper = poste({ cpu: 0.31, cores: 8, windowMs: 5_000, memory: null })
 
     expect(wrapper.attributes('data-niveau')).toBe('ok')
     expect(wrapper.text()).toContain('mémoire illisible')
   })
 
   it('n’ajoute pas de bulle native par-dessus la sienne', () => {
-    const wrapper = poste({ cpu: 0.31, coeurs: 8, fenetreMs: 5_000, memoire: MEMOIRE_SAINE })
+    const wrapper = poste({ cpu: 0.31, cores: 8, windowMs: 5_000, memory: MEMOIRE_SAINE })
 
     // Un `title` restant afficherait les deux, l'une sur l'autre, à une seconde
     // d'intervalle. L'annonce vocale, elle, passe par `aria-label`.
@@ -203,12 +203,12 @@ describe('charge du poste, en détail', () => {
 
 describe('mode d’exécution', () => {
   it('se tait quand tout est en production', () => {
-    const wrapper = mount(ModeBadge, { props: { mode: { salle: 'production', hub: 'production' } } })
+    const wrapper = mount(ModeBadge, { props: { mode: { room: 'production', hub: 'production' } } })
     expect(wrapper.text()).toBe('')
   })
 
   it('crie quand la salle et le hub ne sont pas du même côté', () => {
-    const wrapper = mount(ModeBadge, { props: { mode: { salle: 'dev', hub: 'production' } } })
+    const wrapper = mount(ModeBadge, { props: { mode: { room: 'dev', hub: 'production' } } })
 
     // Une salle de développement branchée sur le hub de l'événement enverrait
     // de vraies commandes depuis un poste qui simule tout.
@@ -217,13 +217,13 @@ describe('mode d’exécution', () => {
   })
 
   it('crie aussi dans l’autre sens', () => {
-    const wrapper = mount(ModeBadge, { props: { mode: { salle: 'production', hub: 'dev' } } })
+    const wrapper = mount(ModeBadge, { props: { mode: { room: 'production', hub: 'dev' } } })
     expect(wrapper.text()).toBe('hub en dev')
     expect(wrapper.html()).toContain('text-alerte')
   })
 
   it('signale une salle de développement, sans alerter', () => {
-    const wrapper = mount(ModeBadge, { props: { mode: { salle: 'dev', hub: 'dev' } } })
+    const wrapper = mount(ModeBadge, { props: { mode: { room: 'dev', hub: 'dev' } } })
     expect(wrapper.text()).toBe('mode dev')
     expect(wrapper.html()).toContain('text-attention')
   })
@@ -231,7 +231,7 @@ describe('mode d’exécution', () => {
   it('attend le premier sync avant de conclure', () => {
     // Hub pas encore joint : rien à comparer, et une alerte prématurée
     // apprendrait à ignorer le badge.
-    const wrapper = mount(ModeBadge, { props: { mode: { salle: 'production', hub: null } } })
+    const wrapper = mount(ModeBadge, { props: { mode: { room: 'production', hub: null } } })
     expect(wrapper.text()).toBe('')
   })
 })

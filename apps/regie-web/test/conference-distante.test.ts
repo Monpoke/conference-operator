@@ -1,4 +1,4 @@
-import type { RegieCommand, RegieView } from '@cloudnord/contract'
+import type { ControlCommand, ControlView } from '@cloudnord/contract'
 import { useToast } from '@cloudnord/components'
 import { flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -26,7 +26,7 @@ import { talk } from './fixtures.js'
 
 const AT = Date.parse('2026-10-30T08:59:00.000Z')
 
-function vue(overrides: Partial<RegieView> = {}): RegieView {
+function vue(overrides: Partial<ControlView> = {}): ControlView {
   return {
     roomId: 'track-1',
     roomName: 'Track #1',
@@ -55,7 +55,7 @@ function vue(overrides: Partial<RegieView> = {}): RegieView {
   }
 }
 
-let commandes: RegieCommand[]
+let commandes: ControlCommand[]
 
 /**
  * Monte la régie en portée distante, sur une salle donnée.
@@ -63,7 +63,7 @@ let commandes: RegieCommand[]
  * `vues` est la file que le sondage consomme : c'est ainsi qu'on décrit « la
  * salle finit par confirmer » et « la salle ne confirme jamais ».
  */
-function distante(vues: RegieView[]): void {
+function distante(vues: ControlView[]): void {
   commandes = []
   let restantes = [...vues]
 
@@ -75,7 +75,7 @@ function distante(vues: RegieView[]): void {
     rpc: {
       regie: {
         view: async () => (restantes.length > 1 ? restantes.shift()! : restantes[0]!),
-        command: async ({ action }: { action: RegieCommand }) => {
+        command: async ({ action }: { action: ControlCommand }) => {
           commandes.push(action)
           return { ok: true, applied: 'queued' as const }
         },

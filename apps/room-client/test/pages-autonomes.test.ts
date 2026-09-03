@@ -117,7 +117,7 @@ describe('pages servies par le client', () => {
 
   it("l'écran d'adresse ne conditionne jamais « Continuer » à une réponse du hub", () => {
     // Un poste de régie se prépare la veille, hub éteint : la sonde informe,
-    // elle n'autorise pas. Un bouton désactivable ici serait une panne un matin
+    // elle n'allowed pas. Un bouton désactivable ici serait une panne un matin
     // d'événement.
     const html = renderAdresseHubPage({ valeurInitiale: 'http://localhost:8787' })
     // Le corps seul : la feuille Tailwind, en tête, parle de `:disabled` pour

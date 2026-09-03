@@ -314,7 +314,7 @@ export const sessionState = sqliteTable(
  * pour un état dont la valeur par défaut est « personne ».
  *
  * Pas de colonne d'expiration : elle se calcule à la lecture
- * (`last_seen_at + REGIE_LOCK_TTL_MS`). Une colonne écrite demanderait qu'un
+ * (`last_seen_at + CONTROL_LOCK_TTL_MS`). Une colonne écrite demanderait qu'un
  * balayage la tienne à jour, et un verrou dont l'échéance est passée mais dont
  * la ligne dit le contraire est exactement le genre d'état qu'on ne veut pas
  * pouvoir fabriquer.

@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ControlDiagnostics } from '@cloudnord/contract'
-import { SANS_REPERES } from '@cloudnord/contract'
+import { NO_EDITING_MARKS } from '@cloudnord/contract'
 import App from '../src/App.vue'
 import { useConferenceStore } from '../src/stores/conference.js'
 import { useConsultStore } from '../src/stores/consult.js'
@@ -64,7 +64,7 @@ async function monter(
   recording: ControlDiagnostics['recording'] | null = null,
 ): Promise<ReturnType<typeof mount>> {
   const etat = payload()
-  etat.diagnostics!.recording = recording ?? { active: false, markers: 0, startedAtMs: null, startedAtCorrigeMs: null, montage: SANS_REPERES }
+  etat.diagnostics!.recording = recording ?? { active: false, markers: 0, startedAtMs: null, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS }
   useRoomStore().seed(etat)
   const wrapper = mount(App, { attachTo: document.body })
   montees.push(wrapper)
@@ -106,7 +106,7 @@ describe('raccourcis de la page', () => {
   })
 
   it('arrête celle qui tourne', async () => {
-    await monter({ active: true, markers: 0, startedAtMs: 0, startedAtCorrigeMs: null, montage: SANS_REPERES })
+    await monter({ active: true, markers: 0, startedAtMs: 0, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS })
 
     frappe('r')
     await flushPromises()
@@ -115,7 +115,7 @@ describe('raccourcis de la page', () => {
   })
 
   it('pose un marqueur pendant une prise', async () => {
-    await monter({ active: true, markers: 0, startedAtMs: 0, startedAtCorrigeMs: null, montage: SANS_REPERES })
+    await monter({ active: true, markers: 0, startedAtMs: 0, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS })
 
     frappe('m')
     await flushPromises()
@@ -123,8 +123,8 @@ describe('raccourcis de la page', () => {
     expect(envois.at(-1)?.body).toEqual({ action: 'recording.mark', label: 'Chapitre' })
   })
 
-  it('pose les deux repères de montage au clavier', async () => {
-    await monter({ active: true, markers: 0, startedAtMs: 0, startedAtCorrigeMs: null, montage: SANS_REPERES })
+  it('pose les deux repères de editing au clavier', async () => {
+    await monter({ active: true, markers: 0, startedAtMs: 0, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS })
 
     // Ce sont des gestes qu'on fait en regardant la salle, pas l'écran :
     // l'orateur commence, l'orateur finit. Passer par le champ de libellé
@@ -201,7 +201,7 @@ describe('programmes des salles voisines', () => {
     expect(envois.filter((envoi) => envoi.url.startsWith('/display/sessions'))).toHaveLength(appels)
   })
 
-  it('ne charge la liste qu’une fois au montage', async () => {
+  it('ne charge la liste qu’une fois au editing', async () => {
     await monter()
 
     // Un effet qui suit ce qu'il écrit se déclenche deux fois : le second tour

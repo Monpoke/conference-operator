@@ -1,4 +1,4 @@
-import type { EventIdentity, ModeExecution } from '@cloudnord/contract'
+import type { EventIdentity, ExecutionMode } from '@cloudnord/contract'
 
 /**
  * What the hub tells the console before its first request.
@@ -12,7 +12,7 @@ import type { EventIdentity, ModeExecution } from '@cloudnord/contract'
  * is worth less than offering nothing.
  */
 export interface Boot {
-  mode: ModeExecution
+  mode: ExecutionMode
   event: EventIdentity
   google: { domain: string } | null
 }

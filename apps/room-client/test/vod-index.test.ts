@@ -13,7 +13,7 @@ import {
   ouvrirExtrait,
   ouvrirFichier,
   poserVerdict,
-  type SondageVod,
+  type VodProbe,
   type VodIndexDeps,
 } from '../src/core/vod-index.js'
 import type { Sidecar } from '../src/core/recording.js'
@@ -76,7 +76,7 @@ function sidecar(nom: string, patch: Partial<Sidecar> = {}): void {
 }
 
 /** Sonde factice : ce que ffprobe aurait lu, sans ffprobe. */
-function sonde(patch: Partial<SondageVod> = {}): (chemin: string) => Promise<SondageVod | null> {
+function sonde(patch: Partial<VodProbe> = {}): (chemin: string) => Promise<VodProbe | null> {
   return async () => ({
     ouvert: true,
     durationMs: 45 * 60_000,
@@ -102,15 +102,15 @@ describe('liste des enregistrements', () => {
     video('2026-10-30_track1_1100_blind-ops.mkv')
     utimesSync(join(racine, '2026-10-30_track1_1000_honeyswamp.mkv'), new Date(1e9), new Date(1e9))
 
-    const entrees = await listerEnregistrements(deps())
+    const entries = await listerEnregistrements(deps())
 
-    expect(entrees.map((entree) => entree.file)).toEqual([
+    expect(entries.map((entree) => entree.file)).toEqual([
       '2026-10-30_track1_1100_blind-ops.mkv',
       '2026-10-30_track1_1000_honeyswamp.mkv',
     ])
-    expect(entrees[1]!.sidecar?.title).toBe('HoneySwamp')
+    expect(entries[1]!.sidecar?.title).toBe('HoneySwamp')
     // Le rush sans sidecar reste listé : c'est exactement celui qu'on cherche.
-    expect(entrees[0]!.sidecar).toBeNull()
+    expect(entries[0]!.sidecar).toBeNull()
   })
 
   it('ignore ce qui n’est pas une vidéo', async () => {
@@ -118,18 +118,18 @@ describe('liste des enregistrements', () => {
     writeFileSync(join(racine, 'notes.txt'), 'rien')
     writeFileSync(join(racine, 'prise.json'), '{}')
 
-    const entrees = await listerEnregistrements(deps())
+    const entries = await listerEnregistrements(deps())
 
-    expect(entrees.map((entree) => entree.file)).toEqual(['prise.mkv'])
+    expect(entries.map((entree) => entree.file)).toEqual(['prise.mkv'])
   })
 
   it('descend dans un dossier daté', async () => {
     mkdirSync(join(racine, '2026-10-30'))
     writeFileSync(join(racine, '2026-10-30', 'prise.mp4'), 'x')
 
-    const entrees = await listerEnregistrements(deps())
+    const entries = await listerEnregistrements(deps())
 
-    expect(entrees.map((entree) => entree.file)).toEqual(['2026-10-30/prise.mp4'])
+    expect(entries.map((entree) => entree.file)).toEqual(['2026-10-30/prise.mp4'])
   })
 
   it('signale un fichier encore en écriture plutôt que de le juger', async () => {
@@ -137,7 +137,7 @@ describe('liste des enregistrements', () => {
 
     const entree = (await listerEnregistrements(deps({ maintenantReel: () => Date.now() })))[0]!
 
-    expect(entree.enEcriture).toBe(true)
+    expect(entree.beingWritten).toBe(true)
   })
 
   it('juge la fenêtre d’écriture sur l’heure du poste, pas sur celle du hub', async () => {
@@ -160,7 +160,7 @@ describe('liste des enregistrements', () => {
       )
     )[0]!
 
-    expect(entree.enEcriture).toBe(true)
+    expect(entree.beingWritten).toBe(true)
   })
 
   it('ne juge pas une prise en cours, et ne l’accuse de rien', async () => {
@@ -312,10 +312,10 @@ describe('verdict de l’opérateur', () => {
     await poserVerdict(deps(), 'a.mkv', 'ok')
     await poserVerdict(deps(), 'b.mkv', 'illisible')
 
-    const entrees = await listerEnregistrements(deps())
+    const entries = await listerEnregistrements(deps())
 
-    expect(entrees.find((entree) => entree.file === 'a.mkv')?.check?.status).toBe('ok')
-    expect(entrees.find((entree) => entree.file === 'b.mkv')?.check?.status).toBe('illisible')
+    expect(entries.find((entree) => entree.file === 'a.mkv')?.check?.status).toBe('ok')
+    expect(entries.find((entree) => entree.file === 'b.mkv')?.check?.status).toBe('illisible')
   })
 })
 

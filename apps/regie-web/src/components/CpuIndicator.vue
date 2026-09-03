@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ChargeHote } from '@cloudnord/contract'
+import type { HostLoad } from '@cloudnord/contract'
 import { computed } from 'vue'
 import Gauge from './Gauge.vue'
 import Indicator from './Indicator.vue'
@@ -10,7 +10,7 @@ import { worst, type Level } from './levels.js'
  *
  * La machine qui encode est le point faible invisible de la salle : quand elle
  * sature, OBS perd des images sans rien dire et le rush est mauvais sans que
- * personne s'en aperçoive avant le montage. Une couleur suffit à le voir de
+ * personne s'en aperçoive avant le editing. Une couleur suffit à le voir de
  * loin ; le détail tient dans l'info-bulle, parce qu'un chiffre de plus dans le
  * bandeau se lirait tout le temps pour ne servir que trois fois dans la journée.
  *
@@ -64,7 +64,7 @@ const MEM_VERDICTS: Partial<Record<Level, string>> = {
     'Mémoire pleine : la machine va échanger sur le disque, celui-là même qui écrit le rush. Fermez tout le reste maintenant.',
 }
 
-const props = defineProps<{ load: ChargeHote | null }>()
+const props = defineProps<{ load: HostLoad | null }>()
 
 /** Octets en gigaoctets, à une décimale, à la française. */
 function inGigabytes(bytes: number): string {
@@ -85,9 +85,9 @@ const cpu = computed(() => {
 })
 
 const memory = computed(() => {
-  const memoire = props.load?.memoire ?? null
+  const memory = props.load?.memory ?? null
   const part =
-    memoire != null && memoire.totalOctets > 0 ? memoire.occupeeOctets / memoire.totalOctets : null
+    memory != null && memory.totalBytes > 0 ? memory.usedBytes / memory.totalBytes : null
   const level: Level =
     part == null ? 'inconnu' : part >= MEM_ALERTE ? 'alerte' : part >= MEM_ATTENTION ? 'attention' : 'ok'
   return {
@@ -95,16 +95,16 @@ const memory = computed(() => {
     level,
     percent: part == null ? 0 : Math.round(part * 100),
     detail:
-      memoire == null || part == null
+      memory == null || part == null
         ? 'mémoire illisible sur cette machine'
-        : `${inGigabytes(memoire.occupeeOctets)} Go occupés sur ${inGigabytes(memoire.totalOctets)}`,
+        : `${inGigabytes(memory.usedBytes)} Go occupés sur ${inGigabytes(memory.totalBytes)}`,
   }
 })
 
 const cpuDetail = computed(() => {
   if (cpu.value.known && props.load != null) {
-    const window = Math.max(1, Math.round((props.load.fenetreMs || 0) / 1000))
-    return `processeur · moyenne sur ${window} s · ${props.load.coeurs} cœurs`
+    const window = Math.max(1, Math.round((props.load.windowMs || 0) / 1000))
+    return `processeur · moyenne sur ${window} s · ${props.load.cores} cœurs`
   }
   return props.load == null
     ? 'le serveur local de la salle n’a pas répondu'

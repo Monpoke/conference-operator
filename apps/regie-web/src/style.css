@@ -44,7 +44,7 @@
     font-family: var(--font-sans);
   }
 
-  /* La racine du montage n'est pas une boîte : la colonne est celle du body. */
+  /* La racine du editing n'est pas une boîte : la colonne est celle du body. */
   #regie-root {
     display: contents;
   }

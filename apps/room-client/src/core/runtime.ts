@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import {
-  DUREE_SIGNALEMENT_MS,
+  NOTIFICATION_TTL_MS,
   isCommandExpired,
   type AiredQuestion,
   type BroadcastMessage,
@@ -28,7 +28,7 @@ import type { LocalStore } from './store.js'
  * depuis que la régie est un paquet à part. Les garder visibles ici évite de
  * toucher aux imports de tout ce qui lit l'état d'une salle.
  */
-export { DUREE_SIGNALEMENT_MS }
+export { NOTIFICATION_TTL_MS }
 export type { AiredQuestion, BroadcastMessage, DisplayState, Notification }
 
 
@@ -658,7 +658,7 @@ export class RoomRuntime extends EventEmitter {
   expireNotifications(): void {
     const { notifications } = this.display
     if (notifications.length === 0) return
-    const limite = this.correctedNow() - DUREE_SIGNALEMENT_MS
+    const limite = this.correctedNow() - NOTIFICATION_TTL_MS
     const restants = notifications.filter((signalement) => Date.parse(signalement.at) > limite)
     if (restants.length !== notifications.length) this.patch({ notifications: restants })
   }

@@ -1,4 +1,4 @@
-import { REGIE_SESSION_HEADER } from '@cloudnord/contract'
+import { CONTROL_SESSION_HEADER } from '@cloudnord/contract'
 import { useToast } from '@cloudnord/components'
 import { createHubAuth, createHubClient, type HubClient } from '@cloudnord/hub-client'
 import { defineStore } from 'pinia'
@@ -84,7 +84,7 @@ export const useSessionStore = defineStore('session', () => {
        * l'adresse — un repli silencieux qui ne se découvrirait que le jour où
        * deux onglets pilotent la même salle.
        */
-      headers: () => ({ [REGIE_SESSION_HEADER]: sessionDeCetOnglet() }),
+      headers: () => ({ [CONTROL_SESSION_HEADER]: sessionDeCetOnglet() }),
       onExpired: () => forget(),
       onError: (cause) => {
         toast.fail(cause instanceof Error ? cause.message : 'Échec de la requête')

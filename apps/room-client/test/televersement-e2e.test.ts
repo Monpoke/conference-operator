@@ -182,8 +182,8 @@ const agir = async (payload: unknown) => {
 const uploads = async () =>
   (await (await fetch(`${regie}/control/uploads`)).json()) as {
     ok: boolean
-    entrees: { file: string; state: string; pourcent: number }[]
-    verdict: { autorise: boolean; texte: string }
+    entries: { file: string; state: string; percent: number }[]
+    verdict: { allowed: boolean; text: string }
   }
 
 /** Attend qu'une condition se vérifie, ou rend la main : les assertions parleront. */
@@ -322,12 +322,12 @@ describe('du rush au stockage', () => {
     const surDisque = readFileSync(join(liste.root as string, rush!.file))
 
     expect((await agir({ action: 'vod.upload', file: rush!.file })).ok).toBe(true)
-    await jusqua(async () => (await uploads()).entrees.some((e) => e.state === 'termine'))
+    await jusqua(async () => (await uploads()).entries.some((e) => e.state === 'termine'))
 
     const vue = await uploads()
-    expect(vue.entrees.find((e) => e.file === rush!.file)).toMatchObject({
+    expect(vue.entries.find((e) => e.file === rush!.file)).toMatchObject({
       state: 'termine',
-      pourcent: 100,
+      percent: 100,
     })
 
     // La clé porte la date du **rush**, la salle, et le nom produit par OBS.
@@ -338,7 +338,7 @@ describe('du rush au stockage', () => {
     // Le seul contrôle qui compte le soir de l'événement.
     expect(stockage.objets.get(cle as string)?.equals(surDisque)).toBe(true)
 
-    // Le sidecar suit, sous la même clé à l'extension près : le montage
+    // Le sidecar suit, sous la même clé à l'extension près : le editing
     // retrouve titre, intervenants et marqueurs sans repasser par le hub.
     const cleSidecar = cle?.replace(/\.[^.]+$/, '.json')
     expect(stockage.objets.has(cleSidecar as string)).toBe(true)
@@ -354,7 +354,7 @@ describe('du rush au stockage', () => {
     await enregistrerUnTalk()
     const liste = await room.listRecordings()
     await agir({ action: 'vod.upload', file: liste.entries[0]!.file })
-    await jusqua(async () => (await uploads()).entrees.some((e) => e.state === 'termine'))
+    await jusqua(async () => (await uploads()).entries.some((e) => e.state === 'termine'))
 
     // C'est ce que la console affiche : sans cette ligne, l'organisateur ne
     // saurait pas ce qui est rapatrié et ce qui manque encore.
@@ -367,7 +367,7 @@ describe('du rush au stockage', () => {
     await enregistrerUnTalk()
     const liste = await room.listRecordings()
     await agir({ action: 'vod.upload', file: liste.entries[0]!.file })
-    await jusqua(async () => (await uploads()).entrees.some((e) => e.state === 'termine'))
+    await jusqua(async () => (await uploads()).entries.some((e) => e.state === 'termine'))
     const premiers = stockage.objets.size
 
     await agir({ action: 'vod.upload', file: null })
@@ -388,8 +388,8 @@ describe('du rush au stockage', () => {
     await sleep(300)
 
     const vue = await uploads()
-    expect(vue.verdict.autorise).toBe(false)
-    expect(vue.verdict.texte).toContain('enregistrement')
+    expect(vue.verdict.allowed).toBe(false)
+    expect(vue.verdict.text).toContain('enregistrement')
     expect(stockage.objets.size).toBe(0)
 
     await agir({ action: 'recording.stop' })
@@ -413,7 +413,7 @@ describe('du rush au stockage', () => {
     )
     expect(await admin.vod.request({ roomId: TRACK_1, file: null })).toEqual({ ok: true })
 
-    await jusqua(async () => (await uploads()).entrees.some((e) => e.state === 'termine'))
+    await jusqua(async () => (await uploads()).entries.some((e) => e.state === 'termine'))
     expect(stockage.objets.size).toBeGreaterThan(0)
 
     // Et la régie le signale : une salle qui se met à saturer son uplink sans
@@ -442,10 +442,10 @@ describe('quand le stockage se dérobe', () => {
     await stockageApp.close()
 
     await agir({ action: 'vod.upload', file: liste.entries[0]!.file })
-    await jusqua(async () => (await uploads()).entrees.some((e) => e.state !== 'en-cours'), 5_000)
+    await jusqua(async () => (await uploads()).entries.some((e) => e.state !== 'en-cours'), 5_000)
 
     const vue = await uploads()
-    const entree = vue.entrees.find((e) => e.file === liste.entries[0]!.file)
+    const entree = vue.entries.find((e) => e.file === liste.entries[0]!.file)
     expect(entree?.state).not.toBe('termine')
   })
 })
@@ -562,7 +562,7 @@ describe('stockage derrière une CA interne', () => {
 
   const uploadsTls = async () =>
     (await (await fetch(`${regieTls}/control/uploads`)).json()) as {
-      entrees: { file: string; state: string; erreur: string | null }[]
+      entries: { file: string; state: string; error: string | null }[]
     }
 
   async function enregistrer(): Promise<string> {
@@ -582,9 +582,9 @@ describe('stockage derrière une CA interne', () => {
     const rush = await enregistrer()
 
     await agirTls({ action: 'vod.upload', file: rush })
-    await jusqua(async () => (await uploadsTls()).entrees.some((e) => e.erreur != null), 8_000)
+    await jusqua(async () => (await uploadsTls()).entries.some((e) => e.error != null), 8_000)
 
-    const erreur = (await uploadsTls()).entrees.find((e) => e.file === rush)?.erreur ?? ''
+    const erreur = (await uploadsTls()).entries.find((e) => e.file === rush)?.error ?? ''
     // Le message doit nommer le défaut de confiance, pas parler de réseau : on
     // ne cherche pas un pare-feu quand il manque un certificat.
     expect(erreur).toMatch(/CERT|SIGNATURE|SELF_SIGNED/)
@@ -600,11 +600,11 @@ describe('stockage derrière une CA interne', () => {
     expect(roomTls.store.settings().vod?.caCert).toContain('BEGIN CERTIFICATE')
 
     await agirTls({ action: 'vod.upload', file: rush })
-    await jusqua(async () => (await uploadsTls()).entrees.some((e) => e.state === 'termine'), 15_000)
+    await jusqua(async () => (await uploadsTls()).entries.some((e) => e.state === 'termine'), 15_000)
 
-    const entree = (await uploadsTls()).entrees.find((e) => e.file === rush)
+    const entree = (await uploadsTls()).entries.find((e) => e.file === rush)
     expect(entree?.state).toBe('termine')
-    expect(entree?.erreur).toBeNull()
+    expect(entree?.error).toBeNull()
 
     const cle = [...stockageTls.objets.keys()].find((k) => k.endsWith(rush))
     expect(cle).toBeDefined()
@@ -686,11 +686,11 @@ describe('remise à zéro des rushes', () => {
     await enregistrerUnTalk()
     const liste = await room.listRecordings()
     await agir({ action: 'vod.upload', file: liste.entries[0]!.file })
-    await jusqua(async () => (await uploads()).entrees.some((e) => e.state === 'termine'))
+    await jusqua(async () => (await uploads()).entries.some((e) => e.state === 'termine'))
 
     await enDeveloppement().razVod()
     // Garder des lignes « terminé » qui pointent des fichiers effacés ferait
     // dire à la modale que tout est en sécurité.
-    expect((await uploads()).entrees).toEqual([])
+    expect((await uploads()).entries).toEqual([])
   })
 })

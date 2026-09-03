@@ -78,7 +78,7 @@ useKeyboardLayer(() => ({}), () => conference.stopRecordingOpen)
     laisse passer : une captation qu'on n'arrête pas ne se voit nulle part. Elle
     court pendant la pause, le talk suivant s'écrit dans le même fichier, et le
     garde-fou du démarrage se tait puisqu'un enregistrement tourne. Le prix ne
-    se découvre qu'au montage, quand la salle est démontée.
+    se découvre qu'au editing, quand la salle est démontée.
   -->
   <ConfirmDialog
     v-model:open="conference.stopRecordingOpen"

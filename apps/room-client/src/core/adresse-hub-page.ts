@@ -7,7 +7,7 @@ import { TAILWIND_CSS } from '@cloudnord/ui'
  * donc le code d'appairage, donc le programme. Tant qu'on ne sait pas à qui
  * parler, il n'y a rien à afficher.
  *
- * La sonde de joignabilité **n'autorise rien** : elle informe. « Le hub peut
+ * La sonde de joignabilité **n'allowed rien** : elle informe. « Le hub peut
  * être lancé après les salles » est une propriété du produit, pas une
  * tolérance — un poste de régie doit pouvoir démarrer la veille, hub éteint,
  * et rejoindre tout seul le lendemain. Bloquer « Continuer » sur une réponse

@@ -1,7 +1,7 @@
 import type { DisplayPayload } from '@cloudnord/contract'
-import type { ConfigVisible, ObsState } from '@cloudnord/contract'
+import type { VisibleConfig, ObsState } from '@cloudnord/contract'
 import type { Session, Speaker } from '@cloudnord/program'
-import { SANS_REPERES } from '@cloudnord/contract'
+import { NO_EDITING_MARKS } from '@cloudnord/contract'
 
 /**
  * Une salle plausible, et **typée sans échappatoire**.
@@ -74,7 +74,7 @@ export function obsState(overrides: Partial<ObsState> = {}): ObsState {
 }
 
 /** La configuration d'une salle, complète. Les surcharges portent sur un champ. */
-export function config(overrides: Partial<ConfigVisible> = {}): ConfigVisible {
+export function config(overrides: Partial<VisibleConfig> = {}): VisibleConfig {
   return {
     obs: {
       A: { url: 'ws://127.0.0.1:4455', hasPassword: false, pending: false },
@@ -90,7 +90,7 @@ export function config(overrides: Partial<ConfigVisible> = {}): ConfigVisible {
     promptRecordingOnStop: true,
     // Le poste installé sait ouvrir un sélecteur ; la régie ouverte dans un
     // navigateur, non. Les deux se testent en surchargeant ce champ.
-    peutParcourir: true,
+    canBrowse: true,
     sceneOnStart: 'LIVE',
     ...overrides,
   }
@@ -103,13 +103,13 @@ export function diagnostics(): NonNullable<DisplayPayload['diagnostics']> {
     questionsRefreshedAt: null,
     questionsSession: null,
     config: null,
-    mode: { salle: 'production', hub: 'production' },
+    mode: { room: 'production', hub: 'production' },
     relaySourceRoomId: null,
     rooms: [],
     roomsRefreshedAt: null,
     outboxDepth: 0,
-    journal: [],
-    recording: { active: false, markers: 0, startedAtMs: null, startedAtCorrigeMs: null, montage: SANS_REPERES },
+    log: [],
+    recording: { active: false, markers: 0, startedAtMs: null, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS },
   }
 }
 

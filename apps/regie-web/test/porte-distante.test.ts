@@ -1,4 +1,4 @@
-import type { RegieCommand, RegieView } from '@cloudnord/contract'
+import type { ControlCommand, ControlView } from '@cloudnord/contract'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   OBSERVATION_MS,
@@ -22,7 +22,7 @@ import { talk } from './fixtures.js'
 
 const AT = Date.parse('2026-10-30T09:10:00.000Z')
 
-function vue(overrides: Partial<RegieView> = {}): RegieView {
+function vue(overrides: Partial<ControlView> = {}): ControlView {
   return {
     roomId: 'track-1',
     roomName: 'Track #1',
@@ -58,8 +58,8 @@ function vue(overrides: Partial<RegieView> = {}): RegieView {
  * ensuite. C'est ce qui permet de décrire « la salle finit par confirmer » et
  * « la salle ne confirme jamais » avec le même outil.
  */
-function clientFactice(vues: RegieView[]) {
-  const commandes: RegieCommand[] = []
+function clientFactice(vues: ControlView[]) {
+  const commandes: ControlCommand[] = []
   let restantes = [...vues]
   return {
     commandes,
@@ -70,7 +70,7 @@ function clientFactice(vues: RegieView[]) {
             const suivante = restantes.length > 1 ? restantes.shift()! : restantes[0]!
             return suivante
           },
-          command: async ({ action }: { action: RegieCommand }) => {
+          command: async ({ action }: { action: ControlCommand }) => {
             commandes.push(action)
             return { ok: true, applied: 'queued' as const }
           },
@@ -141,7 +141,7 @@ describe('poster un geste', () => {
   let porte: ReturnType<typeof porteDistante>
   let horloge: number
 
-  function ouvrir(vues: RegieView[]) {
+  function ouvrir(vues: ControlView[]) {
     horloge = AT
     const { client, commandes } = clientFactice(vues)
     porte = porteDistante({
@@ -244,15 +244,15 @@ describe('la vue rendue sous la forme que lisent les panneaux', () => {
     /*
      * Le hub ne stocke qu'un booléen. Une heure de départ plausible à côté d'un
      * point rouge juste ferait afficher une durée fausse — et douter des deux.
-     * Les repères de montage tombent avec : ils vivent dans la prise, sur la
+     * Les repères de editing tombent avec : ils vivent dans la prise, sur la
      * machine de salle, et le hub n'en sait rien.
      */
     expect(rendue.diagnostics?.recording).toEqual({
       active: true,
       markers: 0,
       startedAtMs: null,
-      startedAtCorrigeMs: null,
-      montage: { debutMs: null, finMs: null },
+      startedAtCorrectedMs: null,
+      editing: { startMs: null, endMs: null },
     })
     // `remoteHolder` dit à une *salle* qu'on la pilote de loin ; sur le
     // téléphone qui la pilote, il n'a personne à prévenir.

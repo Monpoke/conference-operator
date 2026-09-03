@@ -62,7 +62,7 @@ const instances = computed(() =>
       data-role="journal"
     >
       <div
-        v-for="(entry, index) in payload.diagnostics?.journal ?? []"
+        v-for="(entry, index) in payload.diagnostics?.log ?? []"
         :key="index"
         :class="entry.level === 'warn' || entry.level === 'error' ? 'text-attention' : ''"
       >

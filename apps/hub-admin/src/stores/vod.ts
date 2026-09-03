@@ -64,7 +64,7 @@ export const UPLOAD_STATES: Record<string, { label: string; tone: string }> = {
   echoue: { label: 'en échec', tone: 'text-alerte' },
 }
 
-/** Avancement en pourcent, borné : un fichier qui grossit en route dépasserait. */
+/** Avancement en percent, borné : un fichier qui grossit en route dépasserait. */
 export function progress(upload: Upload): number {
   if (upload.sizeBytes <= 0) return 0
   return Math.min(100, Math.round((upload.bytesSent / upload.sizeBytes) * 100))

@@ -146,7 +146,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
 
     if (!supported.value || Notification.permission !== 'granted') return
     /*
-     * Il ne suffit pas que le navigateur autorise : il faut que quelqu'un l'ait
+     * Il ne suffit pas que le navigateur allowed : il faut que quelqu'un l'ait
      * voulu **ici**. Une permission accordée pour un autre usage ferait sinon
      * vibrer une console que personne n'a réglée.
      */

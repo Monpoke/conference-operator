@@ -1,12 +1,12 @@
 import type {
-  ConfigVisible,
+  VisibleConfig,
   DisplayMode,
   DisplayPayload,
-  RegieCommand,
-  RegieView,
+  ControlCommand,
+  ControlView,
   SceneRole,
 } from '@cloudnord/contract'
-import { SANS_REPERES } from '@cloudnord/contract'
+import { NO_EDITING_MARKS } from '@cloudnord/contract'
 import type { HubClient } from '@cloudnord/hub-client'
 
 /**
@@ -158,7 +158,7 @@ export interface PorteDistanteOptions {
    * champ qui doit réagir vite : quand un autre onglet reprend la salle, celui
    * qui la perd doit le voir à la seconde, pas au tour de liste suivant.
    */
-  onVue?: (vue: RegieView) => void
+  onVue?: (vue: ControlView) => void
   /** Injectables pour tester sans horloge ni minuteur réels. */
   maintenant?: () => number
   attendre?: (ms: number) => Promise<void>
@@ -178,10 +178,10 @@ export function porteDistante(options: PorteDistanteOptions): PorteRegie {
     options.attendre ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
 
   let timer: ReturnType<typeof setInterval> | null = null
-  let derniere: RegieView | null = null
+  let derniere: ControlView | null = null
   let enVol = false
 
-  async function lire(flux: FluxEtat | null): Promise<RegieView | null> {
+  async function lire(flux: FluxEtat | null): Promise<ControlView | null> {
     /*
      * Un seul sondage en vol.
      *
@@ -225,7 +225,7 @@ export function porteDistante(options: PorteDistanteOptions): PorteRegie {
    * que rien ne le dise.
    */
   async function observer(
-    predicat: (vue: RegieView) => boolean,
+    predicat: (vue: ControlView) => boolean,
     echec: string,
   ): Promise<ActionResult> {
     const limite = maintenant() + OBSERVATION_MS
@@ -311,8 +311,8 @@ export function porteDistante(options: PorteDistanteOptions): PorteRegie {
  */
 export function traduire(
   geste: Record<string, unknown>,
-  vue: RegieView | null,
-): RegieCommand | null {
+  vue: ControlView | null,
+): ControlCommand | null {
   const action = geste.action
   switch (action) {
     case 'session.start':
@@ -355,7 +355,7 @@ export function traduire(
  * monte pas les panneaux qui les liraient, et un `0` plausible à la place d'une
  * absence est exactement ce qui fait croire à une salle silencieuse.
  */
-export function payloadDepuisVue(vue: RegieView, maintenantMs: number): DisplayPayload {
+export function payloadDepuisVue(vue: ControlView, maintenantMs: number): DisplayPayload {
   /*
    * Une configuration réduite à ce dont dépendent les garde-fous.
    *
@@ -365,7 +365,7 @@ export function payloadDepuisVue(vue: RegieView, maintenantMs: number): DisplayP
    * remplir depuis la vue est ce qui fait que la question posée sur un
    * téléphone est exactement celle posée en salle.
    */
-  const config: ConfigVisible = {
+  const config: VisibleConfig = {
     obs: {
       A: { url: '', hasPassword: false, pending: false },
       B: { url: '', hasPassword: false, pending: false },
@@ -392,7 +392,7 @@ export function payloadDepuisVue(vue: RegieView, maintenantMs: number): DisplayP
      * Un téléphone n'ouvre pas le sélecteur de dossier d'une machine qu'il ne
      * voit pas — et le ⚙ n'est de toute façon pas monté à distance.
      */
-    peutParcourir: false,
+    canBrowse: false,
   }
 
   return {
@@ -463,19 +463,19 @@ export function payloadDepuisVue(vue: RegieView, maintenantMs: number): DisplayP
       questionsRefreshedAt: null,
       questionsSession: null,
       config,
-      mode: { salle: 'production', hub: null },
+      mode: { room: 'production', hub: null },
       relaySourceRoomId: vue.relaySourceRoomId,
       rooms: [],
       roomsRefreshedAt: null,
       outboxDepth: 0,
-      journal: [],
+      log: [],
       /*
        * Le hub ne stocke qu'un booléen : `startedAtMs` est donc nul, et le
        * chronomètre d'enregistrement n'est pas monté à distance. Lui donner une
        * heure de départ plausible ferait afficher une durée fausse à côté d'un
        * point rouge juste.
        *
-       * Les repères de montage tombent avec, et pour la même raison : ils
+       * Les repères de editing tombent avec, et pour la même raison : ils
        * vivent dans la prise, sur la machine de salle. Les boutons ne sont pas
        * montés à distance — `recording.mark` y est de toute façon refusé.
        */
@@ -483,8 +483,8 @@ export function payloadDepuisVue(vue: RegieView, maintenantMs: number): DisplayP
         active: vue.recording,
         markers: 0,
         startedAtMs: null,
-        startedAtCorrigeMs: null,
-        montage: SANS_REPERES,
+        startedAtCorrectedMs: null,
+        editing: NO_EDITING_MARKS,
       },
     },
     wall: null,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ConfigVisible, ObsInstance, ObsState } from '@cloudnord/contract'
+import type { VisibleConfig, ObsInstance, ObsState } from '@cloudnord/contract'
 import { Button, Panel } from '@cloudnord/components'
 import { computed } from 'vue'
 import { ROLES, type ConfigDraft } from '../stores/config.js'
@@ -9,7 +9,7 @@ const props = defineProps<{
   instance: ObsInstance
   title: string
   draft: ConfigDraft
-  config: ConfigVisible
+  config: VisibleConfig
   obs: ObsState | null
 }>()
 

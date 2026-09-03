@@ -13,7 +13,7 @@ import './style.css'
  * la forme singleton fait fuir l'état d'un fichier de test au suivant sans un
  * mot.
  *
- * L'état embarqué est posé **avant** le montage : c'est ce qui fait qu'un F5 en
+ * L'état embarqué est posé **avant** le editing : c'est ce qui fait qu'un F5 en
  * plein talk repeint l'écran tel qu'il était, sans passer par « connexion au
  * poste de salle… ».
  *

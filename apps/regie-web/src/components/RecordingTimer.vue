@@ -7,7 +7,7 @@ import { computed } from 'vue'
  * Depuis combien de temps ça tourne.
  *
  * Deux horloges possibles, et la charge utile porte laquelle : un
- * `startedAtCorrigeMs` renseigné veut dire « compte sur l'horloge du hub » — le
+ * `startedAtCorrectedMs` renseigné veut dire « compte sur l'horloge du hub » — le
  * cas du développement, où l'on déroule une journée en la poussant, et où le
  * chronomètre doit dire la même chose que la durée finalement enregistrée.
  * Absent, on compte en temps réel, comme en production.
@@ -26,12 +26,12 @@ const props = defineProps<{
 
 const startedAt = computed(() =>
   props.recording?.active === true
-    ? (props.recording.startedAtCorrigeMs ?? props.recording.startedAtMs)
+    ? (props.recording.startedAtCorrectedMs ?? props.recording.startedAtMs)
     : null,
 )
 
 const followsHub = computed(
-  () => props.recording?.active === true && props.recording.startedAtCorrigeMs != null,
+  () => props.recording?.active === true && props.recording.startedAtCorrectedMs != null,
 )
 
 const elapsed = computed(() => {

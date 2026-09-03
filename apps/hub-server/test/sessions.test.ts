@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { normalizeProgram, sessionsForRoom, type Program } from '@cloudnord/program'
-import { POLITIQUE_VOD_PAR_DEFAUT } from '@cloudnord/contract'
+import { DEFAULT_VOD_POLICY } from '@cloudnord/contract'
 import { openHubDatabase, type HubDatabase } from '../src/db.js'
 import { SessionStateService, SettingsService } from '../src/services/sessions.js'
 import { RoomService } from '../src/services/rooms.js'
@@ -221,7 +221,7 @@ describe('réglages du hub', () => {
       // être celui où aucun octet ne quitte une salle sans qu'on l'ait demandé.
       vodBucket: null,
       vodPrefix: null,
-      vodPolitique: POLITIQUE_VOD_PAR_DEFAUT,
+      vodPolitique: DEFAULT_VOD_POLICY,
     })
   })
 
@@ -236,7 +236,7 @@ describe('réglages du hub', () => {
       openFeedbackProjectId: null,
       vodBucket: null,
       vodPrefix: null,
-      vodPolitique: POLITIQUE_VOD_PAR_DEFAUT,
+      vodPolitique: DEFAULT_VOD_POLICY,
     })
     expect(settings.get().autoEndGraceMinutes).toBe(15)
   })

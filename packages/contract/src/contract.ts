@@ -1,7 +1,7 @@
 import { eventIterator, oc } from '@orpc/contract'
 import { z } from 'zod'
 import { programSchema } from '@cloudnord/program'
-import { bandeauSchema, commandSchema } from './commands.js'
+import { bannerSchema, commandSchema } from './commands.js'
 import { envelopeSchema, ingestResultSchema } from './events.js'
 import {
   isoDateTimeSchema,
@@ -11,9 +11,9 @@ import {
 } from './primitives.js'
 import { eventIdentitySchema } from './event-identity.js'
 import {
-  controleOpenFeedbackSchema,
+  openFeedbackCheckSchema,
   hubSettingsSchema,
-  niveauxNotifSchema,
+  notifLevelsSchema,
   roomConfigPatchSchema,
   roomConfigSchema,
   roomStatusSchema,
@@ -22,34 +22,39 @@ import {
   syncResultSchema,
 } from './room-state.js'
 import {
-  regieCommandResultSchema,
-  regieCommandSchema,
-  regieLockSchema,
-  regieRoomSchema,
-  regieViewSchema,
-} from './regie.js'
+  controlCommandResultSchema,
+  controlCommandSchema,
+  controlLockSchema,
+  controlRoomSchema,
+  controlViewSchema,
+} from './control.js'
 import { commentSchema, commentSourceSchema, questionSchema } from './wall.js'
 import {
-  controleStockageSchema,
-  dossierVodSchema,
-  genreVodSchema,
-  partSigneeSchema,
-  planTeleversementSchema,
-  politiqueVodSchema,
-  televersementVuSchema,
+  storageCheckSchema,
+  vodFolderSchema,
+  vodKindSchema,
+  signedPartSchema,
+  uploadPlanSchema,
+  vodPolicySchema,
+  uploadViewSchema,
 } from './vod.js'
 
 /**
- * Contrat unique du système, monté sur trois transports :
+ * The system's single contract, mounted on three transports:
  *  - HTTP/Fastify  → hub-admin, wall-web
  *  - WebSocket     → room-client ↔ hub
- *  - MessagePort   → Electron main ↔ renderers (régie, display, overlay)
+ *  - MessagePort   → Electron main ↔ renderers (control, display, overlay)
  *
- * Une seule définition, aucune duplication.
+ * One definition, no duplication.
+ *
+ * Procedure names, route paths and field names are the wire itself: they stay as
+ * they are, French ones included (`regie.*`, `program.controleOpenFeedback`,
+ * `numeros`, `politique`…). Renaming them would break a room already in the
+ * field, and this repository does not change the protocol version lightly.
  */
 
-/** Ce qu'une surface publique a besoin de savoir d'une conférence. */
-const sessionApercuSchema = z.object({
+/** What a public surface needs to know about a talk. */
+const sessionPreviewSchema = z.object({
   id: sessionIdSchema,
   title: z.string(),
   speakers: z.array(z.string()),
@@ -58,102 +63,98 @@ const sessionApercuSchema = z.object({
 })
 
 /**
- * Une ligne du planning, telle que la console la relit.
+ * One row of the schedule, as the console reads it back.
  *
- * Volontairement plus large que `sessionApercuSchema` : la console affiche le
- * programme **entier**, pauses comprises, et pas seulement ce qui court en ce
- * moment dans une salle.
+ * Deliberately wider than `sessionPreviewSchema`: the console shows the **whole**
+ * program, breaks included, and not only what is running right now in a room.
  */
-const planningSessionSchema = sessionApercuSchema.extend({
+const planningSessionSchema = sessionPreviewSchema.extend({
   roomId: roomIdSchema.nullable(),
-  /** Le nom de la salle, pas son identifiant : c'est ce qui est écrit sur la porte. */
+  /** The room's name, not its identifier: that is what is written on the door. */
   roomName: z.string().nullable(),
-  /** `break` = créneau sans intervenant : accueil, pause, déjeuner. */
+  /** `break` = slot with no speaker: welcome, break, lunch. */
   kind: z.enum(['talk', 'break']),
   /**
-   * Lien « notez ce talk » sur OpenFeedback.
+   * "Rate this talk" link on OpenFeedback.
    *
-   * Résolu par le hub et non par la console : l'adresse se déduit du programme
-   * et du projet réglé sur la salle, deux choses que la console n'a pas. `null`
-   * sur une pause ou sans projet configuré — un lien mort scanné par le public
-   * coûte plus cher qu'une case vide.
+   * Resolved by the hub and not by the console: the address is derived from the
+   * program and from the project configured on the room, two things the console
+   * does not have. `null` on a break or with no project configured — a dead link
+   * scanned by the audience costs more than an empty cell.
    */
   feedbackUrl: z.url().nullable(),
   /**
-   * L'identifiant **servi** dans l'adresse OpenFeedback de ce créneau.
+   * The identifier **served** in this slot's OpenFeedback address.
    *
-   * Celui de l'export, sauf correction. Rendu à part de `feedbackUrl` parce que
-   * c'est lui qu'on lit et qu'on compare quand un speaker dit « mes retours
-   * sont vides » : l'URL entière noie le seul segment qui puisse être faux.
+   * The export's, unless corrected. Returned separately from `feedbackUrl`
+   * because it is the one you read and compare when a speaker says "my feedback
+   * is empty": the whole URL drowns the one segment that can be wrong.
    */
   feedbackId: z.string(),
   /**
-   * La correction posée depuis la console, ou `null`.
+   * The correction made from the console, or `null`.
    *
-   * `feedbackId` ci-dessus est déjà résolu — même règle que `kind` avec
-   * `overriddenAs`. Ce champ dit d'où vient l'identifiant servi : de l'export,
-   * ou de quelqu'un qui l'a corrigé à la main. C'est ce que la console a besoin
-   * de savoir pour proposer de rendre le créneau à l'export.
+   * `feedbackId` above is already resolved — same rule as `kind` with
+   * `overriddenAs`. This field says where the served identifier comes from: from
+   * the export, or from someone who corrected it by hand. That is what the
+   * console needs to know in order to offer giving the slot back to the export.
    */
   feedbackIdOverride: z.string().nullable().default(null),
   /**
-   * Décision prise sur ce créneau depuis la console, ou `null`.
+   * Decision made on this slot from the console, or `null`.
    *
-   * Le `kind` ci-dessus est déjà celui que le hub **sert** : un créneau
-   * surchargé y arrive corrigé, comme partout ailleurs. Ce champ dit d'où vient
-   * ce genre — de l'export, ou d'une décision — ce que la console est seule à
-   * avoir besoin de savoir : c'est elle qui l'a prise, c'est chez elle qu'on la
-   * retire, et elle en déduit ce que dit l'export (l'inverse, puisqu'une
-   * décision sans effet n'est jamais appliquée).
+   * The `kind` above is already the one the hub **serves**: an overridden slot
+   * arrives corrected, as everywhere else. This field says where that kind comes
+   * from — from the export, or from a decision — which only the console needs to
+   * know: it is the one that made it, it is where it gets removed, and it derives
+   * what the export says from it (the inverse, since a decision with no effect is
+   * never applied).
    */
   overriddenAs: z.enum(['talk', 'break']).nullable().default(null),
   /**
-   * Créneau dont cette ligne est la projection dans une autre salle, ou `null`.
+   * Slot this row is the projection of in another room, or `null`.
    *
-   * Une salle libre pendant qu'une autre est en pause hérite de cette pause :
-   * la ligne existe donc dans le programme servi sans exister dans l'export.
-   * Elle ne s'édite pas — c'est l'original qu'on corrige, et la projection
-   * suit.
+   * A room that is free while another is on a break inherits that break: the row
+   * therefore exists in the served program without existing in the export. It is
+   * not editable — it is the original you correct, and the projection follows.
    */
   sharedFrom: z.string().nullable().default(null),
   /**
-   * Quand la conférence a **réellement** commencé et fini, ou `null`.
+   * When the talk **actually** started and ended, or `null`.
    *
-   * Les `startsAt` / `endsAt` ci-dessus sont ceux du programme : ce qui était
-   * prévu. Ceux-ci sont ce qui s'est passé — l'instant du « Commencer » et
-   * celui du « Terminer », clôture automatique comprise. Les deux se lisent
-   * côte à côte, et c'est l'écart qui intéresse : un retard au démarrage, un
-   * dépassement, une durée réelle pour le montage.
+   * The `startsAt` / `endsAt` above are the program's: what was planned. These
+   * are what happened — the instant of "Start" and that of "End", automatic
+   * closing included. The two are read side by side, and it is the gap that is of
+   * interest: a late start, an overrun, a real duration for editing.
    *
-   * Joints **par le hub**, pas par la console. Le cycle de vie est écrit ici,
-   * il vaut pour toutes les salles à la fois, et une console qui recroiserait
-   * elle-même deux listes finirait par en afficher une version qui n'est celle
-   * de personne. `null` sur un créneau que personne n'a piloté — ce qui est le
-   * cas de toutes les pauses, et des conférences encore à venir.
+   * Joined **by the hub**, not by the console. The lifecycle is written here, it
+   * holds for every room at once, and a console cross-referencing two lists
+   * itself would end up showing a version that is nobody's. `null` on a slot
+   * nobody drove — which is the case for every break, and for talks still to
+   * come.
    */
   startedAt: isoDateTimeSchema.nullable().default(null),
   endedAt: isoDateTimeSchema.nullable().default(null),
   /**
-   * Qui a décidé, ou `null` si personne n'a rien décidé.
+   * Who decided, or `null` if nobody decided anything.
    *
-   * `auto` pour la règle horaire, l'adresse de l'opérateur sinon. C'est la
-   * seule chose qui répond à « je n'ai pas fait ça » — une conférence marquée
-   * terminée sans qu'on s'en souvienne se retrouve dans un journal, ou nulle
-   * part.
+   * `auto` for the scheduling rule, the operator's address otherwise. It is the
+   * only thing that answers "I did not do that" — a talk marked ended without
+   * anyone remembering it ends up in a log, or nowhere.
    */
   decidedBy: z.string().nullable().default(null),
 })
 
 export const contract = {
   meta: {
-    /** Ping de disponibilité applicative — sert aussi de base à l'offset d'horloge. */
+    /** Application liveness ping — also the base for the clock offset. */
     hello: oc
       .input(z.object({ protocolVersion: z.number().int() }))
       .output(
         z.object({
           protocolVersion: z.literal(PROTOCOL_VERSION),
           serverTime: isoDateTimeSchema,
-          /** Heure simulée : à signaler, sinon l'écart avec la réalité déroute. */
+          /** Simulated time: to be flagged, otherwise the gap with reality confuses. */
           simulatedClock: z.boolean().default(false),
           compatible: z.boolean(),
         }),
@@ -161,7 +162,7 @@ export const contract = {
   },
 
   program: {
-    /** Importe l'export amont et crée un snapshot versionné. Admin. */
+    /** Imports the upstream export and creates a versioned snapshot. Admin. */
     import: oc
       .input(z.object({ sourceUrl: z.url() }))
       .output(
@@ -171,7 +172,7 @@ export const contract = {
           program: programSchema,
         }),
       ),
-    /** Historique des snapshots, pour rollback en un clic le jour J. */
+    /** Snapshot history, for a one-click rollback on the day. */
     snapshots: oc.output(
       z.array(
         z.object({
@@ -185,74 +186,72 @@ export const contract = {
     ),
     activate: oc.input(z.object({ contentHash: z.string() })).output(z.object({ ok: z.boolean() })),
     /**
-     * Le programme actif, à plat et prêt à afficher. Admin.
+     * The active program, flattened and ready to display. Admin.
      *
-     * Le hub détient déjà le programme ; sans cette procédure, la console ne
-     * connaît que les conférences **démarrées** et ne peut pas répondre à « et
-     * après, il y a quoi ». Renvoyé à plat plutôt que le `programSchema`
-     * complet : les biographies, les logos de sponsors et les visuels pèsent
-     * l'essentiel des 70 ko d'un snapshot, et rien de tout cela ne s'affiche
-     * dans un planning.
+     * The hub already holds the program; without this procedure the console only
+     * knows the talks that have **started** and cannot answer "and what comes
+     * next". Returned flattened rather than the whole `programSchema`: the
+     * biographies, the sponsor logos and the artwork are most of a snapshot's
+     * 70 kB, and none of that is shown in a schedule.
      */
     /**
-     * Le créneau commun du moment : ce qui concerne tout le monde à la fois.
+     * The current shared slot: what concerns everyone at once.
      *
-     * Séparé de la supervision par salle, parce que la question n'est pas la
-     * même : les cartes disent où en est chaque salle, celui-ci dit ce que fait
-     * l'événement. `null` le reste du temps — l'encart n'a alors rien à dire, et
-     * un encart vide se lit comme une panne.
+     * Separate from per-room supervision, because the question is not the same:
+     * the cards say where each room stands, this one says what the event is
+     * doing. `null` the rest of the time — the panel then has nothing to say, and
+     * an empty panel reads as a failure.
      */
     globalBreak: oc.output(
       z
         .object({
-          /** `a-venir` : il commence dans moins d'un quart d'heure. */
+          /** `a-venir`: it starts in less than a quarter of an hour. */
           state: z.enum(['en-cours', 'a-venir']),
           title: z.string(),
           startsAt: isoDateTimeSchema,
-          /** Reprise : fin effective du break. `null` si rien ne le ferme. */
+          /** Resumption: effective end of the break. `null` if nothing closes it. */
           endsAt: isoDateTimeSchema.nullable(),
-          /** Nombre de salles concernées — toutes, le plus souvent. */
+          /** Number of rooms concerned — all of them, most of the time. */
           rooms: z.number().int(),
-          /** Heure du hub, base du décompte : le navigateur n'a que la sienne. */
+          /** The hub's time, base of the countdown: the browser only has its own. */
           serverTime: isoDateTimeSchema,
         })
         .nullable(),
     ),
 
     /**
-     * Confronte les identifiants OpenFeedback du programme aux siens. Admin.
+     * Compares the program's OpenFeedback identifiers with its own. Admin.
      *
-     * Sur demande, jamais en tâche de fond : c'est un geste d'avant-événement,
-     * qu'on exécute une fois le programme importé pour corriger ce qu'il
-     * signale. Il sort du hub — la seule procédure ici qui appelle un tiers —
-     * et il peut donc échouer pour des raisons qui ne disent rien du programme.
+     * On demand, never in the background: it is a pre-event gesture, run once the
+     * program has been imported so as to correct what it reports. It leaves the
+     * hub — the only procedure here that calls a third party — and so it can fail
+     * for reasons that say nothing about the program.
      */
-    controleOpenFeedback: oc.output(controleOpenFeedbackSchema),
+    controleOpenFeedback: oc.output(openFeedbackCheckSchema),
 
     planning: oc.output(
       z.object({
-        /** Version affichée : la même que dans la liste des snapshots. `null` si aucun programme. */
+        /** Version shown: the same as in the snapshot list. `null` if no program. */
         contentHash: z.string().nullable(),
-        /** Fuseau de l'événement : les heures se lisent là-bas, pas sur le PC de la console. */
+        /** The event's timezone: times are read over there, not on the console's PC. */
         timezone: z.string(),
         /**
-         * Heure du hub au moment de la lecture.
+         * The hub's time at read time.
          *
-         * C'est elle qui désigne le créneau surligné « maintenant ». Prise ici
-         * et non dans le navigateur pour la même raison que `remainingMs` :
-         * l'horloge du hub peut être simulée, et c'est elle qui fait foi — un
-         * surlignage calculé sur l'heure du poste pointerait un créneau de la
-         * semaine dernière pendant qu'on déroule la journée depuis le menu
-         * Développement.
+         * It is what designates the slot highlighted as "now". Taken here and not
+         * in the browser for the same reason as `remainingMs`: the hub's clock can
+         * be simulated, and it is the authority — a highlight computed on the
+         * machine's time would point at a slot from last week while a day is
+         * played out from the Development menu.
          */
         serverTime: isoDateTimeSchema,
         /**
-         * Le projet OpenFeedback qui sert de défaut, une fois la règle appliquée.
+         * The OpenFeedback project used as a default, once the rule is applied.
          *
-         * Rendu pour que la console puisse expliquer une colonne « Feedback »
-         * vide au lieu de la laisser vide. Sans lui, la seule chose visible est
-         * une suite de tirets, et rien ne dit s'il manque un réglage ou si
-         * OpenFeedback n'est pas de la partie sur cet événement.
+         * Returned so the console can explain an empty "Feedback" column instead
+         * of leaving it empty. Without it, all you see is a run of dashes, and
+         * nothing says whether a setting is missing or OpenFeedback is simply not
+         * part of this event.
          */
         openFeedbackProjectId: z.string().nullable(),
         rooms: z.array(z.object({ id: roomIdSchema, name: z.string() })),
@@ -263,102 +262,100 @@ export const contract = {
 
   rooms: {
     /**
-     * Liste publique des salles : identifiant et nom, rien d'autre.
+     * Public list of rooms: identifier and name, nothing else.
      *
-     * Une machine doit pouvoir proposer un choix **avant** d'être appairée,
-     * donc avant d'avoir le moindre jeton. Ces noms sont déjà publics — le mur
-     * scanné par les participants les affiche.
+     * A machine must be able to offer a choice **before** being paired, so before
+     * having any token. These names are already public — the wall attendees scan
+     * shows them.
      */
     public: oc.output(z.array(z.object({ id: roomIdSchema, name: z.string() }))),
     list: oc.output(z.array(roomConfigSchema)),
-    /** `since` = dernier `contentHash` connu ; le snapshot n'est renvoyé que s'il a changé. */
+    /** `since` = last known `contentHash`; the snapshot is only returned if it changed. */
     sync: oc
       .input(z.object({ since: z.string().nullable() }))
       .output(syncResultSchema),
     /**
-     * Réglage d'une salle par elle-même.
+     * A room configuring itself.
      *
-     * Le hub reste la source de vérité — c'est lui qui repousse la config à
-     * chaque `sync`, et une modification gardée en local serait écrasée au
-     * suivant. Mais la saisie, elle, a sa place en salle : les adresses des
-     * deux OBS et les noms de scènes se constatent devant les machines, pas
-     * depuis une console à l'autre bout du bâtiment.
+     * The hub stays the source of truth — it is the one that pushes the config
+     * back at every `sync`, and a change kept locally would be overwritten at the
+     * next one. But entering it belongs in the room: the two OBS addresses and
+     * the scene names are established in front of the machines, not from a
+     * console at the other end of the building.
      *
-     * Bornée à la salle appelante par `roomOnly` : le contexte porte le
-     * `roomId`, il n'est pas dans l'entrée, donc aucune salle ne peut en
-     * configurer une autre.
+     * Bounded to the calling room by `roomOnly`: the context carries the
+     * `roomId`, it is not in the input, so no room can configure another.
      */
     configure: oc.input(roomConfigPatchSchema).output(roomConfigSchema),
     /**
-     * Conférence en cours et suivante d'une salle. **Publique.**
+     * A room's current and next talk. **Public.**
      *
-     * Le mur s'en sert pour dire au participant ce qu'il est en train
-     * d'écouter : sans ça, « posez votre question » ne dit pas à propos de
-     * quoi, et les questions arrivent en régie sans qu'on sache à quel talk
-     * les rattacher. Ces titres sont déjà publics — ils sont projetés.
+     * The wall uses it to tell attendees what they are listening to: without it,
+     * "ask your question" does not say what about, and questions arrive in the
+     * control room with no way to attach them to a talk. These titles are already
+     * public — they are projected.
      */
     current: oc
       .input(z.object({ roomId: roomIdSchema }))
       .output(
         z.object({
-          current: sessionApercuSchema.nullable(),
-          next: sessionApercuSchema.nullable(),
+          current: sessionPreviewSchema.nullable(),
+          next: sessionPreviewSchema.nullable(),
         }),
       ),
-    /** Supervision des salles dans l'admin. */
+    /** Room supervision in the admin console. */
     statuses: oc.output(z.array(roomStatusSchema)),
     /**
-     * Demande une resynchronisation complète. `roomId` nul = toutes les salles.
+     * Requests a full resynchronization. `roomId` null = every room.
      *
-     * Réservée à l'opérateur : c'est un geste de console, pas quelque chose
-     * qu'une salle se demande à elle-même — la régie a déjà son bouton.
+     * Reserved for the operator: it is a console gesture, not something a room
+     * asks of itself — the control app already has its own button.
      *
-     * `rooms` compte les salles visées, pour que la console puisse le dire
-     * plutôt que d'annoncer un envoi sans destinataire quand il n'y en a aucune.
+     * `rooms` counts the rooms targeted, so the console can say it rather than
+     * announcing a send with no recipient when there is none.
      */
     resync: oc
       .input(z.object({ roomId: roomIdSchema.nullable() }))
       .output(z.object({ ok: z.boolean(), rooms: z.number().int() })),
     /**
-     * Flux descendant. Chaque événement est estampillé avec son `seq` via
-     * `withEventMeta` : la reprise après coupure passe par `lastEventId`, pas
-     * par un paramètre d'entrée.
+     * Downstream flow. Every event is stamped with its `seq` via `withEventMeta`:
+     * resumption after an outage goes through `lastEventId`, not through an input
+     * parameter.
      */
     commands: oc.output(eventIterator(commandSchema)),
   },
 
   /**
-   * Bandeau des scènes live.
+   * Banner on the live scenes.
    *
-   * Une surface à part, et non un mode de plus sur l'écran de salle : le
-   * bandeau se superpose à la vidéo sans rien interrompre, là où un message
-   * d'écran remplace tout. Les deux servent à des moments différents.
+   * A surface of its own, and not one more mode on the room screen: the banner
+   * overlays the video without interrupting anything, where a screen message
+   * replaces everything. The two serve different moments.
    */
   overlay: {
-    /** Met un bandeau à l'antenne. `roomId` nul = toutes les salles. */
+    /** Puts a banner on air. `roomId` null = every room. */
     show: oc
       .input(
         z.object({
           roomId: roomIdSchema.nullable(),
-          message: bandeauSchema,
-          /** Durée d'affichage. `null` = jusqu'à ce qu'on le retire. */
+          message: bannerSchema,
+          /** Display duration. `null` = until it is removed. */
           ttlSeconds: z.number().int().positive().max(3600).nullable().default(null),
         }),
       )
       .output(z.object({ ok: z.boolean() })),
 
-    /** Retire le bandeau. */
+    /** Removes the banner. */
     hide: oc
       .input(z.object({ roomId: roomIdSchema.nullable() }))
       .output(z.object({ ok: z.boolean() })),
 
     /**
-     * Ce qui est déjà passé à l'antenne, du plus récent au plus ancien.
+     * What has already been on air, most recent first.
      *
-     * Lu dans les commandes émises : elles sont déjà persistées et datées, et
-     * en tenir une seconde copie ne pourrait que diverger. Sert à remettre un
-     * bandeau sans le retaper — un « on reprend dans 5 minutes » ressort
-     * plusieurs fois dans une journée.
+     * Read from the commands issued: they are already persisted and dated, and
+     * keeping a second copy could only diverge. Used to put a banner back without
+     * retyping it — a "back in 5 minutes" comes out several times in a day.
      */
     history: oc
       .input(
@@ -372,9 +369,9 @@ export const contract = {
           z.object({
             seq: z.number().int(),
             roomId: roomIdSchema.nullable(),
-            message: bandeauSchema,
+            message: bannerSchema,
             issuedAt: isoDateTimeSchema,
-            /** Ce bandeau est-il celui qui est à l'antenne en ce moment ? */
+            /** Is this banner the one on air right now? */
             visible: z.boolean(),
           }),
         ),
@@ -382,31 +379,31 @@ export const contract = {
   },
 
   /**
-   * Cycle de vie des conférences.
+   * Talk lifecycle.
    *
-   * Piloté depuis la régie de la salle **et** depuis la console : un talk peut
-   * déborder sans que l'opérateur de salle soit disponible, et l'organisateur
-   * doit pouvoir trancher à distance.
+   * Driven from the room's control app **and** from the console: a talk can
+   * overrun while the room operator is unavailable, and the organizer must be
+   * able to decide remotely.
    */
   sessions: {
-    /** États connus. Sans `roomId`, toutes salles — c'est la vue de la console. */
+    /** Known states. Without `roomId`, every room — that is the console's view. */
     states: oc
       .input(z.object({ roomId: roomIdSchema.nullable() }))
       .output(z.array(sessionStateViewSchema)),
     start: oc.input(z.object({ sessionId: sessionIdSchema })).output(sessionStateSchema),
     end: oc.input(z.object({ sessionId: sessionIdSchema })).output(sessionStateSchema),
-    /** Annule une décision : le talk redevient « à venir ». */
+    /** Cancels a decision: the talk becomes "upcoming" again. */
     reset: oc.input(z.object({ sessionId: sessionIdSchema })).output(z.object({ ok: z.boolean() })),
     /**
-     * Surcharge un créneau du programme, sans réimport.
+     * Overrides a program slot, without a reimport.
      *
-     * `action: null` retire la surcharge : le créneau redevient ce que dit
-     * l'export. Réservée à l'opérateur — c'est une décision sur le programme de
-     * l'événement, pas sur le déroulé d'une salle.
+     * `action: null` removes the override: the slot becomes what the export says
+     * again. Reserved for the operator — it is a decision about the event's
+     * program, not about how a room is running.
      *
-     * Rend l'empreinte du programme tel qu'il est désormais servi : elle change
-     * avec la surcharge, et c'est ce qui fait redescendre le programme dans les
-     * salles au lieu de les laisser sur leur cache.
+     * Returns the fingerprint of the program as it is now served: it changes with
+     * the override, and that is what makes the program come back down to the
+     * rooms instead of leaving them on their cache.
      */
     override: oc
       .input(
@@ -418,45 +415,45 @@ export const contract = {
       .output(z.object({ ok: z.boolean(), contentHash: z.string() })),
 
     /**
-     * Corrige l'identifiant OpenFeedback d'un créneau. Admin.
+     * Corrects a slot's OpenFeedback identifier. Admin.
      *
-     * L'adresse se fabrique hors ligne en pariant qu'OpenFeedback réutilise les
-     * identifiants de l'export amont. Le pari tient — les vingt-sept concordent
-     * — mais il se perdrait en silence : le lien resterait cliquable et le QR
-     * scannable, tous deux menant à une page qui ne parle d'aucun talk. On ne
-     * s'en apercevrait qu'aux retours manquants, c'est-à-dire trop tard.
+     * The address is built offline, betting that OpenFeedback reuses the upstream
+     * export's identifiers. The bet holds — all twenty-seven match — but it would
+     * be lost silently: the link would stay clickable and the QR code scannable,
+     * both leading to a page that talks about no talk. We would only notice from
+     * the missing feedback, that is, too late.
      *
-     * `feedbackId` nul rend le créneau à l'export. La correction survit au
-     * réimport : c'est une propriété du hub, et le programme réimporté
-     * ramènerait justement l'identifiant fautif.
+     * A null `feedbackId` gives the slot back to the export. The correction
+     * survives a reimport: it is a property of the hub, and the reimported program
+     * would bring back precisely the faulty identifier.
      */
     feedbackId: oc
       .input(
         z.object({
           sessionId: sessionIdSchema,
-          /** `null` — ou blanc — rend le créneau à l'identifiant de l'export. */
+          /** `null` — or blank — gives the slot back to the export's identifier. */
           feedbackId: z.string().max(200).nullable(),
         }),
       )
       .output(
         z.object({
           ok: z.boolean(),
-          /** L'identifiant servi après le geste, correction ou export. */
+          /** The identifier served after the gesture, correction or export. */
           feedbackId: z.string(),
-          /** L'adresse qui en découle, pour la vérifier d'un clic. `null` sans projet réglé. */
+          /** The address that follows from it, to check with one click. `null` with no project set. */
           feedbackUrl: z.url().nullable(),
         }),
       ),
   },
 
   /**
-   * Échange de messages entre la console et les salles.
+   * Message exchange between the console and the rooms.
    *
-   * Deux sens distincts : la console diffuse une commande (immédiate, avec un
-   * TTL), une salle remonte par son outbox (durable, survit à une coupure).
+   * Two distinct directions: the console broadcasts a command (immediate, with a
+   * TTL), a room reports through its outbox (durable, survives an outage).
    */
   messages: {
-    /** Envoie un message. `roomId` nul = toutes les salles. */
+    /** Sends a message. `roomId` null = every room. */
     send: oc
       .input(
         z.object({
@@ -464,13 +461,13 @@ export const contract = {
           text: z.string().min(1).max(500),
           level: z.enum(['info', 'warning', 'urgent']),
           target: z.enum(['operator', 'audience']),
-          /** Durée d'affichage. `null` = jusqu'à remplacement. */
+          /** Display duration. `null` = until replaced. */
           ttlSeconds: z.number().int().positive().max(3600).nullable(),
         }),
       )
       .output(z.object({ ok: z.boolean() })),
 
-    /** Messages remontés par les salles, du plus récent au plus ancien. */
+    /** Messages reported by the rooms, most recent first. */
     fromRooms: oc
       .input(z.object({ limit: z.number().int().min(1).max(200).default(50) }))
       .output(
@@ -489,47 +486,47 @@ export const contract = {
   },
 
   /**
-   * Heure du hub.
+   * The hub's clock.
    *
-   * Outil de développement : déplacer l'heure permet de dérouler une journée
-   * d'événement à l'avance. Fermé par défaut côté serveur — le faire pendant
-   * l'événement fausserait les timecodes des enregistrements.
+   * A development tool: moving the time lets you play out an event day in
+   * advance. Closed by default on the server side — doing it during the event
+   * would skew the recordings' timecodes.
    */
   clock: {
     get: oc.output(
       z.object({
         serverTime: isoDateTimeSchema,
         simulated: z.boolean(),
-        /** Le hub autorise-t-il le réglage depuis la console ? */
+        /** Does the hub allow setting it from the console? */
         controllable: z.boolean(),
       }),
     ),
-    /** `at` nul revient à l'heure réelle. */
+    /** A null `at` goes back to real time. */
     set: oc
       .input(z.object({ at: isoDateTimeSchema.nullable() }))
       .output(z.object({ serverTime: isoDateTimeSchema, simulated: z.boolean() })),
   },
 
   /**
-   * Identité de l'événement, telle que le hub la tranche.
+   * The event's identity, as the hub decides it.
    *
-   * Lecture seule : elle s'écrit par `settings.update` (ou pas du tout, quand
-   * elle se déduit du programme importé). Deux valeurs plutôt qu'une, parce
-   * que la console doit pouvoir dire ce qu'on obtiendrait en relâchant le
-   * réglage — sinon personne n'ose vider un champ.
+   * Read-only: it is written through `settings.update` (or not at all, when it is
+   * derived from the imported program). Two values rather than one, because the
+   * console must be able to say what you would get by releasing the setting —
+   * otherwise nobody dares clear a field.
    */
   event: {
     identity: oc.output(
       z.object({
-        /** Ce qui s'affiche partout : réglage s'il existe, déduction sinon. */
+        /** What is shown everywhere: the setting if there is one, the derivation otherwise. */
         resolved: eventIdentitySchema,
-        /** Ce que donnerait le programme importé seul, réglages ignorés. */
+        /** What the imported program alone would give, settings ignored. */
         derived: eventIdentitySchema,
       }),
     ),
   },
 
-  /** Réglages modifiables en cours d'événement. */
+  /** Settings that can be changed during the event. */
   settings: {
     get: oc.output(hubSettingsSchema),
     update: oc.input(hubSettingsSchema.partial()).output(hubSettingsSchema),
@@ -537,8 +534,8 @@ export const contract = {
 
   ingest: {
     /**
-     * Vidange de l'outbox. Idempotent sur `(roomId, envelope.id)` : un rejeu
-     * après reconnexion renvoie `duplicates`, jamais une seconde insertion.
+     * Draining the outbox. Idempotent on `(roomId, envelope.id)`: a replay after
+     * reconnection returns `duplicates`, never a second insertion.
      */
     push: oc
       .input(z.object({ batch: z.array(envelopeSchema).min(1).max(500) }))
@@ -547,12 +544,12 @@ export const contract = {
 
   wall: {
     /**
-     * Dépôt public depuis le mobile (QR). Passe par la modération.
+     * Public post from a phone (QR code). Goes through moderation.
      *
-     * `roomId` nul — ce qu'envoie le mur public — vaut « toutes les salles » :
-     * un message du public s'adresse à l'événement, pas à la pièce où son
-     * auteur se trouve. Le champ reste là pour les sources qui, elles, savent
-     * de quelle salle elles parlent.
+     * A null `roomId` — what the public wall sends — means "every room": a message
+     * from the audience addresses the event, not the room its author happens to be
+     * in. The field stays for the sources that do know which room they are talking
+     * about.
      */
     post: oc
       .input(
@@ -563,26 +560,26 @@ export const contract = {
         }),
       )
       .output(z.object({ id: z.string(), status: z.literal('pending') })),
-    /** Flux des messages approuvés, consommé par les écrans de salle. */
+    /** Flow of approved messages, consumed by the room screens. */
     feed: oc
       .input(z.object({ roomId: roomIdSchema.nullable() }))
       .output(eventIterator(commentSchema)),
     /**
-     * Derniers messages déjà à l'écran. **Publique.**
+     * Latest messages already on screen. **Public.**
      *
-     * Sert au mur sur mobile : sans elle, déposer un message revenait à parler
-     * dans le vide — rien ne montrait que d'autres écrivaient, ni que ça
-     * finissait réellement projeté. Ces messages sont déjà publics au sens le
-     * plus fort du terme : ils sont affichés en grand dans les salles.
+     * Used by the wall on mobile: without it, posting a message meant speaking
+     * into the void — nothing showed that others were writing, nor that it really
+     * ended up projected. These messages are already public in the strongest
+     * sense: they are shown in large type in the rooms.
      *
-     * Servie depuis l'instantané mémoire du hub, comme le flux : le mur est la
-     * seule charge non bornée de la journée — quelques centaines de mobiles
-     * quand le QR est à l'écran — et elle ne doit pas se traduire en requêtes.
+     * Served from the hub's in-memory snapshot, like the flow: the wall is the
+     * only unbounded load of the day — a few hundred phones when the QR code is on
+     * screen — and it must not turn into queries.
      */
     recent: oc
       .input(z.object({ limit: z.number().int().min(1).max(30).default(12) }))
       .output(z.array(commentSchema)),
-    /** File de modération, toutes sources confondues. Admin. */
+    /** Moderation queue, all sources together. Admin. */
     pending: oc
       .input(z.object({ source: commentSourceSchema.optional() }))
       .output(z.array(commentSchema)),
@@ -592,14 +589,14 @@ export const contract = {
   },
 
   /**
-   * Appairage des machines de salle.
+   * Pairing of the room machines.
    *
-   * L'échange de jetons lui-même se fait sur les endpoints Better Auth
-   * (`/api/auth/device/*`, RFC 8628) : ces procédures-ci couvrent ce que Better
-   * Auth ne sait pas — quelle salle une machine dessert.
+   * The token exchange itself happens on the Better Auth endpoints
+   * (`/api/auth/device/*`, RFC 8628): these procedures cover what Better Auth
+   * does not know — which room a machine serves.
    */
   devices: {
-    /** Machines ayant demandé un appairage et pas encore traitées. Admin. */
+    /** Machines that requested pairing and have not been dealt with. Admin. */
     pending: oc.output(
       z.array(
         z.object({
@@ -610,10 +607,10 @@ export const contract = {
       ),
     ),
     /**
-     * Approuve une machine *et* l'affecte à une salle, en une seule opération.
-     * Les deux doivent être atomiques : une machine approuvée mais non affectée
-     * détiendrait un jeton valide sans salle, ce qui est un état inutile et
-     * déroutant en régie.
+     * Approves a machine *and* assigns it to a room, in a single operation. The
+     * two must be atomic: a machine approved but not assigned would hold a valid
+     * token with no room, which is a useless and confusing state in the control
+     * app.
      */
     approve: oc
       .input(
@@ -627,34 +624,33 @@ export const contract = {
       .output(z.object({ ok: z.boolean() })),
     deny: oc.input(z.object({ userCode: z.string().min(4) })).output(z.object({ ok: z.boolean() })),
     /**
-     * État d'un code d'appairage, sans rien approuver.
+     * State of a pairing code, without approving anything.
      *
-     * Sert au lien que la machine affiche : arriver sur la console avec un code
-     * mort et une file de demandes ne dit rien de ce qui cloche. Un code
-     * inconnu et un code expiré ne se corrigent pas de la même façon — l'un est
-     * une faute de frappe ou une base recréée, l'autre demande de relancer
-     * l'appairage depuis la régie —, d'où deux raisons distinctes plutôt qu'une
-     * erreur.
+     * Used by the link the machine displays: landing on the console with a dead
+     * code and a queue of requests says nothing about what is wrong. An unknown
+     * code and an expired code are not fixed the same way — one is a typo or a
+     * recreated database, the other means restarting pairing from the control app
+     * —, hence two distinct reasons rather than an error.
      */
     lookup: oc.input(z.object({ userCode: z.string().min(4) })).output(
       z.object({
-        /** État Better Auth du code, ou `null` s'il n'est plus exploitable. */
+        /** Better Auth state of the code, or `null` if it is no longer usable. */
         status: z.enum(['pending', 'approved', 'denied']).nullable(),
-        /** Renseignée quand `status` est `null` : pourquoi le code ne vaut rien. */
+        /** Set when `status` is `null`: why the code is worthless. */
         reason: z.enum(['inconnu', 'expire']).nullable(),
         clientId: z.string().nullable(),
-        /** Salle demandée par la machine, telle qu'elle voyage dans le scope. */
+        /** Room requested by the machine, as it travels in the scope. */
         requestedRoomId: roomIdSchema.nullable(),
-        /** `null` si la salle demandée n'existe pas (ou plus) sur ce hub. */
+        /** `null` if the requested room does not exist (any more) on this hub. */
         requestedRoomName: z.string().nullable(),
       }),
     ),
     /**
-     * Échange la session d'approbation contre un jeton de salle.
+     * Exchanges the approval session for a room token.
      *
-     * Appelé par la machine juste après l'appairage, avec la session que lui a
-     * value l'approbation. Ce jeton porte les droits d'une salle et rien de
-     * plus ; la session Better Auth est ensuite jetée.
+     * Called by the machine right after pairing, with the session the approval
+     * earned it. That token carries a room's rights and nothing more; the Better
+     * Auth session is then discarded.
      */
     claim: oc.output(
       z.object({
@@ -662,7 +658,7 @@ export const contract = {
         roomId: roomIdSchema,
       }),
     ),
-    /** Machines appairées, pour la supervision et la révocation. */
+    /** Paired machines, for supervision and revocation. */
     list: oc.output(
       z.array(
         z.object({
@@ -675,44 +671,43 @@ export const contract = {
         }),
       ),
     ),
-    /** Coupe l'accès d'une machine sans toucher au compte de l'opérateur. */
+    /** Cuts a machine's access without touching the operator's account. */
     revoke: oc.input(z.object({ clientId: z.string() })).output(z.object({ ok: z.boolean() })),
   },
 
   /**
-   * Notifications poussées aux consoles, **fenêtre fermée**.
+   * Notifications pushed to the consoles, **window closed**.
    *
-   * La console se regarde sur un téléphone rangé dans une poche : les
-   * notifications de la page s'arrêtent dès que le navigateur s'endort, ce qui
-   * est précisément le moment où l'on a besoin d'être prévenu. Le Web Push
-   * traverse cet endormissement, au prix d'un abonnement par navigateur et
-   * d'une veille côté hub — lui seul peut encore constater qu'une salle est
-   * tombée quand plus personne ne regarde.
+   * The console gets watched on a phone tucked in a pocket: the page's
+   * notifications stop as soon as the browser goes to sleep, which is exactly the
+   * moment you need to be told. Web Push crosses that sleep, at the cost of one
+   * subscription per browser and of a watcher on the hub side — it alone can
+   * still observe that a room has gone down when nobody is looking.
    */
   push: {
     /**
-     * Clé publique VAPID du hub, à passer à `pushManager.subscribe`.
+     * The hub's VAPID public key, to pass to `pushManager.subscribe`.
      *
-     * `null` quand le push n'est pas disponible : la console ne propose alors
-     * que les notifications de page, plutôt qu'un bouton qui échouerait.
+     * `null` when push is not available: the console then only offers page
+     * notifications, rather than a button that would fail.
      */
     publicKey: oc.output(z.object({ publicKey: z.string().nullable() })),
-    /** Enregistre le navigateur. Ré-appelable : le même endpoint écrase. */
+    /** Registers the browser. Callable again: the same endpoint overwrites. */
     subscribe: oc
       .input(
         z.object({
           endpoint: z.url(),
           keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }),
-          /** Étiquette lisible — « iPhone de la régie » — pour s'y retrouver. */
+          /** Readable label — "the control room's iPhone" — to tell them apart. */
           label: z.string().max(80).nullable().default(null),
           /**
-           * Ce que ce navigateur-là veut recevoir.
+           * What that particular browser wants to receive.
            *
-           * Rangé avec l'abonnement, et non avec l'opérateur : c'est la même
-           * personne qui veut l'essentiel sur le téléphone dans sa poche et
-           * tout sur la console posée devant elle.
+           * Kept with the subscription, and not with the operator: it is the same
+           * person who wants the essentials on the phone in their pocket and
+           * everything on the console in front of them.
            */
-          levels: niveauxNotifSchema.default({ technique: 'essentiel', exploitation: 'essentiel' }),
+          levels: notifLevelsSchema.default({ technique: 'essentiel', exploitation: 'essentiel' }),
         }),
       )
       .output(z.object({ ok: z.boolean() })),
@@ -720,47 +715,46 @@ export const contract = {
   },
 
   /**
-   * Rapatriement des rushes vers le stockage S3 du hub.
+   * Shipping the rushes back to the hub's S3 storage.
    *
-   * Le hub détient les clés et ne les donne jamais : il signe des adresses à
-   * durée de vie courte, la salle téléverse dessus. Une machine de salle volée
-   * ne donne accès à aucun bucket, et révoquer une salle suffit à la couper du
-   * stockage — c'est la même raison qui fait qu'une salle a son propre jeton
-   * plutôt que celui d'un opérateur.
+   * The hub holds the keys and never hands them over: it signs short-lived
+   * addresses, the room uploads to them. A stolen room machine gives access to no
+   * bucket, and revoking a room is enough to cut it off from the storage — the
+   * same reason a room has its own token rather than an operator's.
    *
-   * Toutes les procédures de salle sont bornées à la salle appelante par
-   * `roomOnly` : le `roomId` vient du jeton, jamais de l'entrée.
+   * Every room procedure is bounded to the calling room by `roomOnly`: the
+   * `roomId` comes from the token, never from the input.
    */
   vod: {
     /**
-     * Ouvre — ou **reprend** — le téléversement d'un fichier.
+     * Opens — or **resumes** — the upload of a file.
      *
-     * Idempotente sur `(salle, fichier)` : rappeler ne recommence rien, elle
-     * rend le plan déjà ouvert avec la liste des parts arrivées. C'est ce qui
-     * rend une machine redémarrée en pleine montée capable de repartir d'où
-     * elle en était, au lieu de refaire trois gigaoctets.
+     * Idempotent on `(room, file)`: calling again restarts nothing, it returns the
+     * plan already open with the list of parts that have arrived. That is what
+     * makes a machine rebooted mid-upload able to pick up where it was, instead of
+     * redoing three gigabytes.
      *
-     * C'est aussi la **notification de début** : le hub n'apprend pas
-     * autrement qu'une salle s'est mise à monter quelque chose.
+     * It is also the **start notification**: the hub has no other way of learning
+     * that a room has started uploading something.
      */
     begin: oc
       .input(
         z.object({
-          /** Chemin relatif à la racine des enregistrements, tel que la salle le nomme. */
+          /** Path relative to the recordings root, as the room names it. */
           file: z.string().min(1).max(400),
           sizeBytes: z.number().int().nonnegative(),
-          kind: genreVodSchema,
+          kind: vodKindSchema,
           sessionId: sessionIdSchema.nullable().default(null),
         }),
       )
-      .output(planTeleversementSchema),
+      .output(uploadPlanSchema),
 
     /**
-     * Signe les adresses d'un lot de parts.
+     * Signs the addresses of a batch of parts.
      *
-     * Par petits lots et à la demande, jamais toutes d'avance : une adresse
-     * signée périme, et en presigner cinq cents pour un rush de deux heures,
-     * c'est en périmer quatre cent quatre-vingts avant qu'on y arrive.
+     * In small batches and on demand, never all in advance: a signed address
+     * expires, and presigning five hundred for a two-hour rush means expiring four
+     * hundred and eighty before we get there.
      */
     parts: oc
       .input(
@@ -769,15 +763,15 @@ export const contract = {
           numeros: z.array(z.number().int().positive()).min(1).max(20),
         }),
       )
-      .output(z.array(partSigneeSchema)),
+      .output(z.array(signedPartSchema)),
 
     /**
-     * Une part est arrivée.
+     * A part has arrived.
      *
-     * L'`etag` n'est pas de la comptabilité : S3 le réclame, part par part, au
-     * moment de clore le téléversement. Sans lui l'objet ne se recompose pas.
-     * La durée sert au régulateur de la salle, qui décide de continuer ou de
-     * lever le pied sur ce qu'il constate, pas sur ce qu'on lui promet.
+     * The `etag` is not bookkeeping: S3 requires it, part by part, when closing
+     * the upload. Without it the object does not get reassembled. The duration is
+     * for the room's regulator, which decides to carry on or ease off based on
+     * what it observes, not on what it is promised.
      */
     progress: oc
       .input(
@@ -791,149 +785,145 @@ export const contract = {
       )
       .output(z.object({ ok: z.boolean() })),
 
-    /** Recompose l'objet chez le stockage. **C'est la notification de fin.** */
+    /** Reassembles the object at the storage. **This is the end notification.** */
     complete: oc
       .input(z.object({ uploadId: z.string() }))
       .output(z.object({ ok: z.boolean(), objectKey: z.string() })),
 
     /**
-     * Renonce, et le dit.
+     * Gives up, and says so.
      *
-     * Un multipart abandonné en silence reste facturé indéfiniment chez le
-     * stockage. La salle le signale donc quand elle peut ; le ménage du hub
-     * couvre le cas où elle ne le peut plus.
+     * A multipart abandoned in silence stays billed indefinitely at the storage.
+     * So the room reports it when it can; the hub's housekeeping covers the case
+     * where it no longer can.
      */
     abort: oc
       .input(z.object({ uploadId: z.string(), raison: z.string().max(300) }))
       .output(z.object({ ok: z.boolean() })),
 
-    /** Ce que le hub sait des téléversements. `roomId` nul = toutes les salles. */
+    /** What the hub knows about the uploads. `roomId` null = every room. */
     uploads: oc
       .input(z.object({ roomId: roomIdSchema.nullable().default(null) }))
-      .output(z.array(televersementVuSchema)),
+      .output(z.array(uploadViewSchema)),
 
     /**
-     * Le dossier VOD d'**une** conférence. Admin.
+     * **One** talk's VOD folder. Admin.
      *
-     * La vue « téléversements » range par fichier et par salle, ce qui est le
-     * bon classement quand on démonte une salle et le mauvais quand un speaker
-     * demande où est sa captation. Cette procédure répond dans l'autre sens :
-     * on part du créneau, et on redescend vers la prise puis vers l'objet chez
-     * le stockage.
+     * The "uploads" view sorts by file and by room, which is the right ordering
+     * when dismantling a room and the wrong one when a speaker asks where their
+     * capture is. This procedure answers the other way round: you start from the
+     * slot, and go down to the take and then to the object at the storage.
      *
-     * Elle ne dépend pas du stockage : un hub sans S3 répond quand même, avec
-     * `stockageConfigure` à faux et la moitié « prises » remplie. C'est même le
-     * cas le plus utile — savoir qu'un rush existe sur une machine qu'on
-     * s'apprête à débrancher.
+     * It does not depend on the storage: a hub with no S3 still answers, with
+     * `stockageConfigure` false and the "takes" half filled in. That is even the
+     * most useful case — knowing a rush exists on a machine you are about to
+     * unplug.
      */
     conference: oc
       .input(z.object({ sessionId: sessionIdSchema }))
-      .output(dossierVodSchema),
+      .output(vodFolderSchema),
 
     /**
-     * Le stockage est-il configuré, et comment. Admin.
+     * Is the storage configured, and how. Admin.
      *
-     * Sans entrée : la console la demande pour savoir si elle a quelque chose à
-     * montrer. Répondre « non configuré » vaut mieux qu'un panneau de réglages
-     * dont chaque bouton échouerait — et dit du même coup quelles variables
-     * manquent, ce qui ne se devine pas depuis un navigateur.
+     * No input: the console asks it to know whether it has anything to show.
+     * Answering "not configured" beats a settings panel where every button would
+     * fail — and says at the same time which variables are missing, which cannot
+     * be guessed from a browser.
      */
     status: oc.output(
       z.object({
         /**
-         * Le hub sait où écrire : clés **et** bucket.
+         * The hub knows where to write: keys **and** bucket.
          *
-         * Un seul booléen pour les deux, parce que rien ne part sans les deux —
-         * mais `endpoint` nul distingue les deux causes, et la console ne dit
-         * pas la même chose dans un cas et dans l'autre : l'un se règle dans un
-         * fichier d'environnement, l'autre dans le champ juste au-dessus.
+         * A single boolean for both, because nothing leaves without both — but a
+         * null `endpoint` tells the two causes apart, and the console does not say
+         * the same thing in one case and the other: one is set in an environment
+         * file, the other in the field just above.
          */
         configure: z.boolean(),
-        /** `null` = aucune clé configurée sur ce hub, donc rien à régler ici. */
+        /** `null` = no keys configured on this hub, so nothing to set here. */
         endpoint: z.string().nullable(),
         bucket: z.string().nullable(),
         prefix: z.string().nullable(),
-        politique: politiqueVodSchema,
+        politique: vodPolicySchema,
       }),
     ),
 
     /**
-     * Éprouve la connexion au stockage, pour de vrai. Admin.
+     * Tests the connection to the storage, for real. Admin.
      *
-     * Elle ne sonde pas : elle **fait le vrai geste**. Ouvrir un téléversement,
-     * signer une adresse de part, y écrire quelques octets, tout abandonner.
-     * C'est la seule façon de distinguer un bucket qui existe d'un bucket où
-     * l'on a le droit d'écrire, et une clé valide d'une signature juste.
+     * It does not probe: it **performs the real gesture**. Open an upload, sign a
+     * part address, write a few bytes to it, abandon everything. That is the only
+     * way to tell a bucket that exists from a bucket you are allowed to write to,
+     * and a valid key from a correct signature.
      *
-     * Elle ne lève jamais : le diagnostic **est** la réponse. Une erreur HTTP
-     * ferait perdre l'étape à laquelle on s'est arrêté, qui est tout ce qu'on
-     * venait chercher.
+     * It never throws: the diagnosis **is** the answer. An HTTP error would lose
+     * the step we stopped at, which is all we came for.
      *
-     * Ce qu'elle ne dit pas, et qu'il faut savoir : elle éprouve le chemin
-     * **depuis le hub**. Les salles écrivent les parts elles-mêmes, sur un autre
-     * réseau et parfois derrière un autre pare-feu.
+     * What it does not say, and what you need to know: it tests the path **from
+     * the hub**. The rooms write the parts themselves, on another network and
+     * sometimes behind another firewall.
      */
-    check: oc.output(controleStockageSchema),
+    check: oc.output(storageCheckSchema),
 
     /**
-     * Efface tout : le préfixe du bucket, et les rushes des salles. **Dev seulement.**
+     * Erases everything: the bucket prefix, and the rooms' rushes. **Dev only.**
      *
-     * Outil de développement, et refusé côté serveur hors `MODE=dev` — pas
-     * seulement absent de la console. Une vue masquée reste à un `hidden` près
-     * de quelqu'un qui inspecte la page ; celle-ci détruit une journée de
-     * captation.
+     * A development tool, and refused on the server side outside `MODE=dev` — not
+     * merely absent from the console. A hidden view is one `hidden` away from
+     * whoever inspects the page; this one destroys a day of capture.
      *
-     * Trois garde-fous, et chacun a sa raison :
+     * Three guard rails, each with its reason:
      *
-     * - **un préfixe est exigé.** Sans lui, « le préfixe » et « le bucket
-     *   entier » sont la même chose, et un bucket partagé avec autre chose y
-     *   passerait ;
-     * - **côté salle, seul ce que l'application connaît est effacé** — les
-     *   conteneurs vidéo, leurs sidecars, le fichier de verdicts. La racine des
-     *   captations est parfois un disque partagé ;
-     * - **`confirmation` doit valoir `RAZ`.** Le contrat le vérifie, donc le
-     *   hub aussi : un appel direct, sans passer par la console et sa modale,
-     *   ne peut pas se faire par distraction.
+     * - **a prefix is required.** Without it, "the prefix" and "the whole bucket"
+     *   are the same thing, and a bucket shared with something else would go too;
+     * - **on the room side, only what the application knows about is erased** —
+     *   the video containers, their sidecars, the verdicts file. The capture root
+     *   is sometimes a shared disk;
+     * - **`confirmation` must equal `RAZ`.** The contract checks it, so the hub
+     *   does too: a direct call, without going through the console and its dialog,
+     *   cannot happen by inattention.
      */
     reset: oc
       .input(
         z.object({
-          /** Recopié dans la console. Le contrat en fait une garde du hub. */
+          /** Typed again in the console. The contract makes it a hub guard. */
           confirmation: z.literal('RAZ'),
         }),
       )
       .output(
         z.object({
-          /** Objets supprimés sous le préfixe. */
+          /** Objects deleted under the prefix. */
           objets: z.number().int().nonnegative(),
-          /** Téléversements en cours abandonnés au passage. */
+          /** Uploads in progress abandoned along the way. */
           multiparts: z.number().int().nonnegative(),
-          /** Salles à qui l'ordre a été envoyé. Elles effacent chacune chez elles. */
+          /** Rooms the order was sent to. Each erases its own. */
           salles: z.number().int().nonnegative(),
           /**
-           * Événements de captation oubliés par le hub.
+           * Capture events forgotten by the hub.
            *
-           * Le hub tient sa propre mémoire des prises, reconstituée du journal
-           * d'ingestion. La laisser debout faisait lister, dans le dossier VOD
-           * d'une conférence, des captations dont on venait d'effacer les
-           * fichiers — et la remise à zéro paraissait sans effet.
+           * The hub keeps its own memory of the takes, reconstructed from the
+           * ingestion log. Leaving it standing made a talk's VOD folder list
+           * captures whose files had just been erased — and the reset looked like
+           * it had had no effect.
            */
           prises: z.number().int().nonnegative().default(0),
         }),
       ),
 
     /**
-     * Demande à une salle de téléverser. Admin.
+     * Asks a room to upload. Admin.
      *
-     * La console ne détient pas les fichiers : elle ne peut que demander. La
-     * salle repasse par son propre régulateur — mais une demande explicite
-     * vaut accord pour ne pas attendre la prochaine fenêtre.
+     * The console does not hold the files: it can only ask. The room goes back
+     * through its own regulator — but an explicit request counts as agreement not
+     * to wait for the next window.
      */
     request: oc
       .input(
         z.object({
           roomId: roomIdSchema,
-          /** `null` = tout ce qui n'est pas encore monté. */
+          /** `null` = everything not yet uploaded. */
           file: z.string().max(400).nullable().default(null),
         }),
       )
@@ -941,62 +931,61 @@ export const contract = {
   },
 
   /**
-   * Régie mobile : piloter une salle depuis un téléphone, par le hub.
+   * Mobile control: driving a room from a phone, through the hub.
    *
-   * Un namespace à part, et non des procédures greffées sur `rooms` ou
-   * `sessions`, parce que c'est **la seule surface que le verrou garde**. Le
-   * cycle de vie y repasse alors même que `sessions.start` accepte déjà un
-   * opérateur : deux portes vers le même geste, dont une seule verrouillée,
-   * n'aurait verrouillé personne.
+   * A namespace of its own, and not procedures grafted onto `rooms` or
+   * `sessions`, because it is **the only surface the lock guards**. The lifecycle
+   * goes through it again even though `sessions.start` already accepts an
+   * operator: two doors to the same gesture, only one of them locked, would have
+   * locked nobody.
    *
-   * Ce que le verrou ne garde pas, et c'est délibéré : la console reste libre
-   * de ses gestes, et la régie de la salle ne passe pas par le hub du tout —
-   * elle poste sur sa propre boucle locale. L'opérateur qui est physiquement
-   * devant la machine n'est jamais bloqué par un téléphone parti dans un
-   * couloir.
+   * What the lock does not guard, and that is deliberate: the console keeps its
+   * gestures free, and the room's control app does not go through the hub at all —
+   * it posts on its own loopback. The operator physically in front of the machine
+   * is never blocked by a phone that has wandered off down a corridor.
    */
   regie: {
     /**
-     * Les salles et leur verrou, pour l'écran de choix.
+     * The rooms and their locks, for the picker screen.
      *
-     * Un verrou périmé n'est pas rendu : ce que la liste montre est ce qu'on
-     * peut prendre sans déposséder personne.
+     * An expired lock is not handed back: what the list shows is what you can take
+     * without dispossessing anyone.
      */
-    locks: oc.output(z.array(regieRoomSchema)),
+    locks: oc.output(z.array(controlRoomSchema)),
     /**
-     * Prend la salle, ou renouvelle sa prise.
+     * Takes the room, or renews the hold.
      *
-     * Sans `force`, une salle déjà tenue par quelqu'un d'autre répond
-     * `CONFLICT` en nommant le porteur — la reprise est une décision, pas un
-     * effet de bord d'un rechargement de page. Avec `force`, elle dépossède ;
-     * c'est ce que fait le bouton « Reprendre la salle », sous une modale.
+     * Without `force`, a room already held by someone else answers `CONFLICT`
+     * naming the holder — taking over is a decision, not a side effect of
+     * reloading a page. With `force`, it dispossesses; that is what the "Take over
+     * the room" button does, behind a dialog.
      */
     hold: oc
       .input(z.object({ roomId: roomIdSchema, force: z.boolean().default(false) }))
-      .output(regieLockSchema),
-    /** Rend la salle. Sans effet si l'appelant ne la tenait pas. */
+      .output(controlLockSchema),
+    /** Releases the room. No effect if the caller was not holding it. */
     release: oc.input(z.object({ roomId: roomIdSchema })).output(z.object({ ok: z.boolean() })),
     /**
-     * L'état d'une salle, **et le battement du verrou**.
+     * A room's state, **and the lock's heartbeat**.
      *
-     * Les deux dans le même appel, à dessein. Un sondage d'une seconde dit déjà
-     * « je suis là » ; en faire un second geste, c'est un battement de plus
-     * qu'on peut oublier d'arrêter — et un verrou qui survit à la page qui le
-     * tenait. Un appelant qui ne tient pas la salle ne fait que lire.
+     * Both in the same call, by design. A one-second poll already says "I am
+     * here"; making it a second gesture is one more heartbeat you can forget to
+     * stop — and a lock that outlives the page holding it. A caller that does not
+     * hold the room merely reads.
      */
-    view: oc.input(z.object({ roomId: roomIdSchema })).output(regieViewSchema),
+    view: oc.input(z.object({ roomId: roomIdSchema })).output(controlViewSchema),
     /**
-     * Un geste de régie. Réservé au porteur du verrou.
+     * A control gesture. Reserved for the lock holder.
      *
-     * Deux natures de réponse derrière une seule procédure, et `applied` les
-     * distingue : le cycle de vie s'écrit chez le hub — c'est acquis au retour
-     * —, une scène ou un enregistrement part sur le flux descendant et ne
-     * s'observe que sur la vue. Confondre les deux ferait croire qu'un
-     * enregistrement tourne parce qu'un appel a répondu.
+     * Two kinds of answer behind a single procedure, and `applied` tells them
+     * apart: the lifecycle is written on the hub — settled on return —, a scene or
+     * a recording leaves on the downstream flow and is only observed from the
+     * view. Confusing the two would suggest a recording is running because a call
+     * answered.
      */
     command: oc
-      .input(z.object({ roomId: roomIdSchema, action: regieCommandSchema }))
-      .output(regieCommandResultSchema),
+      .input(z.object({ roomId: roomIdSchema, action: controlCommandSchema }))
+      .output(controlCommandResultSchema),
   },
 
   questions: {
@@ -1010,7 +999,7 @@ export const contract = {
         }),
       )
       .output(questionSchema),
-    /** `deviceId` limite le vote multiple sans imposer de compte. */
+    /** `deviceId` limits multiple voting without requiring an account. */
     vote: oc
       .input(z.object({ id: z.string(), deviceId: z.string().min(8) }))
       .output(z.object({ votes: z.number().int() })),

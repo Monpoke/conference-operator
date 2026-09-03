@@ -86,7 +86,7 @@ afterEach(async () => {
 })
 
 describe('la coquille', () => {
-  it('rend le point de montage du bundle, et plus le gabarit', async () => {
+  it('rend le point de editing du bundle, et plus le gabarit', async () => {
     await demarrer({ viteOrigin: 'http://127.0.0.1:5174' })
 
     const reponse = await fetch(`${origin}/regie`)

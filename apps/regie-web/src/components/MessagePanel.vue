@@ -25,7 +25,7 @@ async function send(): Promise<void> {
   if (trimmed.length === 0) return
   /*
    * Le champ se vide avant la réponse, et c'est le seul endroit où l'on
-   * s'autorise à ne pas attendre : le message part par la file, il n'a pas
+   * s'allowed à ne pas attendre : le message part par la file, il n'a pas
    * d'état à l'écran à contredire, et retaper une phrase parce que le poste a
    * mis une seconde à répondre est ce qui décourage de la retaper.
    */

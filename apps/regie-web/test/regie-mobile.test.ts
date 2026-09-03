@@ -1,4 +1,4 @@
-import type { RegieCommand, RegieRoom, RegieView } from '@cloudnord/contract'
+import type { ControlCommand, ControlRoom, ControlView } from '@cloudnord/contract'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -24,7 +24,7 @@ import { talk } from './fixtures.js'
 
 const AT = Date.parse('2026-10-30T09:10:00.000Z')
 
-function salle(overrides: Partial<RegieRoom> = {}): RegieRoom {
+function salle(overrides: Partial<ControlRoom> = {}): ControlRoom {
   return {
     roomId: 'track-1',
     name: 'Track #1',
@@ -39,7 +39,7 @@ function salle(overrides: Partial<RegieRoom> = {}): RegieRoom {
 const MOI = 'session-de-ce-test'
 const AUTRE_ONGLET = 'session-tablette'
 
-function verrouDe(holder: string, holderId = AUTRE_ONGLET): RegieRoom['lock'] {
+function verrouDe(holder: string, holderId = AUTRE_ONGLET): ControlRoom['lock'] {
   return {
     roomId: 'track-1',
     holder,
@@ -50,7 +50,7 @@ function verrouDe(holder: string, holderId = AUTRE_ONGLET): RegieRoom['lock'] {
   }
 }
 
-function vue(overrides: Partial<RegieView> = {}): RegieView {
+function vue(overrides: Partial<ControlView> = {}): ControlView {
   return {
     roomId: 'track-1',
     roomName: 'Track #1',
@@ -80,10 +80,10 @@ function vue(overrides: Partial<RegieView> = {}): RegieView {
 }
 
 /** Le hub, réduit à ce que ces écrans lui demandent. */
-function hubFactice(salles: RegieRoom[], vueRendue: Partial<RegieView> = {}) {
+function hubFactice(salles: ControlRoom[], vueRendue: Partial<ControlView> = {}) {
   const appels: string[] = []
   /** Ce que la salle recevrait. Séparé de `appels` : on y lit un geste, pas un tour de liste. */
-  const commandes: RegieCommand[] = []
+  const commandes: ControlCommand[] = []
   return {
     appels,
     commandes,
@@ -103,7 +103,7 @@ function hubFactice(salles: RegieRoom[], vueRendue: Partial<RegieView> = {}) {
             return { ok: true }
           },
           view: async () => vue(vueRendue),
-          command: async ({ action }: { action: RegieCommand }) => {
+          command: async ({ action }: { action: ControlCommand }) => {
             commandes.push(action)
             return { ok: true, applied: 'queued' as const }
           },
@@ -114,9 +114,9 @@ function hubFactice(salles: RegieRoom[], vueRendue: Partial<RegieView> = {}) {
 }
 
 function monterDistante(
-  salles: RegieRoom[],
+  salles: ControlRoom[],
   connecte = true,
-  vueRendue: Partial<RegieView> = {},
+  vueRendue: Partial<ControlView> = {},
 ) {
   const porte = usePorteStore()
   porte.start({ portee: 'distante', roomId: null, salles: [], google: null })
@@ -231,7 +231,7 @@ describe('les trois écrans', () => {
  * ensuite, et c'est en plein talk qu'on découvre pourquoi rien ne s'est passé.
  */
 describe('le voile de verrou', () => {
-  function dansLaSalle(lock: RegieRoom['lock']) {
+  function dansLaSalle(lock: ControlRoom['lock']) {
     const hub = monterDistante([salle({ lock })])
     const porte = usePorteStore()
     porte.roomId = 'track-1'
@@ -322,7 +322,7 @@ describe('le voile de verrou', () => {
  * décrit la salle plutôt que le clic.
  */
 describe("l'écran de salle", () => {
-  function dansLaSalle(vueRendue: Partial<RegieView> = {}) {
+  function dansLaSalle(vueRendue: Partial<ControlView> = {}) {
     const lock = verrouDe('regie@cloudnord.fr', MOI)
     const hub = monterDistante([salle({ lock })], true, vueRendue)
     const porte = usePorteStore()
@@ -370,7 +370,7 @@ describe("l'écran de salle", () => {
 })
 
 describe('le bandeau de verrou', () => {
-  function monterBandeau(lock: RegieRoom['lock']) {
+  function monterBandeau(lock: ControlRoom['lock']) {
     const hub = monterDistante([salle({ lock })])
     const porte = usePorteStore()
     porte.roomId = 'track-1'

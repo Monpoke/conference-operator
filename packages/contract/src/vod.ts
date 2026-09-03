@@ -7,55 +7,58 @@ import {
 } from './primitives.js'
 
 /**
- * Rapatriement des rushes vers un stockage S3.
+ * Shipping the rushes back to S3 storage.
  *
- * Le partage est net, et c'est lui qui tient la sécurité de tout le reste : le
- * **hub** détient les clés du bucket et ne les donne jamais ; la **salle**
- * détient les fichiers et ne sait rien du stockage. Elle demande, reçoit des
- * adresses signées à durée de vie courte, téléverse dessus, et dit où elle en
- * est. Une machine de salle volée ne donne accès à aucun bucket.
+ * The split is clean, and it is what holds the security of everything else: the
+ * **hub** holds the bucket keys and never hands them over; the **room** holds the
+ * files and knows nothing about the storage. It asks, receives short-lived signed
+ * addresses, uploads to them, and reports where it stands. A stolen room machine
+ * gives access to no bucket.
+ *
+ * The field names of the schemas below stay French: they travel on the wire and
+ * are stored as JSON, and renaming them would break a room already in the field.
  */
 
 /**
- * Ce qu'on téléverse pour une conférence.
+ * What gets uploaded for a talk.
  *
- * Les deux partent ensemble, à l'extension près : le sidecar porte titre,
- * intervenants, catégorie et marqueurs, et sans lui le rush arrive au montage
- * comme un fichier anonyme de trois gigaoctets.
+ * The two go together, extension aside: the sidecar carries title, speakers,
+ * category and markers, and without it the rush reaches editing as an anonymous
+ * three-gigabyte file.
  */
-export const genreVodSchema = z.enum(['rush', 'sidecar'])
-export type GenreVod = z.infer<typeof genreVodSchema>
+export const vodKindSchema = z.enum(['rush', 'sidecar'])
+export type VodKind = z.infer<typeof vodKindSchema>
 
 /**
- * Où en est un téléversement.
+ * Where an upload stands.
  *
- * `abandonne` et `echoue` disent deux choses différentes : le premier a été
- * interrompu — salle éteinte, ménage du hub — et se reprend tel quel ; le
- * second a été refusé par le stockage, et se regarde avant d'être relancé.
+ * `abandonne` and `echoue` say two different things: the first was interrupted —
+ * room switched off, hub housekeeping — and resumes as is; the second was refused
+ * by the storage, and gets looked at before being restarted.
  */
-export const etatTeleversementSchema = z.enum([
+export const uploadStateSchema = z.enum([
   'attente',
   'en-cours',
   'termine',
   'abandonne',
   'echoue',
 ])
-export type EtatTeleversement = z.infer<typeof etatTeleversementSchema>
+export type UploadState = z.infer<typeof uploadStateSchema>
 
 /**
- * Le plan de travail que le hub rend à une salle.
+ * The work plan the hub hands back to a room.
  *
- * Deux modes, parce que deux fichiers très différents voyagent ici. Le sidecar
- * pèse quelques kilo-octets : une adresse, une requête, fini. Le rush pèse
- * plusieurs gigaoctets sur un réseau d'événement, c'est-à-dire qu'il *sera*
- * coupé — il part donc en parts, et une coupure ne perd que la part en cours.
+ * Two modes, because two very different files travel through here. The sidecar
+ * weighs a few kilobytes: one address, one request, done. The rush weighs several
+ * gigabytes over an event network, which is to say it *will* be cut off — so it
+ * leaves in parts, and an outage only loses the part in flight.
  */
-export const planTeleversementSchema = z.discriminatedUnion('mode', [
+export const uploadPlanSchema = z.discriminatedUnion('mode', [
   z.object({
     mode: z.literal('direct'),
     uploadId: z.string(),
     url: z.url(),
-    /** Passé cette heure, l'adresse ne vaut plus rien : il faut en redemander une. */
+    /** Past this time the address is worth nothing: another one has to be asked for. */
     expiresAt: isoDateTimeSchema,
   }),
   z.object({
@@ -64,118 +67,115 @@ export const planTeleversementSchema = z.discriminatedUnion('mode', [
     taillePartOctets: z.number().int().positive(),
     parts: z.number().int().positive(),
     /**
-     * Numéros de parts déjà arrivées chez le stockage.
+     * Numbers of the parts that have already reached the storage.
      *
-     * C'est ce qui fait de `vod.begin` une **reprise** et pas un
-     * recommencement : une machine redémarrée en pleine montée redemande son
-     * plan et repart d'où elle en était. Sans ce champ, une coupure à 90 %
-     * d'un rush de trois gigaoctets coûterait les trois gigaoctets.
+     * This is what makes `vod.begin` a **resumption** and not a restart: a machine
+     * rebooted mid-upload asks for its plan again and picks up where it was.
+     * Without this field, an outage at 90% of a three-gigabyte rush would cost the
+     * three gigabytes.
      */
     recues: z.array(z.number().int().positive()).default([]),
   }),
 ])
-export type PlanTeleversement = z.infer<typeof planTeleversementSchema>
+export type UploadPlan = z.infer<typeof uploadPlanSchema>
 
-/** Une adresse signée pour une part, et sa date de péremption. */
-export const partSigneeSchema = z.object({
+/** A signed address for one part, and its expiry date. */
+export const signedPartSchema = z.object({
   numero: z.number().int().positive(),
   url: z.url(),
   expiresAt: isoDateTimeSchema,
 })
-export type PartSignee = z.infer<typeof partSigneeSchema>
+export type SignedPart = z.infer<typeof signedPartSchema>
 
 /**
- * Quand une salle a le droit de téléverser, et à quel rythme.
+ * When a room is allowed to upload, and at what pace.
  *
- * Réglage du hub et non de chaque salle : c'est une décision d'exploitation —
- * « le réseau de l'événement est chargé, calmez-vous » — et la prendre trois
- * fois, machine par machine, un jour d'événement, n'arriverait jamais. Elle
- * descend au sync et vit dans le cache local, pour que le régulateur d'une
- * salle coupée continue de trancher.
+ * A hub setting and not a per-room one: it is an operations decision — "the event
+ * network is loaded, calm down" — and taking it three times, machine by machine,
+ * on an event day, would never happen. It comes down at sync and lives in the
+ * local cache, so that the regulator of a disconnected room keeps deciding.
  */
-export const politiqueVodSchema = z.object({
+export const vodPolicySchema = z.object({
   /**
-   * Téléversement automatique.
+   * Automatic upload.
    *
-   * Éteint par défaut : le défaut doit être le cas où rien ne part sans qu'on
-   * l'ait demandé. Une demande manuelle marche de toute façon, actif ou non.
+   * Off by default: the default must be the case where nothing leaves unless
+   * asked. A manual request works either way, enabled or not.
    */
   actif: z.boolean().default(false),
   /**
-   * Plafond de débit, en octets par seconde. `null` = pas de plafond.
+   * Throughput ceiling, in bytes per second. `null` = no ceiling.
    *
-   * Le seul réglage qui protège l'uplink de l'événement, et le seul qu'on ait
-   * envie de corriger en cours de journée — d'où sa place ici plutôt que dans
-   * une variable d'environnement.
+   * The only setting that protects the event's uplink, and the only one you want
+   * to correct during the day — hence its place here rather than in an
+   * environment variable.
    */
   debitMaxOctetsS: z.number().int().positive().nullable().default(null),
-  /** Au-delà, on laisse le processeur à l'encodeur. */
+  /** Beyond this, we leave the CPU to the encoder. */
   cpuMax: z.number().min(0).max(1).default(0.7),
-  /** Minutes avant la prochaine conférence pendant lesquelles on ne téléverse plus. */
+  /** Minutes before the next talk during which we stop uploading. */
   margeConferenceMinutes: z.number().int().min(0).max(120).default(10),
   /**
-   * Taille d'une part, en mégaoctets.
+   * Part size, in megabytes.
    *
-   * C'est aussi le grain du plafond de débit et celui de la reprise : trop
-   * grand, une coupure coûte cher et le débit se règle par à-coups ; trop
-   * petit, on multiplie les allers-retours. Huit est un compromis, et S3
-   * n'accepte pas moins de cinq.
+   * It is also the granularity of the throughput ceiling and of the resumption:
+   * too large, an outage is expensive and the throughput is regulated in jolts;
+   * too small, we multiply round trips. Eight is a compromise, and S3 accepts no
+   * less than five.
    */
   taillePartMo: z.number().int().min(5).max(64).default(8),
 })
-export type PolitiqueVod = z.infer<typeof politiqueVodSchema>
-export type PolitiqueVodInput = z.input<typeof politiqueVodSchema>
+export type VodPolicy = z.infer<typeof vodPolicySchema>
+export type VodPolicyInput = z.input<typeof vodPolicySchema>
 
 /**
- * La politique quand personne n'a rien réglé.
+ * The policy when nobody has configured anything.
  *
- * Constante nommée plutôt que littéral répété : elle sert de défaut aux
- * réglages du hub *et* de repli à une salle qui n'a jamais synchronisé, et les
- * deux doivent dire la même chose. Rien ne part automatiquement — c'est le
- * défaut prudent, celui qu'on veut trouver sur un hub qu'on vient d'allumer.
+ * A named constant rather than a repeated literal: it serves as the default for
+ * the hub settings *and* as the fallback for a room that has never synced, and
+ * the two must say the same thing. Nothing leaves automatically — that is the
+ * cautious default, the one you want to find on a hub you have just switched on.
  */
-export const POLITIQUE_VOD_PAR_DEFAUT: PolitiqueVod = politiqueVodSchema.parse({})
+export const DEFAULT_VOD_POLICY: VodPolicy = vodPolicySchema.parse({})
 
-/** Ce que le hub descend aux salles au sync. */
+/** What the hub sends down to the rooms at sync. */
 export const vodSyncSchema = z.object({
-  /** Le hub sait où envoyer : sinon, rien de tout ceci n'a de sens. */
+  /** The hub knows where to send: otherwise none of this makes sense. */
   actif: z.boolean().default(false),
-  politique: politiqueVodSchema,
+  politique: vodPolicySchema,
   /**
-   * Autorité de certification à ajouter pour joindre le stockage, au format PEM.
+   * Certificate authority to add in order to reach the storage, in PEM format.
    *
-   * `null` — le cas normal — s'en remet aux CA publiques que Node embarque. Le
-   * champ existe pour les stockages internes, dont le certificat est signé par
-   * une CA d'entreprise : Node n'utilise pas le magasin du système, et une
-   * salle refuserait la connexion avec un `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`
-   * que rien n'explique.
+   * `null` — the normal case — relies on the public CAs Node ships with. The field
+   * exists for internal storage whose certificate is signed by a corporate CA:
+   * Node does not use the system store, and a room would refuse the connection
+   * with an unexplained `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`.
    *
-   * Descendue par le hub plutôt que posée sur chaque machine : poser une
-   * variable d'environnement sur trois postes Electron un matin d'événement est
-   * un geste qui s'oublie sur le troisième, et l'oubli ne se découvre que le
-   * soir, quand les rushes ne partent pas. Un certificat d'autorité est public
-   * par construction — ce n'est pas un secret qu'on diffuse, c'est ce qui
-   * permet d'en vérifier un.
+   * Sent down by the hub rather than set on each machine: setting an environment
+   * variable on three Electron machines on an event morning is a gesture you
+   * forget on the third, and the omission is only discovered in the evening, when
+   * the rushes do not leave. A CA certificate is public by construction — it is
+   * not a secret you distribute, it is what lets you verify one.
    *
-   * Elle ne vaut que pour les envois vers le stockage : rien ici ne change ce
-   * que la salle accepte par ailleurs.
+   * It only applies to uploads towards the storage: nothing here changes what the
+   * room accepts elsewhere.
    */
   caCert: z.string().nullable().default(null),
 })
 export type VodSync = z.infer<typeof vodSyncSchema>
 
-/** Une ligne de la vue « téléversements », pour la console et la régie. */
-export const televersementVuSchema = z.object({
+/** One row of the "uploads" view, for the console and the control app. */
+export const uploadViewSchema = z.object({
   roomId: roomIdSchema,
   roomName: z.string().nullable(),
   file: z.string(),
-  kind: genreVodSchema,
+  kind: vodKindSchema,
   sessionId: sessionIdSchema.nullable(),
   objectKey: z.string(),
-  state: etatTeleversementSchema,
+  state: uploadStateSchema,
   sizeBytes: z.number().int().nonnegative(),
   bytesSent: z.number().int().nonnegative(),
-  /** Dernier débit constaté, en octets par seconde. `null` avant la première part. */
+  /** Last observed throughput, in bytes per second. `null` before the first part. */
   debitOctetsS: z.number().int().nonnegative().nullable(),
   startedAt: isoDateTimeSchema.nullable(),
   lastProgressAt: isoDateTimeSchema.nullable(),
@@ -183,117 +183,111 @@ export const televersementVuSchema = z.object({
   attempts: z.number().int().nonnegative(),
   lastError: z.string().nullable(),
 })
-export type TeleversementVu = z.infer<typeof televersementVuSchema>
+export type UploadView = z.infer<typeof uploadViewSchema>
 
 /**
- * Une prise, telle que le hub la reconstitue depuis ce que la salle a remonté.
+ * A take, as the hub reconstructs it from what the room reported.
  *
- * Le hub n'a jamais vu le disque de la régie, et n'a aucun moyen de le lire :
- * les salles appellent, jamais l'inverse. Ce qu'il sait, il le tient des deux
- * événements que la salle émet en enregistrant — `recording.started` et
- * `recording.stopped` —, et ces deux-là suffisent : le second porte le chemin
- * du fichier écrit, sa durée, et si le sidecar a pu être écrit à côté. Une
- * ligne ici veut donc dire « un fichier existe sur la machine de la salle »,
- * pas « un fichier existe quelque part ».
+ * The hub has never seen the control machine's disk, and has no way to read it:
+ * rooms call, never the other way round. What it knows comes from the two events
+ * the room emits while recording — `recording.started` and `recording.stopped` —,
+ * and those two are enough: the second carries the path of the written file, its
+ * duration, and whether the sidecar could be written alongside. So a row here
+ * means "a file exists on the room's machine", not "a file exists somewhere".
  */
-export const captationVueSchema = z.object({
+export const captureViewSchema = z.object({
   roomId: roomIdSchema,
-  /** Laquelle des deux instances OBS a enregistré. */
+  /** Which of the two OBS instances recorded. */
   obs: obsInstanceSchema,
   startedAt: isoDateTimeSchema,
-  /** `null` tant que la prise court : c'est exactement ce que dit `enCours`. */
+  /** `null` while the take is running: that is exactly what `enCours` says. */
   endedAt: isoDateTimeSchema.nullable(),
   durationMs: z.number().int().nonnegative().nullable(),
   /**
-   * Chemin rendu par OBS, après renommage.
+   * Path returned by OBS, after renaming.
    *
-   * `null` sur une prise qu'OBS a refusé de nommer — disque plein, processus
-   * tué en plein arrêt. C'est précisément le cas qu'on veut voir avant de
-   * démonter la salle : la prise a eu lieu, le fichier est introuvable.
+   * `null` on a take OBS refused to name — full disk, process killed mid-stop.
+   * That is precisely the case you want to see before dismantling the room: the
+   * take happened, the file is nowhere to be found.
    */
   file: z.string().nullable(),
   /**
-   * Le sidecar a été écrit à côté du master.
+   * The sidecar was written next to the master.
    *
-   * Sans lui le rush arrive au montage en fichier anonyme : ni titre, ni
-   * intervenants, ni marqueurs. Le dire ici évite de le découvrir au montage.
+   * Without it the rush reaches editing as an anonymous file: no title, no
+   * speakers, no markers. Saying so here saves discovering it at editing time.
    */
   sidecarWritten: z.boolean(),
   enCours: z.boolean(),
   /**
-   * La prise n'a jamais été refermée, et une autre a démarré après elle.
+   * The take was never closed, and another started after it.
    *
-   * Ce n'est pas « en cours » : c'est une prise dont le hub n'a jamais entendu
-   * l'arrêt — OBS relancé, machine de salle tuée, remise à zéro en plein
-   * enregistrement. Les afficher toutes comme actives donnait, sur une salle de
-   * développement de trois jours, une pile de faux « enregistrement en cours »
-   * au-dessus de la seule ligne qui disait quelque chose.
+   * This is not "running": it is a take whose stop the hub never heard — OBS
+   * restarted, room machine killed, reset in the middle of a recording. Showing
+   * them all as active gave, on a three-day development room, a pile of false
+   * "recording in progress" on top of the one row that said something.
    *
-   * Elles restent listées : le hub sait qu'OBS a écrit, et un fichier orphelin
-   * sur un disque qu'on s'apprête à débrancher mérite d'être vu. Mais elles se
-   * disent pour ce qu'elles sont.
+   * They stay listed: the hub knows OBS wrote, and an orphan file on a disk you
+   * are about to unplug deserves to be seen. But they say what they are.
    */
   finInconnue: z.boolean().default(false),
   /**
-   * Comment la prise a été rattachée au créneau.
+   * How the take was attached to the slot.
    *
-   * `session` : la régie l'a estampillée elle-même, c'est le cas normal et le
-   * seul qui ne se discute pas. `horaire` : la prise ne porte aucun créneau —
-   * enregistrement lancé à la main, hors du cycle de vie — mais elle recouvre
-   * l'heure de celui-ci dans la même salle. Le dire plutôt que de le taire :
-   * un rush existe, il est probablement le bon, et personne ne le retrouverait
-   * s'il n'apparaissait nulle part.
+   * `session`: the control app stamped it itself, the normal case and the only one
+   * beyond dispute. `horaire`: the take carries no slot — recording launched by
+   * hand, outside the lifecycle — but it covers that slot's time in the same room.
+   * Saying so rather than staying silent: a rush exists, it is probably the right
+   * one, and nobody would find it if it appeared nowhere.
    */
   rattachement: z.enum(['session', 'horaire']),
 })
-export type CaptationVue = z.infer<typeof captationVueSchema>
+export type CaptureView = z.infer<typeof captureViewSchema>
 
 /**
- * Le dossier VOD d'une conférence : ce qui a été pris, ce qui est monté.
+ * A talk's VOD folder: what was captured, what was uploaded.
  *
- * Les deux moitiés répondent à deux questions qu'on pose l'une après l'autre un
- * jour d'événement — « est-ce qu'on l'a ? », puis « est-ce que c'est parti ? » —
- * et elles ne se déduisent pas l'une de l'autre : un rush enregistré peut
- * n'être jamais monté, et un téléversement peut courir sur un fichier dont la
- * prise s'est mal terminée.
+ * The two halves answer two questions asked one after the other on an event day —
+ * "do we have it?", then "has it left?" — and they cannot be derived from each
+ * other: a recorded rush may never be uploaded, and an upload may be running on a
+ * file whose take ended badly.
  */
-export const dossierVodSchema = z.object({
+export const vodFolderSchema = z.object({
   sessionId: sessionIdSchema,
   roomId: roomIdSchema.nullable(),
   roomName: z.string().nullable(),
   /**
-   * Le hub sait-il téléverser.
+   * Does the hub know how to upload.
    *
-   * Faux, « rien de monté » ne veut rien dire : ce n'est pas un retard, c'est
-   * une fonctionnalité qui n'est pas branchée sur ce hub. La console ne dit
-   * pas la même chose dans les deux cas.
+   * When false, "nothing uploaded" means nothing: it is not a delay, it is a
+   * feature that is not wired up on this hub. The console does not say the same
+   * thing in the two cases.
    */
   stockageConfigure: z.boolean(),
-  captations: z.array(captationVueSchema),
-  televersements: z.array(televersementVuSchema),
+  captations: z.array(captureViewSchema),
+  televersements: z.array(uploadViewSchema),
 })
-export type DossierVod = z.infer<typeof dossierVodSchema>
+export type VodFolder = z.infer<typeof vodFolderSchema>
 
 /**
- * Les quatre étapes d'un contrôle de connexion, dans l'ordre où elles échouent.
+ * The four steps of a connection check, in the order in which they fail.
  *
- * Un booléen ne servirait à rien : « ça ne marche pas » est précisément ce
- * qu'on savait déjà. Ce qu'il faut, c'est *où* ça s'arrête, parce que les
- * quatre ne se corrigent pas au même endroit — un pare-feu, une clé, un droit
- * sur le bucket, une signature.
+ * A boolean would be useless: "it does not work" is precisely what we already
+ * knew. What we need is *where* it stops, because the four are not fixed in the
+ * same place — a firewall, a key, a right on the bucket, a signature.
  */
-export const etapeControleSchema = z.enum(['joindre', 'authentifier', 'signer', 'nettoyer'])
-export type EtapeControle = z.infer<typeof etapeControleSchema>
+export const checkStepSchema = z.enum(['joindre', 'authentifier', 'signer', 'nettoyer'])
+export type CheckStep = z.infer<typeof checkStepSchema>
 
-export const controleStockageSchema = z.object({
+export const storageCheckSchema = z.object({
   ok: z.boolean(),
   etapes: z.array(
     z.object({
-      nom: etapeControleSchema,
+      nom: checkStepSchema,
       ok: z.boolean(),
-      /** Ce qui s'est passé, en clair. Le code du stockage y est repris tel quel. */
+      /** What happened, in plain words. The storage's code is quoted verbatim. */
       detail: z.string().nullable(),
     }),
   ),
 })
-export type ControleStockage = z.infer<typeof controleStockageSchema>
+export type StorageCheck = z.infer<typeof storageCheckSchema>

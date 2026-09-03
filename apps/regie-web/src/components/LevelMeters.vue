@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { PLANCHER_DB } from '@cloudnord/contract'
+import { DB_FLOOR } from '@cloudnord/contract'
 import { Panel } from '@cloudnord/components'
 import { useAudioStore } from '../stores/audio.js'
 
 /**
  * Vumètre d'OBS-B.
  *
- * Les seuils sont ceux de la salle de montage, pas une échelle inventée ici :
+ * Les seuils sont ceux de la salle de editing, pas une échelle inventée ici :
  * vert jusqu'à −20 dB, jaune ensuite, rouge au-delà de −9 dB. La mention sous
  * le panneau les redit, parce qu'une couleur seule ne dit pas où elle bascule.
  */
@@ -18,7 +18,7 @@ function tint(db: number): string {
 
 /** Part de la barre, du plancher à zéro. */
 function width(db: number): string {
-  const part = Math.max(0, Math.min(1, (db - PLANCHER_DB) / -PLANCHER_DB))
+  const part = Math.max(0, Math.min(1, (db - DB_FLOOR) / -DB_FLOOR))
   return `${(part * 100).toFixed(1)}%`
 }
 
@@ -42,24 +42,24 @@ const audio = useAudioStore()
         Aucune entrée audio — OBS-B est-il connecté ?
       </div>
 
-      <div v-for="entry in audio.inputs" :key="entry.nom" class="shrink-0">
+      <div v-for="entry in audio.inputs" :key="entry.name" class="shrink-0">
         <div class="mb-1 flex items-baseline justify-between gap-2">
-          <span class="truncate text-xs">{{ entry.nom }}</span>
+          <span class="truncate text-xs">{{ entry.name }}</span>
           <span
             class="shrink-0 text-[11px] tabular-nums"
-            :class="(audio.peaks[entry.nom]?.db ?? PLANCHER_DB) > -9 ? 'text-alerte' : 'text-attenue'"
+            :class="(audio.peaks[entry.name]?.db ?? DB_FLOOR) > -9 ? 'text-alerte' : 'text-attenue'"
           >
             {{
-              (audio.peaks[entry.nom]?.db ?? PLANCHER_DB) <= PLANCHER_DB
+              (audio.peaks[entry.name]?.db ?? DB_FLOOR) <= DB_FLOOR
                 ? '—'
-                : `${Math.round(audio.peaks[entry.nom]!.db)} dB`
+                : `${Math.round(audio.peaks[entry.name]!.db)} dB`
             }}
           </span>
         </div>
         <!-- Une jauge par canal : mono et stéréo coexistent dans la même salle. -->
         <div class="flex flex-col gap-0.5">
           <div
-            v-for="(canal, index) in entry.canaux"
+            v-for="(canal, index) in entry.channels"
             :key="index"
             class="relative h-1.5 overflow-hidden rounded-full bg-fond"
           >

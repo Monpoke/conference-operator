@@ -1,13 +1,13 @@
 import { and, desc, eq, lt, ne } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import {
-  POLITIQUE_VOD_PAR_DEFAUT,
-  type GenreVod,
-  type PartSignee,
-  type PlanTeleversement,
-  type PolitiqueVod,
-  type ControleStockage,
-  type TeleversementVu,
+  DEFAULT_VOD_POLICY,
+  type VodKind,
+  type SignedPart,
+  type UploadPlan,
+  type VodPolicy,
+  type StorageCheck,
+  type UploadView,
 } from '@cloudnord/contract'
 import { vodUpload } from '@cloudnord/db/hub'
 import type { HubDatabase } from '../db.js'
@@ -49,7 +49,7 @@ export interface VodStatus {
   endpoint: string | null
   bucket: string | null
   prefix: string | null
-  politique: PolitiqueVod
+  politique: VodPolicy
 }
 
 export function clesS3(config: Config, caCert: string | null = null): ClesS3 | null {
@@ -103,12 +103,12 @@ export class VodService {
    * d'environnement sur chaque machine de salle. Les clés, elles, ne descendent
    * jamais — la salle ne reçoit que des adresses déjà signées.
    */
-  sync(): { actif: boolean; politique: PolitiqueVod; caCert: string | null } {
+  sync(): { actif: boolean; politique: VodPolicy; caCert: string | null } {
     return { actif: true, politique: this.politique(), caCert: this.cles.caCert ?? null }
   }
 
-  politique(): PolitiqueVod {
-    return this.settings.get().vodPolitique ?? POLITIQUE_VOD_PAR_DEFAUT
+  politique(): VodPolicy {
+    return this.settings.get().vodPolitique ?? DEFAULT_VOD_POLICY
   }
 
   /** Le bucket est-il réglé ? Les clés ne suffisent pas : il faut savoir où écrire. */
@@ -145,8 +145,8 @@ export class VodService {
    * perdre l'étape à laquelle on s'est arrêté, qui est tout ce qu'on venait
    * chercher.
    */
-  async check(): Promise<ControleStockage> {
-    const etapes: ControleStockage['etapes'] = []
+  async check(): Promise<StorageCheck> {
+    const etapes: StorageCheck['etapes'] = []
     /**
      * L'action S3 que chaque étape exerce.
      *
@@ -162,13 +162,13 @@ export class VodService {
       signer: 's3:PutObject (UploadPart)',
       nettoyer: 's3:AbortMultipartUpload',
     }
-    const franchie = (nom: ControleStockage['etapes'][number]['nom']): void => {
+    const franchie = (nom: StorageCheck['etapes'][number]['nom']): void => {
       etapes.push({ nom, ok: true, detail: null })
     }
     const echouee = (
-      nom: ControleStockage['etapes'][number]['nom'],
+      nom: StorageCheck['etapes'][number]['nom'],
       cause: unknown,
-    ): ControleStockage => {
+    ): StorageCheck => {
       const brut =
         cause instanceof ErreurS3 ? `${cause.code} : ${cause.message}` : causeLisible(cause)
       /**
@@ -372,9 +372,9 @@ export class VodService {
     roomId: string
     file: string
     sizeBytes: number
-    kind: GenreVod
+    kind: VodKind
     sessionId: string | null
-  }): Promise<PlanTeleversement> {
+  }): Promise<UploadPlan> {
     const client = this.client()
     const existante = this.db
       .select()
@@ -487,7 +487,7 @@ export class VodService {
   }
 
   /** Signe un lot de parts. Toujours à la demande : une adresse signée périme. */
-  parts(roomId: string, uploadId: string, numeros: number[]): PartSignee[] {
+  parts(roomId: string, uploadId: string, numeros: number[]): SignedPart[] {
     const ligne = this.ligne(roomId, uploadId)
     if (ligne.s3UploadId == null) {
       throw new StockageIncomplet('ce téléversement est direct : il n\'a pas de parts')
@@ -568,7 +568,7 @@ export class VodService {
       .run()
   }
 
-  uploads(roomId: string | null, nomDeSalle: (id: string) => string | null): TeleversementVu[] {
+  uploads(roomId: string | null, nomDeSalle: (id: string) => string | null): UploadView[] {
     const lignes = roomId == null
       ? this.db.select().from(vodUpload).orderBy(desc(vodUpload.startedAt)).all()
       : this.db
@@ -582,10 +582,10 @@ export class VodService {
       roomId: ligne.roomId,
       roomName: nomDeSalle(ligne.roomId),
       file: ligne.file,
-      kind: ligne.kind as GenreVod,
+      kind: ligne.kind as VodKind,
       sessionId: ligne.sessionId,
       objectKey: ligne.objectKey,
-      state: ligne.state as TeleversementVu['state'],
+      state: ligne.state as UploadView['state'],
       sizeBytes: ligne.sizeBytes,
       bytesSent: ligne.bytesSent,
       debitOctetsS: ligne.debitOctetsS,
@@ -606,7 +606,7 @@ export class VodService {
    * ensemble, les plus récents d'abord — ce qui met en tête l'essai en cours
    * quand un premier a échoué.
    */
-  pourSession(sessionId: string, nomDeSalle: (id: string) => string | null): TeleversementVu[] {
+  pourSession(sessionId: string, nomDeSalle: (id: string) => string | null): UploadView[] {
     return this.uploads(null, nomDeSalle).filter((ligne) => ligne.sessionId === sessionId)
   }
 

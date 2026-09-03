@@ -1,4 +1,4 @@
-import { PLANCHER_DB, type NiveauEntree } from '@cloudnord/contract'
+import { DB_FLOOR, type InputLevel } from '@cloudnord/contract'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { StateStream } from './room.js'
@@ -24,21 +24,21 @@ interface Peak {
  * Fermer la page suffit à couper l'abonnement chez OBS.
  */
 export const useAudioStore = defineStore('audio', () => {
-  const inputs = ref<NiveauEntree[]>([])
+  const inputs = ref<InputLevel[]>([])
   /** Vrai tant qu'aucun message n'est arrivé : « en attente » n'est pas « aucune ». */
   const waiting = ref(true)
 
   const peaks = ref<Record<string, Peak>>({})
   let stream: StateStream | null = null
 
-  function apply(entries: NiveauEntree[], atMs: number): void {
+  function apply(entries: InputLevel[], atMs: number): void {
     waiting.value = false
     inputs.value = entries
     const held: Record<string, Peak> = {}
     for (const entry of entries) {
-      const top = entry.canaux.reduce((max, canal) => Math.max(max, canal.crete), PLANCHER_DB)
-      const previous = peaks.value[entry.nom]
-      held[entry.nom] =
+      const top = entry.channels.reduce((max, canal) => Math.max(max, canal.peak), DB_FLOOR)
+      const previous = peaks.value[entry.name]
+      held[entry.name] =
         previous == null || top >= previous.db || atMs > previous.until
           ? { db: top, until: atMs + PEAK_HOLD_MS }
           : previous
@@ -50,7 +50,7 @@ export const useAudioStore = defineStore('audio', () => {
     if (stream != null) return
     stream = open('/display/audio')
     stream.onmessage = (event) => {
-      apply((JSON.parse(event.data) as { inputs: NiveauEntree[] }).inputs, Date.now())
+      apply((JSON.parse(event.data) as { inputs: InputLevel[] }).inputs, Date.now())
     }
   }
 

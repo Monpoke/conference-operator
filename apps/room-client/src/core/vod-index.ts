@@ -2,14 +2,14 @@ import { createReadStream } from 'node:fs'
 import { extname, join, relative, resolve, sep } from 'node:path'
 import type { Readable } from 'node:stream'
 import type {
-  ControleVod,
-  EntreeVod,
-  SondageVod,
+  VodCheck,
+  VodEntry,
+  VodProbe,
   Sidecar,
-  VerdictVod,
+  VodVerdict,
 } from '@cloudnord/contract'
 
-export type { ControleVod, EntreeVod, SondageVod, VerdictVod }
+export type { VodCheck, VodEntry, VodProbe, VodVerdict }
 
 /** Conteneurs qu'OBS sait écrire. Le reste du dossier ne nous regarde pas. */
 const EXTENSIONS = new Set(['.mkv', '.mp4', '.mov', '.flv', '.ts', '.m4v', '.webm', '.mpegts'])
@@ -17,7 +17,7 @@ const EXTENSIONS = new Set(['.mkv', '.mp4', '.mov', '.flv', '.ts', '.m4v', '.web
 /**
  * Les verdicts vivent dans un fichier à part, pas dans les sidecars.
  *
- * Le sidecar est ce que la chaîne de montage consomme, et il décrit la
+ * Le sidecar est ce que la chaîne de editing consomme, et il décrit la
  * conférence, pas la relecture qu'on en a faite. Surtout : un rush dont le
  * sidecar n'a jamais été écrit — OBS tué en plein arrêt, précisément le cas
  * qu'on cherche — est justement celui qu'il faut pouvoir marquer.
@@ -70,7 +70,7 @@ export interface VodIndexDeps {
    * Lecture technique du conteneur. `null` = pas d'outil disponible, le
    * contrôle se rabat alors sur ce que le disque et le sidecar racontent.
    */
-  probe?: (path: string) => Promise<SondageVod | null>
+  probe?: (path: string) => Promise<VodProbe | null>
   onLog?: (level: 'info' | 'warn' | 'error', message: string, context?: unknown) => void
 }
 
@@ -81,10 +81,10 @@ export interface VodIndexDeps {
  * ne doit pas lancer une demi-douzaine de ffprobe sur des rushes de deux heures
  * pendant qu'une conférence tourne.
  */
-export async function listerEnregistrements(deps: VodIndexDeps): Promise<EntreeVod[]> {
+export async function listerEnregistrements(deps: VodIndexDeps): Promise<VodEntry[]> {
   const racine = resolve(deps.root)
   const controles = await lireControles(deps, racine)
-  const entrees: EntreeVod[] = []
+  const entries: VodEntry[] = []
 
   const balayer = async (dossier: string, profondeur: number): Promise<void> => {
     let contenu: { name: string; isDirectory: boolean }[]
@@ -110,11 +110,11 @@ export async function listerEnregistrements(deps: VodIndexDeps): Promise<EntreeV
       if (stat == null) continue
 
       const cle = normaliser(relative(racine, chemin))
-      entrees.push({
+      entries.push({
         file: cle,
         sizeBytes: stat.size,
         modifiedAtMs: stat.mtimeMs,
-        enEcriture: enEcriture(deps, stat),
+        beingWritten: beingWritten(deps, stat),
         sidecar: await lireSidecar(deps, chemin),
         check: verdictEncoreValable(controles[cle], stat),
       })
@@ -122,8 +122,8 @@ export async function listerEnregistrements(deps: VodIndexDeps): Promise<EntreeV
   }
 
   await balayer(racine, 1)
-  entrees.sort((a, b) => b.modifiedAtMs - a.modifiedAtMs)
-  return entrees
+  entries.sort((a, b) => b.modifiedAtMs - a.modifiedAtMs)
+  return entries
 }
 
 /**
@@ -136,14 +136,14 @@ export async function listerEnregistrements(deps: VodIndexDeps): Promise<EntreeV
 export async function inspecterEnregistrement(
   deps: VodIndexDeps,
   file: string,
-): Promise<ControleVod> {
+): Promise<VodCheck> {
   const racine = resolve(deps.root)
   const chemin = cheminSur(racine, file)
   const stat = await deps.fs.stat(chemin)
   const at = new Date(deps.now()).toISOString()
 
   if (stat == null || stat.size === 0) {
-    const controle: ControleVod = {
+    const controle: VodCheck = {
       status: 'illisible',
       at,
       by: 'auto',
@@ -167,8 +167,8 @@ export async function inspecterEnregistrement(
    * écrit coûte des entrées-sorties sur le disque du master, en pleine
    * captation, pour une lecture qui sera fausse de toute façon.
    */
-  if (enEcriture(deps, stat)) {
-    const controle: ControleVod = {
+  if (beingWritten(deps, stat)) {
+    const controle: VodCheck = {
       status: 'suspect',
       at,
       by: 'auto',
@@ -181,15 +181,15 @@ export async function inspecterEnregistrement(
   }
 
   const raisons: string[] = []
-  let statut: VerdictVod = 'ok'
-  const abaisser = (vers: VerdictVod, raison: string): void => {
+  let statut: VodVerdict = 'ok'
+  const abaisser = (vers: VodVerdict, raison: string): void => {
     raisons.push(raison)
     if (vers === 'illisible' || statut === 'ok') statut = vers
   }
 
   const sidecar = await lireSidecar(deps, chemin)
   if (sidecar == null) {
-    abaisser('suspect', 'sidecar absent : titre, intervenants et marqueurs manquent au montage')
+    abaisser('suspect', 'sidecar absent : titre, intervenants et marqueurs manquent au editing')
   }
 
   const probe = deps.probe == null ? null : await deps.probe(chemin)
@@ -236,7 +236,7 @@ export async function inspecterEnregistrement(
     )
   }
 
-  const controle: ControleVod = {
+  const controle: VodCheck = {
     status: statut,
     at,
     by: 'auto',
@@ -258,8 +258,8 @@ export async function inspecterEnregistrement(
 export async function poserVerdict(
   deps: VodIndexDeps,
   file: string,
-  status: VerdictVod | null,
-): Promise<ControleVod | null> {
+  status: VodVerdict | null,
+): Promise<VodCheck | null> {
   const racine = resolve(deps.root)
   const chemin = cheminSur(racine, file)
   if (status == null) {
@@ -269,7 +269,7 @@ export async function poserVerdict(
 
   const precedent = (await lireControles(deps, racine))[file] ?? null
   const stat = await deps.fs.stat(chemin)
-  const controle: ControleVod = {
+  const controle: VodCheck = {
     status,
     at: new Date(deps.now()).toISOString(),
     by: 'operateur',
@@ -290,7 +290,7 @@ async function retenir(
   deps: VodIndexDeps,
   racine: string,
   file: string,
-  controle: ControleVod | null,
+  controle: VodCheck | null,
 ): Promise<void> {
   const controles = await lireControles(deps, racine)
   if (controle == null) delete controles[file]
@@ -313,11 +313,11 @@ async function retenir(
 async function lireControles(
   deps: VodIndexDeps,
   racine: string,
-): Promise<Record<string, ControleVod>> {
+): Promise<Record<string, VodCheck>> {
   const brut = await deps.fs.readFile(join(racine, FICHIER_CONTROLES)).catch(() => null)
   if (brut == null) return {}
   try {
-    const corps = JSON.parse(brut) as { entries?: Record<string, ControleVod> }
+    const corps = JSON.parse(brut) as { entries?: Record<string, VodCheck> }
     return corps.entries ?? {}
   } catch {
     return {}
@@ -333,7 +333,7 @@ async function lireControles(
  * de la conférence, si bien qu'une seconde prise du même talk porte le nom de
  * la première, et la première, terminée, se retrouvait marquée en écriture.
  */
-function enEcriture(deps: VodIndexDeps, stat: { mtimeMs: number }): boolean {
+function beingWritten(deps: VodIndexDeps, stat: { mtimeMs: number }): boolean {
   const maintenant = (deps.maintenantReel ?? Date.now)()
   return maintenant - stat.mtimeMs < FENETRE_ECRITURE_MS
 }
@@ -356,9 +356,9 @@ function enEcriture(deps: VodIndexDeps, stat: { mtimeMs: number }): boolean {
  * dont on ignore sur quoi il portait.
  */
 function verdictEncoreValable(
-  controle: ControleVod | undefined,
+  controle: VodCheck | undefined,
   stat: { size: number; mtimeMs: number },
-): ControleVod | null {
+): VodCheck | null {
   if (controle == null) return null
   const empreinte = controle.fichier
   if (empreinte == null) return null
@@ -440,7 +440,7 @@ const TYPES: Record<string, string> = {
 const COPIABLES = { video: new Set(['h264', 'hevc']), audio: new Set(['aac', 'mp3']) }
 
 /** Ce qu'un outil externe a répondu, retenu pour la session. */
-const outils = new Map<string, Promise<boolean>>()
+const tools = new Map<string, Promise<boolean>>()
 
 /**
  * Présence d'un outil externe, demandée une fois.
@@ -450,7 +450,7 @@ const outils = new Map<string, Promise<boolean>>()
  * dire d'avance plutôt que d'afficher un lecteur qui ne démarrera jamais.
  */
 export async function outilDisponible(commande: string): Promise<boolean> {
-  const connu = outils.get(commande)
+  const connu = tools.get(commande)
   if (connu != null) return await connu
 
   const sonde = (async () => {
@@ -461,7 +461,7 @@ export async function outilDisponible(commande: string): Promise<boolean> {
       )
     })
   })()
-  outils.set(commande, sonde)
+  tools.set(commande, sonde)
   return await sonde
 }
 
@@ -629,7 +629,7 @@ export function nodeVodFs(): VodFs {
  * prétendre avoir regardé.
  */
 export function ffprobeSonde(commande = 'ffprobe') {
-  return async (chemin: string): Promise<SondageVod | null> => {
+  return async (chemin: string): Promise<VodProbe | null> => {
     const { execFile } = await import('node:child_process')
     const resultat = await new Promise<{ erreur: EchecProcessus | null; stdout: string }>((resolve) => {
       execFile(
@@ -672,7 +672,7 @@ interface EchecProcessus extends Error {
 }
 
 /** ffprobe a bien tourné, et n'a rien reconnu dans le fichier. */
-const CONTENEUR_REFUSE: SondageVod = {
+const CONTENEUR_REFUSE: VodProbe = {
   ouvert: false,
   durationMs: null,
   video: null,
@@ -681,7 +681,7 @@ const CONTENEUR_REFUSE: SondageVod = {
 }
 
 /** Extrait de la sortie ffprobe les seules choses qui décident du verdict. */
-export function lireSortieFfprobe(brut: string): SondageVod {
+export function lireSortieFfprobe(brut: string): VodProbe {
   const corps = JSON.parse(brut) as {
     streams?: {
       codec_type?: string

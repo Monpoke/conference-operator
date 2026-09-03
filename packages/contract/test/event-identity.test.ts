@@ -1,91 +1,91 @@
 import { describe, expect, it } from 'vitest'
 import {
-  IDENTITE_PAR_DEFAUT,
-  nomCourtDeduit,
-  resoudreIdentiteEvenement,
+  DEFAULT_EVENT_IDENTITY,
+  derivedShortName,
+  resolveEventIdentity,
 } from '../src/event-identity.js'
 
 /**
- * Identité de l'événement.
+ * The event's identity.
  *
- * C'est la pièce qui rend le dépôt agnostique : rien n'écrit plus le nom d'un
- * événement en dur, et changer d'édition — ou d'événement — se réduit à
- * importer un autre programme. Ces tests portent donc sur l'ordre des sources,
- * qui est tout ce qui distingue « configurable » de « reconfigurable par
- * accident ».
+ * This is the piece that makes the repository agnostic: nothing hard-codes an
+ * event name any more, and changing edition — or event — comes down to importing
+ * another program. So these tests are about the order of the sources, which is
+ * all that separates "configurable" from "reconfigurable by accident".
  */
-describe('identité de l’événement', () => {
-  it('se déduit du programme importé, sans rien régler', () => {
-    // Le cas normal, et le seul geste demandé pour servir un autre événement.
-    expect(resoudreIdentiteEvenement({ programme: 'DevFest Lille 2027' })).toEqual({
+describe('event identity', () => {
+  it('is derived from the imported program, with nothing configured', () => {
+    // The normal case, and the only gesture required to serve another event.
+    expect(resolveEventIdentity({ program: 'DevFest Lille 2027' })).toEqual({
       name: 'DevFest Lille 2027',
       shortName: 'DevFest Lille',
     })
   })
 
-  it('laisse le réglage du hub contredire l’export amont', () => {
-    // Pour les exports qui portent un nom interne, ou pas de nom du tout.
+  it('lets the hub setting contradict the upstream export', () => {
+    // For exports carrying an internal name, or no name at all.
     expect(
-      resoudreIdentiteEvenement({
-        reglage: { name: 'Cloud Nord 2026', shortName: null },
-        programme: 'CN26-prod',
+      resolveEventIdentity({
+        setting: { name: 'Cloud Nord 2026', shortName: null },
+        program: 'CN26-prod',
       }),
     ).toEqual({ name: 'Cloud Nord 2026', shortName: 'Cloud Nord' })
   })
 
-  it('déduit le nom court du nom retenu, pas d’une autre source', () => {
-    // Régler le nom complet sans penser au court doit rester cohérent : sinon
-    // la console afficherait le nouveau nom et les notifications l'ancien.
-    const identite = resoudreIdentiteEvenement({
-      reglage: { name: 'Sunny Tech 2027' },
-      programme: 'Cloud Nord 2026',
+  it('derives the short name from the chosen name, not from another source', () => {
+    // Setting the full name without thinking about the short one must stay
+    // coherent: otherwise the console would show the new name and the
+    // notifications the old one.
+    const identity = resolveEventIdentity({
+      setting: { name: 'Sunny Tech 2027' },
+      program: 'Cloud Nord 2026',
     })
-    expect(identite.shortName).toBe('Sunny Tech')
+    expect(identity.shortName).toBe('Sunny Tech')
   })
 
-  it('retient un nom court réglé à la main', () => {
+  it('keeps a short name set by hand', () => {
     expect(
-      resoudreIdentiteEvenement({ reglage: { name: 'Les Journées du Cloud', shortName: 'JDC' } }),
+      resolveEventIdentity({ setting: { name: 'Les Journées du Cloud', shortName: 'JDC' } }),
     ).toEqual({ name: 'Les Journées du Cloud', shortName: 'JDC' })
   })
 
-  it('traite une chaîne vide comme une absence de réglage', () => {
-    // La console envoie `null` en vidant un champ, mais un import amont peut
-    // très bien porter `"name": ""` — les deux doivent relâcher la source.
-    expect(resoudreIdentiteEvenement({ reglage: { name: '  ' }, programme: 'Cloud Nord 2026' }).name)
+  it('treats an empty string as no setting at all', () => {
+    // The console sends `null` when a field is cleared, but an upstream import
+    // may well carry `"name": ""` — both must release the source.
+    expect(resolveEventIdentity({ setting: { name: '  ' }, program: 'Cloud Nord 2026' }).name)
       .toBe('Cloud Nord 2026')
-    expect(resoudreIdentiteEvenement({ programme: '' })).toEqual(IDENTITE_PAR_DEFAUT)
+    expect(resolveEventIdentity({ program: '' })).toEqual(DEFAULT_EVENT_IDENTITY)
   })
 
-  it('retombe sur un mot neutre quand rien n’est connu', () => {
-    // Un hub tout juste installé, avant le premier import : mieux vaut un mot
-    // neutre qu'un nom d'événement en dur, qui serait faux partout ailleurs.
-    expect(resoudreIdentiteEvenement()).toEqual(IDENTITE_PAR_DEFAUT)
+  it('falls back on a neutral word when nothing is known', () => {
+    // A hub that has just been installed, before the first import: a neutral word
+    // beats a hard-coded event name, which would be wrong everywhere else.
+    expect(resolveEventIdentity()).toEqual(DEFAULT_EVENT_IDENTITY)
   })
 
-  it('borne ce qui vient de l’export amont', () => {
-    // Le nom traverse le `sync` de toutes les salles : un export fantaisiste ne
-    // doit pas faire échouer leur validation, donc il est tronqué, pas refusé.
-    const identite = resoudreIdentiteEvenement({ programme: 'x'.repeat(300) })
-    expect(identite.name).toHaveLength(80)
-    expect(identite.shortName).toHaveLength(40)
+  it('bounds what comes from the upstream export', () => {
+    // The name travels through every room's `sync`: a fanciful export must not
+    // fail their validation, so it is truncated, not refused.
+    const identity = resolveEventIdentity({ program: 'x'.repeat(300) })
+    expect(identity.name).toHaveLength(80)
+    expect(identity.shortName).toHaveLength(40)
   })
 })
 
-describe('nom court', () => {
-  it('retire ce qui date le nom', () => {
-    expect(nomCourtDeduit('Cloud Nord 2026')).toBe('Cloud Nord')
-    expect(nomCourtDeduit('DevFest Lille #12')).toBe('DevFest Lille')
-    expect(nomCourtDeduit('Sunny Tech — 2027')).toBe('Sunny Tech')
-    expect(nomCourtDeduit('Riviera DEV, édition 12')).toBe('Riviera DEV')
+describe('short name', () => {
+  it('strips what dates the name', () => {
+    expect(derivedShortName('Cloud Nord 2026')).toBe('Cloud Nord')
+    expect(derivedShortName('DevFest Lille #12')).toBe('DevFest Lille')
+    expect(derivedShortName('Sunny Tech — 2027')).toBe('Sunny Tech')
+    expect(derivedShortName('Riviera DEV, édition 12')).toBe('Riviera DEV')
   })
 
-  it('ne coupe que ce dont il est sûr', () => {
-    // Volontairement timide : un nom court faux se lirait sur chaque écran de
-    // la journée, un nom court trop long ne se remarque pas.
-    expect(nomCourtDeduit('Web2Day')).toBe('Web2Day')
-    expect(nomCourtDeduit('Codeurs en Seine')).toBe('Codeurs en Seine')
-    // Un nom qui n'est que son millésime ne se raccourcit pas à rien.
-    expect(nomCourtDeduit('2026')).toBe('2026')
+  it('only cuts what it is sure of', () => {
+    // Deliberately timid: a wrong short name would be read on every screen of the
+    // day, a short name that is too long goes unnoticed.
+    expect(derivedShortName('Web2Day')).toBe('Web2Day')
+    expect(derivedShortName('Codeurs en Seine')).toBe('Codeurs en Seine')
+    // A name that is only its year does not get shortened to nothing.
+    expect(derivedShortName('2026')).toBe('2026')
   })
 })

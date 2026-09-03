@@ -7,7 +7,7 @@ import { httpPairingTransport, runPairing, type DeviceCodeResponse } from './pai
 import { createORPCClient } from '@orpc/client'
 import { RPCLink as FetchLink } from '@orpc/client/fetch'
 import type { ContractRouterClient } from '@orpc/contract'
-import { contract, SANS_REPERES } from '@cloudnord/contract'
+import { contract, NO_EDITING_MARKS } from '@cloudnord/contract'
 import { FUSEAU_PAR_DEFAUT } from '@cloudnord/program'
 import { RoomRuntime } from './runtime.js'
 import { LocalStore } from './store.js'
@@ -16,7 +16,7 @@ import type { ObsTransport } from './obs.js'
 import type { ObsInstance } from '@cloudnord/contract'
 import { ConnectivityTracker, probeConnectivity } from './connectivity.js'
 import { RecordingSession, slugify, type MarkerRole, type StopResult } from './recording.js'
-import type { ControlDiagnostics, ControlTarget, PointObsVisible, VodListe } from './control-api.js'
+import type { ControlDiagnostics, ControlTarget, VisibleObsEndpoint, VodList } from './control-api.js'
 import {
   ffprobeSonde,
   inspecterEnregistrement,
@@ -27,20 +27,20 @@ import {
   ouvrirFichier,
   poserVerdict,
   cheminSur,
-  type ControleVod,
+  type VodCheck,
   type Extrait,
   type FluxFichier,
-  type VerdictVod,
+  type VodVerdict,
   type VodIndexDeps,
 } from './vod-index.js'
 import { Outbox } from './outbox.js'
 import { OutboxPump, buildHeartbeat, heartbeatDedupKey } from './outbox-pump.js'
 import { AgregateurNiveaux } from './niveaux-audio.js'
-import { moniteurHote, type ChargeHote } from './hote.js'
-import { Televersements, type CandidatVod, type HubVod, type VueTeleversements } from './televersement.js'
+import { moniteurHote, type HostLoad } from './hote.js'
+import { Televersements, type CandidatVod, type HubVod, type UploadsView } from './televersement.js'
 import { nextTalk } from '@cloudnord/room-state'
 import { sessionsForRoom } from '@cloudnord/program'
-import type { ModeExecution, RoomConfigPatch, RoomEventPayload } from '@cloudnord/contract'
+import type { ExecutionMode, RoomConfigPatch, RoomEventPayload } from '@cloudnord/contract'
 
 /** Configuration de salle en cache local, telle que le hub l'a poussée. */
 type ConfigSalle = NonNullable<ReturnType<LocalStore['settings']>['config']>
@@ -105,7 +105,7 @@ export interface RoomAppOptions {
    * Ouvre le sélecteur de dossier du système, pour le chemin des rushes.
    *
    * Fourni par Electron seulement : `dev:headless` tourne sous Node nu, où il
-   * n'y a pas de sélecteur à ouvrir. Son absence est ce que `peutParcourir`
+   * n'y a pas de sélecteur à ouvrir. Son absence est ce que `canBrowse`
    * annonce à la régie — qui masque alors le bouton plutôt que d'en offrir un
    * qui ne répondrait pas.
    *
@@ -126,7 +126,7 @@ export interface RoomAppOptions {
    * Décidé par le point d'entrée, qui lit l'environnement — le cœur applicatif
    * ne lit pas `process.env`, c'est ce qui le rend testable. Voir `core/mode`.
    */
-  mode?: ModeExecution
+  mode?: ExecutionMode
   /**
    * Source de temps de la salle.
    *
@@ -188,7 +188,7 @@ export class RoomApp implements ControlTarget {
    * distincts — un pour la régie, un pour le régulateur — garderaient chacun le
    * leur et rendraient deux chiffres également faux, sans que rien ne le dise.
    */
-  private readonly hote: () => ChargeHote = moniteurHote()
+  private readonly hote: () => HostLoad = moniteurHote()
   private readonly televersements: Televersements
   /** Dernière racine d'enregistrement constatée : le téléverseur y résout ses chemins. */
   private racineConnue: string | null = null
@@ -197,7 +197,7 @@ export class RoomApp implements ControlTarget {
   private heartbeat: NodeJS.Timeout | null = null
   private roomsTimer: NodeJS.Timeout | null = null
   /** Mode annoncé par le hub au dernier sync. `null` tant qu'il n'a pas répondu. */
-  private hubMode: ModeExecution | null = null
+  private hubMode: ExecutionMode | null = null
   /** Empreinte des réglages avec lesquels chaque instance a été branchée. */
   private obsApplique: Record<ObsInstance, string | null> = { A: null, B: null }
   /** Une boucle de reprise tourne déjà pour cette instance. */
@@ -665,7 +665,7 @@ export class RoomApp implements ControlTarget {
         const nous = this.options.mode ?? 'production'
         if (mode !== nous) {
           this.options.onLog?.('error', 'MODES DIVERGENTS entre la salle et le hub', {
-            salle: nous,
+            room: nous,
             hub: mode,
           })
         }
@@ -1356,14 +1356,14 @@ export class RoomApp implements ControlTarget {
     }
   }
 
-  /** Pose un chapitre, ou l'un des deux repères de montage. Voir `RecordingSession.mark`. */
+  /** Pose un chapitre, ou l'un des deux repères de editing. Voir `RecordingSession.mark`. */
   mark(label: string, role: MarkerRole | null = null): void {
     if (this.recording == null || !this.recording.active) throw new Error('Aucun enregistrement en cours')
     const marker = this.recording.mark(label, role)
     /*
      * Le rôle ne monte pas au hub, et n'a pas à y monter.
      *
-     * Ce que le montage lit, c'est le sidecar : écrit sur le disque de la salle,
+     * Ce que le editing lit, c'est le sidecar : écrit sur le disque de la salle,
      * téléversé avec le rush, il porte `role`. L'événement, lui, alimente le
      * journal que quelqu'un relit — et « Marqueur « Début » » s'y lit déjà.
      * Un second champ pour la même chose ferait deux vérités à tenir d'accord,
@@ -1428,7 +1428,7 @@ export class RoomApp implements ControlTarget {
    * Ce que ce repli ne fait **pas** : adopter une captation *lancée* depuis
    * OBS. Celle-là n'a ni début, ni conférence, ni marqueurs de notre côté — il
    * n'y aurait rien à écrire dans le sidecar, et en fabriquer un vide
-   * tromperait le montage plus sûrement que son absence.
+   * tromperait le editing plus sûrement que son absence.
    *
    * `dejaArrete` est ici indispensable : redemander `StopRecord` à une sortie
    * déjà inactive est une erreur d'OBS, qui emporterait l'écriture du sidecar.
@@ -1527,10 +1527,10 @@ export class RoomApp implements ControlTarget {
     this.racineConnue = root
     if (root == null) return []
     const deps = this.vodDeps(root)
-    const entrees = await listerEnregistrements(deps)
+    const entries = await listerEnregistrements(deps)
 
     return await Promise.all(
-      entrees.map(async (entree) => {
+      entries.map(async (entree) => {
         const nom = entree.file.replace(/\.[^./]+$/, '.json')
         /**
          * La taille du sidecar se **lit sur le disque**, elle ne se déduit pas.
@@ -1538,7 +1538,7 @@ export class RoomApp implements ControlTarget {
          * Elle a d'abord été calculée en re-sérialisant l'objet relu : le
          * fichier écrit par la salle est indenté, la chaîne recalculée ne
          * l'était pas, et le sidecar arrivait chez le stockage tronqué de ses
-         * espaces — donc invalide, donc illisible au montage. Un JSON coupé au
+         * espaces — donc invalide, donc illisible au editing. Un JSON coupé au
          * milieu ne se voit pas dans une liste de fichiers ; il se découvre en
          * l'ouvrant, des mois plus tard.
          */
@@ -1546,7 +1546,7 @@ export class RoomApp implements ControlTarget {
         return {
           file: entree.file,
           sizeBytes: entree.sizeBytes,
-          enEcriture: entree.enEcriture,
+          beingWritten: entree.beingWritten,
           sessionId: entree.sidecar?.sessionId ?? null,
           // Absent, on ne monte que le rush : un rush sans sidecar est
           // justement celui qu'il faut sauver.
@@ -1631,10 +1631,10 @@ export class RoomApp implements ControlTarget {
     if (root == null) return 0
 
     const { unlink } = await import('node:fs/promises')
-    const entrees = await listerEnregistrements(this.vodDeps(root))
+    const entries = await listerEnregistrements(this.vodDeps(root))
     // Le fichier de verdicts vit à la racine, à côté des rushes, et décrit une
     // relecture qui n'a plus d'objet une fois les rushes partis.
-    const noms = entrees.flatMap((entree) => [
+    const noms = entries.flatMap((entree) => [
       entree.file,
       entree.file.replace(/\.[^./]+$/, '.json'),
     ])
@@ -1665,7 +1665,7 @@ export class RoomApp implements ControlTarget {
   }
 
   /** Téléversements en cours et raison d'attente, pour la modale de la régie. */
-  vodUploads(): VueTeleversements {
+  vodUploads(): UploadsView {
     return this.televersements.vue()
   }
 
@@ -1680,15 +1680,15 @@ export class RoomApp implements ControlTarget {
   }
 
   /** Rushes produits sous la racine, du plus récent au plus ancien. */
-  async listRecordings(): Promise<VodListe> {
+  async listRecordings(): Promise<VodList> {
     const [ffmpeg, ffprobe] = await Promise.all([
       outilDisponible('ffmpeg'),
       outilDisponible('ffprobe'),
     ])
-    const outils = { ffmpeg, ffprobe }
+    const tools = { ffmpeg, ffprobe }
     const root = await this.racineCaptations()
-    if (root == null) return { root: null, entries: [], outils }
-    return { root, entries: await listerEnregistrements(this.vodDeps(root)), outils }
+    if (root == null) return { root: null, entries: [], tools }
+    return { root, entries: await listerEnregistrements(this.vodDeps(root)), tools }
   }
 
   /** Extrait de quelques secondes, produit à la volée pour la modale. */
@@ -1706,7 +1706,7 @@ export class RoomApp implements ControlTarget {
   }
 
   /** Contrôle technique d'un rush : conteneur, pistes, durée, débit. */
-  async inspectRecording(file: string): Promise<ControleVod> {
+  async inspectRecording(file: string): Promise<VodCheck> {
     const root = await this.racineCaptations()
     if (root == null) throw new Error('Aucun dossier d\u2019enregistrement connu')
     const controle = await inspecterEnregistrement(this.vodDeps(root), file)
@@ -1721,7 +1721,7 @@ export class RoomApp implements ControlTarget {
   }
 
   /** Verdict posé à la main, qui prime sur la sonde. */
-  async setRecordingVerdict(file: string, status: VerdictVod | null): Promise<ControleVod | null> {
+  async setRecordingVerdict(file: string, status: VodVerdict | null): Promise<VodCheck | null> {
     const root = await this.racineCaptations()
     if (root == null) throw new Error('Aucun dossier d\u2019enregistrement connu')
     return await poserVerdict(this.vodDeps(root), file, status)
@@ -1910,7 +1910,7 @@ export class RoomApp implements ControlTarget {
         B: this.obsB?.snapshot() ?? null,
       },
       outboxDepth: this.outboxDepth(),
-      journal: this.store.recentLogs(8).map((entry) => ({
+      log: this.store.recentLogs(8).map((entry) => ({
         level: entry.level,
         message: entry.message,
         createdAt: entry.createdAt,
@@ -1920,20 +1920,20 @@ export class RoomApp implements ControlTarget {
       questions: this.questions,
       questionsRefreshedAt: this.questionsAt,
       questionsSession: this.questionsSession,
-      mode: { salle: this.options.mode ?? 'production', hub: this.hubMode },
+      mode: { room: this.options.mode ?? 'production', hub: this.hubMode },
       rooms: this.roomStatuses,
       roomsRefreshedAt: this.roomStatusesAt,
       recording: {
         active: this.recording?.active ?? false,
         markers: this.recording?.markerCount ?? 0,
         startedAtMs: this.recording?.startedAt ?? null,
-        startedAtCorrigeMs: this.recording?.startedAtCorrige ?? null,
-        montage: this.recording?.montage ?? SANS_REPERES,
+        startedAtCorrectedMs: this.recording?.startedAtCorrige ?? null,
+        editing: this.recording?.editing ?? NO_EDITING_MARKS,
       },
     }
   }
 
-  /** Réglages de la salle, mots de passe retirés. Voir `ConfigVisible`. */
+  /** Réglages de la salle, mots de passe retirés. Voir `VisibleConfig`. */
   private configVisible(): ControlDiagnostics['config'] {
     const config = this.store.settings().config
     if (config == null) return null
@@ -1951,7 +1951,7 @@ export class RoomApp implements ControlTarget {
       promptRecordingOnStart: config.promptRecordingOnStart,
       promptRecordingOnStop: config.promptRecordingOnStop,
       sceneOnStart: config.sceneOnStart,
-      peutParcourir: this.options.choisirDossier != null,
+      canBrowse: this.options.choisirDossier != null,
     }
   }
 
@@ -1969,7 +1969,7 @@ export class RoomApp implements ControlTarget {
     return ouvrir(this.store.settings().config?.recordingRoot ?? null)
   }
 
-  private pointVisible(config: ConfigSalle, instance: ObsInstance): PointObsVisible {
+  private pointVisible(config: ConfigSalle, instance: ObsInstance): VisibleObsEndpoint {
     const applique = this.obsApplique[instance]
     return {
       url: config.obs[instance].url,

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ControlDiagnostics, MarkerRole, ObsState } from '@cloudnord/contract'
-import { SANS_REPERES } from '@cloudnord/contract'
+import { NO_EDITING_MARKS } from '@cloudnord/contract'
 import { Button, Key, Panel } from '@cloudnord/components'
 import { shortDuration } from '@cloudnord/format'
 import { computed, ref } from 'vue'
@@ -52,7 +52,7 @@ function mark(): void {
    * page savait impossible.
    */
   if (!active.value) return
-  // Un marqueur sans libellé reste un marqueur : au montage, savoir *où* vaut
+  // Un marqueur sans libellé reste un marqueur : au editing, savoir *où* vaut
   // déjà mieux que rien, et exiger un mot ferait rater l'instant.
   void actions.act({ action: 'recording.mark', label: label.value.trim() || 'Chapitre' })
   label.value = ''
@@ -64,7 +64,7 @@ const markers = computed(() => {
   return count === 0 ? 'aucun marqueur' : `${count} marqueur(s)`
 })
 
-const montage = computed(() => props.recording?.montage ?? SANS_REPERES)
+const editing = computed(() => props.recording?.editing ?? NO_EDITING_MARKS)
 
 /**
  * Ce que porte un bouton de repère : son nom, et où il est tombé.
@@ -78,7 +78,7 @@ function repereLabel(nom: string, ms: number | null): string {
 }
 
 /**
- * Pose l'un des deux repères de montage.
+ * Pose l'un des deux repères de editing.
  *
  * Le libellé est écrit ici et pas saisi : c'est ce qui se relit dans le journal
  * du hub, et il doit dire la même chose d'une salle à l'autre. Le poste, lui,
@@ -152,7 +152,7 @@ defineExpose({ toggleRecording, mark, repere })
       Les deux repères, au-dessus du champ de libellé et sous « Enregistrer ».
 
       Ils appartiennent à la prise, pas au chapitrage : ce sont eux qui décident
-      de ce que le montage publiera, et les ranger sous le champ de saisie les
+      de ce que le editing publiera, et les ranger sous le champ de saisie les
       aurait fait lire comme deux libellés tout faits parmi d'autres. Le
       décalage s'affiche dès qu'ils sont posés — reposer corrige, et il faut
       pouvoir voir ce qu'on corrige.
@@ -161,24 +161,24 @@ defineExpose({ toggleRecording, mark, repere })
       <Button
         id="btn-repere-debut"
         size="small"
-        :active="montage.debutMs != null"
+        :active="editing.startMs != null"
         :disabled="!active"
-        title="Là où commence ce qu'on publie : le montage coupe tout ce qui précède. Reposer remplace le repère précédent."
+        title="Là où commence ce qu'on publie : le editing coupe tout ce qui précède. Reposer remplace le repère précédent."
         data-role="repere-debut"
         @click="repere('debut')"
       >
-        {{ repereLabel('Début', montage.debutMs) }}<Key>D</Key>
+        {{ repereLabel('Début', editing.startMs) }}<Key>D</Key>
       </Button>
       <Button
         id="btn-repere-fin"
         size="small"
-        :active="montage.finMs != null"
+        :active="editing.endMs != null"
         :disabled="!active"
-        title="Là où finit ce qu'on publie : le montage coupe tout ce qui suit. Reposer remplace le repère précédent."
+        title="Là où finit ce qu'on publie : le editing coupe tout ce qui suit. Reposer remplace le repère précédent."
         data-role="repere-fin"
         @click="repere('fin')"
       >
-        {{ repereLabel('Fin', montage.finMs) }}<Key>F</Key>
+        {{ repereLabel('Fin', editing.endMs) }}<Key>F</Key>
       </Button>
     </div>
 

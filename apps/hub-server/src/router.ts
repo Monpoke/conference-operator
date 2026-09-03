@@ -1,12 +1,12 @@
 import { implement, withEventMeta } from '@orpc/server'
 import { ORPCError } from '@orpc/server'
 import {
-  POLITIQUE_VOD_PAR_DEFAUT,
+  DEFAULT_VOD_POLICY,
   PROTOCOL_VERSION,
-  REGIE_SESSION_HEADER,
+  CONTROL_SESSION_HEADER,
   contract,
   isCommandExpired,
-  type CaptationVue,
+  type CaptureView,
   type Command,
 } from '@cloudnord/contract'
 import { roomBreak } from '@cloudnord/room-state'
@@ -1209,7 +1209,7 @@ export const router = os.router({
           endpoint: null,
           bucket: null,
           prefix: null,
-          politique: POLITIQUE_VOD_PAR_DEFAUT,
+          politique: DEFAULT_VOD_POLICY,
         }
       }
       return vod.status()
@@ -1305,7 +1305,7 @@ export const router = os.router({
        * ferait vivre indéfiniment un verrou que la page qui l'a pris a cessé
        * de tenir.
        */
-      if (verrou != null && verrou.holderId === context.headers.get(REGIE_SESSION_HEADER)) {
+      if (verrou != null && verrou.holderId === context.headers.get(CONTROL_SESSION_HEADER)) {
         context.services.regie.hold(input.roomId, verrou.holder, verrou.holderId, false)
       }
       return surSalle(() =>
@@ -1490,7 +1490,7 @@ function rattacher(
   captation: CaptationBrute,
   sessionId: string,
   vecu: { startedAt: string | null; endedAt: string | null } | undefined,
-): CaptationVue | null {
+): CaptureView | null {
   if (captation.sessionId === sessionId) {
     return { ...captation, rattachement: 'session' }
   }
@@ -1612,7 +1612,7 @@ function exigerVerrou(context: HubContext, roomId: string): void {
       message: "Prenez la salle avant de la piloter : personne ne la tient",
     })
   }
-  if (verrou.holderId !== context.headers.get(REGIE_SESSION_HEADER)) {
+  if (verrou.holderId !== context.headers.get(CONTROL_SESSION_HEADER)) {
     throw new ORPCError('FORBIDDEN', {
       message: `${verrou.holder} tient la régie de cette salle`,
     })
@@ -1627,10 +1627,10 @@ function exigerVerrou(context: HubContext, roomId: string): void {
  * qu'on ne découvre que le jour où deux onglets pilotent la même salle.
  */
 function sessionDeRegie(context: HubContext): string {
-  const session = context.headers.get(REGIE_SESSION_HEADER)
+  const session = context.headers.get(CONTROL_SESSION_HEADER)
   if (session == null || session === '') {
     throw new ORPCError('BAD_REQUEST', {
-      message: `En-tête ${REGIE_SESSION_HEADER} absent : la régie ne s'identifie pas`,
+      message: `En-tête ${CONTROL_SESSION_HEADER} absent : la régie ne s'identifie pas`,
     })
   }
   return session

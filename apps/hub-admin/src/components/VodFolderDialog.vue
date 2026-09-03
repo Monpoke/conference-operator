@@ -164,7 +164,7 @@ function etatMontee(ligne: Upload): { label: string; tone: string } {
               · {{ Math.round(prise.durationMs / 60000) }} min
             </template>
             <!--
-              Le sidecar n'est pas un détail : sans lui le rush arrive au montage
+              Le sidecar n'est pas un détail : sans lui le rush arrive au editing
               sans titre, sans intervenants et sans marqueurs.
             -->
             <template v-if="!prise.enCours && !prise.finInconnue">

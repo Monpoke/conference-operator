@@ -164,7 +164,7 @@ export const useConferenceStore = defineStore('conference', () => {
    *
    * La question ne se pose qu'ici. À l'arrêt près, une captation oubliée ne se
    * voit nulle part : rien ne clignote, le témoin dit « enregistre » comme il
-   * le disait pendant le talk, et le prix ne se découvre qu'au montage.
+   * le disait pendant le talk, et le prix ne se découvre qu'au editing.
    */
   async function end(): Promise<void> {
     endEarlyOpen.value = false

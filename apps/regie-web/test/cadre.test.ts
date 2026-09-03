@@ -31,7 +31,7 @@ describe('feuille de la régie', () => {
     expect(FEUILLE).toMatch(/overflow:\s*hidden/)
   })
 
-  it('laisse la racine de montage transparente à la disposition', () => {
+  it('laisse la racine de editing transparente à la disposition', () => {
     // `#regie-root` est une boîte que le poste pose ; sans `display: contents`,
     // l'en-tête et le contenu ne sont plus les enfants directs du `<body>` et
     // la colonne flex ne s'applique à rien.

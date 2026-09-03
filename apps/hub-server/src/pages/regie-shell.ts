@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { IDENTITE_PAR_DEFAUT, type EventIdentity } from '@cloudnord/contract'
+import { DEFAULT_EVENT_IDENTITY, type EventIdentity } from '@cloudnord/contract'
 import { escapeHtml } from '@cloudnord/format'
 
 /**
@@ -108,7 +108,7 @@ export function assetsDeDeveloppementRegie(base = '/regie/'): RegieAssets {
 export const PORTEE_ELEMENT_ID = 'regie-portee'
 
 export function renderRegieMobileShell(options: RegieShellOptions): string {
-  const identite = options.event ?? IDENTITE_PAR_DEFAUT
+  const identite = options.event ?? DEFAULT_EVENT_IDENTITY
   const titre = `Régie mobile — ${identite.shortName}`
   const amorce = JSON.stringify({
     portee: 'distante',

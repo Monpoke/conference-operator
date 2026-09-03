@@ -209,7 +209,7 @@ export class Outbox {
    *
    * Les `best-effort` disparaissent vite et sans regret. Les `required` ne
    * partent qu'après 48 h, et laissent une trace au journal : perdre un
-   * marqueur de talk en silence rendrait le montage inexplicable.
+   * marqueur de talk en silence rendrait le editing inexplicable.
    */
   evictExpired(): { dropped: number } {
     const nowIso = new Date(this.now()).toISOString()

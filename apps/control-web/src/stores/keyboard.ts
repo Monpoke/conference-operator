@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { onScopeDispose, ref, toValue, watchEffect, type MaybeRefOrGetter } from 'vue'
 
-/** Ce qu'une couche fait d'une touche. Les touches sont en minuscules. */
+/** What a layer does with a key. The keys are lowercase. */
 export type Bindings = Record<string, () => void>
 
 interface Layer {
@@ -10,23 +10,23 @@ interface Layer {
 }
 
 /**
- * Les raccourcis, en couches, et une seule reçoit le clavier.
+ * The shortcuts, in layers, and only one receives the keyboard.
  *
- * Dans une salle sombre, viser un bouton coûte plus cher qu'appuyer sur une
- * touche : la régie a donc des raccourcis d'une lettre, et deux d'entre eux
- * — `l` et `h` — basculent la projection en direct, devant du public.
+ * In a dark room, aiming at a button costs more than pressing a key: the control
+ * app therefore has single-letter shortcuts, and two of them — `l` and `h` —
+ * switch the projection live, in front of an audience.
  *
- * La page d'origine s'en protégeait en lisant `event.target.tagName` et en
- * consultant six attributs `data-` sur le `<body>`. Aucune des deux défenses ne
- * survit à Reka : une modale n'écrit rien sur le `<body>`, et un `SelectTrigger`
- * est un `<button>` — chercher « LIVE » dans une liste de scènes en tapant `l`
- * basculerait la projection, en salle, pendant un talk. C'est pour cela que ce
- * mécanisme existe **avant** la première modale, et pas après.
+ * The original page protected itself by reading `event.target.tagName` and
+ * consulting six `data-` attributes on the `<body>`. Neither defence survives
+ * Reka: a modal writes nothing on the `<body>`, and a `SelectTrigger` is a
+ * `<button>` — looking for "LIVE" in a scene list by typing `l` would switch the
+ * projection, in the room, during a talk. That is why this mechanism exists
+ * **before** the first modal, and not after.
  *
- * La règle est simple et sans exception : une couche empilée reçoit tout, et ce
- * qu'elle n'a pas lié, elle l'avale. Une question ouverte prend le clavier
- * entier — un « r » réflexe pendant qu'on demande s'il faut enregistrer ne peut
- * pas basculer la captation sous la question elle-même.
+ * The rule is simple and without exception: a stacked layer receives everything,
+ * and what it has not bound, it swallows. An open question takes the whole
+ * keyboard — a reflex "r" while being asked whether to record cannot switch the
+ * take underneath the question itself.
  */
 export const useKeyboardStore = defineStore('keyboard', () => {
   const layers = ref<Layer[]>([])
@@ -34,45 +34,44 @@ export const useKeyboardStore = defineStore('keyboard', () => {
   let installed: ((event: KeyboardEvent) => void) | null = null
 
   /**
-   * Ce que la couche du dessus fait de la frappe, ou rien.
+   * What the top layer does with the keystroke, or nothing.
    *
-   * Exposé pour que les règles se vérifient sans clavier ni document : ce sont
-   * elles qui comptent, pas le chemin qui les atteint.
+   * Exposed so the rules can be checked with no keyboard and no document: they
+   * are what counts, not the path that reaches them.
    */
   function handle(event: KeyboardEvent): void {
     /*
-     * Une touche tenue avec Ctrl, Cmd ou Alt appartient au navigateur.
+     * A key held with Ctrl, Cmd or Alt belongs to the browser.
      *
-     * Ctrl+R recharge la page — et lançait la captation au passage, puisque
-     * seule la lettre était lue. Une régie retrouvée en train d'enregistrer
-     * sans que personne ne l'ait demandé, un fichier de plus sur le disque, et
-     * rien à l'écran pour dire d'où ça venait. Ctrl+S, Ctrl+P, Ctrl+L posaient
-     * le même piège sur d'autres lettres.
+     * Ctrl+R reloads the page — and used to start the take along the way, since
+     * only the letter was read. A control app found recording with nobody having
+     * asked for it, one more file on the disk, and nothing on screen to say where
+     * it came from. Ctrl+S, Ctrl+P and Ctrl+L set the same trap on other letters.
      *
-     * Maj reste passant : « Maj+R » n'a pas de sens pour le navigateur, et
-     * c'est la même intention que « r » pour qui tape vite.
+     * Shift stays through: "Shift+R" means nothing to the browser, and it is the
+     * same intent as "r" for somebody typing fast.
      */
     if (event.ctrlKey || event.metaKey || event.altKey) return
 
     /*
-     * Une frappe destinée à un champ lui appartient.
+     * A keystroke meant for a field belongs to that field.
      *
-     * Les listes déroulantes comptent autant que les champs texte : une touche
-     * `l` dans un choix de scène ne doit pas basculer la projection. C'est
-     * aussi pourquoi les listes de la régie restent des `<select>` natifs —
-     * remplacées par un composant à `<button>`, elles sortiraient de ce filet.
+     * Dropdowns count as much as text fields: an `l` in a scene picker must not
+     * switch the projection. That is also why the control app's lists stay native
+     * `<select>` elements — replaced by a component built on `<button>`, they
+     * would fall out of this net.
      */
-    const cible = event.target as { tagName?: string; isContentEditable?: boolean } | null
-    if (cible?.isContentEditable === true) return
-    const balise = cible?.tagName
-    if (balise === 'INPUT' || balise === 'SELECT' || balise === 'TEXTAREA') return
+    const target = event.target as { tagName?: string; isContentEditable?: boolean } | null
+    if (target?.isContentEditable === true) return
+    const tag = target?.tagName
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return
 
     const top = layers.value.at(-1)
     if (top == null) return
 
     const action = top.bindings()[event.key.toLowerCase()]
-    // Rien de lié : la couche l'avale quand même. C'est ce qui empêche une
-    // question ouverte de laisser passer un raccourci vers la conférence.
+    // Nothing bound: the layer swallows it all the same. That is what stops an
+    // open question letting a shortcut through to the talk.
     if (action == null) return
     event.preventDefault()
     action()
@@ -96,18 +95,18 @@ export const useKeyboardStore = defineStore('keyboard', () => {
     }
   }
 
-  /** La couche qui reçoit, pour les tests et pour ce qui veut s'en enquérir. */
+  /** The receiving layer, for the tests and for whatever wants to ask. */
   const depth = (): number => layers.value.length
 
   return { layers, handle, push, pop, depth }
 })
 
 /**
- * Pose une couche de raccourcis le temps qu'un composant vive.
+ * Lays down a shortcut layer for as long as a component lives.
  *
- * `active` permet à une modale de garder son composant monté sans prendre le
- * clavier : Reka rend souvent le contenu avant de l'ouvrir, et une couche posée
- * dès le editing volerait les touches à la page derrière.
+ * `active` lets a modal keep its component mounted without taking the keyboard:
+ * Reka often renders the content before opening it, and a layer laid down at
+ * mount time would steal the keys from the page behind.
  */
 export function useKeyboardLayer(
   bindings: MaybeRefOrGetter<Bindings>,
@@ -117,16 +116,16 @@ export function useKeyboardLayer(
   let id: number | null = null
 
   const sync = (): void => {
-    const veut = toValue(active)
-    if (veut && id == null) id = keyboard.push(() => toValue(bindings))
-    else if (!veut && id != null) {
+    const wanted = toValue(active)
+    if (wanted && id == null) id = keyboard.push(() => toValue(bindings))
+    else if (!wanted && id != null) {
       keyboard.pop(id)
       id = null
     }
   }
 
-  // `watchEffect` s'exécute immédiatement : la couche est posée dès l'appel si
-  // elle doit l'être, et suit ensuite ce que `active` devient.
+  // `watchEffect` runs immediately: the layer is laid down as soon as it is
+  // called if it should be, and then follows what `active` becomes.
   watchEffect(sync)
   onScopeDispose(() => {
     if (id != null) keyboard.pop(id)

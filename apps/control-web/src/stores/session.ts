@@ -6,56 +6,57 @@ import { ref, shallowRef } from 'vue'
 import type { BootScope } from '../boot.js'
 
 /**
- * La clé du jeton, **partagée avec la console**.
+ * The token key, **shared with the console**.
  *
- * Même origine, donc même stockage : un opérateur connecté à `/admin` sur son
- * téléphone ouvre `/regie` déjà connecté. Se reconnecter deux fois sur le même
- * appareil au milieu d'un événement est précisément la friction qu'on retire —
- * et une seconde clé l'aurait réintroduite pour rien.
+ * Same origin, so same storage: an operator signed in to `/admin` on their phone
+ * opens `/regie` already signed in. Signing in twice on the same device in the
+ * middle of an event is precisely the friction being removed — and a second key
+ * would have reintroduced it for nothing.
  */
 export const TOKEN_KEY = 'hub-admin'
 
 /**
- * L'identité de **cet onglet-ci**, et de lui seul.
+ * The identity of **this tab**, and of it alone.
  *
- * `sessionStorage`, et le choix est le fond du sujet : il survit à un F5 — un
- * rechargement en plein talk ne doit pas faire perdre la salle — et meurt avec
- * l'onglet. `localStorage` serait partagé entre les onglets, ce qui est
- * exactement ce qu'on cherche à distinguer ; une variable de module ne
- * survivrait pas au rechargement.
+ * `sessionStorage`, and the choice is the heart of the matter: it survives an F5
+ * — a reload mid-talk must not lose the room — and dies with the tab.
+ * `localStorage` would be shared between tabs, which is exactly what we are
+ * trying to tell apart; a module variable would not survive the reload.
  *
- * Le repli en mémoire couvre les navigateurs qui refusent le stockage : deux
- * onglets s'y confondraient au rechargement, et c'est un défaut acceptable
- * comparé à une page qui ne s'ouvre pas.
+ * The in-memory fallback covers browsers that refuse storage: two tabs would be
+ * confused there on reload, and that is an acceptable defect compared with a
+ * page that does not open.
+ *
+ * The stored key keeps its name: it is written on operators' devices.
  */
-const CLE_SESSION = 'regie-session'
-let secours: string | null = null
+const SESSION_KEY = 'regie-session'
+let fallback: string | null = null
 
 export function thisTabSession(): string {
   try {
-    const connue = globalThis.sessionStorage?.getItem(CLE_SESSION)
-    if (connue != null && connue !== '') return connue
-    const neuve = identifiant()
-    globalThis.sessionStorage?.setItem(CLE_SESSION, neuve)
-    return neuve
+    const known = globalThis.sessionStorage?.getItem(SESSION_KEY)
+    if (known != null && known !== '') return known
+    const fresh = newIdentifier()
+    globalThis.sessionStorage?.setItem(SESSION_KEY, fresh)
+    return fresh
   } catch {
-    secours ??= identifiant()
-    return secours
+    fallback ??= newIdentifier()
+    return fallback
   }
 }
 
-function identifiant(): string {
+function newIdentifier(): string {
   return globalThis.crypto?.randomUUID?.() ?? `regie-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
 /**
- * Qui est connecté, et le client par lequel tout passe.
+ * Who is signed in, and the client everything goes through.
  *
- * N'existe que pour la portée distante : servie par un poste de salle, la régie
- * ne parle qu'à sa propre boucle locale et n'a personne à authentifier. Le store
- * est monté quand même — il ne fait rien tant que rien ne l'appelle — plutôt que
- * conditionné, parce qu'un store qui existe parfois se lit deux fois moins bien
- * qu'un store qui ne sert parfois à rien.
+ * Only exists for the remote scope: served by a room machine, the control app
+ * talks only to its own local loopback and has nobody to authenticate. The store
+ * is mounted all the same — it does nothing until something calls it — rather
+ * than made conditional, because a store that sometimes exists reads twice as
+ * badly as one that is sometimes of no use.
  */
 export const useSessionStore = defineStore('session', () => {
   const signedIn = ref(false)
@@ -67,22 +68,21 @@ export const useSessionStore = defineStore('session', () => {
   const toast = useToast()
 
   /**
-   * `shallowRef` : le client porte un lien, pas des données.
+   * `shallowRef`: the client carries a link, not data.
    *
-   * Le rendre profondément réactif ferait parcourir un proxy oRPC à chaque
-   * accès — et ce proxy répond à *n'importe quel* nom de propriété, si bien que
-   * le parcours ne s'arrête sur rien d'utile.
+   * Making it deeply reactive would walk an oRPC proxy on every access — and that
+   * proxy answers to *any* property name, so the walk stops at nothing useful.
    */
   const client = shallowRef<HubClient>(
     createHubClient({
       tokenKey: TOKEN_KEY,
       /*
-       * L'onglet s'annonce à chaque appel.
+       * The tab announces itself on every call.
        *
-       * C'est lui que le verrou retient, et non le compte : sans cet en-tête, le
-       * hub refuse de prendre ou de piloter une salle plutôt que de retomber sur
-       * l'adresse — un repli silencieux qui ne se découvrirait que le jour où
-       * deux onglets pilotent la même salle.
+       * It is what the lock keys on, not the account: without this header the hub
+       * refuses to take or to drive a room rather than fall back on the address —
+       * a silent fallback that would only be discovered the day two tabs drive the
+       * same room.
        */
       headers: () => ({ [CONTROL_SESSION_HEADER]: thisTabSession() }),
       onExpired: () => forget(),
@@ -95,15 +95,14 @@ export const useSessionStore = defineStore('session', () => {
   const auth = createHubAuth({ token: client.value.token })
 
   /**
-   * Deux façons d'arriver connecté, et une seule laisse un jeton.
+   * Two ways of arriving signed in, and only one leaves a token.
    *
-   * Un jeton en stockage est une prétention, pas une session : c'est le premier
-   * appel protégé qui tranche. Un retour de Google, lui, ne laisse aucun jeton —
-   * seulement un cookie — et il faut donc demander avant de conclure que
-   * personne n'est connecté.
+   * A token in storage is a claim, not a session: it is the first protected call
+   * that settles it. A return from Google, on the other hand, leaves no token —
+   * only a cookie — so one has to ask before concluding that nobody is signed in.
    */
-  function start(amorce: BootScope): void {
-    google.value = amorce.google
+  function start(boot: BootScope): void {
+    google.value = boot.google
     if (client.value.token.read() != null) {
       signedIn.value = true
       return
@@ -122,9 +121,9 @@ export const useSessionStore = defineStore('session', () => {
     signingIn.value = true
     error.value = null
     try {
-      const resultat = await auth.signIn(email, password)
-      if (!resultat.ok) {
-        error.value = resultat.message
+      const result = await auth.signIn(email, password)
+      if (!result.ok) {
+        error.value = result.message
         return
       }
       identity.value = email
@@ -135,25 +134,24 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   /**
-   * `callbackURL` ramène **sur cette page-ci**.
+   * `callbackURL` brings us back **to this very page**.
    *
-   * L'aller-retour Google perd la chaîne de requête mais garde le chemin : un
-   * opérateur qui se connecte depuis `/regie/track-1` doit retrouver sa salle,
-   * pas l'écran de choix. C'est là que la différence avec la console compte —
-   * la console n'a qu'une adresse à laquelle revenir, la régie en a une par
-   * salle.
+   * The Google round trip loses the query string but keeps the path: an operator
+   * signing in from `/regie/track-1` must find their room again, not the choice
+   * screen. That is where the difference from the console counts — the console
+   * has a single address to come back to, the control app has one per room.
    */
   async function signInWithGoogle(): Promise<void> {
     error.value = null
-    const resultat = await auth.googleUrl(globalThis.location.pathname)
-    if (!resultat.ok) {
-      error.value = resultat.message
+    const result = await auth.googleUrl(globalThis.location.pathname)
+    if (!result.ok) {
+      error.value = result.message
       return
     }
-    globalThis.location.assign(resultat.url)
+    globalThis.location.assign(result.url)
   }
 
-  /** Oublie la session ici, sans rien dire au hub : c'est aussi le chemin d'un 401. */
+  /** Forgets the session here, saying nothing to the hub: it is also a 401's path. */
   function forget(): void {
     client.value.token.clear()
     identity.value = null

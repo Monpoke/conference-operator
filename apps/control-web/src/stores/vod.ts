@@ -6,34 +6,33 @@ import { useActionsStore } from './actions.js'
 import { useRoomStore } from './room.js'
 
 /**
- * Contrôle des rushes.
+ * Checking the footage.
  *
- * La question à laquelle cette modale répond est celle qu'on se pose au
- * démontage : « est-ce qu'on a bien tout ? » Le chronomètre de la régie a dit
- * qu'on enregistrait ; il ne dit pas qu'OBS écrivait vraiment quelque chose
- * d'exploitable. Entre les deux, il y a un disque plein, un encodeur qui a
- * lâché, une carte d'acquisition débranchée — et personne ne s'en aperçoit
- * avant le editing, quand la salle n'existe plus.
+ * The question this modal answers is the one asked while packing up: "have we
+ * really got everything?" The control app's stopwatch said we were recording; it
+ * does not say OBS was really writing anything usable. Between the two there is a
+ * full disk, an encoder that gave out, a capture card unplugged — and nobody
+ * notices before editing, when the room no longer exists.
  *
- * Rien n'est chargé tant qu'on n'ouvre pas : lire le dossier des captations à
- * chaque tic d'horloge coûterait un accès disque par seconde pour une liste
- * qu'on consulte trois fois dans la journée.
+ * Nothing is loaded until it is opened: reading the recordings folder on every
+ * clock tick would cost one disk access a second for a list consulted three times
+ * a day.
  */
 
 /**
- * Sondage tant que la modale est ouverte, et lui seul.
+ * Polling while the modal is open, and only then.
  *
- * Trois secondes : assez pour qu'un pourcentage avance sous les yeux, assez peu
- * pour qu'une salle dont la modale est fermée — c'est-à-dire toute la journée —
- * ne génère aucun trafic.
+ * Three seconds: enough for a percentage to advance before one's eyes, little
+ * enough that a room whose modal is closed — that is, all day long — generates no
+ * traffic at all.
  */
 export const UPLOADS_POLL_MS = 3000
 
-/** Vingt secondes : assez pour entendre le son et voir le cadrage, pas plus. */
+/** Twenty seconds: enough to hear the sound and see the framing, no more. */
 export const EXTRACT_MS = 20_000
 
-/** Poids du dernier relevé de débit dans la moyenne mobile — voir `lisser`. */
-export const LISSAGE = 1 / 3
+/** Weight of the last rate reading in the moving average — see `smooth`. */
+export const SMOOTHING = 1 / 3
 
 export const VERDICT_BADGES: Record<string, [string, string]> = {
   ok: ['Exploitable', 'border-ok/50 text-ok'],
@@ -57,12 +56,12 @@ export const useVodStore = defineStore('vod', () => {
   const open = ref(false)
   const listing = ref<VodList | null>(null)
   const uploads = ref<UploadsView | null>(null)
-  /** Rush déplié pour aperçu, et l'endroit du fichier qu'on regarde. */
+  /** The footage unfolded for preview, and the point in the file being watched. */
   const preview = ref<{ file: string; at: number } | null>(null)
   const checking = ref(false)
   const progress = ref('')
-  /** Débit lissé par fichier, en octets par seconde — voir `lisser`. */
-  const debits = ref(new Map<string, number>())
+  /** Smoothed rate per file, in bytes per second — see `smooth`. */
+  const rates = ref(new Map<string, number>())
 
   let timer: ReturnType<typeof setInterval> | null = null
 
@@ -78,67 +77,67 @@ export const useVodStore = defineStore('vod', () => {
     }
   }
 
-  /**
-   * Téléversements en cours, sondés plutôt que poussés.
+/**
+   * Uploads under way, polled rather than pushed.
    *
-   * Même choix que la charge du poste : un pourcentage qui avance placé dans le
-   * flux d'état republierait tout le diagnostic à chaque part. Ici, seule une
-   * modale ouverte interroge.
+   * The same choice as the machine's load: an advancing percentage placed in the
+   * state stream would republish the whole diagnostic on every part. Here, only an
+   * open modal asks.
    */
   async function loadUploads(): Promise<void> {
     try {
       const response = await fetch('/control/uploads')
       const body = (await response.json()) as UploadsView & { ok?: boolean }
       uploads.value = body.ok === false ? null : body
-      lisser()
+      smooth()
     } catch {
       uploads.value = null
     }
   }
 
   /**
-   * Reprend le débit de chaque fichier en vol, en le lissant.
+   * Picks up each in-flight file's rate, smoothing it.
    *
-   * `debitOctetsS` est le débit de la **dernière part**, mesurée seule. Sur le
-   * réseau d'un événement il varie du simple au triple d'une part à l'autre, et
-   * un temps restant calculé dessus sauterait de « 4 min » à « 11 min » toutes
-   * les trois secondes. Un chiffre qui danse ne se lit pas : on cesse de le
-   * regarder, et autant ne pas l'afficher.
+   * `debitOctetsS` is the rate of the **last part**, measured on its own. On an
+   * event's network it varies threefold from one part to the next, and a remaining
+   * time computed from it would jump from "4 min" to "11 min" every three seconds.
+   * A figure that dances cannot be read: one stops looking at it, and it may as
+   * well not be displayed.
    *
-   * Un tiers de poids au dernier relevé : assez réactif pour suivre un uplink
-   * qui se dégage en quelques dizaines de secondes, assez lent pour ne pas
-   * suivre une part malchanceuse.
+   * One third of the weight to the last reading: reactive enough to follow an
+   * uplink that clears in a few tens of seconds, slow enough not to follow one
+   * unlucky part.
    *
-   * Oublié dès que le fichier n'est plus en vol : une reprise après coupure
-   * repart sur le réseau du moment, et hériter du débit d'hier soir annoncerait
-   * un temps qui n'a jamais existé.
+   * Forgotten as soon as the file is no longer in flight: a resume after a cut
+   * starts again on the network of the moment, and inheriting last night's rate
+   * would announce a time that never existed.
    */
-  function lisser(): void {
-    for (const entree of uploads.value?.entries ?? []) {
-      if (entree.state !== 'en-cours' || entree.debitOctetsS == null || entree.debitOctetsS <= 0) {
-        debits.value.delete(entree.file)
+  function smooth(): void {
+    for (const entry of uploads.value?.entries ?? []) {
+      if (entry.state !== 'en-cours' || entry.debitOctetsS == null || entry.debitOctetsS <= 0) {
+        rates.value.delete(entry.file)
         continue
       }
-      const passe = debits.value.get(entree.file)
-      debits.value.set(
-        entree.file,
-        passe == null ? entree.debitOctetsS : passe + (entree.debitOctetsS - passe) * LISSAGE,
+      const previous = rates.value.get(entry.file)
+      rates.value.set(
+        entry.file,
+        previous == null ? entry.debitOctetsS : previous + (entry.debitOctetsS - previous) * SMOOTHING,
       )
     }
   }
 
   /**
-   * Ce qui empêche tout téléversement, individuel comme global — ou rien.
+   * What prevents any upload, individual or global — or nothing.
    *
-   * Une seule règle pour les deux boutons. Séparées, elles avaient divergé : les
-   * lignes n'offraient plus de ⬆ faute de destination, pendant que « Tout
-   * téléverser » restait actif en en-tête. La régie donnait donc à lire « on
-   * peut tout envoyer, mais rien en particulier » — l'inverse exact de l'état
-   * réel, et la seule explication disponible était de cliquer.
+   * A single rule for both buttons. Kept apart, they had diverged: the rows no
+   * longer offered a ⬆ for want of a destination, while "Tout téléverser" stayed
+   * active in the header. The control app therefore read as "everything can be
+   * sent, but nothing in particular" — the exact opposite of the real state, and
+   * the only explanation available was to click.
    *
-   * Ne couvre que l'indisponibilité de fond. Une attente passagère — captation
-   * en cours, débit plafonné — laisse les boutons : la demande est mise en file,
-   * et le bandeau au-dessus dit ce qu'on attend.
+   * Covers background unavailability only. A passing wait — a running take, a
+   * capped rate — leaves the buttons: the request is queued, and the banner above
+   * says what is being waited for.
    */
   const blocked = computed<string | null>(() => {
     if (uploads.value == null) return 'État des téléversements indisponible'
@@ -149,85 +148,82 @@ export const useVodStore = defineStore('vod', () => {
   })
 
   /**
-   * Le hub sait où envoyer, mais n'envoie rien de lui-même.
+   * The hub knows where to send, but sends nothing of its own accord.
    *
-   * Ne bloque **rien** : c'est le réglage par défaut du hub — « rien ne part
-   * sans qu'on l'ait demandé » — et le régulateur accepte déjà les demandes
-   * manuelles dans cet état. Les deux motifs ont longtemps partagé un code, et
-   * la régie retirait ses boutons ici comme sur un hub sans stockage : une
-   * installation parfaitement configurée n'offrait alors aucun moyen d'envoyer
-   * quoi que ce soit.
+   * Blocks **nothing**: this is the hub's default setting — "nothing leaves unless
+   * asked" — and the regulator already accepts manual requests in this state. The
+   * two reasons long shared one code, and the control app withdrew its buttons
+   * here as on a hub with no storage: a perfectly configured installation then
+   * offered no way of sending anything at all.
    *
-   * Reste à le dire, en une ligne discrète : sinon l'opérateur qui monte un
-   * rush à la main se demande pourquoi les suivants ne partent pas seuls.
+   * It still has to be said, on one discreet line: otherwise the operator who
+   * uploads footage by hand wonders why the rest do not leave on their own.
    */
   const manualOnly = computed<boolean>(
     () => uploads.value?.verdict?.reason === 'auto-desactive',
   )
 
   /**
-   * Rien à dire quand tout va, ni quand il n'y a rien à faire aller.
+   * Nothing to say when all is well, nor when there is nothing to make go.
    *
-   * Ni « sans-stockage » ni « auto-desactive » ne sont des attentes : le
-   * premier est un hub sans destination, donc une fonctionnalité que personne
-   * n'a demandée ; le second est un réglage assumé, celui par défaut. Les
-   * annoncer en ambre à chaque ouverture de la modale, toute la journée, les
-   * ferait passer pour des pannes — et userait le bandeau avant le jour où il
-   * dit vrai.
+   * Neither `sans-stockage` nor `auto-desactive` is a wait: the first is a hub
+   * with no destination, so a feature nobody asked for; the second is a deliberate
+   * setting, the default one. Announcing them in amber every time the modal opens,
+   * all day long, would make them look like failures — and would wear the banner
+   * out before the day it tells the truth.
    */
   const waitReason = computed<string | null>(() => {
     const verdict = uploads.value?.verdict
     if (verdict == null || verdict.allowed) return null
-    // Ni l'absence de stockage ni l'automatisme éteint ne sont des attentes :
-    // le premier est dit en en-tête, le second est un réglage assumé.
+    // Neither the missing storage nor the disabled automation is a wait: the
+    // first is said in the header, the second is a deliberate setting.
     if (verdict.reason === 'sans-stockage' || verdict.reason === 'auto-desactive') return null
     return `Téléversement en attente — ${verdict.text}.`
   })
 
-  /** État de montée d'un fichier, ou nul s'il n'a jamais été mis en file. */
+  /** A file's upload state, or null if it was never queued. */
   function uploadOf(file: string): UploadRow | null {
     return (uploads.value?.entries ?? []).find((entry) => entry.file === file) ?? null
   }
 
   /**
-   * Ce qu'il reste à attendre sur un fichier, en millisecondes — ou rien.
+   * What is left to wait on a file, in milliseconds — or nothing.
    *
-   * La question du démontage n'est pas « où en est-il ? » mais « est-ce que je
-   * peux débrancher ce disque avant de partir ? », et un pourcentage n'y répond
-   * pas : 60 % sur un rush de quatre gigas, c'est deux minutes ou quarante,
-   * selon un débit que l'opérateur n'a aucune raison de connaître.
+   * The packing-up question is not "how far along is it?" but "can I unplug this
+   * disk before I leave?", and a percentage does not answer it: 60 % on four
+   * gigabytes of footage is two minutes or forty, depending on a rate the operator
+   * has no reason to know.
    *
-   * Le plafond du hub entre dans le calcul, et il le faut : le débit remonté est
-   * celui de l'envoi d'une part, mesuré **avant** la pause qui applique le
-   * plafond. Sur un hub réglé à un méga-octet par seconde, un uplink capable de
-   * dix fois plus annoncerait donc dix fois moins de temps que la réalité — une
-   * estimation trop courte est pire que pas d'estimation, c'est elle qui fait
-   * ranger le disque trop tôt.
+   * The hub's ceiling enters the computation, and it must: the reported rate is
+   * that of sending one part, measured **before** the pause that applies the
+   * ceiling. On a hub set to one megabyte a second, an uplink capable of ten times
+   * that would therefore announce ten times less time than reality — an estimate
+   * that is too short is worse than no estimate, it is what makes people put the
+   * disk away too early.
    *
-   * Nul tant qu'aucune part n'est partie : « ça y est dans un instant » sur une
-   * file d'attente qui n'a pas commencé serait une promesse inventée.
+   * Null while no part has left: "any moment now" on a queue that has not started
+   * would be an invented promise.
    */
   function etaOf(file: string): number | null {
     const entry = uploadOf(file)
     if (entry == null || entry.state !== 'en-cours') return null
-    const lisse = debits.value.get(file)
-    if (lisse == null || lisse <= 0 || !(entry.remainingBytes > 0)) return null
-    const plafond = uploads.value?.verdict?.debitMaxOctetsS ?? null
-    const debit = plafond != null && plafond > 0 ? Math.min(lisse, plafond) : lisse
-    return Math.round((entry.remainingBytes / debit) * 1000)
+    const smoothed = rates.value.get(file)
+    if (smoothed == null || smoothed <= 0 || !(entry.remainingBytes > 0)) return null
+    const ceiling = uploads.value?.verdict?.debitMaxOctetsS ?? null
+    const rate = ceiling != null && ceiling > 0 ? Math.min(smoothed, ceiling) : smoothed
+    return Math.round((entry.remainingBytes / rate) * 1000)
   }
 
   function show(): void {
     open.value = true
-    // Relu à chaque ouverture : le dossier s'est rempli depuis la dernière fois.
+    // Read again on every opening: the folder has filled up since last time.
     listing.value = null
     preview.value = null
     uploads.value = null
-    debits.value.clear()
+    rates.value.clear()
     void loadListing()
     void loadUploads()
-    // Coupé à la fermeture, sans quoi il survivrait à toutes les ouvertures de
-    // la journée.
+    // Cut on closing, failing which it would outlive every opening of the day.
     timer ??= setInterval(() => void loadUploads(), UPLOADS_POLL_MS)
   }
 
@@ -237,7 +233,7 @@ export const useVodStore = defineStore('vod', () => {
     timer = null
   }
 
-  /** Déplie l'aperçu d'un rush, ou le referme si c'est déjà le sien. */
+  /** Unfolds a file's preview, or folds it back if it is already showing. */
   function togglePreview(file: string): void {
     preview.value = preview.value?.file === file ? null : { file, at: 0 }
   }
@@ -248,10 +244,10 @@ export const useVodStore = defineStore('vod', () => {
   }
 
   /**
-   * Le même bouton pose et retire le verdict.
+   * The same button sets and clears the verdict.
    *
-   * Sans le retrait, une fausse manœuvre resterait à l'écran sans moyen de la
-   * reprendre — et c'est le genre de marque qu'on relit au editing comme une
+   * Without the clearing, a slip would stay on screen with no way to take it back
+   * — and it is the kind of mark that gets read back at editing time as
    * information.
    */
   async function verdict(file: string, status: 'ok' | 'illisible'): Promise<void> {
@@ -263,13 +259,12 @@ export const useVodStore = defineStore('vod', () => {
   }
 
   /**
-   * Contrôle de tout le dossier, un fichier après l'autre.
+   * Checking the whole folder, one file after another.
    *
-   * En série, et pas en parallèle : ffprobe lit réellement les fichiers, et
-   * lancer six lectures de rushes de deux heures sur le disque qui enregistre
-   * est exactement ce qu'on ne veut pas pendant une conférence. Sans avis par
-   * fichier non plus — douze messages à la suite ne disent rien de plus que le
-   * compte affiché en haut.
+   * In series, not in parallel: ffprobe really reads the files, and launching six
+   * reads of two-hour recordings on the disk that is recording is exactly what one
+   * does not want during a talk. With no per-file toast either — twelve messages
+   * in a row say nothing more than the count shown at the top.
    */
   async function checkAll(): Promise<void> {
     const targets = (listing.value?.entries ?? []).map((entry) => entry.file)
@@ -307,16 +302,16 @@ export const useVodStore = defineStore('vod', () => {
   }
 
   /**
-   * Met un rush en file, ou tout ce qui reste.
+   * Queues one file, or everything that is left.
    *
-   * Aucune fenêtre de confirmation, et surtout pas une native : elle bloque la
-   * boucle de rendu de la page, donc le chronomètre et le flux des salles, en
-   * pleine conférence. Le geste n'est de toute façon pas destructif — il met en
-   * file, il ne lit rien tout de suite.
+   * No confirmation window, and above all not a native one: it blocks the page's
+   * render loop, and therefore the stopwatch and the rooms strip, in the middle of
+   * a talk. The gesture is not destructive anyway — it queues, it reads nothing
+   * straight away.
    *
-   * Le seul cas qui mérite un mot est la captation en cours : c'est le seul où
-   * le régulateur refusera *malgré* la demande manuelle, parce qu'on ne lit pas
-   * le disque sur lequel un master s'écrit.
+   * The only case that deserves a word is a running take: it is the only one where
+   * the regulator will refuse *despite* the manual request, because one does not
+   * read the disk a master is being written to.
    */
   async function upload(file: string | null): Promise<void> {
     const result = await actions.act({ action: 'vod.upload', file })
@@ -332,8 +327,8 @@ export const useVodStore = defineStore('vod', () => {
   }
 
   /**
-   * Ce dont la machine ne dispose pas, dit une fois en haut plutôt que découvert
-   * bouton par bouton.
+   * What the machine does not have, said once at the top rather than discovered
+   * button by button.
    */
   const missingTools = computed<string | null>(() => {
     const tools = listing.value?.tools

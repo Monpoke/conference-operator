@@ -5,7 +5,7 @@ import { transitionRefusal } from '@cloudnord/room-state'
 import { duration, time } from '@cloudnord/format'
 import { computed } from 'vue'
 import { nextTalkFor, scheduleGapMs } from '../lib/countdown.js'
-import { useTalkStore } from '../stores/conference.js'
+import { useTalkStore } from '../stores/talk.js'
 import Countdown from './Countdown.vue'
 
 /**

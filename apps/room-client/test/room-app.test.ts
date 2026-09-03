@@ -23,7 +23,7 @@ const CLIENT_ID = '01JB2ZK5T7QW9V0YHRXM3N4P6C'
 const TRACK_1 = 'track-1-teilhard-de-chardin'
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-/** OBS factice : les scènes de la salle, sans instance réelle. */
+/** A fake OBS: the room's scenes, with no real instance. */
 function fakeObs(scenes = ['Capture HDMI', 'Habillage']) {
   const handlers = new Map<string, ((payload: unknown) => void)[]>()
   let current = scenes[1] ?? scenes[0]!
@@ -49,7 +49,7 @@ function fakeObs(scenes = ['Capture HDMI', 'Habillage']) {
   return {
     transport,
     get currentScene() { return current },
-    /** Ce qu'OBS pousse de lui-même : un enregistrement lancé sur la machine. */
+    /** What OBS pushes on its own: a recording started on the machine. */
     emettre(event: string, payload: unknown) {
       for (const h of handlers.get(event) ?? []) h(payload)
     },
@@ -107,7 +107,7 @@ function makeApp(hubOrigin = origin) {
     dataDir: dir,
     hubOrigin,
     clientId: CLIENT_ID,
-    // Salle connue d'avance : ces tests n'ont pas d'écran pour la choisir.
+    // Room known up front: these tests have no screen to choose it on.
     roomId: TRACK_1,
     readToken: () => token,
     writeToken: (value) => {
@@ -116,7 +116,7 @@ function makeApp(hubOrigin = origin) {
     displayPort: 0,
     obsTransportFactory: () => obs.transport,
     onPairingCode: (code) => {
-      // L'opérateur approuve depuis l'admin pendant que la machine sonde.
+      // The operator approves from the admin console while the machine polls.
       void (async () => {
         const response = await fetch(`${origin}/api/auth/sign-in/email`, {
           method: 'POST',
@@ -143,12 +143,12 @@ function makeApp(hubOrigin = origin) {
   return app
 }
 
-describe('machine de salle, démarrage complet', () => {
-  it('sert l\'écran avant même de parler au hub', async () => {
+describe('room machine, full start-up', () => {
+  it('serves the screen before even talking to the hub', async () => {
     room = makeApp('http://127.0.0.1:1') // hub volontairement injoignable
     const url = await room.startDisplay()
 
-    // La règle centrale du projet : la salle projette, quoi qu'il arrive.
+    // The project's central rule: the room projects, come what may.
     const page = await fetch(`${url}/display/projector`)
     expect(page.status).toBe(200)
 
@@ -156,13 +156,13 @@ describe('machine de salle, démarrage complet', () => {
     expect(token).toBeNull()
   }, 20_000)
 
-  it('annonce au transport les scènes que la salle attend', async () => {
+  it('announces to the transport the scenes the room expects', async () => {
     /*
-     * Le vrai client les ignore — un OBS a les scènes qu'on y a créées, et
-     * c'est justement l'écart qui doit se voir en rouge. Le simulateur, lui,
-     * s'en sert pour exister avec les scènes qu'on attend de lui : sans ça,
-     * tout nom un peu personnel ressortait « rôle introuvable » sur une
-     * instance qui n'existe pas.
+     * The real client ignores them — an OBS has the scenes that were created in
+     * it, and that gap is precisely what must show up in red. The simulator, on
+     * the other hand, uses them to exist with the scenes expected of it: without
+     * this, any slightly personal name came back as "role not found" on an
+     * instance that does not exist.
      */
     const recus: [string, string[]][] = []
     room = makeApp()
@@ -177,14 +177,14 @@ describe('machine de salle, démarrage complet', () => {
     await room.connectHub(token!)
     await room.connectObs()
 
-    // Les noms de la configuration de la salle, pas ceux d'une constante.
+    // The names from the room's configuration, not those of a constant.
     expect(recus).toEqual([
       ['A', ['Capture HDMI', 'Habillage']],
       ['B', ['Talk']],
     ])
   }, 20_000)
 
-  it('s\'appaire, synchronise, pilote OBS et reçoit les commandes', async () => {
+  it('pairs, synchronises, drives OBS and receives the commands', async () => {
     room = makeApp()
     const url = await room.startDisplay()
 
@@ -194,32 +194,32 @@ describe('machine de salle, démarrage complet', () => {
     await room.connectHub(token!)
     await room.connectObs()
 
-    // Le programme de la salle est servi à l'écran.
+    // The room's program is served to the screen.
     const payload = (await (await fetch(`${url}/display/data`)).json()) as DisplayPayload
     expect(payload.sessions).toHaveLength(15)
     expect(payload.event?.name).toBe('Cloud Nord 2026')
 
-    // Une commande du hub bascule réellement la scène OBS.
+    // A command from the hub really switches the OBS scene.
     hub.services.commands.publish(TRACK_1, { type: 'scene.force', role: 'LIVE' }, null)
     await sleep(500)
     expect(obs.currentScene).toBe('Capture HDMI')
     expect(room.runtime.state().sceneRole).toBe('LIVE')
 
-    // Et l'écran suit le mode demandé.
+    // And the screen follows the requested mode.
     hub.services.commands.publish(TRACK_1, { type: 'display.set', mode: 'programme' }, null)
     await sleep(400)
     const apres = (await (await fetch(`${url}/display/data`)).json()) as DisplayPayload
     expect(apres.state.mode).toBe('programme')
   }, 30_000)
 
-  it('met les assets en cache pour que l\'écran ne dépende plus du réseau', async () => {
+  it('caches the assets so the screen no longer depends on the network', async () => {
     room = makeApp()
     await room.startDisplay()
     const token = await room.ensurePaired()
     await room.connectHub(token!)
 
-    // Les assets réels sont distants ; en test le préchargement échoue et c'est
-    // sans conséquence : l'écran garde les URLs d'origine et reste servable.
+    // The real assets are remote; in tests the prefetch fails and that has no
+    // consequence: the screen keeps the original URLs and stays serveable.
     const cached = room.store.activeProgram()
     expect(cached).not.toBeNull()
     expect(room.assets.localize(cached!.program).sponsorTiers[0]?.name).toBe('Gold')
@@ -227,14 +227,14 @@ describe('machine de salle, démarrage complet', () => {
 })
 
 /**
- * Ce que la salle remonte au hub, et pourquoi ça compte maintenant.
+ * What the room reports to the hub, and why it matters now.
  *
- * `room_state` n'était lu que par la console de supervision, qui regarde. La
- * régie mobile s'en sert pour **peindre des boutons** : ce qui y arrive faux
- * n'est plus une ligne de tableau discutable, c'est un témoin éteint sur une
- * salle qui enregistre.
+ * `room_state` used to be read only by the supervision console, which watches.
+ * The mobile control app uses it to **paint buttons**: what arrives there wrong
+ * is no longer a debatable table row, it is a dark indicator on a room that is
+ * recording.
  */
-describe('le battement', () => {
+describe('the heartbeat', () => {
   /** Deux instances, deux transports : c'est tout l'objet de ces tests. */
   async function salleAvecDeuxObs() {
     const a = fakeObs()
@@ -252,19 +252,19 @@ describe('le battement', () => {
 
   const statut = () => hub.services.rooms.statuses().find((s) => s.roomId === TRACK_1)
 
-  it("porte la captation d'OBS-B, pas celle d'OBS-A", async () => {
+  it("carries OBS-B's take, not OBS-A's", async () => {
     /*
-     * Le défaut qu'on fige ici : le battement interrogeait `obsA`.
+     * The defect frozen here: the heartbeat queried `obsA`.
      *
-     * OBS-A projette, OBS-B enregistre. Le battement remontait donc `false`
-     * toutes les dix secondes, écrasant chez le hub le `recording` que
-     * `recording.started` venait d'y écrire — la régie mobile montrait un
-     * témoin éteint sur une salle en pleine captation, et la console avec elle.
+     * OBS-A projects, OBS-B records. The heartbeat therefore reported `false`
+     * every ten seconds, overwriting on the hub the `recording` that
+     * `recording.started` had just written there — the mobile control app showed a
+     * dark indicator on a room in mid-take, and the console with it.
      */
     const { b } = await salleAvecDeuxObs()
 
-    // Lancé depuis OBS lui-même : aucun `recording.started` n'est émis, ce fait
-    // ne voyage que par le battement. C'est le pire cas, donc le bon test.
+    // Started from OBS itself: no `recording.started` is emitted, so this fact
+    // only travels through the heartbeat. That is the worst case, so the right test.
     b.emettre('RecordStateChanged', { outputActive: true })
     await sleep(800)
 
@@ -272,17 +272,16 @@ describe('le battement', () => {
     expect(statut()?.recording).toBe(true)
   }, 30_000)
 
-  it('écrit le sidecar quand la captation est arrêtée depuis OBS', async () => {
+  it('writes the sidecar when the take is stopped from OBS', async () => {
     /*
-     * Le geste est courant et légitime : la main est déjà dans OBS, on y appuie
-     * sur « Arrêter l'enregistrement ». La régie n'a alors rien demandé et
-     * n'attend aucun chemin — et tout ce que la prise savait d'elle-même
-     * partait à la poubelle, marqueurs compris, qui n'existent nulle part
-     * ailleurs.
+     * The gesture is common and legitimate: the hand is already in OBS, and one
+     * presses "Arrêter l'enregistrement" there. The control app has then asked for
+     * nothing and awaits no path — and everything the take knew about itself went
+     * in the bin, markers included, which exist nowhere else.
      */
     const { b } = await salleAvecDeuxObs()
     await room.startRecording()
-    room.mark('démo')
+    room.mark('demo')
 
     const master = join(dir, 'depuis-obs.mkv')
     writeFileSync(master, 'FAUX')
@@ -298,14 +297,14 @@ describe('le battement', () => {
     const sidecar = JSON.parse(readFileSync(join(dir, sidecars[0]!), 'utf8')) as {
       markers: { label: string }[]
     }
-    expect(sidecar.markers.map((marqueur) => marqueur.label)).toEqual(['démo'])
-    // La prise est close : la régie ne croit pas qu'un enregistrement court encore.
+    expect(sidecar.markers.map((marker) => marker.label)).toEqual(['demo'])
+    // The take is closed: the control app does not believe a recording is still running.
     expect(room.runtime.state().recording).toBe(false)
   }, 30_000)
 
-  it('n’écrit pas de second sidecar quand l’arrêt vient de la régie', async () => {
-    // Les deux chemins mènent au sidecar et peuvent se croiser : l'événement
-    // d'OBS arrive dans la foulée de `StopRecord`, la prise étant encore ouverte.
+  it('does not write a second sidecar when the stop comes from the control app', async () => {
+    // Both paths lead to the sidecar and can cross: OBS's event arrives right
+    // after `StopRecord`, while the take is still open.
     const { b } = await salleAvecDeuxObs()
     await room.startRecording()
 
@@ -323,12 +322,12 @@ describe('le battement', () => {
     expect(readdirSync(dir).filter((nom) => nom.endsWith('.json'))).toHaveLength(1)
   }, 30_000)
 
-  it("remonte l'écran de salle, pour que le téléphone sache quel bouton allumer", async () => {
+  it('reports the room screen, so the phone knows which button to light', async () => {
     await salleAvecDeuxObs()
 
-    // Le geste d'une régie mobile : le hub publie, la salle applique, et la
-    // salle le dit — sans attendre le tic suivant, sinon le bouton reste mort
-    // dix secondes et on appuie une seconde fois.
+    // A mobile control app's gesture: the hub publishes, the room applies, and
+    // the room says so — without waiting for the next tick, otherwise the button
+    // stays dead for ten seconds and one presses a second time.
     hub.services.commands.publish(TRACK_1, { type: 'display.set', mode: 'programme' }, null)
     await sleep(800)
 
@@ -338,14 +337,14 @@ describe('le battement', () => {
 })
 
 /**
- * Questions du public, bornées à la conférence pilotée.
+ * Audience questions, bounded to the talk being driven.
  *
- * Toutes salles confondues, la liste mélangeait la journée entière : à 16 h,
- * les questions du talk de 10 h étaient encore en tête au vote, et le speaker
- * se voyait poser une question qui ne le concernait pas.
+ * Across all rooms, the list mixed the whole day together: at 4 pm, the questions
+ * from the 10 am talk were still at the top of the vote, and the speaker found
+ * themselves asked a question that had nothing to do with them.
  */
-describe('questions du public', () => {
-  it('ne remonte que celles du talk piloté', async () => {
+describe('audience questions', () => {
+  it('reports only those of the driven talk', async () => {
     room = makeApp()
     await room.startDisplay()
     const token = await room.ensurePaired()
@@ -367,14 +366,14 @@ describe('questions du public', () => {
 
     const { questions, questionsSession } = room.diagnostics()
     expect(questions.map((q) => q.text)).toEqual(['Comment gérez-vous les faux positifs ?'])
-    // Le talk est nommé : une liste vide ne dit pas la même chose selon qu'on
-    // pilote un talk sans question, ou qu'on n'en pilote aucun.
+    // The talk is named: an empty list does not mean the same thing when one is
+    // driving a talk with no question and when one is driving none at all.
     expect(questionsSession).toEqual({ id: cible!.id, title: cible!.title })
   }, 30_000)
 
-  it('rattache la question mise à l\'antenne à ce talk', async () => {
-    // C'est ce qui la fait tomber au suivant, plutôt que de rester incrustée
-    // dans la VOD du speaker d'après.
+  it('attaches the question put on air to that talk', async () => {
+    // That is what makes it drop at the next one, rather than stay burned into
+    // the next speaker's VOD.
     room = makeApp()
     await room.startDisplay()
     const token = await room.ensurePaired()
@@ -387,20 +386,20 @@ describe('questions du public', () => {
       author: 'Camille',
       sessionId: room.runtime.state().targetSession?.id,
     })
-    // Et surtout pas sur le canal du bandeau de la console.
+    // And above all not on the console banner's channel.
     expect(room.runtime.state().liveMessage).toBeNull()
   }, 30_000)
 })
 
 /**
- * Boucle d'attente : ce qu'elle a besoin de savoir.
+ * The waiting loop: what it needs to know.
  *
- * Deux champs que la salle calcule seule, depuis le programme déjà en cache —
- * la boucle doit se dérouler entière pendant une pause, c'est-à-dire quand le
- * réseau de l'événement est le plus chargé.
+ * Two fields the room computes on its own, from the already cached program — the
+ * loop has to run all the way through during a break, that is, when the event's
+ * network is at its busiest.
  */
-describe('boucle d\'attente', () => {
-  it('sait ce qui se joue dans les autres salles, sans rien demander au hub', async () => {
+describe('waiting loop', () => {
+  it('knows what is playing in the other rooms, asking the hub for nothing', async () => {
     room = makeApp()
     const url = await room.startDisplay()
     const token = await room.ensurePaired()
@@ -408,19 +407,18 @@ describe('boucle d\'attente', () => {
 
     const payload = (await (await fetch(`${url}/display/data`)).json()) as DisplayPayload
 
-    // Les deux autres tracks, jamais la sienne.
-    expect(payload.otherRooms.map((salle) => salle.roomId)).toEqual([
+    // The two other tracks, never its own.
+    expect(payload.otherRooms.map((other) => other.roomId)).toEqual([
       'track-2-mf-1092',
       'hands-on',
     ])
-    // Des talks, pas des pauses : « Déjeuner en Track #2 » n'aide personne à
-    // choisir où aller.
-    for (const salle of payload.otherRooms) {
-      expect(salle.session?.title).not.toContain('Déjeuner')
+    // Talks, not breaks: "Déjeuner en Track #2" helps nobody choose where to go.
+    for (const other of payload.otherRooms) {
+      expect(other.session?.title).not.toContain('Déjeuner')
     }
   }, 30_000)
 
-  it('reçoit les comptes de l\'événement du hub, et les garde', async () => {
+  it('receives the event\'s accounts from the hub, and keeps them', async () => {
     hub.services.settings.update({
       socialLinks: [
         { network: 'Bluesky', handle: '@cloudnord.fr', url: 'https://bsky.app/profile/cloudnord.fr' },
@@ -436,15 +434,15 @@ describe('boucle d\'attente', () => {
     expect(payload.socialLinks).toEqual([
       { network: 'Bluesky', handle: '@cloudnord.fr', url: 'https://bsky.app/profile/cloudnord.fr' },
     ])
-    // En cache local : une salle qui redémarre hub injoignable déroule la même
-    // boucle qu'une autre.
+    // Cached locally: a room restarting with the hub unreachable runs the same
+    // loop as any other.
     expect(room.store.settings().socialLinks).toHaveLength(1)
   }, 30_000)
 
-  it('apprend du hub le nom de l\'événement, et le garde', async () => {
-    // Rien n'est compilé dans le binaire : la machine de salle reçoit le nom au
-    // sync, et c'est ce qui lui permet de servir l'édition suivante sans être
-    // réinstallée. Le hub le déduit ici du programme importé.
+  it('learns the event\'s name from the hub, and keeps it', async () => {
+    // Nothing is compiled into the binary: the room machine receives the name at
+    // sync time, and that is what lets it serve next year's edition without being
+    // reinstalled. The hub derives it here from the imported program.
     room = makeApp()
     const url = await room.startDisplay()
     const token = await room.ensurePaired()
@@ -452,8 +450,8 @@ describe('boucle d\'attente', () => {
 
     const payload = (await (await fetch(`${url}/display/data`)).json()) as DisplayPayload
     expect(payload.eventIdentity).toEqual({ name: 'Cloud Nord 2026', shortName: 'Cloud Nord' })
-    // En cache, comme le programme : une salle qui démarre hub injoignable
-    // titre quand même ses fenêtres correctement.
+    // Cached, like the program: a room starting with the hub unreachable still
+    // titles its windows correctly.
     expect(room.store.settings().event.name).toBe('Cloud Nord 2026')
   }, 30_000)
 })

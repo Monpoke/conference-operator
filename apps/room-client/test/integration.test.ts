@@ -70,14 +70,14 @@ afterEach(async () => {
   rmSync(tempDir, { recursive: true, force: true })
 })
 
-/** Déroule l'appairage réel, du code au jeton, comme au premier démarrage. */
+/** Runs the real pairing, from code to token, as on the first start-up. */
 async function pair(): Promise<string> {
   const transport = httpPairingTransport(origin)
   let approved = false
 
   const pairing = runPairing(transport, CLIENT_ID, {
     onCode: (code) => {
-      // L'opérateur lit le code sur l'écran de régie et l'approuve dans l'admin.
+      // The operator reads the code on the control screen and approves it in the admin.
       void (async () => {
         const token = await signInOperator()
         const admin: ContractRouterClient<typeof contract> = createORPCClient(
@@ -97,8 +97,8 @@ async function pair(): Promise<string> {
   const { accessToken } = await pairing
   expect(approved).toBe(true)
 
-  // Échange contre un jeton de salle : la session d'approbation porte les
-  // droits de l'opérateur, une machine de régie n'a pas à les conserver.
+  // Exchanged for a room token: the approving session carries the operator's
+  // rights, and a control machine has no business keeping them.
   const machine: ContractRouterClient<typeof contract> = createORPCClient(
     new RPCLink({
       origin,
@@ -132,12 +132,12 @@ function makeClient(token: string, dbPath = ':memory:', effects: RuntimeEffects 
 }
 
 /**
- * Une salle branchée, prête à recevoir. Les effets tiennent lieu d'OBS.
+ * A room plugged in, ready to receive. The effects stand in for OBS.
  *
- * Le runtime ne connaît pas OBS — il décide *quoi* faire, la machine sait
- * *comment* —, ce qui permet d'exercer la chaîne entière sans instance.
+ * The runtime does not know OBS — it decides *what* to do, the machine knows
+ * *how* — which lets the whole chain be exercised with no instance.
  */
-async function salleBranchee(effects: RuntimeEffects) {
+async function pluggedRoom(effects: RuntimeEffects) {
   const token = await pair()
   const { runtime, link, store } = makeClient(token, ':memory:', effects)
   await link.sync()
@@ -147,8 +147,8 @@ async function salleBranchee(effects: RuntimeEffects) {
   return { runtime, controller, token, store }
 }
 
-describe('salle et hub, chaîne complète', () => {
-  it('s\'appaire puis récupère le programme de sa salle', async () => {
+describe('room and hub, full chain', () => {
+  it('pairs, then fetches its own room\'s program', async () => {
     const token = await pair()
     const { store, runtime, link } = makeClient(token)
 
@@ -156,13 +156,13 @@ describe('salle et hub, chaîne complète', () => {
     expect(result.ok).toBe(true)
 
     expect(runtime.state().roomId).toBe(TRACK_1)
-    // 27 créneaux à l'export, 38 servis par le hub : les pauses communes sont
-    // projetées dans les salles libres au même moment.
+    // 27 slots in the export, 38 served by the hub: the shared breaks are
+    // projected into the free rooms at the same time.
     expect(store.activeProgram()?.program.sessions).toHaveLength(38)
     expect(store.settings().config?.sceneRoles.A?.LIVE).toBe('Capture HDMI')
   }, 20_000)
 
-  it('reçoit les commandes du hub et les applique', async () => {
+  it('receives the hub\'s commands and applies them', async () => {
     const token = await pair()
     const { runtime, link } = makeClient(token)
     await link.sync()
@@ -181,10 +181,10 @@ describe('salle et hub, chaîne complète', () => {
 
     expect(runtime.state().sceneRole).toBe('LIVE')
     /**
-     * Sans destinataire explicite, le message reste au bandeau de régie.
+     * With no explicit recipient, the message stays on the control banner.
      *
-     * C'est le défaut le moins dommageable : un message qui n'atteint que
-     * l'opérateur se rattrape, un message projeté devant le public non.
+     * That is the least damaging default: a message that only reaches the
+     * operator can be made good, one projected in front of the audience cannot.
      */
     expect(runtime.state().message).toBeNull()
     expect(runtime.state().notifications.map((n) => n.text).join(' ')).toContain(
@@ -193,7 +193,7 @@ describe('salle et hub, chaîne complète', () => {
     controller.abort()
   }, 20_000)
 
-  it('rattrape les commandes émises pendant une coupure', async () => {
+  it('catches up on the commands issued during a cut', async () => {
     const token = await pair()
     const { store, runtime, link } = makeClient(token)
     await link.sync()
@@ -205,13 +205,13 @@ describe('salle et hub, chaîne complète', () => {
     await sleep(300)
     expect(runtime.state().sceneRole).toBe('HOLD')
 
-    // Coupure : le flux s'arrête, le hub continue d'émettre.
+    // Cut: the stream stops, the hub keeps emitting.
     first.abort()
     await sleep(100)
     hub.services.commands.publish(TRACK_1, { type: 'scene.force', role: 'LIVE' }, null)
     hub.services.commands.publish(TRACK_1, { type: 'display.set', mode: 'programme' }, null)
 
-    // Reconnexion : la reprise part du dernier `seq` appliqué, stocké localement.
+    // Reconnection: the resume starts from the last applied `seq`, stored locally.
     const seqBefore = store.settings().lastCommandSeq
     const second = new AbortController()
     void link.consumeCommands(second.signal)
@@ -223,11 +223,11 @@ describe('salle et hub, chaîne complète', () => {
     second.abort()
   }, 20_000)
 
-  it('démarre sur son cache quand le hub est injoignable', async () => {
+  it('starts on its cache when the hub is unreachable', async () => {
     const token = await pair()
     const dbPath = join(tempDir, 'salle.db')
 
-    // Première journée : la salle synchronise et met en cache.
+    // First day: the room synchronises and caches.
     const online = makeClient(token, dbPath)
     await online.link.sync()
     expect(online.store.activeProgram()).not.toBeNull()
@@ -235,15 +235,15 @@ describe('salle et hub, chaîne complète', () => {
     online.store.close()
     openStores.pop()
 
-    // Le hub tombe. On ferme seulement l'écoute HTTP : fermer aussi SQLite ici
-    // ferait crier Better Auth sur des requêtes encore en vol, ce qui
-    // ressemblerait à un échec du test sans en être un.
+    // The hub goes down. We only close the HTTP listener: closing SQLite here as
+    // well would make Better Auth shout about requests still in flight, which
+    // would look like a test failure without being one.
     await hub.app.close()
 
     const offline = new LocalStore(dbPath)
     openStores.push(offline)
     const runtime = new RoomRuntime(offline)
-    // Le programme et la salle sont là, sans le moindre appel réseau.
+    // The program and the room are there, with not a single network call.
     expect(offline.activeProgram()?.program.sessions).toHaveLength(38)
     expect(offline.settings().roomId).toBe(TRACK_1)
     expect(runtime.state().contentHash).toBeTruthy()
@@ -254,12 +254,12 @@ describe('salle et hub, chaîne complète', () => {
       token,
       store: offline,
       runtime,
-      // Échéance courte : le test vérifie que `sync` rend la main, pas qu'il patiente.
+      // Short deadline: the test checks that `sync` returns, not that it waits.
       syncTimeoutMs: 1_500,
     })
     openLinks.push(link)
 
-    // La synchronisation échoue sans lever, et l'écran reste servi.
+    // The synchronisation fails without throwing, and the screen stays served.
     const result = await link.sync()
     expect(result.ok).toBe(false)
     expect(runtime.state().connectivity).toBe('OFFLINE')
@@ -270,22 +270,21 @@ describe('salle et hub, chaîne complète', () => {
 })
 
 /**
- * La régie mobile, de bout en bout.
+ * The mobile control app, end to end.
  *
- * Le maillon qu'aucun test unitaire ne couvre : un opérateur pose un geste en
- * HTTP sur le hub, la commande traverse le WebSocket, et la salle l'applique.
- * Chacun des trois côtés est vérifié ailleurs ; ce qui se casse en silence,
- * c'est la jointure.
+ * The link no unit test covers: an operator makes a gesture over HTTP on the
+ * hub, the command crosses the WebSocket, and the room applies it. Each of the
+ * three sides is checked elsewhere; what breaks in silence is the joint.
  */
-describe('régie mobile, du téléphone à la salle', () => {
+describe('mobile control app, from the phone to the room', () => {
   /**
-   * Ce que fait la page : se connecter, s'annoncer, puis appeler le contrat.
+   * What the page does: connect, announce itself, then call the contract.
    *
-   * L'en-tête de session est ce que le verrou retient — un compte peut avoir
-   * deux onglets ouverts, et ils ne doivent pas se croire porteurs tous les
-   * deux. `session` permet d'en simuler un second.
+   * The session header is what the lock keys on — an account can have two tabs
+   * open, and they must not both believe they hold it. `session` lets a second
+   * one be simulated.
    */
-  async function commePhone(token: string, session = 'session-telephone') {
+  async function asPhone(token: string, session = 'session-telephone') {
     const client: ContractRouterClient<typeof contract> = createORPCClient(
       new RPCLink({
         origin,
@@ -299,10 +298,10 @@ describe('régie mobile, du téléphone à la salle', () => {
     return client
   }
 
-  it('porte scène, captation et verrou jusqu\'à la salle', async () => {
+  it('carries scene, take and lock all the way to the room', async () => {
     const scenes: string[] = []
     const captations: boolean[] = []
-    const { runtime, controller } = await salleBranchee({
+    const { runtime, controller } = await pluggedRoom({
       setSceneRole: async (role) => {
         scenes.push(role)
         runtime.observeSceneRole(role)
@@ -313,7 +312,7 @@ describe('régie mobile, du téléphone à la salle', () => {
       },
     })
 
-    const phone = await commePhone(await signInOperator())
+    const phone = await asPhone(await signInOperator())
     await phone.regie.hold({ roomId: TRACK_1, force: false })
     await phone.regie.command({ roomId: TRACK_1, action: { type: 'scene.set', role: 'LIVE' } })
     await phone.regie.command({ roomId: TRACK_1, action: { type: 'recording.set', on: true } })
@@ -321,40 +320,39 @@ describe('régie mobile, du téléphone à la salle', () => {
 
     expect(scenes).toEqual(['LIVE'])
     expect(captations).toEqual([true])
-    // Le badge de l'écran de régie : il ne grise rien, il dit qui pilote.
+    // The control screen's badge: it greys nothing out, it says who is driving.
     expect(runtime.state().remoteHolder).toBe(OPERATOR.email)
-    // Et le signalement nomme l'auteur, pour qu'on ne cherche pas une panne.
+    // And the notice names the author, so nobody goes looking for a failure.
     expect(runtime.state().notifications.map((n) => n.text).join(' ')).toContain(OPERATOR.email)
 
     controller.abort()
   }, 25_000)
 
-  it('rend au téléphone ce que la salle a remonté', async () => {
+  it('returns to the phone what the room reported', async () => {
     /*
-     * L'aller-retour complet, et la propriété dont dépend « Commencer ».
+     * The full round trip, and the property "Commencer" depends on.
      *
-     * La régie mobile ne peint jamais d'avance : elle confirme l'enregistrement
-     * par l'**observation**, en sondant jusqu'à voir `recording` passer à vrai.
-     * Encore faut-il que ce que la salle constate remonte jusqu'à la vue —
-     * sinon la confirmation expire sur une captation qui tourne, et
-     * « Commencer » renonce pour rien.
+     * The mobile control app never paints ahead: it confirms the recording by
+     * **observation**, polling until it sees `recording` turn true. But what the
+     * room observes still has to reach the view — otherwise the confirmation
+     * times out on a take that is running, and "Commencer" gives up for nothing.
      *
-     * La remontée est montée ici comme la monte `RoomApp` : la file locale, la
-     * pompe, et `ingest.push` au bout. C'est le chemin réel, sans le serveur
-     * d'affichage dont ce test n'a que faire.
+     * The uplink is assembled here the way `RoomApp` assembles it: the local
+     * queue, the pump, and `ingest.push` at the end. That is the real path,
+     * without the display server this test has no use for.
      */
-    const { runtime, controller, store } = await salleBranchee({
+    const { runtime, controller, store } = await pluggedRoom({
       setRecording: (on) => runtime.observeCapture({ recording: on }),
     })
-    const lien = openLinks.at(-1)!
+    const link = openLinks.at(-1)!
     const outbox = new Outbox(store, TRACK_1)
     const pump = new OutboxPump({
       outbox,
       store,
-      push: (batch) => lien.client.ingest.push({ batch }),
+      push: (batch) => link.client.ingest.push({ batch }),
     })
 
-    const phone = await commePhone(await signInOperator())
+    const phone = await asPhone(await signInOperator())
     await phone.regie.hold({ roomId: TRACK_1, force: false })
     expect((await phone.regie.view({ roomId: TRACK_1 })).recording).toBe(false)
 
@@ -362,8 +360,8 @@ describe('régie mobile, du téléphone à la salle', () => {
     await sleep(400)
     expect(runtime.state().recording).toBe(true)
 
-    // Le battement porte ce que la salle constate : c'est lui qui peint
-    // `room_state`, et c'est `room_state` que relit la vue du téléphone.
+    // The heartbeat carries what the room observes: it is what paints
+    // `room_state`, and `room_state` is what the phone's view reads back.
     outbox.enqueue(
       buildHeartbeat({
         connectivity: 'ONLINE',
@@ -385,17 +383,17 @@ describe('régie mobile, du téléphone à la salle', () => {
     controller.abort()
   }, 30_000)
 
-  it('refuse le geste de qui ne tient pas la salle, sans rien envoyer', async () => {
+  it('refuses the gesture of whoever does not hold the room, sending nothing', async () => {
     const scenes: string[] = []
-    const { controller } = await salleBranchee({
+    const { controller } = await pluggedRoom({
       setSceneRole: async (role) => {
         scenes.push(role)
       },
     })
 
-    const phone = await commePhone(await signInOperator())
-    // Aucune prise : le hub refuse, et rien ne descend. Sans ce refus, deux
-    // téléphones basculeraient la même salle en sens contraire.
+    const phone = await asPhone(await signInOperator())
+    // No hold: the hub refuses, and nothing goes down. Without that refusal, two
+    // phones would switch the same room in opposite directions.
     await expect(
       phone.regie.command({ roomId: TRACK_1, action: { type: 'scene.set', role: 'LIVE' } }),
     ).rejects.toThrow()

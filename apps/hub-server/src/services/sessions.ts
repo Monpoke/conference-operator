@@ -10,13 +10,13 @@ import {
   type SessionStatus,
 } from '@cloudnord/contract'
 import {
-  decisionApplicable,
-  doitEtreClose,
-  finEffectiveDansProgramme,
-  refusDeTransition,
-  statutApres,
-  type ActionConference,
-} from '@cloudnord/etat-salle'
+  isDecisionApplicable,
+  shouldAutoEnd,
+  effectiveEndInProgram,
+  transitionRefusal,
+  statusAfter,
+  type SessionAction,
+} from '@cloudnord/room-state'
 import { hubSetting, sessionState } from '@cloudnord/db/hub'
 import type { Program } from '@cloudnord/program'
 import type { HubDatabase } from '../db.js'
@@ -87,7 +87,7 @@ export class SettingsService {
 export class TransitionRefusee extends Error {
   constructor(
     readonly depuis: SessionStatus,
-    readonly action: ActionConference,
+    readonly action: SessionAction,
     message: string,
   ) {
     super(message)
@@ -189,7 +189,7 @@ export class SessionStateService {
    */
   private applicable(etat: SessionState): boolean {
     const decide = etat.status === 'ended' ? etat.endedAt : etat.startedAt
-    return decisionApplicable(decide == null ? null : Date.parse(decide), this.now())
+    return isDecisionApplicable(decide == null ? null : Date.parse(decide), this.now())
   }
 
   start(sessionId: string, roomId: string | null, decidedBy: string): SessionState {
@@ -217,16 +217,16 @@ export class SessionStateService {
   private write(
     sessionId: string,
     roomId: string | null,
-    action: ActionConference,
+    action: SessionAction,
     decidedBy: string,
   ): SessionState {
     const maintenant = new Date(this.now()).toISOString()
     const existant = this.get(sessionId)
     const depuis = existant?.status ?? 'scheduled'
 
-    const status = statutApres(depuis, action)
+    const status = statusAfter(depuis, action)
     if (status == null) {
-      throw new TransitionRefusee(depuis, action, refusDeTransition(depuis, action) ?? 'Geste refusé')
+      throw new TransitionRefusee(depuis, action, transitionRefusal(depuis, action) ?? 'Geste refusé')
     }
 
     const values = {
@@ -262,20 +262,20 @@ export class SessionStateService {
     const reglages = this.settings.get()
     if (!reglages.autoEndEnabled || program == null) return { ended: [] }
 
-    const reglage = { actif: true, graceMinutes: reglages.autoEndGraceMinutes }
+    const reglage = { enabled: true, graceMinutes: reglages.autoEndGraceMinutes }
     const maintenant = this.now()
     const ended: SessionState[] = []
 
     for (const etat of this.states(null)) {
       /**
-       * La règle vit dans `@cloudnord/etat-salle`, et la fin qu'elle lit est
+       * La règle vit dans `@cloudnord/room-state`, et la fin qu'elle lit est
        * celle du dépassement : heure explicite, sinon durée, sinon début du
        * créneau suivant. Les deux règles parlaient d'horaires différents, et
        * une salle pouvait rester en dépassement toute la journée sans que ce
        * balayage ne la voie jamais.
        */
-      const fin = finEffectiveDansProgramme(program, etat.sessionId)
-      if (!doitEtreClose(fin, etat.status, maintenant, reglage)) continue
+      const fin = effectiveEndInProgram(program, etat.sessionId)
+      if (!shouldAutoEnd(fin, etat.status, maintenant, reglage)) continue
       ended.push(this.end(etat.sessionId, etat.roomId, 'auto'))
     }
     return { ended }

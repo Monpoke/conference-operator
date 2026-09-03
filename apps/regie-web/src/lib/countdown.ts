@@ -1,5 +1,5 @@
 import type { DisplayPayload } from '@cloudnord/contract'
-import { prochaineConference } from '@cloudnord/etat-salle'
+import { nextTalk } from '@cloudnord/room-state'
 
 /**
  * Ce que compte le grand chronomètre.
@@ -57,7 +57,7 @@ export function nextConference(
   payload: DisplayPayload,
   atMs: number,
 ): DisplayPayload['sessions'][number] | null {
-  return prochaineConference(payload.sessions ?? [], atMs, payload.state.sessionStates ?? {})
+  return nextTalk(payload.sessions ?? [], atMs, payload.state.sessionStates ?? {})
 }
 
 /**

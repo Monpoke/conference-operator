@@ -1,18 +1,18 @@
 import { readFileSync } from 'node:fs'
 import { globSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { APPARENCE, contourDe } from '@cloudnord/etat-salle'
+import { APPEARANCE, outlineOf } from '@cloudnord/room-state'
 import { describe, expect, it } from 'vitest'
 
 /**
  * Le vocabulaire de la pastille est écrit à deux endroits, et un seul lève.
  *
- * `APPARENCE` et `contourDe()` produisent des **noms de classes** ; `status.css`
+ * `APPEARANCE` et `outlineOf()` produisent des **noms de classes** ; `status.css`
  * les peint. Rien ne relie les deux : une teinte ajoutée à la table sans règle
  * correspondante donne une pastille au hasard, et une règle laissée derrière
  * une teinte supprimée voyage dans la feuille inlinée par toutes les pages sans
  * que personne ne s'en aperçoive. Les deux défauts existaient — le second
- * (`.pastille.pause`) survivait au changement de `APPARENCE.pause`, dont la
+ * (`.pastille.pause`) survivait au changement de `APPEARANCE.pause`, dont la
  * teinte est passée à `hors`.
  *
  * Le test compare les deux ensembles dans les deux sens, comme `vues-du-flux`
@@ -30,7 +30,7 @@ const peintes = new Set(
  * Modificateurs réellement posés par le code.
  *
  * Trois sources, et la troisième est celle que j'avais manquée. Le remplissage
- * vient de la table des apparences ; le contour de `contourDe()`, dont la
+ * vient de la table des apparences ; le contour de `outlineOf()`, dont la
  * sortie est préfixée d'une espace puisqu'elle se concatène. Mais certaines
  * pastilles sont posées **à la main**, sans passer par aucune table : celles
  * d'une machine, où l'on n'affiche qu'une connectivité, et celle du créneau
@@ -59,8 +59,8 @@ const aLaMain = new Set(
 
 const posees = new Set(
   [
-    ...Object.values(APPARENCE).map((apparence) => apparence.teinte),
-    ...['ONLINE', 'DEGRADED', 'OFFLINE', null].map((c) => contourDe(c).trim()),
+    ...Object.values(APPEARANCE).map((apparence) => apparence.tint),
+    ...['ONLINE', 'DEGRADED', 'OFFLINE', null].map((c) => outlineOf(c).trim()),
     ...aLaMain,
   ].filter((nom) => nom !== ''),
 )

@@ -11,7 +11,7 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "@cloudnord/etat-salle": "workspace:*",
+    "@cloudnord/room-state": "workspace:*",
     "@cloudnord/format": "workspace:*",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",

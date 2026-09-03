@@ -1,17 +1,17 @@
 {
-  "name": "@cloudnord/etat-salle",
+  "name": "@cloudnord/room-state",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./page-automate": "./src/page-automate.ts",
-    "./navigateur": "./src/navigateur.ts"
+    "./state-machine-page": "./src/state-machine-page.ts",
+    "./browser": "./src/browser.ts"
   },
   "scripts": {
-    "build": "node scripts/build-navigateur.mjs",
-    "preview": "tsx scripts/preview-automate.ts",
+    "build": "node scripts/build-browser.mjs",
+    "preview": "tsx scripts/preview-state-machine.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

@@ -32,7 +32,7 @@ export default {
         'console', // apps/hub-admin
         'contract',
         'db',
-        'etat-salle',
+        'room-state',
         'format',
         'hub', // apps/hub-server
         'hub-client',

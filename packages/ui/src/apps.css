@@ -20,7 +20,7 @@
  *  - **`console.css` et `wall.css` non plus.** Leurs classes sont remplacées
  *    par des composants ; `wall.css` ne sert qu'au mur, qui reste un gabarit.
  *
- * `status.css` est là, en revanche : `apparenceDe()` renvoie littéralement les
+ * `status.css` est là, en revanche : `appearanceOf()` renvoie littéralement les
  * noms de teintes de `.pastille`, et c'est du code métier partagé avec des
  * pages qui ne seront jamais en Vue.
  */
@@ -41,7 +41,7 @@
 /*
  * Le vocabulaire des états, là où il est écrit.
  *
- * `APPARENCE` et `contourDe` produisent des noms de classes — `text-attenue`,
+ * `APPEARANCE` et `outlineOf` produisent des noms de classes — `text-attenue`,
  * `depassement`, `muette` — que trois surfaces se contentent de rendre. Ces
  * chaînes vivent dans `etat-salle`, et rien ne les scannait : elles ne
  * survivaient que parce que les mêmes utilitaires étaient écrits à la main

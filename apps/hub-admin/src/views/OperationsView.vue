@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { apparenceDe } from '@cloudnord/etat-salle'
+import { appearanceOf } from '@cloudnord/room-state'
 import { Badge, Empty, Panel, StatusDot } from '@cloudnord/components'
 import { time, timeAgo } from '@cloudnord/format'
 import { storeToRefs } from 'pinia'
@@ -27,9 +27,9 @@ const { rooms, globalBreak } = storeToRefs(store)
  */
 const fuseau = computed(() => useConferencesStore().planning?.timezone)
 
-function apparence(salle: RoomStatus): { mot: string; texte: string } {
-  const { mot, texte } = apparenceDe(salle.conference)
-  return { mot, texte }
+function appearance(salle: RoomStatus): { word: string; text: string } {
+  const { word, text } = appearanceOf(salle.conference)
+  return { word, text }
 }
 
 /**
@@ -71,7 +71,7 @@ const detailGlobal = computed(() => {
       <div class="flex items-center gap-2">
         <!--
           Le créneau commun n'est pas une conférence : sa teinte est posée à la
-          main, et ne vient pas de la table des apparences — `APPARENCE.pause`
+          main, et ne vient pas de la table des apparences — `APPEARANCE.pause`
           décrit une *salle* en pause, pas le créneau lui-même.
         -->
         <span
@@ -171,8 +171,8 @@ const detailGlobal = computed(() => {
             quand on ne distingue pas les teintes, et la carte se regarde de loin.
           -->
           <div class="mt-2 text-xs text-attenue">
-            <span :class="apparence(salle).texte">
-              {{ salle.connectivity === 'ONLINE' ? apparence(salle).mot : 'salle muette' }}
+            <span :class="appearance(salle).text">
+              {{ salle.connectivity === 'ONLINE' ? appearance(salle).word : 'salle muette' }}
             </span>
             · {{ salle.connectivity.toLowerCase() }} · vu {{ timeAgo(salle.lastSeenAt) }}
           </div>

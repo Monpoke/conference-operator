@@ -1,4 +1,4 @@
-import { MACHINE_JS } from '@cloudnord/etat-salle'
+import { MACHINE_JS } from '@cloudnord/room-state'
 import { TAILWIND_CSS } from '@cloudnord/ui'
 
 import { OBS_ANTENNE_CSS, OBS_ANTENNE_JS } from './obs-browser.js'
@@ -636,7 +636,7 @@ ${etatInitial}
          * jouer. Rend null pour un créneau que rien ne ferme, qu'on préfère ne
          * pas griser du tout.
          */
-        const fin = EtatSalle.finEffectiveA(donnees.sessions, rang)
+        const fin = RoomState.effectiveEndAt(donnees.sessions, rang)
         // Une seule mise en avant possible : en cours, sinon passée, sinon à venir.
         const etat = session.id === encours
           ? "en-cours bg-[color-mix(in_srgb,var(--couleur)_26%,transparent)] shadow-[inset_.5vmin_0_0_var(--couleur)]"

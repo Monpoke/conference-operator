@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { RegieRoom } from '@cloudnord/contract'
 import { Button, Panel, StatusDot } from '@cloudnord/components'
-import { apparenceDe } from '@cloudnord/etat-salle'
+import { appearanceOf } from '@cloudnord/room-state'
 import { timeAgo } from '@cloudnord/format'
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import { usePorteStore } from '../stores/porte.js'
@@ -121,8 +121,8 @@ function ouvrir(salle: RegieRoom): void {
           />
           <span class="min-w-0 flex-1">
             <span class="block truncate text-sm">{{ salle.name }}</span>
-            <span class="block text-xs" :class="apparenceDe(salle.conference).texte">
-              {{ apparenceDe(salle.conference).mot }}
+            <span class="block text-xs" :class="appearanceOf(salle.conference).text">
+              {{ appearanceOf(salle.conference).word }}
             </span>
             <!--
               Le porteur, nommé, avec depuis quand. « Occupée » seul ferait

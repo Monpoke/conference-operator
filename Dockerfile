@@ -54,7 +54,7 @@ COPY apps/regie-web/package.json apps/regie-web/
 COPY apps/room-client/package.json apps/room-client/
 COPY packages/contract/package.json packages/contract/
 COPY packages/db/package.json packages/db/
-COPY packages/etat-salle/package.json packages/etat-salle/
+COPY packages/room-state/package.json packages/room-state/
 COPY packages/format/package.json packages/format/
 COPY packages/components/package.json packages/components/
 COPY packages/hub-client/package.json packages/hub-client/
@@ -102,7 +102,7 @@ COPY apps/regie-web/package.json apps/regie-web/
 COPY apps/room-client/package.json apps/room-client/
 COPY packages/contract/package.json packages/contract/
 COPY packages/db/package.json packages/db/
-COPY packages/etat-salle/package.json packages/etat-salle/
+COPY packages/room-state/package.json packages/room-state/
 COPY packages/format/package.json packages/format/
 COPY packages/components/package.json packages/components/
 COPY packages/hub-client/package.json packages/hub-client/

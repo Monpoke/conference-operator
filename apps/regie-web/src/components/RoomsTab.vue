@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DisplayPayload } from '@cloudnord/contract'
 import { Badge } from '@cloudnord/components'
-import { contourDe } from '@cloudnord/etat-salle'
+import { outlineOf } from '@cloudnord/room-state'
 import { computed } from 'vue'
 import { roomState } from '../lib/rooms.js'
 import { useProgramsStore } from '../stores/programs.js'
@@ -27,7 +27,7 @@ const rows = computed(() =>
       scene: room.sceneRole ?? 'scène inconnue',
       queue: room.outboxDepth > 0 ? `${room.outboxDepth} en attente` : '',
       recording: room.recording,
-      dot: `${state.fill}${contourDe(room.connectivity)}`.trim(),
+      dot: `${state.fill}${outlineOf(room.connectivity)}`.trim(),
       // Une salle muette ne dit rien de ce qui s'y joue : reprendre le mot du
       // programme laisserait croire qu'on le sait encore.
       word: cut ? 'salle muette' : state.word,

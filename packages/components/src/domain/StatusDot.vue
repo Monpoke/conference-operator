@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { apparenceDe, contourDe } from '@cloudnord/etat-salle'
+import { appearanceOf, outlineOf } from '@cloudnord/room-state'
 import { computed } from 'vue'
 
 /**
@@ -10,8 +10,8 @@ import { computed } from 'vue'
  * was ten minutes over its slot — "green" only ever meant "the machine
  * answers".
  *
- * The vocabulary is not this component's to invent: `apparenceDe` and
- * `contourDe` produce the class names, and they are shared business code that a
+ * The vocabulary is not this component's to invent: `appearanceOf` and
+ * `outlineOf` produce the class names, and they are shared business code that a
  * page which will never be Vue also reads. This renders them; it does not
  * decide them.
  */
@@ -51,12 +51,12 @@ const LEVELS = {
   inconnu: 'hors',
 } as const
 
-const appearance = computed(() => apparenceDe(props.state))
+const appearance = computed(() => appearanceOf(props.state))
 
 /*
  * L'outline ne s'applique qu'à une salle.
  *
- * `contourDe` rend « muette » pour une connectivité absente, et c'est juste
+ * `outlineOf` rend « muette » pour une connectivité absente, et c'est juste
  * pour une *salle* — ne rien savoir d'elle et le peindre en plein serait pire
  * que de se taire. Mais un `level` décrit une machine : un processeur, un lien
  * avec le hub. Il n'y a aucune salle derrière, donc rien à mettre en doute, et
@@ -65,7 +65,7 @@ const appearance = computed(() => apparenceDe(props.state))
  */
 const classes = computed(() => {
   if (props.level != null) return `pastille ${LEVELS[props.level]}`.trim()
-  return `pastille ${appearance.value.teinte}${contourDe(props.connectivity)}`.trim()
+  return `pastille ${appearance.value.tint}${outlineOf(props.connectivity)}`.trim()
 })
 </script>
 
@@ -73,6 +73,6 @@ const classes = computed(() => {
   <span v-if="word !== true" :class="[classes, props.class]"></span>
   <span v-else class="inline-flex items-center gap-1.5">
     <span :class="[classes, props.class]"></span>
-    <span :class="appearance.texte">{{ appearance.mot }}</span>
+    <span :class="appearance.text">{{ appearance.word }}</span>
   </span>
 </template>

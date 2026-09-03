@@ -13,7 +13,7 @@ import {
   type SceneRole,
   type SessionStatus,
 } from '@cloudnord/contract'
-import { conferenceAPiloter, roomBreak } from '@cloudnord/etat-salle'
+import { talkToControl, roomBreak } from '@cloudnord/room-state'
 import {
   currentSession,
   nextSession,
@@ -328,11 +328,11 @@ export class RoomRuntime extends EventEmitter {
     /**
      * Cible des commandes : ce que « Commencer » et « Terminer » atteignent.
      *
-     * La règle vit dans `conferenceAPiloter`, avec le reste de l'automate : la
+     * La règle vit dans `talkToControl`, avec le reste de l'automate : la
      * console du hub et le banc d'essai la déroulent aussi, et trois copies
      * d'une règle d'horaire finissent toujours par diverger.
      */
-    const cible = conferenceAPiloter(
+    const cible = talkToControl(
       sessionsForRoom(this.program, roomId),
       at,
       this.display.sessionStates,

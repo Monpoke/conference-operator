@@ -246,7 +246,7 @@ describe('la vue', () => {
     const at = Date.parse('2026-10-30T10:20:00.000Z')
     const rendue = vueDeRegie(hub.services, TRACK_1, at)
 
-    // La même règle que déroule la régie de la salle : `conferenceAPiloter`.
+    // La même règle que déroule la régie de la salle : `talkToControl`.
     expect(rendue.targetSession?.kind).toBe('talk')
     expect(rendue.roomId).toBe(TRACK_1)
     // L'heure du hub voyage avec la vue : le navigateur n'a que la sienne, et

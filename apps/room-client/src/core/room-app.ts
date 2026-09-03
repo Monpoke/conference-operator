@@ -38,7 +38,7 @@ import { OutboxPump, buildHeartbeat, heartbeatDedupKey } from './outbox-pump.js'
 import { AgregateurNiveaux } from './niveaux-audio.js'
 import { moniteurHote, type ChargeHote } from './hote.js'
 import { Televersements, type CandidatVod, type HubVod, type VueTeleversements } from './televersement.js'
-import { prochaineConference } from '@cloudnord/etat-salle'
+import { nextTalk } from '@cloudnord/room-state'
 import { sessionsForRoom } from '@cloudnord/program'
 import type { ModeExecution, RoomConfigPatch, RoomEventPayload } from '@cloudnord/contract'
 
@@ -906,10 +906,10 @@ export class RoomApp implements ControlTarget {
   /**
    * Au-delà, la régie cesse de croire la vue des autres salles.
    *
-   * Miroir de `VUE_PERIMEE_MS` côté page : c'est la fenêtre qu'il faut tenir,
+   * Miroir de `STALE_VIEW_MS` côté page : c'est la fenêtre qu'il faut tenir,
    * et le rappel ci-dessous s'y prend largement à l'avance.
    */
-  private static readonly VUE_PERIMEE_MS = 60_000
+  private static readonly STALE_VIEW_MS = 60_000
 
   /**
    * Au-delà, on republie même sans changement, pour rafraîchir l'horodatage.
@@ -1596,7 +1596,7 @@ export class RoomApp implements ControlTarget {
     const roomId = this.store.settings().roomId
     if (cache == null || roomId == null) return null
     const at = this.runtime.correctedNow()
-    const suivante = prochaineConference(
+    const suivante = nextTalk(
       sessionsForRoom(cache.program, roomId),
       at,
       this.runtime.state().sessionStates,

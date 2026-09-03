@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { finEffectiveA } from '@cloudnord/etat-salle'
+import { effectiveEndAt } from '@cloudnord/room-state'
 import { time } from '@cloudnord/format'
 import type { Session } from '@cloudnord/program'
 import { nextTick, onMounted, useTemplateRef, watch } from 'vue'
@@ -41,7 +41,7 @@ function speakers(session: Session): string {
 
 /** Passé : atténué. Ce qui est fini n'a plus à concurrencer ce qui vient. */
 function past(index: number): boolean {
-  const end = finEffectiveA(props.sessions, index)
+  const end = effectiveEndAt(props.sessions, index)
   return end != null && end < props.nowMs
 }
 </script>

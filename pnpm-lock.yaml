@@ -38,15 +38,15 @@ importers:
       '@cloudnord/contract':
         specifier: workspace:*
         version: link:../../packages/contract
-      '@cloudnord/etat-salle':
-        specifier: workspace:*
-        version: link:../../packages/etat-salle
       '@cloudnord/format':
         specifier: workspace:*
         version: link:../../packages/format
       '@cloudnord/hub-client':
         specifier: workspace:*
         version: link:../../packages/hub-client
+      '@cloudnord/room-state':
+        specifier: workspace:*
+        version: link:../../packages/room-state
       pinia:
         specifier: 3.0.3
         version: 3.0.3(typescript@6.0.3)(vue@3.5.22(typescript@6.0.3))
@@ -96,15 +96,15 @@ importers:
       '@cloudnord/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@cloudnord/etat-salle':
-        specifier: workspace:*
-        version: link:../../packages/etat-salle
       '@cloudnord/format':
         specifier: workspace:*
         version: link:../../packages/format
       '@cloudnord/program':
         specifier: workspace:*
         version: link:../../packages/program
+      '@cloudnord/room-state':
+        specifier: workspace:*
+        version: link:../../packages/room-state
       '@cloudnord/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -187,9 +187,6 @@ importers:
       '@cloudnord/contract':
         specifier: workspace:*
         version: link:../../packages/contract
-      '@cloudnord/etat-salle':
-        specifier: workspace:*
-        version: link:../../packages/etat-salle
       '@cloudnord/format':
         specifier: workspace:*
         version: link:../../packages/format
@@ -199,6 +196,9 @@ importers:
       '@cloudnord/program':
         specifier: workspace:*
         version: link:../../packages/program
+      '@cloudnord/room-state':
+        specifier: workspace:*
+        version: link:../../packages/room-state
       pinia:
         specifier: 3.0.3
         version: 3.0.3(typescript@6.0.3)(vue@3.5.22(typescript@6.0.3))
@@ -242,15 +242,15 @@ importers:
       '@cloudnord/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@cloudnord/etat-salle':
-        specifier: workspace:*
-        version: link:../../packages/etat-salle
       '@cloudnord/format':
         specifier: workspace:*
         version: link:../../packages/format
       '@cloudnord/program':
         specifier: workspace:*
         version: link:../../packages/program
+      '@cloudnord/room-state':
+        specifier: workspace:*
+        version: link:../../packages/room-state
       '@cloudnord/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -342,12 +342,12 @@ importers:
 
   packages/components:
     dependencies:
-      '@cloudnord/etat-salle':
-        specifier: workspace:*
-        version: link:../etat-salle
       '@cloudnord/format':
         specifier: workspace:*
         version: link:../format
+      '@cloudnord/room-state':
+        specifier: workspace:*
+        version: link:../room-state
       class-variance-authority:
         specifier: 0.7.1
         version: 0.7.1
@@ -385,12 +385,12 @@ importers:
 
   packages/contract:
     dependencies:
-      '@cloudnord/etat-salle':
-        specifier: workspace:*
-        version: link:../etat-salle
       '@cloudnord/program':
         specifier: workspace:*
         version: link:../program
+      '@cloudnord/room-state':
+        specifier: workspace:*
+        version: link:../room-state
       '@orpc/contract':
         specifier: 2.0.0-beta.29
         version: 2.0.0-beta.29
@@ -423,28 +423,6 @@ importers:
       drizzle-kit:
         specifier: 0.31.10
         version: 0.31.10
-      typescript:
-        specifier: 7.0.2
-        version: 7.0.2
-      vitest:
-        specifier: 4.1.11
-        version: 4.1.11(@types/node@26.2.0)(happy-dom@20.11.6)(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12))
-
-  packages/etat-salle:
-    dependencies:
-      '@cloudnord/program':
-        specifier: workspace:*
-        version: link:../program
-    devDependencies:
-      esbuild:
-        specifier: 0.28.2
-        version: 0.28.2
-      happy-dom:
-        specifier: 20.11.6
-        version: 20.11.6
-      tsx:
-        specifier: 4.23.12
-        version: 4.23.12
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -496,11 +474,33 @@ importers:
         specifier: 4.1.11
         version: 4.1.11(@types/node@26.2.0)(happy-dom@20.11.6)(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12))
 
+  packages/room-state:
+    dependencies:
+      '@cloudnord/program':
+        specifier: workspace:*
+        version: link:../program
+    devDependencies:
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
+      happy-dom:
+        specifier: 20.11.6
+        version: 20.11.6
+      tsx:
+        specifier: 4.23.12
+        version: 4.23.12
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 4.1.11
+        version: 4.1.11(@types/node@26.2.0)(happy-dom@20.11.6)(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12))
+
   packages/ui:
     devDependencies:
-      '@cloudnord/etat-salle':
+      '@cloudnord/room-state':
         specifier: workspace:*
-        version: link:../etat-salle
+        version: link:../room-state
       '@tailwindcss/cli':
         specifier: 4.3.3
         version: 4.3.3

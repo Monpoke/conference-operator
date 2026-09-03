@@ -302,7 +302,7 @@ describe('vues enrichies du programme', () => {
  * L'IHM grisait déjà « Terminer » sur une conférence non lancée ; la procédure,
  * elle, l'acceptait. Rien ne cassait — on écrivait simplement `ended` sur un
  * talk qui ne s'était pas tenu. La table vit désormais dans
- * `@cloudnord/etat-salle`, et les deux côtés la lisent.
+ * `@cloudnord/room-state`, et les deux côtés la lisent.
  */
 describe('gestes refusés par le cycle de vie', () => {
   it('ne termine pas une conférence que personne n\'a lancée', () => {

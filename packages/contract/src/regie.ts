@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { ETATS_SALLE } from '@cloudnord/etat-salle'
+import { ROOM_STATES } from '@cloudnord/room-state'
 import { sessionSchema } from '@cloudnord/program'
 import {
   connectivitySchema,
@@ -82,7 +82,7 @@ export type RegieLock = z.infer<typeof regieLockSchema>
 export const regieRoomSchema = z.object({
   roomId: roomIdSchema,
   name: z.string(),
-  conference: z.enum(ETATS_SALLE),
+  conference: z.enum(ROOM_STATES),
   connectivity: connectivitySchema,
   lock: regieLockSchema.nullable(),
 })
@@ -128,14 +128,14 @@ export const regieViewSchema = z.object({
   lastSeenAt: isoDateTimeSchema.nullable(),
 
   /** L'état à huit valeurs, calculé sur l'horloge du hub. */
-  conference: z.enum(ETATS_SALLE),
+  conference: z.enum(ROOM_STATES),
 
   /**
    * La conférence que « Commencer » et « Terminer » atteignent.
    *
    * Rarement le créneau courant : entre deux talks et pendant une pause, c'est
    * la suivante qu'on veut lancer — le speaker s'installe. La règle vit dans
-   * `conferenceAPiloter`, la même que déroule la régie de la salle.
+   * `talkToControl`, la même que déroule la régie de la salle.
    */
   targetSession: sessionSchema.nullable(),
   targetIsUpcoming: z.boolean(),

@@ -13,7 +13,7 @@ export function sessionsForRoom(program: Program, roomId: string): Session[] {
  * lire un titre ni un intervenant. Exiger la session entière obligerait à en
  * fabriquer une complète pour poser une question d'horaire.
  */
-export type SessionHoraire = Pick<Session, 'startsAtMs' | 'endsAtMs' | 'durationMinutes'>
+export type ScheduledSession = Pick<Session, 'startsAtMs' | 'endsAtMs' | 'durationMinutes'>
 
 /**
  * Fin effective d'une session, par ordre de préférence :
@@ -21,8 +21,8 @@ export type SessionHoraire = Pick<Session, 'startsAtMs' | 'endsAtMs' | 'duration
  * Retourne `null` si aucune des trois n'est disponible (session ouverte).
  */
 export function effectiveEndMs(
-  session: SessionHoraire,
-  next: SessionHoraire | undefined,
+  session: ScheduledSession,
+  next: ScheduledSession | undefined,
 ): number | null {
   if (session.endsAtMs != null) return session.endsAtMs
   if (session.durationMinutes != null) return session.startsAtMs + session.durationMinutes * 60_000
@@ -50,7 +50,7 @@ export type RoomTimelinePosition = TimelinePosition<Session>
  * le client corrige son horloge avec l'offset serveur, et les tests doivent
  * pouvoir figer le temps.
  */
-export function timelinePosition<T extends SessionHoraire>(
+export function timelinePosition<T extends ScheduledSession>(
   sessions: T[],
   nowMs: number,
 ): TimelinePosition<T> {

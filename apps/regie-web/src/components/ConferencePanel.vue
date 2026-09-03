@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DisplayPayload } from '@cloudnord/contract'
 import { Badge, Button, Panel } from '@cloudnord/components'
-import { refusDeTransition } from '@cloudnord/etat-salle'
+import { transitionRefusal } from '@cloudnord/room-state'
 import { duration, time } from '@cloudnord/format'
 import { computed } from 'vue'
 import { nextConference, scheduleGapMs } from '../lib/countdown.js'
@@ -61,7 +61,7 @@ const badge = computed(() =>
  */
 function refusal(action: 'start' | 'end'): string | null {
   if (session.value == null) return 'Aucune conférence à piloter dans cette salle.'
-  return refusDeTransition(status.value, action)
+  return transitionRefusal(status.value, action)
 }
 
 /** Ce que dit le programme, en toutes lettres. */

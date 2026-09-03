@@ -51,7 +51,7 @@
   /*
    * Créneau commun : bleu, et non le vert par défaut.
    *
-   * Il ne vient pas de la table des apparences — `APPARENCE.pause` renvoie la
+   * Il ne vient pas de la table des apparences — `APPEARANCE.pause` renvoie la
    * teinte `hors` pour une *salle* en pause. Ici c'est le créneau lui-même
    * qu'on peint, dans l'encart Global, et il est posé à la main.
    */

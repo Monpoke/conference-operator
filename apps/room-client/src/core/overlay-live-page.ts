@@ -3,28 +3,31 @@ import { TAILWIND_CSS } from '@cloudnord/ui'
 import { OBS_ON_AIR_CSS, OBS_ON_AIR_JS } from './obs-browser.js'
 
 /**
- * Bandeau superposé aux scènes live.
+ * The banner composited over the live scenes.
  *
- * Deuxième surface transparente, distincte de l'habillage de captation, et
- * pour une raison de fond : celle-ci ne dit rien de la conférence, elle porte
- * ce que la console décide de mettre à l'antenne — « on reprend dans 5
- * minutes », « le son est en cours de réparation ». On la pose donc où on veut
- * qu'un message apparaisse, y compris dans la scène `LIVE` d'OBS-A, où les
- * slides du speaker continuent de tourner dessous.
+ * A second transparent surface, distinct from the capture overlay, and for a
+ * fundamental reason: this one says nothing about the talk, it carries what the
+ * console decides to put on air — "we resume in 5 minutes", "the sound is being
+ * fixed". It is therefore placed wherever a message should appear, including in
+ * OBS-A's `LIVE` scene, where the speaker's slides keep running underneath.
  *
- * Elle n'interrompt rien : c'est toute la différence avec le mode « message »
- * de l'écran de salle, qui prend l'écran entier. Ici le talk continue.
+ * It interrupts nothing: that is the whole difference with the room screen's
+ * "message" mode, which takes the whole screen. Here the talk carries on.
  *
- * Comme l'habillage : fond réellement transparent, tailles en `vh`/`vw` pour
- * suivre le canevas OBS, et aucune animation coûteuse — la page tourne pendant
- * qu'OBS encode.
+ * As for the overlay: a genuinely transparent background, sizes in `vh`/`vw` to
+ * follow the OBS canvas, and no expensive animation — the page runs while OBS
+ * encodes.
+ *
+ * The `?style=` parameter and its values (`bandeau`, `encart`) are typed into the
+ * OBS source's address: they are a contract with the machines, and do not get
+ * renamed.
  */
 export interface OverlayLivePageOptions {
   initialPayload?: unknown
 }
 
 export function renderOverlayLivePage(options: OverlayLivePageOptions = {}): string {
-  const etatInitial =
+  const initialState =
     options.initialPayload == null
       ? ''
       : `<script id="etat-initial" type="application/json">${JSON.stringify(options.initialPayload).replace(/</g, '\\u003c')}</script>`
@@ -37,49 +40,48 @@ export function renderOverlayLivePage(options: OverlayLivePageOptions = {}): str
 <style>${TAILWIND_CSS}  ${OBS_ON_AIR_CSS}
 </style>
 <style>
-  /* Fond réellement transparent : OBS compose cette page par-dessus la vidéo. */
+  /* A genuinely transparent background: OBS composites this page over the video. */
   html, body { height: 100%; background: transparent; overflow: hidden; }
 
   /*
-   * Deux présentations, choisies dans l'adresse de la source OBS.
+   * Two presentations, chosen in the OBS source's address.
    *
-   * ?style=encart pose une carte en bas à droite, faite pour passer par-dessus
-   * des slides sans manger leur contenu ; sans paramètre, un bandeau en haut,
-   * plus discret sur un plan de caméra. Le choix appartient à la scène — la
-   * même page sert les deux, et rien ne change à l'exécution.
+   * ?style=encart places a card at the bottom right, made to sit over slides
+   * without eating their content; with no parameter, a banner at the top, more
+   * discreet on a camera shot. The choice belongs to the scene — the same page
+   * serves both, and nothing changes at runtime.
    */
   #place { position: absolute; }
   body[data-style="bandeau"] #place { top: 6vh; left: 50%; transform: translateX(-50%); max-width: 80vw; }
   body[data-style="encart"] #place { right: 4vw; bottom: 9vh; max-width: 42vw; }
-  body[data-style="bandeau"] #libelle { display: none; }
+  body[data-style="bandeau"] #label { display: none; }
 
   /*
-   * Rien à l'écran tant qu'il n'y a rien à dire.
+   * Nothing on screen while there is nothing to say.
    *
-   * L'apparition passe par une transition d'opacité et de position : une
-   * arrivée sèche au milieu d'un plan se voit comme un défaut d'incrustation.
-   * Le bandeau descend, l'encart monte — chacun vient du bord dont il est
-   * proche.
+   * The appearance goes through an opacity and position transition: a blunt
+   * arrival in the middle of a shot shows up as a compositing defect. The banner
+   * comes down, the card comes up — each arrives from the edge it is close to.
    */
-  #cadre { opacity: 0; transition: opacity .3s ease, transform .3s ease; }
-  body[data-style="bandeau"] #cadre { transform: translateY(-1.5vh); }
-  body[data-style="encart"] #cadre { transform: translateY(1.5vh); }
-  body[data-bandeau="visible"] #cadre { opacity: 1; transform: none; }
+  #frame { opacity: 0; transition: opacity .3s ease, transform .3s ease; }
+  body[data-style="bandeau"] #frame { transform: translateY(-1.5vh); }
+  body[data-style="encart"] #frame { transform: translateY(1.5vh); }
+  body[data-banner="visible"] #frame { opacity: 1; transform: none; }
 
-  /* Teinte par niveau, posée depuis le script sur le body. */
-  body[data-niveau="info"] #cadre { --teinte: var(--color-brand); }
-  body[data-niveau="warning"] #cadre { --teinte: var(--color-warn); }
-  body[data-niveau="urgent"] #cadre { --teinte: var(--color-alert); }
+  /* A tint per level, set from the script on the body. */
+  body[data-level="info"] #frame { --tint: var(--color-brand); }
+  body[data-level="warning"] #frame { --tint: var(--color-warn); }
+  body[data-level="urgent"] #frame { --tint: var(--color-alert); }
 </style>
 </head>
-<body class="font-sans text-white" data-bandeau="masque" data-niveau="info" data-style="bandeau">
-${etatInitial}
+<body class="font-sans text-white" data-banner="hidden" data-level="info" data-style="bandeau">
+${initialState}
 <div id="place">
-  <div id="cadre" class="flex items-stretch drop-shadow-[0_.6vh_1.6vh_rgba(0,0,0,.55)]">
-    <div class="w-[.9vh] rounded-l-[.45vh] bg-[var(--teinte)]"></div>
+  <div id="frame" class="flex items-stretch drop-shadow-[0_.6vh_1.6vh_rgba(0,0,0,.55)]">
+    <div class="w-[.9vh] rounded-l-[.45vh] bg-[var(--tint)]"></div>
     <div class="rounded-r-[.6vh] bg-[rgba(12,14,22,.88)] px-[2.6vh] py-[1.6vh] backdrop-blur-[2px]">
-      <div class="mb-[.6vh] text-[1.7vh] font-semibold tracking-[.12em] text-[var(--teinte)] uppercase" id="libelle">Question du public</div>
-      <div class="text-[2.8vh] leading-[1.25] font-semibold" id="texte"></div>
+      <div class="mb-[.6vh] text-[1.7vh] font-semibold tracking-[.12em] text-[var(--tint)] uppercase" id="label">Question du public</div>
+      <div class="text-[2.8vh] leading-[1.25] font-semibold" id="text"></div>
     </div>
   </div>
 </div>
@@ -87,99 +89,99 @@ ${etatInitial}
 <script>
 (() => {
   /**
-   * Présentation, choisie dans l'adresse de la source OBS.
+   * The presentation, chosen in the OBS source's address.
    *
-   * ?style=encart pour une carte par-dessus des slides, rien pour le bandeau.
-   * Un paramètre plutôt qu'un réglage : c'est une décision de scène, prise une
-   * fois en montant la source, pas un geste de régie en pleine conférence.
+   * ?style=encart for a card over slides, nothing for the banner. A parameter
+   * rather than a setting: it is a scene decision, taken once when setting the
+   * source up, not a control-room gesture in the middle of a talk.
    */
   const STYLE = new URLSearchParams(location.search).get('style') === 'encart' ? 'encart' : 'bandeau'
   document.body.dataset.style = STYLE
 
-  /** Durée de la transition, alignée sur le CSS ci-dessus. */
+  /** The transition's duration, aligned on the CSS above. */
   const TRANSITION_MS = 300
-  let affiche = null
-  let bascule = null
+  let shown = null
+  let switchTimer = null
 
   /**
-   * Change de question **en deux temps**.
+   * Changes question **in two steps**.
    *
-   * Remplacer le texte en place donnerait un saut : deux questions de longueurs
-   * différentes se substituent d'un coup, et le spectateur ne sait pas si elle
-   * a changé ou si elle a toujours été là. On sort l'ancienne, on pose la
-   * nouvelle, on la fait entrer.
+   * Replacing the text in place would give a jump: two questions of different
+   * lengths substitute at once, and the viewer does not know whether it changed
+   * or was always there. We take the old one out, put the new one in, and bring
+   * it in.
    */
-  function rendre(donnees) {
-    // Le titre suit l'événement : rien n'est compilé en dur, le nom vient du
-    // hub et reste en cache pour survivre à un démarrage réseau coupé.
-    const nomEvenement = donnees.eventIdentity?.name
-    if (nomEvenement) document.title = nomEvenement + ' — bandeau live'
+  function render(data) {
+    // The title follows the event: nothing is hard-compiled, the name comes from
+    // the hub and stays in cache to survive a start with the network cut.
+    const eventName = data.eventIdentity?.name
+    if (eventName) document.title = eventName + ' — bandeau live'
     /**
-     * Deux channels, une seule place à l'écran.
+     * Two channels, a single place on screen.
      *
-     * Le bandeau de la console passe devant la question : quand il y en a un,
-     * c'est qu'il se passe quelque chose — « on reprend dans 5 minutes » — et
-     * ça prime sur la question à laquelle le speaker répondait. La question
-     * revient d'elle-même dès que le bandeau est retiré.
+     * The console's banner comes before the question: when there is one, it means
+     * something is happening — "we resume in 5 minutes" — and that takes
+     * precedence over the question the speaker was answering. The question comes
+     * back by itself as soon as the banner is removed.
      *
-     * Cette page est posée dans les scènes d'OBS-A : elle est vue par la salle,
-     * pas par la VOD. C'est pour ça qu'elle a le droit de montrer les deux, là
-     * où l'habillage de captation ne montre que la question.
+     * This page is placed in OBS-A's scenes: it is seen by the room, not by the
+     * VOD. That is why it is allowed to show both, where the capture overlay only
+     * shows the question.
      */
-    const message = donnees.state.liveMessage
-    const question = donnees.state.question
-    const bandeau = message != null
-      ? { text: message.text, level: message.level, libelle: null }
+    const message = data.state.liveMessage
+    const question = data.state.question
+    const banner = message != null
+      ? { text: message.text, level: message.level, label: null }
       : question != null
         ? {
             text: question.text,
             level: 'info',
-            libelle: question.author ? 'Question — ' + question.author : 'Question du public',
+            label: question.author ? 'Question — ' + question.author : 'Question du public',
           }
         : null
 
-    const suivant = bandeau == null ? null : bandeau.level + ' | ' + bandeau.libelle + ' | ' + bandeau.text
-    // Rien de nouveau : surtout ne pas rejouer l'animation à chaque état reçu.
-    if (suivant === affiche) return
+    const next = banner == null ? null : banner.level + ' | ' + banner.label + ' | ' + banner.text
+    // Nothing new: above all, do not replay the animation on every received state.
+    if (next === shown) return
 
-    const premier = affiche == null
-    affiche = suivant
-    clearTimeout(bascule)
+    const first = shown == null
+    shown = next
+    clearTimeout(switchTimer)
 
-    if (bandeau == null) {
-      document.body.dataset.bandeau = 'masque'
+    if (banner == null) {
+      document.body.dataset.banner = 'hidden'
       return
     }
 
-    const poser = () => {
-      document.body.dataset.niveau = bandeau.level
-      // Le libellé annonce une question ; un message d'exploitation se passe
-      // d'en-tête, il se lit tel quel.
-      const libelle = document.getElementById('libelle')
-      libelle.textContent = bandeau.libelle ?? ''
-      libelle.hidden = bandeau.libelle == null
-      document.getElementById('texte').textContent = bandeau.text
-      document.body.dataset.bandeau = 'visible'
+    const show = () => {
+      document.body.dataset.level = banner.level
+      // The label announces a question; an operational message does without a
+      // heading, it reads as it is.
+      const label = document.getElementById('label')
+      label.textContent = banner.label ?? ''
+      label.hidden = banner.label == null
+      document.getElementById('text').textContent = banner.text
+      document.body.dataset.banner = 'visible'
     }
 
-    // Rien à l'écran : on entre directement, sans sortie à vide.
-    if (premier) { poser(); return }
-    document.body.dataset.bandeau = 'masque'
-    bascule = setTimeout(poser, TRANSITION_MS)
+    // Nothing on screen: we come straight in, with no empty exit.
+    if (first) { show(); return }
+    document.body.dataset.banner = 'hidden'
+    switchTimer = setTimeout(show, TRANSITION_MS)
   }
 
-  // Le flux n'envoie que ce qui change : on garde l'etat courant et on fusionne.
-  // Un message complet (a l'ouverture, et apres chaque reconnexion) le remplace.
-  let etatCourant = {}
-  const embarque = document.getElementById('etat-initial')
-  if (embarque) { etatCourant = JSON.parse(embarque.textContent); rendre(etatCourant) }
+  // The stream only sends what changes: we keep the current state and merge.
+  // A complete message (on opening, and after every reconnection) replaces it.
+  let currentState = {}
+  const embedded = document.getElementById('etat-initial')
+  if (embedded) { currentState = JSON.parse(embedded.textContent); render(currentState) }
 
   if (typeof EventSource !== 'undefined' && !window.__APERCU__) {
-    const flux = new EventSource('/display/state?vue=bandeau')
-    flux.onmessage = (evenement) => { etatCourant = JSON.parse(evenement.data); rendre(etatCourant) }
-    flux.addEventListener("delta", (evenement) => {
-      etatCourant = Object.assign({}, etatCourant, JSON.parse(evenement.data))
-      rendre(etatCourant)
+    const stream = new EventSource('/display/state?vue=bandeau')
+    stream.onmessage = (event) => { currentState = JSON.parse(event.data); render(currentState) }
+    stream.addEventListener("delta", (event) => {
+      currentState = Object.assign({}, currentState, JSON.parse(event.data))
+      render(currentState)
     })
   }
 })()

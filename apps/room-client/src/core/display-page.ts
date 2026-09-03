@@ -804,8 +804,8 @@ ${initialState}
       rooms.map((room, index) => \`<article style="--i:\${index}" class="rounded-[1.6vmin] border border-white/10 bg-white/5 px-[3vmin] py-[2.4vmin]">
         <div class="flex items-baseline justify-between gap-[2vmin]">
           <div class="text-[2.6vmin] tracking-[.14em] text-dim uppercase">\${escape(room.name)}</div>
-          <div class="text-[2.4vmin] tabular-nums \${room.enCours ? 'text-[var(--color)]' : 'text-dim'}">\${
-            room.enCours ? 'en ce moment' : time(room.session.startsAt, data.timezone)}</div>
+          <div class="text-[2.4vmin] tabular-nums \${room.running ? 'text-[var(--color)]' : 'text-dim'}">\${
+            room.running ? 'en ce moment' : time(room.session.startsAt, data.timezone)}</div>
         </div>
         <div class="mt-[1.2vmin] text-[3.2vmin] leading-snug font-semibold">\${escape(room.session.title)}</div>
         \${room.session.speakers.length > 0

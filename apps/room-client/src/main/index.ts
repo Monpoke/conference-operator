@@ -10,20 +10,20 @@ import { resolveHubAddress } from './hub-address.js'
 import { askHubAddress } from './hub-window.js'
 
 /**
- * Coquille Electron : volontairement mince.
+ * The Electron shell: deliberately thin.
  *
- * Toute la logique vit dans `core/`, sans dépendance à Electron, pour être
- * testable sans écran ni instance OBS. Ce fichier ne fait qu'ouvrir les fenêtres
- * et brancher les chemins de données.
+ * All the logic lives in `core/`, with no dependency on Electron, so it can be
+ * tested with no screen and no OBS instance. This file only opens the windows and
+ * wires up the data paths.
  */
 
 /**
- * Mode d'exécution, lu une fois au démarrage.
+ * The execution mode, read once at startup.
  *
- * `MODE=dev` déroule un talk complet sans installer OBS ; hors de ce mode, les
- * commodités de développement sont neutralisées même si elles traînent dans
- * l'environnement — un `OBS_MOCK=1` oublié, c'est une journée filmée par une
- * instance OBS qui n'existe pas.
+ * `MODE=dev` runs a whole talk without installing OBS; outside that mode, the
+ * development conveniences are neutralized even if they linger in the
+ * environment — a forgotten `OBS_MOCK=1` is a day filmed by an OBS instance that
+ * does not exist.
  */
 const MODE = readMode()
 
@@ -31,27 +31,27 @@ async function main(): Promise<void> {
   await app.whenReady()
 
   /**
-   * Verrou de fermeture, posé avant la première fenêtre.
+   * The close latch, set before the first window.
    *
-   * Entre l'écran d'adresse — refermé dès la saisie validée — et l'ouverture
-   * de la projection, l'application ne possède aucune fenêtre. Electron émet
-   * alors `window-all-closed`, dont le comportement par défaut est de quitter :
-   * sans ce verrou, la salle s'éteindrait entre deux fenêtres.
+   * Between the address screen — closed as soon as the entry is validated — and
+   * the opening of the projection, the application owns no window. Electron then
+   * emits `window-all-closed`, whose default behaviour is to quit: without this
+   * latch, the room would switch off between two windows.
    */
-  let demarrageTermine = false
+  let startupFinished = false
   app.on('window-all-closed', () => {
-    if (demarrageTermine) app.quit()
+    if (startupFinished) app.quit()
   })
 
   const dataDir = app.getPath('userData')
   const clientId = loadOrCreateClientId(join(dataDir, 'client-id'))
 
-  // Avant tout le reste : sans hub, il n'y a ni salle à choisir, ni programme
-  // à projeter. Demandé une fois par machine, puis mémorisé.
+  // Before everything else: with no hub, there is neither a room to choose nor a
+  // program to project. Asked once per machine, then remembered.
   const hubOrigin = await resolveHubAddress({
     path: join(dataDir, 'hub'),
     ask: (initialValue) => askHubAddress({ initialValue }),
-    onLog: (niveau, message) => console.error(formatLogLine(niveau, message)),
+    onLog: (level, message) => console.error(formatLogLine(level, message)),
   })
   if (hubOrigin == null) {
     console.error(formatLogLine('error', "Aucune adresse de hub : l'application s'arrête"))
@@ -81,30 +81,30 @@ async function main(): Promise<void> {
       ? (instance, scenes) =>
           createMockObsTransport({
             instance,
-            // Voir `dev-headless.ts` : le simulateur porte les scènes de la
-            // salle, sans quoi il râle sur des noms qu'il est seul à ignorer.
+            // See `dev-headless.ts`: the simulator carries the room's scenes,
+            // without which it complains about names only it does not know.
             scenes,
             recordingDir: join(dataDir, 'enregistrements'),
             onLog: (message) => console.log(message),
           })
       : undefined,
     /**
-     * Le sélecteur de dossier, fourni par Electron seulement.
+     * The folder picker, supplied by Electron only.
      *
-     * `dev:headless` tourne sous Node nu et ne le fournit pas : la régie masque
-     * alors le bouton, parce qu'un bouton qui ne répond pas coûte plus qu'un
-     * champ à remplir à la main.
+     * `dev:headless` runs under bare Node and does not supply it: the control app
+     * then hides the button, because a button that does not answer costs more than
+     * a field to fill in by hand.
      *
-     * `defaultPath` sur le dossier déjà saisi : corriger un path, c'est
-     * presque toujours en changer une branche, pas repartir de la racine.
+     * `defaultPath` on the folder already typed: correcting a path is almost
+     * always changing one branch of it, not starting again from the root.
      */
-    choisirDossier: async (initial) => {
-      const resultat = await dialog.showOpenDialog({
+    chooseFolder: async (initial) => {
+      const result = await dialog.showOpenDialog({
         title: 'Dossier des VOD',
         properties: ['openDirectory', 'createDirectory'],
         ...(initial == null || initial === '' ? {} : { defaultPath: initial }),
       })
-      return resultat.canceled ? null : (resultat.filePaths[0] ?? null)
+      return result.canceled ? null : (result.filePaths[0] ?? null)
     },
     readToken: () => vault.read(),
     writeToken: (token) => vault.write(token),
@@ -115,19 +115,18 @@ async function main(): Promise<void> {
     },
   })
 
-  // Heure simulée locale, s'il y en a une : posée comme décalage, exactement
-  // comme le fera le hub dès qu'il répondra — et il reprendra la main.
-  const decalage = modeOffset(MODE)
-  if (decalage !== 0) room.runtime.setClockOffset(decalage, true)
+  // The local simulated time, if there is one: set as an offset, exactly as the
+  // hub will do as soon as it answers — and it will take over.
+  const offset = modeOffset(MODE)
+  if (offset !== 0) room.runtime.setClockOffset(offset, true)
 
-  // L'écran d'abord : la salle doit projeter même si le hub ne répond jamais.
+  // The screen first: the room must project even if the hub never answers.
   const displayUrl = await room.startDisplay()
-  brancherOuverturesDEcrans(openRegieWindow(`${displayUrl}/regie`))
-  // La régie est ouverte : fermer la dernière fenêtre veut de nouveau dire
-  // « on éteint ».
-  demarrageTermine = true
+  wireScreenOpenings(openControlWindow(`${displayUrl}/regie`))
+  // The control app is open: closing the last window means "we switch off" again.
+  startupFinished = true
 
-  // Le hub peut être lancé après les salles : on le rejoindra tout seul.
+  // The hub can be started after the rooms: we will join it by ourselves.
   room.startSupervision()
 
   const token = await room.ensurePaired()
@@ -137,54 +136,54 @@ async function main(): Promise<void> {
   }
 
   app.on('before-quit', () => {
-    // Sans fermeture explicite, les timers de reconnexion gardent le process
-    // en vie et l'application ne se ferme jamais.
+    // With no explicit close, the reconnection timers keep the process alive and
+    // the application never closes.
     void room.close()
   })
 }
 
 /**
- * Fenêtre de régie, sur l'écran de l'opérateur.
+ * The control window, on the operator's screen.
  *
- * La seule ouverte au démarrage, et avant tout appel réseau : l'opérateur doit
- * avoir la main sur OBS et sur l'écran même si le hub ne répond jamais. Les
- * autres écrans s'ouvrent à la demande, depuis son menu « Écrans ».
+ * The only one open at startup, and before any network call: the operator must
+ * have control over OBS and over the screen even if the hub never answers. The
+ * other screens open on demand, from its "Écrans" menu.
  */
-function openRegieWindow(url: string): BrowserWindow {
+function openControlWindow(url: string): BrowserWindow {
   const window = new BrowserWindow({
     width: 1280,
     height: 860,
-    // Montrée seulement une fois peinte : maximiser une fenêtre déjà visible
-    // la fait sauter d'un format à l'autre sous les yeux de l'opérateur.
+    // Shown only once painted: maximizing an already visible window makes it jump
+    // from one format to another before the operator's eyes.
     show: false,
     backgroundColor: '#0d0f16',
     autoHideMenuBar: true,
     /**
-     * Titre d'amorçage seulement.
+     * A boot title only.
      *
-     * La page le remplace par « Régie — <événement> » dès le premier rendu,
-     * avec le nom que le hub a tranché. L'écrire ici serait le figer dans le
-     * binaire installé sur la machine — c'est-à-dire pour toutes les éditions
-     * qu'elle servira ensuite.
+     * The page replaces it with "Régie — <event>" from the first render, with the
+     * name the hub decided. Writing it here would freeze it into the binary
+     * installed on the machine — that is, for every edition it will serve
+     * afterwards.
      */
     title: 'Régie de salle',
     webPreferences: { nodeIntegration: false, contextIsolation: true },
   })
   /**
-   * Maximisée d'emblée.
+   * Maximized from the outset.
    *
-   * La page est composée pour que **rien qui commande ne défile** : tout ce qui
-   * déclenche une décision tient dans la hauteur de fenêtre. Ouverte à 860 px
-   * sur un moniteur d'opérateur, cette promesse se paie en boutons resserrés,
-   * pour de la place laissée vide autour. Les dimensions ci-dessus restent le
-   * format restauré, après un clic sur « réduire ».
+   * The page is composed so that **nothing that commands scrolls**: everything
+   * that triggers a decision fits in the window's height. Opened at 860 px on an
+   * operator's monitor, that promise is paid for in cramped buttons, for space
+   * left empty around them. The dimensions above stay the restored format, after
+   * a click on "minimize".
    */
-  brancherPleinEcran(window)
+  wireFullScreen(window)
   window.once('ready-to-show', () => {
-    // Maximisée avant d'être montrée, mais **une fois peinte** : sur une
-    // fenêtre encore masquée, la demande part à un gestionnaire de fenêtres qui
-    // ne connaît pas encore la fenêtre, et retombe en silence — la régie
-    // s'ouvrait alors à ses dimensions de repli.
+    // Maximized before being shown, but **once painted**: on a window that is
+    // still hidden, the request goes to a window manager that does not know the
+    // window yet, and falls through silently — the control app then opened at its
+    // fallback dimensions.
     window.maximize()
     window.show()
   })
@@ -193,27 +192,27 @@ function openRegieWindow(url: string): BrowserWindow {
 }
 
 /**
- * Écrans ouverts depuis le menu « Écrans » de la régie.
+ * The screens opened from the control app's "Écrans" menu.
  *
- * La projection n'est plus ouverte au démarrage — une fenêtre de plus sur
- * l'écran de l'opérateur, pour un secours qui ne sert presque jamais. Mais
- * quand elle sert, elle sert vite : ouverte depuis le menu, elle doit retrouver
- * exactement le placement qu'elle avait au lancement — plein écran sur la
- * sortie vidéoprojecteur — au lieu de la fenêtre par défaut que produirait un
- * simple `target="_blank"`, posée au milieu de l'écran de régie.
+ * The projection is no longer opened at startup — one more window on the
+ * operator's screen, for a fallback that almost never serves. But when it does
+ * serve, it serves fast: opened from the menu, it must find exactly the placement
+ * it had at launch — full screen on the video projector output — instead of the
+ * default window a plain `target="_blank"` would produce, set in the middle of the
+ * control screen.
  *
- * Les autres écrans du menu — habillages, bandeau live, mur public — s'ouvrent
- * normalement : ils vont dans OBS ou sur un téléphone, pas sur un projecteur.
+ * The menu's other screens — overlays, live banner, public wall — open normally:
+ * they go into OBS or onto a phone, not onto a projector.
  */
-function brancherOuverturesDEcrans(regie: BrowserWindow): void {
-  regie.webContents.setWindowOpenHandler(({ url }) => {
-    if (cheminDe(url) !== '/display/projector') return { action: 'allow' }
+function wireScreenOpenings(control: BrowserWindow): void {
+  control.webContents.setWindowOpenHandler(({ url }) => {
+    if (pathOf(url) !== '/display/projector') return { action: 'allow' }
     openProjectorWindow(url)
     return { action: 'deny' }
   })
 }
 
-function cheminDe(url: string): string | null {
+function pathOf(url: string): string | null {
   try {
     return new URL(url).pathname
   } catch {
@@ -222,34 +221,34 @@ function cheminDe(url: string): string | null {
 }
 
 /**
- * Bascule plein écran au clavier : **Alt+Entrée**, et F11.
+ * The full-screen toggle on the keyboard: **Alt+Enter**, and F11.
  *
- * Posée dans le processus principal, pas dans la page : les écrans sont servis
- * en HTTP par le serveur local, sans préchargement, et n'ont donc aucun moyen
- * d'appeler Electron. `before-input-event` voit la frappe avant la page, ce qui
- * rend le raccourci indépendant de ce qui a le focus — un champ de saisie
- * ouvert ne doit pas l'avaler.
+ * Set in the main process, not in the page: the screens are served over HTTP by
+ * the local server, with no preload, and therefore have no way of calling
+ * Electron. `before-input-event` sees the keystroke before the page, which makes
+ * the shortcut independent of what has focus — an open input field must not
+ * swallow it.
  *
- * Alt+Entrée est libre : la régie laisse déjà passer toute touche tenue avec
- * Alt, qui appartient au navigateur. Échap n'est pas repris, lui : la page s'en
- * sert pour refermer ses modales, et le lui prendre ferait sortir du plein
- * écran au lieu de fermer celle qu'on regarde.
+ * Alt+Enter is free: the control app already lets through any key held with Alt,
+ * which belongs to the browser. Escape is not taken, though: the page uses it to
+ * close its modals, and taking it away would leave full screen instead of closing
+ * the one being looked at.
  */
-function brancherPleinEcran(window: BrowserWindow): void {
-  window.webContents.on('before-input-event', (evenement, saisie) => {
-    if (saisie.type !== 'keyDown') return
-    if (saisie.key !== 'F11' && !(saisie.key === 'Enter' && saisie.alt)) return
-    evenement.preventDefault()
+function wireFullScreen(window: BrowserWindow): void {
+  window.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return
+    if (input.key !== 'F11' && !(input.key === 'Enter' && input.alt)) return
+    event.preventDefault()
     window.setFullScreen(!window.isFullScreen())
   })
 }
 
 /**
- * Fenêtre de projection, sur l'écran secondaire quand il existe.
+ * The projection window, on the secondary screen when there is one.
  *
- * Sert de secours : si OBS-A plante, l'opérateur bascule dessus et la
- * projection continue sans rien reconfigurer. Ouverte à la demande depuis le
- * menu « Écrans » de la régie.
+ * Serves as a fallback: if OBS-A crashes, the operator switches to it and the
+ * projection carries on with nothing to reconfigure. Opened on demand from the
+ * control app's "Écrans" menu.
  */
 function openProjectorWindow(url: string): BrowserWindow {
   const displays = screen.getAllDisplays()
@@ -265,9 +264,9 @@ function openProjectorWindow(url: string): BrowserWindow {
     autoHideMenuBar: true,
     webPreferences: { nodeIntegration: false, contextIsolation: true },
   })
-  // Sur un poste à un seul écran, elle s'ouvre en fenêtre : le plein écran au
-  // clavier est alors ce qui rend le secours utilisable devant une salle.
-  brancherPleinEcran(window)
+  // On a single-screen machine, it opens as a window: the keyboard full screen is
+  // then what makes the fallback usable in front of a room.
+  wireFullScreen(window)
   void window.loadURL(url)
   return window
 }

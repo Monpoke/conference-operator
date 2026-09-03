@@ -39,103 +39,108 @@ import { hostMonitor, type HostLoad } from './host.js'
 
 export { FIELDS_BY_VIEW, type DisplayPayload, type DisplayView }
 
-/** Un abonné au flux : sa vue, et la dernière valeur qu'il a reçue par champ. */
-interface AbonneFlux {
-  vue: DisplayView | null
-  dernier: Record<string, string>
-  ecrire: (evenement: string | null, corps: string) => void
+/**
+ * A subscriber to the stream: its view, and the last value it received per field.
+ *
+ * The HTTP routes below and their query parameters (`vue`, `salle`, `duree`,
+ * `file`) are a contract with the control app: they do not get renamed.
+ */
+interface StreamSubscriber {
+  view: DisplayView | null
+  last: Record<string, string>
+  write: (event: string | null, body: string) => void
 }
 
 export interface DisplayServerOptions {
   runtime: RoomRuntime
   assets: AssetCache
-  /** Programme courant, déjà en cache local — relu à chaque requête pour suivre les resyncs. */
+  /** The current program, already cached locally — read back on every request to follow the resyncs. */
   program: () => { contentHash: string; program: Program } | null
-  /** Nom d'affichage de la salle, issu de la configuration reçue du hub. */
+  /** The room's display name, from the configuration received from the hub. */
   roomName?: () => string | null
-  /** Configuration de la salle, pour le projet OpenFeedback. Relue à chaque envoi. */
+  /** The room's configuration, for the OpenFeedback project. Read back on every send. */
   roomConfig?: () => { openFeedbackProjectId: string | null } | null
-  /** Origine publique du hub, pour construire l'URL du mur affichée en QR. */
+  /** The hub's public origin, to build the wall URL shown as a QR code. */
   hubOrigin?: string
   /**
-   * Serveur Vite de la régie, en développement seulement.
+   * The control app's Vite server, in development only.
    *
-   * Renseigné, le poste proxifie Vite sous `/regie/` et la coquille pointe
-   * sur lui : le rechargement à chaud fonctionne sans que la page ait à sortir
-   * de son origine. Absent — le cas de tout poste installé — c'est le bundle
-   * construit qui est servi, et rien d'autre n'est possible.
+   * When filled in, the machine proxies Vite under `/regie/` and the shell points
+   * at it: hot reloading works without the page having to leave its origin.
+   * Absent — the case of every installed machine — it is the built bundle that is
+   * served, and nothing else is possible.
    */
   viteOrigin?: string | null
   /**
-   * Où trouver le bundle de la régie refaite.
+   * Where to find the rebuilt control app's bundle.
    *
-   * Injectable, et pas par goût de l'injection : `resolveControlBundle()` remonte les
-   * dossiers jusqu'à tomber sur un `dist/`, si bien qu'un test passait ou non
-   * selon qu'un build traînait sur la machine. Le hub s'est fait prendre au
-   * même piège avec la console, et le défaut ne se voit qu'en CI, une fois.
+   * Injectable, and not out of a taste for injection: `resolveControlBundle()`
+   * walks up the folders until it hits a `dist/`, so a test passed or not
+   * depending on whether a build was lying around on the machine. The hub fell
+   * into the same trap with the console, and the defect only shows in CI, once.
    */
-  bundleRegie?: () => { directory: string; manifest: string } | null
-  /** Cible des actions de régie. Absente, l'interface reste en lecture seule. */
+  controlBundle?: () => { directory: string; manifest: string } | null
+  /** The target of the control actions. Absent, the interface stays read-only. */
   control?: ControlTarget
-  /** État d'appairage, relu à chaque envoi. */
+  /** The pairing state, read back on every send. */
   pairing?: () => DisplayPayload['pairing']
-  /** Comptes de l'événement, relus du cache local à chaque envoi. */
+  /** The event's accounts, read back from the local cache on every send. */
   socialLinks?: () => DisplayPayload['socialLinks']
-  /** Identité de l'événement, relue du cache local à chaque envoi. */
+  /** The event's identity, read back from the local cache on every send. */
   event?: () => DisplayPayload['eventIdentity']
   /**
-   * Signale qu'une régie regarde (ou non) les niveaux audio.
+   * Reports that a control app is (or is not) watching the audio levels.
    *
-   * Le vumètre d'OBS émet une cinquantaine de fois par seconde : on ne s'y
-   * abonne que tant qu'une page l'affiche, et on s'en détache dès qu'elle se
-   * ferme. Une salle dont personne ne regarde les niveaux n'en paie pas le prix.
+   * OBS's VU meter emits some fifty times a second: we only subscribe to it while
+   * a page displays it, and detach as soon as it closes. A room nobody is watching
+   * the levels of does not pay their price.
    */
-  onNiveauxDemandes?: (actif: boolean) => void
-  /** Charge du poste, relevée à la demande. Par défaut, celle de cette machine. */
-  hote?: () => HostLoad
+  onLevelsRequested?: (active: boolean) => void
+  /** The machine's load, read on demand. By default, this machine's. */
+  hostLoad?: () => HostLoad
   host?: string
   port?: number
 }
 
 /**
- * Serveur local qui sert l'écran de salle.
+ * The local server that serves the room screen.
  *
- * La même URL alimente la Browser Source d'OBS-A **et** une fenêtre Electron
- * plein écran de secours : si OBS plante, l'opérateur bascule sur la fenêtre
- * native et la projection continue.
+ * The same URL feeds OBS-A's Browser Source **and** a full-screen Electron
+ * fallback window: if OBS crashes, the operator switches to the native window and
+ * the projection carries on.
  */
 export class DisplayServer {
   private readonly app: FastifyInstance
-  private readonly clients = new Set<AbonneFlux>()
-  private readonly abonnesNiveaux = new Set<(corps: string) => void>()
+  private readonly clients = new Set<StreamSubscriber>()
+  private readonly levelSubscribers = new Set<(body: string) => void>()
   /**
-   * QR du mur, calculé une seule fois par salle.
+   * The wall's QR code, computed once per room.
    *
-   * Le régénérer à chaque envoi d'état coûterait un rendu par seconde pour une
-   * image qui ne change jamais.
+   * Regenerating it on every state send would cost one render per second for an
+   * image that never changes.
    */
   private wallCache: { url: string; qrSvg: string } | null = null
   private wallCacheKey: string | null = null
-  /** Même raison pour le QR OpenFeedback, qui change à chaque conférence. */
+  /** The same reason for the OpenFeedback QR code, which changes with every talk. */
   private feedbackCache: { url: string; qrSvg: string } | null = null
   private feedbackCacheKey: string | null = null
-  private readonly surChangement: () => void
+  private readonly onStateChange: () => void
   /**
-   * Relevé de charge du poste.
+   * The machine's load reading.
    *
-   * Créé ici, et non à chaque requête : la mesure est une **différence** entre
-   * deux lectures des compteurs du noyau, donc elle n'existe que si quelqu'un
-   * garde le repère précédent.
+   * Created here, and not on every request: the measurement is a **difference**
+   * between two reads of the kernel's counters, so it only exists if somebody
+   * keeps the previous mark.
    */
-  private readonly hote: () => HostLoad
+  private readonly hostLoad: () => HostLoad
 
   constructor(private readonly options: DisplayServerOptions) {
-    this.hote = options.hote ?? hostMonitor()
+    this.hostLoad = options.hostLoad ?? hostMonitor()
     this.app = Fastify({ logger: false })
     this.registerRoutes()
-    // Rediffuse à chaque changement d'état : l'écran n'interroge jamais.
-    this.surChangement = () => this.broadcast()
-    options.runtime.on('state', this.surChangement)
+    // Rebroadcasts on every state change: the screen never polls.
+    this.onStateChange = () => this.broadcast()
+    options.runtime.on('state', this.onStateChange)
   }
 
   private payload(): DisplayPayload {
@@ -144,7 +149,7 @@ export class DisplayServer {
     const roomName = this.options.roomName?.() ?? null
     const diagnostics = this.options.control?.diagnostics() ?? null
     const wall = this.wallFor(state.roomId)
-    const feedback = this.feedbackPour(state.currentSession?.id ?? null)
+    const feedback = this.feedbackFor(state.currentSession?.id ?? null)
     const pairing = this.options.pairing?.() ?? null
     const socialLinks = this.options.socialLinks?.() ?? []
     const eventIdentity = this.options.event?.() ?? DEFAULT_EVENT_IDENTITY
@@ -166,8 +171,8 @@ export class DisplayServer {
       }
     }
 
-    // Les URLs sont réécrites vers le cache local : la page ne doit jamais
-    // dépendre d'Internet pendant l'événement.
+    // The URLs are rewritten towards the local cache: the page must never depend
+    // on the Internet during the event.
     const program = this.options.assets.localize(cached.program)
     return {
       state,
@@ -180,45 +185,44 @@ export class DisplayServer {
       wall,
       feedback,
       pairing,
-      otherRooms: this.autresSalles(program, state.roomId),
+      otherRooms: this.otherRooms(program, state.roomId),
       socialLinks,
       eventIdentity,
     }
   }
 
   /**
-   * Ce qui se joue, ou va se jouer, dans les autres salles.
+   * What is going on, or about to go on, in the other rooms.
    *
-   * Calculé sur le programme en cache et l'horloge corrigée du hub — jamais sur
-   * l'heure du poste, qui peut en être à des semaines quand le hub tourne sur
-   * une horloge simulée. Les pauses sont écartées : « Déjeuner en Track #2 »
-   * n'aide personne à choisir où aller.
+   * Computed on the cached program and the hub's corrected clock — never on the
+   * machine's time, which can be weeks away when the hub runs on a simulated
+   * clock. The breaks are discarded: "Lunch in Track #2" helps nobody choose where
+   * to go.
    */
-  private autresSalles(program: Program, roomId: string | null): DisplayPayload['otherRooms'] {
+  private otherRooms(program: Program, roomId: string | null): DisplayPayload['otherRooms'] {
     const at = this.options.runtime.correctedNow()
     return program.rooms
-      .filter((salle) => salle.id !== roomId)
-      .map((salle) => {
+      .filter((room) => room.id !== roomId)
+      .map((room) => {
         /**
-         * La position se calcule sur **tous** les créneaux, les pauses
-         * comprises, et on ne retient que les conférences ensuite.
+         * The position is computed on **all** the slots, breaks included, and we
+         * keep only the talks afterwards.
          *
-         * L'ordre compte : la fin d'un créneau se déduit du début du suivant
-         * quand l'export ne la donne pas, et chercher directement dans une
-         * liste filtrée faisait sauter la pause qui le ferme. Un talk sans
-         * heure de fin restait alors « en cours » sur l'écran d'à côté jusqu'à
-         * la fin de la journée.
+         * The order matters: a slot's end is derived from the next one's start when
+         * the export does not give it, and searching directly in a filtered list
+         * skipped the break that closes it. A talk with no end time then stayed
+         * "running" on the neighbouring screen until the end of the day.
          */
-        const creneaux = sessionsForRoom(program, salle.id)
-        const { current } = timelinePosition(creneaux, at)
-        // Les pauses sont écartées ici : « Déjeuner en Track #2 » n'aide
-        // personne à choisir où aller.
-        const courant = current?.kind === 'talk' ? current : null
+        const slots = sessionsForRoom(program, room.id)
+        const { current } = timelinePosition(slots, at)
+        // The breaks are discarded here: "Lunch in Track #2" helps nobody choose
+        // where to go.
+        const runningTalk = current?.kind === 'talk' ? current : null
         const session =
-          courant ?? creneaux.find((c) => c.kind === 'talk' && c.startsAtMs > at) ?? null
+          runningTalk ?? slots.find((c) => c.kind === 'talk' && c.startsAtMs > at) ?? null
         return {
-          roomId: salle.id,
-          name: salle.name,
+          roomId: room.id,
+          name: room.name,
           session:
             session == null
               ? null
@@ -226,44 +230,44 @@ export class DisplayServer {
                   id: session.id,
                   title: session.title,
                   startsAt: session.startsAt,
-                  speakers: session.speakers.map((personne) => personne.name),
+                  speakers: session.speakers.map((person) => person.name),
                 },
-          running: session != null && session === courant,
+          running: session != null && session === runningTalk,
         }
       })
   }
 
   /**
-   * QR OpenFeedback de la conférence en cours.
+   * The running talk's OpenFeedback QR code.
    *
-   * Aucune requête : l'adresse se fabrique depuis le programme déjà en cache —
-   * voir `openFeedbackUrl`, partagé avec le hub pour que le lien affiché dans
-   * la console et le QR projeté ne puissent pas diverger. Le QR se dessine donc
-   * même réseau coupé, ce qui est bien le moment où l'on ne veut pas d'une
-   * image manquante à l'écran.
+   * No request: the address is built from the already cached program — see
+   * `openFeedbackUrl`, shared with the hub so that the link displayed in the
+   * console and the QR code projected cannot diverge. The QR code is therefore
+   * drawn even with the network cut, which is exactly the moment one does not want
+   * a missing image on the screen.
    */
-  private feedbackPour(sessionId: string | null): { url: string; qrSvg: string } | null {
+  private feedbackFor(sessionId: string | null): { url: string; qrSvg: string } | null {
     const config = this.options.roomConfig?.() ?? null
-    const projet = config?.openFeedbackProjectId ?? null
-    if (projet == null || sessionId == null) return null
+    const project = config?.openFeedbackProjectId ?? null
+    if (project == null || sessionId == null) return null
     if (this.feedbackCacheKey === sessionId && this.feedbackCache != null) return this.feedbackCache
 
     const cached = this.options.program()
-    const session = cached?.program.sessions.find((creneau) => creneau.id === sessionId) ?? null
+    const session = cached?.program.sessions.find((slot) => slot.id === sessionId) ?? null
     if (session == null) return null
-    const url = openFeedbackUrl(session, projet, cached?.program.timezone ?? DEFAULT_TIMEZONE)
+    const url = openFeedbackUrl(session, project, cached?.program.timezone ?? DEFAULT_TIMEZONE)
     if (url == null) return null
 
     this.feedbackCacheKey = sessionId
-    this.feedbackCache = { url, qrSvg: this.qrFeedback.get(sessionId) ?? '' }
-    void this.preparerQrFeedback(sessionId, url)
+    this.feedbackCache = { url, qrSvg: this.feedbackQr.get(sessionId) ?? '' }
+    void this.prepareFeedbackQr(sessionId, url)
     return this.feedbackCache
   }
 
-  /** QR dessiné en tâche de fond : le prochain envoi d'état le portera. */
-  private async preparerQrFeedback(sessionId: string, url: string): Promise<void> {
-    if (this.qrFeedback.has(sessionId)) return
-    this.qrFeedback.set(sessionId, '')
+  /** A QR code drawn in the background: the next state send will carry it. */
+  private async prepareFeedbackQr(sessionId: string, url: string): Promise<void> {
+    if (this.feedbackQr.has(sessionId)) return
+    this.feedbackQr.set(sessionId, '')
     const { toString } = await import('qrcode')
     const svg = await toString(url, {
       type: 'svg',
@@ -271,12 +275,12 @@ export class DisplayServer {
       errorCorrectionLevel: 'H',
       color: { dark: '#0d0f16', light: '#ffffff' },
     })
-    this.qrFeedback.set(sessionId, svg)
+    this.feedbackQr.set(sessionId, svg)
     this.feedbackCacheKey = null
     this.broadcast()
   }
 
-  /** Prépare (une fois) l'URL du mur et son QR pour la salle courante. */
+  /** Prepares (once) the wall's URL and its QR code for the current room. */
   private wallFor(roomId: string | null): { url: string; qrSvg: string } | null {
     const origin = this.options.hubOrigin
     if (origin == null || roomId == null) return null
@@ -288,24 +292,24 @@ export class DisplayServer {
     return this.wallCache
   }
 
-  /** QR rendus en amont : la génération est synchrone mais pas gratuite. */
+  /** QR codes rendered ahead of time: the generation is synchronous but not free. */
   private readonly pendingQr = new Map<string, string>()
-  /** QR OpenFeedback déjà dessinés, par conférence. */
-  private readonly qrFeedback = new Map<string, string>()
+  /** The OpenFeedback QR codes already drawn, per talk. */
+  private readonly feedbackQr = new Map<string, string>()
 
   /**
-   * Prégénère le QR d'une salle.
+   * Pre-generates a room's QR code.
    *
-   * Appelé au sync : à ce moment on connaît la salle, et l'écran peut ensuite
-   * afficher le mur sans latence.
+   * Called at sync time: at that moment the room is known, and the screen can then
+   * display the wall with no latency.
    */
   async prepareWallQr(roomId: string, url: string): Promise<void> {
     const { toString } = await import('qrcode')
     const svg = await toString(url, {
       type: 'svg',
       margin: 1,
-      // Correction élevée : le QR est photographié de loin, parfois de biais,
-      // souvent sur un vidéoprojecteur peu contrasté.
+      // A high correction level: the QR code is photographed from afar, sometimes
+      // at an angle, often on a low-contrast video projector.
       errorCorrectionLevel: 'H',
       color: { dark: '#0d0f16', light: '#ffffff' },
     })
@@ -315,88 +319,87 @@ export class DisplayServer {
   }
 
   /**
-   * Sérialise l'état une fois, champ par champ.
+   * Serializes the state once, field by field.
    *
-   * Découper à ce niveau permet de comparer et de n'envoyer que ce qui bouge,
-   * sans sérialiser deux fois : les chaînes produites ici sont celles qui
-   * partent sur le fil.
+   * Cutting it at this level makes it possible to compare and to send only what
+   * moves, without serializing twice: the strings produced here are the ones that
+   * go out on the wire.
    */
-  private champsSerialises(): Record<string, string> {
+  private serializedFields(): Record<string, string> {
     const payload = this.payload() as unknown as Record<string, unknown>
-    const sortie: Record<string, string> = {}
-    for (const [cle, valeur] of Object.entries(payload)) sortie[cle] = JSON.stringify(valeur ?? null)
-    return sortie
+    const output: Record<string, string> = {}
+    for (const [key, value] of Object.entries(payload)) output[key] = JSON.stringify(value ?? null)
+    return output
   }
 
-  /** Assemble un objet JSON à partir de champs déjà sérialisés. */
-  private static assembler(champs: Record<string, string>, cles: readonly string[]): string {
-    return `{${cles.map((cle) => `${JSON.stringify(cle)}:${champs[cle] ?? 'null'}`).join(',')}}`
+  /** Assembles a JSON object from already serialized fields. */
+  private static assemble(fields: Record<string, string>, keys: readonly string[]): string {
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${fields[key] ?? 'null'}`).join(',')}}`
   }
 
-  /** Champs visibles par une vue, dans l'ordre de la charge utile. */
-  private static clesDeVue(champs: Record<string, string>, vue: DisplayView | null): string[] {
-    const cles = Object.keys(champs)
-    if (vue == null) return cles
-    const autorises = new Set<string>(FIELDS_BY_VIEW[vue] as readonly string[])
-    return cles.filter((cle) => autorises.has(cle))
+  /** The fields visible to a view, in the payload's order. */
+  private static viewKeys(fields: Record<string, string>, view: DisplayView | null): string[] {
+    const keys = Object.keys(fields)
+    if (view == null) return keys
+    const allowed = new Set<string>(FIELDS_BY_VIEW[view] as readonly string[])
+    return keys.filter((key) => allowed.has(key))
   }
 
   /**
-   * Rediffuse ce qui a changé, à ceux que ça concerne.
+   * Rebroadcasts what changed, to those it concerns.
    *
-   * Deux propriétés voulues : un abonné dont rien n'a bougé ne reçoit **rien**
-   * (le tic d'horloge de la salle ne doit pas générer de trafic), et un abonné
-   * ne reçoit jamais un champ qu'il ne lit pas.
+   * Two intended properties: a subscriber nothing has moved for receives
+   * **nothing** (the room's clock tick must generate no traffic), and a subscriber
+   * never receives a field it does not read.
    */
   /**
-   * Diffuse les niveaux audio.
+   * Broadcasts the audio levels.
    *
-   * Volontairement hors du flux d'état : à 10 envois par seconde, les faire
-   * passer par la charge utile complète republierait tout l'état — programme
-   * compris — cent fois plus souvent que nécessaire.
+   * Deliberately outside the state stream: at 10 sends a second, passing them
+   * through the complete payload would republish the whole state — the program
+   * included — a hundred times more often than necessary.
    */
-  publierNiveaux(inputs: InputLevel[]): void {
-    if (this.abonnesNiveaux.size === 0) return
-    const corps = JSON.stringify({ inputs })
-    for (const ecrire of this.abonnesNiveaux) ecrire(corps)
+  publishLevels(inputs: InputLevel[]): void {
+    if (this.levelSubscribers.size === 0) return
+    const body = JSON.stringify({ inputs })
+    for (const write of this.levelSubscribers) write(body)
   }
 
   private broadcast(): void {
-    const champs = this.champsSerialises()
-    for (const abonne of this.clients) {
-      const cles = DisplayServer.clesDeVue(champs, abonne.vue)
-      const modifies = cles.filter((cle) => abonne.dernier[cle] !== champs[cle])
-      if (modifies.length === 0) continue
-      for (const cle of modifies) abonne.dernier[cle] = champs[cle] ?? 'null'
-      abonne.ecrire('delta', DisplayServer.assembler(champs, modifies))
+    const fields = this.serializedFields()
+    for (const subscriber of this.clients) {
+      const keys = DisplayServer.viewKeys(fields, subscriber.view)
+      const changed = keys.filter((key) => subscriber.last[key] !== fields[key])
+      if (changed.length === 0) continue
+      for (const key of changed) subscriber.last[key] = fields[key] ?? 'null'
+      subscriber.write('delta', DisplayServer.assemble(fields, changed))
     }
   }
 
   /**
-   * La fenêtre de l'opérateur.
+   * The operator's window.
    *
-   * Un bundle, et non plus un gabarit d'une seule pièce : la page pilote OBS
-   * pendant qu'une salle est pleine, et trois mille lignes de chaînes de
-   * caractères ne se relisaient plus. Le poste rend toujours la coquille
-   * lui-même, avec l'état complet dedans — voir `regie-shell.ts`.
+   * A bundle, and no longer a single-piece template: the page drives OBS while a
+   * room is full, and three thousand lines of strings were no longer readable. The
+   * machine always renders the shell itself, with the complete state inside — see
+   * `control-shell.ts`.
    */
-  private registerRegie(): void {
-    const bundle = (this.options.bundleRegie ?? resolveControlBundle)()
+  private registerControl(): void {
+    const bundle = (this.options.controlBundle ?? resolveControlBundle)()
     const vite = this.options.viteOrigin ?? null
 
     /*
-     * Vite passe devant le bundle, et non l'inverse.
+     * Vite comes before the bundle, and not the other way round.
      *
-     * L'ordre contraire semblait plus prudent — un poste installé n'a pas de
-     * Vite, une variable qui traîne ne doit pas le détourner. Il rendait en
-     * fait le développement impossible : `pnpm test` construit le bundle, et un
-     * `dist/` vieux de trois jours prenait alors le pas sur le serveur qui
-     * tourne. On développait sur une régie compilée, sans rechargement à chaud,
-     * et l'extension Vue refusait d'inspecter une page qu'elle voyait en mode
-     * production.
+     * The opposite order seemed more cautious — an installed machine has no Vite,
+     * a stray variable must not divert it. It in fact made development impossible:
+     * `pnpm test` builds the bundle, and a three-day-old `dist/` then took
+     * precedence over the running server. One developed on a compiled control app,
+     * with no hot reloading, and the Vue extension refused to inspect a page it saw
+     * in production mode.
      *
-     * Un `dist/` est un artefact ; une origine Vite est une intention. C'est
-     * l'intention qui gagne.
+     * A `dist/` is an artifact; a Vite origin is an intent. It is the intent that
+     * wins.
      */
     if (vite == null && bundle != null) {
       void this.app.register(fastifyStatic, {
@@ -409,9 +412,9 @@ export class DisplayServer {
       })
     }
 
-    // Développement : Vite derrière le poste, jamais devant. Le poste porte le
-    // flux d'état, les actions et le vumètre ; les faire transiter par Vite
-    // pour le seul confort du rechargement à chaud serait payer cher.
+    // Development: Vite behind the machine, never in front. The machine carries the
+    // state stream, the actions and the VU meter; routing them through Vite for the
+    // sole comfort of hot reloading would be paying dearly.
     if (vite != null) {
       void this.app.register(fastifyProxy, {
         upstream: vite,
@@ -420,8 +423,8 @@ export class DisplayServer {
         websocket: true,
         httpMethods: ['GET'],
         preHandler: (request, reply, done) => {
-          // La coquille est rendue ici : le proxy ne prend que ce que Vite sait
-          // rendre, et surtout pas l'adresse qui porte l'état embarqué.
+          // The shell is rendered here: the proxy only takes what Vite knows how to
+          // render, and above all not the address that carries the embedded state.
           if ((request.url.split('?')[0] ?? '') === '/regie') return reply.callNotFound()
           done()
         },
@@ -430,17 +433,16 @@ export class DisplayServer {
 
     this.app.get('/regie', async (_request, reply) => {
       reply.header('content-type', 'text/html; charset=utf-8')
-      // Jamais `immutable` sur la coquille : elle porte l'état de la salle, qui
-      // change à chaque seconde de la journée.
+      // Never `immutable` on the shell: it carries the room's state, which changes
+      // every second of the day.
       reply.header('cache-control', 'no-store')
 
       if (vite == null && bundle == null) {
         /*
-         * Le bundle manque, et aucun Vite n'est annoncé.
+         * The bundle is missing, and no Vite is announced.
          *
-         * Ce n'est pas un état d'exploitation : l'empaquetage embarque le
-         * bundle. Le dire en toutes lettres vaut mieux qu'un 404, qui enverrait
-         * chercher du côté de l'adresse.
+         * It is not an operational state: the packaging embeds the bundle. Saying so
+         * in full beats a 404, which would send one looking at the address.
          */
         reply.status(503)
         return reply.send(
@@ -464,13 +466,13 @@ export class DisplayServer {
 
     this.app.get('/display/projector', async (_request, reply) => {
       reply.header('content-type', 'text/html; charset=utf-8')
-      // L'état est embarqué : pas d'écran vide au rechargement de la Browser Source.
+      // The state is embedded: no blank screen when the Browser Source reloads.
       return reply.send(renderProjectorPage({ initialPayload: this.payload() }))
     })
 
     /**
-     * Bandeau live : une source de plus, posée où l'on veut qu'un message
-     * apparaisse — y compris dans la scène LIVE d'OBS-A, par-dessus les slides.
+     * The live banner: one more source, placed wherever a message should appear —
+     * including in OBS-A's LIVE scene, over the slides.
      */
     this.app.get('/display/overlay-live', async (_request, reply) => {
       reply.header('content-type', 'text/html; charset=utf-8')
@@ -482,14 +484,14 @@ export class DisplayServer {
       return reply.send(renderOverlayPage({ initialPayload: this.payload() }))
     })
 
-    this.registerRegie()
+    this.registerControl()
 
     /**
-     * Actions de régie.
+     * Control actions.
      *
-     * Validées avant d'atteindre OBS, et jamais propagées en exception : un
-     * échec revient à l'opérateur sous forme de message, pas d'une page cassée
-     * au milieu d'une intervention.
+     * Validated before reaching OBS, and never propagated as an exception: a
+     * failure comes back to the operator as a message, not as a broken page in the
+     * middle of an intervention.
      */
     this.app.post('/control/action', async (request, reply) => {
       if (this.options.control == null) {
@@ -500,19 +502,20 @@ export class DisplayServer {
         return reply.status(400).send({ ok: false, message: 'Action inconnue ou mal formée' })
       }
       const outcome = await runControlAction(this.options.control, parsed.data)
-      // L'état a pu changer : on repousse immédiatement plutôt que d'attendre un tic.
+      // The state may have changed: we push again immediately rather than waiting a
+      // tick.
       this.broadcast()
       return reply.status(outcome.ok ? 200 : 409).send(outcome)
     })
 
     /**
-     * Rushes produits, à la demande.
+     * The rushes produced, on demand.
      *
-     * Hors du flux d'état, et pour la même raison que le programme des autres
-     * salles : lire le dossier des captations à chaque tic coûterait un accès
-     * disque par seconde pour une liste qu'on ouvre trois fois dans la journée.
-     * Rien n'est sondé ici — ouvrir la modale ne doit pas lancer une série de
-     * ffprobe pendant qu'une conférence tourne.
+     * Outside the state stream, and for the same reason as the other rooms'
+     * program: reading the captures folder on every tick would cost one disk access
+     * a second for a list one opens three times a day. Nothing is probed here —
+     * opening the modal must not launch a series of ffprobes while a talk is
+     * running.
      */
     this.app.get('/control/recordings', async (_request, reply) => {
       if (this.options.control == null) {
@@ -528,13 +531,13 @@ export class DisplayServer {
     })
 
     /**
-     * Aperçu d'un rush, produit à la volée.
+     * A rush's preview, produced on the fly.
      *
-     * Vingt secondes remballées en MP4 fragmenté, et jamais le fichier entier :
-     * les rushes d'OBS sont des Matroska, qu'aucun navigateur ne sait ouvrir, et
-     * ils pèsent plusieurs gigaoctets. L'extrait répond à la seule question
-     * qu'on se pose devant la liste — « est-ce qu'il y a une image et du son ? »
-     * — sans rien écrire sur le disque ni attendre un téléchargement.
+     * Twenty seconds repackaged into fragmented MP4, and never the whole file:
+     * OBS's rushes are Matroska, which no browser knows how to open, and they weigh
+     * several gigabytes. The excerpt answers the only question one asks in front of
+     * the list — "is there a picture and some sound?" — without writing anything to
+     * disk or waiting for a download.
      */
     this.app.get<{ Querystring: { file?: string; at?: string; duree?: string } }>(
       '/control/recordings/extrait',
@@ -542,43 +545,42 @@ export class DisplayServer {
         if (this.options.control == null) {
           return reply.status(503).send({ ok: false, message: 'Régie indisponible' })
         }
-        const fichier = request.query.file
-        if (fichier == null || fichier.length === 0) {
+        const file = request.query.file
+        if (file == null || file.length === 0) {
           return reply.status(400).send({ ok: false, message: 'Fichier non précisé' })
         }
 
-        let extrait: Awaited<ReturnType<ControlTarget['readRecordingExtract']>>
+        let excerpt: Awaited<ReturnType<ControlTarget['readRecordingExtract']>>
         try {
-          extrait = await this.options.control.readRecordingExtract(
-            fichier,
+          excerpt = await this.options.control.readRecordingExtract(
+            file,
             Number(request.query.at ?? 0) || 0,
             Number(request.query.duree ?? 20_000) || 20_000,
           )
         } catch (cause) {
           return reply.status(409).send({ ok: false, message: (cause as Error).message })
         }
-        if (extrait == null) {
+        if (excerpt == null) {
           return reply.status(503).send({ ok: false, message: 'ffmpeg introuvable sur cette machine' })
         }
 
-        // Le flux s'écrit au fil de l'encodage : ni longueur connue, ni tranche
-        // possible. Le lecteur le prend comme un direct, ce qu'il est.
+        // The stream is written as the encoding goes: neither a known length nor a
+        // possible range. The player takes it as a live stream, which it is.
         reply.header('content-type', 'video/mp4')
         reply.header('accept-ranges', 'none')
         reply.header('cache-control', 'no-store')
-        // Refermer la modale ne doit pas laisser un ffmpeg tourner sur la
-        // machine qui enregistre la conférence suivante.
-        request.raw.on('close', () => extrait.arreter())
-        return reply.send(extrait.flux)
+        // Closing the modal must not leave an ffmpeg running on the machine that is
+        // recording the next talk.
+        request.raw.on('close', () => excerpt.stop())
+        return reply.send(excerpt.stream)
       },
     )
 
     /**
-     * Le rush tel quel, par tranche.
+     * The rush as it is, by range.
      *
-     * Pour l'ouvrir dans un lecteur qui sait lire du Matroska, ou le rapatrier
-     * sur une autre machine — ce qu'un aperçu de vingt secondes ne remplacera
-     * jamais.
+     * To open it in a player that knows how to read Matroska, or to fetch it onto
+     * another machine — which a twenty-second preview will never replace.
      */
     this.app.get<{ Querystring: { file?: string } }>(
       '/control/recordings/fichier',
@@ -586,38 +588,38 @@ export class DisplayServer {
         if (this.options.control == null) {
           return reply.status(503).send({ ok: false, message: 'Régie indisponible' })
         }
-        const fichier = request.query.file
-        if (fichier == null || fichier.length === 0) {
+        const file = request.query.file
+        if (file == null || file.length === 0) {
           return reply.status(400).send({ ok: false, message: 'Fichier non précisé' })
         }
 
-        let flux: Awaited<ReturnType<ControlTarget['readRecordingFile']>>
+        let stream: Awaited<ReturnType<ControlTarget['readRecordingFile']>>
         try {
-          flux = await this.options.control.readRecordingFile(fichier, request.headers.range ?? null)
+          stream = await this.options.control.readRecordingFile(file, request.headers.range ?? null)
         } catch (cause) {
           return reply.status(409).send({ ok: false, message: (cause as Error).message })
         }
-        if (flux == null) return reply.status(404).send({ ok: false, message: 'Fichier absent du disque' })
+        if (stream == null) return reply.status(404).send({ ok: false, message: 'Fichier absent du disque' })
 
-        const partiel = flux.debut > 0 || flux.fin < flux.taille - 1
-        reply.header('content-type', flux.type)
+        const partial = stream.start > 0 || stream.end < stream.size - 1
+        reply.header('content-type', stream.type)
         reply.header('accept-ranges', 'bytes')
-        reply.header('content-length', String(flux.fin - flux.debut + 1))
-        if (partiel) {
-          reply.header('content-range', `bytes ${flux.debut}-${flux.fin}/${flux.taille}`)
+        reply.header('content-length', String(stream.end - stream.start + 1))
+        if (partial) {
+          reply.header('content-range', `bytes ${stream.start}-${stream.end}/${stream.size}`)
           reply.status(206)
         }
-        request.raw.on('close', () => flux.flux.destroy())
-        return reply.send(flux.flux)
+        request.raw.on('close', () => stream.stream.destroy())
+        return reply.send(stream.stream)
       },
     )
 
     /**
-     * Programme d'une autre salle, à la demande.
+     * Another room's program, on demand.
      *
-     * Volontairement hors du flux d'état : embarquer les 27 sessions de
-     * l'événement dans chaque envoi SSE coûterait à chaque changement d'écran,
-     * pour une donnée que la régie ne consulte qu'à l'ouverture d'un onglet.
+     * Deliberately outside the state stream: embedding the event's 27 sessions in
+     * every SSE send would cost on every screen change, for data the control app
+     * only consults when a tab is opened.
      */
     this.app.get<{ Querystring: { salle?: string } }>('/display/sessions', async (request, reply) => {
       const cached = this.options.program()
@@ -625,34 +627,34 @@ export class DisplayServer {
 
       const program = this.options.assets.localize(cached.program)
       const roomId = request.query.salle ?? null
-      if (roomId != null && !program.rooms.some((salle) => salle.id === roomId)) {
+      if (roomId != null && !program.rooms.some((room) => room.id === roomId)) {
         return reply.status(404).send({ error: 'salle inconnue au programme' })
       }
       return {
         roomId,
-        rooms: program.rooms.map((salle) => ({ id: salle.id, name: salle.name })),
+        rooms: program.rooms.map((room) => ({ id: room.id, name: room.name })),
         sessions: roomId == null ? [] : sessionsForRoom(program, roomId),
       }
     })
 
     /**
-     * Charge du poste, à la demande.
+     * The machine's load, on demand.
      *
-     * Hors du flux d'état, et c'est le point : un chiffre qui bouge chaque
-     * seconde placé dans la charge utile republierait tout le diagnostic —
-     * salles, journal, configuration — à chaque tic, alors qu'une salle au
-     * repos ne doit générer aucun trafic. Ici, seule la régie ouverte
-     * interroge, et elle interroge une réponse de trois champs.
+     * Outside the state stream, and that is the point: a figure that moves every
+     * second placed in the payload would republish the whole diagnostic — rooms,
+     * log, configuration — on every tick, whereas an idle room must generate no
+     * traffic. Here, only an open control app asks, and it asks for a three-field
+     * answer.
      */
-    this.app.get('/control/host', async () => this.hote())
+    this.app.get('/control/host', async () => this.hostLoad())
 
     /**
-     * Téléversements en cours, et pourquoi rien ne part.
+     * The uploads in progress, and why nothing is leaving.
      *
-     * Hors du flux d'état pour la même raison que la charge du poste : un
-     * pourcentage qui avance republierait tout le diagnostic à chaque part.
-     * La modale des enregistrements l'interroge tant qu'elle est ouverte, et
-     * personne ne paie rien quand elle est fermée.
+     * Outside the state stream for the same reason as the machine's load: a
+     * percentage that advances would republish the whole diagnostic on every part.
+     * The recordings modal polls it while it is open, and nobody pays anything when
+     * it is closed.
      */
     this.app.get('/control/uploads', async (_request, reply) => {
       if (this.options.control?.vodUploads == null) {
@@ -664,12 +666,12 @@ export class DisplayServer {
     this.app.get('/display/data', async () => this.payload())
 
     /**
-     * Flux d'état en SSE, et non en WebSocket.
+     * The state stream in SSE, and not in WebSocket.
      *
-     * Le navigateur reconnecte un `EventSource` tout seul, sans une ligne de
-     * code côté page. Pour l'écran du vidéoprojecteur — celui qui ne doit
-     * jamais rester figé et qui n'a aucune étape de build — c'est exactement la
-     * propriété qu'on veut. Le flux est unidirectionnel de toute façon.
+     * The browser reconnects an `EventSource` by itself, with no line of code on
+     * the page side. For the video projector's screen — the one that must never
+     * stay frozen and that has no build step — that is exactly the property we
+     * want. The stream is one-way anyway.
      */
     this.app.get<{ Querystring: { vue?: string } }>('/display/state', (request, reply) => {
       reply.raw.writeHead(200, {
@@ -678,42 +680,42 @@ export class DisplayServer {
         connection: 'keep-alive',
       })
 
-      const demandee = (request.query as { vue?: string } | undefined)?.vue
-      const vue: DisplayView | null =
-        demandee === 'projecteur' || demandee === 'overlay' || demandee === 'bandeau' || demandee === 'regie'
-          ? demandee
+      const requested = (request.query as { vue?: string } | undefined)?.vue
+      const view: DisplayView | null =
+        requested === 'projecteur' || requested === 'overlay' || requested === 'bandeau' || requested === 'regie'
+          ? requested
           : null
 
-      const ecrire = (evenement: string | null, corps: string): void => {
-        reply.raw.write(`${evenement == null ? '' : `event: ${evenement}\n`}data: ${corps}\n\n`)
+      const write = (event: string | null, body: string): void => {
+        reply.raw.write(`${event == null ? '' : `event: ${event}\n`}data: ${body}\n\n`)
       }
 
-      // Instantané complet à l'ouverture : c'est aussi ce qui répare la page
-      // après une reconnexion d'`EventSource`, sans logique de reprise à écrire.
-      const champs = this.champsSerialises()
-      const cles = DisplayServer.clesDeVue(champs, vue)
-      const abonne: AbonneFlux = { vue, dernier: {}, ecrire }
-      for (const cle of cles) abonne.dernier[cle] = champs[cle] ?? 'null'
-      ecrire(null, DisplayServer.assembler(champs, cles))
-      this.clients.add(abonne)
+      // A complete snapshot on opening: it is also what repairs the page after an
+      // `EventSource` reconnection, with no resume logic to write.
+      const fields = this.serializedFields()
+      const keys = DisplayServer.viewKeys(fields, view)
+      const subscriber: StreamSubscriber = { view, last: {}, write }
+      for (const key of keys) subscriber.last[key] = fields[key] ?? 'null'
+      write(null, DisplayServer.assemble(fields, keys))
+      this.clients.add(subscriber)
 
-      // Battement régulier : garde la connexion ouverte à travers les proxys et
-      // révèle une page morte plutôt que de la laisser figée en silence. C'est
-      // désormais le seul trafic d'une salle au repos.
+      // A regular heartbeat: keeps the connection open through the proxies and
+      // reveals a dead page rather than leaving it frozen in silence. It is now an
+      // idle room's only traffic.
       const heartbeat = setInterval(() => reply.raw.write(': ping\n\n'), 10_000)
 
       request.raw.on('close', () => {
         clearInterval(heartbeat)
-        this.clients.delete(abonne)
+        this.clients.delete(subscriber)
       })
     })
 
     /**
-     * Niveaux audio, en flux séparé.
+     * The audio levels, in a separate stream.
      *
-     * Séparé pour deux raisons : la cadence (10 Hz contre quelques messages par
-     * heure pour l'état), et le fait que seule la régie s'en sert. Fermer la
-     * page suffit à couper l'abonnement chez OBS.
+     * Separate for two reasons: the cadence (10 Hz against a few messages an hour
+     * for the state), and the fact that only the control app uses them. Closing the
+     * page is enough to cut the subscription at OBS.
      */
     this.app.get('/display/audio', (request, reply) => {
       reply.raw.writeHead(200, {
@@ -722,25 +724,25 @@ export class DisplayServer {
         connection: 'keep-alive',
       })
 
-      const ecrire = (corps: string): void => {
-        reply.raw.write(`data: ${corps}\n\n`)
+      const write = (body: string): void => {
+        reply.raw.write(`data: ${body}\n\n`)
       }
 
-      // Premier octet immédiat : sans lui, les en-têtes ne partent pas et le
-      // flux ne s'ouvre côté page qu'à la première mesure — donc jamais si la
-      // salle est silencieuse ou si OBS n'est pas encore là.
+      // An immediate first byte: without it, the headers do not leave and the
+      // stream only opens on the page side at the first measurement — so never if
+      // the room is silent or if OBS is not there yet.
       reply.raw.write(': flux ouvert\n\n')
 
-      const premier = this.abonnesNiveaux.size === 0
-      this.abonnesNiveaux.add(ecrire)
-      if (premier) this.options.onNiveauxDemandes?.(true)
+      const first = this.levelSubscribers.size === 0
+      this.levelSubscribers.add(write)
+      if (first) this.options.onLevelsRequested?.(true)
 
       const heartbeat = setInterval(() => reply.raw.write(': ping\n\n'), 10_000)
 
       request.raw.on('close', () => {
         clearInterval(heartbeat)
-        this.abonnesNiveaux.delete(ecrire)
-        if (this.abonnesNiveaux.size === 0) this.options.onNiveauxDemandes?.(false)
+        this.levelSubscribers.delete(write)
+        if (this.levelSubscribers.size === 0) this.options.onLevelsRequested?.(false)
       })
     })
 
@@ -748,7 +750,7 @@ export class DisplayServer {
       const asset = await this.options.assets.read(request.params.sha256)
       if (asset == null) return reply.status(404).send({ error: 'asset absent du cache' })
       reply.header('content-type', asset.contentType ?? 'application/octet-stream')
-      // Adressé par contenu : jamais réécrit, donc cacheable indéfiniment.
+      // Content-addressed: never rewritten, so cacheable indefinitely.
       reply.header('cache-control', 'public, max-age=31536000, immutable')
       return reply.send(asset.bytes)
     })
@@ -763,9 +765,9 @@ export class DisplayServer {
   }
 
   async close(): Promise<void> {
-    // Se désabonner d'abord : sans ça, un dernier changement d'état déclenche
-    // une lecture du programme sur une base déjà fermée.
-    this.options.runtime.off('state', this.surChangement)
+    // Unsubscribe first: without that, one last state change triggers a read of the
+    // program on an already closed database.
+    this.options.runtime.off('state', this.onStateChange)
     this.clients.clear()
     await this.app.close()
   }

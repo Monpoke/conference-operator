@@ -26,105 +26,103 @@ import {
 } from '@cloudnord/contract'
 
 /**
- * Comptes relus du cache local.
+ * The accounts read back from the local cache.
  *
- * Tolérant : un JSON corrompu ou un schéma qui a bougé ne doit pas empêcher la
- * salle de démarrer pour une page décorative. La boucle sautera ses réseaux.
+ * Tolerant: a corrupt JSON or a schema that has moved must not stop the room from
+ * starting for a decorative page. The loop will simply skip its social page.
  */
-function lireReseaux(brut: string | null): SocialLink[] {
-  if (brut == null) return []
+function readSocialLinks(raw: string | null): SocialLink[] {
+  if (raw == null) return []
   try {
-    const lu = socialLinkSchema.array().safeParse(JSON.parse(brut))
-    return lu.success ? lu.data : []
+    const parsed = socialLinkSchema.array().safeParse(JSON.parse(raw))
+    return parsed.success ? parsed.data : []
   } catch {
     return []
   }
 }
 
 /**
- * Identité de l'événement relue du cache local.
+ * The shipping settings read back from the cache.
  *
- * Le repli est neutre et non un nom d'événement : une machine jamais
- * synchronisée ne sait pas encore où elle est, et afficher le nom d'une autre
- * édition serait pire que ne rien affirmer. Le premier sync corrige.
+ * `null` — cache absent, unreadable, or a schema that has moved — means "no
+ * destination", so nothing leaves. It is the fallback we want: a room that no
+ * longer knows what the hub expects of it must not start uploading on a guess.
  */
-/**
- * Réglages de rapatriement relus du cache.
- *
- * `null` — cache absent, illisible, ou schéma qui a bougé — vaut « pas de
- * destination », donc rien ne part. C'est le repli qu'on veut : une salle qui
- * ne sait plus ce que le hub attend d'elle ne doit pas se mettre à téléverser
- * sur une supposition.
- */
-function lireVod(brut: string | null): VodSync | null {
-  if (brut == null) return null
+function readVod(raw: string | null): VodSync | null {
+  if (raw == null) return null
   try {
-    const lu = vodSyncSchema.safeParse(JSON.parse(brut))
-    return lu.success ? lu.data : null
+    const parsed = vodSyncSchema.safeParse(JSON.parse(raw))
+    return parsed.success ? parsed.data : null
   } catch {
     return null
   }
 }
 
-function lireIdentite(brut: string | null): EventIdentity {
-  if (brut == null) return DEFAULT_EVENT_IDENTITY
+/**
+ * The event's identity, read back from the local cache.
+ *
+ * The fallback is neutral and not an event name: a machine that has never
+ * synchronized does not know yet where it is, and displaying another edition's
+ * name would be worse than claiming nothing. The first sync corrects it.
+ */
+function readIdentity(raw: string | null): EventIdentity {
+  if (raw == null) return DEFAULT_EVENT_IDENTITY
   try {
-    const lu = eventIdentitySchema.safeParse(JSON.parse(brut))
-    return lu.success ? lu.data : DEFAULT_EVENT_IDENTITY
+    const parsed = eventIdentitySchema.safeParse(JSON.parse(raw))
+    return parsed.success ? parsed.data : DEFAULT_EVENT_IDENTITY
   } catch {
     return DEFAULT_EVENT_IDENTITY
   }
 }
 
 /**
- * Dossier des migrations locales.
+ * The local migrations folder.
  *
- * Deux emplacements selon le contexte : depuis les sources, il vit dans le
- * monorepo ; dans l'application installée, electron-builder le copie sous
- * `resources/`. Résoudre uniquement le premier produirait une application qui
- * démarre en développement et plante à l'installation — le genre de panne qu'on
- * découvre la veille.
+ * Two locations depending on the context: from the sources it lives in the
+ * monorepo; in the installed application, electron-builder copies it under
+ * `resources/`. Resolving only the first would produce an application that starts
+ * in development and crashes on installation — the kind of failure one discovers
+ * the day before.
  *
- * Le chemin du monorepo est **cherché**, pas compté. Ce fichier est chargé de
- * deux profondeurs différentes : `src/core/store.ts` sous `tsx`, et
- * `dist/main.cjs` une fois bundlé pour Electron, où tout le cœur applicatif est
- * aplati dans un seul fichier. Un nombre de `..` juste pour l'un est faux pour
- * l'autre — et c'est ce qui faisait planter le client Electron au démarrage,
- * sur un « Can't find meta/_journal.json » qui ne nomme ni le dossier cherché
- * ni la raison.
+ * The monorepo's path is **searched for**, not counted. This file is loaded from
+ * two different depths: `src/core/store.ts` under `tsx`, and `dist/main.cjs` once
+ * bundled for Electron, where the whole application core is flattened into a
+ * single file. A number of `..` right for one is wrong for the other — and that is
+ * what made the Electron client crash at startup, on a "Can't find
+ * meta/_journal.json" that names neither the folder searched for nor the reason.
  */
 function resolveMigrationsFolder(): string {
-  const empaquete = process.resourcesPath
-  if (empaquete != null) {
-    const candidat = join(empaquete, 'migrations', 'client')
-    if (existsSync(candidat)) return candidat
+  const packaged = process.resourcesPath
+  if (packaged != null) {
+    const candidate = join(packaged, 'migrations', 'client')
+    if (existsSync(candidate)) return candidate
   }
 
-  const visites: string[] = []
-  let dossier = dirname(fileURLToPath(import.meta.url))
+  const visited: string[] = []
+  let directory = dirname(fileURLToPath(import.meta.url))
   for (;;) {
-    const candidat = join(dossier, 'packages', 'db', 'migrations', 'client')
-    visites.push(candidat)
-    if (existsSync(candidat)) return candidat
-    const parent = dirname(dossier)
-    if (parent === dossier) break
-    dossier = parent
+    const candidate = join(directory, 'packages', 'db', 'migrations', 'client')
+    visited.push(candidate)
+    if (existsSync(candidate)) return candidate
+    const parent = dirname(directory)
+    if (parent === directory) break
+    directory = parent
   }
 
-  // Dit franchement, et avec ce qui a été essayé : sans migrations, la base
-  // locale n'existe pas, et sans base locale il n'y a pas de salle.
+  // Said plainly, and with what was tried: with no migrations, the local database
+  // does not exist, and with no local database there is no room.
   throw new Error(
     [
       'Migrations locales introuvables : la salle ne peut pas ouvrir sa base.',
       "Dans l'application installée, elles voyagent sous resources/migrations/client",
       "(extraResources d'electron-builder) ; depuis les sources, dans packages/db/migrations/client.",
       'Cherchées ici :',
-      ...visites.map((chemin) => `    ${chemin}`),
+      ...visited.map((path) => `    ${path}`),
     ].join('\n'),
   )
 }
 
-/** Ligne unique : les réglages de la salle tiennent en un enregistrement. */
+/** A single row: the room's settings fit in one record. */
 const SETTINGS_ID = 1
 
 export interface RoomSettings {
@@ -132,17 +130,17 @@ export interface RoomSettings {
   token: string | null
   config: RoomConfig | null
   activeContentHash: string | null
-  /** Comptes de l'événement, poussés par le hub. Mis en cache comme le programme. */
+  /** The event's accounts, pushed by the hub. Cached like the program. */
   socialLinks: SocialLink[]
   /**
-   * Nom de l'événement, poussé par le hub. En cache pour la même raison.
+   * The event's name, pushed by the hub. Cached for the same reason.
    *
-   * C'est ce qui titre les fenêtres et la boucle d'attente : l'écrire en dur
-   * rendait une machine installée pour une édition incapable d'en servir une
-   * autre sans réinstallation.
+   * It is what titles the windows and the waiting loop: writing it in hard made a
+   * machine installed for one edition unable to serve another without a
+   * reinstallation.
    */
   event: EventIdentity
-  /** Destination et politique de rapatriement, poussées par le hub. */
+  /** The shipping destination and policy, pushed by the hub. */
   vod: VodSync | null
   nextSeq: number
   lastCommandSeq: number
@@ -150,11 +148,11 @@ export interface RoomSettings {
 }
 
 /**
- * État local persistant de la machine.
+ * The machine's persistent local state.
  *
- * C'est le socle de l'autonomie : programme, réglages et progression du flux de
- * commandes survivent à un crash, à un redémarrage et à une journée entière sans
- * réseau. Une salle démarre à partir de cette base seule.
+ * It is the foundation of the self-sufficiency: the program, the settings and the
+ * command stream's progress survive a crash, a restart and a whole day with no
+ * network. A room starts from this database alone.
  */
 export class LocalStore {
   private readonly orm: ReturnType<typeof drizzle<typeof clientSchema>>
@@ -166,8 +164,8 @@ export class LocalStore {
     try {
       migrate(this.orm, { migrationsFolder: resolveMigrationsFolder() })
     } catch (cause) {
-      // Même situation que côté hub : une base créée avec un schéma antérieur.
-      // La trace brute de Drizzle ne dit pas quoi faire ; ce message si.
+      // The same situation as on the hub side: a database created with an earlier
+      // schema. Drizzle's raw trace does not say what to do; this message does.
       const detail = String((cause as { cause?: { message?: string } })?.cause?.message ?? '')
       if (/already exists/i.test(detail)) {
         throw new Error(
@@ -208,11 +206,11 @@ export class LocalStore {
       token: row?.token ?? null,
       config: row?.configJson == null ? null : roomConfigSchema.parse(JSON.parse(row.configJson)),
       activeContentHash: row?.activeContentHash ?? null,
-      // Réglage décoratif : un cache illisible ne doit pas empêcher la salle de
-      // démarrer, la boucle sautera simplement sa page réseaux.
-      socialLinks: lireReseaux(row?.socialLinksJson ?? null),
-      event: lireIdentite(row?.eventIdentityJson ?? null),
-      vod: lireVod(row?.vodJson ?? null),
+      // A decorative setting: an unreadable cache must not stop the room from
+      // starting, the loop will simply skip its social page.
+      socialLinks: readSocialLinks(row?.socialLinksJson ?? null),
+      event: readIdentity(row?.eventIdentityJson ?? null),
+      vod: readVod(row?.vodJson ?? null),
       nextSeq: row?.nextSeq ?? 1,
       lastCommandSeq: row?.lastCommandSeq ?? 0,
       clockOffsetMs: row?.clockOffsetMs ?? 0,
@@ -235,11 +233,10 @@ export class LocalStore {
   }
 
   /**
-   * Réserve le prochain `seq` sortant.
+   * Reserves the next outbound `seq`.
    *
-   * Monotone et jamais réinitialisé, y compris après un redémarrage : c'est ce
-   * qui permet au hub d'appliquer les événements dans l'ordre d'émission même
-   * quand ils remontent des heures plus tard.
+   * Monotonic and never reset, including after a restart: it is what lets the hub
+   * apply the events in emission order even when they come up hours later.
    */
   nextOutboundSeq(): number {
     const row = this.orm
@@ -251,7 +248,7 @@ export class LocalStore {
     return row.nextSeq - 1
   }
 
-  /** Enregistre un snapshot et le rend actif. */
+  /** Records a snapshot and makes it active. */
   saveProgram(contentHash: string, program: Program): void {
     this.orm.transaction((tx) => {
       tx.update(programCache).set({ active: false }).run()
@@ -270,10 +267,10 @@ export class LocalStore {
   }
 
   /**
-   * Programme actif en cache.
+   * The active cached program.
    *
-   * Renvoie `null` plutôt que de lever si le cache est corrompu : un écran de
-   * repli vaut mieux qu'une application qui refuse de démarrer devant une salle.
+   * Returns `null` rather than throwing if the cache is corrupt: a fallback screen
+   * beats an application that refuses to start in front of a room.
    */
   activeProgram(): { contentHash: string; program: Program } | null {
     const row = this.orm.select().from(programCache).where(eq(programCache.active, true)).get()
@@ -283,7 +280,7 @@ export class LocalStore {
     return { contentHash: row.contentHash, program: parsed.data }
   }
 
-  /** Une commande déjà appliquée ne doit pas l'être deux fois après reconnexion. */
+  /** A command already applied must not be applied twice after a reconnection. */
   hasApplied(seq: number): boolean {
     return (
       this.orm.select().from(appliedCommand).where(eq(appliedCommand.seq, seq)).get() !== undefined
@@ -301,12 +298,11 @@ export class LocalStore {
   }
 
   /**
-   * Journal local.
+   * The local log.
    *
-   * C'est la seule trace exploitable quand le réseau a été absent toute la
-   * journée : événements rejetés définitivement, incidents OBS, expirations.
-   * Accepte une transaction pour être écrit dans le même atome que la
-   * suppression qu'il justifie.
+   * It is the only usable trace when the network has been absent all day: events
+   * rejected for good, OBS incidents, expirations. Accepts a transaction so it can
+   * be written in the same atom as the deletion it justifies.
    */
   log(
     level: 'info' | 'warn' | 'error',
@@ -324,7 +320,7 @@ export class LocalStore {
       .run()
   }
 
-  /** Entrées de journal les plus récentes, pour le panneau de diagnostic en régie. */
+  /** The most recent log entries, for the diagnostic panel in the control app. */
   recentLogs(limit = 50) {
     return this.orm
       .select()
@@ -335,7 +331,7 @@ export class LocalStore {
   }
 
   close(): void {
-    // `better-sqlite3` expose la connexion sous `$client` via Drizzle.
+    // `better-sqlite3` exposes the connection under `$client` through Drizzle.
     ;(this.orm as unknown as { $client: { close: () => void } }).$client.close()
   }
 }

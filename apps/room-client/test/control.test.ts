@@ -130,7 +130,7 @@ beforeEach(async () => {
     obsTransportFactory: fakeObsPair(recDir),
     // Le sélecteur de dossier du poste. Fourni par Electron en vrai ; ici par
     // le test, qui décide ce que l'opérateur choisit — ou s'il renonce.
-    choisirDossier: async (initial) => {
+    chooseFolder: async (initial) => {
       dossierDemandeAvec = initial
       return dossierChoisi
     },

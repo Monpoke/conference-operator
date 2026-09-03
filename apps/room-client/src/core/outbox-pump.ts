@@ -1,7 +1,7 @@
 import type { Connectivity, DisplayMode, Envelope, RoomEventPayload, SceneRole } from '@cloudnord/contract'
 import { heartbeatDedupKey, type Outbox } from './outbox.js'
 
-// Réexportée ici : c'est la pompe qui l'utilise à l'émission.
+// Re-exported here: it is the pump that uses it when emitting.
 export { heartbeatDedupKey }
 import type { LocalStore } from './store.js'
 
@@ -15,11 +15,11 @@ export interface PushResult {
 export interface OutboxPumpOptions {
   outbox: Outbox
   store: LocalStore
-  /** Remontée vers le hub. Injectée pour tester la vidange sans réseau. */
+  /** Sending up to the hub. Injected to test the drain with no network. */
   push: (batch: Envelope[]) => Promise<PushResult>
   onConnectivity?: (connectivity: Connectivity) => void
   onDepth?: (depth: number) => void
-  /** Décalage d'horloge mesuré à chaque remontée réussie. */
+  /** The clock offset measured on every successful send. */
   onServerTime?: (serverTime: string) => void
   batchSize?: number
   intervalMs?: number
@@ -35,22 +35,22 @@ export interface DrainOutcome {
 }
 
 /**
- * Vidange la file vers le hub.
+ * Drains the queue towards the hub.
  *
- * Un seul lot en vol à la fois, dans l'ordre des `seq` : le hub applique dans
- * cet ordre, et une remontée désordonnée fausserait l'historique de la salle.
+ * One batch in flight at a time, in `seq` order: the hub applies in that order,
+ * and an out-of-order send would skew the room's history.
  */
 export class OutboxPump {
   private timer: NodeJS.Timeout | null = null
   private draining = false
   /**
-   * La pompe a été arrêtée, et un lot est peut-être encore en vol.
+   * The pump has been stopped, and a batch may still be in flight.
    *
-   * Distinct de `timer == null` : ce qui compte n'est pas qu'il n'y ait plus de
-   * tic, mais qu'une vidange partie **avant** l'arrêt ne revienne pas écrire
-   * après lui. Voir `drainOnce`.
+   * Distinct from `timer == null`: what matters is not that there is no tick any
+   * more, but that a drain that left **before** the stop does not come back and
+   * write after it. See `drainOnce`.
    */
-  private arretee = false
+  private stopped = false
   private connectivity: Connectivity = 'OFFLINE'
 
   constructor(private readonly options: OutboxPumpOptions) {}
@@ -62,10 +62,10 @@ export class OutboxPump {
   }
 
   /**
-   * Une passe de vidange.
+   * One drain pass.
    *
-   * Ne lève jamais : l'échec réseau est un état normal, pas une exception. Le
-   * lot est reporté avec backoff et la connectivité bascule.
+   * Never throws: a network failure is a normal state, not an exception. The
+   * batch is deferred with backoff and the connectivity switches.
    */
   async drainOnce(): Promise<DrainOutcome> {
     const { outbox, push } = this.options
@@ -80,21 +80,21 @@ export class OutboxPump {
 
     try {
       const result = await push(batch)
-      if (this.arretee) return this.abandonne(batch.length)
+      if (this.stopped) return this.abandon(batch.length)
 
-      // Acquittés et doublons sortent pareillement : dans les deux cas le hub
-      // les détient. C'est ce qui rend le rejeu inoffensif après reconnexion.
+      // The acknowledged and the duplicates leave alike: in both cases the hub
+      // holds them. That is what makes the replay harmless after a reconnection.
       outbox.ack([...result.acked, ...result.duplicates])
       outbox.reject(result.rejected)
 
-      const traites = new Set([
+      const handled = new Set([
         ...result.acked,
         ...result.duplicates,
         ...result.rejected.map((entry) => entry.id),
       ])
-      // Un événement que le hub n'a ni acquitté ni rejeté sera repris plus tard.
-      const restants = batch.filter((envelope) => !traites.has(envelope.id))
-      outbox.defer(restants.map((envelope) => envelope.id))
+      // An event the hub neither acknowledged nor rejected will be picked up later.
+      const remaining = batch.filter((envelope) => !handled.has(envelope.id))
+      outbox.defer(remaining.map((envelope) => envelope.id))
 
       if (result.serverTime != null) this.options.onServerTime?.(result.serverTime)
       this.setConnectivity('ONLINE')
@@ -104,11 +104,11 @@ export class OutboxPump {
         sent: result.acked.length,
         duplicates: result.duplicates.length,
         rejected: result.rejected.length,
-        deferred: restants.length,
+        deferred: remaining.length,
         connectivity: 'ONLINE',
       }
     } catch (cause) {
-      if (this.arretee) return this.abandonne(batch.length)
+      if (this.stopped) return this.abandon(batch.length)
       outbox.defer(batch.map((envelope) => envelope.id))
       this.setConnectivity('OFFLINE')
       this.options.store.log('warn', 'remontée impossible, lot reporté', {
@@ -126,36 +126,36 @@ export class OutboxPump {
   }
 
   /**
-   * Le lot revient après l'arrêt : on ne touche plus à rien.
+   * The batch comes back after the stop: we touch nothing any more.
    *
-   * La base est fermée — ou sur le point de l'être —, et l'écriture échouerait
-   * dans le `catch` qui existe précisément pour rattraper les échecs, d'où un
-   * rejet non géré qui remontait jusqu'au processus.
+   * The database is closed — or about to be — and the write would fail inside the
+   * `catch` that exists precisely to catch failures, hence an unhandled rejection
+   * that made it all the way up to the process.
    *
-   * **Rien n'est perdu.** `claimBatch` ne marque pas ce qu'il lit : il rend ce
-   * dont l'échéance est passée. Un lot qu'on renonce à reporter reste donc
-   * éligible tel quel, et repart au premier tour de la prochaine ouverture —
-   * ce qui est exactement le comportement voulu après un redémarrage.
+   * **Nothing is lost.** `claimBatch` does not mark what it reads: it returns
+   * whatever is due. A batch we give up deferring therefore stays eligible as it
+   * is, and leaves on the first pass of the next opening — which is exactly the
+   * intended behaviour after a restart.
    */
-  private abandonne(taille: number): DrainOutcome {
+  private abandon(size: number): DrainOutcome {
     return {
       sent: 0,
       duplicates: 0,
       rejected: 0,
-      deferred: taille,
+      deferred: size,
       connectivity: this.connectivity,
     }
   }
 
   /**
-   * Une passe, au plus une à la fois.
+   * One pass, at most one at a time.
    *
-   * Le garde protège l'ordre des `seq` : sans lui, un réseau lent ferait partir
-   * deux lots en parallèle et le hub les appliquerait dans le désordre. Il vaut
-   * pour le tic **et** pour le réveil — c'est justement quand les deux se
-   * croisent qu'il compte.
+   * The guard protects the `seq` order: without it, a slow network would send two
+   * batches in parallel and the hub would apply them out of order. It holds for
+   * the tick **and** for the wake-up — it is precisely when the two cross that it
+   * counts.
    */
-  private passe(): void {
+  private pass(): void {
     if (this.draining) return
     this.draining = true
     void this.drainOnce().finally(() => {
@@ -164,41 +164,41 @@ export class OutboxPump {
   }
 
   /**
-   * Vide la file maintenant, sans attendre le tic.
+   * Drains the queue now, without waiting for the tick.
    *
-   * Pour ce qui se regarde de loin. Une régie mobile ne peint jamais d'avance —
-   * un bouton décrit OBS, pas ce qu'on lui a demandé —, si bien que le geste
-   * reste sans effet visible tant que la salle n'a pas remonté ce qui a changé.
-   * Deux secondes de tic plus une seconde de sondage, et l'on appuie une
-   * seconde fois en croyant avoir raté le bouton.
+   * For what is watched from afar. A mobile control app never paints ahead — a
+   * button describes OBS, not what it was asked for — so the gesture stays without
+   * visible effect until the room has sent up what changed. Two seconds of tick
+   * plus one second of polling, and one presses a second time believing one missed
+   * the button.
    *
-   * Appelé sur les changements d'OBS, pas sur chaque remontée : c'est un fait
-   * par bascule, pas un flot. L'invariant d'autonomie tient — rien ici ne
-   * bloque, et un réseau absent laisse simplement le lot en file.
+   * Called on OBS's changes, not on every send: it is one fact per switch, not a
+   * flow. The self-sufficiency invariant holds — nothing here blocks, and an
+   * absent network simply leaves the batch in the queue.
    *
-   * **Sans effet tant que la pompe ne tourne pas**, et le garde n'est pas
-   * cosmétique : OBS continue d'émettre pendant l'arrêt de l'application, et
-   * une vidange lancée après la fermeture de la base échoue dans son propre
-   * `catch` — qui écrit lui-même en base pour reporter le lot. Le réveil n'a de
-   * sens qu'entre `start()` et `stop()` ; en dehors, il n'y a plus de tic à
-   * devancer.
+   * **Without effect while the pump is not running**, and the guard is not
+   * cosmetic: OBS keeps emitting while the application shuts down, and a drain
+   * started after the database is closed fails inside its own `catch` — which
+   * itself writes to the database to defer the batch. The wake-up only makes sense
+   * between `start()` and `stop()`; outside them, there is no tick left to get
+   * ahead of.
    */
-  reveiller(): void {
+  wake(): void {
     if (this.timer == null) return
-    this.passe()
+    this.pass()
   }
 
   start(): void {
     if (this.timer != null) return
-    this.arretee = false
+    this.stopped = false
     const interval = this.options.intervalMs ?? 2_000
-    this.timer = setInterval(() => this.passe(), interval)
-    // Ne retient pas le process : l'application doit pouvoir se fermer.
+    this.timer = setInterval(() => this.pass(), interval)
+    // Does not hold the process: the application must be able to close.
     this.timer.unref?.()
   }
 
   stop(): void {
-    this.arretee = true
+    this.stopped = true
     if (this.timer != null) clearInterval(this.timer)
     this.timer = null
   }
@@ -213,7 +213,7 @@ export interface HeartbeatInput {
   streaming: boolean
   outboxDepth: number
   programContentHash: string | null
-  /** Ce que l'écran de salle affiche : il ne remonte que par le battement. */
+  /** What the room screen displays: it only comes up through the heartbeat. */
   displayMode: DisplayMode
 }
 

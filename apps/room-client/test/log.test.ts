@@ -83,7 +83,7 @@ describe('format des lignes de journal', () => {
     )
   })
 
-  it('distingue les niveaux par un marqueur aligné', () => {
+  it('tells the levels apart by an aligned marker', () => {
     expect(formatLogLine('warn', 'flux coupé', undefined, a(14, 30, 0))).toContain(' ! ')
     expect(formatLogLine('error', 'jeton refusé', undefined, a(14, 30, 0))).toContain(' ✕ ')
   })

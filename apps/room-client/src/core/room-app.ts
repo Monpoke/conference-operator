@@ -18,18 +18,18 @@ import { ConnectivityTracker, probeConnectivity } from './connectivity.js'
 import { RecordingSession, slugify, type MarkerRole, type StopResult } from './recording.js'
 import type { ControlDiagnostics, ControlTarget, VisibleObsEndpoint, VodList } from './control-api.js'
 import {
-  ffprobeSonde,
-  inspecterEnregistrement,
-  listerEnregistrements,
+  ffprobeProbe,
+  inspectRecording,
+  listRecordings,
   nodeVodFs,
-  outilDisponible,
-  ouvrirExtrait,
-  ouvrirFichier,
-  poserVerdict,
-  cheminSur,
+  toolAvailable,
+  openExcerpt,
+  openFile,
+  setVerdict,
+  pathUnder,
   type VodCheck,
-  type Extrait,
-  type FluxFichier,
+  type Excerpt,
+  type FileStream,
   type VodVerdict,
   type VodIndexDeps,
 } from './vod-index.js'
@@ -111,7 +111,7 @@ export interface RoomAppOptions {
    *
    * @param initial Le dossier déjà saisi, pour ouvrir là où l'on regardait.
    */
-  choisirDossier?: (initial: string | null) => Promise<string | null>
+  chooseFolder?: (initial: string | null) => Promise<string | null>
   /**
    * Salle desservie, connue d'avance.
    *
@@ -188,7 +188,7 @@ export class RoomApp implements ControlTarget {
    * distincts — un pour la régie, un pour le régulateur — garderaient chacun le
    * leur et rendraient deux chiffres également faux, sans que rien ne le dise.
    */
-  private readonly hote: () => HostLoad = hostMonitor()
+  private readonly hostLoad: () => HostLoad = hostMonitor()
   private readonly televersements: Televersements
   /** Dernière racine d'enregistrement constatée : le téléverseur y résout ses chemins. */
   private racineConnue: string | null = null
@@ -305,7 +305,7 @@ export class RoomApp implements ControlTarget {
       // derniers connus plutôt qu'une page vide.
       socialLinks: () => this.store.settings().socialLinks,
       event: () => this.store.settings().event,
-      onNiveauxDemandes: (actif) => {
+      onLevelsRequested: (actif) => {
         this.niveauxDemandes = actif
         // Sans OBS-B connecté, on retient seulement l'intention : l'abonnement
         // sera posé à la connexion, sinon ouvrir la régie avant OBS laisserait
@@ -314,12 +314,12 @@ export class RoomApp implements ControlTarget {
           this.options.onLog?.('warn', "OBS-B n'a pas accepté l'abonnement au vumètre")
         })
       },
-      hote: this.hote,
+      hostLoad: this.hostLoad,
       port: options.displayPort ?? 7788,
       viteOrigin: options.regieViteOrigin ?? null,
     })
 
-    this.niveaux = new LevelAggregator((inputs) => this.display.publierNiveaux(inputs))
+    this.levels = new LevelAggregator((inputs) => this.display.publishLevels(inputs))
 
     /**
      * Rapatriement des rushes.
@@ -333,7 +333,7 @@ export class RoomApp implements ControlTarget {
       candidats: () => this.candidatsVod(),
       hub: () => this.hubVod(),
       politique: () => this.store.settings().vod?.politique ?? null,
-      charge: this.hote,
+      charge: this.hostLoad,
       // L'état réel d'OBS-B, observé et non supposé : c'est le même booléen que
       // le témoin de la régie, et il vaut mieux que ce qu'on croit avoir lancé.
       enregistre: () => this.runtime.state().recording,
@@ -347,9 +347,9 @@ export class RoomApp implements ControlTarget {
     })
   }
 
-  /** Une régie affiche-t-elle les niveaux en ce moment ? */
+  /** Is a control app displaying the levels right now? */
   private niveauxDemandes = false
-  private readonly niveaux: LevelAggregator
+  private readonly levels: LevelAggregator
 
   /**
    * Met un événement en file de remontée.
@@ -705,7 +705,7 @@ export class RoomApp implements ControlTarget {
   /**
    * Tout ce que la salle relit du hub : programme, assets, configuration, QR.
    *
-   * Extrait du raccordement pour être rejouable en cours de journée. Ce qui
+   * Excerpt du raccordement pour être rejouable en cours de journée. Ce qui
    * *ouvre* quelque chose — flux de commandes, file de remontée, veille des
    * salles, OBS — n'y est pas : le rejouer couperait ce qui tourne.
    *
@@ -713,7 +713,7 @@ export class RoomApp implements ControlTarget {
    */
   private async synchroniserTout(complet = false): Promise<boolean> {
     if (this.link == null) return false
-    const result = await this.link.sync({ complet })
+    const result = await this.link.sync({ full: complet })
     const roomId = this.store.settings().roomId
     if (roomId != null) {
       await this.display
@@ -974,7 +974,7 @@ export class RoomApp implements ControlTarget {
    * ce n'est pas un flot, c'est un fait par bascule.
    */
   private reveillerRemontee(): void {
-    this.pump?.reveiller()
+    this.pump?.wake()
   }
 
   private async refreshRoomStatuses(): Promise<void> {
@@ -1174,7 +1174,7 @@ export class RoomApp implements ControlTarget {
       onEvent: (event) => {
         switch (event.type) {
           case 'audio':
-            this.niveaux.push(event.inputs)
+            this.levels.push(event.inputs)
             break
           case 'recording':
             this.runtime.observeCapture({ recording: event.active })
@@ -1230,14 +1230,14 @@ export class RoomApp implements ControlTarget {
               unresolvedRoles: event.unresolvedRoles,
             })
             // Réapplique l'abonnement au vumètre : une régie ouverte avant OBS,
-            // ou pendant une reconnexion, doit retrouver ses niveaux seule.
+            // ou pendant une reconnexion, doit retrouver ses levels seule.
             if (this.niveauxDemandes) void this.obsB?.setVolumeMeters(true).catch(() => {})
             break
           case 'disconnected':
             // Le vumètre retombe à zéro plutôt que de figer la dernière mesure :
             // une régie muette ne doit pas montrer du signal.
-            this.niveaux.reset()
-            this.display.publierNiveaux([])
+            this.levels.reset()
+            this.display.publishLevels([])
             this.emit({ type: 'obs.connection', obs: 'B', connected: false, unresolvedRoles: [] })
             break
           default:
@@ -1263,7 +1263,7 @@ export class RoomApp implements ControlTarget {
       // timeline raconte plutôt que le temps passé devant l'écran. En
       // production, le temps monotone reste seul juge — une resynchronisation
       // d'horloge en pleine conférence ne doit pas rallonger le talk.
-      suitLHorloge: (this.options.mode ?? 'production') === 'dev',
+      followsClock: (this.options.mode ?? 'production') === 'dev',
       onLog: this.options.onLog,
     })
 
@@ -1295,7 +1295,7 @@ export class RoomApp implements ControlTarget {
      */
     this.options.onLog?.('info', 'captation démarrée depuis la régie', {
       session: state.currentSession?.title ?? null,
-      simule: this.obsB?.snapshot().simulated === true,
+      simulated: this.obsB?.snapshot().simulated === true,
     })
     this.emit({ type: 'recording.started', obs: 'B', sessionId: state.currentSession?.id ?? null })
   }
@@ -1430,14 +1430,14 @@ export class RoomApp implements ControlTarget {
    * n'y aurait rien à écrire dans le sidecar, et en fabriquer un vide
    * tromperait le editing plus sûrement que son absence.
    *
-   * `dejaArrete` est ici indispensable : redemander `StopRecord` à une sortie
+   * `alreadyStopped` est ici indispensable : redemander `StopRecord` à une sortie
    * déjà inactive est une erreur d'OBS, qui emporterait l'écriture du sidecar.
    */
   private async cloreArretDepuisObs(outputPath: string | null): Promise<void> {
     if (this.recording == null || !this.recording.active || this.clotureCaptation) return
     this.clotureCaptation = true
     try {
-      const result = await this.recording.stop(async () => outputPath, { dejaArrete: true })
+      const result = await this.recording.stop(async () => outputPath, { alreadyStopped: true })
       this.options.onLog?.(
         result.sidecarPath == null ? 'warn' : 'info',
         result.sidecarPath == null
@@ -1492,8 +1492,8 @@ export class RoomApp implements ControlTarget {
       // passer une prise en cours pour un rush terminé dès que le hub déroulait
       // une journée simulée.
       now: () => this.runtime.correctedNow(),
-      maintenantReel: () => Date.now(),
-      probe: ffprobeSonde(),
+      realNow: () => Date.now(),
+      probe: ffprobeProbe(),
       onLog: this.options.onLog,
     }
   }
@@ -1510,7 +1510,7 @@ export class RoomApp implements ControlTarget {
   private cheminDansCaptations(file: string): string | null {
     if (this.racineConnue == null) return null
     try {
-      return cheminSur(this.racineConnue, file)
+      return pathUnder(this.racineConnue, file)
     } catch {
       return null
     }
@@ -1527,7 +1527,7 @@ export class RoomApp implements ControlTarget {
     this.racineConnue = root
     if (root == null) return []
     const deps = this.vodDeps(root)
-    const entries = await listerEnregistrements(deps)
+    const entries = await listRecordings(deps)
 
     return await Promise.all(
       entries.map(async (entree) => {
@@ -1542,7 +1542,7 @@ export class RoomApp implements ControlTarget {
          * milieu ne se voit pas dans une liste de fichiers ; il se découvre en
          * l'ouvrant, des mois plus tard.
          */
-        const stat = entree.sidecar == null ? null : await deps.fs.stat(cheminSur(root, nom))
+        const stat = entree.sidecar == null ? null : await deps.fs.stat(pathUnder(root, nom))
         return {
           file: entree.file,
           sizeBytes: entree.sizeBytes,
@@ -1631,7 +1631,7 @@ export class RoomApp implements ControlTarget {
     if (root == null) return 0
 
     const { unlink } = await import('node:fs/promises')
-    const entries = await listerEnregistrements(this.vodDeps(root))
+    const entries = await listRecordings(this.vodDeps(root))
     // Le fichier de verdicts vit à la racine, à côté des rushes, et décrit une
     // relecture qui n'a plus d'objet une fois les rushes partis.
     const noms = entries.flatMap((entree) => [
@@ -1646,7 +1646,7 @@ export class RoomApp implements ControlTarget {
       try {
         // Le même garde-fou que partout ailleurs : la racine vient d'un
         // formulaire servi en HTTP, et `../../` y est une saisie valide.
-        chemin = cheminSur(root, nom)
+        chemin = pathUnder(root, nom)
       } catch {
         continue
       }
@@ -1682,34 +1682,34 @@ export class RoomApp implements ControlTarget {
   /** Rushes produits sous la racine, du plus récent au plus ancien. */
   async listRecordings(): Promise<VodList> {
     const [ffmpeg, ffprobe] = await Promise.all([
-      outilDisponible('ffmpeg'),
-      outilDisponible('ffprobe'),
+      toolAvailable('ffmpeg'),
+      toolAvailable('ffprobe'),
     ])
     const tools = { ffmpeg, ffprobe }
     const root = await this.racineCaptations()
     if (root == null) return { root: null, entries: [], tools }
-    return { root, entries: await listerEnregistrements(this.vodDeps(root)), tools }
+    return { root, entries: await listRecordings(this.vodDeps(root)), tools }
   }
 
-  /** Extrait de quelques secondes, produit à la volée pour la modale. */
-  async readRecordingExtract(file: string, atMs: number, dureeMs: number): Promise<Extrait | null> {
+  /** Excerpt de quelques secondes, produit à la volée pour la modale. */
+  async readRecordingExtract(file: string, atMs: number, durationMs: number): Promise<Excerpt | null> {
     const root = await this.racineCaptations()
     if (root == null) throw new Error('Aucun dossier d\u2019enregistrement connu')
-    return await ouvrirExtrait(this.vodDeps(root), file, { atMs, dureeMs })
+    return await openExcerpt(this.vodDeps(root), file, { atMs, durationMs })
   }
 
   /** Le rush tel quel : pour l'ouvrir dans un vrai lecteur, ou le rapatrier. */
-  async readRecordingFile(file: string, plage: string | null): Promise<FluxFichier | null> {
+  async readRecordingFile(file: string, plage: string | null): Promise<FileStream | null> {
     const root = await this.racineCaptations()
     if (root == null) throw new Error('Aucun dossier d\u2019enregistrement connu')
-    return await ouvrirFichier(this.vodDeps(root), file, plage)
+    return await openFile(this.vodDeps(root), file, plage)
   }
 
   /** Contrôle technique d'un rush : conteneur, pistes, durée, débit. */
   async inspectRecording(file: string): Promise<VodCheck> {
     const root = await this.racineCaptations()
     if (root == null) throw new Error('Aucun dossier d\u2019enregistrement connu')
-    const controle = await inspecterEnregistrement(this.vodDeps(root), file)
+    const controle = await inspectRecording(this.vodDeps(root), file)
     // Au journal de la salle, pas seulement à l'écran : un rush illisible
     // constaté à 11 h doit se retrouver le soir, quand on cherche ce qui manque.
     this.options.onLog?.(
@@ -1724,7 +1724,7 @@ export class RoomApp implements ControlTarget {
   async setRecordingVerdict(file: string, status: VodVerdict | null): Promise<VodCheck | null> {
     const root = await this.racineCaptations()
     if (root == null) throw new Error('Aucun dossier d\u2019enregistrement connu')
-    return await poserVerdict(this.vodDeps(root), file, status)
+    return await setVerdict(this.vodDeps(root), file, status)
   }
 
   /** Profondeur de la file, affichée en régie. */
@@ -1927,7 +1927,7 @@ export class RoomApp implements ControlTarget {
         active: this.recording?.active ?? false,
         markers: this.recording?.markerCount ?? 0,
         startedAtMs: this.recording?.startedAt ?? null,
-        startedAtCorrectedMs: this.recording?.startedAtCorrige ?? null,
+        startedAtCorrectedMs: this.recording?.correctedStartedAt ?? null,
         editing: this.recording?.editing ?? NO_EDITING_MARKS,
       },
     }
@@ -1951,7 +1951,7 @@ export class RoomApp implements ControlTarget {
       promptRecordingOnStart: config.promptRecordingOnStart,
       promptRecordingOnStop: config.promptRecordingOnStop,
       sceneOnStart: config.sceneOnStart,
-      canBrowse: this.options.choisirDossier != null,
+      canBrowse: this.options.chooseFolder != null,
     }
   }
 
@@ -1964,7 +1964,7 @@ export class RoomApp implements ControlTarget {
    * l'arborescence une modification de la salle.
    */
   async chooseFolder(): Promise<string | null> {
-    const ouvrir = this.options.choisirDossier
+    const ouvrir = this.options.chooseFolder
     if (ouvrir == null) return null
     return ouvrir(this.store.settings().config?.recordingRoot ?? null)
   }

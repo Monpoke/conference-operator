@@ -46,7 +46,7 @@ let origin: string
 /**
  * Un poste de salle, sans bundle par défaut.
  *
- * `bundleRegie` est passé explicitement partout : la résolution réelle remonte
+ * `controlBundle` est passé explicitement partout : la résolution réelle remonte
  * les dossiers jusqu'à un `dist/`, et un build laissé sur la machine ferait
  * passer ou échouer ces tests selon la machine. Le défaut se découvre en CI,
  * une fois, et on ne sait pas dire depuis quand il dure.
@@ -54,7 +54,7 @@ let origin: string
 async function demarrer(
   options: {
     viteOrigin?: string | null
-    bundleRegie?: () => { directory: string; manifest: string } | null
+    controlBundle?: () => { directory: string; manifest: string } | null
   } = {},
 ): Promise<void> {
   const runtime = new RoomRuntime(store, {}, () => Date.parse('2026-10-30T10:20:00.000Z'))
@@ -67,7 +67,7 @@ async function demarrer(
     roomName: () => 'Track #1 — Teilhard de Chardin',
     event: () => ({ name: 'Cloud Nord 2026', shortName: 'Cloud Nord' }),
     port: 0,
-    bundleRegie: () => null,
+    controlBundle: () => null,
     ...options,
   })
   origin = await server.listen()
@@ -140,7 +140,7 @@ describe('la coquille', () => {
 
   it('sert les fichiers hachés du bundle, et les laisse être mis en cache', async () => {
     const bundle = bundleFactice()
-    await demarrer({ bundleRegie: () => bundle })
+    await demarrer({ controlBundle: () => bundle })
 
     const html = await (await fetch(`${origin}/regie`)).text()
     expect(html).toContain('src="/regie/assets/index-abc123.js"')
@@ -218,7 +218,7 @@ describe('développement', () => {
 
   it('préfère Vite au bundle construit quand les deux sont là', async () => {
     const bundle = bundleFactice()
-    await demarrer({ bundleRegie: () => bundle, viteOrigin: 'http://127.0.0.1:1' })
+    await demarrer({ controlBundle: () => bundle, viteOrigin: 'http://127.0.0.1:1' })
 
     /*
      * L'ordre inverse semblait plus prudent — un poste installé n'a pas de
@@ -239,7 +239,7 @@ describe('développement', () => {
   it('sert le bundle dès qu’aucune origine Vite n’est annoncée', async () => {
     // Le cas du poste installé : la variable n'y est jamais posée.
     const bundle = bundleFactice()
-    await demarrer({ bundleRegie: () => bundle })
+    await demarrer({ controlBundle: () => bundle })
 
     const html = await (await fetch(`${origin}/regie`)).text()
     expect(html).toContain('/regie/assets/index-abc123.js')

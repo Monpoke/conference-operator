@@ -11,24 +11,27 @@ import type {
 
 export type { VodCheck, VodEntry, VodProbe, VodVerdict }
 
-/** Conteneurs qu'OBS sait écrire. Le reste du dossier ne nous regarde pas. */
+/** The containers OBS knows how to write. The rest of the folder is not our business. */
 const EXTENSIONS = new Set(['.mkv', '.mp4', '.mov', '.flv', '.ts', '.m4v', '.webm', '.mpegts'])
 
 /**
- * Les verdicts vivent dans un fichier à part, pas dans les sidecars.
+ * The verdicts live in a separate file, not in the sidecars.
  *
- * Le sidecar est ce que la chaîne de editing consomme, et il décrit la
- * conférence, pas la relecture qu'on en a faite. Surtout : un rush dont le
- * sidecar n'a jamais été écrit — OBS tué en plein arrêt, précisément le cas
- * qu'on cherche — est justement celui qu'il faut pouvoir marquer.
+ * The sidecar is what the editing chain consumes, and it describes the talk, not
+ * the review one made of it. Above all: a rush whose sidecar was never written —
+ * OBS killed mid-stop, precisely the case we are looking for — is exactly the one
+ * that has to be markable.
+ *
+ * The `ouvert`, `fichier`, `operateur` and the status values are contract names:
+ * they do not get renamed.
  */
-const FICHIER_CONTROLES = '.controles-vod.json'
+const CHECKS_FILE = '.controles-vod.json'
 
-/** Le fichier vient d'être touché : on ne juge pas une prise en cours. */
-const FENETRE_ECRITURE_MS = 30_000
+/** The file has just been touched: we do not judge a take in progress. */
+const WRITE_WINDOW_MS = 30_000
 
-/** Profondeur de balayage : OBS écrit à plat, un dossier daté reste possible. */
-const PROFONDEUR_MAX = 2
+/** Scan depth: OBS writes flat, a dated folder stays possible. */
+const MAX_DEPTH = 2
 
 export interface VodFs {
   readdir(path: string): Promise<{ name: string; isDirectory: boolean }[]>
@@ -38,137 +41,135 @@ export interface VodFs {
 }
 
 export interface VodIndexDeps {
-  /** Racine des enregistrements. Sans elle, il n'y a rien à lister. */
+  /** The recordings' root. Without it, there is nothing to list. */
   root: string
   fs: VodFs
   /**
-   * L'horloge de la salle, corrigée sur celle du hub.
+   * The room's clock, corrected against the hub's.
    *
-   * Elle date les verdicts, et c'est ce qu'on veut : « relu il y a trois
-   * minutes » se lit à côté d'un chronomètre et d'un programme qui sont sur
-   * cette heure-là. Elle ne sert **qu'à ça**.
+   * It dates the verdicts, and that is what we want: "reviewed three minutes ago"
+   * is read next to a stopwatch and a program that are on that time. It serves
+   * **only for that**.
    */
   now: () => number
   /**
-   * L'heure réelle du poste, la seule qui vaille face au disque.
+   * The machine's real time, the only one that counts against the disk.
    *
-   * Les `mtime` viennent du système de fichiers : ils sont sur l'heure de la
-   * machine, pas sur celle du hub. Les comparer à l'horloge corrigée revenait à
-   * soustraire deux heures qui ne mesurent pas la même chose — sans conséquence
-   * le jour J, où l'écart se compte en millisecondes, mais dévastateur en
-   * développement, où le hub déroule une journée d'octobre depuis un poste qui
-   * est en septembre. L'écart valait alors des semaines, la fenêtre d'écriture
-   * n'était jamais atteinte, et **une prise en cours s'affichait en régie comme
-   * un rush terminé, prêt à partir**, avec un verdict rendu sur un fichier
-   * qu'OBS était encore en train d'écrire.
+   * The `mtime`s come from the file system: they are on the machine's time, not
+   * on the hub's. Comparing them to the corrected clock amounted to subtracting
+   * two times that do not measure the same thing — of no consequence on the day,
+   * where the gap is counted in milliseconds, but devastating in development,
+   * where the hub runs an October day from a machine that is in September. The
+   * gap was then worth weeks, the write window was never reached, and **a take in
+   * progress showed in the control app as a finished rush, ready to leave**, with
+   * a verdict returned on a file OBS was still writing.
    *
-   * `Date.now` par défaut : c'est la bonne réponse partout sauf en test.
+   * `Date.now` by default: it is the right answer everywhere except in a test.
    */
-  maintenantReel?: () => number
+  realNow?: () => number
 
   /**
-   * Lecture technique du conteneur. `null` = pas d'outil disponible, le
-   * contrôle se rabat alors sur ce que le disque et le sidecar racontent.
+   * A technical read of the container. `null` = no tool available, the check then
+   * falls back on what the disk and the sidecar say.
    */
   probe?: (path: string) => Promise<VodProbe | null>
   onLog?: (level: 'info' | 'warn' | 'error', message: string, context?: unknown) => void
 }
 
 /**
- * Liste les fichiers produits sous la racine, du plus récent au plus ancien.
+ * Lists the files produced under the root, from the most recent to the oldest.
  *
- * Purement descriptif : rien n'est ouvert, rien n'est sondé. Ouvrir la modale
- * ne doit pas lancer une demi-douzaine de ffprobe sur des rushes de deux heures
- * pendant qu'une conférence tourne.
+ * Purely descriptive: nothing is opened, nothing is probed. Opening the modal
+ * must not launch half a dozen ffprobes on two-hour rushes while a talk is
+ * running.
  */
-export async function listerEnregistrements(deps: VodIndexDeps): Promise<VodEntry[]> {
-  const racine = resolve(deps.root)
-  const controles = await lireControles(deps, racine)
+export async function listRecordings(deps: VodIndexDeps): Promise<VodEntry[]> {
+  const root = resolve(deps.root)
+  const checks = await readChecks(deps, root)
   const entries: VodEntry[] = []
 
-  const balayer = async (dossier: string, profondeur: number): Promise<void> => {
-    let contenu: { name: string; isDirectory: boolean }[]
+  const scan = async (directory: string, depth: number): Promise<void> => {
+    let contents: { name: string; isDirectory: boolean }[]
     try {
-      contenu = await deps.fs.readdir(dossier)
+      contents = await deps.fs.readdir(directory)
     } catch (cause) {
       deps.onLog?.('warn', 'dossier des enregistrements illisible', {
-        path: dossier,
+        path: directory,
         message: (cause as Error).message,
       })
       return
     }
 
-    for (const element of contenu) {
-      const chemin = join(dossier, element.name)
-      if (element.isDirectory) {
-        if (profondeur < PROFONDEUR_MAX) await balayer(chemin, profondeur + 1)
+    for (const entry of contents) {
+      const path = join(directory, entry.name)
+      if (entry.isDirectory) {
+        if (depth < MAX_DEPTH) await scan(path, depth + 1)
         continue
       }
-      if (!EXTENSIONS.has(extname(element.name).toLowerCase())) continue
+      if (!EXTENSIONS.has(extname(entry.name).toLowerCase())) continue
 
-      const stat = await deps.fs.stat(chemin)
+      const stat = await deps.fs.stat(path)
       if (stat == null) continue
 
-      const cle = normaliser(relative(racine, chemin))
+      const key = normalize(relative(root, path))
       entries.push({
-        file: cle,
+        file: key,
         sizeBytes: stat.size,
         modifiedAtMs: stat.mtimeMs,
         beingWritten: beingWritten(deps, stat),
-        sidecar: await lireSidecar(deps, chemin),
-        check: verdictEncoreValable(controles[cle], stat),
+        sidecar: await readSidecar(deps, path),
+        check: checkStillValid(checks[key], stat),
       })
     }
   }
 
-  await balayer(racine, 1)
+  await scan(root, 1)
   entries.sort((a, b) => b.modifiedAtMs - a.modifiedAtMs)
   return entries
 }
 
 /**
- * Contrôle un fichier et retient le verdict.
+ * Checks a file and keeps the verdict.
  *
- * L'ordre des règles compte : ce qui interdit d'exploiter le fichier passe
- * avant ce qui le rend seulement douteux, et la première raison affichée est
- * celle qui explique le badge.
+ * The order of the rules matters: what forbids using the file comes before what
+ * only makes it doubtful, and the first reason displayed is the one that explains
+ * the badge.
  */
-export async function inspecterEnregistrement(
+export async function inspectRecording(
   deps: VodIndexDeps,
   file: string,
 ): Promise<VodCheck> {
-  const racine = resolve(deps.root)
-  const chemin = cheminSur(racine, file)
-  const stat = await deps.fs.stat(chemin)
+  const root = resolve(deps.root)
+  const path = pathUnder(root, file)
+  const stat = await deps.fs.stat(path)
   const at = new Date(deps.now()).toISOString()
 
   if (stat == null || stat.size === 0) {
-    const controle: VodCheck = {
+    const check: VodCheck = {
       status: 'illisible',
       at,
       by: 'auto',
       reasons: [stat == null ? 'fichier absent du disque' : 'fichier vide : OBS n’a rien écrit'],
       probe: null,
     }
-    await retenir(deps, racine, file, controle)
-    return controle
+    await remember(deps, root, file, check)
+    return check
   }
 
   /**
-   * Une prise en cours ne se juge pas, et on s'arrête là.
+   * A take in progress is not judged, and we stop there.
    *
-   * Le contrôle continuait, et ce qu'il rendait était vrai mais trompeur : le
-   * sidecar n'est écrit qu'à l'arrêt, donc « sidecar absent » est certain ; le
-   * débit se calcule sur un fichier à moitié écrit, donc « image probablement
-   * inexploitable » aussi. Trois motifs pour une seule cause, dont le premier
-   * — le seul qui explique les deux autres — se lisait au milieu des autres.
+   * The check carried on, and what it returned was true but misleading: the
+   * sidecar is only written at the stop, so "sidecar missing" is certain; the
+   * bitrate is computed on a half-written file, so "picture probably unusable" is
+   * too. Three reasons for a single cause, the first of which — the only one that
+   * explains the other two — was read in the middle of the others.
    *
-   * Ni sonde, non plus : ouvrir avec ffprobe le conteneur dans lequel OBS
-   * écrit coûte des entrées-sorties sur le disque du master, en pleine
-   * captation, pour une lecture qui sera fausse de toute façon.
+   * No probe either: opening with ffprobe the container OBS is writing into costs
+   * I/O on the master's disk, mid-capture, for a read that will be wrong anyway.
    */
   if (beingWritten(deps, stat)) {
-    const controle: VodCheck = {
+    const check: VodCheck = {
       status: 'suspect',
       at,
       by: 'auto',
@@ -176,222 +177,223 @@ export async function inspecterEnregistrement(
       probe: null,
       fichier: { sizeBytes: stat.size, modifiedAtMs: stat.mtimeMs },
     }
-    await retenir(deps, racine, file, controle)
-    return controle
+    await remember(deps, root, file, check)
+    return check
   }
 
-  const raisons: string[] = []
-  let statut: VodVerdict = 'ok'
-  const abaisser = (vers: VodVerdict, raison: string): void => {
-    raisons.push(raison)
-    if (vers === 'illisible' || statut === 'ok') statut = vers
+  const reasons: string[] = []
+  let status: VodVerdict = 'ok'
+  const downgrade = (to: VodVerdict, reason: string): void => {
+    reasons.push(reason)
+    if (to === 'illisible' || status === 'ok') status = to
   }
 
-  const sidecar = await lireSidecar(deps, chemin)
+  const sidecar = await readSidecar(deps, path)
   if (sidecar == null) {
-    abaisser('suspect', 'sidecar absent : titre, intervenants et marqueurs manquent au editing')
+    downgrade('suspect', 'sidecar absent : titre, intervenants et marqueurs manquent au editing')
   }
 
-  const probe = deps.probe == null ? null : await deps.probe(chemin)
+  const probe = deps.probe == null ? null : await deps.probe(path)
   if (probe == null) {
-    raisons.push('sonde ffprobe indisponible : contrôle limité à la taille et au sidecar')
+    reasons.push('sonde ffprobe indisponible : contrôle limité à la taille et au sidecar')
   } else if (!probe.ouvert) {
-    // Un seul motif, et le bon : détailler les pistes d'un fichier que ffprobe
-    // refuse d'ouvrir enverrait chercher au mauvais endroit.
-    abaisser('illisible', 'conteneur illisible : ffprobe ne reconnaît pas ce fichier')
+    // A single reason, and the right one: detailing the tracks of a file ffprobe
+    // refuses to open would send one looking in the wrong place.
+    downgrade('illisible', 'conteneur illisible : ffprobe ne reconnaît pas ce fichier')
   } else {
-    if (probe.video == null) abaisser('illisible', 'aucune piste vidéo dans le conteneur')
-    if (probe.audio == null) abaisser('illisible', 'aucune piste audio : la VOD serait muette')
+    if (probe.video == null) downgrade('illisible', 'aucune piste vidéo dans le conteneur')
+    if (probe.audio == null) downgrade('illisible', 'aucune piste audio : la VOD serait muette')
     if (probe.durationMs == null) {
-      abaisser('illisible', 'durée illisible : conteneur tronqué, OBS a probablement été tué')
+      downgrade('illisible', 'durée illisible : conteneur tronqué, OBS a probablement été tué')
     } else if (probe.durationMs < 5_000) {
-      abaisser('suspect', 'moins de cinq secondes de contenu')
+      downgrade('suspect', 'moins de cinq secondes de contenu')
     }
   }
 
-  // Ce que le chronomètre de la régie disait, contre ce que le fichier contient.
-  // L'écart est le symptôme d'un arrêt brutal, et il ne se voit nulle part ailleurs.
-  const attendu = sidecar?.durationMs ?? null
-  const reelle = probe?.durationMs ?? null
-  if (attendu != null && reelle != null && attendu > 60_000 && reelle < attendu * 0.9) {
-    abaisser(
+  // What the control app's stopwatch said, against what the file contains. The
+  // gap is the symptom of an abrupt stop, and it shows nowhere else.
+  const expected = sidecar?.durationMs ?? null
+  const actual = probe?.durationMs ?? null
+  if (expected != null && actual != null && expected > 60_000 && actual < expected * 0.9) {
+    downgrade(
       'suspect',
-      `${minutes(reelle)} enregistrées pour ${minutes(attendu)} chronométrées : fin manquante`,
+      `${minutes(actual)} enregistrées pour ${minutes(expected)} chronométrées : fin manquante`,
     )
   }
 
-  const duree = reelle ?? attendu
-  const debit = duree != null && duree > 1_000 ? Math.round((stat.size * 8) / duree) : null
-  // Sur un conteneur illisible, le « débit » ne mesure rien : c'est la taille du
-  // fichier divisée par une durée qui vient d'ailleurs.
-  if (debit != null && debit < 200 && probe?.ouvert !== false) {
-    abaisser('suspect', `débit moyen de ${debit} kb/s : image probablement inexploitable`)
+  const duration = actual ?? expected
+  const bitrate = duration != null && duration > 1_000 ? Math.round((stat.size * 8) / duration) : null
+  // On an unreadable container, the "bitrate" measures nothing: it is the file's
+  // size divided by a duration that comes from elsewhere.
+  if (bitrate != null && bitrate < 200 && probe?.ouvert !== false) {
+    downgrade('suspect', `débit moyen de ${bitrate} kb/s : image probablement inexploitable`)
   }
 
-  if (statut === 'ok' && raisons.length === 0) {
-    raisons.push(
+  if (status === 'ok' && reasons.length === 0) {
+    reasons.push(
       probe == null
         ? 'taille et sidecar cohérents'
-        : `${probe.video?.width ?? '?'}×${probe.video?.height ?? '?'}, ${probe.audio?.channels ?? '?'} canal(aux), ${minutes(reelle ?? 0)}`,
+        : `${probe.video?.width ?? '?'}×${probe.video?.height ?? '?'}, ${probe.audio?.channels ?? '?'} canal(aux), ${minutes(actual ?? 0)}`,
     )
   }
 
-  const controle: VodCheck = {
-    status: statut,
+  const check: VodCheck = {
+    status,
     at,
     by: 'auto',
-    reasons: raisons,
-    probe: probe == null ? null : { ...probe, bitrateKbps: probe.bitrateKbps ?? debit },
+    reasons,
+    probe: probe == null ? null : { ...probe, bitrateKbps: probe.bitrateKbps ?? bitrate },
     fichier: { sizeBytes: stat.size, modifiedAtMs: stat.mtimeMs },
   }
-  await retenir(deps, racine, file, controle)
-  return controle
+  await remember(deps, root, file, check)
+  return check
 }
 
 /**
- * Verdict posé à la main.
+ * A verdict placed by hand.
  *
- * Le dernier mot revient à qui a ouvert le fichier : aucune sonde ne dit si la
- * caméra était sur le mauvais plan ou le micro dans la poche. `null` efface le
- * contrôle et remet la ligne à vérifier.
+ * The last word goes to whoever opened the file: no probe says whether the camera
+ * was on the wrong shot or the microphone in a pocket. `null` clears the check and
+ * puts the row back to "to be verified".
  */
-export async function poserVerdict(
+export async function setVerdict(
   deps: VodIndexDeps,
   file: string,
   status: VodVerdict | null,
 ): Promise<VodCheck | null> {
-  const racine = resolve(deps.root)
-  const chemin = cheminSur(racine, file)
+  const root = resolve(deps.root)
+  const path = pathUnder(root, file)
   if (status == null) {
-    await retenir(deps, racine, file, null)
+    await remember(deps, root, file, null)
     return null
   }
 
-  const precedent = (await lireControles(deps, racine))[file] ?? null
-  const stat = await deps.fs.stat(chemin)
-  const controle: VodCheck = {
+  const previous = (await readChecks(deps, root))[file] ?? null
+  const stat = await deps.fs.stat(path)
+  const check: VodCheck = {
     status,
     at: new Date(deps.now()).toISOString(),
     by: 'operateur',
     reasons: [status === 'ok' ? 'relu en régie' : 'signalé en régie'],
-    // Ce que la sonde avait lu reste affiché : le verdict humain le complète,
-    // il ne l'efface pas.
-    probe: precedent?.probe ?? null,
-    // Estampillé comme le verdict automatique : « relu en régie » ne doit pas
-    // survivre à la prise qui a été relue.
+    // What the probe had read stays displayed: the human verdict completes it, it
+    // does not erase it.
+    probe: previous?.probe ?? null,
+    // Stamped like the automatic verdict: "reviewed in the control room" must not
+    // outlive the take that was reviewed.
     fichier: stat == null ? undefined : { sizeBytes: stat.size, modifiedAtMs: stat.mtimeMs },
   }
-  await retenir(deps, racine, file, controle)
-  return controle
+  await remember(deps, root, file, check)
+  return check
 }
 
-/** Écrit le verdict dans l'index. `null` le retire. */
-async function retenir(
+/** Writes the verdict into the index. `null` removes it. */
+async function remember(
   deps: VodIndexDeps,
-  racine: string,
+  root: string,
   file: string,
-  controle: VodCheck | null,
+  check: VodCheck | null,
 ): Promise<void> {
-  const controles = await lireControles(deps, racine)
-  if (controle == null) delete controles[file]
-  else controles[file] = controle
+  const checks = await readChecks(deps, root)
+  if (check == null) delete checks[file]
+  else checks[file] = check
 
   try {
     await deps.fs.writeFile(
-      join(racine, FICHIER_CONTROLES),
-      JSON.stringify({ version: 1, entries: controles }, null, 2),
+      join(root, CHECKS_FILE),
+      JSON.stringify({ version: 1, entries: checks }, null, 2),
     )
   } catch (cause) {
-    // Le verdict revient quand même à l'écran : perdre la trace au rechargement
-    // vaut mieux que faire croire que le contrôle n'a pas eu lieu.
+    // The verdict comes back on screen anyway: losing the trace on reload beats
+    // making one believe the check did not happen.
     deps.onLog?.('warn', 'verdicts de contrôle non écrits sur le disque', {
       message: (cause as Error).message,
     })
   }
 }
 
-async function lireControles(
+async function readChecks(
   deps: VodIndexDeps,
-  racine: string,
+  root: string,
 ): Promise<Record<string, VodCheck>> {
-  const brut = await deps.fs.readFile(join(racine, FICHIER_CONTROLES)).catch(() => null)
-  if (brut == null) return {}
+  const raw = await deps.fs.readFile(join(root, CHECKS_FILE)).catch(() => null)
+  if (raw == null) return {}
   try {
-    const corps = JSON.parse(brut) as { entries?: Record<string, VodCheck> }
-    return corps.entries ?? {}
+    const body = JSON.parse(raw) as { entries?: Record<string, VodCheck> }
+    return body.entries ?? {}
   } catch {
     return {}
   }
 }
 
 /**
- * OBS écrit-il encore dedans ?
+ * Is OBS still writing into it?
  *
- * Sur la date de modification, et sur l'heure **du poste** : elles viennent
- * toutes deux du même système de fichiers. Reconnaître au passage la prise en
- * cours à son nom a été essayé et retiré — le format dicté à OBS ne dépend que
- * de la conférence, si bien qu'une seconde prise du même talk porte le nom de
- * la première, et la première, terminée, se retrouvait marquée en écriture.
+ * On the modification date, and on the **machine's** time: both come from the
+ * same file system. Recognizing the take in progress by its name along the way
+ * was tried and removed — the format dictated to OBS depends only on the talk, so
+ * a second take of the same talk carries the first one's name, and the first one,
+ * finished, ended up marked as being written.
  */
 function beingWritten(deps: VodIndexDeps, stat: { mtimeMs: number }): boolean {
-  const maintenant = (deps.maintenantReel ?? Date.now)()
-  return maintenant - stat.mtimeMs < FENETRE_ECRITURE_MS
+  const now = (deps.realNow ?? Date.now)()
+  return now - stat.mtimeMs < WRITE_WINDOW_MS
 }
 
 /**
- * Le verdict décrit-il encore le fichier qui est là ?
+ * Does the verdict still describe the file that is there?
  *
- * Le nom d'un master se réutilise : le format demandé à OBS est déterminant —
- * date, salle, heure, titre — donc rejouer la même conférence réécrit au même
- * endroit. Le verdict de la prise précédente s'affichait alors sur la nouvelle,
- * avec la lecture ffprobe de l'ancienne : « sidecar absent » sur un rush qui,
- * lui, avait le sien, et une durée qui n'était pas la sienne.
+ * A master's name gets reused: the format asked of OBS is deterministic — date,
+ * room, time, title — so replaying the same talk rewrites in the same place. The
+ * previous take's verdict then showed on the new one, with the old one's ffprobe
+ * read: "sidecar missing" on a rush that did have its own, and a duration that was
+ * not its own.
  *
- * Taille et date de modification suffisent à trancher — et c'est volontairement
- * strict : un fichier réécrit à l'octet près et à la seconde près n'existe pas
- * ici, alors qu'un verdict qui survit à sa prise, si.
+ * The size and the modification date are enough to decide — and that is
+ * deliberately strict: a file rewritten to the byte and to the second does not
+ * exist here, whereas a verdict outliving its take does.
  *
- * Sans empreinte — verdict écrit avant que ce champ existe — on ne peut rien
- * affirmer : la ligne repasse « non vérifié » plutôt que d'afficher un jugement
- * dont on ignore sur quoi il portait.
+ * With no fingerprint — a verdict written before that field existed — we can claim
+ * nothing: the row goes back to "not verified" rather than showing a judgement
+ * whose subject is unknown.
  */
-function verdictEncoreValable(
-  controle: VodCheck | undefined,
+function checkStillValid(
+  check: VodCheck | undefined,
   stat: { size: number; mtimeMs: number },
 ): VodCheck | null {
-  if (controle == null) return null
-  const empreinte = controle.fichier
-  if (empreinte == null) return null
-  if (empreinte.sizeBytes !== stat.size || empreinte.modifiedAtMs !== stat.mtimeMs) return null
-  return controle
+  if (check == null) return null
+  const fingerprint = check.fichier
+  if (fingerprint == null) return null
+  if (fingerprint.sizeBytes !== stat.size || fingerprint.modifiedAtMs !== stat.mtimeMs) return null
+  return check
 }
 
-async function lireSidecar(deps: VodIndexDeps, cheminVideo: string): Promise<Sidecar | null> {
-  const chemin = cheminVideo.slice(0, cheminVideo.length - extname(cheminVideo).length) + '.json'
-  const brut = await deps.fs.readFile(chemin).catch(() => null)
-  if (brut == null) return null
+async function readSidecar(deps: VodIndexDeps, videoPath: string): Promise<Sidecar | null> {
+  const path = videoPath.slice(0, videoPath.length - extname(videoPath).length) + '.json'
+  const raw = await deps.fs.readFile(path).catch(() => null)
+  if (raw == null) return null
   try {
-    return JSON.parse(brut) as Sidecar
+    return JSON.parse(raw) as Sidecar
   } catch {
     return null
   }
 }
 
 /**
- * Résout un nom venu de la page sous la racine, et refuse tout le reste.
+ * Resolves a name coming from the page under the root, and refuses everything
+ * else.
  *
- * La page de régie est servie en HTTP sur la machine : un `..` dans le nom du
- * fichier ferait sortir du dossier des captations.
+ * The control page is served over HTTP on the machine: a `..` in the file's name
+ * would get out of the captures folder.
  */
-export function cheminSur(racine: string, file: string): string {
-  const chemin = resolve(racine, file)
-  if (chemin === racine || !chemin.startsWith(racine.endsWith(sep) ? racine : racine + sep)) {
+export function pathUnder(root: string, file: string): string {
+  const path = resolve(root, file)
+  if (path === root || !path.startsWith(root.endsWith(sep) ? root : root + sep)) {
     throw new Error('Fichier hors du dossier des enregistrements')
   }
-  return chemin
+  return path
 }
 
-const normaliser = (chemin: string): string => chemin.split(sep).join('/')
+const normalize = (path: string): string => path.split(sep).join('/')
 
 const minutes = (ms: number): string => {
   const total = Math.round(ms / 1000)
@@ -399,23 +401,23 @@ const minutes = (ms: number): string => {
 }
 
 /**
- * Un extrait lisible dans le navigateur, produit à la volée.
+ * An excerpt playable in the browser, produced on the fly.
  *
- * `arreter` compte autant que le flux : une régie qui referme la modale ne doit
- * pas laisser un ffmpeg tourner sur la machine qui enregistre.
+ * `stop` counts as much as the stream: a control app that closes the modal must
+ * not leave an ffmpeg running on the machine that is recording.
  */
-export interface Extrait {
-  flux: Readable
-  arreter(): void
+export interface Excerpt {
+  stream: Readable
+  stop(): void
 }
 
-/** Un rush servi tel quel, éventuellement par tranche. */
-export interface FluxFichier {
-  flux: Readable
-  /** Taille totale du fichier, qu'on serve tout ou une tranche. */
-  taille: number
-  debut: number
-  fin: number
+/** A rush served as it is, possibly by range. */
+export interface FileStream {
+  stream: Readable
+  /** The file's total size, whether we serve all of it or a range. */
+  size: number
+  start: number
+  end: number
   type: string
 }
 
@@ -431,94 +433,94 @@ const TYPES: Record<string, string> = {
 }
 
 /**
- * Codecs qu'on peut remballer en MP4 sans réencoder.
+ * The codecs one can repackage into MP4 without re-encoding.
  *
- * Le cas normal des rushes d'OBS, et il change tout : remballer coûte
- * quelques millisecondes, réencoder mobilise le processeur de la machine qui
- * est justement en train d'enregistrer la conférence suivante.
+ * The normal case for OBS's rushes, and it changes everything: repackaging costs
+ * a few milliseconds, re-encoding mobilizes the processor of the machine that is
+ * precisely recording the next talk.
  */
-const COPIABLES = { video: new Set(['h264', 'hevc']), audio: new Set(['aac', 'mp3']) }
+const COPYABLE = { video: new Set(['h264', 'hevc']), audio: new Set(['aac', 'mp3']) }
 
-/** Ce qu'un outil externe a répondu, retenu pour la session. */
+/** What an external tool answered, kept for the session. */
 const tools = new Map<string, Promise<boolean>>()
 
 /**
- * Présence d'un outil externe, demandée une fois.
+ * The presence of an external tool, asked once.
  *
- * Ni ffmpeg ni ffprobe ne sont des dépendances du poste : ils arrivent avec la
- * plupart des installations d'OBS, et pas avec toutes. La page doit pouvoir le
- * dire d'avance plutôt que d'afficher un lecteur qui ne démarrera jamais.
+ * Neither ffmpeg nor ffprobe is a dependency of the machine: they come with most
+ * OBS installations, and not with all of them. The page must be able to say so in
+ * advance rather than display a player that will never start.
  */
-export async function outilDisponible(commande: string): Promise<boolean> {
-  const connu = tools.get(commande)
-  if (connu != null) return await connu
+export async function toolAvailable(command: string): Promise<boolean> {
+  const known = tools.get(command)
+  if (known != null) return await known
 
-  const sonde = (async () => {
+  const probe = (async () => {
     const { execFile } = await import('node:child_process')
-    return await new Promise<boolean>((termine) => {
-      execFile(commande, ['-version'], { timeout: 5_000, windowsHide: true }, (erreur) =>
-        termine(erreur == null),
+    return await new Promise<boolean>((done) => {
+      execFile(command, ['-version'], { timeout: 5_000, windowsHide: true }, (error) =>
+        done(error == null),
       )
     })
   })()
-  tools.set(commande, sonde)
-  return await sonde
+  tools.set(command, probe)
+  return await probe
 }
 
 /**
- * Extrait de quelques secondes, en MP4 fragmenté.
+ * A few seconds' excerpt, as fragmented MP4.
  *
- * Fragmenté, donc lisible pendant qu'il s'écrit : le navigateur n'attend pas la
- * fin du fichier pour afficher une image. C'est ce qui permet de servir un
- * Matroska — qu'aucun navigateur ne sait ouvrir — à un `<video>` ordinaire,
- * sans rien écrire sur le disque.
+ * Fragmented, so playable while it is being written: the browser does not wait
+ * for the end of the file to show a picture. That is what makes it possible to
+ * serve a Matroska — which no browser knows how to open — to an ordinary
+ * `<video>`, without writing anything to disk.
  *
- * `null` veut dire « ffmpeg absent » : la page le dit, elle ne feint pas.
+ * `null` means "ffmpeg absent": the page says so, it does not pretend.
  */
-export async function ouvrirExtrait(
+export async function openExcerpt(
   deps: VodIndexDeps,
   file: string,
-  options: { atMs?: number; dureeMs?: number; commande?: string } = {},
-): Promise<Extrait | null> {
-  const commande = options.commande ?? 'ffmpeg'
-  if (!(await outilDisponible(commande))) return null
+  options: { atMs?: number; durationMs?: number; command?: string } = {},
+): Promise<Excerpt | null> {
+  const command = options.command ?? 'ffmpeg'
+  if (!(await toolAvailable(command))) return null
 
-  const chemin = cheminSur(resolve(deps.root), file)
-  if ((await deps.fs.stat(chemin)) == null) throw new Error('Fichier absent du disque')
+  const path = pathUnder(resolve(deps.root), file)
+  if ((await deps.fs.stat(path)) == null) throw new Error('Fichier absent du disque')
 
-  const depart = Math.max(0, Math.round((options.atMs ?? 0) / 1000))
-  const duree = Math.min(120, Math.max(5, Math.round((options.dureeMs ?? 20_000) / 1000)))
+  const start = Math.max(0, Math.round((options.atMs ?? 0) / 1000))
+  const duration = Math.min(120, Math.max(5, Math.round((options.durationMs ?? 20_000) / 1000)))
 
-  const sondage = deps.probe == null ? null : await deps.probe(chemin)
-  const copiable =
-    sondage != null &&
-    sondage.video != null &&
-    sondage.audio != null &&
-    COPIABLES.video.has(sondage.video.codec) &&
-    COPIABLES.audio.has(sondage.audio.codec)
+  const probed = deps.probe == null ? null : await deps.probe(path)
+  const copyable =
+    probed != null &&
+    probed.video != null &&
+    probed.audio != null &&
+    COPYABLE.video.has(probed.video.codec) &&
+    COPYABLE.audio.has(probed.audio.codec)
 
-  const sortie = copiable
+  const output = copyable
     ? ['-c', 'copy']
-    : // Le repli : petit, rapide, et suffisant pour répondre à « est-ce qu'il y
-      // a une image et du son ». Personne ne monte depuis cet aperçu.
+    : // The fallback: small, fast, and enough to answer "is there a picture and
+      // some sound". Nobody edits from this preview.
       ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '30', '-vf', 'scale=-2:480', '-c:a', 'aac', '-b:a', '96k']
 
   const { spawn } = await import('node:child_process')
-  const processus = spawn(
-    commande,
+  const child = spawn(
+    command,
     [
       '-hide_banner',
       '-loglevel',
       'error',
-      // `-ss` avant `-i` : ffmpeg saute directement à l'image-clé la plus proche
-      // au lieu de décoder deux heures pour en garder vingt secondes.
+      // `-ss` before `-i`: ffmpeg jumps straight to the nearest keyframe instead
+      // of decoding two hours to keep twenty seconds.
       '-ss',
-      String(depart),
+      String(start),
       '-i',
-      chemin,
+      path,
       '-t',
-      String(duree),
-      ...sortie,
+      String(duration),
+      ...output,
       '-movflags',
       'frag_keyframe+empty_moov+default_base_moof',
       '-f',
@@ -528,70 +530,70 @@ export async function ouvrirExtrait(
     { windowsHide: true },
   )
 
-  let erreurs = ''
-  processus.stderr.on('data', (morceau: Buffer) => {
-    erreurs = (erreurs + morceau.toString()).slice(-2_000)
+  let errors = ''
+  child.stderr.on('data', (chunk: Buffer) => {
+    errors = (errors + chunk.toString()).slice(-2_000)
   })
-  processus.on('close', (code) => {
+  child.on('close', (code) => {
     if (code !== 0 && code != null) {
-      deps.onLog?.('warn', 'aperçu VOD interrompu', { file, code, message: erreurs.trim() })
+      deps.onLog?.('warn', 'aperçu VOD interrompu', { file, code, message: errors.trim() })
     }
   })
-  processus.on('error', (cause) => {
+  child.on('error', (cause) => {
     deps.onLog?.('warn', 'aperçu VOD impossible', { file, message: (cause as Error).message })
-    processus.stdout.destroy()
+    child.stdout.destroy()
   })
 
   return {
-    flux: processus.stdout,
-    arreter: () => {
-      processus.kill('SIGKILL')
+    stream: child.stdout,
+    stop: () => {
+      child.kill('SIGKILL')
     },
   }
 }
 
 /**
- * Le rush lui-même, éventuellement par tranche.
+ * The rush itself, possibly by range.
  *
- * Sert à l'ouvrir dans un lecteur qui, lui, sait lire du Matroska — ou à le
- * récupérer sur une autre machine, ce que la modale ne remplacera jamais. Les
- * tranches (`Range`) sont ce qui rend un fichier de trois gigaoctets navigable
- * au lieu de se télécharger en entier avant la première image.
+ * Used to open it in a player that does know how to read Matroska — or to fetch
+ * it onto another machine, which the modal will never replace. The ranges
+ * (`Range`) are what makes a three-gigabyte file navigable instead of downloading
+ * whole before the first frame.
  */
-export async function ouvrirFichier(
+export async function openFile(
   deps: VodIndexDeps,
   file: string,
-  plage?: string | null,
-): Promise<FluxFichier | null> {
-  const chemin = cheminSur(resolve(deps.root), file)
-  const stat = await deps.fs.stat(chemin)
+  range?: string | null,
+): Promise<FileStream | null> {
+  const path = pathUnder(resolve(deps.root), file)
+  const stat = await deps.fs.stat(path)
   if (stat == null) return null
 
-  let debut = 0
-  let fin = Math.max(0, stat.size - 1)
-  const demande = /^bytes=(\d*)-(\d*)$/.exec((plage ?? '').trim())
-  if (demande != null && stat.size > 0) {
-    const [, premier, dernier] = demande
-    if (premier !== '') {
-      debut = Math.min(Number(premier), fin)
-      if (dernier !== '') fin = Math.min(Number(dernier), fin)
-    } else if (dernier !== '') {
-      // `bytes=-500` : les cinq cents derniers octets, ce que réclament les
-      // lecteurs pour aller chercher l'index en fin de conteneur.
-      debut = Math.max(0, stat.size - Number(dernier))
+  let start = 0
+  let end = Math.max(0, stat.size - 1)
+  const requested = /^bytes=(\d*)-(\d*)$/.exec((range ?? '').trim())
+  if (requested != null && stat.size > 0) {
+    const [, first, last] = requested
+    if (first !== '') {
+      start = Math.min(Number(first), end)
+      if (last !== '') end = Math.min(Number(last), end)
+    } else if (last !== '') {
+      // `bytes=-500`: the last five hundred bytes, which is what the players ask
+      // for to go and fetch the index at the end of the container.
+      start = Math.max(0, stat.size - Number(last))
     }
   }
 
   return {
-    flux: createReadStream(chemin, { start: debut, end: fin }),
-    taille: stat.size,
-    debut,
-    fin,
-    type: TYPES[extname(chemin).toLowerCase()] ?? 'application/octet-stream',
+    stream: createReadStream(path, { start, end }),
+    size: stat.size,
+    start,
+    end,
+    type: TYPES[extname(path).toLowerCase()] ?? 'application/octet-stream',
   }
 }
 
-/** Accès disque réel. Injecté, donc remplaçable en test. */
+/** Real disk access. Injected, so replaceable in a test. */
 export function nodeVodFs(): VodFs {
   return {
     async readdir(path: string) {
@@ -621,58 +623,57 @@ export function nodeVodFs(): VodFs {
 }
 
 /**
- * Sonde le conteneur avec ffprobe.
+ * Probes the container with ffprobe.
  *
- * ffprobe n'est pas une dépendance du poste : il arrive avec OBS sur la plupart
- * des installations, et pas du tout sur d'autres. Son absence n'est donc pas
- * une erreur — elle réduit le contrôle, et la régie le dit plutôt que de
- * prétendre avoir regardé.
+ * ffprobe is not a dependency of the machine: it comes with OBS on most
+ * installations, and not at all on others. Its absence is therefore not an error
+ * — it reduces the check, and the control app says so rather than pretending to
+ * have looked.
  */
-export function ffprobeSonde(commande = 'ffprobe') {
-  return async (chemin: string): Promise<VodProbe | null> => {
+export function ffprobeProbe(command = 'ffprobe') {
+  return async (path: string): Promise<VodProbe | null> => {
     const { execFile } = await import('node:child_process')
-    const resultat = await new Promise<{ erreur: EchecProcessus | null; stdout: string }>((resolve) => {
+    const result = await new Promise<{ error: ProcessFailure | null; stdout: string }>((resolve) => {
       execFile(
-        commande,
-        ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', chemin],
+        command,
+        ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', path],
         { timeout: 20_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true },
-        (erreur, stdout) => resolve({ erreur: erreur as EchecProcessus | null, stdout }),
+        (error, stdout) => resolve({ error: error as ProcessFailure | null, stdout }),
       )
     })
 
     /**
-     * Départager « l'outil n'a pas répondu » de « le fichier est mauvais ».
+     * Telling "the tool did not answer" from "the file is bad".
      *
-     * Un seul cas accuse le fichier : ffprobe est allé au bout et a rendu un
-     * code de sortie non nul — `code` est alors un **nombre**. Binaire absent
-     * ou non exécutable, délai dépassé, sortie trop volumineuse : `code` est
-     * une chaîne ou le processus a été tué, et l'on ne sait rien du fichier.
-     * Confondre les deux ferait accuser un rush intact parce que le poste
-     * n'avait pas ffprobe — exactement l'erreur de diagnostic que ce contrôle
-     * est censé éviter.
+     * Only one case accuses the file: ffprobe went all the way and returned a
+     * non-zero exit code — `code` is then a **number**. A binary absent or not
+     * executable, a timeout, an output too large: `code` is a string or the process
+     * was killed, and we know nothing about the file. Confusing the two would
+     * accuse an intact rush because the machine did not have ffprobe — exactly the
+     * diagnostic error this check is meant to avoid.
      */
-    const erreur = resultat.erreur
-    if (erreur != null) {
-      const refuseParFfprobe = typeof erreur.code === 'number' && erreur.killed !== true
-      return refuseParFfprobe ? CONTENEUR_REFUSE : null
+    const error = result.error
+    if (error != null) {
+      const refusedByFfprobe = typeof error.code === 'number' && error.killed !== true
+      return refusedByFfprobe ? CONTAINER_REFUSED : null
     }
 
     try {
-      return lireSortieFfprobe(resultat.stdout)
+      return parseFfprobeOutput(result.stdout)
     } catch {
-      return CONTENEUR_REFUSE
+      return CONTAINER_REFUSED
     }
   }
 }
 
-/** Ce que `execFile` rend en cas d'échec : code de sortie **ou** code système. */
-interface EchecProcessus extends Error {
+/** What `execFile` returns on failure: an exit code **or** a system code. */
+interface ProcessFailure extends Error {
   code?: number | string
   killed?: boolean
 }
 
-/** ffprobe a bien tourné, et n'a rien reconnu dans le fichier. */
-const CONTENEUR_REFUSE: VodProbe = {
+/** ffprobe ran fine, and recognized nothing in the file. */
+const CONTAINER_REFUSED: VodProbe = {
   ouvert: false,
   durationMs: null,
   video: null,
@@ -680,9 +681,9 @@ const CONTENEUR_REFUSE: VodProbe = {
   bitrateKbps: null,
 }
 
-/** Extrait de la sortie ffprobe les seules choses qui décident du verdict. */
-export function lireSortieFfprobe(brut: string): VodProbe {
-  const corps = JSON.parse(brut) as {
+/** Extracts from ffprobe's output the only things that decide the verdict. */
+export function parseFfprobeOutput(raw: string): VodProbe {
+  const body = JSON.parse(raw) as {
     streams?: {
       codec_type?: string
       codec_name?: string
@@ -695,17 +696,17 @@ export function lireSortieFfprobe(brut: string): VodProbe {
     format?: { duration?: string; bit_rate?: string }
   }
 
-  const flux = corps.streams ?? []
-  const video = flux.find((piste) => piste.codec_type === 'video')
-  const audio = flux.find((piste) => piste.codec_type === 'audio')
+  const streams = body.streams ?? []
+  const video = streams.find((track) => track.codec_type === 'video')
+  const audio = streams.find((track) => track.codec_type === 'audio')
 
-  // La durée du conteneur manque sur les Matroska écrits en flux : celle de la
-  // piste vidéo répond alors, et c'est précisément le cas des rushes d'OBS.
-  const duree = nombre(corps.format?.duration) ?? nombre(video?.duration) ?? null
+  // The container's duration is missing on Matroska written as a stream: the video
+  // track's then answers, and that is precisely the case of OBS's rushes.
+  const duration = numberOf(body.format?.duration) ?? numberOf(video?.duration) ?? null
 
   return {
     ouvert: true,
-    durationMs: duree == null ? null : Math.round(duree * 1000),
+    durationMs: duration == null ? null : Math.round(duration * 1000),
     video:
       video == null
         ? null
@@ -717,24 +718,24 @@ export function lireSortieFfprobe(brut: string): VodProbe {
           },
     audio: audio == null ? null : { codec: audio.codec_name ?? 'inconnu', channels: audio.channels ?? 0 },
     bitrateKbps: (() => {
-      const bits = nombre(corps.format?.bit_rate)
+      const bits = numberOf(body.format?.bit_rate)
       return bits == null ? null : Math.round(bits / 1000)
     })(),
   }
 }
 
-const nombre = (valeur: string | undefined): number | null => {
-  if (valeur == null) return null
-  const parse = Number(valeur)
-  return Number.isFinite(parse) && parse > 0 ? parse : null
+const numberOf = (value: string | undefined): number | null => {
+  if (value == null) return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
 }
 
-const fraction = (valeur: string | undefined): number | null => {
-  if (valeur == null) return null
-  const [haut, bas] = valeur.split('/')
-  const numerateur = Number(haut)
-  const denominateur = bas == null ? 1 : Number(bas)
-  if (!Number.isFinite(numerateur) || !Number.isFinite(denominateur) || denominateur === 0) return null
-  const fps = numerateur / denominateur
+const fraction = (value: string | undefined): number | null => {
+  if (value == null) return null
+  const [top, bottom] = value.split('/')
+  const numerator = Number(top)
+  const denominator = bottom == null ? 1 : Number(bottom)
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator === 0) return null
+  const fps = numerator / denominator
   return fps > 0 ? Math.round(fps * 100) / 100 : null
 }

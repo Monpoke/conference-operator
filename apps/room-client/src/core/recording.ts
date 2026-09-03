@@ -12,57 +12,56 @@ export interface RecordingFs {
 }
 
 export interface RecordingDeps {
-  /** Applique le format de nom de fichier avant `StartRecord`. */
+  /** Applies the file name format before `StartRecord`. */
   setFilenameFormat: (format: string) => Promise<void>
   startRecord: () => Promise<void>
   stopRecord: () => Promise<void>
   fs: RecordingFs
   /**
-   * Où OBS écrit ses masters.
+   * Where OBS writes its masters.
    *
-   * Sert **uniquement de repli**, quand OBS n'a pas annoncé le fichier produit.
-   * Le chemin qu'il annonce reste la source : lui seul dit ce qui a réellement
-   * été écrit, y compris quand le format de nom n'a pas pris.
+   * Serves **only as a fallback**, when OBS has not announced the file produced.
+   * The path it announces stays the source: it alone says what was really
+   * written, including when the name format did not take.
    */
   recordingRoot?: () => Promise<string | null>
   now: () => number
-  /** Horloge corrigée de l'offset serveur : les timecodes en dépendent. */
+  /** The clock corrected by the server offset: the timecodes depend on it. */
   correctedNow: () => number
   /**
-   * Mesurer la durée sur l'horloge corrigée plutôt que sur le temps réel.
-   * **Développement seulement.**
+   * Measure the duration on the corrected clock rather than on real time.
+   * **Development only.**
    *
-   * En production c'est le temps monotone qui fait foi, et c'est le bon choix :
-   * une durée de captation ne doit pas bouger parce que le poste a resynchronisé
-   * son horloge en pleine conférence. Un talk de cinquante minutes dure
-   * cinquante minutes, quoi qu'en dise `Date.now()`.
+   * In production it is monotonic time that is authoritative, and it is the right
+   * choice: a capture's duration must not move because the machine resynchronized
+   * its clock in the middle of a talk. A fifty-minute talk lasts fifty minutes,
+   * whatever `Date.now()` says.
    *
-   * En développement, la même règle rend la simulation illisible. On y déroule
-   * une journée en poussant l'horloge du hub — 09:00, on lance la captation,
-   * on saute à 09:50 pour simuler la fin — et la prise annonçait « 3 min »,
-   * le temps réellement passé devant l'écran, pendant que la timeline affichait
-   * un créneau de cinquante minutes. Les deux chiffres décrivaient le même
-   * enregistrement et ne se ressemblaient pas.
+   * In development, the same rule makes the simulation illegible. There one runs
+   * through a day by pushing the hub's clock — 09:00, start the capture, jump to
+   * 09:50 to simulate the end — and the take announced "3 min", the time actually
+   * spent in front of the screen, while the timeline showed a fifty-minute slot.
+   * Both figures described the same recording and did not look alike.
    *
-   * Le début et la fin suivaient déjà l'horloge corrigée : seule la durée
-   * restait sur le temps réel, et c'est ce désaccord qu'on lève ici.
+   * The start and the end already followed the corrected clock: only the duration
+   * stayed on real time, and it is that disagreement this lifts.
    */
-  suitLHorloge?: boolean
+  followsClock?: boolean
   onLog?: (level: 'info' | 'warn' | 'error', message: string, context?: unknown) => void
 }
 
 /**
- * Conteneurs qu'OBS sait écrire, dans l'ordre où on les cherche.
+ * The containers OBS knows how to write, in the order we look for them.
  *
- * Sert au repli : sans le chemin annoncé, on connaît le nom attendu mais pas
- * l'extension, qui dépend du réglage de sortie d'OBS.
+ * Used by the fallback: without the announced path, we know the expected name but
+ * not the extension, which depends on OBS's output setting.
  */
-const EXTENSIONS_MASTER = ['.mkv', '.mp4', '.mov', '.flv', '.ts', '.m4v', '.webm']
+const MASTER_EXTENSIONS = ['.mkv', '.mp4', '.mov', '.flv', '.ts', '.m4v', '.webm']
 
 export interface StartInput {
   session: Session | null
   roomId: string | null
-  /** Libellé court de la salle utilisé dans le nom de fichier (`track1`). */
+  /** The room's short label used in the file name (`track1`). */
   roomSlug: string
   timezone: string
 }
@@ -75,29 +74,29 @@ export interface StopResult {
 
 export interface StopOptions {
   /**
-   * OBS s'est déjà arrêté tout seul : ne pas lui redemander.
+   * OBS has already stopped by itself: do not ask it again.
    *
-   * Le cas de l'opérateur qui appuie sur « Arrêter l'enregistrement » dans OBS
-   * plutôt que dans la régie. `StopRecord` sur une sortie déjà inactive est une
-   * erreur d'OBS, et cette erreur emporterait tout le reste de l'arrêt — le
-   * sidecar en premier, c'est-à-dire précisément ce qu'on est venu sauver.
+   * The case of the operator who presses "Stop recording" in OBS rather than in
+   * the control app. `StopRecord` on an already inactive output is an OBS error,
+   * and that error would carry away all the rest of the stop — the sidecar first,
+   * which is precisely what we came to save.
    *
-   * Faux par défaut, et il faut que ça le reste : avaler l'échec de `StopRecord`
-   * sur le chemin normal ferait écrire le sidecar d'une prise encore en cours.
+   * False by default, and it has to stay that way: swallowing `StopRecord`'s
+   * failure on the normal path would write the sidecar of a take still running.
    */
-  dejaArrete?: boolean
+  alreadyStopped?: boolean
 }
 
 /**
- * Pilote un enregistrement de talk et produit son sidecar.
+ * Drives a talk's recording and produces its sidecar.
  *
- * Le sidecar est ce qui rend le editing et l'upload quasi automatiques après
- * l'événement — et il est écrit **en local**, donc produit même si le hub est
- * injoignable toute la journée.
+ * The sidecar is what makes the editing and the upload nearly automatic after the
+ * event — and it is written **locally**, so produced even if the hub is
+ * unreachable all day.
  */
 export class RecordingSession {
   private startedAtMs: number | null = null
-  /** Même départ, lu sur l'horloge corrigée : la base du temps de captation en dev. */
+  /** The same start, read on the corrected clock: the base of capture time in dev. */
   private startedAtCorrectedMs: number | null = null
   private startedAtIso: string | null = null
   private markers: Marker[] = []
@@ -110,42 +109,41 @@ export class RecordingSession {
   }
 
   /**
-   * Les marqueurs de chapitre, les deux repères de editing exclus.
+   * The chapter markers, the two editing markers excluded.
    *
-   * Ce compte s'affiche en régie juste à côté de l'état des repères : y
-   * inclure le début et la fin faisait passer « aucun marqueur » à
-   * « 2 marqueur(s) » sans qu'aucun chapitre ait été posé, à côté d'une ligne
-   * qui disait déjà que les deux repères étaient là.
+   * That count is displayed in the control app right next to the state of the
+   * markers: including the start and the end made "no marker" become
+   * "2 marker(s)" without a single chapter having been placed, next to a line that
+   * already said both markers were there.
    */
   get markerCount(): number {
     return this.markers.filter((marker) => marker.role == null).length
   }
 
-  /** Instant de départ, pour le chronomètre affiché en régie. */
+  /** The start instant, for the stopwatch displayed in the control app. */
   get startedAt(): number | null {
     return this.startedAtMs
   }
 
   /**
-   * Le même départ sur l'horloge corrigée — ou `null` si elle ne fait pas foi.
+   * The same start on the corrected clock — or `null` if it is not authoritative.
    *
-   * Un seul champ qui porte à la fois la valeur et la règle : `null` dit à la
-   * régie « compte en temps réel », un nombre dit « compte sur l'horloge du
-   * hub, celle qui peut sauter ». Sans quoi le chronomètre affiché pendant la
-   * prise continuerait de compter les minutes passées devant l'écran pendant
-   * que la durée enregistrée, elle, suivrait la journée simulée — deux
-   * chiffres pour le même enregistrement, encore.
+   * A single field carrying both the value and the rule: `null` tells the control
+   * app "count in real time", a number says "count on the hub's clock, the one
+   * that can jump". Otherwise the stopwatch displayed during the take would keep
+   * counting the minutes spent in front of the screen while the recorded duration
+   * followed the simulated day — two figures for the same recording, again.
    */
-  get startedAtCorrige(): number | null {
-    return this.deps.suitLHorloge === true ? this.startedAtCorrectedMs : null
+  get correctedStartedAt(): number | null {
+    return this.deps.followsClock === true ? this.startedAtCorrectedMs : null
   }
 
   /**
-   * Démarre l'enregistrement.
+   * Starts the recording.
    *
-   * Le format de nom est posé *avant* `StartRecord` : OBS le lit à ce
-   * moment-là. Si ça échoue, on n'annule pas pour autant — un enregistrement
-   * mal nommé vaut infiniment mieux qu'un talk non enregistré.
+   * The name format is set *before* `StartRecord`: OBS reads it at that moment. If
+   * that fails, we do not cancel for all that — a badly named recording is
+   * infinitely better than an unrecorded talk.
    */
   async start(input: StartInput): Promise<void> {
     if (this.active) throw new Error('Un enregistrement est déjà en cours')
@@ -162,97 +160,97 @@ export class RecordingSession {
 
     await this.deps.startRecord()
     this.startedAtMs = this.deps.now()
-    const departCorrige = this.deps.correctedNow()
-    this.startedAtCorrectedMs = departCorrige
-    this.startedAtIso = new Date(departCorrige).toISOString()
+    const correctedStart = this.deps.correctedNow()
+    this.startedAtCorrectedMs = correctedStart
+    this.startedAtIso = new Date(correctedStart).toISOString()
     this.markers = []
     this.input = input
   }
 
   /**
-   * Temps écoulé depuis le début de la prise.
+   * The time elapsed since the take began.
    *
-   * Deux horloges, une par mode. Le temps monotone en production : une durée de
-   * captation ne doit pas bouger parce que le poste a resynchronisé son horloge
-   * en pleine conférence. L'horloge corrigée en développement : c'est en la
-   * poussant qu'on y déroule une journée, et la prise doit suivre ce qu'elle
-   * raconte plutôt que le temps passé devant l'écran.
+   * Two clocks, one per mode. Monotonic time in production: a capture's duration
+   * must not move because the machine resynchronized its clock in the middle of a
+   * talk. The corrected clock in development: it is by pushing it that one runs
+   * through a day there, and the take must follow what it says rather than the
+   * time spent in front of the screen.
    *
-   * Jamais négatif. Reculer l'horloge de développement ramène donc la prise à
-   * zéro — c'est la conséquence assumée de la suivre, et ça vaut mieux qu'une
-   * durée négative qui casserait tout ce qui la lit en aval.
+   * Never negative. Moving the development clock back therefore brings the take
+   * to zero — that is the accepted consequence of following it, and it beats a
+   * negative duration that would break everything reading it downstream.
    */
-  private ecouleMs(): number {
+  private elapsedMs(): number {
     if (this.startedAtMs == null) return 0
-    if (this.deps.suitLHorloge === true && this.startedAtCorrectedMs != null) {
+    if (this.deps.followsClock === true && this.startedAtCorrectedMs != null) {
       return Math.max(0, this.deps.correctedNow() - this.startedAtCorrectedMs)
     }
     return Math.max(0, this.deps.now() - this.startedAtMs)
   }
 
   /**
-   * Pose un marqueur à l'instant courant.
+   * Places a marker at the current instant.
    *
-   * `role` distingue les deux repères de editing du chapitre ordinaire, et ils
-   * ne se comportent pas pareil : **reposer un repère remplace le précédent**.
-   * C'est le geste qu'on fait réellement — on repose le début parce que
-   * l'orateur a eu un faux départ, on repose la fin parce que les questions ont
-   * repris après ce qu'on croyait être le mot de la fin. En empiler deux
-   * laisserait au editing, trois semaines plus tard, un arbitrage que seule la
-   * régie pouvait trancher, sur l'instant.
+   * `role` tells the two editing markers apart from an ordinary chapter, and they
+   * do not behave the same: **placing a marker again replaces the previous one**.
+   * It is the gesture one actually makes — one places the start again because the
+   * speaker had a false start, one places the end again because the questions
+   * resumed after what one thought was the closing word. Stacking two would leave
+   * the editing, three weeks later, an arbitration only the control room could
+   * settle, on the spot.
+   *
+   * The `debut` and `fin` role values are contract values.
    */
   mark(label: string, role: MarkerRole | null = null): Marker {
     if (this.startedAtMs == null) throw new Error('Aucun enregistrement en cours')
     const marker: Marker = {
       label,
-      // Même horloge que la durée : un marqueur posé après un saut d'horloge
-      // doit tomber au même endroit que ce que la prise annonce durer.
-      offsetMs: this.ecouleMs(),
+      // The same clock as the duration: a marker placed after a clock jump must
+      // fall in the same place as what the take claims to last.
+      offsetMs: this.elapsedMs(),
       at: new Date(this.deps.correctedNow()).toISOString(),
-      // Le champ n'apparaît pas sur un chapitre : un sidecar où chaque marqueur
-      // porte `"role": null` ferait croire à un rôle qu'on aurait effacé.
+      // The field does not appear on a chapter: a sidecar where every marker
+      // carries `"role": null` would suggest a role one had erased.
       ...(role == null ? {} : { role }),
     }
-    if (role != null) this.markers = this.markers.filter((pose) => pose.role !== role)
+    if (role != null) this.markers = this.markers.filter((placed) => placed.role !== role)
     this.markers.push(marker)
     /*
-     * Rangés par décalage, et non par ordre de pose.
+     * Sorted by offset, and not by the order they were placed in.
      *
-     * Les deux coïncident tant qu'on empile, et divergent dès qu'un repère est
-     * reposé : un début redéplacé à 2 min se retrouvait derrière le chapitre
-     * de 1 min. Le sidecar est lu par un editing qui en tire des chapitres —
-     * lui livrer une liste en désordre revient à lui demander de réparer là-bas
-     * ce qui se range ici en une ligne.
+     * The two coincide as long as one stacks, and diverge as soon as a marker is
+     * placed again: a start moved to 2 min ended up behind the chapter at 1 min.
+     * The sidecar is read by an editing that draws chapters from it — handing it a
+     * list out of order amounts to asking it to repair over there what is sorted
+     * here in one line.
      */
     this.markers.sort((a, b) => a.offsetMs - b.offsetMs)
     return marker
   }
 
   /**
-   * Où tombent les deux repères, pour que la régie les montre.
+   * Where the two markers fall, so that the control app can show them.
    *
-   * Le compte de marqueurs ne répondait pas à la question qu'on se pose avant
-   * d'arrêter une prise — « est-ce que j'ai posé le début ? » —, puisque trois
-   * marqueurs peuvent être trois chapitres.
+   * The marker count did not answer the question one asks before stopping a take
+   * — "did I place the start?" — since three markers can be three chapters.
    */
   get editing(): EditingMarks {
-    const de = (role: MarkerRole): number | null =>
+    const at = (role: MarkerRole): number | null =>
       this.markers.find((marker) => marker.role === role)?.offsetMs ?? null
-    return { startMs: de('debut'), endMs: de('fin') }
+    return { startMs: at('debut'), endMs: at('fin') }
   }
 
   /**
-   * Arrête l'enregistrement et écrit le sidecar.
+   * Stops the recording and writes the sidecar.
    *
-   * `resolveOutputPath` est appelé **après** `StopRecord`, et c'est essentiel :
-   * OBS n'annonce le chemin du fichier que dans l'événement
-   * `RecordStateChanged` qui suit l'arrêt. Le lire avant donnerait toujours
-   * `null`, et aucun sidecar ne serait jamais écrit.
+   * `resolveOutputPath` is called **after** `StopRecord`, and that is essential:
+   * OBS only announces the file's path in the `RecordStateChanged` event that
+   * follows the stop. Reading it before would always give `null`, and no sidecar
+   * would ever be written.
    *
-   * Ce chemin dit ce qu'OBS a réellement écrit, le format de nom ayant pu ne
-   * pas s'appliquer — mais il le dit **dans l'espace de nommage de la machine
-   * qui fait tourner OBS**, qui n'est pas toujours la nôtre. Voir
-   * `resoudreMaster`.
+   * That path says what OBS really wrote, the name format possibly not having
+   * applied — but it says it **in the namespace of the machine running OBS**,
+   * which is not always ours. See `resolveMaster`.
    */
   async stop(
     resolveOutputPath: () => Promise<string | null>,
@@ -262,14 +260,14 @@ export class RecordingSession {
       throw new Error('Aucun enregistrement en cours')
     }
 
-    if (options.dejaArrete !== true) await this.deps.stopRecord()
+    if (options.alreadyStopped !== true) await this.deps.stopRecord()
     const outputPath = await resolveOutputPath()
     const endedAtIso = new Date(this.deps.correctedNow()).toISOString()
-    const durationMs = this.ecouleMs()
+    const durationMs = this.elapsedMs()
     const input = this.input
     const session = input.session
 
-    let videoPath = await this.resoudreMaster(outputPath, input)
+    let videoPath = await this.resolveMaster(outputPath, input)
     if (videoPath != null && videoPath !== outputPath) {
       this.deps.onLog?.('info', 'master retrouvé sous la racine des captations', {
         annonce: outputPath,
@@ -278,12 +276,12 @@ export class RecordingSession {
     }
 
     if (videoPath != null) {
-      const attendu = buildFilenameFormat(input) + extname(videoPath)
-      const cible = join(dirname(videoPath), attendu)
-      if (basename(videoPath) !== attendu && !(await this.deps.fs.exists(cible))) {
+      const expected = buildFilenameFormat(input) + extname(videoPath)
+      const target = join(dirname(videoPath), expected)
+      if (basename(videoPath) !== expected && !(await this.deps.fs.exists(target))) {
         try {
-          await this.deps.fs.rename(videoPath, cible)
-          videoPath = cible
+          await this.deps.fs.rename(videoPath, target)
+          videoPath = target
         } catch (cause) {
           this.deps.onLog?.('warn', 'renommage impossible, chemin OBS conservé', {
             from: videoPath,
@@ -334,83 +332,82 @@ export class RecordingSession {
   }
 
   /**
-   * Le master, tel que **nous** pouvons l'ouvrir.
+   * The master, as **we** can open it.
    *
-   * OBS annonce un chemin dans l'espace de nommage de la machine qui le fait
-   * tourner, et ce n'est pas toujours la nôtre. Le cas s'est vu en clair : OBS
-   * sous Windows enregistrant dans un dossier WSL, et annonçant
-   * `//wsl.localhost/distro/home/…/prise.mp4`. Le fichier était bien là, à un
-   * chemin Linux parfaitement ordinaire ; nous écrivions le sidecar à côté d'un
-   * chemin qui n'existe pas de ce côté-ci, l'écriture échouait, et chaque prise
-   * de la journée perdait titre, intervenants et marqueurs. La même chose
-   * arrive avec un dossier réseau monté différemment sur les deux machines.
+   * OBS announces a path in the namespace of the machine running it, and that is
+   * not always ours. The case was seen in the open: OBS under Windows recording
+   * into a WSL folder, and announcing
+   * `//wsl.localhost/distro/home/…/prise.mp4`. The file was indeed there, at a
+   * perfectly ordinary Linux path; we wrote the sidecar next to a path that does
+   * not exist on this side, the write failed, and every take of the day lost its
+   * title, speakers and markers. The same happens with a network folder mounted
+   * differently on the two machines.
    *
-   * Trois sources, dans cet ordre, et l'ordre porte le sens :
+   * Three sources, in this order, and the order carries the meaning:
    *
-   * 1. **Le chemin annoncé, s'il désigne un fichier que nous voyons.** C'est le
-   *    cas de loin le plus courant — OBS et la salle sur la même machine — et
-   *    c'est la réponse exacte : lui seul sait ce qui a été écrit.
-   * 2. **Le nom annoncé, sous la racine des captations.** OBS reste la source
-   *    du *nom* — y compris le « (2) » qu'il ajoute sur une collision — mais le
-   *    *dossier* vient du réglage de la salle, qui est un chemin de notre côté.
-   * 3. **Le nom que nous avons dicté à OBS**, si rien n'a été annoncé du tout.
+   * 1. **The announced path, if it designates a file we can see.** It is by far
+   *    the most common case — OBS and the room on the same machine — and it is the
+   *    exact answer: it alone knows what was written.
+   * 2. **The announced name, under the capture root.** OBS stays the source of the
+   *    *name* — including the "(2)" it adds on a collision — but the *folder*
+   *    comes from the room's setting, which is a path on our side.
+   * 3. **The name we dictated to OBS**, if nothing was announced at all.
    *
-   * Prudent de bout en bout : faute de trouver un conteneur, on renonce plutôt
-   * que de semer un sidecar orphelin dans le dossier des captations.
+   * Cautious end to end: failing to find a container, we give up rather than
+   * scatter an orphan sidecar into the captures folder.
    */
-  private async resoudreMaster(annonce: string | null, input: StartInput): Promise<string | null> {
-    if (annonce != null && (await this.deps.fs.exists(annonce))) return annonce
+  private async resolveMaster(announced: string | null, input: StartInput): Promise<string | null> {
+    if (announced != null && (await this.deps.fs.exists(announced))) return announced
 
-    let racine: string | null = null
+    let root: string | null = null
     try {
-      racine = (await this.deps.recordingRoot?.()) ?? null
+      root = (await this.deps.recordingRoot?.()) ?? null
     } catch {
-      racine = null
+      root = null
     }
-    if (racine == null) return null
+    if (root == null) return null
 
-    if (annonce != null) {
-      const nom = nomDeFichier(annonce)
-      const candidat = join(racine, nom)
-      if (nom !== '' && (await this.deps.fs.exists(candidat))) return candidat
+    if (announced != null) {
+      const name = fileNameOf(announced)
+      const candidate = join(root, name)
+      if (name !== '' && (await this.deps.fs.exists(candidate))) return candidate
     }
 
-    const attendu = buildFilenameFormat(input)
-    for (const extension of EXTENSIONS_MASTER) {
-      const candidat = join(racine, attendu + extension)
-      if (await this.deps.fs.exists(candidat)) return candidat
+    const expected = buildFilenameFormat(input)
+    for (const extension of MASTER_EXTENSIONS) {
+      const candidate = join(root, expected + extension)
+      if (await this.deps.fs.exists(candidate)) return candidate
     }
     return null
   }
 }
 
 /**
- * Le dernier segment d'un chemin, quel que soit l'OS qui l'a écrit.
+ * The last segment of a path, whatever OS wrote it.
  *
- * `basename` de Node ne connaît que le séparateur de la plateforme courante :
- * sous Linux, il rend `C:\prises\talk.mkv` en entier, faute d'y voir la
- * moindre barre. Or le chemin que nous découpons ici vient de la machine
- * **d'OBS**, pas de la nôtre.
+ * Node's `basename` only knows the current platform's separator: under Linux it
+ * returns `C:\prises\talk.mkv` whole, seeing no slash in it at all. Yet the path
+ * we cut up here comes from **OBS's** machine, not from ours.
  */
-function nomDeFichier(chemin: string): string {
-  const morceaux = chemin.split(/[\\/]/)
-  return morceaux[morceaux.length - 1] ?? ''
+function fileNameOf(path: string): string {
+  const parts = path.split(/[\\/]/)
+  return parts[parts.length - 1] ?? ''
 }
 
 /**
  * `2026-10-30_track1_1100_titre-du-talk`
  *
- * Trié naturellement par date et salle, et lisible sans ouvrir le fichier —
- * ce qui compte quand on récupère trois cartes SD en fin de journée.
+ * Sorted naturally by date and room, and readable without opening the file —
+ * which counts when picking up three SD cards at the end of the day.
  */
 export function buildFilenameFormat(input: StartInput): string {
   const session = input.session
   const reference = session?.startsAt ?? new Date().toISOString()
   const date = formatInTimezone(reference, input.timezone, { year: 'numeric', month: '2-digit', day: '2-digit' })
-  const heure = formatInTimezone(reference, input.timezone, { hour: '2-digit', minute: '2-digit' })
+  const time = formatInTimezone(reference, input.timezone, { hour: '2-digit', minute: '2-digit' })
 
-  const titre = slugify(session?.title ?? 'sans-titre')
-  return `${date}_${input.roomSlug}_${heure}_${titre}`
+  const title = slugify(session?.title ?? 'sans-titre')
+  return `${date}_${input.roomSlug}_${time}_${title}`
 }
 
 function formatInTimezone(iso: string, timeZone: string, options: Intl.DateTimeFormatOptions): string {
@@ -420,7 +417,7 @@ function formatInTimezone(iso: string, timeZone: string, options: Intl.DateTimeF
   return `${get('year')}-${get('month')}-${get('day')}`
 }
 
-/** Sans accents ni caractères douteux : ces fichiers traversent Windows, macOS et YouTube. */
+/** No accents and no dubious characters: these files cross Windows, macOS and YouTube. */
 export function slugify(value: string): string {
   return value
     .normalize('NFD')

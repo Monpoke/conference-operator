@@ -1,5 +1,5 @@
 /**
- * Extrait et analyse le JavaScript embarqué dans une page servie.
+ * Excerpt et analyse le JavaScript embarqué dans une page servie.
  *
  * Ces pages n'ont **aucune étape de build** : leur JavaScript vit dans un
  * template literal TypeScript, où le compilateur ne voit qu'une chaîne. Une

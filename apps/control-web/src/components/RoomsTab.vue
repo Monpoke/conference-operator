@@ -7,11 +7,11 @@ import { roomState } from '../lib/rooms.js'
 import { useProgramsStore } from '../stores/programs.js'
 
 /**
- * L'état des salles, tel que le hub le connaît.
+ * The rooms' state, as the hub knows it.
  *
- * Le libellé accompagne la pastille, et ce n'est pas de la redondance : une
- * couleur seule ne se lit pas quand on ne les distingue pas, et rien d'autre
- * ici ne dit ce qui se joue.
+ * The label accompanies the dot, and that is not redundancy: a colour on its own
+ * cannot be read by somebody who does not tell them apart, and nothing else here
+ * says what is playing.
  */
 const props = defineProps<{ payload: DisplayPayload; nowMs: number }>()
 
@@ -28,8 +28,8 @@ const rows = computed(() =>
       queue: room.outboxDepth > 0 ? `${room.outboxDepth} en attente` : '',
       recording: room.recording,
       dot: `${state.fill}${outlineOf(room.connectivity)}`.trim(),
-      // Une salle muette ne dit rien de ce qui s'y joue : reprendre le mot du
-      // programme laisserait croire qu'on le sait encore.
+      // A silent room says nothing of what is playing there: reusing the program's
+      // word would suggest we still know.
       word: cut ? 'salle muette' : state.word,
       text: state.text,
     }
@@ -37,10 +37,10 @@ const rows = computed(() =>
 )
 
 /**
- * Vue datée plutôt que vidée : une liste vide se lirait « aucune salle ».
+ * A stale view rather than an emptied one: an empty list would read as "no rooms".
  *
- * Au-delà d'une minute, ce qui est affiché n'est plus l'état des salles mais le
- * souvenir qu'on en a, et la différence compte quand on décide d'attendre.
+ * Past a minute, what is displayed is no longer the rooms' state but our memory of
+ * it, and the difference matters when deciding whether to wait.
  */
 const staleMinutes = computed(() => {
   const at = props.payload.diagnostics?.roomsRefreshedAt
@@ -57,7 +57,7 @@ const staleMinutes = computed(() => {
       v-for="row in rows"
       :key="row.id"
       class="grid grid-cols-[1fr_auto_auto] items-center gap-2.5 border-t border-edge py-2 text-[13px] first:border-t-0"
-      :data-salle="row.id"
+      :data-room="row.id"
     >
       <div>
         <div class="font-semibold">{{ row.name }}</div>
@@ -68,7 +68,7 @@ const staleMinutes = computed(() => {
       <div><Badge v-if="row.recording" class="running">rec</Badge></div>
       <div class="flex items-center gap-1.5 text-xs" :class="row.text">
         <span>{{ row.word }}</span>
-        <span class="pastille" :class="row.dot"></span>
+        <span class="status-dot" :class="row.dot"></span>
       </div>
     </div>
     <div v-if="staleMinutes != null" class="mt-2 text-xs text-warn">

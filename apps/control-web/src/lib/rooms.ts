@@ -12,7 +12,7 @@ import type { Session } from '@cloudnord/program'
 import { timelinePosition } from '@cloudnord/program/selectors'
 import { duration, time } from '@cloudnord/format'
 
-/** Ce que le hub sait d'une salle, ou `null` si sa vue ne l'a pas encore. */
+/** What the hub knows of a room, or `null` if its view does not have it yet. */
 export function hubView(
   payload: DisplayPayload,
   roomId: string,
@@ -21,12 +21,12 @@ export function hubView(
 }
 
 /**
- * L'état d'une salle : le programme local, sauf pour ce que lui seul ignore.
+ * A room's state: the local program, except for what it alone cannot know.
  *
- * L'arbitrage — quels états le hub est seul à connaître, et jusqu'à quelle
- * fraîcheur sa vue fait foi — vit dans la lib, avec le calcul qu'il arbitre. On
- * n'apporte ici que ce qu'on est seul à avoir : la date du dernier
- * rafraîchissement.
+ * The adjudication — which states only the hub knows, and up to what freshness
+ * its view is authoritative — lives in the library, with the computation it
+ * adjudicates. All we bring here is what we alone have: the date of the last
+ * refresh.
  */
 export function roomState(
   payload: DisplayPayload,
@@ -41,10 +41,10 @@ export function roomState(
   const name = authoritativeState(local, view?.conference, fresh)
 
   /*
-   * Programme absent du cache : le dire.
+   * Program missing from the cache: say so.
    *
-   * « hors créneau » se lirait comme une salle sans rien de prévu, alors qu'on
-   * ignore tout de la sienne.
+   * "hors créneau" would read as a room with nothing scheduled, when in fact we
+   * know nothing at all about its schedule.
    */
   if (name === 'aucune' && sessions.length === 0) {
     return { fill: 'off', word: 'programme inconnu', text: 'text-dim' }
@@ -53,12 +53,12 @@ export function roomState(
   return { fill: looks.tint, word: looks.word, text: looks.text }
 }
 
-/** Une case du flux d'en-tête : tout ce qu'elle affiche, déjà décidé. */
+/** One cell of the header strip: everything it displays, already decided. */
 export interface RoomStripEntry {
   id: string
   name: string
   dot: string
-  /** Titre de ce qui s'y joue, ou vide quand ce n'est pas le titre qui compte. */
+  /** The title of what is playing there, or empty when the title is not what counts. */
   label: string
   detail: string
   tint: string
@@ -66,10 +66,10 @@ export interface RoomStripEntry {
 }
 
 /**
- * Les autres salles, vues des deux sources qui en parlent.
+ * The other rooms, seen from the two sources that speak of them.
  *
- * Le programme donne la liste et les créneaux même hub coupé ; l'état remonté
- * par le hub ajoute la connectivité et l'enregistrement quand il est joignable.
+ * The program gives the list and the slots even with the hub cut off; the state
+ * the hub reports adds connectivity and recording when it is reachable.
  */
 export function otherRooms(
   payload: DisplayPayload,
@@ -87,12 +87,12 @@ export function otherRooms(
 }
 
 /**
- * Ce qu'une salle voisine affiche dans le bandeau.
+ * What a neighbouring room shows in the strip.
  *
- * Toute la logique du flux tient ici, hors composant, parce qu'elle se vérifie
- * sur des instants choisis : « en cours · fin 10:45 », « vers la fin · 3 min »,
- * « reprise 14:00 » et « dépassement » sont quatre phrases dont chacune décide
- * si on lance le talk d'à côté maintenant ou dans cinq minutes.
+ * All the strip's logic lives here, outside any component, because it is checked
+ * on chosen instants: "en cours · fin 10:45", "vers la fin · 3 min", "reprise
+ * 14:00" and "dépassement" are four sentences each of which decides whether the
+ * talk next door starts now or in five minutes.
  */
 export function stripEntry(
   payload: DisplayPayload,
@@ -110,8 +110,8 @@ export function stripEntry(
   let tint = 'text-dim'
 
   if (state.fill === 'overrun') {
-    // Le programme est passé au créneau suivant ; la salle, non. C'est elle qui
-    // a raison, et c'est ce qui décale toute la journée.
+    // The program has moved on to the next slot; the room has not. The room is
+    // right, and that is what shifts the whole day.
     label =
       sessions.find((session) => session.id === view?.currentSessionId)?.title ??
       current?.title ??
@@ -123,9 +123,8 @@ export function stripEntry(
     detail = state.word
     tint = state.fill === 'late' ? 'text-warn' : 'text-dim'
   } else if (current?.kind === 'break') {
-    // Pas de libellé : l'étiquette BREAK le dit déjà, et « Déjeuner » à la place
-    // d'un titre de conférence se lisait comme une salle occupée. Ce qui décide
-    // ici, c'est l'heure de reprise.
+    // No label: the BREAK tag already says it, and "Déjeuner" in place of a talk
+    // title read as a busy room. What decides here is the resumption time.
     detail = next == null ? 'pause' : `reprise ${time(next.startsAt, zone)}`
   } else if (current != null) {
     label = current.title
@@ -144,12 +143,12 @@ export function stripEntry(
   }
 
   /**
-   * L'étiquette du break, à côté du nom de la salle.
+   * The break tag, beside the room's name.
    *
-   * Elle cohabite avec ce que fait la salle : « BREAK à venir » s'affiche
-   * pendant qu'une conférence court encore, et c'est là qu'elle sert.
+   * It coexists with whatever the room is doing: "BREAK à venir" shows while a
+   * talk is still running, and that is where it earns its place.
    */
-  const pause = breakOfSlots(sessions, atMs)
+  const breakSlot = breakOfSlots(sessions, atMs)
 
   return {
     id: room.id,
@@ -159,9 +158,9 @@ export function stripEntry(
     detail,
     tint,
     breakTag:
-      pause == null
+      breakSlot == null
         ? null
-        : pause.state === 'en-cours'
+        : breakSlot.state === 'en-cours'
           ? { text: 'BREAK', tint: 'text-dim' }
           : { text: 'BREAK à venir', tint: 'text-warn' },
   }

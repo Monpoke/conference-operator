@@ -9,27 +9,27 @@ import { useSessionStore } from '../stores/session.js'
 import { useLockStore } from '../stores/lock.js'
 
 /**
- * Choisir une salle, et savoir si elle est libre.
+ * Choosing a room, and knowing whether it is free.
  *
- * Des cartes et non un tableau : la régie mobile se tient debout, au fond d'une
- * salle ou dans un couloir, et six colonnes y deviennent illisibles. C'est le
- * même raisonnement que l'onglet Exploitation de la console, dans un format qui
- * n'a jamais que la largeur d'un pouce.
+ * Cards and not a table: the mobile control app is used standing up, at the back
+ * of a room or in a corridor, and six columns become unreadable there. The same
+ * reasoning as the console's Exploitation tab, in a format never wider than a
+ * thumb.
  *
- * Chaque carte porte les deux choses qui décident : **où en est la salle** — le
- * mot, pas seulement la teinte — et **qui la tient**, s'il y a quelqu'un.
+ * Each card carries the two things that decide: **where the room stands** — the
+ * word, not only the tint — and **who holds it**, if anybody does.
  */
 const gateway = useGatewayStore()
 const session = useSessionStore()
 const lock = useLockStore()
 
-/** Rafraîchi au même rythme que la supervision de la console : rien ne se pilote ici. */
-const RAFRAICHISSEMENT_MS = 10_000
+/** Refreshed at the console supervision's pace: nothing is driven here. */
+const REFRESH_MS = 10_000
 let timer: ReturnType<typeof setInterval> | null = null
 
 onMounted(() => {
   void lock.load()
-  timer = setInterval(() => void lock.load(), RAFRAICHISSEMENT_MS)
+  timer = setInterval(() => void lock.load(), REFRESH_MS)
 })
 
 onBeforeUnmount(() => {
@@ -37,65 +37,64 @@ onBeforeUnmount(() => {
 })
 
 /**
- * Les salles de l'amorce en attendant celles du hub.
+ * The boot payload's rooms while waiting for the hub's.
  *
- * Les noms sont posés dans la coquille, donc affichables avant toute réponse :
- * une liste vide le temps d'un aller-retour se lit comme un hub sans
- * programme. Elles n'ont ni état ni verrou tant que le premier appel n'a pas
- * répondu, et les cartes le disent en restant neutres plutôt qu'en affirmant
- * « hors créneau ».
+ * The names are laid down in the shell, so they can be shown before any response:
+ * an empty list for the duration of a round trip reads as a hub with no program.
+ * They have neither state nor lock until the first call has answered, and the
+ * cards say so by staying neutral rather than asserting "hors créneau".
  */
-const salles = computed<ControlRoom[]>(() =>
+const rooms = computed<ControlRoom[]>(() =>
   lock.rooms.length > 0
     ? lock.rooms
-    : gateway.boot.salles.map((salle) => ({
-        roomId: salle.id,
-        name: salle.name,
+    : gateway.boot.salles.map((room) => ({
+        roomId: room.id,
+        name: room.name,
         conference: 'aucune' as const,
         connectivity: 'OFFLINE' as const,
         lock: null,
       })),
 )
 
-const maintenant = ref(Date.now())
-let horloge: ReturnType<typeof setInterval> | null = null
+const now = ref(Date.now())
+let clock: ReturnType<typeof setInterval> | null = null
 onMounted(() => {
-  horloge = setInterval(() => (maintenant.value = Date.now()), 1_000)
+  clock = setInterval(() => (now.value = Date.now()), 1_000)
 })
 onBeforeUnmount(() => {
-  if (horloge != null) clearInterval(horloge)
+  if (clock != null) clearInterval(clock)
 })
 
-/** Le porteur, ou `null` : c'est ce mot-là qui décide s'il faut reprendre. */
-function tenuePar(salle: ControlRoom): string | null {
-  return salle.lock?.holder ?? null
+/** The holder, or `null`: that word is what decides whether to take over. */
+function heldBy(room: ControlRoom): string | null {
+  return room.lock?.holder ?? null
 }
 
 /**
- * Tenue par **mon compte**, ce qui ne veut pas dire par cet onglet-ci.
+ * Held by **my account**, which does not mean by this tab.
  *
- * La liste ne peut pas trancher plus finement : elle sert à choisir où aller,
- * et le voile de la salle dira ensuite s'il s'agit de cet onglet ou d'un autre
- * de vos appareils. Écrire « vous la tenez » ici mentirait la moitié du temps.
+ * The list cannot decide any more finely: it serves to choose where to go, and
+ * the room's veil will then say whether it is this tab or another of your
+ * devices. Writing "you hold it" here would lie half the time.
  */
-function moi(salle: ControlRoom): boolean {
-  return tenuePar(salle) != null && tenuePar(salle) === session.identity
+function mine(room: ControlRoom): boolean {
+  return heldBy(room) != null && heldBy(room) === session.identity
 }
 
 /**
- * Entrer, sans prendre.
+ * Entering, without taking.
  *
- * Une seule décision, au même endroit : le voile de la salle. Prendre depuis
- * cette liste obligeait à trancher sur la foi d'une ligne — « nuit@… tient
- * Track #1 » — sans voir ce qui s'y joue, alors que c'est précisément ce qu'on
- * veut regarder avant de retirer ses commandes à quelqu'un.
+ * A single decision, in a single place: the room's veil. Taking from this list
+ * forced a decision on the strength of one line — "nuit@… holds Track #1" —
+ * without seeing what is happening there, when that is exactly what one wants to
+ * look at before removing somebody's controls.
  *
- * Le prix est un aller-retour de plus pour la salle libre, la plus fréquente.
- * Il est faible : le voile s'ouvre déjà rempli, et son bouton est le premier
- * sous le pouce.
+ * The price is one more round trip for the free room, the most common case. It is
+ * small: the veil opens already filled in, and its button is the first one under
+ * the thumb.
  */
-function ouvrir(salle: ControlRoom): void {
-  lock.watch(salle.roomId)
+function open(room: ControlRoom): void {
+  lock.watch(room.roomId)
 }
 </script>
 
@@ -108,34 +107,34 @@ function ouvrir(salle: ControlRoom): void {
     </p>
 
     <div class="flex flex-col gap-2">
-      <Panel v-for="salle in salles" :key="salle.roomId">
+      <Panel v-for="room in rooms" :key="room.roomId">
         <button
           class="flex w-full items-start gap-2.5 text-left"
-          :data-salle="salle.roomId"
-          @click="ouvrir(salle)"
+          :data-room="room.roomId"
+          @click="open(room)"
         >
           <StatusDot
             class="mt-1 shrink-0"
-            :state="salle.conference"
-            :connectivity="salle.connectivity"
+            :state="room.conference"
+            :connectivity="room.connectivity"
           />
           <span class="min-w-0 flex-1">
-            <span class="block truncate text-sm">{{ salle.name }}</span>
-            <span class="block text-xs" :class="appearanceOf(salle.conference).text">
-              {{ appearanceOf(salle.conference).word }}
+            <span class="block truncate text-sm">{{ room.name }}</span>
+            <span class="block text-xs" :class="appearanceOf(room.conference).text">
+              {{ appearanceOf(room.conference).word }}
             </span>
             <!--
-              Le porteur, nommé, avec depuis quand. « Occupée » seul ferait
-              chercher qui : la réponse est à deux salles de là, et c'est
-              l'aller-retour qu'on évite.
+              The holder, named, and since when. "Occupée" on its own would send
+              people looking for who: the answer is two rooms away, and that is the
+              round trip being avoided.
             -->
-            <span v-if="tenuePar(salle) != null" class="mt-0.5 block text-xs text-warn">
-              <template v-if="moi(salle)">
-                Tenue par votre compte · depuis {{ timeAgo(salle.lock!.heldSince, maintenant) }}
+            <span v-if="heldBy(room) != null" class="mt-0.5 block text-xs text-warn">
+              <template v-if="mine(room)">
+                Tenue par votre compte · depuis {{ timeAgo(room.lock!.heldSince, now) }}
               </template>
               <template v-else>
-                {{ tenuePar(salle) }} · depuis
-                {{ timeAgo(salle.lock!.heldSince, maintenant) }}
+                {{ heldBy(room) }} · depuis
+                {{ timeAgo(room.lock!.heldSince, now) }}
               </template>
             </span>
           </span>

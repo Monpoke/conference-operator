@@ -5,12 +5,12 @@ import { otherRooms, stripEntry } from '../lib/rooms.js'
 import { useProgramsStore } from '../stores/programs.js'
 
 /**
- * Une ligne, toujours visible : ce qui décide d'un décalage.
+ * One line, always visible: what decides a schedule shift.
  *
- * « L'autre salle finit dans 3 minutes, on ne lance pas le talk maintenant. »
- * C'est la seule information de la journée qu'un opérateur ne peut pas déduire
- * de son propre écran, et elle doit se lire sans ouvrir quoi que ce soit. Le
- * détail — le programme complet d'une salle — est à un clic, en modale.
+ * "The other room finishes in 3 minutes, we do not start the talk now." It is the
+ * day's only piece of information an operator cannot deduce from their own
+ * screen, and it must be readable without opening anything. The detail — a room's
+ * full program — is one click away, in a modal.
  */
 const props = defineProps<{ payload: DisplayPayload; nowMs: number }>()
 
@@ -26,8 +26,8 @@ const entries = computed(() =>
 </script>
 
 <template>
-  <!-- Disparaît complètement quand il n'y a rien : une bande vide occupe une
-       ligne d'un écran de régie qui n'en a pas de trop. -->
+  <!-- Disappears entirely when there is nothing: an empty strip takes up a line
+       on a control screen that has none to spare. -->
   <div
     v-if="entries.length > 0"
     class="flex items-center gap-1.5 overflow-x-auto border-b border-edge bg-surface px-3 py-1.5"
@@ -38,15 +38,14 @@ const entries = computed(() =>
       :key="entry.id"
       type="button"
       class="flex shrink-0 cursor-pointer items-center gap-2 rounded-md border border-edge bg-surface2 px-2.5 py-1 text-xs font-normal"
-      :data-salle="entry.id"
+      :data-room="entry.id"
       @click="emit('open', entry.id)"
     >
       <!--
-        Une pastille nue, et non `StatusDot` : celui-ci décide le remplissage à
-        partir d'un état de conférence, or `roomState` a déjà tranché — il
-        connaît un cas que la table des apparences n'a pas, la salle dont on n'a
-        pas le programme. Lui repasser une classe toute faite serait un
-        troisième usage que ses props ne décrivent pas.
+        A bare dot, and not `StatusDot`: the latter decides its fill from a talk
+        state, whereas `roomState` has already decided — it knows a case the
+        appearance table does not, the room whose program we do not have. Handing
+        it a ready-made class would be a third use its props do not describe.
       -->
       <span class="status-dot" :class="entry.dot"></span>
       <span class="font-semibold">{{ entry.name }}</span>

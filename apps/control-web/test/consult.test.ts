@@ -153,7 +153,7 @@ describe('bandeau des salles', () => {
   it('ouvre le programme de la salle qu’on désigne', async () => {
     const wrapper = mount(RoomsStrip, { props: { payload: voisine(), nowMs: DEBUT_MS } })
 
-    await wrapper.get('[data-salle="track-2"]').trigger('click')
+    await wrapper.get('[data-room="track-2"]').trigger('click')
 
     expect(wrapper.emitted('open')).toEqual([['track-2']])
   })
@@ -193,7 +193,7 @@ describe('onglet des salles', () => {
 
     // Reprendre le mot du programme laisserait croire qu'on sait encore ce qui
     // s'y joue.
-    expect(wrapper.get('[data-salle="track-2"]').text()).toContain('salle muette')
+    expect(wrapper.get('[data-room="track-2"]').text()).toContain('salle muette')
   })
 
   it('date la vue au lieu de la vider quand le hub ne répond plus', () => {

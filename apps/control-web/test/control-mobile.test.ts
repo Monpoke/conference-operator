@@ -156,7 +156,7 @@ describe('les trois écrans', () => {
     // Pas de liste de salles avant d'être connecté : les noms sont publics,
     // mais leur état et leur verrou ne le sont pas.
     expect(wrapper.find('#connexion').exists()).toBe(true)
-    expect(wrapper.find('[data-salle="track-1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-room="track-1"]').exists()).toBe(false)
   })
 
   it('propose les salles avant que le hub ait répondu', async () => {
@@ -191,7 +191,7 @@ describe('les trois écrans', () => {
     const wrapper = mount(RoomSelect)
     await flushPromises()
 
-    await wrapper.get('[data-salle="track-1"]').trigger('click')
+    await wrapper.get('[data-room="track-1"]').trigger('click')
     await flushPromises()
 
     /*
@@ -211,7 +211,7 @@ describe('les trois écrans', () => {
     const wrapper = mount(RoomSelect)
     await flushPromises()
 
-    await wrapper.get('[data-salle="track-1"]').trigger('click')
+    await wrapper.get('[data-room="track-1"]').trigger('click')
     await flushPromises()
 
     // Le même chemin pour les deux : une salle libre montre le voile « pas

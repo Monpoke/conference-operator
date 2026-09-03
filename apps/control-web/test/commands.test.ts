@@ -13,28 +13,27 @@ import { useRoomStore } from '../src/stores/room.js'
 import { obsState, payload } from './fixtures.js'
 
 /**
- * Les commandes, et la règle qui les gouverne toutes.
+ * The commands, and the rule that governs them all.
  *
- * Aucune n'écrit dans l'état de la salle. Le bouton actif décrit **où la salle
- * en est**, jamais ce qu'on vient de demander — la différence est invisible
- * tant que tout marche, et c'est exactement le jour où la bascule échoue
- * qu'elle compte.
+ * None writes into the room's state. The active button describes **where the room
+ * stands**, never what has just been asked for — the difference is invisible while
+ * everything works, and it matters on exactly the day the switch fails.
  */
 
-interface Envoi {
+interface Call {
   url: string
   body: unknown
 }
 
-function stubFetch(reponse: unknown = { ok: true }): Envoi[] {
-  const envois: Envoi[] = []
+function stubFetch(reponse: unknown = { ok: true }): Call[] {
+  const calls: Call[] = []
   vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
-    envois.push({ url, body: JSON.parse(String(init?.body)) })
+    calls.push({ url, body: JSON.parse(String(init?.body)) })
     return new Response(JSON.stringify(reponse), {
       headers: { 'content-type': 'application/json' },
     })
   })
-  return envois
+  return calls
 }
 
 beforeEach(() => {
@@ -44,23 +43,23 @@ beforeEach(() => {
 })
 
 describe('poster une action', () => {
-  it('n’écrit rien dans l’état de la salle', async () => {
-    const envois = stubFetch()
+  it('writes nothing into the room\'s state', async () => {
+    const calls = stubFetch()
     const room = useRoomStore()
     room.seed(payload())
-    const avant = room.payload?.state.sceneRole
+    const before = room.payload?.state.sceneRole
 
     await useActionsStore().act({ action: 'scene.set', role: 'LIVE' })
 
     /*
-     * Peindre d'avance donnerait un bouton actif décrivant ce qu'on a demandé
-     * et non ce qui est. C'est le delta du flux qui repeindra, une fois qu'OBS
-     * aura vraiment basculé.
+     * Painting ahead would give an active button describing what was asked for and
+     * not what is. It is the stream's delta that will repaint, once OBS has really
+     * switched.
      */
-    expect(envois).toEqual([
+    expect(calls).toEqual([
       { url: '/control/action', body: { action: 'scene.set', role: 'LIVE' } },
     ])
-    expect(room.payload?.state.sceneRole).toBe(avant)
+    expect(room.payload?.state.sceneRole).toBe(before)
   })
 
   it('reprend le refus du poste, mot pour mot', async () => {
@@ -68,8 +67,8 @@ describe('poster une action', () => {
 
     await useActionsStore().act({ action: 'scene.set', role: 'LIVE' })
 
-    // Le message est écrit pour l'opérateur, par la couche qui sait pourquoi
-    // c'est refusé. Le traduire ici lui ferait perdre sa seule prise.
+    // The message is written for the operator, by the layer that knows why it is
+    // refused. Translating it here would lose its only handle.
     expect(useToast().notices.value.at(-1)).toMatchObject({
       text: 'OBS-A ne répond pas',
       failed: true,
@@ -83,45 +82,44 @@ describe('poster une action', () => {
 
     const resultat = await useActionsStore().act({ action: 'recording.start' })
 
-    // Un échec ici ne veut pas dire « le hub est loin » : le cœur applicatif de
-    // la salle ne répond plus, et c'est la panne qui arrête tout.
+    // A failure here does not mean "the hub is far away": the room's application
+    // core no longer answers, and that is the failure that stops everything.
     expect(resultat).toEqual({ ok: false, message: 'Le service local ne répond pas' })
     expect(useToast().notices.value.at(-1)?.failed).toBe(true)
   })
 })
 
-describe('écran de salle', () => {
+describe('room screen', () => {
   it('marque le mode en vigueur, pas celui qu’on vient de cliquer', async () => {
-    const envois = stubFetch()
+    const calls = stubFetch()
     const wrapper = mount(ScreenPanel, { props: { mode: 'loop' } })
 
     await wrapper.get('[data-command="sponsors"]').trigger('click')
     await flushPromises()
 
-    expect(envois[0]?.body).toEqual({ action: 'display.set', mode: 'sponsors' })
-    // La boucle reste marquée : le flux n'a rien dit d'autre.
+    expect(calls[0]?.body).toEqual({ action: 'display.set', mode: 'sponsors' })
+    // The loop stays marked: the stream said nothing else.
     expect(wrapper.get('[data-command="loop"]').classes()).toContain('bg-brand')
     expect(wrapper.get('[data-command="sponsors"]').classes()).not.toContain('bg-brand')
   })
 })
 
 describe('projection', () => {
-  it('ne propose le relais que là où il est configuré', () => {
-    const sans = mount(ProjectionPanel, {
+  it('offers the relay only where it is configured', () => {
+    const unset = mount(ProjectionPanel, {
       props: { sceneRole: 'HOLD', relaySourceRoomId: null, obs: null },
     })
-    expect(sans.find('[data-command="RELAY"]').exists()).toBe(false)
+    expect(unset.find('[data-command="RELAY"]').exists()).toBe(false)
 
-    const avec = mount(ProjectionPanel, {
+    const configured = mount(ProjectionPanel, {
       props: { sceneRole: 'HOLD', relaySourceRoomId: 'track-2', obs: null },
     })
 
-    // « Relais → track-2 » plutôt qu'un bouton dont personne ne sait ce qu'il
-    // montre.
-    expect(avec.get('[data-command="RELAY"]').text()).toContain('Relais → track-2')
+    // "Relais → track-2" rather than a button nobody knows what it shows.
+    expect(configured.get('[data-command="RELAY"]').text()).toContain('Relais → track-2')
   })
 
-  it('rappelle qu’une instance simulée ne capte rien', () => {
+  it('reminds that a simulated instance captures nothing', () => {
     const wrapper = mount(ProjectionPanel, {
       props: {
         sceneRole: 'LIVE',
@@ -130,26 +128,26 @@ describe('projection', () => {
       },
     })
 
-    // Rien ne distingue à l'écran un pilotage simulé d'un vrai, sauf qu'aucune
-    // caméra n'est branchée derrière.
+    // Nothing on screen tells simulated driving from real, except that no camera is
+    // plugged in behind it.
     expect(wrapper.text()).toContain('simulé')
   })
 })
 
-describe('message à la console', () => {
-  it('n’envoie pas de message vide, ni d’espaces', async () => {
-    const envois = stubFetch()
+describe('message to the console', () => {
+  it('sends no empty message, nor whitespace', async () => {
+    const calls = stubFetch()
     const wrapper = mount(MessagePanel)
 
     await wrapper.get('#message-text').setValue('   ')
     await wrapper.get('#btn-message').trigger('click')
     await flushPromises()
 
-    expect(envois).toEqual([])
+    expect(calls).toEqual([])
   })
 
-  it('part avec son niveau, et vide le champ', async () => {
-    const envois = stubFetch()
+  it('leaves with its level, and clears the field', async () => {
+    const calls = stubFetch()
     const wrapper = mount(MessagePanel)
 
     await wrapper.get('#message-text').setValue('Le micro coupe')
@@ -157,7 +155,7 @@ describe('message à la console', () => {
     await wrapper.get('#message-text').trigger('keydown.enter')
     await flushPromises()
 
-    expect(envois[0]?.body).toEqual({
+    expect(calls[0]?.body).toEqual({
       action: 'message.send',
       text: 'Le micro coupe',
       level: 'urgent',
@@ -169,7 +167,7 @@ describe('message à la console', () => {
 describe('captation', () => {
   const REC = { active: true, markers: 2, startedAtMs: 1_000, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS }
 
-  function monter(
+  function mountPanel(
     recording: ControlDiagnostics['recording'] | null,
     streaming = false,
   ): ReturnType<typeof mount> {
@@ -178,110 +176,110 @@ describe('captation', () => {
     })
   }
 
-  it('propose d’arrêter ce qui tourne, et de lancer ce qui ne tourne pas', () => {
-    expect(monter(REC).get('#btn-rec').text()).toContain('Arrêter')
-    expect(monter(null).get('#btn-rec').text()).toContain('Enregistrer')
+  it('offers to stop what is running, and to start what is not', () => {
+    expect(mountPanel(REC).get('#btn-rec').text()).toContain('Arrêter')
+    expect(mountPanel(null).get('#btn-rec').text()).toContain('Enregistrer')
   })
 
-  it('poste l’arrêt quand ça tourne, le départ sinon', async () => {
-    const envois = stubFetch()
+  it('posts the stop when it is running, the start otherwise', async () => {
+    const calls = stubFetch()
 
-    await monter(REC).get('#btn-rec').trigger('click')
-    await monter(null).get('#btn-rec').trigger('click')
+    await mountPanel(REC).get('#btn-rec').trigger('click')
+    await mountPanel(null).get('#btn-rec').trigger('click')
     await flushPromises()
 
-    expect(envois.map((envoi) => envoi.body)).toEqual([
+    expect(calls.map((call) => call.body)).toEqual([
       { action: 'recording.stop' },
       { action: 'recording.start' },
     ])
   })
 
   it('ne laisse pas poser un marqueur hors enregistrement', () => {
-    const wrapper = monter(null)
+    const wrapper = mountPanel(null)
 
-    // Un marqueur sans prise ne se rattache à rien : le poste le refuserait, et
-    // un bouton actif dont la commande est refusée est un piège.
+    // A marker with no take attaches to nothing: the machine would refuse it, and
+    // an active button whose command is refused is a trap.
     expect(wrapper.get('#btn-marker').attributes('disabled')).toBeDefined()
     expect(wrapper.get('#label-marker').attributes('disabled')).toBeDefined()
     expect(wrapper.get('[data-role="markers"]').text()).toBe('hors enregistrement')
   })
 
-  it('marque sans libellé plutôt que de ne pas marquer', async () => {
-    const envois = stubFetch()
-    const wrapper = monter(REC)
+  it('marks with no label rather than not marking', async () => {
+    const calls = stubFetch()
+    const wrapper = mountPanel(REC)
 
     await wrapper.get('#btn-marker').trigger('click')
     await flushPromises()
 
-    // Au editing, savoir *où* vaut déjà mieux que rien, et exiger un mot ferait
+    // At editing time, knowing *where* is already better than nothing, and
     // rater l'instant.
-    expect(envois[0]?.body).toEqual({ action: 'recording.mark', label: 'Chapitre' })
+    expect(calls[0]?.body).toEqual({ action: 'recording.mark', label: 'Chapitre' })
   })
 
-  it('reprend le libellé saisi, et vide le champ', async () => {
-    const envois = stubFetch()
-    const wrapper = monter(REC)
+  it('takes the typed label, and clears the field', async () => {
+    const calls = stubFetch()
+    const wrapper = mountPanel(REC)
 
     await wrapper.get('#label-marker').setValue('Questions')
     await wrapper.get('#btn-marker').trigger('click')
     await flushPromises()
 
-    expect(envois[0]?.body).toEqual({ action: 'recording.mark', label: 'Questions' })
+    expect(calls[0]?.body).toEqual({ action: 'recording.mark', label: 'Questions' })
     expect((wrapper.get('#label-marker').element as HTMLInputElement).value).toBe('')
   })
 
   /*
-   * Les deux repères de editing, vus du panneau.
+   * The two editing anchors, seen from the panel.
    *
-   * Ce qui compte ici : le rôle part avec le geste, et le libellé n'est pas
-   * saisi. Le poste ne lit que `role` ; le libellé, lui, se relit dans le
-   * journal du hub et doit dire la même chose d'une salle à l'autre.
+   * What counts here: the role leaves with the gesture, and the label is not typed.
+   * The machine only reads `role`; the label, for its part, is read back in the
+   * hub's log and must say the same thing from one room to the next.
    */
-  it('poste les deux repères avec leur rôle, sans passer par le champ', async () => {
-    const envois = stubFetch()
-    const wrapper = monter(REC)
+  it('posts both anchors with their role, without going through the field', async () => {
+    const calls = stubFetch()
+    const wrapper = mountPanel(REC)
 
     await wrapper.get('#btn-anchor-start').trigger('click')
     await wrapper.get('#btn-anchor-end').trigger('click')
     await flushPromises()
 
-    expect(envois.map((envoi) => envoi.body)).toEqual([
+    expect(calls.map((call) => call.body)).toEqual([
       { action: 'recording.mark', label: 'Début', role: 'debut' },
       { action: 'recording.mark', label: 'Fin', role: 'fin' },
     ])
   })
 
-  it('montre où le repère est tombé, pas seulement qu’il est posé', () => {
-    const wrapper = monter({ ...REC, editing: { startMs: 52_000, endMs: null } })
+  it('shows where the anchor fell, not only that it is set', () => {
+    const wrapper = mountPanel({ ...REC, editing: { startMs: 52_000, endMs: null } })
 
-    // « Posé » et « posé où » sont deux questions, et la seconde est celle
-    // qu'on se pose quand on hésite à reposer le repère.
+    // "Set" and "set where" are two questions, and the second is the one asked
+    // when hesitating over setting the anchor again.
     expect(wrapper.get('#btn-anchor-start').text()).toContain('Début · 00:52')
     expect(wrapper.get('#btn-anchor-end').text()).not.toContain('·')
   })
 
-  it('ne laisse pas poser de repère hors enregistrement', () => {
-    const wrapper = monter(null)
+  it('does not allow an anchor to be set outside a recording', () => {
+    const wrapper = mountPanel(null)
 
     expect(wrapper.get('#btn-anchor-start').attributes('disabled')).toBeDefined()
     expect(wrapper.get('#btn-anchor-end').attributes('disabled')).toBeDefined()
   })
 
-  it('compte les marqueurs posés', () => {
-    expect(monter(REC).get('[data-role="markers"]').text()).toBe('2 marqueur(s)')
-    expect(monter({ ...REC, markers: 0 }).get('[data-role="markers"]').text()).toBe(
+  it('counts the markers set', () => {
+    expect(mountPanel(REC).get('[data-role="markers"]').text()).toBe('2 marqueur(s)')
+    expect(mountPanel({ ...REC, markers: 0 }).get('[data-role="markers"]').text()).toBe(
       'aucun marqueur',
     )
   })
 
-  it('bascule la diffusion dans le sens où elle n’est pas', async () => {
-    const envois = stubFetch()
+  it('toggles the stream in the direction it is not in', async () => {
+    const calls = stubFetch()
 
-    await monter(null, true).get('#btn-stream').trigger('click')
-    await monter(null, false).get('#btn-stream').trigger('click')
+    await mountPanel(null, true).get('#btn-stream').trigger('click')
+    await mountPanel(null, false).get('#btn-stream').trigger('click')
     await flushPromises()
 
-    expect(envois.map((envoi) => envoi.body)).toEqual([
+    expect(calls.map((call) => call.body)).toEqual([
       { action: 'stream.stop' },
       { action: 'stream.start' },
     ])

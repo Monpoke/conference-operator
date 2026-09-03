@@ -9,7 +9,7 @@ import {
   type CaptationVue,
   type Command,
 } from '@cloudnord/contract'
-import { roomBreak } from '@cloudnord/etat-salle'
+import { roomBreak } from '@cloudnord/room-state'
 import {
   currentSession,
   nextSession,

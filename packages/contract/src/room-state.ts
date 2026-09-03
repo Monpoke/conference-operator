@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { ETATS_SALLE, STATUTS } from '@cloudnord/etat-salle'
+import { ROOM_STATES, SESSION_STATUSES } from '@cloudnord/room-state'
 import { programSchema } from '@cloudnord/program'
 import { eventIdentitySchema, IDENTITE_PAR_DEFAUT } from './event-identity.js'
 import {
@@ -183,11 +183,11 @@ export type RoomConfigInput = z.input<typeof roomConfigSchema>
  * `scheduled` est l'état par défaut et n'est jamais stocké : on n'enregistre
  * que ce qui s'est produit.
  *
- * La liste vient de `@cloudnord/etat-salle`, qui porte aussi les transitions
+ * La liste vient de `@cloudnord/room-state`, qui porte aussi les transitions
  * autorisées : le contrat et l'automate ne peuvent donc pas connaître des
  * états différents.
  */
-export const sessionStatusSchema = z.enum(STATUTS)
+export const sessionStatusSchema = z.enum(SESSION_STATUSES)
 export type SessionStatus = z.infer<typeof sessionStatusSchema>
 
 /**
@@ -550,6 +550,6 @@ export const roomStatusSchema = z.object({
    * n'a lancé se lisait « en cours », et une salle qui déborde n'existait pas —
    * passé l'heure de fin, le programme passe au créneau suivant.
    */
-  conference: z.enum(ETATS_SALLE).default('aucune'),
+  conference: z.enum(ROOM_STATES).default('aucune'),
 })
 export type RoomStatus = z.infer<typeof roomStatusSchema>

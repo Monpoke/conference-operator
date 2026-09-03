@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { transitionAutorisee } from '@cloudnord/etat-salle'
+import { isTransitionAllowed } from '@cloudnord/room-state'
 import { Badge, Button, Empty, Hint, Panel, useToast } from '@cloudnord/components'
 import { timeFormatter } from '@cloudnord/format'
 import { storeToRefs } from 'pinia'
@@ -101,17 +101,17 @@ function reste(etat: SessionState): { texte: string; classe: string } {
  */
 function actions(etat: SessionState): { libelle: string; action: 'start' | 'end' | 'reset'; danger: boolean }[] {
   const offertes: { libelle: string; action: 'start' | 'end' | 'reset'; danger: boolean }[] = []
-  if (transitionAutorisee(etat.status as never, 'end')) {
+  if (isTransitionAllowed(etat.status as never, 'end')) {
     offertes.push({ libelle: 'Terminer', action: 'end', danger: false })
   }
-  if (transitionAutorisee(etat.status as never, 'start')) {
+  if (isTransitionAllowed(etat.status as never, 'start')) {
     offertes.push({
       libelle: etat.status === 'ended' ? 'Relancer' : 'Commencer',
       action: 'start',
       danger: false,
     })
   }
-  if (transitionAutorisee(etat.status as never, 'reset')) {
+  if (isTransitionAllowed(etat.status as never, 'reset')) {
     offertes.push({ libelle: 'Remettre à venir', action: 'reset', danger: true })
   }
   return offertes

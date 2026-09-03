@@ -1,4 +1,4 @@
-import { roomBreak, roomConferenceState, type SessionStatuses } from '@cloudnord/etat-salle'
+import { roomBreak, roomConferenceState, type SessionStatuses } from '@cloudnord/room-state'
 import { currentSession } from '@cloudnord/program'
 import type { RoomStatus } from '@cloudnord/contract'
 import type { Services } from './context.js'

@@ -1,13 +1,13 @@
 import type { ControlDiagnostics, DisplayPayload } from '@cloudnord/contract'
 import {
-  apparenceDe,
-  contourDe,
-  etatDuProgramme,
-  etatFaisantFoi,
-  finEffectiveA,
-  pauseDesCreneaux,
-  VUE_PERIMEE_MS,
-} from '@cloudnord/etat-salle'
+  appearanceOf,
+  outlineOf,
+  stateFromProgram,
+  authoritativeState,
+  effectiveEndAt,
+  breakOfSlots,
+  STALE_VIEW_MS,
+} from '@cloudnord/room-state'
 import type { Session } from '@cloudnord/program'
 import { timelinePosition } from '@cloudnord/program/selectors'
 import { duration, time } from '@cloudnord/format'
@@ -34,11 +34,11 @@ export function roomState(
   sessions: Session[],
   atMs: number,
 ): { fill: string; word: string; text: string } {
-  const local = etatDuProgramme(sessions, atMs)
+  const local = stateFromProgram(sessions, atMs)
   const view = hubView(payload, roomId)
   const refreshed = payload.diagnostics?.roomsRefreshedAt
-  const fresh = refreshed != null && Date.now() - Date.parse(refreshed) < VUE_PERIMEE_MS
-  const name = etatFaisantFoi(local, view?.conference, fresh)
+  const fresh = refreshed != null && Date.now() - Date.parse(refreshed) < STALE_VIEW_MS
+  const name = authoritativeState(local, view?.conference, fresh)
 
   /*
    * Programme absent du cache : le dire.
@@ -49,8 +49,8 @@ export function roomState(
   if (name === 'aucune' && sessions.length === 0) {
     return { fill: 'hors', word: 'programme inconnu', text: 'text-attenue' }
   }
-  const looks = apparenceDe(name)
-  return { fill: looks.teinte, word: looks.mot, text: looks.texte }
+  const looks = appearanceOf(name)
+  return { fill: looks.tint, word: looks.word, text: looks.text }
 }
 
 /** Une case du flux d'en-tête : tout ce qu'elle affiche, déjà décidé. */
@@ -129,7 +129,7 @@ export function stripEntry(
     detail = next == null ? 'pause' : `reprise ${time(next.startsAt, zone)}`
   } else if (current != null) {
     label = current.title
-    const end = finEffectiveA(sessions, sessions.indexOf(current))
+    const end = effectiveEndAt(sessions, sessions.indexOf(current))
     if (state.fill === 'fin-proche') {
       detail = `vers la fin · ${duration(end == null ? 0 : Math.round((end - atMs) / 60000))}`
       tint = 'text-attention'
@@ -149,12 +149,12 @@ export function stripEntry(
    * Elle cohabite avec ce que fait la salle : « BREAK à venir » s'affiche
    * pendant qu'une conférence court encore, et c'est là qu'elle sert.
    */
-  const pause = pauseDesCreneaux(sessions, atMs)
+  const pause = breakOfSlots(sessions, atMs)
 
   return {
     id: room.id,
     name: room.name,
-    dot: `${state.fill}${contourDe(view?.connectivity ?? room.connectivity)}`.trim(),
+    dot: `${state.fill}${outlineOf(view?.connectivity ?? room.connectivity)}`.trim(),
     label,
     detail,
     tint,

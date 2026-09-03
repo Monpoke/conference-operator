@@ -16,7 +16,7 @@
   "dependencies": {
     "@cloudnord/contract": "workspace:*",
     "@cloudnord/db": "workspace:*",
-    "@cloudnord/etat-salle": "workspace:*",
+    "@cloudnord/room-state": "workspace:*",
     "@cloudnord/format": "workspace:*",
     "@cloudnord/program": "workspace:*",
     "@cloudnord/ui": "workspace:*",

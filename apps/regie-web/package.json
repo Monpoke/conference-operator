@@ -12,7 +12,7 @@
   "dependencies": {
     "@cloudnord/components": "workspace:*",
     "@cloudnord/contract": "workspace:*",
-    "@cloudnord/etat-salle": "workspace:*",
+    "@cloudnord/room-state": "workspace:*",
     "@cloudnord/format": "workspace:*",
     "@cloudnord/hub-client": "workspace:*",
     "@cloudnord/program": "workspace:*",

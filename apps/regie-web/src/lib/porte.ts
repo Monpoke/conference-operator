@@ -322,7 +322,7 @@ export function traduire(
        * La cible vient de la vue, et elle voyage explicitement.
        *
        * En salle, le poste résout lui-même la conférence à piloter. Ici c'est
-       * le hub qui la calcule — même règle, `conferenceAPiloter` — mais elle
+       * le hub qui la calcule — même règle, `talkToControl` — mais elle
        * peut tourner entre le rendu et le clic. Renvoyer l'identifiant qu'on
        * avait sous les yeux est ce qui empêche de lancer le talk suivant.
        */

@@ -12,10 +12,10 @@ import {
   type SceneRole,
 } from '@cloudnord/contract'
 import {
-  conferenceAPiloter,
-  etatDesCreneaux,
+  talkToControl,
+  stateOfSlots,
   type SessionStatuses,
-} from '@cloudnord/etat-salle'
+} from '@cloudnord/room-state'
 import { FUSEAU_PAR_DEFAUT, sessionsForRoom } from '@cloudnord/program'
 import { regieLock } from '@cloudnord/db/hub'
 import type { HubDatabase } from '../db.js'
@@ -172,7 +172,7 @@ export function sallesDeRegie(services: Services, at: number): RegieRoom[] {
     conference:
       snapshot == null
         ? ('aucune' as const)
-        : etatDesCreneaux(
+        : stateOfSlots(
             sessionsForRoom(snapshot.program, statut.roomId),
             at,
             statutsDeLaSalle(services, statut.roomId),
@@ -202,7 +202,7 @@ export function vueDeRegie(services: Services, roomId: string, at: number): Regi
   const snapshot = services.programs.active()
   const creneaux = snapshot == null ? [] : sessionsForRoom(snapshot.program, roomId)
   const statuts = statutsDeLaSalle(services, roomId)
-  const cible = conferenceAPiloter(creneaux, at, statuts)
+  const cible = talkToControl(creneaux, at, statuts)
 
   return regieViewSchema.parse({
     roomId,
@@ -215,7 +215,7 @@ export function vueDeRegie(services: Services, roomId: string, at: number): Regi
     connectivity: statut?.connectivity ?? 'OFFLINE',
     lastSeenAt: statut?.lastSeenAt ?? null,
 
-    conference: etatDesCreneaux(creneaux, at, statuts),
+    conference: stateOfSlots(creneaux, at, statuts),
     targetSession: cible,
     /*
      * « À venir » se lit sur l'horaire, exactement comme en régie de salle.

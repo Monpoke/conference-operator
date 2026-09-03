@@ -91,7 +91,7 @@ export function programMoments(
    * pauses : le bouton menait donc à 08:35 sur un export dont la première
    * conférence est à 09:00, et l'on croyait l'horloge fausse alors que c'était
    * l'étiquette. C'est la même règle que le milieu de journée juste en dessous,
-   * et que `conferenceAPiloter` en régie — un créneau qu'on ne peut pas lancer
+   * et que `talkToControl` en régie — un créneau qu'on ne peut pas lancer
    * n'est pas un moment vers lequel se déplacer.
    *
    * Le repli sur le premier créneau couvre le programme qui n'aurait que des

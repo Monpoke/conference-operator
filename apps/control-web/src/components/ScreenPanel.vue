@@ -4,11 +4,11 @@ import { computed } from 'vue'
 import CommandGrid, { type Command } from './CommandGrid.vue'
 
 /**
- * Ce que la salle voit.
+ * What the room sees.
  *
- * La boucle en premier : c'est l'écran d'attente par défaut, celui vers lequel
- * on revient. Les pages qu'elle enchaîne restent disponibles seules, pour figer
- * l'écran sur l'une d'elles quand quelque chose se passe.
+ * The loop first: it is the default waiting screen, the one one comes back to.
+ * The pages it cycles through stay available on their own, so the screen can be
+ * frozen on one of them when something happens.
  */
 const MODES: Command[] = [
   { value: 'loop', label: 'Boucle' },
@@ -16,39 +16,39 @@ const MODES: Command[] = [
   { value: 'programme', label: 'Programme' },
   { value: 'countdown', label: 'Compte à rebours' },
   { value: 'message', label: 'Message' },
-  // Fin de talk : le public est encore assis, c'est le seul moment où l'on
-  // obtient des retours.
+  // End of talk: the audience is still seated, and it is the only moment feedback
+  // actually comes in.
   { value: 'feedback', label: 'Notez le talk' },
   { value: 'wall', label: 'Mur & questions' },
   { value: 'question', label: 'Question choisie' },
 ]
 
 /**
- * Les deux modes qui affichent une chose choisie ailleurs.
+ * The two modes that display something chosen elsewhere.
  *
- * `message` montre le bandeau saisi dans le panneau Message, `question` la
- * question retenue dans la modération de la régie de salle — ni l'un ni l'autre
- * n'est offert à distance. Les proposer quand même donnerait un bouton qui
- * prend l'écran de la salle pour y projeter « Aucune question affichée » devant
- * le public : le geste réussirait, et c'est bien ce qui le rend mauvais.
+ * `message` shows the banner typed in the Message panel, `question` the question
+ * picked in the room control app's moderation — neither is offered remotely.
+ * Offering them anyway would give a button that takes over the room's screen to
+ * project "Aucune question affichée" in front of the audience: the gesture would
+ * succeed, and that is exactly what makes it bad.
  */
-const SANS_MATIERE_A_DISTANCE = ['message', 'question']
+const NOTHING_TO_SHOW_REMOTELY = ['message', 'question']
 
 const props = defineProps<{
   mode: string | null
   /**
-   * Servi par le hub, sur un téléphone.
+   * Served by the hub, on a phone.
    *
-   * Le mode y arrive par le battement de la salle, donc avec un peu de retard
-   * sur une bascule décidée sur place. Le bouton n'anticipe pas pour autant —
-   * ici comme ailleurs, un bouton allumé décrit ce que la salle montre, pas ce
-   * qu'on lui a demandé.
+   * The mode arrives there through the room's heartbeat, so slightly behind a
+   * switch decided on site. The button does not anticipate for all that — here as
+   * elsewhere, a lit button describes what the room is showing, not what it was
+   * asked to show.
    */
-  distant?: boolean
+  remote?: boolean
 }>()
 
 const commands = computed<Command[]>(() =>
-  props.distant === true ? MODES.filter((m) => !SANS_MATIERE_A_DISTANCE.includes(m.value)) : MODES,
+  props.remote === true ? MODES.filter((m) => !NOTHING_TO_SHOW_REMOTELY.includes(m.value)) : MODES,
 )
 </script>
 

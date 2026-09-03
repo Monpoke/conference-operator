@@ -15,15 +15,14 @@ const props = defineProps<{
   realMs: number
   roomMs: number
   /**
-   * Servi par le hub, pas par la machine de salle.
+   * Served by the hub, not by the room machine.
    *
-   * Trois choses tombent alors, et chacune pour sa raison. **Le chronomètre** :
-   * le hub ne stocke qu'un booléen, et afficher une durée fausse à côté d'un
-   * point rouge juste est pire que de ne rien afficher. **Le marqueur** et
-   * **les rushes** : ils demandent le disque de la salle, qu'aucun téléphone
-   * n'atteint.
+   * Three things fall away then, each for its own reason. **The stopwatch**: the
+   * hub stores only a boolean, and showing a wrong duration beside a correct red
+   * dot is worse than showing nothing. **The marker** and **the footage**: they
+   * require the room's disk, which no phone reaches.
    */
-  distant?: boolean
+  remote?: boolean
 }>()
 
 const emit = defineEmits<{ vod: [] }>()
@@ -43,17 +42,16 @@ function toggleStream(): void {
 
 function mark(): void {
   /*
-   * Le refus est ici, et pas seulement sur l'attribut du bouton.
+   * The refusal lives here, and not only on the button's attribute.
    *
-   * Le raccourci `m` atteint cette fonction sans passer par le bouton : la page
-   * d'origine héritait du garde-fou parce qu'elle cliquait dessus, et qu'un
-   * bouton désactivé ignore le clic. Appelée directement, elle postait une
-   * commande que le poste refuse — un échec clignotant pour un geste que la
-   * page savait impossible.
+   * The `m` shortcut reaches this function without going through the button: the
+   * original page inherited the guard because it clicked on it, and a disabled
+   * button ignores the click. Called directly, it posted a command the machine
+   * refuses — a flashing failure for a gesture the page knew to be impossible.
    */
   if (!active.value) return
-  // Un marqueur sans libellé reste un marqueur : au editing, savoir *où* vaut
-  // déjà mieux que rien, et exiger un mot ferait rater l'instant.
+  // A marker with no label is still a marker: at editing time, knowing *where* is
+  // already better than nothing, and demanding a word would miss the moment.
   void actions.act({ action: 'recording.mark', label: label.value.trim() || 'Chapitre' })
   label.value = ''
 }
@@ -67,31 +65,31 @@ const markers = computed(() => {
 const editing = computed(() => props.recording?.editing ?? NO_EDITING_MARKS)
 
 /**
- * Ce que porte un bouton de repère : son nom, et où il est tombé.
+ * What an anchor button carries: its name, and where it fell.
  *
- * Le décalage plutôt qu'un simple bouton allumé. Les deux disent « c'est
- * posé », mais un seul répond à la question suivante — « posé *où* ? » —, et
- * c'est celle qu'on se pose quand on hésite à le reposer.
+ * The offset rather than a simple lit button. Both say "it is set", but only one
+ * answers the next question — "set *where*?" — and that is the one asked when
+ * hesitating over setting it again.
  */
-function repereLabel(nom: string, ms: number | null): string {
-  return ms == null ? nom : `${nom} · ${shortDuration(ms)}`
+function anchorLabel(name: string, ms: number | null): string {
+  return ms == null ? name : `${name} · ${shortDuration(ms)}`
 }
 
 /**
- * Pose l'un des deux repères de editing.
+ * Sets one of the two editing anchors.
  *
- * Le libellé est écrit ici et pas saisi : c'est ce qui se relit dans le journal
- * du hub, et il doit dire la même chose d'une salle à l'autre. Le poste, lui,
- * ne lit que `role`.
+ * The label is written here and not typed: it is what gets read back in the hub's
+ * log, and it must say the same thing from one room to the next. The machine, for
+ * its part, only reads `role`.
  */
-function repere(role: MarkerRole): void {
-  // Même garde-fou que `mark()`, et pour la même raison : `d` et `f` atteignent
-  // cette fonction sans passer par le bouton, qu'un attribut désactive en vain.
+function anchor(role: MarkerRole): void {
+  // The same guard as `mark()`, and for the same reason: `d` and `f` reach this
+  // function without going through the button, which an attribute disables in vain.
   if (!active.value) return
   void actions.act({ action: 'recording.mark', label: role === 'debut' ? 'Début' : 'Fin', role })
 }
 
-defineExpose({ toggleRecording, mark, repere })
+defineExpose({ toggleRecording, mark, anchor })
 </script>
 
 <template>
@@ -101,13 +99,13 @@ defineExpose({ toggleRecording, mark, repere })
         Captation — OBS&nbsp;B<SimulatedBadge :when="obs?.simulated === true" />
       </h2>
       <!--
-        Vérifier les rushes se fait pendant l'événement ou jamais : la salle est
-        démontée bien avant que quiconque ouvre les fichiers. Discret pour
-        autant — ce n'est pas une commande de la conférence en cours, et rien ne
-        doit le faire confondre avec « Enregistrer ».
+        Checking the footage happens during the event or never: the room is
+        dismantled long before anybody opens the files. Discreet all the same — it
+        is not a command for the running talk, and nothing must let it be confused
+        with "Enregistrer".
       -->
       <button
-        v-if="distant !== true"
+        v-if="remote !== true"
         type="button"
         class="shrink-0 cursor-pointer rounded border border-transparent px-1.5 py-0.5 text-[13px] leading-none opacity-60 hover:border-edge hover:opacity-100"
         aria-label="Vérifier les enregistrements"
@@ -119,16 +117,15 @@ defineExpose({ toggleRecording, mark, repere })
       </button>
     </div>
 
-    <div v-if="distant !== true" class="mb-2 flex items-baseline gap-2.5">
+    <div v-if="remote !== true" class="mb-2 flex items-baseline gap-2.5">
       <RecordingTimer :recording="recording" :real-ms="realMs" :room-ms="roomMs" />
       <span class="text-[11px] text-dim" data-role="markers">{{ markers }}</span>
     </div>
 
     <!--
-      À distance, le témoin sans la durée : ce que le hub sait vraiment.
-      Un chronomètre demanderait l'heure de départ, que `room_state` ne porte
-      pas — et une durée inventée à côté d'un point rouge juste ferait douter
-      des deux.
+      Remotely, the indicator without the duration: what the hub really knows.
+      A stopwatch would need the start time, which `room_state` does not carry —
+      and an invented duration beside a correct red dot would cast doubt on both.
     -->
     <div v-else class="mb-2 text-sm" :class="active ? 'text-alert' : 'text-dim'">
       {{ active ? 'Enregistrement en cours' : 'Aucun enregistrement' }}
@@ -141,7 +138,7 @@ defineExpose({ toggleRecording, mark, repere })
         :active="active"
         @click="toggleRecording()"
       >
-        {{ active ? 'Arrêter' : 'Enregistrer' }}<Key v-if="distant !== true">R</Key>
+        {{ active ? 'Arrêter' : 'Enregistrer' }}<Key v-if="remote !== true">R</Key>
       </Button>
       <Button id="btn-stream" :active="streaming" @click="toggleStream()">
         {{ streaming ? 'Arrêter la diffusion' : 'Diffuser' }}
@@ -149,42 +146,42 @@ defineExpose({ toggleRecording, mark, repere })
     </div>
 
     <!--
-      Les deux repères, au-dessus du champ de libellé et sous « Enregistrer ».
+      The two anchors, above the label field and below "Enregistrer".
 
-      Ils appartiennent à la prise, pas au chapitrage : ce sont eux qui décident
-      de ce que le editing publiera, et les ranger sous le champ de saisie les
-      aurait fait lire comme deux libellés tout faits parmi d'autres. Le
-      décalage s'affiche dès qu'ils sont posés — reposer corrige, et il faut
-      pouvoir voir ce qu'on corrige.
+      They belong to the take, not to the chaptering: they are what decides what
+      editing will publish, and tucking them under the input would have made them
+      read as two ready-made labels among others. The offset shows as soon as they
+      are set — setting again corrects, and one has to be able to see what is being
+      corrected.
     -->
-    <div v-if="distant !== true" class="mt-1.5 grid grid-cols-2 gap-1.5">
+    <div v-if="remote !== true" class="mt-1.5 grid grid-cols-2 gap-1.5">
       <Button
-        id="btn-repere-debut"
+        id="btn-anchor-start"
         size="small"
         :active="editing.startMs != null"
         :disabled="!active"
         title="Là où commence ce qu'on publie : le editing coupe tout ce qui précède. Reposer remplace le repère précédent."
-        data-role="repere-debut"
-        @click="repere('debut')"
+        data-role="anchor-start"
+        @click="anchor('debut')"
       >
-        {{ repereLabel('Début', editing.startMs) }}<Key>D</Key>
+        {{ anchorLabel('Début', editing.startMs) }}<Key>D</Key>
       </Button>
       <Button
-        id="btn-repere-fin"
+        id="btn-anchor-end"
         size="small"
         :active="editing.endMs != null"
         :disabled="!active"
         title="Là où finit ce qu'on publie : le editing coupe tout ce qui suit. Reposer remplace le repère précédent."
-        data-role="repere-fin"
-        @click="repere('fin')"
+        data-role="anchor-end"
+        @click="anchor('fin')"
       >
-        {{ repereLabel('Fin', editing.endMs) }}<Key>F</Key>
+        {{ anchorLabel('Fin', editing.endMs) }}<Key>F</Key>
       </Button>
     </div>
 
-    <div v-if="distant !== true" class="mt-1.5 flex gap-1.5">
+    <div v-if="remote !== true" class="mt-1.5 flex gap-1.5">
       <input
-        id="label-brandur"
+        id="label-marker"
         v-model="label"
         type="text"
         maxlength="80"
@@ -193,7 +190,7 @@ defineExpose({ toggleRecording, mark, repere })
         :disabled="!active"
         @keydown.enter="active && mark()"
       />
-      <Button id="btn-brandur" class="shrink-0" size="small" :disabled="!active" @click="mark()">
+      <Button id="btn-marker" class="shrink-0" size="small" :disabled="!active" @click="mark()">
         Marquer<Key>M</Key>
       </Button>
     </div>

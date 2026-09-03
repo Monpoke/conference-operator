@@ -6,39 +6,39 @@ import Indicator from './Indicator.vue'
 import { worst, type Level } from './levels.js'
 
 /**
- * Charge du poste, en pastille.
+ * The machine's load, as a dot.
  *
- * La machine qui encode est le point faible invisible de la salle : quand elle
- * sature, OBS perd des images sans rien dire et le rush est mauvais sans que
- * personne s'en aperçoive avant le editing. Une couleur suffit à le voir de
- * loin ; le détail tient dans l'info-bulle, parce qu'un chiffre de plus dans le
- * bandeau se lirait tout le temps pour ne servir que trois fois dans la journée.
+ * The encoding machine is the room's invisible weak point: when it saturates, OBS
+ * drops frames without a word and the footage is bad with nobody noticing before
+ * editing. A colour is enough to see it from afar; the detail lives in the
+ * tooltip, because one more figure in the header would be read all the time only
+ * to be of use three times a day.
  *
- * « Poste » et non « CPU » : la pastille prend la pire des deux mesures, et une
- * pastille rouge sous un mot qui ne parle que du processeur enverrait chercher
- * la panne au mauvais endroit.
+ * "Poste" and not "CPU": the dot takes the worse of the two measurements, and a
+ * red dot under a word that speaks only of the processor would send people
+ * looking for the fault in the wrong place.
  */
 
-/** Au-delà, l'encodage n'a plus de marge ; plus haut encore, il perd des images. */
-const CPU_ATTENTION = 0.7
-const CPU_ALERTE = 0.9
+/** Past this, encoding has no margin left; higher still, it drops frames. */
+const CPU_WARN = 0.7
+const CPU_ALERT = 0.9
 
 /**
- * L'autre façon dont un poste lâche, et la plus sournoise.
+ * The other way a machine gives out, and the most insidious.
  *
- * La machine ne ralentit pas franchement : elle commence à échanger sur le
- * disque — celui-là même qui écrit le rush. Le symptôme visible est un
- * enregistrement qui saute, sans que le processeur ait bougé.
+ * The machine does not slow down outright: it starts swapping to disk — the very
+ * one writing the footage. The visible symptom is a recording that stutters, with
+ * the processor never having moved.
  */
-const MEM_ATTENTION = 0.85
-const MEM_ALERTE = 0.95
+const MEM_WARN = 0.85
+const MEM_ALERT = 0.95
 
 /**
- * Les quatre états de la charge, chacun avec ce qu'il coûte.
+ * The four load states, each with what it costs.
  *
- * Le verdict est écrit ici plutôt que déduit à l'affichage : une couleur seule
- * ne dit pas quoi faire, et l'opérateur qui survole la pastille au milieu d'un
- * talk n'a pas trois secondes pour se demander ce qu'elle attend de lui.
+ * The verdict is written here rather than deduced at display time: a colour on its
+ * own does not say what to do, and the operator hovering the dot in the middle of
+ * a talk does not have three seconds to wonder what it expects of them.
  */
 const CPU_LEVELS: Record<Level, { label: string; verdict: string }> = {
   ok: { label: 'marge confortable', verdict: 'Le poste encaisse l’encodage sans forcer.' },
@@ -66,7 +66,7 @@ const MEM_VERDICTS: Partial<Record<Level, string>> = {
 
 const props = defineProps<{ load: HostLoad | null }>()
 
-/** Octets en gigaoctets, à une décimale, à la française. */
+/** Bytes as gigabytes, to one decimal, in the French style. */
 function inGigabytes(bytes: number): string {
   return (bytes / 1_000_000_000).toFixed(1).replace('.', ',')
 }
@@ -76,9 +76,9 @@ const cpu = computed(() => {
   const known = typeof value === 'number'
   const level: Level = !known
     ? 'unknown'
-    : value >= CPU_ALERTE
+    : value >= CPU_ALERT
       ? 'alert'
-      : value >= CPU_ATTENTION
+      : value >= CPU_WARN
         ? 'warn'
         : 'ok'
   return { known, level, percent: known ? Math.round(value * 100) : 0 }
@@ -89,7 +89,7 @@ const memory = computed(() => {
   const part =
     memory != null && memory.totalBytes > 0 ? memory.usedBytes / memory.totalBytes : null
   const level: Level =
-    part == null ? 'unknown' : part >= MEM_ALERTE ? 'alert' : part >= MEM_ATTENTION ? 'warn' : 'ok'
+    part == null ? 'unknown' : part >= MEM_ALERT ? 'alert' : part >= MEM_WARN ? 'warn' : 'ok'
   return {
     part,
     level,
@@ -112,8 +112,8 @@ const cpuDetail = computed(() => {
 })
 
 /*
- * Le verdict revient à la mesure la plus grave : une mémoire pleine sous un
- * processeur au repos ne doit pas s'entendre dire « le poste encaisse ».
+ * The verdict goes to the graver measurement: a full memory under a processor at
+ * rest must not be told "le poste encaisse".
  */
 const byMemory = computed(
   () =>
@@ -122,13 +122,13 @@ const byMemory = computed(
 )
 
 /*
- * Le repli sur le verdict processeur n'est pas décoratif.
+ * Falling back on the processor's verdict is not decorative.
  *
- * Un processeur non mesuré ne l'emporte sur rien : la mémoire devient alors la
- * mesure « la plus grave » même quand elle va bien, et la table des verdicts
- * mémoire n'a rien à dire d'une mémoire qui va bien — elle ne parle que des
- * deux niveaux qui coûtent quelque chose. La page d'origine affichait
- * « undefined » dans ce cas, pendant la première fenêtre de mesure.
+ * An unmeasured processor wins over nothing: memory then becomes the "graver"
+ * measurement even when it is fine, and the memory verdict table has nothing to
+ * say about a memory that is fine — it only speaks of the two levels that cost
+ * something. The original page displayed "undefined" in that case, during the
+ * first measurement window.
  */
 const verdict = computed(() =>
   byMemory.value

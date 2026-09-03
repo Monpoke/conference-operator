@@ -12,34 +12,32 @@ const BASE: Command[] = [
 
 const props = defineProps<{
   sceneRole: string | null
-  /** Salle relayée, `null` si le relais n'est pas configuré pour cette salle. */
+  /** The relayed room, `null` if the relay is not configured for this room. */
   relaySourceRoomId: string | null
   obs: ObsState | null
   /**
-   * Les rôles réellement mappés, quand l'appelant les connaît.
+   * The roles actually mapped, when the caller knows them.
    *
-   * À distance, le hub les sert : la salle n'est pas sous la main, et sa
-   * configuration non plus. En local le panneau garde sa règle — le relais
-   * apparaît dès qu'une source est configurée —, parce que c'est la même
-   * machine qui la porte.
+   * Remotely the hub serves them: the room is not at hand, and neither is its
+   * configuration. Locally the panel keeps its own rule — the relay appears as
+   * soon as a source is configured — because the same machine carries it.
    */
   roles?: string[]
 }>()
 
 /*
- * Le relais n'apparaît que s'il est configuré, et annonce sa source :
- * « Relais → track-2 » plutôt qu'un bouton dont personne ne sait ce qu'il
- * montre.
+ * The relay only appears if it is configured, and announces its source:
+ * "Relais → track-2" rather than a button nobody knows what it shows.
  */
 const commands = computed<Command[]>(() => {
-  const relais: Command[] =
+  const relay: Command[] =
     props.relaySourceRoomId == null
       ? []
       : [{ value: 'RELAY', label: `Relais → ${props.relaySourceRoomId}` }]
-  const toutes = [...BASE, ...relais]
-  // Une liste fournie **filtre**, elle ne remplace pas : elle dit ce que la
-  // salle sait faire, pas comment on le nomme ni dans quel ordre on l'offre.
-  return props.roles == null ? toutes : toutes.filter((c) => props.roles!.includes(c.value))
+  const all = [...BASE, ...relay]
+  // A supplied list **filters**, it does not replace: it says what the room can
+  // do, not how it is named nor in what order it is offered.
+  return props.roles == null ? all : all.filter((c) => props.roles!.includes(c.value))
 })
 </script>
 

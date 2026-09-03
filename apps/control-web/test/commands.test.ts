@@ -201,8 +201,8 @@ describe('captation', () => {
 
     // Un marqueur sans prise ne se rattache à rien : le poste le refuserait, et
     // un bouton actif dont la commande est refusée est un piège.
-    expect(wrapper.get('#btn-brandur').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('#label-brandur').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('#btn-marker').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('#label-marker').attributes('disabled')).toBeDefined()
     expect(wrapper.get('[data-role="markers"]').text()).toBe('hors enregistrement')
   })
 
@@ -210,7 +210,7 @@ describe('captation', () => {
     const envois = stubFetch()
     const wrapper = monter(REC)
 
-    await wrapper.get('#btn-brandur').trigger('click')
+    await wrapper.get('#btn-marker').trigger('click')
     await flushPromises()
 
     // Au editing, savoir *où* vaut déjà mieux que rien, et exiger un mot ferait
@@ -222,12 +222,12 @@ describe('captation', () => {
     const envois = stubFetch()
     const wrapper = monter(REC)
 
-    await wrapper.get('#label-brandur').setValue('Questions')
-    await wrapper.get('#btn-brandur').trigger('click')
+    await wrapper.get('#label-marker').setValue('Questions')
+    await wrapper.get('#btn-marker').trigger('click')
     await flushPromises()
 
     expect(envois[0]?.body).toEqual({ action: 'recording.mark', label: 'Questions' })
-    expect((wrapper.get('#label-brandur').element as HTMLInputElement).value).toBe('')
+    expect((wrapper.get('#label-marker').element as HTMLInputElement).value).toBe('')
   })
 
   /*
@@ -241,8 +241,8 @@ describe('captation', () => {
     const envois = stubFetch()
     const wrapper = monter(REC)
 
-    await wrapper.get('#btn-repere-debut').trigger('click')
-    await wrapper.get('#btn-repere-fin').trigger('click')
+    await wrapper.get('#btn-anchor-start').trigger('click')
+    await wrapper.get('#btn-anchor-end').trigger('click')
     await flushPromises()
 
     expect(envois.map((envoi) => envoi.body)).toEqual([
@@ -256,15 +256,15 @@ describe('captation', () => {
 
     // « Posé » et « posé où » sont deux questions, et la seconde est celle
     // qu'on se pose quand on hésite à reposer le repère.
-    expect(wrapper.get('#btn-repere-debut').text()).toContain('Début · 00:52')
-    expect(wrapper.get('#btn-repere-fin').text()).not.toContain('·')
+    expect(wrapper.get('#btn-anchor-start').text()).toContain('Début · 00:52')
+    expect(wrapper.get('#btn-anchor-end').text()).not.toContain('·')
   })
 
   it('ne laisse pas poser de repère hors enregistrement', () => {
     const wrapper = monter(null)
 
-    expect(wrapper.get('#btn-repere-debut').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('#btn-repere-fin').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('#btn-anchor-start').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('#btn-anchor-end').attributes('disabled')).toBeDefined()
   })
 
   it('compte les marqueurs posés', () => {

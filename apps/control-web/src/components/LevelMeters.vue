@@ -4,11 +4,11 @@ import { Panel } from '@cloudnord/components'
 import { useAudioStore } from '../stores/audio.js'
 
 /**
- * Vumètre d'OBS-B.
+ * OBS-B's VU meter.
  *
- * Les seuils sont ceux de la salle de editing, pas une échelle inventée ici :
- * vert jusqu'à −20 dB, jaune ensuite, rouge au-delà de −9 dB. La mention sous
- * le panneau les redit, parce qu'une couleur seule ne dit pas où elle bascule.
+ * The thresholds are the edit suite's, not a scale invented here: green up to
+ * −20 dB, amber after that, red past −9 dB. The note under the panel repeats
+ * them, because a colour on its own does not say where it turns over.
  */
 function tint(db: number): string {
   if (db > -9) return 'bg-alert'
@@ -16,7 +16,7 @@ function tint(db: number): string {
   return 'bg-ok'
 }
 
-/** Part de la barre, du plancher à zéro. */
+/** The bar's share, from the floor to zero. */
 function width(db: number): string {
   const part = Math.max(0, Math.min(1, (db - DB_FLOOR) / -DB_FLOOR))
   return `${(part * 100).toFixed(1)}%`
@@ -33,9 +33,9 @@ const audio = useAudioStore()
 
     <div class="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto" data-role="levels">
       <!--
-        « En attente » et « aucune entrée » ne disent pas la même chose : le
-        premier est un OBS qu'on n'a pas encore entendu, le second un OBS qui
-        répond et n'a rien à faire écouter.
+        "En attente" and "aucune entrée" do not mean the same thing: the first is
+        an OBS we have not heard yet, the second an OBS that answers and has
+        nothing to let us listen to.
       -->
       <div v-if="audio.waiting" class="text-xs text-dim">En attente d'OBS…</div>
       <div v-else-if="audio.inputs.length === 0" class="text-xs text-dim">
@@ -56,17 +56,17 @@ const audio = useAudioStore()
             }}
           </span>
         </div>
-        <!-- Une jauge par canal : mono et stéréo coexistent dans la même salle. -->
+        <!-- One gauge per channel: mono and stereo coexist in the same room. -->
         <div class="flex flex-col gap-0.5">
           <div
-            v-for="(canal, index) in entry.channels"
+            v-for="(channel, index) in entry.channels"
             :key="index"
             class="relative h-1.5 overflow-hidden rounded-full bg-canvas"
           >
             <div
               class="h-full rounded-full transition-[width] duration-75"
-              :class="tint(canal.magnitude)"
-              :style="{ width: width(canal.magnitude) }"
+              :class="tint(channel.magnitude)"
+              :style="{ width: width(channel.magnitude) }"
             ></div>
           </div>
         </div>

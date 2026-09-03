@@ -37,22 +37,22 @@ import { Outbox } from './outbox.js'
 import { OutboxPump, buildHeartbeat, heartbeatDedupKey } from './outbox-pump.js'
 import { LevelAggregator } from './audio-levels.js'
 import { hostMonitor, type HostLoad } from './host.js'
-import { Televersements, type CandidatVod, type HubVod, type UploadsView } from './upload.js'
+import { Uploads, type VodCandidate, type HubVod, type UploadsView } from './upload.js'
 import { nextTalk } from '@cloudnord/room-state'
 import { sessionsForRoom } from '@cloudnord/program'
 import type { ExecutionMode, RoomConfigPatch, RoomEventPayload } from '@cloudnord/contract'
 
-/** Configuration de salle en cache local, telle que le hub l'a poussée. */
-type ConfigSalle = NonNullable<ReturnType<LocalStore['settings']>['config']>
+/** A room's configuration in the local cache, as the hub pushed it. */
+type RoomConfigCache = NonNullable<ReturnType<LocalStore['settings']>['config']>
 
 /**
- * Ce dont dépend une connexion OBS.
+ * What an OBS connection depends on.
  *
- * Sert à savoir si la connexion en cours a été ouverte avec les réglages
- * actuels : le port change, le mapping change, et la connexion vivante devient
- * périmée sans que rien ne le montre.
+ * Used to know whether the current connection was opened with the current
+ * settings: the port changes, the mapping changes, and the live connection
+ * becomes stale with nothing showing it.
  */
-function empreinteObs(config: ConfigSalle, instance: ObsInstance): string {
+function obsFingerprint(config: RoomConfigCache, instance: ObsInstance): string {
   return JSON.stringify([
     config.obs[instance].url,
     config.obs[instance].password,
@@ -60,100 +60,98 @@ function empreinteObs(config: ConfigSalle, instance: ObsInstance): string {
   ])
 }
 
-/** Où en est l'appairage de cette machine. */
+/** Where this machine's pairing stands. */
 export interface PairingState {
   status: 'idle' | 'waiting' | 'paired' | 'failed' | 'expired'
   userCode?: string
   verificationUri?: string
   expiresInSeconds?: number
   message?: string
-  /** Salles proposées au choix, récupérées du hub. Vide s'il est injoignable. */
+  /** The rooms offered to choose from, fetched from the hub. Empty if it is unreachable. */
   rooms?: { id: string; name: string }[]
-  /** Salle demandée par cette machine, en attente de confirmation. */
+  /** The room this machine asked for, awaiting confirmation. */
   requestedRoomId?: string | null
 }
 
 export interface RoomAppOptions {
-  /** Racine des données locales (`userData` sous Electron). */
+  /** The local data root (`userData` under Electron). */
   dataDir: string
   hubOrigin: string
   clientId: string
-  /** Coffre du jeton de machine. */
+  /** The machine token's vault. */
   readToken: () => string | null
   writeToken: (token: string) => void
   displayPort?: number
   /**
-   * Fabrique de transport OBS, par instance.
+   * Builds an instance's transport.
    *
-   * L'instance est passée explicitement plutôt que déduite de l'ordre d'appel :
-   * un OBS-B branché sur les scènes d'OBS-A serait une panne difficile à voir.
-   * Par défaut, le vrai client obs-websocket.
-   */
-  /**
-   * Fabrique le transport d'une instance.
+   * The instance is passed explicitly rather than derived from the call order: an
+   * OBS-B wired onto OBS-A's scenes would be a failure hard to see. By default,
+   * the real obs-websocket client.
    *
-   * `scenes` porte les noms que la salle a configurés pour cette instance-là.
-   * Le vrai client les ignore — un OBS a les scènes qu'on y a créées, et c'est
-   * justement l'écart qui doit se voir. Le simulateur, lui, s'en sert pour
-   * exister avec les scènes qu'on attend de lui.
+   * `scenes` carries the names the room configured for that instance. The real
+   * client ignores them — an OBS has the scenes one created in it, and it is
+   * precisely the gap that has to show. The simulator, for its part, uses them to
+   * exist with the scenes one expects of it.
    */
   obsTransportFactory?: (instance: ObsInstance, scenes: string[]) => ObsTransport
   onLog?: (level: 'info' | 'warn' | 'error', message: string, context?: unknown) => void
-  /** Affiche le code d'appairage sur l'écran de régie. */
+  /** Displays the pairing code on the control screen. */
   onPairingCode?: (code: DeviceCodeResponse) => void
   /**
-   * Ouvre le sélecteur de dossier du système, pour le chemin des rushes.
+   * Opens the system's folder picker, for the rushes' path.
    *
-   * Fourni par Electron seulement : `dev:headless` tourne sous Node nu, où il
-   * n'y a pas de sélecteur à ouvrir. Son absence est ce que `canBrowse`
-   * annonce à la régie — qui masque alors le bouton plutôt que d'en offrir un
-   * qui ne répondrait pas.
+   * Supplied by Electron only: `dev:headless` runs under bare Node, where there is
+   * no picker to open. Its absence is what `canBrowse` announces to the control
+   * app — which then hides the button rather than offering one that would not
+   * answer.
    *
-   * @param initial Le dossier déjà saisi, pour ouvrir là où l'on regardait.
+   * @param initial The folder already typed, to open where one was looking.
    */
   chooseFolder?: (initial: string | null) => Promise<string | null>
   /**
-   * Salle desservie, connue d'avance.
+   * The room served, known in advance.
    *
-   * Évite l'écran de choix sur une machine provisionnée en amont — image
-   * disque préparée, déploiement scripté — où personne ne sera devant l'écran
-   * au premier démarrage. Reste une proposition : la console tranche.
+   * Avoids the choice screen on a machine provisioned upstream — a prepared disk
+   * image, a scripted deployment — where nobody will be in front of the screen on
+   * the first start. Stays a proposal: the console decides.
    */
   roomId?: string
   /**
-   * Mode d'exécution de la salle.
+   * The room's execution mode.
    *
-   * Décidé par le point d'entrée, qui lit l'environnement — le cœur applicatif
-   * ne lit pas `process.env`, c'est ce qui le rend testable. Voir `core/mode`.
+   * Decided by the entry point, which reads the environment — the application core
+   * does not read `process.env`, and that is what makes it testable. See
+   * `core/mode`.
    */
   mode?: ExecutionMode
   /**
-   * Source de temps de la salle.
+   * The room's time source.
    *
-   * Sert au développement, pour se placer au milieu de l'événement. Passe par
-   * ici et non par l'offset serveur : celui-ci est recalculé à chaque remontée
-   * réussie et écraserait toute valeur posée à la main.
+   * Used in development, to place oneself in the middle of the event. Goes through
+   * here and not through the server offset: that one is recomputed on every
+   * successful send and would overwrite any value set by hand.
    */
   now?: () => number
   /**
-   * Serveur Vite de la régie refaite. **Développement seulement.**
+   * The rebuilt control app's Vite server. **Development only.**
    *
-   * Décidé par le point d'entrée, comme le mode : le cœur applicatif ne lit pas
-   * `process.env`. Absent — le cas de tout poste installé — le poste sert le
-   * bundle construit, et rien d'autre n'est possible.
+   * Decided by the entry point, like the mode: the application core does not read
+   * `process.env`. Absent — the case of every installed machine — the machine
+   * serves the built bundle, and nothing else is possible.
    */
   regieViteOrigin?: string | null
 }
 
 /**
- * Assemblage complet d'une machine de salle.
+ * The complete assembly of a room machine.
  *
- * Sans dépendance à Electron : c'est ce qui permet de démarrer l'ensemble dans
- * un test et de vérifier la chaîne réelle plutôt que des morceaux isolés.
+ * With no dependency on Electron: that is what makes it possible to start the
+ * whole thing in a test and to check the real chain rather than isolated pieces.
  *
- * L'ordre de démarrage traduit la règle centrale du projet : **on sert l'écran
- * d'abord, on parle au hub ensuite**. Une salle doit projeter son programme
- * même si le hub n'a jamais répondu.
+ * The startup order expresses the project's central rule: **we serve the screen
+ * first, we talk to the hub afterwards**. A room must project its program even if
+ * the hub has never answered.
  */
 export class RoomApp implements ControlTarget {
   readonly store: LocalStore
@@ -165,43 +163,43 @@ export class RoomApp implements ControlTarget {
   private obsB: ObsController | null = null
   private recording: RecordingSession | null = null
   /**
-   * Résolveur du chemin de sortie, armé le temps d'un arrêt d'enregistrement.
-   * OBS n'annonce le fichier qu'après `StopRecord`, il faut donc l'attendre.
+   * The output path's resolver, armed for the length of a recording stop. OBS only
+   * announces the file after `StopRecord`, so it has to be waited for.
    */
   private pendingOutputPath: ((path: string | null) => void) | null = null
   /**
-   * Une clôture de captation à la fois.
+   * One capture closing at a time.
    *
-   * Deux chemins mènent au sidecar — l'arrêt demandé en régie et l'arrêt
-   * constaté depuis OBS — et ils peuvent se croiser : un `RecordStateChanged`
-   * qui arrive après le délai d'attente de la régie trouverait la prise encore
-   * ouverte et en écrirait un second.
+   * Two paths lead to the sidecar — the stop asked for in the control app and the
+   * stop observed from OBS — and they can cross: a `RecordStateChanged` arriving
+   * after the control app's wait timeout would find the take still open and would
+   * write a second one.
    */
-  private clotureCaptation = false
+  private captureClosing = false
   private outbox: Outbox | null = null
   private pump: OutboxPump | null = null
   /**
-   * Relevé de charge du poste, **partagé** avec le serveur d'affichage.
+   * The machine's load reading, **shared** with the display server.
    *
-   * La mesure est une différence entre deux lectures des compteurs du noyau :
-   * elle n'existe que si quelqu'un garde le repère précédent. Deux moniteurs
-   * distincts — un pour la régie, un pour le régulateur — garderaient chacun le
-   * leur et rendraient deux chiffres également faux, sans que rien ne le dise.
+   * The measurement is a difference between two reads of the kernel's counters: it
+   * only exists if somebody keeps the previous mark. Two separate monitors — one
+   * for the control app, one for the regulator — would each keep their own and
+   * return two equally wrong figures, with nothing to say so.
    */
   private readonly hostLoad: () => HostLoad = hostMonitor()
-  private readonly televersements: Televersements
-  /** Dernière racine d'enregistrement constatée : le téléverseur y résout ses chemins. */
-  private racineConnue: string | null = null
+  private readonly uploads: Uploads
+  /** The last recording root observed: the uploader resolves its paths against it. */
+  private knownRoot: string | null = null
   private readonly abort = new AbortController()
   private tick: NodeJS.Timeout | null = null
   private heartbeat: NodeJS.Timeout | null = null
   private roomsTimer: NodeJS.Timeout | null = null
-  /** Mode annoncé par le hub au dernier sync. `null` tant qu'il n'a pas répondu. */
+  /** The mode the hub announced at the last sync. `null` until it has answered. */
   private hubMode: ExecutionMode | null = null
-  /** Empreinte des réglages avec lesquels chaque instance a été branchée. */
-  private obsApplique: Record<ObsInstance, string | null> = { A: null, B: null }
-  /** Une boucle de reprise tourne déjà pour cette instance. */
-  private repriseObs: Record<ObsInstance, boolean> = { A: false, B: false }
+  /** The fingerprint of the settings each instance was wired with. */
+  private obsApplied: Record<ObsInstance, string | null> = { A: null, B: null }
+  /** A resume loop is already running for this instance. */
+  private obsResuming: Record<ObsInstance, boolean> = { A: false, B: false }
   private roomStatuses: ControlDiagnostics['rooms'] = []
   private questions: ControlDiagnostics['questions'] = []
   private questionsAt: string | null = null
@@ -209,18 +207,18 @@ export class RoomApp implements ControlTarget {
   private roomStatusesAt: string | null = null
   private pairing: PairingState = { status: 'idle' }
   private supervision: NodeJS.Timeout | null = null
-  private travailEnCours = false
+  private workInFlight = false
   /**
-   * Salle demandée depuis l'écran de régie.
+   * The room asked for from the control screen.
    *
-   * Elle n'engage rien : la console reste libre d'en choisir une autre. Mais
-   * c'est l'opérateur de la salle qui sait où il se trouve, pas celui devant
-   * la console — autant que la proposition vienne de lui.
+   * It commits to nothing: the console stays free to choose another. But it is the
+   * room's operator who knows where they are, not the one in front of the console
+   * — the proposal may as well come from them.
    */
-  private roomIdSouhaite: string | null = null
-  private sallesConnues: { id: string; name: string }[] = []
-  /** Appairage en tâche de fond, à laisser retomber avant de fermer. */
-  private appairageEnCours: Promise<void> | null = null
+  private wantedRoomId: string | null = null
+  private knownRooms: { id: string; name: string }[] = []
+  /** Pairing in the background, to let settle before closing. */
+  private pairingInFlight: Promise<void> | null = null
   private readonly connectivity: ConnectivityTracker
 
   constructor(private readonly options: RoomAppOptions) {
@@ -236,13 +234,13 @@ export class RoomApp implements ControlTarget {
           void this.link?.sync()
         },
         reloadSessionStates: () => {
-          void this.chargerEtatsDesConferences()
+          void this.loadSessionStates()
         },
         fullResync: () => {
           void this.fullResync()
         },
         uploadVod: (file) => {
-          void this.televersements.demander(file)
+          void this.uploads.request(file)
         },
         razVod: () => {
           void this.razVod()
@@ -251,22 +249,22 @@ export class RoomApp implements ControlTarget {
           void this.refreshRoomStatuses()
         },
         /**
-         * Captation demandée depuis une régie mobile.
+         * A capture asked for from a mobile control app.
          *
-         * **Demander ce qui tourne déjà est un succès silencieux.** Le flux de
-         * commandes est au-moins-une-fois : une reconnexion peut relivrer un
-         * « enregistre » alors qu'OBS enregistre, et lever ici remplirait la
-         * pile de signalements d'incidents qui n'en sont pas.
+         * **Asking for what is already running is a silent success.** The command
+         * stream is at-least-once: a reconnection can redeliver a "record" while OBS
+         * is recording, and throwing here would fill the notice stack with incidents
+         * that are not any.
          *
-         * Un échec réel, lui, part au journal et non en exception : ce chemin
-         * est une commande descendante, personne n'attend une réponse au bout.
-         * C'est la vue qui dira que l'enregistrement n'a pas démarré — la régie
-         * mobile ne peint jamais d'avance, exactement comme celle de la salle.
+         * A real failure, for its part, goes to the log and not as an exception:
+         * this path is a downward command, nobody is waiting for an answer at the
+         * end. It is the view that will say the recording did not start — the mobile
+         * control app never paints ahead, exactly like the room's.
          */
         setRecording: (on) => {
           if (this.runtime.state().recording === on) return
-          const geste = on ? this.startRecording() : this.stopRecording()
-          void geste.catch((cause: Error) => {
+          const gesture = on ? this.startRecording() : this.stopRecording()
+          void gesture.catch((cause: Error) => {
             this.options.onLog?.('warn', "captation : commande distante refusée", {
               on,
               message: cause.message,
@@ -275,8 +273,8 @@ export class RoomApp implements ControlTarget {
         },
         setStreaming: (on) => {
           if (this.runtime.state().streaming === on) return
-          const geste = on ? this.startStreaming() : this.stopStreaming()
-          void geste.catch((cause: Error) => {
+          const gesture = on ? this.startStreaming() : this.stopStreaming()
+          void gesture.catch((cause: Error) => {
             this.options.onLog?.('warn', "diffusion : commande distante refusée", {
               on,
               message: cause.message,
@@ -286,7 +284,7 @@ export class RoomApp implements ControlTarget {
       },
       options.now,
     )
-    this.roomIdSouhaite = options.roomId ?? null
+    this.wantedRoomId = options.roomId ?? null
     this.connectivity = new ConnectivityTracker({
       hubOrigin: options.hubOrigin,
       onChange: (value) => this.runtime.setConnectivity(value),
@@ -300,17 +298,17 @@ export class RoomApp implements ControlTarget {
       hubOrigin: options.hubOrigin,
       control: this,
       pairing: () => this.pairingState(),
-      // Relus du cache à chaque envoi : ils changent au sync, pas à chaque
-      // bascule de scène, et une salle démarrée hub injoignable garde les
-      // derniers connus plutôt qu'une page vide.
+      // Read back from the cache on every send: they change at sync time, not on
+      // every scene switch, and a room started with the hub unreachable keeps the
+      // last known ones rather than an empty page.
       socialLinks: () => this.store.settings().socialLinks,
       event: () => this.store.settings().event,
-      onLevelsRequested: (actif) => {
-        this.niveauxDemandes = actif
-        // Sans OBS-B connecté, on retient seulement l'intention : l'abonnement
-        // sera posé à la connexion, sinon ouvrir la régie avant OBS laisserait
-        // le vumètre muet jusqu'à un rechargement de la page.
-        void this.obsB?.setVolumeMeters(actif).catch(() => {
+      onLevelsRequested: (active) => {
+        this.levelsRequested = active
+        // With no OBS-B connected, we only keep the intent: the subscription will be
+        // set at connection time, otherwise opening the control app before OBS would
+        // leave the VU meter silent until the page is reloaded.
+        void this.obsB?.setVolumeMeters(active).catch(() => {
           this.options.onLog?.('warn', "OBS-B n'a pas accepté l'abonnement au vumètre")
         })
       },
@@ -322,63 +320,62 @@ export class RoomApp implements ControlTarget {
     this.levels = new LevelAggregator((inputs) => this.display.publishLevels(inputs))
 
     /**
-     * Rapatriement des rushes.
+     * Shipping the rushes back.
      *
-     * Monté toujours, actif jamais tant que le hub n'a pas de stockage : c'est
-     * le hub qui décide, et il le dit au sync. Une salle n'a rien à savoir de
-     * S3 — elle sait seulement qu'il y a, ou non, une destination.
+     * Always mounted, never active while the hub has no storage: it is the hub that
+     * decides, and it says so at sync time. A room has nothing to know about S3 —
+     * it only knows whether there is, or is not, a destination.
      */
-    this.televersements = new Televersements({
+    this.uploads = new Uploads({
       store: this.store,
-      candidats: () => this.candidatsVod(),
+      candidates: () => this.vodCandidates(),
       hub: () => this.hubVod(),
-      politique: () => this.store.settings().vod?.politique ?? null,
-      charge: this.hostLoad,
-      // L'état réel d'OBS-B, observé et non supposé : c'est le même booléen que
-      // le témoin de la régie, et il vaut mieux que ce qu'on croit avoir lancé.
-      enregistre: () => this.runtime.state().recording,
+      policy: () => this.store.settings().vod?.politique ?? null,
+      load: this.hostLoad,
+      // OBS-B's real state, observed and not assumed: it is the same boolean as the
+      // control app's indicator, and it beats what one believes one launched.
+      recording: () => this.runtime.state().recording,
       talkRunning: () => this.runtime.currentSessionStatus() === 'running',
-      msBeforeNext: () => this.msAvantProchaineConference(),
-      cheminDe: (file) => this.cheminDansCaptations(file),
-      // Relue du cache à chaque envoi, comme le reste : une CA corrigée sur le
-      // hub prend effet au sync suivant, sans toucher à la machine de salle.
+      msBeforeNext: () => this.msBeforeNextTalk(),
+      pathOf: (file) => this.pathInCaptures(file),
+      // Read back from the cache on every send, like the rest: a CA corrected on the
+      // hub takes effect at the next sync, without touching the room machine.
       caCert: () => this.store.settings().vod?.caCert ?? null,
       onLog: this.options.onLog,
     })
   }
 
   /** Is a control app displaying the levels right now? */
-  private niveauxDemandes = false
+  private levelsRequested = false
   private readonly levels: LevelAggregator
 
   /**
-   * Met un événement en file de remontée.
+   * Queues an event for sending up.
    *
-   * Ne fait jamais attendre l'appelant : la file est locale, la remontée se
-   * fait en tâche de fond. C'est ce qui permet à une action de régie d'aboutir
-   * instantanément même hors ligne.
+   * Never makes the caller wait: the queue is local, the sending happens in the
+   * background. That is what lets a control action succeed instantly even offline.
    */
   emit(payload: RoomEventPayload, dedupKey?: string): void {
     const outbox = this.ensureOutbox()
     if (outbox == null) {
-      // Avant le tout premier appairage, on ne connaît pas encore la salle et
-      // l'événement n'est pas estampillable. Le cas est rare et transitoire,
-      // mais il doit laisser une trace plutôt que disparaître en silence.
+      // Before the very first pairing, the room is not known yet and the event
+      // cannot be stamped. The case is rare and transient, but it must leave a trace
+      // rather than disappear in silence.
       this.store.log('warn', 'événement émis avant appairage, non mis en file', {
         type: payload.type,
       })
       return
     }
     outbox.enqueue(payload, dedupKey != null ? { dedupKey } : {})
-    // `backlog()` et non `depth()` : le battement qu'on vient d'inscrire repart
-    // au drain suivant, et le compter ferait clignoter l'indicateur sans fin.
+    // `backlog()` and not `depth()`: the heartbeat we have just enqueued leaves at
+    // the next drain, and counting it would make the indicator blink endlessly.
     this.runtime.setOutboxDepth(outbox.backlog())
   }
 
   /**
-   * Crée la file dès que la salle est connue — y compris depuis le cache local,
-   * donc sans réseau. Un redémarrage hors ligne capture ainsi les événements du
-   * démarrage (connexion OBS, incidents) au lieu de les perdre.
+   * Creates the queue as soon as the room is known — including from the local
+   * cache, so with no network. An offline restart thus captures the startup's
+   * events (the OBS connection, incidents) instead of losing them.
    */
   private ensureOutbox(): Outbox | null {
     if (this.outbox != null) return this.outbox
@@ -388,42 +385,42 @@ export class RoomApp implements ControlTarget {
     return this.outbox
   }
 
-  /** Où en est l'appairage, pour l'écran de régie. */
+  /** Where the pairing stands, for the control screen. */
   pairingState(): PairingState {
     return {
       ...this.pairing,
-      rooms: [...this.sallesConnues],
-      requestedRoomId: this.roomIdSouhaite,
+      rooms: [...this.knownRooms],
+      requestedRoomId: this.wantedRoomId,
     }
   }
 
   /**
-   * Enregistre la salle choisie sur l'écran de régie et relance l'appairage.
+   * Records the room chosen on the control screen and restarts the pairing.
    *
-   * Relancer est nécessaire : le choix voyage dans la demande de code, il ne
-   * peut donc pas s'appliquer à un code déjà émis.
+   * Restarting is necessary: the choice travels in the code request, so it cannot
+   * apply to a code that has already been issued.
    */
   async chooseRoom(roomId: string): Promise<void> {
-    if (this.sallesConnues.length > 0 && !this.sallesConnues.some((s) => s.id === roomId)) {
+    if (this.knownRooms.length > 0 && !this.knownRooms.some((s) => s.id === roomId)) {
       throw new Error(`Salle inconnue : ${roomId}`)
     }
-    this.roomIdSouhaite = roomId
+    this.wantedRoomId = roomId
     this.setPairing({ ...this.pairing, status: 'idle', userCode: undefined })
 
     /**
-     * L'appairage part en tâche de fond et l'appel rend la main aussitôt.
+     * The pairing leaves in the background and the call hands back at once.
      *
-     * L'attendre bloquerait la requête HTTP jusqu'à l'approbation — donc
-     * potentiellement une demi-heure, pendant laquelle le bouton de la régie
-     * tournerait et le navigateur finirait par abandonner. L'écran suit
-     * l'avancement par le flux d'état.
+     * Awaiting it would block the HTTP request until the approval — so potentially
+     * half an hour, during which the control app's button would spin and the browser
+     * would end up giving up. The screen follows the progress through the state
+     * stream.
      */
-    this.appairageEnCours = this.lancerAppairage().finally(() => {
-      this.appairageEnCours = null
+    this.pairingInFlight = this.startPairing().finally(() => {
+      this.pairingInFlight = null
     })
   }
 
-  private async lancerAppairage(): Promise<void> {
+  private async startPairing(): Promise<void> {
     try {
       const token = await this.ensurePaired()
       if (token == null) return
@@ -435,69 +432,69 @@ export class RoomApp implements ControlTarget {
   }
 
   /**
-   * Récupère la liste des salles pour l'écran de choix.
+   * Fetches the list of rooms for the choice screen.
    *
-   * Publique côté hub : une machine non appairée n'a aucun jeton à présenter.
+   * Public on the hub side: an unpaired machine has no token to present.
    */
-  private async chargerSalles(): Promise<void> {
+  private async loadRooms(): Promise<void> {
     try {
       const client: ContractRouterClient<typeof contract> = createORPCClient(
         new FetchLink({ origin: this.options.hubOrigin, url: '/rpc' }),
       )
-      this.sallesConnues = await client.rooms.public()
+      this.knownRooms = await client.rooms.public()
     } catch {
-      // Hub injoignable : l'écran l'affichera, la supervision réessaiera.
-      this.sallesConnues = []
+      // Hub unreachable: the screen will show it, the supervision will retry.
+      this.knownRooms = []
     }
   }
 
-  private setPairing(etat: PairingState): void {
-    this.pairing = etat
-    // L'écran doit suivre immédiatement : c'est lui qui porte le code.
+  private setPairing(state: PairingState): void {
+    this.pairing = state
+    // The screen must follow immediately: it is the one that carries the code.
     this.runtime.emit('state', this.runtime.state())
   }
 
   /**
-   * Surveille le hub et rattrape ce qui a échoué.
+   * Watches the hub and catches up on what failed.
    *
-   * Sans cette boucle, un hub absent au démarrage condamnait la salle : elle
-   * affichait son code, échouait une fois, et n'essayait plus jamais. Or c'est
-   * exactement l'ordre de démarrage le plus probable un matin d'événement —
-   * les salles s'allument avant que quiconque ait lancé le hub.
+   * Without this loop, a hub absent at startup condemned the room: it displayed its
+   * code, failed once, and never tried again. Yet that is exactly the most likely
+   * startup order on an event morning — the rooms come on before anyone has
+   * launched the hub.
    */
   startSupervision(intervalMs = 15_000): void {
     if (this.supervision != null) return
 
     this.supervision = setInterval(() => {
-      if (this.travailEnCours || this.abort.signal.aborted) return
-      this.travailEnCours = true
-      void this.rattraper().finally(() => {
-        this.travailEnCours = false
+      if (this.workInFlight || this.abort.signal.aborted) return
+      this.workInFlight = true
+      void this.catchUp().finally(() => {
+        this.workInFlight = false
       })
     }, intervalMs)
     this.supervision.unref?.()
   }
 
-  /** Une passe de rattrapage. Ne lève jamais : c'est une boucle de fond. */
-  private async rattraper(): Promise<void> {
-    // Rien à faire tant que le lien tient : `consumeCommands` gère ses propres
-    // reconnexions, et sonder par-dessus ne ferait qu'ajouter du bruit.
+  /** One catch-up pass. Never throws: it is a background loop. */
+  private async catchUp(): Promise<void> {
+    // Nothing to do while the link holds: `consumeCommands` handles its own
+    // reconnections, and probing on top would only add noise.
     if (this.link != null) return
 
-    // En attente d'un choix de salle : on rafraîchit seulement la liste, pour
-    // que l'écran cesse d'être vide dès que le hub répond.
-    if (this.roomIdSouhaite == null && this.options.readToken()?.trim() == null) {
-      await this.chargerSalles()
-      if (this.sallesConnues.length > 0) {
+    // Waiting for a room choice: we only refresh the list, so that the screen stops
+    // being empty as soon as the hub answers.
+    if (this.wantedRoomId == null && this.options.readToken()?.trim() == null) {
+      await this.loadRooms()
+      if (this.knownRooms.length > 0) {
         this.setPairing({ ...this.pairing, status: 'idle' })
         return
       }
     }
 
-    const joignable = await probeConnectivity({ hubOrigin: this.options.hubOrigin })
-    if (joignable === 'OFFLINE') {
-      // Le hub ne répond toujours pas. On ne tente rien et on repassera : la
-      // salle continue de fonctionner sur son cache pendant ce temps.
+    const reachable = await probeConnectivity({ hubOrigin: this.options.hubOrigin })
+    if (reachable === 'OFFLINE') {
+      // The hub still does not answer. We try nothing and will come back: the room
+      // keeps working from its cache in the meantime.
       await this.connectivity.markRealtimeFailure()
       return
     }
@@ -515,13 +512,13 @@ export class RoomApp implements ControlTarget {
     }
   }
 
-  /** Sert l'écran. Première chose faite, avant toute tentative réseau. */
+  /** Serves the screen. The first thing done, before any network attempt. */
   async startDisplay(): Promise<string> {
     const url = await this.display.listen()
     this.options.onLog?.('info', "écran de salle servi", { url: `${url}/display/projector` })
 
-    // Tic d'horloge : fait avancer la timeline, et expirer messages et
-    // signalements, même quand plus rien n'arrive du hub.
+    // The clock tick: advances the timeline, and expires messages and notices, even
+    // when nothing arrives from the hub any more.
     this.tick = setInterval(() => {
       this.runtime.refreshSessions()
       this.runtime.expireMessage()
@@ -529,37 +526,37 @@ export class RoomApp implements ControlTarget {
     }, 5_000)
 
     /**
-     * Rapatriement des rushes, en fond.
+     * Shipping the rushes back, in the background.
      *
-     * Démarré avec l'écran et non avec le hub : la boucle ne fait rien tant
-     * qu'aucune destination n'est connue, et la démarrer plus tard voudrait dire
-     * qu'une salle jamais raccordée ne rattraperait jamais ses rushes le soir,
-     * quand le hub revient.
+     * Started with the screen and not with the hub: the loop does nothing while no
+     * destination is known, and starting it later would mean a room never connected
+     * would never catch up on its rushes in the evening, when the hub comes back.
      */
-    this.televersements.demarrer()
+    this.uploads.start()
 
     return url
   }
 
   /**
-   * Récupère le jeton de la machine, en déroulant l'appairage si nécessaire.
+   * Fetches the machine's token, running the pairing if necessary.
    *
-   * Renvoie `null` si le hub est injoignable : ce n'est pas une erreur, la
-   * salle continue sur son cache.
+   * Returns `null` if the hub is unreachable: it is not an error, the room carries
+   * on from its cache.
    */
   async ensurePaired(): Promise<string | null> {
-    // Chaîne vide comprise : c'est ce qu'écrit `repair()` pour effacer, et la
-    // laisser passer ferait croire la machine appairée avec un jeton nul.
+    // The empty string included: it is what `repair()` writes to clear, and letting
+    // it through would make the machine look paired with a null token.
     const existing = this.options.readToken()?.trim()
     if (existing != null && existing.length > 0) {
       this.setPairing({ status: 'paired' })
       return existing
     }
 
-    // Le choix précède le code : sans salle proposée, l'écran demande d'abord
-    // laquelle, plutôt que d'afficher un code que la console devra deviner.
-    await this.chargerSalles()
-    if (this.roomIdSouhaite == null && this.sallesConnues.length > 0) {
+    // The choice comes before the code: with no room proposed, the screen asks
+    // which one first, rather than displaying a code the console will have to
+    // guess.
+    await this.loadRooms()
+    if (this.wantedRoomId == null && this.knownRooms.length > 0) {
       this.setPairing({ status: 'idle' })
       return null
     }
@@ -569,11 +566,11 @@ export class RoomApp implements ControlTarget {
         httpPairingTransport(this.options.hubOrigin),
         this.options.clientId,
         {
-          scope: this.roomIdSouhaite == null ? undefined : `room:${this.roomIdSouhaite}`,
-          // Fermer l'application doit interrompre l'attente, pas la subir.
+          scope: this.wantedRoomId == null ? undefined : `room:${this.wantedRoomId}`,
+          // Closing the application must interrupt the wait, not endure it.
           signal: this.abort.signal,
           onUnreachable: () => {
-            // Le code reste affiché : il est toujours valide côté hub.
+            // The code stays displayed: it is still valid on the hub side.
             this.setPairing({ ...this.pairing, message: 'Hub momentanément injoignable…' })
           },
           onCode: (code) => {
@@ -592,9 +589,9 @@ export class RoomApp implements ControlTarget {
       )
 
       /**
-       * La session d'approbation n'est utilisée qu'ici, pour réclamer le jeton
-       * de salle. Elle donne les droits de l'opérateur qui a approuvé ; une
-       * machine de régie n'a aucune raison de les conserver.
+       * The approving session is used here only, to claim the room token. It gives
+       * the rights of the operator who approved; a control machine has no reason to
+       * keep them.
        */
       const token = await this.claimRoomToken(accessToken)
       this.options.writeToken(token)
@@ -624,18 +621,18 @@ export class RoomApp implements ControlTarget {
   }
 
   /**
-   * Repart de zéro après un refus d'identifiants.
+   * Starts again from scratch after a credentials refusal.
    *
-   * Le jeton stocké ne vaut plus rien : le conserver ferait boucler la machine
-   * sur un échec silencieux. On l'efface et on réaffiche le code.
+   * The stored token is worth nothing any more: keeping it would make the machine
+   * loop on a silent failure. We erase it and display the code again.
    */
-  async repair(raison: string): Promise<void> {
-    this.options.onLog?.('warn', 'réappairage nécessaire', { raison })
+  async repair(reason: string): Promise<void> {
+    this.options.onLog?.('warn', 'réappairage nécessaire', { raison: reason })
     this.options.writeToken('')
-    this.setPairing({ status: 'expired', message: raison })
+    this.setPairing({ status: 'expired', message: reason })
 
-    // Tout ce qui parle au hub s'arrête : sans ça, la file et le battement
-    // continueraient de frapper un lien fermé et lèveraient en boucle.
+    // Everything that talks to the hub stops: without that, the queue and the
+    // heartbeat would keep hitting a closed link and would throw in a loop.
     this.pump?.stop()
     this.pump = null
     if (this.heartbeat != null) clearInterval(this.heartbeat)
@@ -650,7 +647,7 @@ export class RoomApp implements ControlTarget {
     if (token != null) await this.connectHub(token)
   }
 
-  /** Connecte le hub : synchronise puis consomme les commandes en tâche de fond. */
+  /** Connects the hub: synchronizes then consumes the commands in the background. */
   async connectHub(token: string): Promise<void> {
     this.link = new HubLink({
       hubOrigin: this.options.hubOrigin,
@@ -662,58 +659,58 @@ export class RoomApp implements ControlTarget {
       onHubMode: (mode) => {
         if (mode === this.hubMode) return
         this.hubMode = mode
-        const nous = this.options.mode ?? 'production'
-        if (mode !== nous) {
+        const ours = this.options.mode ?? 'production'
+        if (mode !== ours) {
           this.options.onLog?.('error', 'MODES DIVERGENTS entre la salle et le hub', {
-            room: nous,
+            room: ours,
             hub: mode,
           })
         }
       },
-      onAuthRejected: (raison) => {
-        // Relancé hors de la pile d'appel : on est dans le gestionnaire
-        // d'erreur du lien qu'on s'apprête à fermer.
-        setTimeout(() => void this.repair(raison), 0)
+      onAuthRejected: (reason) => {
+        // Restarted outside the call stack: we are inside the error handler of the
+        // link we are about to close.
+        setTimeout(() => void this.repair(reason), 0)
       },
       /*
-       * Confirmer ce qu'on vient d'appliquer, tout de suite.
+       * Confirm what we have just applied, right away.
        *
-       * Le geste vient d'une régie mobile, qui ne peint jamais d'avance :
-       * l'écran de salle qu'elle a demandé reste éteint sur son téléphone tant
-       * que la salle ne l'a pas remonté. Une bascule de scène s'annonce toute
-       * seule — OBS émet —, un mode d'écran non : il ne voyage que par le
-       * battement.
+       * The gesture comes from a mobile control app, which never paints ahead: the
+       * room screen it asked for stays off on its phone until the room has sent it
+       * up. A scene switch announces itself — OBS emits — a screen mode does not: it
+       * only travels through the heartbeat.
        */
       onCommandApplied: () => {
-        this.battre()
-        this.reveillerRemontee()
+        this.beat()
+        this.wakeUplink()
       },
     })
 
-    await this.synchroniserTout()
+    await this.syncEverything()
 
     void this.link.consumeCommands(this.abort.signal)
     void this.link.consumeWall(this.abort.signal)
     this.startOutbox()
     this.startRoomWatch()
 
-    // État initial des conférences : sans ça, un redémarrage en plein talk
-    // afficherait « à venir » sur une conférence déjà lancée.
-    await this.chargerEtatsDesConferences()
+    // The talks' initial state: without it, a restart mid-talk would show
+    // "upcoming" on a talk that has already been launched.
+    await this.loadSessionStates()
   }
 
   /**
-   * Tout ce que la salle relit du hub : programme, assets, configuration, QR.
+   * Everything the room reads back from the hub: program, assets, configuration,
+   * QR code.
    *
-   * Excerpt du raccordement pour être rejouable en cours de journée. Ce qui
-   * *ouvre* quelque chose — flux de commandes, file de remontée, veille des
-   * salles, OBS — n'y est pas : le rejouer couperait ce qui tourne.
+   * Extracted from the connection so it can be replayed during the day. What
+   * *opens* something — the command stream, the outbox, the room watch, OBS — is
+   * not in it: replaying that would cut what is running.
    *
-   * @param complet Redemande le programme entier même à empreinte identique.
+   * @param full Asks for the whole program again even at an identical fingerprint.
    */
-  private async synchroniserTout(complet = false): Promise<boolean> {
+  private async syncEverything(full = false): Promise<boolean> {
     if (this.link == null) return false
-    const result = await this.link.sync({ full: complet })
+    const result = await this.link.sync({ full })
     const roomId = this.store.settings().roomId
     if (roomId != null) {
       await this.display
@@ -723,8 +720,8 @@ export class RoomApp implements ControlTarget {
     if (result.ok) {
       const cached = this.store.activeProgram()
       if (cached != null) {
-        // Après le sync, pas avant : télécharger les assets ne doit jamais
-        // retarder l'affichage du programme.
+        // After the sync, not before: downloading the assets must never delay the
+        // program's display.
         const report = await this.assets.prefetch(cached.program)
         this.options.onLog?.('info', 'assets préchargés', report)
       }
@@ -733,18 +730,18 @@ export class RoomApp implements ControlTarget {
   }
 
   /**
-   * Resynchronisation complète, demandée depuis la console.
+   * A full resynchronization, asked for from the console.
    *
-   * Tout ce que fait un démarrage, sauf ce qui couperait quelque chose : le
-   * programme redescend entier — sans se fier à l'empreinte en cache, puisque
-   * c'est justement le cache qu'on soupçonne —, les assets manquants sont
-   * repris, la configuration, les réseaux, l'événement et l'horloge relus, et
-   * le cycle de vie des conférences redemandé au hub.
+   * Everything a startup does, except what would cut something: the program comes
+   * down whole — without trusting the cached fingerprint, since it is precisely the
+   * cache that is suspected — the missing assets are picked up, the configuration,
+   * the social accounts, the event and the clock are read back, and the talks'
+   * lifecycle is asked of the hub again.
    *
-   * **OBS n'est pas reconnecté et l'enregistrement n'est pas touché.** Une
-   * salle qu'on remet d'aplomb pendant un talk ne doit pas y perdre sa
-   * captation : ce geste existe précisément pour ne pas avoir à redémarrer la
-   * machine, ce qui, lui, coupe tout.
+   * **OBS is not reconnected and the recording is not touched.** A room being put
+   * straight during a talk must not lose its capture to it: this gesture exists
+   * precisely so one does not have to restart the machine, which does cut
+   * everything.
    */
   async fullResync(): Promise<void> {
     if (this.link == null) {
@@ -752,16 +749,16 @@ export class RoomApp implements ControlTarget {
       return
     }
     this.options.onLog?.('info', 'resynchronisation complète demandée')
-    const ok = await this.synchroniserTout(true)
-    await this.chargerEtatsDesConferences()
+    const ok = await this.syncEverything(true)
+    await this.loadSessionStates()
     if (ok) {
       this.runtime.notify({ level: 'info', text: 'Resynchronisation complète terminée' })
       this.options.onLog?.('info', 'resynchronisation complète terminée')
       return
     }
-    // Dit franchement : une salle qui reste sur son cache après qu'on lui a
-    // demandé de tout relire n'est pas remise d'aplomb, et la console vient
-    // d'annoncer le contraire.
+    // Said plainly: a room that stays on its cache after being asked to read
+    // everything back is not put straight, and the console has just announced the
+    // opposite.
     this.runtime.notify({
       level: 'warning',
       text: 'Resynchronisation complète : hub injoignable, la salle garde son cache',
@@ -770,21 +767,21 @@ export class RoomApp implements ControlTarget {
   }
 
   /**
-   * Relit le cycle de vie des conférences de la salle auprès du hub.
+   * Reads the room's talk lifecycle back from the hub.
    *
-   * Appelée au sync, et à chaque fois que l'heure du hub bouge : le hub écarte
-   * les décisions datées d'après l'instant courant, la salle doit donc les
-   * relire plutôt que de raisonner sur sa copie — elle n'a pas les dates de
-   * décision, et aucune commande n'annonce qu'un fait a cessé de s'appliquer.
+   * Called at sync time, and every time the hub's clock moves: the hub discards the
+   * decisions dated after the current instant, so the room has to read them back
+   * rather than reason on its copy — it does not have the decision dates, and no
+   * command announces that a fact has stopped applying.
    *
-   * En cas d'échec on garde la copie précédente : périmée vaut mieux que vide,
-   * qui afficherait « à venir » sur un talk en cours.
+   * On failure we keep the previous copy: stale beats empty, which would show
+   * "upcoming" on a running talk.
    */
-  private async chargerEtatsDesConferences(): Promise<void> {
+  private async loadSessionStates(): Promise<void> {
     if (this.link == null) return
     try {
-      const etats = await this.link.client.sessions.states({ roomId: this.store.settings().roomId })
-      this.runtime.replaceSessionStates(etats)
+      const states = await this.link.client.sessions.states({ roomId: this.store.settings().roomId })
+      this.runtime.replaceSessionStates(states)
     } catch (cause) {
       this.options.onLog?.('warn', 'états des conférences non récupérés', {
         message: (cause as Error).message,
@@ -793,16 +790,16 @@ export class RoomApp implements ControlTarget {
   }
 
   /**
-   * Démarre la remontée.
+   * Starts the sending up.
    *
-   * Séparée de la synchronisation : même si le `sync` a échoué, la file doit
-   * tourner — elle rattrapera dès que le hub répondra.
+   * Separate from the synchronization: even if the `sync` failed, the queue must
+   * run — it will catch up as soon as the hub answers.
    */
   private startOutbox(): void {
     const roomId = this.store.settings().roomId
     const outbox = this.ensureOutbox()
     if (roomId == null || outbox == null || this.link == null) return
-    // Un réappairage relance `connectHub` : on ne veut pas deux aspirateurs.
+    // A re-pairing restarts `connectHub`: we do not want two pumps.
     this.pump?.stop()
     if (this.heartbeat != null) clearInterval(this.heartbeat)
 
@@ -810,15 +807,15 @@ export class RoomApp implements ControlTarget {
       outbox,
       store: this.store,
       push: async (batch) => {
-        // Le lien peut disparaître pendant un réappairage : échouer proprement
-        // renvoie le lot en file, là où `!` aurait levé une erreur non gérée.
-        const lien = this.link
-        if (lien == null) throw new Error('Hub non connecté')
-        return lien.client.ingest.push({ batch })
+        // The link can disappear during a re-pairing: failing cleanly sends the batch
+        // back to the queue, where `!` would have thrown an unhandled error.
+        const link = this.link
+        if (link == null) throw new Error('Hub non connecté')
+        return link.client.ingest.push({ batch })
       },
       onConnectivity: (value) => {
-        // Un échec de remontée ne veut pas dire « réseau coupé » : on sonde le
-        // hub en HTTP pour distinguer `DEGRADED` d'`OFFLINE`.
+        // A send failure does not mean "network cut": we probe the hub over HTTP to
+        // tell `DEGRADED` from `OFFLINE`.
         if (value === 'ONLINE') this.connectivity.markOnline()
         else void this.connectivity.markRealtimeFailure()
       },
@@ -828,24 +825,24 @@ export class RoomApp implements ControlTarget {
     })
     this.pump.start()
 
-    // Battement régulier, collapsé : une heure hors ligne laisse une seule
-    // occurrence en file, pas 720.
-    this.heartbeat = setInterval(() => this.battre(), 10_000)
+    // A regular heartbeat, collapsed: an hour offline leaves a single occurrence in
+    // the queue, not 720.
+    this.heartbeat = setInterval(() => this.beat(), 10_000)
     this.heartbeat.unref?.()
   }
 
   /**
-   * Remonte au hub ce qui ne voyage que par le battement.
+   * Sends up to the hub what only travels through the heartbeat.
    *
-   * Appelée par le tic, et **tout de suite** quand l'un de ces faits change.
-   * Une régie mobile ne peint jamais d'avance : tant que la salle n'a pas
-   * remonté, son bouton décrit encore l'état d'avant, et dix secondes de
-   * retard suffisent à le faire appuyer une seconde fois.
+   * Called by the tick, and **right away** when one of these facts changes. A
+   * mobile control app never paints ahead: until the room has sent up, its button
+   * still describes the state from before, and ten seconds of delay are enough to
+   * get it pressed a second time.
    *
-   * Gratuit à répéter : `heartbeatDedupKey` collapse la file — c'est la même
-   * mécanique qui évite 720 battements après une heure hors ligne.
+   * Free to repeat: `heartbeatDedupKey` collapses the queue — it is the same
+   * mechanism that avoids 720 heartbeats after an hour offline.
    */
-  private battre(): void {
+  private beat(): void {
     const roomId = this.store.settings().roomId
     if (roomId == null) return
     const state = this.runtime.state()
@@ -854,18 +851,17 @@ export class RoomApp implements ControlTarget {
         connectivity: state.connectivity,
         sceneRole: state.sceneRole,
         /*
-         * L'état de la captation, lu sur le runtime.
+         * The capture's state, read from the runtime.
          *
-         * C'est **OBS-B** qui enregistre et qui diffuse ; OBS-A ne fait que
-         * projeter. Le battement interrogeait pourtant `obsA` : il remontait
-         * donc `false` toutes les dix secondes, écrasant chez le hub le
-         * `recording` que `recording.started` venait d'y écrire. La régie
-         * mobile montrait un témoin éteint sur une salle en pleine captation,
-         * et la console de supervision avec elle.
+         * It is **OBS-B** that records and streams; OBS-A only projects. The
+         * heartbeat nevertheless asked `obsA`: it therefore sent up `false` every ten
+         * seconds, overwriting at the hub the `recording` that `recording.started`
+         * had just written there. The mobile control app showed an indicator switched
+         * off on a room mid-capture, and the supervision console with it.
          *
-         * Le runtime plutôt que `obsB` directement : c'est la source que lit
-         * déjà la régie de la salle, et elle adopte ce qu'OBS enregistrait
-         * avant la connexion. Une seule vérité, celle qui est à l'écran.
+         * The runtime rather than `obsB` directly: it is the source the room's
+         * control app already reads, and it adopts what OBS was recording before the
+         * connection. A single truth, the one that is on screen.
          */
         recording: state.recording,
         streaming: state.streaming,
@@ -878,11 +874,11 @@ export class RoomApp implements ControlTarget {
   }
 
   /**
-   * Charge un programme depuis un fichier local.
+   * Loads a program from a local file.
    *
-   * Dernier repli de la chaîne de démarrage : cache SQLite → fichier importé à
-   * la main (clé USB) → snapshot embarqué. Permet d'ouvrir une salle même si le
-   * hub n'a jamais été joignable depuis cette machine.
+   * The startup chain's last fallback: the SQLite cache → a file imported by hand
+   * (a USB key) → the embedded snapshot. Makes it possible to open a room even if
+   * the hub has never been reachable from this machine.
    */
   async importProgramFile(path: string): Promise<{ contentHash: string; sessions: number }> {
     const { readFile } = await import('node:fs/promises')
@@ -891,8 +887,8 @@ export class RoomApp implements ControlTarget {
 
     const raw = await readFile(path, 'utf8')
     const program = normalizeProgram(JSON.parse(raw))
-    // Même empreinte que côté hub : un import manuel puis un sync ne créent pas
-    // deux versions du même programme.
+    // The same fingerprint as on the hub side: a manual import then a sync do not
+    // create two versions of the same program.
     const contentHash = createHash('sha256').update(raw).digest('hex').slice(0, 32)
 
     this.store.saveProgram(contentHash, program)
@@ -904,42 +900,41 @@ export class RoomApp implements ControlTarget {
   }
 
   /**
-   * Au-delà, la régie cesse de croire la vue des autres salles.
+   * Beyond this, the control app stops believing the other rooms' view.
    *
-   * Miroir de `STALE_VIEW_MS` côté page : c'est la fenêtre qu'il faut tenir,
-   * et le rappel ci-dessous s'y prend largement à l'avance.
+   * A mirror of `STALE_VIEW_MS` on the page side: it is the window to hold, and the
+   * reminder below takes it well in advance.
    */
   private static readonly STALE_VIEW_MS = 60_000
 
   /**
-   * Au-delà, on republie même sans changement, pour rafraîchir l'horodatage.
+   * Beyond this, we republish even with no change, to refresh the timestamp.
    *
-   * La régie ne se fie à la vue du hub que si elle est fraîche ; l'horodatage
-   * doit donc lui parvenir régulièrement, y compris quand rien ne bouge. Un
-   * tiers de la fenêtre laisse deux occasions de la tenir avant qu'elle ne se
-   * ferme, même si l'une échoue.
+   * The control app only trusts the hub's view if it is fresh; the timestamp must
+   * therefore reach it regularly, including when nothing moves. A third of the
+   * window leaves two chances to hold it before it closes, even if one fails.
    */
-  private static readonly RAPPEL_VUE_MS = 20_000
+  private static readonly VIEW_REMINDER_MS = 20_000
 
-  /** Sérialisation de la dernière vue publiée, pour ne republier qu'à bon escient. */
-  private roomStatusesPubliees: string | null = null
-  private roomStatusesPublieesA = 0
-  /** Un seul appel en vol, et au plus une redemande en attente. */
-  private roomWatchEnCours = false
-  private roomWatchRedemande = false
+  /** The last published view, serialized, so as to republish only when it makes sense. */
+  private publishedRoomStatuses: string | null = null
+  private publishedRoomStatusesAt = 0
+  /** One call in flight, and at most one pending re-request. */
+  private roomWatchRunning = false
+  private roomWatchAsked = false
 
   /**
-   * Rafraîchit l'état des autres salles.
+   * Refreshes the other rooms' state.
    *
-   * Trois cadences, et c'est voulu : un sondage court pour ce qui n'a pas de
-   * commande — enregistrement, scène, connectivité, qui remontent au battement
-   * de la salle concernée —, un **déclenchement immédiat** sur commande pour ce
-   * qui en a une, et un rappel périodique pour tenir l'horodatage de fraîcheur.
+   * Three cadences, and that is intended: a short poll for what has no command —
+   * recording, scene, connectivity, which come up on the concerned room's heartbeat
+   * — an **immediate trigger** on a command for what has one, and a periodic
+   * reminder to hold the freshness timestamp.
    *
-   * Le déclenchement immédiat est ce qui fait la différence en salle : la
-   * décision d'une régie voisine arrive déjà poussée sur le flux de commandes,
-   * seule la *vue* était sondée. La pastille accusait donc jusqu'à un tour de
-   * sonde de retard sur la notification qui l'accompagnait.
+   * The immediate trigger is what makes the difference in a room: a neighbouring
+   * control app's decision already arrives pushed on the command stream, only the
+   * *view* was polled. The badge therefore lagged the notification that accompanied
+   * it by up to one polling turn.
    */
   private startRoomWatch(): void {
     if (this.roomsTimer != null) clearInterval(this.roomsTimer)
@@ -949,81 +944,81 @@ export class RoomApp implements ControlTarget {
   }
 
   /**
-   * Redemande la vue des autres salles, et la republie si elle a bougé.
+   * Asks for the other rooms' view again, and republishes it if it moved.
    *
-   * La publication ne va pas de soi : mettre à jour le champ en mémoire ne
-   * réveille personne. L'écran ne reçoit que sur `runtime.emit('state')` —
-   * c'est ce qui manquait, et le sondage tournait dans le vide.
+   * Publishing is not a given: updating the field in memory wakes nobody. The
+   * screen only receives on `runtime.emit('state')` — that is what was missing, and
+   * the polling ran in the void.
    *
-   * Republier à chaque tour serait l'excès inverse : la charge utile entière
-   * est resérialisée à chaque diffusion, et le flux est censé rester muet quand
-   * rien ne change. D'où la comparaison, doublée d'un rappel périodique pour
-   * l'horodatage.
+   * Republishing on every turn would be the opposite excess: the whole payload is
+   * reserialized on every broadcast, and the stream is supposed to stay silent when
+   * nothing changes. Hence the comparison, doubled with a periodic reminder for the
+   * timestamp.
    */
   /**
-   * Remonte tout de suite ce qui vient de changer dans OBS.
+   * Sends up right away what has just changed in OBS.
    *
-   * Pour ce qui se pilote de loin. Une régie mobile lit l'état de la salle par
-   * le hub, qui le tient du battement : sans réveil, une bascule de scène met
-   * jusqu'à un tic de pompe plus un tour de sondage à se voir sur le téléphone.
-   * Or la régie ne peint jamais d'avance — c'est le flux qui repeint le bouton
-   * —, si bien que ce délai se lit comme un geste manqué, et qu'on appuie une
-   * seconde fois.
+   * For what is driven from afar. A mobile control app reads the room's state
+   * through the hub, which holds it from the heartbeat: with no wake-up, a scene
+   * switch takes up to one pump tick plus one polling turn to show on the phone.
+   * Yet the control app never paints ahead — it is the stream that repaints the
+   * button — so that delay reads as a missed gesture, and one presses a second
+   * time.
    *
-   * Trois transitions seulement, et OBS ne les émet que sur changement réel :
-   * ce n'est pas un flot, c'est un fait par bascule.
+   * Three transitions only, and OBS emits them only on a real change: it is not a
+   * flow, it is one fact per switch.
    */
-  private reveillerRemontee(): void {
+  private wakeUplink(): void {
     this.pump?.wake()
   }
 
   private async refreshRoomStatuses(): Promise<void> {
     if (this.link == null) return
-    // Un seul appel en vol : une rafale de décisions ne doit pas ouvrir dix
-    // requêtes parallèles, mais la dernière ne doit pas non plus se perdre —
-    // une réponse partie *avant* l'écriture décrit encore le passé.
-    if (this.roomWatchEnCours) {
-      this.roomWatchRedemande = true
+    // One call in flight: a burst of decisions must not open ten parallel requests,
+    // but the last one must not get lost either — an answer that left *before* the
+    // write still describes the past.
+    if (this.roomWatchRunning) {
+      this.roomWatchAsked = true
       return
     }
-    this.roomWatchEnCours = true
+    this.roomWatchRunning = true
     try {
       const statuses = await this.link.client.rooms.statuses()
-      this.roomStatuses = statuses.map((salle) => ({
-        roomId: salle.roomId,
-        name: salle.name,
-        connectivity: salle.connectivity,
-        sceneRole: salle.sceneRole,
-        recording: salle.recording,
-        outboxDepth: salle.outboxDepth,
-        lastSeenAt: salle.lastSeenAt,
-        currentSessionId: salle.currentSessionId,
-        conference: salle.conference,
+      this.roomStatuses = statuses.map((room) => ({
+        roomId: room.roomId,
+        name: room.name,
+        connectivity: room.connectivity,
+        sceneRole: room.sceneRole,
+        recording: room.recording,
+        outboxDepth: room.outboxDepth,
+        lastSeenAt: room.lastSeenAt,
+        currentSessionId: room.currentSessionId,
+        conference: room.conference,
       }))
       this.roomStatusesAt = new Date().toISOString()
 
-      const vue = JSON.stringify(this.roomStatuses)
-      const rappelDu = Date.now() - this.roomStatusesPublieesA >= RoomApp.RAPPEL_VUE_MS
-      if (vue !== this.roomStatusesPubliees || rappelDu) {
-        this.roomStatusesPubliees = vue
-        this.roomStatusesPublieesA = Date.now()
+      const view = JSON.stringify(this.roomStatuses)
+      const reminderDue = Date.now() - this.publishedRoomStatusesAt >= RoomApp.VIEW_REMINDER_MS
+      if (view !== this.publishedRoomStatuses || reminderDue) {
+        this.publishedRoomStatuses = view
+        this.publishedRoomStatusesAt = Date.now()
         this.runtime.emit('state', this.runtime.state())
       }
     } catch {
-      // Hub injoignable : on garde la dernière vue connue, datée, plutôt que
-      // de vider le panneau — une liste vide se lirait comme « aucune salle ».
-      // L'horodatage ne bouge pas : passé une minute, la régie retombera d'elle
-      // même sur le programme, qui reste juste hors ligne.
+      // Hub unreachable: we keep the last known view, dated, rather than emptying
+      // the panel — an empty list would read as "no room". The timestamp does not
+      // move: past a minute, the control app will fall back by itself onto the
+      // program, which stays right offline.
     } finally {
-      this.roomWatchEnCours = false
-      if (this.roomWatchRedemande) {
-        this.roomWatchRedemande = false
+      this.roomWatchRunning = false
+      if (this.roomWatchAsked) {
+        this.roomWatchAsked = false
         void this.refreshRoomStatuses()
       }
     }
   }
 
-  /** Connecte les deux instances OBS avec le mapping de rôles de la salle. */
+  /** Connects both OBS instances with the room's role mapping. */
   async connectObs(): Promise<void> {
     const config = this.store.settings().config
     if (config == null) {
@@ -1036,12 +1031,11 @@ export class RoomApp implements ControlTarget {
   }
 
   /**
-   * Ouvre (ou rouvre) **une** instance, à la demande de l'opérateur.
+   * Opens (or reopens) **one** instance, at the operator's request.
    *
-   * Instance par instance : couper la captation pour appliquer un réglage de
-   * projection coûterait une prise. C'est aussi pourquoi enregistrer un réglage
-   * ne reconnecte rien tout seul — le moment appartient à l'opérateur, qui sait
-   * si un talk est en cours.
+   * Instance by instance: cutting the capture to apply a projection setting would
+   * cost a take. It is also why saving a setting reconnects nothing by itself — the
+   * moment belongs to the operator, who knows whether a talk is running.
    */
   async connectObsInstance(instance: ObsInstance): Promise<void> {
     const config = this.store.settings().config
@@ -1049,8 +1043,8 @@ export class RoomApp implements ControlTarget {
       throw new Error("Configuration de salle absente : le hub n'a pas encore répondu")
     }
 
-    // L'ancienne connexion part d'abord : les paramètres sont portés par le
-    // contrôleur, qui est reconstruit.
+    // The old connection goes first: the parameters are carried by the controller,
+    // which gets rebuilt.
     if (instance === 'A') {
       await this.obsA?.disconnect().catch(() => {})
       this.obsA = null
@@ -1063,56 +1057,56 @@ export class RoomApp implements ControlTarget {
   }
 
   /**
-   * Ouvre la connexion d'une instance déjà construite.
+   * Opens the connection of an already built instance.
    *
-   * Deux régimes. Au démarrage, on insiste sans fin : OBS est souvent lancé
-   * après la régie, et personne ne devrait avoir à rien recliquer. À la
-   * demande, une seule tentative — quelqu'un attend devant l'écran et l'échec
-   * doit lui revenir — mais la boucle de reprise repart quand même en fond,
-   * pour que l'instance finisse par se rattacher toute seule.
+   * Two regimes. At startup, we insist endlessly: OBS is often launched after the
+   * control app, and nobody should have to click anything again. On demand, a
+   * single attempt — somebody is waiting in front of the screen and the failure
+   * must come back to them — but the resume loop starts in the background anyway,
+   * so that the instance ends up reattaching by itself.
    */
-  private async brancher(instance: ObsInstance, manuel: boolean): Promise<void> {
-    const connecter = () => (instance === 'A' ? this.obsA! : this.obsB!).connect()
+  private async wire(instance: ObsInstance, manual: boolean): Promise<void> {
+    const connect = () => (instance === 'A' ? this.obsA! : this.obsB!).connect()
 
-    if (!manuel) {
-      this.repriseObs[instance] = true
+    if (!manual) {
+      this.obsResuming[instance] = true
       try {
         await keepObsConnected({
-          connect: connecter,
+          connect,
           onLog: this.options.onLog,
           signal: this.abort.signal,
         })
       } finally {
-        this.repriseObs[instance] = false
+        this.obsResuming[instance] = false
       }
       return
     }
 
     try {
-      await connecter()
+      await connect()
     } catch (cause) {
-      this.relancerReprise(instance)
+      this.restartResume(instance)
       throw new Error('OBS-' + instance + " n'a pas répondu : " + (cause as Error).message)
     }
   }
 
-  /** Boucle de reprise en fond, une seule à la fois par instance. */
-  private relancerReprise(instance: ObsInstance): void {
-    if (this.repriseObs[instance]) return
-    this.repriseObs[instance] = true
+  /** A background resume loop, one at a time per instance. */
+  private restartResume(instance: ObsInstance): void {
+    if (this.obsResuming[instance]) return
+    this.obsResuming[instance] = true
     void keepObsConnected({
       connect: () => (instance === 'A' ? this.obsA! : this.obsB!).connect(),
       onLog: this.options.onLog,
       signal: this.abort.signal,
     }).finally(() => {
-      this.repriseObs[instance] = false
+      this.obsResuming[instance] = false
     })
   }
 
-  private async connectProjection(config: ConfigSalle, manuel = false): Promise<void> {
+  private async connectProjection(config: RoomConfigCache, manual = false): Promise<void> {
     const transport = (this.options.obsTransportFactory ?? createObsTransport)(
       'A',
-      nomsDeScenes(config.sceneRoles.A),
+      sceneNames(config.sceneRoles.A),
     )
     this.obsA = new ObsController({
       instance: 'A',
@@ -1125,11 +1119,11 @@ export class RoomApp implements ControlTarget {
           case 'scene':
             this.runtime.observeSceneRole(event.role)
             this.emit({ type: 'scene.changed', obs: 'A', role: event.role, sceneName: event.sceneName })
-            this.reveillerRemontee()
+            this.wakeUplink()
             break
           case 'connected':
-            // Adopter l'état constaté : sans ça, la régie et la console
-            // affichent une scène vide jusqu'à la première bascule.
+            // Adopt the observed state: without it, the control app and the console
+            // show an empty scene until the first switch.
             this.runtime.observeSceneRole(event.currentRole)
             this.emit({
               type: 'obs.connection',
@@ -1152,18 +1146,18 @@ export class RoomApp implements ControlTarget {
       },
     })
 
-    this.obsApplique.A = empreinteObs(config, 'A')
-    await this.brancher('A', manuel)
+    this.obsApplied.A = obsFingerprint(config, 'A')
+    await this.wire('A', manual)
   }
 
   /**
-   * OBS-B : la captation. Distincte de la projection parce qu'elle n'a ni les
-   * mêmes scènes, ni les mêmes conséquences — une erreur ici coûte une VOD.
+   * OBS-B: the capture. Distinct from the projection because it has neither the
+   * same scenes nor the same consequences — a mistake here costs a VOD.
    */
-  private async connectCapture(config: ConfigSalle, manuel = false): Promise<void> {
+  private async connectCapture(config: RoomConfigCache, manual = false): Promise<void> {
     const transport = (this.options.obsTransportFactory ?? createObsTransport)(
       'B',
-      nomsDeScenes(config.sceneRoles.B),
+      sceneNames(config.sceneRoles.B),
     )
     this.obsB = new ObsController({
       instance: 'B',
@@ -1179,29 +1173,30 @@ export class RoomApp implements ControlTarget {
           case 'recording':
             this.runtime.observeCapture({ recording: event.active })
             /*
-             * Le battement, pas seulement la vidange.
+             * The heartbeat, not only the drain.
              *
-             * Une captation lancée depuis OBS lui-même n'émet aucun
-             * `recording.started` : elle ne remonte que par le battement. Sans
-             * ce rappel, la file qu'on réveille ici ne contient rien à dire.
+             * A capture launched from OBS itself emits no `recording.started`: it
+             * only comes up through the heartbeat. Without this reminder, the queue we
+             * wake here holds nothing to say.
              */
-            this.battre()
-            this.reveillerRemontee()
-            // Le chemin n'arrive qu'à l'arrêt : il débloque l'écriture du sidecar.
+            this.beat()
+            this.wakeUplink()
+            // The path only arrives at the stop: it unblocks the sidecar's writing.
             if (!event.active) {
               if (this.pendingOutputPath != null) {
                 this.pendingOutputPath(event.outputPath)
                 this.pendingOutputPath = null
               } else {
-                // Personne n'attend ce chemin en régie : l'arrêt vient d'OBS.
-                void this.cloreArretDepuisObs(event.outputPath)
+                // Nobody is waiting for this path in the control app: the stop comes
+                // from OBS.
+                void this.closeStopFromObs(event.outputPath)
               }
             }
             break
           case 'streaming':
             this.runtime.observeCapture({ streaming: event.active })
-            this.battre()
-            this.reveillerRemontee()
+            this.beat()
+            this.wakeUplink()
             this.emit(
               event.active
                 ? { type: 'stream.started', obs: 'B', sessionId: this.runtime.state().currentSession?.id ?? null }
@@ -1210,32 +1205,32 @@ export class RoomApp implements ControlTarget {
             break
           case 'connected':
             /**
-             * Adopter l'enregistrement et la diffusion en cours.
+             * Adopt the recording and the stream in progress.
              *
-             * Le cas qui compte : l'application redémarre pendant un talk et
-             * OBS enregistre déjà. Repartir de « rien en cours » ferait croire
-             * à une prise perdue.
+             * The case that matters: the application restarts during a talk and OBS
+             * is already recording. Starting again from "nothing running" would
+             * suggest a lost take.
              */
             this.runtime.observeCapture({
               recording: event.recording,
               streaming: event.streaming,
             })
-            // Adopté ici, donc à dire ici : la console et la régie mobile
-            // partaient sinon de « rien en cours » pendant dix secondes.
-            this.battre()
+            // Adopted here, so said here: the console and the mobile control app
+            // otherwise started from "nothing running" for ten seconds.
+            this.beat()
             this.emit({
               type: 'obs.connection',
               obs: 'B',
               connected: true,
               unresolvedRoles: event.unresolvedRoles,
             })
-            // Réapplique l'abonnement au vumètre : une régie ouverte avant OBS,
-            // ou pendant une reconnexion, doit retrouver ses levels seule.
-            if (this.niveauxDemandes) void this.obsB?.setVolumeMeters(true).catch(() => {})
+            // Reapplies the VU meter subscription: a control app opened before OBS,
+            // or during a reconnection, must find its levels back by itself.
+            if (this.levelsRequested) void this.obsB?.setVolumeMeters(true).catch(() => {})
             break
           case 'disconnected':
-            // Le vumètre retombe à zéro plutôt que de figer la dernière mesure :
-            // une régie muette ne doit pas montrer du signal.
+            // The VU meter falls back to zero rather than freezing the last
+            // measurement: a silent control app must not show a signal.
             this.levels.reset()
             this.display.publishLevels([])
             this.emit({ type: 'obs.connection', obs: 'B', connected: false, unresolvedRoles: [] })
@@ -1252,26 +1247,26 @@ export class RoomApp implements ControlTarget {
       },
       startRecord: () => this.obsB!.startRecording(),
       stopRecord: () => this.obsB!.stopRecording(),
-      // Repli : sans chemin annoncé par OBS, le master se retrouve par son nom
-      // dans la racine des captations — celle-là même que relit la modale VOD.
-      recordingRoot: () => this.racineCaptations(),
+      // The fallback: with no path announced by OBS, the master is found by its name
+      // in the captures root — the very one the VOD modal reads back.
+      recordingRoot: () => this.capturesRoot(),
       fs: nodeRecordingFs(),
       now: () => Date.now(),
       correctedNow: () => this.runtime.correctedNow(),
-      // En développement seulement : c'est en poussant l'horloge qu'on y
-      // déroule une journée, et la durée d'une prise doit suivre ce que la
-      // timeline raconte plutôt que le temps passé devant l'écran. En
-      // production, le temps monotone reste seul juge — une resynchronisation
-      // d'horloge en pleine conférence ne doit pas rallonger le talk.
+      // In development only: it is by pushing the clock that one runs through a day
+      // there, and a take's duration must follow what the timeline says rather than
+      // the time spent in front of the screen. In production, monotonic time stays
+      // the only judge — a clock resynchronization mid-talk must not lengthen the
+      // talk.
       followsClock: (this.options.mode ?? 'production') === 'dev',
       onLog: this.options.onLog,
     })
 
-    this.obsApplique.B = empreinteObs(config, 'B')
-    await this.brancher('B', manuel)
+    this.obsApplied.B = obsFingerprint(config, 'B')
+    await this.wire('B', manual)
   }
 
-  /** Démarre l'enregistrement du talk en cours. */
+  /** Starts recording the running talk. */
   async startRecording(): Promise<void> {
     const config = this.store.settings().config
     if (this.recording == null || config == null) throw new Error('OBS-B non connecté')
@@ -1286,12 +1281,12 @@ export class RoomApp implements ControlTarget {
       timezone: cached?.program.timezone ?? DEFAULT_TIMEZONE,
     })
     /**
-     * Le journal de la salle, et pas seulement la console du poste.
+     * The room's log, and not only the machine's console.
      *
-     * Une captation qu'on retrouve en cours sans se souvenir de l'avoir lancée
-     * est une question qu'on se pose devant la régie, pas devant un terminal :
-     * la réponse doit être à côté du chronomètre. Le journal est repris dans le
-     * panneau Diagnostic, et il porte l'heure.
+     * A capture found running without remembering having launched it is a question
+     * one asks in front of the control app, not in front of a terminal: the answer
+     * must be next to the stopwatch. The log is picked up in the Diagnostic panel,
+     * and it carries the time.
      */
     this.options.onLog?.('info', 'captation démarrée depuis la régie', {
       session: state.currentSession?.title ?? null,
@@ -1301,11 +1296,11 @@ export class RoomApp implements ControlTarget {
   }
 
   /**
-   * Attend que OBS annonce le fichier produit.
+   * Waits for OBS to announce the file produced.
    *
-   * Borné : si l'événement ne vient pas — OBS tué en plein arrêt, par exemple —
-   * on écrit quand même ce qu'on sait plutôt que de bloquer la régie. Le sidecar
-   * manquera, et le journal le dira.
+   * Bounded: if the event does not come — OBS killed mid-stop, for instance — we
+   * write what we know anyway rather than blocking the control app. The sidecar
+   * will be missing, and the log will say so.
    */
   private awaitOutputPath(timeoutMs = 5_000): Promise<string | null> {
     return new Promise((resolve) => {
@@ -1322,7 +1317,7 @@ export class RoomApp implements ControlTarget {
     })
   }
 
-  /** Applique la configuration de diffusion puis démarre le stream. */
+  /** Applies the stream configuration then starts the stream. */
   async startStreaming(): Promise<void> {
     const config = this.store.settings().config
     if (this.obsB == null) throw new Error('OBS-B non connecté')
@@ -1339,10 +1334,10 @@ export class RoomApp implements ControlTarget {
   }
 
   /**
-   * Relève la santé de la diffusion.
+   * Reads the stream's health.
    *
-   * Remontée en `best-effort` : c'est une information de surveillance, pas un
-   * fait à conserver — la perdre pendant une coupure n'a aucune conséquence.
+   * Sent up as `best-effort`: it is monitoring information, not a fact to keep —
+   * losing it during an outage has no consequence.
    */
   async reportStreamHealth(): Promise<void> {
     if (this.obsB == null || !this.runtime.state().streaming) return
@@ -1356,22 +1351,22 @@ export class RoomApp implements ControlTarget {
     }
   }
 
-  /** Pose un chapitre, ou l'un des deux repères de editing. Voir `RecordingSession.mark`. */
+  /** Places a chapter, or one of the two editing markers. See `RecordingSession.mark`. */
   mark(label: string, role: MarkerRole | null = null): void {
     if (this.recording == null || !this.recording.active) throw new Error('Aucun enregistrement en cours')
     const marker = this.recording.mark(label, role)
     /*
-     * Le rôle ne monte pas au hub, et n'a pas à y monter.
+     * The role does not go up to the hub, and does not have to.
      *
-     * Ce que le editing lit, c'est le sidecar : écrit sur le disque de la salle,
-     * téléversé avec le rush, il porte `role`. L'événement, lui, alimente le
-     * journal que quelqu'un relit — et « Marqueur « Début » » s'y lit déjà.
-     * Un second champ pour la même chose ferait deux vérités à tenir d'accord,
-     * dont une que personne ne lit.
+     * What the editing reads is the sidecar: written on the room's disk, uploaded
+     * with the rush, it carries `role`. The event, for its part, feeds the log
+     * somebody reads back — and "Marqueur « Début »" already reads there. A second
+     * field for the same thing would make two truths to keep in agreement, one of
+     * which nobody reads.
      *
-     * Un repère reposé émet donc un second événement, sans que le premier
-     * disparaisse. C'est juste : le journal raconte les gestes, et reposer le
-     * début *est* un geste.
+     * A marker placed again therefore emits a second event, without the first
+     * disappearing. That is right: the log tells the gestures, and placing the start
+     * again *is* a gesture.
      */
     this.emit({
       type: 'talk.marker',
@@ -1382,23 +1377,23 @@ export class RoomApp implements ControlTarget {
   }
 
   /**
-   * Arrête l'enregistrement, renomme le master et écrit le sidecar.
+   * Stops the recording, renames the master and writes the sidecar.
    *
-   * Tout est produit localement : la chaîne VOD fonctionne même si le hub est
-   * resté injoignable toute la journée.
+   * Everything is produced locally: the VOD chain works even if the hub has stayed
+   * unreachable all day.
    */
   async stopRecording(): Promise<StopResult> {
     if (this.recording == null || !this.recording.active) throw new Error('Aucun enregistrement en cours')
 
-    // Armé **avant** `StopRecord` : l'événement d'OBS peut arriver dans la
-    // foulée de la requête, et un résolveur posé après le manquerait.
+    // Armed **before** `StopRecord`: OBS's event can arrive right on the heels of
+    // the request, and a resolver set after it would miss it.
     const outputPath = this.awaitOutputPath()
-    this.clotureCaptation = true
+    this.captureClosing = true
     let result: StopResult
     try {
       result = await this.recording.stop(() => outputPath)
     } finally {
-      this.clotureCaptation = false
+      this.captureClosing = false
     }
     this.options.onLog?.('info', 'captation arrêtée depuis la régie', {
       duree: Math.round(result.sidecar.durationMs / 1000) + ' s',
@@ -1416,26 +1411,25 @@ export class RoomApp implements ControlTarget {
   }
 
   /**
-   * Clôt une prise que l'opérateur a arrêtée **depuis OBS**.
+   * Closes a take the operator stopped **from OBS**.
    *
-   * Le geste est courant et parfaitement légitime : la main est déjà dans OBS,
-   * on y appuie sur « Arrêter l'enregistrement ». La régie n'a alors rien
-   * demandé, donc personne n'attendait le chemin du fichier — et jusqu'ici tout
-   * ce que la prise savait d'elle-même partait à la poubelle : le titre, les
-   * intervenants, et surtout les marqueurs posés pendant le talk, qui
-   * n'existent nulle part ailleurs.
+   * The gesture is common and perfectly legitimate: the hand is already in OBS, one
+   * presses "Stop recording" there. The control app then asked for nothing, so
+   * nobody was waiting for the file's path — and until now everything the take knew
+   * about itself went in the bin: the title, the speakers, and above all the
+   * markers placed during the talk, which exist nowhere else.
    *
-   * Ce que ce repli ne fait **pas** : adopter une captation *lancée* depuis
-   * OBS. Celle-là n'a ni début, ni conférence, ni marqueurs de notre côté — il
-   * n'y aurait rien à écrire dans le sidecar, et en fabriquer un vide
-   * tromperait le editing plus sûrement que son absence.
+   * What this fallback does **not** do: adopt a capture *launched* from OBS. That
+   * one has neither a start, nor a talk, nor markers on our side — there would be
+   * nothing to write in the sidecar, and fabricating an empty one would mislead the
+   * editing more surely than its absence.
    *
-   * `alreadyStopped` est ici indispensable : redemander `StopRecord` à une sortie
-   * déjà inactive est une erreur d'OBS, qui emporterait l'écriture du sidecar.
+   * `alreadyStopped` is indispensable here: asking `StopRecord` again of an already
+   * inactive output is an OBS error, which would carry away the sidecar's writing.
    */
-  private async cloreArretDepuisObs(outputPath: string | null): Promise<void> {
-    if (this.recording == null || !this.recording.active || this.clotureCaptation) return
-    this.clotureCaptation = true
+  private async closeStopFromObs(outputPath: string | null): Promise<void> {
+    if (this.recording == null || !this.recording.active || this.captureClosing) return
+    this.captureClosing = true
     try {
       const result = await this.recording.stop(async () => outputPath, { alreadyStopped: true })
       this.options.onLog?.(
@@ -1461,21 +1455,21 @@ export class RoomApp implements ControlTarget {
         message: (cause as Error).message,
       })
     } finally {
-      this.clotureCaptation = false
+      this.captureClosing = false
     }
   }
 
   /**
-   * Racine des captations.
+   * The captures root.
    *
-   * Le réglage de la salle fait foi ; à défaut on demande à OBS-B où il écrit.
-   * Sans ce repli, une salle qui n'a jamais rempli le champ — le cas le plus
-   * courant, puisque rien d'autre ne s'en sert — ne pourrait rien vérifier du
-   * tout, alors que le dossier existe et se remplit depuis le matin.
+   * The room's setting is authoritative; failing that we ask OBS-B where it writes.
+   * Without this fallback, a room that never filled the field in — the most common
+   * case, since nothing else uses it — could check nothing at all, while the folder
+   * exists and has been filling up since the morning.
    */
-  private async racineCaptations(): Promise<string | null> {
-    const configuree = this.store.settings().config?.recordingRoot
-    if (configuree != null && configuree.trim().length > 0) return configuree
+  private async capturesRoot(): Promise<string | null> {
+    const configured = this.store.settings().config?.recordingRoot
+    if (configured != null && configured.trim().length > 0) return configured
     try {
       return (await this.obsB?.recordDirectory()) ?? null
     } catch {
@@ -1487,10 +1481,9 @@ export class RoomApp implements ControlTarget {
     return {
       root,
       fs: nodeVodFs(),
-      // L'horloge de la salle date les verdicts, celle du poste juge des
-      // `mtime` : ce sont deux mesures différentes, et les confondre faisait
-      // passer une prise en cours pour un rush terminé dès que le hub déroulait
-      // une journée simulée.
+      // The room's clock dates the verdicts, the machine's judges the `mtime`s:
+      // they are two different measurements, and confusing them made a take in
+      // progress pass for a finished rush as soon as the hub ran a simulated day.
       now: () => this.runtime.correctedNow(),
       realNow: () => Date.now(),
       probe: ffprobeProbe(),
@@ -1499,124 +1492,121 @@ export class RoomApp implements ControlTarget {
   }
 
   /**
-   * Chemin absolu d'un fichier de la racine des enregistrements.
+   * The absolute path of a file under the recordings root.
    *
-   * Passe par le même garde-fou que la modale de la régie : la racine est un
-   * dossier qu'un opérateur saisit dans un formulaire servi en HTTP, et
-   * `../../` y est une entrée valide. `null` quand le fichier n'est pas
-   * strictement dessous — le téléverseur refuse alors, plutôt que d'envoyer
-   * chez un tiers un fichier qu'on ne lui a pas demandé.
+   * Goes through the same guard as the control app's modal: the root is a folder an
+   * operator types into a form served over HTTP, and `../../` is a valid entry
+   * there. `null` when the file is not strictly below it — the uploader then
+   * refuses, rather than sending a third party a file nobody asked it for.
    */
-  private cheminDansCaptations(file: string): string | null {
-    if (this.racineConnue == null) return null
+  private pathInCaptures(file: string): string | null {
+    if (this.knownRoot == null) return null
     try {
-      return pathUnder(this.racineConnue, file)
+      return pathUnder(this.knownRoot, file)
     } catch {
       return null
     }
   }
 
   /**
-   * Ce qu'il y a à rapatrier : les rushes, chacun avec son sidecar.
+   * What there is to ship back: the rushes, each with its sidecar.
    *
-   * Reconstruit à chaque passe plutôt que gardé : le dossier se remplit toute
-   * la journée, et une liste figée au démarrage ne verrait aucun talk.
+   * Rebuilt on every pass rather than kept: the folder fills up all day, and a list
+   * frozen at startup would see no talk.
    */
-  private async candidatsVod(): Promise<CandidatVod[]> {
-    const root = await this.racineCaptations()
-    this.racineConnue = root
+  private async vodCandidates(): Promise<VodCandidate[]> {
+    const root = await this.capturesRoot()
+    this.knownRoot = root
     if (root == null) return []
     const deps = this.vodDeps(root)
     const entries = await listRecordings(deps)
 
     return await Promise.all(
-      entries.map(async (entree) => {
-        const nom = entree.file.replace(/\.[^./]+$/, '.json')
+      entries.map(async (entry) => {
+        const name = entry.file.replace(/\.[^./]+$/, '.json')
         /**
-         * La taille du sidecar se **lit sur le disque**, elle ne se déduit pas.
+         * The sidecar's size is **read from disk**, it is not derived.
          *
-         * Elle a d'abord été calculée en re-sérialisant l'objet relu : le
-         * fichier écrit par la salle est indenté, la chaîne recalculée ne
-         * l'était pas, et le sidecar arrivait chez le stockage tronqué de ses
-         * espaces — donc invalide, donc illisible au editing. Un JSON coupé au
-         * milieu ne se voit pas dans une liste de fichiers ; il se découvre en
-         * l'ouvrant, des mois plus tard.
+         * It was first computed by re-serializing the object read back: the file the
+         * room writes is indented, the recomputed string was not, and the sidecar
+         * arrived at the storage truncated of its whitespace — so invalid, so
+         * unreadable at editing time. A JSON cut in the middle does not show in a
+         * list of files; it is discovered by opening it, months later.
          */
-        const stat = entree.sidecar == null ? null : await deps.fs.stat(pathUnder(root, nom))
+        const stat = entry.sidecar == null ? null : await deps.fs.stat(pathUnder(root, name))
         return {
-          file: entree.file,
-          sizeBytes: entree.sizeBytes,
-          beingWritten: entree.beingWritten,
-          sessionId: entree.sidecar?.sessionId ?? null,
-          // Absent, on ne monte que le rush : un rush sans sidecar est
-          // justement celui qu'il faut sauver.
-          sidecar: stat == null ? null : { file: nom, sizeBytes: stat.size },
+          file: entry.file,
+          sizeBytes: entry.sizeBytes,
+          beingWritten: entry.beingWritten,
+          sessionId: entry.sidecar?.sessionId ?? null,
+          // Absent, we only upload the rush: a rush with no sidecar is precisely the
+          // one that has to be saved.
+          sidecar: stat == null ? null : { file: name, sizeBytes: stat.size },
         }
       }),
     )
   }
 
   /**
-   * Le hub, tel que le téléverseur s'en sert. `null` : rien ne part.
+   * The hub, as the uploader uses it. `null`: nothing leaves.
    *
-   * Deux conditions, et il faut les deux : un lien ouvert, et un hub qui a
-   * annoncé une destination au dernier sync. Une salle hors ligne ne téléverse
-   * pas — c'est la seule chose du système qui ne peut pas se faire sans réseau,
-   * et c'est dans sa nature.
+   * Two conditions, and both are needed: an open link, and a hub that announced a
+   * destination at the last sync. An offline room does not upload — it is the only
+   * thing in the system that cannot be done with no network, and that is in its
+   * nature.
    */
   private hubVod(): HubVod | null {
-    const lien = this.link
-    if (lien == null || !(this.store.settings().vod?.actif ?? false)) return null
+    const link = this.link
+    if (link == null || !(this.store.settings().vod?.actif ?? false)) return null
     return {
-      begin: (entree) => lien.client.vod.begin(entree),
-      parts: (uploadId, numeros) => lien.client.vod.parts({ uploadId, numeros }),
-      progress: async (entree) => {
-        await lien.client.vod.progress(entree)
+      begin: (input) => link.client.vod.begin(input),
+      parts: (uploadId, numeros) => link.client.vod.parts({ uploadId, numeros }),
+      progress: async (input) => {
+        await link.client.vod.progress(input)
       },
       complete: async (uploadId) => {
-        await lien.client.vod.complete({ uploadId })
+        await link.client.vod.complete({ uploadId })
       },
-      abort: async (uploadId, raison) => {
-        await lien.client.vod.abort({ uploadId, raison })
+      abort: async (uploadId, reason) => {
+        await link.client.vod.abort({ uploadId, raison: reason })
       },
     }
   }
 
   /**
-   * Millisecondes avant la prochaine conférence de cette salle.
+   * Milliseconds before this room's next talk.
    *
-   * Sur le programme en cache et l'**horloge corrigée du hub**, jamais celle du
-   * poste : en développement, l'écart entre les deux se compte en semaines, et
-   * le régulateur autoriserait un téléversement en plein talk. `null` quand il
-   * n'y a plus rien au programme — fin de journée, ou salle jamais
-   * synchronisée : dans les deux cas, il n'y a rien à ménager.
+   * On the cached program and the **hub's corrected clock**, never the machine's:
+   * in development, the gap between the two is counted in weeks, and the regulator
+   * would allow an upload mid-talk. `null` when there is nothing left in the
+   * program — end of day, or a room never synchronized: in both cases, there is
+   * nothing to spare.
    */
-  private msAvantProchaineConference(): number | null {
-    const cache = this.store.activeProgram()
+  private msBeforeNextTalk(): number | null {
+    const cached = this.store.activeProgram()
     const roomId = this.store.settings().roomId
-    if (cache == null || roomId == null) return null
+    if (cached == null || roomId == null) return null
     const at = this.runtime.correctedNow()
-    const suivante = nextTalk(
-      sessionsForRoom(cache.program, roomId),
+    const next = nextTalk(
+      sessionsForRoom(cached.program, roomId),
       at,
       this.runtime.state().sessionStates,
     )
-    return suivante == null ? null : Math.max(0, suivante.startsAtMs - at)
+    return next == null ? null : Math.max(0, next.startsAtMs - at)
   }
 
   /**
-   * Efface les rushes de cette salle. **Développement seulement.**
+   * Erases this room's rushes. **Development only.**
    *
-   * Second verrou, après celui du hub. Deux plutôt qu'un parce que les deux
-   * postes peuvent se retrouver branchés l'un à l'autre par accident — c'est
-   * même le désaccord que le badge de mode de la régie existe pour rendre
-   * visible. Une salle de production qui reçoit cet ordre le refuse et le dit.
+   * A second lock, after the hub's. Two rather than one because the two machines
+   * can end up plugged into each other by accident — it is even the disagreement
+   * the control app's mode badge exists to make visible. A production room that
+   * receives this order refuses it and says so.
    *
-   * N'efface que ce que l'application connaît : les conteneurs vidéo qu'elle
-   * liste, leurs sidecars, le fichier de verdicts. La racine des captations est
-   * un dossier qu'un opérateur a saisi dans un formulaire — parfois un disque
-   * partagé, parfois pas celui qu'on croit — et la vider entièrement n'est pas
-   * un geste qu'on rattrape.
+   * Only erases what the application knows: the video containers it lists, their
+   * sidecars, the verdicts file. The captures root is a folder an operator typed
+   * into a form — sometimes a shared disk, sometimes not the one one thinks — and
+   * emptying it entirely is not a gesture one recovers from.
    */
   async razVod(): Promise<number> {
     if (this.options.mode !== 'dev') {
@@ -1627,136 +1617,136 @@ export class RoomApp implements ControlTarget {
       return 0
     }
 
-    const root = await this.racineCaptations()
+    const root = await this.capturesRoot()
     if (root == null) return 0
 
     const { unlink } = await import('node:fs/promises')
     const entries = await listRecordings(this.vodDeps(root))
-    // Le fichier de verdicts vit à la racine, à côté des rushes, et décrit une
-    // relecture qui n'a plus d'objet une fois les rushes partis.
-    const noms = entries.flatMap((entree) => [
-      entree.file,
-      entree.file.replace(/\.[^./]+$/, '.json'),
+    // The verdicts file lives at the root, next to the rushes, and describes a
+    // review that has no object once the rushes are gone.
+    const names = entries.flatMap((entry) => [
+      entry.file,
+      entry.file.replace(/\.[^./]+$/, '.json'),
     ])
-    noms.push('.controles-vod.json')
+    names.push('.controles-vod.json')
 
-    let effaces = 0
-    for (const nom of noms) {
-      let chemin: string
+    let erased = 0
+    for (const name of names) {
+      let filePath: string
       try {
-        // Le même garde-fou que partout ailleurs : la racine vient d'un
-        // formulaire servi en HTTP, et `../../` y est une saisie valide.
-        chemin = pathUnder(root, nom)
+        // The same guard as everywhere else: the root comes from a form served over
+        // HTTP, and `../../` is a valid entry there.
+        filePath = pathUnder(root, name)
       } catch {
         continue
       }
       try {
-        await unlink(chemin)
-        effaces += 1
+        await unlink(filePath)
+        erased += 1
       } catch {
-        // Absent, ou déjà parti : ce n'est pas une erreur. Un sidecar jamais
-        // écrit est même le cas qu'on rencontre le plus.
+        // Absent, or already gone: it is not an error. A sidecar never written is
+        // even the case one meets most.
       }
     }
 
-    this.televersements.oublierTout()
-    this.options.onLog?.('warn', 'rushes effacés (remise à zéro)', { root, fichiers: effaces })
-    return effaces
+    this.uploads.forgetAll()
+    this.options.onLog?.('warn', 'rushes effacés (remise à zéro)', { root, fichiers: erased })
+    return erased
   }
 
-  /** Téléversements en cours et raison d'attente, pour la modale de la régie. */
+  /** The uploads in progress and the reason for waiting, for the control app's modal. */
   vodUploads(): UploadsView {
-    return this.televersements.vue()
+    return this.uploads.view()
   }
 
-  /** Met un rush en file. `file` nul = tout ce qui reste. */
+  /** Queues a rush. A null `file` = everything that is left. */
   async uploadRecording(file: string | null): Promise<number> {
-    return await this.televersements.demander(file)
+    return await this.uploads.request(file)
   }
 
-  /** Renonce à un téléversement en cours. */
+  /** Gives up an upload in progress. */
   async cancelUpload(file: string): Promise<void> {
-    await this.televersements.annuler(file)
+    await this.uploads.cancel(file)
   }
 
-  /** Rushes produits sous la racine, du plus récent au plus ancien. */
+  /** The rushes produced under the root, from the most recent to the oldest. */
   async listRecordings(): Promise<VodList> {
     const [ffmpeg, ffprobe] = await Promise.all([
       toolAvailable('ffmpeg'),
       toolAvailable('ffprobe'),
     ])
     const tools = { ffmpeg, ffprobe }
-    const root = await this.racineCaptations()
+    const root = await this.capturesRoot()
     if (root == null) return { root: null, entries: [], tools }
     return { root, entries: await listRecordings(this.vodDeps(root)), tools }
   }
 
-  /** Excerpt de quelques secondes, produit à la volée pour la modale. */
+  /** A few seconds' excerpt, produced on the fly for the modal. */
   async readRecordingExtract(file: string, atMs: number, durationMs: number): Promise<Excerpt | null> {
-    const root = await this.racineCaptations()
+    const root = await this.capturesRoot()
     if (root == null) throw new Error('Aucun dossier d\u2019enregistrement connu')
     return await openExcerpt(this.vodDeps(root), file, { atMs, durationMs })
   }
 
-  /** Le rush tel quel : pour l'ouvrir dans un vrai lecteur, ou le rapatrier. */
-  async readRecordingFile(file: string, plage: string | null): Promise<FileStream | null> {
-    const root = await this.racineCaptations()
+  /** The rush as it is: to open it in a real player, or to fetch it back. */
+  async readRecordingFile(file: string, range: string | null): Promise<FileStream | null> {
+    const root = await this.capturesRoot()
     if (root == null) throw new Error('Aucun dossier d\u2019enregistrement connu')
-    return await openFile(this.vodDeps(root), file, plage)
+    return await openFile(this.vodDeps(root), file, range)
   }
 
-  /** Contrôle technique d'un rush : conteneur, pistes, durée, débit. */
+  /** A rush's technical check: container, tracks, duration, bitrate. */
   async inspectRecording(file: string): Promise<VodCheck> {
-    const root = await this.racineCaptations()
+    const root = await this.capturesRoot()
     if (root == null) throw new Error('Aucun dossier d\u2019enregistrement connu')
-    const controle = await inspectRecording(this.vodDeps(root), file)
-    // Au journal de la salle, pas seulement à l'écran : un rush illisible
-    // constaté à 11 h doit se retrouver le soir, quand on cherche ce qui manque.
+    const check = await inspectRecording(this.vodDeps(root), file)
+    // In the room's log, not only on the screen: an unreadable rush observed at
+    // 11 am has to be findable in the evening, when one looks for what is missing.
     this.options.onLog?.(
-      controle.status === 'ok' ? 'info' : controle.status === 'suspect' ? 'warn' : 'error',
-      `contrôle VOD ${controle.status} : ${file}`,
-      { raisons: controle.reasons },
+      check.status === 'ok' ? 'info' : check.status === 'suspect' ? 'warn' : 'error',
+      `contrôle VOD ${check.status} : ${file}`,
+      { raisons: check.reasons },
     )
-    return controle
+    return check
   }
 
-  /** Verdict posé à la main, qui prime sur la sonde. */
+  /** A verdict placed by hand, which takes precedence over the probe. */
   async setRecordingVerdict(file: string, status: VodVerdict | null): Promise<VodCheck | null> {
-    const root = await this.racineCaptations()
+    const root = await this.capturesRoot()
     if (root == null) throw new Error('Aucun dossier d\u2019enregistrement connu')
     return await setVerdict(this.vodDeps(root), file, status)
   }
 
-  /** Profondeur de la file, affichée en régie. */
-  /** Retard de remontée affiché en régie — hors battement, qui se renouvelle seul. */
+  /** The send backlog displayed in the control app — heartbeat aside, which renews itself. */
   outboxDepth(): number {
     return this.outbox?.backlog() ?? 0
   }
 
-  /** Bascule l'écran de salle. */
+  /** Switches the room screen. */
   async setDisplayMode(mode: Parameters<RoomRuntime['setDisplayMode']>[0]): Promise<void> {
     await this.runtime.setDisplayMode(mode)
-    // L'écran de salle se pilote aussi de loin : ce que montre la salle doit
-    // se lire sur le téléphone sans attendre le tic suivant.
-    this.battre()
-    this.reveillerRemontee()
+    // The room screen is also driven from afar: what the room shows must be
+    // readable on the phone without waiting for the next tick.
+    this.beat()
+    this.wakeUplink()
   }
 
-  /** Bascule la scène de projection. */
+  /** Switches the projection scene. */
   async setSceneRole(role: Parameters<RoomRuntime['setSceneRole']>[0]): Promise<void> {
     if (role === 'RELAY' && this.store.settings().config?.relaySourceRoomId == null) {
-      // Basculer sur un relais non configuré projetterait une scène vide devant
-      // la salle : mieux vaut refuser et le dire.
+      // Switching to an unconfigured relay would project an empty scene in front of
+      // the room: better to refuse and say so.
       throw new Error("Aucune salle source configurée pour le relais")
     }
     await this.runtime.setSceneRole(role)
   }
 
   /**
-   * Démarre la conférence en cours au programme.
+   * Starts the talk currently in the program.
    *
-   * La décision passe par le hub et non par l'état local : l'organisateur doit
-   * la voir depuis la console, et les autres salles depuis leur propre vue.
+   * The decision goes through the hub and not through the local state: the
+   * organizer must see it from the console, and the other rooms from their own
+   * view.
    */
   async startSession(): Promise<void> {
     await this.decideSession('start')
@@ -1771,8 +1761,8 @@ export class RoomApp implements ControlTarget {
   }
 
   private async decideSession(action: 'start' | 'end' | 'reset'): Promise<void> {
-    // La cible, pas la session « en cours » : entre deux talks ou pendant une
-    // pause, c'est la conférence qui arrive qu'on veut piloter.
+    // The target, not the "running" session: between two talks or during a break,
+    // it is the talk that is coming that one wants to drive.
     const session = this.runtime.state().targetSession
     if (session == null) throw new Error('Aucune conférence à piloter dans cette salle')
     if (this.link == null) throw new Error('Hub non connecté : la décision ne serait vue nulle part')
@@ -1782,44 +1772,43 @@ export class RoomApp implements ControlTarget {
       this.runtime.setSessionStatus(session.id, 'scheduled')
       return
     }
-    const etat = await this.link.client.sessions[action]({ sessionId: session.id })
-    // Applique localement sans attendre la commande retour : le bouton doit
-    // réagir tout de suite, la commande confirmera.
-    this.runtime.setSessionStatus(etat.sessionId, etat.status)
+    const state = await this.link.client.sessions[action]({ sessionId: session.id })
+    // Applied locally without waiting for the command to come back: the button must
+    // react at once, the command will confirm.
+    this.runtime.setSessionStatus(state.sessionId, state.status)
   }
 
   /**
-   * Envoie un message à la console.
+   * Sends a message to the console.
    *
-   * Passe par l'outbox : un appel à l'aide émis pendant une coupure réseau
-   * arrivera quand même, en retard — et c'est précisément le moment où on en a
-   * le plus besoin.
+   * Goes through the outbox: a call for help issued during a network outage will
+   * arrive anyway, late — and that is precisely the moment one needs it most.
    */
   sendMessage(text: string, level: 'info' | 'warning' | 'urgent'): void {
     this.emit({ type: 'room.message', text, level })
     this.runtime.notify({ level: 'info', text: `Envoyé à la console : ${text}` })
   }
 
-  /** Pose ou retire le bandeau des scènes live, depuis la régie. */
+  /** Sets or removes the live scenes' banner, from the control app. */
   setLiveMessage(text: string | null, level: 'info' | 'warning' | 'urgent'): void {
     this.runtime.setLiveMessage(text, level)
   }
 
   /**
-   * Met une question du public à l'antenne, ou l'en retire.
+   * Puts an audience question on air, or takes it off.
    *
-   * Rattachée à la conférence pilotée : c'est ce qui la fait tomber au talk
-   * suivant plutôt que de rester incrustée dans la VOD du speaker d'après.
+   * Attached to the driven talk: that is what makes it drop at the next talk rather
+   * than stay burned into the next speaker's VOD.
    */
   setAiredQuestion(text: string | null, author: string | null): void {
     this.runtime.setQuestion(text, author, this.runtime.state().targetSession?.id ?? null)
   }
 
   /**
-   * Relit les questions posées dans cette salle.
+   * Reads back the questions asked in this room.
    *
-   * À la demande : la régie ne les regarde qu'en fin de talk, et les faire
-   * circuler en continu chargerait le flux d'état pour rien.
+   * On demand: the control app only looks at them at the end of a talk, and
+   * circulating them continuously would load the state stream for nothing.
    */
   async refreshQuestions(): Promise<void> {
     if (this.link == null) throw new Error('Hub non connecté : les questions vivent chez lui')
@@ -1827,13 +1816,12 @@ export class RoomApp implements ControlTarget {
     if (roomId == null) throw new Error('Salle inconnue')
 
     /**
-     * Bornées à la conférence pilotée.
+     * Bounded to the driven talk.
      *
-     * Toutes salles confondues, la liste mélangeait les questions de la
-     * journée : à 16 h, celles du talk de 10 h étaient encore en tête au vote,
-     * et le speaker se voyait poser une question qui ne le concernait pas.
-     * Aucun talk piloté : rien à lister — il n'y a pas de « questions en
-     * général » qu'on voudrait mettre à l'antenne.
+     * Across all rooms, the list mixed the day's questions: at 4 pm those of the
+     * 10 am talk were still at the top of the vote, and the speaker was asked a
+     * question that did not concern them. No talk driven: nothing to list — there
+     * are no "questions in general" one would want to put on air.
      */
     this.questionsSession =
       targetSession == null ? null : { id: targetSession.id, title: targetSession.title }
@@ -1847,16 +1835,16 @@ export class RoomApp implements ControlTarget {
             votes: question.votes,
           }))
     this.questionsAt = new Date(this.runtime.correctedNow()).toISOString()
-    // L'état repart tout de suite : la régie affiche la liste sans attendre.
+    // The state leaves at once: the control app displays the list without waiting.
     this.runtime.emit('state', this.runtime.state())
   }
 
-  /** Écarte un signalement lu en régie. */
+  /** Dismisses a notice read in the control app. */
   dismissNotification(id: string): void {
     this.runtime.dismissNotification(id)
   }
 
-  /** Resynchronisation demandée depuis la régie. */
+  /** A resynchronization asked for from the control app. */
   async resync(): Promise<void> {
     if (this.link == null) throw new Error("Hub non connecté : rien à synchroniser")
     const result = await this.link.sync()
@@ -1864,13 +1852,13 @@ export class RoomApp implements ControlTarget {
   }
 
   /**
-   * Enregistre un réglage de salle, puis remet la salle en accord avec lui.
+   * Records a room setting, then puts the room back in agreement with it.
    *
-   * Trois temps, dans cet ordre : le hub écrit, la salle resynchronise, OBS se
-   * rouvre. Écrire d'abord en local irait plus vite mais mentirait — le
-   * prochain `sync` repousse la configuration du hub, et la saisie
-   * disparaîtrait sans un mot. D'où l'échec franc quand le hub est absent : il
-   * n'y a pas de demi-mesure honnête ici.
+   * Three steps, in this order: the hub writes, the room resynchronizes, OBS
+   * reopens. Writing locally first would be faster but would lie — the next `sync`
+   * pushes the hub's configuration back, and the entry would disappear without a
+   * word. Hence the plain failure when the hub is absent: there is no honest half
+   * measure here.
    */
   async configureRoom(patch: RoomConfigPatch): Promise<void> {
     if (this.link == null) {
@@ -1883,25 +1871,25 @@ export class RoomApp implements ControlTarget {
     const result = await this.link.sync()
     if (!result.ok) throw new Error('Configuration écrite, mais la salle ne s\'est pas resynchronisée')
 
-    // Pas de reconnexion d'office : les contrôleurs portent leurs paramètres à
-    // la construction, donc appliquer voudrait dire couper — y compris une
-    // captation en cours. La régie signale l'écart et laisse l'opérateur
-    // choisir son moment, instance par instance.
+    // No automatic reconnection: the controllers carry their parameters at
+    // construction time, so applying would mean cutting — including a capture in
+    // progress. The control app reports the gap and lets the operator choose their
+    // moment, instance by instance.
     this.options.onLog?.('info', 'configuration de salle modifiée depuis la régie')
   }
 
-  /** Relit les scènes des deux instances, pour le formulaire de configuration. */
+  /** Reads both instances' scenes back, for the configuration form. */
   async refreshObsScenes(): Promise<void> {
-    const lues = await Promise.allSettled([this.obsA?.refreshScenes(), this.obsB?.refreshScenes()])
-    const echec = lues.find((resultat) => resultat.status === 'rejected')
-    if (echec != null) throw new Error('OBS n\'a pas répondu — instance déconnectée ?')
+    const read = await Promise.allSettled([this.obsA?.refreshScenes(), this.obsB?.refreshScenes()])
+    const failure = read.find((result) => result.status === 'rejected')
+    if (failure != null) throw new Error('OBS n\'a pas répondu — instance déconnectée ?')
   }
 
   /**
-   * État interne exposé à la régie.
+   * The internal state exposed to the control app.
    *
-   * Volontairement descriptif et non actionnable : la page n'a pas accès à
-   * `RoomApp`, seulement à ce que ce contrat rend visible.
+   * Deliberately descriptive and not actionable: the page has no access to
+   * `RoomApp`, only to what this contract makes visible.
    */
   diagnostics(): ControlDiagnostics {
     return {
@@ -1933,14 +1921,14 @@ export class RoomApp implements ControlTarget {
     }
   }
 
-  /** Réglages de la salle, mots de passe retirés. Voir `VisibleConfig`. */
+  /** The room's settings, passwords stripped. See `VisibleConfig`. */
   private configVisible(): ControlDiagnostics['config'] {
     const config = this.store.settings().config
     if (config == null) return null
     return {
       obs: {
-        A: this.pointVisible(config, 'A'),
-        B: this.pointVisible(config, 'B'),
+        A: this.visibleEndpoint(config, 'A'),
+        B: this.visibleEndpoint(config, 'B'),
       },
       sceneRoles: config.sceneRoles,
       displayPort: config.displayPort,
@@ -1956,37 +1944,37 @@ export class RoomApp implements ControlTarget {
   }
 
   /**
-   * Ouvre le sélecteur du poste et rend le dossier choisi.
+   * Opens the machine's picker and returns the chosen folder.
    *
-   * Ne touche à rien : le chemin remonte à la page, qui remplit son champ. Ce
-   * sera « Enregistrer » qui l'écrira chez le hub, comme le reste du panneau —
-   * un sélecteur qui enregistrerait au passage ferait d'un coup d'œil dans
-   * l'arborescence une modification de la salle.
+   * Touches nothing: the path goes back up to the page, which fills in its field.
+   * It will be "Enregistrer" that writes it to the hub, like the rest of the panel
+   * — a picker that saved along the way would turn a glance at the file tree into a
+   * change to the room.
    */
   async chooseFolder(): Promise<string | null> {
-    const ouvrir = this.options.chooseFolder
-    if (ouvrir == null) return null
-    return ouvrir(this.store.settings().config?.recordingRoot ?? null)
+    const open = this.options.chooseFolder
+    if (open == null) return null
+    return open(this.store.settings().config?.recordingRoot ?? null)
   }
 
-  private pointVisible(config: ConfigSalle, instance: ObsInstance): VisibleObsEndpoint {
-    const applique = this.obsApplique[instance]
+  private visibleEndpoint(config: RoomConfigCache, instance: ObsInstance): VisibleObsEndpoint {
+    const applied = this.obsApplied[instance]
     return {
       url: config.obs[instance].url,
       hasPassword: (config.obs[instance].password ?? '') !== '',
-      // Jamais branchée : le bouton « Connecter » dit déjà quoi faire, inutile
-      // d'annoncer en plus un écart avec une connexion qui n'existe pas.
-      pending: applique != null && applique !== empreinteObs(config, instance),
+      // Never wired: the "Connecter" button already says what to do, no use
+      // announcing on top a gap with a connection that does not exist.
+      pending: applied != null && applied !== obsFingerprint(config, instance),
     }
   }
 
   async close(): Promise<void> {
     this.abort.abort()
-    // Laisse l'appairage constater l'interruption : sans ça, sa boucle de
-    // sondage survivrait à la fermeture.
-    await this.appairageEnCours?.catch(() => {})
+    // Lets the pairing observe the interruption: without that, its polling loop
+    // would survive the close.
+    await this.pairingInFlight?.catch(() => {})
     this.pump?.stop()
-    this.televersements.arreter()
+    this.uploads.stop()
     if (this.supervision != null) clearInterval(this.supervision)
     if (this.roomsTimer != null) clearInterval(this.roomsTimer)
     if (this.heartbeat != null) clearInterval(this.heartbeat)
@@ -2001,17 +1989,17 @@ export class RoomApp implements ControlTarget {
 
 
 /**
- * Les noms de scènes qu'une instance a réellement mappés.
+ * The scene names an instance has actually mapped.
  *
- * Les rôles laissés vides sortent : un mapping partiel est le cas normal — une
- * salle sans relais n'a pas de `RELAY` —, et faire exister une scène nommée
- * `undefined` dans un OBS simulé serait pire que de ne rien passer.
+ * The roles left empty go out: a partial mapping is the normal case — a room with
+ * no relay has no `RELAY` — and making a scene named `undefined` exist in a
+ * simulated OBS would be worse than passing nothing.
  */
-function nomsDeScenes(roles: Partial<Record<string, string>>): string[] {
-  return Object.values(roles).filter((nom): nom is string => nom != null && nom !== '')
+function sceneNames(roles: Partial<Record<string, string>>): string[] {
+  return Object.values(roles).filter((name): name is string => name != null && name !== '')
 }
 
-/** Accès disque réel pour les sidecars. Injecté, donc remplaçable en test. */
+/** Real disk access for the sidecars. Injected, so replaceable in a test. */
 function nodeRecordingFs() {
   return {
     async rename(from: string, to: string): Promise<void> {

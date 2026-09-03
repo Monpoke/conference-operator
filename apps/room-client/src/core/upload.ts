@@ -1,6 +1,6 @@
 import { createReadStream } from 'node:fs'
-import { request as requeteHttp } from 'node:http'
-import { request as requeteHttps } from 'node:https'
+import { request as httpRequest } from 'node:http'
+import { request as httpsRequest } from 'node:https'
 import { and, asc, eq, inArray, ne } from 'drizzle-orm'
 import { televersement } from '@cloudnord/db/client'
 import type { VodKind, SignedPart, UploadPlan, VodPolicy } from '@cloudnord/contract'
@@ -14,44 +14,47 @@ import {
 } from './regulator.js'
 
 /**
- * Rapatriement des rushes, part par part.
+ * Shipping the rushes back, part by part.
  *
- * Deux propriétés portent tout le reste, et elles ont le même but : que le
- * transfert d'un fichier de plusieurs gigaoctets **finisse**, sur un réseau
- * d'événement qui sera coupé.
+ * Two properties carry all the rest, and they have the same goal: that the
+ * transfer of a several-gigabyte file **finishes**, on an event network that will
+ * be cut.
  *
- * La première est la reprise : l'état vit en base locale, pas en mémoire. Une
- * machine redémarrée repart de la part suivante. Sans elle, une coupure à
- * quatre-vingt-dix pour cent coûte les quatre-vingt-dix pour cent, et une salle
- * qu'on rallume deux fois ne finit jamais.
+ * The first is the resume: the state lives in the local database, not in memory.
+ * A restarted machine picks up from the next part. Without it, an outage at ninety
+ * percent costs the ninety percent, and a room switched on twice never finishes.
  *
- * La seconde est qu'on n'en fait qu'un à la fois. Un fichier, une part, une
- * requête. Plusieurs lectures en parallèle sur le disque qui enregistre est
- * exactement ce qu'on ne veut pas — c'est la même raison qui fait que « Tout
- * vérifier » enchaîne les rushes un par un.
+ * The second is that we do only one at a time. One file, one part, one request.
+ * Several parallel reads on the disk that is recording is exactly what we do not
+ * want — it is the same reason "Check everything" goes through the rushes one by
+ * one.
+ *
+ * The Drizzle column names, the plan's fields (`recues`, `taillePartOctets`,
+ * `numero`, `octets`, `dureeMs`) and the state values (`attente`, `en-cours`,
+ * `termine`, `abandonne`, `echoue`) are contract names: they do not get renamed.
  */
 
-/** Ce que la salle sait des fichiers présents sur son disque. */
-export interface CandidatVod {
+/** What the room knows of the files present on its disk. */
+export interface VodCandidate {
   file: string
   sizeBytes: number
-  /** Le fichier a bougé il y a quelques secondes : la prise est peut-être en cours. */
+  /** The file moved a few seconds ago: the take may still be running. */
   beingWritten: boolean
   sessionId: string | null
-  /** Sidecar existant à côté du rush, ou `null`. */
+  /** An existing sidecar next to the rush, or `null`. */
   sidecar: { file: string; sizeBytes: number } | null
 }
 
-/** Le hub, vu du téléverseur. Injecté : le test n'a pas besoin d'un vrai. */
+/** The hub, seen from the uploader. Injected: the test does not need a real one. */
 export interface HubVod {
-  begin(entree: {
+  begin(input: {
     file: string
     sizeBytes: number
     kind: VodKind
     sessionId: string | null
   }): Promise<UploadPlan>
   parts(uploadId: string, numeros: number[]): Promise<SignedPart[]>
-  progress(entree: {
+  progress(input: {
     uploadId: string
     numero: number
     etag: string
@@ -62,115 +65,115 @@ export interface HubVod {
   abort(uploadId: string, reason: string): Promise<void>
 }
 
-export interface TeleversementDeps {
+export interface UploadDeps {
   store: LocalStore
-  /** Fichiers du disque, dans l'ordre où on souhaite les envoyer. */
-  candidats: () => Promise<CandidatVod[]>
+  /** The disk's files, in the order we wish to send them. */
+  candidates: () => Promise<VodCandidate[]>
   hub: () => HubVod | null
-  politique: () => VodPolicy | null
-  charge: () => HostLoad
-  /** OBS-B enregistre-t-il ? */
-  enregistre: () => boolean
+  policy: () => VodPolicy | null
+  load: () => HostLoad
+  /** Is OBS-B recording? */
+  recording: () => boolean
   talkRunning: () => boolean
-  /** Millisecondes avant la prochaine conférence, sur l'horloge corrigée du hub. */
+  /** Milliseconds before the next talk, on the hub's corrected clock. */
   msBeforeNext: () => number | null
-  /** Lecture d'une tranche de fichier. Injectée pour tester sans disque. */
-  lireTranche?: (file: string, debut: number, fin: number) => Promise<Buffer>
-  /** Chemin absolu d'un fichier relatif à la racine des enregistrements. */
-  cheminDe: (file: string) => string | null
+  /** Reading a range of a file. Injected to test with no disk. */
+  readRange?: (file: string, start: number, end: number) => Promise<Buffer>
+  /** The absolute path of a file relative to the recordings root. */
+  pathOf: (file: string) => string | null
   /**
-   * Autorité de certification du stockage, poussée par le hub. `null` = les
-   * CA publiques suffisent.
+   * The storage's certificate authority, pushed by the hub. `null` = the public
+   * CAs are enough.
    */
   caCert?: () => string | null
-  envoyerPart?: (url: string, corps: Buffer) => Promise<string>
-  attendre?: (ms: number) => Promise<void>
+  sendPart?: (url: string, body: Buffer) => Promise<string>
+  wait?: (ms: number) => Promise<void>
   now?: () => number
-  onLog?: (niveau: 'info' | 'warn' | 'error', message: string, contexte?: unknown) => void
+  onLog?: (level: 'info' | 'warn' | 'error', message: string, context?: unknown) => void
 }
 import type { UploadRow, UploadsView } from '@cloudnord/contract'
 
 export type { UploadRow, UploadsView }
 
-/** Parts signées demandées d'un coup. Assez pour ne pas bavarder, pas assez pour périmer. */
-const LOT_DE_PARTS = 5
+/** Signed parts asked for at once. Enough not to chatter, not enough to expire. */
+const PART_BATCH = 5
 
-/** Au-delà, on cesse de rejouer un fichier : quelque chose ne va pas, et il faut le voir. */
-const ESSAIS_MAX = 8
+/** Beyond this we stop replaying a file: something is wrong, and it has to be seen. */
+const MAX_ATTEMPTS = 8
 
-export class Televersements {
+export class Uploads {
   private timer: NodeJS.Timeout | null = null
   /**
-   * La passe en vol, s'il y en a une.
+   * The pass in flight, if there is one.
    *
-   * Gardée plutôt qu'un simple drapeau, pour que `passe()` **rejoigne** le
-   * travail en cours au lieu de rendre la main tout de suite. Un clic sur
-   * « Téléverser » démarre la montée sans l'attendre, mais la boucle de fond,
-   * elle, doit pouvoir savoir quand c'est fini — et un test doit pouvoir
-   * l'attendre sans deviner combien de temps ça prend.
+   * Kept rather than a plain flag, so that `pass()` **joins** the work in progress
+   * instead of returning straight away. A click on "Upload" starts the transfer
+   * without waiting for it, but the background loop has to be able to know when it
+   * is finished — and a test has to be able to wait for it without guessing how
+   * long it takes.
    */
-  private enVol: Promise<void> | null = null
-  private dernierVerdict: UploadVerdict = {
+  private inFlight: Promise<void> | null = null
+  private lastVerdict: UploadVerdict = {
     allowed: false,
     reason: 'sans-stockage',
     debitMaxOctetsS: null,
     text: 'aucun stockage configuré sur le hub',
   }
-  private echecsDeDebit = 0
-  /** Fichier en vol : c'est ce qui garantit qu'on n'en monte qu'un. */
-  private actif: string | null = null
-  private annules = new Set<string>()
+  private rateFailures = 0
+  /** The file in flight: it is what guarantees we upload only one. */
+  private active: string | null = null
+  private cancelled = new Set<string>()
 
-  constructor(private readonly deps: TeleversementDeps) {}
+  constructor(private readonly deps: UploadDeps) {}
 
   private get db() {
     return this.deps.store.db
   }
 
-  private get maintenant(): number {
+  private get nowMs(): number {
     return (this.deps.now ?? Date.now)()
   }
 
   private nowIso(): string {
-    return new Date(this.maintenant).toISOString()
+    return new Date(this.nowMs).toISOString()
   }
 
   /**
-   * Met un fichier en file, à la demande d'un humain.
+   * Queues a file, at a human's request.
    *
-   * `file` nul met tout ce qui reste : c'est le « Tout téléverser » de la régie
-   * et le « Tout relancer » de la console. Un fichier déjà terminé n'y revient
-   * pas — il est chez le stockage, le remonter ne ferait que payer deux fois.
+   * A null `file` queues everything that is left: it is the control app's "Upload
+   * all" and the console's "Retry all". A file already finished does not come back
+   * to it — it is at the storage, sending it up again would only pay twice.
    */
-  async demander(file: string | null): Promise<number> {
-    const candidats = await this.deps.candidats()
-    const vises = file == null ? candidats : candidats.filter((c) => c.file === file)
-    let mis = 0
-    for (const candidat of vises) {
-      const ligne = this.ligne(candidat.file)
-      if (ligne?.state === 'termine') continue
-      this.annules.delete(candidat.file)
-      this.upsert(candidat, { manuel: true, state: 'attente', nextAttemptAt: this.nowIso() })
-      mis += 1
+  async request(file: string | null): Promise<number> {
+    const candidates = await this.deps.candidates()
+    const targeted = file == null ? candidates : candidates.filter((c) => c.file === file)
+    let queued = 0
+    for (const candidate of targeted) {
+      const row = this.row(candidate.file)
+      if (row?.state === 'termine') continue
+      this.cancelled.delete(candidate.file)
+      this.upsert(candidate, { manuel: true, state: 'attente', nextAttemptAt: this.nowIso() })
+      queued += 1
     }
-    if (mis > 0) {
-      this.deps.onLog?.('info', 'téléversement demandé', { file, fichiers: mis })
-      void this.passe()
+    if (queued > 0) {
+      this.deps.onLog?.('info', 'téléversement demandé', { file, fichiers: queued })
+      void this.pass()
     }
-    return mis
+    return queued
   }
 
   /**
-   * Renonce à un fichier en cours.
+   * Gives up a file in progress.
    *
-   * L'abandon chez le stockage est demandé au hub — lui seul a les clés — mais
-   * la ligne locale bascule tout de suite : l'opérateur qui annule doit voir
-   * que c'est fait, même si le hub met dix secondes à répondre.
+   * The abort at the storage is asked of the hub — it alone has the keys — but the
+   * local row switches straight away: the operator who cancels must see it is
+   * done, even if the hub takes ten seconds to answer.
    */
-  async annuler(file: string): Promise<void> {
-    const ligne = this.ligne(file)
-    if (ligne == null || ligne.state === 'termine') return
-    this.annules.add(file)
+  async cancel(file: string): Promise<void> {
+    const row = this.row(file)
+    if (row == null || row.state === 'termine') return
+    this.cancelled.add(file)
     this.db
       .update(televersement)
       .set({ state: 'abandonne', manuel: false, lastError: 'annulé en régie', finiA: this.nowIso() })
@@ -178,126 +181,124 @@ export class Televersements {
       .run()
 
     const hub = this.deps.hub()
-    if (hub != null && ligne.s3UploadId != null) {
-      await hub.abort(ligne.s3UploadId, 'annulé en régie').catch(() => {})
+    if (hub != null && row.s3UploadId != null) {
+      await hub.abort(row.s3UploadId, 'annulé en régie').catch(() => {})
     }
   }
 
-  vue(): UploadsView {
-    const lignes = this.db.select().from(televersement).orderBy(asc(televersement.demandeA)).all()
+  view(): UploadsView {
+    const rows = this.db.select().from(televersement).orderBy(asc(televersement.demandeA)).all()
     return {
-      verdict: this.dernierVerdict,
-      entries: lignes.map((ligne) => ({
-        file: ligne.file,
-        state: ligne.state,
+      verdict: this.lastVerdict,
+      entries: rows.map((row) => ({
+        file: row.file,
+        state: row.state,
         percent:
-          ligne.tailleOctets > 0
-            ? Math.min(100, Math.round((ligne.octetsEnvoyes / ligne.tailleOctets) * 100))
+          row.tailleOctets > 0
+            ? Math.min(100, Math.round((row.octetsEnvoyes / row.tailleOctets) * 100))
             : 0,
-        // Borné à zéro comme le pourcentage l'est à cent, et pour la même
-        // raison : un rush qui a grossi entre la mise en file et l'envoi rendrait
-        // sinon un reste négatif, donc un temps restant négatif.
-        remainingBytes: Math.max(0, ligne.tailleOctets - ligne.octetsEnvoyes),
-        debitOctetsS: ligne.debitOctetsS,
-        error: ligne.lastError,
-        manual: ligne.manuel,
+        // Bounded to zero as the percentage is bounded to a hundred, and for the
+        // same reason: a rush that grew between the queuing and the send would
+        // otherwise give a negative remainder, so a negative remaining time.
+        remainingBytes: Math.max(0, row.tailleOctets - row.octetsEnvoyes),
+        debitOctetsS: row.debitOctetsS,
+        error: row.lastError,
+        manual: row.manuel,
       })),
     }
   }
 
-  private ligne(file: string) {
+  private row(file: string) {
     return this.db.select().from(televersement).where(eq(televersement.file, file)).get()
   }
 
-  private upsert(candidat: CandidatVod, patch: Record<string, unknown>): void {
-    const valeurs = {
-      file: candidat.file,
+  private upsert(candidate: VodCandidate, patch: Record<string, unknown>): void {
+    const values = {
+      file: candidate.file,
       kind: 'rush' as const,
-      sessionId: candidat.sessionId,
-      tailleOctets: candidat.sizeBytes,
+      sessionId: candidate.sessionId,
+      tailleOctets: candidate.sizeBytes,
       ...patch,
     }
     this.db
       .insert(televersement)
-      .values(valeurs)
+      .values(values)
       .onConflictDoUpdate({ target: televersement.file, set: patch })
       .run()
   }
 
   /**
-   * Élit le prochain fichier à monter.
+   * Elects the next file to upload.
    *
-   * Les demandes manuelles d'abord, dans l'ordre où elles sont arrivées : c'est
-   * l'ordre dans lequel quelqu'un les a cliquées, et le respecter est la seule
-   * façon de rendre le geste lisible. Les rushes en cours d'écriture sont
-   * écartés — monter une prise qui dure encore produirait un fichier tronqué
-   * chez le stockage, et il aurait l'air complet.
+   * The manual requests first, in the order they arrived: it is the order somebody
+   * clicked them in, and honouring it is the only way to make the gesture
+   * readable. The rushes still being written are discarded — uploading a take that
+   * is still running would produce a truncated file at the storage, and it would
+   * look complete.
    */
-  private async elire(): Promise<{ candidat: CandidatVod; manual: boolean } | null> {
-    const candidats = await this.deps.candidats()
-    const parFichier = new Map(candidats.map((c) => [c.file, c]))
-    const maintenant = this.nowIso()
+  private async elect(): Promise<{ candidate: VodCandidate; manual: boolean } | null> {
+    const candidates = await this.deps.candidates()
+    const byFile = new Map(candidates.map((c) => [c.file, c]))
+    const now = this.nowIso()
 
-    const enFile = this.db
+    const queued = this.db
       .select()
       .from(televersement)
       .where(and(ne(televersement.state, 'termine'), ne(televersement.state, 'abandonne')))
       .orderBy(asc(televersement.demandeA))
       .all()
-      .filter((ligne) => ligne.nextAttemptAt <= maintenant && ligne.attempts < ESSAIS_MAX)
+      .filter((row) => row.nextAttemptAt <= now && row.attempts < MAX_ATTEMPTS)
 
-    for (const ligne of [...enFile].sort((a, b) => Number(b.manuel) - Number(a.manuel))) {
-      const candidat = parFichier.get(ligne.file)
-      if (candidat == null || candidat.beingWritten) continue
-      return { candidat, manual: ligne.manuel }
+    for (const row of [...queued].sort((a, b) => Number(b.manuel) - Number(a.manuel))) {
+      const candidate = byFile.get(row.file)
+      if (candidate == null || candidate.beingWritten) continue
+      return { candidate, manual: row.manuel }
     }
 
-    if (!(this.deps.politique()?.actif ?? false)) return null
+    if (!(this.deps.policy()?.actif ?? false)) return null
 
-    // Rien en file : on prend le premier rush du disque que personne n'a encore
-    // monté. C'est la partie « automatique », et elle ne s'active que si le hub
-    // le demande.
-    const traites = new Set(
+    // Nothing queued: we take the first rush on the disk nobody has uploaded yet.
+    // It is the "automatic" part, and it only switches on if the hub asks for it.
+    const handled = new Set(
       this.db
         .select({ file: televersement.file })
         .from(televersement)
         .all()
-        .map((ligne) => ligne.file),
+        .map((row) => row.file),
     )
-    const neuf = candidats.find((c) => !c.beingWritten && !traites.has(c.file))
-    return neuf == null ? null : { candidat: neuf, manual: false }
+    const fresh = candidates.find((c) => !c.beingWritten && !handled.has(c.file))
+    return fresh == null ? null : { candidate: fresh, manual: false }
   }
 
   /**
-   * Une passe. Ne lève jamais : c'est une boucle de fond.
+   * One pass. Never throws: it is a background loop.
    *
-   * Elle monte **une seule part** avant de rendre la main. Ce n'est pas une
-   * limitation : c'est ce qui rend le plafond de débit applicable, le régulateur
-   * réévalué en cours de fichier, et une annulation effective sous quelques
-   * secondes plutôt qu'à la fin d'un rush de trois gigaoctets.
+   * It uploads **a single part** before handing back. That is not a limitation: it
+   * is what makes the rate cap applicable, the regulator re-evaluated mid-file,
+   * and a cancellation effective within a few seconds rather than at the end of a
+   * three-gigabyte rush.
    */
-  async passe(): Promise<void> {
-    // Rejoindre plutôt que d'ignorer : deux passes concurrentes monteraient
-    // deux fichiers à la fois sur le disque qui enregistre, ce qui est
-    // précisément ce qu'on évite.
-    if (this.enVol != null) return this.enVol
-    this.enVol = this.uneFois()
+  async pass(): Promise<void> {
+    // Join rather than ignore: two concurrent passes would upload two files at a
+    // time on the disk that is recording, which is precisely what we avoid.
+    if (this.inFlight != null) return this.inFlight
+    this.inFlight = this.once()
       .catch((cause: unknown) => {
         this.deps.onLog?.('warn', 'passe de téléversement en échec', {
           message: (cause as Error).message,
         })
       })
       .finally(() => {
-        this.enVol = null
+        this.inFlight = null
       })
-    return this.enVol
+    return this.inFlight
   }
 
-  private verdictPour(manual: boolean): UploadVerdict {
-    const politique = this.deps.politique()
-    const entries: RegulatorInputs = {
-      storageReady: politique != null && this.deps.hub() != null,
-      policy: politique ?? {
+  private verdictFor(manual: boolean): UploadVerdict {
+    const policy = this.deps.policy()
+    const inputs: RegulatorInputs = {
+      storageReady: policy != null && this.deps.hub() != null,
+      policy: policy ?? {
         actif: false,
         debitMaxOctetsS: null,
         cpuMax: 0.7,
@@ -305,34 +306,34 @@ export class Televersements {
         taillePartMo: 8,
       },
       manual,
-      recording: this.deps.enregistre(),
+      recording: this.deps.recording(),
       talkRunning: this.deps.talkRunning(),
       msBeforeNext: this.deps.msBeforeNext(),
-      load: this.deps.charge(),
+      load: this.deps.load(),
       observedRateBytesS: null,
     }
-    return uploadVerdict(entries)
+    return uploadVerdict(inputs)
   }
 
-  private async uneFois(): Promise<void> {
-    const elu = await this.elire()
-    if (elu == null) {
-      // Rien à monter : le verdict affiché est celui d'un automatisme au repos,
-      // pas celui d'un refus. Sans quoi la régie dirait « poste chargé » sur une
-      // salle qui n'a simplement plus rien à envoyer.
-      this.dernierVerdict = this.verdictPour(false)
+  private async once(): Promise<void> {
+    const chosen = await this.elect()
+    if (chosen == null) {
+      // Nothing to upload: the displayed verdict is that of an automatism at rest,
+      // not that of a refusal. Otherwise the control app would say "machine loaded"
+      // on a room that simply has nothing left to send.
+      this.lastVerdict = this.verdictFor(false)
       return
     }
 
-    const verdict = this.verdictPour(elu.manual)
-    this.dernierVerdict = verdict
+    const verdict = this.verdictFor(chosen.manual)
+    this.lastVerdict = verdict
     if (!verdict.allowed) {
-      if (verdict.reason === 'debit') this.echecsDeDebit += 1
-      const dans = waitAfter(verdict.reason ?? 'charge', this.echecsDeDebit)
+      if (verdict.reason === 'debit') this.rateFailures += 1
+      const delay = waitAfter(verdict.reason ?? 'charge', this.rateFailures)
       this.db
         .update(televersement)
-        .set({ nextAttemptAt: new Date(this.maintenant + dans).toISOString() })
-        .where(eq(televersement.file, elu.candidat.file))
+        .set({ nextAttemptAt: new Date(this.nowMs + delay).toISOString() })
+        .where(eq(televersement.file, chosen.candidate.file))
         .run()
       return
     }
@@ -340,210 +341,218 @@ export class Televersements {
     const hub = this.deps.hub()
     if (hub == null) return
 
-    this.actif = elu.candidat.file
+    this.active = chosen.candidate.file
     try {
-      await this.monter(hub, elu.candidat, elu.candidat.file, 'rush', elu.candidat.sizeBytes, verdict)
-      // Le sidecar suit le rush, jamais l'inverse : un sidecar seul chez le
-      // stockage décrirait une conférence dont la vidéo n'est pas arrivée.
-      if (elu.candidat.sidecar != null && !this.annules.has(elu.candidat.file)) {
-        const ligne = this.ligne(elu.candidat.file)
-        if (ligne?.state === 'termine') {
-          await this.monterSidecar(hub, elu.candidat)
+      await this.upload(
+        hub,
+        chosen.candidate,
+        chosen.candidate.file,
+        'rush',
+        chosen.candidate.sizeBytes,
+        verdict,
+      )
+      // The sidecar follows the rush, never the other way round: a sidecar alone at
+      // the storage would describe a talk whose video did not arrive.
+      if (chosen.candidate.sidecar != null && !this.cancelled.has(chosen.candidate.file)) {
+        const row = this.row(chosen.candidate.file)
+        if (row?.state === 'termine') {
+          await this.uploadSidecar(hub, chosen.candidate)
         }
       }
     } catch (cause) {
-      this.echouer(elu.candidat.file, cause as Error)
+      this.fail(chosen.candidate.file, cause as Error)
     } finally {
-      this.actif = null
+      this.active = null
     }
   }
 
-  private echouer(file: string, cause: Error): void {
-    const ligne = this.ligne(file)
-    const essais = (ligne?.attempts ?? 0) + 1
-    // Recul franc : un refus du stockage ne se corrige pas en quinze secondes,
-    // et rejouer en boucle masquerait le message dans le journal.
-    const dans = Math.min(10 * 60_000, 20_000 * 2 ** Math.min(essais, 5))
+  private fail(file: string, cause: Error): void {
+    const row = this.row(file)
+    const attempts = (row?.attempts ?? 0) + 1
+    // A firm back-off: a refusal from the storage does not get fixed in fifteen
+    // seconds, and replaying in a loop would bury the message in the log.
+    const delay = Math.min(10 * 60_000, 20_000 * 2 ** Math.min(attempts, 5))
     this.db
       .update(televersement)
       .set({
-        state: essais >= ESSAIS_MAX ? 'echoue' : 'attente',
-        attempts: essais,
+        state: attempts >= MAX_ATTEMPTS ? 'echoue' : 'attente',
+        attempts,
         lastError: cause.message.slice(0, 300),
-        nextAttemptAt: new Date(this.maintenant + dans).toISOString(),
+        nextAttemptAt: new Date(this.nowMs + delay).toISOString(),
       })
       .where(eq(televersement.file, file))
       .run()
-    this.deps.onLog?.(essais >= ESSAIS_MAX ? 'error' : 'warn', 'téléversement en échec', {
+    this.deps.onLog?.(attempts >= MAX_ATTEMPTS ? 'error' : 'warn', 'téléversement en échec', {
       file,
-      essais,
+      essais: attempts,
       message: cause.message,
     })
   }
 
-  private async monterSidecar(hub: HubVod, candidat: CandidatVod): Promise<void> {
-    const sidecar = candidat.sidecar
+  private async uploadSidecar(hub: HubVod, candidate: VodCandidate): Promise<void> {
+    const sidecar = candidate.sidecar
     if (sidecar == null) return
     const plan = await hub.begin({
       file: sidecar.file,
       sizeBytes: sidecar.sizeBytes,
       kind: 'sidecar',
-      sessionId: candidat.sessionId,
+      sessionId: candidate.sessionId,
     })
     if (plan.mode !== 'direct') return
-    const corps = await this.tranche(sidecar.file, 0, sidecar.sizeBytes)
-    await this.envoyer(plan.url, corps)
+    const body = await this.range(sidecar.file, 0, sidecar.sizeBytes)
+    await this.send(plan.url, body)
     await hub.complete(plan.uploadId)
   }
 
-  private async tranche(file: string, debut: number, fin: number): Promise<Buffer> {
-    if (this.deps.lireTranche != null) return this.deps.lireTranche(file, debut, fin)
-    const chemin = this.deps.cheminDe(file)
-    if (chemin == null) throw new Error(`fichier hors de la racine des enregistrements : ${file}`)
-    const morceaux: Buffer[] = []
-    // `end` est inclusif chez Node : la borne haute est donc `fin - 1`.
-    for await (const bloc of createReadStream(chemin, { start: debut, end: fin - 1 })) {
-      morceaux.push(bloc as Buffer)
+  private async range(file: string, start: number, end: number): Promise<Buffer> {
+    if (this.deps.readRange != null) return this.deps.readRange(file, start, end)
+    const path = this.deps.pathOf(file)
+    if (path == null) throw new Error(`fichier hors de la racine des enregistrements : ${file}`)
+    const chunks: Buffer[] = []
+    // `end` is inclusive in Node: the upper bound is therefore `end - 1`.
+    for await (const block of createReadStream(path, { start, end: end - 1 })) {
+      chunks.push(block as Buffer)
     }
-    return Buffer.concat(morceaux)
+    return Buffer.concat(chunks)
   }
 
-  private async envoyer(url: string, corps: Buffer): Promise<string> {
-    if (this.deps.envoyerPart != null) return this.deps.envoyerPart(url, corps)
-    let reponse: { status: number; etag: string | null }
+  private async send(url: string, body: Buffer): Promise<string> {
+    if (this.deps.sendPart != null) return this.deps.sendPart(url, body)
+    let response: { status: number; etag: string | null }
     try {
-      reponse = await deposer(url, corps, this.deps.caCert?.() ?? null)
+      response = await put(url, body, this.deps.caCert?.() ?? null)
     } catch (cause) {
       /**
-       * « fetch failed » ne dit rien, et c'est le seul message qu'undici pose
-       * sur *toutes* ses pannes de transport.
+       * "fetch failed" says nothing, and it is the only message undici puts on
+       * *all* of its transport failures.
        *
-       * La vraie cause est rangée dans `cause` : un service éteint
-       * (`ECONNREFUSED`), un nom qui ne résout pas (`ENOTFOUND`), un pare-feu
-       * qui laisse pendre (`ETIMEDOUT`). Trois pannes qui ne se corrigent pas
-       * au même endroit, et la régie n'affichait que la première ligne.
+       * The real cause is tucked away in `cause`: a service switched off
+       * (`ECONNREFUSED`), a name that does not resolve (`ENOTFOUND`), a firewall
+       * that leaves it hanging (`ETIMEDOUT`). Three failures that are not fixed in
+       * the same place, and the control app only displayed the first line.
        *
-       * L'hôte visé est nommé, sans le reste de l'adresse : une URL presignée
-       * porte une signature et des identifiants, et le journal d'une salle se
-       * relit à plusieurs.
+       * The host aimed at is named, without the rest of the address: a presigned
+       * URL carries a signature and credentials, and a room's log gets read by
+       * several people.
        */
       throw new Error(
-        `Stockage injoignable (${hoteDe(url)}) : ${causeLisible(cause)}`,
+        `Stockage injoignable (${hostOf(url)}) : ${readableCause(cause)}`,
         { cause },
       )
     }
-    if (reponse.status >= 300) {
-      throw new Error(`le stockage a refusé la part (HTTP ${reponse.status})`)
+    if (response.status >= 300) {
+      throw new Error(`le stockage a refusé la part (HTTP ${response.status})`)
     }
-    const etag = reponse.etag
+    const etag = response.etag
     if (etag == null) {
-      // Sans ETag, l'objet ne se recomposera pas : mieux vaut échouer ici, où
-      // le message est clair, qu'à la clôture où le stockage dira « InvalidPart ».
+      // With no ETag, the object will not recompose: better to fail here, where the
+      // message is clear, than at the completion where the storage will say
+      // "InvalidPart".
       throw new Error("le stockage n'a pas rendu d'ETag pour cette part")
     }
     return etag
   }
 
   /**
-   * Monte un fichier, part par part, en respectant le plafond de débit.
+   * Uploads a file, part by part, honouring the rate cap.
    *
-   * Le plafond se tient **entre** les parts, pas dedans : après huit mégaoctets
-   * envoyés en deux secondes sous un plafond de deux mégaoctets par seconde, on
-   * attend deux secondes. Grain grossier, mais il ne demande ni flux à
-   * étrangler ni dépendance — et c'est la taille de part qui le règle, ce qui
-   * la rend lisible : un chiffre dans la console, une conséquence visible.
+   * The cap is held **between** the parts, not inside them: after eight megabytes
+   * sent in two seconds under a cap of two megabytes a second, we wait two
+   * seconds. A coarse grain, but it demands neither a stream to throttle nor a
+   * dependency — and it is the part size that sets it, which makes it readable: a
+   * figure in the console, a visible consequence.
    */
-  private async monter(
+  private async upload(
     hub: HubVod,
-    candidat: CandidatVod,
+    candidate: VodCandidate,
     file: string,
     kind: VodKind,
     sizeBytes: number,
     verdict: UploadVerdict,
   ): Promise<void> {
-    const plan = await hub.begin({ file, sizeBytes, kind, sessionId: candidat.sessionId })
+    const plan = await hub.begin({ file, sizeBytes, kind, sessionId: candidate.sessionId })
 
     if (plan.mode === 'direct') {
-      this.upsert(candidat, {
+      this.upsert(candidate, {
         state: 'en-cours',
         s3UploadId: plan.uploadId,
         commenceA: this.nowIso(),
         lastError: null,
       })
-      const corps = await this.tranche(file, 0, sizeBytes)
-      await this.envoyer(plan.url, corps)
+      const body = await this.range(file, 0, sizeBytes)
+      await this.send(plan.url, body)
       await hub.complete(plan.uploadId)
-      this.terminer(file, sizeBytes)
+      this.finish(file, sizeBytes)
       return
     }
 
-    const dejaLa = new Set(plan.recues)
-    this.upsert(candidat, {
+    const already = new Set(plan.recues)
+    this.upsert(candidate, {
       state: 'en-cours',
       s3UploadId: plan.uploadId,
       taillePartOctets: plan.taillePartOctets,
-      partsJson: JSON.stringify([...dejaLa]),
-      octetsEnvoyes: Math.min(sizeBytes, dejaLa.size * plan.taillePartOctets),
+      partsJson: JSON.stringify([...already]),
+      octetsEnvoyes: Math.min(sizeBytes, already.size * plan.taillePartOctets),
       commenceA: this.nowIso(),
       lastError: null,
     })
 
-    const manquantes: number[] = []
+    const missing: number[] = []
     for (let numero = 1; numero <= plan.parts; numero += 1) {
-      if (!dejaLa.has(numero)) manquantes.push(numero)
+      if (!already.has(numero)) missing.push(numero)
     }
 
-    const attendre = this.deps.attendre ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
+    const wait = this.deps.wait ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
 
-    for (let index = 0; index < manquantes.length; index += LOT_DE_PARTS) {
-      if (this.annules.has(file)) return
-      const lot = manquantes.slice(index, index + LOT_DE_PARTS)
-      const signees = await hub.parts(plan.uploadId, lot)
+    for (let index = 0; index < missing.length; index += PART_BATCH) {
+      if (this.cancelled.has(file)) return
+      const batch = missing.slice(index, index + PART_BATCH)
+      const signed = await hub.parts(plan.uploadId, batch)
 
-      for (const part of signees) {
-        if (this.annules.has(file)) return
-        const debut = (part.numero - 1) * plan.taillePartOctets
-        const fin = Math.min(sizeBytes, debut + plan.taillePartOctets)
-        const corps = await this.tranche(file, debut, fin)
+      for (const part of signed) {
+        if (this.cancelled.has(file)) return
+        const start = (part.numero - 1) * plan.taillePartOctets
+        const end = Math.min(sizeBytes, start + plan.taillePartOctets)
+        const body = await this.range(file, start, end)
 
-        const avant = this.maintenant
-        const etag = await this.envoyer(part.url, corps)
-        const dureeMs = this.maintenant - avant
+        const before = this.nowMs
+        const etag = await this.send(part.url, body)
+        const dureeMs = this.nowMs - before
 
         await hub.progress({
           uploadId: plan.uploadId,
           numero: part.numero,
           etag,
-          octets: corps.byteLength,
+          octets: body.byteLength,
           dureeMs,
         })
 
-        dejaLa.add(part.numero)
-        const debit = dureeMs > 0 ? Math.round((corps.byteLength * 1000) / dureeMs) : null
+        already.add(part.numero)
+        const rate = dureeMs > 0 ? Math.round((body.byteLength * 1000) / dureeMs) : null
         this.db
           .update(televersement)
           .set({
-            partsJson: JSON.stringify([...dejaLa].sort((a, b) => a - b)),
-            octetsEnvoyes: Math.min(sizeBytes, dejaLa.size * plan.taillePartOctets),
-            debitOctetsS: debit,
+            partsJson: JSON.stringify([...already].sort((a, b) => a - b)),
+            octetsEnvoyes: Math.min(sizeBytes, already.size * plan.taillePartOctets),
+            debitOctetsS: rate,
           })
           .where(eq(televersement.file, file))
           .run()
 
-        const plafond = verdict.debitMaxOctetsS
-        if (plafond != null && plafond > 0) {
-          const duMoins = (corps.byteLength / plafond) * 1000
-          if (duMoins > dureeMs) await attendre(Math.round(duMoins - dureeMs))
+        const cap = verdict.debitMaxOctetsS
+        if (cap != null && cap > 0) {
+          const atLeast = (body.byteLength / cap) * 1000
+          if (atLeast > dureeMs) await wait(Math.round(atLeast - dureeMs))
         }
       }
     }
 
     await hub.complete(plan.uploadId)
-    this.terminer(file, sizeBytes)
-    this.echecsDeDebit = 0
+    this.finish(file, sizeBytes)
+    this.rateFailures = 0
   }
 
-  private terminer(file: string, sizeBytes: number): void {
+  private finish(file: string, sizeBytes: number): void {
     this.db
       .update(televersement)
       .set({
@@ -559,103 +568,102 @@ export class Televersements {
   }
 
   /**
-   * Oublie ce qui n'existe plus sur le disque.
+   * Forgets what no longer exists on disk.
    *
-   * Un rush effacé après rapatriement laisserait sinon une ligne éternelle dans
-   * la modale de la régie, et « terminé » sur un fichier absent se lit mal.
+   * A rush erased after being shipped back would otherwise leave an eternal row in
+   * the control app's modal, and "finished" on an absent file reads badly.
    */
-  async oublierLesDisparus(): Promise<void> {
-    const presents = new Set((await this.deps.candidats()).flatMap((c) => [c.file, c.sidecar?.file]))
-    const lignes = this.db.select({ file: televersement.file }).from(televersement).all()
-    const disparus = lignes.map((l) => l.file).filter((file) => !presents.has(file))
-    if (disparus.length > 0) {
-      this.db.delete(televersement).where(inArray(televersement.file, disparus)).run()
+  async forgetMissing(): Promise<void> {
+    const present = new Set((await this.deps.candidates()).flatMap((c) => [c.file, c.sidecar?.file]))
+    const rows = this.db.select({ file: televersement.file }).from(televersement).all()
+    const gone = rows.map((r) => r.file).filter((file) => !present.has(file))
+    if (gone.length > 0) {
+      this.db.delete(televersement).where(inArray(televersement.file, gone)).run()
     }
   }
 
   /**
-   * Oublie toute la file.
+   * Forgets the whole queue.
    *
-   * Accompagne la remise à zéro : garder des lignes « terminé » qui pointent
-   * des fichiers effacés ferait dire à la modale que tout est en sécurité.
+   * Goes with the reset: keeping "finished" rows pointing at erased files would
+   * make the modal say everything is safe.
    */
-  oublierTout(): void {
+  forgetAll(): void {
     this.db.delete(televersement).run()
   }
 
-  demarrer(intervalMs = 15_000): void {
+  start(intervalMs = 15_000): void {
     if (this.timer != null) return
-    this.timer = setInterval(() => void this.passe(), intervalMs)
+    this.timer = setInterval(() => void this.pass(), intervalMs)
     this.timer.unref?.()
   }
 
-  arreter(): void {
+  stop(): void {
     if (this.timer != null) clearInterval(this.timer)
     this.timer = null
   }
 }
 
 /**
- * Dépose une part sur une adresse signée.
+ * Puts a part onto a signed address.
  *
- * `node:https` plutôt que `fetch`, et pour la même raison que côté hub : `fetch`
- * ne laisse pas ajouter une autorité de certification, et le `Agent` d'undici
- * qui le permettrait n'est pas exposé par Node. Or un stockage interne signé
- * par une CA d'entreprise est exactement le cas où l'on ne veut pas devoir
- * poser une variable d'environnement sur chaque machine de salle.
+ * `node:https` rather than `fetch`, and for the same reason as on the hub side:
+ * `fetch` does not let one add a certificate authority, and undici's `Agent` that
+ * would allow it is not exposed by Node. Yet an internal storage signed by a
+ * corporate CA is exactly the case where one does not want to have to set an
+ * environment variable on every room machine.
  *
- * Bénéfice de bord : `Content-Length` est posé exactement, là où `fetch` bascule
- * volontiers en découpage par blocs — que S3 refuse sur une adresse signée.
+ * A side benefit: `Content-Length` is set exactly, where `fetch` readily switches
+ * to chunked encoding — which S3 refuses on a signed address.
  */
-async function deposer(
+async function put(
   url: string,
-  corps: Buffer,
+  body: Buffer,
   caCert: string | null,
 ): Promise<{ status: number; etag: string | null }> {
-  return await new Promise((resoudre, rejeter) => {
-    const cible = new URL(url)
-    const emettre = cible.protocol === 'https:' ? requeteHttps : requeteHttp
-    const requete = emettre(
-      cible,
+  return await new Promise((resolve, reject) => {
+    const target = new URL(url)
+    const send = target.protocol === 'https:' ? httpsRequest : httpRequest
+    const request = send(
+      target,
       {
         method: 'PUT',
-        headers: { 'content-length': String(corps.byteLength) },
+        headers: { 'content-length': String(body.byteLength) },
         ...(caCert == null ? {} : { ca: caCert }),
       },
-      (reponse) => {
-        // Le corps ne nous intéresse pas, mais il faut le consommer : un flux
-        // laissé en suspens retient la connexion, et la part suivante
-        // attendrait un socket qui ne se libère jamais.
-        reponse.resume()
-        reponse.on('end', () =>
-          resoudre({
-            status: reponse.statusCode ?? 0,
-            etag: (reponse.headers.etag as string | undefined) ?? null,
+      (response) => {
+        // The body does not interest us, but it has to be consumed: a stream left
+        // hanging holds the connection, and the next part would wait for a socket
+        // that is never released.
+        response.resume()
+        response.on('end', () =>
+          resolve({
+            status: response.statusCode ?? 0,
+            etag: (response.headers.etag as string | undefined) ?? null,
           }),
         )
       },
     )
     /**
-     * Délai d'inactivité, pas délai total.
+     * An inactivity timeout, not a total timeout.
      *
-     * Une part de huit mégaoctets sur un réseau d'événement peut prendre une
-     * minute sans que rien n'aille mal. Ce qu'on veut couper, c'est le stockage
-     * qui accepte la connexion et se tait — sinon la salle attend jusqu'au
-     * démontage.
+     * An eight-megabyte part on an event network can take a minute without
+     * anything being wrong. What we want to cut is the storage that accepts the
+     * connection and goes silent — otherwise the room waits until the teardown.
      */
-    requete.setTimeout(120_000, () => {
-      requete.destroy(
+    request.setTimeout(120_000, () => {
+      request.destroy(
         Object.assign(new Error('aucune réponse du stockage depuis 120 s'), { code: 'ETIMEDOUT' }),
       )
     })
-    requete.on('error', rejeter)
-    requete.write(corps)
-    requete.end()
+    request.on('error', reject)
+    request.write(body)
+    request.end()
   })
 }
 
-/** L\'hôte d\'une adresse signée, sans sa signature ni ses identifiants. */
-function hoteDe(url: string): string {
+/** The host of a signed address, without its signature or its credentials. */
+function hostOf(url: string): string {
   try {
     return new URL(url).host
   } catch {
@@ -664,21 +672,21 @@ function hoteDe(url: string): string {
 }
 
 /**
- * Le vrai motif d'un échec réseau, sous la couche de `fetch`.
+ * The real reason for a network failure, under `fetch`'s layer.
  *
- * Même fonction que côté hub, et même raison : le code errno distingue des
- * pannes qui ne se corrigent pas au même endroit, là où « fetch failed » les
- * confond toutes.
+ * The same function as on the hub side, and the same reason: the errno code tells
+ * apart failures that are not fixed in the same place, where "fetch failed"
+ * confuses them all.
  */
-function causeLisible(error: unknown): string {
-  const chaine: string[] = []
-  let courant: unknown = error
-  for (let profondeur = 0; courant != null && profondeur < 4; profondeur += 1) {
-    const noeud = courant as { message?: string; code?: string; cause?: unknown }
-    const code = typeof noeud.code === 'string' ? noeud.code : null
-    if (code != null) chaine.push(code)
-    else if (typeof noeud.message === 'string' && noeud.message !== '') chaine.push(noeud.message)
-    courant = noeud.cause
+function readableCause(error: unknown): string {
+  const chain: string[] = []
+  let current: unknown = error
+  for (let depth = 0; current != null && depth < 4; depth += 1) {
+    const node = current as { message?: string; code?: string; cause?: unknown }
+    const code = typeof node.code === 'string' ? node.code : null
+    if (code != null) chain.push(code)
+    else if (typeof node.message === 'string' && node.message !== '') chain.push(node.message)
+    current = node.cause
   }
-  return chaine.length === 0 ? String(error) : chaine.join(' — ')
+  return chain.length === 0 ? String(error) : chain.join(' — ')
 }

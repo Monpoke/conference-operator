@@ -4,64 +4,63 @@ import { describe, expect, it } from 'vitest'
 import { FIELDS_BY_VIEW, type DisplayView } from '../src/core/display-server.js'
 
 /**
- * Le flux d'état ne pousse à chaque page que les champs qu'elle lit — l'overlay
- * n'a que faire des 27 sessions de la salle ou du QR du mur.
+ * The state stream only pushes each page the fields it reads — the overlay has
+ * no use for the room's 27 sessions or for the wall's QR code.
  *
- * Le risque de ce découpage est silencieux : un champ ajouté à une page mais
- * oublié dans `FIELDS_BY_VIEW` ne lève rien, il affiche du vide. Ce test relit
- * donc les sources des pages et compare ce qu'elles consultent à ce qu'elles
- * reçoivent.
+ * The risk in that split is silent: a field added to a page but forgotten in
+ * `FIELDS_BY_VIEW` raises nothing, it displays blanks. So this test reads the
+ * pages' sources back and compares what they consult with what they receive.
  *
- * La régie n'y figure plus : c'est un bundle, pas un gabarit, et son garde-fou
- * vit chez elle — `apps/regie-web/test/champs-du-flux.test.ts`, qui relit ses
- * sources de la même façon.
+ * The control app is no longer listed: it is a bundle, not a template, and its
+ * own guard lives with it — `apps/regie-web/test/champs-du-flux.test.ts`, which
+ * reads its sources back the same way.
  */
-const PAGES: { vue: DisplayView; fichier: string }[] = [
-  { vue: 'projecteur', fichier: 'display-page.ts' },
-  { vue: 'overlay', fichier: 'overlay-page.ts' },
+const PAGES: { view: DisplayView; file: string }[] = [
+  { view: 'projecteur', file: 'display-page.ts' },
+  { view: 'overlay', file: 'overlay-page.ts' },
 ]
 
 /**
- * Champs de la charge utile consultés par une page, par lecture de sa source.
+ * Payload fields consulted by a page, by reading its source.
  *
- * `donnees?.champ` autant que `donnees.champ`, et l'optionnel n'est pas un
- * détail : la première version du motif l'ignorait, et le seul champ qu'une
- * page lisait ainsi — le mur, dans le menu des écrans de la régie — était
- * absent de `FIELDS_BY_VIEW` sans que rien ne le dise. Le lien « Mur public »
- * ne tenait que par accident : l'état embarqué dans la coquille n'est pas
- * filtré, et la liste des écrans n'était construite qu'une fois.
+ * `data?.field` as well as `data.field`, and the optional form is no detail: the
+ * pattern's first version ignored it, and the only field a page read that way —
+ * the wall, in the control app's screen menu — was missing from
+ * `FIELDS_BY_VIEW` with nothing to say so. The "Mur public" link only held by
+ * accident: the state embedded in the shell is not filtered, and the screen list
+ * was built only once.
  */
-function champsLus(fichier: string): string[] {
-  const source = readFileSync(join(import.meta.dirname, '..', 'src', 'core', fichier), 'utf8')
-  const trouves = source.matchAll(/\bdata\??\.([a-zA-Z]+)/g)
-  return [...new Set([...trouves].map((m) => m[1]!))].sort()
+function fieldsRead(file: string): string[] {
+  const source = readFileSync(join(import.meta.dirname, '..', 'src', 'core', file), 'utf8')
+  const found = source.matchAll(/\bdata\??\.([a-zA-Z]+)/g)
+  return [...new Set([...found].map((m) => m[1]!))].sort()
 }
 
-describe('vues du flux d\'état', () => {
-  for (const { vue, fichier } of PAGES) {
-    it(`${vue} reçoit tout ce que ${fichier} consulte`, () => {
-      const recus = new Set<string>(FIELDS_BY_VIEW[vue] as readonly string[])
-      const manquants = champsLus(fichier).filter((champ) => !recus.has(champ))
+describe('state stream views', () => {
+  for (const { view, file } of PAGES) {
+    it(`${view} receives everything ${file} consults`, () => {
+      const received = new Set<string>(FIELDS_BY_VIEW[view] as readonly string[])
+      const missing = fieldsRead(file).filter((field) => !received.has(field))
       expect(
-        manquants,
-        manquants.length === 0
+        missing,
+        missing.length === 0
           ? ''
-          : `${fichier} lit ${manquants.join(', ')} — à ajouter dans FIELDS_BY_VIEW.${vue}, ` +
-            "sinon la page rend du vide sans lever d'erreur.",
+          : `${file} reads ${missing.join(', ')} — add them to FIELDS_BY_VIEW.${view}, ` +
+            'otherwise the page renders blanks without raising an error.',
       ).toEqual([])
     })
 
-    it(`${vue} ne reçoit rien d'inutile`, () => {
-      // L'inverse compte aussi : un champ envoyé sans être lu est du trafic pur.
-      const lus = new Set(champsLus(fichier))
-      const inutiles = (FIELDS_BY_VIEW[vue] as readonly string[]).filter((champ) => !lus.has(champ))
-      expect(inutiles).toEqual([])
+    it(`${view} receives nothing useless`, () => {
+      // The reverse counts too: a field sent without being read is pure traffic.
+      const read = new Set(fieldsRead(file))
+      const useless = (FIELDS_BY_VIEW[view] as readonly string[]).filter((field) => !read.has(field))
+      expect(useless).toEqual([])
     })
   }
 
-  it('la lecture des sources trouve bien quelque chose', () => {
-    // Garde-fou du garde-fou : une extraction devenue muette ferait passer les
-    // tests précédents en ne vérifiant rien.
-    for (const { fichier } of PAGES) expect(champsLus(fichier).length).toBeGreaterThan(0)
+  it('reading the sources does find something', () => {
+    // A guard for the guard: an extraction gone silent would make the previous
+    // tests pass while checking nothing.
+    for (const { file } of PAGES) expect(fieldsRead(file).length).toBeGreaterThan(0)
   })
 })

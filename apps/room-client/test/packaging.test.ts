@@ -7,27 +7,28 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { resolveControlBundleFrom } from '../src/core/control-shell.js'
 
 /**
- * Ce que l'installeur pose, et ce que le poste va chercher.
+ * What the installer lays down, and what the machine goes looking for.
  *
- * Deux fichiers doivent s'accorder sans se connaître : `electron-builder.yml`
- * décide **où** le bundle de la régie atterrit sur une machine installée, et
- * `resolveControlBundleFrom` remonte les dossiers pour l'y trouver. Leur désaccord
- * ne se verrait qu'au editing d'une salle — la régie répondrait 503 sur une
- * machine où tout le reste marche, et personne ne relie ça à une ligne de YAML.
+ * Two files must agree without knowing each other: `electron-builder.yml`
+ * decides **where** the control bundle lands on an installed machine, and
+ * `resolveControlBundleFrom` walks up the folders to find it there. Their
+ * disagreement would only show up in a room — the control app would answer 503
+ * on a machine where everything else works, and nobody would trace that back to
+ * a line of YAML.
  *
- * Vérifié sur un arbre reconstitué plutôt que sur un vrai paquet : produire un
- * installeur prend six minutes et télécharge cent mégaoctets d'Electron. Ce qui
- * est en jeu ici est une entente entre deux chemins, pas la chaîne
- * d'empaquetage — celle-là s'éprouve à la main, avant une livraison.
+ * Checked on a reconstructed tree rather than on a real package: producing an
+ * installer takes six minutes and downloads a hundred megabytes of Electron.
+ * What is at stake here is an agreement between two paths, not the packaging
+ * chain — that one is exercised by hand, before a delivery.
  */
-const RACINE = dirname(dirname(fileURLToPath(import.meta.url)))
+const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 
 interface Config {
   extraResources: { from: string; to: string; filter?: string[] }[]
 }
 
-const config = load(readFileSync(join(RACINE, 'electron-builder.yml'), 'utf8')) as Config
-const regie = config.extraResources.find((entree) => entree.from.includes('regie-web'))
+const config = load(readFileSync(join(ROOT, 'electron-builder.yml'), 'utf8')) as Config
+const control = config.extraResources.find((entry) => entry.from.includes('regie-web'))
 
 let dir: string
 
@@ -35,20 +36,20 @@ afterEach(() => {
   if (dir != null) rmSync(dir, { recursive: true, force: true })
 })
 
-describe('bundle de la régie dans le paquet', () => {
-  it('est bien déclaré dans les ressources embarquées', () => {
-    expect(regie).toBeDefined()
-    expect(regie!.from).toBe('../regie-web/dist')
+describe('control bundle inside the package', () => {
+  it('is indeed declared among the embedded resources', () => {
+    expect(control).toBeDefined()
+    expect(control!.from).toBe('../regie-web/dist')
   })
 
-  it('atterrit là où la remontée de dossiers le cherche', () => {
+  it('lands where the folder walk-up looks for it', () => {
     /*
-     * L'arbre d'une machine installée, réduit à ce qui compte : le bundle du
-     * processus principal vit dans `resources/app.asar/dist`, les ressources
-     * embarquées à côté, sous `resources/`.
+     * An installed machine's tree, reduced to what matters: the main process
+     * bundle lives in `resources/app.asar/dist`, the embedded resources beside
+     * it, under `resources/`.
      */
-    dir = mkdtempSync(join(tmpdir(), 'cloudnord-paquet-'))
-    const manifest = join(dir, 'resources', regie!.to, '.vite', 'manifest.json')
+    dir = mkdtempSync(join(tmpdir(), 'cloudnord-package-'))
+    const manifest = join(dir, 'resources', control!.to, '.vite', 'manifest.json')
     mkdirSync(dirname(manifest), { recursive: true })
     writeFileSync(manifest, '{}')
 
@@ -57,9 +58,9 @@ describe('bundle de la régie dans le paquet', () => {
     expect(found?.manifest).toBe(manifest)
   })
 
-  it('ne laisse pas partir la source map', () => {
-    // Deux mégaoctets que personne n'ouvre sur un poste de salle. Elle reste sur
-    // la machine de build, où une trace remontée se relit après coup.
-    expect(regie!.filter).toContain('!**/*.map')
+  it('does not let the source map ship', () => {
+    // Two megabytes nobody opens on a room machine. It stays on the build
+    // machine, where a reported stack trace can be read back afterwards.
+    expect(control!.filter).toContain('!**/*.map')
   })
 })

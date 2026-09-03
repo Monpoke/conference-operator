@@ -7,19 +7,20 @@ const deadFetch = vi.fn(async () => {
   throw new Error('ECONNREFUSED')
 }) as unknown as typeof fetch
 
-describe('diagnostic de connectivité', () => {
-  it('distingue un hub joignable d\'un réseau coupé', async () => {
-    // Hub qui répond mais dont le temps réel est tombé : ce n'est pas la même
-    // panne qu'un câble débranché, et l'opérateur doit pouvoir les distinguer.
+describe('connectivity diagnosis', () => {
+  it('tells a reachable hub from a cut network', async () => {
+    // A hub that answers but whose real time has gone down: it is not the same
+    // failure as an unplugged cable, and the operator must be able to tell them
+    // apart.
     expect(await probeConnectivity({ hubOrigin: 'http://hub', fetchImpl: okFetch })).toBe('DEGRADED')
     expect(await probeConnectivity({ hubOrigin: 'http://hub', fetchImpl: deadFetch })).toBe('OFFLINE')
   })
 
-  it('traite un hub en erreur comme injoignable', async () => {
+  it('treats a hub in error as unreachable', async () => {
     expect(await probeConnectivity({ hubOrigin: 'http://hub', fetchImpl: errorFetch })).toBe('OFFLINE')
   })
 
-  it('ne notifie que les changements d\'état', async () => {
+  it('only notifies state changes', async () => {
     const onChange = vi.fn()
     const tracker = new ConnectivityTracker({ hubOrigin: 'http://hub', fetchImpl: okFetch, onChange })
 
@@ -31,19 +32,19 @@ describe('diagnostic de connectivité', () => {
     expect(tracker.value).toBe('DEGRADED')
   })
 
-  it('ne lance pas plusieurs sondes en parallèle', async () => {
-    const lent = vi.fn(async () => {
+  it('does not launch several probes in parallel', async () => {
+    const slow = vi.fn(async () => {
       await new Promise((resolve) => setTimeout(resolve, 50))
       return new Response('{}', { status: 200 })
     }) as unknown as typeof fetch
-    const tracker = new ConnectivityTracker({ hubOrigin: 'http://hub', fetchImpl: lent, onChange: () => {} })
+    const tracker = new ConnectivityTracker({ hubOrigin: 'http://hub', fetchImpl: slow, onChange: () => {} })
 
-    // Plusieurs échecs rapprochés ne doivent pas marteler le hub de sondes.
+    // Several failures close together must not hammer the hub with probes.
     await Promise.all([
       tracker.markRealtimeFailure(),
       tracker.markRealtimeFailure(),
       tracker.markRealtimeFailure(),
     ])
-    expect(lent).toHaveBeenCalledTimes(1)
+    expect(slow).toHaveBeenCalledTimes(1)
   })
 })

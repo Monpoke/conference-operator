@@ -176,7 +176,7 @@ ${initialState}
   const embedded = document.getElementById('etat-initial')
   if (embedded) { currentState = JSON.parse(embedded.textContent); render(currentState) }
 
-  if (typeof EventSource !== 'undefined' && !window.__APERCU__) {
+  if (typeof EventSource !== 'undefined' && !window.__PREVIEW__) {
     const stream = new EventSource('/display/state?vue=bandeau')
     stream.onmessage = (event) => { currentState = JSON.parse(event.data); render(currentState) }
     stream.addEventListener("delta", (event) => {

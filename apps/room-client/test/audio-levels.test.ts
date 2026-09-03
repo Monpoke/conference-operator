@@ -2,106 +2,106 @@ import { describe, expect, it } from 'vitest'
 import { LevelAggregator, proportion } from '../src/core/audio-levels.js'
 import { multiplierToDb, DB_FLOOR, type InputLevel } from '../src/core/obs.js'
 
-function horloge(depart = 0) {
-  let maintenant = depart
-  return { lire: () => maintenant, avancer: (ms: number) => (maintenant += ms) }
+function clock(start = 0) {
+  let now = start
+  return { read: () => now, advance: (ms: number) => (now += ms) }
 }
 
-const entree = (name: string, magnitude: number, peak = magnitude): InputLevel => ({
+const input = (name: string, magnitude: number, peak = magnitude): InputLevel => ({
   name,
   channels: [{ magnitude, peak }],
 })
 
-describe('conversion des levels OBS', () => {
-  it('traduit les multiplicateurs en dBFS', () => {
-    // OBS raisonne en linéaire, l'ingénieur du son en dB — et c'est l'échelle
-    // qu'OBS affiche lui-même.
+describe('converting OBS levels', () => {
+  it('translates the multipliers into dBFS', () => {
+    // OBS reasons in linear, the sound engineer in dB — and it is the scale OBS
+    // displays itself.
     expect(multiplierToDb(1)).toBeCloseTo(0, 5)
     expect(multiplierToDb(0.5)).toBeCloseTo(-6.02, 1)
     expect(multiplierToDb(0.1)).toBeCloseTo(-20, 5)
   })
 
-  it('borne le silence au lieu de rendre moins l\'infini', () => {
-    // `-Infinity` casserait tout calcul de largeur de barre côté page.
+  it('bounds silence instead of returning minus infinity', () => {
+    // `-Infinity` would break every bar-width computation on the page side.
     expect(multiplierToDb(0)).toBe(DB_FLOOR)
     expect(multiplierToDb(-1)).toBe(DB_FLOOR)
     expect(Number.isFinite(multiplierToDb(Number.NaN))).toBe(true)
   })
 
-  it('place le niveau sur une échelle exploitable', () => {
+  it('places the level on a usable scale', () => {
     expect(proportion(0)).toBe(1)
     expect(proportion(-30)).toBeCloseTo(0.5, 5)
     expect(proportion(-90)).toBe(0)
   })
 })
 
-describe('agrégation du vumètre', () => {
-  it('ramène 50 mesures par seconde à la cadence d\'affichage', () => {
-    const temps = horloge()
-    const recus: InputLevel[][] = []
-    const agregateur = new LevelAggregator((inputs) => recus.push(inputs), 100, temps.lire)
+describe('VU meter aggregation', () => {
+  it('brings 50 measurements a second down to the display cadence', () => {
+    const time = clock()
+    const received: InputLevel[][] = []
+    const aggregator = new LevelAggregator((inputs) => received.push(inputs), 100, time.read)
 
-    // Une seconde de mesures OBS, toutes les 20 ms.
+    // One second of OBS measurements, every 20 ms.
     for (let i = 0; i < 50; i += 1) {
-      agregateur.push([entree('Micro', -30)])
-      temps.avancer(20)
+      aggregator.push([input('Micro', -30)])
+      time.advance(20)
     }
-    // Dix envois plutôt que cinquante : c'est ce qui garde le flux d'état
-    // silencieux au repos.
-    expect(recus.length).toBeLessThanOrEqual(11)
-    expect(recus.length).toBeGreaterThanOrEqual(9)
+    // Ten sends rather than fifty: it is what keeps the state stream silent at
+    // rest.
+    expect(received.length).toBeLessThanOrEqual(11)
+    expect(received.length).toBeGreaterThanOrEqual(9)
   })
 
-  it('conserve la crête la plus brève entre deux envois', () => {
-    // Le point qui compte : échantillonner une mesure sur cinq ferait manquer
-    // une saturation d'un dixième de seconde — précisément ce qu'on regarde.
-    const temps = horloge()
-    const recus: InputLevel[][] = []
-    const agregateur = new LevelAggregator((inputs) => recus.push(inputs), 100, temps.lire)
+  it('keeps the briefest peak between two sends', () => {
+    // The point that matters: sampling one measurement in five would miss a
+    // tenth-of-a-second clip — precisely what one watches for.
+    const time = clock()
+    const received: InputLevel[][] = []
+    const aggregator = new LevelAggregator((inputs) => received.push(inputs), 100, time.read)
 
-    agregateur.push([entree('Micro', -40)])
-    temps.avancer(20)
-    agregateur.push([entree('Micro', -2, -1)])
-    temps.avancer(20)
-    agregateur.push([entree('Micro', -40)])
-    temps.avancer(100)
-    agregateur.push([entree('Micro', -40)])
+    aggregator.push([input('Micro', -40)])
+    time.advance(20)
+    aggregator.push([input('Micro', -2, -1)])
+    time.advance(20)
+    aggregator.push([input('Micro', -40)])
+    time.advance(100)
+    aggregator.push([input('Micro', -40)])
 
-    expect(recus[0]![0]!.channels[0]!.magnitude).toBe(-2)
-    expect(recus[0]![0]!.channels[0]!.peak).toBe(-1)
+    expect(received[0]![0]!.channels[0]!.magnitude).toBe(-2)
+    expect(received[0]![0]!.channels[0]!.peak).toBe(-1)
   })
 
-  it('suit chaque entrée séparément, et chaque canal', () => {
-    const temps = horloge()
-    const recus: InputLevel[][] = []
-    const agregateur = new LevelAggregator((inputs) => recus.push(inputs), 100, temps.lire)
+  it('follows each input separately, and each channel', () => {
+    const time = clock()
+    const received: InputLevel[][] = []
+    const aggregator = new LevelAggregator((inputs) => received.push(inputs), 100, time.read)
 
-    agregateur.push([
+    aggregator.push([
       { name: 'Micro', channels: [{ magnitude: -30, peak: -28 }] },
       { name: 'Ambiance', channels: [{ magnitude: -50, peak: -50 }, { magnitude: -12, peak: -10 }] },
     ])
-    temps.avancer(150)
-    agregateur.push([{ name: 'Micro', channels: [{ magnitude: -35, peak: -35 }] }])
+    time.advance(150)
+    aggregator.push([{ name: 'Micro', channels: [{ magnitude: -35, peak: -35 }] }])
 
-    const [micro, ambiance] = recus[0]!
-    expect(micro!.channels[0]!.magnitude).toBe(-30)
-    // La saturation du canal droit ne doit pas être noyée par le canal gauche.
-    expect(ambiance!.channels[1]!.magnitude).toBe(-12)
-    expect(ambiance!.channels[0]!.magnitude).toBe(-50)
+    const [mic, ambience] = received[0]!
+    expect(mic!.channels[0]!.magnitude).toBe(-30)
+    // The right channel's clipping must not be drowned by the left channel.
+    expect(ambience!.channels[1]!.magnitude).toBe(-12)
+    expect(ambience!.channels[0]!.magnitude).toBe(-50)
   })
 
-  it('retombe au silence plutôt que de figer la dernière mesure', () => {
-    // OBS déconnecté : une régie muette ne doit pas continuer à montrer du
-    // signal, sinon on croit le micro ouvert.
-    const temps = horloge()
-    const recus: InputLevel[][] = []
-    const agregateur = new LevelAggregator((inputs) => recus.push(inputs), 100, temps.lire)
+  it('falls back to silence rather than freezing the last measurement', () => {
+    // OBS disconnected: a silent control app must not keep showing a signal,
+    // otherwise one believes the microphone is open.
+    const time = clock()
+    const received: InputLevel[][] = []
+    const aggregator = new LevelAggregator((inputs) => received.push(inputs), 100, time.read)
 
-    agregateur.push([entree('Micro', -10)])
-    agregateur.reset()
-    temps.avancer(500)
-    agregateur.push([entree('Micro', -45)])
+    aggregator.push([input('Micro', -10)])
+    aggregator.reset()
+    time.advance(500)
+    aggregator.push([input('Micro', -45)])
 
-    expect(recus.at(-1)![0]!.channels[0]!.magnitude).toBe(-45)
+    expect(received.at(-1)![0]!.channels[0]!.magnitude).toBe(-45)
   })
 })

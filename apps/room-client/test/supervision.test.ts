@@ -61,14 +61,14 @@ afterEach(async () => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-/** Approuve dès qu'un code apparaît, comme le ferait un opérateur. */
-async function approuver(userCode: string): Promise<void> {
-  const reponse = await fetch(`http://127.0.0.1:${hubPort}/api/auth/sign-in/email`, {
+/** Approves as soon as a code appears, as an operator would. */
+async function approve(userCode: string): Promise<void> {
+  const response = await fetch(`http://127.0.0.1:${hubPort}/api/auth/sign-in/email`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ email: OPERATOR.email, password: OPERATOR.password }),
   })
-  const session = (await reponse.json()) as { token: string }
+  const session = (await response.json()) as { token: string }
   const admin: ContractRouterClient<typeof contract> = createORPCClient(
     new RPCLink({
       origin: `http://127.0.0.1:${hubPort}`,
@@ -79,78 +79,78 @@ async function approuver(userCode: string): Promise<void> {
   await admin.devices.approve({ userCode, clientId: CLIENT_ID, roomId: TRACK_1 })
 }
 
-function creerSalle(): RoomApp {
+function createRoom(): RoomApp {
   let token: string | null = null
   return new RoomApp({
     dataDir: dir,
     hubOrigin: proxy.origin,
     clientId: CLIENT_ID,
-    // Salle connue d'avance : ces tests n'ont pas d'écran pour la choisir.
+    // Room known up front: these tests have no screen to choose it on.
     roomId: TRACK_1,
     displayPort: 0,
     obsTransportFactory: (instance) =>
       createMockObsTransport({ instance, recordingDir: join(dir, 'rec') }),
     readToken: () => token,
-    writeToken: (valeur) => {
-      token = valeur
+    writeToken: (value) => {
+      token = value
     },
     onPairingCode: (code) => {
-      void approuver(code.user_code).catch(() => {
-        // Le hub est peut-être débranché : l'opérateur réessaiera, la salle aussi.
+      void approve(code.user_code).catch(() => {
+        // The hub may be unplugged: the operator will try again, and so will the room.
       })
     },
   })
 }
 
-describe('hub absent au démarrage', () => {
-  it('la salle ne renonce pas et le rejoint quand il répond', async () => {
-    // Ordre de démarrage le plus probable un matin d'événement : les salles
-    // s'allument avant que quiconque ait lancé le hub.
-    proxy.debrancher()
+describe('hub absent at start-up', () => {
+  it('the room does not give up and joins it when it answers', async () => {
+    // The most likely start-up order on an event morning: the rooms are powered
+    // on before anyone has launched the hub.
+    proxy.unplug()
 
-    room = creerSalle()
+    room = createRoom()
     const url = await room.startDisplay()
     room.startSupervision(1_000)
 
-    const jeton = await room.ensurePaired()
-    expect(jeton).toBeNull()
+    const token = await room.ensurePaired()
+    expect(token).toBeNull()
     expect(room.pairingState().status).toBe('failed')
 
-    // L'écran fonctionne malgré tout : c'est toute la promesse du cache local.
+    // The screen works all the same: that is the whole promise of the local cache.
     expect((await fetch(`${url}/display/projector`)).status).toBe(200)
 
-    proxy.rebrancher()
+    proxy.plug()
 
     /**
-     * On attend la synchronisation, pas l'appairage.
+     * We wait for the synchronisation, not for the pairing.
      *
-     * Le statut passe à « paired » dès que le jeton est obtenu, avant que le
-     * `sync` ait écrit la salle : s'arrêter là laisserait passer un rattrapage
-     * incomplet — et rendait ce test intermittent.
+     * The status turns to "paired" as soon as the token is obtained, before the
+     * `sync` has written the room: stopping there would let an incomplete
+     * catch-up through — and made this test flaky.
      */
     for (let i = 0; i < 60 && room.store.settings().roomId == null; i += 1) await sleep(500)
 
     expect(room.pairingState().status).toBe('paired')
     expect(room.store.settings().roomId).toBe(TRACK_1)
-    // Le programme est là : le rattrapage est allé jusqu'au bout.
+    // The program is here: the catch-up went all the way.
     expect(room.store.activeProgram()?.program.sessions).toHaveLength(38)
   }, 60_000)
 
-  it('ne relance pas de travail tant que le hub reste absent', async () => {
-    proxy.debrancher()
-    room = creerSalle()
+  it('does not restart any work while the hub stays absent', async () => {
+    proxy.unplug()
+    room = createRoom()
     await room.startDisplay()
     room.startSupervision(300)
 
     await sleep(2_000)
-    // Sonder n'appaire pas : la salle attend, sans consommer de code.
+    // Polling does not pair: the room waits, without burning a code.
     expect(room.pairingState().status).not.toBe('paired')
   }, 30_000)
 })
 
-describe('coupure pendant l\'appairage', () => {
-  it('ne perd pas le code sur une panne réseau passagère', async () => {
-    let sondages = 0
+describe('cut during pairing', () => {
+  it('does not lose the code on a transient network failure', async () => {
+    let polls = 0
     const transport: PairingTransport = {
       requestCode: async () => ({
         device_code: 'dev',
@@ -159,29 +159,29 @@ describe('coupure pendant l\'appairage', () => {
         expires_in: 60,
       }),
       requestToken: async () => {
-        sondages += 1
-        // Le hub redémarre pendant que l'opérateur se dirige vers la console.
-        if (sondages <= 3) return { ok: false, error: 'network' }
-        return { ok: true, body: { access_token: 'jeton' } }
+        polls += 1
+        // The hub restarts while the operator walks over to the console.
+        if (polls <= 3) return { ok: false, error: 'network' }
+        return { ok: true, body: { access_token: 'token' } }
       },
     }
 
-    const injoignable = vi.fn()
-    let horloge = 0
-    const resultat = await runPairing(transport, CLIENT_ID, {
-      onUnreachable: injoignable,
-      now: () => horloge,
+    const unreachable = vi.fn()
+    let clock = 0
+    const result = await runPairing(transport, CLIENT_ID, {
+      onUnreachable: unreachable,
+      now: () => clock,
       sleep: async (ms) => {
-        horloge += ms
+        clock += ms
       },
     })
 
-    // Perdre le code obligerait l'opérateur à tout recommencer sans raison.
-    expect(resultat.accessToken).toBe('jeton')
-    expect(injoignable).toHaveBeenCalledTimes(3)
+    // Losing the code would force the operator to start over for no reason.
+    expect(result.accessToken).toBe('token')
+    expect(unreachable).toHaveBeenCalledTimes(3)
   })
 
-  it('abandonne quand même si le code expire', async () => {
+  it('still gives up if the code expires', async () => {
     const transport: PairingTransport = {
       requestCode: async () => ({
         device_code: 'dev',
@@ -192,12 +192,12 @@ describe('coupure pendant l\'appairage', () => {
       requestToken: async () => ({ ok: false, error: 'network' }),
     }
 
-    let horloge = 0
+    let clock = 0
     await expect(
       runPairing(transport, CLIENT_ID, {
-        now: () => horloge,
+        now: () => clock,
         sleep: async (ms) => {
-          horloge += ms
+          clock += ms
         },
       }),
     ).rejects.toMatchObject({ code: 'expired_token' })

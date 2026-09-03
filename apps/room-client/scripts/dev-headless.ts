@@ -1,11 +1,10 @@
 /**
- * Lance une salle **sans Electron**.
+ * Runs a room **without Electron**.
  *
- * Toute la logique du client vit dans `core/` et ne dépend pas d'Electron :
- * on peut donc démarrer une salle complète et ouvrir ses pages dans un
- * navigateur. Utile pour développer sur une machine sans interface graphique
- * — WSL, conteneur, serveur distant — et pour observer la chaîne sans monter
- * une régie physique.
+ * All the client's logic lives in `core/` and does not depend on Electron: one can
+ * therefore start a complete room and open its pages in a browser. Useful to
+ * develop on a machine with no graphical interface — WSL, a container, a remote
+ * server — and to observe the chain without setting up a physical control room.
  *
  *   HUB_ORIGIN=http://localhost:8787 pnpm dev:headless
  */
@@ -22,65 +21,65 @@ const dataDir = resolve(process.env.DATA_DIR ?? './.donnees-locales')
 const port = Number(process.env.DISPLAY_PORT ?? 7788)
 
 /**
- * Ce script sert au développement : il s'y met de lui-même.
+ * This script serves development: it puts itself in that mode.
  *
- * Sans ce défaut, il faudrait écrire `MODE=dev` devant chaque lancement pour
- * obtenir ce que ce script est le seul à savoir faire. `MODE=production` reste
- * possible, et c'est alors une vraie salle sans Electron — un cas réel sur une
- * machine sans interface graphique.
+ * Without this default, one would have to write `MODE=dev` in front of every
+ * launch to get what this script alone knows how to do. `MODE=production` stays
+ * possible, and it is then a real room with no Electron — a real case on a machine
+ * with no graphical interface.
  *
- * L'heure simulée locale sert à développer **sans hub** : dès qu'un hub répond,
- * c'est son heure qui l'emporte. Pour dérouler une journée d'événement, régler
- * `SIMULATED_TIME` sur le hub plutôt qu'ici — sinon les deux horloges divergent
- * et tout ce qui les compare se met à mentir.
+ * The local simulated time serves to develop **with no hub**: as soon as a hub
+ * answers, it is its time that wins. To run through an event day, set
+ * `SIMULATED_TIME` on the hub rather than here — otherwise the two clocks diverge
+ * and everything that compares them starts lying.
  */
 const mode = readMode({ MODE: 'dev', ...process.env })
 for (const { variable, reason } of mode.ignores) {
   console.error(formatLogLine('error', `${variable} ignoré : ${reason}`))
 }
-const decalage = modeOffset(mode)
+const offset = modeOffset(mode)
 
 mkdirSync(dataDir, { recursive: true })
 
-/** Identité de la machine, conservée entre deux lancements. */
-const cheminClientId = join(dataDir, 'client-id')
-const clientId = existsSync(cheminClientId)
-  ? readFileSync(cheminClientId, 'utf8').trim()
+/** The machine's identity, kept between two launches. */
+const clientIdPath = join(dataDir, 'client-id')
+const clientId = existsSync(clientIdPath)
+  ? readFileSync(clientIdPath, 'utf8').trim()
   : (() => {
-      const nouveau = ulid()
-      writeFileSync(cheminClientId, nouveau)
-      return nouveau
+      const fresh = ulid()
+      writeFileSync(clientIdPath, fresh)
+      return fresh
     })()
 
-/** Jeton en clair : c'est un environnement de développement, et on le dit. */
-const cheminJeton = join(dataDir, 'jeton')
+/** The token in clear: this is a development environment, and we say so. */
+const tokenPath = join(dataDir, 'jeton')
 
 const room = new RoomApp({
   dataDir,
   mode: mode.mode,
-  // `ROOM_ID` court-circuite l'écran de choix, pour un poste provisionné.
+  // `ROOM_ID` short-circuits the choice screen, for a provisioned machine.
   roomId: process.env.ROOM_ID,
-  // Renseigner pour développer la régie refaite avec rechargement à chaud :
-  // REGIE_VITE_ORIGIN=http://127.0.0.1:5174, `pnpm --filter @cloudnord/regie-web dev` à côté.
+  // Fill in to develop the rebuilt control app with hot reloading:
+  // REGIE_VITE_ORIGIN=http://127.0.0.1:5174, with `pnpm --filter @cloudnord/regie-web dev` alongside.
   regieViteOrigin: process.env.REGIE_VITE_ORIGIN ?? null,
   hubOrigin,
   clientId,
   displayPort: port,
-  readToken: () => (existsSync(cheminJeton) ? readFileSync(cheminJeton, 'utf8').trim() : null),
-  writeToken: (jeton) => writeFileSync(cheminJeton, jeton),
+  readToken: () => (existsSync(tokenPath) ? readFileSync(tokenPath, 'utf8').trim() : null),
+  writeToken: (token) => writeFileSync(tokenPath, token),
   obsTransportFactory: !mode.obsSimulated
     ? undefined
     : (instance, scenes) =>
         createMockObsTransport({
           instance,
-          // Les scènes que la salle a configurées : un OBS simulé qui ne les
-          // aurait pas ferait sortir chaque nom un peu personnel en « rôle
-          // introuvable », rouge, sur une instance qui n'existe pas.
+          // The scenes the room configured: a simulated OBS that did not have them
+          // would make every slightly personal name come out as "role not found",
+          // red, on an instance that does not exist.
           scenes,
           recordingDir: join(dataDir, 'enregistrements'),
           onLog: (message) => console.log(formatLogLine('info', message)),
         }),
-  onLog: (niveau, message, contexte) => console.log(formatLogLine(niveau, message, contexte)),
+  onLog: (level, message, context) => console.log(formatLogLine(level, message, context)),
   onPairingCode: (code) => {
     console.log('')
     console.log('  ┌─────────────────────────────────────────────┐')
@@ -91,8 +90,8 @@ const room = new RoomApp({
   },
 })
 
-// Heure simulée locale : un décalage, comme celui que le hub posera.
-if (decalage !== 0) room.runtime.setClockOffset(decalage, true)
+// The local simulated time: an offset, like the one the hub will set.
+if (offset !== 0) room.runtime.setClockOffset(offset, true)
 
 const local = await room.startDisplay()
 
@@ -105,28 +104,28 @@ console.log(`  Mode        ${mode.mode}`)
 console.log(`  OBS         ${mode.obsSimulated ? 'SIMULÉ' : 'réel (obs-websocket)'}`)
 console.log('')
 
-if (decalage !== 0) {
+if (offset !== 0) {
   console.log(`  Heure simulée localement : ${new Date(room.runtime.correctedNow()).toISOString()}`)
   console.log("  (l'heure du hub l'emportera dès la connexion)")
 }
 
-// Surveillance du hub : un hub absent au démarrage ne condamne pas la salle,
-// elle le rejoindra dès qu'il répondra.
+// Watching the hub: a hub absent at startup does not condemn the room, it will
+// join as soon as it answers.
 room.startSupervision()
 
-const jeton = await room.ensurePaired()
-if (jeton == null) {
+const token = await room.ensurePaired()
+if (token == null) {
   console.log('  Hub injoignable — la salle tourne sur son cache local et réessaiera.')
 } else {
-  await room.connectHub(jeton)
+  await room.connectHub(token)
   await room.connectObs()
   room.runtime.refreshSessions()
   console.log('  Hub connecté, OBS connecté.')
-  const etat = room.runtime.state()
-  if (etat.simulatedClock) {
+  const state = room.runtime.state()
+  if (state.simulatedClock) {
     console.log('  Horloge du hub : SIMULÉE')
   }
-  console.log(`  Talk en cours : ${etat.currentSession?.title ?? 'aucun'}`)
+  console.log(`  Talk en cours : ${state.currentSession?.title ?? 'aucun'}`)
 }
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

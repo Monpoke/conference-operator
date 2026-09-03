@@ -1,8 +1,8 @@
 /**
- * Génère un aperçu hors ligne de l'écran de salle, dans chacun de ses modes.
+ * Generates an offline preview of the room screen, in each of its modes.
  *
- * Utilise la *vraie* page et les *vraies* données de l'événement : ce qu'on
- * regarde ici est ce qui sera projeté. Seul le flux SSE est neutralisé.
+ * Uses the *real* page and the *real* event data: what one looks at here is what
+ * will be projected. Only the SSE stream is neutralized.
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -17,7 +17,7 @@ import type { DisplayPayload } from '../src/core/display-server.js'
 
 const outDir = resolve(process.argv[2] ?? './preview')
 const TRACK_1 = 'track-1-teilhard-de-chardin'
-const AT = Date.parse('2026-10-30T10:20:00.000Z') // 11:20 à Paris, en plein talk
+const AT = Date.parse('2026-10-30T10:20:00.000Z') // 11:20 in Paris, mid-talk
 
 const program = normalizeProgram(
   JSON.parse(
@@ -47,7 +47,7 @@ const base: DisplayPayload = {
     targetSession: current ?? next,
     targetIsUpcoming: current == null,
     remoteHolder: null,
-    // L'aperçu se pose sur une conférence : pas de break à annoncer.
+    // The preview sits on a talk: no break to announce.
     breakBadge: null,
     simulatedClock: false,
     outboxDepth: 0,
@@ -61,15 +61,15 @@ const base: DisplayPayload = {
         id: 'n1',
         level: 'info' as const,
         text: 'Platform Engineering à l\'échelle de Décathlon vient de se terminer dans une autre salle',
-        // Récent : un signalement s'efface au bout de trente secondes, en
-        // montrer un de deux minutes donnerait une image impossible.
+        // Recent: a notice clears after thirty seconds, showing a two-minute-old one
+        // would give an impossible picture.
         at: new Date(AT - 12_000).toISOString(),
       },
       {
         id: 'n2',
         level: 'warning' as const,
         // Both levels in the preview: the background carries the type, and it is
-        // justement ce qu'on vient relire ici avant le jour J.
+        // precisely what one comes to review here before the day itself.
         text: 'Track #2 dépasse son créneau de 4 minutes',
         at: new Date(AT - 6_000).toISOString(),
       },
@@ -83,8 +83,8 @@ const base: DisplayPayload = {
         instance: 'A', connected: true, currentSceneName: 'Habillage web',
         currentRole: 'HOLD', unresolvedRoles: ['RELAY'], recording: false, streaming: false,
         scenes: ['Direct — capture HDMI', 'Habillage web', 'Écran noir'],
-        // L'aperçu n'a aucune instance OBS derrière lui : le dire est à la fois
-        // honnête et la seule façon de relire le badge avant le jour J.
+        // The preview has no OBS instance behind it: saying so is both honest and the
+        // only way to review the badge before the day itself.
         simulated: true,
       },
       B: {
@@ -94,14 +94,14 @@ const base: DisplayPayload = {
         simulated: true,
       },
     },
-    // L'aperçu est un artefact de développement de bout en bout : il le dit,
-    // ce qui rend aussi le badge relisable avant le jour J.
+    // The preview is a development artifact end to end: it says so, which also makes
+    // the badge reviewable before the day itself.
     mode: { room: 'dev' as const, hub: 'dev' as const },
-    /** Réglages de la salle : sans mots de passe, comme la régie les reçoit. */
+    /** The room's settings: with no passwords, as the control app receives them. */
     config: {
       obs: {
-        // A : réglage enregistré, connexion pas encore rouverte — l'état que
-        // l'aperçu doit montrer, puisque c'est celui qui demande un geste.
+        // A: a setting saved, the connection not reopened yet — the state the preview
+        // must show, since it is the one that calls for a gesture.
         A: { url: 'ws://127.0.0.1:4455', hasPassword: true, pending: true },
         B: { url: 'ws://127.0.0.1:4456', hasPassword: false, pending: false },
       },
@@ -117,7 +117,7 @@ const base: DisplayPayload = {
       promptRecordingOnStart: true,
       promptRecordingOnStop: true,
       sceneOnStart: 'LIVE',
-      // L'aperçu montre le poste installé, celui qui sait ouvrir un sélecteur.
+      // The preview shows the installed machine, the one that can open a picker.
       canBrowse: true,
     },
     outboxDepth: 3,
@@ -125,9 +125,9 @@ const base: DisplayPayload = {
       { level: 'warn', message: 'remontée impossible, lot reporté', createdAt: '2026-10-30T11:18:00.000Z' },
       { level: 'info', message: 'assets préchargés', createdAt: '2026-10-30T09:02:00.000Z' },
     ],
-    // `startedAtCorrectedMs` nul : l'aperçu montre le cas de production, où le
-    // chronomètre compte en temps réel. Le début est posé, la fin non : c'est
-    // l'état d'une prise en cours, celui qu'on veut voir sur un aperçu.
+    // A null `startedAtCorrectedMs`: the preview shows the production case, where the
+    // stopwatch counts in real time. The start is set, the end is not: it is the
+    // state of a take in progress, the one one wants to see on a preview.
     recording: {
       active: true,
       markers: 2,
@@ -146,10 +146,10 @@ const base: DisplayPayload = {
       { id: 'q2', text: 'Le code du honeypot est-il open source ?', author: null, votes: 3 },
     ],
     questionsRefreshedAt: new Date(AT - 20_000).toISOString(),
-    // Les questions se lisent toujours rattachées à une conférence : c'est ce
-    // qui distingue « personne n'a rien demandé » de « aucun talk piloté ».
+    // The questions are always read attached to a talk: it is what tells "nobody
+    // asked anything" from "no talk being driven".
     questionsSession: current == null ? null : { id: current.id, title: current.title },
-    /** Même donnée que `config.relaySourceRoomId` : elles doivent concorder. */
+    /** The same data as `config.relaySourceRoomId`: they have to agree. */
     relaySourceRoomId: 'track-2-mf-1092',
   },
   event: program.event,
@@ -157,12 +157,12 @@ const base: DisplayPayload = {
   sessions,
   sponsorTiers: program.sponsorTiers,
   /**
-   * Mur public et son QR, **vraiment généré**.
+   * The public wall and its QR code, **really generated**.
    *
-   * Il manquait : l'écran de salle affichait donc ses aperçus sans le QR que
-   * les participants scannent, et le menu « Écrans » de la régie sans le lien
-   * vers le mur. Mêmes options que `prepareWallQr` — c'est le QR qui sera
-   * projeté qu'on veut regarder, pas une image de remplacement.
+   * It was missing: the room screen therefore showed its previews without the QR
+   * code attendees scan, and the control app's "Écrans" menu without the link to
+   * the wall. The same options as `prepareWallQr` — it is the QR code that will be
+   * projected one wants to look at, not a stand-in image.
    */
   feedback: current == null ? null : {
     url: `https://openfeedback.io/cloud-nord-2026/2026-10-30/${current.id}`,
@@ -183,11 +183,10 @@ const base: DisplayPayload = {
     }),
   },
   /**
-   * Ce qui se joue à côté, et les comptes de l'événement.
+   * What is going on next door, and the event's accounts.
    *
-   * Les deux pages que la boucle ajoute au reste. Une salle sans conférence en
-   * vue y figure : c'est le cas qui montre qu'elle est écartée plutôt
-   * qu'affichée vide.
+   * The two pages the loop adds to the rest. A room with no talk in sight appears
+   * in it: it is the case that shows it is skipped rather than displayed empty.
    */
   otherRooms: [
     {
@@ -213,8 +212,8 @@ const base: DisplayPayload = {
       running: true,
     },
   ],
-  // Déduite de la fixture, comme le hub la déduirait du programme importé :
-  // l'aperçu montre alors le même enchaînement que la réalité.
+  // Derived from the fixture, as the hub would derive it from the imported program:
+  // the preview then shows the same chain as reality.
   eventIdentity: resolveEventIdentity({ program: program.event.name }),
   socialLinks: [
     { network: 'Bluesky', handle: '@cloudnord.fr', url: 'https://bsky.app/profile/cloudnord.fr' },
@@ -223,13 +222,13 @@ const base: DisplayPayload = {
   ],
 }
 
-const variantes: { nom: string; payload: DisplayPayload }[] = [
-  { nom: 'sponsors', payload: base },
-  { nom: 'programme', payload: { ...base, state: { ...base.state, mode: 'programme' } } },
-  { nom: 'compte-a-rebours', payload: { ...base, state: { ...base.state, mode: 'countdown' } } },
-  { nom: 'feedback', payload: { ...base, state: { ...base.state, mode: 'feedback' as const } } },
+const variants: { name: string; payload: DisplayPayload }[] = [
+  { name: 'sponsors', payload: base },
+  { name: 'programme', payload: { ...base, state: { ...base.state, mode: 'programme' } } },
+  { name: 'compte-a-rebours', payload: { ...base, state: { ...base.state, mode: 'countdown' } } },
+  { name: 'feedback', payload: { ...base, state: { ...base.state, mode: 'feedback' as const } } },
   {
-    nom: 'question',
+    name: 'question',
     payload: {
       ...base,
       state: {
@@ -244,9 +243,9 @@ const variantes: { nom: string; payload: DisplayPayload }[] = [
     },
   },
   {
-    // Le mur : le seul écran que le public photographie. Il manquait à
-    // l'aperçu, faute d'un `wall` dans la charge utile.
-    nom: 'mur',
+    // The wall: the only screen the audience photographs. It was missing from the
+    // preview, for want of a `wall` in the payload.
+    name: 'mur',
     payload: {
       ...base,
       state: {
@@ -269,7 +268,7 @@ const variantes: { nom: string; payload: DisplayPayload }[] = [
     },
   },
   {
-    nom: 'message-urgent',
+    name: 'message-urgent',
     payload: {
       ...base,
       state: {
@@ -284,24 +283,24 @@ const variantes: { nom: string; payload: DisplayPayload }[] = [
 
 mkdirSync(outDir, { recursive: true })
 
-// L'habillage de captation : fond transparent, damier ajouté pour le seul
-// aperçu — dans OBS, c'est la caméra et les slides qui apparaissent dessous.
-const damier =
+// The capture overlay: a transparent background, with a checkerboard added for the
+// preview alone — in OBS, it is the camera and the slides that appear underneath.
+const checkerboard =
   '<style>body{background-image:linear-gradient(45deg,#2a2a33 25%,transparent 25%),' +
   'linear-gradient(-45deg,#2a2a33 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#2a2a33 75%),' +
   'linear-gradient(-45deg,transparent 75%,#2a2a33 75%);background-size:40px 40px;' +
   'background-position:0 0,0 20px,20px -20px,-20px 0;background-color:#1d1d22}</style>'
 const overlay = renderOverlayPage({ initialPayload: base })
-  .replace('<body ', `<script>window.__APERCU__ = true</script>${damier}<body `)
+  .replace('<body ', `<script>window.__PREVIEW__ = true</script>${checkerboard}<body `)
 writeFileSync(join(outDir, 'overlay-captation.html'), overlay)
-console.log(`écrit ${join(outDir, 'overlay-captation.html')}`)
+console.log(`written ${join(outDir, 'overlay-captation.html')}`)
 
 /**
- * Le même habillage, question du public à l'antenne.
+ * The same overlay, with an audience question on air.
  *
- * Deux fichiers plutôt qu'un : c'est le cadrage des deux encarts ensemble qu'on
- * vient juger — titrage à gauche, question à droite — et il ne se voit pas sur
- * un aperçu où l'un des deux manque.
+ * Two files rather than one: it is the framing of both cards together one comes to
+ * judge — the lower third on the left, the question on the right — and it does not
+ * show on a preview where one of the two is missing.
  */
 const overlayQuestion = renderOverlayPage({
   initialPayload: {
@@ -315,21 +314,21 @@ const overlayQuestion = renderOverlayPage({
       },
     },
   },
-}).replace('<body ', `<script>window.__APERCU__ = true</script>${damier}<body `)
+}).replace('<body ', `<script>window.__PREVIEW__ = true</script>${checkerboard}<body `)
 writeFileSync(join(outDir, 'overlay-captation-question.html'), overlayQuestion)
-console.log(`écrit ${join(outDir, 'overlay-captation-question.html')}`)
+console.log(`written ${join(outDir, 'overlay-captation-question.html')}`)
 
-// Bandeau live : la seule surface qu'un aperçu peut montrer en situation,
-// puisqu'elle ne s'affiche que sur ordre de la console.
-/** Les deux présentations du bandeau, côte à côte dans les aperçus. */
+// The live banner: the only surface a preview can show in situation, since it only
+// displays on the console's order.
+/** The banner's two presentations, side by side in the previews. */
 for (const style of ['bandeau', 'encart'] as const) {
   const page = renderOverlayLivePage({
     initialPayload: {
       ...base,
       state: {
         ...base.state,
-        // Une question, pas un bandeau : c'est le cas qui montre le libellé
-        // « Question du public » de l'encart.
+        // A question, not a banner: it is the case that shows the card's
+        // "Question du public" label.
         question: {
           text: 'Comment gérez-vous les faux positifs sur un honeypot exposé ?',
           author: 'Camille',
@@ -338,15 +337,15 @@ for (const style of ['bandeau', 'encart'] as const) {
       },
     },
   })
-    .replace('<body ', `<script>window.__APERCU__ = true</script>${damier}<body `)
-    // L'aperçu s'ouvre sur `file://`, sans paramètre d'adresse : on pose le
-    // style comme le ferait `?style=`.
+    .replace('<body ', `<script>window.__PREVIEW__ = true</script>${checkerboard}<body `)
+    // The preview opens over `file://`, with no address parameter: we set the style
+    // as `?style=` would.
     .replace("get('style')", `get('style') ?? '${style}'`)
   writeFileSync(join(outDir, `overlay-live-${style}.html`), page)
-  console.log(`écrit ${join(outDir, `overlay-live-${style}.html`)}`)
+  console.log(`written ${join(outDir, `overlay-live-${style}.html`)}`)
 }
 
-const bandeau = renderOverlayLivePage({
+const banner = renderOverlayLivePage({
   initialPayload: {
     ...base,
     state: {
@@ -354,48 +353,48 @@ const bandeau = renderOverlayLivePage({
       liveMessage: { text: 'Reprise dans 5 minutes', level: 'info', expiresAtMs: null },
     },
   },
-}).replace('<body ', `<script>window.__APERCU__ = true</script>${damier}<body `)
-writeFileSync(join(outDir, 'overlay-bandeau-live.html'), bandeau)
-console.log(`écrit ${join(outDir, 'overlay-bandeau-live.html')}`)
+}).replace('<body ', `<script>window.__PREVIEW__ = true</script>${checkerboard}<body `)
+writeFileSync(join(outDir, 'overlay-bandeau-live.html'), banner)
+console.log(`written ${join(outDir, 'overlay-bandeau-live.html')}`)
 
 /**
- * Le début de la balise `body` de l'écran, tel que la page l'écrit.
+ * The start of the screen's `body` tag, as the page writes it.
  *
- * Les aperçus s'y greffent pour neutraliser le flux SSE. Le motif visé portait
- * l'attribut `data-mode` en premier ; depuis que la balise a gagné une classe,
- * il ne correspondait plus à rien — silencieusement, puisqu'un `replace` qui ne
- * trouve pas rend la chaîne inchangée. Les aperçus ouvraient donc un vrai
- * `EventSource`, qui écrasait au premier message le rang de boucle forcé plus
- * bas : on relisait autre chose que ce qu'on croyait.
+ * The previews graft themselves onto it to neutralize the SSE stream. The pattern
+ * aimed at carried the `data-mode` attribute first; since the tag gained a class,
+ * it no longer matched anything — silently, since a `replace` that finds nothing
+ * returns the string unchanged. The previews therefore opened a real `EventSource`,
+ * which overwrote at the first message the loop index forced further down: one was
+ * reviewing something other than what one believed.
  */
-const OUVERTURE_BODY = '<body class="bg-canvas'
+const BODY_OPENING = '<body class="bg-canvas'
 
-for (const { nom, payload } of variantes) {
+for (const { name, payload } of variants) {
   const html = renderProjectorPage({ initialPayload: payload }).replace(
-    OUVERTURE_BODY,
-    '<script>window.__APERCU__ = true</script>' + OUVERTURE_BODY,
+    BODY_OPENING,
+    '<script>window.__PREVIEW__ = true</script>' + BODY_OPENING,
   )
-  const chemin = join(outDir, `ecran-${nom}.html`)
-  writeFileSync(chemin, html)
-  console.log(`écrit ${chemin}`)
+  const filePath = join(outDir, `ecran-${name}.html`)
+  writeFileSync(filePath, html)
+  console.log(`written ${filePath}`)
 }
 
 /**
- * La boucle d'attente, page par page.
+ * The waiting loop, page by page.
  *
- * Un fichier par page plutôt qu'un seul : l'aperçu est statique, il ne tourne
- * pas — et c'est chaque page qu'on vient juger, pas la bascule. Le rang de
- * départ se force dans le script, comme le style de l'encart plus haut : la
- * page servie, elle, part toujours de zéro.
+ * One file per page rather than a single one: the preview is static, it does not
+ * turn — and it is each page one comes to judge, not the switch. The starting index
+ * is forced in the script, like the card's style above: the served page itself
+ * always starts from zero.
  */
-const PAGES_BOUCLE = ['sponsors', 'programme', 'salles', 'reseaux']
-for (const [rang, nom] of PAGES_BOUCLE.entries()) {
+const LOOP_PAGES = ['sponsors', 'programme', 'salles', 'reseaux']
+for (const [index, name] of LOOP_PAGES.entries()) {
   const html = renderProjectorPage({
     initialPayload: { ...base, state: { ...base.state, mode: 'loop' as const } },
   })
-    .replace(OUVERTURE_BODY, '<script>window.__APERCU__ = true</script>' + OUVERTURE_BODY)
-    .replace('let boucleRang = 0', `let boucleRang = ${rang}`)
-  const chemin = join(outDir, `ecran-boucle-${rang + 1}-${nom}.html`)
-  writeFileSync(chemin, html)
-  console.log(`écrit ${chemin}`)
+    .replace(BODY_OPENING, '<script>window.__PREVIEW__ = true</script>' + BODY_OPENING)
+    .replace('let loopIndex = 0', `let loopIndex = ${index}`)
+  const filePath = join(outDir, `ecran-boucle-${index + 1}-${name}.html`)
+  writeFileSync(filePath, html)
+  console.log(`written ${filePath}`)
 }

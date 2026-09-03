@@ -2,97 +2,96 @@ import { describe, expect, it } from 'vitest'
 import { hostMonitor } from '../src/core/host.js'
 
 /**
- * Charge du poste.
+ * The machine's load.
  *
- * Ce que ces tests protègent : une salle ne doit jamais afficher « 0 % » d'un
- * processeur qu'elle n'a pas su mesurer. Un chiffre rassurant faux vaut moins
- * que pas de chiffre du tout — c'est précisément l'inverse de ce que la
- * pastille est censée faire voir.
+ * What these tests protect: a room must never display "0 %" for a processor it
+ * failed to measure. A reassuring wrong figure is worth less than no figure at
+ * all — it is precisely the opposite of what the badge is meant to show.
  */
-function coeur(user: number, idle: number) {
+function core(user: number, idle: number) {
   return { times: { user, nice: 0, sys: 0, idle, irq: 0 } }
 }
 
 describe('hostMonitor', () => {
-  it('n’annonce rien tant qu’aucune fenêtre n’est écoulée', () => {
-    const relever = hostMonitor({ readCpus: () => [coeur(0, 0)], now: () => 1_000 })
+  it('announces nothing while no window has elapsed', () => {
+    const read = hostMonitor({ readCpus: () => [core(0, 0)], now: () => 1_000 })
 
-    // Premier appel, au même instant que la pose du repère : aucune durée
-    // observée, donc aucun taux à donner.
-    expect(relever().cpu).toBeNull()
+    // The first call, at the same instant as the mark was set: no duration
+    // observed, so no rate to give.
+    expect(read().cpu).toBeNull()
   })
 
-  it('mesure la part occupée entre deux relevés', () => {
-    let temps = 0
-    let cpus = [coeur(0, 0), coeur(0, 0)]
-    const relever = hostMonitor({ readCpus: () => cpus, now: () => temps })
+  it('measures the busy share between two readings', () => {
+    let time = 0
+    let cpus = [core(0, 0), core(0, 0)]
+    const read = hostMonitor({ readCpus: () => cpus, now: () => time })
 
-    temps = 2_000
-    // Deux cœurs, 1 000 ticks écoulés chacun : l'un occupé aux trois quarts,
-    // l'autre au quart. La charge de la machine est la moyenne des deux.
-    cpus = [coeur(750, 250), coeur(250, 750)]
-    const charge = relever()
+    time = 2_000
+    // Two cores, 1,000 ticks elapsed each: one busy three quarters of the time,
+    // the other a quarter. The machine's load is the average of the two.
+    cpus = [core(750, 250), core(250, 750)]
+    const load = read()
 
-    expect(charge.cpu).toBeCloseTo(0.5, 5)
-    expect(charge.cores).toBe(2)
-    expect(charge.windowMs).toBe(2_000)
+    expect(load.cpu).toBeCloseTo(0.5, 5)
+    expect(load.cores).toBe(2)
+    expect(load.windowMs).toBe(2_000)
   })
 
-  it('rend le relevé précédent quand deux consultations se suivent de trop près', () => {
-    let temps = 0
-    let cpus = [coeur(0, 0)]
-    const relever = hostMonitor({ readCpus: () => cpus, now: () => temps })
+  it('returns the previous reading when two consultations follow too closely', () => {
+    let time = 0
+    let cpus = [core(0, 0)]
+    const read = hostMonitor({ readCpus: () => cpus, now: () => time })
 
-    temps = 2_000
-    cpus = [coeur(800, 200)]
-    expect(relever().cpu).toBeCloseTo(0.8, 5)
+    time = 2_000
+    cpus = [core(800, 200)]
+    expect(read().cpu).toBeCloseTo(0.8, 5)
 
-    // Deuxième fenêtre de régie ouverte : sans garde, elle consommerait un
-    // intervalle de 100 ms et lirait un taux qui n'a aucun sens.
-    temps = 2_100
-    cpus = [coeur(800, 300)]
-    expect(relever().cpu).toBeCloseTo(0.8, 5)
+    // A second control window opened: with no guard, it would consume a 100 ms
+    // interval and read a rate that means nothing.
+    time = 2_100
+    cpus = [core(800, 300)]
+    expect(read().cpu).toBeCloseTo(0.8, 5)
   })
 
-  it('relit la mémoire à chaque appel, même sans fenêtre processeur', () => {
-    let temps = 0
-    let occupee = 4_000_000_000
-    const relever = hostMonitor({
-      readCpus: () => [coeur(0, 0)],
-      now: () => temps,
-      readMemory: () => ({ usedBytes: occupee, totalBytes: 16_000_000_000 }),
+  it('reads the memory back on every call, even with no processor window', () => {
+    let time = 0
+    let used = 4_000_000_000
+    const read = hostMonitor({
+      readCpus: () => [core(0, 0)],
+      now: () => time,
+      readMemory: () => ({ usedBytes: used, totalBytes: 16_000_000_000 }),
     })
 
-    // La mémoire est un instantané, pas une différence : elle vaut dès le
-    // premier appel, là où le processeur n'a encore rien à dire.
-    expect(relever()).toMatchObject({ cpu: null, memory: { usedBytes: 4_000_000_000 } })
+    // Memory is a snapshot, not a difference: it holds from the very first call,
+    // where the processor has nothing to say yet.
+    expect(read()).toMatchObject({ cpu: null, memory: { usedBytes: 4_000_000_000 } })
 
-    // Et elle suit, même quand deux relevés se suivent de trop près pour que la
-    // fenêtre du processeur compte.
-    temps = 100
-    occupee = 15_000_000_000
-    expect(relever().memory?.usedBytes).toBe(15_000_000_000)
+    // And it follows, even when two readings follow too closely for the
+    // processor's window to count.
+    time = 100
+    used = 15_000_000_000
+    expect(read().memory?.usedBytes).toBe(15_000_000_000)
   })
 
-  it('laisse la mémoire à null quand elle n’est pas lisible', () => {
-    const relever = hostMonitor({ readCpus: () => [coeur(0, 0)], now: () => 0, readMemory: () => null })
+  it('leaves the memory at null when it is not readable', () => {
+    const read = hostMonitor({ readCpus: () => [core(0, 0)], now: () => 0, readMemory: () => null })
 
-    expect(relever().memory).toBeNull()
+    expect(read().memory).toBeNull()
   })
 
-  it('garde le dernier chiffre honnête quand les compteurs n’avancent plus', () => {
-    let temps = 0
-    let cpus = [coeur(0, 0)]
-    const relever = hostMonitor({ readCpus: () => cpus, now: () => temps })
+  it('keeps the last honest figure when the counters stop advancing', () => {
+    let time = 0
+    let cpus = [core(0, 0)]
+    const read = hostMonitor({ readCpus: () => cpus, now: () => time })
 
-    temps = 2_000
-    cpus = [coeur(600, 400)]
-    expect(relever().cpu).toBeCloseTo(0.6, 5)
+    time = 2_000
+    cpus = [core(600, 400)]
+    expect(read().cpu).toBeCloseTo(0.6, 5)
 
-    // Machine virtuelle migrée, compteurs repartis en arrière : inventer un
-    // taux ici afficherait une salle saturée qui ne l'est pas.
-    temps = 4_000
-    cpus = [coeur(0, 0)]
-    expect(relever().cpu).toBeCloseTo(0.6, 5)
+    // A migrated virtual machine, counters gone backwards: inventing a rate here
+    // would show a saturated room that is not.
+    time = 4_000
+    cpus = [core(0, 0)]
+    expect(read().cpu).toBeCloseTo(0.6, 5)
   })
 })

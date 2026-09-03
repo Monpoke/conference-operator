@@ -15,12 +15,12 @@ const sidecar = computed(() => props.entry.sidecar)
 const upload = computed(() => vod.uploadOf(props.entry.file))
 
 /**
- * Ce qu'il reste à attendre sur ce rush, en clair — ou rien à dire.
+ * What is left to wait on this file, spelled out — or nothing to say.
  *
- * C'est la réponse à la question du démontage, celle que le pourcentage laisse
- * entière : 60 % sur un rush de quatre gigas, c'est deux minutes ou quarante.
- * Le calcul est au magasin, qui seul voit passer les relevés successifs et peut
- * les lisser ; ici on ne fait que le lire.
+ * It is the answer to the packing-up question, the one the percentage leaves
+ * whole: 60 % on four gigabytes of footage is two minutes or forty. The
+ * computation is in the store, which alone sees the successive readings go by and
+ * can smooth them; here we only read it.
  */
 const eta = computed(() => {
   const ms = vod.etaOf(props.entry.file)
@@ -42,33 +42,33 @@ const speakers = computed(() =>
     .join(', '),
 )
 
-/** Ce qui se lit d'un coup d'œil : quand, combien, et ce qui manque déjà. */
+/** What is read at a glance: when, how much, and what is already missing. */
 const details = computed(() => {
   const parts: string[] = []
   if (sidecar.value == null) parts.push('sidecar absent')
   else {
     parts.push(time(sidecar.value.startedAt, props.timeZone))
-    const poses = sidecar.value.markers ?? []
-    const chapitres = poses.filter((marker) => marker.role == null).length
-    if (chapitres > 0) parts.push(`${chapitres} marqueur${chapitres > 1 ? 's' : ''}`)
+    const marks = sidecar.value.markers ?? []
+    const chapters = marks.filter((marker) => marker.role == null).length
+    if (chapters > 0) parts.push(`${chapters} marqueur${chapters > 1 ? 's' : ''}`)
 
     /*
-     * Ce que le editing coupera, quand la régie le lui a dit.
+     * What editing will trim, when the control app has told it so.
      *
-     * C'est la seule fenêtre où l'information est encore vérifiable : le rush
-     * s'ouvre ici, et l'aperçu est à un clic. Trois semaines plus tard, un
-     * repère posé une minute trop tôt se découvre sur la vidéo publiée.
+     * This is the only window in which the information is still verifiable: the
+     * file opens here, and the preview is one click away. Three weeks later, an
+     * anchor set one minute too early is discovered on the published video.
      *
-     * Rien d'affiché quand aucun repère n'a été posé : la prise est terminée,
-     * on ne peut plus en poser, et un reproche sans remède n'apprend rien de ce
-     * qu'on est venu vérifier ici.
+     * Nothing shown when no anchor was set: the take is over, no more can be set,
+     * and a reproach with no remedy teaches nothing about what one came here to
+     * check.
      */
-    const debut = poses.find((marker) => marker.role === 'debut')
-    const fin = poses.find((marker) => marker.role === 'fin')
-    if (debut != null || fin != null) {
-      const borne = (marker: typeof debut): string =>
+    const start = marks.find((marker) => marker.role === 'debut')
+    const end = marks.find((marker) => marker.role === 'fin')
+    if (start != null || end != null) {
+      const bound = (marker: typeof start): string =>
         marker == null ? '?' : shortDuration(marker.offsetMs)
-      parts.push(`rognage ${borne(debut)} → ${borne(fin)}`)
+      parts.push(`rognage ${bound(start)} → ${bound(end)}`)
     }
   }
   if (durationMs.value != null) parts.push(shortDuration(durationMs.value))
@@ -77,65 +77,64 @@ const details = computed(() => {
   if (check.value?.by === 'operateur') parts.push('verdict de la régie')
 
   /*
-   * L'état de montée se lit dans la même ligne que le reste : c'est la même
-   * question — « ce rush est-il en sécurité ? » — et la séparer en deux
-   * colonnes obligerait à croiser deux listes des yeux.
+   * The upload state is read on the same line as the rest: it is the same question
+   * — "is this footage safe?" — and splitting it into two columns would force the
+   * eye to cross-reference two lists.
    */
   const state = upload.value?.state
   if (state != null) {
     const word = UPLOAD_WORDS[state] ?? state
     if (state !== 'en-cours') parts.push(word)
     else {
-      const reste = eta.value == null ? '' : ` · reste ${eta.value}`
-      parts.push(`${word} — ${upload.value?.percent} %${reste}`)
+      const left = eta.value == null ? '' : ` · reste ${eta.value}`
+      parts.push(`${word} — ${upload.value?.percent} %${left}`)
     }
   }
   return parts.join(' · ')
 })
 
 /**
- * Ce que le témoin de progression dit au survol.
+ * What the progress indicator says on hover.
  *
- * Le pourcentage est déjà dans la ligne de détail, mais elle se lit à la
- * recherche d'un fichier, pas d'un chiffre. Sur le témoin, il est là où le
- * regard se pose quand on se demande « et celui-là, il en est où ? ».
+ * The percentage is already in the detail line, but that line is read looking for
+ * a file, not for a figure. On the indicator it sits where the eye lands when one
+ * wonders "and that one, how far along is it?".
  *
- * « environ » n'est pas une précaution de style : le temps annoncé vaut ce que
- * vaut le réseau des trois dernières minutes, et l'opérateur qui décide de
- * débrancher un disque doit lire une estimation comme une estimation.
+ * "environ" is no stylistic hedge: the announced time is worth whatever the last
+ * three minutes of network were worth, and the operator deciding whether to unplug
+ * a disk must read an estimate as an estimate.
  */
 const progressTitle = computed(() => {
   if (upload.value?.state === 'attente') {
     return 'En file : le téléversement partira dès que la salle le permet'
   }
-  const reste = eta.value == null ? '' : `, reste environ ${eta.value}`
-  return `Téléversement en cours — ${upload.value?.percent ?? 0} %${reste}`
+  const left = eta.value == null ? '' : `, reste environ ${eta.value}`
+  return `Téléversement en cours — ${upload.value?.percent ?? 0} %${left}`
 })
 
 /**
- * Une case carrée, la même pour les quatre icônes.
+ * A square cell, the same for all four icons.
  *
- * Sans elle, chaque bouton était large de son glyphe : 👁 et ⬆ sont des emoji,
- * ✓ et ✕ des caractères de texte bien plus étroits, et `px-3` de chaque côté
- * n'y changeait rien. Quatre boutons de quatre largeurs, décalés d'une ligne à
- * l'autre dès que le reste bougeait. La largeur est donc fixée ici, une fois,
- * et `px-0` retire le rembourrage qui la faisait dépendre du contenu.
+ * Without it, each button was as wide as its glyph: 👁 and ⬆ are emoji, ✓ and ✕
+ * are text characters that are far narrower, and `px-3` on each side changed
+ * nothing. Four buttons of four widths, shifting from one row to the next as soon
+ * as the rest moved. The width is therefore fixed here, once, and `px-0` removes
+ * the padding that made it depend on the content.
  */
-const CASE_ICONE = 'w-9 px-0'
+const ICON_CELL = 'w-9 px-0'
 
 /**
- * La colonne du téléversement, à largeur réservée.
+ * The upload column, at a reserved width.
  *
- * C'est elle qui décalait tout le reste : elle porte tantôt un ⬆, tantôt un ☁,
- * tantôt un témoin **et** un bouton « Annuler » — trois largeurs très
- * différentes, donc un ✓ et un ✕ qui ne tombaient au même endroit sur aucune
- * ligne. La place du cas le plus large est réservée sur toutes les lignes, et
- * le contenu est poussé à droite : ⬆, ☁ et « Annuler » partagent ainsi leur
- * bord droit, celui qui touche le ✓.
+ * It was what shifted everything else: it carries sometimes a ⬆, sometimes a ☁,
+ * sometimes an indicator **and** a "Annuler" button — three very different widths,
+ * and therefore a ✓ and a ✕ that landed in the same place on no row at all. The
+ * widest case's space is reserved on every row, and the content is pushed right:
+ * ⬆, ☁ and "Annuler" thus share their right edge, the one that touches the ✓.
  */
-const COLONNE_MONTEE = 'flex w-[6.75rem] shrink-0 items-center justify-end gap-1'
+const UPLOAD_COLUMN = 'flex w-[6.75rem] shrink-0 items-center justify-end gap-1'
 
-/** « Actif » sur le verdict déjà posé : le même bouton l'enlève. */
+/** "Active" on a verdict already set: the same button removes it. */
 function posed(status: string): boolean {
   return check.value?.by === 'operateur' && check.value.status === status
 }
@@ -149,11 +148,11 @@ function posed(status: string): boolean {
     <div class="min-w-0">
       <div class="flex flex-wrap items-center gap-2">
         <!--
-          Largeur fixe, comme les icônes d'en face et pour la même raison :
-          « Non vérifié », « Exploitable », « À revoir » et « Illisible » n'ont
-          pas la même longueur, et le nom de fichier commençait donc à quatre
-          abscisses différentes selon le verdict. Sur une liste qu'on parcourt
-          en diagonale, c'est ce décalage qui se voit avant le badge lui-même.
+          Fixed width, like the icons opposite and for the same reason: "Non
+          vérifié", "Exploitable", "À revoir" and "Illisible" are not the same
+          length, and the file name therefore began at four different offsets
+          depending on the verdict. On a list scanned diagonally, it is that shift
+          that is seen before the badge itself.
         -->
         <span
           class="w-24 shrink-0 rounded border px-1.5 py-px text-center text-[10px] font-semibold tracking-[.08em] uppercase"
@@ -170,7 +169,7 @@ function posed(status: string): boolean {
       </div>
       <div class="mt-0.5 text-[11px] text-dim">{{ details }}</div>
 
-      <!-- Un badge rouge sans raison ne sert personne. -->
+      <!-- A red badge with no reason serves nobody. -->
       <div
         v-if="(check?.reasons.length ?? 0) > 0"
         class="mt-1 text-[11px]"
@@ -179,8 +178,8 @@ function posed(status: string): boolean {
         {{ check?.reasons.join(' · ') }}
       </div>
 
-      <!-- « AccessDenied » est le seul mot qu'on puisse porter à qui tient le
-           bucket : le traduire ferait perdre la seule prise sur le problème. -->
+      <!-- "AccessDenied" is the only word one can carry to whoever holds the
+           bucket: translating it would lose the only handle on the problem. -->
       <div v-if="upload?.error != null" class="mt-1 text-[11px] text-alert">
         Téléversement : {{ upload.error }}
       </div>
@@ -189,7 +188,7 @@ function posed(status: string): boolean {
     <div class="flex shrink-0 items-center gap-1">
       <Button
         size="small"
-        :class="CASE_ICONE"
+        :class="ICON_CELL"
         title="Voir et entendre un extrait"
         :active="vod.preview?.file === entry.file"
         :data-vod-apercu="entry.file"
@@ -207,23 +206,23 @@ function posed(status: string): boolean {
       </Button>
 
       <!--
-        Le même emplacement à travers toute la vie d'un rush : ⬆, puis un témoin
-        de progression, puis ☁. Le ⬆ disparaissait au profit d'« Annuler », et
-        la ligne perdait d'un coup le seul repère qui disait où en était ce
-        fichier-là : sur une modale qui en aligne quinze, il fallait relire le
-        détail en petit pour retrouver celui qui montait. Le témoin garde la
-        place et porte l'avancement.
+        The same place across a file's whole life: ⬆, then a progress indicator,
+        then ☁. The ⬆ used to disappear in favour of "Annuler", and the row lost at
+        a stroke the only landmark that said where that particular file stood: on a
+        modal lining up fifteen of them, one had to read the small detail line again
+        to find the one that was uploading. The indicator keeps the place and
+        carries the progress.
 
-        Il n'est **pas** cliquable, et c'est délibéré : « Annuler » reste un
-        bouton nommé, à côté. Un témoin qui annulerait au clic ferait perdre
-        trois gigaoctets déjà montés à un doigt distrait — exactement ce que le
-        ☁ sans bouton évite à l'autre bout.
+        It is **not** clickable, and that is deliberate: "Annuler" stays a named
+        button, beside it. An indicator that cancelled on click would lose three
+        gigabytes already uploaded to a distracted finger — exactly what the ☁ with
+        no button avoids at the other end.
 
-        Tout l'ensemble est absent tant que le hub n'a pas de destination : un
-        bouton qui échoue à chaque clic est pire qu'un bouton absent, et
-        l'en-tête dit déjà pourquoi.
+        The whole thing is absent while the hub has no destination: a button that
+        fails on every click is worse than an absent button, and the header already
+        says why.
       -->
-      <div v-if="vod.blocked == null" :class="COLONNE_MONTEE">
+      <div v-if="vod.blocked == null" :class="UPLOAD_COLUMN">
         <template v-if="upload?.state === 'en-cours' || upload?.state === 'attente'">
           <span
             class="flex h-6 w-6 shrink-0 items-center justify-center"
@@ -264,7 +263,7 @@ function posed(status: string): boolean {
         <Button
           v-else
           size="small"
-          :class="CASE_ICONE"
+          :class="ICON_CELL"
           :title="
             entry.beingWritten
               ? 'Prise encore en cours : le fichier partira une fois arrêtée'
@@ -279,7 +278,7 @@ function posed(status: string): boolean {
 
       <Button
         size="small"
-        :class="CASE_ICONE"
+        :class="ICON_CELL"
         title="Fichier ouvert et relu : exploitable"
         :active="posed('ok')"
         :data-vod-verdict-ok="entry.file"
@@ -289,7 +288,7 @@ function posed(status: string): boolean {
       </Button>
       <Button
         size="small"
-        :class="CASE_ICONE"
+        :class="ICON_CELL"
         title="Fichier inexploitable : à refaire ou à signaler"
         :active="posed('illisible')"
         :data-vod-verdict-ko="entry.file"

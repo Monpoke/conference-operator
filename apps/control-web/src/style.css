@@ -1,25 +1,25 @@
 /*
- * Feuille de la régie.
+ * The control app's stylesheet.
  *
- * Même entrée que la console : palette, pastilles et pont shadcn viennent de
- * `@cloudnord/ui/apps.css`, qui déclare aussi les sources scannées. Ce qui est
- * propre à un composant vit dans son `<style scoped>`, et nulle part ailleurs.
+ * The same entry point as the console: palette, status dots and the shadcn bridge
+ * come from `@cloudnord/ui/apps.css`, which also declares the scanned sources.
+ * What is specific to a component lives in its `<style scoped>`, and nowhere else.
  */
 @import "@cloudnord/ui/apps.css";
 
 /*
- * Le cadre de la page, en règles et non en utilitaires.
+ * The page's frame, in rules and not in utilities.
  *
- * Le `<body>` est rendu par le poste de salle, pas par ce paquet : ses classes
- * ne sont scannées par personne — ni par le bundle, qui ne regarde que `src`,
- * ni par la feuille figée, qui sert les pages restées des gabarits. Une
- * `grid-rows-[auto_1fr]` posée là n'existait donc dans aucune feuille, et la
- * régie s'affichait sans grille. Vérifié : la classe était absente du CSS
- * construit.
+ * The `<body>` is rendered by the room machine, not by this package: its classes
+ * are scanned by nobody — neither by the bundle, which only looks at `src`, nor by
+ * the frozen sheet that serves the pages still built from templates. A
+ * `grid-rows-[auto_1fr]` set there therefore existed in no sheet at all, and the
+ * control app rendered with no grid. Verified: the class was absent from the built
+ * CSS.
  *
- * Décrire le cadre ici le met hors de portée de ce piège, et le met au bon
- * endroit — c'est la page qui sait comment elle se tient, pas la coquille qui
- * la transporte.
+ * Describing the frame here puts it out of that trap's reach, and puts it in the
+ * right place — it is the page that knows how it holds itself, not the shell that
+ * carries it.
  */
 @layer base {
   html,
@@ -29,12 +29,12 @@
 
   body {
     /*
-     * Une colonne flex, et non une grille.
+     * A flex column, and not a grid.
      *
-     * Le bandeau des salles voisines disparaît complètement sur un événement
-     * d'une seule salle. Une grille à trois rangées nommées laisserait alors le
-     * contenu dans la rangée du bandeau — celle qui se dimensionne sur son
-     * contenu — et le bas de l'écran vide. La page d'origine avait ce défaut.
+     * The neighbouring rooms strip disappears entirely at a single-room event. A
+     * grid with three named rows would then leave the content in the strip's row —
+     * the one sized on its content — and the bottom of the screen empty. The
+     * original page had that defect.
      */
     display: flex;
     flex-direction: column;
@@ -44,12 +44,12 @@
     font-family: var(--font-sans);
   }
 
-  /* La racine du editing n'est pas une boîte : la colonne est celle du body. */
+  /* The mount root is not a box: the column is the body's. */
   #regie-root {
     display: contents;
   }
 
-  /* Tout ce qui reste après l'en-tête et le bandeau. */
+  /* Everything left after the header and the strip. */
   body > main {
     min-height: 0;
     flex: 1;

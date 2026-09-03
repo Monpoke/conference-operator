@@ -7,20 +7,19 @@ import { useRoomStore } from './stores/room.js'
 import './style.css'
 
 /**
- * Amorçage.
+ * Bootstrap.
  *
- * `createPinia()` par application plutôt qu'un `reactive()` de portée module :
- * la forme singleton fait fuir l'état d'un fichier de test au suivant sans un
- * mot.
+ * `createPinia()` per application rather than a module-scoped `reactive()`: the
+ * singleton shape leaks state from one test file to the next without a word.
  *
- * L'état embarqué est posé **avant** le editing : c'est ce qui fait qu'un F5 en
- * plein talk repeint l'écran tel qu'il était, sans passer par « connexion au
- * poste de salle… ».
+ * The embedded state is laid down **before** mounting: that is what makes an F5
+ * mid-talk repaint the screen as it was, without passing through "connecting to
+ * the room machine…".
  *
- * La **portée** est posée avant lui, parce qu'elle décide de tout le reste : le
- * même bundle est servi par une machine de salle — qui pilote sa salle et
- * n'authentifie personne — et par le hub, qui les a toutes et attend qu'on en
- * choisisse une. Son absence vaut « locale », ce que sert aussi `vite dev`.
+ * The **scope** is laid down before it, because it decides everything else: the
+ * same bundle is served by a room machine — which drives its own room and
+ * authenticates nobody — and by the hub, which has them all and waits for one to
+ * be chosen. Its absence means "locale", which is also what `vite dev` serves.
  */
 const app = createApp(App)
 app.use(createPinia())

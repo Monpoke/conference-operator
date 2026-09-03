@@ -9,16 +9,16 @@ import { useTalkStore } from '../stores/talk.js'
 import Countdown from './Countdown.vue'
 
 /**
- * La conférence pilotée, et les deux gestes qui la bornent.
+ * The talk being driven, and the two gestures that bound it.
  *
- * La **cible**, pas la session « en cours » : entre deux talks ou pendant une
- * pause, c'est la conférence qui arrive qu'on pilote — et c'est exactement à
- * ces moments-là que l'opérateur veut appuyer sur « Commencer », pendant que le
- * speaker s'installe.
+ * The **target**, not the "current" session: between two talks or during a break,
+ * it is the talk that is coming which one drives — and it is exactly at those
+ * moments that the operator wants to press "Commencer", while the speaker settles
+ * in.
  */
 const props = defineProps<{ payload: DisplayPayload; nowMs: number }>()
 
-const conference = useTalkStore()
+const talk = useTalkStore()
 
 const session = computed(() => props.payload.state.targetSession)
 const upcoming = computed(() => props.payload.state.targetIsUpcoming)
@@ -51,20 +51,19 @@ const badge = computed(() =>
 )
 
 /**
- * Les deux boutons suivent la table du cycle de vie, pas une condition écrite
- * ici.
+ * Both buttons follow the lifecycle table, not a condition written here.
  *
- * C'est la même table que le hub applique en écriture : un bouton actif dont la
- * procédure refuserait le geste — ou l'inverse — n'est plus possible. Le refus
- * sert d'infobulle, pour que la raison soit lisible sans avoir à cliquer pour
- * la découvrir.
+ * It is the same table the hub applies on write: an active button whose procedure
+ * would refuse the gesture — or the reverse — is no longer possible. The refusal
+ * doubles as the tooltip, so the reason is readable without having to click to
+ * discover it.
  */
 function refusal(action: 'start' | 'end'): string | null {
   if (session.value == null) return 'Aucune conférence à piloter dans cette salle.'
   return transitionRefusal(status.value, action)
 }
 
-/** Ce que dit le programme, en toutes lettres. */
+/** What the program says, spelled out. */
 const scheduleWord = computed(() => {
   const gap = scheduleGapMs(props.payload, props.nowMs)
   if (gap == null) return ''
@@ -75,12 +74,12 @@ const scheduleWord = computed(() => {
 })
 
 /**
- * Terminée : on nomme ce que le décompte vise.
+ * Ended: we name what the countdown is aiming at.
  *
- * Le grand nombre compte jusqu'à la prochaine conférence, la ligne « Suivant »
- * juste en dessous annonce le prochain *créneau* — qui peut être une pause. Les
- * deux différaient sans que rien ne l'explique. L'heure ici lève l'ambiguïté,
- * et l'annulation reste à portée.
+ * The large number counts down to the next talk, while the "Suivant" line just
+ * below announces the next *slot* — which may be a break. The two differed with
+ * nothing to explain it. The time here removes the ambiguity, and the undo stays
+ * within reach.
  */
 const detail = computed(() => {
   if (status.value === 'ended') {
@@ -96,12 +95,12 @@ const detail = computed(() => {
     : scheduleWord.value
 })
 
-/** Le dépassement est l'information qui déclenche une décision. */
+/** The overrun is the piece of information that triggers a decision. */
 const overrun = computed(() => scheduleWord.value.startsWith('dépassement'))
 
 /**
- * La conférence suivante : elle ne se pilote pas encore, mais elle dit si l'on
- * peut laisser filer cinq minutes ou pas.
+ * The next talk: it cannot be driven yet, but it says whether five minutes can be
+ * allowed to slip or not.
  */
 const next = computed(() => {
   const from = session.value?.startsAtMs ?? props.nowMs
@@ -116,10 +115,10 @@ const nextSpeakers = computed(() =>
 <template>
   <Panel>
     <div class="mb-2 flex items-start gap-2">
-      <Badge :class="status" data-role="conference-badge">{{ badge }}</Badge>
+      <Badge :class="status" data-role="talk-badge">{{ badge }}</Badge>
     </div>
 
-    <div class="mb-2 line-clamp-2 text-sm leading-snug" data-role="conference-title">
+    <div class="mb-2 line-clamp-2 text-sm leading-snug" data-role="talk-title">
       {{ title }}
     </div>
     <div v-if="speakers !== ''" class="mb-2 line-clamp-1 text-xs text-dim">
@@ -129,14 +128,14 @@ const nextSpeakers = computed(() =>
     <Countdown :payload="payload" :at-ms="nowMs" />
 
     <!--
-      Cliquer le détail remet à venir : c'est la seule annulation du geste, et
-      elle vit là où la phrase la propose.
+      Clicking the detail puts it back as upcoming: it is the gesture's only undo,
+      and it lives where the sentence offers it.
     -->
     <div
       class="mt-1 text-xs"
       :class="overrun ? 'text-alert' : 'text-dim'"
-      data-role="conference-detail"
-      @click="status === 'ended' && conference.reset()"
+      data-role="talk-detail"
+      @click="status === 'ended' && talk.reset()"
     >
       {{ detail }}
     </div>
@@ -148,8 +147,8 @@ const nextSpeakers = computed(() =>
         <span class="text-text tabular-nums"> {{ time(next.startsAt, payload.timezone) }}</span>
         <span class="text-text"> · {{ next.title }}</span>
         <!--
-          Sur une deuxième ligne : accolés au titre, les noms sortaient du cadre
-          dès que le titre était long, et c'est le titre qui disparaissait.
+          On a second line: set beside the title, the names pushed out of the frame
+          as soon as the title was long, and it was the title that disappeared.
         -->
         <div v-if="nextSpeakers !== ''" class="mt-0.5 text-text">{{ nextSpeakers }}</div>
       </template>
@@ -157,19 +156,19 @@ const nextSpeakers = computed(() =>
 
     <div class="mt-2 grid grid-cols-2 gap-1.5">
       <Button
-        id="btn-conf-demarrer"
+        id="btn-talk-start"
         :disabled="refusal('start') != null"
         :title="refusal('start') ?? undefined"
         :active="status === 'running'"
-        @click="conference.askStart()"
+        @click="talk.askStart()"
       >
         Commencer
       </Button>
       <Button
-        id="btn-conf-terminer"
+        id="btn-talk-end"
         :disabled="refusal('end') != null"
         :title="refusal('end') ?? undefined"
-        @click="conference.askEnd()"
+        @click="talk.askEnd()"
       >
         Terminer
       </Button>

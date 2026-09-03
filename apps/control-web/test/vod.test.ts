@@ -201,11 +201,11 @@ describe('téléversement', () => {
 
     // Sans quoi l'opérateur qui vient d'en monter un à la main se demande
     // pourquoi les suivants ne partent pas seuls.
-    const ligne = document.body.querySelector('[data-role="vod-manuel"]')
+    const ligne = document.body.querySelector('[data-role="vod-manual"]')
     expect(ligne?.textContent).toContain('les envois se font à la main')
     // « Tout téléverser » reste armé : la même règle que les ⬆ des lignes.
     expect(
-      document.body.querySelector('[data-role="btn-vod-monter-tout"]')?.hasAttribute('disabled'),
+      document.body.querySelector('[data-role="btn-vod-upload-all"]')?.hasAttribute('disabled'),
     ).toBe(false)
     wrapper.unmount()
   })

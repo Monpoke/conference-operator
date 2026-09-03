@@ -11,19 +11,19 @@ import ScreensMenu from './ScreensMenu.vue'
 
 const props = defineProps<{
   payload: DisplayPayload
-  /** Heure de la salle, décalage du hub compris. */
+  /** The room's time, the hub's offset included. */
   nowMs: number
-  /** Le flux de la page est coupé depuis assez longtemps pour le dire. */
+  /** The page's stream has been cut long enough to be worth saying. */
   streamDead: boolean
   /**
-   * Servie par le hub, sur un téléphone.
+   * Served by the hub, on a phone.
    *
-   * Tombent alors : les boutons qui ouvrent des modales de poste (programme,
-   * salles, ⚙, écrans) et la charge de l'hôte, servie par la machine de salle.
-   * Reste tout ce qui dit **où en est la salle** — c'est la seule raison de
-   * regarder cette ligne.
+   * What falls away then: the buttons that open machine modals (program, rooms, ⚙,
+   * screens) and the host load, served by the room machine. What is left is
+   * everything that says **where the room stands** — the only reason to look at
+   * this line.
    */
-  distant?: boolean
+  remote?: boolean
 }>()
 
 const emit = defineEmits<{ open: [tab: 'program' | 'rooms']; config: [] }>()
@@ -31,8 +31,8 @@ const emit = defineEmits<{ open: [tab: 'program' | 'rooms']; config: [] }>()
 const host = useHostStore()
 
 /*
- * La profondeur de file est l'indicateur à surveiller pendant une coupure :
- * elle se lit dans le bandeau, et se détaille dans l'info-bulle du hub.
+ * The queue depth is the indicator to watch during an outage: it is read in the
+ * header, and detailed in the hub's tooltip.
  */
 const queueDepth = computed(
   () => props.payload.diagnostics?.outboxDepth ?? props.payload.state.outboxDepth ?? 0,
@@ -54,19 +54,19 @@ const queueDepth = computed(
       :simulated-clock="payload.state.simulatedClock"
     />
 
-    <CpuIndicator v-if="distant !== true" :load="host.load" />
+    <CpuIndicator v-if="remote !== true" :load="host.load" />
 
     <!--
-      Le pilotage distant, vu de la salle.
+      Remote driving, seen from the room.
 
-      Il ne grise rien : l'opérateur qui est là garde toutes ses commandes, quoi
-      qu'il arrive à un téléphone parti dans un couloir. Il est ici parce que
-      c'est la ligne qu'on lit pour savoir dans quel état est la salle — et
-      qu'une scène qui bascule sans que personne n'ait touché au clavier se lit
-      sinon comme une panne, en plein talk.
+      It greys nothing out: the operator who is there keeps every one of their
+      commands, whatever happens to a phone gone off down a corridor. It is here
+      because this is the line one reads to know what state the room is in — and
+      because a scene switching with nobody having touched the keyboard otherwise
+      reads as a failure, in the middle of a talk.
     -->
     <div
-      v-if="payload.state.remoteHolder != null && distant !== true"
+      v-if="payload.state.remoteHolder != null && remote !== true"
       class="shrink-0 truncate text-xs text-warn"
       data-role="remote-holder"
       :title="`${payload.state.remoteHolder} pilote cette salle depuis la régie mobile. Vos commandes restent actives.`"
@@ -79,13 +79,13 @@ const queueDepth = computed(
     </div>
 
     <!--
-      Le flux de la page est mort : ce qui est affiché ne bouge plus.
+      The page's stream is dead: what is displayed no longer moves.
 
-      Sans ce mot, une page figée passe pour une page vivante — l'horloge, le
-      compte à rebours et le flux des salles se redessinent chaque seconde
-      depuis la dernière charge utile reçue, et continuent donc d'avancer. Seul
-      l'état de la conférence reste bloqué, sur ce qu'il disait à la coupure.
-      C'est exactement ce qu'on ne peut pas diagnostiquer depuis une salle.
+      Without this word, a frozen page passes for a live one — the clock, the
+      countdown and the rooms strip redraw every second from the last payload
+      received, and therefore keep advancing. Only the talk's state stays stuck, on
+      what it said at the cut. That is exactly what cannot be diagnosed from a
+      room.
     -->
     <div
       v-if="streamDead"
@@ -102,7 +102,7 @@ const queueDepth = computed(
       :simulated="payload.state.simulatedClock"
     />
 
-    <div v-if="distant !== true" class="flex shrink-0 items-center gap-1.5">
+    <div v-if="remote !== true" class="flex shrink-0 items-center gap-1.5">
       <Button id="btn-program" size="small" @click="emit('open', 'program')">
         Programme<Key>P</Key>
       </Button>

@@ -6,29 +6,29 @@ import { useVodStore } from '../stores/vod.js'
 import VodRow from './VodRow.vue'
 
 /**
- * Plein cadre, et pas une colonne.
+ * Full width, and not a column.
  *
- * Chaque ligne porte un nom de fichier, un titre, une heure, une durée, une
- * taille et un verdict. En colonne, elle se lit à coups de trois mots par ligne
- * et on referme sans avoir rien vérifié.
+ * Each row carries a file name, a title, a time, a duration, a size and a verdict.
+ * In a column it is read three words at a time and one closes it having checked
+ * nothing.
  *
- * Elle ne commande rien dans la salle — elle relit le disque. On peut donc
- * contrôler la matinée pendant que l'après-midi enregistre, ce qui est tout
- * l'intérêt : le soir, la salle est démontée.
+ * It commands nothing in the room — it reads the disk back. So the morning can be
+ * checked while the afternoon records, which is the whole point: in the evening,
+ * the room is dismantled.
  */
 const props = defineProps<{ timeZone: string }>()
 
 const vod = useVodStore()
 
 /*
- * Le contrôle des rushes se lit à deux mains sur la liste : un « r » réflexe
- * par-dessus lancerait une captation dans le dos de l'opérateur.
+ * Checking the footage is done two-handed over the list: a reflex "r" on top would
+ * start a take behind the operator's back.
  */
 useKeyboardLayer(() => ({}), () => vod.open)
 
 /**
- * Le seul endroit qui reste pour dire pourquoi les ⬆ ont disparu des lignes :
- * le bouton qui ferait la même chose, grisé, avec le motif.
+ * The only place left to say why the ⬆ have gone from the rows: the button that
+ * would do the same thing, greyed out, with the reason.
  */
 const blockedTitle = computed(() =>
   vod.blocked == null
@@ -42,10 +42,10 @@ const timeZone = computed(() => props.timeZone)
 <template>
   <Dialog v-model:open="vod.open" title="🎞 Enregistrements" width="full">
     <div class="mb-2.5 flex flex-wrap items-center gap-2 border-b border-edge pb-2.5">
-      <div class="min-w-0 flex-1 truncate font-mono text-[11px] text-dim" data-role="vod-racine">
+      <div class="min-w-0 flex-1 truncate font-mono text-[11px] text-dim" data-role="vod-root">
         {{ vod.listing?.root ?? '' }}
       </div>
-      <div class="shrink-0 text-xs text-dim" data-role="vod-avancement">{{ vod.progress }}</div>
+      <div class="shrink-0 text-xs text-dim" data-role="vod-progress">{{ vod.progress }}</div>
       <Button size="small" class="shrink-0" :disabled="vod.checking" @click="vod.checkAll()">
         Tout vérifier
       </Button>
@@ -54,7 +54,7 @@ const timeZone = computed(() => props.timeZone)
         class="shrink-0"
         :disabled="vod.blocked != null"
         :title="blockedTitle"
-        data-role="btn-vod-monter-tout"
+        data-role="btn-vod-upload-all"
         @click="vod.upload(null)"
       >
         Tout téléverser
@@ -63,22 +63,21 @@ const timeZone = computed(() => props.timeZone)
     </div>
 
     <!--
-      Pourquoi rien ne monte.
+      Why nothing is going up.
 
-      Une attente muette se lit comme un bouton mort : on reclique, puis on
-      cherche la panne. « conférence dans 6 min » se lit comme une décision.
+      A silent wait reads as a dead button: one clicks again, then goes looking for
+      the failure. "conférence dans 6 min" reads as a decision.
     -->
     <!--
-      Le hub sait où envoyer, mais n'envoie rien de lui-même — le réglage par
-      défaut. Les boutons restent : le régulateur accepte les demandes
-      manuelles dans cet état. Reste à le dire, sans ambre, sinon l'opérateur
-      qui vient d'en monter un à la main se demande pourquoi les suivants ne
-      partent pas seuls.
+      The hub knows where to send, but sends nothing of its own accord — the
+      default setting. The buttons stay: the regulator accepts manual requests in
+      this state. It still has to be said, without amber, otherwise the operator who
+      has just sent one by hand wonders why the rest do not leave on their own.
     -->
     <div
       v-if="vod.manualOnly"
       class="mb-2.5 border-b border-edge pb-1.5 text-[11px] text-dim"
-      data-role="vod-manuel"
+      data-role="vod-manual"
     >
       Téléversement automatique désactivé sur le hub : les envois se font à la main, ⬆ par ligne
       ou « Tout téléverser ».
@@ -87,7 +86,7 @@ const timeZone = computed(() => props.timeZone)
     <div
       v-if="vod.waitReason != null"
       class="mb-2.5 border-b border-edge pb-1.5 text-[11px] text-warn"
-      data-role="vod-regulateur"
+      data-role="vod-regulator"
     >
       {{ vod.waitReason }}
     </div>
@@ -95,7 +94,7 @@ const timeZone = computed(() => props.timeZone)
     <div class="max-h-[62vh] min-h-0 overflow-y-auto">
       <div v-if="vod.listing == null" class="text-xs text-dim">Lecture du dossier…</div>
 
-      <!-- Une liste vide se lirait comme une journée perdue : dire pourquoi. -->
+      <!-- An empty list would read as a lost day: say why. -->
       <div v-else-if="vod.listing.root == null" class="text-sm text-warn">
         Aucun dossier d’enregistrement connu. Renseignez-le dans la configuration de la salle, ou
         connectez OBS-B — c’est lui qui dit où il écrit.

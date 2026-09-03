@@ -274,7 +274,7 @@ echo ""
 # avant qu'il réponde se recharge d'elle-même dès qu'il est là.
 demarrer apps/hub-admin node_modules/.bin/vite \
   --port "$(port_de "$VITE_CONSOLE")" --strictPort --clearScreen false --logLevel warn
-demarrer apps/regie-web node_modules/.bin/vite \
+demarrer apps/control-web node_modules/.bin/vite \
   --port "$(port_de "$VITE_REGIE")" --strictPort --clearScreen false --logLevel warn
 
 # Le hub proxifie **les deux** Vite : celui de la console, et celui de la régie

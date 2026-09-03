@@ -447,7 +447,7 @@ export class DisplayServer {
         reply.status(503)
         return reply.send(
           'Régie non construite. Depuis les sources : ' +
-            'pnpm --filter @cloudnord/regie-web build',
+            'pnpm --filter @cloudnord/control-web build',
         )
       }
 

@@ -60,7 +60,7 @@ export interface ControlAssets {
 export function resolveControlBundle(): { folder: string; manifest: string } | null {
   let folder = dirname(fileURLToPath(import.meta.url))
   for (;;) {
-    const candidate = join(folder, 'apps', 'regie-web', 'dist')
+    const candidate = join(folder, 'apps', 'control-web', 'dist')
     const manifest = join(candidate, '.vite', 'manifest.json')
     if (existsSync(manifest)) return { folder: candidate, manifest }
     const parent = dirname(folder)

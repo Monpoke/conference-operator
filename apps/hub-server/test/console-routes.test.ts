@@ -117,7 +117,7 @@ describe('the mobile control app', () => {
        */
       expect([200, 503], path).toContain(response.status)
       if (response.status === 503) {
-        expect(await response.text()).toContain('pnpm --filter @cloudnord/regie-web build')
+        expect(await response.text()).toContain('pnpm --filter @cloudnord/control-web build')
       }
     }
   })

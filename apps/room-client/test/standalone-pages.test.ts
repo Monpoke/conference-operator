@@ -19,7 +19,7 @@ import { parseScripts, extractScripts } from './helpers/inline-scripts.js'
  * The control app has left them: it is a bundle. Those of its guards that still
  * make sense followed it — the origin of the resources and the closed document in
  * `control-served.test.ts`, the background and the layout in
- * `apps/regie-web/test/cadre.test.ts`. The others only targeted the literal
+ * `apps/control-web/test/frame.test.ts`. The others only targeted the literal
  * template, and Vite makes them moot.
  */
 const PAGES: [string, string][] = [

@@ -50,7 +50,7 @@ WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/hub-admin/package.json apps/hub-admin/
 COPY apps/hub-server/package.json apps/hub-server/
-COPY apps/regie-web/package.json apps/regie-web/
+COPY apps/control-web/package.json apps/control-web/
 COPY apps/room-client/package.json apps/room-client/
 COPY packages/contract/package.json packages/contract/
 COPY packages/db/package.json packages/db/
@@ -65,17 +65,17 @@ COPY packages/ui/package.json packages/ui/
 # limite l'installation aux graphes des deux applications.
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --ignore-scripts \
-      --filter @cloudnord/hub-admin... --filter @cloudnord/regie-web...
+      --filter @cloudnord/hub-admin... --filter @cloudnord/control-web...
 
 COPY packages/ packages/
 COPY apps/hub-admin/ apps/hub-admin/
-COPY apps/regie-web/ apps/regie-web/
+COPY apps/control-web/ apps/control-web/
 RUN pnpm --filter @cloudnord/hub-admin build
 # La régie, servie par le hub pour la régie mobile — le même bundle que celui
 # qu'embarque l'installeur d'une machine de salle. Sans lui, `/regie` répond 503
 # en le disant, ce qui est un déploiement incomplet et non un état
 # d'exploitation.
-RUN pnpm --filter @cloudnord/regie-web build
+RUN pnpm --filter @cloudnord/control-web build
 
 
 # --- Construction ---------------------------------------------------------
@@ -98,7 +98,7 @@ WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/hub-admin/package.json apps/hub-admin/
 COPY apps/hub-server/package.json apps/hub-server/
-COPY apps/regie-web/package.json apps/regie-web/
+COPY apps/control-web/package.json apps/control-web/
 COPY apps/room-client/package.json apps/room-client/
 COPY packages/contract/package.json packages/contract/
 COPY packages/db/package.json packages/db/
@@ -132,7 +132,7 @@ COPY apps/hub-server/ apps/hub-server/
 # importe pas : c'est ce qui permet à `pnpm typecheck` et `pnpm test` de ne
 # jamais déclencher de build Vite, et à la CI de tenir sous la minute.
 COPY --from=spa /repo/apps/hub-admin/dist apps/hub-admin/dist
-COPY --from=spa /repo/apps/regie-web/dist apps/regie-web/dist
+COPY --from=spa /repo/apps/control-web/dist apps/control-web/dist
 
 # Ce que `--prod` ne suffit pas à écarter : une centaine de mégaoctets
 # d'outillage de test et de build, que `better-auth` impose en peer dependencies

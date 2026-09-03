@@ -12,7 +12,7 @@ import { FIELDS_BY_VIEW, type DisplayView } from '../src/core/display-server.js'
  * pages' sources back and compares what they consult with what they receive.
  *
  * The control app is no longer listed: it is a bundle, not a template, and its
- * own guard lives with it — `apps/regie-web/test/champs-du-flux.test.ts`, which
+ * own guard lives with it — `apps/control-web/test/stream-fields.test.ts`, which
  * reads its sources back the same way.
  */
 const PAGES: { view: DisplayView; file: string }[] = [

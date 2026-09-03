@@ -20,7 +20,7 @@ import {
  * The operator's window, served by the machine.
  *
  * What is checked here is not the rendering — that is checked in
- * `@cloudnord/regie-web`, which mounts the components — but the two things only
+ * `@cloudnord/control-web`, which mounts the components — but the two things only
  * the room machine can guarantee: that the page leaves with the complete state
  * inside it, and that it asks nothing of any origin but its own.
  */
@@ -164,7 +164,7 @@ describe('the shell', () => {
     // This is not an operational state: the packaging embeds the bundle. A 404
     // would send people looking at the address instead.
     expect(reponse.status).toBe(503)
-    expect(await reponse.text()).toContain('pnpm --filter @cloudnord/regie-web build')
+    expect(await reponse.text()).toContain('pnpm --filter @cloudnord/control-web build')
   })
 })
 

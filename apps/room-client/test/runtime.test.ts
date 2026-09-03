@@ -39,18 +39,18 @@ const command = (payload: CommandPayloadInput, ttlSeconds: number | null = null)
   return commandSchema.parse({ seq: nextSeq, issuedAt: ISSUED_AT, ttlSeconds, payload })
 }
 
-describe('état de la salle', () => {
-  it('positionne la session en cours et la suivante depuis le programme', () => {
+describe('room state', () => {
+  it('positions the running session and the next one from the program', () => {
     const runtime = makeRuntime()
     const state = runtime.state()
-    // 10:20 UTC : « HoneySwamp » court de 10:00 à 10:50.
+    // 10:20 UTC: "HoneySwamp" runs from 10:00 to 10:50.
     expect(state.currentSession?.title).toContain('HoneySwamp')
     expect(state.nextSession?.title).toContain('Coupable')
   })
 
-  it('démarre sur la boucle d\'attente, sans dépendre du réseau', () => {
-    // C'est l'écran qu'on veut trouver en salle le matin sans que personne
-    // n'ait rien touché. Elle se réduit d'elle-même aux pages qui ont du
+  it('starts on the waiting loop, without depending on the network', () => {
+    // This is the screen one wants to find in the room in the morning without
+    // anyone having touched anything. It reduces itself to the pages that have
     // contenu : sans programme en cache, elle montre les sponsors.
     expect(new RoomRuntime(store, {}, () => clockMs).state()).toMatchObject({
       mode: 'loop',
@@ -58,21 +58,21 @@ describe('état de la salle', () => {
     })
   })
 
-  it('corrige l\'horloge avec l\'offset serveur', () => {
+  it('corrects the clock with the server offset', () => {
     const runtime = makeRuntime()
-    // Le PC de régie retarde de 40 minutes : sans correction, l'écran
-    // annoncerait encore le talk précédent (10:20 → HoneySwamp au lieu de 11:00).
+    // The control PC is 40 minutes slow: with no correction the screen would
+    // still announce the previous talk (10:20 → HoneySwamp instead of 11:00).
     expect(runtime.state().currentSession?.title).toContain('HoneySwamp')
     runtime.setClockOffset(40 * 60_000)
     runtime.refreshSessions()
     expect(runtime.state().currentSession?.title).toContain('Coupable')
-    // L'offset est persisté : un redémarrage ne le reperd pas.
+    // The offset is persisted: a restart does not lose it again.
     expect(store.settings().clockOffsetMs).toBe(2_400_000)
   })
 })
 
-describe('application des commandes', () => {
-  it('bascule la scène OBS demandée', async () => {
+describe('applying the commands', () => {
+  it('switches to the requested OBS scene', async () => {
     const setSceneRole = vi.fn(async () => {})
     const runtime = makeRuntime({ setSceneRole })
 
@@ -83,12 +83,12 @@ describe('application des commandes', () => {
   })
 
   /**
-   * Ce que fait une salle voisine arrive déjà poussé sur le flux de commandes ;
-   * seule la *vue* qui l'affiche était sondée. La régie recevait donc la
-   * notification « Track #2 vient de terminer » pendant que la pastille de
-   * Track #2 disait encore « en cours ».
+   * What a neighbouring room does already arrives pushed on the command stream;
+   * only the *view* that displays it was polled. The control app therefore
+   * received the "Track #2 vient de terminer" notification while Track #2's dot
+   * still said "en cours".
    */
-  it("redemande la vue des autres salles dès qu'une d'elles décide", async () => {
+  it("asks for the other rooms' view again as soon as one of them decides", async () => {
     const refreshRoomStatuses = vi.fn()
     const runtime = makeRuntime({ refreshRoomStatuses })
     runtime.setRoomId('track-1')
@@ -105,13 +105,13 @@ describe('application des commandes', () => {
     )
 
     expect(refreshRoomStatuses).toHaveBeenCalledTimes(1)
-    // Sans toucher à notre propre cycle de vie : celui d'à côté n'a rien à y faire.
+    // Without touching our own lifecycle: the one next door has no business there.
     expect(runtime.state().sessionStates['ses-voisine']).toBeUndefined()
   })
 
-  it("ne redemande rien sur une décision qui la concerne elle-même", async () => {
-    // Sa propre salle se met à jour par la commande : il n'y a rien à relire,
-    // et une requête par décision locale serait du bruit.
+  it("asks for nothing again on a decision concerning itself", async () => {
+    // Its own room updates through the command: there is nothing to read back,
+    // and one request per local decision would be noise.
     const refreshRoomStatuses = vi.fn()
     const runtime = makeRuntime({ refreshRoomStatuses })
     runtime.setRoomId('track-1')
@@ -131,7 +131,7 @@ describe('application des commandes', () => {
     expect(runtime.state().sessionStates['ses-1']).toBe('running')
   })
 
-  it('affiche en salle un message destiné au public', async () => {
+  it('displays in the room a message meant for the audience', async () => {
     const runtime = makeRuntime()
     await runtime.applyCommand(
       command(
@@ -143,11 +143,11 @@ describe('application des commandes', () => {
       mode: 'message',
       message: { text: 'Évacuation', level: 'urgent' },
     })
-    // La régie est prévenue de ce qui est projeté chez elle.
+    // The control app is told what is being projected in its own room.
     expect(runtime.state().notifications.at(-1)?.text).toContain('Affiché en salle')
   })
 
-  it('garde pour l\'opérateur un message qui lui est adressé', async () => {
+  it('keeps for the operator a message addressed to them', async () => {
     const runtime = makeRuntime()
     await runtime.applyCommand(
       command({
@@ -159,14 +159,14 @@ describe('application des commandes', () => {
       }),
     )
 
-    // Basculer l'écran l'afficherait en grand devant le public.
+    // Switching the screen would show it large in front of the audience.
     expect(runtime.state().mode).toBe('loop')
     expect(runtime.state().message).toBeNull()
     expect(runtime.state().notifications.at(-1)?.text).toContain('Ton speaker est arrivé')
     expect(runtime.state().notifications.at(-1)?.text).toContain('organisateur@cloudnord.fr')
   })
 
-  it('efface un signalement au bout de trente secondes', async () => {
+  it('clears a notice after thirty seconds', async () => {
     const runtime = makeRuntime()
     await runtime.applyCommand(
       command({ type: 'message.broadcast', text: 'Ton speaker est arrivé', level: 'info', target: 'operator' }),
@@ -183,8 +183,8 @@ describe('application des commandes', () => {
     expect(runtime.state().notifications).toHaveLength(0)
   })
 
-  it('ne fait pas tomber un signalement qui vient d\'arriver', async () => {
-    // Le piège du filtre par lot : le plus ancien périme, pas toute la pile.
+  it('does not drop a notice that has just arrived', async () => {
+    // The batch filter's trap: the oldest expires, not the whole stack.
     const runtime = makeRuntime()
     await runtime.applyCommand(
       command({ type: 'message.broadcast', text: 'Premier', level: 'info', target: 'operator' }),
@@ -201,21 +201,21 @@ describe('application des commandes', () => {
     expect(restants[0]?.text).toContain('Second')
   })
 
-  it('écarte une commande rattrapée après expiration', async () => {
+  it('discards a command caught up on after it expired', async () => {
     const runtime = makeRuntime()
     const lunch = command({ type: 'message.broadcast', text: 'Pause déjeuner', level: 'info' }, 600)
 
-    // Reconnexion 40 minutes plus tard : le message n'a plus lieu d'être.
+    // Reconnection 40 minutes later: the message has no reason to be any more.
     clockMs += 40 * 60_000
     const outcome = await runtime.applyCommand(lunch)
 
     expect(outcome).toEqual({ applied: false, reason: 'expired' })
     expect(runtime.state().mode).toBe('loop')
-    // Marquée appliquée malgré tout, sinon chaque reconnexion la relivrerait.
+    // Marked as applied all the same, otherwise every reconnection would redeliver it.
     expect(store.hasApplied(lunch.seq)).toBe(true)
   })
 
-  it('ignore un rejeu de commande déjà appliquée', async () => {
+  it('ignores a replay of an already applied command', async () => {
     const setSceneRole = vi.fn(async () => {})
     const runtime = makeRuntime({ setSceneRole })
     const forced = command({ type: 'scene.force', role: 'HOLD' })
@@ -227,24 +227,24 @@ describe('application des commandes', () => {
     expect(setSceneRole).toHaveBeenCalledTimes(1)
   })
 
-  it('déclenche une resynchronisation sur invalidation du programme', async () => {
+  it('triggers a resynchronisation when the program is invalidated', async () => {
     const resync = vi.fn()
     const runtime = makeRuntime({ resync })
     await runtime.applyCommand(command({ type: 'program.invalidate', contentHash: 'hash-2' }))
     expect(resync).toHaveBeenCalledWith('hash-2')
   })
 
-  it('ne boucle pas sur une commande pas encore supportée', async () => {
+  it('does not loop on a command not supported yet', async () => {
     const runtime = makeRuntime()
     const later = command({ type: 'wall.approved', commentId: 'c-1' })
 
     expect(await runtime.applyCommand(later)).toEqual({ applied: false, reason: 'unsupported' })
-    // Sans marquage, la reconnexion suivante la relivrerait indéfiniment.
+    // With no marking, the next reconnection would redeliver it forever.
     expect(store.hasApplied(later.seq)).toBe(true)
     expect(await runtime.applyCommand(later)).toEqual({ applied: false, reason: 'already-applied' })
   })
 
-  it('retire le message quand son TTL est écoulé', async () => {
+  it('withdraws the message when its TTL has elapsed', async () => {
     const runtime = makeRuntime()
     await runtime.applyCommand(
       command(
@@ -256,43 +256,43 @@ describe('application des commandes', () => {
 
     clockMs += 301_000
     runtime.expireMessage()
-    // Retour à l'écran d'attente par défaut, pas à une page figée.
+    // Back to the default waiting screen, not to a frozen page.
     expect(runtime.state()).toMatchObject({ mode: 'loop', message: null })
   })
 })
 
-describe('état observé sur OBS', () => {
-  it('fait foi sur l\'état local', () => {
+describe('state observed on OBS', () => {
+  it('is authoritative over the local state', () => {
     const runtime = makeRuntime()
     const seen: string[] = []
     runtime.on('state', (state) => seen.push(String(state.sceneRole)))
 
-    // L'opérateur a basculé dans OBS directement : la régie doit suivre.
+    // The operator switched in OBS directly: the control app must follow.
     runtime.observeSceneRole('LIVE')
     expect(runtime.state().sceneRole).toBe('LIVE')
     expect(seen).toContain('LIVE')
   })
 })
 
-describe('conférence pilotable', () => {
-  /** Décale l'horloge du runtime à un instant donné (UTC). */
+describe('drivable talk', () => {
+  /** Shifts the runtime's clock to a given instant (UTC). */
   const a = (iso: string) => {
     clockMs = Date.parse(iso)
     return makeRuntime()
   }
 
-  it('vise la conférence en cours quand il y en a une', () => {
-    // 10:20 UTC = 11:20 à Paris, en plein « HoneySwamp ».
+  it('aims at the running talk when there is one', () => {
+    // 10:20 UTC = 11:20 in Paris, in the middle of "HoneySwamp".
     const runtime = a('2026-10-30T10:20:00Z')
     expect(runtime.state().targetSession?.title).toContain('HoneySwamp')
     expect(runtime.state().targetIsUpcoming).toBe(false)
   })
 
-  it('vise la suivante dans un inter-créneau', () => {
+  it('aims at the next one in a gap between slots', () => {
     /**
-     * Le cas signalé : 14:50 à Paris, soit 13:50 UTC. « Platform Engineering »
-     * vient de finir, « Blind ops » commence à 14:55. Rien n'est en cours —
-     * et c'est justement le moment où l'opérateur veut démarrer.
+     * The case reported: 14:50 in Paris, that is 13:50 UTC. "Platform Engineering"
+     * has just finished, "Blind ops" starts at 14:55. Nothing is running — and
+     * that is exactly the moment the operator wants to start.
      */
     const runtime = a('2026-10-30T13:50:00Z')
     expect(runtime.state().currentSession).toBeNull()
@@ -300,41 +300,41 @@ describe('conférence pilotable', () => {
     expect(runtime.state().targetIsUpcoming).toBe(true)
   })
 
-  it('vise le talk suivant pendant une pause', () => {
-    // 14:20 UTC = 15:20 à Paris, en pleine « Pause café ».
+  it('aims at the next talk during a break', () => {
+    // 14:20 UTC = 15:20 in Paris, in the middle of "Pause café".
     const runtime = a('2026-10-30T14:20:00Z')
     expect(runtime.state().currentSession?.kind).toBe('break')
-    // Une pause ne se « démarre » pas : ce qu'on pilote, c'est le talk qui suit.
+    // A break is not "started": what one drives is the talk that follows.
     expect(runtime.state().targetSession?.kind).toBe('talk')
     expect(runtime.state().targetSession?.title).toContain('DevEx')
   })
 
-  it("n'a plus de cible après le dernier talk", () => {
+  it("has no target left after the last talk", () => {
     const runtime = a('2026-10-31T12:00:00Z')
     expect(runtime.state().targetSession).toBeNull()
   })
 })
 
 /**
- * Horloge de la salle.
+ * The room's clock.
  *
- * `serverTimeOffsetMs` part dans la charge utile d'affichage : les pages
- * servies l'ajoutent à **leur** `Date.now()` — elles n'ont que l'horloge du
- * navigateur — et la file de remontée date ses événements pareil. L'écart doit
- * donc se compter depuis la même horloge partout, sinon les deux moitiés du
- * client vivent à des dates différentes sans que rien ne le signale.
+ * `serverTimeOffsetMs` goes out in the display payload: the served pages add it
+ * to **their** `Date.now()` — all they have is the browser's clock — and the
+ * uplink queue dates its events the same way. So the offset must be counted from
+ * the same clock everywhere, otherwise the client's two halves live at different
+ * dates with nothing to say so.
  */
-describe('horloge de la salle', () => {
-  /** Sans horloge injectée : comme en salle, où il n'y en a qu'une. */
-  const enSalle = () => {
+describe("the room's clock", () => {
+  /** With no clock injected: as in the room, where there is only one. */
+  const inTheRoom = () => {
     const runtime = new RoomRuntime(store)
     runtime.setRoomId(TRACK_1)
     runtime.setProgram('hash-1', program)
     return runtime
   }
 
-  it('donne la même heure au cœur applicatif et aux pages', () => {
-    const runtime = enSalle()
+  it('gives the same time to the application core and to the pages', () => {
+    const runtime = inTheRoom()
 
     runtime.setServerTime('2026-10-30T10:20:00.000Z')
 
@@ -343,27 +343,27 @@ describe('horloge de la salle', () => {
     expect(new Date(runtime.correctedNow()).toISOString()).toMatch(/^2026-10-30T10:20/)
   })
 
-  it('laisse l\'heure du hub reprendre la main sur une heure simulée locale', () => {
+  it("lets the hub's time take precedence over a locally simulated one", () => {
     /**
-     * Le défaut signalé : une salle lancée en heure simulée, puis raccordée à
-     * un hub lui aussi simulé, cumulait les deux écarts. La régie cherchait ses
-     * conférences des semaines après la fin de l'événement — « aucune
-     * conférence à piloter » — pendant que le flux des autres salles, calculé
+     * The defect reported: a room launched on a simulated clock, then connected
+     * to a hub also simulated, added the two offsets together. The control app
+     * looked for its talks weeks after the event was over — "aucune conférence à
+     * piloter" — while the other rooms' stream, computed
      * dans la page, tombait juste.
      */
-    const runtime = enSalle()
+    const runtime = inTheRoom()
     runtime.setClockOffset(Date.parse('2026-10-30T16:00:00Z') - Date.now(), true)
 
     runtime.setServerTime('2026-10-30T10:20:00.000Z')
 
     expect(new Date(runtime.correctedNow()).toISOString()).toMatch(/^2026-10-30T10:20/)
-    // Et la conférence en cours suit, sans attendre le tic d'horloge suivant.
+    // And the running talk follows, without waiting for the next clock tick.
     expect(runtime.state().currentSession?.title).toContain('HoneySwamp')
   })
 
-  it('recalcule la timeline dès que l\'heure bouge', () => {
-    // Attendre le tic laisserait l'écran désigner le mauvais talk pendant 5 s.
-    const runtime = enSalle()
+  it('recomputes the timeline as soon as the time moves', () => {
+    // Waiting for the tick would leave the screen naming the wrong talk for 5 s.
+    const runtime = inTheRoom()
 
     runtime.setServerTime('2026-10-30T07:00:00.000Z')
     const matin = runtime.state().currentSession?.title
@@ -376,14 +376,14 @@ describe('horloge de la salle', () => {
 })
 
 /**
- * Bandeau des scènes live.
+ * The live scenes' banner.
  *
- * Il se superpose à la vidéo au lieu de prendre l'écran : c'est toute la
- * différence avec un message diffusé au public, et la raison d'être d'une
- * surface séparée.
+ * It is composited over the video instead of taking the screen: that is the whole
+ * difference with a message broadcast to the audience, and the reason a separate
+ * surface exists.
  */
-describe('bandeau live', () => {
-  it('affiche un bandeau sans rien interrompre', async () => {
+describe('live banner', () => {
+  it('displays a banner without interrupting anything', async () => {
     const runtime = makeRuntime()
     await runtime.applyCommand(command({ type: 'display.set', mode: 'programme' }))
 
@@ -392,12 +392,12 @@ describe('bandeau live', () => {
     )
 
     expect(runtime.state().liveMessage).toMatchObject({ text: 'Reprise dans 5 min', level: 'info' })
-    // Ni l'écran de salle ni la scène ne bougent : le talk continue dessous.
+    // Neither the room screen nor the scene moves: the talk goes on underneath.
     expect(runtime.state().mode).toBe('programme')
     expect(runtime.state().message).toBeNull()
   })
 
-  it('se retire sur ordre de la console', async () => {
+  it('withdraws on the console\'s order', async () => {
     const runtime = makeRuntime()
     await runtime.applyCommand(
       command({ type: 'overlay.set', message: { text: 'Micro en panne', level: 'warning' } }),
@@ -408,7 +408,7 @@ describe('bandeau live', () => {
     expect(runtime.state().liveMessage).toBeNull()
   })
 
-  it('expire tout seul quand il a une durée', async () => {
+  it('expires on its own when it has a duration', async () => {
     const runtime = makeRuntime()
     await runtime.applyCommand(
       command({ type: 'overlay.set', message: { text: 'Bientôt', level: 'info' } }, 60),
@@ -418,23 +418,22 @@ describe('bandeau live', () => {
     clockMs += 61_000
     runtime.expireMessage()
 
-    // Il ne ramène rien en se retirant : il ne s'était substitué à rien.
+    // It brings nothing back as it withdraws: it had replaced nothing.
     expect(runtime.state().liveMessage).toBeNull()
     expect(runtime.state().mode).toBe('loop')
   })
 })
 
 /**
- * Question du public, canal distinct du bandeau.
+ * Audience question, a channel distinct from the banner.
  *
- * Les deux ont longtemps partagé `liveMessage`. Conséquence : un « on reprend
- * dans 5 minutes » envoyé du hub s'affichait à la place de la question, et
- * aucune surface ne pouvait montrer l'un sans risquer l'autre. Or ils ne vont
- * pas au même endroit — la question a sa place dans la VOD, le message
- * d'exploitation non.
+ * The two shared `liveMessage` for a long time. As a result, an "on reprend dans
+ * 5 minutes" sent from the hub showed in place of the question, and no surface
+ * could show one without risking the other. Yet they do not go to the same place
+ * — the question belongs in the VOD, the operational message does not.
  */
-describe('question à l\'antenne', () => {
-  it('vit à côté du bandeau, sans le toucher', async () => {
+describe('question on air', () => {
+  it('lives beside the banner, without touching it', async () => {
     const runtime = makeRuntime()
     runtime.setQuestion('Et les faux positifs ?', 'Camille', runtime.state().targetSession?.id ?? null)
 
@@ -442,12 +441,12 @@ describe('question à l\'antenne', () => {
       command({ type: 'overlay.set', message: { text: 'Reprise dans 5 min', level: 'info' } }),
     )
 
-    // Le bandeau de la console n'écrase pas la question, et réciproquement.
+    // The console's banner does not overwrite the question, nor the other way round.
     expect(runtime.state().question).toMatchObject({ text: 'Et les faux positifs ?', author: 'Camille' })
     expect(runtime.state().liveMessage).toMatchObject({ text: 'Reprise dans 5 min' })
   })
 
-  it('n\'est jamais posée par une commande de bandeau', async () => {
+  it('is never set by a banner command', async () => {
     const runtime = makeRuntime()
 
     await runtime.applyCommand(
@@ -457,9 +456,9 @@ describe('question à l\'antenne', () => {
     expect(runtime.state().question).toBeNull()
   })
 
-  it('tombe au changement de conférence', () => {
-    // Sans ça, elle reste incrustée dans l'habillage de captation pendant que
-    // le speaker suivant s'installe — gravée dans sa VOD, adressée à un autre.
+  it('drops when the talk changes', () => {
+    // Without this it stays burned into the capture overlay while the next
+    // speaker settles in — engraved in their VOD, addressed to somebody else.
     const runtime = makeRuntime()
     const talk = runtime.state().targetSession!
     runtime.setQuestion('Et les faux positifs ?', null, talk.id)
@@ -471,7 +470,7 @@ describe('question à l\'antenne', () => {
     expect(runtime.state().question).toBeNull()
   })
 
-  it('reste tant que la conférence pilotée ne change pas', () => {
+  it('stays as long as the driven talk does not change', () => {
     const runtime = makeRuntime()
     const talk = runtime.state().targetSession!
     runtime.setQuestion('Et les faux positifs ?', null, talk.id)
@@ -482,7 +481,7 @@ describe('question à l\'antenne', () => {
     expect(runtime.state().question).not.toBeNull()
   })
 
-  it('se retire depuis la régie', () => {
+  it('is withdrawn from the control app', () => {
     const runtime = makeRuntime()
     runtime.setQuestion('Et les faux positifs ?', null, null)
 
@@ -493,47 +492,46 @@ describe('question à l\'antenne', () => {
 })
 
 /**
- * La conférence pilotée saute ce qui ne se tiendra plus.
+ * The driven talk skips what will no longer take place.
  *
- * La régie allowed « Commencer » — puis « Terminer » — sur une conférence
- * dont le créneau n'a pas encore commencé. La cible restait ensuite collée
- * dessus jusqu'à l'heure prévue : une heure pendant laquelle l'opérateur ne
- * pouvait pas piloter la conférence suivante, et pendant laquelle le grand
- * compte à rebours décomptait jusqu'au début d'un talk déjà clos.
+ * The control app allows "Commencer" — then "Terminer" — on a talk whose slot has
+ * not started yet. The target then stayed stuck on it until the scheduled hour: an
+ * hour during which the operator could not drive the next talk, and during which
+ * the large countdown counted down to the start of a talk already closed.
  */
-describe('cible des commandes et cycle de vie', () => {
+describe('command target and lifecycle', () => {
   /**
-   * 08:10 UTC — 09:10 à Paris : la keynote d'ouverture court, et c'est un
-   * créneau sans intervenant, donc une pause. Le talk suivant est à 08:50 UTC.
+   * 08:10 UTC — 09:10 in Paris: the opening keynote is running, and it is a slot
+   * with no speaker, therefore a break. The next talk is at 08:50 UTC.
    */
-  const AVANT = Date.parse('2026-10-30T08:10:00.000Z')
+  const BEFORE = Date.parse('2026-10-30T08:10:00.000Z')
 
-  it('vise la prochaine conférence quand rien ne se joue', () => {
-    clockMs = AVANT
+  it('aims at the next talk when nothing is playing', () => {
+    clockMs = BEFORE
     const runtime = makeRuntime()
 
     expect(runtime.state().targetSession?.title).toBe('IA for OPS on Scaleway')
     expect(runtime.state().targetIsUpcoming).toBe(true)
   })
 
-  it('passe à la suivante dès qu’on termine celle qui n’a pas commencé', () => {
-    clockMs = AVANT
+  it('moves to the next as soon as the one not started is ended', () => {
+    clockMs = BEFORE
     const runtime = makeRuntime()
     const terminee = runtime.state().targetSession!
 
     runtime.setSessionStatus(terminee.id, 'ended')
 
-    // Sans attendre le tic d'horloge : le geste vient d'être posé, et c'est
-    // maintenant qu'on veut pouvoir lancer la conférence d'après.
+    // Without waiting for the clock tick: the gesture has just been made, and now
+    // is when one wants to be able to start the talk after it.
     const cible = runtime.state().targetSession
     expect(cible?.id).not.toBe(terminee.id)
     expect(cible?.kind).toBe('talk')
     expect(cible!.startsAtMs).toBeGreaterThan(terminee.startsAtMs)
   })
 
-  it('reste sur une conférence terminée pendant son propre créneau', () => {
-    // Terminer en avance pendant le créneau laisse la conférence pilotée : le
-    // geste se répare depuis la carte, « Remettre à venir » à portée.
+  it('stays on an ended talk during its own slot', () => {
+    // Ending early during the slot leaves the talk driven: the gesture can be
+    // repaired from the card, "Remettre à venir" within reach.
     clockMs = Date.parse('2026-10-30T10:20:00.000Z')
     const runtime = makeRuntime()
     const courante = runtime.state().targetSession!
@@ -544,31 +542,31 @@ describe('cible des commandes et cycle de vie', () => {
   })
 
   /**
-   * Le cas signalé en régie : conférence lancée à 08:59, horloge avancée à
-   * 09:44 puis 09:45. À la seconde où le créneau se fermait, la régie basculait
-   * sur le compte à rebours du talk suivant et « Terminer » disparaissait —
-   * alors que le speaker parlait encore. Le dépassement est précisément le
-   * moment où ce bouton est le seul qui compte.
+   * The case reported from the control room: talk started at 08:59, clock moved on
+   * to 09:44 then 09:45. The second the slot closed, the control app switched to
+   * the next talk's countdown and "Terminer" disappeared — while the speaker was
+   * still talking. The overrun is precisely the moment when that button is the only
+   * one that matters.
    */
-  it('reste sur la conférence en cours quand son créneau est dépassé', () => {
-    clockMs = AVANT
+  it('stays on the running talk when its slot is overrun', () => {
+    clockMs = BEFORE
     const runtime = makeRuntime()
     const lancee = runtime.state().targetSession!
     runtime.setSessionStatus(lancee.id, 'running')
 
-    // Une seconde après la fin prévue du créneau : le talk est en dépassement.
+    // One second after the slot's scheduled end: the talk is overrunning.
     clockMs = lancee.endsAtMs! + 1_000
     runtime.refreshSessions()
 
     expect(runtime.state().currentSession?.id).not.toBe(lancee.id)
     expect(runtime.state().targetSession?.id).toBe(lancee.id)
-    // Ni « à venir » — elle est à l'antenne — ni impilotable.
+    // Neither "à venir" — it is on air — nor undrivable.
     expect(runtime.state().targetIsUpcoming).toBe(false)
     expect(runtime.currentSessionStatus()).toBe('running')
   })
 
-  it("rend la main à la suivante une fois le dépassement terminé", () => {
-    clockMs = AVANT
+  it("hands over to the next one once the overrun has ended", () => {
+    clockMs = BEFORE
     const runtime = makeRuntime()
     const lancee = runtime.state().targetSession!
     runtime.setSessionStatus(lancee.id, 'running')
@@ -583,16 +581,16 @@ describe('cible des commandes et cycle de vie', () => {
   })
 
   /**
-   * Un talk oublié ouvert le matin ne doit pas capturer la régie de la journée.
-   * Le créneau courant prime : c'est ce que la salle est en train de vivre.
+   * A talk left open in the morning must not capture the control app for the day.
+   * The current slot wins: it is what the room is actually living through.
    */
-  it('préfère le créneau courant à une conférence restée ouverte', () => {
-    clockMs = AVANT
+  it('prefers the current slot to a talk left open', () => {
+    clockMs = BEFORE
     const runtime = makeRuntime()
     const oubliee = runtime.state().targetSession!
     runtime.setSessionStatus(oubliee.id, 'running')
 
-    // 11:20 à Paris : « HoneySwamp » a son propre créneau.
+    // 11:20 in Paris: "HoneySwamp" has its own slot.
     clockMs = Date.parse('2026-10-30T10:20:00.000Z')
     runtime.refreshSessions()
 
@@ -600,8 +598,8 @@ describe('cible des commandes et cycle de vie', () => {
     expect(runtime.state().targetIsUpcoming).toBe(false)
   })
 
-  it('reprend la conférence quand la décision est annulée', () => {
-    clockMs = AVANT
+  it('takes the talk back up when the decision is cancelled', () => {
+    clockMs = BEFORE
     const runtime = makeRuntime()
     const terminee = runtime.state().targetSession!
 
@@ -613,15 +611,15 @@ describe('cible des commandes et cycle de vie', () => {
 })
 
 /**
- * Les gestes venus d'une régie mobile.
+ * The gestures coming from a mobile control app.
  *
- * Ils empruntent le flux descendant comme le reste, donc les deux filtres qui le
- * gouvernent : l'expiration d'abord, le rejeu ensuite. Ce qui compte ici est
- * qu'ils s'y plient — un « enregistre » rattrapé une demi-heure plus tard, ou
- * appliqué deux fois à la reconnexion, coûterait une prise.
+ * They take the downstream flow like everything else, so the two filters that
+ * govern it: expiry first, replay second. What matters here is that they abide by
+ * it — a "record" caught up on half an hour later, or applied twice on
+ * reconnection, would cost a take.
  */
-describe('commandes de régie mobile', () => {
-  it('lance et arrête la captation, en nommant qui l’a demandé', async () => {
+describe('mobile control app commands', () => {
+  it('starts and stops the take, naming who asked for it', async () => {
     const captations: boolean[] = []
     const runtime = makeRuntime({ setRecording: (on: boolean) => captations.push(on) })
 
@@ -634,18 +632,18 @@ describe('commandes de régie mobile', () => {
 
     expect(captations).toEqual([true, false])
     /*
-     * Signalé en régie, et pas seulement au journal.
+     * Reported in the control app, and not only in the log.
      *
-     * Un enregistrement qui démarre sans que personne n'ait touché au clavier de
-     * la salle se lit comme une panne d'OBS. Nommer qui l'a demandé évite qu'on
-     * aille chercher le défaut là où il n'y en a pas.
+     * A recording that starts with nobody having touched the room's keyboard reads
+     * as an OBS failure. Naming who asked for it stops people looking for the fault
+     * where there is none.
      */
-    const dernier = runtime.state().notifications.at(-1)
-    expect(dernier?.text).toContain('regie@cloudnord.fr')
-    expect(dernier?.text).toContain('Enregistrement arrêté')
+    const last = runtime.state().notifications.at(-1)
+    expect(last?.text).toContain('regie@cloudnord.fr')
+    expect(last?.text).toContain('Enregistrement arrêté')
   })
 
-  it('bascule la diffusion de la même façon', async () => {
+  it('toggles the stream the same way', async () => {
     const diffusions: boolean[] = []
     const runtime = makeRuntime({ setStreaming: (on: boolean) => diffusions.push(on) })
 
@@ -655,12 +653,12 @@ describe('commandes de régie mobile', () => {
     expect(diffusions).toEqual([true])
   })
 
-  it('écarte une captation rattrapée trop tard, mais la marque quand même', async () => {
+  it('discards a take caught up on too late, but marks it all the same', async () => {
     const captations: boolean[] = []
     const runtime = makeRuntime({ setRecording: (on: boolean) => captations.push(on) })
 
-    // Émise il y a plus longtemps que sa durée de validité : une salle coupée
-    // dix minutes ne doit pas se mettre à enregistrer toute seule au retour.
+    // Emitted longer ago than its validity: a room cut off for ten minutes must
+    // not start recording by itself when it comes back.
     clockMs = Date.parse(ISSUED_AT) + 91_000
     const outcome = await runtime.applyCommand(
       command({ type: 'recording.set', on: true, requestedBy: 'regie@cloudnord.fr' }, 90),
@@ -670,27 +668,27 @@ describe('commandes de régie mobile', () => {
     expect(captations).toEqual([])
   })
 
-  it('ne rejoue pas une commande déjà appliquée', async () => {
+  it('does not replay an already applied command', async () => {
     const captations: boolean[] = []
     const runtime = makeRuntime({ setRecording: (on: boolean) => captations.push(on) })
     const rejouee = command({ type: 'recording.set', on: true, requestedBy: null }, 90)
 
     await runtime.applyCommand(rejouee)
-    // Le rattrapage d'une reconnexion peut relivrer ce qui est déjà appliqué.
+    // A reconnection's catch-up can redeliver what is already applied.
     const seconde = await runtime.applyCommand(rejouee)
 
     expect(seconde).toEqual({ applied: false, reason: 'already-applied' })
     expect(captations).toEqual([true])
   })
 
-  it('affiche qui pilote la salle à distance, sans rien verrouiller', async () => {
+  it('shows who is driving the room remotely, without locking anything', async () => {
     const runtime = makeRuntime()
 
     await runtime.applyCommand(command({ type: 'regie.hold', holder: 'regie@cloudnord.fr' }))
     expect(runtime.state().remoteHolder).toBe('regie@cloudnord.fr')
 
-    // Rendu : le badge s'éteint. C'est ce que publie le balayage du hub quand
-    // un verrou expire, faute de quoi l'écran garderait un porteur parti.
+    // Released: the badge goes out. That is what the hub's sweep publishes when a
+    // lock expires, failing which the screen would keep a holder who has left.
     await runtime.applyCommand(command({ type: 'regie.hold', holder: null }))
     expect(runtime.state().remoteHolder).toBeNull()
   })

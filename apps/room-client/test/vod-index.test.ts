@@ -19,12 +19,12 @@ import {
 import type { Sidecar } from '../src/core/recording.js'
 
 /**
- * Contrôle des rushes.
+ * Checking the footage.
  *
- * Ce que ces tests protègent tient en une phrase : le soir de l'événement, la
- * salle est démontée et personne ne peut plus rien refaire. Un fichier vide ou
- * tronqué doit se voir pendant la journée, et se voir *comme tel* — un badge
- * vert sur un rush inexploitable est pire que pas de contrôle du tout.
+ * What these tests protect fits in one sentence: on the event's evening the room
+ * is dismantled and nobody can redo anything. An empty or truncated file must
+ * show up during the day, and show up *as such* — a green badge on unusable
+ * footage is worse than no check at all.
  */
 let racine: string
 
@@ -38,31 +38,31 @@ const SIDECAR: Sidecar = {
   startedAt: '2026-10-30T10:00:00.000Z',
   endedAt: '2026-10-30T10:45:00.000Z',
   durationMs: 45 * 60_000,
-  markers: [{ label: 'démo', offsetMs: 60_000, at: '2026-10-30T10:01:00.000Z' }],
+  markers: [{ label: 'demo', offsetMs: 60_000, at: '2026-10-30T10:01:00.000Z' }],
   videoFile: null,
 }
 
-/** Une heure plus tard : rien de ce qu'on écrit ici n'est « encore en écriture ». */
+/** One hour later: nothing written here is "still being written". */
 const PLUS_TARD = () => Date.now() + 3_600_000
 
 /**
- * Les deux horloges, avancées ensemble.
+ * The two clocks, moved forward together.
  *
- * `now` date les verdicts, `realNow` juge des `mtime` — et c'est la
- * seconde qui décide de la fenêtre d'écriture. Les fichiers de ces tests sont
- * écrits à l'instant : sans l'avancer elle aussi, tous seraient « encore en
- * écriture » et aucun contrôle ne dirait autre chose.
+ * `now` dates the verdicts, `realNow` judges the `mtime`s — and it is the second
+ * that decides the writing window. These tests' files are written this instant:
+ * without moving it forward too, all of them would be "still being written" and
+ * no check would say anything else.
  */
 function deps(options: Partial<VodIndexDeps> = {}): VodIndexDeps {
   return { root: racine, fs: nodeVodFs(), now: PLUS_TARD, realNow: PLUS_TARD, ...options }
 }
 
 /**
- * Un rush de la taille annoncée, sans écrire un octet utile.
+ * Footage of the announced size, without writing one useful byte.
  *
- * Le débit moyen fait partie du verdict — un fichier de trois kilo-octets pour
- * quarante-cinq minutes est inexploitable, et le contrôle doit le dire. Il faut
- * donc une taille crédible : `truncate` la donne sans remplir le disque.
+ * The average bitrate is part of the verdict — a three-kilobyte file for
+ * forty-five minutes is unusable, and the check must say so. So a credible size
+ * is needed: `truncate` gives one without filling the disk.
  */
 function video(nom: string, octets = 2_700_000_000): string {
   const chemin = join(racine, nom)
@@ -95,8 +95,8 @@ afterEach(() => {
   rmSync(racine, { recursive: true, force: true })
 })
 
-describe('liste des enregistrements', () => {
-  it('apparie chaque vidéo à son sidecar, du plus récent au plus ancien', async () => {
+describe('listing the recordings', () => {
+  it('pairs each video with its sidecar, newest first', async () => {
     video('2026-10-30_track1_1000_honeyswamp.mkv')
     sidecar('2026-10-30_track1_1000_honeyswamp.json')
     video('2026-10-30_track1_1100_blind-ops.mkv')
@@ -109,11 +109,11 @@ describe('liste des enregistrements', () => {
       '2026-10-30_track1_1000_honeyswamp.mkv',
     ])
     expect(entries[1]!.sidecar?.title).toBe('HoneySwamp')
-    // Le rush sans sidecar reste listé : c'est exactement celui qu'on cherche.
+    // Footage with no sidecar stays listed: it is exactly the one we are after.
     expect(entries[0]!.sidecar).toBeNull()
   })
 
-  it('ignore ce qui n’est pas une vidéo', async () => {
+  it('ignores anything that is not a video', async () => {
     video('prise.mkv')
     writeFileSync(join(racine, 'notes.txt'), 'rien')
     writeFileSync(join(racine, 'prise.json'), '{}')
@@ -123,7 +123,7 @@ describe('liste des enregistrements', () => {
     expect(entries.map((entree) => entree.file)).toEqual(['prise.mkv'])
   })
 
-  it('descend dans un dossier daté', async () => {
+  it('descends into a dated folder', async () => {
     mkdirSync(join(racine, '2026-10-30'))
     writeFileSync(join(racine, '2026-10-30', 'prise.mp4'), 'x')
 
@@ -132,7 +132,7 @@ describe('liste des enregistrements', () => {
     expect(entries.map((entree) => entree.file)).toEqual(['2026-10-30/prise.mp4'])
   })
 
-  it('signale un fichier encore en écriture plutôt que de le juger', async () => {
+  it('reports a file still being written rather than judging it', async () => {
     video('prise.mkv')
 
     const entree = (await listRecordings(deps({ realNow: () => Date.now() })))[0]!
@@ -140,17 +140,16 @@ describe('liste des enregistrements', () => {
     expect(entree.beingWritten).toBe(true)
   })
 
-  it('juge la fenêtre d’écriture sur l’heure du poste, pas sur celle du hub', async () => {
+  it('judges the writing window on the machine\'s time, not the hub\'s', async () => {
     /*
-     * Le défaut qui faisait passer une prise en cours pour un rush terminé.
+     * The defect that made a running take look like finished footage.
      *
-     * Les `mtime` viennent du système de fichiers, donc de l'heure de la
-     * machine ; l'horloge de la salle, elle, est corrigée sur celle du hub. Sans
-     * conséquence le jour J, où l'écart se compte en millisecondes — dévastateur
-     * en développement, où le hub déroule une journée d'octobre depuis un poste
-     * qui est en septembre : l'écart valait des semaines, la fenêtre n'était
-     * jamais atteinte, et la régie proposait d'envoyer un fichier qu'OBS était
-     * en train d'écrire.
+     * The `mtime`s come from the file system, so from the machine's time; the
+     * room's clock, on the other hand, is corrected against the hub's. Of no
+     * consequence on the day, where the gap is measured in milliseconds —
+     * devastating in development, where the hub runs through an October day from a
+     * machine that is in September: the gap was worth weeks, the window was never
+     * reached, and the control app offered to send a file OBS was writing.
      */
     video('prise.mkv')
 
@@ -163,128 +162,128 @@ describe('liste des enregistrements', () => {
     expect(entree.beingWritten).toBe(true)
   })
 
-  it('ne juge pas une prise en cours, et ne l’accuse de rien', async () => {
+  it('does not judge a running take, and accuses it of nothing', async () => {
     /*
-     * Le contrôle continuait, et ce qu'il rendait était vrai mais trompeur : le
-     * sidecar n'est écrit qu'à l'arrêt, donc « sidecar absent » est certain ; le
-     * débit se calcule sur un fichier à moitié écrit. Trois motifs pour une
-     * seule cause, dont le premier — le seul qui explique les deux autres — se
-     * lisait au milieu des autres.
+     * The check went on, and what it returned was true but misleading: the
+     * sidecar is only written on stop, so "sidecar absent" is certain; the bitrate
+     * is computed on a half-written file. Three reasons for a single cause, and
+     * the first — the only one that explains the other two — read as one among
+     * them.
      */
     video('prise.mkv')
     const sonde = vi.fn(async () => null)
 
-    const controle = await inspectRecording(
+    const check = await inspectRecording(
       deps({ realNow: () => Date.now(), probe: sonde }),
       'prise.mkv',
     )
 
-    expect(controle.status).toBe('suspect')
-    expect(controle.reasons).toEqual(['prise en cours : à contrôler une fois l’enregistrement arrêté'])
-    // Ni sonde : ouvrir le conteneur dans lequel OBS écrit coûte des
-    // entrées-sorties sur le disque du master, pour une lecture fausse.
+    expect(check.status).toBe('suspect')
+    expect(check.reasons).toEqual(['prise en cours : à contrôler une fois l’enregistrement arrêté'])
+    // No probe either: opening the container OBS is writing into costs I/O on the
+    // master's disk, for a reading that is wrong.
     expect(sonde).not.toHaveBeenCalled()
-    expect(controle.probe).toBeNull()
+    expect(check.probe).toBeNull()
   })
 
-  it('ne casse pas sur un dossier absent', async () => {
+  it('does not break on a missing folder', async () => {
     expect(await listRecordings(deps({ root: join(racine, 'jamais') }))).toEqual([])
   })
 })
 
-describe('contrôle technique', () => {
-  it('déclare illisible un fichier vide', async () => {
+describe('technical check', () => {
+  it('declares an empty file unreadable', async () => {
     writeFileSync(join(racine, 'prise.mkv'), '')
 
-    const controle = await inspectRecording(deps({ probe: sonde() }), 'prise.mkv')
+    const check = await inspectRecording(deps({ probe: sonde() }), 'prise.mkv')
 
-    expect(controle.status).toBe('illisible')
-    expect(controle.reasons[0]).toContain('vide')
+    expect(check.status).toBe('illisible')
+    expect(check.reasons[0]).toContain('vide')
   })
 
-  it('déclare exploitable une prise complète', async () => {
+  it('declares a complete take usable', async () => {
     video('prise.mkv')
     sidecar('prise.json')
 
-    const controle = await inspectRecording(deps({ probe: sonde() }), 'prise.mkv')
+    const check = await inspectRecording(deps({ probe: sonde() }), 'prise.mkv')
 
-    expect(controle.status).toBe('ok')
-    expect(controle.probe?.video?.height).toBe(1080)
+    expect(check.status).toBe('ok')
+    expect(check.probe?.video?.height).toBe(1080)
   })
 
-  it('déclare illisible une prise sans piste audio', async () => {
+  it('declares a take with no audio track unreadable', async () => {
     video('prise.mkv')
     sidecar('prise.json')
 
-    const controle = await inspectRecording(
+    const check = await inspectRecording(
       deps({ probe: sonde({ audio: null }) }),
       'prise.mkv',
     )
 
-    expect(controle.status).toBe('illisible')
-    expect(controle.reasons.join(' ')).toContain('muette')
+    expect(check.status).toBe('illisible')
+    expect(check.reasons.join(' ')).toContain('muette')
   })
 
-  it('repère l’écart entre le chronomètre et le fichier', async () => {
-    // Le symptôme d'un OBS tué en cours de route : quarante-cinq minutes
-    // chronométrées en régie, douze minutes sur le disque.
+  it('spots the gap between the stopwatch and the file', async () => {
+    // The symptom of an OBS killed along the way: forty-five minutes timed in the
+    // control app, twelve minutes on disk.
     video('prise.mkv')
     sidecar('prise.json')
 
-    const controle = await inspectRecording(
+    const check = await inspectRecording(
       deps({ probe: sonde({ durationMs: 12 * 60_000 }) }),
       'prise.mkv',
     )
 
-    expect(controle.status).toBe('suspect')
-    expect(controle.reasons.join(' ')).toContain('fin manquante')
+    expect(check.status).toBe('suspect')
+    expect(check.reasons.join(' ')).toContain('fin manquante')
   })
 
-  it('rend le sidecar manquant visible sans crier à l’illisible', async () => {
+  it('makes a missing sidecar visible without crying unreadable', async () => {
     video('prise.mkv')
 
-    const controle = await inspectRecording(deps({ probe: sonde() }), 'prise.mkv')
+    const check = await inspectRecording(deps({ probe: sonde() }), 'prise.mkv')
 
-    expect(controle.status).toBe('suspect')
-    expect(controle.reasons.join(' ')).toContain('sidecar absent')
+    expect(check.status).toBe('suspect')
+    expect(check.reasons.join(' ')).toContain('sidecar absent')
   })
 
-  it('dit que le contrôle est partiel quand ffprobe manque', async () => {
+  it('says the check is partial when ffprobe is missing', async () => {
     video('prise.mkv')
     sidecar('prise.json')
 
-    const controle = await inspectRecording(deps({ probe: async () => null }), 'prise.mkv')
+    const check = await inspectRecording(deps({ probe: async () => null }), 'prise.mkv')
 
-    // Sans outil, une prise plausible reste « ok » — mais la page doit pouvoir
-    // dire sur quoi ce « ok » repose vraiment.
-    expect(controle.status).toBe('ok')
-    expect(controle.reasons.join(' ')).toContain('sonde ffprobe indisponible')
-    expect(controle.probe).toBeNull()
+    // With no tool, a plausible take stays "ok" — but the page must be able to
+    // say what that "ok" really rests on.
+    expect(check.status).toBe('ok')
+    expect(check.reasons.join(' ')).toContain('sonde ffprobe indisponible')
+    expect(check.probe).toBeNull()
   })
 
-  it('ne raconte pas piste par piste un fichier que ffprobe refuse', async () => {
-    // Le cas du fichier qui n'est pas une vidéo du tout. « Aucune piste vidéo »
-    // laisse croire à un conteneur valide amputé de son image, et envoie
-    // chercher au mauvais endroit : les deux ne se réparent pas pareil.
+  it('does not go track by track on a file ffprobe refuses', async () => {
+    // The case of a file that is not a video at all. "Aucune piste vidéo" suggests
+    // a valid container stripped of its picture, and sends people looking in the
+    // wrong place: the two are not repaired the same way.
     video('prise.mkv', 5_000)
     sidecar('prise.json')
 
-    const controle = await inspectRecording(
+    const check = await inspectRecording(
       deps({ probe: async () => ({ ouvert: false, durationMs: null, video: null, audio: null, bitrateKbps: null }) }),
       'prise.mkv',
     )
 
-    expect(controle.status).toBe('illisible')
-    expect(controle.reasons).toEqual(['conteneur illisible : ffprobe ne reconnaît pas ce fichier'])
+    expect(check.status).toBe('illisible')
+    expect(check.reasons).toEqual(['conteneur illisible : ffprobe ne reconnaît pas ce fichier'])
   })
 
-  it('refuse de sortir du dossier des enregistrements', async () => {
+  it('refuses to leave the recordings folder', async () => {
     await expect(inspectRecording(deps(), '../../etc/passwd')).rejects.toThrow(/hors du dossier/)
   })
 })
 
-describe('verdict de l’opérateur', () => {
-  it('survit à la fermeture de la modale et prime sur la sonde', async () => {
+describe('the operator\'s verdict', () => {
+  it('survives the modal being closed and outranks the probe', async () => {
     video('prise.mkv')
     sidecar('prise.json')
     await inspectRecording(deps({ probe: sonde() }), 'prise.mkv')
@@ -294,11 +293,11 @@ describe('verdict de l’opérateur', () => {
 
     expect(entree.check?.status).toBe('illisible')
     expect(entree.check?.by).toBe('operateur')
-    // Ce que la sonde avait lu reste sous les yeux : le verdict le complète.
+    // What the probe had read stays in view: the verdict completes it.
     expect(entree.check?.probe?.video?.codec).toBe('h264')
   })
 
-  it('s’efface, pour reprendre une fausse manœuvre', async () => {
+  it('can be cleared, to take back a slip', async () => {
     video('prise.mkv')
     await setVerdict(deps(), 'prise.mkv', 'ok')
 
@@ -306,7 +305,7 @@ describe('verdict de l’opérateur', () => {
     expect((await listRecordings(deps()))[0]!.check).toBeNull()
   })
 
-  it('ne perd pas les autres verdicts en enregistrant le sien', async () => {
+  it('does not lose the other verdicts while saving its own', async () => {
     video('a.mkv')
     video('b.mkv')
     await setVerdict(deps(), 'a.mkv', 'ok')
@@ -320,39 +319,39 @@ describe('verdict de l’opérateur', () => {
 })
 
 /**
- * Un verdict décrit **une prise**, pas un nom de fichier.
+ * A verdict describes **a take**, not a file name.
  *
- * Le format demandé à OBS est déterminant — date, salle, heure, titre — donc
- * rejouer la même conférence réécrit au même endroit. Le verdict de la
- * première prise s'affichait alors sur la seconde, avec la lecture ffprobe de
- * la première : « sidecar absent » sur un rush qui avait le sien.
+ * The format asked of OBS is deterministic — date, room, time, title — so playing
+ * the same talk again writes to the same place. The first take's verdict then
+ * showed on the second, with the first's ffprobe reading: "sidecar absent" on
+ * footage that had its own.
  */
-describe('péremption d’un verdict', () => {
-  it('ne survit pas à la prise qu’il jugeait', async () => {
+describe('a verdict going stale', () => {
+  it('does not outlive the take it judged', async () => {
     video('prise.mkv')
     await inspectRecording(deps({ probe: sonde() }), 'prise.mkv')
     expect((await listRecordings(deps()))[0]!.check?.status).toBe('suspect')
 
-    // Deuxième prise du même talk : OBS réécrit sous le même nom.
+    // Second take of the same talk: OBS writes again under the same name.
     video('prise.mkv', 1_900_000_000)
     sidecar('prise.json')
 
     expect((await listRecordings(deps()))[0]!.check).toBeNull()
   })
 
-  it('ne survit pas non plus quand c’est l’opérateur qui l’a posé', async () => {
+  it('does not outlive it either when the operator laid it down', async () => {
     video('prise.mkv')
     await setVerdict(deps(), 'prise.mkv', 'ok')
     expect((await listRecordings(deps()))[0]!.check?.status).toBe('ok')
 
     video('prise.mkv', 1_900_000_000)
 
-    // « Relu en régie » ne doit pas se transmettre à la prise suivante : c'est
-    // le seul verdict que personne ne songerait à remettre en cause.
+    // "Relu en régie" must not carry over to the next take: it is the one verdict
+    // nobody would think to question.
     expect((await listRecordings(deps()))[0]!.check).toBeNull()
   })
 
-  it('tient tant que le fichier ne bouge pas', async () => {
+  it('holds as long as the file does not move', async () => {
     video('prise.mkv')
     sidecar('prise.json')
     await inspectRecording(deps({ probe: sonde() }), 'prise.mkv')
@@ -360,10 +359,10 @@ describe('péremption d’un verdict', () => {
     expect((await listRecordings(deps()))[0]!.check?.status).toBe('ok')
   })
 
-  it('écarte un verdict écrit avant que l’empreinte existe', async () => {
+  it('discards a verdict written before the fingerprint existed', async () => {
     video('prise.mkv')
-    // Le format d'avant : aucun moyen de savoir sur quoi il portait, donc la
-    // ligne repasse « non vérifié » plutôt que d'afficher un jugement aveugle.
+    // The previous format: no way to know what it was about, so the row goes back
+    // to "non vérifié" rather than show a blind judgement.
     writeFileSync(
       join(racine, '.controles-vod.json'),
       JSON.stringify({
@@ -378,8 +377,8 @@ describe('péremption d’un verdict', () => {
   })
 })
 
-describe('lecture de ffprobe', () => {
-  it('retient les pistes, la durée et le débit', () => {
+describe('reading ffprobe', () => {
+  it('keeps the tracks, the duration and the bitrate', () => {
     const sondage = parseFfprobeOutput(
       JSON.stringify({
         streams: [
@@ -396,9 +395,9 @@ describe('lecture de ffprobe', () => {
     expect(sondage.bitrateKbps).toBe(8000)
   })
 
-  it('se rabat sur la durée de la piste vidéo', () => {
-    // Les Matroska écrits en flux — ceux d'OBS — n'annoncent pas de durée de
-    // conteneur : la lire là où elle est évite de les déclarer tous tronqués.
+  it('falls back to the video track\'s duration', () => {
+    // Matroska files written as a stream — OBS's — announce no container
+    // duration: reading it where it is avoids declaring them all truncated.
     const sondage = parseFfprobeOutput(
       JSON.stringify({
         streams: [{ codec_type: 'video', codec_name: 'h264', width: 1280, height: 720, duration: '600' }],
@@ -410,16 +409,16 @@ describe('lecture de ffprobe', () => {
     expect(sondage.audio).toBeNull()
   })
 
-  it('rend null quand l’outil n’est pas installé', async () => {
+  it('returns null when the tool is not installed', async () => {
     expect(await ffprobeProbe('ffprobe-qui-n-existe-pas')(join(racine, 'prise.mkv'))).toBeNull()
   })
 
-  it('n’accuse pas le fichier quand c’est la sonde qui n’a pas répondu', async () => {
+  it('does not accuse the file when it is the probe that did not answer', async () => {
     /**
-     * La confusion à éviter : un poste sans ffprobe — ou avec un ffprobe qu'on
-     * n'a pas le droit d'exécuter — déclarerait « conteneur illisible » sur des
-     * rushes parfaitement sains. C'est l'erreur de diagnostic que ce contrôle
-     * est justement là pour éviter, et elle coûterait une journée de doute.
+     * The confusion to avoid: a machine with no ffprobe — or with an ffprobe one
+     * is not allowed to run — would declare "conteneur illisible" on perfectly
+     * sound footage. That is the diagnostic error this check exists to avoid, and
+     * it would cost a day of doubt.
      */
     const faux = join(racine, 'ffprobe-non-executable')
     writeFileSync(faux, '#!/bin/sh\nexit 0\n', { mode: 0o644 })
@@ -428,20 +427,20 @@ describe('lecture de ffprobe', () => {
 
     expect(await ffprobeProbe(faux)(join(racine, 'prise.mkv'))).toBeNull()
 
-    const controle = await inspectRecording(deps({ probe: ffprobeProbe(faux) }), 'prise.mkv')
-    expect(controle.status).toBe('ok')
-    expect(controle.reasons.join(' ')).toContain('sonde ffprobe indisponible')
-    expect(controle.reasons.join(' ')).not.toContain('conteneur illisible')
+    const check = await inspectRecording(deps({ probe: ffprobeProbe(faux) }), 'prise.mkv')
+    expect(check.status).toBe('ok')
+    expect(check.reasons.join(' ')).toContain('sonde ffprobe indisponible')
+    expect(check.reasons.join(' ')).not.toContain('conteneur illisible')
   })
 })
 
 /**
- * Fabrique un vrai rush de trois secondes, image et son.
+ * Makes real three-second footage, picture and sound.
  *
- * Sans fichier réel, il n'y a rien à remballer : le seul test qui prouve qu'un
- * Matroska ressort en MP4 lisible par un navigateur a besoin d'un Matroska.
- * `null` quand la machine n'a pas de quoi le produire — le test s'efface alors,
- * plutôt que de rougir pour une raison qui n'a rien à voir avec le code.
+ * With no real file there is nothing to repackage: the only test that proves a
+ * Matroska comes back out as an MP4 a browser can read needs a Matroska. `null`
+ * when the machine has nothing to produce one with — the test then stands down,
+ * rather than go red for a reason that has nothing to do with the code.
  */
 async function fabriquerRush(nom: string): Promise<string | null> {
   if (!(await toolAvailable('ffmpeg'))) return null
@@ -460,10 +459,10 @@ async function fabriquerRush(nom: string): Promise<string | null> {
 }
 
 /**
- * Referme un flux qu'on n'a pas lu.
+ * Closes a stream we did not read.
  *
- * Sans ça, le fichier s'ouvre après le ménage de `afterEach` et l'`ENOENT`
- * remonte hors de tout test, où plus personne ne l'attend.
+ * Without this the file opens after `afterEach`'s cleanup and the `ENOENT`
+ * surfaces outside any test, where nobody is expecting it any more.
  */
 function fermer(flux: { on: (e: string, h: () => void) => unknown; destroy: () => void }): void {
   flux.on('error', () => {})
@@ -476,8 +475,8 @@ async function avaler(flux: NodeJS.ReadableStream): Promise<Buffer> {
   return Buffer.concat(morceaux)
 }
 
-describe('lecture d’un rush', () => {
-  it('sert le fichier entier quand rien n’est demandé', async () => {
+describe('reading footage', () => {
+  it('serves the whole file when nothing is asked for', async () => {
     video('prise.mkv', 5_000)
 
     const flux = (await openFile(deps(), 'prise.mkv'))!
@@ -488,9 +487,9 @@ describe('lecture d’un rush', () => {
     fermer(flux.stream)
   })
 
-  it('sert la tranche demandée', async () => {
-    // Ce qui rend un fichier de trois gigaoctets navigable : sans les tranches,
-    // un lecteur télécharge tout avant la première image.
+  it('serves the requested range', async () => {
+    // What makes a three-gigabyte file seekable: with no ranges, a player
+    // downloads everything before the first frame.
     video('prise.mp4', 5_000)
 
     const flux = (await openFile(deps(), 'prise.mp4', 'bytes=1000-1999'))!
@@ -500,7 +499,7 @@ describe('lecture d’un rush', () => {
     expect((await avaler(flux.stream)).length).toBe(1_000)
   })
 
-  it('sert la fin du fichier, où les lecteurs cherchent l’index', async () => {
+  it('serves the end of the file, where players look for the index', async () => {
     video('prise.mkv', 5_000)
 
     const flux = (await openFile(deps(), 'prise.mkv', 'bytes=-500'))!
@@ -509,14 +508,14 @@ describe('lecture d’un rush', () => {
     fermer(flux.stream)
   })
 
-  it('rend null sur un fichier absent, et refuse de sortir du dossier', async () => {
+  it('returns null on a missing file, and refuses to leave the folder', async () => {
     expect(await openFile(deps(), 'jamais.mkv')).toBeNull()
     await expect(openFile(deps(), '../../etc/passwd')).rejects.toThrow(/hors du dossier/)
   })
 })
 
-describe('aperçu', () => {
-  it('dit non plutôt que d’ouvrir un lecteur qui ne démarrera jamais', async () => {
+describe('preview', () => {
+  it('says no rather than open a player that will never start', async () => {
     video('prise.mkv')
 
     expect(
@@ -524,7 +523,7 @@ describe('aperçu', () => {
     ).toBeNull()
   })
 
-  it('remballe un Matroska en MP4 sans toucher au fichier', async () => {
+  it('repackages a Matroska into MP4 without touching the file', async () => {
     const chemin = await fabriquerRush('essai.mkv')
     if (chemin == null) return
 
@@ -535,11 +534,11 @@ describe('aperçu', () => {
     const octets = await avaler(extrait.stream)
     extrait.stop()
 
-    // `ftyp` en tête : c'est un MP4, et c'est tout ce qu'un navigateur demande
-    // pour afficher une image d'un conteneur qu'il ne sait pas ouvrir.
+    // `ftyp` up front: it is an MP4, and that is all a browser asks for to show a
+    // frame from a container it cannot open.
     expect(octets.length).toBeGreaterThan(1_000)
     expect(octets.subarray(0, 12).toString('latin1')).toContain('ftyp')
-    // Le rush d'origine est intact : on n'écrit jamais sur ce qui a été capté.
+    // The original footage is intact: we never write over what was captured.
     expect((await listRecordings(deps()))[0]!.file).toBe('essai.mkv')
   }, 90_000)
 })

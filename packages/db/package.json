@@ -13,7 +13,7 @@
     "generate:client": "drizzle-kit generate --config=drizzle.client.config.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "sceller": "node scripts/sceller-migrations.mjs"
+    "seal": "node scripts/seal-migrations.mjs"
   },
   "dependencies": {
     "@cloudnord/contract": "workspace:*",

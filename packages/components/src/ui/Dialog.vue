@@ -89,13 +89,13 @@ const WIDTHS = {
 
 <style>
 /*
- * Reka verrouille le défilement du `<body>` et compense la barre disparue par
- * un `padding-right`. Sur la console, l'en-tête est en pleine largeur : le
- * compenser le fait sauter d'une quinzaine de pixels à chaque ouverture de
- * modale, ce qui se voit et ne s'explique pas.
+ * Reka locks `<body>` scrolling and compensates for the vanished scrollbar with
+ * a `padding-right`. In the console, the header is full width: compensating
+ * makes it jump some fifteen pixels every time a dialog opens, which is visible
+ * and unexplainable.
  *
- * Écrit ici plutôt qu'en utilitaire parce que la règle vise un attribut posé
- * par la bibliothèque, ce que Tailwind n'exprime pas.
+ * Written here rather than as a utility because the rule targets an attribute set
+ * by the library, which Tailwind cannot express.
  */
 body[data-scroll-locked] {
   padding-right: 0 !important;

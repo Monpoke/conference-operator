@@ -25,18 +25,17 @@ export { default as Toaster } from './common/Toaster.vue'
 export { useToast, NOTICE_MS, type Notice } from './common/toast.js'
 
 /*
- * Primitives, montées sur Reka.
+ * Primitives, built on Reka.
  *
- * Elles ne sont posées qu'au fur et à mesure des vues qui en ont besoin. Copier
- * les six entrées d'un coup ferait entrer une cinquantaine de fichiers à
- * relire sans qu'aucun ne soit exercé — et une primitive qu'aucune vue ne monte
- * n'a jamais rencontré ni le verrou de défilement, ni le focus automatique, ni
- * l'écran tactile de la régie.
+ * They are added only as the views that need them appear. Copying the six entry
+ * points in one go would bring in some fifty files to review without a single one
+ * being exercised — and a primitive no view mounts has never met the scroll lock,
+ * the automatic focus, or the control app's touchscreen.
  */
 /*
- * Composants métier : ce que la console et la régie montrent réellement du même
- * objet. Rien n'y entre avant que les deux en aient besoin — un composant
- * partagé qu'une seule surface emploie n'est qu'un fichier de plus.
+ * Business components: what the console and the control app really show of the
+ * same object. Nothing enters here before both need it — a shared component only
+ * one surface uses is just one more file.
  */
 export { default as StatusDot } from './domain/StatusDot.vue'
 export { DOT_LEVELS, type DotLevel } from './domain/status-levels.js'

@@ -31,7 +31,7 @@ afterAll(() => {
 })
 
 describe('migrations', () => {
-  it('crée toutes les tables du hub', () => {
+  it('creates every hub table', () => {
     const db = freshDb('hub')
     const tables = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE '\\_\\_%' ESCAPE '\\'")
@@ -43,7 +43,7 @@ describe('migrations', () => {
     db.close()
   })
 
-  it('crée toutes les tables du client', () => {
+  it('creates every client table', () => {
     const db = freshDb('client')
     const tables = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE '\\_\\_%' ESCAPE '\\'")
@@ -55,11 +55,11 @@ describe('migrations', () => {
     db.close()
   })
 
-  it('est rejouable : une seconde migration ne casse rien', () => {
+  it('is replayable: a second migration breaks nothing', () => {
     const path = tempFile('replay.db')
     const first = freshDb('hub', path)
     first.close()
-    // Rejouer sur une base déjà migrée doit être un no-op, pas une erreur.
+    // Replaying on an already migrated database must be a no-op, not an error.
     const second = openDatabase({ path })
     expect(() =>
       migrate(drizzle(second), { migrationsFolder: join(migrationsRoot, 'hub') }),
@@ -67,7 +67,7 @@ describe('migrations', () => {
     second.close()
   })
 
-  it('active WAL sur une base fichier', () => {
+  it('enables WAL on a file database', () => {
     const db = openDatabase({ path: tempFile('wal.db') })
     expect(String(db.pragma('journal_mode', { simple: true })).toLowerCase()).toBe('wal')
     expect(db.pragma('foreign_keys', { simple: true })).toBe(1)
@@ -75,8 +75,8 @@ describe('migrations', () => {
   })
 })
 
-describe('idempotence de l\'ingestion (hub)', () => {
-  it('rejette un rejeu du même événement pour la même salle', () => {
+describe('ingestion idempotency (hub)', () => {
+  it('rejects a replay of the same event for the same room', () => {
     const db = freshDb('hub')
     const orm = drizzle(db, { schema: hubSchema })
     orm.insert(room).values({
@@ -98,10 +98,10 @@ describe('idempotence de l\'ingestion (hub)', () => {
     }
 
     orm.insert(ingestEvent).values(event).run()
-    // Rejeu après reconnexion : la contrainte doit tenir, pas dupliquer.
+    // Replay after reconnection: the constraint must hold, not duplicate.
     expect(() => orm.insert(ingestEvent).values(event).run()).toThrow(/UNIQUE|PRIMARY/i)
 
-    // Un rejeu explicitement ignoré est la voie normale côté hub.
+    // An explicitly ignored replay is the normal path on the hub side.
     expect(() =>
       orm.insert(ingestEvent).values(event).onConflictDoNothing().run(),
     ).not.toThrow()
@@ -109,7 +109,7 @@ describe('idempotence de l\'ingestion (hub)', () => {
     db.close()
   })
 
-  it('autorise le même id d\'événement dans deux salles différentes', () => {
+  it('allows the same event id in two different rooms', () => {
     const db = freshDb('hub')
     const orm = drizzle(db, { schema: hubSchema })
     for (const id of ['track-1', 'track-2']) {
@@ -131,7 +131,7 @@ describe('idempotence de l\'ingestion (hub)', () => {
     db.close()
   })
 
-  it('refuse un événement rattaché à une salle inconnue', () => {
+  it('refuses an event attached to an unknown room', () => {
     const db = freshDb('hub')
     const orm = drizzle(db, { schema: hubSchema })
     expect(() =>
@@ -150,7 +150,7 @@ describe('idempotence de l\'ingestion (hub)', () => {
   })
 })
 
-describe('collapse de l\'outbox (client)', () => {
+describe('outbox collapse (client)', () => {
   const entry = (id: string, dedupKey: string | null, seq: number) => ({
     id,
     roomId: 'track-1',
@@ -163,22 +163,22 @@ describe('collapse de l\'outbox (client)', () => {
     dedupKey,
   })
 
-  it('n\'accepte qu\'une entrée en attente par clé de collapse', () => {
+  it('accepts only one pending entry per collapse key', () => {
     const db = freshDb('client')
     const orm = drizzle(db, { schema: clientSchema })
     orm.insert(outbox).values(entry('01AAAAAAAAAAAAAAAAAAAAAAAA', 'heartbeat:track-1', 1)).run()
-    // Une heure hors-ligne ne doit pas accumuler 720 heartbeats.
+    // An hour offline must not pile up 720 heartbeats.
     expect(() =>
       orm.insert(outbox).values(entry('01BBBBBBBBBBBBBBBBBBBBBBBB', 'heartbeat:track-1', 2)).run(),
     ).toThrow(/UNIQUE/i)
     db.close()
   })
 
-  it('laisse passer les événements sans clé de collapse', () => {
+  it('lets events with no collapse key through', () => {
     const db = freshDb('client')
     const orm = drizzle(db, { schema: clientSchema })
-    // SQLite considère les NULL comme distincts : les événements `required`,
-    // qui n'ont pas de dedupKey, s'accumulent normalement.
+    // SQLite treats NULLs as distinct: `required` events, which have no
+    // dedupKey, pile up normally.
     orm.insert(outbox).values(entry('01CCCCCCCCCCCCCCCCCCCCCCCC', null, 1)).run()
     expect(() =>
       orm.insert(outbox).values(entry('01DDDDDDDDDDDDDDDDDDDDDDDD', null, 2)).run(),

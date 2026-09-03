@@ -1,6 +1,6 @@
 /**
- * Modèle normalisé consommé par le hub, la régie et les écrans.
- * Personne en aval ne doit lire le JSON amont directement.
+ * Normalized model consumed by the hub, the control app and the screens.
+ * Nobody downstream should read the upstream JSON directly.
  */
 
 export interface Social {
@@ -33,16 +33,16 @@ export interface Format {
   durationMinutes: number | null
 }
 
-/** Une salle. Vient de `event.tracks[]` : un track amont *est* une salle. */
+/** A room. Comes from `event.tracks[]`: an upstream track *is* a room. */
 export interface Room {
   id: string
   name: string
 }
 
 /**
- * `break` = créneau sans speaker (déjeuner, pause, accueil).
- * Heuristique assumée : l'export amont ne distingue pas les types de créneaux,
- * et l'absence de speaker est le seul signal fiable dont on dispose.
+ * `break` = slot with no speaker (lunch, break, welcome).
+ * An assumed heuristic: the upstream export does not distinguish slot kinds, and
+ * the absence of a speaker is the only reliable signal we have.
  */
 export type SessionKind = 'talk' | 'break'
 
@@ -50,38 +50,37 @@ export interface Session {
   id: string
   title: string
   abstract: string | null
-  /** ISO 8601 avec offset, tel que fourni en amont. */
+  /** ISO 8601 with offset, as provided upstream. */
   startsAt: string
   endsAt: string | null
-  /** Epoch ms — précalculé pour que les sélecteurs ne reparsent jamais. */
+  /** Epoch ms — precomputed so the selectors never reparse. */
   startsAtMs: number
   endsAtMs: number | null
   durationMinutes: number | null
   roomId: string | null
   kind: SessionKind
   /**
-   * Créneau dont celui-ci est la projection dans une autre salle, ou `null`
-   * pour un créneau du programme.
+   * Slot this one is the projection of in another room, or `null` for a slot of
+   * the program itself.
    *
-   * Une salle sans rien de prévu pendant qu'une autre est en pause hérite de
-   * cette pause : un déjeuner que l'export ne rattache qu'à Track #1 concerne
-   * pourtant tout le monde. La copie porte l'identifiant de l'original, pour
-   * qu'on sache d'où elle vient et qu'on ne la prenne pas pour un créneau qu'on
-   * pourrait éditer.
+   * A room with nothing scheduled while another is on a break inherits that
+   * break: a lunch the export only attaches to Track #1 nonetheless concerns
+   * everyone. The copy carries the original's identifier, so we know where it
+   * comes from and do not mistake it for an editable slot.
    */
   sharedFrom: string | null
   /**
-   * Identifiant OpenFeedback corrigé depuis la console, ou `null`.
+   * OpenFeedback identifier corrected from the console, or `null`.
    *
-   * `null` — le cas normal — veut dire que l'identifiant de l'export fait foi :
-   * l'adresse `openfeedback.io/{projet}/{jour}/{id}` se fabrique en pariant
-   * qu'OpenFeedback réutilise la numérotation amont. Le pari tient, mais il se
-   * perdrait en silence — lien cliquable, QR scannable, page qui ne parle
-   * d'aucun talk — et on ne s'en apercevrait qu'aux retours manquants.
+   * `null` — the normal case — means the export's identifier is authoritative:
+   * the `openfeedback.io/{project}/{day}/{id}` address is built betting that
+   * OpenFeedback reuses the upstream numbering. The bet holds, but it would be
+   * lost silently — clickable link, scannable QR code, a page that talks about no
+   * talk — and we would only notice from the missing feedback.
    *
-   * Posé par le hub sur le programme qu'il **sert**, comme `kind` quand une
-   * décision le contredit : c'est ce qui garantit que le lien de la console et
-   * le QR projeté en salle ne peuvent pas diverger.
+   * Set by the hub on the program it **serves**, like `kind` when a decision
+   * contradicts it: that is what guarantees the console's link and the QR code
+   * projected in the room cannot diverge.
    */
   feedbackId: string | null
   speakers: Speaker[]
@@ -127,8 +126,9 @@ export interface EventInfo {
 }
 
 /**
- * Anomalie non bloquante rencontrée à la normalisation.
- * Remontée dans l'admin pour être vue à la répétition plutôt qu'en salle.
+ * A non-blocking anomaly met during normalization.
+ * Reported in the admin console so it is seen at the rehearsal rather than in the
+ * room.
  */
 export interface ProgramIssue {
   code:
@@ -138,7 +138,7 @@ export interface ProgramIssue {
     | 'missing-date'
     | 'duplicate-id'
   message: string
-  /** Entité concernée, pour pointer directement dessus dans l'admin. */
+  /** Entity concerned, to point straight at it in the admin console. */
   ref?: string
 }
 

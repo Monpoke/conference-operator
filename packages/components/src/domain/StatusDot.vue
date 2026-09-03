@@ -39,14 +39,14 @@ const props = defineProps<{
 const appearance = computed(() => appearanceOf(props.state))
 
 /*
- * L'outline ne s'applique qu'à une salle.
+ * The outline only applies to a room.
  *
- * `outlineOf` rend « muette » pour une connectivité absente, et c'est juste
- * pour une *salle* — ne rien savoir d'elle et le peindre en plein serait pire
- * que de se taire. Mais un `level` décrit une machine : un processeur, un lien
- * avec le hub. Il n'y a aucune salle derrière, donc rien à mettre en doute, et
- * lui appliquer la règle rendait creuses les deux pastilles de l'en-tête de
- * régie — un anneau vert à la place d'un disque vert.
+ * `outlineOf` returns `silent` for a missing connectivity, and that is right for
+ * a *room* — knowing nothing about it and painting it solid would be worse than
+ * saying nothing. But a `level` describes a machine: a CPU, a link to the hub.
+ * There is no room behind it, so nothing to doubt, and applying the rule turned
+ * both dots in the control header hollow — a green ring where a green disc
+ * belongs.
  */
 const classes = computed(() => {
   if (props.level != null) return `status-dot ${DOT_LEVELS[props.level]}`.trim()

@@ -16,5 +16,5 @@ export {
   createHubAuth,
   type HubAuth,
   type HubAuthOptions,
-  type ResultatConnexion,
+  type SignInResult,
 } from './auth.js'

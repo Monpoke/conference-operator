@@ -1,12 +1,11 @@
 import { z } from 'zod'
 
 /**
- * Schéma du JSON amont (export « conference-center »).
+ * Schema of the upstream JSON ("conference-center" export).
  *
- * Tolérant par conception : `looseObject` laisse passer les champs inconnus et
- * la plupart des valeurs sont `nullish`. Un export enrichi en amont ne doit
- * jamais faire échouer un import le jour J — c'est le normaliseur, en aval, qui
- * décide de ce qui est réellement exploitable.
+ * Tolerant by design: `looseObject` lets unknown fields through and most values
+ * are `nullish`. An export enriched upstream must never make an import fail on
+ * the day — it is the normalizer, downstream, that decides what is really usable.
  */
 
 const nullableString = z.string().nullish()

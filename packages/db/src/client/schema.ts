@@ -2,16 +2,21 @@ import { sql } from 'drizzle-orm'
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 /**
- * Schéma local du client de salle (SQLite, dans `userData`).
+ * Local schema of the room client (SQLite, in `userData`).
  *
- * Tout ce qui doit survivre à un crash, un redémarrage ou une journée entière
- * sans réseau vit ici. Une salle démarre et fonctionne à partir de cette base
- * seule, sans jamais joindre le hub.
+ * Everything that must survive a crash, a restart or a whole day with no network
+ * lives here. A room starts and runs from this database alone, without ever
+ * reaching the hub.
+ *
+ * Table and column names never change: they are the disk of machines already in
+ * the field. Where one is French (`televersement`, `octets_envoyes`), the Drizzle
+ * property keeps the same spelling so that a name found in a SQL query can be
+ * grepped in the code.
  */
 
 const now = sql`(strftime('%Y-%m-%dT%H:%M:%fZ','now'))`
 
-/** Snapshots reçus du hub. Plusieurs versions coexistent pour permettre un retour arrière. */
+/** Snapshots received from the hub. Several versions coexist to allow a rollback. */
 export const programCache = sqliteTable('program_cache', {
   contentHash: text('content_hash').primaryKey(),
   programJson: text('program_json').notNull(),
@@ -19,7 +24,7 @@ export const programCache = sqliteTable('program_cache', {
   active: integer('active', { mode: 'boolean' }).notNull().default(false),
 })
 
-/** Réglages de la salle. Une seule ligne (`id = 1`), pour garder les lectures triviales. */
+/** The room's settings. A single row (`id = 1`), to keep reads trivial. */
 export const roomSettings = sqliteTable('room_settings', {
   id: integer('id').primaryKey().default(1),
   roomId: text('room_id'),
@@ -27,51 +32,50 @@ export const roomSettings = sqliteTable('room_settings', {
   configJson: text('config_json'),
   activeContentHash: text('active_content_hash'),
   /**
-   * Comptes de l'événement, poussés par le hub au sync.
+   * The event's accounts, pushed by the hub at sync.
    *
-   * Mis en cache comme le programme, et pour la même raison : la boucle
-   * d'attente tourne pendant les pauses — quand le réseau de l'événement est le
-   * plus chargé — et une salle qui démarre hub injoignable doit dérouler la
-   * même boucle qu'une autre.
+   * Cached like the program, and for the same reason: the waiting loop runs
+   * during the breaks — when the event network is busiest — and a room starting
+   * with an unreachable hub must run the same loop as any other.
    */
   socialLinksJson: text('social_links_json'),
   /**
-   * Identité de l'événement, poussée par le hub au sync.
+   * The event's identity, pushed by the hub at sync.
    *
-   * En cache pour la même raison que le reste : une salle qui démarre hub
-   * injoignable doit titrer ses fenêtres et sa boucle d'attente du nom de
-   * l'événement, pas d'un nom compilé dans le binaire — sinon la machine
-   * installée pour une édition affiche l'ancienne pendant la suivante.
+   * Cached for the same reason as the rest: a room starting with an unreachable
+   * hub must title its windows and its waiting loop with the event's name, not
+   * with a name compiled into the binary — otherwise the machine installed for one
+   * edition shows the old one during the next.
    */
   eventIdentityJson: text('event_identity_json'),
   /**
-   * Rapatriement des rushes : le hub a-t-il une destination, et sous quelles
-   * règles. Poussé au sync, en cache pour la même raison que le reste.
+   * Shipping the rushes back: does the hub have a destination, and under what
+   * rules. Pushed at sync, cached for the same reason as the rest.
    *
-   * Le régulateur tranche plusieurs fois par minute et ne doit jamais dépendre
-   * d'un appel réseau — surtout pas au moment précis où le réseau est ce qu'on
-   * cherche à ménager. Absent, rien ne part : c'est le bon défaut.
+   * The regulator decides several times a minute and must never depend on a
+   * network call — least of all at the very moment the network is what we are
+   * trying to spare. Absent, nothing leaves: that is the right default.
    */
   vodJson: text('vod_json'),
-  /** Prochain `seq` à attribuer aux événements sortants. Monotone, jamais réinitialisé. */
+  /** Next `seq` to assign to outgoing events. Monotonic, never reset. */
   nextSeq: integer('next_seq').notNull().default(1),
-  /** Dernier `seq` de commande appliqué : c'est le `lastEventId` renvoyé à la reprise. */
+  /** Last command `seq` applied: it is the `lastEventId` sent back on resumption. */
   lastCommandSeq: integer('last_command_seq').notNull().default(0),
-  /** Offset d'horloge lissé vs le hub. Les timecodes VOD en dépendent. */
+  /** Smoothed clock offset vs the hub. The VOD timecodes depend on it. */
   clockOffsetMs: integer('clock_offset_ms').notNull().default(0),
   updatedAt: text('updated_at').notNull().default(now),
 })
 
 /**
- * File d'attente durable des événements montants.
+ * Durable queue of the upstream events.
  *
- * `delivery = 'required'`     → rejoué jusqu'à `expires_at` (48 h par défaut)
- * `delivery = 'best-effort'`  → abandonné dès `expires_at` (30 s), collapsé par `dedup_key`
+ * `delivery = 'required'`     → replayed until `expires_at` (48 h by default)
+ * `delivery = 'best-effort'`  → dropped at `expires_at` (30 s), collapsed by `dedup_key`
  */
 export const outbox = sqliteTable(
   'outbox',
   {
-    /** ULID généré côté client ; forme avec `roomId` la clé d'idempotence côté hub. */
+    /** ULID generated client-side; forms the hub's idempotency key with `roomId`. */
     id: text('id').primaryKey(),
     roomId: text('room_id').notNull(),
     seq: integer('seq').notNull(),
@@ -81,8 +85,8 @@ export const outbox = sqliteTable(
     occurredAt: text('occurred_at').notNull(),
     monotonicMs: integer('monotonic_ms').notNull(),
     /**
-     * Collapse : à `dedup_key` égale, seule la dernière occurrence non envoyée
-     * survit. Évite qu'une heure hors-ligne accumule 720 heartbeats.
+     * Collapse: for an equal `dedup_key`, only the last unsent occurrence
+     * survives. Stops an hour offline from piling up 720 heartbeats.
      */
     dedupKey: text('dedup_key'),
     expiresAt: text('expires_at'),
@@ -92,18 +96,18 @@ export const outbox = sqliteTable(
     createdAt: text('created_at').notNull().default(now),
   },
   (table) => [
-    /** Index d'élection du prochain lot : ordre d'émission strict par salle. */
+    /** Index for electing the next batch: strict send order per room. */
     index('outbox_ready_idx').on(table.nextAttemptAt, table.seq),
     index('outbox_delivery_idx').on(table.delivery, table.expiresAt),
     /**
-     * Un seul enregistrement en attente par `dedup_key` : le collapse est
-     * garanti par la base, pas seulement par le code appelant.
+     * A single pending record per `dedup_key`: the collapse is guaranteed by the
+     * database, not only by the calling code.
      */
     uniqueIndex('outbox_dedup_idx').on(table.roomId, table.dedupKey),
   ],
 )
 
-/** Commandes déjà appliquées : protège du rejeu après reconnexion. */
+/** Commands already applied: protects against a replay after reconnection. */
 export const appliedCommand = sqliteTable('applied_command', {
   seq: integer('seq').primaryKey(),
   type: text('type').notNull(),
@@ -111,8 +115,8 @@ export const appliedCommand = sqliteTable('applied_command', {
 })
 
 /**
- * Cache d'assets adressé par contenu. Une fois rempli, aucune source navigateur
- * d'OBS ne touche Internet pendant l'événement.
+ * Content-addressed asset cache. Once filled, no OBS browser source touches the
+ * internet during the event.
  */
 export const assetCache = sqliteTable(
   'asset_cache',
@@ -127,8 +131,8 @@ export const assetCache = sqliteTable(
 )
 
 /**
- * Journal local : événements rejetés définitivement par le hub, erreurs OBS,
- * incidents. C'est la trace exploitable quand le réseau a été absent toute la journée.
+ * Local log: events definitively rejected by the hub, OBS errors, incidents. It
+ * is the usable trace when the network has been absent all day.
  */
 export const journal = sqliteTable(
   'journal',
@@ -143,21 +147,21 @@ export const journal = sqliteTable(
 )
 
 /**
- * File des rushes à téléverser, et où en est chacun.
+ * Queue of the rushes to upload, and where each stands.
  *
- * Persistée pour la même raison que l'outbox : une machine redémarrée en pleine
- * montée doit repartir de la part suivante, pas du premier octet. Sur un rush de
- * trois gigaoctets et un réseau d'événement, la différence entre les deux est
- * celle entre « ça finira » et « ça ne finira jamais ».
+ * Persisted for the same reason as the outbox: a machine rebooted mid-upload must
+ * restart from the next part, not from the first byte. On a three-gigabyte rush
+ * and an event network, the difference between the two is the difference between
+ * "it will finish" and "it will never finish".
  *
- * Le plan lui-même (`objectKey`, `s3UploadId`, taille de part) vient du hub :
- * on le garde ici pour pouvoir reprendre sans redemander, et on le redemande
- * quand même au premier échec — c'est le hub qui fait foi.
+ * The plan itself (`objectKey`, `s3UploadId`, part size) comes from the hub: we
+ * keep it here to be able to resume without asking again, and we ask again anyway
+ * on the first failure — the hub is authoritative.
  */
 export const televersement = sqliteTable(
   'televersement',
   {
-    /** Chemin relatif à la racine des enregistrements : la clé de `vod-index`. */
+    /** Path relative to the recordings root: the key of `vod-index`. */
     file: text('file').primaryKey(),
     kind: text('kind').notNull().default('rush'),
     sessionId: text('session_id'),
@@ -165,21 +169,21 @@ export const televersement = sqliteTable(
     objectKey: text('object_key'),
     s3UploadId: text('s3_upload_id'),
     taillePartOctets: integer('taille_part_octets'),
-    /** Numéros de parts déjà acquittées par le hub. */
+    /** Numbers of the parts already acknowledged by the hub. */
     partsJson: text('parts_json').notNull().default('[]'),
     octetsEnvoyes: integer('octets_envoyes').notNull().default(0),
     state: text('state').notNull().default('attente'),
     /**
-     * Demandé par un humain, ici ou depuis la console.
+     * Requested by a human, here or from the console.
      *
-     * Le régulateur s'en sert pour passer outre ses règles d'attente : celui
-     * qui appuie sur le bouton sait ce qu'il fait, et lui répondre « pas
-     * maintenant » sans rien montrer se lit comme un bouton mort.
+     * The regulator uses it to override its waiting rules: whoever presses the
+     * button knows what they are doing, and answering "not now" without showing
+     * anything reads as a dead button.
      */
     manuel: integer('manuel', { mode: 'boolean' }).notNull().default(false),
     attempts: integer('attempts').notNull().default(0),
     lastError: text('last_error'),
-    /** Débit de la dernière part, en octets/s : c'est lui qui fait lever le pied. */
+    /** Throughput of the last part, in bytes/s: it is what makes us ease off. */
     debitOctetsS: integer('debit_octets_s'),
     nextAttemptAt: text('next_attempt_at').notNull().default(now),
     demandeA: text('demande_a').notNull().default(now),
@@ -187,7 +191,7 @@ export const televersement = sqliteTable(
     finiA: text('fini_a'),
   },
   (table) => [
-    /** Élection du prochain candidat : les demandes manuelles d'abord. */
+    /** Electing the next candidate: manual requests first. */
     index('televersement_pret_idx').on(table.state, table.nextAttemptAt),
   ],
 )

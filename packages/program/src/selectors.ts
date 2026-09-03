@@ -1,24 +1,24 @@
 import type { Program, Session } from './model.js'
 
-/** Sessions d'une salle, triées par heure de début (le tri vient du normaliseur). */
+/** A room's sessions, sorted by start time (the sorting comes from the normalizer). */
 export function sessionsForRoom(program: Program, roomId: string): Session[] {
   return program.sessions.filter((session) => session.roomId === roomId)
 }
 
 /**
- * Ce qu'il faut d'un créneau pour le situer dans le temps.
+ * What a slot needs to carry to be placed in time.
  *
- * Volontairement plus étroit que `Session` : la régie manipule des créneaux
- * désérialisés depuis son cache, et l'automate d'état les traverse sans jamais
- * lire un titre ni un intervenant. Exiger la session entière obligerait à en
- * fabriquer une complète pour poser une question d'horaire.
+ * Deliberately narrower than `Session`: the control app handles slots
+ * deserialized from its cache, and the state machine walks them without ever
+ * reading a title or a speaker. Requiring the whole session would force it to
+ * fabricate a complete one just to ask a scheduling question.
  */
 export type ScheduledSession = Pick<Session, 'startsAtMs' | 'endsAtMs' | 'durationMinutes'>
 
 /**
- * Fin effective d'une session, par ordre de préférence :
- * `endsAt` explicite → `durationMinutes` → début de la session suivante.
- * Retourne `null` si aucune des trois n'est disponible (session ouverte).
+ * Effective end of a session, in order of preference:
+ * explicit `endsAt` → `durationMinutes` → start of the next session.
+ * Returns `null` if none of the three is available (open-ended session).
  */
 export function effectiveEndMs(
   session: ScheduledSession,
@@ -30,7 +30,7 @@ export function effectiveEndMs(
 }
 
 export interface TimelinePosition<T> {
-  /** Session en cours, ou `null` entre deux créneaux (l'écran bascule alors en habillage). */
+  /** Running session, or `null` between two slots (the screen then switches to the overlay). */
   current: T | null
   next: T | null
   previous: T | null
@@ -39,16 +39,16 @@ export interface TimelinePosition<T> {
 export type RoomTimelinePosition = TimelinePosition<Session>
 
 /**
- * Position dans une suite de créneaux déjà triée, à un instant donné.
+ * Position in an already sorted sequence of slots, at a given instant.
  *
- * La forme liste est la vraie : c'est elle que partagent le hub, qui part d'un
- * `Program`, et les pages, qui n'ont en cache que les créneaux de leur salle.
- * Les deux en tiraient chacune leur version, et elles avaient fini par ne plus
- * répondre pareil sur le dernier créneau de la journée.
+ * The list form is the real one: it is what the hub, which starts from a
+ * `Program`, and the pages, which only have their room's slots in cache, share.
+ * Each used to derive its own version, and they had ended up answering
+ * differently on the last slot of the day.
  *
- * `nowMs` est toujours injecté par l'appelant — jamais `Date.now()` en interne :
- * le client corrige son horloge avec l'offset serveur, et les tests doivent
- * pouvoir figer le temps.
+ * `nowMs` is always injected by the caller — never `Date.now()` internally: the
+ * client corrects its clock with the server offset, and the tests must be able to
+ * freeze time.
  */
 export function timelinePosition<T extends ScheduledSession>(
   sessions: T[],
@@ -76,7 +76,7 @@ export function timelinePosition<T extends ScheduledSession>(
   return { current, next, previous }
 }
 
-/** Position dans la timeline d'une salle. Enveloppe de `timelinePosition`. */
+/** Position in a room's timeline. Wrapper around `timelinePosition`. */
 export function roomTimelinePosition(
   program: Program,
   roomId: string,
@@ -94,10 +94,10 @@ export function nextSession(program: Program, roomId: string, nowMs: number): Se
 }
 
 /**
- * Toutes les URLs distantes à précharger dans le cache local.
+ * Every remote URL to preload into the local cache.
  *
- * C'est la liste que le client télécharge au sync : après ça, plus aucune source
- * navigateur d'OBS ne doit toucher Internet pendant l'événement.
+ * It is the list the client downloads at sync: after that, no OBS browser source
+ * should touch the internet during the event.
  */
 export function assetUrls(program: Program): string[] {
   const urls = new Set<string>()
@@ -121,7 +121,7 @@ export function assetUrls(program: Program): string[] {
   return [...urls]
 }
 
-/** Heure locale de l'événement (`program.timezone`), pas celle du PC de régie. */
+/** The event's local time (`program.timezone`), not the control machine's. */
 export function formatTime(iso: string, timezone: string, locale = 'fr-FR'): string {
   return new Intl.DateTimeFormat(locale, {
     hour: '2-digit',
@@ -137,28 +137,27 @@ export function formatSessionRange(session: Session, timezone: string, locale = 
 }
 
 /**
- * Adresse publique OpenFeedback d'une conférence.
+ * A talk's public OpenFeedback address.
  *
- * Fabriquée sans le moindre appel réseau : OpenFeedback réutilise les
- * identifiants de session de l'export amont — vérifié, les 27 concordent — et
- * sa route publique est `/{projet}/{aaaa-mm-jj}/{session}`. C'est ce qui permet
- * au QR de se dessiner en salle réseau coupé, et au hub de lister les liens
- * sans dépendre d'une API.
+ * Built with no network call at all: OpenFeedback reuses the session identifiers
+ * of the upstream export — checked, all 27 match — and its public route is
+ * `/{project}/{yyyy-mm-dd}/{session}`. That is what lets the QR code be drawn in
+ * a room with the network cut, and the hub list the links without depending on an
+ * API.
  *
- * Le jour se lit dans le fuseau de l'**événement**, pas en UTC : à Paris, un
- * créneau de fin de soirée basculerait sinon sur le lendemain et le lien
- * tomberait sur une page vide. Il vient de la session elle-même, ce qui rend la
- * fonction juste sur un événement à plusieurs jours.
+ * The day is read in the **event's** timezone, not in UTC: in Paris, a late
+ * evening slot would otherwise roll over to the next day and the link would land
+ * on an empty page. It comes from the session itself, which makes the function
+ * correct on a multi-day event.
  *
- * `null` sans projet configuré : pas de lien vaut mieux qu'un lien mort.
+ * `null` with no project configured: no link beats a dead link.
  *
- * `session.feedbackId`, posé par le hub sur le programme qu'il sert, contredit
- * l'identifiant de l'export pour le cas où le pari ci-dessus ne tient pas. Il
- * se règle par créneau depuis la console : l'adresse reste fabriquée hors
- * ligne, mais elle cesse d'être une déduction impossible à corriger le jour où
- * OpenFeedback ne numérote plus comme l'amont. Lu ici, et non passé en
- * paramètre par chaque appelant : c'est ce qui empêche le lien de la console et
- * le QR projeté de diverger.
+ * `session.feedbackId`, set by the hub on the program it serves, overrides the
+ * export's identifier for the case where the bet above does not hold. It is set
+ * per slot from the console: the address is still built offline, but it stops
+ * being a derivation impossible to correct the day OpenFeedback no longer numbers
+ * like the upstream. Read here, and not passed as a parameter by every caller:
+ * that is what stops the console's link and the projected QR code from diverging.
  */
 export function openFeedbackUrl(
   session: Pick<Session, 'id' | 'startsAt'> & { feedbackId?: string | null },
@@ -166,13 +165,13 @@ export function openFeedbackUrl(
   timezone: string,
 ): string | null {
   if (projectId == null || projectId.trim() === '') return null
-  const corrige = session.feedbackId?.trim() ?? ''
-  const identifiant = corrige === '' ? session.id : corrige
-  const jour = new Intl.DateTimeFormat('en-CA', {
+  const corrected = session.feedbackId?.trim() ?? ''
+  const identifier = corrected === '' ? session.id : corrected
+  const day = new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
   }).format(new Date(session.startsAt))
-  return `https://openfeedback.io/${encodeURIComponent(projectId)}/${jour}/${encodeURIComponent(identifiant)}`
+  return `https://openfeedback.io/${encodeURIComponent(projectId)}/${day}/${encodeURIComponent(identifier)}`
 }

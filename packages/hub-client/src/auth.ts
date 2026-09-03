@@ -1,36 +1,35 @@
 import type { TokenStore } from './token.js'
 
 /**
- * Better Auth, vu du navigateur.
+ * Better Auth, seen from the browser.
  *
- * Ces appels ne passent pas par oRPC : le hub monte Better Auth sous
- * `/api/auth`, hors du contrat. Ils vivent ici et non dans une application
- * parce qu'ils ont désormais deux appelants — la console et la régie mobile —
- * et que ce sont exactement les chemins où une divergence coûte cher : un
- * `signOut` qui oublie de prévenir le hub laisse une session Google qui se
- * rouvre au rechargement suivant, et le bouton paraît ne rien faire.
+ * These calls do not go through oRPC: the hub mounts Better Auth under
+ * `/api/auth`, outside the contract. They live here and not in an application
+ * because they now have two callers — the console and the mobile control app —
+ * and those are exactly the paths where a divergence is expensive: a `signOut`
+ * that forgets to tell the hub leaves a Google session that reopens on the next
+ * reload, and the button looks like it does nothing.
  *
- * Sans framework, et sans état : chaque application garde son propre store et
- * son propre écran. C'est la disposition qui les sépare — un formulaire de
- * poste et un formulaire de téléphone n'ont pas la même forme — pas ce qu'ils
- * demandent au hub.
+ * No framework, and no state: each application keeps its own store and its own
+ * screen. It is the layout that separates them — a desktop form and a phone form
+ * do not have the same shape — not what they ask of the hub.
  */
 
-/** Ce qu'un essai de connexion rend : rien, ou une raison affichable. */
-export type ResultatConnexion = { ok: true } | { ok: false; message: string }
+/** What a sign-in attempt returns: nothing, or a displayable reason. */
+export type SignInResult = { ok: true } | { ok: false; message: string }
 
 export interface HubAuthOptions {
-  /** Où écrire le jeton porteur d'une connexion par mot de passe. */
+  /** Where to write the bearer token of a password sign-in. */
   token: TokenStore
-  /** Injectable pour les tests : aucun réseau, aucune horloge. */
+  /** Injectable for the tests: no network, no clock. */
   fetch?: typeof globalThis.fetch
 }
 
 export interface HubAuth {
-  /** Session par cookie déjà ouverte ? Rend l'adresse connue, ou `null`. */
+  /** Is a cookie session already open? Returns the known address, or `null`. */
   resume(): Promise<string | null>
-  signIn(email: string, password: string): Promise<ResultatConnexion>
-  /** Rend l'adresse vers laquelle naviguer, ou une raison. */
+  signIn(email: string, password: string): Promise<SignInResult>
+  /** Returns the address to navigate to, or a reason. */
   googleUrl(callbackURL: string): Promise<{ ok: true; url: string } | { ok: false; message: string }>
   signOut(): Promise<void>
 }
@@ -38,38 +37,38 @@ export interface HubAuth {
 export function createHubAuth(options: HubAuthOptions): HubAuth {
   const send = options.fetch ?? ((...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args))
 
-  async function corps<T>(response: Response): Promise<T | null> {
+  async function body<T>(response: Response): Promise<T | null> {
     return (await response.json().catch(() => null)) as T | null
   }
 
   return {
     /**
-     * Y a-t-il une session par cookie derrière nous ?
+     * Is there a cookie session behind us?
      *
-     * Demandé seulement faute de jeton, et jamais bloquant : l'écran de
-     * connexion est la bonne chose à montrer en attendant. Un retour de Google
-     * ne laisse **aucun** jeton, seulement un cookie — sans cette question, une
-     * connexion Google réussie retombait sur l'écran de connexion.
+     * Asked only when there is no token, and never blocking: the sign-in screen
+     * is the right thing to show meanwhile. A return from Google leaves **no**
+     * token, only a cookie — without this question, a successful Google sign-in
+     * fell back to the sign-in screen.
      */
     async resume() {
       try {
         const response = await send('/api/auth/get-session')
         if (!response.ok) return null
-        const body = await corps<{ user?: { email?: string } }>(response)
-        return body?.user == null ? null : (body.user.email ?? null)
+        const payload = await body<{ user?: { email?: string } }>(response)
+        return payload?.user == null ? null : (payload.user.email ?? null)
       } catch {
-        // Hub injoignable au chargement : l'écran de connexion redira ce qu'il
-        // faut au premier essai.
+        // Hub unreachable at load time: the sign-in screen will say what is
+        // needed on the first attempt.
         return null
       }
     },
 
     /**
-     * Connexion par mot de passe.
+     * Password sign-in.
      *
-     * L'endpoint de Better Auth plutôt qu'une procédure du contrat : c'est le
-     * chemin qui doit continuer de marcher quand Google est injoignable, ce qui
-     * est toute la raison d'être du compte à mot de passe.
+     * Better Auth's endpoint rather than a contract procedure: it is the path
+     * that must keep working when Google is unreachable, which is the whole
+     * reason the password account exists.
      */
     async signIn(email, password) {
       try {
@@ -78,9 +77,9 @@ export function createHubAuth(options: HubAuthOptions): HubAuth {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ email, password }),
         })
-        const body = await corps<{ token?: string }>(response)
-        if (!response.ok || body?.token == null) return { ok: false, message: 'Identifiants refusés.' }
-        options.token.write(body.token)
+        const payload = await body<{ token?: string }>(response)
+        if (!response.ok || payload?.token == null) return { ok: false, message: 'Identifiants refusés.' }
+        options.token.write(payload.token)
         return { ok: true }
       } catch {
         return { ok: false, message: 'Le hub est injoignable.' }
@@ -88,11 +87,11 @@ export function createHubAuth(options: HubAuthOptions): HubAuth {
     },
 
     /**
-     * Un **POST**, puis une navigation vers l'adresse rendue.
+     * A **POST**, then a navigation to the address returned.
      *
-     * Better Auth ne redirige pas depuis un GET sur ce chemin — il répond
-     * `null`, ce qui est exactement ce que produit un `location.assign` naïf :
-     * une page blanche, et rien qui dise ce qui a manqué.
+     * Better Auth does not redirect from a GET on this path — it answers `null`,
+     * which is exactly what a naive `location.assign` produces: a blank page, and
+     * nothing to say what was missing.
      */
     async googleUrl(callbackURL) {
       try {
@@ -101,25 +100,25 @@ export function createHubAuth(options: HubAuthOptions): HubAuth {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ provider: 'google', callbackURL }),
         })
-        const body = await corps<{ url?: string; message?: string }>(response)
-        if (!response.ok || body?.url == null) {
-          return { ok: false, message: body?.message ?? 'Google indisponible.' }
+        const payload = await body<{ url?: string; message?: string }>(response)
+        if (!response.ok || payload?.url == null) {
+          return { ok: false, message: payload?.message ?? 'Google indisponible.' }
         }
-        return { ok: true, url: body.url }
+        return { ok: true, url: payload.url }
       } catch {
         return { ok: false, message: 'Le hub est injoignable.' }
       }
     },
 
     /**
-     * Déconnexion, en prévenant le hub d'abord.
+     * Sign-out, telling the hub first.
      *
-     * Une session Google vit dans un **cookie** : seul le serveur peut la
-     * fermer. Effacer l'état local seul remettrait l'écran de connexion, et
-     * `get-session` reconnecterait au rechargement suivant.
+     * A Google session lives in a **cookie**: only the server can close it.
+     * Clearing the local state alone would bring the sign-in screen back, and
+     * `get-session` would reconnect on the next reload.
      *
-     * Le jeton est effacé quoi qu'il arrive : rester connecté parce que le hub
-     * n'a pas répondu est le contraire de ce qu'on demande en cliquant.
+     * The token is cleared whatever happens: staying signed in because the hub
+     * did not answer is the opposite of what clicking asks for.
      */
     async signOut() {
       const bearer = options.token.read()
@@ -133,7 +132,7 @@ export function createHubAuth(options: HubAuthOptions): HubAuth {
           body: '{}',
         })
       } catch {
-        // Voir ci-dessus.
+        // See above.
       }
       options.token.clear()
     },

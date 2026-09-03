@@ -9,21 +9,24 @@ import {
 } from 'drizzle-orm/sqlite-core'
 
 /**
- * Schéma du hub (SQLite/WAL, instance unique).
+ * The hub's schema (SQLite/WAL, single instance).
  *
- * Les payloads structurés sont stockés en JSON texte plutôt qu'éclatés en
- * colonnes : leur forme est déjà garantie par les schémas zod de
- * `@cloudnord/contract`, et un ajout de champ ne doit pas imposer une migration
- * la veille de l'événement.
+ * Structured payloads are stored as JSON text rather than exploded into columns:
+ * their shape is already guaranteed by the zod schemas of `@cloudnord/contract`,
+ * and adding a field must not force a migration on the eve of the event.
+ *
+ * Column and table names never change: they are the disk. Where one is French
+ * (`niveau_technique`, `debit_octets_s`), the Drizzle property keeps the same
+ * spelling so that a name found in a SQL query can be grepped in the code.
  */
 
 const now = sql`(strftime('%Y-%m-%dT%H:%M:%fZ','now'))`
 
-/** Snapshots versionnés du programme. On garde l'historique pour rollback. */
+/** Versioned program snapshots. We keep the history for a rollback. */
 export const programSnapshot = sqliteTable('program_snapshot', {
   contentHash: text('content_hash').primaryKey(),
   sourceUrl: text('source_url').notNull(),
-  /** Export amont tel quel : permet de rejouer la normalisation après un correctif. */
+  /** The upstream export as is: lets normalization be replayed after a fix. */
   rawJson: text('raw_json').notNull(),
   programJson: text('program_json').notNull(),
   sessionCount: integer('session_count').notNull(),
@@ -37,17 +40,17 @@ export const room = sqliteTable(
   {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
-    /** `event.tracks[].id` de l'export amont. */
+    /** `event.tracks[].id` from the upstream export. */
     trackId: text('track_id').notNull(),
     configJson: text('config_json').notNull(),
-    /** Clé RTMP chiffrée au repos ; ne quitte le hub que vers sa propre salle. */
+    /** RTMP key encrypted at rest; leaves the hub only towards its own room. */
     streamKeyEnc: text('stream_key_enc'),
     createdAt: text('created_at').notNull().default(now),
   },
   (table) => [index('room_track_idx').on(table.trackId)],
 )
 
-/** Dernier état connu d'une salle, alimenté par les heartbeats. */
+/** Last known state of a room, fed by the heartbeats. */
 export const roomState = sqliteTable('room_state', {
   roomId: text('room_id')
     .primaryKey()
@@ -55,23 +58,23 @@ export const roomState = sqliteTable('room_state', {
   connectivity: text('connectivity').notNull().default('OFFLINE'),
   lastSeenAt: text('last_seen_at'),
   sceneRole: text('scene_role'),
-  /** Ce que l'écran de la salle affiche, remonté au battement. */
+  /** What the room's screen is showing, reported on the heartbeat. */
   displayMode: text('display_mode'),
   currentSessionId: text('current_session_id'),
   recording: integer('recording', { mode: 'boolean' }).notNull().default(false),
   streaming: integer('streaming', { mode: 'boolean' }).notNull().default(false),
   outboxDepth: integer('outbox_depth').notNull().default(0),
   programContentHash: text('program_content_hash'),
-  /** Plus haut `seq` d'événement appliqué, pour détecter les trous. */
+  /** Highest event `seq` applied, to detect gaps. */
   lastSeq: integer('last_seq').notNull().default(0),
 })
 
 /**
- * Journal append-only des événements remontés par les salles.
+ * Append-only log of the events reported by the rooms.
  *
- * La clé primaire composite `(room_id, id)` **est** le mécanisme d'idempotence :
- * un rejeu de batch après reconnexion se heurte à la contrainte au lieu de
- * dupliquer une ligne. C'est ce qui rend l'outbox rejouable sans risque.
+ * The composite primary key `(room_id, id)` **is** the idempotency mechanism: a
+ * batch replayed after reconnection hits the constraint instead of duplicating a
+ * row. That is what makes the outbox safely replayable.
  */
 export const ingestEvent = sqliteTable(
   'ingest_event',
@@ -96,13 +99,13 @@ export const ingestEvent = sqliteTable(
 )
 
 /**
- * Commandes descendantes. `room_id` nul = diffusion à toutes les salles.
+ * Downstream commands. A null `room_id` = broadcast to every room.
  *
- * `seq` est **globalement** monotone, pas par salle, et c'est délibéré : le flux
- * d'une salle mélange ses commandes propres et les diffusions globales. Avec
- * deux compteurs séparés, le `seq` du flux fusionné ne serait plus croissant et
- * la reprise par `lastEventId` sauterait des commandes. La clé auto-incrémentée
- * fait donc directement office de `seq`.
+ * `seq` is **globally** monotonic, not per room, and that is deliberate: a
+ * room's flow mixes its own commands with the global broadcasts. With two
+ * separate counters, the merged flow's `seq` would no longer increase and
+ * resumption by `lastEventId` would skip commands. So the auto-incremented key
+ * directly acts as `seq`.
  */
 export const command = sqliteTable(
   'command',
@@ -111,7 +114,7 @@ export const command = sqliteTable(
     roomId: text('room_id').references(() => room.id, { onDelete: 'cascade' }),
     type: text('type').notNull(),
     payloadJson: text('payload_json').notNull(),
-    /** `null` = pas d'expiration (changement d'état durable). */
+    /** `null` = no expiry (durable state change). */
     ttlSeconds: integer('ttl_seconds'),
     issuedAt: text('issued_at').notNull().default(now),
   },
@@ -119,11 +122,11 @@ export const command = sqliteTable(
 )
 
 /**
- * Messages du mur, toutes sources confondues.
+ * Wall messages, from every source.
  *
- * `seq` auto-incrémenté sert d'ordre stable **et** d'identifiant d'événement
- * pour la reprise du flux (`lastEventId`), comme pour les commandes. `id` reste
- * l'identifiant public, celui qu'on manipule dans l'admin.
+ * The auto-incremented `seq` acts as a stable ordering **and** as the event
+ * identifier for resuming the flow (`lastEventId`), as for the commands. `id`
+ * stays the public identifier, the one handled in the admin console.
  */
 export const comment = sqliteTable(
   'comment',
@@ -133,7 +136,7 @@ export const comment = sqliteTable(
     source: text('source').notNull(),
     author: text('author').notNull(),
     authorHandle: text('author_handle'),
-    /** Identifiant du post chez la source (URI Bluesky, id Mastodon…), `null` pour le formulaire. */
+    /** Post identifier at the source (Bluesky URI, Mastodon id…), `null` for the form. */
     externalId: text('external_id'),
     text: text('text').notNull(),
     status: text('status').notNull().default('pending'),
@@ -147,10 +150,10 @@ export const comment = sqliteTable(
     uniqueIndex('comment_id_idx').on(table.id),
     index('comment_status_idx').on(table.status, table.seq),
     /**
-     * Déduplication des sources sociales : un firehose peut relivrer un post,
-     * et un polling recouvre toujours un peu la fenêtre précédente.
-     * SQLite traite les NULL comme distincts, donc les messages du formulaire
-     * (`external_id` nul) ne sont pas contraints par cet index.
+     * Deduplication of the social sources: a firehose can redeliver a post, and
+     * polling always overlaps the previous window a little. SQLite treats NULLs
+     * as distinct, so the form's messages (null `external_id`) are not
+     * constrained by this index.
      */
     uniqueIndex('comment_source_external_idx').on(table.source, table.externalId),
   ],
@@ -173,7 +176,7 @@ export const question = sqliteTable(
   (table) => [index('question_room_status_idx').on(table.roomId, table.status)],
 )
 
-/** Un vote par appareil et par question, sans imposer de compte utilisateur. */
+/** One vote per device and per question, without requiring a user account. */
 export const questionVote = sqliteTable(
   'question_vote',
   {
@@ -186,7 +189,7 @@ export const questionVote = sqliteTable(
   (table) => [primaryKey({ columns: [table.questionId, table.deviceId] })],
 )
 
-/** Décisions du jour J (retard, annulation, changement de salle) sans réimport. */
+/** Decisions taken on the day (delay, cancellation, room change) with no reimport. */
 export const sessionOverride = sqliteTable('session_override', {
   sessionId: text('session_id').primaryKey(),
   status: text('status').notNull(),
@@ -196,65 +199,64 @@ export const sessionOverride = sqliteTable('session_override', {
 })
 
 /**
- * Identifiant OpenFeedback d'une conférence, quand celui de l'export ne va pas.
+ * A talk's OpenFeedback identifier, when the export's does not work.
  *
- * L'adresse `openfeedback.io/{projet}/{jour}/{id}` se fabrique sans le moindre
- * appel réseau, en pariant qu'OpenFeedback réutilise les identifiants de
- * session de l'export amont. Le pari a tenu jusqu'ici — les vingt-sept
- * concordent — mais rien ne le garantit, et c'est un pari qui se perd en
- * silence : le lien reste cliquable, le QR reste scannable, et ils mènent à une
- * page qui ne parle d'aucun talk. Personne ne s'en aperçoit avant que les
- * retours ne manquent, c'est-à-dire trop tard.
+ * The `openfeedback.io/{project}/{day}/{id}` address is built with no network
+ * call at all, betting that OpenFeedback reuses the session identifiers of the
+ * upstream export. The bet has held so far — all twenty-seven match — but nothing
+ * guarantees it, and it is a bet that is lost silently: the link stays clickable,
+ * the QR code stays scannable, and they lead to a page that talks about no talk.
+ * Nobody notices before the feedback is missing, which is to say too late.
  *
- * Une ligne ici corrige un créneau, à la main, sans toucher à l'export. Table
- * à part et non colonne de `session_override` : celle-là porte une décision
- * sur le *genre* du créneau, avec un `status` obligatoire, et corriger un
- * identifiant n'est pas décider qu'un talk est une pause.
+ * A row here corrects one slot, by hand, without touching the export. A separate
+ * table and not a column of `session_override`: that one carries a decision about
+ * the slot's *kind*, with a mandatory `status`, and correcting an identifier is
+ * not deciding that a talk is a break.
  *
- * Survit au réimport, comme les surcharges : c'est bien la propriété du hub,
- * pas celle du programme, et le programme réimporté ramènerait l'identifiant
- * fautif.
+ * Survives a reimport, like the overrides: it really is a property of the hub,
+ * not of the program, and the reimported program would bring back the faulty
+ * identifier.
  */
 export const sessionFeedback = sqliteTable('session_feedback', {
   sessionId: text('session_id').primaryKey(),
-  /** Ce qu'on met dans l'URL à la place de l'identifiant de l'export. */
+  /** What goes into the URL in place of the export's identifier. */
   feedbackId: text('feedback_id').notNull(),
   updatedAt: text('updated_at').notNull().default(now),
 })
 
 /**
- * Liaison machine → salle.
+ * Machine → room binding.
  *
- * Better Auth (device authorization) authentifie **l'opérateur** qui a mis la
- * machine en service : `/device/approve` lie l'appareil à l'utilisateur qui
- * approuve, pas à une salle. Quelle salle une machine dessert relève de notre
- * domaine, donc de cette table.
+ * Better Auth (device authorization) authenticates **the operator** who put the
+ * machine into service: `/device/approve` binds the device to the user who
+ * approves, not to a room. Which room a machine serves belongs to our domain, and
+ * therefore to this table.
  *
- * Conséquence pratique : révoquer une machine (`revoked_at`) coupe son accès
- * sans toucher au compte de l'opérateur, et une machine de secours se réaffecte
- * à une salle sans repasser par un compte.
+ * Practical consequence: revoking a machine (`revoked_at`) cuts its access
+ * without touching the operator's account, and a spare machine is reassigned to a
+ * room without going through an account again.
  */
 export const roomDevice = sqliteTable(
   'room_device',
   {
-    /** ULID généré et persisté par le client au premier lancement (`client_id` OAuth). */
+    /** ULID generated and persisted by the client at first launch (OAuth `client_id`). */
     clientId: text('client_id').primaryKey(),
     roomId: text('room_id')
       .notNull()
       .references(() => room.id, { onDelete: 'cascade' }),
-    /** Libellé lisible en régie : « PC régie salle 1 ». */
+    /** Label readable in the control room: "PC régie salle 1". */
     label: text('label'),
-    /** Utilisateur Better Auth ayant approuvé l'appareil — trace d'imputabilité. */
+    /** Better Auth user who approved the device — an accountability trace. */
     approvedByUserId: text('approved_by_user_id'),
     /*
-     * Empreinte du jeton de machine.
+     * Fingerprint of the machine token.
      *
-     * Better Auth authentifie l'opérateur qui approuve ; sa session lui donne
-     * tous les droits de la console. Une machine de régie n'a aucune raison de
-     * pouvoir importer un programme ou modérer le mur. On lui délivre donc son
-     * propre jeton, à droits réduits, échangé contre la session d'approbation.
+     * Better Auth authenticates the operator who approves; their session gives
+     * them every right in the console. A control machine has no reason to be able
+     * to import a program or moderate the wall. So it is issued its own token,
+     * with reduced rights, exchanged for the approval session.
      *
-     * Stocké haché : une fuite de la base ne doit pas rendre les salles usurpables.
+     * Stored hashed: a database leak must not make the rooms impersonable.
      */
     tokenHash: text('token_hash'),
     tokenIssuedAt: text('token_issued_at'),
@@ -266,10 +268,10 @@ export const roomDevice = sqliteTable(
 )
 
 /**
- * Demandes d'appairage en attente.
+ * Pending pairing requests.
  *
- * Alimentée par le hook `onDeviceAuthRequest` du plugin : sans elle, l'admin
- * verrait un code utilisateur sans savoir quelle machine le demande.
+ * Fed by the plugin's `onDeviceAuthRequest` hook: without it, the admin console
+ * would see a user code with no idea which machine is asking.
  */
 export const deviceRequest = sqliteTable('device_request', {
   clientId: text('client_id').primaryKey(),
@@ -278,26 +280,25 @@ export const deviceRequest = sqliteTable('device_request', {
 })
 
 /**
- * Cycle de vie d'une conférence.
+ * A talk's lifecycle.
  *
- * Distinct de `session_override` : celui-ci dit ce qui *change* par rapport au
- * programme (retard, annulation), celui-là dit où en est réellement le talk.
- * Une session sans ligne ici est simplement « à venir » — on n'écrit que ce qui
- * s'est produit.
+ * Distinct from `session_override`: that one says what *changes* relative to the
+ * program (delay, cancellation), this one says where the talk really stands. A
+ * session with no row here is simply "upcoming" — we only write what happened.
  */
 export const sessionState = sqliteTable(
   'session_state',
   {
     sessionId: text('session_id').primaryKey(),
     roomId: text('room_id').references(() => room.id, { onDelete: 'cascade' }),
-    /** `running` ou `ended`. L'absence de ligne vaut `scheduled`. */
+    /** `running` or `ended`. The absence of a row means `scheduled`. */
     status: text('status').notNull(),
     startedAt: text('started_at'),
     endedAt: text('ended_at'),
     /**
-     * Qui a décidé. `auto` quand la règle horaire a clôturé le créneau : en
-     * régie, savoir si un talk a été terminé par un humain ou par la règle
-     * change la lecture qu'on en fait.
+     * Who decided. `auto` when the scheduling rule closed the slot: in the
+     * control room, knowing whether a talk was ended by a human or by the rule
+     * changes how you read it.
      */
     decidedBy: text('decided_by').notNull(),
     updatedAt: text('updated_at').notNull().default(now),
@@ -306,46 +307,43 @@ export const sessionState = sqliteTable(
 )
 
 /**
- * Qui tient la régie mobile d'une salle.
+ * Who holds a room's mobile control app.
  *
- * Une ligne par salle **tenue**, et rien pour les autres : comme
- * `session_state`, la table ne contient que ce qui s'est produit. La rendre
- * exhaustive obligerait à créer une ligne par salle à l'import du programme,
- * pour un état dont la valeur par défaut est « personne ».
+ * One row per **held** room, and nothing for the others: like `session_state`,
+ * the table only contains what happened. Making it exhaustive would mean creating
+ * a row per room at program import, for a state whose default value is "nobody".
  *
- * Pas de colonne d'expiration : elle se calcule à la lecture
- * (`last_seen_at + CONTROL_LOCK_TTL_MS`). Une colonne écrite demanderait qu'un
- * balayage la tienne à jour, et un verrou dont l'échéance est passée mais dont
- * la ligne dit le contraire est exactement le genre d'état qu'on ne veut pas
- * pouvoir fabriquer.
+ * No expiry column: it is computed on read (`last_seen_at + CONTROL_LOCK_TTL_MS`).
+ * A written column would require a sweep to keep it up to date, and a lock whose
+ * deadline has passed but whose row says otherwise is exactly the kind of state we
+ * do not want to be able to manufacture.
  */
 export const regieLock = sqliteTable('regie_lock', {
   roomId: text('room_id')
     .primaryKey()
     .references(() => room.id, { onDelete: 'cascade' }),
-  /** L'adresse de l'opérateur, comme `session_state.decided_by`. */
+  /** The operator's address, like `session_state.decided_by`. */
   holder: text('holder').notNull(),
   /**
-   * L'onglet qui tient la salle, et non le compte.
+   * The tab holding the room, and not the account.
    *
-   * Deux onglets d'une même personne pilotaient sinon la même salle en se
-   * croyant seuls — la situation que le verrou existe pour supprimer. Le défaut
-   * vide couvre les lignes d'avant cette colonne : un verrou vit trente
-   * secondes, il n'y en a aucune à la migration.
+   * Two tabs of the same person would otherwise drive the same room each
+   * believing it was alone — the situation the lock exists to remove. The empty
+   * default covers the rows from before this column: a lock lives thirty seconds,
+   * there is none at migration time.
    */
   holderId: text('holder_id').notNull().default(''),
-  /** Depuis quand cette personne-là tient la salle. Une reprise le réinitialise. */
+  /** Since when that person has held the room. A takeover resets it. */
   heldSince: text('held_since').notNull().default(now),
-  /** Dernier battement reçu. C'est lui qui fait vivre le verrou. */
+  /** Last heartbeat received. That is what keeps the lock alive. */
   lastSeenAt: text('last_seen_at').notNull().default(now),
 })
 
 /**
- * Réglages du hub, en clé/valeur JSON.
+ * Hub settings, as JSON key/value.
  *
- * Générique volontairement : ces réglages se règlent le jour J, souvent dans
- * l'urgence, et ajouter une colonne à chaque fois imposerait une migration au
- * pire moment.
+ * Deliberately generic: these settings get changed on the day, often in a hurry,
+ * and adding a column each time would force a migration at the worst moment.
  */
 export const hubSetting = sqliteTable('hub_setting', {
   key: text('key').primaryKey(),
@@ -354,47 +352,47 @@ export const hubSetting = sqliteTable('hub_setting', {
 })
 
 /**
- * Abonnements Web Push des consoles.
+ * Web Push subscriptions of the consoles.
  *
- * Une ligne par navigateur, pas par opérateur : la même personne consulte la
- * console sur son téléphone et sur un poste, et n'attend pas la même chose des
- * deux. L'`endpoint` est l'identité que donne le service de push du navigateur ;
- * c'est lui la clé, parce que c'est lui qui devient invalide et que le service
- * nous le dit alors par un 404 ou un 410.
+ * One row per browser, not per operator: the same person watches the console on
+ * their phone and on a machine, and does not expect the same thing from both. The
+ * `endpoint` is the identity the browser's push service gives; it is the key,
+ * because it is what becomes invalid and what the service tells us about with a
+ * 404 or a 410.
  */
 export const pushSubscription = sqliteTable('push_subscription', {
   endpoint: text('endpoint').primaryKey(),
-  /** Clés de chiffrement du navigateur : le hub ne peut pas pousser sans elles. */
+  /** The browser's encryption keys: the hub cannot push without them. */
   p256dh: text('p256dh').notNull(),
   auth: text('auth').notNull(),
-  /** Opérateur qui s'est abonné, pour révoquer avec le compte. */
+  /** Operator who subscribed, to revoke along with the account. */
   userId: text('user_id'),
-  /** Étiquette lisible — « iPhone de la régie » — laissée au client. */
+  /** Readable label — "the control room's iPhone" — left to the client. */
   label: text('label'),
   /**
-   * Niveau voulu par famille : `rien`, `essentiel` ou `tout`.
+   * Level wanted per family: `rien`, `essentiel` or `tout`.
    *
-   * Ici et non dans un réglage d'opérateur : le filtrage se fait à l'envoi, et
-   * l'envoi vise un navigateur. Le téléphone dans la poche et la console posée
-   * sur la table n'attendent pas la même chose de la journée.
+   * Here and not in an operator setting: filtering happens at send time, and a
+   * send targets a browser. The phone in a pocket and the console sitting on the
+   * table do not expect the same thing from the day.
    */
   niveauTechnique: text('niveau_technique').notNull().default('essentiel'),
   niveauExploitation: text('niveau_exploitation').notNull().default('essentiel'),
   createdAt: text('created_at').notNull().default(now),
-  /** Dernier envoi accepté : sert à purger ce qui ne répond plus. */
+  /** Last accepted send: used to purge what no longer answers. */
   lastPushedAt: text('last_pushed_at'),
 })
 
 /**
- * Téléversements des rushes vers le stockage S3.
+ * Uploads of the rushes to the S3 storage.
  *
- * Le hub tient le registre parce qu'il tient les clés : c'est lui qui ouvre un
- * multipart chez le stockage, lui qui collecte les ETags — S3 les redemande
- * tous au moment de recomposer l'objet —, et lui qui abandonne ce qui traîne.
- * Une salle qui perd sa base locale peut redemander son plan ; l'inverse n'est
- * pas vrai, et c'est pour ça que la vérité est ici.
+ * The hub keeps the register because it holds the keys: it is the one that opens
+ * a multipart at the storage, the one that collects the ETags — S3 asks for all
+ * of them again when reassembling the object —, and the one that abandons what is
+ * left hanging. A room that loses its local database can ask for its plan again;
+ * the reverse is not true, and that is why the truth lives here.
  *
- * Rien de tout cela n'existe tant qu'aucun stockage n'est configuré.
+ * None of this exists as long as no storage is configured.
  */
 export const vodUpload = sqliteTable(
   'vod_upload',
@@ -403,35 +401,35 @@ export const vodUpload = sqliteTable(
     roomId: text('room_id')
       .notNull()
       .references(() => room.id, { onDelete: 'cascade' }),
-    /** Chemin relatif à la racine des enregistrements, tel que la salle le nomme. */
+    /** Path relative to the recordings root, as the room names it. */
     file: text('file').notNull(),
-    /** `rush` ou `sidecar` : les deux partent, à l'extension près. */
+    /** `rush` or `sidecar`: both leave, extension aside. */
     kind: text('kind').notNull(),
     sessionId: text('session_id'),
     objectKey: text('object_key').notNull(),
     sizeBytes: integer('size_bytes').notNull(),
     partSizeBytes: integer('part_size_bytes').notNull(),
     bytesSent: integer('bytes_sent').notNull().default(0),
-    /** Identifiant multipart chez S3. `null` pour un envoi direct (le sidecar). */
+    /** Multipart identifier at S3. `null` for a direct send (the sidecar). */
     s3UploadId: text('s3_upload_id'),
     /**
-     * `[{n, etag}]` des parts déjà arrivées.
+     * `[{n, etag}]` of the parts that have arrived.
      *
-     * Ce n'est pas de la comptabilité : `CompleteMultipartUpload` réclame la
-     * liste complète, part par part. La perdre rend l'objet irrécupérable côté
-     * stockage alors que tous ses octets y sont déjà.
+     * This is not bookkeeping: `CompleteMultipartUpload` requires the full list,
+     * part by part. Losing it makes the object unrecoverable at the storage even
+     * though all its bytes are already there.
      */
     partsJson: text('parts_json').notNull().default('[]'),
     state: text('state').notNull().default('en-cours'),
-    /** Dernier débit constaté, en octets/s — ce que la console affiche. */
+    /** Last observed throughput, in bytes/s — what the console shows. */
     debitOctetsS: integer('debit_octets_s'),
     startedAt: text('started_at').notNull().default(now),
     /**
-     * Dernière part reçue.
+     * Last part received.
      *
-     * C'est sur ce champ que porte le ménage : une salle éteinte en pleine
-     * montée ne dit rien, et un multipart abandonné en silence reste facturé
-     * indéfiniment.
+     * That is the field housekeeping works from: a room switched off mid-upload
+     * says nothing, and a multipart abandoned in silence stays billed
+     * indefinitely.
      */
     lastProgressAt: text('last_progress_at').notNull().default(now),
     finishedAt: text('finished_at'),
@@ -440,11 +438,11 @@ export const vodUpload = sqliteTable(
   },
   (table) => [
     /**
-     * Un fichier ne monte qu'une fois par salle.
+     * A file only uploads once per room.
      *
-     * C'est cette contrainte qui fait de `vod.begin` une reprise : une machine
-     * redémarrée redemande son plan, retrouve sa ligne, et repart de la part
-     * suivante au lieu de rouvrir un second multipart sur les mêmes octets.
+     * It is this constraint that makes `vod.begin` a resumption: a rebooted
+     * machine asks for its plan again, finds its row, and restarts from the next
+     * part instead of opening a second multipart over the same bytes.
      */
     uniqueIndex('vod_upload_room_file_idx').on(table.roomId, table.file),
     index('vod_upload_state_idx').on(table.state, table.lastProgressAt),

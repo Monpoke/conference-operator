@@ -20,82 +20,81 @@ const HANDS_ON = 'hands-on'
 const at = (iso: string): number => Date.parse(iso)
 
 /**
- * Les pauses d'une salle valent pour celles qui n'ont rien de prévu.
+ * One room's breaks hold for the rooms that have nothing scheduled.
  *
- * L'export amont ne rattache un créneau qu'à un track : déjeuner, accueil et
- * pauses café figurent sur la salle principale et nulle part ailleurs. Les
- * autres salles affichaient donc « hors créneau » pendant que l'événement
- * entier déjeunait.
+ * The upstream export only attaches a slot to one track: lunch, welcome and
+ * coffee breaks appear on the main room and nowhere else. The other rooms
+ * therefore showed "hors créneau" while the whole event was having lunch.
  */
-describe('applySharedBreaks — export Cloud Nord 2026 réel', () => {
+describe('applySharedBreaks — real Cloud Nord 2026 export', () => {
   const program = normalizeProgram(rawFixture)
-  const servi = applySharedBreaks(program)
+  const served = applySharedBreaks(program)
 
-  it("n'ajoute que des projections, sans toucher aux créneaux du programme", () => {
+  it('only adds projections, without touching the program slots', () => {
     expect(program.sessions.every((session) => session.sharedFrom == null)).toBe(true)
-    const ajoutees = servi.sessions.filter((session) => session.sharedFrom != null)
+    const added = served.sessions.filter((session) => session.sharedFrom != null)
 
-    expect(servi.sessions).toHaveLength(program.sessions.length + ajoutees.length)
-    // Les originaux repartent tels quels : la règle projette, elle ne réécrit pas.
-    for (const originale of program.sessions) {
-      expect(servi.sessions).toContainEqual(originale)
+    expect(served.sessions).toHaveLength(program.sessions.length + added.length)
+    // The originals come back as they were: the rule projects, it does not rewrite.
+    for (const original of program.sessions) {
+      expect(served.sessions).toContainEqual(original)
     }
-    // Toute projection descend d'une pause d'une autre salle.
-    for (const copie of ajoutees) {
-      const source = program.sessions.find((s) => s.id === copie.sharedFrom)!
+    // Every projection descends from another room's break.
+    for (const copy of added) {
+      const source = program.sessions.find((s) => s.id === copy.sharedFrom)!
       expect(source.kind).toBe('break')
-      expect(source.roomId).not.toBe(copie.roomId)
-      expect(copie.startsAtMs).toBe(source.startsAtMs)
+      expect(source.roomId).not.toBe(copy.roomId)
+      expect(copy.startsAtMs).toBe(source.startsAtMs)
     }
   })
 
-  it('comble le déjeuner dans les deux autres salles', () => {
-    const midi = at('2026-10-30T11:40:00Z')
+  it('fills lunch in the two other rooms', () => {
+    const noon = at('2026-10-30T11:40:00Z')
 
-    expect(currentSession(program, TRACK_2, midi)).toBeNull()
-    expect(currentSession(program, HANDS_ON, midi)).toBeNull()
+    expect(currentSession(program, TRACK_2, noon)).toBeNull()
+    expect(currentSession(program, HANDS_ON, noon)).toBeNull()
 
-    for (const salle of [TRACK_1, TRACK_2, HANDS_ON]) {
-      expect(currentSession(servi, salle, midi)?.title).toBe('Déjeuner')
+    for (const room of [TRACK_1, TRACK_2, HANDS_ON]) {
+      expect(currentSession(served, room, noon)?.title).toBe('Déjeuner')
     }
   })
 
-  it("laisse une salle occupée sur son propre programme", () => {
-    // 09:50 UTC : Track #1 est en pause croissants (09:40 → 10:00), pendant que
-    // Hands on tient un atelier de deux heures. Rogner l'atelier pour y glisser
-    // la pause fabriquerait un créneau que personne n'a mis au programme.
-    const pause = at('2026-10-30T09:50:00Z')
+  it('leaves a busy room on its own program', () => {
+    // 09:50 UTC: Track #1 is on its croissant break (09:40 → 10:00), while Hands
+    // on is running a two-hour workshop. Trimming the workshop to slip the break
+    // in would manufacture a slot nobody put in the program.
+    const breakTime = at('2026-10-30T09:50:00Z')
 
-    expect(currentSession(servi, TRACK_1, pause)?.title).toBe('Pause croissants')
-    expect(currentSession(servi, TRACK_2, pause)?.title).toBe('Pause croissants')
-    expect(currentSession(servi, HANDS_ON, pause)?.title).toContain('usage responsable')
+    expect(currentSession(served, TRACK_1, breakTime)?.title).toBe('Pause croissants')
+    expect(currentSession(served, TRACK_2, breakTime)?.title).toBe('Pause croissants')
+    expect(currentSession(served, HANDS_ON, breakTime)?.title).toContain('usage responsable')
   })
 
-  it('garde la liste triée par heure de début', () => {
-    const debuts = servi.sessions.map((session) => session.startsAtMs)
-    expect(debuts).toEqual([...debuts].sort((a, b) => a - b))
+  it('keeps the list sorted by start time', () => {
+    const starts = served.sessions.map((session) => session.startsAtMs)
+    expect(starts).toEqual([...starts].sort((a, b) => a - b))
   })
 
-  it('est idempotente : la rejouer ne duplique rien', () => {
-    // Elle se recalcule à chaque lecture du programme servi : la rejouer sur son
-    // propre résultat ne doit pas empiler les copies.
-    expect(applySharedBreaks(servi).sessions).toHaveLength(servi.sessions.length)
+  it('is idempotent: replaying it duplicates nothing', () => {
+    // It is recomputed on every read of the served program: replaying it on its
+    // own result must not pile the copies up.
+    expect(applySharedBreaks(served).sessions).toHaveLength(served.sessions.length)
   })
 })
 
 /**
- * Cas limites, sur des programmes taillés à la main : l'export réel enchaîne ses
- * créneaux bord à bord et ne dit rien des recouvrements partiels.
+ * Edge cases, on hand-cut programs: the real export runs its slots edge to edge
+ * and says nothing about partial overlaps.
  */
-describe('applySharedBreaks — cas limites', () => {
-  const base = (id: string, roomId: string, debut: string, fin: string | null, kind: 'talk' | 'break'): Session => ({
+describe('applySharedBreaks — edge cases', () => {
+  const base = (id: string, roomId: string, start: string, end: string | null, kind: 'talk' | 'break'): Session => ({
     id,
     title: id,
     abstract: null,
-    startsAt: debut,
-    endsAt: fin,
-    startsAtMs: at(debut),
-    endsAtMs: fin == null ? null : at(fin),
+    startsAt: start,
+    endsAt: end,
+    startsAtMs: at(start),
+    endsAtMs: end == null ? null : at(end),
     durationMinutes: null,
     roomId,
     kind,
@@ -110,7 +109,7 @@ describe('applySharedBreaks — cas limites', () => {
     imageUrl: null,
   })
 
-  const programme = (sessions: Session[]): Program => ({
+  const programOf = (sessions: Session[]): Program => ({
     event: {
       id: 'e', name: 'E', startsAt: null, endsAt: null, locationName: null, locationUrl: null,
       language: null, theme: { color: null, colorSecondary: null, colorBackground: null },
@@ -123,54 +122,54 @@ describe('applySharedBreaks — cas limites', () => {
     speakers: [], categories: [], formats: [], sponsorTiers: [], issues: [],
   })
 
-  const partagees = (p: Program, roomId: string): Session[] =>
+  const shared = (p: Program, roomId: string): Session[] =>
     sessionsForRoom(applySharedBreaks(p), roomId).filter((s) => s.sharedFrom != null)
 
-  it('projette une pause dans une salle bord à bord, sans la croire occupée', () => {
-    // Le cas courant : le talk de B finit à l'heure où la pause de A commence.
-    // Traiter ce contact comme un chevauchement annulerait la règle partout.
-    const p = programme([
+  it('projects a break into an edge-to-edge room, without calling it busy', () => {
+    // The common case: B's talk ends at the hour A's break starts. Treating that
+    // contact as an overlap would cancel the rule everywhere.
+    const p = programOf([
       base('pause-a', 'a', '2026-10-30T11:00:00Z', '2026-10-30T12:00:00Z', 'break'),
       base('talk-b', 'b', '2026-10-30T10:00:00Z', '2026-10-30T11:00:00Z', 'talk'),
       base('talk-b2', 'b', '2026-10-30T12:00:00Z', '2026-10-30T13:00:00Z', 'talk'),
     ])
 
-    expect(partagees(p, 'b').map((s) => s.sharedFrom)).toEqual(['pause-a'])
+    expect(shared(p, 'b').map((s) => s.sharedFrom)).toEqual(['pause-a'])
   })
 
-  it('renonce sur un recouvrement, même partiel', () => {
-    // B a son propre programme sur une partie de l'intervalle : rogner la pause
-    // pour la faire entrer dans ce qui reste inventerait un créneau.
-    const p = programme([
+  it('gives up on an overlap, even a partial one', () => {
+    // B has its own program over part of the interval: trimming the break to fit
+    // what is left would invent a slot.
+    const p = programOf([
       base('pause-a', 'a', '2026-10-30T11:00:00Z', '2026-10-30T12:00:00Z', 'break'),
       base('talk-b', 'b', '2026-10-30T11:30:00Z', '2026-10-30T12:30:00Z', 'talk'),
     ])
 
-    expect(partagees(p, 'b')).toEqual([])
+    expect(shared(p, 'b')).toEqual([])
   })
 
-  it('renonce sur une pause qu\'on ne sait pas fermer', () => {
-    // Sans fin ni durée ni créneau suivant, elle courrait jusqu'au bout de la
-    // journée dans une salle qui a peut-être un talk plus tard.
-    const p = programme([base('pause-a', 'a', '2026-10-30T11:00:00Z', null, 'break')])
+  it('gives up on a break we cannot close', () => {
+    // With no end, no duration and no next slot, it would run to the end of the
+    // day in a room that may well have a talk later.
+    const p = programOf([base('pause-a', 'a', '2026-10-30T11:00:00Z', null, 'break')])
 
-    expect(partagees(p, 'b')).toEqual([])
+    expect(shared(p, 'b')).toEqual([])
   })
 
-  it('ne projette qu\'une fois une pause que deux salles tiennent', () => {
-    // Deux tracks portent chacun leur « Pause café » de 15:00 : la troisième
-    // salle n'en hérite qu'une. Deux lignes identiques dans sa timeline se
-    // liraient comme deux créneaux successifs.
+  it('projects a break held by two rooms only once', () => {
+    // Two tracks each carry their own 15:00 "Pause café": the third room only
+    // inherits one. Two identical rows in its timeline would read as two
+    // successive slots.
     const p: Program = {
-      ...programme([
+      ...programOf([
         base('pause-a', 'a', '2026-10-30T15:00:00Z', '2026-10-30T15:20:00Z', 'break'),
         base('pause-b', 'b', '2026-10-30T15:00:00Z', '2026-10-30T15:20:00Z', 'break'),
       ]),
       rooms: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }],
     }
-    // Titres identiques : c'est le même moment de la journée, tenu deux fois.
+    // Identical titles: it is the same moment of the day, held twice.
     p.sessions = p.sessions.map((s) => ({ ...s, title: 'Pause café' }))
 
-    expect(partagees(p, 'c')).toHaveLength(1)
+    expect(shared(p, 'c')).toHaveLength(1)
   })
 })

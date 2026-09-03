@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { globSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-// Chemin relatif : `ui` ne dépend pas de `components`, et l'inverse serait un
-// cycle. Ce test lit déjà des sources par chemin — c'est sa nature.
+// A relative path: `ui` does not depend on `components`, and the reverse would
+// be a cycle. This test already reads sources by path — that is its nature.
 import { DOT_LEVELS } from '../../components/src/domain/status-levels.js'
 import { APPEARANCE, outlineOf } from '@cloudnord/room-state'
 import { describe, expect, it } from 'vitest'

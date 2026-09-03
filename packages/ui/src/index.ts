@@ -1,10 +1,10 @@
 /**
- * Habillage partagé par les pages autonomes du hub et des salles.
+ * Styling shared by the standalone pages of the hub and of the rooms.
  *
- * Les pages n'ont pas d'étape de build : elles inlinent cette feuille dans un
- * `<style>`, ce qui leur permet d'utiliser Tailwind tout en restant ouvrables
- * sans réseau, sans CDN et sans bundler.
+ * The pages have no build step: they inline this sheet into a `<style>`, which
+ * lets them use Tailwind while staying openable with no network, no CDN and no
+ * bundler.
  */
 export { TAILWIND_CSS } from './generated/styles.js'
 
-export { aplatirCouches, aplatirCouchesHtml } from './couches.js'
+export { flattenLayers, flattenLayersInHtml } from './layers.js'

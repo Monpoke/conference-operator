@@ -4,7 +4,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { attendreRendu } from './helpers/attendre.js'
-import { aplatirCouchesHtml } from '@cloudnord/ui'
+import { flattenLayersInHtml } from '@cloudnord/ui'
 import { renderWallPage } from '../src/pages/wall-page.js'
 
 /**
@@ -49,7 +49,7 @@ function monterMur(
     return new Response(JSON.stringify({ json }), { status: 200 })
   }))
 
-  document.documentElement.innerHTML = aplatirCouchesHtml(
+  document.documentElement.innerHTML = flattenLayersInHtml(
     renderWallPage({ roomId: SALLE.id, rooms: [SALLE] }),
   )
   for (const script of document.querySelectorAll('script:not([type])')) {

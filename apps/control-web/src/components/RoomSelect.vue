@@ -19,17 +19,17 @@ import { useLockStore } from '../stores/lock.js'
  * Chaque carte porte les deux choses qui décident : **où en est la salle** — le
  * mot, pas seulement la teinte — et **qui la tient**, s'il y a quelqu'un.
  */
-const porte = useGatewayStore()
+const gateway = useGatewayStore()
 const session = useSessionStore()
-const verrou = useLockStore()
+const lock = useLockStore()
 
 /** Rafraîchi au même rythme que la supervision de la console : rien ne se pilote ici. */
 const RAFRAICHISSEMENT_MS = 10_000
 let timer: ReturnType<typeof setInterval> | null = null
 
 onMounted(() => {
-  void verrou.charger()
-  timer = setInterval(() => void verrou.charger(), RAFRAICHISSEMENT_MS)
+  void lock.load()
+  timer = setInterval(() => void lock.load(), RAFRAICHISSEMENT_MS)
 })
 
 onBeforeUnmount(() => {
@@ -46,9 +46,9 @@ onBeforeUnmount(() => {
  * « hors créneau ».
  */
 const salles = computed<ControlRoom[]>(() =>
-  verrou.salles.length > 0
-    ? verrou.salles
-    : porte.amorce.salles.map((salle) => ({
+  lock.rooms.length > 0
+    ? lock.rooms
+    : gateway.boot.salles.map((salle) => ({
         roomId: salle.id,
         name: salle.name,
         conference: 'aucune' as const,
@@ -95,7 +95,7 @@ function moi(salle: ControlRoom): boolean {
  * sous le pouce.
  */
 function ouvrir(salle: ControlRoom): void {
-  verrou.regarder(salle.roomId)
+  lock.watch(salle.roomId)
 }
 </script>
 

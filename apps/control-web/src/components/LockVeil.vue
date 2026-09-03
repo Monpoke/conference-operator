@@ -24,19 +24,19 @@ import { useLockStore } from '../stores/lock.js'
  * collègue pilote est un usage normal — c'est même ce que fait quelqu'un qui
  * hésite à la reprendre.
  */
-const porte = useGatewayStore()
-const verrou = useLockStore()
+const gateway = useGatewayStore()
+const lock = useLockStore()
 
 /** Depuis quand ce porteur-là tient la salle. Recalculé au tic de la page. */
 const props = defineProps<{ nowMs: number }>()
 
 const depuis = computed(() =>
-  verrou.verrou == null ? null : timeAgo(verrou.verrou.heldSince, props.nowMs),
+  lock.lock == null ? null : timeAgo(lock.lock.heldSince, props.nowMs),
 )
 
 const titre = computed(() => {
-  if (verrou.pasPrise) return 'Cette salle n’est pas prise'
-  return verrou.monAutreSession
+  if (lock.unheld) return 'Cette salle n’est pas prise'
+  return lock.myOtherSession
     ? 'Vous pilotez déjà cette salle ailleurs'
     : 'Cette salle est pilotée par quelqu’un d’autre'
 })
@@ -49,7 +49,7 @@ const titre = computed(() => {
  * la question tout de suite.
  */
 const explication = computed(() => {
-  if (verrou.pasPrise) {
+  if (lock.unheld) {
     /*
      * Le cas du verrou expiré, et il faut le dire sans inquiéter.
      *
@@ -63,15 +63,15 @@ const explication = computed(() => {
     )
   }
   const quand = depuis.value == null ? '' : ` depuis ${depuis.value}`
-  return verrou.monAutreSession
+  return lock.myOtherSession
     ? `Un autre onglet ou appareil connecté avec votre compte tient la régie de cette salle${quand}. ` +
         'Reprendre ici en retirera les commandes là-bas.'
-    : `${verrou.porteur} tient la régie de cette salle${quand}. ` +
+    : `${lock.holder} tient la régie de cette salle${quand}. ` +
         'Reprendre lui retirera les commandes, au milieu de ce qu’il est en train de faire.'
 })
 
 /** Prendre une salle libre n'est pas reprendre : le bouton ne ment pas. */
-const action = computed(() => (verrou.pasPrise ? 'Prendre le contrôle' : 'Reprendre le contrôle'))
+const action = computed(() => (lock.unheld ? 'Prendre le contrôle' : 'Reprendre le contrôle'))
 </script>
 
 <template>
@@ -95,11 +95,11 @@ const action = computed(() => (verrou.pasPrise ? 'Prendre le contrôle' : 'Repre
           variant="primary"
           class="w-full py-3"
           data-role="verrou-reprendre"
-          @click="porte.roomId != null && verrou.ouvrir(porte.roomId, true)"
+          @click="gateway.roomId != null && lock.open(gateway.roomId, true)"
         >
           {{ action }}
         </Button>
-        <Button class="w-full py-3" data-role="verrou-quitter" @click="verrou.quitter()">
+        <Button class="w-full py-3" data-role="verrou-quitter" @click="lock.leave()">
           Choisir une autre salle
         </Button>
       </div>

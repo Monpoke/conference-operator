@@ -6,60 +6,58 @@ import { useGatewayStore } from './gateway.js'
 
 export type { ActionResult }
 
-/** Ce qu'on peut demander d'une action, en plus de la poster. */
+/** What can be asked of an action, beyond posting it. */
 export interface ActOptions {
   /**
-   * Ne pas annoncer la réussite.
+   * Do not announce success.
    *
-   * Pour les gestes dont l'effet **est** la réponse : écarter un signalement le
-   * fait disparaître, et un « Fait » qui reparaît à la seconde suivante — au
-   * même endroit de l'écran, la pile et les avis partagent le bas — se lit
-   * comme un nouveau signalement. On aurait fermé quelque chose pour en ouvrir
-   * un autre.
+   * For gestures whose effect **is** the answer: dismissing a notice makes it
+   * disappear, and a "Fait" reappearing a second later — in the same place on
+   * screen, since the stack and the toasts share the bottom — reads as a new
+   * notice. One would have closed something in order to open another.
    *
-   * L'échec, lui, parle toujours : il n'a pas d'effet visible pour le dire à sa
-   * place.
+   * Failure, on the other hand, always speaks: it has no visible effect to say
+   * it in its place.
    */
   silent?: boolean
 }
 
 /**
- * Les commandes de régie, et la règle qui les gouverne toutes.
+ * The control commands, and the rule that governs them all.
  *
- * **Aucune action n'écrit dans l'état de la salle.** Appuyer sur « LIVE » poste
- * la commande et s'arrête là : c'est le delta du flux qui repeindra le bouton,
- * une fois qu'OBS aura vraiment basculé. Peindre d'avance donnerait un bouton
- * actif décrivant ce qu'on a demandé et non ce qui est — la différence est
- * invisible tant que tout marche, et c'est exactement le jour où la bascule
- * échoue qu'elle compte.
+ * **No action writes into the room's state.** Pressing "LIVE" posts the command
+ * and stops there: it is the stream's delta that will repaint the button, once
+ * OBS has really switched. Painting ahead would give an active button describing
+ * what was asked rather than what is — the difference is invisible while
+ * everything works, and it matters on exactly the day the switch fails.
  *
- * Le prix est un aller-retour de latence sur chaque geste. En salle, il se
- * mesure en millisecondes : le poste sert la page et pilote OBS depuis la même
- * machine. Depuis un téléphone, il se compte en secondes — d'où le réveil de la
- * file de remontée côté salle, sans lequel un bouton resterait dix secondes à
- * décrire l'état d'avant et se ferait appuyer une seconde fois.
+ * The price is one round trip of latency on every gesture. In the room it is
+ * measured in milliseconds: the machine serves the page and drives OBS from the
+ * same box. From a phone it is measured in seconds — hence the uplink queue's
+ * wake-up on the room side, without which a button would spend ten seconds
+ * describing the previous state and get pressed a second time.
  */
 export const useActionsStore = defineStore('actions', () => {
   const toast = useToast()
-  const porte = useGatewayStore()
+  const gateway = useGatewayStore()
 
-  /** Commandes en vol, par action. Sert à désarmer un bouton le temps du geste. */
+  /** Commands in flight, per action. Used to disarm a button for the gesture's duration. */
   const pending = ref(0)
 
   async function act(
-    geste: Record<string, unknown>,
+    gesture: Record<string, unknown>,
     options: ActOptions = {},
   ): Promise<ActionResult> {
     pending.value += 1
     try {
       /*
-       * Le transport vit dans la porte ; ici on ne garde que ce qui se voit.
+       * The transport lives in the gateway; here we keep only what is seen.
        *
-       * Les deux portes rendent la même forme et n'échouent jamais par
-       * exception : un échec revient à l'opérateur en message, pas en page
-       * cassée au milieu d'une intervention.
+       * Both gateways return the same shape and never fail by exception: a
+       * failure comes back to the operator as a message, not as a broken page in
+       * the middle of an intervention.
        */
-      const result = await porte.act(geste)
+      const result = await gateway.act(gesture)
       const message = result.message ?? (result.ok ? 'Fait' : 'Échec')
       if (!result.ok) toast.fail(message)
       else if (options.silent !== true) toast.say(message)

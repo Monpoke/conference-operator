@@ -2,22 +2,21 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useProgramsStore } from './programs.js'
 
-export const CONSULT_TABS = ['programme', 'autre', 'salles', 'questions'] as const
+export const CONSULT_TABS = ['program', 'other', 'rooms', 'questions'] as const
 export type ConsultTab = (typeof CONSULT_TABS)[number]
 
 /**
- * La consultation : ce qu'on va chercher, jamais ce qu'on pilote.
+ * Consultation: what one goes looking for, never what one drives.
  *
- * Une seule modale à quatre onglets plutôt que quatre modales, parce que
- * l'opérateur y entre pour répondre à une question — « où en est l'autre
- * salle ? », « qu'est-ce qui suit ? » — et qu'il change d'onglet en cours de
- * route. Quatre boutons dans l'en-tête et quatre modales à fermer l'une après
- * l'autre coûteraient plus que ce qu'ils rangent.
+ * A single modal with four tabs rather than four modals, because the operator
+ * enters it to answer a question — "how far along is the other room?", "what
+ * comes next?" — and changes tab along the way. Four buttons in the header and
+ * four modals to close one after another would cost more than they tidy away.
  */
 export const useConsultStore = defineStore('consult', () => {
   const open = ref(false)
-  const tab = ref<ConsultTab>('programme')
-  /** Salle suivie dans l'onglet « Autre salle », ou `null` tant qu'on n'a pas choisi. */
+  const tab = ref<ConsultTab>('program')
+  /** The room followed in the "Autre salle" tab, or `null` until one is chosen. */
   const followed = ref<string | null>(null)
 
   const programs = useProgramsStore()
@@ -27,10 +26,10 @@ export const useConsultStore = defineStore('consult', () => {
     open.value = true
   }
 
-  /** Programme d'une autre salle : chargé à la demande, pas dans le flux d'état. */
+  /** Another room's program: loaded on demand, not carried in the state stream. */
   async function follow(roomId: string): Promise<void> {
     followed.value = roomId
-    tab.value = 'autre'
+    tab.value = 'other'
     open.value = true
     await programs.loadRoom(roomId)
   }

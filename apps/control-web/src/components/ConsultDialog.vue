@@ -12,9 +12,9 @@ import RoomsTab from './RoomsTab.vue'
 import Timeline from './Timeline.vue'
 
 const LABELS: Record<ConsultTab, string> = {
-  programme: 'Programme',
-  autre: 'Autre salle',
-  salles: 'Salles',
+  program: 'Programme',
+  other: 'Autre salle',
+  rooms: 'Salles',
   questions: 'Questions',
 }
 
@@ -67,7 +67,7 @@ const followable = computed(() => otherRooms(props.payload, programs.rooms))
         {{ LABELS[name] }}
       </Button>
       <select
-        v-if="consult.tab === 'autre'"
+        v-if="consult.tab === 'other'"
         class="max-w-[220px] rounded-lg border border-edge bg-canvas px-3 py-2 text-[13px] text-text focus:border-brand focus:outline-none"
         data-role="choix-autre-salle"
         :value="consult.followed ?? ''"
@@ -80,14 +80,14 @@ const followable = computed(() => otherRooms(props.payload, programs.rooms))
 
     <div class="max-h-[62vh] overflow-y-auto">
       <Timeline
-        v-if="consult.tab === 'programme'"
+        v-if="consult.tab === 'program'"
         :sessions="payload.sessions"
         :time-zone="payload.timezone"
         :current-id="payload.state.currentSession?.id ?? null"
         :now-ms="nowMs"
       />
 
-      <template v-else-if="consult.tab === 'autre'">
+      <template v-else-if="consult.tab === 'other'">
         <div v-if="consult.followed == null" class="text-xs text-dim">
           Choisissez une salle à suivre.
         </div>
@@ -100,7 +100,7 @@ const followable = computed(() => otherRooms(props.payload, programs.rooms))
         />
       </template>
 
-      <RoomsTab v-else-if="consult.tab === 'salles'" :payload="payload" :now-ms="nowMs" />
+      <RoomsTab v-else-if="consult.tab === 'rooms'" :payload="payload" :now-ms="nowMs" />
 
       <QuestionsTab v-else :payload="payload" />
     </div>

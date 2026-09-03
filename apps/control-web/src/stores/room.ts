@@ -8,90 +8,88 @@ import { useGatewayStore } from './gateway.js'
 export type { StateStream }
 
 /**
- * Au-delà, une coupure cesse d'être une reconnexion et devient un écran mort.
+ * Past this, an outage stops being a reconnection and becomes a dead screen.
  *
- * Repris tel quel de la page d'origine : `EventSource` se reconnecte seul et ne
- * lève rien, si bien qu'un poste de salle redémarré sous une fenêtre ouverte
- * laisse cette fenêtre vivante en apparence — l'horloge tourne, le compte à
- * rebours descend — et figée en fait, sur l'état d'avant la coupure. Le délai
- * de grâce évite de crier à chaque reconnexion d'une seconde, que personne n'a
- * besoin de voir.
+ * Taken over as-is from the original page: `EventSource` reconnects on its own
+ * and raises nothing, so a room machine restarted under an open window leaves
+ * that window apparently alive — the clock ticks, the countdown descends — and
+ * in fact frozen, on the state from before the cut. The grace period avoids
+ * crying out on every one-second reconnection, which nobody needs to see.
  *
- * Vaut pour les deux portes. À distance, c'est le sondage qui échoue : un
- * téléphone qui perd le réseau doit le dire aussi fort qu'une régie dont le
- * poste a redémarré.
+ * Holds for both gateways. Remotely it is the poll that fails: a phone losing
+ * the network must say so as loudly as a control app whose machine restarted.
  */
 export const STREAM_DEAD_MS = 4000
 
 /**
- * L'état de la salle, et le flux qui le tient à jour.
+ * The room's state, and the stream that keeps it up to date.
  *
- * Un seul écrivain, et c'est le point : **aucune action de régie n'écrit ici**.
- * Appuyer sur « LIVE » poste l'action et attend le delta ; la page ne se peint
- * pas d'avance. C'est ce qui garantit qu'un bouton actif à l'écran décrit OBS
- * et non ce qu'on a demandé à OBS — la distinction compte le jour où la bascule
- * échoue et où personne ne s'en rend compte.
+ * A single writer, and that is the point: **no control action writes here**.
+ * Pressing "LIVE" posts the action and waits for the delta; the page does not
+ * paint ahead. That is what guarantees an active button on screen describes OBS
+ * and not what OBS was asked to do — the distinction matters on the day the
+ * switch fails and nobody notices.
  *
- * D'où l'état vient est l'affaire de `porte` : le flux SSE du poste de salle,
- * ou le sondage du hub. Ce store ne le sait pas, et les panneaux non plus.
+ * Where the state comes from is `gateway`'s business: the room machine's SSE
+ * stream, or the hub's polling. This store does not know, and neither do the
+ * panels.
  */
 export const useRoomStore = defineStore('room', () => {
   const payload = ref<DisplayPayload | null>(null)
 
   /**
-   * Depuis quand le flux est coupé, ou `null` s'il tient.
+   * Since when the stream has been cut, or `null` if it holds.
    *
-   * Distinct de la connectivité affichée à côté, qui dit si la **salle** joint
-   * le hub. Celle-ci dit si la **page** joint sa source — deux pannes
-   * différentes, et la seconde était muette avant qu'on la nomme.
+   * Distinct from the connectivity shown beside it, which says whether the
+   * **room** reaches the hub. This one says whether the **page** reaches its
+   * source — two different failures, and the second was mute until it was named.
    */
   const cutSince = ref<number | null>(null)
 
   const clock = useClockStore()
-  const porte = useGatewayStore()
+  const gateway = useGatewayStore()
 
-  /** Heure de la salle, décalage du hub compris. */
+  /** The room's time, the hub's offset included. */
   const now = computed(() => clock.real + (payload.value?.state.serverTimeOffsetMs ?? 0))
 
   /**
-   * Mesuré au battement, des deux côtés, et c'est délibéré.
+   * Measured on the beat, on both sides, and deliberately so.
    *
-   * L'instant de coupure comme la comparaison lisent la même horloge d'une
-   * seconde : l'écart est donc exact à un battement près, et l'erreur tombe
-   * toujours du même côté — l'avertissement paraît entre quatre et cinq
-   * secondes après la coupure, jamais avant quatre. Un « écran figé » affiché
-   * trop tôt sur une reconnexion d'une seconde coûte plus cher qu'un affiché
-   * une seconde trop tard.
+   * The instant of the cut and the comparison both read the same one-second
+   * clock: the gap is therefore exact to within one beat, and the error always
+   * falls on the same side — the warning appears between four and five seconds
+   * after the cut, never before four. A "frozen screen" shown too early on a
+   * one-second reconnection costs more than one shown a second too late.
    */
   const dead = computed(
     () => cutSince.value != null && clock.real - cutSince.value > STREAM_DEAD_MS,
   )
 
-  /** L'état embarqué dans la coquille, posé avant le premier octet du flux. */
+  /** The state embedded in the shell, laid down before the stream's first byte. */
   function seed(initial: DisplayPayload | null): void {
     if (initial != null) payload.value = initial
   }
 
-  function connect(ouvrirFlux?: (url: string) => StateStream): void {
-    if (ouvrirFlux != null) porte.configurer({ ouvrirFlux })
-    porte.ouvrir(
+  function connect(openStream?: (url: string) => StateStream): void {
+    if (openStream != null) gateway.configure({ openStream })
+    gateway.open(
       {
-        onPayload: (recu, complet) => {
-          if (complet) {
-            payload.value = recu as DisplayPayload
+        onPayload: (received, complete) => {
+          if (complete) {
+            payload.value = received as DisplayPayload
             return
           }
           /*
-           * Un delta seul décrit une salle dont on ne connaît pas le reste.
+           * A delta on its own describes a room whose rest is unknown.
            *
-           * Le peindre à moitié serait pire que d'attendre l'instantané, qui
-           * suit de toute façon toute reconnexion.
+           * Painting it half-way would be worse than waiting for the snapshot,
+           * which follows every reconnection anyway.
            */
           if (payload.value == null) return
-          payload.value = { ...payload.value, ...(recu as Partial<DisplayPayload>) }
+          payload.value = { ...payload.value, ...(received as Partial<DisplayPayload>) }
         },
-        onOutage: (coupe) => {
-          if (coupe) cutSince.value ??= clock.real
+        onOutage: (cut) => {
+          if (cut) cutSince.value ??= clock.real
           else cutSince.value = null
         },
       },
@@ -99,21 +97,21 @@ export const useRoomStore = defineStore('room', () => {
   }
 
   function disconnect(): void {
-    porte.fermer()
+    gateway.close()
   }
 
   /**
-   * Repart de zéro sur une autre salle.
+   * Starts over on another room.
    *
-   * L'état de la précédente doit partir avec elle : garder le `payload` le temps
-   * du premier sondage afficherait une seconde le titre, le compte à rebours et
-   * l'état d'enregistrement de la salle qu'on vient de quitter — sur la page de
-   * celle qu'on ouvre.
+   * The previous one's state must leave with it: keeping the `payload` for the
+   * duration of the first poll would show, for a second, the title, the countdown
+   * and the recording state of the room just left — on the page of the one being
+   * opened.
    */
-  function oublier(): void {
+  function forget(): void {
     payload.value = null
     cutSince.value = null
   }
 
-  return { payload, cutSince, now, dead, seed, connect, disconnect, oublier }
+  return { payload, cutSince, now, dead, seed, connect, disconnect, forget }
 })

@@ -74,7 +74,7 @@ describe('brouillon', () => {
     config.draft!.fileSlug = 'track-1'
     // Un nouvel état arrive : la régie en reçoit un toutes les quelques
     // secondes, et repeupler effacerait la saisie en cours.
-    useRoomStore().payload!.diagnostics!.config = { ...CONFIG, fileSlug: 'autre' }
+    useRoomStore().payload!.diagnostics!.config = { ...CONFIG, fileSlug: 'other' }
 
     expect(config.draft?.fileSlug).toBe('track-1')
   })

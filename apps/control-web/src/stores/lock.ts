@@ -7,132 +7,130 @@ import { useRoomStore } from './room.js'
 import { thisTabSession, useSessionStore } from './session.js'
 
 /**
- * Qui tient la salle, et comment on la prend.
+ * Who holds the room, and how one takes it.
  *
- * Une seule régie mobile pilote une salle à la fois. **La régie de la salle,
- * elle, n'est jamais bridée** : l'opérateur qui est physiquement là ne doit pas
- * dépendre d'un téléphone parti dans un couloir, ni d'un verrou qu'on a oublié
- * de rendre. Le verrou n'exclut que les mobiles entre eux.
+ * A single mobile control app drives a room at a time. **The room's own control
+ * app is never restrained**: the operator who is physically there must not
+ * depend on a phone gone off down a corridor, nor on a lock somebody forgot to
+ * release. The lock only excludes mobiles from one another.
  *
- * Le battement ne vit pas ici : il voyage dans le sondage d'état
- * (`regie.view`), qui renouvelle la prise de son porteur. Un second minuteur
- * serait un second geste à ne pas oublier d'arrêter, et un verrou qui survit à
- * la page qui le tenait.
+ * The heartbeat does not live here: it travels in the state poll (`regie.view`),
+ * which renews its holder's grip. A second timer would be a second thing to
+ * remember to stop, and a lock that outlives the page that held it.
  */
-export const useLockStore = defineStore('verrou', () => {
-  const porte = useGatewayStore()
+export const useLockStore = defineStore('lock', () => {
+  const gateway = useGatewayStore()
   const room = useRoomStore()
   const session = useSessionStore()
   const toast = useToast()
 
-  /** Les salles et leur verrou, pour l'écran de choix. */
-  const salles = ref<ControlRoom[]>([])
-  const chargement = ref(false)
+  /** The rooms and their lock, for the choice screen. */
+  const rooms = ref<ControlRoom[]>([])
+  const loading = ref(false)
 
   /**
-   * Le verrou de la salle ouverte, tel que le dernier sondage l'a vu.
+   * The open room's lock, as the last poll saw it.
    *
-   * Lu sur la vue plutôt que gardé ici : une seule source, et elle est déjà
-   * rafraîchie chaque seconde. Un second exemplaire finirait par dire autre
-   * chose que celui qu'on affiche à côté.
+   * Read from the view rather than kept here: a single source, and one already
+   * refreshed every second. A second copy would end up saying something other
+   * than the one displayed beside it.
    */
-  const verrou = computed<ControlLock | null>(() => lockView())
+  const lock = computed<ControlLock | null>(() => lockView())
 
-  const porteur = computed(() => verrou.value?.holder ?? null)
+  const holder = computed(() => lock.value?.holder ?? null)
 
   /**
-   * Cet onglet-ci tient-il la salle ?
+   * Does this tab hold the room?
    *
-   * Sur la **session**, pas sur l'adresse. Une même personne ouvre la régie sur
-   * son téléphone puis sur une tablette : comparer les comptes ferait croire aux
-   * deux qu'ils pilotent, et deux bascules de scène contradictoires partiraient
-   * sans qu'aucun écran ne le dise.
+   * On the **session**, not on the address. The same person opens the control app
+   * on their phone and then on a tablet: comparing accounts would make both
+   * believe they are driving, and two contradictory scene switches would leave
+   * with no screen saying so.
    */
-  const jeTiens = computed(() => verrou.value?.holderId === thisTabSession())
+  const iHold = computed(() => lock.value?.holderId === thisTabSession())
 
   /**
-   * La salle est tenue, mais pas ici. C'est ce qui lève le voile.
+   * The room is held, but not here. This is what lifts the veil.
    *
-   * Distinct de « personne ne la tient » : celle-là se prend d'un geste, celle-ci
-   * demande de déposséder quelqu'un — fût-ce soi-même, sur un autre appareil.
+   * Distinct from "nobody holds it": that one is taken with a single gesture,
+   * this one requires dispossessing somebody — even oneself, on another device.
    */
-  const tenueAilleurs = computed(() => verrou.value != null && !jeTiens.value)
+  const heldElsewhere = computed(() => lock.value != null && !iHold.value)
 
   /**
-   * Une salle ouverte que cet onglet ne tient pas. C'est ce qui lève le voile.
+   * An open room this tab does not hold. This is what lifts the veil.
    *
-   * Trois situations derrière, et le voile les nomme séparément : personne ne
-   * la tient — le cas d'un verrou expiré pendant que le téléphone dormait —,
-   * un autre de vos onglets, ou quelqu'un d'autre. Les trois appellent le même
-   * geste, mais pas la même phrase.
+   * Three situations behind it, and the veil names them separately: nobody holds
+   * it — the case of a lock expired while the phone slept —, another of your own
+   * tabs, or somebody else. All three call for the same gesture, but not for the
+   * same sentence.
    */
-  const bloque = computed(() => porte.roomId != null && !jeTiens.value)
+  const blocked = computed(() => gateway.roomId != null && !iHold.value)
 
-  /** Personne ne la tient : elle se prend sans déposséder qui que ce soit. */
-  const pasPrise = computed(() => bloque.value && verrou.value == null)
+  /** Nobody holds it: it can be taken without dispossessing anyone. */
+  const unheld = computed(() => blocked.value && lock.value == null)
 
   /**
-   * Le porteur, c'est moi — ailleurs.
+   * The holder is me — elsewhere.
    *
-   * Le cas se produit plus souvent qu'on ne croit : on ouvre la régie sur le
-   * téléphone, puis sur la tablette de la table de régie. Le dire change la
-   * phrase du voile : « regie@… tient la salle » sur son propre compte se lit
-   * comme une panne, alors que la réponse est « c'est vous, dans un autre
-   * onglet ».
+   * This happens more often than one would think: the control app is opened on
+   * the phone, then on the tablet at the control desk. Saying so changes the
+   * veil's wording: "regie@… tient la salle" against one's own account reads as a
+   * failure, when the answer is "it is you, in another tab".
    */
-  const monAutreSession = computed(
-    () => tenueAilleurs.value && porteur.value === session.identity,
+  const myOtherSession = computed(
+    () => heldElsewhere.value && holder.value === session.identity,
   )
 
   /**
-   * Le verrou, pris là où il est le plus frais.
+   * The lock, taken where it is freshest.
    *
-   * **Sur le sondage** quand une salle est ouverte : il arrive chaque seconde,
-   * et c'est ce qu'il faut — une salle reprise pendant qu'on la pilote doit se
-   * voir tout de suite, pas au tour de liste suivant. Sur la liste sinon, qui
-   * est la seule source de l'écran de choix.
+   * **From the poll** when a room is open: it arrives every second, and that is
+   * what is needed — a room taken over while one drives it must be visible at
+   * once, not at the next listing. From the list otherwise, which is the choice
+   * screen's only source.
    */
   function lockView(): ControlLock | null {
-    if (porte.roomId != null) return porte.currentLock
-    const salle = salles.value.find((ligne) => ligne.roomId === porte.roomId)
-    return salle?.lock ?? null
+    if (gateway.roomId != null) return gateway.currentLock
+    const room = rooms.value.find((row) => row.roomId === gateway.roomId)
+    return room?.lock ?? null
   }
 
-  async function charger(): Promise<void> {
-    if (!porte.distante) return
-    chargement.value = true
+  async function load(): Promise<void> {
+    if (!gateway.remote) return
+    loading.value = true
     try {
-      salles.value = await session.client.rpc.regie.locks()
+      rooms.value = await session.client.rpc.regie.locks()
     } catch {
       /*
-       * Silencieux : la liste se recharge au tour suivant.
+       * Silent: the list reloads on the next round.
        *
-       * L'écran de choix garde ce qu'il montrait — des noms de salles, qui ne
-       * bougent pas de la journée. Une liste vidée à chaque hoquet de réseau
-       * ferait croire à un hub sans programme.
+       * The choice screen keeps what it was showing — room names, which do not
+       * move all day. A list emptied on every network hiccup would suggest a hub
+       * with no program.
        */
     } finally {
-      chargement.value = false
+      loading.value = false
     }
   }
 
   /**
-   * Prend la salle. `force` dépossède le porteur actuel.
+   * Takes the room. `force` dispossesses the current holder.
    *
-   * Sans `force`, un refus nomme qui tient la salle : « refusé » sans dire par
-   * qui envoie chercher un défaut là où il n'y a qu'un collègue à l'autre bout
-   * du bâtiment.
+   * Without `force`, a refusal names who holds the room: "refused" without saying
+   * by whom sends people looking for a fault where there is only a colleague at
+   * the other end of the building.
    */
-  async function prendre(roomId: string, force = false): Promise<boolean> {
+  async function take(roomId: string, force = false): Promise<boolean> {
     try {
       /*
-       * La réponse **est** le verrou : on la pose sans attendre le sondage.
+       * The response **is** the lock: we set it without waiting for the poll.
        *
-       * Sans cela, la seconde qui suit une prise se passe sans verrou connu, et
-       * le voile clignote sur la salle qu'on vient justement d'obtenir.
+       * Without this, the second following a take passes with no known lock, and
+       * the veil flashes over the very room one has just obtained.
        */
-      porte.currentLock = await session.client.rpc.regie.hold({ roomId, force })
-      await charger()
+      gateway.currentLock = await session.client.rpc.regie.hold({ roomId, force })
+      await load()
       return true
     } catch (cause) {
       toast.fail((cause as Error).message || 'Salle déjà tenue')
@@ -140,90 +138,89 @@ export const useLockStore = defineStore('verrou', () => {
     }
   }
 
-  /** Rend la salle. Sans effet si on ne la tenait pas — le hub le vérifie. */
-  async function rendre(roomId: string): Promise<void> {
+  /** Releases the room. No effect if it was not held — the hub checks. */
+  async function release(roomId: string): Promise<void> {
     try {
       await session.client.rpc.regie.release({ roomId })
-      await charger()
+      await load()
     } catch {
-      // La rendre est un geste qu'on ne réessaie pas : l'expiration s'en
-      // chargera de toute façon dans les trente secondes.
+      // Releasing is a gesture one does not retry: expiry will take care of it
+      // within thirty seconds anyway.
     }
   }
 
   /**
-   * Ouvre une salle : prend le verrou, puis bascule l'écran.
+   * Opens a room: takes the lock, then switches the screen.
    *
-   * La prise **avant** l'ouverture, et pas l'inverse : ouvrir d'abord
-   * montrerait une seconde des boutons qu'on n'a pas le droit d'utiliser, et
-   * c'est la seconde où l'on appuie.
+   * The take **before** the opening, and not the other way round: opening first
+   * would show, for a second, buttons one has no right to use — and that is the
+   * second in which one presses them.
    */
-  async function ouvrir(roomId: string, force = false): Promise<void> {
-    if (!(await prendre(roomId, force))) return
-    room.oublier()
-    porte.choisir(roomId)
+  async function open(roomId: string, force = false): Promise<void> {
+    if (!(await take(roomId, force))) return
+    room.forget()
+    gateway.choose(roomId)
   }
 
   /**
-   * Ouvre une salle **sans la prendre**.
+   * Opens a room **without taking it**.
    *
-   * Le chemin normal depuis l'écran de choix : on entre, on regarde, et c'est
-   * le voile qui porte la décision de prendre — une seule fois, au même endroit,
-   * qu'on arrive sur une salle libre, tenue par un collègue ou tenue par son
-   * propre téléphone. Demander avant d'entrer obligeait à trancher sur la foi
-   * d'une ligne de liste, sans voir ce qui se joue dans la salle.
+   * The normal path from the choice screen: one enters, one looks, and it is the
+   * veil that carries the decision to take — once, in the same place, whether one
+   * arrives at a free room, one held by a colleague or one held by one's own
+   * phone. Asking before entering forced a decision on the strength of a list
+   * row, without seeing what is happening in the room.
    */
-  function regarder(roomId: string): void {
-    room.oublier()
-    porte.choisir(roomId)
+  function watch(roomId: string): void {
+    room.forget()
+    gateway.choose(roomId)
   }
 
-  /** Revient à l'écran de choix, en rendant la salle. */
-  async function quitter(): Promise<void> {
-    const salle = porte.roomId
-    if (salle != null && jeTiens.value) await rendre(salle)
-    room.oublier()
-    porte.choisir(null)
-    await charger()
+  /** Returns to the choice screen, releasing the room. */
+  async function leave(): Promise<void> {
+    const current = gateway.roomId
+    if (current != null && iHold.value) await release(current)
+    room.forget()
+    gateway.choose(null)
+    await load()
   }
 
   /**
-   * Rend la salle quand la page s'en va.
+   * Releases the room when the page goes away.
    *
-   * `pagehide` plutôt que `beforeunload` : c'est le seul événement que les
-   * navigateurs mobiles émettent de façon fiable quand on ferme un onglet ou
-   * qu'on bascule d'application. `keepalive` fait partir la requête même
-   * pendant le démontage.
+   * `pagehide` rather than `beforeunload`: it is the only event mobile browsers
+   * emit reliably when a tab is closed or when one switches application.
+   * `keepalive` makes the request leave even during teardown.
    *
-   * Ce n'est qu'un raccourci de politesse : l'expiration couvre tous les cas où
-   * il ne part pas — batterie vide, tunnel, application tuée.
+   * It is only a courtesy shortcut: expiry covers every case where it does not
+   * leave — flat battery, tunnel, application killed.
    */
-  function libererAuDepart(): () => void {
-    const surDepart = (): void => {
-      const salle = porte.roomId
-      if (salle == null || !jeTiens.value) return
-      void session.client.rpc.regie.release({ roomId: salle }).catch(() => {})
+  function releaseOnLeave(): () => void {
+    const onLeave = (): void => {
+      const room_ = gateway.roomId
+      if (room_ == null || !iHold.value) return
+      void session.client.rpc.regie.release({ roomId: room_ }).catch(() => {})
     }
-    globalThis.addEventListener('pagehide', surDepart)
-    return () => globalThis.removeEventListener('pagehide', surDepart)
+    globalThis.addEventListener('pagehide', onLeave)
+    return () => globalThis.removeEventListener('pagehide', onLeave)
   }
 
   return {
-    salles,
-    chargement,
-    verrou,
-    porteur,
-    jeTiens,
-    tenueAilleurs,
-    monAutreSession,
-    bloque,
-    pasPrise,
-    charger,
-    prendre,
-    rendre,
-    ouvrir,
-    regarder,
-    quitter,
-    libererAuDepart,
+    rooms,
+    loading,
+    lock,
+    holder,
+    iHold,
+    heldElsewhere,
+    myOtherSession,
+    blocked,
+    unheld,
+    load,
+    take,
+    release,
+    open,
+    watch,
+    leave,
+    releaseOnLeave,
   }
 })

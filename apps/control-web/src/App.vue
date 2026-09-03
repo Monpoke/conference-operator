@@ -53,9 +53,9 @@ import { useVodStore } from './stores/vod.js'
  * monter.
  */
 const room = useRoomStore()
-const porte = useGatewayStore()
+const gateway = useGatewayStore()
 const session = useSessionStore()
-const verrou = useLockStore()
+const lock = useLockStore()
 const clock = useClockStore()
 const host = useHostStore()
 const audio = useAudioStore()
@@ -81,13 +81,13 @@ onMounted(() => {
    * depuis un téléphone ferait deux requêtes qui échouent en boucle contre le
    * hub, pour des panneaux que la disposition mobile ne monte pas.
    */
-  if (!porte.distante) {
+  if (!gateway.remote) {
     audio.connect()
     host.start()
     return
   }
-  retirerHistorique = porte.suivreHistorique()
-  retirerDepart = verrou.libererAuDepart()
+  retirerHistorique = gateway.followHistory()
+  retirerDepart = lock.releaseOnLeave()
 })
 
 onBeforeUnmount(() => {
@@ -119,7 +119,7 @@ watchEffect(() => {
    * Un opérateur qui aligne trois onglets sur trois salles n'a que le titre
    * pour les distinguer, et l'événement est le même pour les trois.
    */
-  document.title = porte.distante
+  document.title = gateway.remote
     ? `${payload.value?.roomName ?? 'Régie'} — ${nom}`
     : `Régie — ${nom}`
 })
@@ -136,7 +136,7 @@ watchEffect(() => {
   const state = payload.value?.state
   // Servis par la machine de salle : hors de portée d'un téléphone, et le
   // panneau qui les lit n'est pas monté à distance.
-  if (state != null && !porte.distante) void programs.load(state.contentHash, state.roomId)
+  if (state != null && !gateway.remote) void programs.load(state.contentHash, state.roomId)
 })
 
 /**
@@ -175,7 +175,7 @@ const pairingRequired = computed(
  * téléphone n'est pas l'endroit d'où l'on branche un OBS.
  */
 watch(
-  [() => porte.distante, pairingRequired, payload],
+  [() => gateway.remote, pairingRequired, payload],
   ([distante, appairageRequis, recu]) => {
     if (distante || appairageRequis || recu == null) return
     config.verifierAuDemarrage()
@@ -207,8 +207,8 @@ useKeyboardLayer(
      */
     d: () => capture.value?.repere('debut'),
     f: () => capture.value?.repere('fin'),
-    s: () => consult.show('salles'),
-    p: () => consult.show('programme'),
+    s: () => consult.show('rooms'),
+    p: () => consult.show('program'),
   }),
   /*
    * Rien sous le voile d'appairage, et rien sur un téléphone.
@@ -221,7 +221,7 @@ useKeyboardLayer(
    * À distance, `m`, `d`, `f`, `s` et `p` visent des panneaux absents — et un clavier
    * logiciel qui s'ouvre sur un champ de recherche déclencherait le reste.
    */
-  () => !pairingRequired.value && !porte.distante,
+  () => !pairingRequired.value && !gateway.remote,
 )
 </script>
 
@@ -231,9 +231,9 @@ useKeyboardLayer(
     choisir une salle, la piloter. Chacun remplace le précédent — un pupitre
     tenu d'une main n'a pas de place pour deux choses à la fois.
   -->
-  <template v-if="porte.distante">
+  <template v-if="gateway.remote">
     <SignInScreen v-if="!session.signedIn" />
-    <RoomSelect v-else-if="porte.roomChoice" />
+    <RoomSelect v-else-if="gateway.roomChoice" />
 
     <template v-else>
       <LockBanner :now-ms="room.now" />
@@ -246,7 +246,7 @@ useKeyboardLayer(
         quelqu'un qui hésite à la reprendre. Ce qui est coupé, ce sont les
         gestes, qui partiraient tous se faire refuser.
       -->
-      <LockVeil v-if="verrou.bloque" :now-ms="room.now" />
+      <LockVeil v-if="lock.blocked" :now-ms="room.now" />
 
       <template v-if="payload != null">
         <ControlHeader

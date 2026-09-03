@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../src/App.vue'
 import RoomSelect from '../src/components/RoomSelect.vue'
 import LockBanner from '../src/components/LockBanner.vue'
-import { payloadDepuisVue } from '../src/lib/gateway.js'
+import { payloadFromView } from '../src/lib/gateway.js'
 import { useGatewayStore } from '../src/stores/gateway.js'
 import { useRoomStore } from '../src/stores/room.js'
 import { useSessionStore } from '../src/stores/session.js'
@@ -118,8 +118,8 @@ function monterDistante(
   connecte = true,
   vueRendue: Partial<ControlView> = {},
 ) {
-  const porte = useGatewayStore()
-  porte.start({ portee: 'distante', roomId: null, salles: [], google: null })
+  const gateway = useGatewayStore()
+  gateway.start({ portee: 'distante', roomId: null, salles: [], google: null })
   const session = useSessionStore()
   const hub = hubFactice(salles, vueRendue)
   session.client = hub.client
@@ -146,7 +146,7 @@ beforeEach(() => {
 afterEach(() => {
   // La porte distante sonde chaque seconde : la laisser ouverte ferait courir
   // un minuteur d'un fichier de test au suivant.
-  useGatewayStore().fermer()
+  useGatewayStore().close()
 })
 
 describe('les trois écrans', () => {
@@ -160,8 +160,8 @@ describe('les trois écrans', () => {
   })
 
   it('propose les salles avant que le hub ait répondu', async () => {
-    const porte = useGatewayStore()
-    porte.start({
+    const gateway = useGatewayStore()
+    gateway.start({
       portee: 'distante',
       roomId: null,
       // Les noms sont posés dans la coquille : une liste vide le temps d'un
@@ -233,10 +233,10 @@ describe('les trois écrans', () => {
 describe('le voile de verrou', () => {
   function inTheRoom(lock: ControlRoom['lock']) {
     const hub = monterDistante([salle({ lock })])
-    const porte = useGatewayStore()
-    porte.roomId = 'track-1'
-    porte.currentLock = lock
-    useRoomStore().seed(payloadDepuisVue(vue({ lock }), Date.now()))
+    const gateway = useGatewayStore()
+    gateway.roomId = 'track-1'
+    gateway.currentLock = lock
+    useRoomStore().seed(payloadFromView(vue({ lock }), Date.now()))
     return hub
   }
 
@@ -325,10 +325,10 @@ describe("l'écran de salle", () => {
   function inTheRoom(vueRendue: Partial<ControlView> = {}) {
     const lock = lockOf('regie@cloudnord.fr', MOI)
     const hub = monterDistante([salle({ lock })], true, vueRendue)
-    const porte = useGatewayStore()
-    porte.roomId = 'track-1'
-    porte.currentLock = lock
-    useRoomStore().seed(payloadDepuisVue(vue({ lock, ...vueRendue }), Date.now()))
+    const gateway = useGatewayStore()
+    gateway.roomId = 'track-1'
+    gateway.currentLock = lock
+    useRoomStore().seed(payloadFromView(vue({ lock, ...vueRendue }), Date.now()))
     return hub
   }
 
@@ -372,10 +372,10 @@ describe("l'écran de salle", () => {
 describe('le bandeau de verrou', () => {
   function mountBanner(lock: ControlRoom['lock']) {
     const hub = monterDistante([salle({ lock })])
-    const porte = useGatewayStore()
-    porte.roomId = 'track-1'
-    porte.currentLock = lock
-    useRoomStore().seed(payloadDepuisVue(vue({ lock }), Date.now()))
+    const gateway = useGatewayStore()
+    gateway.roomId = 'track-1'
+    gateway.currentLock = lock
+    useRoomStore().seed(payloadFromView(vue({ lock }), Date.now()))
     return { hub, wrapper: mount(LockBanner, { props: { nowMs: AT } }) }
   }
 

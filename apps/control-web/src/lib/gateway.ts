@@ -10,56 +10,56 @@ import { NO_EDITING_MARKS } from '@cloudnord/contract'
 import type { HubClient } from '@cloudnord/hub-client'
 
 /**
- * La régie, et les deux façons de l'atteindre.
+ * The control app, and the two ways of reaching it.
  *
- * L'écran de régie parle à sa propre machine : SSE pour l'état, un POST pour
- * les gestes, le tout sur `127.0.0.1`. La régie **mobile** est la même
- * application, servie par le hub, qui pilote une salle à distance. Ce qui
- * change entre les deux tient entièrement ici — les panneaux ne savent pas d'où
- * vient leur état ni où part leur geste.
+ * The in-room control screen talks to its own machine: SSE for the state, a POST
+ * for the gestures, all on `127.0.0.1`. The **mobile** control app is the same
+ * application, served by the hub, driving a room remotely. What differs between
+ * the two lives entirely here — the panels do not know where their state comes
+ * from nor where their gesture goes.
  *
- * Trois propriétés rendent cette réutilisation possible, et il faut les tenir :
+ * Three properties make that reuse possible, and they must be held:
  *
- * 1. les panneaux prennent des `props`, pas le store ;
- * 2. le store `room` ne contient qu'un `DisplayPayload` — la porte distante en
- *    **synthétise** un depuis la vue du hub ;
- * 3. tout geste passe par `actions.act()`, y compris ceux de `conference.ts`.
+ * 1. the panels take `props`, not the store;
+ * 2. the `room` store holds nothing but a `DisplayPayload` — the remote gateway
+ *    **synthesises** one from the hub's view;
+ * 3. every gesture goes through `actions.act()`, including those in `conference.ts`.
  *
- * La règle qui gouverne les deux portes est la même, et c'est la plus
- * importante : **aucune action n'écrit dans l'état**. Un bouton actif décrit
- * OBS, jamais ce qu'on a demandé à OBS.
+ * The rule governing both gateways is the same, and it is the most important:
+ * **no action writes into the state**. An active button describes OBS, never
+ * what OBS was asked to do.
  */
 
-/** Ce que le poste répond à une action. Le message est écrit pour l'opérateur. */
+/** What the machine answers to an action. The message is written for the operator. */
 export interface ActionResult {
   ok: boolean
   message?: string
   /**
-   * Ce que le geste rapporte, quand il rapporte quelque chose.
+   * What the gesture brings back, when it brings anything back.
    *
-   * Rare, et volontairement non typé : la quasi-totalité des actions n'ont
-   * d'autre effet que sur l'état, qui revient par le flux. Seuls les gestes qui
-   * **posent une question au poste** ont une réponse — le sélecteur de dossier
-   * rend le chemin choisi, et la page remplit son champ avec.
+   * Rare, and deliberately untyped: almost every action has no effect other than
+   * on the state, which comes back through the stream. Only the gestures that
+   * **ask the machine a question** have an answer — the folder picker returns
+   * the chosen path, and the page fills its field with it.
    */
   detail?: unknown
 }
 
-/** Ce que la porte pousse vers le store d'état. */
+/** What the gateway pushes towards the state store. */
 export interface StateSink {
-  /** Instantané complet, ou fusion partielle par-dessus le précédent. */
-  onPayload: (payload: DisplayPayload | Partial<DisplayPayload>, complet: boolean) => void
-  /** Le flux est coupé, ou de nouveau vivant. */
-  onOutage: (coupe: boolean) => void
+  /** A complete snapshot, or a partial merge over the previous one. */
+  onPayload: (payload: DisplayPayload | Partial<DisplayPayload>, complete: boolean) => void
+  /** The stream is cut, or alive again. */
+  onOutage: (cut: boolean) => void
 }
 
 export interface ControlGateway {
-  demarrer(flux: StateSink): void
-  arreter(): void
-  act(geste: Record<string, unknown>): Promise<ActionResult>
+  start(sink: StateSink): void
+  stop(): void
+  act(gesture: Record<string, unknown>): Promise<ActionResult>
 }
 
-/** De quoi s'abonner et se fermer — juste assez pour tester sans `EventSource`. */
+/** Enough to subscribe and to close — just enough to test without `EventSource`. */
 export interface StateStream {
   addEventListener(type: string, listener: (event: MessageEvent) => void): void
   onopen: ((event: Event) => void) | null
@@ -68,61 +68,60 @@ export interface StateStream {
   close(): void
 }
 
-/* ------------------------------------------------------------------ locale */
+/* ------------------------------------------------------------------- local */
 
 /**
- * La porte du poste de salle : SSE descendant, POST montant.
+ * The room machine's gateway: SSE downstream, POST upstream.
  *
- * Reprise telle quelle de ce que faisaient `stores/room.ts` et
- * `stores/actions.ts` : le déplacement ne change aucun comportement, il donne
- * seulement un second point de branchement.
+ * Taken over as-is from what `stores/room.ts` and `stores/actions.ts` used to
+ * do: the move changes no behaviour, it merely provides a second plug-in point.
  */
 export function localGateway(
-  ouvrir: (url: string) => StateStream = (url) => new EventSource(url),
+  open: (url: string) => StateStream = (url) => new EventSource(url),
 ): ControlGateway {
   let stream: StateStream | null = null
 
   return {
-    demarrer(flux) {
+    start(sink) {
       if (stream != null) return
-      stream = ouvrir('/display/state?vue=regie')
+      stream = open('/display/state?vue=regie')
 
-      stream.onopen = () => flux.onOutage(false)
-      stream.onerror = () => flux.onOutage(true)
+      stream.onopen = () => sink.onOutage(false)
+      stream.onerror = () => sink.onOutage(true)
 
-      // Message sans nom : l'instantané complet. Il part à l'ouverture et après
-      // chaque reconnexion, ce qui répare la page sans logique de reprise.
+      // The unnamed message: the complete snapshot. It goes out on opening and
+      // after every reconnection, which repairs the page with no resume logic.
       stream.onmessage = (event) => {
-        flux.onOutage(false)
-        flux.onPayload(JSON.parse(event.data) as DisplayPayload, true)
+        sink.onOutage(false)
+        sink.onPayload(JSON.parse(event.data) as DisplayPayload, true)
       }
 
-      // Delta : seulement les champs qui ont changé.
+      // Delta: only the fields that changed.
       stream.addEventListener('delta', (event) => {
-        flux.onOutage(false)
-        flux.onPayload(JSON.parse(event.data) as Partial<DisplayPayload>, false)
+        sink.onOutage(false)
+        sink.onPayload(JSON.parse(event.data) as Partial<DisplayPayload>, false)
       })
     },
 
-    arreter() {
+    stop() {
       stream?.close()
       stream = null
     },
 
-    async act(geste) {
+    async act(gesture) {
       try {
         const response = await fetch('/control/action', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(geste),
+          body: JSON.stringify(gesture),
         })
         return (await response.json()) as ActionResult
       } catch {
         /*
-         * La régie tourne en local : un échec ici ne veut pas dire « le hub est
-         * loin », il veut dire que le cœur applicatif de la salle ne répond
-         * plus. C'est la panne qui arrête tout, et elle doit se lire
-         * immédiatement.
+         * The control app runs locally: a failure here does not mean "the hub is
+         * far away", it means the room's application core no longer answers.
+         * That is the failure that stops everything, and it must be readable
+         * immediately.
          */
         return { ok: false, message: 'Le service local ne répond pas' }
       }
@@ -130,172 +129,169 @@ export function localGateway(
   }
 }
 
-/* ----------------------------------------------------------------- distante */
+/* ------------------------------------------------------------------ remote */
 
-/** Cadence du sondage. C'est aussi le battement du verrou : un seul aller-retour. */
-export const SONDAGE_MS = 1_000
+/** The polling cadence. It is also the lock's heartbeat: a single round trip. */
+export const POLL_MS = 1_000
 
 /**
- * Au-delà, un geste dont dépend une étape suivante est déclaré manqué.
+ * Past this, a gesture a later step depends on is declared missed.
  *
- * Cinq secondes : le temps qu'une commande descende, qu'OBS obéisse et que la
- * salle le remonte, avec de la marge pour un réseau d'événement. Au-delà, dire
- * « fait » serait un mensonge, et c'est précisément le mensonge qui vide de sens
- * l'avertissement d'enregistrement de « Commencer ».
+ * Five seconds: the time for a command to go down, for OBS to obey and for the
+ * room to report it, with margin for an event network. Past that, saying "done"
+ * would be a lie — and it is precisely the lie that empties "Commencer"'s
+ * recording warning of its meaning.
  */
 export const OBSERVATION_MS = 5_000
 
 export interface RemoteGatewayOptions {
   client: HubClient
-  /** La salle pilotée. */
+  /** The room being driven. */
   roomId: string
   /**
-   * La vue entière, à chaque sondage.
+   * The whole view, on every poll.
    *
-   * Le `DisplayPayload` synthétisé ne porte pas tout : le **verrou** n'a pas sa
-   * place dans l'état d'une salle — `remoteHolder` dit à une salle qu'on la
-   * pilote de loin, pas au téléphone qui la pilote. Or c'est justement le
-   * champ qui doit réagir vite : quand un autre onglet reprend la salle, celui
-   * qui la perd doit le voir à la seconde, pas au tour de liste suivant.
+   * The synthesised `DisplayPayload` does not carry everything: the **lock** has
+   * no place in a room's state — `remoteHolder` tells a room that it is being
+   * driven remotely, not the phone that is driving it. Yet that is exactly the
+   * field that must react fast: when another tab takes the room over, the one
+   * losing it must see so within the second, not at the next listing.
    */
-  onVue?: (vue: ControlView) => void
-  /** Injectables pour tester sans horloge ni minuteur réels. */
-  maintenant?: () => number
-  attendre?: (ms: number) => Promise<void>
+  onView?: (view: ControlView) => void
+  /** Injectable, to test with no real clock and no real timer. */
+  now?: () => number
+  wait?: (ms: number) => Promise<void>
 }
 
 /**
- * La porte du hub : sondage descendant, `regie.command` montant.
+ * The hub's gateway: polling downstream, `regie.command` upstream.
  *
- * Le sondage porte **aussi le battement du verrou** — `regie.view` renouvelle
- * la prise de son porteur. Un seul aller-retour par seconde dit à la fois « je
- * tiens toujours la salle » et « où en est-elle », et il n'y a pas de battement
- * séparé qu'on puisse oublier d'arrêter.
+ * The poll **also carries the lock's heartbeat** — `regie.view` renews its
+ * holder's grip. A single round trip a second says both "I still hold the room"
+ * and "how far along is it", and there is no separate heartbeat one could forget
+ * to stop.
  */
 export function remoteGateway(options: RemoteGatewayOptions): ControlGateway {
-  const maintenant = options.maintenant ?? (() => Date.now())
-  const attendre =
-    options.attendre ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
+  const now = options.now ?? (() => Date.now())
+  const wait =
+    options.wait ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
 
   let timer: ReturnType<typeof setInterval> | null = null
-  let derniere: ControlView | null = null
-  let enVol = false
+  let latest: ControlView | null = null
+  let inFlight = false
 
-  async function lire(flux: StateSink | null): Promise<ControlView | null> {
+  async function read(sink: StateSink | null): Promise<ControlView | null> {
     /*
-     * Un seul sondage en vol.
+     * A single poll in flight.
      *
-     * Sur un réseau de téléphone, une réponse peut mettre plus d'une seconde :
-     * sans ce garde, les appels s'empilent et les réponses arrivent dans le
-     * désordre — un état d'il y a trois secondes viendrait alors écraser un
-     * état frais.
+     * On a phone network a response can take more than a second: without this
+     * guard the calls pile up and the responses arrive out of order — a state
+     * from three seconds ago would then overwrite a fresh one.
      */
-    if (enVol) return derniere
-    enVol = true
+    if (inFlight) return latest
+    inFlight = true
     try {
-      const vue = await options.client.rpc.regie.view({ roomId: options.roomId })
-      derniere = vue
-      options.onVue?.(vue)
-      flux?.onOutage(false)
-      flux?.onPayload(payloadDepuisVue(vue, maintenant()), true)
-      return vue
+      const view = await options.client.rpc.regie.view({ roomId: options.roomId })
+      latest = view
+      options.onView?.(view)
+      sink?.onOutage(false)
+      sink?.onPayload(payloadFromView(view, now()), true)
+      return view
     } catch {
       /*
-       * Une coupure, pas une erreur.
+       * An outage, not an error.
        *
-       * Le téléphone perd le réseau en traversant un bâtiment ; le dire en
-       * rouge à chaque hoquet rendrait l'avertissement illisible. C'est le
-       * délai de grâce du store qui décide quand l'écran est « figé ».
+       * The phone loses the network crossing a building; saying so in red on
+       * every hiccup would make the warning unreadable. It is the store's grace
+       * period that decides when the screen is "frozen".
        */
-      flux?.onOutage(true)
+      sink?.onOutage(true)
       return null
     } finally {
-      enVol = false
+      inFlight = false
     }
   }
 
   /**
-   * Attend que la salle **ait fait** ce qu'on lui a demandé.
+   * Waits for the room to **have done** what it was asked.
    *
-   * `regie.command` répond quand le hub a mis la commande en file, et c'est
-   * tout ce qu'il peut promettre : la salle est peut-être coupée, OBS peut
-   * refuser. Les gestes dont dépend une étape suivante — l'enregistrement avant
-   * « Commencer » — doivent donc se confirmer par l'**observation**, sinon la
-   * règle « si l'enregistrement ne part pas, ne commence pas » disparaît sans
-   * que rien ne le dise.
+   * `regie.command` answers once the hub has queued the command, and that is all
+   * it can promise: the room may be cut off, OBS may refuse. Gestures a later
+   * step depends on — the recording before "Commencer" — must therefore be
+   * confirmed by **observation**, otherwise the rule "if the recording does not
+   * start, do not begin" disappears with nothing to say so.
    */
-  async function observer(
-    predicat: (vue: ControlView) => boolean,
-    echec: string,
+  async function observe(
+    predicate: (view: ControlView) => boolean,
+    failure: string,
   ): Promise<ActionResult> {
-    const limite = maintenant() + OBSERVATION_MS
+    const deadline = now() + OBSERVATION_MS
     for (;;) {
-      await attendre(SONDAGE_MS)
-      const vue = await lire(null)
-      if (vue != null && predicat(vue)) return { ok: true }
-      if (maintenant() >= limite) return { ok: false, message: echec }
+      await wait(POLL_MS)
+      const view = await read(null)
+      if (view != null && predicate(view)) return { ok: true }
+      if (now() >= deadline) return { ok: false, message: failure }
     }
   }
 
   return {
-    demarrer(flux) {
+    start(sink) {
       if (timer != null) return
-      void lire(flux)
-      timer = setInterval(() => void lire(flux), SONDAGE_MS)
+      void read(sink)
+      timer = setInterval(() => void read(sink), POLL_MS)
     },
 
-    arreter() {
+    stop() {
       if (timer != null) clearInterval(timer)
       timer = null
     },
 
-    async act(geste) {
+    async act(gesture) {
       /*
-       * Un geste posé avant la première réponse doit connaître sa cible.
+       * A gesture made before the first response has to know its target.
        *
-       * Le cycle de vie voyage avec l'identifiant du créneau visé, que seule la
-       * vue donne. Un bouton pressé dans la seconde qui suit l'ouverture — un
-       * rechargement en plein talk, exactement le moment où l'on recharge —
-       * partait sinon sans cible, et se faisait refuser comme un geste hors
-       * périmètre. Un aller-retour de plus, et seulement là.
+       * The lifecycle travels with the identifier of the slot aimed at, which
+       * only the view supplies. A button pressed within a second of opening — a
+       * reload in the middle of a talk, exactly when one reloads — used to leave
+       * with no target, and got refused as an out-of-scope gesture. One more
+       * round trip, and only there.
        */
-      if (derniere == null) await lire(null)
+      if (latest == null) await read(null)
 
-      const traduite = traduire(geste, derniere)
-      if (traduite == null) {
+      const translated = translate(gesture, latest)
+      if (translated == null) {
         /*
-         * Hors périmètre, et dit en toutes lettres.
+         * Out of scope, and said in so many words.
          *
-         * Les marqueurs, la VOD et le ⚙ demandent la machine de la salle, que
-         * le hub n'atteint pas. Laisser l'appel échouer sur un `BAD_REQUEST`
-         * donnerait un rouge sans explication, là où la raison tient en une
-         * phrase.
+         * The markers, the VOD and the ⚙ require the room's machine, which the
+         * hub does not reach. Letting the call fail on a `BAD_REQUEST` would give
+         * a red with no explanation, where the reason fits in one sentence.
          */
         return { ok: false, message: "Ce geste demande la régie de la salle" }
       }
 
       try {
-        await options.client.rpc.regie.command({ roomId: options.roomId, action: traduite })
+        await options.client.rpc.regie.command({ roomId: options.roomId, action: translated })
       } catch (cause) {
         return { ok: false, message: (cause as Error).message || 'Geste refusé' }
       }
 
-      if (traduite.type === 'recording.set') {
-        const attendu = traduite.on
-        return observer(
-          (vue) => vue.recording === attendu,
-          attendu
+      if (translated.type === 'recording.set') {
+        const expected = translated.on
+        return observe(
+          (view) => view.recording === expected,
+          expected
             ? "L'enregistrement n'a pas démarré : la salle n'a pas confirmé"
             : "L'enregistrement ne s'est pas arrêté : la salle n'a pas confirmé",
         )
       }
 
       /*
-       * Les autres gestes ne bloquent rien derrière eux.
+       * The other gestures block nothing behind them.
        *
-       * Le cycle de vie s'écrit chez le hub : c'est acquis au retour. Une
-       * bascule de scène se lit sur le bouton au sondage suivant, comme en
-       * régie de salle — et personne n'enchaîne dessus.
+       * The lifecycle is written on the hub: that is settled by the time it
+       * returns. A scene switch is read on the button at the next poll, as in the
+       * room's own control app — and nobody chains anything onto it.
        */
       return { ok: true }
     },
@@ -303,36 +299,36 @@ export function remoteGateway(options: RemoteGatewayOptions): ControlGateway {
 }
 
 /**
- * Le vocabulaire de la régie, traduit vers celui du hub.
+ * The control app's vocabulary, translated into the hub's.
  *
- * `null` pour tout ce qui n'a pas de sens à distance. La table est courte
- * exprès : elle est la définition du périmètre, et une entrée ajoutée ici sans
- * commande descendante en face serait un bouton qui échoue en salle.
+ * `null` for everything that makes no sense remotely. The table is deliberately
+ * short: it *is* the definition of the scope, and an entry added here with no
+ * matching downstream command would be a button that fails in the room.
  */
-export function traduire(
-  geste: Record<string, unknown>,
-  vue: ControlView | null,
+export function translate(
+  gesture: Record<string, unknown>,
+  view: ControlView | null,
 ): ControlCommand | null {
-  const action = geste.action
+  const action = gesture.action
   switch (action) {
     case 'session.start':
     case 'session.end':
     case 'session.reset': {
       /*
-       * La cible vient de la vue, et elle voyage explicitement.
+       * The target comes from the view, and it travels explicitly.
        *
-       * En salle, le poste résout lui-même la conférence à piloter. Ici c'est
-       * le hub qui la calcule — même règle, `talkToControl` — mais elle
-       * peut tourner entre le rendu et le clic. Renvoyer l'identifiant qu'on
-       * avait sous les yeux est ce qui empêche de lancer le talk suivant.
+       * In the room the machine resolves the talk to drive itself. Here it is the
+       * hub that computes it — same rule, `talkToControl` — but it can turn over
+       * between the render and the click. Sending back the identifier one had in
+       * front of them is what stops the next talk from being started.
        */
-      const sessionId = vue?.targetSession?.id
+      const sessionId = view?.targetSession?.id
       return sessionId == null ? null : { type: action, sessionId }
     }
     case 'scene.set':
-      return { type: 'scene.set', role: geste.role as SceneRole }
+      return { type: 'scene.set', role: gesture.role as SceneRole }
     case 'display.set':
-      return { type: 'display.set', mode: geste.mode as DisplayMode }
+      return { type: 'display.set', mode: gesture.mode as DisplayMode }
     case 'recording.start':
       return { type: 'recording.set', on: true }
     case 'recording.stop':
@@ -347,23 +343,23 @@ export function traduire(
 }
 
 /**
- * La vue du hub, rendue sous la forme que lisent les panneaux.
+ * The hub's view, rendered in the shape the panels read.
  *
- * C'est le cœur de la réutilisation : les composants reçoivent un
- * `DisplayPayload` et ne savent rien d'autre. Les champs qu'aucune source du
- * hub ne peut remplir sont **vides et non inventés** — la disposition mobile ne
- * monte pas les panneaux qui les liraient, et un `0` plausible à la place d'une
- * absence est exactement ce qui fait croire à une salle silencieuse.
+ * This is the heart of the reuse: the components receive a `DisplayPayload` and
+ * know nothing else. The fields no hub source can fill are **empty, not
+ * invented** — the mobile layout does not mount the panels that would read them,
+ * and a plausible `0` in place of an absence is exactly what makes a room look
+ * silent.
  */
-export function payloadDepuisVue(vue: ControlView, maintenantMs: number): DisplayPayload {
+export function payloadFromView(view: ControlView, nowMs: number): DisplayPayload {
   /*
-   * Une configuration réduite à ce dont dépendent les garde-fous.
+   * A configuration reduced to what the guards depend on.
    *
-   * `conference.ts` lit `promptRecordingOnStart`, `promptRecordingOnStop` et
-   * `sceneOnStart` pour décider s'il faut avertir avant « Commencer », proposer
-   * d'arrêter la captation au « Terminer », et quelle scène prendre après. Les
-   * remplir depuis la vue est ce qui fait que la question posée sur un
-   * téléphone est exactement celle posée en salle.
+   * `conference.ts` reads `promptRecordingOnStart`, `promptRecordingOnStop` and
+   * `sceneOnStart` to decide whether to warn before "Commencer", whether to offer
+   * to stop the take on "Terminer", and which scene to take afterwards. Filling
+   * them from the view is what makes the question asked on a phone exactly the
+   * one asked in the room.
    */
   const config: VisibleConfig = {
     obs: {
@@ -371,26 +367,25 @@ export function payloadDepuisVue(vue: ControlView, maintenantMs: number): Displa
       B: { url: '', hasPassword: false, pending: false },
     },
     /*
-     * Les rôles mappés, avec leur propre nom pour valeur.
+     * The mapped roles, with their own name as the value.
      *
-     * Le nom de scène OBS n'a rien à faire ici — personne ne le lit à distance,
-     * et le hub ne le sert pas. Ce que le panneau de projection a besoin de
-     * savoir est **quels rôles existent** : proposer « Relais » à une salle qui
-     * n'en a pas donnerait un bouton dont personne ne sait ce qu'il montre, et
-     * qui échouerait à la bascule.
+     * The OBS scene name has no business here — nobody reads it remotely, and the
+     * hub does not serve it. What the projection panel needs to know is **which
+     * roles exist**: offering "Relais" to a room that has none would give a button
+     * nobody knows what it shows, and that would fail on the switch.
      */
-    sceneRoles: { A: Object.fromEntries(vue.sceneRoles.map((role) => [role, role])), B: {} },
+    sceneRoles: { A: Object.fromEntries(view.sceneRoles.map((role) => [role, role])), B: {} },
     displayPort: 0,
     recordingRoot: null,
     fileSlug: null,
-    relaySourceRoomId: vue.relaySourceRoomId,
+    relaySourceRoomId: view.relaySourceRoomId,
     openFeedbackProjectId: null,
-    promptRecordingOnStart: vue.promptRecordingOnStart,
-    promptRecordingOnStop: vue.promptRecordingOnStop,
-    sceneOnStart: vue.sceneOnStart,
+    promptRecordingOnStart: view.promptRecordingOnStart,
+    promptRecordingOnStop: view.promptRecordingOnStop,
+    sceneOnStart: view.sceneOnStart,
     /*
-     * Un téléphone n'ouvre pas le sélecteur de dossier d'une machine qu'il ne
-     * voit pas — et le ⚙ n'est de toute façon pas monté à distance.
+     * A phone does not open the folder picker of a machine it cannot see — and
+     * the ⚙ is not mounted remotely anyway.
      */
     canBrowse: false,
   }
@@ -398,64 +393,64 @@ export function payloadDepuisVue(vue: ControlView, maintenantMs: number): Displa
   return {
     state: {
       /*
-       * L'écran que la salle a remonté, ou la boucle si elle ne l'a jamais dit.
+       * The screen the room reported, or the loop if it never said.
        *
-       * Ce repli n'invente rien : `loop` est l'état dans lequel une salle
-       * démarre, celui qu'on trouve le matin sans que personne n'ait touché à
-       * rien. Une salle qui n'a pas encore battu montre donc bien la boucle —
-       * et si elle est coupée, la connectivité le dit déjà à côté.
+       * This fallback invents nothing: `loop` is the state a room starts in, the
+       * one found in the morning with nobody having touched anything. A room that
+       * has not beaten yet therefore does show the loop — and if it is cut off,
+       * the connectivity says so right beside it.
        *
-       * Il remonte avec jusqu'à dix secondes de retard sur une bascule décidée
-       * en salle, et tout de suite sur une bascule demandée d'ici : la salle
-       * bat dès qu'elle a appliqué la commande.
+       * It comes back with up to ten seconds of delay on a switch decided in the
+       * room, and straight away on one requested from here: the room beats as soon
+       * as it has applied the command.
        */
-      mode: vue.displayMode ?? 'loop',
+      mode: view.displayMode ?? 'loop',
       message: null,
       liveMessage: null,
       question: null,
-      sceneRole: vue.sceneRole,
-      connectivity: vue.connectivity,
-      roomId: vue.roomId,
+      sceneRole: view.sceneRole,
+      connectivity: view.connectivity,
+      roomId: view.roomId,
       contentHash: null,
       /*
-       * `currentSession` reste nulle, et `targetSession` porte tout.
+       * `currentSession` stays null, and `targetSession` carries everything.
        *
-       * Les panneaux montés à distance ne lisent que la cible ; remplir la
-       * session courante demanderait au hub un second calcul dont personne ici
-       * n'a l'usage.
+       * The panels mounted remotely only read the target; filling in the current
+       * session would ask the hub for a second computation nobody here has any
+       * use for.
        */
       currentSession: null,
       nextSession: null,
       outboxDepth: 0,
       /*
-       * L'horloge du hub fait foi, et c'est elle qu'on installe.
+       * The hub's clock is authoritative, and it is the one installed here.
        *
-       * Le store ajoute cet écart à l'heure du navigateur pour tout ce qui
-       * compte le temps. Sans lui, un téléphone mal réglé — ou un hub à horloge
-       * simulée, où l'écart se compte en semaines — afficherait un compte à
-       * rebours qui n'est celui de personne.
+       * The store adds this offset to the browser's time for everything that
+       * counts time. Without it, a badly set phone — or a hub on a simulated
+       * clock, where the offset is measured in weeks — would show a countdown
+       * that is nobody's.
        */
-      serverTimeOffsetMs: Date.parse(vue.serverTime) - maintenantMs,
-      recording: vue.recording,
-      streaming: vue.streaming,
+      serverTimeOffsetMs: Date.parse(view.serverTime) - nowMs,
+      recording: view.recording,
+      streaming: view.streaming,
       comments: [],
-      sessionStates: vue.sessionStates,
+      sessionStates: view.sessionStates,
       notifications: [],
-      targetSession: vue.targetSession,
+      targetSession: view.targetSession,
       breakBadge: null,
-      targetIsUpcoming: vue.targetIsUpcoming,
-      simulatedClock: vue.simulatedClock,
+      targetIsUpcoming: view.targetIsUpcoming,
+      simulatedClock: view.simulatedClock,
       /*
-       * Nul, et c'est exact : ce champ dit à la **salle** qu'on la pilote de
-       * loin. Sur le téléphone qui la pilote, il n'a personne à prévenir — le
-       * bandeau de verrou dit déjà qui tient la salle.
+       * Null, and rightly so: this field tells the **room** that it is being
+       * driven remotely. On the phone doing the driving it has nobody to warn —
+       * the lock banner already says who holds the room.
        */
       remoteHolder: null,
     },
-    roomName: vue.roomName,
+    roomName: view.roomName,
     event: null,
-    timezone: vue.timezone,
-    sessions: vue.sessions,
+    timezone: view.timezone,
+    sessions: view.sessions,
     sponsorTiers: [],
     diagnostics: {
       obs: { A: null, B: null },
@@ -464,23 +459,22 @@ export function payloadDepuisVue(vue: ControlView, maintenantMs: number): Displa
       questionsSession: null,
       config,
       mode: { room: 'production', hub: null },
-      relaySourceRoomId: vue.relaySourceRoomId,
+      relaySourceRoomId: view.relaySourceRoomId,
       rooms: [],
       roomsRefreshedAt: null,
       outboxDepth: 0,
       log: [],
       /*
-       * Le hub ne stocke qu'un booléen : `startedAtMs` est donc nul, et le
-       * chronomètre d'enregistrement n'est pas monté à distance. Lui donner une
-       * heure de départ plausible ferait afficher une durée fausse à côté d'un
-       * point rouge juste.
+       * The hub stores only a boolean: `startedAtMs` is therefore null, and the
+       * recording stopwatch is not mounted remotely. Giving it a plausible start
+       * time would show a wrong duration beside a correct red dot.
        *
-       * Les repères de editing tombent avec, et pour la même raison : ils
-       * vivent dans la prise, sur la machine de salle. Les boutons ne sont pas
-       * montés à distance — `recording.mark` y est de toute façon refusé.
+       * The editing anchors fall with it, and for the same reason: they live in
+       * the take, on the room's machine. The buttons are not mounted remotely —
+       * `recording.mark` is refused there anyway.
        */
       recording: {
-        active: vue.recording,
+        active: view.recording,
         markers: 0,
         startedAtMs: null,
         startedAtCorrectedMs: null,
@@ -490,11 +484,11 @@ export function payloadDepuisVue(vue: ControlView, maintenantMs: number): Displa
     wall: null,
     otherRooms: [],
     socialLinks: [],
-    eventIdentity: vue.event,
+    eventIdentity: view.event,
     feedback: null,
     /*
-     * Aucun appairage : c'est une affaire de machine de salle. Le voile ne se
-     * lève que sur `null` ou `paired`, et `null` est la vérité ici.
+     * No pairing: that is a room-machine matter. The veil only lifts on `null` or
+     * `paired`, and `null` is the truth here.
      */
     pairing: null,
   }

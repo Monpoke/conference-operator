@@ -4,8 +4,8 @@ import { useToast } from '@cloudnord/components'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import ConferencePanel from '../src/components/ConferencePanel.vue'
-import { TOO_EARLY_MS, useTalkStore } from '../src/stores/conference.js'
+import TalkPanel from '../src/components/TalkPanel.vue'
+import { TOO_EARLY_MS, useTalkStore } from '../src/stores/talk.js'
 import { useRoomStore } from '../src/stores/room.js'
 import { DEBUT_MS, FIN_MS, config, payload, speaker, talk } from './fixtures.js'
 
@@ -378,7 +378,7 @@ describe('panneau de la conférence', () => {
   function monter(atMs: number, states: Record<string, SessionStatus> = {}) {
     const etat = payload()
     etat.state.sessionStates = states
-    return mount(ConferencePanel, { props: { payload: etat, nowMs: atMs } })
+    return mount(TalkPanel, { props: { payload: etat, nowMs: atMs } })
   }
 
   it('refuse un geste que le hub refuserait, et dit pourquoi', () => {
@@ -395,7 +395,7 @@ describe('panneau de la conférence', () => {
     const suivante = talk({ id: 'talk-2', startsAtMs: FIN_MS + 900_000, endsAtMs: null })
     const etat = payload({ sessions: [talk(), suivante] })
     etat.state.sessionStates = { 'talk-1': 'ended' }
-    const wrapper = mount(ConferencePanel, { props: { payload: etat, nowMs: FIN_MS } })
+    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: FIN_MS } })
 
     /*
      * Le grand nombre compte jusqu'à la prochaine conférence, la ligne
@@ -418,7 +418,7 @@ describe('panneau de la conférence', () => {
   it('dit qu’il n’y a rien à piloter plutôt que de laisser un titre vide', () => {
     const etat = payload()
     etat.state.targetSession = null
-    const wrapper = mount(ConferencePanel, { props: { payload: etat, nowMs: DEBUT_MS } })
+    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: DEBUT_MS } })
 
     expect(wrapper.get('[data-role="conference-title"]').text()).toBe(
       'Aucune conférence à piloter',
@@ -429,7 +429,7 @@ describe('panneau de la conférence', () => {
   it('annonce l’heure devant le titre tant que le créneau n’a pas commencé', () => {
     const etat = payload()
     etat.state.targetIsUpcoming = true
-    const wrapper = mount(ConferencePanel, { props: { payload: etat, nowMs: DEBUT_MS - 600_000 } })
+    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: DEBUT_MS - 600_000 } })
 
     expect(wrapper.get('[data-role="conference-title"]').text()).toContain('·')
     expect(wrapper.get('[data-role="conference-detail"]').text()).toContain(
@@ -448,7 +448,7 @@ describe('intervenants', () => {
     etat.state.targetSession = talk({
       speakers: [speaker('Steven'), speaker('Nuno')],
     })
-    const wrapper = mount(ConferencePanel, { props: { payload: etat, nowMs: DEBUT_MS } })
+    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: DEBUT_MS } })
 
     expect(wrapper.text()).toContain('Steven · Nuno')
   })
@@ -457,7 +457,7 @@ describe('intervenants', () => {
     // Une ligne vide sous « Pause déjeuner » ferait chercher un nom absent.
     const etat = payload()
     etat.state.targetSession = talk({ kind: 'break', speakers: [] })
-    const wrapper = mount(ConferencePanel, { props: { payload: etat, nowMs: DEBUT_MS } })
+    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: DEBUT_MS } })
 
     expect(wrapper.text()).not.toContain('·')
   })
@@ -471,7 +471,7 @@ describe('intervenants', () => {
       speakers: [speaker('Nuno')],
     })
     const etat = payload({ sessions: [talk(), suivante] })
-    const wrapper = mount(ConferencePanel, { props: { payload: etat, nowMs: DEBUT_MS } })
+    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: DEBUT_MS } })
 
     expect(wrapper.get('[data-role="next"]').text()).toContain('Blind ops')
     expect(wrapper.get('[data-role="next"]').text()).toContain('Nuno')
@@ -482,7 +482,7 @@ describe('les deux boutons suivent la table du cycle de vie', () => {
   function boutons(statut: SessionStatus | null) {
     const etat = payload()
     etat.state.sessionStates = statut == null ? {} : { 'talk-1': statut }
-    const wrapper = mount(ConferencePanel, { props: { payload: etat, nowMs: DEBUT_MS } })
+    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: DEBUT_MS } })
     return {
       demarrer: wrapper.get('#btn-conf-demarrer'),
       terminer: wrapper.get('#btn-conf-terminer'),
@@ -534,7 +534,7 @@ describe('terminée avant son créneau', () => {
 
   it('ne se désigne pas elle-même comme prochaine conférence', () => {
     const etat = avantLeCreneau({ 'talk-1': 'ended' })
-    const wrapper = mount(ConferencePanel, {
+    const wrapper = mount(TalkPanel, {
       props: { payload: etat, nowMs: Date.parse('2026-10-30T08:00:00Z') },
     })
 
@@ -551,7 +551,7 @@ describe('terminée avant son créneau', () => {
   it('ne saute rien tant que la conférence tient toujours', () => {
     // Sans décision, la prochaine conférence reste celle du créneau — c'est ce
     // que vise « Commencer », et les deux doivent désigner le même.
-    const wrapper = mount(ConferencePanel, {
+    const wrapper = mount(TalkPanel, {
       props: { payload: avantLeCreneau({}), nowMs: Date.parse('2026-10-30T08:00:00Z') },
     })
 

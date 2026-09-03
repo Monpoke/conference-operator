@@ -2,8 +2,8 @@
 import { Toaster } from '@cloudnord/components'
 import { computed, onBeforeUnmount, onMounted, useTemplateRef, watch, watchEffect } from 'vue'
 import CapturePanel from './components/CapturePanel.vue'
-import ConferenceDialogs from './components/ConferenceDialogs.vue'
-import ConferencePanel from './components/ConferencePanel.vue'
+import TalkDialogs from './components/TalkDialogs.vue'
+import TalkPanel from './components/TalkPanel.vue'
 import ConfigDialog from './components/ConfigDialog.vue'
 import ConsultDialog from './components/ConsultDialog.vue'
 import DiagnosticsPanel from './components/DiagnosticsPanel.vue'
@@ -178,7 +178,7 @@ watch(
   [() => gateway.remote, pairingRequired, payload],
   ([distante, appairageRequis, recu]) => {
     if (distante || appairageRequis || recu == null) return
-    config.verifierAuDemarrage()
+    config.checkAtStartup()
   },
   { immediate: true },
 )
@@ -257,7 +257,7 @@ useKeyboardLayer(
         />
 
         <main class="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto p-2.5">
-          <ConferencePanel :payload="payload" :now-ms="room.now" />
+          <TalkPanel :payload="payload" :now-ms="room.now" />
           <!--
             L'écran de salle passe par le flux de commandes descendant, comme la
             scène : c'est ce qui permet de le piloter sans rien ajouter entre un
@@ -291,7 +291,7 @@ useKeyboardLayer(
       </div>
     </template>
 
-    <ConferenceDialogs />
+    <TalkDialogs />
     <Toaster />
   </template>
 
@@ -313,7 +313,7 @@ useKeyboardLayer(
       class="grid min-h-0 gap-2.5 overflow-y-auto p-2.5 lg:grid-cols-3 lg:overflow-hidden"
     >
       <div class="flex min-h-0 flex-col gap-2.5 lg:overflow-y-auto">
-        <ConferencePanel :payload="payload" :now-ms="room.now" />
+        <TalkPanel :payload="payload" :now-ms="room.now" />
         <DiagnosticsPanel :payload="payload" />
       </div>
 
@@ -356,7 +356,7 @@ useKeyboardLayer(
     Connexion au poste de salle…
   </div>
 
-  <ConferenceDialogs />
+  <TalkDialogs />
   <Toaster />
   </template>
 </template>

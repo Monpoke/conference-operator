@@ -54,9 +54,9 @@ const FIELD =
         manœuvre tant qu'il n'a pas dit pourquoi il est là.
       -->
       <div
-        v-if="config.manques.length > 0"
+        v-if="config.missing.length > 0"
         class="mb-2.5 rounded-lg border border-warn/40 px-2.5 py-2 text-[11px] text-warn"
-        data-role="config-manques"
+        data-role="config-missing"
       >
         <p class="font-semibold">
           {{
@@ -66,8 +66,8 @@ const FIELD =
           }}
         </p>
         <ul class="mt-1 list-disc pl-4">
-          <li v-for="manque in config.manques" :key="manque.code" :data-manque="manque.code">
-            {{ manque.texte }}
+          <li v-for="entry in config.missing" :key="entry.code" :data-missing="entry.code">
+            {{ entry.text }}
           </li>
         </ul>
       </div>
@@ -120,10 +120,10 @@ const FIELD =
               -->
               <Button
                 v-if="config.canBrowse"
-                id="btn-parcourir-vod"
+                id="btn-browse-vod"
                 class="shrink-0"
                 title="Choisir le dossier sur le poste de la salle"
-                @click="config.parcourir()"
+                @click="config.browse()"
               >
                 Parcourir…
               </Button>

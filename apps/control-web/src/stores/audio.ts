@@ -4,10 +4,10 @@ import { ref } from 'vue'
 import type { StateStream } from './room.js'
 
 /**
- * Maintien de crête.
+ * Peak hold.
  *
- * Une saturation d'un dixième de seconde doit rester lisible : sans maintien,
- * elle passe entre deux rendus et personne ne la voit jamais.
+ * A tenth-of-a-second clip must stay readable: with no hold it slips between two
+ * renders and nobody ever sees it.
  */
 export const PEAK_HOLD_MS = 1500
 
@@ -17,15 +17,15 @@ interface Peak {
 }
 
 /**
- * Niveaux audio, en flux séparé de l'état.
+ * Audio levels, on a stream separate from the state.
  *
- * Séparé pour deux raisons : la cadence — dix messages par seconde contre
- * quelques-uns par heure pour l'état — et le fait que seule la régie s'en sert.
- * Fermer la page suffit à couper l'abonnement chez OBS.
+ * Separate for two reasons: the cadence — ten messages a second against a few an
+ * hour for the state — and the fact that only the control app uses them. Closing
+ * the page is enough to cut the subscription on OBS.
  */
 export const useAudioStore = defineStore('audio', () => {
   const inputs = ref<InputLevel[]>([])
-  /** Vrai tant qu'aucun message n'est arrivé : « en attente » n'est pas « aucune ». */
+  /** True while no message has arrived: "waiting" is not "none". */
   const waiting = ref(true)
 
   const peaks = ref<Record<string, Peak>>({})
@@ -36,7 +36,7 @@ export const useAudioStore = defineStore('audio', () => {
     inputs.value = entries
     const held: Record<string, Peak> = {}
     for (const entry of entries) {
-      const top = entry.channels.reduce((max, canal) => Math.max(max, canal.peak), DB_FLOOR)
+      const top = entry.channels.reduce((max, channel) => Math.max(max, channel.peak), DB_FLOOR)
       const previous = peaks.value[entry.name]
       held[entry.name] =
         previous == null || top >= previous.db || atMs > previous.until

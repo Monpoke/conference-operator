@@ -5,31 +5,29 @@ import { useActionsStore } from './actions.js'
 import { useRoomStore } from './room.js'
 
 /**
- * Au-delà, un démarrage cesse d'être « un peu en avance » et devient une erreur
- * de cible.
+ * Past this, a start stops being "a little early" and becomes a targeting error.
  *
- * Un quart d'heure : c'est le battement le plus large du programme, donc la
- * limite en deçà de laquelle lancer le talk suivant est un geste normal — on a
- * fini plus tôt, le speaker est branché, la salle est pleine. Au-delà, on vise
- * presque toujours autre chose que ce qu'on croit.
+ * A quarter of an hour: that is the program's widest gap, and therefore the limit
+ * below which starting the next talk is a normal gesture — one finished early,
+ * the speaker is plugged in, the room is full. Beyond it, one is almost always
+ * aiming at something other than what one thinks.
  */
 export const TOO_EARLY_MS = 15 * 60_000
 
 /**
- * Commencer et terminer, avec ce qui se met en travers.
+ * Starting and ending, with whatever gets in the way.
  *
- * Quatre questions, et leur ordre est le fond du sujet. De chaque côté, celle
- * qui porte sur **la conférence** passe avant celle qui porte sur la
- * **captation** : « commencer très en avance ? » avant « rien n'enregistre »,
- * « terminer en avance ? » avant « la captation tourne encore ». Dans l'autre
- * sens, on démarrerait une captation pour un talk qu'on va renoncer à lancer,
- * et on couperait la captation d'un talk qu'on va renoncer à terminer.
+ * Four questions, and their order is the heart of the matter. On each side, the
+ * one about **the talk** comes before the one about the **take**: "start very
+ * early?" before "nothing is recording", "end early?" before "the take is still
+ * running". The other way round, one would start a take for a talk one is about
+ * to decline to start, and cut the take of a talk one is about to decline to end.
  *
- * Le flux vit dans un store et non dans le panneau parce que ce sont des
- * enchaînements, pas un rendu : « si l'enregistrement ne part pas, ne commence
- * pas » se relit et se vérifie ici, sans monter trois modales.
+ * The flow lives in a store and not in the panel because these are sequences, not
+ * a rendering: "if the recording does not start, do not begin" is read back and
+ * checked here, without mounting three modals.
  */
-export const useTalkStore = defineStore('conference', () => {
+export const useTalkStore = defineStore('talk', () => {
   const room = useRoomStore()
   const actions = useActionsStore()
 
@@ -41,13 +39,13 @@ export const useTalkStore = defineStore('conference', () => {
   const session = computed(() => room.payload?.state.targetSession ?? null)
 
   /**
-   * Réglages du démarrage, défauts compris.
+   * The start settings, defaults included.
    *
-   * Les défauts vivent dans le contrat, où le hub les applique. La page les
-   * répète pour un état reçu avant ce réglage : lire un champ absent comme
-   * « ne rien faire » désactiverait un garde-fou en silence, ce qui est
-   * exactement ce qu'il est censé empêcher. Une valeur nulle, elle, reste un
-   * choix explicite.
+   * The defaults live in the contract, where the hub applies them. The page
+   * repeats them for a state received before that setting: reading a missing
+   * field as "do nothing" would silently disable a guard, which is exactly what
+   * it is meant to prevent. A null value, on the other hand, stays an explicit
+   * choice.
    */
   const settings = computed(() => {
     const config = room.payload?.diagnostics?.config
@@ -58,17 +56,17 @@ export const useTalkStore = defineStore('conference', () => {
     }
   })
 
-  /** L'avance sur le créneau, ou `null` sans conférence à piloter. */
+  /** How early against the slot, or `null` with no talk to drive. */
   const earlyByMs = computed(() =>
     session.value == null ? null : session.value.startsAtMs - room.now,
   )
 
-  /** Ce qu'il reste au créneau, ou `null` sur un créneau sans heure de fin. */
+  /** What is left of the slot, or `null` on a slot with no end time. */
   const leftMs = computed(() =>
     session.value?.endsAtMs == null ? null : session.value.endsAtMs - room.now,
   )
 
-  /** Ce qu'OBS-B fait réellement, observé et non supposé. */
+  /** What OBS-B is really doing, observed and not assumed. */
   const recording = computed(() => room.payload?.diagnostics?.recording?.active === true)
 
   const tooEarlyDetail = computed(() => {
@@ -104,7 +102,7 @@ export const useTalkStore = defineStore('conference', () => {
     )
   })
 
-  /** Premier garde-fou : vise-t-on bien cette conférence-là ? */
+  /** First guard: is this really the talk being aimed at? */
   function askStart(): void {
     const early = earlyByMs.value
     if (early == null || early <= TOO_EARLY_MS) {
@@ -114,41 +112,41 @@ export const useTalkStore = defineStore('conference', () => {
     tooEarlyOpen.value = true
   }
 
-  /** Second garde-fou : la VOD, qui ne se rattrape pas le soir. */
+  /** Second guard: the VOD, which cannot be made good in the evening. */
   async function start(): Promise<void> {
     tooEarlyOpen.value = false
     if (settings.value.warn && !recording.value) {
-      // La question n'a de sens qu'avant : une fois la conférence lancée,
-      // l'enregistrement démarré manquera toujours les premières minutes.
+      // The question only makes sense beforehand: once the talk has started, a
+      // recording begun now will always miss the first few minutes.
       recordingOpen.value = true
       return
     }
     await launch(false)
   }
 
-  /** @param record Lancer l'enregistrement d'abord, puis la conférence. */
+  /** @param record Start the recording first, then the talk. */
   async function launch(record: boolean): Promise<void> {
     recordingOpen.value = false
     if (record) {
       const result = await actions.act({ action: 'recording.start' })
-      // L'enregistrement d'abord, et seulement s'il part : commencer quand même
-      // rendrait l'avertissement mensonger la prochaine fois.
+      // The recording first, and only if it starts: beginning anyway would make
+      // the warning a lie the next time round.
       if (!result.ok) return
     }
     await actions.act({ action: 'session.start' })
 
-    // Après le démarrage : la scène suit la conférence, et une bascule sans
-    // conférence lancée laisserait la salle à l'antenne sur rien.
+    // After the start: the scene follows the talk, and a switch with no talk
+    // started would leave the room on air over nothing.
     const role = settings.value.scene
     if (role) await actions.act({ action: 'scene.set', role })
   }
 
   /**
-   * Terminer, avec un garde-fou quand c'est en avance.
+   * Ending, with a guard when it is early.
    *
-   * En avance seulement : terminer à l'heure ou en dépassement est le geste
-   * normal de la journée, et le confirmer à chaque fois en ferait un réflexe.
-   * Un créneau sans heure de fin n'a pas d'avance possible — rien à demander.
+   * Early only: ending on time or in overrun is the day's normal gesture, and
+   * confirming it every time would turn it into a reflex. A slot with no end time
+   * cannot be early — nothing to ask.
    */
   function askEnd(): void {
     const left = leftMs.value
@@ -160,11 +158,11 @@ export const useTalkStore = defineStore('conference', () => {
   }
 
   /**
-   * La conférence est bien celle qu'on termine : reste la captation.
+   * The talk is indeed the one being ended: that leaves the take.
    *
-   * La question ne se pose qu'ici. À l'arrêt près, une captation oubliée ne se
-   * voit nulle part : rien ne clignote, le témoin dit « enregistre » comme il
-   * le disait pendant le talk, et le prix ne se découvre qu'au editing.
+   * The question only comes up here. Bar the stop, a forgotten take is visible
+   * nowhere: nothing blinks, the indicator says "recording" as it did during the
+   * talk, and the price is only discovered at editing time.
    */
   async function end(): Promise<void> {
     endEarlyOpen.value = false
@@ -175,19 +173,19 @@ export const useTalkStore = defineStore('conference', () => {
     await finish(false)
   }
 
-  /** @param stop Arrêter la captation d'abord, puis terminer la conférence. */
+  /** @param stop Stop the take first, then end the talk. */
   async function finish(stop: boolean): Promise<void> {
     stopRecordingOpen.value = false
     if (stop) {
       const result = await actions.act({ action: 'recording.stop' })
-      // L'arrêt d'abord, et seulement s'il aboutit : terminer quand même
-      // laisserait la captation courir sans que rien ne le repose jamais.
+      // The stop first, and only if it succeeds: ending anyway would leave the
+      // take running with nothing ever raising it again.
       if (!result.ok) return
     }
     await actions.act({ action: 'session.end' })
   }
 
-  /** Remettre à venir, quand « Terminer » était une erreur. */
+  /** Putting it back as upcoming, when "Terminer" was a mistake. */
   async function reset(): Promise<void> {
     await actions.act({ action: 'session.reset' })
   }

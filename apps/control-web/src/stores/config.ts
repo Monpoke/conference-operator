@@ -5,11 +5,11 @@ import { useActionsStore } from './actions.js'
 import { useRoomStore } from './room.js'
 
 /**
- * Les rôles proposés par instance, et rien d'autre.
+ * The roles offered per instance, and nothing else.
  *
- * Trois par OBS : ce sont ceux que la page pilote. Un rôle mappé hors de cette
- * liste — cas rare mais légitime — survit à l'enregistrement, parce que le
- * brouillon repart de l'existant plutôt que de le remplacer.
+ * Three per OBS: they are the ones the page drives. A role mapped outside this
+ * list — rare but legitimate — survives a save, because the draft starts from
+ * what exists rather than replacing it.
  */
 export const ROLES: Record<ObsInstance, { role: string; label: string }[]> = {
   A: [
@@ -24,16 +24,16 @@ export const ROLES: Record<ObsInstance, { role: string; label: string }[]> = {
   ],
 }
 
-/** Ce qui manque pour piloter la salle, dit en clair. */
-export interface Manque {
-  /** Repère stable : le rendu et les tests s'y accrochent, pas au libellé. */
+/** What is missing before the room can be driven, said plainly. */
+export interface Missing {
+  /** A stable anchor: the rendering and the tests hook onto it, not onto the label. */
   code: string
-  texte: string
+  text: string
 }
 
 interface ObsDraft {
   url: string
-  /** Saisi. Vide vaut « inchangé » : la page n'a jamais eu le mot de passe. */
+  /** As typed. Empty means "unchanged": the page never had the password. */
   password: string
   clearPassword: boolean
 }
@@ -51,17 +51,16 @@ export interface ConfigDraft {
 }
 
 /**
- * La configuration de la salle, saisie sur un brouillon.
+ * The room's configuration, typed into a draft.
  *
- * Le formulaire est peuplé **à l'ouverture**, jamais à chaque état reçu : la
- * régie en reçoit un toutes les quelques secondes, et repeupler les champs sous
- * les doigts effacerait la saisie en cours. Il se repeuple une seule autre
- * fois — après un enregistrement réussi — et sur l'état qui revient du hub, pas
- * sur ce qu'on vient de taper : c'est la seule façon de voir ce qui a réellement
- * été retenu.
+ * The form is populated **on opening**, never on every state received: the
+ * control app gets one every few seconds, and repopulating the fields under the
+ * fingers would erase what is being typed. It repopulates exactly once more —
+ * after a successful save — and from the state coming back from the hub, not from
+ * what has just been typed: that is the only way to see what was really kept.
  *
- * Ne suivent en direct que l'état des deux OBS, la liste de leurs scènes, et la
- * possibilité même d'enregistrer.
+ * Only the two OBS states, the list of their scenes, and the very possibility of
+ * saving follow live.
  */
 export const useConfigStore = defineStore('config', () => {
   const room = useRoomStore()
@@ -73,20 +72,20 @@ export const useConfigStore = defineStore('config', () => {
   const notice = ref<{ text: string; tone: 'quiet' | 'ok' | 'alert' } | null>(null)
 
   /**
-   * Le panneau a été ouvert par la vérification de démarrage, pas par l'opérateur.
+   * The panel was opened by the start-up check, not by the operator.
    *
-   * Sert au bandeau : un panneau qui s'ouvre tout seul doit dire pourquoi, sans
-   * quoi il se lit comme une fausse manœuvre.
+   * Used by the banner: a panel that opens on its own must say why, otherwise it
+   * reads as a slip.
    */
   const openAtStartup = ref(false)
 
   const config = computed(() => room.payload?.diagnostics?.config ?? null)
 
   /**
-   * Le hub est la source de vérité.
+   * The hub is the source of truth.
    *
-   * Hors ligne, enregistrer serait une promesse en l'air : la saisie repartirait
-   * au premier sync réussi, sans que rien ne l'ait dit.
+   * Offline, saving would be an empty promise: what was typed would go at the
+   * first successful sync, with nothing having said so.
    */
   const online = computed(() => room.payload?.state.connectivity === 'ONLINE')
 
@@ -117,121 +116,121 @@ export const useConfigStore = defineStore('config', () => {
     }
   }
 
-  function show(motif: 'operateur' | 'demarrage' = 'operateur'): void {
+  function show(reason: 'operator' | 'startup' = 'operator'): void {
     seed()
     notice.value = null
-    openAtStartup.value = motif === 'demarrage'
+    openAtStartup.value = reason === 'startup'
     open.value = true
   }
 
   /**
-   * Ce qui manque pour que la salle soit pilotable.
+   * What is missing before the room can be driven.
    *
-   * Deux lecteurs : le bandeau du panneau, et la vérification de démarrage qui
-   * décide de l'ouvrir. Les deux disent la même chose, ce qui évite qu'un
-   * panneau s'ouvre sur une raison qu'il n'affiche pas.
+   * Two readers: the panel's banner, and the start-up check that decides whether
+   * to open it. Both say the same thing, which avoids a panel opening on a reason
+   * it does not display.
    *
-   * Rien tant que le hub n'a pas rendu la configuration : une salle dont on ne
-   * sait rien n'est pas une salle mal réglée.
+   * Nothing until the hub has returned the configuration: a room nothing is known
+   * about is not a badly configured room.
    */
-  const manques = computed<Manque[]>(() => {
+  const missing = computed<Missing[]>(() => {
     const current = config.value
     if (current == null) return []
     const diagnostics = room.payload?.diagnostics ?? null
-    const liste: Manque[] = []
+    const list: Missing[] = []
 
     for (const instance of ['A', 'B'] as const) {
-      const quoi = instance === 'A' ? 'projection' : 'captation'
-      const etat = diagnostics?.obs[instance] ?? null
+      const what = instance === 'A' ? 'projection' : 'captation'
+      const state = diagnostics?.obs[instance] ?? null
 
-      // L'adresse passe avant la connexion : « pas connecté » sur une instance
-      // dont l'adresse est vide enverrait chercher du côté du réseau.
+      // The address comes before the connection: "not connected" on an instance
+      // whose address is empty would send people looking at the network.
       if (current.obs[instance].url.trim() === '') {
-        liste.push({
+        list.push({
           code: `obs-${instance}-url`,
-          texte: `Adresse d'OBS-${instance} (${quoi}) non renseignée.`,
+          text: `Adresse d'OBS-${instance} (${what}) non renseignée.`,
         })
-      } else if (etat?.connected !== true) {
-        liste.push({
+      } else if (state?.connected !== true) {
+        list.push({
           code: `obs-${instance}`,
-          texte: `OBS-${instance} (${quoi}) n'est pas connecté.`,
+          text: `OBS-${instance} (${what}) n'est pas connecté.`,
         })
       }
 
-      // Un rôle configuré mais absent d'OBS échouera au milieu d'un talk, et
-      // c'est ici qu'il se corrige. Vaut pour les deux instances.
-      const introuvables = etat?.unresolvedRoles ?? []
-      if (introuvables.length > 0) {
-        liste.push({
+      // A role that is configured but absent from OBS will fail in the middle of a
+      // talk, and this is where it gets fixed. Holds for both instances.
+      const unresolved = state?.unresolvedRoles ?? []
+      if (unresolved.length > 0) {
+        list.push({
           code: `roles-${instance}`,
-          texte: `Rôles introuvables dans OBS-${instance} : ${introuvables.join(', ')}.`,
+          text: `Rôles introuvables dans OBS-${instance} : ${unresolved.join(', ')}.`,
         })
       }
     }
 
     /*
-     * Seulement OBS-A. La projection sans rôle mappé n'a aucun bouton : ni
-     * direct, ni habillage. La captation, elle, s'enregistre très bien sans
-     * qu'aucun rôle de scène soit associé — beaucoup de salles ne changent
-     * jamais de plan pendant un talk, et les signaler serait un faux motif.
+     * OBS-A only. Projection with no mapped role has no button at all: neither
+     * live nor holding slide. Capture, on the other hand, records perfectly well
+     * with no scene role associated — many rooms never change shot during a talk,
+     * and reporting them would be a false reason.
      */
     if (Object.keys(current.sceneRoles.A ?? {}).length === 0) {
-      liste.push({ code: 'scenes-A', texte: "Aucune scène associée aux rôles d'OBS-A." })
+      list.push({ code: 'scenes-A', text: "Aucune scène associée aux rôles d'OBS-A." })
     }
 
     if ((current.recordingRoot ?? '').trim() === '') {
-      liste.push({
+      list.push({
         code: 'vod',
-        texte:
+        text:
           'Dossier des VOD non renseigné : la régie le demande alors à OBS-B, et ' +
           "n'a plus rien à relire dès qu'il est éteint.",
       })
     }
 
-    return liste
+    return list
   })
 
-  const verification = ref<'attente' | 'armee' | 'faite'>('attente')
+  const check = ref<'waiting' | 'armed' | 'done'>('waiting')
   let stopWatchdog: (() => void) | null = null
 
-  function juger(): boolean {
+  function judge(): boolean {
     if (config.value == null) return false
-    verification.value = 'faite'
+    check.value = 'done'
     stopWatchdog?.()
     stopWatchdog = null
-    if (manques.value.length > 0) show('demarrage')
+    if (missing.value.length > 0) show('startup')
     return true
   }
 
   /**
-   * Ouvre la configuration au démarrage si la salle n'est pas prête.
+   * Opens the configuration at start-up if the room is not ready.
    *
-   * **Tout de suite**, dès que la machine est appairée et que le hub a rendu la
-   * configuration : c'est le premier instant où le panneau a un sens, et
-   * l'installation d'une salle se fait avant la première conférence, pas
-   * pendant. Rien n'est différé — une salle mal réglée doit le dire à
-   * l'ouverture de la fenêtre, quand quelqu'un est encore devant l'écran.
+   * **Straight away**, as soon as the machine is paired and the hub has returned
+   * the configuration: that is the first moment the panel makes sense, and setting
+   * a room up happens before the first talk, not during it. Nothing is deferred —
+   * a badly configured room must say so when the window opens, while somebody is
+   * still in front of the screen.
    *
-   * Les lignes « OBS n'est pas connecté » peuvent disparaître seules quelques
-   * secondes plus tard, le poste réessayant toutes les trois secondes : la liste
-   * est un calcul sur l'état courant, elle se vide à mesure que les instances se
-   * branchent, panneau ouvert.
+   * The "OBS is not connected" lines can disappear on their own a few seconds
+   * later, the machine retrying every three seconds: the list is a computation
+   * over the current state, and it empties as the instances plug in, with the
+   * panel open.
    *
-   * **Une seule fois par chargement de page.** Un panneau qui se rouvre après
-   * qu'on l'a fermé n'est plus un rappel, c'est un obstacle : une salle sans
-   * OBS-B branché reste pilotable pour tout le reste, et l'opérateur qui a lu
-   * la liste doit pouvoir travailler.
+   * **Once per page load.** A panel that reopens after being closed is no longer
+   * a reminder, it is an obstacle: a room with no OBS-B plugged in stays drivable
+   * for everything else, and the operator who has read the list must be able to
+   * work.
    */
-  function verifierAuDemarrage(): void {
-    if (verification.value !== 'attente') return
-    verification.value = 'armee'
-    if (juger()) return
-    // Le hub n'a pas encore rendu la configuration. On juge dès qu'elle
-    // arrive : sinon une salle lente à synchroniser ne serait jamais examinée.
-    stopWatchdog = watch(config, () => void juger())
+  function checkAtStartup(): void {
+    if (check.value !== 'waiting') return
+    check.value = 'armed'
+    if (judge()) return
+    // The hub has not returned the configuration yet. We judge as soon as it
+    // arrives: otherwise a room slow to synchronise would never be examined.
+    stopWatchdog = watch(config, () => void judge())
   }
 
-  /** Ce que le formulaire dit, sous la forme attendue par le hub. */
+  /** What the form says, in the shape the hub expects. */
   function patch(): Record<string, unknown> | null {
     const current = config.value
     const form = draft.value
@@ -244,8 +243,8 @@ export const useConfigStore = defineStore('config', () => {
       return value
     }
 
-    // On repart de l'existant : un rôle mappé hors des trois proposés ici ne
-    // doit pas disparaître à l'enregistrement.
+    // We start from what exists: a role mapped outside the three offered here
+    // must not disappear on save.
     const roles = (instance: ObsInstance): Record<string, string> => {
       const next: Record<string, string> = { ...(current.sceneRoles[instance] ?? {}) }
       for (const { role } of ROLES[instance]) {
@@ -281,16 +280,15 @@ export const useConfigStore = defineStore('config', () => {
     notice.value = result.ok
       ? { text: 'Enregistré.', tone: 'ok' }
       : { text: result.message ?? 'Échec', tone: 'alert' }
-    // Repeuplé sur l'état qui revient du hub, pas sur ce qu'on vient de taper.
+    // Repopulated from the state coming back from the hub, not from what was typed.
     if (result.ok) seed()
   }
 
   /**
-   * Connecter une instance, réglages compris.
+   * Connecting an instance, settings included.
    *
-   * Enregistrer d'abord : brancher sur l'ancienne adresse pendant que la
-   * nouvelle est à l'écran donnerait une connexion réussie sur le mauvais OBS,
-   * et rien pour le dire.
+   * Saving first: plugging into the old address while the new one is on screen
+   * would give a successful connection to the wrong OBS, and nothing to say so.
    */
   async function connect(instance: ObsInstance): Promise<void> {
     if (online.value) {
@@ -309,28 +307,27 @@ export const useConfigStore = defineStore('config', () => {
   }
 
   /**
-   * Le poste sait-il ouvrir un sélecteur de dossier ?
+   * Can the machine open a folder picker?
    *
-   * La page ne peut pas le deviner : elle tourne aussi bien dans la fenêtre
-   * Electron du poste que dans un navigateur ouvert à côté, et le même bundle
-   * sert les deux. C'est le poste qui répond.
+   * The page cannot guess: it runs just as well in the machine's Electron window
+   * as in a browser opened beside it, and the same bundle serves both. It is the
+   * machine that answers.
    */
   const canBrowse = computed(() => config.value?.canBrowse === true)
 
   /**
-   * Ouvre le sélecteur du **poste** et remplit le champ du dossier des VOD.
+   * Opens the **machine's** picker and fills in the VOD folder field.
    *
-   * Un chemin de disque se saisit à la main sans erreur seulement quand on l'a
-   * sous les yeux — et c'est le disque de la machine de salle qu'il désigne, où
-   * qu'on lise cette page.
+   * A disk path can only be typed by hand without error when one has it in front
+   * of them — and it is the room machine's disk it names, wherever this page is
+   * being read.
    *
-   * **Rien n'est enregistré au passage** : c'est « Enregistrer » qui décide,
-   * comme pour tout le reste du panneau. Un sélecteur qui écrirait dans la
-   * foulée ferait d'un coup d'œil dans l'arborescence une modification de la
-   * salle. Et renoncer laisse le champ tel quel : fermer un sélecteur est un
-   * geste, pas une panne.
+   * **Nothing is saved along the way**: "Enregistrer" is what decides, as for the
+   * rest of the panel. A picker that wrote straight away would turn a glance at
+   * the directory tree into a change to the room. And giving up leaves the field
+   * as it was: closing a picker is a gesture, not a failure.
    */
-  async function parcourir(): Promise<void> {
+  async function browse(): Promise<void> {
     const { detail } = await useActionsStore().act({ action: 'config.chooseFolder' }, { silent: true })
     if (typeof detail === 'string' && detail !== '' && draft.value != null) {
       draft.value.recordingRoot = detail
@@ -345,7 +342,7 @@ export const useConfigStore = defineStore('config', () => {
     config,
     online,
     canBrowse,
-    manques,
+    missing,
     openAtStartup,
     show,
     seed,
@@ -353,7 +350,7 @@ export const useConfigStore = defineStore('config', () => {
     save,
     connect,
     refreshScenes,
-    parcourir,
-    verifierAuDemarrage,
+    browse,
+    checkAtStartup,
   }
 })

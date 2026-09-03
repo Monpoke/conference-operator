@@ -332,7 +332,7 @@ describe('choisir le dossier des VOD', () => {
     reponse = { ok: true, detail: 'D:\\captations\\2026' }
     const config = ouvrir()
 
-    await config.parcourir()
+    await config.browse()
 
     expect(envois.at(-1)?.body).toEqual({ action: 'config.chooseFolder' })
     expect(config.draft?.recordingRoot).toBe('D:\\captations\\2026')
@@ -342,7 +342,7 @@ describe('choisir le dossier des VOD', () => {
     reponse = { ok: true, detail: 'D:\\captations\\2026' }
     const config = ouvrir()
 
-    await config.parcourir()
+    await config.browse()
 
     /*
      * C'est « Enregistrer » qui décide, comme pour tout le reste du panneau.
@@ -359,7 +359,7 @@ describe('choisir le dossier des VOD', () => {
     reponse = { ok: true, detail: null }
     const config = ouvrir({ recordingRoot: 'D:\\déjà\\là' })
 
-    await config.parcourir()
+    await config.browse()
 
     expect(config.draft?.recordingRoot).toBe('D:\\déjà\\là')
   })
@@ -406,10 +406,10 @@ describe('salle incomplète au démarrage', () => {
   }
 
   const codes = (config: ReturnType<typeof useConfigStore>) =>
-    config.manques.map((manque) => manque.code)
+    config.missing.map((entry) => entry.code)
 
   it('ne reproche rien à une salle réglée et branchée', () => {
-    expect(configuredRoom().manques).toEqual([])
+    expect(configuredRoom().missing).toEqual([])
   })
 
   it('nomme les deux OBS absents et le dossier des VOD', () => {
@@ -433,22 +433,22 @@ describe('salle incomplète au démarrage', () => {
   it('signale un rôle configuré mais introuvable dans OBS', () => {
     const config = configuredRoom({}, { B: obsState({ unresolvedRoles: ['TALK'] }) })
 
-    expect(config.manques).toEqual([
-      { code: 'roles-B', texte: 'Rôles introuvables dans OBS-B : TALK.' },
+    expect(config.missing).toEqual([
+      { code: 'roles-B', text: 'Rôles introuvables dans OBS-B : TALK.' },
     ])
   })
 
   it('ne reproche pas à la captation de n’avoir aucun rôle mappé', () => {
     // Beaucoup de salles ne changent jamais de plan pendant un talk : ce serait
     // un faux motif. La projection sans rôle, elle, n'a aucun bouton.
-    expect(configuredRoom({ sceneRoles: { A: { LIVE: 'Direct' }, B: {} } }).manques).toEqual([])
+    expect(configuredRoom({ sceneRoles: { A: { LIVE: 'Direct' }, B: {} } }).missing).toEqual([])
     expect(codes(configuredRoom({ sceneRoles: { A: {}, B: {} } }))).toEqual(['scenes-A'])
   })
 
   it('ouvre le panneau sans attendre sur une salle incomplète', () => {
     const config = configuredRoom({ recordingRoot: null }, { B: obsState({ connected: false }) })
 
-    config.verifierAuDemarrage()
+    config.checkAtStartup()
 
     expect(config.open).toBe(true)
     // Le bandeau dit pourquoi : un panneau qui s'ouvre tout seul se lit comme
@@ -460,7 +460,7 @@ describe('salle incomplète au démarrage', () => {
   it('n’ouvre rien sur une salle réglée et branchée', () => {
     const config = configuredRoom()
 
-    config.verifierAuDemarrage()
+    config.checkAtStartup()
 
     expect(config.open).toBe(false)
   })
@@ -469,24 +469,24 @@ describe('salle incomplète au démarrage', () => {
     // OBS est souvent lancé après la régie et le poste réessaie sans fin. La
     // ligne s'en va d'elle-même, sans que le panneau se referme sous les doigts.
     const config = configuredRoom({}, { B: obsState({ connected: false }) })
-    config.verifierAuDemarrage()
+    config.checkAtStartup()
     expect(codes(config)).toEqual(['obs-B'])
 
     configuredRoom()
 
-    expect(config.manques).toEqual([])
+    expect(config.missing).toEqual([])
     expect(config.open).toBe(true)
   })
 
   it('ne rouvre pas le panneau que l’opérateur vient de fermer', () => {
     const config = configuredRoom({ recordingRoot: null })
-    config.verifierAuDemarrage()
+    config.checkAtStartup()
     expect(config.open).toBe(true)
 
     config.open = false
     // Une salle sans dossier de VOD reste pilotable pour tout le reste : un
     // panneau qui se rouvre n'est plus un rappel, c'est un obstacle.
-    config.verifierAuDemarrage()
+    config.checkAtStartup()
 
     expect(config.open).toBe(false)
   })
@@ -497,7 +497,7 @@ describe('salle incomplète au démarrage', () => {
     useRoomStore().seed(etat)
     const config = useConfigStore()
 
-    config.verifierAuDemarrage()
+    config.checkAtStartup()
     // Une salle dont on ne sait rien n'est pas une salle mal réglée.
     expect(config.open).toBe(false)
 

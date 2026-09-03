@@ -3,23 +3,22 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 /**
- * Les programmes des autres salles, relus du cache local.
+ * The other rooms' programs, read back from the local cache.
  *
- * Tirés du programme mis en cache par le poste, pas de l'état des salles
- * remonté par le hub : le flux d'en-tête doit continuer à dire « l'autre salle
- * finit dans 3 min » pendant une coupure, puisque c'est le programme qui le
- * détermine, pas le réseau.
+ * Taken from the program the machine cached, not from the room states the hub
+ * reports: the header strip must go on saying "the other room finishes in 3 min"
+ * during an outage, since it is the program that determines it, not the network.
  *
- * Rechargés seulement quand l'empreinte du programme change. La régie reçoit un
- * état toutes les quelques secondes ; relire une dizaine de programmes à chaque
- * fois coûterait autant de requêtes pour une réponse identique.
+ * Reloaded only when the program's fingerprint changes. The control app receives
+ * a state every few seconds; re-reading a dozen programs each time would cost as
+ * many requests for an identical answer.
  */
 export const useProgramsStore = defineStore('programs', () => {
-  /** Salles de l'événement, telles que le programme les nomme. */
+  /** The event's rooms, as the program names them. */
   const rooms = ref<{ id: string; name: string }[]>([])
   const sessions = ref<Record<string, Session[]>>({})
 
-  /** Empreinte du programme déjà chargé. `null` tant que rien ne l'a été. */
+  /** Fingerprint of the program already loaded. `null` while nothing has been. */
   const loaded = ref<string | null>(null)
 
   async function fetchSessions(roomId?: string): Promise<Record<string, unknown>> {
@@ -28,13 +27,13 @@ export const useProgramsStore = defineStore('programs', () => {
     return (await response.json()) as Record<string, unknown>
   }
 
-  /** Programme d'une salle précise, chargé à la demande. */
+  /** A specific room's program, loaded on demand. */
   async function loadRoom(roomId: string): Promise<void> {
     try {
       const body = await fetchSessions(roomId)
       sessions.value = { ...sessions.value, [roomId]: (body.sessions as Session[]) ?? [] }
     } catch {
-      // Sans programme, le flux dira « programme inconnu » plutôt que de mentir.
+      // With no program the strip will say "programme inconnu" rather than lie.
       sessions.value = { ...sessions.value, [roomId]: [] }
     }
   }

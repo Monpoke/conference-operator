@@ -10,30 +10,29 @@ import { useRoomStore } from '../src/stores/room.js'
 import { payload } from './fixtures.js'
 
 /**
- * La page entière, et les raccourcis qui la traversent.
+ * The whole page, and the shortcuts that cross it.
  *
- * Ce qui se vérifie ici et nulle part ailleurs : qu'une lettre tapée dans la
- * salle atteigne bien la bonne commande. Deux d'entre elles basculent la
- * projection devant du public.
+ * What is checked here and nowhere else: that a letter typed in the room reaches
+ * the right command. Two of them switch the projection in front of an audience.
  */
 
-interface Envoi {
+interface Call {
   url: string
   body: unknown
 }
 
-let envois: Envoi[]
-let appels: number
+let calls: Call[]
+let callCount: number
 
 /*
- * Montée puis démontée, sans exception.
+ * Mounted then unmounted, without exception.
  *
- * La couche clavier pose un écouteur sur le `document` : un composant laissé
- * monté d'un test au suivant garde le sien, et ses liaisons pointent sur la
- * salle du test précédent. Une frappe partait alors deux fois, dont une vers
- * une captation qui n'existait plus.
+ * The keyboard layer lays a listener on the `document`: a component left mounted
+ * from one test to the next keeps its own, and its bindings point at the previous
+ * test's room. A keystroke then fired twice, once towards a take that no longer
+ * existed.
  */
-const montees: { unmount: () => void }[] = []
+const mounted: { unmount: () => void }[] = []
 
 function silentStream(): void {
   vi.stubGlobal(
@@ -50,177 +49,177 @@ function silentStream(): void {
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  envois = []
+  calls = []
   silentStream()
   vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
-    envois.push({ url, body: init?.body == null ? null : JSON.parse(String(init.body)) })
+    calls.push({ url, body: init?.body == null ? null : JSON.parse(String(init.body)) })
     return new Response(JSON.stringify({ ok: true }), {
       headers: { 'content-type': 'application/json' },
     })
   })
 })
 
-async function monter(
+async function mountApp(
   recording: ControlDiagnostics['recording'] | null = null,
 ): Promise<ReturnType<typeof mount>> {
   const etat = payload()
   etat.diagnostics!.recording = recording ?? { active: false, markers: 0, startedAtMs: null, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS }
   useRoomStore().seed(etat)
   const wrapper = mount(App, { attachTo: document.body })
-  montees.push(wrapper)
+  mounted.push(wrapper)
   await flushPromises()
   return wrapper
 }
 
 afterEach(() => {
-  for (const montee of montees.splice(0)) montee.unmount()
+  for (const montee of mounted.splice(0)) montee.unmount()
 })
 
-function frappe(key: string): void {
+function press(key: string): void {
   document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
 }
 
 describe('raccourcis de la page', () => {
   it('bascule la projection sans passer par la souris', async () => {
-    await monter()
+    await mountApp()
 
-    frappe('l')
-    frappe('h')
+    press('l')
+    press('h')
     await flushPromises()
 
-    // Dans une salle sombre, viser un bouton coûte plus cher qu'appuyer sur une
-    // touche — et ces deux-là se tapent pendant qu'on tient le micro.
-    expect(envois.filter((envoi) => envoi.url === '/control/action').map((e) => e.body)).toEqual([
+    // In a dark room, aiming at a button costs more than pressing a key — and
+    // these two get typed while holding the microphone.
+    expect(calls.filter((call) => call.url === '/control/action').map((e) => e.body)).toEqual([
       { action: 'scene.set', role: 'LIVE' },
       { action: 'scene.set', role: 'HOLD' },
     ])
   })
 
   it('lance la captation quand rien ne tourne', async () => {
-    await monter()
+    await mountApp()
 
-    frappe('r')
+    press('r')
     await flushPromises()
 
-    expect(envois.at(-1)?.body).toEqual({ action: 'recording.start' })
+    expect(calls.at(-1)?.body).toEqual({ action: 'recording.start' })
   })
 
-  it('arrête celle qui tourne', async () => {
-    await monter({ active: true, markers: 0, startedAtMs: 0, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS })
+  it('stops the one that is running', async () => {
+    await mountApp({ active: true, markers: 0, startedAtMs: 0, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS })
 
-    frappe('r')
+    press('r')
     await flushPromises()
 
-    expect(envois.at(-1)?.body).toEqual({ action: 'recording.stop' })
+    expect(calls.at(-1)?.body).toEqual({ action: 'recording.stop' })
   })
 
   it('pose un marqueur pendant une prise', async () => {
-    await monter({ active: true, markers: 0, startedAtMs: 0, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS })
+    await mountApp({ active: true, markers: 0, startedAtMs: 0, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS })
 
-    frappe('m')
+    press('m')
     await flushPromises()
 
-    expect(envois.at(-1)?.body).toEqual({ action: 'recording.mark', label: 'Chapitre' })
+    expect(calls.at(-1)?.body).toEqual({ action: 'recording.mark', label: 'Chapitre' })
   })
 
-  it('pose les deux repères de editing au clavier', async () => {
-    await monter({ active: true, markers: 0, startedAtMs: 0, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS })
+  it('sets both editing anchors from the keyboard', async () => {
+    await mountApp({ active: true, markers: 0, startedAtMs: 0, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS })
 
-    // Ce sont des gestes qu'on fait en regardant la salle, pas l'écran :
-    // l'orateur commence, l'orateur finit. Passer par le champ de libellé
+    // These are gestures made while watching the room, not the screen: the speaker
+    // starts, the speaker finishes. Going through the label field
     // ferait rater l'instant, qui est ici toute l'information.
-    frappe('d')
+    press('d')
     await flushPromises()
-    expect(envois.at(-1)?.body).toEqual({ action: 'recording.mark', label: 'Début', role: 'debut' })
+    expect(calls.at(-1)?.body).toEqual({ action: 'recording.mark', label: 'Début', role: 'debut' })
 
-    frappe('f')
+    press('f')
     await flushPromises()
-    expect(envois.at(-1)?.body).toEqual({ action: 'recording.mark', label: 'Fin', role: 'fin' })
+    expect(calls.at(-1)?.body).toEqual({ action: 'recording.mark', label: 'Fin', role: 'fin' })
   })
 
-  it('ne pose pas de repère quand rien n’enregistre', async () => {
-    await monter()
+  it('sets no anchor when nothing is recording', async () => {
+    await mountApp()
 
-    frappe('d')
-    frappe('f')
+    press('d')
+    press('f')
     await flushPromises()
 
-    expect(envois.filter((envoi) => envoi.url === '/control/action')).toEqual([])
+    expect(calls.filter((call) => call.url === '/control/action')).toEqual([])
   })
 
   it('ne pose pas de marqueur quand rien n’enregistre', async () => {
-    await monter()
+    await mountApp()
 
-    frappe('m')
+    press('m')
     await flushPromises()
 
-    // Le poste refuserait la commande : l'envoyer quand même ferait clignoter
-    // un échec pour un geste que la page savait impossible.
-    expect(envois.filter((envoi) => envoi.url === '/control/action')).toEqual([])
+    // The machine would refuse the command: sending it anyway would flash a
+    // failure for a gesture the page knew to be impossible.
+    expect(calls.filter((call) => call.url === '/control/action')).toEqual([])
   })
 
-  it('rend la frappe au champ qui l’attend', async () => {
-    const wrapper = await monter()
+  it('rend la press au champ qui l’attend', async () => {
+    const wrapper = await mountApp()
     const champ = wrapper.get('#message-text')
 
     await champ.setValue('l')
     champ.element.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', bubbles: true }))
     await flushPromises()
 
-    // Écrire « le micro coupe » dans le message à la console ne doit pas
-    // basculer la projection en direct au premier caractère.
-    expect(envois.filter((envoi) => envoi.url === '/control/action')).toEqual([])
+    // Typing "le micro coupe" into the message to the console must not switch the
+    // projection live on the first character.
+    expect(calls.filter((call) => call.url === '/control/action')).toEqual([])
   })
 })
 
-describe('titre de la fenêtre', () => {
-  it('suit l’événement, et se corrige à un sync', async () => {
-    await monter()
+describe('window title', () => {
+  it('follows the event, and corrects itself on a sync', async () => {
+    await mountApp()
     expect(document.title).toBe('Régie — Cloud Nord 2026')
 
     useRoomStore().payload!.eventIdentity = { name: 'Cloud Nord 2027', shortName: 'CN27' }
     await flushPromises()
 
-    // C'est la même machine qui servira l'édition suivante, et la barre de
-    // fenêtre est le premier endroit où un nom périmé se remarque.
+    // The same machine will serve next year's edition, and the window bar is the
+    // first place a stale name gets noticed.
     expect(document.title).toBe('Régie — Cloud Nord 2027')
   })
 })
 
 describe('programmes des salles voisines', () => {
   it('ne les relit pas tant que l’empreinte du programme ne change pas', async () => {
-    await monter()
-    appels = envois.filter((envoi) => envoi.url.startsWith('/display/sessions')).length
+    await mountApp()
+    callCount = calls.filter((call) => call.url.startsWith('/display/sessions')).length
 
-    // Un état arrive toutes les quelques secondes ; relire une dizaine de
-    // programmes à chaque fois coûterait autant de requêtes pour une réponse
+    // A state arrives every few seconds; re-reading a dozen programs each time
+    // would cost as many requests for an answer
     // identique.
     useRoomStore().payload!.state.outboxDepth = 3
     await flushPromises()
 
-    expect(envois.filter((envoi) => envoi.url.startsWith('/display/sessions'))).toHaveLength(appels)
+    expect(calls.filter((call) => call.url.startsWith('/display/sessions'))).toHaveLength(callCount)
   })
 
   it('ne charge la liste qu’une fois au editing', async () => {
-    await monter()
+    await mountApp()
 
-    // Un effet qui suit ce qu'il écrit se déclenche deux fois : le second tour
-    // ne coûte rien de visible, mais il double les requêtes de la journée sur
-    // une machine qui n'a rien demandé.
-    expect(envois.filter((envoi) => envoi.url === '/display/sessions')).toHaveLength(1)
+    // An effect that watches what it writes fires twice: the second round costs
+    // nothing visible, but it doubles the day's requests on a machine that asked
+    // for nothing.
+    expect(calls.filter((call) => call.url === '/display/sessions')).toHaveLength(1)
   })
 })
 
-describe('régie en lecture seule', () => {
-  it('se monte sans diagnostic, plutôt que d’échouer', async () => {
+describe('control app in read-only', () => {
+  it('mounts with no diagnostics, rather than fail', async () => {
     const etat = payload({ diagnostics: null })
     useRoomStore().seed(etat)
     const wrapper = mount(App, { attachTo: document.body })
-    montees.push(wrapper)
+    mounted.push(wrapper)
     await flushPromises()
 
-    // Une deuxième fenêtre ouverte pour regarder : le poste ne pilote rien, et
-    // la moitié de la charge utile est absente.
+    // A second window opened just to watch: the machine drives nothing, and half
+    // the payload is absent.
     expect(wrapper.text()).toContain('Régie en lecture seule')
     expect(wrapper.find('#btn-rec').exists()).toBe(true)
   })
@@ -228,147 +227,147 @@ describe('régie en lecture seule', () => {
 
 describe('consultation', () => {
   it('s’ouvre au clavier, sur l’onglet que la touche nomme', async () => {
-    await monter()
+    await mountApp()
     const consult = useConsultStore()
 
-    frappe('p')
+    press('p')
     await flushPromises()
     expect(consult.open).toBe(true)
     expect(consult.tab).toBe('program')
 
     consult.open = false
-    // La couche de la modale se retire au prochain cycle réactif : taper dans
-    // l'intervalle, ce serait taper pendant qu'elle est encore à l'écran.
+    // The modal's layer is removed on the next reactive cycle: typing in between
+    // would be typing while it is still on screen.
     await flushPromises()
-    frappe('s')
+    press('s')
     await flushPromises()
     expect(consult.tab).toBe('rooms')
   })
 
   it('avale les raccourcis pendant qu’on lit', async () => {
-    await monter()
+    await mountApp()
     const consult = useConsultStore()
     consult.show('program')
     await flushPromises()
 
-    frappe('l')
-    frappe('r')
+    press('l')
+    press('r')
     await flushPromises()
 
     /*
-     * `l` et `h` basculent la projection devant du public, et une modale
-     * ouverte est exactement le moment où l'on tape sans regarder.
+     * `l` and `h` switch the projection in front of an audience, and an open modal
+     * is exactly the moment one types without looking.
      */
-    expect(envois.filter((envoi) => envoi.url === '/control/action')).toEqual([])
+    expect(calls.filter((call) => call.url === '/control/action')).toEqual([])
   })
 
-  it('suit une salle voisine et charge son programme à la demande', async () => {
-    await monter()
+  it('follows a neighbouring room and loads its program on demand', async () => {
+    await mountApp()
     const consult = useConsultStore()
 
     await consult.follow('track-2')
     await flushPromises()
 
-    // Pas dans le flux d'état : le programme d'une salle qu'on ne regarde pas
-    // n'a rien à circuler à chaque changement de scène.
+    // Not in the state stream: the program of a room nobody is looking at has no
+    // business travelling on every scene change.
     expect(consult.tab).toBe('other')
-    expect(envois.some((envoi) => envoi.url === '/display/sessions?salle=track-2')).toBe(true)
+    expect(calls.some((call) => call.url === '/display/sessions?salle=track-2')).toBe(true)
   })
 })
 
 describe('une question ouverte prend le clavier', () => {
-  it('répond « oui » à la fin anticipée, et rien d’autre ne passe', async () => {
-    await monter()
-    const conference = useTalkStore()
-    conference.endEarlyOpen = true
+  it('answers "yes" to the early end, and nothing else gets through', async () => {
+    await mountApp()
+    const talk = useTalkStore()
+    talk.endEarlyOpen = true
     await flushPromises()
 
-    frappe('r')
-    frappe('y')
+    press('r')
+    press('y')
     await flushPromises()
 
     /*
-     * Un « r » réflexe pendant qu'on demande s'il faut terminer basculerait la
-     * captation sous la question elle-même. La couche avale ce qu'elle n'a pas
-     * lié — c'est ce que six `return` par modale faisaient dans la page
-     * d'origine, et qu'il fallait penser à écrire à chaque nouvelle.
+     * A reflex "r" while being asked whether to end would switch the take
+     * underneath the question itself. The layer swallows what it has not bound —
+     * which is what six `return`s per modal did in the original page, and which one
+     * had to remember to write for each new one.
      */
-    expect(envois.filter((envoi) => envoi.url === '/control/action').map((e) => e.body)).toEqual([
+    expect(calls.filter((call) => call.url === '/control/action').map((e) => e.body)).toEqual([
       { action: 'session.end' },
     ])
   })
 
-  it('accepte « o » autant que « y »', async () => {
-    await monter()
-    const conference = useTalkStore()
-    conference.endEarlyOpen = true
+  it('accepts "o" as much as "y"', async () => {
+    await mountApp()
+    const talk = useTalkStore()
+    talk.endEarlyOpen = true
     await flushPromises()
 
-    frappe('o')
+    press('o')
     await flushPromises()
 
-    // La moitié des opérateurs tape l'un, l'autre moitié l'autre, et se tromper
-    // de lettre sur cette question-là coûte un talk.
-    expect(envois.at(-1)?.body).toEqual({ action: 'session.end' })
+    // Half the operators type one, the other half the other, and getting the
+    // letter wrong on that question costs a talk.
+    expect(calls.at(-1)?.body).toEqual({ action: 'session.end' })
   })
 
-  it('referme sur « n » sans rien envoyer', async () => {
-    await monter()
-    const conference = useTalkStore()
-    conference.endEarlyOpen = true
+  it('closes on "n" without sending anything', async () => {
+    await mountApp()
+    const talk = useTalkStore()
+    talk.endEarlyOpen = true
     await flushPromises()
 
-    frappe('n')
+    press('n')
     await flushPromises()
 
-    expect(conference.endEarlyOpen).toBe(false)
-    expect(envois.filter((envoi) => envoi.url === '/control/action')).toEqual([])
+    expect(talk.endEarlyOpen).toBe(false)
+    expect(calls.filter((call) => call.url === '/control/action')).toEqual([])
   })
 
-  it('répond au clavier sur l’avertissement de captation aussi', async () => {
+  it('answers the keyboard on the take warning too', async () => {
     /*
-     * Cette question-là ne répondait à rien, quand les deux autres répondaient
-     * à `y` et `n` : deux questions sur quatre au clavier, et rien à l'écran
-     * pour les distinguer. Les touches sont désormais liées par `ConfirmDialog`
-     * lui-même, avec le libellé qu'il imprime — donc partout, ou nulle part.
+     * That question answered nothing, while the other two answered `y` and `n`: two
+     * questions out of four on the keyboard, and nothing on screen to tell them
+     * apart. The keys are now bound by `ConfirmDialog` itself, along with the label
+     * it prints — so everywhere, or nowhere.
      */
-    await monter()
-    const conference = useTalkStore()
-    conference.recordingOpen = true
+    await mountApp()
+    const talk = useTalkStore()
+    talk.recordingOpen = true
     await flushPromises()
 
-    frappe('y')
+    press('y')
     await flushPromises()
 
-    expect(conference.recordingOpen).toBe(false)
-    expect(envois.filter((envoi) => envoi.url === '/control/action').map((e) => e.body)).toEqual([
+    expect(talk.recordingOpen).toBe(false)
+    expect(calls.filter((call) => call.url === '/control/action').map((e) => e.body)).toEqual([
       { action: 'recording.start' },
       { action: 'session.start' },
       { action: 'scene.set', role: 'LIVE' },
     ])
   })
 
-  it('laisse la troisième issue à la souris', async () => {
-    // « Commencer sans enregistrer » n'est ni annuler ni confirmer : lui donner
-    // une lettre en ferait une seconde façon de dire oui, à une question dont
-    // la réponse par défaut coûte une VOD.
-    await monter()
-    const conference = useTalkStore()
-    conference.recordingOpen = true
+  it('leaves the third way out to the mouse', async () => {
+    // "Commencer sans enregistrer" is neither cancel nor confirm: giving it a
+    // letter would make it a second way of saying yes, to a question whose default
+    // answer costs a VOD.
+    await mountApp()
+    const talk = useTalkStore()
+    talk.recordingOpen = true
     await flushPromises()
 
-    for (const touche of ['r', 'l', 'm']) frappe(touche)
+    for (const touche of ['r', 'l', 'm']) press(touche)
     await flushPromises()
 
-    // Et la couche avale toujours ce qu'elle n'a pas lié : un « r » réflexe
-    // basculerait la captation sous la question elle-même.
-    expect(envois.filter((envoi) => envoi.url === '/control/action')).toEqual([])
-    expect(conference.recordingOpen).toBe(true)
+    // And the layer still swallows what it has not bound: a reflex "r" would
+    // switch the take underneath the question itself.
+    expect(calls.filter((call) => call.url === '/control/action')).toEqual([])
+    expect(talk.recordingOpen).toBe(true)
   })
 })
 
 describe('avant le premier octet', () => {
-  it('dit qu’elle attend, plutôt que de peindre une salle vide', async () => {
+  it('says it is waiting, rather than paint an empty room', async () => {
     const wrapper = mount(App)
     await flushPromises()
 

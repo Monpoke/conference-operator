@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_VOD_POLICY, type SignedPart, type UploadPlan } from '@cloudnord/contract'
 import { LocalStore } from '../src/core/store.js'
 import {
-  Televersements,
-  type CandidatVod,
+  Uploads,
+  type VodCandidate,
   type HubVod,
-  type TeleversementDeps,
+  type UploadDeps,
 } from '../src/core/upload.js'
 
 /**
@@ -83,11 +83,11 @@ function fauxHub(options: { recues?: number[] } = {}) {
  * travail déjà en vol, ce qui donne ici l'attente qu'il nous faut.
  */
 async function demanderEtAttendre(m: Montage, file: string | null): Promise<void> {
-  await m.televersements.demander(file)
-  await m.televersements.passe()
+  await m.uploads.request(file)
+  await m.uploads.pass()
 }
 
-const UN_RUSH: CandidatVod = {
+const UN_RUSH: VodCandidate = {
   file: '2026-10-30_track1_1100_honeyswamp.mkv',
   sizeBytes: TAILLE,
   beingWritten: false,
@@ -96,7 +96,7 @@ const UN_RUSH: CandidatVod = {
 }
 
 interface Montage {
-  televersements: Televersements
+  uploads: Uploads
   tranches: { file: string; debut: number; fin: number }[]
   envois: { url: string; octets: number }[]
   attentes: number[]
@@ -104,36 +104,36 @@ interface Montage {
 
 function monter(
   hub: HubVod | null,
-  patch: Partial<TeleversementDeps> = {},
-  candidats: CandidatVod[] = [UN_RUSH],
+  patch: Partial<UploadDeps> = {},
+  candidates: VodCandidate[] = [UN_RUSH],
 ): Montage {
   const tranches: { file: string; debut: number; fin: number }[] = []
   const envois: { url: string; octets: number }[] = []
   const attentes: number[] = []
-  const televersements = new Televersements({
+  const uploads = new Uploads({
     store: new LocalStore(':memory:'),
-    candidats: async () => candidats,
+    candidates: async () => candidates,
     hub: () => hub,
-    politique: () => ({ ...DEFAULT_VOD_POLICY, actif: true }),
-    charge: () => ({ cpu: 0.1, cores: 8, windowMs: 2000, memory: null }),
-    enregistre: () => false,
+    policy: () => ({ ...DEFAULT_VOD_POLICY, actif: true }),
+    load: () => ({ cpu: 0.1, cores: 8, windowMs: 2000, memory: null }),
+    recording: () => false,
     talkRunning: () => false,
     msBeforeNext: () => null,
-    cheminDe: (file) => `/tmp/${file}`,
-    lireTranche: async (file, debut, fin) => {
+    pathOf: (file) => `/tmp/${file}`,
+    readRange: async (file, debut, fin) => {
       tranches.push({ file, debut, fin })
       return Buffer.alloc(fin - debut)
     },
-    envoyerPart: async (url, corps) => {
+    sendPart: async (url, corps) => {
       envois.push({ url, octets: corps.byteLength })
       return `"etag-${envois.length}"`
     },
-    attendre: async (ms) => {
+    wait: async (ms) => {
       attentes.push(ms)
     },
     ...patch,
   })
-  return { televersements, tranches, envois, attentes }
+  return { uploads, tranches, envois, attentes }
 }
 
 describe('monter un rush', () => {
@@ -197,14 +197,14 @@ describe('monter un rush', () => {
   it('ne monte pas le sidecar quand le rush a échoué', async () => {
     const { hub, journal } = fauxHub()
     const m = monter(hub, {
-      envoyerPart: async () => {
+      sendPart: async () => {
         throw new Error('le stockage a refusé la part (HTTP 503)')
       },
     })
     await demanderEtAttendre(m, UN_RUSH.file)
 
     expect(journal.begin.map((b) => b.kind)).toEqual(['rush'])
-    expect(m.televersements.vue().entries[0]?.error).toContain('503')
+    expect(m.uploads.view().entries[0]?.error).toContain('503')
   })
 
   it('écarte une prise encore en cours d\'écriture', async () => {
@@ -233,7 +233,7 @@ describe('le plafond de débit', () => {
     const { hub } = fauxHub()
     let horloge = 0
     const m = monter(hub, {
-      politique: () => ({ ...DEFAULT_VOD_POLICY, actif: true, debitMaxOctetsS: PART / 2 }),
+      policy: () => ({ ...DEFAULT_VOD_POLICY, actif: true, debitMaxOctetsS: PART / 2 }),
       // Chaque envoi prend une seconde ; le plafond en allowed deux par part.
       now: () => (horloge += 500),
     })
@@ -257,11 +257,11 @@ describe('le plafond de débit', () => {
 describe('ce qui empêche de monter', () => {
   it('reporte sans rien envoyer pendant un enregistrement, et dit pourquoi', async () => {
     const { hub, journal } = fauxHub()
-    const m = monter(hub, { enregistre: () => true })
+    const m = monter(hub, { recording: () => true })
     await demanderEtAttendre(m, UN_RUSH.file)
 
     expect(journal.begin).toHaveLength(0)
-    const vue = m.televersements.vue()
+    const vue = m.uploads.view()
     expect(vue.verdict.allowed).toBe(false)
     // Le motif est rendu jusqu'à l'écran : une attente muette se lit comme un
     // bouton mort, et l'opérateur reclique.
@@ -272,20 +272,20 @@ describe('ce qui empêche de monter', () => {
     const m = monter(null)
     await demanderEtAttendre(m, UN_RUSH.file)
     expect(m.envois).toHaveLength(0)
-    expect(m.televersements.vue().entries[0]?.state).toBe('attente')
+    expect(m.uploads.view().entries[0]?.state).toBe('attente')
   })
 
   it('ne part pas tout seul quand l\'automatique est éteint', async () => {
     const { hub, journal } = fauxHub()
-    const m = monter(hub, { politique: () => DEFAULT_VOD_POLICY })
-    await m.televersements.passe()
+    const m = monter(hub, { policy: () => DEFAULT_VOD_POLICY })
+    await m.uploads.pass()
     expect(journal.begin).toHaveLength(0)
   })
 
   it('part tout seul quand le hub l\'a activé', async () => {
     const { hub, journal } = fauxHub()
     const m = monter(hub)
-    await m.televersements.passe()
+    await m.uploads.pass()
     expect(journal.begin.map((b) => b.kind)).toEqual(['rush', 'sidecar'])
   })
 })
@@ -295,9 +295,9 @@ describe('annuler', () => {
     const { hub, journal } = fauxHub()
     let m: Montage
     const editing = monter(hub, {
-      envoyerPart: async (url, corps) => {
+      sendPart: async (url, corps) => {
         // Annulation en pleine montée, comme un clic en régie.
-        void m.televersements.annuler(UN_RUSH.file)
+        void m.uploads.cancel(UN_RUSH.file)
         return `"etag-${corps.byteLength}"`
       },
     })
@@ -309,7 +309,7 @@ describe('annuler', () => {
     expect(editing.envois.length).toBeLessThan(4)
     expect(journal.complete).toHaveLength(0)
     expect(journal.abort).toContain(`up-${UN_RUSH.file}`)
-    expect(editing.televersements.vue().entries[0]?.state).toBe('abandonne')
+    expect(editing.uploads.view().entries[0]?.state).toBe('abandonne')
   })
 })
 
@@ -319,7 +319,7 @@ describe('la vue de la régie', () => {
     const m = monter(hub)
     await demanderEtAttendre(m, UN_RUSH.file)
 
-    const [entree] = m.televersements.vue().entries
+    const [entree] = m.uploads.view().entries
     expect(entree?.state).toBe('termine')
     expect(entree?.percent).toBe(100)
     expect(entree?.error).toBeNull()
@@ -327,16 +327,16 @@ describe('la vue de la régie', () => {
 
   it('oublie les fichiers que le disque n\'a plus', async () => {
     const { hub } = fauxHub()
-    let presents: CandidatVod[] = [UN_RUSH]
-    const m = monter(hub, { candidats: async () => presents })
+    let presents: VodCandidate[] = [UN_RUSH]
+    const m = monter(hub, { candidates: async () => presents })
     await demanderEtAttendre(m, UN_RUSH.file)
-    expect(m.televersements.vue().entries.length).toBeGreaterThan(0)
+    expect(m.uploads.view().entries.length).toBeGreaterThan(0)
 
     // Le rush a été effacé après rapatriement : « terminé » sur un fichier
     // absent encombrerait la modale toute la journée.
     presents = []
-    await m.televersements.oublierLesDisparus()
-    expect(m.televersements.vue().entries).toEqual([])
+    await m.uploads.forgetMissing()
+    expect(m.uploads.view().entries).toEqual([])
   })
 })
 
@@ -358,9 +358,9 @@ describe('quand le stockage ne répond pas', () => {
     // là où elle est.
     const port = await portFerme()
     const { hub } = fauxHub()
-    // Le vrai chemin réseau, sans `envoyerPart` : c'est lui qu'on veut voir
+    // Le vrai chemin réseau, sans `sendPart` : c'est lui qu'on veut voir
     // échouer, et c'est lui qui fabrique le message.
-    const m = monter(hub, { envoyerPart: undefined })
+    const m = monter(hub, { sendPart: undefined })
     const urlLocale = (numero: number) => `http://127.0.0.1:${port}/part/${numero}`
     hub.parts = async (_id, numeros) =>
       numeros.map((numero) => ({
@@ -371,7 +371,7 @@ describe('quand le stockage ne répond pas', () => {
 
     await demanderEtAttendre(m, UN_RUSH.file)
 
-    const erreur = m.televersements.vue().entries[0]?.error ?? ''
+    const erreur = m.uploads.view().entries[0]?.error ?? ''
     expect(erreur).toContain('Stockage injoignable')
     // L'hôte visé, sans la signature ni les identifiants de l'adresse : le
     // journal d'une salle se relit à plusieurs.

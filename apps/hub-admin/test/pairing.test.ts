@@ -158,7 +158,7 @@ describe('vue d’appairage', () => {
     })
 
     expect(calls).toContainEqual({ path: 'devices/lookup', input: { userCode: 'WXYZ-9876' } })
-    expect(modale('#verdict-texte')?.textContent).toContain('machine-b')
+    expect(modale('#verdict-text')?.textContent).toContain('machine-b')
     // Consulter n'approuve pas : les deux boutons existent, rien n'est parti.
     expect(calls.filter((appel) => appel.path === 'devices/approve')).toHaveLength(0)
     expect(modale('#verdict-approuver')).not.toBe(null)
@@ -172,7 +172,7 @@ describe('vue d’appairage', () => {
       lookup: { status: 'pending', clientId: null },
     })
 
-    expect(modale('#verdict-texte')?.textContent).toContain('autre opérateur')
+    expect(modale('#verdict-text')?.textContent).toContain('autre opérateur')
     expect(modale('#verdict-approuver')).toBe(null)
   })
 
@@ -182,7 +182,7 @@ describe('vue d’appairage', () => {
       lookup: { status: 'invalid', reason: 'expire' },
     })
 
-    expect(modale('#verdict-texte')?.textContent).toContain('durée de vie')
+    expect(modale('#verdict-text')?.textContent).toContain('durée de vie')
     expect(modale('#verdict-approuver')).toBe(null)
   })
 

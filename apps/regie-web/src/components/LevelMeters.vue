@@ -11,8 +11,8 @@ import { useAudioStore } from '../stores/audio.js'
  * le panneau les redit, parce qu'une couleur seule ne dit pas où elle bascule.
  */
 function tint(db: number): string {
-  if (db > -9) return 'bg-alerte'
-  if (db > -20) return 'bg-attention'
+  if (db > -9) return 'bg-alert'
+  if (db > -20) return 'bg-warn'
   return 'bg-ok'
 }
 
@@ -27,7 +27,7 @@ const audio = useAudioStore()
 
 <template>
   <Panel class="min-h-0 flex-1">
-    <h2 class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-attenue uppercase">
+    <h2 class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
       Niveaux audio — OBS&nbsp;B
     </h2>
 
@@ -37,8 +37,8 @@ const audio = useAudioStore()
         premier est un OBS qu'on n'a pas encore entendu, le second un OBS qui
         répond et n'a rien à faire écouter.
       -->
-      <div v-if="audio.waiting" class="text-xs text-attenue">En attente d'OBS…</div>
-      <div v-else-if="audio.inputs.length === 0" class="text-xs text-attenue">
+      <div v-if="audio.waiting" class="text-xs text-dim">En attente d'OBS…</div>
+      <div v-else-if="audio.inputs.length === 0" class="text-xs text-dim">
         Aucune entrée audio — OBS-B est-il connecté ?
       </div>
 
@@ -47,7 +47,7 @@ const audio = useAudioStore()
           <span class="truncate text-xs">{{ entry.name }}</span>
           <span
             class="shrink-0 text-[11px] tabular-nums"
-            :class="(audio.peaks[entry.name]?.db ?? DB_FLOOR) > -9 ? 'text-alerte' : 'text-attenue'"
+            :class="(audio.peaks[entry.name]?.db ?? DB_FLOOR) > -9 ? 'text-alert' : 'text-dim'"
           >
             {{
               (audio.peaks[entry.name]?.db ?? DB_FLOOR) <= DB_FLOOR
@@ -61,7 +61,7 @@ const audio = useAudioStore()
           <div
             v-for="(canal, index) in entry.channels"
             :key="index"
-            class="relative h-1.5 overflow-hidden rounded-full bg-fond"
+            class="relative h-1.5 overflow-hidden rounded-full bg-canvas"
           >
             <div
               class="h-full rounded-full transition-[width] duration-75"
@@ -73,7 +73,7 @@ const audio = useAudioStore()
       </div>
     </div>
 
-    <p class="mt-1.5 text-[11px] text-attenue">
+    <p class="mt-1.5 text-[11px] text-dim">
       Vert jusqu'à &minus;20 dB, jaune ensuite, rouge au-delà de &minus;9 dB.
     </p>
   </Panel>

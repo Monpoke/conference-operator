@@ -286,7 +286,7 @@ useKeyboardLayer(
         Rien encore reçu : le premier sondage n'a pas répondu. Distinct d'une
         salle vide — c'est un état d'attente, et il dure une seconde.
       -->
-      <div v-else class="flex flex-1 items-center justify-center p-6 text-sm text-attenue">
+      <div v-else class="flex flex-1 items-center justify-center p-6 text-sm text-dim">
         Lecture de la salle…
       </div>
     </template>
@@ -352,7 +352,7 @@ useKeyboardLayer(
     coquille sans rien dedans. En salle, le poste embarque l'état dans la page
     et cet écran n'apparaît jamais.
   -->
-  <div v-else class="flex flex-1 items-center justify-center p-6 text-sm text-attenue">
+  <div v-else class="flex flex-1 items-center justify-center p-6 text-sm text-dim">
     Connexion au poste de salle…
   </div>
 

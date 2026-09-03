@@ -68,10 +68,10 @@ const title = computed(() => {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-fond p-6" data-role="pairing">
-    <div class="max-w-[620px] rounded-2xl border border-bord bg-surface px-10 py-[34px] text-center">
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-canvas p-6" data-role="pairing">
+    <div class="max-w-[620px] rounded-2xl border border-edge bg-surface px-10 py-[34px] text-center">
       <h1 class="mb-2 text-[22px] font-semibold">{{ title }}</h1>
-      <p class="mb-6 text-[15px] leading-relaxed text-attenue">
+      <p class="mb-6 text-[15px] leading-relaxed text-dim">
         {{
           choosing
             ? 'Ce choix accompagne la demande : la console le retrouvera pré-sélectionné.'
@@ -84,7 +84,7 @@ const title = computed(() => {
           Hub injoignable : le dire plutôt que d'afficher une liste vide, qui se
           lirait comme un événement sans salles.
         -->
-        <p v-if="rooms.length === 0" class="py-3.5 text-sm text-attenue">
+        <p v-if="rooms.length === 0" class="py-3.5 text-sm text-dim">
           Hub injoignable — la liste des salles apparaîtra dès qu'il répondra.
         </p>
         <Button
@@ -99,8 +99,8 @@ const title = computed(() => {
       </div>
 
       <template v-else>
-        <p v-if="requested != null" class="mb-3.5 text-sm text-attenue">
-          Salle demandée : <strong class="text-texte">{{ requested.name }}</strong>
+        <p v-if="requested != null" class="mb-3.5 text-sm text-dim">
+          Salle demandée : <strong class="text-text">{{ requested.name }}</strong>
         </p>
 
         <!--
@@ -112,7 +112,7 @@ const title = computed(() => {
         -->
         <p
           v-if="attente"
-          class="mb-5 rounded-xl border border-bord bg-fond px-[26px] py-5 text-[15px] leading-relaxed text-attenue"
+          class="mb-5 rounded-xl border border-edge bg-canvas px-[26px] py-5 text-[15px] leading-relaxed text-dim"
           data-role="pairing-attente"
         >
           Le code précédent n’est plus valable. Un nouveau code apparaîtra ici
@@ -121,17 +121,17 @@ const title = computed(() => {
 
         <div
           v-else
-          class="mb-5 rounded-xl border border-bord bg-fond px-[26px] py-5 text-[52px] font-bold tracking-[.16em] tabular-nums select-all"
+          class="mb-5 rounded-xl border border-edge bg-canvas px-[26px] py-5 text-[52px] font-bold tracking-[.16em] tabular-nums select-all"
           data-role="pairing-code"
         >
           {{ pairing?.userCode ?? '········' }}
         </div>
-        <p v-if="!attente" class="text-sm leading-relaxed text-attenue">
+        <p v-if="!attente" class="text-sm leading-relaxed text-dim">
           Saisissez ce code dans la console du hub, onglet « Machines en attente », puis
           choisissez la salle desservie par ce poste.<br />
           <a
             v-if="pairing?.verificationUri != null"
-            class="text-marque underline"
+            class="text-brand underline"
             :href="pairing.verificationUri"
             target="_blank"
             rel="noopener"
@@ -140,10 +140,10 @@ const title = computed(() => {
         </p>
       </template>
 
-      <p v-if="pairing?.message != null" class="mt-[18px] text-sm text-alerte">
+      <p v-if="pairing?.message != null" class="mt-[18px] text-sm text-alert">
         {{ pairing.message }}
       </p>
-      <p class="mt-[22px] text-[13px] text-attenue">Cet écran disparaît dès l'approbation.</p>
+      <p class="mt-[22px] text-[13px] text-dim">Cet écran disparaît dès l'approbation.</p>
     </div>
   </div>
 </template>

@@ -27,7 +27,7 @@ defineProps<{
 -->
 <template>
   <div class="mb-[11px]">
-    <label class="mb-[5px] block text-xs text-attenue" :for="id">{{ label }}</label>
+    <label class="mb-[5px] block text-xs text-dim" :for="id">{{ label }}</label>
     <input
       :id="id"
       v-model="model"
@@ -35,8 +35,8 @@ defineProps<{
       :placeholder="placeholder"
       :autocomplete="autocomplete"
       :inputmode="inputmode"
-      class="w-full min-w-0 rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte focus:border-marque focus:outline-none"
+      class="w-full min-w-0 rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text focus:border-brand focus:outline-none"
     />
-    <p v-if="hint != null" class="mt-1 text-xs text-attenue">{{ hint }}</p>
+    <p v-if="hint != null" class="mt-1 text-xs text-dim">{{ hint }}</p>
   </div>
 </template>

@@ -21,16 +21,16 @@ defineProps<{
 -->
 <template>
   <div class="mb-[11px]">
-    <label class="mb-[5px] block text-xs text-attenue" :for="id">{{ label }}</label>
+    <label class="mb-[5px] block text-xs text-dim" :for="id">{{ label }}</label>
     <select
       :id="id"
       v-model="model"
-      class="w-full rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte focus:border-marque focus:outline-none"
+      class="w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text focus:border-brand focus:outline-none"
     >
       <option v-for="option in options" :key="option.value" :value="option.value">
         {{ option.label }}
       </option>
     </select>
-    <p v-if="hint != null" class="mt-1 text-xs text-attenue">{{ hint }}</p>
+    <p v-if="hint != null" class="mt-1 text-xs text-dim">{{ hint }}</p>
   </div>
 </template>

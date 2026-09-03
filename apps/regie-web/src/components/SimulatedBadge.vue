@@ -11,7 +11,7 @@ defineProps<{ when: boolean }>()
 <template>
   <span
     v-if="when"
-    class="ml-1.5 rounded border border-attention/40 px-1 py-px text-[10px] font-semibold tracking-[.08em] text-attention uppercase"
+    class="ml-1.5 rounded border border-warn/40 px-1 py-px text-[10px] font-semibold tracking-[.08em] text-warn uppercase"
   >
     simulé
   </span>

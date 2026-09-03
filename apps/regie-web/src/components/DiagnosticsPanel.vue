@@ -31,7 +31,7 @@ const instances = computed(() =>
 
 <template>
   <Panel class="min-h-0 flex-1">
-    <h2 class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-attenue uppercase">
+    <h2 class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
       Diagnostic
     </h2>
 
@@ -45,26 +45,26 @@ const instances = computed(() =>
         class="flex items-center gap-2"
         :data-obs="instance.key"
       >
-        <span class="pastille" :class="instance.connected ? '' : 'offline'"></span>
+        <span class="status-dot" :class="instance.connected ? '' : 'offline'"></span>
         <span class="truncate">
           OBS {{ instance.key }} —
           {{ instance.connected ? instance.scene : 'déconnecté' }}
         </span>
         <SimulatedBadge :when="instance.simulated" />
-        <span v-if="instance.missing.length > 0" class="ml-auto shrink-0 text-attention">
+        <span v-if="instance.missing.length > 0" class="ml-auto shrink-0 text-warn">
           rôles absents : {{ instance.missing.join(', ') }}
         </span>
       </div>
     </div>
 
     <div
-      class="mt-1.5 flex min-h-0 flex-1 flex-col gap-px overflow-y-auto text-[11px] text-attenue"
+      class="mt-1.5 flex min-h-0 flex-1 flex-col gap-px overflow-y-auto text-[11px] text-dim"
       data-role="journal"
     >
       <div
         v-for="(entry, index) in payload.diagnostics?.log ?? []"
         :key="index"
-        :class="entry.level === 'warn' || entry.level === 'error' ? 'text-attention' : ''"
+        :class="entry.level === 'warn' || entry.level === 'error' ? 'text-warn' : ''"
       >
         {{ entry.message }}
       </div>

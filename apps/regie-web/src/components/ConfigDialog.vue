@@ -24,13 +24,13 @@ const others = computed(() =>
 const noticeTone = computed(() => {
   // Hors ligne passe devant : c'est la raison pour laquelle le bouton est
   // désarmé, et elle prime sur le résultat du dernier enregistrement.
-  if (!config.online) return 'text-attention'
+  if (!config.online) return 'text-warn'
   if (config.notice?.tone === 'ok') return 'text-ok'
-  return config.notice?.tone === 'alerte' ? 'text-alerte' : 'text-attenue'
+  return config.notice?.tone === 'alert' ? 'text-alert' : 'text-dim'
 })
 
 const FIELD =
-  'w-full rounded-lg border border-bord bg-fond px-3 py-2 text-sm text-texte focus:border-marque focus:outline-none'
+  'w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text focus:border-brand focus:outline-none'
 </script>
 
 <template>
@@ -39,7 +39,7 @@ const FIELD =
       Rien à configurer sans le hub : c'est lui qui détient la configuration de
       la salle. Un formulaire vide se remplirait de zéros et les enverrait.
     -->
-    <p v-if="config.draft == null || config.config == null" class="text-sm text-attenue">
+    <p v-if="config.draft == null || config.config == null" class="text-sm text-dim">
       Rien à configurer tant que le hub n'a pas répondu : c'est lui qui détient la configuration
       de la salle.
     </p>
@@ -55,7 +55,7 @@ const FIELD =
       -->
       <div
         v-if="config.manques.length > 0"
-        class="mb-2.5 rounded-lg border border-attention/40 px-2.5 py-2 text-[11px] text-attention"
+        class="mb-2.5 rounded-lg border border-warn/40 px-2.5 py-2 text-[11px] text-warn"
         data-role="config-manques"
       >
         <p class="font-semibold">
@@ -92,25 +92,25 @@ const FIELD =
       <Panel title="Salle">
         <div class="grid grid-cols-2 gap-2">
           <div>
-            <label class="mb-0.5 block text-xs text-attenue" for="cfg-port">
+            <label class="mb-0.5 block text-xs text-dim" for="cfg-port">
               Port de l'écran local
             </label>
             <input id="cfg-port" v-model="config.draft.displayPort" :class="FIELD" />
-            <p class="mt-0.5 text-[11px] text-attenue">
+            <p class="mt-0.5 text-[11px] text-dim">
               Prend effet au prochain démarrage du client.
             </p>
           </div>
           <div>
-            <label class="mb-0.5 block text-xs text-attenue" for="cfg-slug">
+            <label class="mb-0.5 block text-xs text-dim" for="cfg-slug">
               Préfixe des fichiers
             </label>
             <input id="cfg-slug" v-model="config.draft.fileSlug" :class="FIELD" />
-            <p class="mt-0.5 text-[11px] text-attenue">
+            <p class="mt-0.5 text-[11px] text-dim">
               Utilisé dans les noms d'enregistrements. Vide : dérivé du nom de la salle.
             </p>
           </div>
           <div>
-            <label class="mb-0.5 block text-xs text-attenue" for="cfg-root">Dossier des VOD</label>
+            <label class="mb-0.5 block text-xs text-dim" for="cfg-root">Dossier des VOD</label>
             <div class="flex gap-1.5">
               <input id="cfg-root" v-model="config.draft.recordingRoot" :class="FIELD" />
               <!--
@@ -128,21 +128,21 @@ const FIELD =
                 Parcourir…
               </Button>
             </div>
-            <p class="mt-0.5 text-[11px] text-attenue">
+            <p class="mt-0.5 text-[11px] text-dim">
               Où la régie relit les enregistrements (🎞 dans le panneau Captation). Vide : le
               dossier d’OBS-B, qu’elle lui demande. Ce champ ne déplace rien : c’est OBS-B qui
               décide où il écrit.
             </p>
           </div>
           <div>
-            <label class="mb-0.5 block text-xs text-attenue" for="cfg-relay">Salle relayée</label>
+            <label class="mb-0.5 block text-xs text-dim" for="cfg-relay">Salle relayée</label>
             <select id="cfg-relay" v-model="config.draft.relaySourceRoomId" :class="FIELD">
               <option value="">— aucune —</option>
               <option v-for="room in others" :key="room.roomId" :value="room.roomId">
                 {{ room.name }}
               </option>
             </select>
-            <p class="mt-0.5 text-[11px] text-attenue">
+            <p class="mt-0.5 text-[11px] text-dim">
               Active le bouton « Relais » en projection. L'acheminement du flux reste une affaire
               de configuration OBS.
             </p>
@@ -158,14 +158,14 @@ const FIELD =
           l'information existe — c'est le seul instant où l'on sait qu'un talk
           commence.
         -->
-        <h3 class="mt-3.5 mb-2.5 text-[11px] font-semibold tracking-[.14em] text-attenue uppercase">
+        <h3 class="mt-3.5 mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
           Au démarrage et à la fin d’une conférence
         </h3>
         <label class="flex items-start gap-2 text-sm">
           <input id="cfg-prompt-rec" v-model="config.draft.promptRecordingOnStart" type="checkbox" class="mt-0.5" />
           <span>
             Avertir si l’enregistrement n’est pas lancé
-            <span class="block text-[11px] text-attenue">
+            <span class="block text-[11px] text-dim">
               Une VOD manquante ne se rattrape pas le soir.
             </span>
           </span>
@@ -174,13 +174,13 @@ const FIELD =
           <input id="cfg-prompt-rec-stop" v-model="config.draft.promptRecordingOnStop" type="checkbox" class="mt-0.5" />
           <span>
             Proposer d’arrêter l’enregistrement en terminant
-            <span class="block text-[11px] text-attenue">
+            <span class="block text-[11px] text-dim">
               Sans quoi le talk suivant s’écrit dans le même fichier, sous le titre de celui-ci.
             </span>
           </span>
         </label>
         <div class="mt-2">
-          <label class="mb-0.5 block text-xs text-attenue" for="cfg-scene-demarrage">
+          <label class="mb-0.5 block text-xs text-dim" for="cfg-scene-demarrage">
             Scène prise automatiquement
           </label>
           <select id="cfg-scene-demarrage" v-model="config.draft.sceneOnStart" :class="FIELD">
@@ -189,7 +189,7 @@ const FIELD =
               {{ entry.label }}
             </option>
           </select>
-          <p class="mt-0.5 text-[11px] text-attenue">
+          <p class="mt-0.5 text-[11px] text-dim">
             Sans elle, l’habillage reste à l’écran pendant les premières phrases.
           </p>
         </div>

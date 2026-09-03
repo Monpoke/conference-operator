@@ -69,10 +69,10 @@ export function renderWallPage({ roomId, rooms, event }: WallPageOptions): strin
   * { -webkit-tap-highlight-color: transparent; }
 </style>
 </head>
-<body class="mx-auto max-w-[620px] bg-fond font-sans text-texte">
+<body class="mx-auto max-w-[620px] bg-canvas font-sans text-text">
 <header class="pt-[22px] pb-3.5">
   <h1 class="text-[21px] font-bold">${nom}</h1>
-  <div class="mt-1 text-sm text-attenue" id="salle"></div>
+  <div class="mt-1 text-sm text-dim" id="salle"></div>
 
   <!--
     Choix de la salle, sur la page.
@@ -88,15 +88,15 @@ export function renderWallPage({ roomId, rooms, event }: WallPageOptions): strin
 
   <!-- Ce qu'il écoute en ce moment : « posez votre question » doit dire à
        propos de quoi, et la question arrive en régie rattachée au bon talk. -->
-  <div class="mt-2.5 rounded-[10px] border border-bord bg-surface p-3" id="talk" hidden>
-    <div class="text-[11px] tracking-[.1em] text-attenue uppercase" id="talk-quand">En ce moment</div>
+  <div class="mt-2.5 rounded-[10px] border border-edge bg-surface p-3" id="talk" hidden>
+    <div class="text-[11px] tracking-[.1em] text-dim uppercase" id="talk-quand">En ce moment</div>
     <div class="mt-1 text-[15px] leading-snug font-semibold" id="talk-titre"></div>
-    <div class="mt-0.5 text-[13px] text-attenue" id="talk-qui"></div>
+    <div class="mt-0.5 text-[13px] text-dim" id="talk-qui"></div>
   </div>
 </header>
 
-<div class="onglets my-3.5 flex gap-1.5">
-  <button id="onglet-mur" class="actif">Mur</button>
+<div class="tabs my-3.5 flex gap-1.5">
+  <button id="onglet-mur" class="active">Mur</button>
   <button id="onglet-questions">Questions</button>
 </div>
 
@@ -109,22 +109,22 @@ export function renderWallPage({ roomId, rooms, event }: WallPageOptions): strin
     faisait la version précédente, en petit et en gris — revenait à ne pas le
     dire : personne ne lit sous un bouton qu'il vient d'appuyer.
   -->
-  <div class="mb-3.5 rounded-[12px] border border-marque/40 bg-[color-mix(in_srgb,var(--color-marque)_12%,transparent)] p-3.5">
+  <div class="mb-3.5 rounded-[12px] border border-brand/40 bg-[color-mix(in_srgb,var(--color-brand)_12%,transparent)] p-3.5">
     <div class="text-[15px] leading-snug font-semibold">
-      Votre message s'affiche <span class="text-marque">dans toutes les salles</span>
+      Votre message s'affiche <span class="text-brand">dans toutes les salles</span>
     </div>
-    <div class="mt-1 text-[13px] leading-relaxed text-attenue" id="portee">
+    <div class="mt-1 text-[13px] leading-relaxed text-dim" id="portee">
       Projeté sur les écrans de l'événement, après relecture.
     </div>
   </div>
 
-  <form class="carte" id="form-message">
+  <form class="card" id="form-message">
     <label for="auteur">Votre prénom</label>
     <input class="mb-3.5 rounded-[10px] p-[13px]" id="auteur" maxlength="80" autocomplete="given-name" required>
     <label for="message">Votre message</label>
-    <textarea class="mb-3.5 w-full rounded-[10px] border border-bord bg-fond p-[13px] text-texte" id="message" maxlength="500" required></textarea>
-    <div class="-mt-2.5 mb-3 text-right text-xs text-attenue"><span id="compteur-message">0</span>/500</div>
-    <button class="envoyer" type="submit">Envoyer à l'événement</button>
+    <textarea class="mb-3.5 w-full rounded-[10px] border border-edge bg-canvas p-[13px] text-text" id="message" maxlength="500" required></textarea>
+    <div class="-mt-2.5 mb-3 text-right text-xs text-dim"><span id="compteur-message">0</span>/500</div>
+    <button class="send" type="submit">Envoyer à l'événement</button>
   </form>
 
   <!--
@@ -135,7 +135,7 @@ export function renderWallPage({ roomId, rooms, event }: WallPageOptions): strin
     C'est ce qui fait la différence entre un formulaire de contact et un mur.
   -->
   <div class="mt-5 flex items-baseline gap-2">
-    <h2 class="text-[13px] font-semibold tracking-[.1em] text-attenue uppercase">En ce moment sur les écrans</h2>
+    <h2 class="text-[13px] font-semibold tracking-[.1em] text-dim uppercase">En ce moment sur les écrans</h2>
   </div>
   <div class="mt-2.5 flex flex-col gap-2.5" id="liste-mur"></div>
 </section>
@@ -146,16 +146,16 @@ export function renderWallPage({ roomId, rooms, event }: WallPageOptions): strin
   <label class="mb-1" for="choix-salle">Dans quelle salle êtes-vous ?</label>
   <select class="mb-3.5 rounded-[10px] p-[11px]" id="choix-salle"></select>
 
-  <form class="carte" id="form-question">
+  <form class="card" id="form-question">
     <label for="question">Votre question au speaker</label>
-    <textarea class="mb-3.5 w-full rounded-[10px] border border-bord bg-fond p-[13px] text-texte" id="question" maxlength="300" required></textarea>
-    <div class="-mt-2.5 mb-3 text-right text-xs text-attenue"><span id="compteur-question">0</span>/300</div>
-    <button class="envoyer" type="submit">Poser la question</button>
+    <textarea class="mb-3.5 w-full rounded-[10px] border border-edge bg-canvas p-[13px] text-text" id="question" maxlength="300" required></textarea>
+    <div class="-mt-2.5 mb-3 text-right text-xs text-dim"><span id="compteur-question">0</span>/300</div>
+    <button class="send" type="submit">Poser la question</button>
   </form>
   <div class="mt-4 flex flex-col gap-2.5" id="liste-questions"></div>
 </section>
 
-<div class="avis" id="avis"></div>
+<div class="notice" id="avis"></div>
 
 <script id="donnees" type="application/json">${donnees}</script>
 <script>
@@ -275,7 +275,7 @@ export function renderWallPage({ roomId, rooms, event }: WallPageOptions): strin
   function avis(message, erreur) {
     const el = $('avis')
     el.textContent = message
-    el.className = 'avis visible ' + (erreur ? 'ko' : 'ok')
+    el.className = 'notice visible ' + (erreur ? 'error' : 'ok')
     clearTimeout(el.__t)
     el.__t = setTimeout(() => el.classList.remove('visible'), 4000)
   }
@@ -291,8 +291,8 @@ export function renderWallPage({ roomId, rooms, event }: WallPageOptions): strin
   function basculer(mur) {
     $('vue-mur').hidden = !mur
     $('vue-questions').hidden = mur
-    $('onglet-mur').classList.toggle('actif', mur)
-    $('onglet-questions').classList.toggle('actif', !mur)
+    $('onglet-mur').classList.toggle('active', mur)
+    $('onglet-questions').classList.toggle('active', !mur)
   }
 
   /**
@@ -309,16 +309,16 @@ export function renderWallPage({ roomId, rooms, event }: WallPageOptions): strin
       conteneur.innerHTML = ''
       if (liste.length === 0) {
         const vide = document.createElement('div')
-        vide.className = 'rounded-[10px] border border-dashed border-bord p-4 text-center text-sm text-attenue'
+        vide.className = 'rounded-[10px] border border-dashed border-edge p-4 text-center text-sm text-dim'
         vide.textContent = 'Rien encore. Le premier message de la journée peut être le vôtre.'
         conteneur.appendChild(vide)
         return
       }
       for (const message of liste) {
         const carte = document.createElement('div')
-        carte.className = 'rounded-[10px] border border-bord bg-surface p-3'
+        carte.className = 'rounded-[10px] border border-edge bg-surface p-3'
         const auteur = document.createElement('div')
-        auteur.className = 'mb-1 text-xs text-attenue'
+        auteur.className = 'mb-1 text-xs text-dim'
         // Le handle quand la source en a un : c'est ce qui distingue un post
         // repris des réseaux d'un message déposé ici.
         auteur.textContent = message.authorHandle
@@ -391,7 +391,7 @@ export function renderWallPage({ roomId, rooms, event }: WallPageOptions): strin
       votes.add(id)
       localStorage.setItem('mur-votes', JSON.stringify([...votes]))
       bouton.querySelector('.n').textContent = resultat.votes
-      bouton.classList.add('vote')
+      bouton.classList.add('voted')
     } catch (cause) {
       avis(cause.message, true)
     }
@@ -413,7 +413,7 @@ export function renderWallPage({ roomId, rooms, event }: WallPageOptions): strin
     const vide = (texte) => {
       conteneur.innerHTML = ''
       const bloc = document.createElement('div')
-      bloc.className = 'py-[26px] text-center text-sm text-attenue'
+      bloc.className = 'py-[26px] text-center text-sm text-dim'
       bloc.textContent = texte
       conteneur.appendChild(bloc)
     }
@@ -435,15 +435,15 @@ export function renderWallPage({ roomId, rooms, event }: WallPageOptions): strin
         const carte = document.createElement('div')
         carte.className = 'question'
         const bouton = document.createElement('button')
-        bouton.className = 'voter' + (votes.has(question.id) ? ' vote' : '')
+        bouton.className = 'vote-button' + (votes.has(question.id) ? ' voted' : '')
         bouton.innerHTML = '<span class="text-[17px] font-bold">' + question.votes + '</span><span class="text-[10px] tracking-[.08em] uppercase">vote</span>'
         bouton.onclick = () => voter(question.id, bouton)
         const texte = document.createElement('div')
-        texte.className = 'texte'
+        texte.className = 'text'
         texte.textContent = question.text
         if (question.author) {
           const auteur = document.createElement('div')
-          auteur.className = 'auteur'
+          auteur.className = 'author'
           auteur.textContent = question.author
           texte.appendChild(auteur)
         }

@@ -303,7 +303,7 @@ export function renderProjectorPage(options: ProjectorPageOptions = {}): string 
   }
 </style>
 </head>
-<body class="bg-fond font-sans text-texte" data-mode="sponsors" data-connectivite="OFFLINE">
+<body class="bg-canvas font-sans text-text" data-mode="sponsors" data-connectivite="OFFLINE">
 ${etatInitial}
 <div id="halo" class="pointer-events-none absolute inset-0"></div>
 <div id="scene" class="absolute inset-0 flex flex-col gap-[3vmin] p-[4.5vmin]">
@@ -320,7 +320,7 @@ ${etatInitial}
       -->
       <span class="rounded-[.6vmin] bg-white/10 px-[1.4vmin] py-[.5vmin] text-[2vmin] tracking-[.14em] uppercase"
             id="etiquette-break" hidden></span>
-      <div class="text-[2.6vmin] tracking-[.16em] text-attenue uppercase" id="nom-salle"></div>
+      <div class="text-[2.6vmin] tracking-[.16em] text-dim uppercase" id="nom-salle"></div>
     </div>
   </header>
 
@@ -332,7 +332,7 @@ ${etatInitial}
   -->
   <main id="contenu" class="relative flex min-h-0 flex-1 flex-col overflow-hidden"></main>
 
-  <footer class="flex flex-none items-center justify-between gap-[2vmin] border-t border-white/10 pt-[2vmin] text-[2.2vmin] text-attenue">
+  <footer class="flex flex-none items-center justify-between gap-[2vmin] border-t border-white/10 pt-[2vmin] text-[2.2vmin] text-dim">
     <div id="prochain"></div>
     <div class="flex items-center gap-[1vmin]">
       <span class="block size-[1.4vmin] rounded-full bg-ok" id="pastille"></span>
@@ -374,7 +374,7 @@ ${etatInitial}
   }).format(new Date(iso))
 
   // Intitulé de section, commun à tous les modes.
-  const TITRE_MODE = "mb-[2.5vmin] text-[3vmin] tracking-[.18em] text-attenue uppercase"
+  const TITRE_MODE = "mb-[2.5vmin] text-[3vmin] tracking-[.18em] text-dim uppercase"
 
   function appliquerTheme(evenement) {
     if (!evenement) return
@@ -591,13 +591,13 @@ ${etatInitial}
       return '<article style="--i:' + rang + '" class="flex ' + large + ' flex-col items-center' +
         ' gap-[1.4vmin] rounded-[1.6vmin] border text-center ' + cadre + '">' +
         pastille(engage.sponsor, hauteur, 'max-w-full', 0) +
-        '<div class="text-[2vmin] leading-snug text-attenue">' +
+        '<div class="text-[2vmin] leading-snug text-dim">' +
         echapper(engage.paliers.join(' · ')) + '</div></article>'
     }).join('')
 
     return '<div class="' + TITRE_MODE + '">Nos partenaires</div>' + bande +
       '<section class="mt-[3.5vmin]">' +
-      '<div class="mb-[2vmin] text-[2.4vmin] tracking-[.2em] text-attenue uppercase">' +
+      '<div class="mb-[2vmin] text-[2.4vmin] tracking-[.2em] text-dim uppercase">' +
       (surTousLesFronts ? 'Et sur tous les fronts' : 'Et aussi') + '</div>' +
       '<div class="cascade cartes flex flex-wrap items-stretch justify-center gap-[2.5vmin]" style="--pas:70ms">' +
       rangee + '</div></section>'
@@ -642,7 +642,7 @@ ${etatInitial}
           ? "en-cours bg-[color-mix(in_srgb,var(--couleur)_26%,transparent)] shadow-[inset_.5vmin_0_0_var(--couleur)]"
           : fin != null && fin < maintenant ? "opacity-35" : ""
         const pause = session.kind === 'break' ? "opacity-55" : ""
-        const heureTeinte = session.id === encours ? "text-texte" : "text-attenue"
+        const heureTeinte = session.id === encours ? "text-text" : "text-dim"
         const intervenants = session.speakers.map((s) =>
           s.company ? \`\${s.name} — \${s.company}\` : s.name).join(' · ')
         const accroche = session.id === repere ? 'repere' : ''
@@ -650,7 +650,7 @@ ${etatInitial}
           <div class="text-[2.8vmin] tabular-nums \${heureTeinte}">\${heure(session.startsAt, donnees.timezone)}</div>
           <div>
             <div class="text-[3vmin] font-semibold">\${echapper(session.title)}</div>
-            \${intervenants ? \`<div class="mt-[.4vmin] text-[2.2vmin] text-attenue">\${echapper(intervenants)}</div>\` : ''}
+            \${intervenants ? \`<div class="mt-[.4vmin] text-[2.2vmin] text-dim">\${echapper(intervenants)}</div>\` : ''}
           </div>
         </article>\`
       }).join('') + '</div></div>'
@@ -667,7 +667,7 @@ ${etatInitial}
    */
   function rendreCompte(donnees) {
     const suivante = donnees.state.nextSession
-    if (!suivante) return '<div class="text-center"><div class="text-[3.4vmin] text-attenue">Fin des interventions</div></div>'
+    if (!suivante) return '<div class="text-center"><div class="text-[3.4vmin] text-dim">Fin des interventions</div></div>'
     return '<div class="text-center">' +
       '<div class="cd-chiffres text-[22vmin] leading-none font-bold tabular-nums">' +
       '<span class="cd-min">--</span>:<span class="cd-sec">--</span></div>' +
@@ -675,7 +675,7 @@ ${etatInitial}
       // repère honnête — et il suffit à montrer que le temps passe.
       '<div class="mx-auto mt-[3vmin] h-[.8vmin] w-[40vmin] overflow-hidden rounded-full bg-white/15">' +
       '<div class="cd-arc h-full w-full origin-left rounded-full bg-[var(--couleur)] transition-transform duration-1000 ease-linear"></div></div>' +
-      '<div class="mt-[2.5vmin] text-[3.4vmin] text-attenue">Reprise — ' + echapper(suivante.title) + '</div></div>'
+      '<div class="mt-[2.5vmin] text-[3.4vmin] text-dim">Reprise — ' + echapper(suivante.title) + '</div></div>'
   }
 
   /** Les valeurs du compte à rebours, écrites sans toucher à la structure. */
@@ -736,7 +736,7 @@ ${etatInitial}
       feedback.qrSvg + '</div>' +
       '<div class="max-w-[46vmin]">' +
       (session ? '<div class="text-[3.6vmin] leading-snug font-semibold">' + echapper(session.title) + '</div>' : '') +
-      '<div class="mt-[2vmin] text-[2.8vmin] leading-relaxed text-attenue">' +
+      '<div class="mt-[2vmin] text-[2.8vmin] leading-relaxed text-dim">' +
       'Scannez pour noter la conférence et laisser un commentaire aux speakers.</div></div></div>'
   }
 
@@ -765,7 +765,7 @@ ${etatInitial}
       '<div class="max-w-[80vmin] text-[6vmin] leading-snug font-semibold">' +
       echapper(question.text) + '</div>' +
       (question.author
-        ? '<div class="mt-[2vmin] text-[3vmin] text-attenue">' + echapper(question.author) + '</div>'
+        ? '<div class="mt-[2vmin] text-[3vmin] text-dim">' + echapper(question.author) + '</div>'
         : '')
   }
 
@@ -775,7 +775,7 @@ ${etatInitial}
     const colonne = qr
       ? '<div class="text-center">' +
         '<div class="rounded-[1.4vmin] bg-white p-[1vmin] [&>svg]:h-auto [&>svg]:w-full">' + qr.qrSvg + '</div>' +
-        '<div class="mt-[1.4vmin] text-[2.2vmin] leading-relaxed text-attenue">Scannez pour laisser un message<br>ou poser une question</div></div>'
+        '<div class="mt-[1.4vmin] text-[2.2vmin] leading-relaxed text-dim">Scannez pour laisser un message<br>ou poser une question</div></div>'
       : ''
 
     const carte = "rounded-[1.4vmin] bg-white/8 px-[2.4vmin] py-[1.8vmin]"
@@ -785,7 +785,7 @@ ${etatInitial}
       ? '<div class="' + carte + '"><div class="text-[2.9vmin] leading-snug">Les premiers messages apparaîtront ici.</div></div>'
       : messages.map((message, rang) =>
           '<div class="' + carte + '" style="--i:' + rang + '">' +
-          '<div class="mb-[.6vmin] text-[2.1vmin] text-attenue">' + echapper(message.author) + '</div>' +
+          '<div class="mb-[.6vmin] text-[2.1vmin] text-dim">' + echapper(message.author) + '</div>' +
           '<div class="text-[2.9vmin] leading-snug">' + echapper(message.text) + '</div></div>').join('')
 
     return '<div class="' + TITRE_MODE + '">Vos messages</div>' +
@@ -809,13 +809,13 @@ ${etatInitial}
       (salles.length > 2 ? 'grid-cols-2' : 'grid-cols-1') + '">' +
       salles.map((salle, rang) => \`<article style="--i:\${rang}" class="rounded-[1.6vmin] border border-white/10 bg-white/5 px-[3vmin] py-[2.4vmin]">
         <div class="flex items-baseline justify-between gap-[2vmin]">
-          <div class="text-[2.6vmin] tracking-[.14em] text-attenue uppercase">\${echapper(salle.name)}</div>
-          <div class="text-[2.4vmin] tabular-nums \${salle.enCours ? 'text-[var(--couleur)]' : 'text-attenue'}">\${
+          <div class="text-[2.6vmin] tracking-[.14em] text-dim uppercase">\${echapper(salle.name)}</div>
+          <div class="text-[2.4vmin] tabular-nums \${salle.enCours ? 'text-[var(--couleur)]' : 'text-dim'}">\${
             salle.enCours ? 'en ce moment' : heure(salle.session.startsAt, donnees.timezone)}</div>
         </div>
         <div class="mt-[1.2vmin] text-[3.2vmin] leading-snug font-semibold">\${echapper(salle.session.title)}</div>
         \${salle.session.speakers.length > 0
-          ? \`<div class="mt-[.8vmin] text-[2.4vmin] text-attenue">\${echapper(salle.session.speakers.join(' · '))}</div>\`
+          ? \`<div class="mt-[.8vmin] text-[2.4vmin] text-dim">\${echapper(salle.session.speakers.join(' · '))}</div>\`
           : ''}
       </article>\`).join('') + '</div>'
   }
@@ -839,12 +839,12 @@ ${etatInitial}
     const liens = donnees.socialLinks ?? []
     const nom = nomCourt(donnees)
     const cartes = liens.map((lien, rang) => \`<article style="--i:\${rang}" class="rounded-[1.6vmin] border border-white/10 bg-white/5 px-[4vmin] py-[3vmin] text-center">
-        <div class="text-[2.4vmin] tracking-[.16em] text-attenue uppercase">\${echapper(lien.network)}</div>
+        <div class="text-[2.4vmin] tracking-[.16em] text-dim uppercase">\${echapper(lien.network)}</div>
         <div class="mt-[1.2vmin] text-[4.2vmin] leading-none font-bold">\${echapper(lien.handle)}</div>
       </article>\`).join('')
 
     const hashtag = \`<article style="--i:\${liens.length}" class="rounded-[1.6vmin] border border-white/10 bg-white/5 px-[4vmin] py-[3vmin] text-center">
-        <div class="text-[2.4vmin] tracking-[.16em] text-attenue uppercase">X</div>
+        <div class="text-[2.4vmin] tracking-[.16em] text-dim uppercase">X</div>
         <div class="mt-[1.2vmin] text-[4.2vmin] leading-none font-bold">#CloudNord</div>
         <div class="mt-[1.8vmin] flex min-h-[3.6vmin] items-center justify-center">
           <a href="https://x.com/intent/tweet?button_hashtag=CloudNord&amp;ref_src=twsrc%5Etfw" class="twitter-hashtag-button" data-related="@Cloud_Nord" data-dnt="true" data-show-count="false">Post #CloudNord</a>
@@ -958,7 +958,7 @@ ${etatInitial}
     const message = donnees.state.message
     if (!message) return '<div class="' + TITRE_MODE + '">—</div>'
     const fond = message.level === 'urgent' ? "bg-[#7a1420]" : ""
-    const teinte = message.level === 'warning' ? "text-attention" : ""
+    const teinte = message.level === 'warning' ? "text-warn" : ""
     return \`<div class="flex h-full flex-col justify-center gap-[3vmin] rounded-[2vmin] text-center \${fond}">
       <div class="text-[7vmin] leading-[1.15] font-bold \${teinte}">\${echapper(message.text)}</div>
     </div>\`
@@ -1065,12 +1065,12 @@ ${etatInitial}
       etiquette.textContent = pause.state === 'en-cours' ? 'Break' : 'Break à venir'
       // « À venir » attire l'œil, « en cours » se contente d'exister : à ce
       // moment-là, l'écran entier dit déjà que rien ne se joue.
-      etiquette.style.color = pause.state === 'en-cours' ? '' : 'var(--color-attention)'
+      etiquette.style.color = pause.state === 'en-cours' ? '' : 'var(--color-warn)'
     }
     const pastille = document.getElementById('pastille')
     pastille.className = "block size-[1.4vmin] rounded-full " + (
-      donnees.state.connectivity === 'OFFLINE' ? "bg-alerte"
-      : donnees.state.connectivity === 'DEGRADED' ? "bg-attention" : "bg-ok")
+      donnees.state.connectivity === 'OFFLINE' ? "bg-alert"
+      : donnees.state.connectivity === 'DEGRADED' ? "bg-warn" : "bg-ok")
 
     const suivante = donnees.state.nextSession
     document.getElementById('prochain').textContent = suivante

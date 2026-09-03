@@ -47,7 +47,7 @@ export function roomState(
    * ignore tout de la sienne.
    */
   if (name === 'aucune' && sessions.length === 0) {
-    return { fill: 'hors', word: 'programme inconnu', text: 'text-attenue' }
+    return { fill: 'off', word: 'programme inconnu', text: 'text-dim' }
   }
   const looks = appearanceOf(name)
   return { fill: looks.tint, word: looks.word, text: looks.text }
@@ -107,9 +107,9 @@ export function stripEntry(
 
   let label = ''
   let detail = 'programme inconnu'
-  let tint = 'text-attenue'
+  let tint = 'text-dim'
 
-  if (state.fill === 'depassement') {
+  if (state.fill === 'overrun') {
     // Le programme est passé au créneau suivant ; la salle, non. C'est elle qui
     // a raison, et c'est ce qui décale toute la journée.
     label =
@@ -117,11 +117,11 @@ export function stripEntry(
       current?.title ??
       ''
     detail = state.word
-    tint = 'text-alerte'
-  } else if (['retard', 'pas-commencee', 'terminee'].includes(state.fill)) {
+    tint = 'text-alert'
+  } else if (['late', 'not-started', 'ended'].includes(state.fill)) {
     label = current?.title ?? ''
     detail = state.word
-    tint = state.fill === 'retard' ? 'text-attention' : 'text-attenue'
+    tint = state.fill === 'late' ? 'text-warn' : 'text-dim'
   } else if (current?.kind === 'break') {
     // Pas de libellé : l'étiquette BREAK le dit déjà, et « Déjeuner » à la place
     // d'un titre de conférence se lisait comme une salle occupée. Ce qui décide
@@ -130,9 +130,9 @@ export function stripEntry(
   } else if (current != null) {
     label = current.title
     const end = effectiveEndAt(sessions, sessions.indexOf(current))
-    if (state.fill === 'fin-proche') {
+    if (state.fill === 'ending-soon') {
       detail = `vers la fin · ${duration(end == null ? 0 : Math.round((end - atMs) / 60000))}`
-      tint = 'text-attention'
+      tint = 'text-warn'
     } else {
       detail = current.endsAt ? `en cours · fin ${time(current.endsAt, zone)}` : 'en cours'
     }
@@ -162,7 +162,7 @@ export function stripEntry(
       pause == null
         ? null
         : pause.state === 'en-cours'
-          ? { text: 'BREAK', tint: 'text-attenue' }
-          : { text: 'BREAK à venir', tint: 'text-attention' },
+          ? { text: 'BREAK', tint: 'text-dim' }
+          : { text: 'BREAK à venir', tint: 'text-warn' },
   }
 }

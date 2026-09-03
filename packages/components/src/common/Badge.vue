@@ -18,11 +18,11 @@ const badge = cva(
   {
     variants: {
       variant: {
-        neutral: 'bg-surface2 text-attenue',
+        neutral: 'bg-surface2 text-dim',
         running: 'bg-ok text-[#05231a]',
-        ended: 'bg-[#3a2a13] text-attention',
-        warning: 'bg-surface2 text-attention',
-        alert: 'bg-surface2 text-alerte',
+        ended: 'bg-[#3a2a13] text-warn',
+        warning: 'bg-surface2 text-warn',
+        alert: 'bg-surface2 text-alert',
       },
     },
     defaultVariants: { variant: 'neutral' },

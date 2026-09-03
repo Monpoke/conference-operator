@@ -75,14 +75,14 @@ describe('ce que compte le chronomètre', () => {
 describe('rendu du chronomètre', () => {
   it('atténue un décompte qui ne réclame rien, alerte sur un dépassement', () => {
     const avant = mount(Countdown, { props: { payload: payload(), atMs: DEBUT_MS - 600_000 } })
-    expect(avant.get('[data-role="countdown"]').classes()).toContain('text-attenue')
+    expect(avant.get('[data-role="countdown"]').classes()).toContain('text-dim')
     // Le badge dit ce que le nombre décompte : les deux se lisent pareil sans lui.
     expect(avant.text()).toContain('à venir')
 
     const etat = payload()
     etat.state.sessionStates = { 'talk-1': 'running' }
     const apres = mount(Countdown, { props: { payload: etat, atMs: FIN_MS + 60_000 } })
-    expect(apres.get('[data-role="countdown"]').classes()).toContain('text-alerte')
+    expect(apres.get('[data-role="countdown"]').classes()).toContain('text-alert')
     expect(apres.text()).not.toContain('à venir')
   })
 
@@ -91,7 +91,7 @@ describe('rendu du chronomètre', () => {
     etat.state.sessionStates = { 'talk-1': 'running' }
     const wrapper = mount(Countdown, { props: { payload: etat, atMs: FIN_MS - 120_000 } })
 
-    expect(wrapper.get('[data-role="countdown"]').classes()).toContain('text-attention')
+    expect(wrapper.get('[data-role="countdown"]').classes()).toContain('text-warn')
     expect(wrapper.text()).toContain('2:00')
   })
 
@@ -111,7 +111,7 @@ describe('chronomètre de prise', () => {
       props: { recording: null, realMs: 1_000_000, roomMs: 1_000_000 },
     })
     expect(wrapper.text()).toBe('00:00')
-    expect(wrapper.classes()).toContain('text-attenue')
+    expect(wrapper.classes()).toContain('text-dim')
   })
 
   it('compte en temps réel quand la charge utile ne dit rien d’autre', () => {

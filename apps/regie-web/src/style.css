@@ -39,8 +39,8 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: var(--color-fond);
-    color: var(--color-texte);
+    background: var(--color-canvas);
+    color: var(--color-text);
     font-family: var(--font-sans);
   }
 

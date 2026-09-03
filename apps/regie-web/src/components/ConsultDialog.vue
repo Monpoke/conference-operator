@@ -54,7 +54,7 @@ const followable = computed(() => otherRooms(props.payload, programs.rooms))
 
 <template>
   <Dialog v-model:open="consult.open" title="Consultation" width="full">
-    <div class="mb-3 flex flex-wrap items-center gap-1.5 border-b border-bord pb-3">
+    <div class="mb-3 flex flex-wrap items-center gap-1.5 border-b border-edge pb-3">
       <Button
         v-for="name in CONSULT_TABS"
         :key="name"
@@ -68,7 +68,7 @@ const followable = computed(() => otherRooms(props.payload, programs.rooms))
       </Button>
       <select
         v-if="consult.tab === 'autre'"
-        class="max-w-[220px] rounded-lg border border-bord bg-fond px-3 py-2 text-[13px] text-texte focus:border-marque focus:outline-none"
+        class="max-w-[220px] rounded-lg border border-edge bg-canvas px-3 py-2 text-[13px] text-text focus:border-brand focus:outline-none"
         data-role="choix-autre-salle"
         :value="consult.followed ?? ''"
         @change="consult.follow(($event.target as HTMLSelectElement).value)"
@@ -88,7 +88,7 @@ const followable = computed(() => otherRooms(props.payload, programs.rooms))
       />
 
       <template v-else-if="consult.tab === 'autre'">
-        <div v-if="consult.followed == null" class="text-xs text-attenue">
+        <div v-if="consult.followed == null" class="text-xs text-dim">
           Choisissez une salle à suivre.
         </div>
         <Timeline

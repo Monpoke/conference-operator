@@ -93,27 +93,27 @@ async function confirmerRaz(): Promise<void> {
     class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5"
   >
     <Panel title="Heure du hub">
-      <div class="flex items-center gap-3 border-b border-bord pb-3">
+      <div class="flex items-center gap-3 border-b border-edge pb-3">
         <div class="flex-1">
           <strong
             id="horloge-etat"
             class="mb-[3px] block text-sm"
-            :class="clock?.simulated === true ? 'text-attention' : ''"
+            :class="clock?.simulated === true ? 'text-warn' : ''"
           >
             {{ clock?.simulated === true ? 'Horloge SIMULÉE' : 'Heure réelle' }}
           </strong>
-          <span id="horloge-valeur" class="text-xs text-attenue">{{ lisible }}</span>
+          <span id="horloge-valeur" class="text-xs text-dim">{{ lisible }}</span>
         </div>
       </div>
 
       <div v-if="clock?.controllable === true" id="horloge-controles" class="mt-3">
-        <label class="mb-[5px] block text-xs text-attenue" for="horloge-cible">Se placer à</label>
+        <label class="mb-[5px] block text-xs text-dim" for="horloge-cible">Se placer à</label>
         <input
           id="horloge-cible"
           v-model="cible"
           type="datetime-local"
           step="60"
-          class="mb-[11px] w-full rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte"
+          class="mb-[11px] w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text"
         />
         <div class="flex gap-1.5">
           <Button id="btn-horloge-appliquer" variant="primary" size="small" @click="appliquer">
@@ -185,12 +185,12 @@ async function confirmerRaz(): Promise<void> {
       :confirm-disabled="razMot.trim() !== 'RAZ'"
       @confirm="confirmerRaz"
     >
-      <p id="raz-texte">
+      <p id="raz-text">
         Tout ce qui est sous <strong>{{ razCible.cible }}</strong> sera supprimé, et
         <strong>{{ razCible.salles }} salle{{ razCible.salles > 1 ? 's' : '' }}</strong>
         effaceront leurs rushes.
       </p>
-      <p class="mt-3 text-[13px] leading-relaxed text-attenue">
+      <p class="mt-3 text-[13px] leading-relaxed text-dim">
         <strong>Irréversible.</strong> Les objets du préfixe sont supprimés chez le stockage,
         chaque salle efface ses rushes, leurs sidecars et ses verdicts de relecture, et le hub
         oublie ce qu'il savait des prises — sans quoi le dossier VOD des conférences continuerait
@@ -198,7 +198,7 @@ async function confirmerRaz(): Promise<void> {
         rattrape.
       </p>
       <div class="mt-3">
-        <label class="mb-[5px] block text-xs text-attenue" for="raz-mot">
+        <label class="mb-[5px] block text-xs text-dim" for="raz-mot">
           Recopier <strong>RAZ</strong> pour confirmer
         </label>
         <!--
@@ -211,7 +211,7 @@ async function confirmerRaz(): Promise<void> {
           type="text"
           autocomplete="off"
           placeholder="RAZ"
-          class="w-full rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte"
+          class="w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text"
         />
       </div>
     </ConfirmDialog>

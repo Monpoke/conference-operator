@@ -121,7 +121,7 @@ describe('question du public sur la captation', () => {
     monterHabillage(avec({ question: { text: 'Et les faux positifs ?', author: 'Camille', sessionId: 'ses-1' } }))
 
     expect(document.body.dataset.question).toBe('visible')
-    expect(document.getElementById('question-texte')?.textContent).toBe('Et les faux positifs ?')
+    expect(document.getElementById('question-text')?.textContent).toBe('Et les faux positifs ?')
     expect(document.getElementById('question-auteur')?.textContent).toBe('Camille')
   })
 
@@ -143,7 +143,7 @@ describe('question du public sur la captation', () => {
     expect(document.body.dataset.question).toBe('masque')
     // Rien n'est *rendu* : l'état complet transite bien jusqu'ici, comme pour
     // les autres champs, mais cette page ne dessine que la question.
-    expect(document.getElementById('question-texte')?.textContent).toBe('')
+    expect(document.getElementById('question-text')?.textContent).toBe('')
     expect(document.getElementById('titre')?.textContent).not.toContain('Reprise')
   })
 

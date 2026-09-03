@@ -22,7 +22,7 @@ const STATES: Record<Connectivity, { level: Level; word: string; value: string; 
     verdict: 'Commandes, remontée et programme circulent normalement.',
   },
   DEGRADED: {
-    level: 'attention',
+    level: 'warn',
     word: 'temps réel interrompu',
     value: 'Différé',
     // Pas « temps réel interrompu » : le bandeau le dit déjà à trois
@@ -32,7 +32,7 @@ const STATES: Record<Connectivity, { level: Level; word: string; value: string; 
       'Le hub répond encore, mais plus en direct : la salle continue seule et ce qu’elle produit part en file. Rien n’est perdu tant que l’application reste ouverte.',
   },
   OFFLINE: {
-    level: 'alerte',
+    level: 'alert',
     word: 'hors ligne',
     value: 'Hors ligne',
     label: 'aucun contact',

@@ -107,12 +107,12 @@ export function renderStateMachinePage(options: StateMachinePageOptions): string
    * in the ui package, holds the correspondence.
    */
   .dot { width: 14px; height: 14px; border-radius: 999px; background: var(--ok); display: inline-block; }
-  .dot.hors { background: var(--off); }
-  .dot.pas-commencee { background: var(--off); }
-  .dot.retard { background: var(--warn); }
-  .dot.fin-proche { background: var(--warn); }
-  .dot.terminee { background: var(--off); }
-  .dot.depassement { background: var(--alert); }
+  .dot.off { background: var(--off); }
+  .dot.not-started { background: var(--off); }
+  .dot.late { background: var(--warn); }
+  .dot.ending-soon { background: var(--warn); }
+  .dot.ended { background: var(--off); }
+  .dot.overrun { background: var(--alert); }
 
   .state-large { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 600; }
   .state-large .dot { width: 20px; height: 20px; }
@@ -467,9 +467,9 @@ export function renderStateMachinePage(options: StateMachinePageOptions): string
       const appearance = RoomState.appearanceOf(name)
       const lit = name === lastState
       const colour = {
-        '': 'var(--ok)', hors: 'var(--off)', 'pas-commencee': 'var(--off)',
-        retard: 'var(--warn)', 'fin-proche': 'var(--warn)',
-        terminee: 'var(--off)', depassement: 'var(--alert)',
+        '': 'var(--ok)', off: 'var(--off)', 'not-started': 'var(--off)',
+        late: 'var(--warn)', 'ending-soon': 'var(--warn)',
+        ended: 'var(--off)', overrun: 'var(--alert)',
       }[appearance.tint] ?? 'var(--off)'
       parts.push(
         '<g class="node' + (lit ? ' lit' : '') + '">' +
@@ -496,7 +496,7 @@ export function renderStateMachinePage(options: StateMachinePageOptions): string
       lastEdge = lastState == null ? null : [lastState, state]
       note(
         lastState == null ? 'état initial · ' + appearance.word : lastState + ' → ' + state,
-        appearance.tint === 'depassement' ? 'alert' : '',
+        appearance.tint === 'overrun' ? 'alert' : '',
       )
       lastState = state
     }

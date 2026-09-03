@@ -357,7 +357,7 @@ describe("l'écran de salle", () => {
     const hub = dansLaSalle({ displayMode: 'sponsors' })
     const wrapper = mount(App)
 
-    expect(wrapper.get('[data-command="sponsors"]').classes().join(' ')).toContain('bg-marque')
+    expect(wrapper.get('[data-command="sponsors"]').classes().join(' ')).toContain('bg-brand')
 
     // Le clic poste, et s'arrête là. Le bouton ne bougera qu'au sondage qui
     // rapportera la bascule — comme en régie de salle, où il attend OBS.
@@ -365,7 +365,7 @@ describe("l'écran de salle", () => {
     await flushPromises()
 
     expect(hub.commandes).toEqual([{ type: 'display.set', mode: 'programme' }])
-    expect(wrapper.get('[data-command="sponsors"]').classes().join(' ')).toContain('bg-marque')
+    expect(wrapper.get('[data-command="sponsors"]').classes().join(' ')).toContain('bg-brand')
   })
 })
 

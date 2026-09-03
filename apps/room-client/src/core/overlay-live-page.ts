@@ -67,9 +67,9 @@ export function renderOverlayLivePage(options: OverlayLivePageOptions = {}): str
   body[data-bandeau="visible"] #cadre { opacity: 1; transform: none; }
 
   /* Teinte par niveau, posée depuis le script sur le body. */
-  body[data-niveau="info"] #cadre { --teinte: var(--color-marque); }
-  body[data-niveau="warning"] #cadre { --teinte: var(--color-attention); }
-  body[data-niveau="urgent"] #cadre { --teinte: var(--color-alerte); }
+  body[data-niveau="info"] #cadre { --teinte: var(--color-brand); }
+  body[data-niveau="warning"] #cadre { --teinte: var(--color-warn); }
+  body[data-niveau="urgent"] #cadre { --teinte: var(--color-alert); }
 </style>
 </head>
 <body class="font-sans text-white" data-bandeau="masque" data-niveau="info" data-style="bandeau">

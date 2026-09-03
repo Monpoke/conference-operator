@@ -55,7 +55,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeAnywhere))
     <Button size="small" data-role="btn-ecrans" @click.stop="open = !open">Écrans ▾</Button>
     <div
       v-if="open"
-      class="absolute top-[calc(100%+6px)] right-0 z-20 min-w-[260px] rounded-[9px] border border-bord bg-surface p-[5px] shadow-[0_10px_30px_rgba(0,0,0,.45)]"
+      class="absolute top-[calc(100%+6px)] right-0 z-20 min-w-[260px] rounded-[9px] border border-edge bg-surface p-[5px] shadow-[0_10px_30px_rgba(0,0,0,.45)]"
       data-role="liste-ecrans"
     >
       <!--
@@ -68,10 +68,10 @@ onBeforeUnmount(() => document.removeEventListener('click', closeAnywhere))
         :href="link.href"
         target="_blank"
         rel="noopener"
-        class="block rounded-md px-3 py-2.5 text-sm text-texte no-underline hover:bg-bord"
+        class="block rounded-md px-3 py-2.5 text-sm text-text no-underline hover:bg-edge"
       >
         {{ link.title }}
-        <small class="mt-0.5 block text-xs text-attenue">{{ link.detail }}</small>
+        <small class="mt-0.5 block text-xs text-dim">{{ link.detail }}</small>
       </a>
     </div>
   </div>

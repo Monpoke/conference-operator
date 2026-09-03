@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { appearanceOf, outlineOf } from '@cloudnord/room-state'
 import { computed } from 'vue'
+import { DOT_LEVELS, type DotLevel } from './status-levels.js'
 
 /**
  * Two facts in one dot, and they must not be confused.
@@ -27,29 +28,13 @@ const props = defineProps<{
    */
   state?: string | null
   /** A machine's own health, where there is no conference to describe. */
-  level?: 'ok' | 'attention' | 'alerte' | 'inconnu'
+  level?: DotLevel
   /** What we know of the room, drawn as the outline. */
   connectivity?: string | null
   /** Shows the word beside the dot. Not everyone tells the tints apart. */
   word?: boolean
   class?: string
 }>()
-
-/*
- * The machine vocabulary, not the conference one.
- *
- * `degraded` and `offline` render the same two tints as `fin-proche` and
- * `depassement` — the stylesheet keeps them apart on purpose, and says so: one
- * pair describes a machine, the other a talk. A dot over a saturated CPU has no
- * conference behind it, and naming it `depassement` would make the next reader
- * of the stylesheet believe otherwise.
- */
-const LEVELS = {
-  ok: '',
-  attention: 'degraded',
-  alerte: 'offline',
-  inconnu: 'hors',
-} as const
 
 const appearance = computed(() => appearanceOf(props.state))
 
@@ -64,8 +49,8 @@ const appearance = computed(() => appearanceOf(props.state))
  * régie — un anneau vert à la place d'un disque vert.
  */
 const classes = computed(() => {
-  if (props.level != null) return `pastille ${LEVELS[props.level]}`.trim()
-  return `pastille ${appearance.value.tint}${outlineOf(props.connectivity)}`.trim()
+  if (props.level != null) return `status-dot ${DOT_LEVELS[props.level]}`.trim()
+  return `status-dot ${appearance.value.tint}${outlineOf(props.connectivity)}`.trim()
 })
 </script>
 

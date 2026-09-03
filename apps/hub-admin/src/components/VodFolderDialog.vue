@@ -76,9 +76,9 @@ watch(
  * n'enregistrait rien.
  */
 function etatPrise(prise: Capture): { texte: string; tone: string } {
-  if (prise.finInconnue) return { texte: 'interrompue, fin jamais reçue', tone: 'text-attention' }
-  if (prise.enCours) return { texte: 'enregistrement en cours', tone: 'text-marque' }
-  if (prise.file == null) return { texte: 'arrêtée sans fichier', tone: 'text-alerte' }
+  if (prise.finInconnue) return { texte: 'interrompue, fin jamais reçue', tone: 'text-warn' }
+  if (prise.enCours) return { texte: 'enregistrement en cours', tone: 'text-brand' }
+  if (prise.file == null) return { texte: 'arrêtée sans fichier', tone: 'text-alert' }
   return { texte: 'fichier écrit', tone: 'text-ok' }
 }
 
@@ -119,17 +119,17 @@ function etatMontee(ligne: Upload): { label: string; tone: string } {
 
 <template>
   <Dialog v-model:open="open" :title="session?.title ?? 'Captation'" width="wide">
-    <p class="text-xs text-attenue">
+    <p class="text-xs text-dim">
       {{ session?.roomName ?? 'salle inconnue'
       }}{{ session != null && session.speakers.length > 0 ? ` · ${session.speakers.join(', ')}` : '' }}
     </p>
 
     <div id="vod-corps" class="mt-3">
-      <p v-if="chargement" class="text-attenue">Lecture…</p>
-      <p v-else-if="erreur !== ''" class="text-alerte">{{ erreur }}</p>
+      <p v-if="chargement" class="text-dim">Lecture…</p>
+      <p v-else-if="erreur !== ''" class="text-alert">{{ erreur }}</p>
 
       <template v-else-if="folder != null">
-        <h3 class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-attenue uppercase">
+        <h3 class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
           Sur la régie
         </h3>
 
@@ -139,7 +139,7 @@ function etatMontee(ligne: Upload): { label: string; tone: string } {
         </Hint>
 
         <template v-else-if="folder.captations.length === 0">
-          <p class="text-attention">
+          <p class="text-warn">
             Aucune prise remontée par {{ folder.roomName ?? folder.roomId }}.
           </p>
           <Hint>
@@ -154,7 +154,7 @@ function etatMontee(ligne: Upload): { label: string; tone: string } {
           v-for="(prise, index) in folder.captations"
           v-else
           :key="`${prise.obs}-${prise.startedAt}-${index}`"
-          class="border-t border-bord py-2 first:border-t-0"
+          class="border-t border-edge py-2 first:border-t-0"
           data-prise
         >
           <div class="text-sm">
@@ -169,24 +169,24 @@ function etatMontee(ligne: Upload): { label: string; tone: string } {
             -->
             <template v-if="!prise.enCours && !prise.finInconnue">
               <template v-if="prise.sidecarWritten"> · sidecar écrit</template>
-              <span v-else class="text-attention"> · sans sidecar</span>
+              <span v-else class="text-warn"> · sans sidecar</span>
             </template>
           </div>
-          <div class="text-[11px] tabular-nums text-attenue">{{ quand(prise) }}</div>
+          <div class="text-[11px] tabular-nums text-dim">{{ quand(prise) }}</div>
           <div v-if="prise.file != null" class="font-mono text-[11px] break-all">
             {{ prise.file }}
           </div>
-          <div v-else class="text-[11px] text-alerte">
+          <div v-else class="text-[11px] text-alert">
             OBS n'a rendu aucun chemin — disque plein, ou processus tué en plein arrêt.
           </div>
           <!-- Un rattachement déduit de l'heure est une piste, pas un fait. -->
-          <div v-if="prise.rattachement === 'horaire'" class="text-[11px] text-attention">
+          <div v-if="prise.rattachement === 'horaire'" class="text-[11px] text-warn">
             Rattachée à l'heure : la prise ne porte aucun créneau, mais elle recouvre celui-ci
             dans la même salle.
           </div>
         </div>
 
-        <h3 class="mt-3.5 mb-2.5 text-[11px] font-semibold tracking-[.14em] text-attenue uppercase">
+        <h3 class="mt-3.5 mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
           Chez le stockage
         </h3>
 
@@ -197,7 +197,7 @@ function etatMontee(ligne: Upload): { label: string; tone: string } {
         </Hint>
 
         <template v-else-if="folder.televersements.length === 0">
-          <p :class="rushDisponible(folder) ? 'text-attention' : 'text-attenue'">
+          <p :class="rushDisponible(folder) ? 'text-warn' : 'text-dim'">
             Rien de monté pour cette conférence.
           </p>
           <Button
@@ -214,7 +214,7 @@ function etatMontee(ligne: Upload): { label: string; tone: string } {
           v-for="ligne in folder.televersements"
           v-else
           :key="ligne.objectKey"
-          class="border-t border-bord py-2 first:border-t-0"
+          class="border-t border-edge py-2 first:border-t-0"
           data-montee
         >
           <div class="text-sm">
@@ -226,7 +226,7 @@ function etatMontee(ligne: Upload): { label: string; tone: string } {
             donne à qui va chercher le rush dans le bucket.
           -->
           <div class="font-mono text-[11px] break-all">{{ ligne.objectKey }}</div>
-          <div v-if="ligne.lastError != null" class="text-[11px] text-alerte">
+          <div v-if="ligne.lastError != null" class="text-[11px] text-alert">
             {{ ligne.lastError }}
           </div>
           <Button

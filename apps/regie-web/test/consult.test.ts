@@ -89,7 +89,7 @@ describe('ce que dit une case du bandeau', () => {
     // « L'autre salle finit dans 3 minutes » est la phrase qui fait attendre ou
     // lancer, et elle ne se déduit d'aucun autre écran.
     expect(entry.detail).toBe('vers la fin · 3 min')
-    expect(entry.tint).toBe('text-attention')
+    expect(entry.tint).toBe('text-warn')
   })
 
   it('donne l’heure de reprise pendant une pause, pas le nom du repas', () => {
@@ -110,7 +110,7 @@ describe('ce que dit une case du bandeau', () => {
     // Le programme est passé au créneau suivant ; la salle, non. C'est elle qui
     // a raison, et c'est ce qui décale toute la journée.
     expect(entry.label).toBe('Terraform sans peur')
-    expect(entry.tint).toBe('text-alerte')
+    expect(entry.tint).toBe('text-alert')
   })
 
   it('avoue un programme inconnu plutôt que d’annoncer un hors-créneau', () => {
@@ -131,12 +131,12 @@ describe('ce que dit une case du bandeau', () => {
 
     // Le remplissage reste celui du programme : on ne sait plus si elle le
     // suit, et le prétendre en couleur serait pire que de se taire.
-    expect(entry.dot).toContain('muette')
+    expect(entry.dot).toContain('silent')
   })
 
   it('annonce un break à venir pendant qu’une conférence court encore', () => {
     const entry = stripEntry(voisine(), salle, VOISINE, FIN_MS - 300_000)
-    expect(entry.breakTag).toEqual({ text: 'BREAK à venir', tint: 'text-attention' })
+    expect(entry.breakTag).toEqual({ text: 'BREAK à venir', tint: 'text-warn' })
   })
 })
 
@@ -324,8 +324,8 @@ describe('signalements', () => {
 
     // Un fond plein, pas une teinte sourde : ces encarts doivent se lire du
     // coin de l'œil, par un opérateur qui regarde la salle.
-    expect(wrapper.get('[data-notification="n-1"]').classes()).toContain('bg-marque')
-    expect(wrapper.get('[data-notification="n-2"]').classes()).toContain('bg-attention')
+    expect(wrapper.get('[data-notification="n-1"]').classes()).toContain('bg-brand')
+    expect(wrapper.get('[data-notification="n-2"]').classes()).toContain('bg-warn')
     // Et un texte sombre, seule paire lisible sur de l'ambre.
     expect(wrapper.get('[data-notification="n-2"]').classes()).toContain('text-[#05070d]')
   })

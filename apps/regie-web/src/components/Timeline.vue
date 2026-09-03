@@ -47,7 +47,7 @@ function past(index: number): boolean {
 </script>
 
 <template>
-  <div v-if="sessions.length === 0" class="text-xs text-attenue">Aucune session.</div>
+  <div v-if="sessions.length === 0" class="text-xs text-dim">Aucune session.</div>
   <div v-else ref="root" class="flex flex-col gap-1" data-role="timeline">
     <div
       v-for="(session, index) in sessions"
@@ -55,7 +55,7 @@ function past(index: number): boolean {
       class="grid grid-cols-[52px_1fr] items-baseline gap-2.5 rounded-md px-2.5 py-2"
       :class="[
         session.id === currentId
-          ? 'bg-[color-mix(in_srgb,var(--color-marque)_22%,transparent)] shadow-[inset_3px_0_0_var(--color-marque)]'
+          ? 'bg-[color-mix(in_srgb,var(--color-brand)_22%,transparent)] shadow-[inset_3px_0_0_var(--color-brand)]'
           : past(index)
             ? 'opacity-35'
             : '',
@@ -63,12 +63,12 @@ function past(index: number): boolean {
       ]"
       :data-actuel="session.id === currentId ? 'true' : undefined"
     >
-      <div class="text-[13px] text-attenue tabular-nums">
+      <div class="text-[13px] text-dim tabular-nums">
         {{ time(session.startsAt, timeZone) }}
       </div>
       <div>
         <div class="text-sm">{{ session.title }}</div>
-        <div v-if="speakers(session) !== ''" class="mt-0.5 text-xs text-attenue">
+        <div v-if="speakers(session) !== ''" class="mt-0.5 text-xs text-dim">
           {{ speakers(session) }}
         </div>
       </div>

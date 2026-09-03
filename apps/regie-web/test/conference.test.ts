@@ -412,7 +412,7 @@ describe('panneau de la conférence', () => {
     const wrapper = monter(FIN_MS + 600_000, { 'talk-1': 'running' })
 
     expect(wrapper.get('[data-role="conference-detail"]').text()).toContain('dépassement de')
-    expect(wrapper.get('[data-role="conference-detail"]').classes()).toContain('text-alerte')
+    expect(wrapper.get('[data-role="conference-detail"]').classes()).toContain('text-alert')
   })
 
   it('dit qu’il n’y a rien à piloter plutôt que de laisser un titre vide', () => {

@@ -161,7 +161,7 @@ describe('raccourcis de la page', () => {
 
   it('rend la frappe au champ qui l’attend', async () => {
     const wrapper = await monter()
-    const champ = wrapper.get('#message-texte')
+    const champ = wrapper.get('#message-text')
 
     await champ.setValue('l')
     champ.element.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', bubbles: true }))

@@ -57,7 +57,7 @@ function submit(): void {
         </Button>
       </form>
 
-      <p v-if="error != null" id="connexion-erreur" class="mt-3 text-sm text-alerte">{{ error }}</p>
+      <p v-if="error != null" id="connexion-erreur" class="mt-3 text-sm text-alert">{{ error }}</p>
 
       <template v-if="google != null">
         <Button id="btn-google" class="mt-3 w-full" @click="session.signInWithGoogle()">

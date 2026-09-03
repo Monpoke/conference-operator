@@ -3,5 +3,5 @@
 </script>
 
 <template>
-  <p class="mt-2.5 text-[13px] leading-relaxed text-attenue"><slot /></p>
+  <p class="mt-2.5 text-[13px] leading-relaxed text-dim"><slot /></p>
 </template>

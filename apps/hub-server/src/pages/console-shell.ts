@@ -120,7 +120,7 @@ export function renderConsoleShell(options: ConsoleShellOptions): string {
 <title>${nom} — console hub</title>
 ${styles}
 </head>
-<body class="bg-fond font-sans text-texte">
+<body class="bg-canvas font-sans text-text">
 <div id="console-root"></div>
 <script id="console-boot" type="application/json">${amorce}</script>
 ${scripts}

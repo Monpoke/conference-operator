@@ -76,12 +76,12 @@ const action = computed(() => (verrou.pasPrise ? 'Prendre le contrôle' : 'Repre
 
 <template>
   <div
-    class="fixed inset-0 z-40 flex items-end justify-center bg-fond/80 p-4 backdrop-blur-[2px] sm:items-center"
+    class="fixed inset-0 z-40 flex items-end justify-center bg-canvas/80 p-4 backdrop-blur-[2px] sm:items-center"
     data-role="verrou-veil"
   >
-    <div class="w-full max-w-[460px] rounded-2xl border border-bord bg-surface px-6 py-7 text-center">
+    <div class="w-full max-w-[460px] rounded-2xl border border-edge bg-surface px-6 py-7 text-center">
       <h1 class="mb-2 text-lg font-semibold">{{ titre }}</h1>
-      <p class="mb-6 text-sm leading-relaxed text-attenue" data-role="verrou-veil-detail">
+      <p class="mb-6 text-sm leading-relaxed text-dim" data-role="verrou-veil-detail">
         {{ explication }}
       </p>
 
@@ -104,7 +104,7 @@ const action = computed(() => (verrou.pasPrise ? 'Prendre le contrôle' : 'Repre
         </Button>
       </div>
 
-      <p class="mt-5 text-xs leading-relaxed text-attenue">
+      <p class="mt-5 text-xs leading-relaxed text-dim">
         La régie de la salle, elle, n’est pas concernée : l’opérateur qui s’y
         trouve garde toutes ses commandes.
       </p>

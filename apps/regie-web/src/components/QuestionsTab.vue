@@ -38,19 +38,19 @@ function isOnAir(text: string): boolean {
     <Button size="small" @click="actions.act({ action: 'question.set', text: null })">
       Retirer de l’antenne
     </Button>
-    <span class="flex-1 text-xs text-attenue">
+    <span class="flex-1 text-xs text-dim">
       {{ refreshedAt == null ? 'Jamais relues' : `Relues ${time(refreshedAt, payload.timezone)}` }}
     </span>
   </div>
 
-  <div class="mb-2.5 text-xs text-attenue">
+  <div class="mb-2.5 text-xs text-dim">
     <template v-if="talk == null">Aucune conférence pilotée : rien à mettre à l’antenne.</template>
     <template v-else>
-      Questions posées sur <strong class="text-texte">{{ talk.title }}</strong>
+      Questions posées sur <strong class="text-text">{{ talk.title }}</strong>
     </template>
   </div>
 
-  <div v-if="questions.length === 0" class="text-xs text-attenue">
+  <div v-if="questions.length === 0" class="text-xs text-dim">
     {{ talk == null ? '' : 'Aucune question sur cette conférence pour le moment.' }}
   </div>
   <div v-else class="flex flex-col gap-1.5">
@@ -58,7 +58,7 @@ function isOnAir(text: string): boolean {
       v-for="question in questions"
       :key="question.id"
       class="grid grid-cols-[auto_1fr_auto] items-center gap-2.5 rounded-md border px-2.5 py-2"
-      :class="isOnAir(question.text) ? 'border-marque bg-surface2' : 'border-bord'"
+      :class="isOnAir(question.text) ? 'border-brand bg-surface2' : 'border-edge'"
       :data-question="question.id"
     >
       <span class="rounded bg-surface2 px-1.5 py-0.5 text-xs tabular-nums">
@@ -66,7 +66,7 @@ function isOnAir(text: string): boolean {
       </span>
       <div>
         <div class="text-sm leading-snug">{{ question.text }}</div>
-        <div v-if="question.author != null" class="mt-0.5 text-xs text-attenue">
+        <div v-if="question.author != null" class="mt-0.5 text-xs text-dim">
           {{ question.author }}
         </div>
       </div>
@@ -90,7 +90,7 @@ function isOnAir(text: string): boolean {
     Ce que « Afficher » fait, et ce qu'il ne fait pas : sans le dire, on clique
     et on cherche la question sur le vidéoprojecteur.
   -->
-  <p class="mt-2.5 text-[11px] leading-relaxed text-attenue">
+  <p class="mt-2.5 text-[11px] leading-relaxed text-dim">
     Afficher met la question sur l’habillage de captation — elle part donc dans la VOD — et sur le
     bandeau vidéo de la salle. Pour la projeter en grand devant le public, choisir « Question
     choisie » dans Écran de salle.

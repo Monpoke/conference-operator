@@ -82,13 +82,13 @@ function creneauLisible(session: PlannedSession): string {
 /** Ce qui reste au programme : le dépassement est ce qui déclenche une décision. */
 function reste(etat: SessionState): { texte: string; classe: string } {
   if (etat.status !== 'running' || etat.remainingMs == null) {
-    return { texte: '—', classe: 'text-attenue' }
+    return { texte: '—', classe: 'text-dim' }
   }
   const minutes = Math.round(etat.remainingMs / 60000)
   if (minutes >= 0) {
-    return { texte: `${minutes} min`, classe: minutes <= 5 ? 'text-attention' : '' }
+    return { texte: `${minutes} min`, classe: minutes <= 5 ? 'text-warn' : '' }
   }
-  return { texte: `+${Math.abs(minutes)} min`, classe: 'font-semibold text-alerte' }
+  return { texte: `+${Math.abs(minutes)} min`, classe: 'font-semibold text-alert' }
 }
 
 /**
@@ -219,7 +219,7 @@ function ouvrirVod(session: PlannedSession): void {
       <div class="overflow-x-auto">
         <table class="w-full border-collapse text-[13px]">
           <thead>
-            <tr class="text-[11px] tracking-[.08em] text-attenue uppercase">
+            <tr class="text-[11px] tracking-[.08em] text-dim uppercase">
               <th class="pr-2.5 pb-2 text-left font-semibold">Salle</th>
               <th class="pr-2.5 pb-2 text-left font-semibold">Conférence</th>
               <th class="pr-2.5 pb-2 text-left font-semibold">Prévu</th>
@@ -241,22 +241,22 @@ function ouvrirVod(session: PlannedSession): void {
               </td>
             </tr>
             <tr v-for="etat in states" v-else :key="etat.sessionId" :data-session="etat.sessionId">
-              <td class="border-t border-bord py-[9px] pr-2.5 align-middle">
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
                 {{ etat.roomName ?? etat.roomId ?? '—' }}
               </td>
               <!-- Le titre, pas l'identifiant : personne ne reconnaît une conférence à son id. -->
-              <td class="border-t border-bord py-[9px] pr-2.5 align-middle">
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
                 {{ etat.title ?? etat.sessionId }}
               </td>
-              <td class="border-t border-bord py-[9px] pr-2.5 align-middle text-attenue">
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle text-dim">
                 {{ etat.scheduledStartsAt == null
                   ? '—'
                   : `${heure(etat.scheduledStartsAt)}–${heure(etat.scheduledEndsAt)}` }}
               </td>
-              <td class="border-t border-bord py-[9px] pr-2.5 align-middle">
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
                 <span :class="reste(etat).classe">{{ reste(etat).texte }}</span>
               </td>
-              <td class="border-t border-bord py-[9px] pr-2.5 align-middle">
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
                 <Badge :variant="etat.status === 'running' ? 'running' : 'ended'">
                   {{ etat.status === 'running' ? 'en cours' : 'terminée' }}
                 </Badge>
@@ -266,11 +266,11 @@ function ouvrirVod(session: PlannedSession): void {
                   ça » sans réponse : c'est la première question posée devant
                   cette ligne.
                 -->
-                <span v-if="etat.decidedBy != null" class="ml-1 text-attenue">
+                <span v-if="etat.decidedBy != null" class="ml-1 text-dim">
                   {{ etat.decidedBy === 'auto' ? 'auto' : etat.decidedBy }}
                 </span>
               </td>
-              <td class="border-t border-bord py-[9px] align-middle">
+              <td class="border-t border-edge py-[9px] align-middle">
                 <div class="flex gap-1.5">
                   <Button
                     v-for="offerte in actions(etat)"
@@ -299,13 +299,13 @@ function ouvrirVod(session: PlannedSession): void {
     -->
     <Panel class="col-span-full">
       <div class="mb-2.5 flex flex-wrap items-center gap-2">
-        <h2 class="mb-0 flex-1 text-[11px] font-semibold tracking-[.14em] text-attenue uppercase">
+        <h2 class="mb-0 flex-1 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
           Planning du programme actif
         </h2>
         <select
           id="planning-salle"
           v-model="room"
-          class="w-auto shrink-0 rounded-lg border border-bord bg-fond px-3 py-2 text-sm text-texte"
+          class="w-auto shrink-0 rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text"
         >
           <option value="">Toutes les salles</option>
           <option v-for="salle in planning?.rooms ?? []" :key="salle.id" :value="salle.id">
@@ -354,12 +354,12 @@ function ouvrirVod(session: PlannedSession): void {
 
       <div v-if="controleEnCours || controle != null || controleErreur !== ''" id="controle-feedback" class="mb-2.5">
         <Hint v-if="controleEnCours" class="mt-0">Interrogation d'OpenFeedback…</Hint>
-        <Hint v-else-if="controleErreur !== ''" class="mt-0 text-alerte">{{ controleErreur }}</Hint>
+        <Hint v-else-if="controleErreur !== ''" class="mt-0 text-alert">{{ controleErreur }}</Hint>
         <Hint v-else-if="controle != null" class="mt-0">
           <!-- Projet introuvable : la panne la plus bête et la plus totale — une
                faute de frappe dans un champ, et les vingt-sept adresses sont mortes. -->
           <template v-if="!controle.projetTrouve">
-            <strong class="text-alerte">
+            <strong class="text-alert">
               Projet « {{ controle.projet }} » introuvable chez OpenFeedback.
             </strong>
             {{ controle.detail }}
@@ -374,16 +374,16 @@ function ouvrirVod(session: PlannedSession): void {
             {{ controle.detail }}
           </template>
           <template v-else>
-            <strong class="text-attention">
+            <strong class="text-warn">
               {{ controle.manquants.length }} créneau{{ controle.manquants.length > 1 ? 'x' : '' }}
               sans page OpenFeedback
             </strong>
-            <span class="text-attenue">sur {{ controle.talksConnus }} talks connus.</span>
+            <span class="text-dim">sur {{ controle.talksConnus }} talks connus.</span>
             {{ controle.detail }}
             <ul class="mt-1.5 list-disc pl-4">
               <li v-for="manquant in controle.manquants" :key="manquant.feedbackId">
                 {{ manquant.title }}
-                <span class="font-mono text-[11px] text-attenue">{{ manquant.feedbackId }}</span>
+                <span class="font-mono text-[11px] text-dim">{{ manquant.feedbackId }}</span>
               </li>
             </ul>
           </template>
@@ -393,7 +393,7 @@ function ouvrirVod(session: PlannedSession): void {
       <div class="overflow-x-auto">
         <table class="w-full border-collapse text-[13px]">
           <thead>
-            <tr class="text-[11px] tracking-[.08em] text-attenue uppercase">
+            <tr class="text-[11px] tracking-[.08em] text-dim uppercase">
               <th class="pr-2.5 pb-2 text-left font-semibold">Prévu</th>
               <th class="pr-2.5 pb-2 text-left font-semibold">Réel</th>
               <th class="pr-2.5 pb-2 text-left font-semibold">Salle</th>
@@ -424,28 +424,28 @@ function ouvrirVod(session: PlannedSession): void {
               }"
             >
               <td
-                class="border-t border-bord py-[9px] pr-2.5 align-middle whitespace-nowrap tabular-nums"
+                class="border-t border-edge py-[9px] pr-2.5 align-middle whitespace-nowrap tabular-nums"
                 :class="
-                  situer(session) === 'en-cours' ? 'font-semibold text-texte' : 'text-attenue'
+                  situer(session) === 'en-cours' ? 'font-semibold text-text' : 'text-dim'
                 "
               >
                 <span
                   v-if="situer(session) === 'en-cours'"
-                  class="mr-1.5 inline-block h-3.5 w-[3px] translate-y-0.5 rounded-full bg-marque"
+                  class="mr-1.5 inline-block h-3.5 w-[3px] translate-y-0.5 rounded-full bg-brand"
                 ></span>
                 {{ creneauLisible(session) }}
               </td>
-              <td class="border-t border-bord py-[9px] pr-2.5 align-middle whitespace-nowrap tabular-nums">
-                <span v-if="vecu(session) == null" class="text-attenue">—</span>
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle whitespace-nowrap tabular-nums">
+                <span v-if="vecu(session) == null" class="text-dim">—</span>
                 <span v-else :title="vecu(session)!.titre">
                   {{ vecu(session)!.texte }}–<span
                     v-if="vecu(session)!.encours"
-                    class="text-marque"
+                    class="text-brand"
                     >en cours</span
                   ><template v-else>{{ heure(session.endedAt) }}</template>
                 </span>
               </td>
-              <td class="border-t border-bord py-[9px] pr-2.5 align-middle whitespace-nowrap">
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle whitespace-nowrap">
                 {{ session.roomName ?? '—' }}
               </td>
               <!--
@@ -454,14 +454,14 @@ function ouvrirVod(session: PlannedSession): void {
                 ouvrant le planning.
               -->
               <td
-                class="border-t border-bord py-[9px] pr-2.5 align-middle"
-                :class="{ 'text-attenue': session.kind === 'break' }"
+                class="border-t border-edge py-[9px] pr-2.5 align-middle"
+                :class="{ 'text-dim': session.kind === 'break' }"
               >
                 {{ session.title }}
-                <div v-if="session.speakers.length > 0" class="text-xs text-attenue">
+                <div v-if="session.speakers.length > 0" class="text-xs text-dim">
                   {{ session.speakers.join(', ') }}
                 </div>
-                <div v-if="session.sharedFrom != null" class="text-xs text-attenue">
+                <div v-if="session.sharedFrom != null" class="text-xs text-dim">
                   pause commune, héritée d'une autre salle
                 </div>
                 <!--
@@ -473,29 +473,29 @@ function ouvrirVod(session: PlannedSession): void {
                 -->
                 <div
                   v-if="situer(session) === 'en-cours'"
-                  class="text-xs font-semibold text-marque"
+                  class="text-xs font-semibold text-brand"
                 >
                   en ce moment
                 </div>
               </td>
-              <td class="border-t border-bord py-[9px] pr-2.5 align-middle whitespace-nowrap">
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle whitespace-nowrap">
                 <!-- Case vide plutôt que lien mort : sans projet OpenFeedback
                      réglé, ou sur une pause, il n'y a rien à noter. -->
                 <a
                   v-if="session.feedbackUrl != null"
-                  class="font-semibold text-marque no-underline"
+                  class="font-semibold text-brand no-underline"
                   target="_blank"
                   rel="noopener"
                   :href="session.feedbackUrl"
                 >
                   noter ↗
                 </a>
-                <span v-else class="text-attenue">—</span>
+                <span v-else class="text-dim">—</span>
                 <Button
                   v-if="session.kind !== 'break'"
                   size="small"
                   class="ml-1.5"
-                  :class="session.feedbackIdOverride != null ? 'text-attention' : 'text-attenue'"
+                  :class="session.feedbackIdOverride != null ? 'text-warn' : 'text-dim'"
                   :data-feedback-session="session.id"
                   :title="
                     session.feedbackIdOverride != null
@@ -507,7 +507,7 @@ function ouvrirVod(session: PlannedSession): void {
                   {{ session.feedbackIdOverride != null ? 'id ✱' : 'id' }}
                 </Button>
               </td>
-              <td class="border-t border-bord py-[9px] pr-2.5 align-middle">
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
                 <!--
                   Rien sur une pause : personne ne cherche le rush du déjeuner, et
                   un bouton qui ouvrirait une modale vide sur vingt-sept lignes
@@ -522,9 +522,9 @@ function ouvrirVod(session: PlannedSession): void {
                 >
                   captation
                 </Button>
-                <span v-else class="text-attenue">—</span>
+                <span v-else class="text-dim">—</span>
               </td>
-              <td v-if="actionsShown" class="border-t border-bord py-[9px] align-middle">
+              <td v-if="actionsShown" class="border-t border-edge py-[9px] align-middle">
                 <!--
                   Une pause héritée d'une autre salle ne s'édite pas ici : c'est
                   le créneau d'origine qu'on corrige, et la projection suit. Un
@@ -533,14 +533,14 @@ function ouvrirVod(session: PlannedSession): void {
                 -->
                 <span
                   v-if="session.sharedFrom != null"
-                  class="text-attenue"
+                  class="text-dim"
                   title="Pause héritée d'une autre salle"
                 >
                   héritée
                 </span>
                 <select
                   v-else
-                  class="w-auto rounded-lg border border-bord bg-fond px-2 py-1 text-xs text-texte"
+                  class="w-auto rounded-lg border border-edge bg-canvas px-2 py-1 text-xs text-text"
                   :data-session-action="session.id"
                   :value="session.overriddenAs ?? ''"
                   @change="changerOverride(session, $event.target as HTMLSelectElement)"

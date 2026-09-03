@@ -1,28 +1,28 @@
 /*
- * Feuille des applications Vue — console du hub, régie.
+ * Sheet for the Vue applications — hub console, control app.
  *
- * Compilée par Vite (`@tailwindcss/vite`), pas par le CLI : elle ne passe pas
- * par `src/generated/`, et le test de fraîcheur ne la regarde pas. C'est
- * `theme.css` qui sert les pages restées des gabarits littéraux.
+ * Compiled by Vite (`@tailwindcss/vite`), not by the CLI: it does not go through
+ * `src/generated/`, and the freshness test does not look at it. It is `theme.css`
+ * that serves the pages which stayed literal templates.
  *
- * Les deux feuilles partagent leurs morceaux, donc leurs tokens et leurs
- * pastilles ne peuvent pas diverger. Elles diffèrent par ce qu'elles scannent,
- * et par deux absences délibérées :
+ * The two sheets share their pieces, so their tokens and their status dots cannot
+ * diverge. They differ in what they scan, and in two deliberate absences:
  *
- *  - **`elements.css` n'est pas là.** Il style les `button`, `input`, `select`
- *    nus, parce que les consoles construisaient leur markup en JavaScript sans
- *    y poser de classe. Les composants suppriment cette cause — et surtout, ces
- *    règles casseraient les primitives copiées de shadcn-vue : Reka rend des
- *    `<button>` pour `DialogTrigger`, `DialogClose`, `TabsTrigger`, et toute
- *    variante qui ne pose pas de fond (`ghost`, `link`, la croix de fermeture)
- *    hériterait d'un gros bouton gris encadré. Rien ne l'aurait signalé : ni le
- *    typage, ni un test — seulement l'écran.
- *  - **`console.css` et `wall.css` non plus.** Leurs classes sont remplacées
- *    par des composants ; `wall.css` ne sert qu'au mur, qui reste un gabarit.
+ *  - **`elements.css` is not here.** It styles the bare `button`, `input`,
+ *    `select`, because the consoles used to build their markup in JavaScript
+ *    without setting a class on it. The components remove that cause — and above
+ *    all, those rules would break the primitives copied from shadcn-vue: Reka
+ *    renders `<button>`s for `DialogTrigger`, `DialogClose`, `TabsTrigger`, and
+ *    any variant that sets no background (`ghost`, `link`, the close cross) would
+ *    inherit a big grey framed button. Nothing would have flagged it: not the
+ *    types, not a test — only the screen.
+ *  - **`console.css` and `wall.css` are not here either.** Their classes are
+ *    replaced by components; `wall.css` only serves the wall, which stays a
+ *    template.
  *
- * `status.css` est là, en revanche : `appearanceOf()` renvoie littéralement les
- * noms de teintes de `.pastille`, et c'est du code métier partagé avec des
- * pages qui ne seront jamais en Vue.
+ * `status.css` is here, on the other hand: `appearanceOf()` literally returns the
+ * tint names of `.status-dot`, and that is business code shared with pages that
+ * will never be in Vue.
  */
 @import "tailwindcss" source(none);
 
@@ -31,26 +31,25 @@
 @import "./shadcn.css";
 
 /*
- * Sources scannées : les composants partagés, puis les deux applications.
+ * Scanned sources: the shared components, then the two applications.
  *
- * Ces chemins ne doivent **jamais** être recopiés dans `theme.css` — la feuille
- * figée y gagnerait tous les utilitaires des applications Vue, et le test de
- * fraîcheur produirait un diff de plusieurs dizaines de kilo-octets à chaque
- * retouche de composant.
+ * These paths must **never** be copied into `theme.css` — the frozen sheet would
+ * gain all the Vue applications' utilities, and the freshness test would produce
+ * a diff of several tens of kilobytes on every component tweak.
  */
 /*
- * Le vocabulaire des états, là où il est écrit.
+ * The vocabulary of the states, where it is written.
  *
- * `APPEARANCE` et `outlineOf` produisent des noms de classes — `text-attenue`,
- * `depassement`, `muette` — que trois surfaces se contentent de rendre. Ces
- * chaînes vivent dans `etat-salle`, et rien ne les scannait : elles ne
- * survivaient que parce que les mêmes utilitaires étaient écrits à la main
- * ailleurs. La dernière retouche qui aurait fait disparaître ces occurrences
- * aurait éteint les couleurs d'état sans qu'aucun test ne bouge.
+ * `APPEARANCE` and `outlineOf` produce class names — `text-dim`, `overrun`,
+ * `silent` — that three surfaces merely render. Those strings live in
+ * `room-state`, and nothing scanned them: they survived only because the same
+ * utilities were written by hand elsewhere. The next tweak that made those
+ * occurrences disappear would have switched off the state colours without a
+ * single test moving.
  *
- * Pas de SFC ici, seulement du TypeScript : la mise en garde ci-dessus tient.
+ * No SFC here, only TypeScript: the warning above holds.
  */
-@source "../../../packages/etat-salle/src";
+@source "../../../packages/room-state/src";
 @source "../../../packages/components/src";
 @source "../../../apps/hub-admin/src";
 @source "../../../apps/regie-web/src";

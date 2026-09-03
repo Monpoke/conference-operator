@@ -24,7 +24,7 @@ const shown = computed(() =>
 <template>
   <div
     class="ml-auto flex shrink-0 items-baseline gap-1.5 text-[19px] font-semibold tabular-nums"
-    :class="simulated ? 'text-attention' : ''"
+    :class="simulated ? 'text-warn' : ''"
   >
     {{ shown }}
     <span v-if="simulated" class="text-[10px] font-semibold tracking-[.1em] uppercase opacity-80">

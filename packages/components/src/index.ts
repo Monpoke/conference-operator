@@ -39,6 +39,7 @@ export { useToast, NOTICE_MS, type Notice } from './common/toast.js'
  * partagé qu'une seule surface emploie n'est qu'un fichier de plus.
  */
 export { default as StatusDot } from './domain/StatusDot.vue'
+export { DOT_LEVELS, type DotLevel } from './domain/status-levels.js'
 
 export { default as Dialog } from './ui/Dialog.vue'
 export { default as ConfirmDialog } from './ui/ConfirmDialog.vue'

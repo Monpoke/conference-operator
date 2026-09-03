@@ -42,25 +42,25 @@ const MEM_ALERTE = 0.95
  */
 const CPU_LEVELS: Record<Level, { label: string; verdict: string }> = {
   ok: { label: 'marge confortable', verdict: 'Le poste encaisse l’encodage sans forcer.' },
-  attention: {
+  warn: {
     label: 'charge soutenue',
     verdict: 'Plus de marge pour un imprévu : fermez ce qui n’est pas la régie.',
   },
-  alerte: {
+  alert: {
     label: 'saturé',
     verdict:
       'OBS perd probablement des images, et rien d’autre ne le dira. Le rush s’abîme maintenant.',
   },
-  inconnu: {
+  unknown: {
     label: 'mesure indisponible',
     verdict: 'Pastille sans valeur, pas poste au repos : la charge n’a pas pu être lue.',
   },
 }
 
 const MEM_VERDICTS: Partial<Record<Level, string>> = {
-  attention:
+  warn:
     'La mémoire se remplit. Fermez les onglets et les lecteurs vidéo ouverts à côté avant le prochain talk.',
-  alerte:
+  alert:
     'Mémoire pleine : la machine va échanger sur le disque, celui-là même qui écrit le rush. Fermez tout le reste maintenant.',
 }
 
@@ -75,11 +75,11 @@ const cpu = computed(() => {
   const value = props.load?.cpu
   const known = typeof value === 'number'
   const level: Level = !known
-    ? 'inconnu'
+    ? 'unknown'
     : value >= CPU_ALERTE
-      ? 'alerte'
+      ? 'alert'
       : value >= CPU_ATTENTION
-        ? 'attention'
+        ? 'warn'
         : 'ok'
   return { known, level, percent: known ? Math.round(value * 100) : 0 }
 })
@@ -89,7 +89,7 @@ const memory = computed(() => {
   const part =
     memory != null && memory.totalBytes > 0 ? memory.usedBytes / memory.totalBytes : null
   const level: Level =
-    part == null ? 'inconnu' : part >= MEM_ALERTE ? 'alerte' : part >= MEM_ATTENTION ? 'attention' : 'ok'
+    part == null ? 'unknown' : part >= MEM_ALERTE ? 'alert' : part >= MEM_ATTENTION ? 'warn' : 'ok'
   return {
     part,
     level,
@@ -162,7 +162,7 @@ const spoken = computed(
     Poste
     <template #extra>
       <div class="mt-2.5 mb-1 flex items-baseline gap-2">
-        <span class="text-[10px] font-semibold tracking-[.12em] text-attenue uppercase">
+        <span class="text-[10px] font-semibold tracking-[.12em] text-dim uppercase">
           Mémoire
         </span>
         <span :class="`niveau-${memory.level}`" class="ml-auto text-xs font-semibold tabular-nums">
@@ -170,7 +170,7 @@ const spoken = computed(
         </span>
       </div>
       <Gauge :percent="memory.percent" :level="memory.level" />
-      <div class="mt-1.5 text-[11px] text-attenue">{{ memory.detail }}</div>
+      <div class="mt-1.5 text-[11px] text-dim">{{ memory.detail }}</div>
     </template>
   </Indicator>
 </template>

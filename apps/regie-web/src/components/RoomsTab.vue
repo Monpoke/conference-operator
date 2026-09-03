@@ -51,17 +51,17 @@ const staleMinutes = computed(() => {
 </script>
 
 <template>
-  <div v-if="rows.length === 0" class="text-xs text-attenue">Aucune salle connue du hub.</div>
+  <div v-if="rows.length === 0" class="text-xs text-dim">Aucune salle connue du hub.</div>
   <template v-else>
     <div
       v-for="row in rows"
       :key="row.id"
-      class="grid grid-cols-[1fr_auto_auto] items-center gap-2.5 border-t border-bord py-2 text-[13px] first:border-t-0"
+      class="grid grid-cols-[1fr_auto_auto] items-center gap-2.5 border-t border-edge py-2 text-[13px] first:border-t-0"
       :data-salle="row.id"
     >
       <div>
         <div class="font-semibold">{{ row.name }}</div>
-        <div class="text-xs text-attenue">
+        <div class="text-xs text-dim">
           {{ row.scene }}{{ row.queue === '' ? '' : ` · ${row.queue}` }}
         </div>
       </div>
@@ -71,7 +71,7 @@ const staleMinutes = computed(() => {
         <span class="pastille" :class="row.dot"></span>
       </div>
     </div>
-    <div v-if="staleMinutes != null" class="mt-2 text-xs text-attention">
+    <div v-if="staleMinutes != null" class="mt-2 text-xs text-warn">
       Vue datée de {{ staleMinutes }} min — hub injoignable ?
     </div>
   </template>

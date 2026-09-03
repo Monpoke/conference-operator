@@ -59,9 +59,9 @@ export const useVodStore = defineStore('vod', () => {
 /** Ce que dit un état de téléversement, et de quelle couleur. */
 export const UPLOAD_STATES: Record<string, { label: string; tone: string }> = {
   'en-cours': { label: 'en cours', tone: '' },
-  termine: { label: 'terminé', tone: 'text-attenue' },
-  abandonne: { label: 'abandonné', tone: 'text-attention' },
-  echoue: { label: 'en échec', tone: 'text-alerte' },
+  termine: { label: 'terminé', tone: 'text-dim' },
+  abandonne: { label: 'abandonné', tone: 'text-warn' },
+  echoue: { label: 'en échec', tone: 'text-alert' },
 }
 
 /** Avancement en percent, borné : un fichier qui grossit en route dépasserait. */

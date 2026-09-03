@@ -19,9 +19,9 @@ const { alerts } = storeToRefs(store)
 const router = useRouter()
 
 const TEINTES = {
-  essentiel: 'bg-attention text-[#05070d]',
-  tout: 'bg-marque text-[#05070d]',
-  rien: 'bg-marque text-[#05070d]',
+  essentiel: 'bg-warn text-[#05070d]',
+  tout: 'bg-brand text-[#05070d]',
+  rien: 'bg-brand text-[#05070d]',
 } as const
 
 function aller(vue: string | null): void {
@@ -40,7 +40,7 @@ function aller(vue: string | null): void {
       :key="alerte.key"
       class="pointer-events-auto flex max-w-[min(560px,90vw)] shrink-0 items-start gap-2.5 rounded-lg px-3.5 py-2 text-[13px] shadow-[0_10px_30px_rgba(0,0,0,.45)]"
       :class="[TEINTES[alerte.scope], alerte.view != null ? 'cursor-pointer' : '']"
-      :data-alerte="alerte.key"
+      :data-alert="alerte.key"
       @click="aller(alerte.view)"
     >
       <div class="min-w-0 flex-1">

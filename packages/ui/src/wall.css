@@ -1,57 +1,57 @@
 /*
- * Mur public : surface mobile, servie par le hub.
+ * Public wall: a mobile surface, served by the hub.
  *
- * Ces classes sont posées depuis le JavaScript de la page sur du markup
- * construit à la volée (avis, questions, bouton de vote).
+ * These classes are set from the page's JavaScript onto markup built on the fly
+ * (notices, questions, vote button).
  */
 @layer components {
-  .onglets button {
-    @apply flex-1 rounded-[10px] border border-bord bg-surface p-3 text-attenue;
+  .tabs button {
+    @apply flex-1 rounded-[10px] border border-edge bg-surface p-3 text-dim;
   }
-  .onglets button.actif {
-    @apply border-marque bg-marque text-[#05070d];
-  }
-
-  .carte {
-    @apply rounded-xl border border-bord bg-surface p-4;
+  .tabs button.active {
+    @apply border-brand bg-brand text-[#05070d];
   }
 
-  .envoyer {
-    @apply w-full rounded-[10px] border-none bg-marque p-[15px] text-base font-semibold text-[#05070d];
+  .card {
+    @apply rounded-xl border border-edge bg-surface p-4;
   }
-  .envoyer:disabled {
+
+  .send {
+    @apply w-full rounded-[10px] border-none bg-brand p-[15px] text-base font-semibold text-[#05070d];
+  }
+  .send:disabled {
     @apply opacity-50;
   }
 
   .question {
-    @apply flex items-start gap-3 rounded-xl border border-bord bg-surface p-3.5;
+    @apply flex items-start gap-3 rounded-xl border border-edge bg-surface p-3.5;
   }
-  .question .texte {
+  .question .text {
     @apply flex-1 text-[15px] leading-snug;
   }
-  .question .auteur {
-    @apply mt-[5px] text-xs text-attenue;
+  .question .author {
+    @apply mt-[5px] text-xs text-dim;
   }
 
-  .voter {
+  .vote-button {
     @apply flex min-w-[52px] cursor-pointer flex-col items-center gap-0.5 rounded-[10px]
-           border border-bord bg-fond px-1.5 py-[9px] text-texte;
+           border border-edge bg-canvas px-1.5 py-[9px] text-text;
   }
-  .voter.vote {
-    @apply border-marque text-marque;
+  .vote-button.voted {
+    @apply border-brand text-brand;
   }
 
-  /* Avis de dépôt : caché tant qu'il n'y a rien à dire. */
-  .avis {
+  /* Post notice: hidden as long as there is nothing to say. */
+  .notice {
     @apply mt-3.5 hidden rounded-[10px] p-[13px] text-sm;
   }
-  .avis.visible {
+  .notice.visible {
     @apply block;
   }
-  .avis.ok {
+  .notice.ok {
     @apply bg-[#102e22] text-ok;
   }
-  .avis.ko {
-    @apply bg-[#35161a] text-alerte;
+  .notice.error {
+    @apply bg-[#35161a] text-alert;
   }
 }

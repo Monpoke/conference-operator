@@ -81,7 +81,7 @@ describe('vue des messages', () => {
   it('convertit les minutes saisies en secondes', async () => {
     const { calls, wrapper } = await monter()
 
-    await wrapper.get('#msg-texte').setValue('On reprend dans 5 minutes')
+    await wrapper.get('#msg-text').setValue('On reprend dans 5 minutes')
     await wrapper.get('#msg-duree').setValue('10')
     await wrapper.get('#btn-envoyer-message').trigger('click')
     await flushPromises()
@@ -101,7 +101,7 @@ describe('vue des messages', () => {
   it("laisse le message à l'écran quand aucune durée n'est donnée", async () => {
     const { calls, wrapper } = await monter()
 
-    await wrapper.get('#msg-texte').setValue('Sans durée')
+    await wrapper.get('#msg-text').setValue('Sans durée')
     await wrapper.get('#btn-envoyer-message').trigger('click')
     await flushPromises()
 
@@ -124,7 +124,7 @@ describe('vue des messages', () => {
 
     await wrapper.get('#msg-salle').setValue('track-1')
     await flushPromises()
-    await wrapper.get('#msg-texte').setValue('Pour Track #1')
+    await wrapper.get('#msg-text').setValue('Pour Track #1')
     await wrapper.get('#btn-envoyer-message').trigger('click')
     await flushPromises()
 
@@ -140,14 +140,14 @@ describe('vue des messages', () => {
 
     // Un modèle est un point de départ, pas un rail : la date, la durée et le
     // nom de la salle changent à chaque fois.
-    expect((wrapper.get('#bandeau-texte').element as HTMLInputElement).value.length).toBeGreaterThan(0)
+    expect((wrapper.get('#bandeau-text').element as HTMLInputElement).value.length).toBeGreaterThan(0)
     expect(calls.filter((appel) => appel.path === 'overlay/show')).toHaveLength(0)
   })
 
   it('relit l’historique après avoir affiché un bandeau', async () => {
     const { calls, wrapper } = await monter()
 
-    await wrapper.get('#bandeau-texte').setValue('Le son revient')
+    await wrapper.get('#bandeau-text').setValue('Le son revient')
     await wrapper.get('#btn-bandeau-afficher').trigger('click')
     await flushPromises()
 

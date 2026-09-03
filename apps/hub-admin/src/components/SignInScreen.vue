@@ -45,7 +45,7 @@ function signInWithGoogle(): void {
         </Button>
       </form>
 
-      <p v-if="error != null" id="connexion-erreur" class="mt-3 text-sm text-alerte">{{ error }}</p>
+      <p v-if="error != null" id="connexion-erreur" class="mt-3 text-sm text-alert">{{ error }}</p>
 
       <!--
         Rendered only when the hub knows what to do with it: offering a sign-in

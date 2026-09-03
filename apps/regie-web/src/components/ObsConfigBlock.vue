@@ -37,9 +37,9 @@ const status = computed(() => {
 
 const tone = computed(() =>
   !connected.value
-    ? 'text-alerte'
+    ? 'text-alert'
     : missing.value.length > 0 || pending.value
-      ? 'text-attention'
+      ? 'text-warn'
       : 'text-ok',
 )
 
@@ -69,13 +69,13 @@ function options(current: string): { value: string; label: string }[] {
 }
 
 const FIELD =
-  'w-full rounded-lg border border-bord bg-fond px-3 py-2 text-sm text-texte focus:border-marque focus:outline-none'
+  'w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text focus:border-brand focus:outline-none'
 </script>
 
 <template>
   <Panel class="mb-3">
     <div class="mb-2 flex items-center gap-2">
-      <h3 class="text-[11px] font-semibold tracking-[.14em] text-attenue uppercase">
+      <h3 class="text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
         {{ title }}<SimulatedBadge :when="obs?.simulated === true" />
       </h3>
       <span class="flex-1 truncate text-xs" :class="tone" :data-etat="instance">{{ status }}</span>
@@ -97,13 +97,13 @@ const FIELD =
 
     <div class="grid grid-cols-2 gap-2">
       <div>
-        <label class="mb-0.5 block text-xs text-attenue" :for="`cfg-url-${instance}`">
+        <label class="mb-0.5 block text-xs text-dim" :for="`cfg-url-${instance}`">
           Adresse WebSocket
         </label>
         <input :id="`cfg-url-${instance}`" v-model="draft.obs[instance].url" :class="FIELD" />
       </div>
       <div>
-        <label class="mb-0.5 block text-xs text-attenue" :for="`cfg-pass-${instance}`">
+        <label class="mb-0.5 block text-xs text-dim" :for="`cfg-pass-${instance}`">
           Mot de passe
         </label>
         <input
@@ -115,7 +115,7 @@ const FIELD =
         />
         <label
           v-if="config.obs[instance].hasPassword"
-          class="mt-1 flex items-center gap-1.5 text-[11px] text-attenue"
+          class="mt-1 flex items-center gap-1.5 text-[11px] text-dim"
         >
           <input v-model="draft.obs[instance].clearPassword" type="checkbox" />
           retirer le mot de passe
@@ -126,7 +126,7 @@ const FIELD =
     <div class="mt-2 grid grid-cols-3 gap-2">
       <div v-for="entry in ROLES[instance]" :key="entry.role">
         <label
-          class="mb-0.5 block text-xs text-attenue"
+          class="mb-0.5 block text-xs text-dim"
           :for="`cfg-role-${instance}-${entry.role}`"
         >
           {{ entry.role }} · {{ entry.label }}

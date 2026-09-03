@@ -20,8 +20,8 @@ import { useActionsStore } from '../stores/actions.js'
  * ne périme pas.
  */
 const TINTS: Record<string, string> = {
-  info: 'bg-marque text-[#05070d]',
-  warning: 'bg-attention text-[#05070d]',
+  info: 'bg-brand text-[#05070d]',
+  warning: 'bg-warn text-[#05070d]',
 }
 
 const props = defineProps<{ payload: DisplayPayload; nowMs: number }>()

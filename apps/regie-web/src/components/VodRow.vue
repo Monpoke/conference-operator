@@ -28,7 +28,7 @@ const eta = computed(() => {
 })
 
 const badge = computed(
-  () => VERDICT_BADGES[check.value?.status ?? ''] ?? ['Non vérifié', 'border-bord text-attenue'],
+  () => VERDICT_BADGES[check.value?.status ?? ''] ?? ['Non vérifié', 'border-edge text-dim'],
 )
 
 const durationMs = computed(
@@ -143,7 +143,7 @@ function posed(status: string): boolean {
 
 <template>
   <div
-    class="grid grid-cols-[1fr_auto] items-start gap-3 rounded-lg border border-bord p-2.5"
+    class="grid grid-cols-[1fr_auto] items-start gap-3 rounded-lg border border-edge p-2.5"
     :data-vod="entry.file"
   >
     <div class="min-w-0">
@@ -162,26 +162,26 @@ function posed(status: string): boolean {
         >
           {{ badge[0] }}
         </span>
-        <span class="truncate font-mono text-[12px] text-attenue">{{ entry.file }}</span>
+        <span class="truncate font-mono text-[12px] text-dim">{{ entry.file }}</span>
       </div>
       <div class="mt-1 truncate text-sm">
         {{ sidecar?.title ?? 'Titre inconnu' }}
-        <span v-if="speakers !== ''" class="text-attenue"> — {{ speakers }}</span>
+        <span v-if="speakers !== ''" class="text-dim"> — {{ speakers }}</span>
       </div>
-      <div class="mt-0.5 text-[11px] text-attenue">{{ details }}</div>
+      <div class="mt-0.5 text-[11px] text-dim">{{ details }}</div>
 
       <!-- Un badge rouge sans raison ne sert personne. -->
       <div
         v-if="(check?.reasons.length ?? 0) > 0"
         class="mt-1 text-[11px]"
-        :class="check?.status === 'ok' ? 'text-attenue' : 'text-attention'"
+        :class="check?.status === 'ok' ? 'text-dim' : 'text-warn'"
       >
         {{ check?.reasons.join(' · ') }}
       </div>
 
       <!-- « AccessDenied » est le seul mot qu'on puisse porter à qui tient le
            bucket : le traduire ferait perdre la seule prise sur le problème. -->
-      <div v-if="upload?.error != null" class="mt-1 text-[11px] text-alerte">
+      <div v-if="upload?.error != null" class="mt-1 text-[11px] text-alert">
         Téléversement : {{ upload.error }}
       </div>
     </div>
@@ -237,11 +237,11 @@ function posed(status: string): boolean {
               croire à une montée qui n'avance pas.
             -->
             <span
-              class="h-3.5 w-3.5 rounded-full border-2 border-bord"
+              class="h-3.5 w-3.5 rounded-full border-2 border-edge"
               :class="
                 upload?.state === 'en-cours'
-                  ? 'animate-spin border-t-marque'
-                  : 'animate-pulse border-t-attention'
+                  ? 'animate-spin border-t-brand'
+                  : 'animate-pulse border-t-warn'
               "
             ></span>
           </span>
@@ -256,7 +256,7 @@ function posed(status: string): boolean {
         </template>
         <span
           v-else-if="upload?.state === 'termine'"
-          class="flex w-9 shrink-0 justify-center text-[13px] text-attenue"
+          class="flex w-9 shrink-0 justify-center text-[13px] text-dim"
           title="Rush et sidecar déjà envoyés : rien à faire de plus"
         >
           ☁

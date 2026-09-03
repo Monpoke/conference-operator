@@ -99,7 +99,7 @@ function rafraichir(): void {
         aucun jeton derrière lui : c'est la seule confirmation qu'on a bien
         atterri avec le bon compte.
       -->
-      <div v-if="identity != null" id="identite" class="hidden text-[13px] text-attenue sm:block">
+      <div v-if="identity != null" id="identite" class="hidden text-[13px] text-dim sm:block">
         {{ identity }}
       </div>
       <div class="ml-auto flex gap-1.5">

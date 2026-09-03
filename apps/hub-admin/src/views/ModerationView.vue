@@ -48,10 +48,10 @@ async function decide(id: string, decision: 'approve' | 'reject'): Promise<void>
         <article
           v-for="message in pending"
           :key="message.id"
-          class="mb-2.5 rounded-[9px] border border-bord p-3"
+          class="mb-2.5 rounded-[9px] border border-edge p-3"
           :data-message="message.id"
         >
-          <div class="mb-1.5 flex items-center gap-2 text-xs text-attenue">
+          <div class="mb-1.5 flex items-center gap-2 text-xs text-dim">
             <Badge class="px-1.5 py-0.5 text-[10px] tracking-[.08em]">{{ message.source }}</Badge>
             <span>{{ message.author }}</span>
             <span>{{ timeAgo(message.createdAt) }}</span>

@@ -6,41 +6,41 @@ export interface WallPageOptions {
   roomId: string | null
   rooms: { id: string; name: string }[]
   /**
-   * Nom de l'événement, tranché par le hub.
+   * The event's name, decided by the hub.
    *
-   * Rendu dans la page et non demandé par elle : c'est le premier mot que lit
-   * quelqu'un qui vient de scanner un QR au fond d'une salle, et l'obtenir
-   * d'un aller-retour réseau de plus le ferait apparaître après le reste — sur
-   * la 4G d'une salle de conférence, bien après.
+   * Rendered into the page rather than requested by it: it is the first word read
+   * by someone who has just scanned a QR code at the back of a room, and getting
+   * it from one more network round trip would make it appear after the rest — on
+   * the 4G of a conference room, well after.
    */
   event?: EventIdentity
 }
 
 /**
- * Échappe une valeur insérée dans le HTML rendu.
+ * Escapes a value inserted into the rendered HTML.
  *
- * Le nom de l'événement vient de l'export amont ou d'un réglage de la console :
- * deux sources de confiance, mais aucune raison de faire une exception à la
- * règle dans une page construite par concaténation.
+ * The event's name comes from the upstream export or from a console setting: two
+ * trusted sources, but no reason to make an exception to the rule in a page built
+ * by concatenation.
  *
- * Cette moitié-ci est du TypeScript ordinaire, hors du gabarit : elle peut
- * importer. Le JavaScript embarqué dans la page, lui, garde sa propre copie —
- * il n'a pas d'étape de build et ne peut rien importer du tout.
+ * This half is ordinary TypeScript, outside the template: it can import. The
+ * JavaScript embedded in the page keeps its own copy — it has no build step and
+ * cannot import anything at all.
  */
-const echapperServeur = escapeHtml
+const escapeServer = escapeHtml
 
 /**
- * Mur public, scanné au QR code depuis un mobile.
+ * The public wall, reached by QR code from a mobile phone.
  *
- * Contraintes qui expliquent la forme : elle s'ouvre sur la 4G d'une salle de
- * conférence, sur des téléphones quelconques, en une poignée de secondes. D'où
- * du HTML autonome, aucune dépendance externe, et des appels au contrat via un
- * `fetch` minimal — le protocole oRPC en HTTP est un simple `{ json: … }`.
+ * The constraints that explain its shape: it opens on the 4G of a conference
+ * room, on any old phone, in a handful of seconds. Hence standalone HTML, no
+ * external dependency, and contract calls through a minimal `fetch` — the oRPC
+ * protocol over HTTP is a plain `{ json: … }`.
  */
 export function renderWallPage({ roomId, rooms, event }: WallPageOptions): string {
-  const donnees = JSON.stringify({ roomId, rooms }).replace(/</g, '\\u003c')
-  const identite = event ?? DEFAULT_EVENT_IDENTITY
-  const nom = echapperServeur(identite.name)
+  const data = JSON.stringify({ roomId, rooms }).replace(/</g, '\\u003c')
+  const identity = event ?? DEFAULT_EVENT_IDENTITY
+  const name = escapeServer(identity.name)
 
   return `<!doctype html>
 <html lang="fr">
@@ -48,16 +48,16 @@ export function renderWallPage({ roomId, rooms, event }: WallPageOptions): strin
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#10121a">
-<title>${nom} — mur &amp; questions</title>
+<title>${name} — mur &amp; questions</title>
 <style>${TAILWIND_CSS}</style>
 <style>
   /*
-   * Contraintes propres au mobile, que les utilitaires n'expriment pas.
+   * Constraints specific to mobile, which the utilities do not express.
    *
-   * La taille de saisie est la plus importante : **en dessous de 16 px, iOS
-   * zoome automatiquement au focus** et casse la mise en page pour le reste de
-   * la visite. La feuille partagée met les saisies en 14 px, taille juste pour
-   * une console au clavier ; ici elle doit être remontée.
+   * The input size is the most important one: **below 16 px, iOS zooms
+   * automatically on focus** and breaks the layout for the rest of the visit. The
+   * shared sheet sets inputs at 14 px, the right size for a console on a keyboard;
+   * here it has to be raised.
    */
   input, textarea, select { font-size: 16px; }
   textarea { min-height: 108px; resize: vertical; }
@@ -65,108 +65,107 @@ export function renderWallPage({ roomId, rooms, event }: WallPageOptions): strin
     min-height: 100dvh;
     padding: env(safe-area-inset-top) 16px calc(env(safe-area-inset-bottom) + 24px);
   }
-  /* Pas de flash gris au toucher : la page est faite pour le doigt. */
+  /* No grey flash on touch: the page is made for the finger. */
   * { -webkit-tap-highlight-color: transparent; }
 </style>
 </head>
 <body class="mx-auto max-w-[620px] bg-canvas font-sans text-text">
 <header class="pt-[22px] pb-3.5">
-  <h1 class="text-[21px] font-bold">${nom}</h1>
-  <div class="mt-1 text-sm text-dim" id="salle"></div>
+  <h1 class="text-[21px] font-bold">${name}</h1>
+  <div class="mt-1 text-sm text-dim" id="room"></div>
 
   <!--
-    Choix de la salle, sur la page.
+    Choosing the room, on the page.
 
-    Le QR de chaque salle porte déjà la sienne, mais un participant arrive
-    aussi par un lien partagé, ou change de salle entre deux talks. Sans ce
-    choix, il tombait sur « Ouvrez le lien de votre salle » sans savoir quoi
-    ouvrir — et sa question restait dans sa tête.
+    Each room's QR code already carries its own, but an attendee also arrives
+    through a shared link, or changes room between two talks. Without this choice
+    they landed on "Ouvrez le lien de votre salle" with no idea what to open — and
+    their question stayed in their head.
 
-    Il ne concerne **que** les questions : le mur, lui, est commun à tout
-    l'événement. D'où sa place dans l'onglet Questions plutôt que dans l'en-tête.
+    It concerns **only** the questions: the wall itself is shared by the whole
+    event. Hence its place in the Questions tab rather than in the header.
   -->
 
-  <!-- Ce qu'il écoute en ce moment : « posez votre question » doit dire à
-       propos de quoi, et la question arrive en régie rattachée au bon talk. -->
+  <!-- What they are listening to right now: "ask your question" has to say what
+       about, and the question reaches the control app attached to the right talk. -->
   <div class="mt-2.5 rounded-[10px] border border-edge bg-surface p-3" id="talk" hidden>
-    <div class="text-[11px] tracking-[.1em] text-dim uppercase" id="talk-quand">En ce moment</div>
-    <div class="mt-1 text-[15px] leading-snug font-semibold" id="talk-titre"></div>
-    <div class="mt-0.5 text-[13px] text-dim" id="talk-qui"></div>
+    <div class="text-[11px] tracking-[.1em] text-dim uppercase" id="talk-when">En ce moment</div>
+    <div class="mt-1 text-[15px] leading-snug font-semibold" id="talk-title"></div>
+    <div class="mt-0.5 text-[13px] text-dim" id="talk-who"></div>
   </div>
 </header>
 
 <div class="tabs my-3.5 flex gap-1.5">
-  <button id="onglet-mur" class="active">Mur</button>
-  <button id="onglet-questions">Questions</button>
+  <button id="tab-wall" class="active">Mur</button>
+  <button id="tab-questions">Questions</button>
 </div>
 
-<section id="vue-mur">
+<section id="view-wall">
   <!--
-    Ce que devient le message, dit avant de l'écrire.
+    What the message becomes, said before writing it.
 
-    C'est la promesse de la page : on n'écrit pas dans une boîte à idées, on
-    écrit sur les écrans de l'événement. Le dire après le formulaire — ce que
-    faisait la version précédente, en petit et en gris — revenait à ne pas le
-    dire : personne ne lit sous un bouton qu'il vient d'appuyer.
+    It is the page's promise: you are not writing into a suggestion box, you are
+    writing on the event's screens. Saying it after the form — which is what the
+    previous version did, small and in grey — amounted to not saying it: nobody
+    reads under a button they have just pressed.
   -->
   <div class="mb-3.5 rounded-[12px] border border-brand/40 bg-[color-mix(in_srgb,var(--color-brand)_12%,transparent)] p-3.5">
     <div class="text-[15px] leading-snug font-semibold">
       Votre message s'affiche <span class="text-brand">dans toutes les salles</span>
     </div>
-    <div class="mt-1 text-[13px] leading-relaxed text-dim" id="portee">
+    <div class="mt-1 text-[13px] leading-relaxed text-dim" id="scope">
       Projeté sur les écrans de l'événement, après relecture.
     </div>
   </div>
 
   <form class="card" id="form-message">
-    <label for="auteur">Votre prénom</label>
-    <input class="mb-3.5 rounded-[10px] p-[13px]" id="auteur" maxlength="80" autocomplete="given-name" required>
+    <label for="author">Votre prénom</label>
+    <input class="mb-3.5 rounded-[10px] p-[13px]" id="author" maxlength="80" autocomplete="given-name" required>
     <label for="message">Votre message</label>
     <textarea class="mb-3.5 w-full rounded-[10px] border border-edge bg-canvas p-[13px] text-text" id="message" maxlength="500" required></textarea>
-    <div class="-mt-2.5 mb-3 text-right text-xs text-dim"><span id="compteur-message">0</span>/500</div>
+    <div class="-mt-2.5 mb-3 text-right text-xs text-dim"><span id="count-message">0</span>/500</div>
     <button class="send" type="submit">Envoyer à l'événement</button>
   </form>
 
   <!--
-    Ce qui est déjà à l'écran.
+    What is already on the screens.
 
-    Sans ça, déposer un message revenait à parler dans le vide : rien ne
-    montrait que d'autres écrivaient, ni que ça finissait réellement projeté.
-    C'est ce qui fait la différence entre un formulaire de contact et un mur.
+    Without this, dropping a message amounted to speaking into the void: nothing
+    showed that others were writing, nor that it really ended up projected. It is
+    what makes the difference between a contact form and a wall.
   -->
   <div class="mt-5 flex items-baseline gap-2">
     <h2 class="text-[13px] font-semibold tracking-[.1em] text-dim uppercase">En ce moment sur les écrans</h2>
   </div>
-  <div class="mt-2.5 flex flex-col gap-2.5" id="liste-mur"></div>
+  <div class="mt-2.5 flex flex-col gap-2.5" id="list-wall"></div>
 </section>
 
-<section id="vue-questions" hidden>
-  <!-- La salle ne sert qu'ici : une question s'adresse à un speaker précis,
-       dans une pièce précise, alors qu'un message du mur s'adresse à tous. -->
-  <label class="mb-1" for="choix-salle">Dans quelle salle êtes-vous ?</label>
-  <select class="mb-3.5 rounded-[10px] p-[11px]" id="choix-salle"></select>
+<section id="view-questions" hidden>
+  <!-- The room only matters here: a question is addressed to one precise speaker,
+       in one precise room, whereas a wall message is addressed to everyone. -->
+  <label class="mb-1" for="room-choice">Dans quelle salle êtes-vous ?</label>
+  <select class="mb-3.5 rounded-[10px] p-[11px]" id="room-choice"></select>
 
   <form class="card" id="form-question">
     <label for="question">Votre question au speaker</label>
     <textarea class="mb-3.5 w-full rounded-[10px] border border-edge bg-canvas p-[13px] text-text" id="question" maxlength="300" required></textarea>
-    <div class="-mt-2.5 mb-3 text-right text-xs text-dim"><span id="compteur-question">0</span>/300</div>
+    <div class="-mt-2.5 mb-3 text-right text-xs text-dim"><span id="count-question">0</span>/300</div>
     <button class="send" type="submit">Poser la question</button>
   </form>
-  <div class="mt-4 flex flex-col gap-2.5" id="liste-questions"></div>
+  <div class="mt-4 flex flex-col gap-2.5" id="list-questions"></div>
 </section>
 
-<div class="notice" id="avis"></div>
+<div class="notice" id="notice"></div>
 
-<script id="donnees" type="application/json">${donnees}</script>
+<script id="data" type="application/json">${data}</script>
 <script>
 (() => {
-  const { roomId, rooms } = JSON.parse(document.getElementById('donnees').textContent)
+  const { roomId, rooms } = JSON.parse(document.getElementById('data').textContent)
   const $ = (id) => document.getElementById(id)
 
   /**
-   * Identifiant d'appareil : borne les votes sans imposer de compte.
-   * Demander une inscription pour voter une question garantirait que personne
-   * ne vote.
+   * Device identifier: bounds the votes without imposing an account.
+   * Asking for a sign-up to vote on a question would guarantee that nobody votes.
    */
   let deviceId = localStorage.getItem('mur-device')
   if (!deviceId || deviceId.length < 8) {
@@ -176,289 +175,293 @@ export function renderWallPage({ roomId, rooms, event }: WallPageOptions): strin
   const votes = new Set(JSON.parse(localStorage.getItem('mur-votes') || '[]'))
 
   /**
-   * Salle courante.
+   * Current room.
    *
-   * Trois sources, dans cet ordre : le lien scanné, le dernier choix de ce
-   * téléphone, puis rien. Le choix est mémorisé parce qu'un participant reste
-   * dans la même salle plusieurs talks d'affilée, et rescanner à chaque fois
-   * pour poser une question n'arriverait jamais.
+   * Three sources, in this order: the scanned link, this phone's last choice, then
+   * nothing. The choice is remembered because an attendee stays in the same room
+   * for several talks in a row, and rescanning every time to ask a question would
+   * never happen.
+   *
+   * The storage key stays \`mur-salle\`: it is written on phones that are already
+   * in the field, and renaming it would silently forget their choice.
    */
-  let salleCourante = roomId || localStorage.getItem('mur-salle') || ''
-  if (!rooms.some((r) => r.id === salleCourante)) salleCourante = ''
+  let currentRoom = roomId || localStorage.getItem('mur-salle') || ''
+  if (!rooms.some((r) => r.id === currentRoom)) currentRoom = ''
 
-  const choix = $('choix-salle')
-  choix.innerHTML = '<option value="">Choisissez votre salle…</option>' +
+  const select = $('room-choice')
+  select.innerHTML = '<option value="">Choisissez votre salle…</option>' +
     rooms.map((r) => '<option value="' + r.id + '">' + r.name + '</option>').join('')
-  choix.value = salleCourante
+  select.value = currentRoom
 
-  function majSalle(valeur) {
-    salleCourante = valeur
-    choix.value = valeur
-    const salle = rooms.find((r) => r.id === valeur)
-    // La salle ne qualifie plus que les questions : le mur est commun à
-    // l'événement, et laisser un nom de salle en tête de page laissait croire
-    // qu'on écrivait à cette salle-là.
-    $('salle').textContent = salle
-      ? 'Questions — ' + salle.name
+  function setRoom(value) {
+    currentRoom = value
+    select.value = value
+    const room = rooms.find((r) => r.id === value)
+    // The room now only qualifies the questions: the wall is shared by the event,
+    // and leaving a room name at the top of the page made it look as though one
+    // was writing to that room.
+    $('room').textContent = room
+      ? 'Questions — ' + room.name
       : 'Mur commun à toutes les salles'
-    if (valeur) localStorage.setItem('mur-salle', valeur)
-    // L'adresse suit, pour que la page partagée ou rechargée reste la bonne.
+    if (value) localStorage.setItem('mur-salle', value)
+    // The address follows, so that a shared or reloaded page stays the right one.
+    // The query parameter stays \`salle\`: it is in links already shared around.
     const url = new URL(location.href)
-    if (valeur) url.searchParams.set('salle', valeur)
+    if (value) url.searchParams.set('salle', value)
     else url.searchParams.delete('salle')
     history.replaceState(null, '', url)
-    void rafraichirTalk()
-    if (!$('vue-questions').hidden) void rafraichirQuestions()
+    void refreshTalk()
+    if (!$('view-questions').hidden) void refreshQuestions()
   }
 
-  choix.onchange = (evenement) => majSalle(evenement.target.value)
+  select.onchange = (event) => setRoom(event.target.value)
 
   /**
-   * Conférence à laquelle se rattachent les questions.
+   * The talk the questions attach to.
    *
-   * Celle en cours, ou à défaut la suivante : une question posée pendant la
-   * pause qui précède un talk le vise, et la rattacher à rien la rendrait
-   * invisible de tous — de la régie comme des autres participants.
+   * The one running, or failing that the next one: a question asked during the
+   * break that precedes a talk is aimed at it, and attaching it to nothing would
+   * make it invisible to everyone — to the control app as to the other attendees.
    */
-  let sessionCourante = null
-  /** Son titre, pour dire de quoi la liste parle. */
-  let titreCourant = null
+  let currentSession = null
+  /** Its title, to say what the list is about. */
+  let currentTitle = null
 
-  /** Conférence en cours dans la salle choisie, relue régulièrement. */
-  async function rafraichirTalk() {
-    const bloc = $('talk')
-    if (!salleCourante) { bloc.hidden = true; return }
+  /** The talk running in the chosen room, read back regularly. */
+  async function refreshTalk() {
+    const block = $('talk')
+    if (!currentRoom) { block.hidden = true; return }
     try {
-      const { current, next } = await appeler('rooms/current', { roomId: salleCourante })
+      const { current, next } = await call('rooms/current', { roomId: currentRoom })
       const session = current || next
-      const avant = sessionCourante
-      sessionCourante = session ? session.id : null
-      titreCourant = session ? session.title : null
-      if (!session) { bloc.hidden = true; return }
-      bloc.hidden = false
-      $('talk-quand').textContent = current ? 'En ce moment' : 'À suivre'
-      $('talk-titre').textContent = session.title
-      $('talk-qui').textContent = session.speakers.join(' · ')
-      // La journée avance pendant que le téléphone reste posé sur la table :
-      // au changement de talk, la liste affichée doit suivre sans attendre son
-      // tour de rafraîchissement.
-      if (avant !== sessionCourante && !$('vue-questions').hidden) void rafraichirQuestions()
+      const before = currentSession
+      currentSession = session ? session.id : null
+      currentTitle = session ? session.title : null
+      if (!session) { block.hidden = true; return }
+      block.hidden = false
+      $('talk-when').textContent = current ? 'En ce moment' : 'À suivre'
+      $('talk-title').textContent = session.title
+      $('talk-who').textContent = session.speakers.join(' · ')
+      // The day moves on while the phone stays on the table: when the talk
+      // changes, the displayed list must follow without waiting for its refresh
+      // turn.
+      if (before !== currentSession && !$('view-questions').hidden) void refreshQuestions()
     } catch {
-      // Le mur reste utilisable sans : ce bloc informe, il ne commande rien.
-      bloc.hidden = true
+      // The wall stays usable without it: this block informs, it commands nothing.
+      block.hidden = true
     }
   }
 
-  /** Portée du mur, dite avec le nombre réel de salles plutôt qu'en principe. */
-  $('portee').textContent = rooms.length > 1
+  /** The wall's scope, said with the real number of rooms rather than in principle. */
+  $('scope').textContent = rooms.length > 1
     ? 'Projeté sur les écrans des ' + rooms.length + ' salles, après relecture.'
     : "Projeté sur les écrans de l'événement, après relecture."
 
-  majSalle(salleCourante)
-  void rafraichirMur()
-  // La journée avance pendant que la page reste ouverte sur un téléphone posé
-  // sur une table : sans relecture, elle annoncerait le talk d'il y a une heure.
-  setInterval(() => void rafraichirTalk(), 60_000)
+  setRoom(currentRoom)
+  void refreshWall()
+  // The day moves on while the page stays open on a phone left on a table:
+  // without a re-read, it would announce the talk from an hour ago.
+  setInterval(() => void refreshTalk(), 60_000)
 
-  /** Le protocole oRPC en HTTP tient en un objet { json: ... } : pas besoin de client. */
-  async function appeler(chemin, entree) {
-    const reponse = await fetch('/rpc/' + chemin, {
+  /** The oRPC protocol over HTTP fits in one { json: ... } object: no client needed. */
+  async function call(path, input) {
+    const response = await fetch('/rpc/' + path, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ json: entree }),
+      body: JSON.stringify({ json: input }),
     })
-    const corps = await reponse.json()
-    if (!reponse.ok) throw new Error(corps?.json?.message || 'Échec de la requête')
-    return corps.json
+    const body = await response.json()
+    if (!response.ok) throw new Error(body?.json?.message || 'Échec de la requête')
+    return body.json
   }
 
-  function avis(message, erreur) {
-    const el = $('avis')
+  function notify(message, isError) {
+    const el = $('notice')
     el.textContent = message
-    el.className = 'notice visible ' + (erreur ? 'error' : 'ok')
+    el.className = 'notice visible ' + (isError ? 'error' : 'ok')
     clearTimeout(el.__t)
     el.__t = setTimeout(() => el.classList.remove('visible'), 4000)
   }
 
-  const compteur = (champ, cible) => {
-    $(champ).addEventListener('input', () => { $(cible).textContent = $(champ).value.length })
+  const counter = (field, target) => {
+    $(field).addEventListener('input', () => { $(target).textContent = $(field).value.length })
   }
-  compteur('message', 'compteur-message')
-  compteur('question', 'compteur-question')
+  counter('message', 'count-message')
+  counter('question', 'count-question')
 
-  $('onglet-mur').onclick = () => { basculer(true); rafraichirMur() }
-  $('onglet-questions').onclick = () => { basculer(false); rafraichirQuestions() }
-  function basculer(mur) {
-    $('vue-mur').hidden = !mur
-    $('vue-questions').hidden = mur
-    $('onglet-mur').classList.toggle('active', mur)
-    $('onglet-questions').classList.toggle('active', !mur)
+  $('tab-wall').onclick = () => { toggle(true); refreshWall() }
+  $('tab-questions').onclick = () => { toggle(false); refreshQuestions() }
+  function toggle(wall) {
+    $('view-wall').hidden = !wall
+    $('view-questions').hidden = wall
+    $('tab-wall').classList.toggle('active', wall)
+    $('tab-questions').classList.toggle('active', !wall)
   }
 
   /**
-   * Ce qui est déjà projeté, relu régulièrement.
+   * What is already projected, read back regularly.
    *
-   * C'est la moitié sociale du mur : sans elle, déposer un message revenait à
-   * parler dans le vide. Elle montre aussi, sans rien expliquer, ce qui passe
-   * la relecture et ce qui n'y passe pas.
+   * It is the wall's social half: without it, dropping a message amounted to
+   * speaking into the void. It also shows, without explaining anything, what gets
+   * through moderation and what does not.
    */
-  async function rafraichirMur() {
-    const conteneur = $('liste-mur')
+  async function refreshWall() {
+    const container = $('list-wall')
     try {
-      const liste = await appeler('wall/recent', { limit: 12 })
-      conteneur.innerHTML = ''
-      if (liste.length === 0) {
-        const vide = document.createElement('div')
-        vide.className = 'rounded-[10px] border border-dashed border-edge p-4 text-center text-sm text-dim'
-        vide.textContent = 'Rien encore. Le premier message de la journée peut être le vôtre.'
-        conteneur.appendChild(vide)
+      const list = await call('wall/recent', { limit: 12 })
+      container.innerHTML = ''
+      if (list.length === 0) {
+        const empty = document.createElement('div')
+        empty.className = 'rounded-[10px] border border-dashed border-edge p-4 text-center text-sm text-dim'
+        empty.textContent = 'Rien encore. Le premier message de la journée peut être le vôtre.'
+        container.appendChild(empty)
         return
       }
-      for (const message of liste) {
-        const carte = document.createElement('div')
-        carte.className = 'rounded-[10px] border border-edge bg-surface p-3'
-        const auteur = document.createElement('div')
-        auteur.className = 'mb-1 text-xs text-dim'
-        // Le handle quand la source en a un : c'est ce qui distingue un post
-        // repris des réseaux d'un message déposé ici.
-        auteur.textContent = message.authorHandle
+      for (const message of list) {
+        const card = document.createElement('div')
+        card.className = 'rounded-[10px] border border-edge bg-surface p-3'
+        const author = document.createElement('div')
+        author.className = 'mb-1 text-xs text-dim'
+        // The handle when the source has one: it is what tells a post picked up
+        // from social media apart from a message dropped here.
+        author.textContent = message.authorHandle
           ? message.author + ' · ' + message.authorHandle
           : message.author
-        const texte = document.createElement('div')
-        texte.className = 'text-[15px] leading-snug'
-        texte.textContent = message.text
-        carte.append(auteur, texte)
-        conteneur.appendChild(carte)
+        const text = document.createElement('div')
+        text.className = 'text-[15px] leading-snug'
+        text.textContent = message.text
+        card.append(author, text)
+        container.appendChild(card)
       }
     } catch {
-      // Silencieux : le mur reste utilisable sans, et un participant n'a rien
-      // à faire d'une erreur de rafraîchissement.
+      // Silent: the wall stays usable without it, and an attendee has no use for
+      // a refresh error.
     }
   }
 
-  $('form-message').onsubmit = async (evenement) => {
-    evenement.preventDefault()
-    const bouton = evenement.target.querySelector('button')
-    bouton.disabled = true
+  $('form-message').onsubmit = async (event) => {
+    event.preventDefault()
+    const button = event.target.querySelector('button')
+    button.disabled = true
     try {
-      await appeler('wall/post', {
-        // Toujours nul : un message du public s'adresse à l'événement, pas à la
-        // pièce où son auteur se trouve. Côté hub, une salle nulle vaut
-        // « toutes les salles » — c'est déjà ce que faisait un message social.
+      await call('wall/post', {
+        // Always null: a message from the audience is addressed to the event, not
+        // to the room its author happens to be in. On the hub side, a null room
+        // means "every room" — which is already what a social message did.
         roomId: null,
-        author: $('auteur').value.trim(),
+        author: $('author').value.trim(),
         text: $('message').value.trim(),
       })
       $('message').value = ''
-      $('compteur-message').textContent = '0'
-      avis('Envoyé — il apparaîtra sur les écrans après relecture.')
+      $('count-message').textContent = '0'
+      notify('Envoyé — il apparaîtra sur les écrans après relecture.')
     } catch (cause) {
-      avis(cause.message, true)
+      notify(cause.message, true)
     } finally {
-      bouton.disabled = false
+      button.disabled = false
     }
   }
 
-  $('form-question').onsubmit = async (evenement) => {
-    evenement.preventDefault()
-    if (!salleCourante) { avis('Choisissez votre salle pour poser une question.', true); return }
-    const bouton = evenement.target.querySelector('button')
-    bouton.disabled = true
+  $('form-question').onsubmit = async (event) => {
+    event.preventDefault()
+    if (!currentRoom) { notify('Choisissez votre salle pour poser une question.', true); return }
+    const button = event.target.querySelector('button')
+    button.disabled = true
     try {
-      await appeler('questions/post', {
-        roomId: salleCourante,
-        // Rattachée au talk en cours : en régie, une question sans conférence
-        // ne dit pas à quoi elle répond.
-        sessionId: sessionCourante,
-        author: $('auteur').value.trim() || null,
+      await call('questions/post', {
+        roomId: currentRoom,
+        // Attached to the running talk: in the control app, a question with no
+        // talk does not say what it is answering.
+        sessionId: currentSession,
+        author: $('author').value.trim() || null,
         text: $('question').value.trim(),
       })
       $('question').value = ''
-      $('compteur-question').textContent = '0'
-      avis('Question envoyée.')
-      await rafraichirQuestions()
+      $('count-question').textContent = '0'
+      notify('Question envoyée.')
+      await refreshQuestions()
     } catch (cause) {
-      avis(cause.message, true)
+      notify(cause.message, true)
     } finally {
-      bouton.disabled = false
+      button.disabled = false
     }
   }
 
-  async function voter(id, bouton) {
+  async function vote(id, button) {
     if (votes.has(id)) return
     try {
-      const resultat = await appeler('questions/vote', { id, deviceId })
+      const result = await call('questions/vote', { id, deviceId })
       votes.add(id)
       localStorage.setItem('mur-votes', JSON.stringify([...votes]))
-      bouton.querySelector('.n').textContent = resultat.votes
-      bouton.classList.add('voted')
+      button.querySelector('.n').textContent = result.votes
+      button.classList.add('voted')
     } catch (cause) {
-      avis(cause.message, true)
+      notify(cause.message, true)
     }
   }
 
-  async function rafraichirQuestions() {
-    if (!salleCourante) return
-    const conteneur = $('liste-questions')
+  async function refreshQuestions() {
+    if (!currentRoom) return
+    const container = $('list-questions')
     /**
-     * Les questions de **cette** conférence, jamais celles de la journée.
+     * The questions of **this** talk, never those of the day.
      *
-     * À 16 h, la liste remontait encore les questions du talk de 10 h — les
-     * mieux votées, donc en tête — et le public votait pour des questions que
-     * plus personne ne poserait. Une question ne survit pas à son talk.
+     * At 4 pm the list still brought up the questions from the 10 am talk — the
+     * best voted ones, so at the top — and the audience voted for questions
+     * nobody would ask any more. A question does not outlive its talk.
      */
-    // Titre du talk posé en textContent et non concaténé dans du HTML : il
-    // vient de l'export amont, et le reste de cette page compose déjà en nœuds
-    // pour cette raison.
-    const vide = (texte) => {
-      conteneur.innerHTML = ''
-      const bloc = document.createElement('div')
-      bloc.className = 'py-[26px] text-center text-sm text-dim'
-      bloc.textContent = texte
-      conteneur.appendChild(bloc)
+    // The talk's title set as textContent and not concatenated into HTML: it comes
+    // from the upstream export, and the rest of this page already composes in
+    // nodes for that reason.
+    const empty = (text) => {
+      container.innerHTML = ''
+      const block = document.createElement('div')
+      block.className = 'py-[26px] text-center text-sm text-dim'
+      block.textContent = text
+      container.appendChild(block)
     }
 
-    if (!sessionCourante) {
-      vide('Aucune conférence annoncée dans cette salle pour le moment.')
+    if (!currentSession) {
+      empty('Aucune conférence annoncée dans cette salle pour le moment.')
       return
     }
     try {
-      const liste = await appeler('questions/list', { roomId: salleCourante, sessionId: sessionCourante })
-      if (liste.length === 0) {
-        vide(titreCourant
-          ? 'Aucune question sur \\u00ab\\u00a0' + titreCourant + '\\u00a0\\u00bb pour l\\'instant.'
+      const list = await call('questions/list', { roomId: currentRoom, sessionId: currentSession })
+      if (list.length === 0) {
+        empty(currentTitle
+          ? 'Aucune question sur \\u00ab\\u00a0' + currentTitle + '\\u00a0\\u00bb pour l\\'instant.'
           : 'Aucune question pour l\\'instant.')
         return
       }
-      conteneur.innerHTML = ''
-      for (const question of liste) {
-        const carte = document.createElement('div')
-        carte.className = 'question'
-        const bouton = document.createElement('button')
-        bouton.className = 'vote-button' + (votes.has(question.id) ? ' voted' : '')
-        bouton.innerHTML = '<span class="text-[17px] font-bold">' + question.votes + '</span><span class="text-[10px] tracking-[.08em] uppercase">vote</span>'
-        bouton.onclick = () => voter(question.id, bouton)
-        const texte = document.createElement('div')
-        texte.className = 'text'
-        texte.textContent = question.text
+      container.innerHTML = ''
+      for (const question of list) {
+        const card = document.createElement('div')
+        card.className = 'question'
+        const button = document.createElement('button')
+        button.className = 'vote-button' + (votes.has(question.id) ? ' voted' : '')
+        button.innerHTML = '<span class="text-[17px] font-bold">' + question.votes + '</span><span class="text-[10px] tracking-[.08em] uppercase">vote</span>'
+        button.onclick = () => vote(question.id, button)
+        const text = document.createElement('div')
+        text.className = 'text'
+        text.textContent = question.text
         if (question.author) {
-          const auteur = document.createElement('div')
-          auteur.className = 'author'
-          auteur.textContent = question.author
-          texte.appendChild(auteur)
+          const author = document.createElement('div')
+          author.className = 'author'
+          author.textContent = question.author
+          text.appendChild(author)
         }
-        carte.append(bouton, texte)
-        conteneur.appendChild(carte)
+        card.append(button, text)
+        container.appendChild(card)
       }
     } catch {
-      // Silencieux : un rafraîchissement raté ne doit pas alarmer un participant.
+      // Silent: a failed refresh must not alarm an attendee.
     }
   }
 
-  setInterval(() => { if (!$('vue-questions').hidden) rafraichirQuestions() }, 15_000)
-  // Le mur vit pendant qu'on le regarde : un téléphone posé sur une table doit
-  // voir arriver les messages des autres, sinon la page a l'air morte.
-  setInterval(() => { if (!$('vue-mur').hidden) rafraichirMur() }, 15_000)
+  setInterval(() => { if (!$('view-questions').hidden) refreshQuestions() }, 15_000)
+  // The wall lives while it is being watched: a phone left on a table must see the
+  // others' messages arrive, otherwise the page looks dead.
+  setInterval(() => { if (!$('view-wall').hidden) refreshWall() }, 15_000)
 })()
 </script>
 </body>

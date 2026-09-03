@@ -76,7 +76,7 @@ extraResources:
   # Le client migre sa base au lancement ; les fichiers SQL doivent voyager avec.
   - from: ../../packages/db/migrations/client
     to: migrations/client
-  # Bundle de la régie. Hors de l'asar, et à cette place précise : `resoudreRegie`
+  # Bundle de la régie. Hors de l'asar, et à cette place précise : `resolveControlBundle`
   # remonte les dossiers depuis le bundle du processus principal jusqu'à trouver
   # `apps/regie-web/dist`, exactement comme il le fait depuis les sources.
   #

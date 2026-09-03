@@ -19,15 +19,15 @@ import { escapeHtml } from '@cloudnord/format'
  * machine de salle tourne parfois sans réseau du tout, et tout ce qu'elle
  * affiche vient de son propre `127.0.0.1`.
  */
-export interface RegieShellOptions {
+export interface ControlShellOptions {
   /** État complet de la salle, embarqué pour éviter l'écran vide au F5. */
   initialPayload: DisplayPayload
-  assets: RegieAssets
+  assets: ControlAssets
   /** Nom de l'événement, pour titrer la fenêtre. */
   eventName?: string | null
 }
 
-export interface RegieAssets {
+export interface ControlAssets {
   scripts: string[]
   styles: string[]
 }
@@ -40,7 +40,7 @@ export interface RegieAssets {
  * sources, depuis le bundle esbuild, ou depuis un paquet Electron — et un
  * nombre de `..` juste pour l'un est faux pour les autres.
  */
-export function resoudreRegie(): { dossier: string; manifeste: string } | null {
+export function resolveControlBundle(): { dossier: string; manifeste: string } | null {
   return resoudreRegieDepuis(dirname(fileURLToPath(import.meta.url)))
 }
 
@@ -77,7 +77,7 @@ interface EntreeManifeste {
  * permet de les servir en `immutable` — sur un poste de salle, la régie est
  * rouverte plusieurs fois par jour.
  */
-export function assetsDeProduction(manifeste: string, base = '/regie/'): RegieAssets {
+export function productionAssets(manifeste: string, base = '/regie/'): ControlAssets {
   const contenu = JSON.parse(readFileSync(manifeste, 'utf8')) as Record<string, EntreeManifeste>
   const entree = contenu['index.html']
   if (entree == null) {
@@ -97,11 +97,11 @@ export function assetsDeProduction(manifeste: string, base = '/regie/'): RegieAs
  * devant demanderait de proxifier un flux SSE et un WebSocket OBS pour le seul
  * confort du rechargement à chaud.
  */
-export function assetsDeDeveloppement(base = '/regie/'): RegieAssets {
+export function developmentAssets(base = '/regie/'): ControlAssets {
   return { scripts: [`${base}@vite/client`, `${base}src/main.ts`], styles: [] }
 }
 
-export function renderRegieShell(options: RegieShellOptions): string {
+export function renderRegieShell(options: ControlShellOptions): string {
   const titre = options.eventName == null ? 'Régie de salle' : `Régie — ${options.eventName}`
   const etat = JSON.stringify(options.initialPayload).replace(/</g, '\\u003c')
 

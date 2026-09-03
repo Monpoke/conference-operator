@@ -1,15 +1,15 @@
 /**
- * Limiteur de débit en mémoire (seau à jetons).
+ * In-memory rate limiter (token bucket).
  *
- * En mémoire parce que le hub tourne en instance unique — même raison qui a
- * permis de supprimer Redis pour le fanout. Le compteur repart à zéro à un
- * redémarrage, ce qui est acceptable : il protège d'un flux soutenu, pas d'un
- * attaquant déterminé.
+ * In memory because the hub runs as a single instance — the same reason that
+ * allowed Redis to be dropped for the fanout. The counter resets to zero on a
+ * restart, which is acceptable: it protects against a sustained flow, not
+ * against a determined attacker.
  */
 export interface RateLimitOptions {
-  /** Jetons disponibles à plein. */
+  /** Tokens available when full. */
   capacity: number
-  /** Jetons regagnés par seconde. */
+  /** Tokens regained per second. */
   refillPerSecond: number
   now?: () => number
 }
@@ -24,13 +24,13 @@ export class RateLimiter {
 
   constructor(private readonly options: RateLimitOptions) {}
 
-  /** `true` si l'action est autorisée, et consomme un jeton. */
+  /** `true` if the action is allowed, and consumes a token. */
   take(key: string): boolean {
     const now = this.options.now?.() ?? Date.now()
     const bucket = this.buckets.get(key) ?? { tokens: this.options.capacity, updatedAt: now }
 
-    const gagnes = ((now - bucket.updatedAt) / 1000) * this.options.refillPerSecond
-    bucket.tokens = Math.min(this.options.capacity, bucket.tokens + gagnes)
+    const gained = ((now - bucket.updatedAt) / 1000) * this.options.refillPerSecond
+    bucket.tokens = Math.min(this.options.capacity, bucket.tokens + gained)
     bucket.updatedAt = now
 
     if (bucket.tokens < 1) {
@@ -43,7 +43,7 @@ export class RateLimiter {
     return true
   }
 
-  /** Évite que la table grossisse indéfiniment sur un événement public. */
+  /** Stops the table from growing indefinitely on a public event. */
   prune(maxAgeMs = 10 * 60_000): void {
     const now = this.options.now?.() ?? Date.now()
     for (const [key, bucket] of this.buckets) {

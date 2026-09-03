@@ -1,20 +1,19 @@
 /// <reference lib="dom" />
-// La lib DOM est déclarée ici seulement : l'ajouter au tsconfig laisserait le
-// code serveur appeler `document` sans que rien ne proteste.
+// The DOM lib is declared here only: adding it to the tsconfig would let the
+// server code call `document` without anything objecting.
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { attendreRendu } from './helpers/attendre.js'
+import { waitForRender } from './helpers/wait-for-render.js'
 import { flattenLayersInHtml } from '@cloudnord/ui'
 import { renderWallPage } from '../src/pages/wall-page.js'
 
 /**
- * Le mur public, exécuté dans un vrai DOM.
+ * The public wall, run inside a real DOM.
  *
- * C'est la seule page que le public utilise, sur son propre téléphone : elle
- * n'a pas d'étape de build, et une erreur dans son script la laisse muette
- * sans rien signaler.
+ * It is the only page the audience uses, on their own phone: it has no build
+ * step, and an error in its script leaves it mute without reporting anything.
  */
-const SALLE = { id: 'track-1', name: 'Track #1' }
+const ROOM = { id: 'track-1', name: 'Track #1' }
 
 const TALK = {
   id: 'ses-1',
@@ -24,33 +23,33 @@ const TALK = {
   endsAt: '2026-10-30T10:50:00.000Z',
 }
 
-let appels: { chemin: string; entree: Record<string, unknown> }[]
+let calls: { path: string; input: Record<string, unknown> }[]
 
 /**
- * Monte le mur avec un hub simulé.
+ * Mounts the wall against a simulated hub.
  *
- * `courant` est ce que renvoie `rooms/current` ; `questions` ce que renvoie
- * `questions/list`, quelle que soit la conférence demandée — c'est justement
- * l'entrée de cet appel qu'on vient observer.
+ * `currentTalk` is what `rooms/current` returns; `questions` what
+ * `questions/list` returns, whatever talk is asked for — that call's input is
+ * precisely what we came to observe.
  */
-function monterMur(
-  courant: { current: unknown; next: unknown },
+function mountWall(
+  currentTalk: { current: unknown; next: unknown },
   questions: unknown[] = [],
-  murRecent: unknown[] = [],
+  recentWall: unknown[] = [],
 ): void {
-  appels = []
+  calls = []
   vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
-    const chemin = String(url).replace('/rpc/', '')
-    appels.push({ chemin, entree: JSON.parse(String(init.body)).json })
-    const json = chemin === 'rooms/current' ? courant
-      : chemin === 'questions/list' ? questions
-        : chemin === 'wall/recent' ? murRecent
+    const path = String(url).replace('/rpc/', '')
+    calls.push({ path, input: JSON.parse(String(init.body)).json })
+    const json = path === 'rooms/current' ? currentTalk
+      : path === 'questions/list' ? questions
+        : path === 'wall/recent' ? recentWall
           : {}
     return new Response(JSON.stringify({ json }), { status: 200 })
   }))
 
   document.documentElement.innerHTML = flattenLayersInHtml(
-    renderWallPage({ roomId: SALLE.id, rooms: [SALLE] }),
+    renderWallPage({ roomId: ROOM.id, rooms: [ROOM] }),
   )
   for (const script of document.querySelectorAll('script:not([type])')) {
     // eslint-disable-next-line no-new-func
@@ -59,142 +58,143 @@ function monterMur(
 }
 
 const $ = (id: string) => document.getElementById(id)!
-const attendre = attendreRendu
+const settle = waitForRender
 
 beforeEach(() => {
   localStorage.clear()
 })
 
 /**
- * Questions bornées au talk.
+ * Questions bounded to the talk.
  *
- * À 16 h, la liste remontait encore celles du talk de 10 h — les mieux votées,
- * donc en tête — et le public votait pour des questions que plus personne ne
- * poserait.
+ * At 4 pm the list still brought up those of the 10 am talk — the best voted
+ * ones, so at the top — and the audience voted for questions nobody would ask any
+ * more.
  */
-describe('mur — questions du talk en cours', () => {
-  it('ne demande que les questions de la conférence en cours', async () => {
-    monterMur({ current: TALK, next: null })
-    await attendre()
-    $('onglet-questions').click()
-    await attendre()
+describe('wall — questions of the running talk', () => {
+  it('only asks for the questions of the running talk', async () => {
+    mountWall({ current: TALK, next: null })
+    await settle()
+    $('tab-questions').click()
+    await settle()
 
-    expect(appels).toContainEqual({
-      chemin: 'questions/list',
-      entree: { roomId: SALLE.id, sessionId: TALK.id },
+    expect(calls).toContainEqual({
+      path: 'questions/list',
+      input: { roomId: ROOM.id, sessionId: TALK.id },
     })
-    // Et jamais avec `sessionId: null`, qui vaut « toute la journée » côté hub.
-    expect(appels.some((appel) =>
-      appel.chemin === 'questions/list' && appel.entree.sessionId === null)).toBe(false)
+    // And never with `sessionId: null`, which means "the whole day" on the hub side.
+    expect(calls.some((call) =>
+      call.path === 'questions/list' && call.input.sessionId === null)).toBe(false)
   })
 
-  it('rattache une question posée à cette conférence', async () => {
-    monterMur({ current: TALK, next: null })
-    await attendre()
+  it('attaches a posted question to that talk', async () => {
+    mountWall({ current: TALK, next: null })
+    await settle()
     ;($('question') as HTMLTextAreaElement).value = 'Et les faux positifs ?'
     $('form-question').dispatchEvent(new Event('submit'))
-    await attendre()
+    await settle()
 
-    expect(appels.find((appel) => appel.chemin === 'questions/post')?.entree)
-      .toMatchObject({ roomId: SALLE.id, sessionId: TALK.id })
+    expect(calls.find((call) => call.path === 'questions/post')?.input)
+      .toMatchObject({ roomId: ROOM.id, sessionId: TALK.id })
   })
 
-  it('vise la conférence à venir entre deux talks', async () => {
-    // Une question posée pendant la pause qui précède un talk le vise. La
-    // rattacher à rien la rendrait invisible de tous — régie comprise.
-    monterMur({ current: null, next: TALK })
-    await attendre()
-    $('onglet-questions').click()
-    await attendre()
+  it('aims at the upcoming talk between two talks', async () => {
+    // A question asked during the break preceding a talk is aimed at it.
+    // Attaching it to nothing would make it invisible to everyone — control app
+    // included.
+    mountWall({ current: null, next: TALK })
+    await settle()
+    $('tab-questions').click()
+    await settle()
 
-    expect(appels).toContainEqual({
-      chemin: 'questions/list',
-      entree: { roomId: SALLE.id, sessionId: TALK.id },
+    expect(calls).toContainEqual({
+      path: 'questions/list',
+      input: { roomId: ROOM.id, sessionId: TALK.id },
     })
   })
 
-  it('le dit quand aucune conférence n\'est annoncée', async () => {
-    monterMur({ current: null, next: null })
-    await attendre()
-    $('onglet-questions').click()
-    await attendre()
+  it('says so when no talk is announced', async () => {
+    mountWall({ current: null, next: null })
+    await settle()
+    $('tab-questions').click()
+    await settle()
 
-    expect($('liste-questions').textContent).toContain('Aucune conférence annoncée')
-    expect(appels.some((appel) => appel.chemin === 'questions/list')).toBe(false)
+    expect($('list-questions').textContent).toContain('Aucune conférence annoncée')
+    expect(calls.some((call) => call.path === 'questions/list')).toBe(false)
   })
 
-  it('nomme la conférence quand personne n\'a encore rien demandé', async () => {
-    // « Aucune question » tout court laisserait croire que le mur est cassé.
-    monterMur({ current: TALK, next: null }, [])
-    await attendre()
-    $('onglet-questions').click()
-    await attendre()
+  it('names the talk when nobody has asked anything yet', async () => {
+    // A bare "no question" would make it look as though the wall were broken.
+    mountWall({ current: TALK, next: null }, [])
+    await settle()
+    $('tab-questions').click()
+    await settle()
 
-    expect($('liste-questions').textContent).toContain('HoneySwamp')
+    expect($('list-questions').textContent).toContain('HoneySwamp')
   })
 })
 
 /**
- * Le mur est commun à l'événement.
+ * The wall is shared by the event.
  *
- * Un message du public s'adresse à Cloud Nord, pas à la pièce où son auteur se
- * trouve : le limiter à une salle en faisait un canal de plus à surveiller, et
- * privait les deux autres écrans de ce qui s'y disait.
+ * A message from the audience is addressed to Cloud Nord, not to the room its
+ * author happens to be in: limiting it to one room made it one more channel to
+ * watch, and deprived the other two screens of what was being said there.
  */
-describe('mur — commun à toutes les salles', () => {
+describe('wall — shared by every room', () => {
   const MESSAGE = {
     id: 'c-1', source: 'form', author: 'Camille', authorHandle: null,
     text: 'Super talk, merci !', status: 'approved', roomId: null, sessionId: null,
     createdAt: '2026-10-30T10:05:00.000Z',
   }
 
-  it('dépose sans salle, quelle que soit celle qui est choisie', async () => {
-    monterMur({ current: TALK, next: null })
-    await attendre()
-    ;($('auteur') as HTMLInputElement).value = 'Camille'
+  it('posts with no room, whichever one is selected', async () => {
+    mountWall({ current: TALK, next: null })
+    await settle()
+    ;($('author') as HTMLInputElement).value = 'Camille'
     ;($('message') as HTMLTextAreaElement).value = 'Super talk'
     $('form-message').dispatchEvent(new Event('submit'))
-    await attendre()
+    await settle()
 
-    // Côté hub, une salle nulle vaut « toutes les salles ».
-    expect(appels.find((appel) => appel.chemin === 'wall/post')?.entree)
+    // On the hub side, a null room means "every room".
+    expect(calls.find((call) => call.path === 'wall/post')?.input)
       .toMatchObject({ roomId: null, author: 'Camille' })
   })
 
-  it('annonce la portée avant le formulaire, pas après', async () => {
-    // C'est la promesse de la page : on n'écrit pas dans une boîte à idées.
-    // Le dire sous un bouton qu'on vient d'appuyer revenait à ne pas le dire.
-    monterMur({ current: TALK, next: null })
-    await attendre()
+  it('announces the scope before the form, not after', async () => {
+    // It is the page's promise: you are not writing into a suggestion box.
+    // Saying it under a button you have just pressed amounted to not saying it.
+    mountWall({ current: TALK, next: null })
+    await settle()
 
-    expect($('vue-mur').textContent).toContain('dans toutes les salles')
-    // Le nombre réel de salles, pas un principe.
-    expect($('portee').textContent).toContain("Projeté sur les écrans")
+    expect($('view-wall').textContent).toContain('dans toutes les salles')
+    // The real number of rooms, not a principle.
+    expect($('scope').textContent).toContain('Projeté sur les écrans')
   })
 
-  it('montre ce qui est déjà à l\'écran', async () => {
-    // Sans ça, déposer un message revenait à parler dans le vide : rien ne
-    // montrait que d'autres écrivaient, ni que ça finissait projeté.
-    monterMur({ current: TALK, next: null }, [], [MESSAGE])
-    await attendre()
+  it('shows what is already on the screen', async () => {
+    // Without this, dropping a message amounted to speaking into the void:
+    // nothing showed that others were writing, nor that it ended up projected.
+    mountWall({ current: TALK, next: null }, [], [MESSAGE])
+    await settle()
 
-    expect(appels.some((appel) => appel.chemin === 'wall/recent')).toBe(true)
-    expect($('liste-mur').textContent).toContain('Super talk, merci !')
-    expect($('liste-mur').textContent).toContain('Camille')
+    expect(calls.some((call) => call.path === 'wall/recent')).toBe(true)
+    expect($('list-wall').textContent).toContain('Super talk, merci !')
+    expect($('list-wall').textContent).toContain('Camille')
   })
 
-  it('invite plutôt que de laisser un cadre vide', async () => {
-    monterMur({ current: TALK, next: null }, [], [])
-    await attendre()
+  it('invites rather than leaving an empty frame', async () => {
+    mountWall({ current: TALK, next: null }, [], [])
+    await settle()
 
-    expect($('liste-mur').textContent).toContain('peut être le vôtre')
+    expect($('list-wall').textContent).toContain('peut être le vôtre')
   })
 
-  it('ne laisse plus le nom d\'une salle en tête du mur', async () => {
-    // Il laissait croire qu'on écrivait à cette salle-là.
-    monterMur({ current: TALK, next: null })
-    await attendre()
+  it('no longer leaves a room name at the top of the wall', async () => {
+    // It made it look as though one was writing to that room.
+    mountWall({ current: TALK, next: null })
+    await settle()
 
-    expect($('salle').textContent).toContain('Questions')
+    expect($('room').textContent).toContain('Questions')
   })
 })

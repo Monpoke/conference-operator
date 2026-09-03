@@ -3,12 +3,12 @@ import { createHub, type Hub } from '../src/server.js'
 import { configSchema } from '../src/config.js'
 
 /**
- * Connexion des opérateurs par Google Workspace.
+ * Operator sign-in through Google Workspace.
  *
- * Le domaine est la seule frontière : tout compte du domaine configuré est un
- * opérateur, et aucun autre ne l'est. Ces tests portent donc sur ce qui garde
- * cette frontière — l'indice envoyé à Google, le refus de démarrer sans
- * domaine, et le fait que le fournisseur ne se monte pas tout seul.
+ * The domain is the only boundary: every account of the configured domain is an
+ * operator, and no other one is. These tests therefore bear on what keeps that
+ * boundary — the hint sent to Google, the refusal to start with no domain, and
+ * the fact that the provider does not mount itself.
  */
 
 const BASE = {
@@ -22,20 +22,20 @@ const BASE = {
 
 let hub: Hub | null = null
 
-async function demarrer(config: Record<string, unknown>): Promise<string> {
+async function start(config: Record<string, unknown>): Promise<string> {
   hub = await createHub({ ...BASE, ...config })
   await hub.app.listen({ port: 0, host: '127.0.0.1' })
   const address = hub.app.server.address()
   return `http://127.0.0.1:${typeof address === 'object' && address != null ? address.port : 0}`
 }
 
-async function demanderGoogle(origin: string) {
-  const reponse = await fetch(`${origin}/api/auth/sign-in/social`, {
+async function askGoogle(origin: string) {
+  const response = await fetch(`${origin}/api/auth/sign-in/social`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ provider: 'google', callbackURL: '/admin' }),
   })
-  return { status: reponse.status, body: (await reponse.json()) as { url?: string } }
+  return { status: response.status, body: (await response.json()) as { url?: string } }
 }
 
 afterEach(async () => {
@@ -44,87 +44,87 @@ afterEach(async () => {
 })
 
 describe('configuration', () => {
-  it('refuse un Google à moitié renseigné', () => {
-    // Le laisser passer monterait un hub où le bouton échoue à chaque clic, et
-    // on chercherait la panne dans la console Google Cloud.
-    const partiel = configSchema.safeParse({ ...BASE, googleClientId: 'abc.apps.googleusercontent.com' })
-    expect(partiel.success).toBe(false)
+  it('refuses a half-filled Google', () => {
+    // Letting it through would raise a hub where the button fails on every click,
+    // and one would look for the failure in the Google Cloud console.
+    const partial = configSchema.safeParse({ ...BASE, googleClientId: 'abc.apps.googleusercontent.com' })
+    expect(partial.success).toBe(false)
     expect(configSchema.safeParse({ ...BASE, googleClientSecret: 'chut' }).success).toBe(false)
   })
 
-  it('refuse un Google sans domaine', () => {
-    // Pas de défaut, et c'est le point : un domaine écrit en dur n'appartient
-    // qu'à un organisateur, et le laisser servir de repli ouvrirait la console
-    // d'un autre événement au personnel du premier. Le hub refuse de deviner.
-    const sansDomaine = configSchema.safeParse({
+  it('refuses a Google with no domain', () => {
+    // No default, and that is the point: a hard-written domain belongs to one
+    // organizer only, and letting it serve as a fallback would open one event's
+    // console to another's staff. The hub refuses to guess.
+    const withoutDomain = configSchema.safeParse({
       ...BASE,
       googleClientId: 'client-de-test.apps.googleusercontent.com',
       googleClientSecret: 'secret-de-test',
     })
-    expect(sansDomaine.success).toBe(false)
+    expect(withoutDomain.success).toBe(false)
   })
 
-  it('ne réclame pas de domaine quand Google n\'est pas configuré', () => {
-    // Le cas par défaut : un hub d'événement doit démarrer sans compte Google.
+  it('does not demand a domain when Google is not configured', () => {
+    // The default case: an event hub must start with no Google account.
     const config = configSchema.parse(BASE)
     expect(config.googleHostedDomain).toBeUndefined()
   })
 })
 
-describe('connexion Google', () => {
-  it("n'existe pas tant que le hub n'a pas d'identifiants", async () => {
-    const origin = await demarrer({})
+describe('Google sign-in', () => {
+  it('does not exist for as long as the hub has no credentials', async () => {
+    const origin = await start({})
 
-    const { status } = await demanderGoogle(origin)
+    const { status } = await askGoogle(origin)
     expect(status).toBeGreaterThanOrEqual(400)
   })
 
-  it('emmène vers Google en imposant le domaine', async () => {
-    const origin = await demarrer({
+  it('takes you to Google while imposing the domain', async () => {
+    const origin = await start({
       googleClientId: 'client-de-test.apps.googleusercontent.com',
       googleClientSecret: 'secret-de-test',
       googleHostedDomain: 'cloudnord.fr',
     })
 
-    const { status, body } = await demanderGoogle(origin)
+    const { status, body } = await askGoogle(origin)
     expect(status).toBe(200)
     const url = new URL(body.url!)
     expect(url.origin + url.pathname).toBe('https://accounts.google.com/o/oauth2/v2/auth')
-    // `hd` restreint l'écran de choix de compte. Ce n'est qu'un indice — Better
-    // Auth revérifie la revendication au retour —, mais son absence ferait
-    // proposer les comptes personnels en premier.
+    // `hd` restricts the account-picker screen. It is only a hint — Better Auth
+    // rechecks the claim on the way back — but its absence would put personal
+    // accounts first.
     expect(url.searchParams.get('hd')).toBe('cloudnord.fr')
-    // L'adresse de retour doit être servie par ce hub, sinon le tour complet
-    // finit sur un 404 après une authentification réussie.
+    // The return address must be served by this hub, otherwise the whole round
+    // trip ends on a 404 after a successful authentication.
     expect(url.searchParams.get('redirect_uri')).toBe(`${BASE.publicUrl}/api/auth/callback/google`)
   })
 
-  it('respecte un autre domaine que celui par défaut', async () => {
-    const origin = await demarrer({
+  it('honours a domain other than the default one', async () => {
+    const origin = await start({
       googleClientId: 'client-de-test.apps.googleusercontent.com',
       googleClientSecret: 'secret-de-test',
       googleHostedDomain: 'exemple.org',
     })
 
-    const { body } = await demanderGoogle(origin)
+    const { body } = await askGoogle(origin)
     expect(new URL(body.url!).searchParams.get('hd')).toBe('exemple.org')
   })
 
-  it('laisse le mot de passe ouvert', async () => {
-    // Google exige internet au moment de la connexion ; tout ce système est
-    // bâti pour survivre à une coupure. La porte locale ne se referme pas.
-    const origin = await demarrer({
+  it('leaves the password door open', async () => {
+    // Google requires the internet at sign-in time; this whole system is built to
+    // survive an outage. The local door does not close.
+    const origin = await start({
       googleClientId: 'client-de-test.apps.googleusercontent.com',
       googleClientSecret: 'secret-de-test',
       googleHostedDomain: 'cloudnord.fr',
     })
 
-    const reponse = await fetch(`${origin}/api/auth/sign-in/email`, {
+    const response = await fetch(`${origin}/api/auth/sign-in/email`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: 'inconnu@cloudnord.fr', password: 'x'.repeat(12) }),
     })
-    // Refus d'identifiants, pas « chemin inexistant » : la voie reste montée.
-    expect(reponse.status).toBe(401)
+    // A credentials refusal, not "no such path": the route stays mounted.
+    expect(response.status).toBe(401)
   })
 })

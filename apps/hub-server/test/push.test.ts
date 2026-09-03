@@ -2,21 +2,24 @@ import Database from 'better-sqlite3'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openHubDatabase, type HubDatabase } from '../src/db.js'
 import { PushService } from '../src/services/push.js'
-import { VeilleSupervision } from '../src/supervision.js'
+import { SupervisionWatch } from '../src/supervision.js'
 import type { RoomStatus } from '@cloudnord/contract'
 
 /**
- * Notifications poussées aux consoles fermées.
+ * Notifications pushed to closed consoles.
  *
- * Ce qui les distingue des notifications de page : plus personne ne regarde. Le
- * hub doit donc constater lui-même ce qui change, et ne pousser que cela — un
- * avis répété fait couper les notifications pour de bon.
+ * What sets them apart from in-page notifications: nobody is watching any more.
+ * The hub must therefore notice by itself what changes, and push only that — a
+ * repeated notice gets notifications switched off for good.
+ *
+ * `technique`, `exploitation`, `essentiel` and `tout` are contract values: they
+ * do not get renamed.
  */
 
-/** Abonnement qui veut tout : sert de base aux tests d'envoi. */
-const TOUT = { technique: 'tout', exploitation: 'tout' } as const
+/** A subscription that wants everything: the basis for the sending tests. */
+const EVERYTHING = { technique: 'tout', exploitation: 'tout' } as const
 
-const SALLE = (patch: Partial<RoomStatus> = {}): RoomStatus =>
+const ROOM = (patch: Partial<RoomStatus> = {}): RoomStatus =>
   ({
     roomId: 'track-1',
     name: 'Track #1',
@@ -33,143 +36,143 @@ const SALLE = (patch: Partial<RoomStatus> = {}): RoomStatus =>
     ...patch,
   }) as RoomStatus
 
-describe('veille de supervision', () => {
-  it('ne dit rien du premier tour', () => {
-    const veille = new VeilleSupervision()
+describe('supervision watch', () => {
+  it('says nothing on the first pass', () => {
+    const watch = new SupervisionWatch()
 
-    // Démarrer le hub sur une salle déjà coupée n'est pas un événement : c'est
-    // un état, et trois avis à l'allumage rendraient les suivants invisibles.
-    expect(veille.passe([SALLE({ connectivity: 'OFFLINE', conference: 'depassement' })])).toEqual([])
+    // Starting the hub on a room that is already down is not an event: it is a
+    // state, and three notices at boot would make the following ones invisible.
+    expect(watch.pass([ROOM({ connectivity: 'OFFLINE', conference: 'depassement' })])).toEqual([])
   })
 
-  it('signale une salle qui tombe, puis qui revient', () => {
-    const veille = new VeilleSupervision()
-    veille.passe([SALLE()])
+  it('reports a room going down, then coming back', () => {
+    const watch = new SupervisionWatch()
+    watch.pass([ROOM()])
 
-    const chute = veille.passe([SALLE({ connectivity: 'OFFLINE' })])
-    expect(chute.map((avis) => avis.title)).toEqual(['Track #1 ne répond plus'])
+    const drop = watch.pass([ROOM({ connectivity: 'OFFLINE' })])
+    expect(drop.map((notice) => notice.title)).toEqual(['Track #1 ne répond plus'])
 
-    const retour = veille.passe([SALLE()])
-    expect(retour.map((avis) => avis.title)).toEqual(['Track #1 est revenue'])
+    const back = watch.pass([ROOM()])
+    expect(back.map((notice) => notice.title)).toEqual(['Track #1 est revenue'])
   })
 
-  it('signale un dépassement une seule fois', () => {
-    const veille = new VeilleSupervision()
-    veille.passe([SALLE()])
+  it('reports an overrun only once', () => {
+    const watch = new SupervisionWatch()
+    watch.pass([ROOM()])
 
-    expect(veille.passe([SALLE({ conference: 'depassement' })])).toHaveLength(1)
-    // Répéter ferait couper les notifications au bout de deux minutes, et on ne
-    // les rallume pas.
-    expect(veille.passe([SALLE({ conference: 'depassement' })])).toEqual([])
+    expect(watch.pass([ROOM({ conference: 'depassement' })])).toHaveLength(1)
+    // Repeating would get notifications switched off within two minutes, and
+    // nobody switches them back on.
+    expect(watch.pass([ROOM({ conference: 'depassement' })])).toEqual([])
   })
 
-  it('annonce les machines qui arrivent dans la file, pas celles déjà là', () => {
-    const veille = new VeilleSupervision()
-    veille.passe([SALLE()], [{ clientId: 'machine-a' }])
+  it('announces the machines arriving in the queue, not those already there', () => {
+    const watch = new SupervisionWatch()
+    watch.pass([ROOM()], [{ clientId: 'machine-a' }])
 
-    expect(veille.passe([SALLE()], [{ clientId: 'machine-a' }])).toEqual([])
-    const arrivee = veille.passe([SALLE()], [{ clientId: 'machine-a' }, { clientId: 'machine-b' }])
-    expect(arrivee.map((avis) => avis.tag)).toEqual(['appairage'])
+    expect(watch.pass([ROOM()], [{ clientId: 'machine-a' }])).toEqual([])
+    const arrival = watch.pass([ROOM()], [{ clientId: 'machine-a' }, { clientId: 'machine-b' }])
+    expect(arrival.map((notice) => notice.tag)).toEqual(['appairage'])
   })
 
-  it('annonce début et fin depuis le cycle de vie, pas depuis la couleur', () => {
+  it('announces start and end from the lifecycle, not from the colour', () => {
     /**
-     * Une conférence terminée à l'heure passe directement de « en cours » à
-     * « aucune » : déduire la fin de l'état agrégé l'aurait manquée.
+     * A talk that ends on time goes straight from "running" to "none": deriving
+     * the end from the aggregated state would have missed it.
      */
-    const veille = new VeilleSupervision()
-    const titres = (id: string) => (id === 'ses-1' ? 'HoneySwamp' : null)
-    veille.passe([SALLE()], [], { 'track-1': { 'ses-1': 'scheduled' } }, titres)
+    const watch = new SupervisionWatch()
+    const titles = (id: string) => (id === 'ses-1' ? 'HoneySwamp' : null)
+    watch.pass([ROOM()], [], { 'track-1': { 'ses-1': 'scheduled' } }, titles)
 
-    const debut = veille.passe([SALLE()], [], { 'track-1': { 'ses-1': 'running' } }, titres)
-    expect(debut.map((avis) => [avis.title, avis.body, avis.niveau])).toEqual([
+    const start = watch.pass([ROOM()], [], { 'track-1': { 'ses-1': 'running' } }, titles)
+    expect(start.map((notice) => [notice.title, notice.body, notice.level])).toEqual([
       ["Track #1 · c'est parti", 'HoneySwamp', 'tout'],
     ])
 
-    const fin = veille.passe([SALLE()], [], { 'track-1': { 'ses-1': 'ended' } }, titres)
-    expect(fin.map((avis) => avis.title)).toEqual(['Track #1 · terminé'])
+    const end = watch.pass([ROOM()], [], { 'track-1': { 'ses-1': 'ended' } }, titles)
+    expect(end.map((notice) => notice.title)).toEqual(['Track #1 · terminé'])
   })
 
-  it('sépare les étiquettes des machines et du déroulé', () => {
-    // Un « c'est parti » ne doit jamais venir effacer un « ne répond plus »
-    // resté non lu sur un écran de verrouillage.
-    const veille = new VeilleSupervision()
-    veille.passe([SALLE()], [], { 'track-1': { 'ses-1': 'scheduled' } })
+  it('keeps the machine tags apart from the run-of-day tags', () => {
+    // A "we're off" must never come and erase a "no longer responding" left
+    // unread on a lock screen.
+    const watch = new SupervisionWatch()
+    watch.pass([ROOM()], [], { 'track-1': { 'ses-1': 'scheduled' } })
 
-    const avis = veille.passe(
-      [SALLE({ connectivity: 'OFFLINE' })],
+    const notices = watch.pass(
+      [ROOM({ connectivity: 'OFFLINE' })],
       [],
       { 'track-1': { 'ses-1': 'running' } },
     )
-    const etiquettes = avis.map((a) => a.tag)
-    expect(new Set(etiquettes).size).toBe(etiquettes.length)
-    expect(etiquettes).toContain('salle-track-1')
-    expect(etiquettes).toContain('conf-track-1')
+    const tags = notices.map((one) => one.tag)
+    expect(new Set(tags).size).toBe(tags.length)
+    expect(tags).toContain('salle-track-1')
+    expect(tags).toContain('conf-track-1')
   })
 
-  it('classe chaque avis dans sa famille et son niveau', () => {
-    const veille = new VeilleSupervision()
-    veille.passe([SALLE()])
+  it('files every notice under its family and its level', () => {
+    const watch = new SupervisionWatch()
+    watch.pass([ROOM()])
 
-    const classe = (avis: { famille: string; niveau: string }[]) =>
-      avis.map((un) => [un.famille, un.niveau])
+    const classify = (notices: { family: string; level: string }[]) =>
+      notices.map((one) => [one.family, one.level])
 
-    expect(classe(veille.passe([SALLE({ connectivity: 'OFFLINE' })]))).toEqual([
+    expect(classify(watch.pass([ROOM({ connectivity: 'OFFLINE' })]))).toEqual([
       ['technique', 'essentiel'],
     ])
-    // Un soulagement, pas une décision.
-    expect(classe(veille.passe([SALLE()]))).toEqual([['technique', 'tout']])
-    expect(classe(veille.passe([SALLE({ conference: 'fin-proche' })]))).toEqual([
+    // A relief, not a decision.
+    expect(classify(watch.pass([ROOM()]))).toEqual([['technique', 'tout']])
+    expect(classify(watch.pass([ROOM({ conference: 'fin-proche' })]))).toEqual([
       ['exploitation', 'tout'],
     ])
   })
 
-  it('oublie une salle retirée du programme', () => {
-    const veille = new VeilleSupervision()
-    veille.passe([SALLE({ connectivity: 'OFFLINE' })])
-    veille.passe([])
+  it('forgets a room removed from the program', () => {
+    const watch = new SupervisionWatch()
+    watch.pass([ROOM({ connectivity: 'OFFLINE' })])
+    watch.pass([])
 
-    // Sans l'oubli, son retour se lirait comme un changement d'état alors que
-    // c'est une salle qu'on redécouvre.
-    expect(veille.passe([SALLE()])).toEqual([])
+    // Without that forgetting, its return would read as a change of state when it
+    // is a room being rediscovered.
+    expect(watch.pass([ROOM()])).toEqual([])
   })
 })
 
-describe('abonnements', () => {
+describe('subscriptions', () => {
   let db: HubDatabase
   let sqlite: Database.Database
 
   beforeEach(() => {
-    const ouvert = openHubDatabase(':memory:')
-    db = ouvert.orm
-    sqlite = ouvert.sqlite
+    const opened = openHubDatabase(':memory:')
+    db = opened.orm
+    sqlite = opened.sqlite
   })
 
   afterEach(() => {
     sqlite.close()
   })
 
-  it('fabrique une paire de clés et la garde entre deux démarrages', () => {
-    const premier = new PushService(db)
-    const cle = premier.publicKey()
-    expect(cle).toBeTruthy()
+  it('makes a key pair and keeps it across two starts', () => {
+    const first = new PushService(db)
+    const key = first.publicKey()
+    expect(key).toBeTruthy()
 
-    // Des clés qui changeraient à chaque redémarrage invalideraient tous les
-    // abonnements, et personne ne se réabonne deux fois.
-    expect(new PushService(db).publicKey()).toBe(cle)
+    // Keys changing on every restart would invalidate every subscription, and
+    // nobody subscribes twice.
+    expect(new PushService(db).publicKey()).toBe(key)
   })
 
-  it('préfère les clés de la configuration', async () => {
+  it('prefers the keys from the configuration', async () => {
     const webpush = (await import('web-push')).default
-    const paire = webpush.generateVAPIDKeys()
+    const pair = webpush.generateVAPIDKeys()
 
-    const service = new PushService(db, { ...paire, subject: 'mailto:ops@cloudnord.fr' })
-    expect(service.publicKey()).toBe(paire.publicKey)
+    const service = new PushService(db, { ...pair, subject: 'mailto:ops@cloudnord.fr' })
+    expect(service.publicKey()).toBe(pair.publicKey)
   })
 
-  it('désactive le push sur une clé illisible, sans arrêter le hub', () => {
-    // Une ligne de `.env` mal recopiée ne doit pas condamner l'événement : le
-    // push est un confort de supervision, pas le cœur du système.
+  it('switches push off on an unreadable key, without stopping the hub', () => {
+    // A badly copied `.env` line must not condemn the event: push is a
+    // supervision comfort, not the heart of the system.
     const service = new PushService(db, {
       publicKey: 'pas-une-cle',
       privateKey: 'pas-une-cle-non-plus',
@@ -180,25 +183,25 @@ describe('abonnements', () => {
     expect(service.unavailableReason()).toContain('VAPID')
   })
 
-  it('remplace un abonnement au lieu de le doubler', () => {
+  it('replaces a subscription instead of doubling it', () => {
     const service = new PushService(db)
-    const abonnement = {
+    const subscription = {
       endpoint: 'https://push.exemple/abc',
       p256dh: 'cle',
       auth: 'secret',
       userId: 'op-1',
       label: 'iPhone',
-      levels: TOUT,
+      levels: EVERYTHING,
     }
-    service.subscribe(abonnement)
-    // Le navigateur rend le même endpoint après une réinstallation : un doublon
-    // enverrait deux fois chaque avis.
-    service.subscribe({ ...abonnement, label: 'iPhone de la régie' })
+    service.subscribe(subscription)
+    // The browser returns the same endpoint after a reinstall: a duplicate would
+    // send every notice twice.
+    service.subscribe({ ...subscription, label: 'iPhone de la régie' })
 
     expect(service.count()).toBe(1)
   })
 
-  it('ne pousse pas au-delà du niveau choisi', async () => {
+  it('does not push beyond the chosen level', async () => {
     const service = new PushService(db)
     service.subscribe({
       endpoint: 'https://push.exemple/essentiel',
@@ -210,18 +213,18 @@ describe('abonnements', () => {
     })
 
     const webpush = (await import('web-push')).default
-    const envoi = vi.spyOn(webpush, 'sendNotification').mockResolvedValue({} as never)
+    const sent = vi.spyOn(webpush, 'sendNotification').mockResolvedValue({} as never)
 
-    await service.send({ title: 'rythme', body: '', tag: 't', famille: 'exploitation', niveau: 'tout' })
-    // Le rythme de la journée ne réveille pas un téléphone réglé sur l'essentiel.
-    expect(envoi).not.toHaveBeenCalled()
+    await service.send({ title: 'rythme', body: '', tag: 't', family: 'exploitation', level: 'tout' })
+    // The day's rhythm does not wake a phone set to the essentials.
+    expect(sent).not.toHaveBeenCalled()
 
-    await service.send({ title: 'écart', body: '', tag: 't', famille: 'exploitation', niveau: 'essentiel' })
-    expect(envoi).toHaveBeenCalledTimes(1)
+    await service.send({ title: 'écart', body: '', tag: 't', family: 'exploitation', level: 'essentiel' })
+    expect(sent).toHaveBeenCalledTimes(1)
     vi.restoreAllMocks()
   })
 
-  it('oublie un abonnement que le service de push a révoqué', async () => {
+  it('forgets a subscription the push service has revoked', async () => {
     const service = new PushService(db)
     service.subscribe({
       endpoint: 'https://push.exemple/mort',
@@ -229,21 +232,21 @@ describe('abonnements', () => {
       auth: 'secret',
       userId: null,
       label: null,
-      levels: TOUT,
+      levels: EVERYTHING,
     })
 
     const webpush = (await import('web-push')).default
-    // 410 Gone : le navigateur a désinstallé la page ou révoqué la permission.
+    // 410 Gone: the browser has uninstalled the page or revoked the permission.
     vi.spyOn(webpush, 'sendNotification').mockRejectedValue(
       Object.assign(new Error('Gone'), { statusCode: 410 }),
     )
 
-    await service.send({ title: 'x', body: 'y', tag: 'z', famille: 'technique', niveau: 'essentiel' })
+    await service.send({ title: 'x', body: 'y', tag: 'z', family: 'technique', level: 'essentiel' })
     expect(service.count()).toBe(0)
     vi.restoreAllMocks()
   })
 
-  it('garde un abonnement après une panne passagère', async () => {
+  it('keeps a subscription after a transient failure', async () => {
     const service = new PushService(db)
     service.subscribe({
       endpoint: 'https://push.exemple/vivant',
@@ -251,7 +254,7 @@ describe('abonnements', () => {
       auth: 'secret',
       userId: null,
       label: null,
-      levels: TOUT,
+      levels: EVERYTHING,
     })
 
     const webpush = (await import('web-push')).default
@@ -259,9 +262,9 @@ describe('abonnements', () => {
       Object.assign(new Error('timeout'), { statusCode: 502 }),
     )
 
-    await service.send({ title: 'x', body: 'y', tag: 'z', famille: 'technique', niveau: 'essentiel' })
-    // Réseau ou quota : l'abonnement est toujours bon, et le prochain avis
-    // passera.
+    await service.send({ title: 'x', body: 'y', tag: 'z', family: 'technique', level: 'essentiel' })
+    // Network or quota: the subscription is still good, and the next notice will
+    // go through.
     expect(service.count()).toBe(1)
     vi.restoreAllMocks()
   })

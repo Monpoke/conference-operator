@@ -5,103 +5,102 @@ import { DEFAULT_EVENT_IDENTITY, type EventIdentity, type ExecutionMode } from '
 import { escapeHtml } from '@cloudnord/format'
 
 /**
- * Coquille de la console.
+ * The console's shell.
  *
- * Le hub sert un bundle, mais il rend toujours la page qui le charge — et c'est
- * délibéré. Trois choses doivent être connues de la console **avant** son
- * premier appel réseau, exactement comme du temps du gabarit : le nom de
- * l'événement, qui est le premier mot lu ; le mode, dont dépend l'existence même
- * de la vue de développement ; et si le bouton Google a une raison d'être.
+ * The hub serves a bundle, but it always renders the page that loads it — and
+ * that is deliberate. Three things must be known to the console **before** its
+ * first network call, exactly as in the template days: the event's name, which
+ * is the first word read; the mode, on which the very existence of the
+ * development view depends; and whether the Google button has a reason to be.
  *
- * Ce qui change, c'est ce que la coquille contient : des balises vers des
- * fichiers hachés, servis par ce même hub. L'invariant d'autonomie n'est pas
- * abandonné, il est reformulé — **aucune ressource hors de l'origine**. Une
- * balise vers un CDN casserait la page à la première coupure ; un asset servi
- * par le processus qui sert déjà la page ne le peut pas.
+ * What changes is what the shell contains: tags pointing at hashed files, served
+ * by that same hub. The self-containment invariant is not abandoned, it is
+ * restated — **no resource outside the origin**. A tag pointing at a CDN would
+ * break the page at the first outage; an asset served by the process that
+ * already serves the page cannot.
  */
 export interface ConsoleShellOptions {
   mode?: ExecutionMode
   event?: EventIdentity
-  google?: { domaine: string } | null
-  /** Assets à charger. Résolus par `resoudreConsole()`, ou pointés sur Vite en dev. */
+  google?: { domain: string } | null
+  /** Assets to load. Resolved by `resolveConsoleBundle()`, or pointed at Vite in dev. */
   assets: ConsoleAssets
 }
 
 export interface ConsoleAssets {
-  /** Modules à charger, dans l'ordre. */
+  /** Modules to load, in order. */
   scripts: string[]
-  /** Feuilles à poser avant le premier rendu, pour éviter le flash. */
+  /** Sheets to set before the first render, to avoid the flash. */
   styles: string[]
 }
 
 /**
- * Dossier du bundle, cherché plutôt que compté.
+ * The bundle's folder, searched for rather than counted.
  *
- * Même raison que pour les migrations du client de salle (`store.ts`) : ce
- * fichier est lu à des profondeurs différentes selon qu'on tourne depuis les
- * sources ou depuis une image, et un nombre de `..` juste pour l'un est faux
- * pour l'autre. Le défaut se découvre au déploiement, sur un 404 qui ne nomme
- * rien.
+ * Same reason as for the room client's migrations (`store.ts`): this file is read
+ * at different depths depending on whether we run from the sources or from an
+ * image, and a number of `..` that is right for one is wrong for the other. The
+ * defect is discovered at deployment, on a 404 that names nothing.
  */
-export function resoudreConsole(): { dossier: string; manifeste: string } | null {
-  const visites: string[] = []
-  let dossier = dirname(fileURLToPath(import.meta.url))
+export function resolveConsoleBundle(): { folder: string; manifest: string } | null {
+  const visited: string[] = []
+  let folder = dirname(fileURLToPath(import.meta.url))
   for (;;) {
-    const candidat = join(dossier, 'apps', 'hub-admin', 'dist')
-    visites.push(candidat)
-    const manifeste = join(candidat, '.vite', 'manifest.json')
-    if (existsSync(manifeste)) return { dossier: candidat, manifeste }
-    const parent = dirname(dossier)
-    if (parent === dossier) break
-    dossier = parent
+    const candidate = join(folder, 'apps', 'hub-admin', 'dist')
+    visited.push(candidate)
+    const manifest = join(candidate, '.vite', 'manifest.json')
+    if (existsSync(manifest)) return { folder: candidate, manifest }
+    const parent = dirname(folder)
+    if (parent === folder) break
+    folder = parent
   }
   return null
 }
 
-/** Ce que le manifeste de Vite dit de l'entrée. */
-interface EntreeManifeste {
+/** What Vite's manifest says about the entry point. */
+interface ManifestEntry {
   file: string
   css?: string[]
 }
 
 /**
- * Assets de production, lus dans le manifeste.
+ * Production assets, read from the manifest.
  *
- * Lire le manifeste plutôt que deviner les noms : ils portent une empreinte,
- * c'est ce qui permet de les servir en `immutable` et de ne plus retélécharger
- * 45 Ko de CSS à chaque navigation.
+ * Reading the manifest rather than guessing the names: they carry a fingerprint,
+ * which is what lets them be served `immutable` and stops 45 kB of CSS being
+ * re-downloaded on every navigation.
  */
-export function assetsDeProduction(manifeste: string, base = '/admin/'): ConsoleAssets {
-  const contenu = JSON.parse(readFileSync(manifeste, 'utf8')) as Record<string, EntreeManifeste>
-  const entree = contenu['index.html']
-  if (entree == null) {
-    throw new Error(`Manifeste sans entrée « index.html » : ${manifeste}`)
+export function productionAssets(manifest: string, base = '/admin/'): ConsoleAssets {
+  const content = JSON.parse(readFileSync(manifest, 'utf8')) as Record<string, ManifestEntry>
+  const entry = content['index.html']
+  if (entry == null) {
+    throw new Error(`Manifeste sans entrée « index.html » : ${manifest}`)
   }
   return {
-    scripts: [base + entree.file],
-    styles: (entree.css ?? []).map((chemin) => base + chemin),
+    scripts: [base + entry.file],
+    styles: (entry.css ?? []).map((path) => base + path),
   }
 }
 
 /**
- * Assets de développement : le serveur Vite, derrière le hub.
+ * Development assets: the Vite server, behind the hub.
  *
- * Le sens du proxy est imposé, et pas par commodité. Le hub porte les cookies
- * de Better Auth, `/rpc`, le WebSocket des salles, et surtout `/sw.js` — dont
- * la **portée dépend du chemin depuis lequel il est servi**. Mettre Vite devant
- * casserait la portée du service worker et l'origine des cookies.
+ * The direction of the proxy is imposed, and not by convenience. The hub carries
+ * Better Auth's cookies, `/rpc`, the rooms' WebSocket, and above all `/sw.js` —
+ * whose **scope depends on the path it is served from**. Putting Vite in front
+ * would break the service worker's scope and the cookies' origin.
  */
-export function assetsDeDeveloppement(base = '/admin/'): ConsoleAssets {
+export function developmentAssets(base = '/admin/'): ConsoleAssets {
   return { scripts: [`${base}@vite/client`, `${base}src/main.ts`], styles: [] }
 }
 
 export function renderConsoleShell(options: ConsoleShellOptions): string {
-  const identite = options.event ?? DEFAULT_EVENT_IDENTITY
-  const nom = escapeHtml(identite.name)
-  const amorce = JSON.stringify({
+  const identity = options.event ?? DEFAULT_EVENT_IDENTITY
+  const name = escapeHtml(identity.name)
+  const boot = JSON.stringify({
     mode: options.mode ?? 'production',
-    event: identite,
-    google: options.google == null ? null : { domain: options.google.domaine },
+    event: identity,
+    google: options.google == null ? null : { domain: options.google.domain },
   }).replace(/</g, '\\u003c')
 
   const styles = options.assets.styles
@@ -117,12 +116,12 @@ export function renderConsoleShell(options: ConsoleShellOptions): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>${nom} — console hub</title>
+<title>${name} — console hub</title>
 ${styles}
 </head>
 <body class="bg-canvas font-sans text-text">
 <div id="console-root"></div>
-<script id="console-boot" type="application/json">${amorce}</script>
+<script id="console-boot" type="application/json">${boot}</script>
 ${scripts}
 </body>
 </html>

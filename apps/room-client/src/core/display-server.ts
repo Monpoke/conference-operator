@@ -24,10 +24,10 @@ import { renderProjectorPage } from './display-page.js'
 import { renderOverlayPage } from './overlay-page.js'
 import { renderOverlayLivePage } from './overlay-live-page.js'
 import {
-  assetsDeDeveloppement,
-  assetsDeProduction,
+  developmentAssets,
+  productionAssets,
   renderRegieShell,
-  resoudreRegie,
+  resolveControlBundle,
 } from './regie-shell.js'
 import {
   controlActionSchema,
@@ -69,7 +69,7 @@ export interface DisplayServerOptions {
   /**
    * Où trouver le bundle de la régie refaite.
    *
-   * Injectable, et pas par goût de l'injection : `resoudreRegie()` remonte les
+   * Injectable, et pas par goût de l'injection : `resolveControlBundle()` remonte les
    * dossiers jusqu'à tomber sur un `dist/`, si bien qu'un test passait ou non
    * selon qu'un build traînait sur la machine. Le hub s'est fait prendre au
    * même piège avec la console, et le défaut ne se voit qu'en CI, une fois.
@@ -381,7 +381,7 @@ export class DisplayServer {
    * lui-même, avec l'état complet dedans — voir `regie-shell.ts`.
    */
   private registerRegie(): void {
-    const bundle = (this.options.bundleRegie ?? resoudreRegie)()
+    const bundle = (this.options.bundleRegie ?? resolveControlBundle)()
     const vite = this.options.viteOrigin ?? null
 
     /*
@@ -453,7 +453,7 @@ export class DisplayServer {
         renderRegieShell({
           initialPayload: this.payload(),
           eventName: this.options.event?.().name ?? null,
-          assets: vite != null ? assetsDeDeveloppement() : assetsDeProduction(bundle!.manifeste),
+          assets: vite != null ? developmentAssets() : productionAssets(bundle!.manifeste),
         }),
       )
     })

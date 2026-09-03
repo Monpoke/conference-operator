@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { attendreRendu } from './helpers/attendre.js'
+import { waitForRender } from './helpers/wait-for-render.js'
 import { openHubDatabase, type HubDatabase } from '../src/db.js'
 import { ProgramService } from '../src/services/program.js'
 import { CommandService } from '../src/services/commands.js'
@@ -16,7 +16,7 @@ const rawProgram = readFileSync(
 
 const TRACK_1 = 'track-1-teilhard-de-chardin'
 const CLIENT_ID = '01JB2ZK5T7QW9V0YHRXM3N4P6C'
-const AUTRE_CLIENT_ID = '01JB2ZK5T7QW9V0YHRXM3N4P6D'
+const OTHER_CLIENT_ID = '01JB2ZK5T7QW9V0YHRXM3N4P6D'
 
 let db: HubDatabase
 beforeEach(() => {
@@ -49,7 +49,7 @@ const envelope = (id: string, seq: number, payload: unknown, roomId = TRACK_1) =
 })
 
 describe('ProgramService', () => {
-  it('importe, normalise et active un snapshot', () => {
+  it('imports, normalizes and activates a snapshot', () => {
     const programs = new ProgramService(db)
     const snapshot = programs.importFromText(rawProgram, 'https://exemple/programme.json')
 
@@ -58,7 +58,7 @@ describe('ProgramService', () => {
     expect(programs.active()?.contentHash).toBe(snapshot.contentHash)
   })
 
-  it('ne crée pas de doublon quand la source n\'a pas changé', () => {
+  it('creates no duplicate when the source has not changed', () => {
     const programs = new ProgramService(db)
     const first = programs.importFromText(rawProgram, 'https://exemple/programme.json')
     const second = programs.importFromText(rawProgram, 'https://exemple/programme.json')
@@ -67,27 +67,28 @@ describe('ProgramService', () => {
     expect(programs.list()).toHaveLength(1)
   })
 
-  it('permet de revenir à un snapshot précédent', () => {
+  it('allows going back to a previous snapshot', () => {
     const programs = new ProgramService(db)
     const original = programs.importFromText(rawProgram, 'https://exemple/programme.json')
 
-    // Un import du jour J qui vide le programme : exactement ce qu'on veut annuler.
+    // An import on the day that empties the program: exactly what one wants to
+    // undo.
     const broken = JSON.parse(rawProgram)
     broken.sessions = []
     const bad = programs.importFromText(JSON.stringify(broken), 'https://exemple/programme.json')
     expect(programs.active()?.contentHash).toBe(bad.contentHash)
 
     programs.activate(original.contentHash)
-    // 27 créneaux à l'export, 38 servis : les onze de plus sont les pauses
-    // communes projetées dans les salles qui n'ont rien de prévu à ce
-    // moment-là. `active()` sert le programme, pas le fichier importé.
+    // 27 slots in the export, 38 served: the eleven extra ones are the shared
+    // breaks projected into the rooms that have nothing scheduled at that moment.
+    // `active()` serves the program, not the imported file.
     expect(programs.active()?.program.sessions).toHaveLength(38)
     expect(programs.list()).toHaveLength(2)
   })
 })
 
 describe('CommandService', () => {
-  it('attribue des `seq` croissants et rejoue le backlog', () => {
+  it('assigns increasing `seq`s and replays the backlog', () => {
     const rooms = new RoomService(db)
     seedRoom(rooms)
     const commands = new CommandService(db)
@@ -100,30 +101,30 @@ describe('CommandService', () => {
     expect(commands.backlog(TRACK_1, first.seq).map((c) => c.seq)).toEqual([second.seq])
   })
 
-  it('mélange diffusions globales et commandes de salle sans casser l\'ordre', () => {
+  it('mixes global broadcasts and room commands without breaking the order', () => {
     const rooms = new RoomService(db)
     seedRoom(rooms)
     seedRoom(rooms, 'track-2')
     const commands = new CommandService(db)
 
-    const forSalle1 = commands.publish(TRACK_1, { type: 'scene.force', role: 'HOLD' }, null)
+    const forRoom1 = commands.publish(TRACK_1, { type: 'scene.force', role: 'HOLD' }, null)
     const broadcast = commands.publish(
       null,
       { type: 'message.broadcast', text: 'Évacuation', level: 'urgent' },
       600,
     )
-    const forSalle2 = commands.publish('track-2', { type: 'scene.force', role: 'LIVE' }, null)
+    const forRoom2 = commands.publish('track-2', { type: 'scene.force', role: 'LIVE' }, null)
 
-    // C'est ce cas qui impose un `seq` global : la salle 1 voit sa commande puis
-    // la diffusion, avec des `seq` strictement croissants — condition pour que
-    // la reprise par `lastEventId` ne saute rien.
+    // It is this case that imposes a global `seq`: room 1 sees its command then
+    // the broadcast, with strictly increasing `seq`s — the condition for resuming
+    // by `lastEventId` to skip nothing.
     const seen = commands.backlog(TRACK_1, 0).map((c) => c.seq)
-    expect(seen).toEqual([forSalle1.seq, broadcast.seq])
+    expect(seen).toEqual([forRoom1.seq, broadcast.seq])
     expect(seen).toEqual([...seen].sort((a, b) => a - b))
-    expect(commands.backlog('track-2', 0).map((c) => c.seq)).toEqual([broadcast.seq, forSalle2.seq])
+    expect(commands.backlog('track-2', 0).map((c) => c.seq)).toEqual([broadcast.seq, forRoom2.seq])
   })
 
-  it('enchaîne rattrapage puis temps réel dans le même flux', async () => {
+  it('chains catch-up then real time in the same stream', async () => {
     const rooms = new RoomService(db)
     seedRoom(rooms)
     const commands = new CommandService(db)
@@ -138,15 +139,15 @@ describe('CommandService', () => {
       }
     })()
 
-    // Laisse le rattrapage s'écouler avant de publier en direct.
-    await attendreRendu()
+    // Let the catch-up drain before publishing live.
+    await waitForRender()
     const live = commands.publish(TRACK_1, { type: 'scene.force', role: 'LIVE' }, null)
     await consumer
 
     expect(received).toEqual([before.seq, live.seq])
   })
 
-  it('reprend après `sinceSeq` sans redonner ce qui est déjà appliqué', async () => {
+  it('resumes after `sinceSeq` without handing back what is already applied', async () => {
     const rooms = new RoomService(db)
     seedRoom(rooms)
     const commands = new CommandService(db)
@@ -164,7 +165,7 @@ describe('CommandService', () => {
 })
 
 describe('IngestService', () => {
-  it('absorbe un rejeu de lot sans dupliquer', () => {
+  it('absorbs a replayed batch without duplicating', () => {
     const rooms = new RoomService(db)
     seedRoom(rooms)
     const ingest = new IngestService(db)
@@ -187,64 +188,66 @@ describe('IngestService', () => {
     expect(first.acked).toHaveLength(2)
     expect(first.duplicates).toHaveLength(0)
 
-    // Reconnexion : le client rejoue le lot sans savoir s'il est passé.
+    // Reconnection: the client replays the batch without knowing whether it got
+    // through.
     const replay = ingest.push(TRACK_1, batch)
     expect(replay.acked).toHaveLength(0)
     expect(replay.duplicates).toHaveLength(2)
   })
 
-  it('reprend vers le hub un projet OpenFeedback saisi sur une régie', () => {
-    // Le champ a été éditable dans le ⚙ de chaque salle. Le retirer sans rien
-    // reprendre aurait éteint les liens de la seule salle qui en avait — c'est
-    // exactement l'état du hub de développement : réglage d'événement vide,
-    // salle 1 renseignée, deux salles muettes.
+  it('takes over to the hub an OpenFeedback project entered on a control app', () => {
+    // The field used to be editable in each room's ⚙. Removing it without taking
+    // anything over would have switched off the links of the only room that had
+    // any — which is exactly the state of the development hub: empty event
+    // setting, room 1 filled in, two rooms silent.
     const rooms = new RoomService(db)
     seedRoom(rooms)
     const settings = new SettingsService(db)
-    const salle = rooms.get(TRACK_1)!
-    rooms.upsert({ ...salle, openFeedbackProjectId: 'cloud-nord-2026' })
+    const room = rooms.get(TRACK_1)!
+    rooms.upsert({ ...room, openFeedbackProjectId: 'cloud-nord-2026' })
 
-    const reprise = rooms.reprendreProjetOpenFeedback(settings)
+    const takeover = rooms.takeOverOpenFeedbackProject(settings)
 
-    expect(reprise.adopte).toBe('cloud-nord-2026')
+    expect(takeover.adopted).toBe('cloud-nord-2026')
     expect(settings.get().openFeedbackProjectId).toBe('cloud-nord-2026')
-    // Effacé côté salle : un champ que plus rien ne lit finit par ressusciter.
+    // Erased on the room side: a field nothing reads any more ends up rising from
+    // the dead.
     expect(rooms.get(TRACK_1)?.openFeedbackProjectId).toBeNull()
   })
 
-  it('ne reprend rien quand le hub a déjà son projet', () => {
+  it('takes nothing over when the hub already has its project', () => {
     const rooms = new RoomService(db)
     seedRoom(rooms)
     const settings = new SettingsService(db)
     settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
-    const salle = rooms.get(TRACK_1)!
-    rooms.upsert({ ...salle, openFeedbackProjectId: 'atelier-2026' })
+    const room = rooms.get(TRACK_1)!
+    rooms.upsert({ ...room, openFeedbackProjectId: 'atelier-2026' })
 
-    const reprise = rooms.reprendreProjetOpenFeedback(settings)
+    const takeover = rooms.takeOverOpenFeedbackProject(settings)
 
-    // Le réglage de la console fait foi : la valeur de salle est effacée sans
-    // avoir eu voix au chapitre.
-    expect(reprise.adopte).toBeNull()
+    // The console's setting is authoritative: the room's value is erased without
+    // having had a say.
+    expect(takeover.adopted).toBeNull()
     expect(settings.get().openFeedbackProjectId).toBe('cloud-nord-2026')
     expect(rooms.get(TRACK_1)?.openFeedbackProjectId).toBeNull()
   })
 
-  it('ne réécrit rien au démarrage suivant', () => {
-    // Idempotence : la reprise tourne à chaque démarrage, et un hub installé
-    // depuis six mois ne doit pas repasser sur ses salles à chaque fois.
+  it('rewrites nothing on the next start', () => {
+    // Idempotence: the takeover runs at every start, and a hub installed six
+    // months ago must not go over its rooms every time.
     const rooms = new RoomService(db)
     seedRoom(rooms)
     const settings = new SettingsService(db)
-    const salle = rooms.get(TRACK_1)!
-    rooms.upsert({ ...salle, openFeedbackProjectId: 'cloud-nord-2026' })
+    const room = rooms.get(TRACK_1)!
+    rooms.upsert({ ...room, openFeedbackProjectId: 'cloud-nord-2026' })
 
-    rooms.reprendreProjetOpenFeedback(settings)
-    const second = rooms.reprendreProjetOpenFeedback(settings)
+    rooms.takeOverOpenFeedbackProject(settings)
+    const second = rooms.takeOverOpenFeedbackProject(settings)
 
-    expect(second).toEqual({ adopte: null, sallesNettoyees: [] })
+    expect(second).toEqual({ adopted: null, cleanedRooms: [] })
   })
 
-  it('recompose les prises depuis les deux bouts remontés par la salle', () => {
+  it('recomposes the takes from the two ends the room reported', () => {
     const rooms = new RoomService(db)
     seedRoom(rooms)
     const ingest = new IngestService(db)
@@ -271,8 +274,9 @@ describe('IngestService', () => {
       },
     ])
 
-    // Le hub ne lit pas le disque de la régie : il apparie le démarrage et
-    // l'arrêt, et c'est l'arrêt qui porte le fichier écrit.
+    // The hub does not read the control machine's disk: it pairs the start and
+    // the stop, and it is the stop that carries the written file.
+    // `captations`, `enCours` and `finInconnue` are contract names.
     expect(ingest.captations(TRACK_1)).toEqual([
       {
         roomId: TRACK_1,
@@ -289,14 +293,13 @@ describe('IngestService', () => {
     ])
   })
 
-  it('n\'attribue pas à une instance OBS le fichier de l\'autre', () => {
+  it('does not attribute one OBS instance\'s file to the other', () => {
     const rooms = new RoomService(db)
     seedRoom(rooms)
     const ingest = new IngestService(db)
 
-    // Les deux tournent en même temps sur certaines salles. Apparier dans
-    // l'ordre d'arrivée, sans regarder l'instance, donnerait le fichier de B à
-    // la prise de A.
+    // Both run at the same time in some rooms. Pairing in arrival order, without
+    // looking at the instance, would give B's file to A's take.
     ingest.push(TRACK_1, [
       envelope('01G1AAAAAAAAAAAAAAAAAAAAAA', 1, { type: 'recording.started', obs: 'A', sessionId: 'ses-1' }),
       envelope('01G2AAAAAAAAAAAAAAAAAAAAAA', 2, { type: 'recording.started', obs: 'B', sessionId: 'ses-1' }),
@@ -310,24 +313,23 @@ describe('IngestService', () => {
       }),
     ])
 
-    const prises = ingest.captations(TRACK_1)
-    expect(prises.find((prise) => prise.obs === 'B')).toMatchObject({
+    const takes = ingest.captations(TRACK_1)
+    expect(takes.find((take) => take.obs === 'B')).toMatchObject({
       file: '/rushes/depuis-B.mkv',
       enCours: false,
     })
-    // A n'a jamais été arrêtée : elle sort ouverte, et sans fichier.
-    expect(prises.find((prise) => prise.obs === 'A')).toMatchObject({
+    // A was never stopped: it comes out open, and with no file.
+    expect(takes.find((take) => take.obs === 'A')).toMatchObject({
       file: null,
       enCours: true,
     })
   })
 
-  it('ne laisse pas une prise supplantée passer pour active', () => {
-    // Constaté sur une salle de développement de trois jours : quatre
-    // « enregistrement en cours » empilés au-dessus de la seule ligne qui
-    // disait quelque chose. Un `started` sans `stopped`, puis un autre
-    // `started` : le hub n'entendra jamais l'arrêt du premier, et le présenter
-    // comme actif est faux.
+  it('does not let a superseded take pass for active', () => {
+    // Observed on a three-day development room: four "recording in progress"
+    // stacked above the only row that said something. A `started` with no
+    // `stopped`, then another `started`: the hub will never hear the first one's
+    // stop, and presenting it as active is false.
     const rooms = new RoomService(db)
     seedRoom(rooms)
     const ingest = new IngestService(db)
@@ -338,19 +340,18 @@ describe('IngestService', () => {
       envelope('01M3AAAAAAAAAAAAAAAAAAAAAA', 3, { type: 'recording.started', obs: 'B', sessionId: null }),
     ])
 
-    const prises = ingest.captations(TRACK_1)
-    expect(prises).toHaveLength(3)
-    // Les deux premières : supplantées, donc closes et signalées comme telles.
-    expect(prises.slice(0, 2).every((p) => !p.enCours && p.finInconnue)).toBe(true)
-    // La dernière seule peut encore courir.
-    expect(prises[2]).toMatchObject({ enCours: true, finInconnue: false })
+    const takes = ingest.captations(TRACK_1)
+    expect(takes).toHaveLength(3)
+    // The first two: superseded, so closed and reported as such.
+    expect(takes.slice(0, 2).every((t) => !t.enCours && t.finInconnue)).toBe(true)
+    // Only the last one can still be running.
+    expect(takes[2]).toMatchObject({ enCours: true, finInconnue: false })
   })
 
-  it('oublie les prises à la remise à zéro, et rien d\'autre', () => {
-    // Le RAZ efface le bucket et les disques des salles. Sans ce geste, le hub
-    // gardait la mémoire de prises dont plus aucun fichier n'existe, et le
-    // dossier VOD continuait de les lister — la remise à zéro paraissait sans
-    // effet.
+  it('forgets the takes on a reset, and nothing else', () => {
+    // The reset erases the bucket and the rooms' disks. Without this gesture, the
+    // hub kept the memory of takes whose files no longer exist, and the VOD folder
+    // kept listing them — the reset looked like it had no effect.
     const rooms = new RoomService(db)
     seedRoom(rooms)
     const ingest = new IngestService(db)
@@ -366,15 +367,15 @@ describe('IngestService', () => {
       }),
     ])
 
-    const efface = ingest.oublierCaptations()
+    const erased = ingest.forgetCaptures()
 
-    expect(efface).toBe(2)
+    expect(erased).toBe(2)
     expect(ingest.captations(TRACK_1)).toEqual([])
-    // Le diagnostic d'une journée n'a rien à voir avec les rushes : il reste.
+    // A day's diagnosis has nothing to do with the rushes: it stays.
     expect(ingest.messagesFromRooms()).toHaveLength(1)
   })
 
-  it('écarte un événement malformé sans bloquer les autres', () => {
+  it('discards a malformed event without blocking the others', () => {
     const rooms = new RoomService(db)
     seedRoom(rooms)
     const ingest = new IngestService(db)
@@ -388,7 +389,7 @@ describe('IngestService', () => {
     expect(outcome.acked).toEqual(['01CCCCCCCCCCCCCCCCCCCCCCCC'])
   })
 
-  it('refuse un événement estampillé pour une autre salle', () => {
+  it('refuses an event stamped for another room', () => {
     const rooms = new RoomService(db)
     seedRoom(rooms)
     const outcome = new IngestService(db).push(TRACK_1, [
@@ -397,7 +398,7 @@ describe('IngestService', () => {
     expect(outcome.rejected).toEqual([{ id: '01DDDDDDDDDDDDDDDDDDDDDDDD', reason: 'unknown-room' }])
   })
 
-  it('projette les événements sur la vue de supervision', () => {
+  it('projects the events onto the supervision view', () => {
     const rooms = new RoomService(db)
     seedRoom(rooms)
     const ingest = new IngestService(db)
@@ -424,40 +425,40 @@ describe('IngestService', () => {
   })
 })
 
-/** Trente minutes, la valeur par défaut de `DEVICE_CODE_TTL`. */
-const TTL_APPAIRAGE = 30 * 60_000
+/** Thirty minutes, the default value of `DEVICE_CODE_TTL`. */
+const PAIRING_TTL = 30 * 60_000
 
 describe('DeviceService', () => {
-  it('lie une machine à une salle et la révoque sans toucher au compte', () => {
+  it('binds a machine to a room and revokes it without touching the account', () => {
     const rooms = new RoomService(db)
     seedRoom(rooms)
-    const devices = new DeviceService(db, TTL_APPAIRAGE)
+    const devices = new DeviceService(db, PAIRING_TTL)
 
     devices.recordRequest(CLIENT_ID, 'room')
     expect(devices.pending().map((p) => p.clientId)).toEqual([CLIENT_ID])
 
     devices.bind({ clientId: CLIENT_ID, roomId: TRACK_1, approvedByUserId: 'op-1', label: 'PC régie 1' })
     expect(devices.roomFor(CLIENT_ID)).toBe(TRACK_1)
-    // La demande sort de la file une fois traitée.
+    // The request leaves the queue once handled.
     expect(devices.pending()).toEqual([])
 
     devices.revoke(CLIENT_ID)
     expect(devices.roomFor(CLIENT_ID)).toBeNull()
   })
 
-  it('ignore une machine jamais appairée', () => {
-    expect(new DeviceService(db, TTL_APPAIRAGE).roomFor('01ZZZZZZZZZZZZZZZZZZZZZZZZ')).toBeNull()
+  it('ignores a machine that was never paired', () => {
+    expect(new DeviceService(db, PAIRING_TTL).roomFor('01ZZZZZZZZZZZZZZZZZZZZZZZZ')).toBeNull()
   })
 
-  it('oublie une demande dont le code a expiré', () => {
+  it('forgets a request whose code has expired', () => {
     vi.useFakeTimers()
     try {
       const devices = new DeviceService(db, 60_000)
       devices.recordRequest(CLIENT_ID, 'room:' + TRACK_1)
       expect(devices.pending()).toHaveLength(1)
 
-      // Rien ne l'effaçait : une machine réinstallée revient sous une nouvelle
-      // identité, et la file gardait l'ancienne indéfiniment.
+      // Nothing erased it: a reinstalled machine comes back under a new identity,
+      // and the queue kept the old one indefinitely.
       vi.advanceTimersByTime(120_000)
       expect(devices.pending()).toEqual([])
     } finally {
@@ -465,17 +466,17 @@ describe('DeviceService', () => {
     }
   })
 
-  it('oublie une demande précise, sans toucher aux autres', () => {
-    const devices = new DeviceService(db, TTL_APPAIRAGE)
+  it('forgets one precise request, without touching the others', () => {
+    const devices = new DeviceService(db, PAIRING_TTL)
     devices.recordRequest(CLIENT_ID, undefined)
-    devices.recordRequest(AUTRE_CLIENT_ID, undefined)
+    devices.recordRequest(OTHER_CLIENT_ID, undefined)
 
     devices.forget(CLIENT_ID)
-    expect(devices.pending().map((p) => p.clientId)).toEqual([AUTRE_CLIENT_ID])
+    expect(devices.pending().map((p) => p.clientId)).toEqual([OTHER_CLIENT_ID])
   })
 
-  it('filtre les `client_id` hors format ULID', () => {
-    const devices = new DeviceService(db, TTL_APPAIRAGE)
+  it('filters out `client_id`s outside the ULID format', () => {
+    const devices = new DeviceService(db, PAIRING_TTL)
     expect(devices.isKnownClient(CLIENT_ID)).toBe(true)
     expect(devices.isKnownClient('machine-du-stagiaire')).toBe(false)
   })

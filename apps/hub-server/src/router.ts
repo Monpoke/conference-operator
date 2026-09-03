@@ -17,21 +17,21 @@ import {
   openFeedbackUrl,
   type Session,
 } from '@cloudnord/program'
-import type { CaptationBrute } from './services/ingest.js'
-import { controlerOpenFeedback } from './services/openfeedback.js'
+import type { RawCapture } from './services/ingest.js'
+import { checkOpenFeedback } from './services/openfeedback.js'
 import {
-  commandeDeRegie,
-  sallesDeRegie,
-  SalleInconnue,
-  VerrouTenu,
-  vueDeRegie,
-} from './services/regie.js'
-import { TransitionRefusee } from './services/sessions.js'
-import { StockageIncomplet, type VodService } from './services/vod.js'
-import { ErreurS3 } from './services/s3.js'
-import { statutsDesSalles } from './supervision.js'
+  controlCommand,
+  controlRooms,
+  UnknownRoom,
+  LockHeld,
+  controlView,
+} from './services/control.js'
+import { TransitionRefused } from './services/sessions.js'
+import { IncompleteStorage, type VodService } from './services/vod.js'
+import { S3Error } from './services/s3.js'
+import { roomStatuses } from './supervision.js'
 import {
-  auteurDe,
+  authorOf,
   publicIdentity,
   resolveActor,
   resolveClaim,
@@ -43,32 +43,36 @@ import {
 
 const os = implement(contract).$context<HubContext>()
 
-/** Opérateur authentifié (hub-admin). */
+/**
+ * Authenticated operator (hub-admin).
+ */
 const operatorOnly = os.middleware(async ({ context, next }) =>
   next({ context: await resolveOperator(context) }),
 )
 
-/** Machine appairée : ajoute `roomId` au contexte. */
+/**
+ * Paired machine: adds `roomId` to the context.
+ */
 const roomOnly = os.middleware(async ({ context, next }) =>
   next({ context: await resolveRoom(context) }),
 )
 
 /**
- * Console **ou** machine de salle.
+ * Console **or** room machine.
  *
- * Pour les procédures dont les deux ont légitimement besoin — l'état des
- * salles, le cycle de vie des conférences. Le contexte porte alors `roomId`
- * quand l'appelant est une salle, ce qui permet de borner ce qu'elle touche.
+ * For the procedures both legitimately need — the state of the rooms, the talk
+ * lifecycle. The context then carries `roomId` when the caller is a room, which
+ * lets what it touches be bounded.
  */
 const roomOrOperator = os.middleware(async ({ context, next }) =>
   next({ context: await resolveActor(context) }),
 )
 
 /**
- * Heure du hub, telle qu'elle sera propagée aux salles.
+ * The hub's time, as it will be propagated to the rooms.
  *
- * Chaque salle mesure son offset sur cette valeur : la simuler ici déplace
- * l'ensemble du système, sans rien à régler côté salle.
+ * Each room measures its offset against this value: simulating it here moves the
+ * whole system, with nothing to set on the room side.
  */
 const nowIso = (context: HubContext) => context.services.clock.nowIso()
 
@@ -87,16 +91,15 @@ export const router = os.router({
       .use(operatorOnly)
       .handler(async ({ input, context }) => {
         const snapshot = await context.services.programs.importFrom(input.sourceUrl)
-        // Les salles découlent des tracks : les créer ici évite d'avoir à les
-        // ressaisir, et rend la liste d'appairage utilisable immédiatement.
+        // The rooms follow from the tracks: creating them here saves entering
+        // them again, and makes the pairing list usable immediately.
         context.services.rooms.ensureFromTracks(snapshot.program.rooms)
-        // Prévenir les salles plutôt que d'attendre leur prochain sync : un
-        // changement de programme doit atteindre l'écran en secondes.
+        // Tell the rooms rather than wait for their next sync: a program change
+        // must reach the screen in seconds.
         //
-        // L'empreinte annoncée est celle du programme **servi**, relue après
-        // import : des décisions du jour peuvent survivre au réimport, et
-        // annoncer celle du snapshot désignerait une version que personne ne
-        // reçoit.
+        // The fingerprint announced is that of the **served** program, read back
+        // after the import: the day's decisions can survive a reimport, and
+        // announcing the snapshot's would designate a version nobody receives.
         context.services.commands.publish(
           null,
           {
@@ -112,8 +115,8 @@ export const router = os.router({
       .handler(({ context }) => context.services.programs.list()),
     activate: os.program.activate.use(operatorOnly).handler(({ input, context }) => {
       context.services.programs.activate(input.contentHash)
-      // Relue après bascule, et pour la même raison qu'à l'import : c'est
-      // l'empreinte du programme servi que les salles vont comparer à la leur.
+      // Read back after the switch, and for the same reason as at import time:
+      // it is the served program's fingerprint the rooms will compare to theirs.
       context.services.commands.publish(
         null,
         {
@@ -126,48 +129,46 @@ export const router = os.router({
     }),
 
     /**
-     * Le programme actif, mis à plat pour la console.
+     * The active program, flattened for the console.
      *
-     * Le hub le détient déjà ; la console, elle, ne connaissait que les
-     * conférences démarrées et ne pouvait donc pas répondre à « et après, il y
-     * a quoi ». Mis à plat ici plutôt que renvoyé entier : bios, logos et
-     * visuels font l'essentiel des 70 ko d'un snapshot, et rien de tout ça ne
-     * s'affiche dans un planning.
+     * The hub already holds it; the console only knew the talks that had started and
+     * could therefore not answer "and what comes next". Flattened here rather than
+     * returned whole: bios, logos and artwork make up most of a snapshot's 70 kB, and
+     * none of that is shown in a schedule.
      */
     /**
-     * Le créneau commun du moment, vu de l'événement et non d'une salle.
+     * The current shared slot, seen from the event and not from a room.
      *
-     * Calculé salle par salle puis regroupé : c'est la seule façon honnête de
-     * dire « trois salles ». Un créneau commun n'est pas une entité du
-     * programme — c'est une pause que plusieurs salles tiennent au même moment,
-     * les unes parce qu'elle y est au programme, les autres parce qu'elles n'ont
-     * rien de prévu et en héritent.
+     * Computed room by room then grouped: it is the only honest way to say "three
+     * rooms". A shared slot is not an entity of the program — it is a break
+     * several rooms hold at the same moment, some because it is in their program,
+     * the others because they have nothing scheduled and inherit it.
      *
-     * Départage par le nombre de salles : sur un événement où deux pauses se
-     * chevauchent, celle qui concerne le plus de monde est celle qu'on affiche.
+     * Decided by the number of rooms: on an event where two breaks overlap, the
+     * one that concerns the most people is the one we show.
      */
     globalBreak: os.program.globalBreak.use(operatorOnly).handler(({ context }) => {
       const snapshot = context.services.programs.active()
       const at = context.services.clock.now()
       if (snapshot == null) return null
 
-      const groupes = new Map<
+      const groups = new Map<
         string,
         { state: 'en-cours' | 'a-venir'; title: string; startsAt: string; endsAt: string | null; startsAtMs: number; rooms: number }
       >()
-      for (const salle of snapshot.program.rooms) {
-        const pause = roomBreak(snapshot.program, salle.id, at)
+      for (const room of snapshot.program.rooms) {
+        const pause = roomBreak(snapshot.program, room.id, at)
         if (pause == null) continue
-        const cle = `${pause.session.startsAtMs}-${pause.endsAtMs ?? ''}-${pause.session.title}`
-        const connu = groupes.get(cle)
-        if (connu != null) {
-          connu.rooms += 1
-          // Une salle déjà en pause l'emporte sur une salle qui l'anticipe :
-          // le créneau a commencé quelque part, il ne s'annonce plus.
-          if (pause.state === 'en-cours') connu.state = 'en-cours'
+        const key = `${pause.session.startsAtMs}-${pause.endsAtMs ?? ''}-${pause.session.title}`
+        const known = groups.get(key)
+        if (known != null) {
+          known.rooms += 1
+          // A room already on a break wins over a room anticipating one: the
+          // slot has started somewhere, it is no longer being announced.
+          if (pause.state === 'en-cours') known.state = 'en-cours'
           continue
         }
-        groupes.set(cle, {
+        groups.set(key, {
           state: pause.state,
           title: pause.session.title,
           startsAt: pause.session.startsAt,
@@ -177,31 +178,31 @@ export const router = os.router({
         })
       }
 
-      const retenu = [...groupes.values()].sort(
+      const chosen = [...groups.values()].sort(
         (a, b) => b.rooms - a.rooms || a.startsAtMs - b.startsAtMs,
       )[0]
-      if (retenu == null) return null
+      if (chosen == null) return null
 
-      const { startsAtMs: _ignore, ...reste } = retenu
-      return { ...reste, serverTime: nowIso(context) }
+      const { startsAtMs: _ignore, ...rest } = chosen
+      return { ...rest, serverTime: nowIso(context) }
     }),
 
     /**
-     * Confronte les identifiants du programme à ce qu'OpenFeedback connaît.
+     * Compares the program's identifiers with what OpenFeedback knows.
      *
-     * Les pauses en sont exclues : elles n'ont pas de page de retours, et les
-     * compter comme manquantes noierait les vraies anomalies. Les pauses
-     * héritées d'une autre salle aussi — elles n'existent que comme projection.
+     * Breaks are excluded: they have no feedback page, and counting them as missing
+     * would drown the real anomalies. Breaks inherited from another room too — they
+     * only exist as a projection.
      *
-     * L'échec réseau est traduit, comme pour le stockage : « fetch failed » ne
-     * dit rien à qui lit la console, et un contrôle qui échoue sans dire
-     * pourquoi ne se relance pas.
+     * A network failure is translated, as for the storage: "fetch failed" says nothing
+     * to whoever reads the console, and a check that fails without saying why never
+     * gets run again.
      */
     controleOpenFeedback: os.program.controleOpenFeedback
       .use(operatorOnly)
       .handler(async ({ context }) => {
-        const projet = renseigne(context.services.settings.get().openFeedbackProjectId)
-        if (projet == null) {
+        const project = filled(context.services.settings.get().openFeedbackProjectId)
+        if (project == null) {
           throw new ORPCError('BAD_REQUEST', {
             message:
               'Aucun projet OpenFeedback réglé : il n\'y a rien à contrôler tant que ' +
@@ -213,7 +214,7 @@ export const router = os.router({
           throw new ORPCError('NOT_FOUND', { message: 'Aucun programme actif sur ce hub' })
         }
 
-        const creneaux = snapshot.program.sessions
+        const slots = snapshot.program.sessions
           .filter((session) => session.kind !== 'break' && session.sharedFrom == null)
           .map((session) => ({
             id: session.id,
@@ -222,26 +223,26 @@ export const router = os.router({
           }))
 
         try {
-          return await controlerOpenFeedback(projet, creneaux)
+          return await checkOpenFeedback(project, slots)
         } catch (cause) {
           throw new ORPCError('BAD_GATEWAY', {
-            message: `OpenFeedback est injoignable : ${causeLisible(cause)}`,
+            message: `OpenFeedback est injoignable : ${readableCause(cause)}`,
           })
         }
       }),
 
     planning: os.program.planning.use(operatorOnly).handler(({ context }) => {
       const snapshot = context.services.programs.active()
-      // Pas d'erreur : un hub tout juste installé n'a pas encore de programme,
-      // et la console doit pouvoir le dire plutôt que de tomber en panne.
+      // No error: a hub that has just been installed has no program yet, and the
+      // console must be able to say so rather than break.
       if (snapshot == null) {
         return {
           contentHash: null,
           timezone: DEFAULT_TIMEZONE,
           serverTime: nowIso(context),
-          // Le réglage se lit quand même : sans programme il n'y a aucun lien à
-          // fabriquer, mais la console peut déjà dire s'il en manque un.
-          openFeedbackProjectId: renseigne(
+          // The setting is read anyway: with no program there is no link to
+          // build, but the console can already say whether one is missing.
+          openFeedbackProjectId: filled(
             context.services.settings.get().openFeedbackProjectId,
           ),
           rooms: [],
@@ -250,85 +251,85 @@ export const router = os.router({
       }
 
       const { program } = snapshot
-      const salles = new Map(context.services.rooms.list().map((salle) => [salle.id, salle]))
-      // Le hub fait foi sur le nom d'une salle — il se renomme depuis la
-      // console — mais un track jamais appairé n'y figure pas encore : le
-      // programme donne alors le nom écrit sur la porte, plutôt qu'un slug.
-      const nomsDuProgramme = new Map(program.rooms.map((salle) => [salle.id, salle.name]))
+      const rooms = new Map(context.services.rooms.list().map((room) => [room.id, room]))
+      // The hub is authoritative on a room's name — it gets renamed from the
+      // console — but a track that has never been paired is not there yet: the
+      // program then gives the name written on the door, rather than a slug.
+      const programRoomNames = new Map(program.rooms.map((room) => [room.id, room.name]))
       /**
-       * Projet OpenFeedback de l'événement. Un seul, et il vient du hub.
+       * The event's OpenFeedback project. One only, and it comes from the hub.
        *
-       * Plus de surcharge par salle : le champ a existé dans le ⚙ de la régie,
-       * et il a suffi qu'un opérateur le remplisse sur une machine pour que
-       * cette salle-là ait des liens et pas les autres. Le projet est une
-       * propriété de l'événement — un créneau sans salle, plénière que l'export
-       * ne rattache à aucun track, a autant droit à son lien qu'un autre.
+       * No more per-room override: the field existed in the control app's ⚙, and
+       * it took one operator filling it in on one machine for that room to have
+       * links and the others none. The project is a property of the event — a slot
+       * with no room, a plenary the export attaches to no track, has as much right
+       * to its link as any other.
        */
-      const projetDeLEvenement = renseigne(
+      const eventProject = filled(
         context.services.settings.get().openFeedbackProjectId,
       )
 
       /**
-       * Les décisions **appliquées**, pour que la console distingue un genre
-       * décidé d'un genre importé : c'est le premier qu'elle propose de
-       * retirer, et c'est de là qu'elle déduit ce que dit l'export.
+       * The **applied** decisions, so the console can tell a decided kind from an
+       * imported one: it is the first it offers to remove, and it is from there
+       * that it derives what the export says.
        */
-      const surcharges = snapshot.overrides
+      const appliedOverrides = snapshot.overrides
 
       /**
-       * Le cycle de vie, joint ici plutôt que recroisé par la console.
+       * The lifecycle, joined here rather than cross-referenced by the console.
        *
-       * `states(null)` : toutes les salles à la fois, puisque c'est la vue
-       * centralisée de l'événement. Le filtre d'applicabilité s'applique comme
-       * ailleurs — une décision datée d'après l'instant du hub, ce qui n'arrive
-       * qu'en horloge simulée, ne doit pas apparaître ici non plus.
+       * `states(null)`: every room at once, since this is the event's centralized
+       * view. The applicability filter applies as elsewhere — a decision dated
+       * after the hub's instant, which only happens under a simulated clock, must
+       * not appear here either.
        */
-      const vecu = new Map(
-        context.services.sessions.states(null).map((etat) => [etat.sessionId, etat]),
+      const lived = new Map(
+        context.services.sessions.states(null).map((state) => [state.sessionId, state]),
       )
 
       return {
         contentHash: snapshot.contentHash,
         timezone: program.timezone,
         serverTime: nowIso(context),
-        openFeedbackProjectId: projetDeLEvenement,
+        openFeedbackProjectId: eventProject,
         rooms: program.rooms.map(({ id, name }) => ({ id, name })),
         sessions: program.sessions.map((session) => {
-          const salle = session.roomId == null ? null : (salles.get(session.roomId) ?? null)
+          const room = session.roomId == null ? null : (rooms.get(session.roomId) ?? null)
           return {
             id: session.id,
             title: session.title,
-            speakers: session.speakers.map((personne) => personne.name),
+            speakers: session.speakers.map((person) => person.name),
             startsAt: session.startsAt,
             endsAt: session.endsAt,
             roomId: session.roomId,
             roomName:
               session.roomId == null
                 ? null
-                : (salle?.name ?? nomsDuProgramme.get(session.roomId) ?? session.roomId),
+                : (room?.name ?? programRoomNames.get(session.roomId) ?? session.roomId),
             kind: session.kind,
-            // Pas de lien sur une pause : personne ne note un déjeuner, et un
-            // QR mort scanné par le public coûte plus cher qu'une case vide.
+            // No link on a break: nobody rates a lunch, and a dead QR code
+            // scanned by the audience costs more than an empty cell.
             feedbackUrl:
               session.kind === 'break'
                 ? null
-                : openFeedbackUrl(session, projetDeLEvenement, program.timezone),
-            // Résolu, comme `kind` : l'export sauf correction. Le programme
-            // servi porte déjà la correction, il n'y a rien à recroiser ici.
+                : openFeedbackUrl(session, eventProject, program.timezone),
+            // Resolved, like `kind`: the export unless corrected. The served
+            // program already carries the correction, nothing to cross-reference.
             feedbackId: session.feedbackId ?? session.id,
             feedbackIdOverride: session.feedbackId,
-            overriddenAs: surcharges[session.id] ?? null,
+            overriddenAs: appliedOverrides[session.id] ?? null,
             sharedFrom: session.sharedFrom,
             /**
-             * Une pause héritée porte un identifiant dérivé, que le cycle de
-             * vie ne connaît pas : c'est le créneau d'origine qui est piloté.
-             * Chercher sous l'identifiant de la projection ne rendrait jamais
-             * rien, et le faire sous celui de l'original afficherait la même
-             * décision sur deux lignes.
+             * An inherited break carries a derived identifier the lifecycle does
+             * not know: it is the original slot that is driven. Looking it up
+             * under the projection's identifier would never return anything, and
+             * doing so under the original's would show the same decision on two
+             * rows.
              */
-            startedAt: vecu.get(session.id)?.startedAt ?? null,
-            endedAt: vecu.get(session.id)?.endedAt ?? null,
-            decidedBy: vecu.get(session.id)?.decidedBy ?? null,
+            startedAt: lived.get(session.id)?.startedAt ?? null,
+            endedAt: lived.get(session.id)?.endedAt ?? null,
+            decidedBy: lived.get(session.id)?.decidedBy ?? null,
           }
         }),
       }
@@ -336,7 +337,9 @@ export const router = os.router({
   },
 
   rooms: {
-    /** Publique : une machine non appairée doit pouvoir proposer un choix. */
+    /**
+     * Public: an unpaired machine must be able to offer a choice.
+     */
     public: os.rooms.public.handler(({ context }) =>
       context.services.rooms.list().map((room) => ({ id: room.id, name: room.name })),
     ),
@@ -344,88 +347,89 @@ export const router = os.router({
     list: os.rooms.list.use(operatorOnly).handler(({ context }) => context.services.rooms.list()),
 
     /**
-     * Publique, comme `rooms.public` : le mur est ouvert à qui scanne le QR,
-     * et ces titres sont déjà projetés sur l'écran de la salle.
+     * Public, like `rooms.public`: the wall is open to whoever scans the QR code, and
+     * these titles are already projected on the room's screen.
      */
     current: os.rooms.current.handler(({ input, context }) => {
       const snapshot = context.services.programs.active()
       if (snapshot == null) return { current: null, next: null }
 
       const at = context.services.clock.now()
-      const apercu = (session: Session | null) =>
+      const preview = (session: Session | null) =>
         session == null
           ? null
           : {
               id: session.id,
               title: session.title,
-              speakers: session.speakers.map((personne) => personne.name),
+              speakers: session.speakers.map((person) => person.name),
               startsAt: session.startsAt,
               endsAt: session.endsAt,
             }
 
       return {
-        current: apercu(currentSession(snapshot.program, input.roomId, at)),
-        next: apercu(nextSession(snapshot.program, input.roomId, at)),
+        current: preview(currentSession(snapshot.program, input.roomId, at)),
+        next: preview(nextSession(snapshot.program, input.roomId, at)),
       }
     }),
 
     /**
-     * Réglage d'une salle par elle-même — voir le contrat pour ce qu'elle a le
-     * droit de toucher. La cible n'est pas dans l'entrée mais dans le contexte :
-     * il n'existe pas de forme de cet appel qui configure une autre salle.
+     * A room configuring itself — see the contract for what it is allowed to touch.
+     * The target is not in the input but in the context: there is no form of this call
+     * that configures another room.
      */
     configure: os.rooms.configure.use(roomOnly).handler(({ input, context }) => {
-      const salle = context.services.rooms.get(context.roomId)
-      if (salle == null) throw new ORPCError('NOT_FOUND', { message: 'Salle introuvable' })
+      const room = context.services.rooms.get(context.roomId)
+      if (room == null) throw new ORPCError('NOT_FOUND', { message: 'Salle introuvable' })
 
-      const relais = input.relaySourceRoomId
-      if (relais != null) {
-        if (relais === context.roomId) {
+      const relay = input.relaySourceRoomId
+      if (relay != null) {
+        if (relay === context.roomId) {
           throw new ORPCError('BAD_REQUEST', {
             message: "Une salle ne peut pas relayer sa propre scène",
           })
         }
-        if (context.services.rooms.get(relais) == null) {
+        if (context.services.rooms.get(relay) == null) {
           throw new ORPCError('BAD_REQUEST', { message: 'Salle relayée inconnue du hub' })
         }
       }
 
-      // Fusion de surface : la régie envoie `obs` et `sceneRoles` entiers. Ce
-      // qui n'est pas dans le correctif — identité, clé de diffusion — reste
-      // tel quel, et c'est ce qui rend l'écriture sûre depuis une salle.
-      const suivant = {
-        ...salle,
+      // A shallow merge: the control app sends whole `obs` and `sceneRoles`.
+      // What is not in the patch — identity, stream key — stays as it is, and
+      // that is what makes writing from a room safe.
+      const next = {
+        ...room,
         ...input,
-        // Seule exception à la fusion de surface : un mot de passe OBS absent
-        // du correctif vaut « inchangé », pas « effacé ». La régie ne l'a pas
-        // en clair, elle ne peut donc pas le renvoyer pour le conserver.
-        obs: input.obs == null ? salle.obs : {
-          A: { url: input.obs.A.url, password: input.obs.A.password === undefined ? salle.obs.A.password : input.obs.A.password },
-          B: { url: input.obs.B.url, password: input.obs.B.password === undefined ? salle.obs.B.password : input.obs.B.password },
+        // The one exception to the shallow merge: an OBS password missing from
+        // the patch means "unchanged", not "cleared". The control app does not
+        // have it in clear, so it cannot send it back to keep it.
+        obs: input.obs == null ? room.obs : {
+          A: { url: input.obs.A.url, password: input.obs.A.password === undefined ? room.obs.A.password : input.obs.A.password },
+          B: { url: input.obs.B.url, password: input.obs.B.password === undefined ? room.obs.B.password : input.obs.B.password },
         },
       }
-      context.services.rooms.upsert(suivant)
-      return suivant
+      context.services.rooms.upsert(next)
+      return next
     }),
-    /** Lecture seule : la régie affiche l'état des autres salles. */
+    /**
+     * Read-only: the control app shows the state of the other rooms.
+     */
     statuses: os.rooms.statuses.use(roomOrOperator).handler(({ context }) =>
-      // Enrichi hors du service : c'est ici qu'on a le programme et l'horloge
-      // sous la main, et la veille qui pousse les notifications lit la même
-      // fonction — deux implémentations finiraient par diverger.
-      statutsDesSalles(context.services, context.services.clock.now()),
+      // Enriched outside the service: this is where the program and the clock
+      // are at hand, and the watch that pushes the notifications reads the same
+      // function — two implementations would end up diverging.
+      roomStatuses(context.services, context.services.clock.now()),
     ),
 
     /**
-     * Resynchronisation complète, demandée depuis la console.
+     * Full resynchronization, requested from the console.
      *
-     * Une commande, pas un appel direct : la console ne parle pas aux salles,
-     * elle passe par le flux descendant — c'est ce qui fait qu'une salle
-     * momentanément coupée rattrape la demande à sa reconnexion au lieu de la
-     * perdre.
+     * A command, not a direct call: the console does not talk to the rooms, it goes
+     * through the downstream flow — that is what makes a momentarily disconnected room
+     * catch the request up on reconnection instead of losing it.
      *
-     * Sans TTL, pour la même raison : une demande de remise d'aplomb ne périme
-     * pas comme un « pause déjeuner ». La déduplication par `seq` empêche
-     * qu'elle s'applique deux fois au rattrapage.
+     * With no TTL, for the same reason: a request to put a room straight does not
+     * expire like a "lunch break". Deduplication by `seq` stops it being applied twice
+     * on catch-up.
      */
     resync: os.rooms.resync.use(operatorOnly).handler(({ input, context }) => {
       if (input.roomId != null && context.services.rooms.get(input.roomId) == null) {
@@ -451,46 +455,45 @@ export const router = os.router({
         throw new ORPCError('NOT_FOUND', { message: 'Aucun programme importé sur le hub' })
       }
 
-      // Le snapshot ne repart que s'il a changé : sur un réseau de salle poussif,
-      // renvoyer 70 ko à chaque heartbeat serait du gâchis.
+      // The snapshot only leaves again if it changed: on a sluggish room
+      // network, sending 70 kB on every heartbeat would be waste.
       const unchanged = input.since === snapshot.contentHash
-      const reglages = context.services.settings.get()
+      const settings = context.services.settings.get()
       return {
         protocolVersion: PROTOCOL_VERSION,
         contentHash: snapshot.contentHash,
         program: unchanged ? null : snapshot.program,
-        // Le projet OpenFeedback descend **écrasé**, pas complété : quoi qu'une
-        // salle ait en cache ou en base, c'est le réglage du hub qui fait foi.
-        // La salle dessine ses QR hors ligne, donc la valeur doit voyager ; mais
-        // elle n'a rien à décider, et ne peut plus rien contredire.
+        // The OpenFeedback project goes down **overwritten**, not merged:
+        // whatever a room has in cache or in its database, the hub's setting is
+        // authoritative. The room draws its QR codes offline, so the value has to
+        // travel; but it has nothing to decide, and can no longer contradict.
         room: {
           ...room,
-          openFeedbackProjectId: renseigne(reglages.openFeedbackProjectId),
+          openFeedbackProjectId: filled(settings.openFeedbackProjectId),
         },
         overrides: context.services.rooms.overrides(),
         serverTime: nowIso(context),
         simulatedClock: context.services.clock.simulated,
         mode: context.services.mode,
-        // Descendus avec le reste : la boucle d'attente doit se dérouler
-        // entière sans toucher au réseau une fois la salle synchronisée.
-        socialLinks: reglages.socialLinks,
-        // Même raison, et c'est ce qui rend les écrans renommables : la salle
-        // titre ses fenêtres avec le nom que le hub a tranché, pas avec une
-        // constante compilée dans le binaire installé sur la machine.
+        // Sent down with the rest: the waiting loop must run through in full
+        // without touching the network once the room is synchronized.
+        socialLinks: settings.socialLinks,
+        // Same reason, and it is what makes the screens renameable: the room
+        // titles its windows with the name the hub decided, not with a constant
+        // compiled into the binary installed on the machine.
         event: context.services.identity.get(),
         /**
-         * Rapatriement des rushes : y a-t-il une destination, et sous quelles
-         * règles.
+         * Shipping the rushes back: is there a destination, and under what rules.
          *
-         * Descendu au sync et mis en cache comme le reste : le régulateur de la
-         * salle tranche plusieurs fois par minute, et il ne doit jamais dépendre
-         * d'un appel réseau — surtout pas au moment précis où le réseau est ce
-         * qu'on cherche à ménager. `null` dit « nulle part où envoyer », et une
-         * salle qui reçoit `null` cesse d'elle-même : c'est ainsi qu'on éteint
-         * la fonctionnalité en cours de journée depuis la console.
+         * Sent down at sync and cached like the rest: the room's regulator decides
+         * several times a minute, and it must never depend on a network call —
+         * least of all at the very moment the network is what we are trying to
+         * spare. `null` says "nowhere to send", and a room that receives `null`
+         * stops by itself: that is how the feature gets switched off mid-day from
+         * the console.
          */
         vod:
-          context.services.vod == null || !context.services.vod.pret()
+          context.services.vod == null || !context.services.vod.ready()
             ? null
             : context.services.vod.sync(),
       }
@@ -505,21 +508,21 @@ export const router = os.router({
           sinceSeq,
           signal,
         )) {
-          // Une commande rattrapée hors délai est écartée côté hub aussi : le
-          // client la filtrerait de toute façon, autant ne pas l'envoyer.
+          // A command caught up out of time is discarded on the hub side too:
+          // the client would filter it anyway, so we may as well not send it.
           if (isExpiredNow(command)) continue
-          // L'id d'événement porte le `seq` : c'est ce que le client renverra
-          // en `lastEventId` à la reconnexion.
+          // The event id carries the `seq`: it is what the client will send back
+          // as `lastEventId` on reconnection.
           yield withEventMeta(command, { id: String(command.seq) })
         }
       }),
   },
 
   /**
-   * Bandeau des scènes live.
+   * Banner on the live scenes.
    *
-   * Réservé aux opérateurs : ce qui part là passe dans le direct et dans la
-   * VOD de toutes les salles visées.
+   * Reserved for operators: what goes out there goes into the live feed and into the
+   * VOD of every targeted room.
    */
   overlay: {
     show: os.overlay.show.use(operatorOnly).handler(({ input, context }) => {
@@ -537,87 +540,87 @@ export const router = os.router({
     }),
 
     history: os.overlay.history.use(operatorOnly).handler(({ input, context }) => {
-      const passes = context.services.commands.bandeauxPasses(input.roomId, input.limit)
-      // Le plus récent dit ce qui est à l'antenne : un retrait n'est pas de
-      // l'historique, mais il éteint le bandeau qu'il a retiré.
-      const affiche = passes.find((entree) => entree.payload.message != null)
-      const retireDepuis = passes.findIndex((entree) => entree.payload.message == null)
-      const enCours = retireDepuis === 0 ? null : affiche
+      const past = context.services.commands.pastBanners(input.roomId, input.limit)
+      // The most recent one says what is on air: a removal is not history, but
+      // it switches off the banner it removed.
+      const shown = past.find((entry) => entry.payload.message != null)
+      const removedAt = past.findIndex((entry) => entry.payload.message == null)
+      const running = removedAt === 0 ? null : shown
 
-      return passes
-        .filter((entree) => entree.payload.message != null)
+      return past
+        .filter((entry) => entry.payload.message != null)
         .slice(0, input.limit)
-        .map((entree) => ({
-          seq: entree.seq,
-          roomId: entree.roomId,
-          message: entree.payload.message as { text: string; level: 'info' | 'warning' | 'urgent' },
-          issuedAt: entree.issuedAt,
-          visible: enCours != null && entree.seq === enCours.seq,
+        .map((entry) => ({
+          seq: entry.seq,
+          roomId: entry.roomId,
+          message: entry.payload.message as { text: string; level: 'info' | 'warning' | 'urgent' },
+          issuedAt: entry.issuedAt,
+          visible: running != null && entry.seq === running.seq,
         }))
     }),
   },
 
   sessions: {
     states: os.sessions.states.use(roomOrOperator).handler(({ input, context }) => {
-      const salle = context.roomId
-      // Une salle ne voit que ses conférences, quoi qu'elle demande.
+      const room = context.roomId
+      // A room only sees its own talks, whatever it asks for.
       const snapshot = context.services.programs.active()
-      return context.services.sessions.views(salle ?? input.roomId, snapshot?.program ?? null)
+      return context.services.sessions.views(room ?? input.roomId, snapshot?.program ?? null)
     }),
 
     start: os.sessions.start.use(roomOrOperator).handler(({ input, context }) => {
       const { session, roomId } = resolveSession(context, input.sessionId)
-      exigerMemeSalle(context, roomId)
-      const etat = surTransition(() =>
-        context.services.sessions.start(session.id, roomId, auteurDe(context)),
+      requireSameRoom(context, roomId)
+      const state = onTransition(() =>
+        context.services.sessions.start(session.id, roomId, authorOf(context)),
       )
-      diffuserEtat(context, etat)
-      return etat
+      broadcastState(context, state)
+      return state
     }),
 
     end: os.sessions.end.use(roomOrOperator).handler(({ input, context }) => {
       const { session, roomId } = resolveSession(context, input.sessionId)
-      exigerMemeSalle(context, roomId)
-      const etat = surTransition(() =>
-        context.services.sessions.end(session.id, roomId, auteurDe(context)),
+      requireSameRoom(context, roomId)
+      const state = onTransition(() =>
+        context.services.sessions.end(session.id, roomId, authorOf(context)),
       )
-      diffuserEtat(context, etat)
-      return etat
+      broadcastState(context, state)
+      return state
     }),
 
     /**
-     * Surcharge un créneau du programme.
+     * Overrides a program slot.
      *
-     * Le geste n'existe que parce que l'export amont ne dit pas tout : un
-     * accueil, un déjeuner, une plénière y sont des créneaux comme les autres,
-     * rattachés à une salle, avec un titre. La salle les titrait donc à
-     * l'antenne et la régie proposait de les « commencer ».
+     * The gesture only exists because the upstream export does not say everything: a
+     * welcome, a lunch, a plenary are slots like any other there, attached to a room,
+     * with a title. So the room titled them on air and the control app offered to
+     * "start" them.
      *
-     * Décidé ici et pas en salle : c'est le programme de l'événement qu'on
-     * corrige, et il doit se lire pareil partout. La diffusion qui suit fait
-     * redescendre le programme corrigé — l'empreinte a changé, les salles ne
-     * resteront donc pas sur leur cache.
+     * Decided here and not in the room: it is the event's program we are correcting,
+     * and it must read the same everywhere. The broadcast that follows sends the
+     * corrected program back down — the fingerprint has changed, so the rooms will not
+     * stay on their cache.
      */
     override: os.sessions.override.use(operatorOnly).handler(({ input, context }) => {
       const snapshot = context.services.programs.active()
       if (snapshot == null) {
         throw new ORPCError('NOT_FOUND', { message: 'Aucun programme actif sur ce hub' })
       }
-      const creneau = snapshot.program.sessions.find((session) => session.id === input.sessionId)
-      if (creneau == null) {
+      const slot = snapshot.program.sessions.find((session) => session.id === input.sessionId)
+      if (slot == null) {
         throw new ORPCError('NOT_FOUND', {
           message: `Créneau inconnu du programme actif : ${input.sessionId}`,
         })
       }
       /**
-       * Une pause héritée d'une autre salle ne s'édite pas.
+       * A break inherited from another room is not editable.
        *
-       * Elle n'existe pas dans l'export : elle est la projection d'un créneau
-       * qui, lui, s'édite. Accepter une décision dessus l'enregistrerait sur un
-       * identifiant dérivé, que le prochain calcul ne retrouverait pas — une
-       * décision qui n'aurait aucun effet et qu'on ne saurait pas retirer.
+       * It does not exist in the export: it is the projection of a slot which is
+       * editable. Accepting a decision on it would record it under a derived
+       * identifier the next computation would not find — a decision with no effect
+       * that nobody would know how to remove.
        */
-      if (creneau.sharedFrom != null) {
+      if (slot.sharedFrom != null) {
         throw new ORPCError('BAD_REQUEST', {
           message:
             'Ce créneau est une pause héritée d\'une autre salle : la décision se prend ' +
@@ -626,8 +629,8 @@ export const router = os.router({
       }
 
       context.services.rooms.setOverride(input.sessionId, input.action)
-      // Relu après écriture : c'est l'empreinte du programme tel qu'il est
-      // désormais servi, et c'est elle qu'on annonce aux salles.
+      // Read back after the write: it is the fingerprint of the program as it is
+      // now served, and it is what we announce to the rooms.
       const contentHash = context.services.programs.active()?.contentHash ?? snapshot.contentHash
       context.services.commands.publish(
         null,
@@ -638,30 +641,30 @@ export const router = os.router({
     }),
 
     /**
-     * Corrige l'identifiant OpenFeedback d'un créneau.
+     * Corrects a slot's OpenFeedback identifier.
      *
-     * Rend l'adresse qui en découle : c'est le seul moyen de vérifier la
-     * correction, et l'ouvrir d'un clic vaut mieux que la recomposer de tête.
+     * Returns the address that follows from it: it is the only way to check the
+     * correction, and opening it with one click beats recomposing it from memory.
      *
-     * Les salles sont prévenues comme pour une décision de genre — elles
-     * dessinent leurs QR hors ligne, et un QR resté sur l'ancien identifiant
-     * est précisément l'accident que cette procédure existe pour éviter.
+     * The rooms are told as for a kind decision — they draw their QR codes offline, and
+     * a QR code left on the old identifier is precisely the accident this procedure
+     * exists to prevent.
      */
     feedbackId: os.sessions.feedbackId.use(operatorOnly).handler(({ input, context }) => {
       const snapshot = context.services.programs.active()
       if (snapshot == null) {
         throw new ORPCError('NOT_FOUND', { message: 'Aucun programme actif sur ce hub' })
       }
-      const creneau = snapshot.program.sessions.find((session) => session.id === input.sessionId)
-      if (creneau == null) {
+      const slot = snapshot.program.sessions.find((session) => session.id === input.sessionId)
+      if (slot == null) {
         throw new ORPCError('NOT_FOUND', {
           message: `Créneau inconnu du programme actif : ${input.sessionId}`,
         })
       }
-      // Une pause n'a pas de page de retours, et une pause héritée n'a même pas
-      // d'existence propre : corriger son identifiant n'aurait aucun effet
-      // visible, et laisserait une ligne que rien ne viendrait relire.
-      if (creneau.kind === 'break') {
+      // A break has no feedback page, and an inherited break has no existence of
+      // its own: correcting its identifier would have no visible effect, and would
+      // leave a row nothing would ever read back.
+      if (slot.kind === 'break') {
         throw new ORPCError('BAD_REQUEST', {
           message: 'Une pause n\'a pas de page OpenFeedback : rien à corriger ici.',
         })
@@ -669,23 +672,23 @@ export const router = os.router({
 
       context.services.rooms.setFeedbackId(input.sessionId, input.feedbackId)
 
-      // Relu après écriture : le programme servi porte désormais la correction,
-      // et c'est de lui que l'adresse se déduit — la recomposer ici ferait un
-      // second endroit où la règle vit, donc un endroit où elle peut diverger.
-      const apres = context.services.programs.active()
-      const corrige = apres?.program.sessions.find((session) => session.id === input.sessionId)
-      const contentHash = apres?.contentHash ?? snapshot.contentHash
+      // Read back after the write: the served program now carries the correction,
+      // and it is from it that the address is derived — recomposing it here would
+      // make a second place where the rule lives, so a place where it can diverge.
+      const after = context.services.programs.active()
+      const corrected = after?.program.sessions.find((session) => session.id === input.sessionId)
+      const contentHash = after?.contentHash ?? snapshot.contentHash
       context.services.commands.publish(null, { type: 'program.invalidate', contentHash }, null)
 
       return {
         ok: true,
-        feedbackId: corrige?.feedbackId ?? creneau.id,
+        feedbackId: corrected?.feedbackId ?? slot.id,
         feedbackUrl:
-          corrige == null
+          corrected == null
             ? null
             : openFeedbackUrl(
-                corrige,
-                renseigne(context.services.settings.get().openFeedbackProjectId),
+                corrected,
+                filled(context.services.settings.get().openFeedbackProjectId),
                 snapshot.program.timezone,
               ),
       }
@@ -693,15 +696,15 @@ export const router = os.router({
 
     reset: os.sessions.reset.use(roomOrOperator).handler(({ input, context }) => {
       const { session, roomId } = resolveSession(context, input.sessionId)
-      exigerMemeSalle(context, roomId)
+      requireSameRoom(context, roomId)
       context.services.sessions.reset(session.id)
-      // La salle doit revenir à « à venir » : sans cette diffusion, son écran
-      // resterait sur l'état annulé jusqu'au prochain redémarrage.
-      diffuserEtat(context, {
+      // The room must go back to "upcoming": without this broadcast, its screen
+      // would stay on the cancelled state until the next restart.
+      broadcastState(context, {
         sessionId: session.id,
         roomId,
         status: 'scheduled',
-        decidedBy: auteurDe(context),
+        decidedBy: authorOf(context),
       })
       return { ok: true }
     }),
@@ -727,10 +730,10 @@ export const router = os.router({
     }),
 
     fromRooms: os.messages.fromRooms.use(operatorOnly).handler(({ input, context }) => {
-      const salles = new Map(context.services.rooms.list().map((salle) => [salle.id, salle.name] as const))
+      const rooms = new Map(context.services.rooms.list().map((room) => [room.id, room.name] as const))
       return context.services.ingest.messagesFromRooms(input.limit).map((message) => ({
         ...message,
-        roomName: salles.get(message.roomId) ?? null,
+        roomName: rooms.get(message.roomId) ?? null,
       }))
     }),
   },
@@ -739,8 +742,8 @@ export const router = os.router({
     get: os.clock.get.use(operatorOnly).handler(({ context }) => ({
       serverTime: context.services.clock.nowIso(),
       simulated: context.services.clock.simulated,
-      // Le mode fait foi : déplacer l'heure d'un hub de production fausserait
-      // les timecodes des enregistrements et les clôtures automatiques.
+      // The mode is authoritative: moving a production hub's clock would skew the
+      // recordings' timecodes and the automatic closings.
       controllable: context.services.mode === 'dev',
     })),
 
@@ -762,11 +765,11 @@ export const router = os.router({
 
       const serverTime = context.services.clock.nowIso()
       /**
-       * Réaligner les salles tout de suite.
+       * Realign the rooms right away.
        *
-       * Elles calent leur offset sur `serverTime` à chaque synchronisation :
-       * sans cette diffusion, leur écran afficherait un autre moment que la
-       * console jusqu'à la suivante.
+       * They align their offset on `serverTime` at every synchronization: without
+       * this broadcast, their screen would show a different moment than the
+       * console until the next one.
        */
       context.services.commands.publish(
         null,
@@ -803,11 +806,11 @@ export const router = os.router({
       .handler(({ context }) => context.services.devices.pending()),
 
     /**
-     * Approbation et affectation en une seule opération.
+     * Approval and assignment in a single operation.
      *
-     * L'ordre compte : on approuve d'abord auprès de Better Auth, et on ne lie
-     * la machine à sa salle que si l'approbation a réussi. L'inverse laisserait
-     * une liaison orpheline après un code expiré.
+     * The order matters: we approve with Better Auth first, and only bind the machine
+     * to its room if the approval succeeded. The other way round would leave an orphan
+     * binding after an expired code.
      */
     approve: os.devices.approve.use(operatorOnly).handler(async ({ input, context }) => {
       if (context.services.rooms.get(input.roomId) == null) {
@@ -825,12 +828,11 @@ export const router = os.router({
         })
       } catch (cause) {
         /**
-         * Un code appartient au premier opérateur qui l'a consulté.
+         * A code belongs to the first operator who looked at it.
          *
-         * Better Auth le rattache dès la vérification — celle que fait la
-         * console en ouvrant le lien de la machine. Un second opérateur qui
-         * approuve depuis son propre poste se voit refuser, et le message
-         * anglais du plugin n'aide personne à comprendre pourquoi.
+         * Better Auth attaches it as soon as it is verified — which the console does when
+         * opening the machine's link. A second operator approving from their own machine is
+         * refused, and the plugin's English message helps nobody understand why.
          */
         if ((cause as { body?: { error?: string } }).body?.error === 'access_denied') {
           throw new ORPCError('FORBIDDEN', {
@@ -861,23 +863,22 @@ export const router = os.router({
         headers: context.headers,
       })
       /**
-       * La demande part avec le refus.
+       * The request goes with the refusal.
        *
-       * Sans ça, la machine refusée restait dans la file jusqu'à ce que
-       * quelqu'un l'appaire : refuser n'avait aucun effet visible, et on
-       * refusait deux fois.
+       * Without this, the refused machine stayed in the queue until somebody paired it:
+       * refusing had no visible effect, and we refused twice.
        */
       if (verification.client_id != null) context.services.devices.forget(verification.client_id)
       return { ok: true }
     }),
 
     /**
-     * Attention : consulter un code le **rattache** à l'opérateur qui regarde.
+     * Careful: looking at a code **attaches** it to the operator looking.
      *
-     * C'est le geste que Better Auth attend d'une page de vérification, et
-     * celui que fait déjà l'approbation. La conséquence est qu'un second
-     * opérateur ne pourra plus approuver ce code-là — `approve` le dit en
-     * clair plutôt que de laisser passer le refus anglais du plugin.
+     * That is the gesture Better Auth expects of a verification page, and the one
+     * approval already makes. The consequence is that a second operator will no longer
+     * be able to approve that code — `approve` says so in plain words rather than let
+     * the plugin's English refusal through.
      */
     lookup: os.devices.lookup.use(operatorOnly).handler(async ({ input, context }) => {
       let verification: Awaited<ReturnType<typeof context.auth.api.deviceVerify>>
@@ -887,24 +888,24 @@ export const router = os.router({
           headers: context.headers,
         })
       } catch (cause) {
-        const reason = raisonDuCode(cause)
-        // Une panne authentique doit rester une panne : seuls les deux refus
-        // que la console sait expliquer deviennent une réponse.
+        const reason = codeRefusalReason(cause)
+        // A genuine failure must stay a failure: only the two refusals the
+        // console knows how to explain become an answer.
         if (reason == null) throw cause
         return { status: null, reason, clientId: null, requestedRoomId: null, requestedRoomName: null }
       }
 
       const scope = verification.scope ?? ''
-      const demandee = scope.startsWith('room:') ? scope.slice('room:'.length) : null
-      const salle = demandee == null ? null : context.services.rooms.get(demandee)
+      const requested = scope.startsWith('room:') ? scope.slice('room:'.length) : null
+      const room = requested == null ? null : context.services.rooms.get(requested)
       return {
         status: verification.status as 'pending' | 'approved' | 'denied',
         reason: null,
         clientId: verification.client_id ?? null,
-        requestedRoomId: demandee,
-        // Distinct de `requestedRoomId` : une salle demandée qui n'existe pas
-        // sur ce hub se voit, au lieu de disparaître silencieusement.
-        requestedRoomName: salle?.name ?? null,
+        requestedRoomId: requested,
+        // Distinct from `requestedRoomId`: a requested room that does not exist
+        // on this hub is visible, instead of disappearing silently.
+        requestedRoomName: room?.name ?? null,
       }
     }),
 
@@ -920,11 +921,10 @@ export const router = os.router({
     ),
 
     /**
-     * Échange la session d'approbation contre un jeton de salle.
+     * Exchanges the approval session for a room token.
      *
-     * Seul usage légitime d'une session Better Auth par une machine. Après
-     * quoi elle jette la session : ses appels suivants ne portent plus que des
-     * droits de salle.
+     * The only legitimate use of a Better Auth session by a machine. After which it
+     * throws the session away: its later calls carry room rights only.
      */
     claim: os.devices.claim.handler(async ({ context }) => {
       const { clientId } = await resolveClaim(context)
@@ -945,9 +945,9 @@ export const router = os.router({
   },
 
   /**
-   * Mur social. `post` et `feed` sont **publics** : ils servent les mobiles du
-   * public, qui n'ont ni compte ni appairage. Ce sont donc les seules
-   * procédures du contrat qui doivent être limitées en débit.
+   * Social wall. `post` and `feed` are **public**: they serve the audience's phones,
+   * which have neither an account nor a pairing. They are therefore the only
+   * procedures in the contract that must be rate-limited.
    */
   wall: {
     post: os.wall.post.handler(({ input, context }) => {
@@ -966,10 +966,10 @@ export const router = os.router({
     }),
 
     /**
-     * Publique, comme le dépôt : ces messages sont déjà projetés en salle.
+     * Public, like posting: these messages are already projected in the room.
      *
-     * Lue depuis l'instantané mémoire du service, jamais en SQL — c'est la
-     * seule charge non bornée de la journée.
+     * Read from the service's in-memory snapshot, never in SQL — it is the only
+     * unbounded load of the day.
      */
     recent: os.wall.recent.handler(({ input, context }) =>
       context.services.wall.approved(null).slice(-input.limit).reverse(),
@@ -997,7 +997,7 @@ export const router = os.router({
       )
       if (moderated == null) throw new ORPCError('NOT_FOUND', { message: 'Message introuvable' })
 
-      // Prévenir les salles : l'écran doit pouvoir réagir sans attendre un tic.
+      // Tell the rooms: the screen must be able to react without waiting a tick.
       if (input.decision === 'approve') {
         context.services.commands.publish(
           moderated.roomId,
@@ -1010,7 +1010,9 @@ export const router = os.router({
   },
 
   push: {
-    /** Ouvert à tout opérateur : la clé publique n'est pas un secret. */
+    /**
+     * Open to any operator: the public key is not a secret.
+     */
     publicKey: os.push.publicKey
       .use(operatorOnly)
       .handler(({ context }) => ({ publicKey: context.services.push.publicKey() })),
@@ -1034,109 +1036,106 @@ export const router = os.router({
   },
 
   /**
-   * Rapatriement des rushes vers le stockage du hub.
+   * Shipping the rushes back to the hub's storage.
    *
-   * Les cinq procédures de salle sont bornées par `roomOnly` : le `roomId` vient
-   * du jeton, jamais de l'entrée. Une salle ne peut donc ni téléverser pour une
-   * autre, ni lire le plan d'une autre — et révoquer une machine la coupe du
-   * stockage sans toucher au bucket.
+   * The five room procedures are bounded by `roomOnly`: the `roomId` comes from the
+   * token, never from the input. So a room can neither upload for another, nor read
+   * another's plan — and revoking a machine cuts it off from the storage without
+   * touching the bucket.
    */
   vod: {
     begin: os.vod.begin.use(roomOnly).handler(({ input, context }) =>
-      surStockage(context, () => exigerStockage(context).begin({ roomId: context.roomId, ...input })),
+      onStorage(context, () => requireStorage(context).begin({ roomId: context.roomId, ...input })),
     ),
 
     parts: os.vod.parts.use(roomOnly).handler(({ input, context }) =>
-      surStockage(context, () => exigerStockage(context).parts(context.roomId, input.uploadId, input.numeros)),
+      onStorage(context, () => requireStorage(context).parts(context.roomId, input.uploadId, input.numeros)),
     ),
 
     progress: os.vod.progress.use(roomOnly).handler(({ input, context }) =>
-      surStockage(context, () => {
-        exigerStockage(context).progress({ roomId: context.roomId, ...input })
+      onStorage(context, () => {
+        requireStorage(context).progress({ roomId: context.roomId, ...input })
         return { ok: true }
       }),
     ),
 
     complete: os.vod.complete.use(roomOnly).handler(({ input, context }) =>
-      surStockage(context, async () => ({
+      onStorage(context, async () => ({
         ok: true,
-        objectKey: await exigerStockage(context).complete(context.roomId, input.uploadId),
+        objectKey: await requireStorage(context).complete(context.roomId, input.uploadId),
       })),
     ),
 
     abort: os.vod.abort.use(roomOnly).handler(({ input, context }) =>
-      surStockage(context, async () => {
-        await exigerStockage(context).abort(context.roomId, input.uploadId, input.raison)
+      onStorage(context, async () => {
+        await requireStorage(context).abort(context.roomId, input.uploadId, input.raison)
         return { ok: true }
       }),
     ),
 
     /**
-     * Une salle ne voit que ses propres téléversements.
+     * A room only sees its own uploads.
      *
-     * La régie s'en sert pour peindre sa modale ; la console, elle, passe sans
-     * `roomId` et les voit tous. Laisser une salle en interroger une autre ne
-     * servirait à rien et donnerait à un jeton de salle une vue de l'événement
-     * entier.
+     * The control app uses it to paint its dialog; the console, on the other hand,
+     * passes no `roomId` and sees them all. Letting a room query another would serve no
+     * purpose and would give a room token a view of the whole event.
      */
     uploads: os.vod.uploads.use(roomOrOperator).handler(({ input, context }) => {
-      const vod = exigerStockage(context)
-      const salles = new Map(context.services.rooms.list().map((salle) => [salle.id, salle.name]))
-      const cible = context.operator != null ? input.roomId : context.roomId
-      return vod.uploads(cible, (id) => salles.get(id) ?? null)
+      const vod = requireStorage(context)
+      const rooms = new Map(context.services.rooms.list().map((room) => [room.id, room.name]))
+      const target = context.operator != null ? input.roomId : context.roomId
+      return vod.uploads(target, (id) => rooms.get(id) ?? null)
     }),
 
     /**
-     * Le dossier VOD d'une conférence. Admin.
+     * A talk's VOD folder. Admin.
      *
-     * **Sans `exigerStockage`, et c'est délibéré.** Les deux moitiés de la
-     * réponse ne viennent pas du même endroit : les prises sont reconstituées
-     * depuis le journal d'ingestion, que tout hub tient, et seuls les
-     * téléversements réclament S3. Refuser la procédure entière faute de
-     * stockage priverait un hub sans S3 de la seule réponse qui compte le soir
-     * du démontage — « le rush est-il sur la machine ? ».
+     * **Without `requireStorage`, and deliberately so.** The two halves of the answer
+     * do not come from the same place: the takes are reconstructed from the ingestion
+     * log, which every hub keeps, and only the uploads require S3. Refusing the whole
+     * procedure for want of storage would deprive a hub with no S3 of the one answer
+     * that matters on the evening of the strike — "is the rush on the machine?".
      */
     conference: os.vod.conference.use(operatorOnly).handler(({ input, context }) => {
       const { session, roomId } = resolveSession(context, input.sessionId)
-      const salles = new Map(context.services.rooms.list().map((salle) => [salle.id, salle.name]))
+      const rooms = new Map(context.services.rooms.list().map((room) => [room.id, room.name]))
       const vod = context.services.vod
 
-      /*
-       * Le créneau vécu, pas le créneau prévu.
+      /**
+       * The slot as lived, not the slot as planned.
        *
-       * C'est lui qui borne le rattachement à l'heure : un talk annoncé à 14 h
-       * et commencé à 14 h 20 a été enregistré à 14 h 20. Comparer à l'horaire
-       * du programme raccrocherait la prise du créneau précédent.
+       * It is what bounds attachment by time: a talk announced at 14:00 and started at
+       * 14:20 was recorded at 14:20. Comparing with the program's schedule would attach
+       * the previous slot's take.
        */
-      const etat = context.services.sessions.states(roomId)
-        .find((candidat) => candidat.sessionId === input.sessionId)
+      const state = context.services.sessions.states(roomId)
+        .find((candidate) => candidate.sessionId === input.sessionId)
 
       const captations =
         roomId == null
           ? []
           : context.services.ingest
               .captations(roomId)
-              .map((captation) => rattacher(captation, input.sessionId, etat))
-              .filter((captation) => captation != null)
+              .map((capture) => attachCapture(capture, input.sessionId, state))
+              .filter((capture) => capture != null)
 
       return {
         sessionId: session.id,
         roomId,
-        roomName: roomId == null ? null : (salles.get(roomId) ?? null),
-        stockageConfigure: vod != null && vod.pret(),
+        roomName: roomId == null ? null : (rooms.get(roomId) ?? null),
+        stockageConfigure: vod != null && vod.ready(),
         captations,
         televersements:
-          vod == null ? [] : vod.pourSession(input.sessionId, (id) => salles.get(id) ?? null),
+          vod == null ? [] : vod.forSession(input.sessionId, (id) => rooms.get(id) ?? null),
       }
     }),
 
     /**
-     * Éprouve la connexion au stockage. Admin.
+     * Tests the connection to the storage. Admin.
      *
-     * **Pas de `surStockage` ici, et c'est le point** : le diagnostic est la
-     * réponse. Traduire l'échec en 502 ferait perdre l'étape à laquelle on
-     * s'est arrêté — joindre, authentifier, signer, nettoyer —, c'est-à-dire
-     * exactement ce que ce bouton existe pour dire.
+     * **No `onStorage` here, and that is the point**: the diagnosis is the answer.
+     * Translating the failure into a 502 would lose the step we stopped at — reach,
+     * authenticate, sign, clean up —, which is exactly what this button exists to say.
      */
     check: os.vod.check.use(operatorOnly).handler(({ context }) => {
       const vod = context.services.vod
@@ -1157,15 +1156,14 @@ export const router = os.router({
     }),
 
     /**
-     * Remise à zéro. **Développement seulement, et refusé ici, pas seulement caché.**
+     * Reset. **Development only, and refused here, not merely hidden.**
      *
-     * Même garde que le réglage de l'horloge, et pour une raison plus forte
-     * encore : une console qui ne rend pas le bouton ne protège que de
-     * l'étourderie, pas d'un appel direct. Celui-ci détruit une journée de
-     * captation.
+     * The same guard as setting the clock, and for an even stronger reason: a console
+     * that does not render the button only protects against carelessness, not against a
+     * direct call. This one destroys a day of capture.
      *
-     * La confirmation est dans le contrat (`z.literal('RAZ')`) : elle est donc
-     * vérifiée par le hub, et pas seulement par la modale.
+     * The confirmation is in the contract (`z.literal('RAZ')`): it is therefore checked
+     * by the hub, and not only by the dialog.
      */
     reset: os.vod.reset.use(operatorOnly).handler(({ context }) => {
       if (context.services.mode !== 'dev') {
@@ -1174,32 +1172,31 @@ export const router = os.router({
             "La remise à zéro n'existe qu'en mode développement. Un hub d'événement ne détruit pas ses captations.",
         })
       }
-      return surStockage(context, async () => {
-        const efface = await exigerStockage(context).raz()
-        // Le hub oublie aussi ce qu'il savait des prises : sans cela, le
-        // dossier VOD d'une conférence continue de lister des captations dont
-        // on vient d'effacer les fichiers, et la remise à zéro paraît sans
-        // effet.
-        const prises = context.services.ingest.oublierCaptations()
-        const salles = context.services.rooms.list()
-        for (const salle of salles) {
+      return onStorage(context, async () => {
+        const erased = await requireStorage(context).reset()
+        // The hub also forgets what it knew about the takes: without that, a
+        // talk's VOD folder keeps listing captures whose files have just been
+        // erased, and the reset looks like it had no effect.
+        const takes = context.services.ingest.forgetCaptures()
+        const rooms = context.services.rooms.list()
+        for (const room of rooms) {
           context.services.commands.publish(
-            salle.id,
+            room.id,
             { type: 'vod.reset', requestedBy: context.operator.email },
             null,
           )
         }
-        return { ...efface, salles: salles.length, prises }
+        // `salles` and `prises` are contract fields: they do not get renamed.
+        return { ...erased, salles: rooms.length, prises: takes }
       })
     }),
 
     /**
-     * L'état du stockage, y compris quand il n'y en a pas.
+     * The storage's state, including when there is none.
      *
-     * Seule procédure du groupe qui répond sans stockage configuré : c'est
-     * précisément sa raison d'être. La console doit pouvoir dire « non
-     * configuré », et nommer les variables absentes — elles ne se devinent pas
-     * depuis un navigateur.
+     * The only procedure of the group that answers with no storage configured: that is
+     * precisely its reason to exist. The console must be able to say "not configured",
+     * and name the missing variables — they cannot be guessed from a browser.
      */
     status: os.vod.status.use(operatorOnly).handler(({ context }) => {
       const vod = context.services.vod
@@ -1216,15 +1213,15 @@ export const router = os.router({
     }),
 
     /**
-     * Demande à une salle de téléverser.
+     * Asks a room to upload.
      *
-     * Une commande, pas un appel direct — comme `rooms.resync`, et pour la même
-     * raison : la console ne parle pas aux salles, et une salle momentanément
-     * coupée rattrape la demande à sa reconnexion. Sans TTL : « rapatrie tes
-     * rushes » ne périme pas.
+     * A command, not a direct call — like `rooms.resync`, and for the same reason: the
+     * console does not talk to the rooms, and a momentarily disconnected room catches
+     * the request up on reconnection. With no TTL: "ship your rushes back" does not
+     * expire.
      */
     request: os.vod.request.use(operatorOnly).handler(({ input, context }) => {
-      exigerStockage(context)
+      requireStorage(context)
       if (context.services.rooms.get(input.roomId) == null) {
         throw new ORPCError('NOT_FOUND', { message: `Salle inconnue : ${input.roomId}` })
       }
@@ -1238,110 +1235,103 @@ export const router = os.router({
   },
 
   /**
-   * Régie mobile.
+   * Mobile control.
    *
-   * Une seule surface verrouillée, et c'est ce qui rend le verrou tenable :
-   * `sessions.start` reste ouverte à la console, `rooms.resync` aussi, et la
-   * machine de salle ne passe pas par le hub pour piloter son OBS. Le verrou
-   * n'exclut que les régies mobiles entre elles.
+   * A single locked surface, and that is what makes the lock bearable:
+   * `sessions.start` stays open to the console, `rooms.resync` too, and the room
+   * machine does not go through the hub to drive its OBS. The lock only excludes
+   * mobile control apps from each other.
    */
   regie: {
     locks: os.regie.locks
       .use(operatorOnly)
-      .handler(({ context }) => sallesDeRegie(context.services, context.services.clock.now())),
+      .handler(({ context }) => controlRooms(context.services, context.services.clock.now())),
 
     hold: os.regie.hold.use(operatorOnly).handler(({ input, context }) => {
-      const avant = context.services.regie.lock(input.roomId)
-      const verrou = surVerrou(() =>
+      const before = context.services.regie.lock(input.roomId)
+      const lock = onLock(() =>
         context.services.regie.hold(
           input.roomId,
           context.operator.email,
-          sessionDeRegie(context),
+          controlSessionId(context),
           input.force,
         ),
       )
       /*
-       * Diffuser seulement sur un **changement** de porteur.
+       * Broadcast only on a **change** of holder, and on the **displayed holder**
+       * rather than on the session.
        *
-       * Le renouvellement passe par ici quand la page reprend la main après une
-       * coupure, et il ne change rien à ce que la salle affiche. Publier à
-       * chaque fois remplirait la table des commandes d'une information
-       * identique — et ferait clignoter le badge en salle.
+       * Renewal comes through here when the page takes the hand back after an
+       * outage, and it changes nothing of what the room shows. Publishing every
+       * time would fill the command table with identical information — and would
+       * make the badge blink in the room. Taking a room over from one tab to
+       * another of the same operator changes nothing either.
        */
-      /*
-       * Sur le **porteur affiché**, pas sur la session.
-       *
-       * Reprendre une salle d'un onglet à l'autre du même opérateur ne change
-       * rien à ce que la salle affiche : republier ferait clignoter le badge
-       * sur une information identique.
-       */
-      if (avant?.holder !== verrou.holder) diffuserVerrou(context, input.roomId, verrou.holder)
-      return verrou
+      if (before?.holder !== lock.holder) broadcastLock(context, input.roomId, lock.holder)
+      return lock
     }),
 
     release: os.regie.release.use(operatorOnly).handler(({ input, context }) => {
-      const rendu = context.services.regie.release(input.roomId, sessionDeRegie(context))
-      if (rendu) diffuserVerrou(context, input.roomId, null)
-      return { ok: rendu }
+      const released = context.services.regie.release(input.roomId, controlSessionId(context))
+      if (released) broadcastLock(context, input.roomId, null)
+      return { ok: released }
     }),
 
     /**
-     * L'état de la salle, et le battement du verrou dans le même appel.
+     * The room's state, and the lock's heartbeat in the same call.
      *
-     * Le battement d'abord : une vue rendue à un porteur dont le verrou vient
-     * d'expirer entre deux sondages le laisserait dépossédé sans qu'il ait rien
-     * fait. Renouveler avant de lire referme cette fenêtre.
+     * The heartbeat first: a view returned to a holder whose lock has just expired
+     * between two polls would leave them dispossessed without having done anything.
+     * Renewing before reading closes that window.
      *
-     * Un appelant qui ne tient pas la salle ne fait que lire — c'est ce qui
-     * permet de regarder une salle tenue par quelqu'un d'autre sans la lui
-     * prendre.
+     * A caller that does not hold the room merely reads — which is what allows looking
+     * at a room held by somebody else without taking it from them.
      */
     view: os.regie.view.use(operatorOnly).handler(({ input, context }) => {
-      const verrou = context.services.regie.lock(input.roomId)
+      const lock = context.services.regie.lock(input.roomId)
       /*
-       * Seul le porteur renouvelle, et « le porteur » est une session.
+       * Only the holder renews, and "the holder" is a session.
        *
-       * Un second onglet du même opérateur ne fait que lire : le contraire
-       * ferait vivre indéfiniment un verrou que la page qui l'a pris a cessé
-       * de tenir.
+       * A second tab of the same operator merely reads: the opposite would keep
+       * alive indefinitely a lock the page that took it has stopped holding.
        */
-      if (verrou != null && verrou.holderId === context.headers.get(CONTROL_SESSION_HEADER)) {
-        context.services.regie.hold(input.roomId, verrou.holder, verrou.holderId, false)
+      if (lock != null && lock.holderId === context.headers.get(CONTROL_SESSION_HEADER)) {
+        context.services.regie.hold(input.roomId, lock.holder, lock.holderId, false)
       }
-      return surSalle(() =>
-        vueDeRegie(context.services, input.roomId, context.services.clock.now()),
+      return onRoom(() =>
+        controlView(context.services, input.roomId, context.services.clock.now()),
       )
     }),
 
     command: os.regie.command.use(operatorOnly).handler(({ input, context }) => {
-      exigerVerrou(context, input.roomId)
+      requireLock(context, input.roomId)
 
-      const resultat = surTransition(() =>
-        surSalle(() =>
-          commandeDeRegie(context.services, input.roomId, input.action, context.operator.email),
+      const result = onTransition(() =>
+        onRoom(() =>
+          controlCommand(context.services, input.roomId, input.action, context.operator.email),
         ),
       )
 
       /*
-       * Une décision de cycle de vie se diffuse comme celle d'une régie de
-       * salle, par le même chemin : les autres salles doivent l'apprendre, et
-       * la console la voir sans attendre son tour de sondage. La faire
-       * autrement aurait donné deux façons d'annoncer le même fait.
+       * A lifecycle decision is broadcast like a room control app's, through the
+       * same path: the other rooms must learn about it, and the console must see
+       * it without waiting for its polling turn. Doing it otherwise would have
+       * given two ways of announcing the same fact.
        */
       const action = input.action
       if ('sessionId' in action) {
-        const etat = context.services.sessions.get(action.sessionId)
-        diffuserEtat(context, {
+        const state = context.services.sessions.get(action.sessionId)
+        broadcastState(context, {
           sessionId: action.sessionId,
           roomId: input.roomId,
-          // `reset` supprime la ligne : l'absence *est* « à venir », ici comme
-          // dans la table. Sans ce repli, l'annulation ne s'annoncerait pas.
-          status: etat?.status ?? 'scheduled',
+          // `reset` deletes the row: absence *is* "upcoming", here as in the
+          // table. Without this fallback, the cancellation would not be announced.
+          status: state?.status ?? 'scheduled',
           decidedBy: context.operator.email,
         })
       }
 
-      return { ok: true, ...resultat }
+      return { ok: true, ...result }
     }),
   },
 
@@ -1356,8 +1346,8 @@ export const router = os.router({
     }),
 
     vote: os.questions.vote.handler(({ input, context }) => {
-      // Le seau porte sur l'appareil : le vote est le geste le plus facile à
-      // automatiser, et c'est celui qui fausserait le classement.
+      // The bucket is keyed on the device: voting is the easiest gesture to
+      // automate, and it is the one that would skew the ranking.
       if (!context.services.limiter.take(publicIdentity(context, input.deviceId))) {
         throw new ORPCError('TOO_MANY_REQUESTS', { message: 'Trop de votes coup sur coup.' })
       }
@@ -1371,93 +1361,92 @@ export const router = os.router({
 })
 
 /**
- * Traduit ce que le stockage refuse en quelque chose de lisible en console.
+ * Translates what the storage refuses into something readable in the console.
  *
- * Deux familles, et il faut les distinguer : `StockageIncomplet` dit qu'il
- * manque un réglage **ici** — un bucket, un téléversement qu'on a oublié
- * d'ouvrir —, `ErreurS3` rapporte ce que le stockage a répondu, code compris.
- * Les confondre en « erreur interne » enverrait chercher la panne dans le hub
- * quand elle est dans les droits du bucket, et réciproquement.
+ * Two families, and they must be told apart: `IncompleteStorage` says a setting is
+ * missing **here** — a bucket, an upload we forgot to open —, `S3Error` reports what
+ * the storage answered, code included. Confusing them into "internal error" would
+ * send people looking for the failure in the hub when it is in the bucket's
+ * permissions, and the other way round.
  *
- * Le code du stockage est repris tel quel : `SignatureDoesNotMatch`,
- * `NoSuchBucket`, `AccessDenied` sont les seuls mots qu'on puisse mettre dans
- * un moteur de recherche, et les traduire les ferait perdre.
+ * The storage's code is passed through as is: `SignatureDoesNotMatch`,
+ * `NoSuchBucket`, `AccessDenied` are the only words you can put into a search
+ * engine, and translating them would lose them.
  */
-async function surStockage<T>(
+async function onStorage<T>(
   context: { services: HubContext['services'] },
-  geste: () => T | Promise<T>,
+  gesture: () => T | Promise<T>,
 ): Promise<T> {
   try {
-    return await geste()
-  } catch (erreur) {
+    return await gesture()
+  } catch (error) {
     /**
-     * Ce qui a déjà été traduit passe intact.
+     * What has already been translated passes through intact.
      *
-     * `exigerStockage` lève un `NOT_IMPLEMENTED` quand aucun stockage n'est
-     * configuré : le réempaqueter en « stockage injoignable » ferait chercher
-     * une panne réseau là où il n'y a simplement rien de monté — c'est
-     * l'inverse exact du service que ce bloc est censé rendre.
+     * `requireStorage` throws a `NOT_IMPLEMENTED` when no storage is configured:
+     * repackaging it as "storage unreachable" would send people looking for a network
+     * failure where there is simply nothing mounted — the exact opposite of the service
+     * this block is meant to render.
      */
-    if (erreur instanceof ORPCError) throw erreur
-    if (erreur instanceof StockageIncomplet) {
-      throw new ORPCError('BAD_REQUEST', { message: erreur.message })
+    if (error instanceof ORPCError) throw error
+    if (error instanceof IncompleteStorage) {
+      throw new ORPCError('BAD_REQUEST', { message: error.message })
     }
-    if (erreur instanceof ErreurS3) {
+    if (error instanceof S3Error) {
       throw new ORPCError('BAD_GATEWAY', {
-        message: `Le stockage a refusé (${erreur.code}) : ${erreur.message}`,
+        message: `Le stockage a refusé (${error.code}) : ${error.message}`,
       })
     }
     /**
-     * Tout le reste, plutôt qu'une erreur interne.
+     * Everything else, rather than an internal error.
      *
-     * Le cas qui a motivé ce bloc : le stockage injoignable. `fetch` lève alors
-     * un `TypeError: fetch failed` dont la vraie cause — `ECONNREFUSED`,
-     * `ENOTFOUND`, un certificat — est rangée dans `cause`, et oRPC en faisait
-     * un « Internal Server Error » que la régie affichait tel quel. On cherchait
-     * la panne dans le hub alors qu'il manquait un conteneur.
+     * The case that motivated this block: unreachable storage. `fetch` then throws a
+     * `TypeError: fetch failed` whose real cause — `ECONNREFUSED`, `ENOTFOUND`, a
+     * certificate — is filed under `cause`, and oRPC turned it into an "Internal Server
+     * Error" the control app showed as is. We looked for the failure in the hub when a
+     * container was missing.
      *
-     * Rien ici n'est jamais la faute du hub : ces procédures ne font qu'appeler
-     * un stockage tiers. `BAD_GATEWAY` le dit, et le message nomme **l'adresse
-     * qu'on a essayé de joindre** — sans elle, on ne sait même pas si c'est
-     * celle qu'on croit.
+     * Nothing here is ever the hub's fault: these procedures only call a third-party
+     * storage. `BAD_GATEWAY` says so, and the message names **the address we tried to
+     * reach** — without it, we do not even know whether it is the one we think.
      */
     throw new ORPCError('BAD_GATEWAY', {
-      message: `Stockage injoignable (${context.services.vod?.endpoint() ?? 'adresse inconnue'}) : ${causeLisible(erreur)}`,
+      message: `Stockage injoignable (${context.services.vod?.endpoint() ?? 'adresse inconnue'}) : ${readableCause(error)}`,
     })
   }
 }
 
 /**
- * Le vrai motif d'un échec réseau, sous la couche de `fetch`.
+ * The real reason for a network failure, under `fetch`'s layer.
  *
- * `fetch failed` ne dit rien : c'est le message qu'undici pose sur *toutes* ses
- * pannes de transport. Le code errno, lui, distingue un service éteint
- * (`ECONNREFUSED`) d'un nom qui ne résout pas (`ENOTFOUND`) et d'un pare-feu
- * qui laisse pendre (`ETIMEDOUT`) — trois pannes qui ne se corrigent pas au
- * même endroit.
+ * `fetch failed` says nothing: it is the message undici puts on *all* its transport
+ * failures. The errno code, on the other hand, tells a switched-off service
+ * (`ECONNREFUSED`) from a name that does not resolve (`ENOTFOUND`) and from a
+ * firewall that leaves it hanging (`ETIMEDOUT`) — three failures that are not fixed
+ * in the same place.
  */
-function causeLisible(erreur: unknown): string {
-  const chaine: string[] = []
-  let courant: unknown = erreur
-  for (let profondeur = 0; courant != null && profondeur < 4; profondeur += 1) {
-    const noeud = courant as { message?: string; code?: string; cause?: unknown }
-    const code = typeof noeud.code === 'string' ? noeud.code : null
-    if (code != null) chaine.push(code)
-    else if (typeof noeud.message === 'string' && noeud.message !== '') chaine.push(noeud.message)
-    courant = noeud.cause
+function readableCause(error: unknown): string {
+  const chain: string[] = []
+  let current: unknown = error
+  for (let depth = 0; current != null && depth < 4; depth += 1) {
+    const node = current as { message?: string; code?: string; cause?: unknown }
+    const code = typeof node.code === 'string' ? node.code : null
+    if (code != null) chain.push(code)
+    else if (typeof node.message === 'string' && node.message !== '') chain.push(node.message)
+    current = node.cause
   }
-  return chaine.length === 0 ? String(erreur) : chaine.join(' — ')
+  return chain.length === 0 ? String(error) : chain.join(' — ')
 }
 
 /**
- * Le service de téléversement, ou un refus qui dit quoi faire.
+ * The upload service, or a refusal that says what to do.
  *
- * Un hub sans stockage configuré n'est pas en panne : c'est le cas par défaut,
- * et le dire ainsi évite qu'on cherche une erreur de droits sur un bucket qui
- * n'existe pas. `NOT_IMPLEMENTED` plutôt qu'une erreur serveur, parce que rien
- * n'a échoué — la fonctionnalité n'est simplement pas montée.
+ * A hub with no storage configured is not broken: it is the default case, and
+ * saying it this way stops people looking for a permission error on a bucket that
+ * does not exist. `NOT_IMPLEMENTED` rather than a server error, because nothing
+ * failed — the feature is simply not mounted.
  */
-function exigerStockage(context: { services: HubContext['services'] }): VodService {
+function requireStorage(context: { services: HubContext['services'] }): VodService {
   const vod = context.services.vod
   if (vod == null) {
     throw new ORPCError('NOT_IMPLEMENTED', {
@@ -1469,66 +1458,64 @@ function exigerStockage(context: { services: HubContext['services'] }): VodServi
 }
 
 /**
- * Cette prise appartient-elle à cette conférence, et à quel titre.
+ * Does this take belong to this talk, and on what grounds.
  *
- * Deux réponses possibles, et elles ne se valent pas. La régie estampille
- * normalement chaque prise du créneau en cours : c'est `session`, ce n'est pas
- * discutable, et rien d'autre n'est nécessaire.
+ * Two possible answers, and they are not equivalent. The control app normally
+ * stamps every take with the running slot: that is `session`, it is not open to
+ * debate, and nothing else is needed.
  *
- * Reste le cas qui coûte cher un soir de démontage : un enregistrement lancé à
- * la main, avant le « Commencer » de la régie ou sans lui, ne porte aucun
- * créneau. Le rush existe pourtant, il est même le seul qui existe, et le
- * chercher revient à ouvrir les fichiers un par un. On le raccroche alors par
- * le temps — la prise recouvre le créneau **vécu**, dans la même salle — en
- * disant que le rattachement est déduit : c'est une piste, pas un fait, et la
- * console l'affiche comme telle.
+ * That leaves the case that costs dearly on a strike evening: a recording launched
+ * by hand, before the control app's "Start" or without it, carries no slot. The
+ * rush exists nonetheless, it is even the only one that exists, and finding it means
+ * opening the files one by one. So we attach it by time — the take covers the slot
+ * **as lived**, in the same room — saying the attachment is derived: it is a lead,
+ * not a fact, and the console shows it as such.
  *
- * Le créneau prévu ne sert jamais d'appui : un talk annoncé à 14 h et démarré à
- * 14 h 20 ferait raccrocher la prise du créneau d'avant.
+ * The planned slot is never used as a basis: a talk announced at 14:00 and started
+ * at 14:20 would make us attach the previous slot's take.
  */
-function rattacher(
-  captation: CaptationBrute,
+function attachCapture(
+  capture: RawCapture,
   sessionId: string,
-  vecu: { startedAt: string | null; endedAt: string | null } | undefined,
+  lived: { startedAt: string | null; endedAt: string | null } | undefined,
 ): CaptureView | null {
-  if (captation.sessionId === sessionId) {
-    return { ...captation, rattachement: 'session' }
+  if (capture.sessionId === sessionId) {
+    return { ...capture, rattachement: 'session' }
   }
-  // Estampillée d'un autre créneau : elle appartient à celui-là, pas à celui-ci.
-  if (captation.sessionId != null) return null
-  if (vecu?.startedAt == null) return null
+  // Stamped with another slot: it belongs to that one, not to this one.
+  if (capture.sessionId != null) return null
+  if (lived?.startedAt == null) return null
 
-  const debutTalk = Date.parse(vecu.startedAt)
-  // Talk encore en cours : il court jusqu'à maintenant, donc toute prise
-  // ouverte depuis son démarrage le recouvre.
-  const finTalk = vecu.endedAt == null ? Number.POSITIVE_INFINITY : Date.parse(vecu.endedAt)
-  const debutPrise = Date.parse(captation.startedAt)
-  const finPrise =
-    captation.endedAt == null ? Number.POSITIVE_INFINITY : Date.parse(captation.endedAt)
+  const talkStart = Date.parse(lived.startedAt)
+  // Talk still running: it runs until now, so any take opened since its start
+  // covers it.
+  const talkEnd = lived.endedAt == null ? Number.POSITIVE_INFINITY : Date.parse(lived.endedAt)
+  const takeStart = Date.parse(capture.startedAt)
+  const takeEnd =
+    capture.endedAt == null ? Number.POSITIVE_INFINITY : Date.parse(capture.endedAt)
 
-  const seRecouvrent = debutPrise < finTalk && debutTalk < finPrise
-  return seRecouvrent ? { ...captation, rattachement: 'horaire' } : null
+  const overlap = takeStart < talkEnd && talkStart < takeEnd
+  return overlap ? { ...capture, rattachement: 'horaire' } : null
 }
 
 /**
- * Une chaîne blanche n'est pas une valeur.
+ * A blank string is not a value.
  *
- * Un champ texte laissé vide dans un formulaire arrive ici en `''`, pas en
- * `null`, et `??` le laisse passer : c'est ainsi qu'un projet OpenFeedback
- * « réglé à rien » écrasait silencieusement le repli et rendait des adresses
- * `https://openfeedback.io///…`.
+ * A text field left empty in a form arrives here as `''`, not as `null`, and `??`
+ * lets it through: that is how an OpenFeedback project "set to nothing" silently
+ * overwrote the fallback and produced `https://openfeedback.io///…` addresses.
  */
-function renseigne(valeur: string | null | undefined): string | null {
-  const propre = valeur?.trim() ?? ''
-  return propre === '' ? null : propre
+function filled(value: string | null | undefined): string | null {
+  const clean = value?.trim() ?? ''
+  return clean === '' ? null : clean
 }
 
 /**
- * Retrouve une session dans le programme actif.
+ * Finds a session in the active program.
  *
- * Refuser une session inconnue plutôt que d'écrire un état orphelin : une
- * décision portant sur un identifiant qui n'existe plus au programme serait
- * invisible partout, et donnerait l'illusion d'avoir agi.
+ * Refusing an unknown session rather than writing an orphan state: a decision about
+ * an identifier that is no longer in the program would be invisible everywhere, and
+ * would give the illusion of having acted.
  */
 function resolveSession(
   context: { services: HubContext['services'] },
@@ -1543,90 +1530,92 @@ function resolveSession(
 }
 
 /**
- * Interdit à une salle de décider pour une autre.
+ * Forbids a room from deciding for another.
  *
- * La console n'est pas concernée : c'est précisément son rôle de trancher à
- * distance quand un opérateur de salle n'est pas disponible.
+ * The console is not concerned: deciding remotely when a room operator is
+ * unavailable is precisely its role.
  */
 /**
- * Traduit un refus du cycle de vie en réponse que la régie sait afficher.
+ * Translates a lifecycle refusal into an answer the control app can show.
  *
- * `CONFLICT` et pas `BAD_REQUEST` : la demande était bien formée, c'est l'état
- * de la conférence qui a bougé — le plus souvent parce qu'une autre régie, ou
- * la clôture automatique, est passée entre-temps. Le message vient de la table
- * partagée, donc il dit la même chose que le bouton grisé d'en face.
+ * `CONFLICT` and not `BAD_REQUEST`: the request was well formed, it is the talk's
+ * state that moved — most often because another control app, or the automatic
+ * closing, went past in the meantime. The message comes from the shared table, so it
+ * says the same thing as the greyed-out button opposite.
  */
-function surTransition<T>(geste: () => T): T {
+function onTransition<T>(gesture: () => T): T {
   try {
-    return geste()
-  } catch (erreur) {
-    if (erreur instanceof TransitionRefusee) {
-      throw new ORPCError('CONFLICT', { message: erreur.message })
+    return gesture()
+  } catch (error) {
+    if (error instanceof TransitionRefused) {
+      throw new ORPCError('CONFLICT', { message: error.message })
     }
-    throw erreur
+    throw error
   }
 }
 
 /**
- * Traduit une salle inconnue en `NOT_FOUND`.
+ * Translates an unknown room into `NOT_FOUND`.
  *
- * Une adresse `/regie/<id>` se met en favori et se partage : un identifiant qui
- * ne désigne plus rien — salle renommée, programme réimporté — doit le dire,
- * pas rendre une vue vide qu'on lirait comme une salle éteinte.
+ * A `/regie/<id>` address gets bookmarked and shared: an identifier that no longer
+ * designates anything — room renamed, program reimported — must say so, not return
+ * an empty view that would read as a switched-off room.
  */
-function surSalle<T>(geste: () => T): T {
+function onRoom<T>(gesture: () => T): T {
   try {
-    return geste()
-  } catch (erreur) {
-    if (erreur instanceof SalleInconnue) {
-      throw new ORPCError('NOT_FOUND', { message: erreur.message })
+    return gesture()
+  } catch (error) {
+    if (error instanceof UnknownRoom) {
+      throw new ORPCError('NOT_FOUND', { message: error.message })
     }
-    throw erreur
-  }
-}
-
-/** Traduit une salle déjà tenue en `CONFLICT`, en nommant le porteur. */
-function surVerrou<T>(geste: () => T): T {
-  try {
-    return geste()
-  } catch (erreur) {
-    if (erreur instanceof VerrouTenu) {
-      throw new ORPCError('CONFLICT', { message: erreur.message })
-    }
-    throw erreur
+    throw error
   }
 }
 
 /**
- * Refuse un geste à qui ne tient pas la salle.
- *
- * Le message nomme le porteur : « refusé » sans dire par qui envoie chercher un
- * défaut là où il n'y a qu'un collègue à l'autre bout du bâtiment. Et il
- * distingue le verrou absent du verrou d'autrui — le premier se répare d'un
- * clic sur « Prendre la salle », le second demande une décision.
+ * Translates an already held room into `CONFLICT`, naming the holder.
  */
-function exigerVerrou(context: HubContext, roomId: string): void {
-  const verrou = context.services.regie.lock(roomId)
-  if (verrou == null) {
+function onLock<T>(gesture: () => T): T {
+  try {
+    return gesture()
+  } catch (error) {
+    if (error instanceof LockHeld) {
+      throw new ORPCError('CONFLICT', { message: error.message })
+    }
+    throw error
+  }
+}
+
+/**
+ * Refuses a gesture to whoever does not hold the room.
+ *
+ * The message names the holder: "refused" without saying by whom sends people
+ * looking for a defect where there is only a colleague at the other end of the
+ * building. And it tells a missing lock from somebody else's — the first is fixed
+ * with one click on "Take the room", the second calls for a decision.
+ */
+function requireLock(context: HubContext, roomId: string): void {
+  const lock = context.services.regie.lock(roomId)
+  if (lock == null) {
     throw new ORPCError('FORBIDDEN', {
       message: "Prenez la salle avant de la piloter : personne ne la tient",
     })
   }
-  if (verrou.holderId !== context.headers.get(CONTROL_SESSION_HEADER)) {
+  if (lock.holderId !== context.headers.get(CONTROL_SESSION_HEADER)) {
     throw new ORPCError('FORBIDDEN', {
-      message: `${verrou.holder} tient la régie de cette salle`,
+      message: `${lock.holder} tient la régie de cette salle`,
     })
   }
 }
 
 /**
- * L'onglet qui parle, ou un refus.
+ * The tab that is speaking, or a refusal.
  *
- * Exigé plutôt que déduit du compte : retomber sur l'adresse en l'absence de
- * l'en-tête dégraderait l'exclusivité en silence, et c'est le genre de repli
- * qu'on ne découvre que le jour où deux onglets pilotent la même salle.
+ * Required rather than derived from the account: falling back on the address when
+ * the header is missing would silently degrade exclusivity, and that is the kind of
+ * fallback you only discover the day two tabs drive the same room.
  */
-function sessionDeRegie(context: HubContext): string {
+function controlSessionId(context: HubContext): string {
   const session = context.headers.get(CONTROL_SESSION_HEADER)
   if (session == null || session === '') {
     throw new ORPCError('BAD_REQUEST', {
@@ -1637,14 +1626,14 @@ function sessionDeRegie(context: HubContext): string {
 }
 
 /**
- * Annonce à la salle qui la pilote à distance, ou que personne ne le fait.
+ * Tells the room who is driving it remotely, or that nobody is.
  *
- * Durable (`ttl` nul) comme `session.state` : c'est un changement d'état, pas
- * un message d'un instant. Une salle momentanément coupée doit le retrouver à
- * sa reconnexion — sinon son écran de régie affiche un porteur parti depuis une
- * heure, ou n'en affiche aucun alors qu'on la pilote.
+ * Durable (null `ttl`) like `session.state`: it is a state change, not a message of
+ * the moment. A momentarily disconnected room must find it again on reconnection —
+ * otherwise its control screen shows a holder who left an hour ago, or shows none
+ * while it is being driven.
  */
-function diffuserVerrou(
+function broadcastLock(
   context: { services: HubContext['services'] },
   roomId: string,
   holder: string | null,
@@ -1652,7 +1641,7 @@ function diffuserVerrou(
   context.services.commands.publish(roomId, { type: 'regie.hold', holder }, null)
 }
 
-function exigerMemeSalle(context: ActorContext, roomId: string | null): void {
+function requireSameRoom(context: ActorContext, roomId: string | null): void {
   if (context.roomId != null && roomId !== context.roomId) {
     throw new ORPCError('FORBIDDEN', {
       message: "Cette conférence ne se tient pas dans votre salle",
@@ -1660,53 +1649,57 @@ function exigerMemeSalle(context: ActorContext, roomId: string | null): void {
   }
 }
 
-/** Prévient la salle concernée sans attendre son prochain sync. */
 /**
- * Prévient **toutes** les salles, pas seulement celle concernée.
- *
- * Une régie doit pouvoir signaler « Track #2 vient de terminer » sans
- * interroger le hub : c'est ce qui permet à un opérateur d'anticiper une
- * bascule ou un enchaînement. Chaque salle filtre ensuite selon `roomId`.
+ * Tells the room concerned without waiting for its next sync.
  */
-function diffuserEtat(
+/**
+ * Tells **every** room, not only the one concerned.
+ *
+ * A control app must be able to report "Track #2 has just finished" without asking
+ * the hub: that is what lets an operator anticipate a switch or a handover. Each
+ * room then filters on `roomId`.
+ */
+function broadcastState(
   context: { services: HubContext['services'] },
-  etat: { sessionId: string; roomId: string | null; status: 'scheduled' | 'running' | 'ended'; decidedBy: string },
+  state: { sessionId: string; roomId: string | null; status: 'scheduled' | 'running' | 'ended'; decidedBy: string },
 ): void {
   const snapshot = context.services.programs.active()
-  const session = snapshot?.program.sessions.find((s) => s.id === etat.sessionId)
+  const session = snapshot?.program.sessions.find((s) => s.id === state.sessionId)
 
   context.services.commands.publish(
     null,
     {
       type: 'session.state',
-      sessionId: etat.sessionId,
-      roomId: etat.roomId,
+      sessionId: state.sessionId,
+      roomId: state.roomId,
       sessionTitle: session?.title ?? null,
-      status: etat.status,
-      decidedBy: etat.decidedBy,
+      status: state.status,
+      decidedBy: state.decidedBy,
     },
     null,
   )
 }
 
 /**
- * Traduit un refus de Better Auth en raison affichable.
+ * Translates a Better Auth refusal into a displayable reason.
  *
- * Le plugin device rend `invalid_request` pour un code qu'il ne connaît pas et
- * `expired_token` pour un code périmé, dans le corps de l'erreur. Les deux
- * n'appellent pas le même geste — recopier le code, ou en demander un nouveau
- * depuis la régie —, et rien d'autre ne permet de les distinguer.
+ * The device plugin returns `invalid_request` for a code it does not know and
+ * `expired_token` for an expired one, in the error's body. The two do not call for
+ * the same gesture — retyping the code, or asking for a new one from the control app
+ * —, and nothing else lets them be told apart.
  *
- * @returns `null` pour toute autre erreur : elle doit remonter telle quelle.
+ * @returns `null` for any other error: it must travel up as it is.
  */
-function raisonDuCode(cause: unknown): 'inconnu' | 'expire' | null {
-  const erreur = (cause as { body?: { error?: string } }).body?.error
-  if (erreur === 'expired_token') return 'expire'
-  if (erreur === 'invalid_request') return 'inconnu'
+function codeRefusalReason(cause: unknown): 'inconnu' | 'expire' | null {
+  const error = (cause as { body?: { error?: string } }).body?.error
+  if (error === 'expired_token') return 'expire'
+  if (error === 'invalid_request') return 'inconnu'
   return null
 }
 
-/** `lastEventId` est une chaîne opaque côté oRPC : on le ramène à un `seq` sûr. */
+/**
+ * `lastEventId` is an opaque string on the oRPC side: we bring it back to a safe `seq`.
+ */
 function parseSeq(lastEventId: string | undefined): number {
   if (lastEventId == null) return 0
   const seq = Number.parseInt(lastEventId, 10)

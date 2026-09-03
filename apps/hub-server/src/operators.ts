@@ -3,20 +3,20 @@ import type { Auth } from './auth.js'
 
 export interface ProvisionResult {
   id: string
-  /** `false` quand le compte existait déjà et que le mot de passe a été remplacé. */
+  /** `false` when the account already existed and the password was replaced. */
   created: boolean
 }
 
 /**
- * Provisionne un opérateur du hub, ou réinitialise son mot de passe.
+ * Provisions a hub operator, or resets their password.
  *
- * L'inscription publique est fermée (`disableSignUp`) : les comptes sont créés
- * par l'organisation, via ce chemin.
+ * Public sign-up is closed (`disableSignUp`): accounts are created by the
+ * organization, through this path.
  *
- * **Le mot de passe est toujours posé**, y compris sur un compte existant.
- * Sortir sans rien faire semblait plus prudent, mais produisait exactement le
- * piège qu'on veut éviter : la commande annonçait « prêt » et le mot de passe
- * demandé n'était pas celui du compte — la connexion échouait sans explication.
+ * **The password is always set**, including on an existing account. Bailing out
+ * with a no-op looked safer, but produced exactly the trap we want to avoid: the
+ * command announced "ready" and the password asked for was not the account's —
+ * sign-in failed with no explanation.
  */
 export async function provisionOperator(
   auth: Auth,
@@ -27,32 +27,32 @@ export async function provisionOperator(
 
   const existing = await ctx.internalAdapter.findUserByEmail(email)
   if (existing?.user != null) {
-    const identifiant = existing.user.id
-    const compte = await ctx.internalAdapter.findCredentialAccount(identifiant)
-    if (compte == null) {
-      // Compte créé par un autre chemin (OAuth, import) : il lui manque le
-      // compte « credential » qui porte le mot de passe.
+    const id = existing.user.id
+    const account = await ctx.internalAdapter.findCredentialAccount(id)
+    if (account == null) {
+      // Account created through another path (OAuth, import): it lacks the
+      // "credential" account that carries the password.
       await ctx.internalAdapter.linkAccount({
-        userId: identifiant,
+        userId: id,
         providerId: 'credential',
         issuer: createLocalAccountIssuer('credential'),
-        accountId: identifiant,
+        accountId: id,
         password: hash,
       })
     } else {
-      await ctx.internalAdapter.updatePassword(identifiant, hash)
+      await ctx.internalAdapter.updatePassword(id, hash)
     }
-    return { id: identifiant, created: false }
+    return { id, created: false }
   }
 
   const user = await ctx.internalAdapter.createUser(
     { email, name, emailVerified: true },
-    // Provisionnement interne : ni OAuth ni SSO, on déclare la méthode e-mail.
+    // Internal provisioning: neither OAuth nor SSO, we declare the email method.
     { method: 'email' },
   )
-  // Même chemin que l'inscription native de Better Auth : `linkAccount` avec
-  // l'issuer local. `updatePassword` ne conviendrait pas — il met à jour un
-  // compte existant, il n'en crée pas.
+  // The same path as Better Auth's native sign-up: `linkAccount` with the local
+  // issuer. `updatePassword` would not do — it updates an existing account, it
+  // does not create one.
   await ctx.internalAdapter.linkAccount({
     userId: user.id,
     providerId: 'credential',

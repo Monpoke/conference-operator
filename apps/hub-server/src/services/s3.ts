@@ -1,404 +1,402 @@
 import { createHash, createHmac } from 'node:crypto'
-import { request as requeteHttp } from 'node:http'
-import { request as requeteHttps } from 'node:https'
+import { request as httpRequest } from 'node:http'
+import { request as httpsRequest } from 'node:https'
 
 /**
- * Le strict nécessaire de S3, signé à la main.
+ * The strict minimum of S3, signed by hand.
  *
- * Le SDK officiel pèse une quinzaine de mégaoctets et une famille de paquets
- * qui bouge vite, pour six opérations dont aucune ne dépasse une requête HTTP.
- * SigV4 tient en une centaine de lignes de `node:crypto`, et le dépôt n'a ni
- * bundler ni SDK — en ajouter un ici serait le premier.
+ * The official SDK weighs some fifteen megabytes and a fast-moving family of
+ * packages, for six operations none of which goes beyond one HTTP request. SigV4
+ * fits in about a hundred lines of `node:crypto`, and the repository has neither
+ * a bundler nor an SDK — adding one here would be the first.
  *
- * La signature est vérifiée contre les vecteurs officiels d'AWS
- * (`apps/hub-server/test/s3.test.ts`) : c'est la seule façon d'être sûr d'un
- * algorithme dont la moindre erreur ne se manifeste que par un
- * `SignatureDoesNotMatch` sans détail.
+ * The signature is checked against AWS's official vectors
+ * (`apps/hub-server/test/s3.test.ts`): it is the only way to be sure of an
+ * algorithm whose slightest error only shows up as a `SignatureDoesNotMatch`
+ * with no detail.
  */
 
-export interface ClesS3 {
+export interface S3Keys {
   endpoint: string
   region: string
   accessKeyId: string
   secretAccessKey: string
-  /** `endpoint/bucket/cle` plutôt que `bucket.endpoint/cle`. */
+  /** `endpoint/bucket/key` rather than `bucket.endpoint/key`. */
   forcePathStyle: boolean
   /**
-   * Autorité de certification supplémentaire, au format PEM.
+   * Additional certificate authority, in PEM format.
    *
-   * Pour un stockage interne dont le certificat est signé par une CA
-   * d'entreprise : Node n'utilise pas le magasin du système, et la connexion
-   * échouerait sur `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`.
+   * For internal storage whose certificate is signed by a corporate CA: Node does
+   * not use the system store, and the connection would fail with
+   * `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`.
    */
   caCert?: string | null
 }
 
-/** Ce qu'un transport rend. Volontairement pauvre : c'est tout ce qu'on lit. */
-export interface ReponseS3 {
+/** What a transport returns. Deliberately poor: it is all we read. */
+export interface S3Response {
   status: number
-  corps: string
+  body: string
 }
 
 /**
- * Un appel HTTP, injectable.
+ * An HTTP call, injectable.
  *
- * `node:https` plutôt que `fetch`, pour une seule raison : `fetch` ne laisse
- * pas ajouter une autorité de certification. Le `Agent` d'undici le permettrait,
- * mais Node ne l'expose pas publiquement et l'ajouter en dépendance
- * reviendrait à embarquer une seconde fois ce que Node contient déjà.
+ * `node:https` rather than `fetch`, for one reason only: `fetch` does not let a
+ * certificate authority be added. undici's `Agent` would allow it, but Node does
+ * not expose it publicly and adding it as a dependency would mean embedding a
+ * second time what Node already contains.
  *
- * Le bénéfice de bord n'est pas mince : `Content-Length` est posé exactement,
- * là où `fetch` sur un flux bascule en découpage par blocs que S3 refuse sur
- * une adresse signée.
+ * The side benefit is not small: `Content-Length` is set exactly, where `fetch`
+ * over a stream switches to chunked encoding, which S3 refuses on a signed
+ * address.
  */
-export type TransportS3 = (
+export type S3Transport = (
   url: string,
   options: { method: string; headers: Record<string, string>; body?: string; ca?: string | null },
-) => Promise<ReponseS3>
+) => Promise<S3Response>
 
 /**
- * Délai d'inactivité, et non délai total.
+ * Idle timeout, and not total timeout.
  *
- * `CompleteMultipartUpload` peut tenir la connexion ouverte plusieurs minutes
- * pendant que le stockage recompose un objet de plusieurs gigaoctets — un délai
- * total couperait précisément les gros rushes, c'est-à-dire ceux qui comptent.
- * L'inactivité, elle, ne se déclenche que si plus rien n'arrive : un stockage
- * qui accepte la connexion puis se tait ne doit pas retenir le hub pour la
- * nuit.
+ * `CompleteMultipartUpload` can hold the connection open for several minutes
+ * while the storage reassembles an object of several gigabytes — a total timeout
+ * would cut precisely the big rushes, that is, the ones that matter. Idleness, on
+ * the other hand, only fires if nothing arrives any more: storage that accepts
+ * the connection then goes quiet must not hold the hub for the night.
  */
-const INACTIVITE_MS = 120_000
+const IDLE_MS = 120_000
 
-export const transportNode: TransportS3 = (url, options) =>
-  new Promise<ReponseS3>((resoudre, rejeter) => {
-    const cible = new URL(url)
-    const emettre = cible.protocol === 'https:' ? requeteHttps : requeteHttp
-    const corps = options.body == null ? null : Buffer.from(options.body, 'utf8')
-    const requete = emettre(
-      cible,
+export const nodeTransport: S3Transport = (url, options) =>
+  new Promise<S3Response>((resolve, reject) => {
+    const target = new URL(url)
+    const send = target.protocol === 'https:' ? httpsRequest : httpRequest
+    const body = options.body == null ? null : Buffer.from(options.body, 'utf8')
+    const request = send(
+      target,
       {
         method: options.method,
         headers: {
           ...options.headers,
-          ...(corps == null ? {} : { 'content-length': String(corps.byteLength) }),
+          ...(body == null ? {} : { 'content-length': String(body.byteLength) }),
         },
         ...(options.ca == null ? {} : { ca: options.ca }),
       },
-      (reponse) => {
-        const morceaux: Buffer[] = []
-        reponse.on('data', (bloc: Buffer) => morceaux.push(bloc))
-        reponse.on('end', () =>
-          resoudre({ status: reponse.statusCode ?? 0, corps: Buffer.concat(morceaux).toString('utf8') }),
+      (response) => {
+        const chunks: Buffer[] = []
+        response.on('data', (chunk: Buffer) => chunks.push(chunk))
+        response.on('end', () =>
+          resolve({ status: response.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf8') }),
         )
       },
     )
-    requete.setTimeout(INACTIVITE_MS, () => {
-      requete.destroy(
-        Object.assign(new Error(`aucune réponse du stockage depuis ${INACTIVITE_MS / 1000} s`), {
+    request.setTimeout(IDLE_MS, () => {
+      request.destroy(
+        Object.assign(new Error(`aucune réponse du stockage depuis ${IDLE_MS / 1000} s`), {
           code: 'ETIMEDOUT',
         }),
       )
     })
-    requete.on('error', rejeter)
-    if (corps != null) requete.write(corps)
-    requete.end()
+    request.on('error', reject)
+    if (body != null) request.write(body)
+    request.end()
   })
 
-export interface RequeteS3 {
+export interface S3Request {
   method: 'GET' | 'PUT' | 'POST' | 'DELETE'
-  /** Chemin déjà résolu, encodé, commençant par `/`. */
+  /** Already resolved and encoded path, starting with `/`. */
   path: string
-  /** Paramètres de requête, non encodés. Une valeur vide donne un drapeau nu (`?uploads`). */
+  /** Query parameters, unencoded. An empty value gives a bare flag (`?uploads`). */
   query?: Record<string, string>
   headers?: Record<string, string>
-  /** Corps déjà sérialisé. Absent = corps vide. */
+  /** Already serialized body. Absent = empty body. */
   body?: string
 }
 
-const ALGORITHME = 'AWS4-HMAC-SHA256'
-/** Corps non signé : c'est ce que lit un stockage sur une adresse presignée. */
-export const CHARGE_NON_SIGNEE = 'UNSIGNED-PAYLOAD'
+const ALGORITHM = 'AWS4-HMAC-SHA256'
+/** Unsigned payload: that is what a storage reads on a presigned address. */
+export const UNSIGNED_PAYLOAD = 'UNSIGNED-PAYLOAD'
 
-const sha256 = (valeur: string | Uint8Array): string =>
-  createHash('sha256').update(valeur).digest('hex')
+const sha256 = (value: string | Uint8Array): string =>
+  createHash('sha256').update(value).digest('hex')
 
-const hmac = (cle: Uint8Array | string, message: string): Uint8Array =>
-  new Uint8Array(createHmac('sha256', cle).update(message).digest())
+const hmac = (key: Uint8Array | string, message: string): Uint8Array =>
+  new Uint8Array(createHmac('sha256', key).update(message).digest())
 
 /**
- * Encodage RFC 3986, celui qu'exige SigV4.
+ * RFC 3986 encoding, the one SigV4 requires.
  *
- * `encodeURIComponent` laisse passer cinq caractères que la norme veut encodés.
- * Les oublier ne casse rien tant qu'aucun titre de conférence ne porte
- * d'apostrophe ou de parenthèses — c'est-à-dire jusqu'au jour où l'un en porte,
- * et où *ce fichier-là* seul refuse de monter.
+ * `encodeURIComponent` lets through five characters the standard wants encoded.
+ * Forgetting them breaks nothing as long as no talk title carries an apostrophe
+ * or brackets — that is, until the day one does, and *that file alone* refuses to
+ * upload.
  */
-function encoder(valeur: string): string {
-  return encodeURIComponent(valeur).replace(
+function encode(value: string): string {
+  return encodeURIComponent(value).replace(
     /[!'()*]/g,
-    (caractere) => `%${caractere.charCodeAt(0).toString(16).toUpperCase()}`,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
   )
 }
 
-/** Encode un chemin en gardant ses barres : S3 ne double-encode pas le sien. */
-export function encoderChemin(chemin: string): string {
-  return chemin.split('/').map(encoder).join('/')
+/** Encodes a path keeping its slashes: S3 does not double-encode its own. */
+export function encodePath(path: string): string {
+  return path.split('/').map(encode).join('/')
 }
 
-/** Paramètres triés par nom, chacun encodé. C'est l'ordre qui entre dans la signature. */
-function chaineDeRequete(query: Record<string, string>): string {
+/** Parameters sorted by name, each encoded. That order is what enters the signature. */
+function queryString(query: Record<string, string>): string {
   return Object.keys(query)
     .sort()
-    .map((nom) => `${encoder(nom)}=${encoder(query[nom] ?? '')}`)
+    .map((name) => `${encode(name)}=${encode(query[name] ?? '')}`)
     .join('&')
 }
 
-function horodatage(at: Date): { amzDate: string; jour: string } {
+function timestamp(at: Date): { amzDate: string; day: string } {
   const amzDate = at.toISOString().replace(/[:-]|\.\d{3}/g, '')
-  return { amzDate, jour: amzDate.slice(0, 8) }
+  return { amzDate, day: amzDate.slice(0, 8) }
 }
 
-function cleDeSignature(cles: ClesS3, jour: string): Uint8Array {
-  const date = hmac(`AWS4${cles.secretAccessKey}`, jour)
-  const region = hmac(date, cles.region)
+function signingKey(keys: S3Keys, day: string): Uint8Array {
+  const date = hmac(`AWS4${keys.secretAccessKey}`, day)
+  const region = hmac(date, keys.region)
   const service = hmac(region, 's3')
   return hmac(service, 'aws4_request')
 }
 
-interface Canonique {
-  requete: string
-  entetesSignes: string
+interface Canonical {
+  request: string
+  signedHeaders: string
 }
 
-function canoniser(
-  requete: RequeteS3,
-  entetes: Record<string, string>,
-  empreinteCharge: string,
-): Canonique {
-  const noms = Object.keys(entetes)
-    .map((nom) => nom.toLowerCase())
+function canonicalize(
+  request: S3Request,
+  headers: Record<string, string>,
+  payloadHash: string,
+): Canonical {
+  const names = Object.keys(headers)
+    .map((name) => name.toLowerCase())
     .sort()
-  const lignes = noms
-    .map((nom) => {
-      const valeur = entetes[Object.keys(entetes).find((k) => k.toLowerCase() === nom) ?? nom] ?? ''
-      return `${nom}:${valeur.trim().replace(/\s+/g, ' ')}\n`
+  const lines = names
+    .map((name) => {
+      const value = headers[Object.keys(headers).find((k) => k.toLowerCase() === name) ?? name] ?? ''
+      return `${name}:${value.trim().replace(/\s+/g, ' ')}\n`
     })
     .join('')
-  const entetesSignes = noms.join(';')
+  const signedHeaders = names.join(';')
 
   return {
-    requete: [
-      requete.method,
-      requete.path,
-      chaineDeRequete(requete.query ?? {}),
-      lignes,
-      entetesSignes,
-      empreinteCharge,
+    request: [
+      request.method,
+      request.path,
+      queryString(request.query ?? {}),
+      lines,
+      signedHeaders,
+      payloadHash,
     ].join('\n'),
-    entetesSignes,
+    signedHeaders,
   }
 }
 
 /**
- * Signe une requête par ses en-têtes. C'est la forme des appels que le hub fait
- * lui-même — ouvrir un multipart, le clore, l'abandonner.
+ * Signs a request through its headers. That is the shape of the calls the hub
+ * makes itself — opening a multipart, closing it, abandoning it.
  */
-export function signerV4(
-  cles: ClesS3,
-  requete: RequeteS3,
+export function signV4(
+  keys: S3Keys,
+  request: S3Request,
   at: Date = new Date(),
 ): Record<string, string> {
-  const { amzDate, jour } = horodatage(at)
-  const empreinteCharge = sha256(requete.body ?? '')
-  const hote = new URL(cles.endpoint).host
+  const { amzDate, day } = timestamp(at)
+  const payloadHash = sha256(request.body ?? '')
+  const host = new URL(keys.endpoint).host
 
-  const entetes: Record<string, string> = {
-    ...requete.headers,
-    host: hote,
-    'x-amz-content-sha256': empreinteCharge,
+  const headers: Record<string, string> = {
+    ...request.headers,
+    host,
+    'x-amz-content-sha256': payloadHash,
     'x-amz-date': amzDate,
   }
 
-  const { requete: canonique, entetesSignes } = canoniser(requete, entetes, empreinteCharge)
-  const portee = `${jour}/${cles.region}/s3/aws4_request`
-  const aSigner = [ALGORITHME, amzDate, portee, sha256(canonique)].join('\n')
-  const signature = Buffer.from(hmac(cleDeSignature(cles, jour), aSigner)).toString('hex')
+  const { request: canonical, signedHeaders } = canonicalize(request, headers, payloadHash)
+  const scope = `${day}/${keys.region}/s3/aws4_request`
+  const toSign = [ALGORITHM, amzDate, scope, sha256(canonical)].join('\n')
+  const signature = Buffer.from(hmac(signingKey(keys, day), toSign)).toString('hex')
 
   return {
-    ...entetes,
+    ...headers,
     authorization:
-      `${ALGORITHME} Credential=${cles.accessKeyId}/${portee}, ` +
-      `SignedHeaders=${entetesSignes}, Signature=${signature}`,
+      `${ALGORITHM} Credential=${keys.accessKeyId}/${scope}, ` +
+      `SignedHeaders=${signedHeaders}, Signature=${signature}`,
   }
 }
 
 /**
- * Signe une requête dans son adresse, pour que quelqu'un d'autre l'exécute.
+ * Signs a request inside its address, so that somebody else can execute it.
  *
- * C'est **toute** la raison d'être de ce module : la salle détient les
- * fichiers, le hub détient les clés, et une adresse presignée est la seule
- * façon de laisser la première écrire chez le stockage sans jamais lui confier
- * les secondes.
+ * That is the **whole** reason this module exists: the room holds the files, the
+ * hub holds the keys, and a presigned address is the only way to let the first
+ * write to the storage without ever entrusting it with the second.
  */
-export function presigner(
-  cles: ClesS3,
-  requete: RequeteS3,
-  expireDansS: number,
+export function presign(
+  keys: S3Keys,
+  request: S3Request,
+  expiresInS: number,
   at: Date = new Date(),
 ): string {
-  const { amzDate, jour } = horodatage(at)
-  const hote = new URL(cles.endpoint).host
-  const portee = `${jour}/${cles.region}/s3/aws4_request`
+  const { amzDate, day } = timestamp(at)
+  const host = new URL(keys.endpoint).host
+  const scope = `${day}/${keys.region}/s3/aws4_request`
 
   const query: Record<string, string> = {
-    ...requete.query,
-    'X-Amz-Algorithm': ALGORITHME,
-    'X-Amz-Credential': `${cles.accessKeyId}/${portee}`,
+    ...request.query,
+    'X-Amz-Algorithm': ALGORITHM,
+    'X-Amz-Credential': `${keys.accessKeyId}/${scope}`,
     'X-Amz-Date': amzDate,
-    'X-Amz-Expires': String(expireDansS),
+    'X-Amz-Expires': String(expiresInS),
     'X-Amz-SignedHeaders': 'host',
   }
 
-  const { requete: canonique } = canoniser(
-    { ...requete, query },
-    { host: hote },
-    CHARGE_NON_SIGNEE,
+  const { request: canonical } = canonicalize(
+    { ...request, query },
+    { host },
+    UNSIGNED_PAYLOAD,
   )
-  const aSigner = [ALGORITHME, amzDate, portee, sha256(canonique)].join('\n')
-  const signature = Buffer.from(hmac(cleDeSignature(cles, jour), aSigner)).toString('hex')
+  const toSign = [ALGORITHM, amzDate, scope, sha256(canonical)].join('\n')
+  const signature = Buffer.from(hmac(signingKey(keys, day), toSign)).toString('hex')
 
-  const base = new URL(cles.endpoint)
-  return `${base.origin}${requete.path}?${chaineDeRequete(query)}&X-Amz-Signature=${signature}`
+  const base = new URL(keys.endpoint)
+  return `${base.origin}${request.path}?${queryString(query)}&X-Amz-Signature=${signature}`
 }
 
 /**
- * Ce que S3 rend quand il refuse.
+ * What S3 returns when it refuses.
  *
- * Le `code` est repris tel quel — `SignatureDoesNotMatch`, `NoSuchBucket`,
- * `AccessDenied` — parce que c'est lui qui dit où chercher, et qu'un message
- * traduit ferait perdre le seul mot qu'on puisse mettre dans un moteur de
- * recherche. Il remonte jusqu'à la console.
+ * The `code` is passed through as is — `SignatureDoesNotMatch`, `NoSuchBucket`,
+ * `AccessDenied` — because it is what says where to look, and a translated
+ * message would lose the one word you can put into a search engine. It travels
+ * all the way to the console.
  */
-export class ErreurS3 extends Error {
+export class S3Error extends Error {
   constructor(
     readonly code: string,
     message: string,
     readonly status: number,
   ) {
     super(message)
-    this.name = 'ErreurS3'
+    this.name = 'S3Error'
   }
 }
 
-const balise = (xml: string, nom: string): string | null => {
-  const trouve = xml.match(new RegExp(`<${nom}>([\\s\\S]*?)</${nom}>`))
-  return trouve?.[1]?.trim() ?? null
+const tag = (xml: string, name: string): string | null => {
+  const found = xml.match(new RegExp(`<${name}>([\\s\\S]*?)</${name}>`))
+  return found?.[1]?.trim() ?? null
 }
 
 /**
- * Une réponse S3 en erreur, y compris déguisée en succès.
+ * An S3 response in error, including one disguised as a success.
  *
- * `CompleteMultipartUpload` peut répondre **200 avec une erreur dans le corps** :
- * la requête tient la connexion ouverte pendant que le stockage recompose
- * l'objet, et le statut part avant le verdict. La croire sur son code ferait
- * marquer « terminé » un rush qui n'existe pas.
+ * `CompleteMultipartUpload` can answer **200 with an error in the body**: the
+ * request holds the connection open while the storage reassembles the object, and
+ * the status leaves before the verdict. Trusting its code would mark as "done" a
+ * rush that does not exist.
  */
-function verifier(status: number, xml: string): void {
+function check(status: number, xml: string): void {
   if (status < 300 && !xml.includes('<Error>')) return
-  throw new ErreurS3(
-    balise(xml, 'Code') ?? `HTTP ${status}`,
-    balise(xml, 'Message') ?? xml.slice(0, 300),
+  throw new S3Error(
+    tag(xml, 'Code') ?? `HTTP ${status}`,
+    tag(xml, 'Message') ?? xml.slice(0, 300),
     status,
   )
 }
 
-export interface MultipartEnCours {
+export interface OpenMultipart {
   key: string
   uploadId: string
   initiatedAt: string | null
 }
 
-/** Ce que le hub sait faire d'un bucket. Rien de plus, et c'est voulu. */
-export class ClientS3 {
+/** What the hub knows how to do with a bucket. Nothing more, and deliberately so. */
+export class S3Client {
   constructor(
-    private readonly cles: ClesS3,
+    private readonly keys: S3Keys,
     private readonly bucket: string,
-    private readonly transport: TransportS3 = transportNode,
+    private readonly transport: S3Transport = nodeTransport,
   ) {}
 
-  /** `/bucket/cle`, ou `/cle` quand l'hôte porte déjà le bucket. */
-  private chemin(key?: string): string {
-    const suffixe = key == null ? '' : `/${encoderChemin(key)}`
-    return this.cles.forcePathStyle ? `/${encoder(this.bucket)}${suffixe}` : suffixe || '/'
+  /** `/bucket/key`, or `/key` when the host already carries the bucket. */
+  private path(key?: string): string {
+    const suffix = key == null ? '' : `/${encodePath(key)}`
+    return this.keys.forcePathStyle ? `/${encode(this.bucket)}${suffix}` : suffix || '/'
   }
 
-  private hote(): string {
-    const base = new URL(this.cles.endpoint)
-    if (this.cles.forcePathStyle) return base.origin
+  private host(): string {
+    const base = new URL(this.keys.endpoint)
+    if (this.keys.forcePathStyle) return base.origin
     return `${base.protocol}//${this.bucket}.${base.host}`
   }
 
-  private clesPour(): ClesS3 {
-    if (this.cles.forcePathStyle) return this.cles
-    return { ...this.cles, endpoint: this.hote() }
+  private keysFor(): S3Keys {
+    if (this.keys.forcePathStyle) return this.keys
+    return { ...this.keys, endpoint: this.host() }
   }
 
-  private async appeler(requete: RequeteS3): Promise<string> {
-    const cles = this.clesPour()
-    const entetes = signerV4(cles, requete)
-    const query = chaineDeRequete(requete.query ?? {})
-    const url = `${new URL(cles.endpoint).origin}${requete.path}${query ? `?${query}` : ''}`
+  private async call(request: S3Request): Promise<string> {
+    const keys = this.keysFor()
+    const headers = signV4(keys, request)
+    const query = queryString(request.query ?? {})
+    const url = `${new URL(keys.endpoint).origin}${request.path}${query ? `?${query}` : ''}`
 
-    const reponse = await this.transport(url, {
-      method: requete.method,
-      headers: entetes,
-      body: requete.body,
-      ca: this.cles.caCert ?? null,
+    const response = await this.transport(url, {
+      method: request.method,
+      headers,
+      body: request.body,
+      ca: this.keys.caCert ?? null,
     })
-    verifier(reponse.status, reponse.corps)
-    return reponse.corps
+    check(response.status, response.body)
+    return response.body
   }
 
-  async creerMultipart(key: string, contentType: string): Promise<string> {
-    const xml = await this.appeler({
+  async createMultipart(key: string, contentType: string): Promise<string> {
+    const xml = await this.call({
       method: 'POST',
-      path: this.chemin(key),
+      path: this.path(key),
       query: { uploads: '' },
       headers: { 'content-type': contentType },
     })
-    const uploadId = balise(xml, 'UploadId')
+    const uploadId = tag(xml, 'UploadId')
     if (uploadId == null) {
-      throw new ErreurS3('ReponseIllisible', "le stockage n'a pas rendu d'UploadId", 502)
+      throw new S3Error('ReponseIllisible', "le stockage n'a pas rendu d'UploadId", 502)
     }
     return uploadId
   }
 
-  /** Adresse signée pour écrire une part. C'est ce qui descend en salle. */
-  presignerPart(key: string, uploadId: string, numero: number, expireDansS: number): string {
-    return presigner(
-      this.clesPour(),
+  /** Signed address to write one part. That is what goes down to the room. */
+  presignPart(key: string, uploadId: string, number: number, expiresInS: number): string {
+    return presign(
+      this.keysFor(),
       {
         method: 'PUT',
-        path: this.chemin(key),
-        query: { partNumber: String(numero), uploadId },
+        path: this.path(key),
+        query: { partNumber: String(number), uploadId },
       },
-      expireDansS,
+      expiresInS,
     )
   }
 
-  /** Adresse signée pour écrire un objet entier — le sidecar, quelques kilo-octets. */
-  presignerPut(key: string, expireDansS: number): string {
-    return presigner(this.clesPour(), { method: 'PUT', path: this.chemin(key) }, expireDansS)
+  /** Signed address to write a whole object — the sidecar, a few kilobytes. */
+  presignPut(key: string, expiresInS: number): string {
+    return presign(this.keysFor(), { method: 'PUT', path: this.path(key) }, expiresInS)
   }
 
-  async terminerMultipart(
+  async completeMultipart(
     key: string,
     uploadId: string,
     parts: { n: number; etag: string }[],
   ): Promise<void> {
-    // L'ordre est celui des numéros de part, pas celui d'arrivée : le stockage
-    // recompose dans l'ordre qu'on lui donne, et une salle qui rejoue une part
-    // en échec les acquitte forcément dans le désordre.
-    const corps =
+    // The order is that of the part numbers, not that of arrival: the storage
+    // reassembles in the order we give it, and a room replaying a failed part
+    // necessarily acknowledges them out of order.
+    const body =
       '<CompleteMultipartUpload>' +
       [...parts]
         .sort((a, b) => a.n - b.n)
@@ -406,102 +404,101 @@ export class ClientS3 {
         .join('') +
       '</CompleteMultipartUpload>'
 
-    await this.appeler({
+    await this.call({
       method: 'POST',
-      path: this.chemin(key),
+      path: this.path(key),
       query: { uploadId },
       headers: { 'content-type': 'application/xml' },
-      body: corps,
+      body,
     })
   }
 
-  async abandonnerMultipart(key: string, uploadId: string): Promise<void> {
-    await this.appeler({
+  async abortMultipart(key: string, uploadId: string): Promise<void> {
+    await this.call({
       method: 'DELETE',
-      path: this.chemin(key),
+      path: this.path(key),
       query: { uploadId },
     })
   }
 
   /**
-   * Les objets présents sous un préfixe.
+   * The objects present under a prefix.
    *
-   * Ne sert qu'à la remise à zéro de développement : la journée normale n'a
-   * jamais besoin de relire ce qu'elle a écrit.
+   * Only used by the development reset: a normal day never needs to read back
+   * what it wrote.
    */
-  async listerObjets(prefix: string): Promise<string[]> {
-    const cles: string[] = []
-    let suite: string | null = null
+  async listObjects(prefix: string): Promise<string[]> {
+    const keys: string[] = []
+    let next: string | null = null
 
-    // Bornée, comme l'inventaire des multiparts : un stockage qui rendrait des
-    // pages indéfiniment ne doit pas retenir le hub.
+    // Bounded, like the multipart inventory: a storage that returned pages
+    // indefinitely must not hold the hub.
     for (let page = 0; page < 50; page += 1) {
       const query: Record<string, string> = { 'list-type': '2' }
       if (prefix !== '') query.prefix = prefix
-      if (suite != null) query['continuation-token'] = suite
+      if (next != null) query['continuation-token'] = next
 
-      const xml: string = await this.appeler({ method: 'GET', path: this.chemin(), query })
-      for (const bloc of xml.match(/<Contents>[\s\S]*?<\/Contents>/g) ?? []) {
-        const key = balise(bloc, 'Key')
-        if (key != null) cles.push(key)
+      const xml: string = await this.call({ method: 'GET', path: this.path(), query })
+      for (const block of xml.match(/<Contents>[\s\S]*?<\/Contents>/g) ?? []) {
+        const key = tag(block, 'Key')
+        if (key != null) keys.push(key)
       }
-      if (balise(xml, 'IsTruncated') !== 'true') break
-      suite = balise(xml, 'NextContinuationToken')
-      if (suite == null) break
+      if (tag(xml, 'IsTruncated') !== 'true') break
+      next = tag(xml, 'NextContinuationToken')
+      if (next == null) break
     }
 
-    return cles
+    return keys
   }
 
   /**
-   * Supprime un objet.
+   * Deletes an object.
    *
-   * Un par un, et non par lots : `DeleteObjects` exige un en-tête `Content-MD5`
-   * que rien d'autre ici ne demande, pour un gain qui ne se mesure qu'au-delà
-   * de plusieurs centaines d'objets. Ce geste-ci vide un préfixe de
-   * développement, pas un entrepôt.
+   * One by one, and not in batches: `DeleteObjects` requires a `Content-MD5`
+   * header nothing else here asks for, for a gain that is only measurable beyond
+   * several hundred objects. This gesture empties a development prefix, not a
+   * warehouse.
    */
-  async supprimerObjet(key: string): Promise<void> {
-    await this.appeler({ method: 'DELETE', path: this.chemin(key) })
+  async deleteObject(key: string): Promise<void> {
+    await this.call({ method: 'DELETE', path: this.path(key) })
   }
 
   /**
-   * Les multiparts ouverts sous un préfixe.
+   * The multiparts open under a prefix.
    *
-   * Sert au ménage du démarrage, et seulement à lui : c'est la seule façon de
-   * retrouver ce qu'un hub a ouvert avant que sa base ne soit recréée. Le
-   * registre en base ne sait plus rien de ceux-là, et personne ne les
-   * abandonnerait jamais.
+   * Used by the startup housekeeping, and only by it: it is the only way to find
+   * what a hub opened before its database was recreated. The register in the
+   * database knows nothing of those any more, and nobody would ever abandon them.
    */
-  async listerMultiparts(prefix: string): Promise<MultipartEnCours[]> {
-    const trouves: MultipartEnCours[] = []
+  async listMultiparts(prefix: string): Promise<OpenMultipart[]> {
+    const found: OpenMultipart[] = []
     let keyMarker: string | null = null
     let uploadIdMarker: string | null = null
 
-    // Bornée : un bucket qui rendrait des pages indéfiniment ne doit pas tenir
-    // le démarrage du hub en otage un matin d'événement.
+    // Bounded: a bucket that returned pages indefinitely must not hold the hub's
+    // startup hostage on an event morning.
     for (let page = 0; page < 20; page += 1) {
       const query: Record<string, string> = { uploads: '' }
       if (prefix !== '') query.prefix = prefix
       if (keyMarker != null) query['key-marker'] = keyMarker
       if (uploadIdMarker != null) query['upload-id-marker'] = uploadIdMarker
 
-      const xml: string = await this.appeler({ method: 'GET', path: this.chemin(), query })
+      const xml: string = await this.call({ method: 'GET', path: this.path(), query })
 
-      for (const bloc of xml.match(/<Upload>[\s\S]*?<\/Upload>/g) ?? []) {
-        const key = balise(bloc, 'Key')
-        const uploadId = balise(bloc, 'UploadId')
+      for (const block of xml.match(/<Upload>[\s\S]*?<\/Upload>/g) ?? []) {
+        const key = tag(block, 'Key')
+        const uploadId = tag(block, 'UploadId')
         if (key != null && uploadId != null) {
-          trouves.push({ key, uploadId, initiatedAt: balise(bloc, 'Initiated') })
+          found.push({ key, uploadId, initiatedAt: tag(block, 'Initiated') })
         }
       }
 
-      if (balise(xml, 'IsTruncated') !== 'true') break
-      keyMarker = balise(xml, 'NextKeyMarker')
-      uploadIdMarker = balise(xml, 'NextUploadIdMarker')
+      if (tag(xml, 'IsTruncated') !== 'true') break
+      keyMarker = tag(xml, 'NextKeyMarker')
+      uploadIdMarker = tag(xml, 'NextUploadIdMarker')
       if (keyMarker == null) break
     }
 
-    return trouves
+    return found
   }
 }

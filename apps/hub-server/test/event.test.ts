@@ -4,13 +4,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createHub, type Hub } from '../src/server.js'
 
 /**
- * Le hub sait de quel événement il est le hub.
+ * The hub knows which event it is the hub of.
  *
- * Ce que ces tests protègent est une propriété du dépôt entier : **aucune
- * surface n'écrit le nom d'un événement en dur**. Le hub le lit dans le
- * programme importé, un réglage peut le contredire, et tout le reste — mur
- * public, console, service worker, machines de salle — consomme ce qu'il a
- * tranché. Réintroduire une constante quelque part se verrait ici.
+ * What these tests protect is a property of the whole repository: **no surface
+ * writes an event's name in hard**. The hub reads it from the imported program, a
+ * setting can contradict it, and everything else — public wall, console, service
+ * worker, room machines — consumes what it decided. Reintroducing a constant
+ * somewhere would show up here.
  */
 
 const rawProgram = readFileSync(
@@ -39,87 +39,87 @@ afterEach(async () => {
   await hub.close()
 })
 
-describe('identité de l’événement', () => {
-  it('reste neutre tant qu’aucun programme n’est importé', () => {
-    // Un hub tout juste installé : il ne sait pas encore où il est, et le dire
-    // vaut mieux que d'afficher le nom d'un autre événement.
+describe('event identity', () => {
+  it('stays neutral for as long as no program is imported', () => {
+    // A hub that has just been installed: it does not know yet where it is, and
+    // saying so is better than displaying another event's name.
     expect(hub.services.identity.get()).toEqual({ name: 'Événement', shortName: 'Événement' })
   })
 
-  it('se déduit du programme importé, sans rien régler', () => {
+  it('is derived from the imported program, with nothing to set', () => {
     hub.services.programs.importFromText(rawProgram, 'https://exemple/programme.json')
 
-    // Le geste unique pour servir un autre événement : importer son export.
+    // The single gesture to serve another event: import its export.
     expect(hub.services.identity.get()).toEqual({
       name: 'Cloud Nord 2026',
       shortName: 'Cloud Nord',
     })
   })
 
-  it('suit le programme actif quand on revient sur une version', () => {
+  it('follows the active program when going back to a version', () => {
     hub.services.programs.importFromText(rawProgram, 'https://exemple/programme.json')
-    const autre = JSON.parse(rawProgram) as { event: { name: string } }
-    autre.event.name = 'DevFest Lille 2027'
-    hub.services.programs.importFromText(JSON.stringify(autre), 'https://exemple/autre.json')
+    const other = JSON.parse(rawProgram) as { event: { name: string } }
+    other.event.name = 'DevFest Lille 2027'
+    hub.services.programs.importFromText(JSON.stringify(other), 'https://exemple/autre.json')
 
     expect(hub.services.identity.get().name).toBe('DevFest Lille 2027')
   })
 
-  it('laisse le réglage du hub contredire l’export amont', () => {
+  it('lets the hub setting contradict the upstream export', () => {
     hub.services.programs.importFromText(rawProgram, 'https://exemple/programme.json')
     hub.services.settings.update({ eventName: 'Cloud Nord — répétition' })
 
     expect(hub.services.identity.get().name).toBe('Cloud Nord — répétition')
-    // Et la déduction reste lisible : c'est ce que la console montre en
-    // placeholder, pour qu'on ose vider le champ.
+    // And the derivation stays readable: it is what the console shows as a
+    // placeholder, so that one dares to empty the field.
     expect(hub.services.identity.derived().name).toBe('Cloud Nord 2026')
   })
 })
 
-describe('surfaces servies par le hub', () => {
+describe('surfaces served by the hub', () => {
   beforeEach(() => {
     hub.services.programs.importFromText(rawProgram, 'https://exemple/programme.json')
   })
 
-  it('titre le mur public du nom de l’événement', async () => {
+  it('titles the public wall with the event name', async () => {
     const html = await (await fetch(`${origin}/mur`)).text()
 
-    // Le premier mot que lit quelqu'un qui vient de scanner un QR : rendu côté
-    // serveur, pas demandé par la page — sur la 4G d'une salle, il arriverait
-    // après tout le reste.
+    // The first word read by someone who has just scanned a QR code: rendered
+    // server side, not requested by the page — on a room's 4G it would arrive
+    // after everything else.
     expect(html).toContain('<title>Cloud Nord 2026 — mur &amp; questions</title>')
   })
 
-  it('titre la console du nom de l’événement', async () => {
+  it('titles the console with the event name', async () => {
     const html = await (await fetch(`${origin}/admin`)).text()
 
     expect(html).toContain('<title>Cloud Nord 2026 — console hub</title>')
   })
 
-  it('donne son nom court au service worker des notifications', async () => {
-    // Certains services de push réveillent le worker sans charge utile lisible :
-    // c'est alors le seul nom dont il dispose pour titrer l'avis.
+  it('gives its short name to the notifications service worker', async () => {
+    // Some push services wake the worker with no readable payload: it is then the
+    // only name it has to title the notice with.
     const code = await (await fetch(`${origin}/sw.js`)).text()
 
     expect(code).toContain('"Cloud Nord"')
   })
 
-  it('suit un renommage sans redémarrer le hub', async () => {
+  it('follows a rename without restarting the hub', async () => {
     hub.services.settings.update({ eventName: 'Cloud Nord — répétition' })
 
     const html = await (await fetch(`${origin}/mur`)).text()
     expect(html).toContain('Cloud Nord — répétition')
-    // Le nom se corrige en cours d'événement ; redémarrer pour ça est
-    // précisément ce qu'on ne peut pas faire ce jour-là. Le service worker
-    // suit au prochain chargement de page — le navigateur le revérifie à
-    // chaque fois, c'est pour ça qu'il est servi sans cache.
+    // The name gets corrected during the event; restarting for that is precisely
+    // what cannot be done on the day. The service worker follows at the next page
+    // load — the browser rechecks it every time, which is why it is served with no
+    // cache.
     const code = await (await fetch(`${origin}/sw.js`)).text()
-    // Nom court inchangé : rien à retirer ici, « répétition » n'est pas un
-    // millésime. La déduction est volontairement timide.
+    // Short name unchanged: nothing to strip here, "répétition" is not a year.
+    // The derivation is deliberately timid.
     expect(code).toContain('"Cloud Nord — répétition"')
   })
 
-  it('échappe ce qu’il insère dans le HTML', async () => {
+  it('escapes what it inserts into the HTML', async () => {
     hub.services.settings.update({ eventName: '<script>alert(1)</script>' })
 
     const html = await (await fetch(`${origin}/mur`)).text()

@@ -63,7 +63,7 @@ afterEach(async () => {
   await hub.close()
 })
 
-/** Client oRPC en HTTP, tel que l'utilise hub-admin. */
+/** The oRPC client over HTTP, as hub-admin uses it. */
 function httpClient(headers: Record<string, string> = {}): Client {
   return createORPCClient(
     new FetchLink({
@@ -74,7 +74,7 @@ function httpClient(headers: Record<string, string> = {}): Client {
   )
 }
 
-/** Client oRPC en WebSocket, tel que l'utilise une machine de salle. */
+/** The oRPC client over WebSocket, as a room machine uses it. */
 function wsClient(headers: Record<string, string>): Client {
   return createORPCClient(
     new WsLink({
@@ -100,7 +100,7 @@ async function signInOperator(): Promise<string> {
   return body.token
 }
 
-/** Déroule l'appairage complet et renvoie les en-têtes de la machine. */
+/** Runs the whole pairing and returns the machine's headers. */
 async function pairRoomDevice(): Promise<Record<string, string>> {
   const codeResponse = await fetch(`${origin}/api/auth/device/code`, {
     method: 'POST',
@@ -118,7 +118,7 @@ async function pairRoomDevice(): Promise<Record<string, string>> {
     label: 'PC régie salle 1',
   })
 
-  // Respecte l'intervalle de polling imposé par le hub (RFC 8628 §3.5).
+  // Honours the polling interval imposed by the hub (RFC 8628 §3.5).
   await sleep(1_100)
   const tokenResponse = await fetch(`${origin}/api/auth/device/token`, {
     method: 'POST',
@@ -133,11 +133,11 @@ async function pairRoomDevice(): Promise<Record<string, string>> {
   expect(granted.access_token).toBeTruthy()
 
   /**
-   * Échange contre un jeton de salle.
+   * Exchange for a room token.
    *
-   * La session d'approbation porte les droits de l'opérateur ; une machine de
-   * régie n'a aucune raison de les conserver. Elle ne sert qu'à réclamer son
-   * propre jeton, à droits réduits.
+   * The approving session carries the operator's rights; a control machine has no
+   * reason to keep them. It only serves to claim its own token, with reduced
+   * rights.
    */
   const machine = httpClient({
     authorization: `Bearer ${granted.access_token}`,
@@ -149,73 +149,73 @@ async function pairRoomDevice(): Promise<Record<string, string>> {
   return { authorization: `Bearer ${token}` }
 }
 
-describe('hub de bout en bout', () => {
-  it('répond au health check', async () => {
+describe('hub end to end', () => {
+  it('answers the health check', async () => {
     const response = await fetch(`${origin}/health`)
     expect(response.ok).toBe(true)
     expect((await response.json()) as { ok: boolean }).toMatchObject({ ok: true })
   })
 
-  it('refuse toute procédure de salle sans appairage', async () => {
+  it('refuses every room procedure with no pairing', async () => {
     const anonymous = httpClient()
     await expect(anonymous.rooms.sync({ since: null })).rejects.toBeDefined()
   })
 
-  it('appaire une machine puis lui sert le programme de sa salle', async () => {
+  it('pairs a machine then serves it its room\'s program', async () => {
     const deviceHeaders = await pairRoomDevice()
     const room = wsClient(deviceHeaders)
 
     const sync = await room.rooms.sync({ since: null })
     expect(sync.room.id).toBe(TRACK_1)
-    // 27 créneaux à l'export, 38 servis : les pauses communes sont projetées
-    // dans les salles libres au même moment, et la salle les reçoit comme les
-    // siennes — c'est ce qui lui évite un trou pendant le déjeuner.
+    // 27 slots in the export, 38 served: the shared breaks are projected into the
+    // rooms that are free at the same moment, and the room receives them as its
+    // own — that is what saves it a gap during lunch.
     expect(sync.program?.sessions).toHaveLength(38)
     expect(sync.program?.sessions.filter((s) => s.sharedFrom != null)).toHaveLength(11)
     expect(sync.serverTime).toBeTruthy()
 
-    // Deuxième sync avec le même hash : le snapshot n'est pas renvoyé.
+    // A second sync with the same hash: the snapshot is not sent again.
     const again = await room.rooms.sync({ since: sync.contentHash })
     expect(again.program).toBeNull()
     expect(again.contentHash).toBe(sync.contentHash)
   }, 20_000)
 
-  it('descend à la salle le nom de l\'événement et le projet OpenFeedback', async () => {
-    // La salle titre ses fenêtres et dessine ses QR avec ce que le hub a
-    // tranché, jamais avec une constante compilée dans le binaire installé sur
-    // la machine — c'est la même machine qui servira l'édition suivante.
+  it('sends the event name and the OpenFeedback project down to the room', async () => {
+    // The room titles its windows and draws its QR codes with what the hub
+    // decided, never with a constant compiled into the binary installed on the
+    // machine — it is the same machine that will serve the next edition.
     hub.services.settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
     const room = wsClient(await pairRoomDevice())
 
     const sync = await room.rooms.sync({ since: null })
 
     expect(sync.event).toEqual({ name: 'Cloud Nord 2026', shortName: 'Cloud Nord' })
-    // Résolu par le hub : la salle n'a pas à connaître la règle de priorité
-    // entre le réglage de l'événement et sa propre surcharge.
+    // Resolved by the hub: the room does not have to know the priority rule
+    // between the event's setting and its own override.
     expect(sync.room.openFeedbackProjectId).toBe('cloud-nord-2026')
   }, 20_000)
 
-  it('ne laisse plus une salle contredire le projet OpenFeedback de l\'événement', async () => {
-    // Le projet est une propriété de l'événement, et un seul endroit l'écrit.
-    // Tant que la régie le pouvait aussi, il a suffi qu'un opérateur le
-    // remplisse sur une machine pour que cette salle-là ait des liens et pas
-    // les autres — sans que rien ne dise pourquoi.
+  it('no longer lets a room contradict the event\'s OpenFeedback project', async () => {
+    // The project is a property of the event, and a single place writes it. For as
+    // long as the control app could too, it took one operator filling it in on one
+    // machine for that room to have links and not the others — with nothing to say
+    // why.
     hub.services.settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
-    const salle = hub.services.rooms.get(TRACK_1)!
-    hub.services.rooms.upsert({ ...salle, openFeedbackProjectId: 'atelier-2026' })
+    const room0 = hub.services.rooms.get(TRACK_1)!
+    hub.services.rooms.upsert({ ...room0, openFeedbackProjectId: 'atelier-2026' })
     const room = wsClient(await pairRoomDevice())
 
     const sync = await room.rooms.sync({ since: null })
 
-    // Écrasé, pas complété : ce que la salle porte en base ne pèse rien.
+    // Overwritten, not merged: what the room carries in its database weighs
+    // nothing.
     expect(sync.room.openFeedbackProjectId).toBe('cloud-nord-2026')
   }, 20_000)
 
-  it('refuse à une salle d\'écrire le projet OpenFeedback', async () => {
-    // La procédure de configuration existe toujours — les adresses OBS et les
-    // noms de scènes se constatent devant les machines — mais ce champ-là en
-    // est sorti : zod écarte les clés inconnues, la salle ne peut plus rien
-    // poser dessus.
+  it('refuses to let a room write the OpenFeedback project', async () => {
+    // The configuration procedure still exists — the OBS addresses and the scene
+    // names are observed in front of the machines — but that field has left it:
+    // zod discards unknown keys, the room can no longer put anything on it.
     hub.services.settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
     const room = wsClient(await pairRoomDevice())
 
@@ -224,12 +224,13 @@ describe('hub de bout en bout', () => {
       displayPort: 7799,
     } as never)
 
-    // Le reste du patch passe : c'est un champ ignoré, pas un appel refusé.
+    // The rest of the patch goes through: it is an ignored field, not a refused
+    // call.
     expect(config.displayPort).toBe(7799)
     expect(hub.services.rooms.get(TRACK_1)?.openFeedbackProjectId).toBeNull()
   }, 20_000)
 
-  it('achemine les commandes descendantes et remonte les événements', async () => {
+  it('routes the downward commands and sends the events back up', async () => {
     const deviceHeaders = await pairRoomDevice()
     const room = wsClient(deviceHeaders)
 
@@ -254,7 +255,7 @@ describe('hub de bout en bout', () => {
     expect(received.map((c) => c.payload.type)).toEqual(['scene.force', 'message.broadcast'])
     expect(received[1]!.seq).toBeGreaterThan(received[0]!.seq)
 
-    // Remontée de l'outbox, puis rejeu du même lot.
+    // The outbox goes up, then the same batch is replayed.
     const batch = [
       {
         id: '01AAAAAAAAAAAAAAAAAAAAAAAA',
@@ -273,7 +274,7 @@ describe('hub de bout en bout', () => {
     expect(replay.duplicates).toEqual(['01AAAAAAAAAAAAAAAAAAAAAAAA'])
   }, 20_000)
 
-  it('révoque une machine : son jeton ne donne plus accès à la salle', async () => {
+  it('revokes a machine: its token no longer gives access to the room', async () => {
     const deviceHeaders = await pairRoomDevice()
     const room = httpClient(deviceHeaders)
     await expect(room.rooms.sync({ since: null })).resolves.toBeDefined()
@@ -285,181 +286,183 @@ describe('hub de bout en bout', () => {
 
 
 /**
- * Supervision : ce qui se joue dans chaque salle, et pour combien de temps.
+ * Supervision: what is going on in each room, and for how much longer.
  *
- * Le restant est calculé par le hub et non par la console : celle-ci n'a que
- * l'horloge du poste, qui n'est pas celle qui fait foi — et qui peut en être
- * à des semaines quand le hub tourne sur une heure simulée.
+ * The remaining time is computed by the hub and not by the console: the latter
+ * only has the machine's clock, which is not the authoritative one — and which
+ * can be weeks away from it when the hub runs on a simulated time.
  */
-describe('temps restant des salles', () => {
-  it('le compte sur l\'horloge du hub, pas sur celle du client', async () => {
+describe('rooms\' remaining time', () => {
+  it('counts it on the hub\'s clock, not on the client\'s', async () => {
     hub.services.clock.setSimulated('2026-10-30T10:20:00.000Z')
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
 
-    const salles = await admin.rooms.statuses()
-    const salle = salles.find((s) => s.roomId === TRACK_1)
-    const creneau = salle?.currentSession
-    expect(creneau?.title).toEqual(expect.any(String))
-    expect(creneau?.endsAt).toEqual(expect.any(String))
+    const rooms = await admin.rooms.statuses()
+    const room = rooms.find((s) => s.roomId === TRACK_1)
+    const slot = room?.currentSession
+    expect(slot?.title).toEqual(expect.any(String))
+    expect(slot?.endsAt).toEqual(expect.any(String))
 
-    // Référencé sur l'heure simulée : la machine qui fait tourner ce test est
-    // à une tout autre date, et un calcul fait chez elle serait aberrant.
-    const attendu = Date.parse(creneau!.endsAt!) - Date.parse('2026-10-30T10:20:00.000Z')
-    expect(Math.abs(creneau!.remainingMs! - attendu)).toBeLessThan(2_000)
+    // Referenced against the simulated time: the machine running this test is at a
+    // completely different date, and a computation done there would be absurd.
+    const expected = Date.parse(slot!.endsAt!) - Date.parse('2026-10-30T10:20:00.000Z')
+    expect(Math.abs(slot!.remainingMs! - expected)).toBeLessThan(2_000)
   })
 
-  it('ne l\'invente pas quand rien ne se joue', async () => {
-    // Heure réelle : l'événement est en octobre, il n'y a pas de créneau en cours.
+  it('does not invent it when nothing is going on', async () => {
+    // Real time: the event is in October, there is no running slot.
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
-    const salles = await admin.rooms.statuses()
+    const rooms = await admin.rooms.statuses()
 
-    expect(salles.find((s) => s.roomId === TRACK_1)?.currentSession).toBeNull()
+    expect(rooms.find((s) => s.roomId === TRACK_1)?.currentSession).toBeNull()
   })
 })
 
 /**
- * Resynchronisation demandée depuis la console.
+ * Resynchronization asked for from the console.
  *
- * Elle existe parce qu'il n'y avait pas d'autre recours : remettre une salle
- * d'aplomb demandait de la redémarrer, donc de couper sa captation.
+ * It exists because there was no other recourse: putting a room straight again
+ * required restarting it, and therefore cutting its capture.
  */
-describe('resynchronisation des salles', () => {
-  it('descend la demande à la salle visée', async () => {
+describe('resynchronizing the rooms', () => {
+  it('sends the request down to the targeted room', async () => {
     const headers = await pairRoomDevice()
-    const salle = wsClient(headers)
-    const recues: Command[] = []
-    const flux = (async () => {
-      for await (const commande of await salle.rooms.commands()) {
-        recues.push(commande)
-        if (recues.length >= 1) break
+    const room = wsClient(headers)
+    const received: Command[] = []
+    const stream = (async () => {
+      for await (const command of await room.rooms.commands()) {
+        received.push(command)
+        if (received.length >= 1) break
       }
     })()
 
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
     await sleep(200)
-    const resultat = await admin.rooms.resync({ roomId: TRACK_1 })
-    expect(resultat).toEqual({ ok: true, rooms: 1 })
+    const result = await admin.rooms.resync({ roomId: TRACK_1 })
+    expect(result).toEqual({ ok: true, rooms: 1 })
 
-    await Promise.race([flux, sleep(3_000)])
-    expect(recues[0]?.payload).toMatchObject({
+    await Promise.race([stream, sleep(3_000)])
+    expect(received[0]?.payload).toMatchObject({
       type: 'room.resync',
-      // Qui l'a demandée : la salle le trace, on saura d'où vient le geste.
+      // Who asked for it: the room traces it, so we will know where the gesture
+      // came from.
       requestedBy: OPERATOR.email,
     })
   })
 
-  it('compte les salles visées quand la demande est générale', async () => {
+  it('counts the targeted rooms when the request is a general one', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
 
-    // Une seule salle sur ce hub : c'est le compte qu'annonce la console, et
-    // c'est ce qui lui permet de dire « aucune salle » plutôt que « c'est parti »
-    // sur un hub où rien n'est appairé.
+    // A single room on this hub: it is the count the console announces, and it is
+    // what lets it say "no room" rather than "off we go" on a hub where nothing is
+    // paired.
     expect(await admin.rooms.resync({ roomId: null })).toEqual({ ok: true, rooms: 1 })
   })
 
-  it('refuse une salle inconnue plutôt que d\'émettre dans le vide', async () => {
+  it('refuses an unknown room rather than emitting into the void', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
 
     await expect(admin.rooms.resync({ roomId: 'salle-fantome' })).rejects.toThrow(/inconnue/)
   })
 
-  it('reste fermée aux salles : c\'est un geste de console', async () => {
+  it('stays closed to the rooms: it is a console gesture', async () => {
     const headers = await pairRoomDevice()
-    const salle = wsClient(headers)
+    const room = wsClient(headers)
 
-    await expect(salle.rooms.resync({ roomId: TRACK_1 })).rejects.toThrow()
+    await expect(room.rooms.resync({ roomId: TRACK_1 })).rejects.toThrow()
   })
 })
 
 /**
- * Créneaux dont le genre se corrige depuis la console.
+ * Slots whose kind gets corrected from the console.
  *
- * L'export amont ne distingue pas un déjeuner d'une conférence : les deux sont
- * des créneaux avec un titre et une salle. Le normaliseur tranche sur un seul
- * signal — pas d'intervenant, donc une pause — et se trompe dans les deux sens :
- * la salle titrait « Déjeuner » à l'antenne, et laissait la keynote d'ouverture
- * sans titrage ni bouton « Commencer ».
+ * The upstream export does not tell a lunch from a talk: both are slots with a
+ * title and a room. The normalizer decides on a single signal — no speaker, so a
+ * break — and gets it wrong in both directions: the room titled "Déjeuner" on air,
+ * and left the opening keynote with no titling and no "Start" button.
  */
-describe('corriger le genre d\'un créneau', () => {
-  /** « IA for OPS on Scaleway », une vraie conférence de Track #1. */
+describe('correcting a slot\'s kind', () => {
+  /** "IA for OPS on Scaleway", a real talk of Track #1. */
   const TALK = 'cmotqj1r1008401pxxsm6y2fu'
 
-  it('le sert en break partout, empreinte comprise', async () => {
+  it('serves it as a break everywhere, fingerprint included', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
-    const avant = hub.services.programs.active()!
+    const before = hub.services.programs.active()!
 
-    const resultat = await admin.sessions.override({ sessionId: TALK, action: 'break' })
+    const result = await admin.sessions.override({ sessionId: TALK, action: 'break' })
 
-    expect(resultat.ok).toBe(true)
-    // L'empreinte bouge : sans ça, les salles resteraient sur leur cache et
-    // continueraient de titrer à l'antenne ce qu'on vient de corriger.
-    expect(resultat.contentHash).not.toBe(avant.contentHash)
+    expect(result.ok).toBe(true)
+    // The fingerprint moves: without that, the rooms would stay on their cache and
+    // keep titling on air what has just been corrected.
+    expect(result.contentHash).not.toBe(before.contentHash)
 
-    const apres = hub.services.programs.active()!
-    expect(apres.contentHash).toBe(resultat.contentHash)
-    expect(apres.program.sessions.find((s) => s.id === TALK)?.kind).toBe('break')
-    // Le reste du programme est intact.
-    expect(apres.program.sessions).toHaveLength(avant.program.sessions.length)
+    const after = hub.services.programs.active()!
+    expect(after.contentHash).toBe(result.contentHash)
+    expect(after.program.sessions.find((s) => s.id === TALK)?.kind).toBe('break')
+    // The rest of the program is intact.
+    expect(after.program.sessions).toHaveLength(before.program.sessions.length)
   })
 
-  it('le retire du planning comme conférence, et de ses QR de feedback', async () => {
+  it('removes it from the schedule as a talk, and from its feedback QR codes', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
     await admin.settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
 
-    const avant = (await admin.program.planning()).sessions.find((s) => s.id === TALK)!
-    expect(avant.kind).toBe('talk')
-    expect(avant.feedbackUrl).toEqual(expect.any(String))
-    expect(avant.overriddenAs).toBeNull()
+    const before = (await admin.program.planning()).sessions.find((s) => s.id === TALK)!
+    expect(before.kind).toBe('talk')
+    expect(before.feedbackUrl).toEqual(expect.any(String))
+    expect(before.overriddenAs).toBeNull()
 
     await admin.sessions.override({ sessionId: TALK, action: 'break' })
 
-    const apres = (await admin.program.planning()).sessions.find((s) => s.id === TALK)!
-    expect(apres.kind).toBe('break')
-    // La console est seule à distinguer un break de l'export d'un break décidé :
-    // c'est elle qui l'a posé, et c'est chez elle qu'on le retire.
-    expect(apres.overriddenAs).toBe('break')
-    // Plus rien à noter : un QR mort scanné par le public coûte plus cher
-    // qu'une case vide.
-    expect(apres.feedbackUrl).toBeNull()
+    const after = (await admin.program.planning()).sessions.find((s) => s.id === TALK)!
+    expect(after.kind).toBe('break')
+    // The console alone tells a break from the export apart from a decided break:
+    // it is the console that put it there, and there that it gets removed.
+    expect(after.overriddenAs).toBe('break')
+    // Nothing left to rate: a dead QR code scanned by the audience costs more than
+    // an empty cell.
+    expect(after.feedbackUrl).toBeNull()
   })
 
-  it('change ce que la pastille de la salle raconte', async () => {
+  it('changes what the room\'s badge says', async () => {
     hub.services.clock.setSimulated('2026-10-30T09:00:00.000Z')
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
 
-    // 09:00 UTC : « IA for OPS » court de 08:50 à 09:40, personne ne l'a lancée.
-    const avant = await admin.rooms.statuses()
-    expect(avant.find((s) => s.roomId === TRACK_1)?.conference).toBe('retard')
+    // 09:00 UTC: "IA for OPS" runs from 08:50 to 09:40, nobody has launched it.
+    // `retard` and `pause` are contract values.
+    const before = await admin.rooms.statuses()
+    expect(before.find((s) => s.roomId === TRACK_1)?.conference).toBe('retard')
 
     await admin.sessions.override({ sessionId: TALK, action: 'break' })
 
-    // Un créneau qui n'est pas une conférence ne se démarre pas : il n'y a plus
-    // de retard au démarrage à signaler.
-    const apres = await admin.rooms.statuses()
-    expect(apres.find((s) => s.roomId === TRACK_1)?.conference).toBe('pause')
+    // A slot that is not a talk does not get started: there is no late start left
+    // to report.
+    const after = await admin.rooms.statuses()
+    expect(after.find((s) => s.roomId === TRACK_1)?.conference).toBe('pause')
   })
 
-  it('se retire, et rend au programme son empreinte d\'origine', async () => {
+  it('removes itself, and gives the program back its original fingerprint', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
-    const origine = hub.services.programs.active()!.contentHash
+    const original = hub.services.programs.active()!.contentHash
 
     await admin.sessions.override({ sessionId: TALK, action: 'break' })
-    const retire = await admin.sessions.override({ sessionId: TALK, action: null })
+    const removed = await admin.sessions.override({ sessionId: TALK, action: null })
 
-    // Retirée, la surcharge doit être indistinguable d'une surcharge jamais
-    // posée : sinon les salles retéléchargeraient pour rien à chaque aller-retour.
-    expect(retire.contentHash).toBe(origine)
+    // Once removed, the override must be indistinguishable from an override never
+    // placed: otherwise the rooms would re-download for nothing on every round
+    // trip.
+    expect(removed.contentHash).toBe(original)
     expect(hub.services.programs.active()!.program.sessions.find((s) => s.id === TALK)?.kind)
       .toBe('talk')
   })
 
-  it('prévient les salles, programme corrigé à l\'appui', async () => {
+  it('tells the rooms, corrected program to back it up', async () => {
     const headers = await pairRoomDevice()
-    const salle = wsClient(headers)
-    const recues: Command[] = []
-    const flux = (async () => {
-      for await (const commande of await salle.rooms.commands()) {
-        recues.push(commande)
+    const room = wsClient(headers)
+    const received: Command[] = []
+    const stream = (async () => {
+      for await (const command of await room.rooms.commands()) {
+        received.push(command)
         break
       }
     })()
@@ -468,116 +471,116 @@ describe('corriger le genre d\'un créneau', () => {
     await sleep(200)
     const { contentHash } = await admin.sessions.override({ sessionId: TALK, action: 'break' })
 
-    await Promise.race([flux, sleep(3_000)])
-    expect(recues[0]?.payload).toMatchObject({ type: 'program.invalidate', contentHash })
+    await Promise.race([stream, sleep(3_000)])
+    expect(received[0]?.payload).toMatchObject({ type: 'program.invalidate', contentHash })
 
-    // Et la salle qui resynchronise sur son ancienne empreinte reçoit bien le
-    // programme corrigé, pas un `null` « rien n'a changé ».
-    const resultat = await salle.rooms.sync({ since: null })
-    expect(resultat.contentHash).toBe(contentHash)
-    expect(resultat.program?.sessions.find((s) => s.id === TALK)?.kind).toBe('break')
+    // And the room that resynchronizes on its old fingerprint does receive the
+    // corrected program, not a `null` "nothing has changed".
+    const result = await room.rooms.sync({ since: null })
+    expect(result.contentHash).toBe(contentHash)
+    expect(result.program?.sessions.find((s) => s.id === TALK)?.kind).toBe('break')
   })
 
-  /** « Keynote d'ouverture » : sans speaker annoncé, l'export la donne en pause. */
+  /** "Keynote d'ouverture": with no speaker announced, the export gives it as a break. */
   const KEYNOTE = 'SCGAR8iJEoCyZxxLyfbb'
 
-  it("rend conférence un créneau que l'export donne pour une pause", async () => {
+  it('makes a talk of a slot the export gives as a break', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
     await admin.settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
 
-    // Le normaliseur n'a qu'un signal pour trancher — pas d'intervenant, donc
-    // une pause — et la keynote d'ouverture est précisément le cas où il rate.
-    const avant = (await admin.program.planning()).sessions.find((s) => s.id === KEYNOTE)!
-    expect(avant.kind).toBe('break')
-    expect(avant.speakers).toEqual([])
+    // The normalizer has only one signal to decide on — no speaker, so a break —
+    // and the opening keynote is precisely the case where it misses.
+    const before = (await admin.program.planning()).sessions.find((s) => s.id === KEYNOTE)!
+    expect(before.kind).toBe('break')
+    expect(before.speakers).toEqual([])
 
     await admin.sessions.override({ sessionId: KEYNOTE, action: 'talk' })
 
-    const apres = (await admin.program.planning()).sessions.find((s) => s.id === KEYNOTE)!
-    expect(apres.kind).toBe('talk')
-    expect(apres.overriddenAs).toBe('talk')
-    // Redevenue une conférence, elle se note : le QR reparaît.
-    expect(apres.feedbackUrl).toEqual(expect.any(String))
+    const after = (await admin.program.planning()).sessions.find((s) => s.id === KEYNOTE)!
+    expect(after.kind).toBe('talk')
+    expect(after.overriddenAs).toBe('talk')
+    // A talk again, it gets rated: the QR code reappears.
+    expect(after.feedbackUrl).toEqual(expect.any(String))
     expect(hub.services.programs.active()!.program.sessions.find((s) => s.id === KEYNOTE)?.kind)
       .toBe('talk')
   })
 
-  it('la rend pilotable depuis la régie', async () => {
+  it('makes it drivable from the control app', async () => {
     hub.services.clock.setSimulated('2026-10-30T08:10:00.000Z')
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
 
-    // 08:10 UTC : la keynote court de 08:00 à 08:45. Donnée pour une pause,
-    // elle ne se démarre pas — la salle est simplement « en pause ».
-    const avant = await admin.rooms.statuses()
-    expect(avant.find((s) => s.roomId === TRACK_1)?.conference).toBe('pause')
+    // 08:10 UTC: the keynote runs from 08:00 to 08:45. Given as a break, it does
+    // not get started — the room is simply "on a break".
+    const before = await admin.rooms.statuses()
+    expect(before.find((s) => s.roomId === TRACK_1)?.conference).toBe('pause')
 
     await admin.sessions.override({ sessionId: KEYNOTE, action: 'talk' })
 
-    // Déclarée conférence, elle attend qu'on la lance — et le dit.
-    const apres = await admin.rooms.statuses()
-    expect(apres.find((s) => s.roomId === TRACK_1)?.conference).toBe('retard')
+    // Declared a talk, it waits to be launched — and says so.
+    const after = await admin.rooms.statuses()
+    expect(after.find((s) => s.roomId === TRACK_1)?.conference).toBe('retard')
   })
 
-  it("ignore une décision qui dit ce que l'export dit déjà", async () => {
+  it('ignores a decision that says what the export already says', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
-    const origine = hub.services.programs.active()!.contentHash
+    const original = hub.services.programs.active()!.contentHash
 
-    // Déclarer pause ce que l'export donne déjà pour une pause ne change rien —
-    // et ne doit donc pas faire retélécharger le programme dans les salles.
-    const resultat = await admin.sessions.override({ sessionId: KEYNOTE, action: 'break' })
+    // Declaring as a break what the export already gives as a break changes
+    // nothing — and must therefore not make the rooms re-download the program.
+    const result = await admin.sessions.override({ sessionId: KEYNOTE, action: 'break' })
 
-    expect(resultat.contentHash).toBe(origine)
+    expect(result.contentHash).toBe(original)
     expect(hub.services.programs.active()!.overrides).toEqual({})
   })
 
-  it("redevient sans objet le jour où l'export annonce le speaker", async () => {
+  it('becomes moot the day the export announces the speaker', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
-    const origine = hub.services.programs.active()!.contentHash
+    const original = hub.services.programs.active()!.contentHash
     await admin.sessions.override({ sessionId: KEYNOTE, action: 'talk' })
-    expect(hub.services.programs.active()!.contentHash).not.toBe(origine)
+    expect(hub.services.programs.active()!.contentHash).not.toBe(original)
 
-    // Un réimport où la keynote porte enfin un intervenant : le normaliseur en
-    // fait une conférence tout seul, et la décision cesse de s'appliquer.
-    const corrige = rawProgram.replace(
+    // A reimport where the keynote finally carries a speaker: the normalizer makes
+    // a talk of it on its own, and the decision stops applying.
+    const corrected = rawProgram.replace(
       '"id":"SCGAR8iJEoCyZxxLyfbb","title":"Keynote d\'ouverture","abstract":null',
       '"id":"SCGAR8iJEoCyZxxLyfbb","title":"Keynote d\'ouverture, avec son intervenant","abstract":null',
     ).replace(
       '"durationMinutes":45,"speakerIds":[],"trackId":"track-1-teilhard-de-chardin"',
       '"durationMinutes":45,"speakerIds":["McrpEiDzIV1NERXgVIG5"],"trackId":"track-1-teilhard-de-chardin"',
     )
-    expect(corrige).not.toBe(rawProgram)
-    hub.services.programs.importFromText(corrige, 'https://exemple/programme.json')
+    expect(corrected).not.toBe(rawProgram)
+    hub.services.programs.importFromText(corrected, 'https://exemple/programme.json')
 
-    const apres = hub.services.programs.active()!
-    expect(apres.program.sessions.find((s) => s.id === KEYNOTE)?.kind).toBe('talk')
-    // Sans surcharge appliquée : l'empreinte est celle du snapshot, nue.
-    expect(apres.overrides).toEqual({})
-    expect(apres.contentHash).not.toContain('~')
+    const after = hub.services.programs.active()!
+    expect(after.program.sessions.find((s) => s.id === KEYNOTE)?.kind).toBe('talk')
+    // With no override applied: the fingerprint is the snapshot's, bare.
+    expect(after.overrides).toEqual({})
+    expect(after.contentHash).not.toContain('~')
   })
 
-  it('fait suivre les pauses communes à la décision', async () => {
+  it('makes the shared breaks follow the decision', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
-    const partagees = () =>
+    const shared = () =>
       hub.services.programs.active()!.program.sessions.filter((s) => s.sharedFrom === TALK)
 
-    // « IA for OPS » est une conférence : rien à partager.
-    expect(partagees()).toEqual([])
+    // "IA for OPS" is a talk: nothing to share.
+    expect(shared()).toEqual([])
 
     await admin.sessions.override({ sessionId: TALK, action: 'break' })
 
-    // Déclarée break, elle se projette dans les salles libres au même moment —
-    // la projection se recalcule sur le programme servi, décisions comprises.
-    // 08:50 → 09:40 : Track #2 tient son propre talk, Hands on son atelier.
-    // Personne n'est libre, donc rien ne se projette : la règle ne recouvre pas.
-    expect(partagees()).toEqual([])
+    // Declared a break, it projects into the rooms free at the same moment — the
+    // projection is recomputed on the served program, decisions included.
+    // 08:50 → 09:40: Track #2 holds its own talk, Hands on its workshop. Nobody is
+    // free, so nothing projects: the rule does not overlap.
+    expect(shared()).toEqual([])
 
-    // La keynote, elle, tombe pendant que les deux autres salles sont vides.
+    // The keynote, on the other hand, falls while the other two rooms are empty.
     await admin.sessions.override({ sessionId: KEYNOTE, action: 'talk' })
-    const sansPause = hub.services.programs
+    const withoutBreak = hub.services.programs
       .active()!
       .program.sessions.filter((s) => s.sharedFrom === KEYNOTE)
-    // Redevenue conférence, elle cesse d'être partagée.
-    expect(sansPause).toEqual([])
+    // A talk again, it stops being shared.
+    expect(withoutBreak).toEqual([])
 
     await admin.sessions.override({ sessionId: KEYNOTE, action: null })
     expect(
@@ -585,20 +588,20 @@ describe('corriger le genre d\'un créneau', () => {
     ).toHaveLength(2)
   })
 
-  it("refuse une décision sur une pause héritée, sans la perdre en route", async () => {
+  it('refuses a decision on an inherited break, without losing it on the way', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
-    const heritee = hub.services.programs
+    const inherited = hub.services.programs
       .active()!
       .program.sessions.find((s) => s.sharedFrom != null)!
 
-    // Elle n'existe pas dans l'export : une décision posée sur son identifiant
-    // dérivé n'aurait aucun effet, et on ne saurait pas la retirer.
+    // It does not exist in the export: a decision placed on its derived identifier
+    // would have no effect, and nobody would know how to remove it.
     await expect(
-      admin.sessions.override({ sessionId: heritee.id, action: 'talk' }),
-    ).rejects.toThrow(/h\u00e9rit/)
+      admin.sessions.override({ sessionId: inherited.id, action: 'talk' }),
+    ).rejects.toThrow(/hérit/)
   })
 
-  it('refuse un créneau absent du programme actif', async () => {
+  it('refuses a slot absent from the active program', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
 
     await expect(
@@ -606,37 +609,38 @@ describe('corriger le genre d\'un créneau', () => {
     ).rejects.toThrow(/inconnu/)
   })
 
-  it('reste fermé aux salles : c\'est le programme de l\'événement', async () => {
+  it('stays closed to the rooms: it is the event\'s program', async () => {
     const headers = await pairRoomDevice()
-    const salle = wsClient(headers)
+    const room = wsClient(headers)
 
-    await expect(salle.sessions.override({ sessionId: TALK, action: 'break' })).rejects.toThrow()
+    await expect(room.sessions.override({ sessionId: TALK, action: 'break' })).rejects.toThrow()
   })
 })
 
 /**
- * Le créneau commun, vu de l'événement et non d'une salle.
+ * The shared slot, seen from the event and not from a room.
  *
- * Une question différente de celle des cartes : elles disent où en est chaque
- * salle, celui-ci dit ce que fait l'événement.
+ * A different question from the cards': they say where each room is at, this one
+ * says what the event is doing.
  */
-describe('créneau commun du moment', () => {
-  it('compte les salles concernées pendant le déjeuner', async () => {
-    // 11:40 UTC : le déjeuner court de 11:15 à 12:05 sur Track #1, et les deux
-    // autres salles en héritent — elles n'ont rien de prévu à ce moment-là.
+describe('the current shared slot', () => {
+  it('counts the rooms concerned during lunch', async () => {
+    // 11:40 UTC: lunch runs from 11:15 to 12:05 on Track #1, and the other two
+    // rooms inherit it — they have nothing scheduled at that moment.
     hub.services.clock.setSimulated('2026-10-30T11:40:00.000Z')
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
 
-    const commun = await admin.program.globalBreak()
+    const shared = await admin.program.globalBreak()
 
-    expect(commun).toMatchObject({ state: 'en-cours', title: 'Déjeuner', rooms: 3 })
-    expect(commun?.endsAt).toBe('2026-10-30T12:05:00.000Z')
-    // L'heure du hub voyage avec : le navigateur n'a que la sienne, et elle
-    // peut être à des semaines de là quand l'horloge est simulée.
-    expect(Date.parse(commun!.serverTime)).toBeCloseTo(Date.parse('2026-10-30T11:40:00.000Z'), -4)
+    // `en-cours` is a contract value.
+    expect(shared).toMatchObject({ state: 'en-cours', title: 'Déjeuner', rooms: 3 })
+    expect(shared?.endsAt).toBe('2026-10-30T12:05:00.000Z')
+    // The hub's time travels with it: the browser only has its own, and it can be
+    // weeks away when the clock is simulated.
+    expect(Date.parse(shared!.serverTime)).toBeCloseTo(Date.parse('2026-10-30T11:40:00.000Z'), -4)
   })
 
-  it("l'annonce un quart d'heure avant", async () => {
+  it('announces it a quarter of an hour before', async () => {
     hub.services.clock.setSimulated('2026-10-30T11:05:00.000Z')
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
 
@@ -646,18 +650,18 @@ describe('créneau commun du moment', () => {
     })
   })
 
-  it('se tait quand rien de commun ne se joue', async () => {
-    // 09:00 UTC : les trois salles tiennent chacune leur conférence.
+  it('stays silent when nothing shared is going on', async () => {
+    // 09:00 UTC: the three rooms each hold their own talk.
     hub.services.clock.setSimulated('2026-10-30T09:00:00.000Z')
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
 
     expect(await admin.program.globalBreak()).toBeNull()
   })
 
-  it('suit une décision prise depuis la console', async () => {
-    // 09:00 UTC : « IA for OPS » court sur Track #1. Déclarée break, elle
-    // devient un créneau commun — mais pour elle seule, les deux autres salles
-    // ayant leur propre conférence à cette heure-là.
+  it('follows a decision taken from the console', async () => {
+    // 09:00 UTC: "IA for OPS" runs on Track #1. Declared a break, it becomes a
+    // shared slot — but for itself alone, the other two rooms having their own
+    // talk at that hour.
     hub.services.clock.setSimulated('2026-10-30T09:00:00.000Z')
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
     const talk = hub.services.programs
@@ -673,139 +677,139 @@ describe('créneau commun du moment', () => {
     })
   })
 
-  it('marque la salle en break dans la supervision', async () => {
+  it('marks the room as on a break in the supervision view', async () => {
     hub.services.clock.setSimulated('2026-10-30T11:40:00.000Z')
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
 
-    const salles = await admin.rooms.statuses()
-    const salle = salles.find((s) => s.roomId === TRACK_1)!
+    const rooms = await admin.rooms.statuses()
+    const room = rooms.find((s) => s.roomId === TRACK_1)!
 
-    expect(salle.breakBadge).toMatchObject({ state: 'en-cours', title: 'Déjeuner' })
-    // Et la pastille dit qu'il n'y a personne, pas qu'une conférence attend.
-    expect(salle.conference).toBe('pause')
+    expect(room.breakBadge).toMatchObject({ state: 'en-cours', title: 'Déjeuner' })
+    // And the badge says there is nobody, not that a talk is waiting.
+    expect(room.conference).toBe('pause')
   })
 })
 
 /**
- * Planning relu depuis la console.
+ * The schedule read back from the console.
  *
- * Le tableau des conférences ne montre que ce qui a été démarré : il répond à
- * « où en est-on », jamais à « et après, il y a quoi ». Le lien OpenFeedback
- * accompagne chaque créneau — c'est l'adresse qu'on redonne au speaker venu
- * demander où sont ses retours.
+ * The talks table only shows what has been started: it answers "where are we",
+ * never "and what is next". The OpenFeedback link goes with each slot — it is the
+ * address one gives back to the speaker who comes asking where their feedback is.
  */
-describe('planning du programme actif', () => {
-  it('rend le programme entier, salles et horaires résolus', async () => {
+describe('the active program\'s schedule', () => {
+  it('returns the whole program, rooms and times resolved', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
 
     const planning = await admin.program.planning()
 
     expect(planning.contentHash).toEqual(expect.any(String))
     expect(planning.timezone).toBe('Europe/Paris')
-    expect(planning.rooms.map((salle) => salle.id)).toContain(TRACK_1)
-    // 27 créneaux à l'export : la console les montre tous, pas seulement les
-    // deux ou trois qui ont été lancés — plus les onze pauses communes
-    // projetées, qui disent ce que chaque salle affichera vraiment.
+    expect(planning.rooms.map((room) => room.id)).toContain(TRACK_1)
+    // 27 slots in the export: the console shows them all, not just the two or
+    // three that have been launched — plus the eleven shared breaks projected,
+    // which say what each room will really display.
     expect(planning.sessions).toHaveLength(38)
     expect(planning.sessions.filter((s) => s.sharedFrom != null)).toHaveLength(11)
-    // Le nom du hub l'emporte sur celui du programme : une salle se renomme
-    // depuis la console, et c'est ce nom-là qui est écrit sur la porte.
+    // The hub's name wins over the program's: a room gets renamed from the
+    // console, and it is that name that is written on the door.
     expect(planning.sessions.find((s) => s.roomId === TRACK_1)?.roomName).toBe(
       'Track #1 - Teilhard de Chardin',
     )
   })
 
   /**
-   * Le vécu de la journée, joint au programme par le hub.
+   * The day as it was lived, joined to the program by the hub.
    *
-   * Centralisé ici parce que le cycle de vie est écrit ici et vaut pour toutes
-   * les salles à la fois : une console qui recroiserait elle-même deux listes
-   * finirait par en afficher une version qui n'est celle de personne.
+   * Centralized here because the lifecycle is written here and holds for every
+   * room at once: a console that cross-referenced two lists itself would end up
+   * displaying a version that is nobody's.
    */
-  it('joint le début et la fin réels de chaque conférence', async () => {
+  it('joins the real start and end of every talk', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
     const talk = (await admin.program.planning()).sessions.find(
       (session) => session.kind === 'talk' && session.roomId === TRACK_1,
     )!
 
-    // Rien tant que personne n'a piloté : reprendre l'horaire du programme
-    // affirmerait qu'un talk s'est tenu quand rien ne l'atteste.
+    // Nothing while nobody has driven: taking the program's schedule would claim a
+    // talk took place when nothing attests to it.
     expect(talk.startedAt).toBeNull()
     expect(talk.endedAt).toBeNull()
 
-    const lancee = await admin.sessions.start({ sessionId: talk.id })
-    const apresDepart = (await admin.program.planning()).sessions.find((s) => s.id === talk.id)!
-    expect(apresDepart.startedAt).toBe(lancee.startedAt)
-    // Toujours ouverte : on ne referme pas le créneau à la place de l'opérateur.
-    expect(apresDepart.endedAt).toBeNull()
-    // Le prévu reste le prévu : les deux se lisent côte à côte, et c'est
-    // l'écart qui intéresse.
-    expect(apresDepart.startsAt).toBe(talk.startsAt)
+    const launched = await admin.sessions.start({ sessionId: talk.id })
+    const afterStart = (await admin.program.planning()).sessions.find((s) => s.id === talk.id)!
+    expect(afterStart.startedAt).toBe(launched.startedAt)
+    // Still open: we do not close the slot in the operator's stead.
+    expect(afterStart.endedAt).toBeNull()
+    // The planned stays the planned: the two are read side by side, and it is the
+    // gap that is of interest.
+    expect(afterStart.startsAt).toBe(talk.startsAt)
 
-    const close = await admin.sessions.end({ sessionId: talk.id })
-    const apresFin = (await admin.program.planning()).sessions.find((s) => s.id === talk.id)!
-    expect(apresFin.startedAt).toBe(lancee.startedAt)
-    expect(apresFin.endedAt).toBe(close.endedAt)
-    // Qui a décidé : la seule chose qui réponde à « je n'ai pas fait ça ».
-    expect(apresFin.decidedBy).toBe(OPERATOR.email)
+    const closed = await admin.sessions.end({ sessionId: talk.id })
+    const afterEnd = (await admin.program.planning()).sessions.find((s) => s.id === talk.id)!
+    expect(afterEnd.startedAt).toBe(launched.startedAt)
+    expect(afterEnd.endedAt).toBe(closed.endedAt)
+    // Who decided: the only thing that answers "I did not do that".
+    expect(afterEnd.decidedBy).toBe(OPERATOR.email)
 
-    // Remise à venir : le vécu disparaît avec la décision qui le portait.
+    // Reset to upcoming: the lived day disappears with the decision that carried
+    // it.
     await admin.sessions.reset({ sessionId: talk.id })
-    const apresAnnulation = (await admin.program.planning()).sessions.find((s) => s.id === talk.id)!
-    expect(apresAnnulation.startedAt).toBeNull()
-    expect(apresAnnulation.endedAt).toBeNull()
+    const afterCancel = (await admin.program.planning()).sessions.find((s) => s.id === talk.id)!
+    expect(afterCancel.startedAt).toBeNull()
+    expect(afterCancel.endedAt).toBeNull()
   })
 
-  it('ne propose rien à noter tant que le projet OpenFeedback n\'est pas réglé', async () => {
+  it('offers nothing to rate while the OpenFeedback project is not set', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
 
     const planning = await admin.program.planning()
 
-    // Pas de projet en dur : le dépôt ne connaît pas l'événement qu'il sert, et
-    // un lien vers le projet d'un autre organisateur serait pire que rien —
-    // scanné en salle, il mène à une page qui ne parle pas de ce talk.
+    // No hard-written project: the repository does not know the event it serves,
+    // and a link to another organizer's project would be worse than nothing —
+    // scanned in a room, it leads to a page that does not talk about that talk.
     expect(planning.sessions.every((session) => session.feedbackUrl == null)).toBe(true)
   })
 
-  it('donne le lien OpenFeedback de chaque conférence', async () => {
+  it('gives the OpenFeedback link of every talk', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
-    // Réglage du hub : le projet est une propriété de l'événement, pas d'une
-    // salle. Le régler une fois vaut pour toutes, créneaux sans salle compris.
+    // A hub setting: the project is a property of the event, not of a room.
+    // Setting it once holds for all of them, slots with no room included.
     await admin.settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
 
     const planning = await admin.program.planning()
     const talk = planning.sessions.find((session) => session.kind === 'talk')!
 
-    // Route publique d'OpenFeedback, fabriquée depuis le programme : aucun
-    // appel réseau, aucune clé d'API, et donc rien à réparer le jour J.
+    // OpenFeedback's public route, built from the program: no network call, no API
+    // key, and therefore nothing to repair on the day.
     expect(talk.feedbackUrl).toBe(
       `https://openfeedback.io/cloud-nord-2026/2026-10-30/${talk.id}`,
     )
   })
 
-  it('donne le lien à toutes les salles dès que le hub a son projet', async () => {
-    // Le bogue constaté tenait à un second propriétaire du réglage : la salle 1
-    // le portait, les autres non, et vingt-six créneaux sur vingt-sept
-    // restaient sans lien. Un seul propriétaire, et la question ne se pose
-    // plus — le projet vaut pour toutes les salles à la fois.
+  it('gives the link to every room as soon as the hub has its project', async () => {
+    // The bug observed came from a second owner of the setting: room 1 carried it,
+    // the others did not, and twenty-six slots out of twenty-seven stayed with no
+    // link. A single owner, and the question no longer arises — the project holds
+    // for every room at once.
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
     await admin.settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
 
     const planning = await admin.program.planning()
 
     const talks = planning.sessions.filter((session) => session.kind === 'talk')
-    const salles = new Set(talks.map((session) => session.roomId))
-    expect(salles.size).toBeGreaterThan(1)
+    const rooms = new Set(talks.map((session) => session.roomId))
+    expect(rooms.size).toBeGreaterThan(1)
     expect(talks.every((session) => session.feedbackUrl != null)).toBe(true)
     expect(planning.openFeedbackProjectId).toBe('cloud-nord-2026')
   })
 
-  it('ignore un projet resté sur une salle', async () => {
-    // Une base d'avant le changement en porte encore. Il ne doit plus rien
-    // décider : sans réglage sur le hub, personne n'a de lien — la reprise au
-    // démarrage est le seul endroit qui regarde encore ce champ.
-    const salle = hub.services.rooms.get(TRACK_1)!
-    hub.services.rooms.upsert({ ...salle, openFeedbackProjectId: 'cloud-nord-2026' })
+  it('ignores a project left on a room', async () => {
+    // A database from before the change still carries one. It must decide nothing
+    // any more: with no setting on the hub, nobody has a link — the takeover at
+    // startup is the only place that still looks at that field.
+    const room = hub.services.rooms.get(TRACK_1)!
+    hub.services.rooms.upsert({ ...room, openFeedbackProjectId: 'cloud-nord-2026' })
 
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
     const planning = await admin.program.planning()
@@ -814,10 +818,10 @@ describe('planning du programme actif', () => {
     expect(planning.sessions.every((session) => session.feedbackUrl == null)).toBe(true)
   })
 
-  it('ne prend pas une chaîne vide pour un projet OpenFeedback', async () => {
-    // Un champ texte laissé vide arrive en `''`, pas en `null`, et `??` le
-    // laisse passer : le repli était écrasé, et l'adresse fabriquée pointait
-    // sur `openfeedback.io///…`. Mieux vaut pas de lien qu'un lien mort.
+  it('does not take an empty string for an OpenFeedback project', async () => {
+    // A text field left empty arrives as `''`, not as `null`, and `??` lets it
+    // through: the fallback was overwritten, and the built address pointed at
+    // `openfeedback.io///…`. Better no link than a dead one.
     hub.services.settings.update({ openFeedbackProjectId: '   ' })
 
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
@@ -827,108 +831,107 @@ describe('planning du programme actif', () => {
     expect(planning.sessions.every((session) => session.feedbackUrl == null)).toBe(true)
   })
 
-  it('corrige l\'identifiant OpenFeedback d\'un créneau', async () => {
-    // Le pari « OpenFeedback réutilise les identifiants de l'export » se perd en
-    // silence : le lien reste cliquable, le QR reste scannable, et les deux
-    // mènent à une page qui ne parle d'aucun talk. Sans cette correction, un QR
-    // mort ne se répare pas — l'export le ramènerait à chaque import.
+  it('corrects a slot\'s OpenFeedback identifier', async () => {
+    // The bet "OpenFeedback reuses the export's identifiers" is lost silently: the
+    // link stays clickable, the QR code stays scannable, and both lead to a page
+    // that talks about no talk. Without this correction, a dead QR code cannot be
+    // repaired — the export would bring it back on every import.
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
     await admin.settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
     const talk = (await admin.program.planning()).sessions.find((s) => s.kind === 'talk')!
 
-    const pose = await admin.sessions.feedbackId({ sessionId: talk.id, feedbackId: 'of-42' })
+    const placed = await admin.sessions.feedbackId({ sessionId: talk.id, feedbackId: 'of-42' })
 
-    expect(pose.feedbackId).toBe('of-42')
-    expect(pose.feedbackUrl).toBe('https://openfeedback.io/cloud-nord-2026/2026-10-30/of-42')
+    expect(placed.feedbackId).toBe('of-42')
+    expect(placed.feedbackUrl).toBe('https://openfeedback.io/cloud-nord-2026/2026-10-30/of-42')
 
-    const apres = (await admin.program.planning()).sessions.find((s) => s.id === talk.id)!
-    expect(apres.feedbackId).toBe('of-42')
-    expect(apres.feedbackIdOverride).toBe('of-42')
-    // L'identifiant du créneau, lui, ne bouge pas : c'est la clé du cycle de vie.
-    expect(apres.id).toBe(talk.id)
+    const after = (await admin.program.planning()).sessions.find((s) => s.id === talk.id)!
+    expect(after.feedbackId).toBe('of-42')
+    expect(after.feedbackIdOverride).toBe('of-42')
+    // The slot's identifier, for its part, does not move: it is the lifecycle's
+    // key.
+    expect(after.id).toBe(talk.id)
   })
 
-  it('fait suivre la correction jusqu\'au programme servi aux salles', async () => {
-    // La salle dessine ses QR hors ligne depuis ce programme. Si la correction
-    // n'y était pas, la console afficherait la bonne adresse pendant que
-    // l'écran en projetterait une autre — et c'est celle devant le public qui
-    // serait la mauvaise.
+  it('carries the correction through to the program served to the rooms', async () => {
+    // The room draws its QR codes offline from that program. If the correction
+    // were not in it, the console would display the right address while the screen
+    // projected another — and the one in front of the audience would be the wrong
+    // one.
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
     await admin.settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
     const talk = (await admin.program.planning()).sessions.find(
       (s) => s.kind === 'talk' && s.roomId === TRACK_1,
     )!
     const room = wsClient(await pairRoomDevice())
-    const avant = await room.rooms.sync({ since: null })
+    const before = await room.rooms.sync({ since: null })
 
     await admin.sessions.feedbackId({ sessionId: talk.id, feedbackId: 'of-42' })
 
-    const apres = await room.rooms.sync({ since: avant.contentHash })
-    // L'empreinte bouge : sans cela une salle resterait sur son cache, à
-    // projeter l'adresse qu'on vient justement de déclarer fausse.
-    expect(apres.contentHash).not.toBe(avant.contentHash)
-    expect(apres.program).not.toBeNull()
-    const servi = apres.program!.sessions.find((s) => s.id === talk.id)!
-    expect(servi.feedbackId).toBe('of-42')
+    const after = await room.rooms.sync({ since: before.contentHash })
+    // The fingerprint moves: without that a room would stay on its cache,
+    // projecting the address that has just been declared wrong.
+    expect(after.contentHash).not.toBe(before.contentHash)
+    expect(after.program).not.toBeNull()
+    const served = after.program!.sessions.find((s) => s.id === talk.id)!
+    expect(served.feedbackId).toBe('of-42')
   }, 20_000)
 
-  it('rend un créneau à l\'identifiant de l\'export', async () => {
+  it('gives a slot back the export\'s identifier', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
     await admin.settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
     const talk = (await admin.program.planning()).sessions.find((s) => s.kind === 'talk')!
     await admin.sessions.feedbackId({ sessionId: talk.id, feedbackId: 'of-42' })
 
-    const retire = await admin.sessions.feedbackId({ sessionId: talk.id, feedbackId: null })
+    const removed = await admin.sessions.feedbackId({ sessionId: talk.id, feedbackId: null })
 
-    expect(retire.feedbackId).toBe(talk.id)
-    const apres = (await admin.program.planning()).sessions.find((s) => s.id === talk.id)!
-    expect(apres.feedbackIdOverride).toBeNull()
-    expect(apres.feedbackUrl).toBe(
+    expect(removed.feedbackId).toBe(talk.id)
+    const after = (await admin.program.planning()).sessions.find((s) => s.id === talk.id)!
+    expect(after.feedbackIdOverride).toBeNull()
+    expect(after.feedbackUrl).toBe(
       `https://openfeedback.io/cloud-nord-2026/2026-10-30/${talk.id}`,
     )
   })
 
-  it('ne compte pas une correction qui redit l\'export', async () => {
-    // Même règle que pour les décisions de genre : une correction sans objet ne
-    // doit pas changer l'empreinte, sinon les salles retéléchargent pour rien.
+  it('does not count a correction that repeats the export', async () => {
+    // The same rule as for kind decisions: a correction with no object must not
+    // change the fingerprint, otherwise the rooms re-download for nothing.
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
     const talk = (await admin.program.planning()).sessions.find((s) => s.kind === 'talk')!
-    const avant = (await admin.program.planning()).contentHash
+    const before = (await admin.program.planning()).contentHash
 
     await admin.sessions.feedbackId({ sessionId: talk.id, feedbackId: talk.id })
 
-    const apres = await admin.program.planning()
-    expect(apres.contentHash).toBe(avant)
-    expect(apres.sessions.find((s) => s.id === talk.id)?.feedbackIdOverride).toBeNull()
+    const after = await admin.program.planning()
+    expect(after.contentHash).toBe(before)
+    expect(after.sessions.find((s) => s.id === talk.id)?.feedbackIdOverride).toBeNull()
   })
 
-  it('refuse de corriger l\'identifiant d\'une pause', async () => {
-    // Une pause n'a pas de page de retours : la ligne posée ne serait relue par
-    // personne.
+  it('refuses to correct a break\'s identifier', async () => {
+    // A break has no feedback page: the row placed would be read back by nobody.
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
-    const pause = (await admin.program.planning()).sessions.find((s) => s.kind === 'break')!
+    const aBreak = (await admin.program.planning()).sessions.find((s) => s.kind === 'break')!
 
     await expect(
-      admin.sessions.feedbackId({ sessionId: pause.id, feedbackId: 'of-42' }),
+      admin.sessions.feedbackId({ sessionId: aBreak.id, feedbackId: 'of-42' }),
     ).rejects.toThrow()
   })
 
-  it('ne propose rien à noter sur une pause', async () => {
+  it('offers nothing to rate on a break', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
 
     const planning = await admin.program.planning()
-    const pause = planning.sessions.find((session) => session.kind === 'break')
+    const aBreak = planning.sessions.find((session) => session.kind === 'break')
 
-    // Personne ne note un déjeuner, et un QR mort coûte plus cher qu'une case
-    // vide.
-    expect(pause).toBeTruthy()
-    expect(pause?.feedbackUrl).toBeNull()
+    // Nobody rates a lunch, and a dead QR code costs more than an empty cell.
+    expect(aBreak).toBeTruthy()
+    expect(aBreak?.feedbackUrl).toBeNull()
   })
 
-  it('date le planning sur l\'horloge du hub, pas sur celle de la console', async () => {
-    // C'est cette heure-là qui désigne le créneau surligné « en ce moment ».
-    // Calculée dans le navigateur, elle pointerait un créneau d'une tout autre
-    // semaine dès que le hub tourne sur une heure simulée.
+  it('dates the schedule on the hub\'s clock, not on the console\'s', async () => {
+    // It is that time which designates the slot highlighted as "right now".
+    // Computed in the browser, it would point at a slot from a completely
+    // different week as soon as the hub runs on a simulated time.
     hub.services.clock.setSimulated('2026-10-30T10:20:00.000Z')
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
 
@@ -939,18 +942,18 @@ describe('planning du programme actif', () => {
     ).toBeLessThan(2_000)
   })
 
-  it('reste fermé aux machines de salle', async () => {
-    // Le planning est déjà poussé aux salles par le sync : leur ouvrir en plus
-    // une procédure d'opérateur n'ajouterait que de la surface.
+  it('stays closed to room machines', async () => {
+    // The schedule is already pushed to the rooms by the sync: opening an operator
+    // procedure to them on top would only add surface.
     const machine = httpClient(await pairRoomDevice())
 
     await expect(machine.program.planning()).rejects.toThrow()
   })
 })
 
-describe('dossier VOD d\'une conférence', () => {
-  /** Le talk de la salle 1, celui que la régie de test enregistre. */
-  const talkDeLaSalle1 = async (admin: Client) => {
+describe('a talk\'s VOD folder', () => {
+  /** Room 1's talk, the one the test control app records. */
+  const talkOfRoom1 = async (admin: Client) => {
     const planning = await admin.program.planning()
     const talk = planning.sessions.find(
       (session) => session.kind === 'talk' && session.roomId === TRACK_1,
@@ -959,14 +962,16 @@ describe('dossier VOD d\'une conférence', () => {
     return talk!
   }
 
-  it('répond sans stockage configuré, prises comprises', async () => {
-    // **Le point de la procédure.** Les deux moitiés ne viennent pas du même
-    // endroit : les prises se recomposent depuis le journal d'ingestion, que
-    // tout hub tient, et seuls les téléversements réclament S3. Refuser faute
-    // de stockage priverait un hub sans S3 de la seule réponse qui compte le
-    // soir du démontage — « le rush est-il sur la machine ? ».
+  it('answers with no storage configured, takes included', async () => {
+    // **The point of the procedure.** The two halves do not come from the same
+    // place: the takes are recomposed from the ingestion log, which every hub
+    // keeps, and only the uploads need S3. Refusing for want of storage would
+    // deprive a hub with no S3 of the only answer that counts on the evening of
+    // the teardown — "is the rush on the machine?".
+    // `stockageConfigure`, `captations`, `enCours`, `rattachement`,
+    // `televersements` and `session`/`horaire` are contract names and values.
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
-    const talk = await talkDeLaSalle1(admin)
+    const talk = await talkOfRoom1(admin)
 
     hub.services.ingest.push(TRACK_1, [
       {
@@ -996,27 +1001,27 @@ describe('dossier VOD d\'une conférence', () => {
       },
     ])
 
-    const dossier = await admin.vod.conference({ sessionId: talk.id })
+    const folder = await admin.vod.conference({ sessionId: talk.id })
 
-    expect(dossier.stockageConfigure).toBe(false)
-    expect(dossier.roomId).toBe(TRACK_1)
-    expect(dossier.captations).toHaveLength(1)
-    expect(dossier.captations[0]).toMatchObject({
+    expect(folder.stockageConfigure).toBe(false)
+    expect(folder.roomId).toBe(TRACK_1)
+    expect(folder.captations).toHaveLength(1)
+    expect(folder.captations[0]).toMatchObject({
       file: '/rushes/le-talk.mkv',
       sidecarWritten: true,
       enCours: false,
-      // Estampillée par la régie : ce n'est pas une déduction.
+      // Stamped by the control app: it is not a deduction.
       rattachement: 'session',
     })
-    expect(dossier.televersements).toEqual([])
+    expect(folder.televersements).toEqual([])
   })
 
-  it('rattache à l\'heure une prise lancée hors du cycle de vie', async () => {
-    // Un enregistrement démarré à la main ne porte aucun créneau. Le rush
-    // existe pourtant, et il est même le seul : le laisser invisible reviendrait
-    // à le faire chercher fichier par fichier.
+  it('attaches by time a take launched outside the lifecycle', async () => {
+    // A recording started by hand carries no slot. The rush exists all the same,
+    // and it is even the only one: leaving it invisible would amount to making one
+    // look for it file by file.
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
-    const talk = await talkDeLaSalle1(admin)
+    const talk = await talkOfRoom1(admin)
     hub.services.clock.setSimulated('2026-10-30T10:05:00.000Z')
     await admin.sessions.start({ sessionId: talk.id })
 
@@ -1032,16 +1037,16 @@ describe('dossier VOD d\'une conférence', () => {
       },
     ])
 
-    const dossier = await admin.vod.conference({ sessionId: talk.id })
+    const folder = await admin.vod.conference({ sessionId: talk.id })
 
-    expect(dossier.captations).toHaveLength(1)
-    // Une piste, pas un fait : la console l'affiche comme telle.
-    expect(dossier.captations[0]).toMatchObject({ rattachement: 'horaire', enCours: true })
+    expect(folder.captations).toHaveLength(1)
+    // A lead, not a fact: the console displays it as such.
+    expect(folder.captations[0]).toMatchObject({ rattachement: 'horaire', enCours: true })
   })
 
-  it('n\'attribue pas à une conférence la prise estampillée d\'une autre', async () => {
+  it('does not attribute to a talk the take stamped for another', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
-    const talk = await talkDeLaSalle1(admin)
+    const talk = await talkOfRoom1(admin)
     hub.services.clock.setSimulated('2026-10-30T10:05:00.000Z')
     await admin.sessions.start({ sessionId: talk.id })
 
@@ -1057,23 +1062,23 @@ describe('dossier VOD d\'une conférence', () => {
       },
     ])
 
-    const dossier = await admin.vod.conference({ sessionId: talk.id })
+    const folder = await admin.vod.conference({ sessionId: talk.id })
 
-    // Elle recouvre bien l'heure, mais elle appartient déjà à quelqu'un : le
-    // repli horaire ne sert qu'aux prises que personne ne réclame.
-    expect(dossier.captations).toEqual([])
+    // It does cover the time, but it already belongs to someone: the time-based
+    // fallback only serves the takes nobody claims.
+    expect(folder.captations).toEqual([])
   })
 
-  it('refuse une conférence inconnue au programme', async () => {
+  it('refuses a talk unknown to the program', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
 
     await expect(admin.vod.conference({ sessionId: 'ses-inexistante' })).rejects.toThrow()
   })
 
-  it('reste fermé aux machines de salle', async () => {
-    // Le dossier croise toutes les salles : c'est une vue de console.
+  it('stays closed to room machines', async () => {
+    // The folder crosses every room: it is a console view.
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
-    const talk = await talkDeLaSalle1(admin)
+    const talk = await talkOfRoom1(admin)
     const machine = httpClient(await pairRoomDevice())
 
     await expect(machine.vod.conference({ sessionId: talk.id })).rejects.toThrow()

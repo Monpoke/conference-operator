@@ -6,9 +6,9 @@ import { deviceAuthorization } from 'better-auth/plugins/device-authorization'
 import type { SqliteDatabase } from '@cloudnord/db'
 
 /**
- * Durée façon Better Auth (« 5s », « 30m »). Le type `TimeString` du paquet
- * n'est pas exporté publiquement ; ce sous-ensemble lui est assignable et
- * suffit à nos réglages.
+ * Better Auth style duration ("5s", "30m"). The package's `TimeString` type is
+ * not publicly exported; this subset is assignable to it and is enough for our
+ * settings.
  */
 export type Duration = `${number}${'s' | 'm' | 'h' | 'd'}`
 
@@ -16,39 +16,39 @@ export interface AuthDeps {
   sqlite: SqliteDatabase
   secret: string
   publicUrl: string
-  /** Appelé quand une machine demande un appairage — alimente la file de l'admin. */
+  /** Called when a machine requests pairing — feeds the admin console's queue. */
   onDeviceRequest: (clientId: string, scope: string | undefined) => void
-  /** Décide si un `client_id` est recevable (format ULID côté client de salle). */
+  /** Decides whether a `client_id` is acceptable (ULID format on the room client). */
   isKnownClient: (clientId: string) => boolean
   /**
-   * Cadence de polling imposée à la machine. Abaissée dans les tests ; en
-   * production la valeur RFC par défaut suffit largement.
+   * Polling cadence imposed on the machine. Lowered in the tests; in production
+   * the RFC default is more than enough.
    */
   deviceInterval?: Duration
   deviceCodeExpiresIn?: Duration
   /**
-   * Connexion Google Workspace, si le hub en a les identifiants.
+   * Google Workspace sign-in, if the hub has the credentials.
    *
-   * Absente, seul le mot de passe ouvre la console. Le hub doit pouvoir
-   * démarrer et s'ouvrir sans Google : le jour J, une coupure d'internet ne
-   * doit pas enfermer l'équipe dehors.
+   * Absent, only the password opens the console. The hub must be able to start
+   * and open without Google: on the day, an internet outage must not lock the
+   * team out.
    */
   google?: { clientId: string; clientSecret: string; hostedDomain: string }
 }
 
 /**
- * Better Auth : authentification distante des opérateurs (hub-admin) et
- * appairage des machines de salle par *device authorization grant* (RFC 8628).
+ * Better Auth: remote authentication of the operators (hub-admin) and pairing of
+ * the room machines through the *device authorization grant* (RFC 8628).
  *
- * Pourquoi ce flux pour les salles : un PC de régie n'a pas de clavier pratique
- * ni de navigateur au premier boot, et on ne veut pas de mot de passe partagé
- * sur trois machines. La machine affiche un code court, un opérateur déjà
- * authentifié l'approuve depuis l'admin, la machine reçoit un jeton propre —
- * révocable individuellement.
+ * Why that flow for the rooms: a control PC has neither a practical keyboard nor
+ * a browser at first boot, and we do not want a password shared across three
+ * machines. The machine shows a short code, an already authenticated operator
+ * approves it from the admin console, the machine receives its own token —
+ * individually revocable.
  *
- * Attention : `/device/approve` lie l'appareil à **l'utilisateur qui approuve**.
- * L'association machine → salle n'est donc pas gérée par Better Auth mais par
- * notre table `room_device`.
+ * Note: `/device/approve` binds the device to **the user who approves**. The
+ * machine → room association is therefore not handled by Better Auth but by our
+ * `room_device` table.
  */
 export function createAuthOptions({
   sqlite,
@@ -61,41 +61,42 @@ export function createAuthOptions({
   google,
 }: AuthDeps) {
   return {
-    // Même fichier SQLite que le reste du hub : un seul verrou, une seule sauvegarde.
+    // The same SQLite file as the rest of the hub: one lock, one backup.
     database: sqlite,
     secret,
     baseURL: publicUrl,
     basePath: '/api/auth',
     emailAndPassword: {
       enabled: true,
-      // Comptes créés par l'organisation, pas d'inscription ouverte sur un hub public.
+      // Accounts created by the organization, no open sign-up on a public hub.
       disableSignUp: true,
     },
     plugins: [
-      // Jetons porteurs : le client de salle n'a pas de cookie jar.
+      // Bearer tokens: the room client has no cookie jar.
       bearer(),
       deviceAuthorization({
         /**
-         * Court, à l'inverse de la valeur RFC : une file d'appairage qui se
-         * vide seule vaut mieux qu'un code qui survit à la journée. La machine
-         * en redemande un sous 15 s, sa boucle de supervision est faite pour
-         * ça. Voir `DEVICE_CODE_TTL` — à rallonger le jour J, où l'opérateur
-         * traverse la salle entre la lecture du code et la console.
+         * Short, unlike the RFC value: a pairing queue that empties itself beats
+         * a code that survives the day. The machine asks for another within 15 s,
+         * its supervision loop is made for that. See `DEVICE_CODE_TTL` — to be
+         * lengthened on the day, when the operator crosses the room between
+         * reading the code and reaching the console.
          */
         expiresIn: deviceCodeExpiresIn,
         /**
-         * Cadence de polling. Poller plus vite renvoie `slow_down`
-         * (RFC 8628 §3.5) : le client doit respecter cette valeur et ralentir
-         * encore s'il reçoit ce code.
+         * Polling cadence. Polling faster returns `slow_down` (RFC 8628 §3.5):
+         * the client must respect this value and slow down further if it receives
+         * that code.
          */
         interval: deviceInterval,
-        /** Code lu à voix haute ou saisi à la main : court, sans caractères ambigus. */
+        /** Code read aloud or typed by hand: short, with no ambiguous characters. */
         userCodeLength: 8,
         /**
-         * Adresse affichée à l'écran de régie pendant l'appairage.
+         * Address shown on the control screen during pairing.
          *
-         * Better Auth y ajoute `?user_code=…` : la console pré-remplit le code,
-         * ce qui évite de recopier huit caractères depuis l'autre bout d'une salle.
+         * Better Auth appends `?user_code=…` to it: the console prefills the
+         * code, which saves copying eight characters from the other end of a
+         * room.
          */
         verificationUri: `${publicUrl}/admin/devices`,
         validateClient: (clientId) => isKnownClient(clientId),
@@ -105,15 +106,15 @@ export function createAuthOptions({
       }),
     ],
     /**
-     * Google Workspace : **tout compte du domaine est un opérateur.**
+     * Google Workspace: **every account of the domain is an operator.**
      *
-     * C'est le choix assumé pour un hub d'organisation — l'annuaire fait
-     * l'annuaire, et personne n'a à provisionner un compte de plus le matin de
-     * l'événement. Le domaine est la seule frontière, d'où le soin porté à
-     * `hd` : Better Auth l'envoie à Google *et* le revérifie contre la
-     * revendication du jeton d'identité au retour. Sans cette seconde
-     * vérification, `hd` ne serait qu'une préférence d'écran de choix,
-     * contournable avec un compte personnel.
+     * That is the assumed choice for an organization's hub — the directory does
+     * the directory's job, and nobody has to provision one more account on the
+     * morning of the event. The domain is the only boundary, hence the care taken
+     * over `hd`: Better Auth sends it to Google *and* rechecks it against the
+     * identity token's claim on the way back. Without that second check, `hd`
+     * would only be a chooser-screen preference, which a personal account gets
+     * around.
      */
     ...(google == null
       ? {}
@@ -127,12 +128,12 @@ export function createAuthOptions({
           },
           account: {
             /**
-             * Un opérateur déjà provisionné retrouve son compte.
+             * An already provisioned operator finds their account again.
              *
-             * Sans liage, le premier passage par Google échouerait sur une
-             * adresse déjà connue — celle du compte de secours créé en CLI. Le
-             * fournisseur est digne de confiance parce que `hd` est vérifié :
-             * l'adresse appartient bien au domaine.
+             * Without linking, the first pass through Google would fail on an
+             * address already known — that of the fallback account created from
+             * the CLI. The provider is trustworthy because `hd` is verified: the
+             * address really does belong to the domain.
              */
             accountLinking: { enabled: true, trustedProviders: ['google'] },
           },
@@ -147,12 +148,12 @@ export function createAuth(options: AuthOptions) {
 }
 
 /**
- * Crée les tables de Better Auth (`user`, `session`, `account`, `verification`,
+ * Creates Better Auth's tables (`user`, `session`, `account`, `verification`,
  * `deviceCode`).
  *
- * On passe par l'API programmatique plutôt que par `@better-auth/cli migrate` :
- * c'est idempotent, ça tourne au démarrage du hub, et surtout ça fonctionne sur
- * une base en mémoire — donc les tests n'ont aucun fichier à provisionner.
+ * We go through the programmatic API rather than `@better-auth/cli migrate`: it
+ * is idempotent, it runs at the hub's startup, and above all it works on an
+ * in-memory database — so the tests have no file to provision.
  */
 export async function migrateAuth(options: AuthOptions): Promise<void> {
   const { runMigrations } = await getMigrations(options)

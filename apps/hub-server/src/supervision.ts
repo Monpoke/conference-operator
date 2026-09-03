@@ -5,36 +5,36 @@ import type { Services } from './context.js'
 import type { PushPayload } from './services/push.js'
 
 /**
- * État complet des salles : ce que la base sait, enrichi du programme.
+ * Full state of the rooms: what the database knows, enriched with the program.
  *
- * Une seule implémentation pour deux lecteurs — la console, qui interroge, et
- * la veille, qui surveille. Les séparer aurait laissé la couleur d'une pastille
- * et l'avis poussé sur un téléphone diverger, ce qui est précisément le genre
- * d'écart qu'on ne remarque qu'en salle.
+ * One implementation for two readers — the console, which queries, and the
+ * watch, which monitors. Separating them would have let a status dot's colour
+ * and a notice pushed to a phone diverge, which is exactly the kind of gap you
+ * only notice in the room.
  *
- * @param at Heure du hub. Elle peut être simulée, et c'est elle qui fait foi.
+ * @param at The hub's time. It may be simulated, and it is authoritative.
  */
-export function statutsDesSalles(services: Services, at: number): RoomStatus[] {
+export function roomStatuses(services: Services, at: number): RoomStatus[] {
   const snapshot = services.programs.active()
-  const statutsDe = (roomId: string): SessionStatuses =>
+  const statusesOf = (roomId: string): SessionStatuses =>
     Object.fromEntries(
-      services.sessions.states(roomId).map((etat) => [etat.sessionId, etat.status]),
+      services.sessions.states(roomId).map((state) => [state.sessionId, state.status]),
     )
 
-  return services.rooms.statuses().map((statut) => {
-    const session = snapshot == null ? null : currentSession(snapshot.program, statut.roomId, at)
-    const pause = snapshot == null ? null : roomBreak(snapshot.program, statut.roomId, at)
+  return services.rooms.statuses().map((status) => {
+    const session = snapshot == null ? null : currentSession(snapshot.program, status.roomId, at)
+    const roomPause = snapshot == null ? null : roomBreak(snapshot.program, status.roomId, at)
     return {
-      ...statut,
+      ...status,
       breakBadge:
-        pause == null
+        roomPause == null
           ? null
           : {
-              state: pause.state,
-              title: pause.session.title,
-              startsAt: pause.session.startsAt,
+              state: roomPause.state,
+              title: roomPause.session.title,
+              startsAt: roomPause.session.startsAt,
               endsAt:
-                pause.endsAtMs == null ? null : new Date(pause.endsAtMs).toISOString(),
+                roomPause.endsAtMs == null ? null : new Date(roomPause.endsAtMs).toISOString(),
             },
       currentSession:
         session == null
@@ -48,222 +48,223 @@ export function statutsDesSalles(services: Services, at: number): RoomStatus[] {
       conference:
         snapshot == null
           ? ('aucune' as const)
-          : roomConferenceState(snapshot.program, statut.roomId, at, statutsDe(statut.roomId)),
+          : roomConferenceState(snapshot.program, status.roomId, at, statusesOf(status.roomId)),
     }
   })
 }
 
 /**
- * Ce que le hub remarque tout seul, pour le pousser aux consoles fermées.
+ * What the hub notices by itself, to push to the closed consoles.
  *
- * La console ouverte comparait deux rafraîchissements et se notifiait
- * elle-même. Console fermée, il n'y a plus personne pour comparer : le hub doit
- * le faire, et c'est le seul endroit d'où l'on peut. Les règles sont les mêmes
- * des deux côtés, à dessein — un avis qui change de sens selon que la page est
- * ouverte ou non serait pire que pas d'avis du tout.
+ * An open console compared two refreshes and notified itself. With the console
+ * closed there is nobody left to compare: the hub has to do it, and it is the
+ * only place it can be done from. The rules are the same on both sides, by
+ * design — a notice that changes meaning depending on whether the page is open
+ * would be worse than no notice at all.
  *
- * L'étiquette (`tag`) est celle qu'emploie aussi la page : deux notifications
- * de même étiquette se remplacent au lieu de s'empiler, ce qui évite le doublon
- * quand la console est ouverte *et* abonnée.
+ * The `tag` is the one the page uses too: two notifications with the same tag
+ * replace each other instead of stacking, which avoids the duplicate when the
+ * console is open *and* subscribed.
  */
 
-interface VueSalle {
+interface RoomView {
   connectivity: string
   conference: string
 }
 
-/** Titre d'une conférence, pour un avis lisible. `null` hors programme. */
-export type TitreDeSession = (sessionId: string) => string | null
+/** A talk's title, for a readable notice. `null` outside the program. */
+export type SessionTitleOf = (sessionId: string) => string | null
 
-export class VeilleSupervision {
-  private readonly vues = new Map<string, VueSalle>()
+export class SupervisionWatch {
+  private readonly views = new Map<string, RoomView>()
   /**
-   * Statuts de conférence connus, par salle puis par session.
+   * Known talk statuses, by room then by session.
    *
-   * Diffés ici, et non déduits de l'état agrégé : une conférence terminée à
-   * l'heure passe directement de « en cours » à « aucune », et l'événement
-   * serait manqué. C'est le cycle de vie qui porte le début et la fin, pas la
-   * couleur qu'on en tire.
+   * Diffed here, and not derived from the aggregated state: a talk that ends on
+   * time goes straight from "running" to "none", and the event would be missed.
+   * It is the lifecycle that carries the start and the end, not the colour drawn
+   * from it.
    */
-  private readonly statuts = new Map<string, Map<string, string>>()
+  private readonly statuses = new Map<string, Map<string, string>>()
   /**
-   * Codes d'appairage déjà vus. `null` tant qu'aucune passe n'a eu lieu : sans
-   * cette distinction, le premier tour annoncerait comme nouvelles des demandes
-   * qui attendaient déjà.
+   * Pairing codes already seen. `null` until a pass has happened: without that
+   * distinction, the first round would announce as new the requests that were
+   * already waiting.
    */
-  private appairages: string[] | null = null
+  private pairings: string[] | null = null
 
   /**
-   * Compare l'état des salles au précédent et rend ce qui mérite un avis.
+   * Compares the rooms' state with the previous one and returns what deserves a
+   * notice.
    *
-   * Le tout premier passage n'alerte de rien. Démarrer le hub sur une salle
-   * déjà coupée n'est pas un événement, c'est un état — et trois notifications
-   * à l'allumage rendraient les suivantes invisibles.
+   * The very first pass warns about nothing. Starting the hub on an already
+   * disconnected room is not an event, it is a state — and three notifications at
+   * switch-on would make the next ones invisible.
    *
-   * @param statutsDeSession Cycle de vie par salle : `{ roomId: { sessionId: statut } }`.
-   * @param titreDe Résout le titre d'une conférence, pour ne pas notifier un
-   *   identifiant opaque.
+   * @param sessionStatuses Lifecycle per room: `{ roomId: { sessionId: status } }`.
+   * @param titleOf Resolves a talk's title, so we do not notify an opaque
+   *   identifier.
    */
-  passe(
-    statuts: RoomStatus[],
-    attente: { clientId: string }[] = [],
-    statutsDeSession: Record<string, Record<string, string>> = {},
-    titreDe: TitreDeSession = () => null,
+  pass(
+    statuses: RoomStatus[],
+    pending: { clientId: string }[] = [],
+    sessionStatuses: Record<string, Record<string, string>> = {},
+    titleOf: SessionTitleOf = () => null,
   ): PushPayload[] {
-    const avis: PushPayload[] = []
-    const premier = this.vues.size === 0
+    const notices: PushPayload[] = []
+    const first = this.views.size === 0
 
-    for (const salle of statuts) {
-      const avant = this.vues.get(salle.roomId)
-      this.vues.set(salle.roomId, {
-        connectivity: salle.connectivity,
-        conference: salle.conference,
+    for (const room of statuses) {
+      const before = this.views.get(room.roomId)
+      this.views.set(room.roomId, {
+        connectivity: room.connectivity,
+        conference: room.conference,
       })
-      if (!premier && avant != null) {
-        avis.push(...this.avisDeSalle(salle, avant))
+      if (!first && before != null) {
+        notices.push(...this.roomNotices(room, before))
       }
-      avis.push(
-        ...this.avisDeConferences(salle, avant ?? null, statutsDeSession[salle.roomId] ?? {}, titreDe, premier),
+      notices.push(
+        ...this.talkNotices(room, before ?? null, sessionStatuses[room.roomId] ?? {}, titleOf, first),
       )
     }
 
-    // Salles disparues du programme : sans quoi leur dernier état resterait en
-    // mémoire et un retour serait annoncé comme un changement.
-    const connues = new Set(statuts.map((salle) => salle.roomId))
-    for (const roomId of [...this.vues.keys()]) {
-      if (!connues.has(roomId)) {
-        this.vues.delete(roomId)
-        this.statuts.delete(roomId)
+    // Rooms that disappeared from the program: otherwise their last state would
+    // stay in memory and a return would be announced as a change.
+    const known = new Set(statuses.map((room) => room.roomId))
+    for (const roomId of [...this.views.keys()]) {
+      if (!known.has(roomId)) {
+        this.views.delete(roomId)
+        this.statuses.delete(roomId)
       }
     }
 
-    const codes = attente.map((demande) => demande.clientId).sort()
-    if (this.appairages != null) {
-      const nouvelles = codes.filter((code) => !this.appairages!.includes(code))
-      if (nouvelles.length > 0) {
-        avis.push({
+    const codes = pending.map((request) => request.clientId).sort()
+    if (this.pairings != null) {
+      const added = codes.filter((code) => !this.pairings!.includes(code))
+      if (added.length > 0) {
+        notices.push({
           title:
-            nouvelles.length === 1
+            added.length === 1
               ? 'Une machine attend son appairage'
-              : `${nouvelles.length} machines attendent leur appairage`,
+              : `${added.length} machines attendent leur appairage`,
           body: "Le code est affiché sur l'écran de régie.",
           tag: 'appairage',
-          vue: 'appairage',
-          famille: 'technique',
-          niveau: 'essentiel',
+          view: 'appairage',
+          family: 'technique',
+          level: 'essentiel',
         })
       }
     }
-    this.appairages = codes
+    this.pairings = codes
 
-    return avis
+    return notices
   }
 
-  /** Ce que devient la machine : elle se tait, ou elle revient. */
-  private avisDeSalle(salle: RoomStatus, avant: VueSalle): PushPayload[] {
-    const tag = `salle-${salle.roomId}`
-    if (salle.connectivity !== 'ONLINE' && avant.connectivity === 'ONLINE') {
+  /** What becomes of the machine: it goes quiet, or it comes back. */
+  private roomNotices(room: RoomStatus, before: RoomView): PushPayload[] {
+    const tag = `salle-${room.roomId}`
+    if (room.connectivity !== 'ONLINE' && before.connectivity === 'ONLINE') {
       return [
         {
-          title: `${salle.name} ne répond plus`,
+          title: `${room.name} ne répond plus`,
           body: 'Plus de nouvelles de la machine de salle.',
           tag,
-          vue: 'exploitation',
-          famille: 'technique',
-          niveau: 'essentiel',
+          view: 'exploitation',
+          family: 'technique',
+          level: 'essentiel',
         },
       ]
     }
-    if (salle.connectivity === 'ONLINE' && avant.connectivity !== 'ONLINE') {
-      // Un soulagement, pas une décision : réservé à qui veut tout suivre.
+    if (room.connectivity === 'ONLINE' && before.connectivity !== 'ONLINE') {
+      // A relief, not a decision: reserved for whoever wants to follow everything.
       return [
         {
-          title: `${salle.name} est revenue`,
+          title: `${room.name} est revenue`,
           body: 'La machine de salle répond de nouveau.',
           tag,
-          vue: 'exploitation',
-          famille: 'technique',
-          niveau: 'tout',
+          view: 'exploitation',
+          family: 'technique',
+          level: 'tout',
         },
       ]
     }
     return []
   }
 
-  /** Ce que devient la journée : ce qui commence, finit, traîne ou déborde. */
-  private avisDeConferences(
-    salle: RoomStatus,
-    /** État précédent de la salle, capturé **avant** l'écrasement de la vue. */
-    avant: VueSalle | null,
-    statutsSalle: Record<string, string>,
-    titreDe: TitreDeSession,
-    premier: boolean,
+  /** What becomes of the day: what starts, ends, drags or overruns. */
+  private talkNotices(
+    room: RoomStatus,
+    /** The room's previous state, captured **before** the view was overwritten. */
+    before: RoomView | null,
+    roomStatuses: Record<string, string>,
+    titleOf: SessionTitleOf,
+    first: boolean,
   ): PushPayload[] {
-    const avis: PushPayload[] = []
-    const tag = `conf-${salle.roomId}`
-    const connus = this.statuts.get(salle.roomId) ?? new Map<string, string>()
+    const notices: PushPayload[] = []
+    const tag = `conf-${room.roomId}`
+    const known = this.statuses.get(room.roomId) ?? new Map<string, string>()
 
-    for (const [sessionId, statut] of Object.entries(statutsSalle)) {
-      const ancien = connus.get(sessionId) ?? 'scheduled'
-      connus.set(sessionId, statut)
-      // Première passe : on prend note sans rien annoncer. Le hub redémarre
-      // parfois en pleine journée, et il ne doit pas rejouer la matinée.
-      if (premier || ancien === statut) continue
+    for (const [sessionId, status] of Object.entries(roomStatuses)) {
+      const previous = known.get(sessionId) ?? 'scheduled'
+      known.set(sessionId, status)
+      // First pass: we take note without announcing anything. The hub sometimes
+      // restarts mid-day, and it must not replay the morning.
+      if (first || previous === status) continue
 
-      const titre = titreDe(sessionId)
-      if (statut === 'running') {
-        avis.push({
-          title: `${salle.name} · c'est parti`,
-          body: titre ?? 'La conférence a commencé.',
+      const title = titleOf(sessionId)
+      if (status === 'running') {
+        notices.push({
+          title: `${room.name} · c'est parti`,
+          body: title ?? 'La conférence a commencé.',
           tag,
-          vue: 'exploitation',
-          famille: 'exploitation',
-          niveau: 'tout',
+          view: 'exploitation',
+          family: 'exploitation',
+          level: 'tout',
         })
-      } else if (statut === 'ended' && ancien === 'running') {
-        avis.push({
-          title: `${salle.name} · terminé`,
-          body: titre ?? 'La conférence est terminée.',
+      } else if (status === 'ended' && previous === 'running') {
+        notices.push({
+          title: `${room.name} · terminé`,
+          body: title ?? 'La conférence est terminée.',
           tag,
-          vue: 'exploitation',
-          famille: 'exploitation',
-          niveau: 'tout',
+          view: 'exploitation',
+          family: 'exploitation',
+          level: 'tout',
         })
       }
     }
-    this.statuts.set(salle.roomId, connus)
+    this.statuses.set(room.roomId, known)
 
-    if (premier || avant == null) return avis
+    if (first || before == null) return notices
 
-    if (salle.conference === 'depassement' && avant.conference !== 'depassement') {
-      // Le seul état qui demande un arbitrage : c'est lui qui décale la journée.
-      avis.push({
-        title: `${salle.name} déborde`,
+    if (room.conference === 'depassement' && before.conference !== 'depassement') {
+      // The only state that calls for a decision: it is what shifts the day.
+      notices.push({
+        title: `${room.name} déborde`,
         body: 'Le créneau est fini, la conférence est toujours en cours.',
         tag,
-        vue: 'exploitation',
-        famille: 'exploitation',
-        niveau: 'essentiel',
+        view: 'exploitation',
+        family: 'exploitation',
+        level: 'essentiel',
       })
-    } else if (salle.conference === 'retard' && avant.conference !== 'retard') {
-      avis.push({
-        title: `${salle.name} n'a pas démarré`,
+    } else if (room.conference === 'retard' && before.conference !== 'retard') {
+      notices.push({
+        title: `${room.name} n'a pas démarré`,
         body: 'Le créneau a commencé, la conférence n’est pas lancée.',
         tag,
-        vue: 'exploitation',
-        famille: 'exploitation',
-        niveau: 'essentiel',
+        view: 'exploitation',
+        family: 'exploitation',
+        level: 'essentiel',
       })
-    } else if (salle.conference === 'fin-proche' && avant.conference !== 'fin-proche') {
-      avis.push({
-        title: `${salle.name} · cinq minutes`,
+    } else if (room.conference === 'fin-proche' && before.conference !== 'fin-proche') {
+      notices.push({
+        title: `${room.name} · cinq minutes`,
         body: 'La conférence touche à sa fin.',
         tag,
-        vue: 'exploitation',
-        famille: 'exploitation',
-        niveau: 'tout',
+        view: 'exploitation',
+        family: 'exploitation',
+        level: 'tout',
       })
     }
-    return avis
+    return notices
   }
 }

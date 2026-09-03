@@ -5,11 +5,11 @@ import { provisionOperator } from '../src/operators.js'
 import { createHub, type Hub } from '../src/server.js'
 
 /**
- * Appairage d'une machine de salle par device authorization grant (RFC 8628).
+ * Pairing a room machine through the device authorization grant (RFC 8628).
  *
- * Scénario réel : le PC de régie affiche un code court, un opérateur déjà
- * authentifié dans l'admin l'approuve, la machine récupère un jeton propre et
- * révocable. Aucun mot de passe partagé sur les trois machines.
+ * The real scenario: the control PC displays a short code, an operator already
+ * authenticated in the admin approves it, the machine gets a token of its own,
+ * revocable. No password shared across the three machines.
  */
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -33,7 +33,7 @@ async function makeHarness(): Promise<Harness> {
     publicUrl: 'http://localhost:8787',
     onDeviceRequest,
     isKnownClient: (clientId) => knownClients.has(clientId),
-    // Cadence resserrée : sinon chaque test attendrait 5 s entre deux polls.
+    // A tighter cadence: otherwise every test would wait 5 s between two polls.
     deviceInterval: '1s',
   })
   await migrateAuth(options)
@@ -42,7 +42,7 @@ async function makeHarness(): Promise<Harness> {
   return { auth, onDeviceRequest, knownClients }
 }
 
-/** Ouvre une session opérateur et renvoie les en-têtes à rejouer. */
+/** Opens an operator session and returns the headers to replay. */
 async function signInOperator(auth: Auth): Promise<Headers> {
   const response = await auth.api.signInEmail({
     body: { email: OPERATOR.email, password: OPERATOR.password },
@@ -59,21 +59,21 @@ beforeEach(async () => {
   harness = await makeHarness()
 })
 
-describe('appairage d\'une machine de salle', () => {
-  it('déroule le flux complet : code → approbation → jeton', async () => {
+describe('pairing a room machine', () => {
+  it('runs the whole flow: code → approval → token', async () => {
     const { auth, onDeviceRequest } = harness
 
-    // 1. La machine demande un code au démarrage.
+    // 1. The machine asks for a code at startup.
     const request = await auth.api.deviceCode({ body: { client_id: CLIENT_ID } })
     expect(request.device_code).toBeTruthy()
     expect(request.user_code).toBeTruthy()
     expect(request.interval).toBeGreaterThan(0)
 
-    // Le hub sait qu'une machine attend : sans ça, l'admin verrait un code
-    // sans savoir quelle machine le demande.
+    // The hub knows a machine is waiting: without that, the admin would see a
+    // code without knowing which machine is asking for it.
     expect(onDeviceRequest).toHaveBeenCalledWith(CLIENT_ID, undefined)
 
-    // 2. Tant que personne n'a approuvé, le polling reste en attente.
+    // 2. As long as nobody has approved, polling stays pending.
     await expect(
       auth.api.deviceToken({
         body: {
@@ -84,12 +84,12 @@ describe('appairage d\'une machine de salle', () => {
       }),
     ).rejects.toMatchObject({ body: { error: 'authorization_pending' } })
 
-    // 3. L'opérateur saisit le code dans l'admin, puis approuve.
+    // 3. The operator types the code into the admin, then approves.
     const headers = await signInOperator(auth)
     await auth.api.deviceVerify({ query: { user_code: request.user_code }, headers })
     await auth.api.deviceApprove({ body: { userCode: request.user_code }, headers })
 
-    // 4. Le polling suivant délivre le jeton — après avoir respecté l'intervalle.
+    // 4. The next poll delivers the token — after honouring the interval.
     await sleep(1_100)
     const granted = await auth.api.deviceToken({
       body: {
@@ -101,26 +101,26 @@ describe('appairage d\'une machine de salle', () => {
     expect(granted).toMatchObject({ token_type: 'Bearer' })
     expect(granted.access_token).toBeTruthy()
 
-    // 5. Ce jeton ouvre bien une session utilisable pour les appels oRPC.
+    // 5. That token does open a session usable for the oRPC calls.
     const deviceHeaders = new Headers({ authorization: `Bearer ${granted.access_token}` })
     const session = await auth.api.getSession({ headers: deviceHeaders })
     expect(session?.user.email).toBe(OPERATOR.email)
   })
 
-  it('refuse un `client_id` inconnu', async () => {
+  it('refuses an unknown `client_id`', async () => {
     await expect(
       harness.auth.api.deviceCode({ body: { client_id: 'machine-non-declaree' } }),
     ).rejects.toBeDefined()
   })
 
-  it('refuse d\'approuver sans session opérateur', async () => {
+  it('refuses to approve without an operator session', async () => {
     const request = await harness.auth.api.deviceCode({ body: { client_id: CLIENT_ID } })
     await expect(
       harness.auth.api.deviceApprove({ body: { userCode: request.user_code }, headers: new Headers() }),
     ).rejects.toBeDefined()
   })
 
-  it('n\'accorde aucun jeton après un refus explicite', async () => {
+  it('grants no token after an explicit refusal', async () => {
     const { auth } = harness
     const request = await auth.api.deviceCode({ body: { client_id: CLIENT_ID } })
     const headers = await signInOperator(auth)
@@ -140,7 +140,7 @@ describe('appairage d\'une machine de salle', () => {
     ).rejects.toMatchObject({ body: { error: 'access_denied' } })
   })
 
-  it('ne délivre pas deux fois un jeton pour le même code', async () => {
+  it('does not deliver a token twice for the same code', async () => {
     const { auth } = harness
     const request = await auth.api.deviceCode({ body: { client_id: CLIENT_ID } })
     const headers = await signInOperator(auth)
@@ -154,12 +154,12 @@ describe('appairage d\'une machine de salle', () => {
     }
     await sleep(1_100)
     await auth.api.deviceToken({ body })
-    // Un code volé et rejoué ne doit pas ouvrir une seconde session.
+    // A stolen and replayed code must not open a second session.
     await sleep(1_100)
     await expect(auth.api.deviceToken({ body })).rejects.toBeDefined()
   })
 
-  it('impose la cadence de polling (RFC 8628 §3.5)', async () => {
+  it('imposes the polling cadence (RFC 8628 §3.5)', async () => {
     const { auth } = harness
     const request = await auth.api.deviceCode({ body: { client_id: CLIENT_ID } })
     const body = {
@@ -171,9 +171,9 @@ describe('appairage d\'une machine de salle', () => {
     await expect(auth.api.deviceToken({ body })).rejects.toMatchObject({
       body: { error: 'authorization_pending' },
     })
-    // Repoller immédiatement est puni : le client de salle doit respecter
-    // `interval` et ralentir encore sur `slow_down`, sinon il s'auto-bloque
-    // au démarrage — juste au moment où l'opérateur attend devant l'écran.
+    // Polling again immediately is punished: the room client must honour
+    // `interval` and slow down further on `slow_down`, otherwise it blocks itself
+    // at startup — just when the operator is waiting in front of the screen.
     await expect(auth.api.deviceToken({ body })).rejects.toMatchObject({
       body: { error: 'slow_down' },
     })
@@ -181,23 +181,23 @@ describe('appairage d\'une machine de salle', () => {
 })
 
 /**
- * Consultation d'un code depuis la console.
+ * Looking up a code from the console.
  *
- * L'opérateur arrive par le lien que la régie affiche. Ce qu'il voit à côté —
- * la file des machines en attente — ne dit rien de *son* code : il faut le
- * qualifier avant qu'il ne cherche une machine qui n'y est pas.
+ * The operator arrives through the link the control app displays. What they see
+ * next to it — the queue of waiting machines — says nothing about *their* code:
+ * it has to be qualified before they go looking for a machine that is not there.
  */
-describe('consultation d\'un code d\'appairage', () => {
+describe('looking up a pairing code', () => {
   const TRACK_1 = 'track-1-teilhard-de-chardin'
   let hub: Hub
   let origin: string
-  let jetonOperateur: string
+  let operatorToken: string
 
-  async function rpc(chemin: string, entree: unknown) {
-    const response = await fetch(`${origin}/rpc/${chemin}`, {
+  async function rpc(path: string, input: unknown) {
+    const response = await fetch(`${origin}/rpc/${path}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${jetonOperateur}` },
-      body: JSON.stringify({ json: entree }),
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${operatorToken}` },
+      body: JSON.stringify({ json: input }),
     })
     return (await response.json()) as { json: Record<string, unknown> }
   }
@@ -228,24 +228,24 @@ describe('consultation d\'un code d\'appairage', () => {
     })
 
     await provisionOperator(hub.auth, OPERATOR)
-    const connexion = await fetch(`${origin}/api/auth/sign-in/email`, {
+    const signIn = await fetch(`${origin}/api/auth/sign-in/email`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: OPERATOR.email, password: OPERATOR.password }),
     })
-    jetonOperateur = ((await connexion.json()) as { token: string }).token
+    operatorToken = ((await signIn.json()) as { token: string }).token
   })
 
   afterEach(async () => {
     await hub.close()
   })
 
-  it('reconnaît un code en attente et rend la salle demandée', async () => {
-    const demande = await hub.auth.api.deviceCode({
+  it('recognizes a pending code and returns the requested room', async () => {
+    const request = await hub.auth.api.deviceCode({
       body: { client_id: CLIENT_ID, scope: `room:${TRACK_1}` },
     })
 
-    const { json } = await rpc('devices/lookup', { userCode: demande.user_code })
+    const { json } = await rpc('devices/lookup', { userCode: request.user_code })
 
     expect(json).toMatchObject({
       status: 'pending',
@@ -256,51 +256,52 @@ describe('consultation d\'un code d\'appairage', () => {
     })
   })
 
-  it('distingue un code inconnu d\'une panne', async () => {
-    // Une erreur générique ferait chercher du côté du hub ; c'est presque
-    // toujours une faute de frappe, ou une base recréée depuis l'affichage.
+  it('tells an unknown code from a failure', async () => {
+    // A generic error would send one looking at the hub; it is almost always a
+    // typo, or a database recreated since the code was displayed.
     const { json } = await rpc('devices/lookup', { userCode: 'ZZZZ-ZZZZ' })
 
+    // `inconnu` is a contract value: it does not get renamed.
     expect(json).toMatchObject({ status: null, reason: 'inconnu', clientId: null })
   })
 
-  it('explique le refus quand un autre opérateur a ouvert le code', async () => {
-    const demande = await hub.auth.api.deviceCode({
+  it('explains the refusal when another operator has opened the code', async () => {
+    const request = await hub.auth.api.deviceCode({
       body: { client_id: CLIENT_ID, scope: `room:${TRACK_1}` },
     })
-    // Un premier opérateur suit le lien de la machine : la consultation
-    // rattache le code à sa session, côté Better Auth.
-    await rpc('devices/lookup', { userCode: demande.user_code })
+    // A first operator follows the machine's link: the lookup attaches the code
+    // to their session, on the Better Auth side.
+    await rpc('devices/lookup', { userCode: request.user_code })
 
     await provisionOperator(hub.auth, { ...OPERATOR, email: 'second@cloudnord.fr' })
-    const connexion = await fetch(`${origin}/api/auth/sign-in/email`, {
+    const signIn = await fetch(`${origin}/api/auth/sign-in/email`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: 'second@cloudnord.fr', password: OPERATOR.password }),
     })
-    jetonOperateur = ((await connexion.json()) as { token: string }).token
+    operatorToken = ((await signIn.json()) as { token: string }).token
 
     const { json } = await rpc('devices/approve', {
-      userCode: demande.user_code,
+      userCode: request.user_code,
       clientId: CLIENT_ID,
       roomId: TRACK_1,
     })
 
-    // Le message anglais du plugin n'aide personne au fond d'une salle.
+    // The plugin's English message helps nobody at the back of a room.
     expect(String((json as { message?: string }).message)).toContain('autre opérateur')
     expect(hub.services.devices.roomFor(CLIENT_ID)).toBeNull()
   })
 
-  it('sort la machine de la file quand on la refuse', async () => {
-    const demande = await hub.auth.api.deviceCode({
+  it('takes the machine out of the queue when it is refused', async () => {
+    const request = await hub.auth.api.deviceCode({
       body: { client_id: CLIENT_ID, scope: `room:${TRACK_1}` },
     })
     expect(hub.services.devices.pending()).toHaveLength(1)
 
-    await rpc('devices/deny', { userCode: demande.user_code })
+    await rpc('devices/deny', { userCode: request.user_code })
 
-    // Sans ça, refuser n'avait aucun effet visible : la demande restait
-    // affichée jusqu'à ce que quelqu'un l'appaire, et on la refusait deux fois.
+    // Without this, refusing had no visible effect: the request stayed displayed
+    // until someone paired it, and it got refused twice.
     expect(hub.services.devices.pending()).toEqual([])
   })
 })

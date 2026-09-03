@@ -1,77 +1,76 @@
 import { z } from 'zod'
 
 /**
- * Configuration lue une fois au démarrage et validée strictement.
+ * Configuration read once at startup and validated strictly.
  *
- * Un hub qui démarre avec une variable manquante le jour J est pire qu'un hub
- * qui refuse de démarrer : on veut l'échec au déploiement, pas en salle.
+ * A hub that starts with a missing variable on the day is worse than a hub that
+ * refuses to start: we want the failure at deployment, not in the room.
  */
-/** Un réglage trouvé dans l'environnement et laissé sans effet, avec pourquoi. */
+/** A setting found in the environment and left with no effect, with the why. */
 export interface IgnoreConfig {
   variable: string
-  raison: string
+  reason: string
 }
 
 const configSchema = z.object({
   /**
-   * Mode d'exécution du hub.
+   * The hub's execution mode.
    *
-   * Un seul interrupteur devant les commodités de développement, plutôt qu'une
-   * variable par commodité : le jour J, ce qu'on veut vérifier tient en une
-   * ligne. Par défaut `production`, parce que le défaut doit être le cas
-   * dangereux — un hub d'événement démarré sans rien préciser ne doit rien
-   * simuler.
+   * A single switch in front of the development conveniences, rather than one
+   * variable per convenience: on the day, what you want to check fits on one
+   * line. `production` by default, because the default must be the dangerous
+   * case — an event hub started with nothing specified must simulate nothing.
    */
   mode: z.enum(['production', 'dev']).default('production'),
-  /** `0` demande au système un port libre — utile en test et en développement. */
+  /** `0` asks the system for a free port — useful in test and in development. */
   port: z.coerce.number().int().min(0).max(65535).default(8787),
   host: z.string().default('0.0.0.0'),
   databasePath: z.string().default('./data/hub.db'),
-  /** Base publique du hub, utilisée par Better Auth et l'URI de vérification device. */
+  /** Public base of the hub, used by Better Auth and the device verification URI. */
   publicUrl: z.url().default('http://localhost:8787'),
   /**
-   * Serveur de développement de la console, proxifié par le hub.
+   * The console's development server, proxied by the hub.
    *
-   * Lu en mode dev seulement, et seulement tant qu'aucun bundle n'a été
-   * construit. Le sens du proxy — le hub devant Vite — est imposé par les
-   * cookies de Better Auth et par la portée de `/sw.js` ; voir `server.ts`.
+   * Read in dev mode only, and only as long as no bundle has been built. The
+   * direction of the proxy — the hub in front of Vite — is imposed by Better
+   * Auth's cookies and by `/sw.js`'s scope; see `server.ts`.
    */
   viteOrigin: z.url().default('http://127.0.0.1:5173'),
   /**
-   * Serveur de développement de la régie, proxifié par le hub.
+   * The control app's development server, proxied by the hub.
    *
-   * Distinct de `viteOrigin` : ce sont deux applications, deux ports, et elles
-   * se développent ensemble — une salle de démonstration branchée sur un hub
-   * local. Le même serveur Vite sert la régie au poste de salle et au hub ; les
-   * deux la servent sous `/regie/`, donc la même `base` convient aux deux.
+   * Distinct from `viteOrigin`: these are two applications, two ports, and they
+   * are developed together — a demo room plugged into a local hub. The same Vite
+   * server serves the control app to the room machine and to the hub; both serve
+   * it under `/regie/`, so the same `base` suits both.
    */
   regieViteOrigin: z.url().default('http://127.0.0.1:5174'),
   authSecret: z.string().min(32, 'BETTER_AUTH_SECRET doit faire au moins 32 caractères'),
-  /** URL de l'export « conference-center » importé par défaut. */
+  /** URL of the "conference-center" export imported by default. */
   programSourceUrl: z.url().optional(),
   logLevel: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   /**
-   * Cadence de polling imposée aux machines pendant l'appairage (RFC 8628).
-   * Abaissée dans les tests pour ne pas attendre 5 s entre deux sondages.
+   * Polling cadence imposed on the machines during pairing (RFC 8628).
+   * Lowered in the tests so as not to wait 5 s between two polls.
    */
   devicePollInterval: z
     .custom<`${number}${'s' | 'm'}`>((value) => typeof value === 'string' && /^\d+[sm]$/.test(value))
     .default('5s'),
   /**
-   * Durée de vie d'un code d'appairage — et, avec elle, celle d'une demande
-   * dans la file de la console.
+   * Lifetime of a pairing code — and, with it, that of a request in the
+   * console's queue.
    *
-   * Un seul réglage pour les deux : un code mort dont la demande reste affichée
-   * fait cliquer « Approuver » sur quelque chose qui ne peut plus aboutir, et
-   * la file finit par ne plus vouloir rien dire.
+   * A single setting for both: a dead code whose request is still displayed makes
+   * you click "Approuver" on something that can no longer succeed, and the queue
+   * ends up meaning nothing.
    *
-   * Court par défaut, à l'inverse de la valeur RFC : une file qui se vide seule
-   * vaut mieux qu'un code qui survit à la journée. Rien n'est perdu quand il
-   * expire — la boucle de supervision en redemande un sous 15 s, et l'écran de
-   * régie affiche le nouveau. Ce qui se paie, c'est la traversée de la salle :
-   * un opérateur qui recopie le code et marche jusqu'à la console peut arriver
-   * après sa mort. **Le jour J, poser `DEVICE_CODE_TTL=30m`** ; la console dit
-   * de toute façon en clair qu'un code a expiré.
+   * Short by default, unlike the RFC value: a queue that empties itself beats a
+   * code that survives the day. Nothing is lost when it expires — the supervision
+   * loop asks for another within 15 s, and the control screen shows the new one.
+   * What it costs is crossing the room: an operator who copies the code and walks
+   * to the console can arrive after its death. **On the day, set
+   * `DEVICE_CODE_TTL=30m`**; the console says in plain words that a code has
+   * expired anyway.
    */
   deviceCodeTtl: z
     .custom<`${number}${'s' | 'm' | 'h'}`>(
@@ -80,162 +79,161 @@ const configSchema = z.object({
     .default('2m'),
 
   /**
-   * Connexion des opérateurs par Google Workspace.
+   * Operator sign-in through Google Workspace.
    *
-   * Les deux identifiants viennent du client OAuth « Application Web » de la
-   * console Google Cloud. Absents, le hub ne monte pas le fournisseur et la
-   * console ne propose que le mot de passe — c'est le cas par défaut, et un
-   * hub d'événement doit pouvoir démarrer sans compte Google.
+   * Both identifiers come from the "Web Application" OAuth client of the Google
+   * Cloud console. Absent, the hub does not mount the provider and the console
+   * only offers the password — that is the default case, and an event hub must be
+   * able to start with no Google account.
    */
   googleClientId: z.string().optional(),
   googleClientSecret: z.string().optional(),
   /**
-   * Domaine Workspace admis. **Tout compte de ce domaine est un opérateur.**
+   * Accepted Workspace domain. **Every account of that domain is an operator.**
    *
-   * Envoyé à Google comme indice `hd`, et surtout **revérifié contre la
-   * revendication `hd` du jeton d'identité** au retour : l'indice seul est une
-   * suggestion d'écran de choix, qu'un compte personnel contourne.
+   * Sent to Google as the `hd` hint, and above all **rechecked against the
+   * identity token's `hd` claim** on the way back: the hint alone is a
+   * chooser-screen suggestion, which a personal account gets around.
    *
-   * Sans défaut, et obligatoire dès que Google est configuré : un domaine écrit
-   * en dur dans le code n'appartient qu'à un organisateur, et le laisser servir
-   * de repli ouvrirait la console d'un autre événement au personnel du
-   * premier. Le hub refuse donc de démarrer plutôt que de deviner — c'est la
-   * même règle que pour les deux identifiants, et pour la même raison.
+   * No default, and mandatory as soon as Google is configured: a domain
+   * hard-coded in the code belongs to one organizer only, and letting it act as a
+   * fallback would open one event's console to another's staff. So the hub
+   * refuses to start rather than guess — the same rule as for the two
+   * identifiers, and for the same reason.
    */
   googleHostedDomain: z.string().min(1).optional(),
 
   /**
-   * Clés VAPID des notifications poussées (RFC 8292).
+   * VAPID keys for the pushed notifications (RFC 8292).
    *
-   * Facultatives : sans elles, le hub en fabrique une paire au premier
-   * démarrage et la garde en base. Les renseigner sert à survivre à une base
-   * recréée — des clés qui changent invalident tous les abonnements, et
-   * personne ne se réabonne deux fois.
+   * Optional: without them, the hub generates a pair at the first startup and
+   * keeps it in the database. Setting them serves to survive a recreated database
+   * — keys that change invalidate every subscription, and nobody subscribes
+   * twice.
    */
   vapidPublicKey: z.string().optional(),
   vapidPrivateKey: z.string().optional(),
   /**
-   * Contact que la RFC 8292 impose d'annoncer aux services de push.
+   * Contact RFC 8292 requires be announced to the push services.
    *
-   * Une adresse `mailto:` ou une URL `https:`. Absent, le hub le dérive de son
-   * propre domaine (`mailto:hub@<domaine>`) : un dépôt ne doit pas embarquer
-   * l'adresse de contact d'un organisateur, qui recevrait alors les
-   * signalements d'abus de tous les autres.
+   * A `mailto:` address or an `https:` URL. Absent, the hub derives it from its
+   * own domain (`mailto:hub@<domain>`): a repository must not embed one
+   * organizer's contact address, which would then receive everyone else's abuse
+   * reports.
    *
-   * **À renseigner en production** : le dérivé est syntaxiquement valide et
-   * pointe le bon domaine, mais rien ne garantit que quelqu'un relève cette
-   * boîte, et c'est bien à un humain que le service de push écrira.
+   * **To be set in production**: the derived value is syntactically valid and
+   * points at the right domain, but nothing guarantees anyone reads that mailbox,
+   * and it really is a human the push service will write to.
    */
   vapidSubject: z.string().optional(),
 
   /**
-   * Stockage S3 des rushes. **Les quatre vont ensemble.**
+   * S3 storage for the rushes. **The four go together.**
    *
-   * Ce sont les seuls réglages de cette fonctionnalité qui vivent ici : une clé
-   * d'accès n'a rien à faire dans une base qu'on sauvegarde ni dans une console
-   * qu'on ouvre depuis un téléphone. Le bucket et le préfixe, eux, sont des
-   * réglages de la console — ils changent d'une édition à l'autre, et parfois le
-   * matin même.
+   * These are the only settings of this feature that live here: an access key has
+   * no business in a database that gets backed up, nor in a console opened from a
+   * phone. The bucket and the prefix, on the other hand, are console settings —
+   * they change from one edition to the next, and sometimes on the morning
+   * itself.
    *
-   * Aucun des quatre renseigné : la fonctionnalité est simplement éteinte, et
-   * personne n'a rien à faire. Une partie seulement : le hub refuse de démarrer,
-   * parce que la panne se manifesterait autrement par une console dont chaque
-   * bouton échoue, et qu'on la chercherait chez l'hébergeur.
+   * None of the four set: the feature is simply off, and nobody has anything to
+   * do. Only some of them: the hub refuses to start, because the failure would
+   * otherwise show up as a console where every button fails, and it would be
+   * looked for at the hosting provider.
    */
   s3Endpoint: z.url().optional(),
   s3Region: z.string().min(1).default('us-east-1'),
   /**
-   * Bucket où atterrissent les rushes — **amorce seulement**.
+   * Bucket the rushes land in — **a seed only**.
    *
-   * Le réglage de la console fait foi ; celui-ci ne sert qu'au tout premier
-   * démarrage, quand rien n'a jamais été renseigné. Même règle que
-   * `PROGRAM_SOURCE_URL`, et pour la même raison : un bucket corrigé en cours
-   * d'événement doit survivre au redémarrage qui suit, et un `.env` figé le
-   * réécraserait à chaque fois.
+   * The console's setting is authoritative; this one only serves the very first
+   * startup, when nothing has ever been entered. The same rule as
+   * `PROGRAM_SOURCE_URL`, and for the same reason: a bucket corrected during the
+   * event must survive the restart that follows, and a frozen `.env` would
+   * overwrite it every time.
    *
-   * Il existe pour les déploiements où personne n'ouvre la console — une
-   * machine provisionnée d'avance, un script qui monte le hub. Sans lui, un hub
-   * fraîchement déployé démarre avec ses clés et aucune destination.
+   * It exists for the deployments where nobody opens the console — a machine
+   * provisioned in advance, a script that brings the hub up. Without it, a freshly
+   * deployed hub starts with its keys and no destination.
    */
   s3Bucket: z.string().min(1).optional(),
   /**
-   * Chemin d'un fichier PEM d'autorité de certification, pour un stockage interne.
+   * Path to a PEM certificate-authority file, for internal storage.
    *
-   * Node n'utilise pas le magasin de certificats du système : il embarque sa
-   * propre liste de CA publiques. Un stockage dont le certificat est signé par
-   * une CA d'entreprise échoue donc sur `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`,
-   * message qui ne dit ni ce qui manque ni où le poser.
+   * Node does not use the system certificate store: it ships its own list of
+   * public CAs. Storage whose certificate is signed by a corporate CA therefore
+   * fails with `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`, a message that says neither
+   * what is missing nor where to put it.
    *
-   * Le hub s'en sert pour ses propres appels **et le descend aux salles** au
-   * sync : poser une variable d'environnement sur trois postes Electron un
-   * matin d'événement est un geste qui s'oublie sur le troisième, et l'oubli ne
-   * se découvre que le soir. Un certificat d'autorité est public par
-   * construction — le diffuser n'est pas diffuser un secret.
+   * The hub uses it for its own calls **and sends it down to the rooms** at sync:
+   * setting an environment variable on three Electron machines on an event
+   * morning is a gesture you forget on the third, and the omission is only
+   * discovered in the evening. A CA certificate is public by construction —
+   * distributing it is not distributing a secret.
    *
-   * `NODE_EXTRA_CA_CERTS` reste possible et vaut pour tout le processus ;
-   * celui-ci ne vaut que pour le stockage, ce qui est plus étroit et donc
-   * préférable.
+   * `NODE_EXTRA_CA_CERTS` remains possible and applies to the whole process; this
+   * one applies only to the storage, which is narrower and therefore preferable.
    */
   s3CaCert: z.string().min(1).optional(),
   s3AccessKeyId: z.string().min(1).optional(),
   s3SecretAccessKey: z.string().min(1).optional(),
   /**
-   * Adressage `endpoint/bucket/cle` plutôt que `bucket.endpoint/cle`.
+   * `endpoint/bucket/key` addressing rather than `bucket.endpoint/key`.
    *
-   * Vrai par défaut : c'est ce que veulent MinIO et la plupart des stockages
-   * compatibles, et c'est le seul mode qui marche sur une adresse IP. AWS
-   * lui-même n'accepte plus que l'autre, d'où le réglage.
+   * True by default: that is what MinIO and most compatible storages want, and it
+   * is the only mode that works on an IP address. AWS itself only accepts the
+   * other any more, hence the setting.
    */
   s3ForcePathStyle: z
     .union([z.string(), z.boolean()])
     .default(true)
-    .transform((valeur) => valeur !== 'false' && valeur !== '0' && valeur !== false),
+    .transform((value) => value !== 'false' && value !== '0' && value !== false),
   /**
-   * Minutes de silence après lesquelles un téléversement est abandonné.
+   * Minutes of silence after which an upload is abandoned.
    *
-   * Une salle éteinte en pleine montée ne dit rien : sans cette échéance, son
-   * multipart resterait ouvert — et facturé — indéfiniment. Assez long pour
-   * qu'une coupure réseau de quelques minutes ne fasse pas tout recommencer.
+   * A room switched off mid-upload says nothing: without this deadline, its
+   * multipart would stay open — and billed — indefinitely. Long enough that a
+   * network outage of a few minutes does not make everything start over.
    */
   vodAbandonMinutes: z.coerce.number().int().min(5).max(1440).default(30),
 
-  /** Hashtag suivi sur les réseaux. Vide = aucune ingestion sociale. */
+  /** Hashtag followed on the social networks. Empty = no social ingestion. */
   socialHashtag: z.string().optional(),
-  /** Instance Mastodon interrogée pour la timeline publique du hashtag. */
+  /** Mastodon instance queried for the hashtag's public timeline. */
   mastodonInstance: z.url().optional(),
   /**
-   * Clé X. Absente, l'adapter reste déclaré mais refuse explicitement : la
-   * recherche par hashtag nécessite un plan payant.
+   * X key. Absent, the adapter stays declared but refuses explicitly: searching
+   * by hashtag requires a paid plan.
    */
   xBearerToken: z.string().optional(),
   socialPollIntervalMs: z.coerce.number().int().positive().default(30_000),
 
   /**
-   * Heure simulée du hub (ISO 8601). Développement uniquement.
+   * The hub's simulated time (ISO 8601). Development only.
    *
-   * Déplace tout le système : les salles s'alignent sur l'heure du hub, donc
-   * il n'y a rien à régler de leur côté. Permet de dérouler une journée
-   * d'événement des mois avant qu'elle ait lieu.
+   * Moves the whole system: the rooms align on the hub's time, so there is
+   * nothing to set on their side. Lets an event day be played out months before
+   * it happens.
    */
   simulatedTime: z.iso.datetime({ offset: true }).optional(),
 
   /**
-   * Ancien interrupteur du réglage de l'heure. **Obsolète.**
+   * The old switch for setting the time. **Obsolete.**
    *
-   * Le réglage suit désormais `MODE` : ouvert en développement, fermé en
-   * production. Le champ ne subsiste que pour être *détecté* — le trouver dans
-   * un `.env` veut dire que quelqu'un croit avoir ouvert quelque chose, et le
-   * taire ferait chercher ailleurs. Il n'est jamais lu ensuite.
+   * Setting the time now follows `MODE`: open in development, closed in
+   * production. The field only survives to be *detected* — finding it in a `.env`
+   * means somebody believes they have opened something, and staying silent would
+   * send them looking elsewhere. It is never read afterwards.
    */
   clockControl: z.union([z.string(), z.boolean()]).optional(),
 })
   /**
-   * Un Google à moitié configuré ne démarre pas.
+   * A half-configured Google does not start.
    *
-   * Le laisser passer monterait un hub où le bouton « Continuer avec Google »
-   * échoue à chaque clic, ou n'apparaît pas alors que la variable est bien là :
-   * dans les deux cas on cherche la panne dans la console Google Cloud, pas
-   * dans un `.env` amputé d'une ligne.
+   * Letting it through would bring up a hub where the "Continuer avec Google"
+   * button fails on every click, or does not appear even though the variable is
+   * there: in both cases the failure gets looked for in the Google Cloud console,
+   * not in a `.env` missing a line.
    */
   .refine(
     (config) => (config.googleClientId == null) === (config.googleClientSecret == null),
@@ -246,11 +244,11 @@ const configSchema = z.object({
     },
   )
   /**
-   * Google sans domaine ne démarre pas.
+   * Google with no domain does not start.
    *
-   * Le domaine *est* la liste des opérateurs : sans lui, il n'y a pas de
-   * frontière à faire respecter, et l'oubli ne se verrait qu'au premier compte
-   * personnel qui entre — c'est-à-dire trop tard.
+   * The domain *is* the list of operators: without it there is no boundary to
+   * enforce, and the omission would only show at the first personal account that
+   * gets in — which is to say too late.
    */
   .refine((config) => config.googleClientId == null || config.googleHostedDomain != null, {
     path: ['googleHostedDomain'],
@@ -258,22 +256,22 @@ const configSchema = z.object({
       'GOOGLE_HOSTED_DOMAIN est obligatoire avec GOOGLE_CLIENT_ID : il décide qui est opérateur',
   })
   /**
-   * Un stockage S3 à moitié configuré ne démarre pas.
+   * Half-configured S3 storage does not start.
    *
-   * Même règle que la paire Google, et pour la même raison : trois variables
-   * sur quatre montent un hub où la console annonce un stockage prêt et où
-   * chaque téléversement échoue à la signature. On chercherait la panne dans
-   * les droits du bucket, pas dans un `.env` amputé d'une ligne. Zéro sur
-   * quatre reste parfaitement valable — c'est même le cas normal.
+   * The same rule as the Google pair, and for the same reason: three variables out
+   * of four bring up a hub where the console announces storage is ready and every
+   * upload fails at signing. The failure would be looked for in the bucket's
+   * permissions, not in a `.env` missing a line. Zero out of four remains
+   * perfectly valid — it is even the normal case.
    */
   .refine(
     (config) => {
-      const poses = [
+      const set = [
         config.s3Endpoint,
         config.s3AccessKeyId,
         config.s3SecretAccessKey,
-      ].filter((valeur) => valeur != null).length
-      return poses === 0 || poses === 3
+      ].filter((value) => value != null).length
+      return set === 0 || set === 3
     },
     {
       path: ['s3Endpoint'],
@@ -282,14 +280,14 @@ const configSchema = z.object({
     },
   )
   /**
-   * Garde-fou du mode production, et rappel des variables obsolètes.
+   * Production-mode guard rail, and a reminder about obsolete variables.
    *
-   * Les réglages de développement sont **neutralisés**, pas refusés : un hub
-   * qui ne redémarre pas parce qu'une ligne traîne dans un `.env` serait pire
-   * que le mal qu'on soigne — c'est justement en cours d'événement qu'on le
-   * relance. Chaque neutralisation est rendue avec **sa raison**, qui remonte
-   * au journal et à la console : « ignoré » sans explication enverrait
-   * chercher au mauvais endroit.
+   * Development settings are **neutralized**, not refused: a hub that does not
+   * restart because a line is lying around in a `.env` would be worse than the
+   * problem it cures — it is precisely during the event that it gets restarted.
+   * Every neutralization is returned with **its reason**, which reaches the log
+   * and the console: "ignored" with no explanation would send people looking in
+   * the wrong place.
    */
   .transform(({ clockControl, ...config }) => {
     const ignores: IgnoreConfig[] = []
@@ -297,22 +295,22 @@ const configSchema = z.object({
     if (clockControl === true || clockControl === '1' || clockControl === 'true') {
       ignores.push({
         variable: 'CLOCK_CONTROL',
-        raison: "remplacé par MODE=dev, qui ouvre le réglage de l'heure",
+        reason: "remplacé par MODE=dev, qui ouvre le réglage de l'heure",
       })
     }
 
     const dev = config.mode === 'dev'
     if (!dev && config.simulatedTime != null) {
-      ignores.push({ variable: 'SIMULATED_TIME', raison: 'réservé au mode développement (MODE=dev)' })
+      ignores.push({ variable: 'SIMULATED_TIME', reason: 'réservé au mode développement (MODE=dev)' })
     }
 
     return {
       ...config,
       simulatedTime: dev ? config.simulatedTime : undefined,
-      // Dérivé du domaine du hub, et non de son URL : `http://localhost:8787`
-      // est une adresse publique parfaitement valable en développement, que
-      // web-push refuserait comme sujet — il n'accepte qu'un `mailto:` ou une
-      // URL `https:`. Le push se serait alors tu, sans dire pourquoi.
+      // Derived from the hub's domain, and not from its URL: `http://localhost:8787`
+      // is a perfectly valid public address in development, which web-push would
+      // refuse as a subject — it only accepts a `mailto:` or an `https:` URL. Push
+      // would then have gone silent, without saying why.
       vapidSubject: config.vapidSubject ?? `mailto:hub@${new URL(config.publicUrl).hostname}`,
       ignores,
     }
@@ -321,26 +319,26 @@ const configSchema = z.object({
 export type Config = z.infer<typeof configSchema>
 
 /**
- * Forme *avant* validation : les champs à valeur par défaut y sont facultatifs.
- * C'est ce qu'accepte `createHub`, pour qu'un appelant n'ait pas à répéter des
- * réglages que le schéma pose déjà.
+ * Shape *before* validation: fields with a default are optional there.
+ * That is what `createHub` accepts, so a caller does not have to repeat settings
+ * the schema already sets.
  */
 export type ConfigInput = z.input<typeof configSchema>
 
 export { configSchema }
 
-/** Durées façon Better Auth (« 30m »), en millisecondes. */
-const UNITE_MS = { s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const
+/** Better Auth style durations ("30m"), in milliseconds. */
+const UNIT_MS = { s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const
 
 /**
- * Convertit une durée de configuration en millisecondes.
+ * Converts a configuration duration into milliseconds.
  *
- * Better Auth veut la chaîne, nos requêtes SQL veulent le nombre : la
- * conversion vit ici pour que les deux ne puissent pas diverger.
+ * Better Auth wants the string, our SQL queries want the number: the conversion
+ * lives here so the two cannot diverge.
  */
-export function dureeEnMs(duree: string): number {
-  const unite = duree.slice(-1) as keyof typeof UNITE_MS
-  return Number.parseInt(duree, 10) * (UNITE_MS[unite] ?? 1_000)
+export function durationMs(duration: string): number {
+  const unit = duration.slice(-1) as keyof typeof UNIT_MS
+  return Number.parseInt(duration, 10) * (UNIT_MS[unit] ?? 1_000)
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {

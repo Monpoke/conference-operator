@@ -11,8 +11,8 @@ import { DisplayServer } from '../src/core/display-server.js'
 import { LocalStore } from '../src/core/store.js'
 import { RoomRuntime } from '../src/core/runtime.js'
 import {
-  assetsDeDeveloppement,
-  assetsDeProduction,
+  developmentAssets,
+  productionAssets,
   renderRegieShell,
 } from '../src/core/regie-shell.js'
 
@@ -251,7 +251,7 @@ describe('autonomie de la page', () => {
   it('ne référence aucune ressource hors de son origine', () => {
     const html = renderRegieShell({
       initialPayload: { roomName: 'Track #1' } as never,
-      assets: assetsDeProduction(manifesteTemporaire()),
+      assets: productionAssets(manifesteTemporaire()),
       eventName: 'Cloud Nord 2026',
     })
 
@@ -266,7 +266,7 @@ describe('autonomie de la page', () => {
   })
 
   it('donne à Vite le même préfixe, pour que le développement ne triche pas', () => {
-    const assets = assetsDeDeveloppement()
+    const assets = developmentAssets()
     for (const url of [...assets.scripts, ...assets.styles]) {
       expect(url.startsWith('/regie/')).toBe(true)
     }

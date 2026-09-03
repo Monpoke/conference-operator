@@ -5,33 +5,33 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /**
- * L'image du hub liste les manifestes un par un, et personne ne s'en souvient.
+ * The hub's image lists the manifests one by one, and nobody remembers it.
  *
- * Le Dockerfile le dit lui-même : `--frozen-lockfile` compare le verrou à
- * l'ensemble des projets trouvés, et « un manifeste manquant se lit comme un
- * verrou périmé, et l'installation échoue sur un message qui ne dit pas ça ».
- * La panne arrive donc au déploiement, sur une erreur trompeuse, alors que la
- * cause est un paquet ajouté à l'espace de travail dix commits plus tôt.
+ * The Dockerfile says so itself: `--frozen-lockfile` compares the lockfile to the
+ * whole set of projects it finds, and "a missing manifest reads as a stale
+ * lockfile, and the install fails on a message that does not say that". The
+ * breakage therefore happens at deployment time, on a misleading error, while the
+ * cause is a package added to the workspace ten commits earlier.
  *
- * Ce test coûte deux lectures de dossier et supprime la classe entière.
+ * This test costs two directory reads and removes the whole class.
  */
 
-const racine = fileURLToPath(new URL('../../../', import.meta.url))
-const dockerfile = readFileSync(join(racine, 'Dockerfile'), 'utf8')
+const root = fileURLToPath(new URL('../../../', import.meta.url))
+const dockerfile = readFileSync(join(root, 'Dockerfile'), 'utf8')
 
-/** Manifestes copiés dans l'étape d'installation. */
-const listes = new Set(
-  [...dockerfile.matchAll(/^COPY ([\w./-]+)\/package\.json/gm)].map((trouve) => trouve[1] as string),
+/** The manifests copied in the install stage. */
+const listed = new Set(
+  [...dockerfile.matchAll(/^COPY ([\w./-]+)\/package\.json/gm)].map((found) => found[1] as string),
 )
 
-/** Projets réellement présents, selon les groupes de `pnpm-workspace.yaml`. */
-const presents = new Set(
-  ['apps', 'packages'].flatMap((groupe) =>
-    readdirSync(join(racine, groupe))
-      .map((nom) => `${groupe}/${nom}`)
-      .filter((chemin) => {
+/** The projects actually present, per the groups in `pnpm-workspace.yaml`. */
+const present = new Set(
+  ['apps', 'packages'].flatMap((group) =>
+    readdirSync(join(root, group))
+      .map((name) => `${group}/${name}`)
+      .filter((path) => {
         try {
-          return statSync(join(racine, chemin, 'package.json')).isFile()
+          return statSync(join(root, path, 'package.json')).isFile()
         } catch {
           return false
         }
@@ -39,19 +39,18 @@ const presents = new Set(
   ),
 )
 
-describe('image du hub', () => {
-  it('copie le manifeste de chaque projet de l’espace de travail', () => {
-    expect([...presents].filter((projet) => !listes.has(projet)).sort()).toEqual([])
+describe('hub image', () => {
+  it('copies the manifest of every workspace project', () => {
+    expect([...present].filter((project) => !listed.has(project)).sort()).toEqual([])
   })
 
-  it('ne copie pas un manifeste qui n’existe plus', () => {
-    expect([...listes].filter((projet) => !presents.has(projet)).sort()).toEqual([])
+  it('does not copy a manifest that no longer exists', () => {
+    expect([...listed].filter((project) => !present.has(project)).sort()).toEqual([])
   })
 
-  it('regarde bien quelque chose', () => {
-    // Garde-fou du garde-fou : deux ensembles vides se correspondraient sans
-    // rien prouver, et une regex qui ne trouve rien est le défaut le plus
-    // probable ici.
-    expect(listes.size).toBeGreaterThan(5)
+  it('is actually looking at something', () => {
+    // A guard for the guard: two empty sets would match without proving
+    // anything, and a regex that finds nothing is the most likely defect here.
+    expect(listed.size).toBeGreaterThan(5)
   })
 })

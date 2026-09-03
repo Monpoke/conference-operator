@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { normalizeProgram } from '@cloudnord/program'
-import { createMockObsTransport, SCENES_PAR_DEFAUT } from '../src/core/obs-mock.js'
+import { createMockObsTransport, DEFAULT_SCENES } from '../src/core/obs-mock.js'
 import { ObsController } from '../src/core/obs.js'
 import { LocalStore } from '../src/core/store.js'
 import { RoomRuntime } from '../src/core/runtime.js'
@@ -63,7 +63,7 @@ describe('OBS simulé', () => {
      */
     const transport = createMockObsTransport({ instance: 'B', recordingDir: join(dir, 'rec') })
     await transport.call('StartRecord')
-    const commeReel = { ...transport, simule: false }
+    const commeReel = { ...transport, simulated: false }
 
     const obs = new ObsController({
       instance: 'B',
@@ -79,13 +79,13 @@ describe('OBS simulé', () => {
     // Rien ne distingue à l'écran un enregistrement simulé d'un vrai : le
     // transport porte l'information lui-même, plutôt qu'une variable
     // d'environnement relue ailleurs, qui pourrait le contredire.
-    const simule = new ObsController({
+    const simulated = new ObsController({
       instance: 'A',
       url: 'mock',
       sceneRoles: {},
       transport: createMockObsTransport({ instance: 'A', recordingDir: join(dir, 'rec') }),
     })
-    expect(simule.snapshot().simulated).toBe(true)
+    expect(simulated.snapshot().simulated).toBe(true)
 
     const reel = new ObsController({
       instance: 'A',
@@ -152,7 +152,7 @@ describe('OBS simulé', () => {
     const noms = scenes.map((scene) => scene.sceneName)
 
     expect(noms).toContain('Direct 4K — régie mobile')
-    for (const plausible of SCENES_PAR_DEFAUT.A) expect(noms).toContain(plausible)
+    for (const plausible of DEFAULT_SCENES.A) expect(noms).toContain(plausible)
     // Dédoublonnées : une salle configurée sur les noms par défaut ne doit pas
     // les voir deux fois dans le sélecteur.
     expect(new Set(noms).size).toBe(noms.length)
@@ -163,8 +163,8 @@ describe('OBS simulé', () => {
       instance: 'A',
       url: 'mock',
       sceneRoles: {
-        LIVE: SCENES_PAR_DEFAUT.A[0]!,
-        HOLD: SCENES_PAR_DEFAUT.A[1]!,
+        LIVE: DEFAULT_SCENES.A[0]!,
+        HOLD: DEFAULT_SCENES.A[1]!,
       },
       transport: createMockObsTransport({ instance: 'A', recordingDir: join(dir, 'rec') }),
     })
@@ -180,7 +180,7 @@ describe('OBS simulé', () => {
     const controller = new ObsController({
       instance: 'A',
       url: 'mock',
-      sceneRoles: { LIVE: SCENES_PAR_DEFAUT.A[0]!, HOLD: SCENES_PAR_DEFAUT.A[1]! },
+      sceneRoles: { LIVE: DEFAULT_SCENES.A[0]!, HOLD: DEFAULT_SCENES.A[1]! },
       transport: createMockObsTransport({ instance: 'A', recordingDir: join(dir, 'rec') }),
     })
     await controller.connect()
@@ -207,7 +207,7 @@ describe('OBS simulé', () => {
     const obs = new ObsController({
       instance: 'B',
       url: 'mock',
-      sceneRoles: { TALK: SCENES_PAR_DEFAUT.B[0]! },
+      sceneRoles: { TALK: DEFAULT_SCENES.B[0]! },
       transport,
     })
     await obs.connect()
@@ -274,7 +274,7 @@ describe('OBS simulé', () => {
     expect(readdirSync(rec).sort()).toEqual(['keynote-2.mkv', 'keynote.mkv'])
   })
 
-  it('simule la diffusion et sa télémétrie', async () => {
+  it('simulated la diffusion et sa télémétrie', async () => {
     const transport = createMockObsTransport({ instance: 'B', recordingDir: join(dir, 'rec') })
     const obs = new ObsController({ instance: 'B', url: 'mock', sceneRoles: {}, transport })
     await obs.connect()

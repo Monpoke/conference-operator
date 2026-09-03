@@ -9,7 +9,7 @@ import type { LocalStore } from './store.js'
 
 export interface AssetRef {
   sha256: string
-  /** URL locale à substituer dans le programme servi à l'écran. */
+  /** The local URL to substitute into the program served to the screen. */
   localUrl: string
   byteSize: number
   contentType: string | null
@@ -22,11 +22,11 @@ export interface PrefetchReport {
 }
 
 /**
- * Cache d'assets adressé par contenu.
+ * A content-addressed asset cache.
  *
- * L'enjeu est précis : une fois rempli, **aucune source navigateur d'OBS ne
- * touche Internet** pendant l'événement. Une coupure réseau ne peut donc pas
- * faire apparaître des logos cassés sur le vidéoprojecteur.
+ * The stake is precise: once filled, **no OBS browser source touches the
+ * Internet** during the event. A network outage therefore cannot make broken
+ * logos appear on the video projector.
  */
 export class AssetCache {
   constructor(
@@ -37,7 +37,7 @@ export class AssetCache {
     mkdirSync(directory, { recursive: true })
   }
 
-  /** Clé de cache : l'URL source, pas le contenu — c'est ce qu'on connaît avant de télécharger. */
+  /** The cache key: the source URL, not the content — it is what we know before downloading. */
   private keyOf(url: string): string {
     return createHash('sha256').update(url).digest('hex')
   }
@@ -62,11 +62,11 @@ export class AssetCache {
   }
 
   /**
-   * Télécharge un asset s'il n'est pas déjà en cache.
+   * Downloads an asset if it is not already cached.
    *
-   * Écriture en deux temps (fichier temporaire puis `rename`) : une coupure de
-   * courant en plein téléchargement laisserait sinon un fichier tronqué que le
-   * cache croirait valide.
+   * Written in two steps (a temporary file then a `rename`): a power cut in the
+   * middle of a download would otherwise leave a truncated file the cache would
+   * believe valid.
    */
   async fetchOne(url: string, fetchImpl: typeof fetch = fetch): Promise<AssetRef> {
     const existing = this.lookup(url)
@@ -78,7 +78,7 @@ export class AssetCache {
     const bytes = Buffer.from(await response.arrayBuffer())
     const sha256 = this.keyOf(url)
     const target = join(this.directory, sha256 + extensionFor(url))
-    const temporary = `${target}.partiel`
+    const temporary = `${target}.partial`
 
     await writeFile(temporary, bytes)
     await rename(temporary, target)
@@ -97,10 +97,10 @@ export class AssetCache {
   }
 
   /**
-   * Précharge tous les assets d'un programme.
+   * Prefetches all of a program's assets.
    *
-   * Ne lève jamais : un logo manquant ne doit pas empêcher la salle de démarrer.
-   * Les échecs sont rendus pour être affichés en régie.
+   * Never throws: a missing logo must not stop the room from starting. The
+   * failures are returned so they can be displayed in the control app.
    */
   async prefetch(program: Program, fetchImpl: typeof fetch = fetch): Promise<PrefetchReport> {
     const report: PrefetchReport = { downloaded: 0, reused: 0, failed: [] }
@@ -121,10 +121,10 @@ export class AssetCache {
   }
 
   /**
-   * Réécrit les URLs distantes du programme vers le cache local.
+   * Rewrites the program's remote URLs towards the local cache.
    *
-   * Un asset absent du cache garde son URL d'origine : mieux vaut tenter le
-   * réseau que d'afficher une image morte si le lien est encore joignable.
+   * An asset absent from the cache keeps its original URL: better to try the
+   * network than to display a dead image if the link is still reachable.
    */
   localize(program: Program): Program {
     const rewrite = (url: string | null): string | null =>
@@ -171,7 +171,7 @@ export class AssetCache {
   }
 }
 
-/** Conserve l'extension d'origine : OBS et les navigateurs s'y fient encore. */
+/** Keeps the original extension: OBS and the browsers still rely on it. */
 function extensionFor(url: string): string {
   try {
     const extension = extname(new URL(url).pathname)

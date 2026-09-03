@@ -1,32 +1,32 @@
 import { DB_FLOOR, type InputLevel, type ObsInstance, type ObsState, type SceneRole } from '@cloudnord/contract'
 
 /**
- * Surface d'OBS dont on a réellement besoin.
+ * The surface of OBS we actually need.
  *
- * L'abstraction existe pour une raison précise : `obs-websocket-js` exige une
- * instance OBS qui tourne, donc sans elle la logique de résolution des rôles et
- * de reconnexion ne serait testable que sur une machine de régie.
+ * The abstraction exists for a precise reason: `obs-websocket-js` demands a
+ * running OBS instance, so without it the role-resolution and reconnection logic
+ * would only be testable on a control machine.
  */
 /**
- * Abonnements d'événements obs-websocket v5 (masque de bits).
+ * obs-websocket v5 event subscriptions (a bit mask).
  *
- * `InputVolumeMeters` est délibérément **hors** du jeu par défaut côté OBS :
- * il émet une cinquantaine de fois par seconde. On ne s'y abonne donc que
- * pendant qu'une régie regarde les niveaux, et on s'en désabonne ensuite.
+ * `InputVolumeMeters` is deliberately **outside** the default set on the OBS
+ * side: it emits some fifty times a second. We therefore only subscribe to it
+ * while a control app is watching the levels, and unsubscribe afterwards.
  */
-export const ABONNEMENTS_OBS = {
-  /** Tout ce qu'OBS envoie par défaut : scènes, sorties, entrées… */
+export const OBS_SUBSCRIPTIONS = {
+  /** Everything OBS sends by default: scenes, outputs, inputs… */
   standard: 0x7ff,
-  /** Le vumètre, à la charge assumée. */
-  niveaux: 1 << 16,
+  /** The VU meter, at its acknowledged cost. */
+  levels: 1 << 16,
 } as const
 
 export interface ObsTransport {
-  /** Transport simulé, et non une vraie instance OBS. Voir `obs-mock`. */
-  readonly simule?: boolean
-  connect(url: string, password?: string, abonnements?: number): Promise<void>
-  /** Renégocie les abonnements sans rouvrir la connexion. */
-  reidentify?(abonnements: number): Promise<void>
+  /** A simulated transport, not a real OBS instance. See `obs-mock`. */
+  readonly simulated?: boolean
+  connect(url: string, password?: string, subscriptions?: number): Promise<void>
+  /** Renegotiates the subscriptions without reopening the connection. */
+  reidentify?(subscriptions: number): Promise<void>
   disconnect(): Promise<void>
   call(request: 'GetSceneList'): Promise<{ currentProgramSceneName: string; scenes: { sceneName: string }[] }>
   call(request: 'SetCurrentProgramScene', args: { sceneName: string }): Promise<unknown>
@@ -39,7 +39,7 @@ export interface ObsControllerOptions {
   instance: ObsInstance
   url: string
   password?: string | null
-  /** Rôle → nom de scène OBS réel, tel que configuré pour cette salle. */
+  /** Role → the real OBS scene name, as configured for this room. */
   sceneRoles: Partial<Record<SceneRole, string>>
   transport: ObsTransport
   onStateChange?: (state: ObsState) => void
@@ -53,12 +53,11 @@ export type ObsControllerEvent =
       type: 'connected'
       unresolvedRoles: SceneRole[]
       /**
-       * État constaté à la connexion.
+       * The state observed at connection time.
        *
-       * Sans lui, l'application ignore ce que fait déjà OBS jusqu'au premier
-       * changement : une régie relancée en plein talk afficherait « pas
-       * d'enregistrement » alors qu'OBS tourne, et la console verrait une
-       * scène vide.
+       * Without it, the application does not know what OBS is already doing until
+       * the first change: a control app relaunched mid-talk would show "not
+       * recording" while OBS is running, and the console would see an empty scene.
        */
       currentRole: SceneRole | null
       currentSceneName: string | null
@@ -73,56 +72,55 @@ export type ObsControllerEvent =
 
 export { DB_FLOOR, type InputLevel }
 
-/** Multiplicateur linéaire d'OBS vers des dBFS bornés. */
-export function multiplicateurEnDb(mul: number): number {
+/** OBS's linear multiplier towards bounded dBFS. */
+export function multiplierToDb(mul: number): number {
   if (!Number.isFinite(mul) || mul <= 0) return DB_FLOOR
   return Math.max(DB_FLOOR, 20 * Math.log10(mul))
 }
 
-interface EtatSortie {
+interface OutputState {
   outputActive: boolean
-  /** Absent des simulateurs, toujours présent sur un vrai OBS. */
+  /** Absent from the simulators, always present on a real OBS. */
   outputState?: string
 }
 
-/** Les deux seuls états qui concluent une transition de sortie. */
-const ETATS_ABOUTIS = new Set(['OBS_WEBSOCKET_OUTPUT_STARTED', 'OBS_WEBSOCKET_OUTPUT_STOPPED'])
+/** The only two states that conclude an output transition. */
+const SETTLED_STATES = new Set(['OBS_WEBSOCKET_OUTPUT_STARTED', 'OBS_WEBSOCKET_OUTPUT_STOPPED'])
 
 /**
- * Vrai quand l'événement conclut la transition, et pas quand il l'annonce.
+ * True when the event concludes the transition, and not when it announces it.
  *
- * Un vrai OBS émet `RecordStateChanged` **deux fois** par transition :
- * `STOPPING` puis `STOPPED`, `STARTING` puis `STARTED`. Seul le second porte le
- * résultat — le chemin du fichier n'est renseigné que sur `STOPPED`. Le premier
- * annonce pourtant déjà `outputActive: false`, et le prendre au mot faisait
- * résoudre l'attente du chemin avec `null` : le master était bien écrit, son
- * sidecar jamais, et la modale VOD disait « sidecar absent » sur des captations
- * parfaitement saines.
+ * A real OBS emits `RecordStateChanged` **twice** per transition: `STOPPING` then
+ * `STOPPED`, `STARTING` then `STARTED`. Only the second carries the result — the
+ * file's path is only filled in on `STOPPED`. The first already announces
+ * `outputActive: false` though, and taking it at its word made the wait for the
+ * path resolve with `null`: the master was written all right, its sidecar never,
+ * and the VOD modal said "sidecar missing" on perfectly healthy captures.
  *
- * Le défaut ne pouvait pas se voir en développement : les simulateurs n'émettent
- * qu'un seul événement, celui qui porte le chemin, et ne remplissent pas
- * `outputState` du tout — d'où le repli sur « abouti » quand le champ manque.
+ * The defect could not show in development: the simulators emit only one event,
+ * the one that carries the path, and do not fill in `outputState` at all — hence
+ * the fallback to "settled" when the field is missing.
  *
- * `PAUSED` / `RESUMED` et les `RECONNECTING` / `RECONNECTED` de la diffusion
- * tombent au même endroit, et c'est voulu : la sortie n'a pas changé d'état,
- * la répercuter ferait clignoter la régie et, pour la diffusion, annoncerait au
- * hub un arrêt « opérateur » à chaque reconnexion du flux.
+ * `PAUSED` / `RESUMED` and the stream's `RECONNECTING` / `RECONNECTED` fall in the
+ * same place, and that is intended: the output has not changed state, passing it
+ * on would make the control app blink and, for the stream, would announce an
+ * "operator" stop to the hub on every reconnection of the stream.
  */
-function transitionAboutie(outputState: string | undefined): boolean {
-  return outputState == null || ETATS_ABOUTIS.has(outputState)
+function isSettledTransition(outputState: string | undefined): boolean {
+  return outputState == null || SETTLED_STATES.has(outputState)
 }
 
 /**
- * Pilote une instance OBS en raisonnant par **rôles**, jamais par noms de scènes.
+ * Drives an OBS instance reasoning in **roles**, never in scene names.
  *
- * Chaque salle nomme ses scènes comme elle veut ; le code n'en sait rien. Les
- * rôles introuvables sont signalés dès la connexion, pour que le problème se
- * voie à la répétition et pas au milieu d'un talk.
+ * Each room names its scenes as it likes; the code knows nothing of them. The
+ * roles that cannot be found are reported from the connection on, so that the
+ * problem shows at the rehearsal and not in the middle of a talk.
  */
 export class ObsController {
   private state: ObsState
-  /** Le vumètre survit à une reconnexion : l'abonnement est réappliqué. */
-  private niveauxActifs = false
+  /** The VU meter survives a reconnection: the subscription is reapplied. */
+  private levelsActive = false
 
   constructor(private readonly options: ObsControllerOptions) {
     this.state = {
@@ -132,7 +130,7 @@ export class ObsController {
       currentRole: null,
       unresolvedRoles: [],
       scenes: [],
-      simulated: options.transport.simule === true,
+      simulated: options.transport.simulated === true,
       recording: false,
       streaming: false,
     }
@@ -164,21 +162,21 @@ export class ObsController {
       }
       this.options.onEvent?.({
         type: 'audio',
-        inputs: inputs.map((entree) => ({
-          name: entree.inputName,
-          // OBS donne [magnitude, crête, crête d'entrée] par canal ; les deux
-          // premières suffisent à afficher une barre et son pic.
-          channels: (entree.inputLevelsMul ?? []).map((canal) => ({
-            magnitude: multiplicateurEnDb(canal[0] ?? 0),
-            peak: multiplicateurEnDb(canal[1] ?? canal[0] ?? 0),
+        inputs: inputs.map((input) => ({
+          name: input.inputName,
+          // OBS gives [magnitude, peak, input peak] per channel; the first two are
+          // enough to draw a bar and its peak.
+          channels: (input.inputLevelsMul ?? []).map((channel) => ({
+            magnitude: multiplierToDb(channel[0] ?? 0),
+            peak: multiplierToDb(channel[1] ?? channel[0] ?? 0),
           })),
         })),
       })
     })
 
     transport.on('RecordStateChanged', (payload: never) => {
-      const event = payload as unknown as EtatSortie & { outputPath?: string }
-      if (!transitionAboutie(event.outputState)) return
+      const event = payload as unknown as OutputState & { outputPath?: string }
+      if (!isSettledTransition(event.outputState)) return
       this.patch({ recording: event.outputActive })
       this.options.onEvent?.({
         type: 'recording',
@@ -188,8 +186,8 @@ export class ObsController {
     })
 
     transport.on('StreamStateChanged', (payload: never) => {
-      const event = payload as unknown as EtatSortie
-      if (!transitionAboutie(event.outputState)) return
+      const event = payload as unknown as OutputState
+      if (!isSettledTransition(event.outputState)) return
       this.patch({ streaming: event.outputActive })
       this.options.onEvent?.({ type: 'streaming', active: event.outputActive })
     })
@@ -201,25 +199,25 @@ export class ObsController {
   }
 
   /**
-   * Se connecte et resynchronise l'état depuis OBS.
+   * Connects and resynchronizes the state from OBS.
    *
-   * L'état affiché en régie vient toujours d'OBS : si l'opérateur bascule une
-   * scène directement dans OBS, la régie doit rester juste.
+   * The state displayed in the control app always comes from OBS: if the operator
+   * switches a scene directly in OBS, the control app must stay right.
    */
   /**
-   * Active ou coupe le vumètre.
+   * Switches the VU meter on or off.
    *
-   * Renégocier les abonnements plutôt que filtrer à la réception : sans cela,
-   * OBS enverrait 50 messages par seconde en permanence, y compris quand
-   * personne ne regarde — pour rien, et sur la machine qui encode.
+   * Renegotiating the subscriptions rather than filtering on receipt: without it,
+   * OBS would send 50 messages a second permanently, including when nobody is
+   * watching — for nothing, and on the machine that encodes.
    */
-  async setVolumeMeters(actif: boolean): Promise<void> {
-    if (actif === this.niveauxActifs) return
+  async setVolumeMeters(active: boolean): Promise<void> {
+    if (active === this.levelsActive) return
     const { transport } = this.options
     if (transport.reidentify == null) return
-    this.niveauxActifs = actif
+    this.levelsActive = active
     await transport.reidentify(
-      actif ? ABONNEMENTS_OBS.standard | ABONNEMENTS_OBS.niveaux : ABONNEMENTS_OBS.standard,
+      active ? OBS_SUBSCRIPTIONS.standard | OBS_SUBSCRIPTIONS.levels : OBS_SUBSCRIPTIONS.standard,
     )
   }
 
@@ -227,65 +225,64 @@ export class ObsController {
     await this.options.transport.connect(
       this.options.url,
       this.options.password ?? undefined,
-      this.niveauxActifs
-        ? ABONNEMENTS_OBS.standard | ABONNEMENTS_OBS.niveaux
-        : ABONNEMENTS_OBS.standard,
+      this.levelsActive
+        ? OBS_SUBSCRIPTIONS.standard | OBS_SUBSCRIPTIONS.levels
+        : OBS_SUBSCRIPTIONS.standard,
     )
-    const inventaire = await this.lireScenes()
+    const inventory = await this.readScenes()
 
     /**
-     * On interroge aussi l'enregistrement et la diffusion.
+     * We also ask about the recording and the stream.
      *
-     * OBS peut très bien être déjà en train d'enregistrer : c'est même le cas
-     * qui compte, celui où l'application a redémarré au milieu d'un talk.
-     * Tolérant à l'échec — une instance qui ne répond pas à ces requêtes ne
-     * doit pas empêcher la connexion.
+     * OBS may very well already be recording: it is even the case that matters,
+     * the one where the application restarted in the middle of a talk. Tolerant to
+     * failure — an instance that does not answer these requests must not prevent
+     * the connection.
      */
     let recording = false
     let streaming = false
     try {
-      const etat = (await this.options.transport.call('GetRecordStatus')) as { outputActive?: boolean }
-      recording = etat.outputActive === true
+      const status = (await this.options.transport.call('GetRecordStatus')) as { outputActive?: boolean }
+      recording = status.outputActive === true
     } catch {
-      /* instance qui ne gère pas la requête */
+      /* an instance that does not handle the request */
     }
 
     /**
-     * Une instance simulée ne rapporte aucune prise en cours : on la coupe.
+     * A simulated instance reports no take in progress: we stop it.
      *
-     * Adopter l'enregistrement d'OBS existe pour une seule raison — l'appli a
-     * redémarré au milieu d'un talk et la prise, elle, court toujours. Rien de
-     * tel avec une instance simulée : elle naît avec l'application, ne capte
-     * rien, et ce qu'elle « enregistre » d'une connexion à l'autre n'est le
-     * souvenir d'aucune vidéo. La régie s'allumait donc parfois sur une
-     * captation en cours que personne n'avait lancée, et qu'il fallait arrêter
-     * pour pouvoir en lancer une.
+     * Adopting OBS's recording exists for one reason only — the app restarted in
+     * the middle of a talk and the take is still running. Nothing of the sort with
+     * a simulated instance: it is born with the application, captures nothing, and
+     * what it "records" from one connection to the next is the memory of no video.
+     * The control app therefore sometimes lit up on a capture in progress that
+     * nobody had started, and that had to be stopped before one could start one.
      *
-     * On coupe plutôt que d'ignorer : signaler « rien ne capte » en laissant
-     * l'instance croire le contraire ferait échouer le prochain « Enregistrer »
-     * sur un « déjà en cours » que l'écran contredit.
+     * We stop rather than ignore: reporting "nothing is capturing" while leaving
+     * the instance believing the opposite would make the next "Enregistrer" fail
+     * on an "already running" that the screen contradicts.
      */
     if (this.state.simulated && recording) {
-      // L'instance simulée tient son propre journal : l'arrêt s'y lit, et un
-      // échec ne doit pas empêcher la connexion — on repart de « rien ne capte »
-      // dans les deux cas, puisque c'est la vérité de ce qui est capté.
+      // The simulated instance keeps its own log: the stop can be read in it, and a
+      // failure must not prevent the connection — we start again from "nothing is
+      // capturing" in both cases, since that is the truth of what is captured.
       await this.options.transport.call('StopRecord').catch(() => {})
       recording = false
     }
     try {
-      const etat = (await this.options.transport.call('GetStreamStatus')) as { outputActive?: boolean }
-      streaming = etat.outputActive === true
+      const status = (await this.options.transport.call('GetStreamStatus')) as { outputActive?: boolean }
+      streaming = status.outputActive === true
     } catch {
-      /* idem */
+      /* the same */
     }
 
-    const { noms, unresolvedRoles, currentSceneName, currentRole } = inventaire
+    const { names, unresolvedRoles, currentSceneName, currentRole } = inventory
     this.patch({
       connected: true,
       currentSceneName,
       currentRole,
       unresolvedRoles,
-      scenes: noms,
+      scenes: names,
       recording,
       streaming,
     })
@@ -301,34 +298,34 @@ export class ObsController {
   }
 
   /**
-   * Relit les scènes d'OBS et rejoue la résolution des rôles.
+   * Reads OBS's scenes back and replays the role resolution.
    *
-   * Renommer ou ajouter une scène dans OBS n'émet aucun événement auquel nous
-   * sommes abonnés : sans relecture explicite, le formulaire de configuration
-   * proposerait la liste telle qu'elle était à la connexion, et un rôle réparé
-   * dans OBS resterait rouge en régie jusqu'au prochain redémarrage.
+   * Renaming or adding a scene in OBS emits no event we are subscribed to:
+   * without an explicit re-read, the configuration form would offer the list as it
+   * was at connection time, and a role repaired in OBS would stay red in the
+   * control app until the next restart.
    */
   async refreshScenes(): Promise<ObsState> {
-    const { noms, unresolvedRoles, currentSceneName, currentRole } = await this.lireScenes()
-    this.patch({ scenes: noms, unresolvedRoles, currentSceneName, currentRole })
+    const { names, unresolvedRoles, currentSceneName, currentRole } = await this.readScenes()
+    this.patch({ scenes: names, unresolvedRoles, currentSceneName, currentRole })
     return this.snapshot()
   }
 
-  /** Inventaire des scènes et des rôles qu'elles résolvent, à un instant donné. */
-  private async lireScenes(): Promise<{
-    noms: string[]
+  /** An inventory of the scenes and the roles they resolve, at a given instant. */
+  private async readScenes(): Promise<{
+    names: string[]
     unresolvedRoles: SceneRole[]
     currentSceneName: string
     currentRole: SceneRole | null
   }> {
     const { scenes, currentProgramSceneName } = await this.options.transport.call('GetSceneList')
-    const noms = scenes.map((scene) => scene.sceneName)
-    const presentes = new Set(noms)
+    const names = scenes.map((scene) => scene.sceneName)
+    const present = new Set(names)
     return {
-      noms,
+      names,
       unresolvedRoles: (Object.keys(this.options.sceneRoles) as SceneRole[]).filter((role) => {
         const sceneName = this.options.sceneRoles[role]
-        return sceneName == null || !presentes.has(sceneName)
+        return sceneName == null || !present.has(sceneName)
       }),
       currentSceneName: currentProgramSceneName,
       currentRole: this.roleOf(currentProgramSceneName),
@@ -340,7 +337,7 @@ export class ObsController {
     this.patch({ connected: false })
   }
 
-  /** Bascule sur le rôle demandé. Échoue explicitement si le rôle n'est pas mappé. */
+  /** Switches to the requested role. Fails explicitly if the role is not mapped. */
   async setRole(role: SceneRole): Promise<void> {
     const sceneName = this.options.sceneRoles[role]
     if (sceneName == null) {
@@ -354,7 +351,7 @@ export class ObsController {
       )
     }
     await this.options.transport.call('SetCurrentProgramScene', { sceneName })
-    // On n'anticipe pas l'état : `CurrentProgramSceneChanged` fait foi.
+    // We do not anticipate the state: `CurrentProgramSceneChanged` is authoritative.
   }
 
   async startRecording(): Promise<void> {
@@ -366,23 +363,22 @@ export class ObsController {
   }
 
   /**
-   * Dossier où OBS écrit ses enregistrements.
+   * The folder where OBS writes its recordings.
    *
-   * Sert de repli quand la salle n'a pas renseigné sa racine de captations :
-   * c'est OBS qui décide en dernier ressort, et lui seul le sait de source
-   * sûre.
+   * Serves as a fallback when the room has not filled in its capture root: it is
+   * OBS that decides in the last resort, and it alone knows for certain.
    */
   async recordDirectory(): Promise<string | null> {
-    const reponse = (await this.options.transport.call('GetRecordDirectory')) as {
+    const response = (await this.options.transport.call('GetRecordDirectory')) as {
       recordDirectory?: string
     }
-    const dossier = reponse?.recordDirectory
-    return dossier != null && dossier.length > 0 ? dossier : null
+    const directory = response?.recordDirectory
+    return directory != null && directory.length > 0 ? directory : null
   }
 
   /**
-   * Écrit un paramètre de profil OBS — notamment `Output/FilenameFormatting`,
-   * lu par OBS au moment du `StartRecord`.
+   * Writes an OBS profile parameter — notably `Output/FilenameFormatting`, read by
+   * OBS at `StartRecord` time.
    */
   async setProfileParameter(category: string, name: string, value: string): Promise<void> {
     await this.options.transport.call('SetProfileParameter', {
@@ -392,7 +388,7 @@ export class ObsController {
     })
   }
 
-  /** Applique la clé RTMP avant `StartStream`. */
+  /** Applies the RTMP key before `StartStream`. */
   async configureStream(rtmpUrl: string, streamKey: string): Promise<void> {
     await this.options.transport.call('SetStreamServiceSettings', {
       streamServiceType: 'rtmp_custom',
@@ -408,7 +404,7 @@ export class ObsController {
     await this.options.transport.call('StopStream')
   }
 
-  /** Santé de la diffusion : bitrate et images perdues, pour la télémétrie. */
+  /** The stream's health: bitrate and dropped frames, for the telemetry. */
   async streamStatus(): Promise<{ bitrateKbps: number; skippedFrames: number; congestion: number }> {
     const status = (await this.options.transport.call('GetStreamStatus')) as {
       outputBytes?: number

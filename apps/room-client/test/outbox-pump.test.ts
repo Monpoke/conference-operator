@@ -204,7 +204,7 @@ describe('réveil de la pompe', () => {
     outbox.enqueue(marker('un'))
 
     pump.start()
-    pump.reveiller()
+    pump.wake()
     await vi.waitFor(() => expect(hub.recu.size).toBe(1))
     pump.stop()
   })
@@ -260,14 +260,14 @@ describe('réveil de la pompe', () => {
     outbox.enqueue(marker('un'))
 
     // Jamais démarrée : il n'y a aucun tic à devancer.
-    pump.reveiller()
+    pump.wake()
     await Promise.resolve()
     expect(hub.push).not.toHaveBeenCalled()
 
     // Et après un arrêt, non plus : c'est le cas de la fermeture.
     pump.start()
     pump.stop()
-    pump.reveiller()
+    pump.wake()
     await Promise.resolve()
     expect(hub.push).not.toHaveBeenCalled()
   })

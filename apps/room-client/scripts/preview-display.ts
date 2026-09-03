@@ -68,7 +68,7 @@ const base: DisplayPayload = {
       {
         id: 'n2',
         level: 'warning' as const,
-        // Les deux niveaux dans l'aperçu : le fond porte le type, et c'est
+        // Both levels in the preview: the background carries the type, and it is
         // justement ce qu'on vient relire ici avant le jour J.
         text: 'Track #2 dépasse son créneau de 4 minutes',
         at: new Date(AT - 6_000).toISOString(),

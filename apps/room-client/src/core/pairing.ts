@@ -1,10 +1,12 @@
 import { z } from 'zod'
 
 /**
- * Appairage de la machine au hub par device authorization grant (RFC 8628).
+ * Pairing the machine to the hub through the device authorization grant
+ * (RFC 8628).
  *
- * Écrit sans dépendance à Electron ni au réseau réel : le transport et l'attente
- * sont injectés, donc le comportement de polling est testable sans horloge murale.
+ * Written with no dependency on Electron or on the real network: the transport
+ * and the waiting are injected, so the polling behaviour is testable with no wall
+ * clock.
  */
 
 export const deviceCodeResponseSchema = z.object({
@@ -12,7 +14,7 @@ export const deviceCodeResponseSchema = z.object({
   user_code: z.string(),
   verification_uri: z.string().optional(),
   verification_uri_complete: z.string().optional(),
-  /** Secondes entre deux sondages, imposées par le hub. */
+  /** Seconds between two polls, imposed by the hub. */
   interval: z.number().int().positive().default(5),
   expires_in: z.number().int().positive().default(1800),
 })
@@ -24,11 +26,11 @@ export const tokenResponseSchema = z.object({
 })
 
 /**
- * Codes d'erreur OAuth que le polling doit distinguer.
+ * The OAuth error codes the polling has to tell apart.
  *
- * `network` n'en fait pas partie : c'est le nôtre, pour un sondage qui n'a pas
- * abouti. Le hub peut redémarrer pendant qu'un opérateur se dirige vers la
- * console — perdre le code pour autant l'obligerait à recommencer sans raison.
+ * `network` is not one of them: it is ours, for a poll that did not go through.
+ * The hub can restart while an operator walks over to the console — losing the
+ * code for that would force them to start again for no reason.
  */
 export type PollErrorCode =
   | 'authorization_pending'
@@ -49,7 +51,7 @@ export class PairingError extends Error {
 }
 
 export interface PairingTransport {
-  /** `scope` porte la salle demandée par la machine (`room:<id>`). */
+  /** `scope` carries the room the machine asks for (`room:<id>`). */
   requestCode(clientId: string, scope?: string): Promise<unknown>
   requestToken(input: { deviceCode: string; clientId: string }): Promise<
     { ok: true; body: unknown } | { ok: false; error: string }
@@ -57,42 +59,41 @@ export interface PairingTransport {
 }
 
 export interface PairingHooks {
-  /** Affiche le code à l'écran de régie dès qu'il est disponible. */
+  /** Displays the code on the control screen as soon as it is available. */
   onCode?: (response: DeviceCodeResponse) => void
-  /** Chaque tentative infructueuse, pour tenir l'opérateur informé. */
+  /** Every unsuccessful attempt, to keep the operator informed. */
   onPending?: (info: { attempt: number; nextDelayMs: number }) => void
-  /** Sondage sans réponse : le hub est injoignable, le code reste valide. */
+  /** A poll with no answer: the hub is unreachable, the code stays valid. */
   onUnreachable?: (info: { attempt: number }) => void
   sleep?: (ms: number) => Promise<void>
   now?: () => number
   /**
-   * Interrompt l'appairage en cours.
+   * Interrupts the pairing in progress.
    *
-   * Sans cela, une fermeture pendant l'attente laisse la boucle sonder jusqu'à
-   * l'expiration du code — une demi-heure — et l'application ne se ferme jamais.
+   * Without it, a close during the wait leaves the loop polling until the code
+   * expires — half an hour — and the application never closes.
    */
   signal?: AbortSignal
   /**
-   * Salle demandée, transmise en `scope`.
+   * The requested room, passed as `scope`.
    *
-   * Purement indicatif : la console pré-sélectionne cette salle mais reste
-   * libre d'en choisir une autre. C'est l'opérateur qui tranche, la machine ne
-   * fait que proposer.
+   * Purely indicative: the console preselects that room but stays free to choose
+   * another. It is the operator who decides, the machine only proposes.
    */
   scope?: string
 }
 
-/** RFC 8628 §3.5 : sur `slow_down`, le client ajoute 5 s à sa cadence. */
+/** RFC 8628 §3.5: on `slow_down`, the client adds 5 s to its cadence. */
 const SLOW_DOWN_INCREMENT_SECONDS = 5
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 /**
- * Déroule l'appairage complet et rend le jeton de la machine.
+ * Runs the whole pairing and returns the machine's token.
  *
- * Le respect de l'intervalle n'est pas une politesse : poller plus vite renvoie
- * `slow_down`, et un client qui insiste s'auto-bloque au démarrage — précisément
- * quand l'opérateur attend devant l'écran.
+ * Honouring the interval is not a politeness: polling faster returns `slow_down`,
+ * and a client that insists blocks itself at startup — precisely when the
+ * operator is waiting in front of the screen.
  */
 export async function runPairing(
   transport: PairingTransport,
@@ -108,17 +109,17 @@ export async function runPairing(
   const deadline = now() + code.expires_in * 1000
   let intervalSeconds = code.interval
   let attempt = 0
-  const interrompu = (): boolean => hooks.signal?.aborted === true
+  const isAborted = (): boolean => hooks.signal?.aborted === true
 
   for (;;) {
-    if (interrompu()) throw new PairingError('aborted', 'Appairage interrompu')
-    // Attendre *avant* le premier sondage : le hub vient d'émettre le code,
-    // personne n'a encore eu le temps de l'approuver.
+    if (isAborted()) throw new PairingError('aborted', 'Appairage interrompu')
+    // Wait *before* the first poll: the hub has just issued the code, nobody has
+    // had time to approve it yet.
     const nextDelayMs = intervalSeconds * 1000
     attempt += 1
     hooks.onPending?.({ attempt, nextDelayMs })
     await sleep(nextDelayMs)
-    if (interrompu()) throw new PairingError('aborted', 'Appairage interrompu')
+    if (isAborted()) throw new PairingError('aborted', 'Appairage interrompu')
 
     if (now() > deadline) {
       throw new PairingError('expired_token', "Le code d'appairage a expiré, relancer l'opération")
@@ -133,8 +134,8 @@ export async function runPairing(
       case 'authorization_pending':
         continue
       case 'network':
-        // Le hub est momentanément absent. Le code, lui, reste valide côté
-        // serveur : on continue de sonder jusqu'à son expiration.
+        // The hub is momentarily absent. The code, for its part, stays valid on
+        // the server side: we keep polling until it expires.
         hooks.onUnreachable?.({ attempt })
         continue
       case 'slow_down':
@@ -150,7 +151,7 @@ export async function runPairing(
   }
 }
 
-/** Transport HTTP réel vers les endpoints Better Auth du hub. */
+/** The real HTTP transport towards the hub's Better Auth endpoints. */
 export function httpPairingTransport(hubOrigin: string): PairingTransport {
   const post = async (path: string, body: unknown) => {
     const response = await fetch(new URL(path, hubOrigin), {
@@ -183,7 +184,7 @@ export function httpPairingTransport(hubOrigin: string): PairingTransport {
         const error = (body as { error?: string } | null)?.error ?? 'unknown'
         return { ok: false, error }
       } catch {
-        // Panne réseau, pas refus : le code reste valide côté hub.
+        // A network failure, not a refusal: the code stays valid on the hub.
         return { ok: false, error: 'network' }
       }
     },

@@ -414,7 +414,7 @@ describe('sidecar', () => {
     let decalage = 0
     const { session } = makeSession(fs, {
       correctedNow: () => clockMs + decalage,
-      suitLHorloge: true,
+      followsClock: true,
     })
 
     await session.start(START)
@@ -434,7 +434,7 @@ describe('sidecar', () => {
     let decalage = 0
     const { session } = makeSession(fs, {
       correctedNow: () => clockMs + decalage,
-      suitLHorloge: true,
+      followsClock: true,
     })
 
     await session.start(START)
@@ -471,7 +471,7 @@ describe('sidecar', () => {
     let decalage = 0
     const { session } = makeSession(fs, {
       correctedNow: () => clockMs + decalage,
-      suitLHorloge: true,
+      followsClock: true,
     })
 
     await session.start(START)

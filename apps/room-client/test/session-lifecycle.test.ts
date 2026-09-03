@@ -42,7 +42,7 @@ beforeEach(async () => {
     logLevel: 'fatal',
     devicePollInterval: '1s',
     /**
-     * L'instant se simule **sur le hub**, pas dans la salle.
+     * L'instant se simulated **sur le hub**, pas dans la salle.
      *
      * Une horloge posée dans la salle serait remplacée à la première
      * synchronisation : le hub fait foi, la salle mesure son écart contre lui.

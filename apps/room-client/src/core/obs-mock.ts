@@ -4,156 +4,155 @@ import type { ObsInstance } from '@cloudnord/contract'
 import type { ObsTransport } from './obs.js'
 
 /**
- * OBS simulé, pour développer sans installer OBS.
+ * A simulated OBS, to develop without installing OBS.
  *
- * Vit dans `core/` et non dans les tests parce qu'il sert au développement
- * quotidien : il permet de dérouler un talk complet — bascule de scène,
- * enregistrement, marqueurs, sidecar — sur une machine nue.
+ * Lives in `core/` and not in the tests because it serves daily development: it
+ * makes it possible to run a whole talk — scene switch, recording, markers,
+ * sidecar — on a bare machine.
  *
- * Il **écrit un vrai fichier** à l'arrêt de l'enregistrement : sans ça, la
- * chaîne VOD s'arrêterait au renommage et on ne verrait jamais le sidecar,
- * c'est-à-dire précisément la partie qu'on veut pouvoir observer.
+ * It **writes a real file** when the recording stops: without that, the VOD chain
+ * would stop at the renaming and one would never see the sidecar, that is,
+ * precisely the part one wants to be able to observe.
  */
 export interface MockObsOptions {
   instance: ObsInstance
   /**
-   * Scènes que cette salle attend, en plus des plausibles.
+   * The scenes this room expects, in addition to the plausible ones.
    *
-   * Elles **s'ajoutent**, elles ne remplacent pas : un OBS simulé doit porter
-   * ce que la salle a configuré — sinon chaque nom de scène un peu personnel
-   * ressort en « rôle introuvable », rouge dans la régie, sur une instance qui
-   * n'existe pas. On ne débogue pas la faute de frappe d'un OBS qu'on n'a pas.
+   * They **add to them**, they do not replace them: a simulated OBS must carry
+   * what the room configured — otherwise every slightly personal scene name comes
+   * out as "role not found", red in the control app, on an instance that does not
+   * exist. One does not debug the typo of an OBS one does not have.
    *
-   * Les plausibles restent, pour que le sélecteur du ⚙ ait toujours une liste
-   * où choisir, y compris sur une salle qu'aucune configuration n'a encore
-   * touchée.
+   * The plausible ones stay, so that the ⚙'s picker always has a list to choose
+   * from, including on a room no configuration has touched yet.
    */
   scenes?: string[]
-  /** Dossier où déposer les faux enregistrements. */
+  /** The folder to drop the fake recordings into. */
   recordingDir: string
   onLog?: (message: string) => void
 }
 
-/** Scènes par défaut, alignées sur le mapping posé à la création d'une salle. */
-export const SCENES_PAR_DEFAUT: Record<ObsInstance, string[]> = {
+/** The default scenes, aligned on the mapping set when a room is created. */
+export const DEFAULT_SCENES: Record<ObsInstance, string[]> = {
   A: ['Direct — capture HDMI', 'Habillage — écran de salle'],
   B: ['Talk — caméra + slides', 'Caméra seule', 'Slides seules'],
 }
 
 export function createMockObsTransport(options: MockObsOptions): ObsTransport {
   /*
-   * Les plausibles d'abord : c'est ce qui garde `scenes[1]` sur l'habillage,
-   * donc une salle qui s'allume sur son écran plutôt qu'à l'antenne.
+   * The plausible ones first: that is what keeps `scenes[1]` on the styling, and
+   * therefore a room that lights up on its screen rather than on air.
    */
   const scenes = [
-    ...new Set([...SCENES_PAR_DEFAUT[options.instance], ...(options.scenes ?? [])]),
+    ...new Set([...DEFAULT_SCENES[options.instance], ...(options.scenes ?? [])]),
   ]
   const handlers = new Map<string, ((payload: unknown) => void)[]>()
 
-  let sceneCourante = scenes[1] ?? scenes[0]!
-  let enregistre = false
-  let diffuse = false
+  let currentScene = scenes[1] ?? scenes[0]!
+  let recording = false
+  let streaming = false
   let format = 'enregistrement'
-  /** Émission du vumètre, active seulement tant qu'on y est abonné. */
-  let vumetre: ReturnType<typeof setInterval> | null = null
+  /** The VU meter's emission, active only while we are subscribed to it. */
+  let meter: ReturnType<typeof setInterval> | null = null
 
-  const emettre = (event: string, payload: unknown): void => {
-    // Asynchrone, comme le vrai OBS : l'événement suit la réponse à la requête,
-    // il n'est pas rendu avec elle.
+  const emit = (event: string, payload: unknown): void => {
+    // Asynchronous, like the real OBS: the event follows the request's answer, it
+    // is not returned with it.
     setTimeout(() => {
       for (const handler of handlers.get(event) ?? []) handler(payload)
     }, 5)
   }
 
-  const journal = (message: string): void =>
+  const log = (message: string): void =>
     options.onLog?.(`[OBS-${options.instance} simulé] ${message}`)
 
   mkdirSync(options.recordingDir, { recursive: true })
 
   /**
-   * Entrées audio simulées, avec un signal plausible.
+   * Simulated audio inputs, with a plausible signal.
    *
-   * Sans niveaux, le vumètre de la régie ne serait ni démontrable ni
-   * observable hors d'une vraie salle — donc jamais regardé avant le jour J.
-   * Le micro respire, l'ambiance reste basse, et le retour est muet : trois
-   * cas qu'on veut distinguer d'un coup d'œil sur l'écran.
+   * With no levels, the control app's VU meter would be neither demonstrable nor
+   * observable outside a real room — so never looked at before the day itself. The
+   * microphone breathes, the ambience stays low, and the foldback is silent: three
+   * cases one wants to tell apart at a glance on the screen.
    */
-  const ENTREES_AUDIO: { nom: string; base: number; amplitude: number; channels: number }[] = [
-    { nom: 'Micro cravate', base: -18, amplitude: 10, channels: 1 },
-    { nom: 'Ambiance salle', base: -38, amplitude: 6, channels: 2 },
-    { nom: 'Retour régie', base: -60, amplitude: 0, channels: 2 },
+  const AUDIO_INPUTS: { name: string; base: number; amplitude: number; channels: number }[] = [
+    { name: 'Micro cravate', base: -18, amplitude: 10, channels: 1 },
+    { name: 'Ambiance salle', base: -38, amplitude: 6, channels: 2 },
+    { name: 'Retour régie', base: -60, amplitude: 0, channels: 2 },
   ]
 
   let phase = 0
-  const mesurer = (): { inputs: { inputName: string; inputLevelsMul: number[][] }[] } => {
+  const measure = (): { inputs: { inputName: string; inputLevelsMul: number[][] }[] } => {
     phase += 1
     return {
-      inputs: ENTREES_AUDIO.map((entree, index) => {
-        // Oscillation lente et décalée par entrée : deux barres identiques
-        // donneraient l'impression d'un affichage figé.
-        const onde = Math.sin((phase + index * 7) / 6)
-        const db = entree.base + entree.amplitude * onde
+      inputs: AUDIO_INPUTS.map((input, index) => {
+        // A slow oscillation, offset per input: two identical bars would give the
+        // impression of a frozen display.
+        const wave = Math.sin((phase + index * 7) / 6)
+        const db = input.base + input.amplitude * wave
         const mul = db <= -60 ? 0 : 10 ** (db / 20)
         return {
-          inputName: entree.nom,
-          inputLevelsMul: Array.from({ length: entree.channels }, () => [mul, mul * 1.1, mul * 1.1]),
+          inputName: input.name,
+          inputLevelsMul: Array.from({ length: input.channels }, () => [mul, mul * 1.1, mul * 1.1]),
         }
       }),
     }
   }
 
-  const basculerVumetre = (actif: boolean): void => {
-    if (actif && vumetre == null) {
-      journal('vumètre activé')
-      vumetre = setInterval(() => emettre('InputVolumeMeters', mesurer()), 50)
-      vumetre.unref?.()
-    } else if (!actif && vumetre != null) {
-      journal('vumètre coupé')
-      clearInterval(vumetre)
-      vumetre = null
+  const toggleMeter = (active: boolean): void => {
+    if (active && meter == null) {
+      log('vumètre activé')
+      meter = setInterval(() => emit('InputVolumeMeters', measure()), 50)
+      meter.unref?.()
+    } else if (!active && meter != null) {
+      log('vumètre coupé')
+      clearInterval(meter)
+      meter = null
     }
   }
 
-  /** Le vumètre est-il demandé par ce masque d'abonnements ? */
-  const veutNiveaux = (abonnements?: number): boolean =>
-    abonnements != null && (abonnements & (1 << 16)) !== 0
+  /** Is the VU meter asked for by this subscription mask? */
+  const wantsLevels = (subscriptions?: number): boolean =>
+    subscriptions != null && (subscriptions & (1 << 16)) !== 0
 
   return {
     /**
-     * Se déclare simulé.
+     * Declares itself simulated.
      *
-     * La régie l'affiche : rien ne distingue à l'écran un enregistrement
-     * simulé d'un vrai, et c'est exactement le genre de méprise qui se paie en
-     * VOD manquante. Porté par le transport plutôt que déduit d'une variable
-     * d'environnement lue ailleurs — ce qui est faux le dit soi-même, et ne
-     * peut pas se désaccorder avec la réalité.
+     * The control app displays it: nothing on screen tells a simulated recording
+     * from a real one, and that is exactly the kind of mistake that is paid for in
+     * a missing VOD. Carried by the transport rather than derived from an
+     * environment variable read elsewhere — what is fake says so itself, and cannot
+     * disagree with reality.
      */
-    simule: true,
-    async connect(_url, _password, abonnements) {
-      journal(`connecté — scènes : ${scenes.join(', ')}`)
-      basculerVumetre(veutNiveaux(abonnements))
+    simulated: true,
+    async connect(_url, _password, subscriptions) {
+      log(`connecté — scènes : ${scenes.join(', ')}`)
+      toggleMeter(wantsLevels(subscriptions))
     },
-    async reidentify(abonnements) {
-      basculerVumetre(veutNiveaux(abonnements))
+    async reidentify(subscriptions) {
+      toggleMeter(wantsLevels(subscriptions))
     },
     async disconnect() {
-      basculerVumetre(false)
-      journal('déconnecté')
+      toggleMeter(false)
+      log('déconnecté')
     },
     call: (async (request: string, args?: Record<string, unknown>) => {
       switch (request) {
         case 'GetSceneList':
           return {
-            currentProgramSceneName: sceneCourante,
+            currentProgramSceneName: currentScene,
             scenes: scenes.map((sceneName) => ({ sceneName })),
           }
 
         case 'SetCurrentProgramScene': {
-          const cible = String(args?.sceneName)
-          if (!scenes.includes(cible)) throw new Error(`Scène inconnue : ${cible}`)
-          sceneCourante = cible
-          journal(`scène → ${cible}`)
-          emettre('CurrentProgramSceneChanged', { sceneName: cible })
+          const target = String(args?.sceneName)
+          if (!scenes.includes(target)) throw new Error(`Scène inconnue : ${target}`)
+          currentScene = target
+          log(`scène → ${target}`)
+          emit('CurrentProgramSceneChanged', { sceneName: target })
           return {}
         }
 
@@ -164,76 +163,76 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
           return {}
 
         case 'StartRecord':
-          if (enregistre) throw new Error('Enregistrement déjà en cours')
-          enregistre = true
-          journal('enregistrement démarré')
-          emettre('RecordStateChanged', {
+          if (recording) throw new Error('Enregistrement déjà en cours')
+          recording = true
+          log('enregistrement démarré')
+          emit('RecordStateChanged', {
             outputActive: false,
             outputState: 'OBS_WEBSOCKET_OUTPUT_STARTING',
           })
-          emettre('RecordStateChanged', {
+          emit('RecordStateChanged', {
             outputActive: true,
             outputState: 'OBS_WEBSOCKET_OUTPUT_STARTED',
           })
           return {}
 
         case 'StopRecord': {
-          if (!enregistre) throw new Error('Aucun enregistrement en cours')
-          enregistre = false
-          const chemin = cheminLibre(options.recordingDir, format)
-          // Fichier réel : la chaîne VOD va le renommer et écrire son sidecar.
-          writeFileSync(chemin, `enregistrement simulé — ${new Date().toISOString()}\n`)
-          journal(`enregistrement arrêté → ${chemin}`)
-          // Les deux temps d'un vrai OBS, chemin sur le second seulement.
-          // Le simulateur n'en émettait qu'un, et c'est exactement ce qui a
-          // laissé passer un défaut ne se voyant que sur une vraie instance.
-          emettre('RecordStateChanged', {
+          if (!recording) throw new Error('Aucun enregistrement en cours')
+          recording = false
+          const path = freePath(options.recordingDir, format)
+          // A real file: the VOD chain is going to rename it and write its sidecar.
+          writeFileSync(path, `enregistrement simulé — ${new Date().toISOString()}\n`)
+          log(`enregistrement arrêté → ${path}`)
+          // The two steps of a real OBS, the path on the second only. The simulator
+          // emitted only one, and that is exactly what let through a defect that
+          // only shows on a real instance.
+          emit('RecordStateChanged', {
             outputActive: false,
             outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPING',
           })
-          emettre('RecordStateChanged', {
+          emit('RecordStateChanged', {
             outputActive: false,
             outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPED',
-            outputPath: chemin,
+            outputPath: path,
           })
           return {}
         }
 
         case 'SetStreamServiceSettings':
-          journal('paramètres de diffusion appliqués')
+          log('paramètres de diffusion appliqués')
           return {}
 
         case 'StartStream':
-          diffuse = true
-          journal('diffusion démarrée')
-          emettre('StreamStateChanged', {
+          streaming = true
+          log('diffusion démarrée')
+          emit('StreamStateChanged', {
             outputActive: true,
             outputState: 'OBS_WEBSOCKET_OUTPUT_STARTED',
           })
           return {}
 
         case 'StopStream':
-          diffuse = false
-          journal('diffusion arrêtée')
-          emettre('StreamStateChanged', {
+          streaming = false
+          log('diffusion arrêtée')
+          emit('StreamStateChanged', {
             outputActive: false,
             outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPED',
           })
           return {}
 
         case 'GetRecordDirectory':
-          // La régie s'en sert pour lister les rushes quand la salle n'a pas
-          // renseigné sa racine : le poste simulé doit répondre comme le vrai.
+          // The control app uses it to list the rushes when the room has not filled
+          // in its root: the simulated machine must answer like the real one.
           return { recordDirectory: options.recordingDir }
 
         case 'GetRecordStatus':
-          // Interrogé à la connexion : une régie relancée doit retrouver l'état.
-          return { outputActive: enregistre }
+          // Asked at connection time: a relaunched control app must find the state.
+          return { outputActive: recording }
 
         case 'GetStreamStatus':
           return {
-            outputActive: diffuse,
-            outputBytes: diffuse ? 750_000 : 0,
+            outputActive: streaming,
+            outputBytes: streaming ? 750_000 : 0,
             outputSkippedFrames: 0,
             outputCongestion: 0,
           }
@@ -244,28 +243,28 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
     }) as ObsTransport['call'],
 
     on(event, handler) {
-      const liste = handlers.get(event) ?? []
-      liste.push(handler as (payload: unknown) => void)
-      handlers.set(event, liste)
+      const list = handlers.get(event) ?? []
+      list.push(handler as (payload: unknown) => void)
+      handlers.set(event, list)
     },
   }
 }
 
 /**
- * Un chemin qui n'écrase rien.
+ * A path that overwrites nothing.
  *
- * Le poste simulé écrit dans le même dossier que la vraie captation, et deux
- * arrêts sur la même conférence donnent le même nom de fichier. Écraser
- * relevait de l'anecdote tant que ce dossier ne contenait que des fichiers de
- * cinquante octets ; depuis que la régie sait les relire, on y dépose de vraies
- * vidéos — et un « Arrêter » de trop les effaçait sans rien dire.
+ * The simulated machine writes into the same folder as the real capture, and two
+ * stops on the same talk give the same file name. Overwriting was anecdotal for
+ * as long as that folder only held fifty-byte files; since the control app can
+ * read them back, real videos get dropped there — and one "Stop" too many erased
+ * them without a word.
  */
-function cheminLibre(dossier: string, format: string): string {
-  const candidat = join(dossier, `${format}.mkv`)
-  if (!existsSync(candidat)) return candidat
-  for (let suite = 2; suite < 1000; suite += 1) {
-    const suivant = join(dossier, `${format}-${suite}.mkv`)
-    if (!existsSync(suivant)) return suivant
+function freePath(directory: string, format: string): string {
+  const candidate = join(directory, `${format}.mkv`)
+  if (!existsSync(candidate)) return candidate
+  for (let next = 2; next < 1000; next += 1) {
+    const following = join(directory, `${format}-${next}.mkv`)
+    if (!existsSync(following)) return following
   }
-  return candidat
+  return candidate
 }

@@ -535,13 +535,13 @@ describe('waiting loop', () => {
       roomId: 'track-2',
       name: 'Track #2',
       session: { id: 's-12', title: 'Au-dessus de la mêlée', startsAt: '2026-10-30T11:00:00.000Z', speakers: ['Camille'] },
-      enCours: false,
+      running: false,
     },
     {
       roomId: 'hands-on',
       name: 'Hands on',
       session: { id: 's-31', title: 'Atelier Kubernetes', startsAt: '2026-10-30T10:00:00.000Z', speakers: [] },
-      enCours: true,
+      running: true,
     },
   ]
 

@@ -13,15 +13,18 @@ import type {
 } from '@cloudnord/contract'
 import type { ObsState } from './obs.js'
 import type { StopResult } from './recording.js'
-import type { VodCheck, VodEntry, Extrait, FluxFichier, VodVerdict } from './vod-index.js'
+import type { VodCheck, VodEntry, Excerpt, FileStream, VodVerdict } from './vod-index.js'
 import type { UploadsView } from './upload.js'
 
 /**
- * Actions que la fenêtre de régie peut déclencher.
+ * The actions the control window can trigger.
  *
- * Décrit comme un contrat à part entière — et non comme un accès direct à
- * `RoomApp` — pour que la page ne puisse appeler que ce qui est prévu, et que
- * chaque entrée soit validée avant d'atteindre OBS.
+ * Described as a contract in its own right — and not as direct access to
+ * `RoomApp` — so that the page can only call what is intended, and so that every
+ * input is validated before reaching OBS.
+ *
+ * The action names and the enum values (`debut`, `fin`, `ok`, `suspect`,
+ * `illisible`) are contract values: they do not get renamed.
  */
 export const controlActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('display.set'), mode: displayModeSchema }),
@@ -29,13 +32,13 @@ export const controlActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('recording.start') }),
   z.object({ action: z.literal('recording.stop') }),
   /**
-   * Marqueur posé pendant la prise.
+   * A marker placed during the take.
    *
-   * `role` nul : un chapitre, qu'on empile autant qu'on veut. `debut` et `fin`
-   * sont les deux **repères de editing**, et le poste n'en garde qu'un de
-   * chaque — les reposer corrige, ce qui est exactement le geste qu'on fait
-   * quand l'orateur a eu un faux départ. Le libellé reste libre : c'est lui
-   * qu'on relit dans le journal.
+   * A null `role`: a chapter, which can be stacked as much as one likes. `debut`
+   * and `fin` are the two **editing markers**, and the machine keeps only one of
+   * each — placing them again corrects, which is exactly the gesture one makes
+   * when the speaker had a false start. The label stays free: it is what one reads
+   * back in the log.
    */
   z.object({
     action: z.literal('recording.mark'),
@@ -43,46 +46,46 @@ export const controlActionSchema = z.discriminatedUnion('action', [
     role: z.enum(['debut', 'fin']).nullable().default(null),
   }),
   /**
-   * Contrôle des rushes déjà produits.
+   * Checking the rushes already produced.
    *
-   * Séparé de la captation elle-même : `vod.inspect` ne touche pas à OBS, il
-   * relit un fichier sur le disque. On peut donc vérifier la matinée pendant
-   * que l'après-midi enregistre — ce qui est tout l'intérêt, la salle étant
-   * démontée bien avant que quiconque ouvre les fichiers.
+   * Separate from the capture itself: `vod.inspect` does not touch OBS, it reads
+   * back a file on disk. One can therefore check the morning while the afternoon
+   * records — which is the whole point, the room being dismantled long before
+   * anyone opens the files.
    */
   z.object({ action: z.literal('vod.inspect'), file: z.string().min(1).max(400) }),
-  /** Dernier mot de l'opérateur, qui a pu ouvrir le fichier. `null` efface. */
+  /** The operator's last word, having been able to open the file. `null` clears it. */
   z.object({
     action: z.literal('vod.verdict'),
     file: z.string().min(1).max(400),
     status: z.enum(['ok', 'suspect', 'illisible']).nullable(),
   }),
   /**
-   * Rapatriement d'un rush vers le stockage du hub.
+   * Shipping a rush back to the hub's storage.
    *
-   * Séparé de `vod.inspect` comme celui-ci l'est de la captation : rien ici ne
-   * touche à OBS. La demande passe par le régulateur, qui peut la reporter —
-   * mais une demande **manuelle** passe outre l'attente ordinaire : celui qui
-   * appuie a la salle sous les yeux. `file` nul vise tout ce qui reste.
+   * Separate from `vod.inspect` as that one is from the capture: nothing here
+   * touches OBS. The request goes through the regulator, which can defer it — but
+   * a **manual** request overrides the ordinary wait: whoever presses has the room
+   * in front of them. A null `file` targets everything that is left.
    */
   z.object({ action: z.literal('vod.upload'), file: z.string().max(400).nullable().default(null) }),
-  /** Renonce à un téléversement en cours. Le hub ferme le multipart. */
+  /** Gives up an upload in progress. The hub closes the multipart. */
   z.object({ action: z.literal('vod.upload.cancel'), file: z.string().min(1).max(400) }),
   z.object({ action: z.literal('stream.start') }),
   z.object({ action: z.literal('stream.stop') }),
   z.object({ action: z.literal('hub.sync') }),
-  /** Cycle de vie de la conférence en cours. */
+  /** The running talk's lifecycle. */
   z.object({ action: z.literal('session.start') }),
   z.object({ action: z.literal('session.end') }),
   z.object({ action: z.literal('session.reset') }),
-  /** Choix de la salle desservie, depuis l'écran d'appairage. */
+  /** Choosing the room served, from the pairing screen. */
   z.object({ action: z.literal('pairing.chooseRoom'), roomId: z.string().min(1) }),
   /**
-   * Bandeau des scènes live, posé depuis la régie.
+   * The live scenes' banner, set from the control app.
    *
-   * La salle pilote ses propres surfaces — c'est déjà le cas de son écran —
-   * et le hub garde la sienne : les deux écrivent le même état. `text` nul
-   * retire le bandeau.
+   * The room drives its own surfaces — that is already the case for its screen —
+   * and the hub keeps its own: both write the same state. A null `text` removes
+   * the banner.
    */
   z.object({
     action: z.literal('overlay.set'),
@@ -90,52 +93,52 @@ export const controlActionSchema = z.discriminatedUnion('action', [
     level: z.enum(['info', 'warning', 'urgent']).default('info'),
   }),
   /**
-   * Question du public mise à l'antenne.
+   * An audience question put on air.
    *
-   * Canal distinct de `overlay.set`, et non un bandeau de plus : la question va
-   * dans l'habillage de captation — donc dans la VOD —, le bandeau non. Les
-   * confondre revenait à ne pouvoir montrer ni l'un ni l'autre sans l'autre.
-   * `text` nul la retire.
+   * A channel distinct from `overlay.set`, and not one more banner: the question
+   * goes into the capture overlay — and therefore into the VOD — the banner does
+   * not. Confusing them meant being unable to show either without the other. A
+   * null `text` removes it.
    */
   z.object({
     action: z.literal('question.set'),
     text: z.string().min(1).max(300).nullable(),
     author: z.string().max(80).nullable().default(null),
   }),
-  /** Relit les questions posées dans cette salle. */
+  /** Reads back the questions asked in this room. */
   z.object({ action: z.literal('questions.refresh') }),
-  /** Écarte un signalement lu. */
+  /** Dismisses a notice that has been read. */
   z.object({ action: z.literal('notification.dismiss'), id: z.string().min(1) }),
   /**
-   * Réglage de la salle depuis la régie.
+   * Setting the room up from the control app.
    *
-   * Part au hub, qui reste la source de vérité : le garder en local serait
-   * écrasé au prochain sync. La salle se resynchronise puis rouvre ses
-   * connexions OBS avec les nouveaux paramètres.
+   * Goes to the hub, which stays the source of truth: keeping it locally would get
+   * it overwritten at the next sync. The room resynchronizes then reopens its OBS
+   * connections with the new parameters.
    */
   z.object({ action: z.literal('room.configure'), patch: roomConfigPatchSchema }),
-  /** Relit les scènes déclarées dans OBS, sans rien reconnecter. */
+  /** Reads back the scenes declared in OBS, reconnecting nothing. */
   z.object({ action: z.literal('obs.refreshScenes') }),
   /**
-   * Ouvre le sélecteur de dossier du poste, pour le chemin des rushes.
+   * Opens the machine's folder picker, for the rushes' path.
    *
-   * Le geste vit ici et non dans la page : un chemin de disque se saisit à la
-   * main sans erreur seulement quand on l'a sous les yeux, et c'est justement
-   * la machine de salle qu'il désigne — pas celle d'où l'on regarde. Le poste
-   * répond le chemin choisi, ou rien si l'opérateur a renoncé.
+   * The gesture lives here and not in the page: a disk path is typed by hand
+   * without error only when one has it in front of one, and it is precisely the
+   * room machine it designates — not the one it is being watched from. The machine
+   * answers with the chosen path, or nothing if the operator gave up.
    *
-   * Ne **modifie pas** la configuration : le champ se remplit, et c'est
-   * « Enregistrer » qui décide, comme pour tout le reste du panneau.
+   * Does **not** change the configuration: the field gets filled in, and it is
+   * "Enregistrer" that decides, as for all the rest of the panel.
    */
   z.object({ action: z.literal('config.chooseFolder') }),
   /**
-   * Ouvre (ou rouvre) **une** instance OBS.
+   * Opens (or reopens) **one** OBS instance.
    *
-   * Instance par instance, et jamais les deux ensemble : couper la captation
-   * pour appliquer un réglage de projection coûterait une VOD.
+   * Instance by instance, and never both together: cutting the capture to apply a
+   * projection setting would cost a VOD.
    */
   z.object({ action: z.literal('obs.connect'), instance: obsInstanceSchema }),
-  /** Message de la salle vers la console. */
+  /** A message from the room to the console. */
   z.object({
     action: z.literal('message.send'),
     text: z.string().min(1).max(500),
@@ -144,27 +147,27 @@ export const controlActionSchema = z.discriminatedUnion('action', [
 ])
 export type ControlAction = z.infer<typeof controlActionSchema>
 
-/** Ce que la régie doit implémenter. `RoomApp` s'y conforme. */
+/** What the control app has to implement. `RoomApp` conforms to it. */
 export interface ControlTarget {
   setDisplayMode(mode: z.infer<typeof displayModeSchema>): Promise<void>
   setSceneRole(role: z.infer<typeof sceneRoleSchema>): Promise<void>
   startRecording(): Promise<void>
   stopRecording(): Promise<StopResult>
-  /** `role` nul = chapitre ; `debut`/`fin` = repère de editing, unique et remplaçable. */
+  /** A null `role` = a chapter; `debut`/`fin` = an editing marker, unique and replaceable. */
   mark(label: string, role: MarkerRole | null): void
-  /** Rushes produits sous la racine d'enregistrement, et leur dernier contrôle. */
+  /** The rushes produced under the recording root, and their last check. */
   listRecordings(): Promise<VodList>
   inspectRecording(file: string): Promise<VodCheck>
   setRecordingVerdict(file: string, status: VodVerdict | null): Promise<VodCheck | null>
-  /** Téléversements en cours et raison d'attente, pour la modale des rushes. */
+  /** The uploads in progress and the reason for waiting, for the rushes modal. */
   vodUploads(): UploadsView
-  /** Met un rush en file. `file` nul = tout ce qui reste. Rend le nombre visé. */
+  /** Queues a rush. A null `file` = everything left. Returns the number targeted. */
   uploadRecording(file: string | null): Promise<number>
   cancelUpload(file: string): Promise<void>
-  /** Extrait lisible dans le navigateur. `null` : ffmpeg absent de la machine. */
-  readRecordingExtract(file: string, atMs: number, dureeMs: number): Promise<Extrait | null>
-  /** Le rush tel quel, par tranche. `null` : fichier absent. */
-  readRecordingFile(file: string, plage: string | null): Promise<FluxFichier | null>
+  /** An excerpt playable in the browser. `null`: ffmpeg absent from the machine. */
+  readRecordingExtract(file: string, atMs: number, durationMs: number): Promise<Excerpt | null>
+  /** The rush as it is, by range. `null`: the file is absent. */
+  readRecordingFile(file: string, plage: string | null): Promise<FileStream | null>
   startStreaming(): Promise<void>
   stopStreaming(): Promise<void>
   resync(): Promise<void>
@@ -180,7 +183,7 @@ export interface ControlTarget {
   configureRoom(patch: RoomConfigPatch): Promise<void>
   connectObsInstance(instance: ObsInstance): Promise<void>
   refreshObsScenes(): Promise<void>
-  /** Chemin choisi, ou `null` si l'opérateur a renoncé ou si le poste ne sait pas. */
+  /** The chosen path, or `null` if the operator gave up or the machine cannot ask. */
   chooseFolder(): Promise<string | null>
   diagnostics(): ControlDiagnostics
 }
@@ -196,11 +199,11 @@ export interface ControlOutcome {
 }
 
 /**
- * Exécute une action de régie.
+ * Runs a control action.
  *
- * Ne laisse jamais fuiter une exception : un échec doit revenir à l'opérateur
- * sous forme de message lisible dans l'interface, pas d'une page cassée au
- * milieu d'une intervention.
+ * Never lets an exception escape: a failure must come back to the operator as a
+ * readable message in the interface, not as a broken page in the middle of an
+ * intervention.
  */
 export async function runControlAction(
   target: ControlTarget,
@@ -231,11 +234,11 @@ export async function runControlAction(
       case 'recording.mark':
         target.mark(action.label, action.role)
         /*
-         * Deux phrases, parce que ce sont deux gestes.
+         * Two sentences, because they are two gestures.
          *
-         * « Marqueur « Début » » ne dirait pas que le repère précédent vient
-         * d'être effacé — et c'est précisément ce qu'on veut lire quand on
-         * repose le début après un faux départ.
+         * "Marqueur « Début »" would not say that the previous marker has just been
+         * erased — and that is precisely what one wants to read when placing the
+         * start again after a false start.
          */
         return {
           ok: true,
@@ -245,34 +248,34 @@ export async function runControlAction(
               : `Repère de ${action.role === 'debut' ? 'début' : 'fin'} posé`,
         }
       case 'vod.inspect': {
-        const controle = await target.inspectRecording(action.file)
+        const check = await target.inspectRecording(action.file)
         return {
           ok: true,
           message:
-            controle.status === 'ok'
+            check.status === 'ok'
               ? `${action.file} — exploitable`
-              : `${action.file} — ${controle.status} : ${controle.reasons[0] ?? ''}`,
-          detail: controle,
+              : `${action.file} — ${check.status} : ${check.reasons[0] ?? ''}`,
+          detail: check,
         }
       }
       case 'vod.verdict': {
-        const controle = await target.setRecordingVerdict(action.file, action.status)
+        const check = await target.setRecordingVerdict(action.file, action.status)
         return {
           ok: true,
           message: action.status == null ? 'Contrôle effacé' : `${action.file} — ${action.status}`,
-          detail: controle,
+          detail: check,
         }
       }
       case 'vod.upload': {
-        const vises = await target.uploadRecording(action.file)
+        const targeted = await target.uploadRecording(action.file)
         return {
           ok: true,
           message:
-            vises === 0
+            targeted === 0
               ? 'Rien à téléverser'
-              : vises === 1
+              : targeted === 1
                 ? 'Téléversement demandé'
-                : `${vises} fichiers en file`,
+                : `${targeted} fichiers en file`,
         }
       }
       case 'vod.upload.cancel':
@@ -309,10 +312,10 @@ export async function runControlAction(
         await target.configureRoom(action.patch)
         return { ok: true, message: 'Configuration enregistrée' }
       case 'config.chooseFolder': {
-        const dossier = await target.chooseFolder()
-        // Renoncer n'est pas un échec : fermer un sélecteur est un geste, pas
-        // une panne, et un rouge à ce moment-là se lit comme un refus du poste.
-        return { ok: true, detail: dossier, message: dossier ?? 'Aucun dossier choisi' }
+        const folder = await target.chooseFolder()
+        // Giving up is not a failure: closing a picker is a gesture, not a
+        // breakdown, and a red at that moment reads as a refusal from the machine.
+        return { ok: true, detail: folder, message: folder ?? 'Aucun dossier choisi' }
       }
       case 'obs.refreshScenes':
         await target.refreshObsScenes()

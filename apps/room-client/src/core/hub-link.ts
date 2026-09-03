@@ -24,59 +24,51 @@ export interface HubLinkOptions {
   store: LocalStore
   runtime: RoomRuntime
   onLog?: (level: 'info' | 'warn' | 'error', message: string, context?: unknown) => void
-  /** Appelé quand le hub refuse nos identifiants : il faut réappairer. */
-  onAuthRejected?: (raison: string) => void
+  /** Called when the hub refuses our credentials: the machine has to pair again. */
+  onAuthRejected?: (reason: string) => void
   /**
-   * Mode annoncé par le hub à chaque synchronisation.
+   * The mode the hub announces on every synchronization.
    *
-   * La salle le compare au sien : un poste de développement branché sur le hub
-   * de l'événement — ou l'inverse — doit se voir en régie, pas se découvrir
-   * dans les enregistrements.
+   * The room compares it to its own: a development machine plugged into the
+   * event's hub — or the other way round — must be visible in the control app, not
+   * discovered in the recordings.
    */
   onHubMode?: (mode: ExecutionMode) => void
   /**
-   * Une commande descendante vient d'être appliquée.
+   * A downward command has just been applied.
    *
-   * Sert à remonter tout de suite ce qui a changé. Une régie mobile ne peint
-   * jamais d'avance : elle a posé le geste, et tant que la salle n'a pas
-   * confirmé, son bouton décrit encore l'état d'avant. Attendre le battement
-   * suivant, c'est jusqu'à dix secondes de bouton mort — le temps qu'il faut
-   * pour appuyer une seconde fois.
+   * Used to send up straight away what changed. A mobile control app never paints
+   * ahead: it made the gesture, and until the room has confirmed, its button still
+   * describes the state from before. Waiting for the next heartbeat is up to ten
+   * seconds of a dead button — the time it takes to press a second time.
    */
   onCommandApplied?: (command: Command) => void
   /**
-   * Échéance d'un `sync`.
+   * A `sync`'s deadline.
    *
-   * Indispensable : la reconnexion du lien est illimitée par conception, donc
-   * sans échéance un `sync` lancé pendant que le hub est à terre n'échouerait
-   * jamais — l'opérateur verrait un bouton tourner sans fin au lieu d'un état
-   * « hors ligne » exploitable.
+   * Indispensable: the link's reconnection is unlimited by design, so with no
+   * deadline a `sync` started while the hub is down would never fail — the
+   * operator would see a button spinning endlessly instead of a usable "offline"
+   * state.
    */
   syncTimeoutMs?: number
   /**
-   * Horloge du journal.
+   * The log's clock.
    *
-   * Volontairement l'horloge **réelle**, même quand le hub simule l'heure :
-   * « depuis combien de temps ce flux est-il coupé » est une question de temps
-   * écoulé, pas de moment simulé. Injectable pour les tests.
+   * Deliberately the **real** clock, even when the hub simulates the time: "how
+   * long has this stream been down" is a question of elapsed time, not of a
+   * simulated moment. Injectable for the tests.
    */
   now?: () => number
 }
 
 /**
- * Lien temps réel vers le hub.
+ * The hub refused our credentials.
  *
- * Aucune opération de régie ne dépend de ce lien : il synchronise le programme
- * et applique les commandes descendantes, mais son absence laisse la salle
- * pleinement fonctionnelle sur son cache local.
- */
-/**
- * Le hub a refusé nos identifiants.
- *
- * Distinct d'une panne réseau : réessayer n'y changera rien, il faut relancer
- * l'appairage. Sans cette distinction, une machine dont le jeton a été révoqué
- * — ou dont le hub a été recréé — boucle indéfiniment en journalisant un
- * avertissement, sans que personne ne comprenne quoi faire.
+ * Distinct from a network failure: retrying will change nothing, the pairing has
+ * to be run again. Without that distinction, a machine whose token was revoked —
+ * or whose hub was recreated — loops indefinitely logging a warning, with nobody
+ * understanding what to do.
  */
 export class HubAuthError extends Error {
   constructor(message: string) {
@@ -85,14 +77,21 @@ export class HubAuthError extends Error {
   }
 }
 
-/** Reconnaît un refus d'authentification dans une erreur oRPC. */
-export function estRefusAuth(cause: unknown): boolean {
+/** Recognizes an authentication refusal inside an oRPC error. */
+export function isAuthRefusal(cause: unknown): boolean {
   const code = (cause as { code?: string })?.code
   if (code === 'UNAUTHORIZED' || code === 'FORBIDDEN') return true
   const message = String((cause as Error)?.message ?? '')
   return /jeton de salle|session opérateur|réappairage/i.test(message)
 }
 
+/**
+ * The real-time link to the hub.
+ *
+ * No control-room operation depends on this link: it synchronizes the program and
+ * applies the downward commands, but its absence leaves the room fully functional
+ * on its local cache.
+ */
 export class HubLink {
   readonly client: HubClient
   private stopped = false
@@ -115,9 +114,9 @@ export class HubLink {
           if (!this.stopped) options.runtime.setConnectivity('OFFLINE')
         })
         socket.on('open', () => options.runtime.setConnectivity('ONLINE'))
-        // Sans ce listener, une tentative de reconnexion vers un hub injoignable
-        // émet un `error` non géré et **tue le process** — c'est-à-dire perdre
-        // la régie sur une simple coupure réseau.
+        // Without this listener, a reconnection attempt towards an unreachable hub
+        // emits an unhandled `error` and **kills the process** — that is, losing the
+        // control app on a plain network outage.
         socket.on('error', (cause) => {
           options.onLog?.('warn', 'socket hub en erreur', { message: cause.message })
         })
@@ -125,19 +124,19 @@ export class HubLink {
       },
       reconnect: {
         enabled: true,
-        // Premier essai immédiat, puis palier constant : en salle, une coupure
-        // dure rarement longtemps et on veut revenir vite.
+        // The first attempt immediate, then a constant plateau: in a room, an
+        // outage rarely lasts long and we want to come back fast.
         delay: (info) => (info.attempt === 1 ? 0 : 2_000),
         maxAttempt: Infinity,
         /**
-         * Reconnexion **paresseuse**, déclenchée par nos appels, et non
-         * proactivement à la fermeture du socket.
+         * A **lazy** reconnection, triggered by our calls, and not proactively when
+         * the socket closes.
          *
-         * `onClose.enabled` réduirait la latence de reprise, mais oRPC rouvrirait
-         * alors un socket même après `close()` : l'application ne se fermerait
-         * jamais et continuerait de frapper un hub en cours d'arrêt. La boucle
-         * `consumeCommands` se réabonne de toute façon en 2 s — la cadence de
-         * reprise nous appartient, et elle s'arrête quand on le dit.
+         * `onClose.enabled` would reduce the resume latency, but oRPC would then
+         * reopen a socket even after `close()`: the application would never close
+         * and would keep hitting a hub that is shutting down. The `consumeCommands`
+         * loop resubscribes within 2 s anyway — the resume cadence belongs to us,
+         * and it stops when we say so.
          */
         onClose: { enabled: false },
       },
@@ -147,10 +146,11 @@ export class HubLink {
   }
 
   /**
-   * Questions posées dans cette salle.
+   * The questions asked in this room.
    *
-   * Procédure publique — le mur est ouvert à qui scanne le QR — mais appelée
-   * ici par le lien déjà établi : pas de second client à entretenir.
+   * A public procedure — the wall is open to whoever scans the QR code — but
+   * called here through the link that is already established: no second client to
+   * maintain.
    */
   async questions(roomId: string, sessionId: string | null): Promise<Question[]> {
     return this.client.questions.list(
@@ -160,41 +160,42 @@ export class HubLink {
   }
 
   /**
-   * Enregistre un réglage de salle sur le hub.
+   * Records a room setting on the hub.
    *
-   * Lève, contrairement à `sync` : ici quelqu'un attend devant l'écran, et un
-   * échec silencieux lui ferait croire que c'est passé. Le hub reste la source
-   * de vérité — garder le réglage en local le ferait écraser au sync suivant.
+   * Throws, unlike `sync`: here somebody is waiting in front of the screen, and a
+   * silent failure would make them believe it went through. The hub stays the
+   * source of truth — keeping the setting locally would get it overwritten at the
+   * next sync.
    */
   async configure(patch: RoomConfigPatch): Promise<void> {
     await this.client.rooms.configure(patch, { signal: AbortSignal.timeout(8_000) })
   }
 
   /**
-   * Synchronise programme et configuration.
+   * Synchronizes the program and the configuration.
    *
-   * Ne lève jamais : un hub injoignable au démarrage est un cas nominal, la
-   * salle continue sur son cache. L'échec est remonté par la connectivité.
+   * Never throws: an unreachable hub at startup is a nominal case, the room
+   * carries on from its cache. The failure is reported through the connectivity.
    *
-   * @param options.complet Ignore le cache local et redemande le programme
-   *   entier, même à empreinte identique. C'est ce que veut dire « resynchro
-   *   complète » : le sync ordinaire s'appuie sur l'empreinte pour ne pas
-   *   retélécharger 70 ko à chaque battement, ce qui est exactement l'économie
-   *   dont on se méfie quand on soupçonne une salle d'avoir dérivé.
+   * @param options.full Ignores the local cache and asks for the whole program
+   *   again, even at an identical fingerprint. That is what "full resync" means:
+   *   the ordinary sync relies on the fingerprint so as not to re-download 70 kB on
+   *   every heartbeat, which is exactly the saving one distrusts when suspecting a
+   *   room of having drifted.
    */
   async sync(
-    options: { complet?: boolean } = {},
+    options: { full?: boolean } = {},
   ): Promise<{ ok: boolean; contentHash?: string; authRejected?: boolean }> {
     const { store, runtime } = this.options
     try {
-      const since = options.complet === true ? null : store.settings().activeContentHash
+      const since = options.full === true ? null : store.settings().activeContentHash
       const result = await this.client.rooms.sync(
         { since },
         { signal: AbortSignal.timeout(this.options.syncTimeoutMs ?? 8_000) },
       )
 
-      // Offset d'horloge : les timecodes VOD et la timeline en dépendent.
-      // Le hub dit aussi si son heure est simulée — la régie doit le signaler.
+      // The clock offset: the VOD timecodes and the timeline depend on it. The hub
+      // also says whether its time is simulated — the control app must report it.
       runtime.setServerTime(result.serverTime, result.simulatedClock)
       this.options.onHubMode?.(result.mode)
 
@@ -202,12 +203,12 @@ export class HubLink {
         roomId: result.room.id,
         config: result.room,
         socialLinks: result.socialLinks,
-        // Le nom de l'événement descend avec le reste et reste en cache : les
-        // pages doivent se titrer correctement au démarrage suivant, hub
-        // injoignable compris.
+        // The event's name comes down with the rest and stays cached: the pages
+        // must title themselves correctly at the next start, an unreachable hub
+        // included.
         event: result.event,
-        // Idem pour le rapatriement : le régulateur tranche plusieurs fois par
-        // minute, et il ne doit jamais dépendre d'un appel réseau.
+        // The same for the shipping: the regulator decides several times a minute,
+        // and it must never depend on a network call.
         vod: result.vod,
       })
       runtime.setRoomId(result.room.id)
@@ -224,7 +225,7 @@ export class HubLink {
       runtime.refreshSessions()
       return { ok: true, contentHash: result.contentHash }
     } catch (cause) {
-      if (estRefusAuth(cause)) {
+      if (isAuthRefusal(cause)) {
         this.options.onLog?.('error', 'identifiants refusés par le hub', {
           message: (cause as Error).message,
         })
@@ -241,17 +242,17 @@ export class HubLink {
   }
 
   /**
-   * Consomme le flux de commandes jusqu'à l'arrêt.
+   * Consumes the command stream until it stops.
    *
-   * La reprise passe par `lastEventId` d'oRPC : on repart du dernier `seq`
-   * appliqué, stocké localement, donc une coupure ne fait sauter aucune commande.
+   * The resume goes through oRPC's `lastEventId`: we restart from the last applied
+   * `seq`, stored locally, so an outage skips no command.
    */
   async consumeCommands(signal?: AbortSignal): Promise<void> {
     const { runtime, store } = this.options
-    // Fonction plutôt que lecture directe : `aborted` change en cours de boucle,
-    // et TypeScript figerait sinon la valeur observée à l'entrée du `while`.
+    // A function rather than a direct read: `aborted` changes during the loop, and
+    // TypeScript would otherwise freeze the value observed on entering the `while`.
     const isAborted = () => signal?.aborted === true
-    const suivi = new OutageTracker('flux de commandes', this.options.now)
+    const outage = new OutageTracker('flux de commandes', this.options.now)
 
     while (!this.stopped && !isAborted()) {
       try {
@@ -259,14 +260,14 @@ export class HubLink {
         const iterator = await this.client.rooms.commands(undefined, { lastEventId, signal })
         runtime.setConnectivity('ONLINE')
 
-        // Le flux est rétabli : on le dit, au journal et en régie. Sans cela,
-        // seuls les échecs étaient tracés et l'incident ne se refermait jamais.
-        // Le bandeau compte autant que le journal : c'est là que l'opérateur
-        // regarde, et il vient de voir la salle passer hors ligne.
-        const retour = suivi.restored()
-        if (retour != null) {
-          this.options.onLog?.('info', retour.message)
-          runtime.notify({ level: 'info', text: `Hub rejoint — ${retour.message}` })
+        // The stream is restored: we say so, in the log and in the control app.
+        // Without it, only the failures were traced and the incident never closed.
+        // The banner counts as much as the log: it is where the operator looks, and
+        // they have just seen the room go offline.
+        const restored = outage.restored()
+        if (restored != null) {
+          this.options.onLog?.('info', restored.message)
+          runtime.notify({ level: 'info', text: `Hub rejoint — ${restored.message}` })
         }
 
         for await (const command of iterator) {
@@ -277,9 +278,9 @@ export class HubLink {
         if (isAborted() || this.stopped) return
         runtime.setConnectivity('OFFLINE')
 
-        if (estRefusAuth(cause)) {
-          // Réessayer ne servirait à rien : on remonte, et la machine
-          // réaffichera son écran d'appairage.
+        if (isAuthRefusal(cause)) {
+          // Retrying would be of no use: we report up, and the machine will show
+          // its pairing screen again.
           this.stopped = true
           this.options.onLog?.('error', "identifiants refusés par le hub, réappairage nécessaire", {
             message: (cause as Error).message,
@@ -288,9 +289,9 @@ export class HubLink {
           return
         }
 
-        const echec = suivi.failure()
-        if (echec.message != null) {
-          this.options.onLog?.('warn', echec.message, { message: (cause as Error).message })
+        const failure = outage.failure()
+        if (failure.message != null) {
+          this.options.onLog?.('warn', failure.message, { message: (cause as Error).message })
         }
         await new Promise((resolve) => setTimeout(resolve, 2_000))
       }
@@ -298,31 +299,31 @@ export class HubLink {
   }
 
   /**
-   * Consomme le flux des messages approuvés.
+   * Consumes the stream of approved messages.
    *
-   * Même mécanique que les commandes, et même tolérance : une coupure n'a
-   * aucune conséquence — au pire le mur reste sur son dernier état, ce qui est
-   * invisible pour le public.
+   * The same mechanics as the commands, and the same tolerance: an outage has no
+   * consequence — at worst the wall stays on its last state, which is invisible to
+   * the audience.
    */
   async consumeWall(signal?: AbortSignal): Promise<void> {
     const { runtime, store } = this.options
     const isAborted = () => signal?.aborted === true
-    const suivi = new OutageTracker('flux du mur', this.options.now)
+    const outage = new OutageTracker('flux du mur', this.options.now)
 
     while (!this.stopped && !isAborted()) {
       try {
         const roomId = store.settings().roomId
         const iterator = await this.client.wall.feed({ roomId }, { signal })
-        // Le mur ne justifie pas un bandeau : une coupure y est sans
-        // conséquence visible pour le public, contrairement aux commandes.
-        const retour = suivi.restored()
-        if (retour != null) this.options.onLog?.('info', retour.message)
+        // The wall does not warrant a banner: an outage there has no visible
+        // consequence for the audience, unlike the commands.
+        const restored = outage.restored()
+        if (restored != null) this.options.onLog?.('info', restored.message)
         for await (const comment of iterator) runtime.addComment(comment)
       } catch (cause) {
         if (isAborted() || this.stopped) return
-        const echec = suivi.failure()
-        if (echec.message != null) {
-          this.options.onLog?.('warn', echec.message, { message: (cause as Error).message })
+        const failure = outage.failure()
+        if (failure.message != null) {
+          this.options.onLog?.('warn', failure.message, { message: (cause as Error).message })
         }
         await new Promise((resolve) => setTimeout(resolve, 5_000))
       }

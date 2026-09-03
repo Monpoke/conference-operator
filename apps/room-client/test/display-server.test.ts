@@ -101,15 +101,15 @@ async function readSse(
 }
 
 /** Compte les messages reçus pendant une fenêtre de temps donnée. */
-async function compterSse(url: string, dureeMs: number): Promise<number> {
+async function compterSse(url: string, durationMs: number): Promise<number> {
   const controller = new AbortController()
   const response = await fetch(url, { signal: controller.signal })
   const reader = response.body!.getReader()
   const decoder = new TextDecoder()
   let recus = 0
   let buffer = ''
-  const fin = Date.now() + dureeMs
-  const arret = setTimeout(() => controller.abort(), dureeMs)
+  const fin = Date.now() + durationMs
+  const arret = setTimeout(() => controller.abort(), durationMs)
   try {
     while (Date.now() < fin) {
       const { value, done } = await reader.read()
@@ -247,7 +247,7 @@ describe('vumètre', () => {
       runtime,
       assets,
       program: () => store.activeProgram(),
-      onNiveauxDemandes: (actif) => demandes.push(actif),
+      onLevelsRequested: (actif) => demandes.push(actif),
       port: 0,
     })
     const url = await local.listen()
@@ -261,7 +261,7 @@ describe('vumètre', () => {
       // L'abonnement est posé à l'ouverture du flux.
       await vi.waitFor(() => expect(demandes).toEqual([true]))
 
-      local.publierNiveaux([{ name: 'Micro', channels: [{ magnitude: -18, peak: -16 }] }])
+      local.publishLevels([{ name: 'Micro', channels: [{ magnitude: -18, peak: -16 }] }])
 
       // Le premier bloc est le commentaire d'ouverture, qui pousse les
       // en-têtes ; on lit jusqu'à la première mesure.
@@ -287,7 +287,7 @@ describe('vumètre', () => {
       runtime,
       assets,
       program: () => store.activeProgram(),
-      onNiveauxDemandes: (actif) => demandes.push(actif),
+      onLevelsRequested: (actif) => demandes.push(actif),
       port: 0,
     })
     const url = await local.listen()
@@ -406,7 +406,7 @@ describe('charge du poste', () => {
       runtime,
       assets,
       program: () => store.activeProgram(),
-      hote: () => ({
+      hostLoad: () => ({
         cpu: 0.42,
         cores: 8,
         windowMs: 5_000,

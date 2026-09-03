@@ -10,34 +10,33 @@ import {
 import { outbox } from '@cloudnord/db/client'
 import type { LocalStore } from './store.js'
 
-/** Durées de vie par défaut, par politique. */
+/** Default lifetimes, per delivery policy. */
 const TTL_MS: Record<Delivery, number> = {
-  // 48 h : largement au-delà de la durée de l'événement, pour qu'un PC resté
-  // hors ligne toute la journée remonte quand même son historique le lendemain.
+  // 48 h: well beyond the event's duration, so that a machine left offline all
+  // day still sends its history up the next morning.
   required: 48 * 60 * 60 * 1000,
-  // 30 s : au-delà, une télémétrie ne décrit plus le présent et n'intéresse plus personne.
+  // 30 s: beyond that, telemetry no longer describes the present and interests nobody.
   'best-effort': 30 * 1000,
 }
 
 const BACKOFF_BASE_MS = 1_000
 const BACKOFF_CAP_MS = 60_000
-/** Plafond de la file. Au-delà, on évince — les `best-effort` d'abord. */
+/** The queue's ceiling. Beyond it we evict — the `best-effort` ones first. */
 const MAX_DEPTH = 10_000
 
 /**
- * Périodicité du contrôle de saturation.
+ * How often the saturation check runs.
  *
- * Le vérifier à chaque `enqueue` coûterait une agrégation complète par
- * événement — inacceptable sur une salle bavarde. Contrôler tous les 128
- * suffit : le dépassement toléré entre deux contrôles est négligeable devant
- * le plafond.
+ * Checking on every `enqueue` would cost a full aggregation per event —
+ * unacceptable on a chatty room. Checking every 128 is enough: the overshoot
+ * tolerated between two checks is negligible against the ceiling.
  */
 const BACKPRESSURE_EVERY = 128
 
 export interface EnqueueOptions {
   /**
-   * Clé de collapse. À clé égale, seule la dernière occurrence non envoyée
-   * survit : une heure hors ligne ne doit pas accumuler 720 heartbeats.
+   * The collapse key. At equal keys, only the last unsent occurrence survives: an
+   * hour offline must not pile up 720 heartbeats.
    */
   dedupKey?: string
   ttlMs?: number
@@ -50,10 +49,10 @@ export interface OutboxStats {
 }
 
 /**
- * File d'attente durable des événements montants.
+ * The durable queue of upward events.
  *
- * C'est la pièce qui tient la promesse centrale du projet : aucune action de
- * régie ne bloque sur le réseau, et rien d'important n'est perdu quand il tombe.
+ * It is the piece that holds the project's central promise: no control-room
+ * action blocks on the network, and nothing important is lost when it goes down.
  */
 export class Outbox {
   private sinceLastCheck = 0
@@ -70,11 +69,11 @@ export class Outbox {
   }
 
   /**
-   * Met un événement en file.
+   * Queues an event.
    *
-   * La politique de livraison n'est pas un paramètre : elle découle du type
-   * d'événement (`DELIVERY_BY_EVENT`), pour que l'appelant n'ait pas à la
-   * redécider — et à se tromper — à chaque appel.
+   * The delivery policy is not a parameter: it follows from the event's type
+   * (`DELIVERY_BY_EVENT`), so that the caller does not have to decide it again —
+   * and get it wrong — on every call.
    */
   enqueue(payload: RoomEventPayload, options: EnqueueOptions = {}): Envelope {
     const delivery = DELIVERY_BY_EVENT[payload.type]
@@ -95,7 +94,7 @@ export class Outbox {
 
     this.db.transaction((tx) => {
       if (options.dedupKey != null) {
-        // Collapse : l'ancienne occurrence non envoyée n'a plus d'intérêt.
+        // Collapse: the old unsent occurrence is of no further interest.
         tx.delete(outbox)
           .where(and(eq(outbox.roomId, this.roomId), eq(outbox.dedupKey, options.dedupKey)))
           .run()
@@ -126,10 +125,10 @@ export class Outbox {
   }
 
   /**
-   * Prochain lot à envoyer, dans l'ordre d'émission.
+   * The next batch to send, in emission order.
    *
-   * L'ordre par `seq` est strict : le hub applique dans cet ordre, et un
-   * `recording.stopped` qui doublerait son `recording.started` fausserait la VOD.
+   * The order by `seq` is strict: the hub applies in that order, and a
+   * `recording.stopped` overtaking its `recording.started` would skew the VOD.
    */
   claimBatch(limit = 100): Envelope[] {
     const nowIso = new Date(this.now()).toISOString()
@@ -155,7 +154,7 @@ export class Outbox {
       )
   }
 
-  /** Sort définitivement les événements confirmés par le hub. */
+  /** Permanently removes the events the hub has confirmed. */
   ack(ids: string[]): void {
     if (ids.length === 0) return
     this.db.transaction((tx) => {
@@ -164,10 +163,10 @@ export class Outbox {
   }
 
   /**
-   * Sort un événement rejeté sans espoir, en le traçant dans le journal local.
+   * Removes a hopelessly rejected event, tracing it in the local log.
    *
-   * Le laisser en file bloquerait tout ce qui le suit : un seul message
-   * malformé ne doit jamais geler la remontée des autres.
+   * Leaving it in the queue would block everything behind it: a single malformed
+   * message must never freeze the others from going up.
    */
   reject(entries: { id: string; reason: string }[]): void {
     if (entries.length === 0) return
@@ -183,7 +182,7 @@ export class Outbox {
     })
   }
 
-  /** Reporte un lot après un échec réseau, avec backoff exponentiel et gigue. */
+  /** Defers a batch after a network failure, with exponential backoff and jitter. */
   defer(ids: string[]): void {
     if (ids.length === 0) return
     const nowMs = this.now()
@@ -205,11 +204,11 @@ export class Outbox {
   }
 
   /**
-   * Purge les événements périmés.
+   * Purges the expired events.
    *
-   * Les `best-effort` disparaissent vite et sans regret. Les `required` ne
-   * partent qu'après 48 h, et laissent une trace au journal : perdre un
-   * marqueur de talk en silence rendrait le editing inexplicable.
+   * The `best-effort` ones disappear quickly and without regret. The `required`
+   * ones only leave after 48 h, and leave a trace in the log: losing a talk marker
+   * silently would make the editing inexplicable.
    */
   evictExpired(): { dropped: number } {
     const nowIso = new Date(this.now()).toISOString()
@@ -237,11 +236,11 @@ export class Outbox {
   }
 
   /**
-   * Évince quand la file sature, en commençant par ce qui compte le moins.
+   * Evicts when the queue saturates, starting with what counts least.
    *
-   * Si même la part `required` déborde, on ne supprime rien : on laisse la file
-   * grossir et l'alerte remonter en régie. Jeter un enregistrement pour tenir
-   * un quota serait le pire compromis possible.
+   * If even the `required` share overflows, we delete nothing: we let the queue
+   * grow and the alert go up to the control room. Throwing away a recording to
+   * hold a quota would be the worst possible trade.
    */
   private applyBackpressure(): void {
     const stats = this.stats()
@@ -283,14 +282,14 @@ export class Outbox {
   }
 
   /**
-   * Ce qui attend réellement d'être remonté, hors battement.
+   * What is really waiting to go up, heartbeat aside.
    *
-   * Le battement de salle se réinscrit toutes les 10 s et repart au drain
-   * suivant. Le compter fait osciller l'indicateur entre 0 et 1 en permanence
-   * — et chaque bascule republie l'état à toutes les pages abonnées — alors
-   * que l'indicateur existe pour signaler du travail qui **s'accumule**.
+   * The room's heartbeat re-enqueues itself every 10 s and leaves at the next
+   * drain. Counting it makes the indicator oscillate between 0 and 1 permanently
+   * — and every switch republishes the state to every subscribed page — whereas
+   * the indicator exists to report work that **piles up**.
    *
-   * `depth()` reste le total réel : c'est lui qui régit la contre-pression.
+   * `depth()` stays the real total: it is what governs the backpressure.
    */
   backlog(): number {
     const [row] = this.db
@@ -307,12 +306,12 @@ export class Outbox {
   }
 }
 
-/** Clé de collapse d'un heartbeat : une seule occurrence en attente par salle. */
+/** A heartbeat's collapse key: a single pending occurrence per room. */
 export function heartbeatDedupKey(roomId: string): string {
   return `room.heartbeat:${roomId}`
 }
 
-/** Exponentiel plafonné, avec ±20 % de gigue pour ne pas synchroniser les salles. */
+/** Capped exponential, with ±20 % jitter so the rooms do not synchronize. */
 export function backoffMs(attempts: number, random: () => number = Math.random): number {
   const base = Math.min(BACKOFF_BASE_MS * 2 ** (attempts - 1), BACKOFF_CAP_MS)
   const jitter = base * 0.2 * (random() * 2 - 1)

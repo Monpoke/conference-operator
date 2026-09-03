@@ -50,7 +50,7 @@ describe('mode de la salle', () => {
     expect(readMode({ OBS_MOCK: '0' }).ignores).toEqual([])
   })
 
-  it('simule OBS par défaut en développement', () => {
+  it('simulates OBS by default in development', () => {
     // Le cas courant du développement ; exiger une variable de plus pour le cas
     // courant se paie en oublis.
     expect(readMode({ MODE: 'dev' }).obsSimulated).toBe(true)

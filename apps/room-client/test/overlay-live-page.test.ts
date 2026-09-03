@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
-// La lib DOM est déclarée ici seulement : l'ajouter au tsconfig laisserait le
-// code serveur appeler `document` sans que rien ne proteste.
+// The DOM lib is declared here only: adding it to the tsconfig would let the
+// server code call `document` without anything objecting.
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flattenLayersInHtml } from '@cloudnord/ui'
@@ -8,24 +8,24 @@ import { renderOverlayLivePage } from '../src/core/overlay-live-page.js'
 import type { DisplayPayload } from '../src/core/display-server.js'
 
 /**
- * Bandeau des scènes live.
+ * The live scenes' banner.
  *
- * Surface transparente posée où l'on veut qu'un message apparaisse : elle ne
- * dit rien de la conférence, elle porte ce que la console met à l'antenne.
+ * A transparent surface placed wherever a message should appear: it says nothing
+ * about the talk, it carries what the console puts on air.
  */
-const etat = (liveMessage: unknown): DisplayPayload =>
+const withMessage = (liveMessage: unknown): DisplayPayload =>
   ({ state: { liveMessage, question: null } }) as unknown as DisplayPayload
 
-/** Une question du public à l'antenne — l'autre canal, celui qui va en VOD. */
-const etatQuestion = (question: unknown): DisplayPayload =>
+/** An audience question on air — the other channel, the one that goes into the VOD. */
+const withQuestion = (question: unknown): DisplayPayload =>
   ({ state: { liveMessage: null, question } }) as unknown as DisplayPayload
 
-/** Le style se choisit dans l'adresse de la source OBS, pas à l'exécution. */
-function poserStyle(style: string | null): void {
+/** The style is chosen in the OBS source's address, not at runtime. */
+function setStyle(style: string | null): void {
   globalThis.history.replaceState(null, '', style == null ? '/display/overlay-live' : `/display/overlay-live?style=${style}`)
 }
 
-function monterBandeau(payload: DisplayPayload): void {
+function mountBanner(payload: DisplayPayload): void {
   document.documentElement.innerHTML = flattenLayersInHtml(
     renderOverlayLivePage({ initialPayload: payload }),
   )
@@ -35,169 +35,170 @@ function monterBandeau(payload: DisplayPayload): void {
   }
 }
 
-describe('bandeau live', () => {
-  it('ne montre rien quand il n\'y a rien à dire', () => {
-    // Un cadre vide incrusté en permanence dans le direct serait pire que rien.
-    monterBandeau(etat(null))
+describe('live banner', () => {
+  it('shows nothing when there is nothing to say', () => {
+    // An empty frame permanently burned into the live stream would be worse than
+    // nothing.
+    mountBanner(withMessage(null))
 
-    expect(document.body.dataset.bandeau).toBe('masque')
+    expect(document.body.dataset.banner).toBe('hidden')
   })
 
-  it('affiche le texte mis à l\'antenne', () => {
-    monterBandeau(etat({ text: 'Reprise dans 5 minutes', level: 'info', expiresAtMs: null }))
+  it('displays the text put on air', () => {
+    mountBanner(withMessage({ text: 'Reprise dans 5 minutes', level: 'info', expiresAtMs: null }))
 
-    expect(document.body.dataset.bandeau).toBe('visible')
-    expect(document.getElementById('texte')?.textContent).toBe('Reprise dans 5 minutes')
+    expect(document.body.dataset.banner).toBe('visible')
+    expect(document.getElementById('text')?.textContent).toBe('Reprise dans 5 minutes')
   })
 
-  it('porte le niveau, qui en décide la teinte', () => {
-    // Un « micro en panne » et un « posez vos questions » ne se lisent pas de
-    // la même façon depuis le fond de la salle.
-    monterBandeau(etat({ text: 'Micro en panne', level: 'urgent', expiresAtMs: null }))
+  it('carries the level, which decides its tint', () => {
+    // A "microphone down" and a "ask your questions" do not read the same way
+    // from the back of the room.
+    mountBanner(withMessage({ text: 'Micro en panne', level: 'urgent', expiresAtMs: null }))
 
-    expect(document.body.dataset.niveau).toBe('urgent')
+    expect(document.body.dataset.level).toBe('urgent')
   })
 
-  it('garde un fond réellement transparent', () => {
-    // OBS compose cette page par-dessus la vidéo : un fond opaque masquerait
-    // le talk entier.
-    monterBandeau(etat(null))
+  it('keeps a genuinely transparent background', () => {
+    // OBS composites this page over the video: an opaque background would hide
+    // the whole talk.
+    mountBanner(withMessage(null))
 
-    const fond = globalThis.getComputedStyle(document.body).backgroundColor
-    expect(fond === '' || fond === 'transparent' || fond === 'rgba(0, 0, 0, 0)').toBe(true)
+    const background = globalThis.getComputedStyle(document.body).backgroundColor
+    expect(background === '' || background === 'transparent' || background === 'rgba(0, 0, 0, 0)').toBe(true)
   })
 })
 
-describe('deux présentations', () => {
-  afterEach(() => poserStyle(null))
+describe('two presentations', () => {
+  afterEach(() => setStyle(null))
 
-  it('bandeau par défaut, sans libellé', () => {
-    // Sur un plan de caméra, une étiquette de plus encombre pour rien.
-    poserStyle(null)
-    monterBandeau(etat({ text: 'Une question', level: 'info', expiresAtMs: null }))
+  it('banner by default, with no label', () => {
+    // On a camera shot, one more label clutters for nothing.
+    setStyle(null)
+    mountBanner(withMessage({ text: 'Une question', level: 'info', expiresAtMs: null }))
 
     expect(document.body.dataset.style).toBe('bandeau')
-    expect(globalThis.getComputedStyle(document.getElementById('libelle')!).display).toBe('none')
+    expect(globalThis.getComputedStyle(document.getElementById('label')!).display).toBe('none')
   })
 
-  it('encart sur demande, avec son libellé', () => {
-    // Par-dessus des slides, on ne sait pas d'où sort ce texte : il se nomme.
-    // Le libellé annonce une question ; un message d'exploitation se lit tel
-    // quel, sans en-tête qui mentirait sur sa nature.
-    poserStyle('encart')
-    monterBandeau(etatQuestion({ text: 'Une question', author: null, sessionId: 's-3' }))
+  it('a card on request, with its label', () => {
+    // Over slides, one does not know where that text comes from: it names itself.
+    // The label announces a question; an operational message reads as it is, with
+    // no heading that would lie about its nature.
+    setStyle('encart')
+    mountBanner(withQuestion({ text: 'Une question', author: null, sessionId: 's-3' }))
 
     expect(document.body.dataset.style).toBe('encart')
-    expect(globalThis.getComputedStyle(document.getElementById('libelle')!).display).not.toBe('none')
-    expect(document.getElementById('libelle')?.textContent).toContain('Question du public')
+    expect(globalThis.getComputedStyle(document.getElementById('label')!).display).not.toBe('none')
+    expect(document.getElementById('label')?.textContent).toContain('Question du public')
   })
 
-  it('ignore un style inconnu plutôt que de ne rien afficher', () => {
-    poserStyle('flamboyant')
-    monterBandeau(etat({ text: 'Une question', level: 'info', expiresAtMs: null }))
+  it('ignores an unknown style rather than displaying nothing', () => {
+    setStyle('flamboyant')
+    mountBanner(withMessage({ text: 'Une question', level: 'info', expiresAtMs: null }))
 
     expect(document.body.dataset.style).toBe('bandeau')
   })
 })
 
 /**
- * Passage d'une question à la suivante.
+ * Moving from one question to the next.
  *
- * Remplacer le texte en place donnerait un saut : deux questions de longueurs
- * différentes se substituent d'un coup, et le spectateur ne sait pas si elle a
- * changé ou si elle a toujours été là.
+ * Replacing the text in place would give a jump: two questions of different
+ * lengths substitute at once, and the viewer does not know whether it changed or
+ * was always there.
  */
-describe('changement de question', () => {
-  /** Faux flux : la page se met à jour par SSE, on lui en fournit un. */
-  class FauxFlux {
-    static dernier: FauxFlux | null = null
-    onmessage: ((evenement: { data: string }) => void) | null = null
+describe('changing question', () => {
+  /** A fake stream: the page updates itself by SSE, so we supply one. */
+  class FakeStream {
+    static last: FakeStream | null = null
+    onmessage: ((event: { data: string }) => void) | null = null
     constructor() {
-      FauxFlux.dernier = this
+      FakeStream.last = this
     }
     addEventListener(): void {}
-    emettre(payload: unknown): void {
+    emit(payload: unknown): void {
       this.onmessage?.({ data: JSON.stringify(payload) })
     }
   }
 
   beforeEach(() => {
-    FauxFlux.dernier = null
-    vi.stubGlobal('EventSource', FauxFlux)
+    FakeStream.last = null
+    vi.stubGlobal('EventSource', FakeStream)
   })
 
-  it('entre directement la première fois', () => {
-    // Rien à sortir : une sortie à vide retarderait l'affichage pour rien.
-    monterBandeau(etat({ text: 'Première', level: 'info', expiresAtMs: null }))
+  it('comes straight in the first time', () => {
+    // Nothing to take out: an empty exit would delay the display for nothing.
+    mountBanner(withMessage({ text: 'Première', level: 'info', expiresAtMs: null }))
 
-    expect(document.body.dataset.bandeau).toBe('visible')
-    expect(document.getElementById('texte')?.textContent).toBe('Première')
+    expect(document.body.dataset.banner).toBe('visible')
+    expect(document.getElementById('text')?.textContent).toBe('Première')
   })
 
-  it('sort l\'ancienne, puis pose la nouvelle', async () => {
-    monterBandeau(etat({ text: 'Première', level: 'info', expiresAtMs: null }))
+  it('takes the old one out, then puts the new one in', async () => {
+    mountBanner(withMessage({ text: 'Première', level: 'info', expiresAtMs: null }))
 
-    FauxFlux.dernier!.emettre(etat({ text: 'Seconde', level: 'warning', expiresAtMs: null }))
+    FakeStream.last!.emit(withMessage({ text: 'Seconde', level: 'warning', expiresAtMs: null }))
 
-    // Premier temps : elle sort, et c'est encore l'ancienne qui est écrite.
-    expect(document.body.dataset.bandeau).toBe('masque')
-    expect(document.getElementById('texte')?.textContent).toBe('Première')
+    // First step: it goes out, and the old one is still what is written.
+    expect(document.body.dataset.banner).toBe('hidden')
+    expect(document.getElementById('text')?.textContent).toBe('Première')
 
-    // Second temps : la nouvelle est posée, puis entre.
+    // Second step: the new one is set, then comes in.
     await new Promise((resolve) => setTimeout(resolve, 400))
-    expect(document.body.dataset.bandeau).toBe('visible')
-    expect(document.getElementById('texte')?.textContent).toBe('Seconde')
-    expect(document.body.dataset.niveau).toBe('warning')
+    expect(document.body.dataset.banner).toBe('visible')
+    expect(document.getElementById('text')?.textContent).toBe('Seconde')
+    expect(document.body.dataset.level).toBe('warning')
   })
 
-  it('ne rejoue rien quand l\'état ne change pas', async () => {
-    // La régie reçoit un état toutes les quelques secondes : rejouer
-    // l'animation à chaque fois ferait clignoter la question sans raison.
-    monterBandeau(etat({ text: 'Première', level: 'info', expiresAtMs: null }))
+  it('replays nothing when the state does not change', async () => {
+    // The control app receives a state every few seconds: replaying the animation
+    // every time would make the question blink for no reason.
+    mountBanner(withMessage({ text: 'Première', level: 'info', expiresAtMs: null }))
 
-    FauxFlux.dernier!.emettre(etat({ text: 'Première', level: 'info', expiresAtMs: null }))
+    FakeStream.last!.emit(withMessage({ text: 'Première', level: 'info', expiresAtMs: null }))
 
-    expect(document.body.dataset.bandeau).toBe('visible')
+    expect(document.body.dataset.banner).toBe('visible')
   })
 
-  it('se retire sans attendre quand il n\'y a plus rien', () => {
-    monterBandeau(etat({ text: 'Première', level: 'info', expiresAtMs: null }))
+  it('withdraws without waiting when there is nothing left', () => {
+    mountBanner(withMessage({ text: 'Première', level: 'info', expiresAtMs: null }))
 
-    FauxFlux.dernier!.emettre(etat(null))
+    FakeStream.last!.emit(withMessage(null))
 
-    expect(document.body.dataset.bandeau).toBe('masque')
+    expect(document.body.dataset.banner).toBe('hidden')
   })
 })
 
 /**
- * Les deux channels sur une seule place.
+ * The two channels in a single place.
  *
- * Cette page est posée dans les scènes d'OBS-A : elle est vue par la salle, pas
- * par la VOD. Elle a donc le droit de montrer les deux — contrairement à
- * l'habillage de captation, qui ne montre que la question.
+ * This page is placed in OBS-A's scenes: it is seen by the room, not by the VOD.
+ * It is therefore allowed to show both — unlike the capture overlay, which only
+ * shows the question.
  */
-describe('question et bandeau, deux channels', () => {
-  it('affiche la question quand rien ne vient de la console', () => {
-    monterBandeau(etatQuestion({ text: 'Et les faux positifs ?', author: 'Camille', sessionId: 's-3' }))
+describe('question and banner, two channels', () => {
+  it('displays the question when nothing comes from the console', () => {
+    mountBanner(withQuestion({ text: 'Et les faux positifs ?', author: 'Camille', sessionId: 's-3' }))
 
-    expect(document.body.dataset.bandeau).toBe('visible')
-    expect(document.getElementById('texte')?.textContent).toBe('Et les faux positifs ?')
-    expect(document.getElementById('libelle')?.textContent).toContain('Camille')
+    expect(document.body.dataset.banner).toBe('visible')
+    expect(document.getElementById('text')?.textContent).toBe('Et les faux positifs ?')
+    expect(document.getElementById('label')?.textContent).toContain('Camille')
   })
 
-  it('laisse le bandeau de la console passer devant', () => {
-    // Un « on reprend dans 5 minutes » veut dire qu'il se passe quelque chose :
-    // ça prime sur la question à laquelle le speaker répondait.
-    monterBandeau({
+  it('lets the console banner come first', () => {
+    // A "we resume in 5 minutes" means something is happening: it takes
+    // precedence over the question the speaker was answering.
+    mountBanner({
       state: {
         liveMessage: { text: 'Reprise dans 5 minutes', level: 'urgent', expiresAtMs: null },
         question: { text: 'Et les faux positifs ?', author: null, sessionId: 's-3' },
       },
     } as unknown as DisplayPayload)
 
-    expect(document.getElementById('texte')?.textContent).toBe('Reprise dans 5 minutes')
-    expect(document.body.dataset.niveau).toBe('urgent')
-    // Et sans se faire passer pour une question du public.
-    expect(document.getElementById('libelle')?.hidden).toBe(true)
+    expect(document.getElementById('text')?.textContent).toBe('Reprise dans 5 minutes')
+    expect(document.body.dataset.level).toBe('urgent')
+    // And without passing itself off as an audience question.
+    expect(document.getElementById('label')?.hidden).toBe(true)
   })
 })

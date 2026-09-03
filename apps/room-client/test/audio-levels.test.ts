@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { LevelAggregator, proportion } from '../src/core/audio-levels.js'
-import { multiplicateurEnDb, DB_FLOOR, type InputLevel } from '../src/core/obs.js'
+import { multiplierToDb, DB_FLOOR, type InputLevel } from '../src/core/obs.js'
 
 function horloge(depart = 0) {
   let maintenant = depart
@@ -12,20 +12,20 @@ const entree = (name: string, magnitude: number, peak = magnitude): InputLevel =
   channels: [{ magnitude, peak }],
 })
 
-describe('conversion des niveaux OBS', () => {
+describe('conversion des levels OBS', () => {
   it('traduit les multiplicateurs en dBFS', () => {
     // OBS raisonne en linéaire, l'ingénieur du son en dB — et c'est l'échelle
     // qu'OBS affiche lui-même.
-    expect(multiplicateurEnDb(1)).toBeCloseTo(0, 5)
-    expect(multiplicateurEnDb(0.5)).toBeCloseTo(-6.02, 1)
-    expect(multiplicateurEnDb(0.1)).toBeCloseTo(-20, 5)
+    expect(multiplierToDb(1)).toBeCloseTo(0, 5)
+    expect(multiplierToDb(0.5)).toBeCloseTo(-6.02, 1)
+    expect(multiplierToDb(0.1)).toBeCloseTo(-20, 5)
   })
 
   it('borne le silence au lieu de rendre moins l\'infini', () => {
     // `-Infinity` casserait tout calcul de largeur de barre côté page.
-    expect(multiplicateurEnDb(0)).toBe(DB_FLOOR)
-    expect(multiplicateurEnDb(-1)).toBe(DB_FLOOR)
-    expect(Number.isFinite(multiplicateurEnDb(Number.NaN))).toBe(true)
+    expect(multiplierToDb(0)).toBe(DB_FLOOR)
+    expect(multiplierToDb(-1)).toBe(DB_FLOOR)
+    expect(Number.isFinite(multiplierToDb(Number.NaN))).toBe(true)
   })
 
   it('place le niveau sur une échelle exploitable', () => {

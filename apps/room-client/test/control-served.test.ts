@@ -17,12 +17,12 @@ import {
 } from '../src/core/control-shell.js'
 
 /**
- * La fenêtre de l'opérateur, servie par le poste.
+ * The operator's window, served by the machine.
  *
- * Ce qui est vérifié ici n'est pas le rendu — il l'est chez `@cloudnord/regie-web`,
- * qui monte les composants — mais les deux choses que seul le poste de salle
- * peut garantir : que la page part avec l'état complet dedans, et qu'elle ne
- * demande rien à une autre origine que la sienne.
+ * What is checked here is not the rendering — that is checked in
+ * `@cloudnord/regie-web`, which mounts the components — but the two things only
+ * the room machine can guarantee: that the page leaves with the complete state
+ * inside it, and that it asks nothing of any origin but its own.
  */
 
 const program = normalizeProgram(
@@ -44,12 +44,12 @@ let server: DisplayServer
 let origin: string
 
 /**
- * Un poste de salle, sans bundle par défaut.
+ * A room machine, with no bundle by default.
  *
- * `controlBundle` est passé explicitement partout : la résolution réelle remonte
- * les dossiers jusqu'à un `dist/`, et un build laissé sur la machine ferait
- * passer ou échouer ces tests selon la machine. Le défaut se découvre en CI,
- * une fois, et on ne sait pas dire depuis quand il dure.
+ * `controlBundle` is passed explicitly everywhere: the real resolution walks up
+ * the folders to a `dist/`, and a build left on the machine would make these
+ * tests pass or fail depending on the machine. The defect is discovered in CI,
+ * once, and nobody can say how long it had lasted.
  */
 async function demarrer(
   options: {
@@ -85,8 +85,8 @@ afterEach(async () => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-describe('la coquille', () => {
-  it('rend le point de editing du bundle, et plus le gabarit', async () => {
+describe('the shell', () => {
+  it('renders the bundle\'s entry point, and no longer the template', async () => {
     await demarrer({ viteOrigin: 'http://127.0.0.1:5174' })
 
     const reponse = await fetch(`${origin}/regie`)
@@ -95,23 +95,23 @@ describe('la coquille', () => {
     expect(reponse.status).toBe(200)
     expect(html).toContain('id="regie-root"')
     /*
-     * L'ancienne page inlinait tout : la feuille figée dans un `<style>`, la
-     * machine à états et trois mille lignes de code dans deux `<script>`, et le
-     * balisage des sept modales. Rien de cela ne doit plus partir — ce qui
-     * reste est la coquille, l'état de la salle, et des balises vers des
-     * fichiers servis par ce même poste.
+     * The old page inlined everything: the sheet frozen into a `<style>`, the
+     * state machine and three thousand lines of code in two `<script>` tags, and
+     * the markup of the seven modals. None of that must ship any more — what is
+     * left is the shell, the room's state, and tags pointing at files served by
+     * this same machine.
      */
     expect(html).not.toContain('<style>')
     expect(html).not.toContain('id="modale-vod"')
-    // L'état embarqué domine désormais la page, et c'est le but.
+    // The embedded state now dominates the page, and that is the point.
     const etat = /<script id="etat-initial"[^>]*>(.*?)<\/script>/s.exec(html)![1]!
     expect(html.length - etat.length).toBeLessThan(1_500)
   })
 
-  it('rend un document complet et clos', async () => {
-    // Repris des garde-fous des pages-gabarits : une coquille tronquée se
-    // rendait quand même, en partie, et le défaut se voyait à l'écran sans
-    // qu'on sache d'où il venait.
+  it('renders a complete and closed document', async () => {
+    // Taken over from the template pages' guards: a truncated shell still
+    // rendered, in part, and the defect showed on screen with nobody knowing
+    // where it came from.
     await demarrer({ viteOrigin: 'http://127.0.0.1:5174' })
     const html = await (await fetch(`${origin}/regie`)).text()
 
@@ -119,26 +119,26 @@ describe('la coquille', () => {
     expect(html.trimEnd().endsWith('</html>')).toBe(true)
   })
 
-  it('embarque l’état complet, parce qu’un F5 arrive toujours en plein talk', async () => {
+  it('embeds the complete state, because an F5 always lands mid-talk', async () => {
     await demarrer({ viteOrigin: 'http://127.0.0.1:5174' })
 
     const html = await (await fetch(`${origin}/regie`)).text()
     const brut = /<script id="etat-initial" type="application\/json">(.*?)<\/script>/s.exec(html)
     const etat = JSON.parse(brut![1]!.replace(/\\u003c/g, '<')) as { roomName: string }
 
-    // Attendre le premier message du flux pour peindre quoi que ce soit
-    // donnerait une demi-seconde d'écran vide au moment exact où l'opérateur
-    // vient de perdre sa fenêtre.
+    // Waiting for the stream's first message to paint anything would give half a
+    // second of blank screen at the exact moment the operator has just lost
+    // their window.
     expect(etat.roomName).toBe('Track #1 — Teilhard de Chardin')
   })
 
-  it('ne se laisse jamais mettre en cache : elle porte l’état de la salle', async () => {
+  it('never lets itself be cached: it carries the room\'s state', async () => {
     await demarrer({ viteOrigin: 'http://127.0.0.1:5174' })
     const reponse = await fetch(`${origin}/regie`)
     expect(reponse.headers.get('cache-control')).toBe('no-store')
   })
 
-  it('sert les fichiers hachés du bundle, et les laisse être mis en cache', async () => {
+  it('serves the bundle\'s hashed files, and lets them be cached', async () => {
     const bundle = bundleFactice()
     await demarrer({ controlBundle: () => bundle })
 
@@ -149,32 +149,32 @@ describe('la coquille', () => {
     const asset = await fetch(`${origin}/regie/assets/index-abc123.js`)
     expect(asset.status).toBe(200)
     /*
-     * Les noms portent une empreinte, d'où `immutable` : la régie est rouverte
-     * plusieurs fois par jour sur un poste de salle, et rien ne justifie de
-     * relire le même mégaoctet à chaque fois.
+     * The names carry a fingerprint, hence `immutable`: the control app is
+     * reopened several times a day on a room machine, and nothing justifies
+     * reading the same megabyte again every time.
      */
     expect(asset.headers.get('cache-control')).toContain('immutable')
   })
 
-  it('dit quoi faire quand le bundle manque, plutôt que de rendre un 404', async () => {
+  it('says what to do when the bundle is missing, rather than returning a 404', async () => {
     await demarrer()
 
     const reponse = await fetch(`${origin}/regie`)
 
-    // Ce n'est pas un état d'exploitation : l'empaquetage embarque le bundle.
-    // Un 404 enverrait chercher du côté de l'adresse.
+    // This is not an operational state: the packaging embeds the bundle. A 404
+    // would send people looking at the address instead.
     expect(reponse.status).toBe(503)
     expect(await reponse.text()).toContain('pnpm --filter @cloudnord/regie-web build')
   })
 })
 
-describe('développement', () => {
-  it('pointe la coquille sur Vite, et proxifie ce que Vite sait rendre', async () => {
+describe('development', () => {
+  it('points the shell at Vite, and proxies what Vite can render', async () => {
     /*
-     * Le sens du proxy est imposé : c'est le poste qui porte le flux d'état,
-     * les actions et le vumètre, tous sur son origine. Mettre Vite devant
-     * demanderait de proxifier un SSE et un WebSocket OBS pour le seul confort
-     * du rechargement à chaud.
+     * The proxy's direction is forced: it is the machine that carries the state
+     * stream, the actions and the VU meter, all on its own origin. Putting Vite in
+     * front would mean proxying an SSE stream and an OBS WebSocket for the sole
+     * comfort of hot reloading.
      */
     const vite = Fastify({ logger: false })
     vite.get('/regie/src/main.ts', async (_request, reply) => {
@@ -190,7 +190,7 @@ describe('développement', () => {
       expect(html).toContain('src="/regie/@vite/client"')
       expect(html).toContain('src="/regie/src/main.ts"')
 
-      // Et le poste sert vraiment ce que Vite lui donne, sur sa propre origine.
+      // And the machine really serves what Vite gives it, on its own origin.
       const module = await fetch(`${origin}/regie/src/main.ts`)
       expect(module.status).toBe(200)
       expect(await module.text()).toBe('// servi par Vite')
@@ -199,9 +199,9 @@ describe('développement', () => {
     }
   })
 
-  it('garde la coquille pour lui, même derrière le proxy', async () => {
-    // Elle porte l'état embarqué : la laisser au proxy rendrait la page que
-    // Vite sert depuis `index.html`, sans état dedans.
+  it('keeps the shell to itself, even behind the proxy', async () => {
+    // It carries the embedded state: leaving it to the proxy would render the
+    // page Vite serves from `index.html`, with no state inside.
     const vite = Fastify({ logger: false })
     vite.get('/regie', async (_request, reply) => reply.send('coquille de Vite'))
     const origineVite = await vite.listen({ host: '127.0.0.1', port: 0 })
@@ -216,28 +216,27 @@ describe('développement', () => {
     }
   })
 
-  it('préfère Vite au bundle construit quand les deux sont là', async () => {
+  it('prefers Vite over the built bundle when both are there', async () => {
     const bundle = bundleFactice()
     await demarrer({ controlBundle: () => bundle, viteOrigin: 'http://127.0.0.1:1' })
 
     /*
-     * L'ordre inverse semblait plus prudent — un poste installé n'a pas de
-     * Vite, une variable qui traîne ne doit pas le détourner — et il rendait le
-     * développement impossible. `pnpm test` construit le bundle : un `dist/`
-     * vieux de trois jours prenait alors le pas sur le serveur qui tourne. On
-     * développait sur une régie compilée, sans rechargement à chaud, et
-     * l'extension Vue refusait d'inspecter une page qu'elle voyait en mode
-     * production.
+     * The reverse order looked more careful — an installed machine has no Vite, a
+     * stray variable must not divert it — and it made development impossible.
+     * `pnpm test` builds the bundle: a three-day-old `dist/` then took precedence
+     * over the running server. One developed against a compiled control app, with
+     * no hot reload, and the Vue extension refused to inspect a page it saw as
+     * being in production mode.
      *
-     * Un `dist/` est un artefact ; une origine Vite est une intention.
+     * A `dist/` is an artefact; a Vite origin is an intention.
      */
     const html = await (await fetch(`${origin}/regie`)).text()
     expect(html).toContain('@vite/client')
     expect(html).not.toContain('/regie/assets/index-abc123.js')
   })
 
-  it('sert le bundle dès qu’aucune origine Vite n’est annoncée', async () => {
-    // Le cas du poste installé : la variable n'y est jamais posée.
+  it('serves the bundle as soon as no Vite origin is announced', async () => {
+    // The installed machine's case: the variable is never set there.
     const bundle = bundleFactice()
     await demarrer({ controlBundle: () => bundle })
 
@@ -247,8 +246,8 @@ describe('développement', () => {
   })
 })
 
-describe('autonomie de la page', () => {
-  it('ne référence aucune ressource hors de son origine', () => {
+describe('the page\'s self-sufficiency', () => {
+  it('references no resource outside its own origin', () => {
     const html = renderControlShell({
       initialPayload: { roomName: 'Track #1' } as never,
       assets: productionAssets(manifesteTemporaire()),
@@ -256,42 +255,42 @@ describe('autonomie de la page', () => {
     })
 
     /*
-     * L'invariant, sous la forme qu'il a prise depuis la console : aucune
-     * ressource hors de l'origine servie. Il pèse plus lourd ici — la machine
-     * de salle tourne parfois sans réseau du tout.
+     * The invariant, in the shape it took on the console: no resource outside the
+     * served origin. It weighs more here — the room machine sometimes runs with no
+     * network at all.
      */
     for (const url of [...html.matchAll(/(?:src|href)="([^"]+)"/g)].map((trouve) => trouve[1]!)) {
       expect(url.startsWith('/')).toBe(true)
     }
   })
 
-  it('donne à Vite le même préfixe, pour que le développement ne triche pas', () => {
+  it('gives Vite the same prefix, so development does not cheat', () => {
     const assets = developmentAssets()
     for (const url of [...assets.scripts, ...assets.styles]) {
       expect(url.startsWith('/regie/')).toBe(true)
     }
   })
 
-  it('titre la fenêtre avec l’événement, qui n’est pas une constante du binaire', () => {
+  it('titles the window with the event, which is no constant of the binary', () => {
     const html = renderControlShell({
       initialPayload: {} as never,
       assets: { scripts: [], styles: [] },
       eventName: 'Cloud Nord 2027',
     })
 
-    // C'est la même machine qui servira l'édition suivante, et la barre de
-    // fenêtre est le premier endroit où un nom périmé se remarque.
+    // The same machine will serve next year's edition, and the window bar is the
+    // first place a stale name gets noticed.
     expect(html).toContain('<title>Régie — Cloud Nord 2027</title>')
   })
 
-  it('échappe ce qui pourrait fermer la balise du script d’état', () => {
+  it('escapes anything that could close the state script tag', () => {
     const html = renderControlShell({
       initialPayload: { roomName: '</script><script>alert(1)</script>' } as never,
       assets: { scripts: [], styles: [] },
     })
 
-    // Le nom d'une salle vient du hub, pas du poste : il n'a rien à faire dans
-    // la grammaire de la page qui le transporte.
+    // A room's name comes from the hub, not from the machine: it has no business
+    // in the grammar of the page carrying it.
     expect(html).not.toContain('</script><script>alert(1)')
     expect(html).toContain('\\u003c/script>')
   })
@@ -311,7 +310,7 @@ function manifesteTemporaire(): string {
   return chemin
 }
 
-/** Le même, avec les fichiers derrière : de quoi servir pour de vrai. */
+/** The same, with the files behind it: enough to serve for real. */
 function bundleFactice(): { directory: string; manifest: string } {
   const manifest = manifesteTemporaire()
   mkdirSync(join(dir, 'assets'), { recursive: true })

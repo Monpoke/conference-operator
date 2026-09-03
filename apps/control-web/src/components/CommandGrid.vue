@@ -2,7 +2,7 @@
 import { Button, Key } from '@cloudnord/components'
 import { useActionsStore } from '../stores/actions.js'
 
-/** Une commande de la grille : sa valeur, son libellé, sa touche s'il y en a une. */
+/** A command in the grid: its value, its label, its key if it has one. */
 export interface Command {
   value: string
   label: string
@@ -10,17 +10,17 @@ export interface Command {
 }
 
 /**
- * Une grille de commandes exclusives — un mode d'écran, un rôle de scène.
+ * A grid of mutually exclusive commands — a screen mode, a scene role.
  *
- * Le bouton « actif » ne dit pas ce qu'on a demandé, il dit **où la salle en
- * est** : il suit la charge utile, pas le clic. C'est la règle du store
- * d'actions, et elle se voit ici — rien n'écrit dans l'état au clic.
+ * The "active" button does not say what was asked for, it says **where the room
+ * stands**: it follows the payload, not the click. That is the actions store's
+ * rule, and it shows here — nothing writes into the state on click.
  */
 const props = defineProps<{
   commands: Command[]
-  /** La valeur en vigueur, telle que le flux la rapporte. */
+  /** The value in force, as the stream reports it. */
   current: string | null
-  /** Ce qu'on poste pour une valeur donnée. */
+  /** What gets posted for a given value. */
   build: (value: string) => Record<string, unknown>
 }>()
 

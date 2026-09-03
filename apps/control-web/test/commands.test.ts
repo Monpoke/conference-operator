@@ -153,7 +153,7 @@ describe('message à la console', () => {
     const wrapper = mount(MessagePanel)
 
     await wrapper.get('#message-text').setValue('Le micro coupe')
-    await wrapper.get('#message-niveau').setValue('urgent')
+    await wrapper.get('#message-level').setValue('urgent')
     await wrapper.get('#message-text').trigger('keydown.enter')
     await flushPromises()
 

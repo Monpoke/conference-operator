@@ -165,7 +165,7 @@ const spoken = computed(
         <span class="text-[10px] font-semibold tracking-[.12em] text-dim uppercase">
           Mémoire
         </span>
-        <span :class="`niveau-${memory.level}`" class="ml-auto text-xs font-semibold tabular-nums">
+        <span :class="`level-${memory.level}`" class="ml-auto text-xs font-semibold tabular-nums">
           {{ memory.part == null ? '—' : `${memory.percent} %` }}
         </span>
       </div>

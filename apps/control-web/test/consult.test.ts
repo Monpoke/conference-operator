@@ -173,7 +173,7 @@ describe('timeline', () => {
     // La timeline fait une journée : sans surlignage, on ouvre la modale sur un
     // mur de titres où retrouver l'heure prend plus de temps qu'on n'en a.
     const lignes = wrapper.findAll('[data-role="timeline"] > div')
-    expect(lignes[1]?.attributes('data-actuel')).toBe('true')
+    expect(lignes[1]?.attributes('data-current')).toBe('true')
     expect(lignes[0]?.classes()).toContain('opacity-35')
   })
 

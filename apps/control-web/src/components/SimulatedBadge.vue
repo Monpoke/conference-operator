@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
- * Rien ne distingue à l'écran un enregistrement simulé d'un vrai : mêmes
- * boutons, même chronomètre, même sidecar écrit. La seule différence est
- * qu'aucune caméra n'est branchée derrière — d'où ce rappel partout où l'on
- * croit piloter OBS.
+ * Nothing on screen tells a simulated recording from a real one: same buttons,
+ * same stopwatch, same sidecar written. The only difference is that no camera is
+ * plugged in behind it — hence this reminder everywhere one believes one is
+ * driving OBS.
  */
 defineProps<{ when: boolean }>()
 </script>

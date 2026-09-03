@@ -290,13 +290,13 @@ describe('bloc OBS', () => {
 describe('menu des écrans', () => {
   it('n’ajoute le mur public que quand la salle en connaît l’adresse', async () => {
     const sans = mount(ScreensMenu, { props: { payload: payload() } })
-    await sans.get('[data-role="btn-ecrans"]').trigger('click')
+    await sans.get('[data-role="btn-screens"]').trigger('click')
     expect(sans.text()).not.toContain('Mur public')
 
     const avec = mount(ScreensMenu, {
       props: { payload: payload({ wall: { url: 'https://mur.example', qrSvg: '' } }) },
     })
-    await avec.get('[data-role="btn-ecrans"]').trigger('click')
+    await avec.get('[data-role="btn-screens"]').trigger('click')
 
     // Un lien mort dans cette liste enverrait chercher une panne de réseau là
     // où il n'y a qu'un réglage absent.
@@ -305,7 +305,7 @@ describe('menu des écrans', () => {
 
   it('ouvre chaque écran dans un autre onglet', async () => {
     const wrapper = mount(ScreensMenu, { props: { payload: payload() } })
-    await wrapper.get('[data-role="btn-ecrans"]').trigger('click')
+    await wrapper.get('[data-role="btn-screens"]').trigger('click')
 
     // Ouvrir la projection dans la fenêtre de régie remplacerait les commandes
     // par l'écran de salle, en pleine intervention.

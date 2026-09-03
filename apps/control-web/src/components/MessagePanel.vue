@@ -4,11 +4,11 @@ import { ref } from 'vue'
 import { useActionsStore } from '../stores/actions.js'
 
 /**
- * Un mot à la console, depuis la salle.
+ * A word to the console, from the room.
  *
- * Part par la file de remontée : c'est ce que dit la mention sous le champ, et
- * c'est vrai — un message envoyé hors ligne arrivera quand même. Le dire évite
- * qu'on renonce à demander de l'aide au moment précis où l'on en a besoin.
+ * It leaves through the uplink queue: that is what the note under the field says,
+ * and it is true — a message sent offline will arrive all the same. Saying so
+ * stops people giving up on asking for help at the exact moment they need it.
  */
 const LEVELS = [
   { value: 'info', label: 'Info' },
@@ -24,10 +24,10 @@ async function send(): Promise<void> {
   const trimmed = text.value.trim()
   if (trimmed.length === 0) return
   /*
-   * Le champ se vide avant la réponse, et c'est le seul endroit où l'on
-   * s'allowed à ne pas attendre : le message part par la file, il n'a pas
-   * d'état à l'écran à contredire, et retaper une phrase parce que le poste a
-   * mis une seconde à répondre est ce qui décourage de la retaper.
+   * The field clears before the response, and it is the only place we allow
+   * ourselves not to wait: the message leaves through the queue, it has no state
+   * on screen to contradict, and retyping a sentence because the machine took a
+   * second to answer is what discourages retyping it.
    */
   text.value = ''
   await actions.act({ action: 'message.send', text: trimmed, level: level.value })
@@ -37,8 +37,8 @@ async function send(): Promise<void> {
 <template>
   <Panel title="Message à la console">
     <!--
-      Repasse sur deux lignes quand la colonne se resserre : un champ de message
-      réduit à six caractères ne se relit pas avant d'envoyer.
+      Wraps onto two lines when the column narrows: a message field squeezed to
+      six characters cannot be read back before sending.
     -->
     <div class="flex flex-wrap gap-1.5">
       <input
@@ -52,7 +52,7 @@ async function send(): Promise<void> {
       />
       <div class="flex flex-1 gap-1.5">
         <select
-          id="message-niveau"
+          id="message-level"
           v-model="level"
           class="w-auto shrink-0 rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text focus:border-brand focus:outline-none"
         >

@@ -10,7 +10,7 @@ import {
 } from '@cloudnord/contract'
 import { timelinePosition } from '@cloudnord/program/selectors'
 import {
-  FUSEAU_PAR_DEFAUT,
+  DEFAULT_TIMEZONE,
   openFeedbackUrl,
   sessionsForRoom,
   type Program,
@@ -153,7 +153,7 @@ export class DisplayServer {
         state,
         roomName,
         event: null,
-        timezone: FUSEAU_PAR_DEFAUT,
+        timezone: DEFAULT_TIMEZONE,
         sessions: [],
         sponsorTiers: [],
         diagnostics,
@@ -251,7 +251,7 @@ export class DisplayServer {
     const cached = this.options.program()
     const session = cached?.program.sessions.find((creneau) => creneau.id === sessionId) ?? null
     if (session == null) return null
-    const url = openFeedbackUrl(session, projet, cached?.program.timezone ?? FUSEAU_PAR_DEFAUT)
+    const url = openFeedbackUrl(session, projet, cached?.program.timezone ?? DEFAULT_TIMEZONE)
     if (url == null) return null
 
     this.feedbackCacheKey = sessionId

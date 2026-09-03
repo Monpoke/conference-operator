@@ -16,7 +16,7 @@ import {
   stateOfSlots,
   type SessionStatuses,
 } from '@cloudnord/room-state'
-import { FUSEAU_PAR_DEFAUT, sessionsForRoom } from '@cloudnord/program'
+import { DEFAULT_TIMEZONE, sessionsForRoom } from '@cloudnord/program'
 import { regieLock } from '@cloudnord/db/hub'
 import type { HubDatabase } from '../db.js'
 import type { Services } from '../context.js'
@@ -208,7 +208,7 @@ export function vueDeRegie(services: Services, roomId: string, at: number): Cont
     roomId,
     roomName: salle.name,
     event: services.identity.get(),
-    timezone: snapshot?.program.timezone ?? FUSEAU_PAR_DEFAUT,
+    timezone: snapshot?.program.timezone ?? DEFAULT_TIMEZONE,
     serverTime: new Date(at).toISOString(),
     simulatedClock: services.clock.simulated,
 

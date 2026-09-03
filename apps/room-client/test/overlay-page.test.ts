@@ -3,7 +3,7 @@
 // code serveur appeler `document` sans que rien ne proteste.
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
-import { aplatirCouchesHtml } from '@cloudnord/ui'
+import { flattenLayersInHtml } from '@cloudnord/ui'
 import { renderOverlayPage } from '../src/core/overlay-page.js'
 import type { DisplayPayload } from '../src/core/display-server.js'
 
@@ -41,7 +41,7 @@ const ETAT = {
 } as unknown as DisplayPayload
 
 function monterHabillage(payload: DisplayPayload = ETAT): void {
-  document.documentElement.innerHTML = aplatirCouchesHtml(
+  document.documentElement.innerHTML = flattenLayersInHtml(
     renderOverlayPage({ initialPayload: payload }),
   )
   for (const script of document.querySelectorAll('script:not([type])')) {

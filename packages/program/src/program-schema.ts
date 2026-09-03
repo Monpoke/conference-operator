@@ -2,14 +2,15 @@ import { z } from 'zod'
 import type { Program } from './model.js'
 
 /**
- * Schéma zod du modèle *normalisé* (à ne pas confondre avec `raw-schema.ts`, qui
- * décrit le JSON amont).
+ * Zod schema of the *normalized* model (not to be confused with `raw-schema.ts`,
+ * which describes the upstream JSON).
  *
- * Sert à valider un snapshot reçu sur le fil ou relu depuis le cache SQLite :
- * le client ne doit pas afficher un programme corrompu sur le projecteur.
+ * Used to validate a snapshot received over the wire or read back from the SQLite
+ * cache: the client must not show a corrupted program on the projector.
  *
- * Les interfaces de `model.ts` restent la référence pour la lecture ; l'assertion
- * de compatibilité en fin de fichier fait échouer le typecheck si les deux dérivent.
+ * The interfaces of `model.ts` remain the reference for reading; the
+ * compatibility assertion at the end of the file fails the typecheck if the two
+ * drift apart.
  */
 
 export const socialSchema = z.object({
@@ -61,27 +62,27 @@ export const sessionSchema = z.object({
   roomId: z.string().nullable(),
   kind: sessionKindSchema,
   /**
-   * Projection d'un créneau d'une autre salle. Voir `Session.sharedFrom`.
+   * Projection of a slot from another room. See `Session.sharedFrom`.
    *
-   * Valeur par défaut, et non champ requis : un cache local écrit avant que ce
-   * champ n'existe doit continuer de se relire. Une salle qui redémarre hub
-   * injoignable n'a que ce cache.
+   * A default value, and not a required field: a local cache written before this
+   * field existed must keep reading back. A room restarting with an unreachable
+   * hub only has that cache.
    */
   sharedFrom: z.string().nullable().default(null),
   /**
-   * Identifiant OpenFeedback corrigé depuis la console, ou `null`.
+   * OpenFeedback identifier corrected from the console, or `null`.
    *
-   * Champ posé par le hub sur le programme qu'il **sert**, comme `kind` quand
-   * une décision le contredit et comme `sharedFrom` : c'est ce qui garantit que
-   * la console et le QR projeté en salle ne peuvent pas diverger. La salle
-   * dessine ses QR hors ligne depuis ce cache — lui faire recevoir la
-   * correction par un autre canal reviendrait à tenir la même vérité à deux
-   * endroits, et à projeter l'ancienne adresse devant le public le jour où les
-   * deux se désynchroniseraient.
+   * A field set by the hub on the program it **serves**, like `kind` when a
+   * decision contradicts it and like `sharedFrom`: that is what guarantees the
+   * console and the QR code projected in the room cannot diverge. The room draws
+   * its QR codes offline from this cache — having it receive the correction
+   * through another channel would mean holding the same truth in two places, and
+   * projecting the old address in front of the audience the day the two fell out
+   * of sync.
    *
-   * `null` — le cas normal — veut dire « l'identifiant de l'export fait foi ».
-   * Valeur par défaut et non champ requis, pour la même raison que
-   * `sharedFrom` : un cache écrit avant ce champ doit continuer de se relire.
+   * `null` — the normal case — means "the export's identifier is authoritative".
+   * A default value and not a required field, for the same reason as
+   * `sharedFrom`: a cache written before this field must keep reading back.
    */
   feedbackId: z.string().nullable().default(null),
   speakers: z.array(speakerSchema),

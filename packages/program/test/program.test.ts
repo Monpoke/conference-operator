@@ -23,57 +23,57 @@ const HANDS_ON = 'hands-on'
 
 const at = (iso: string): number => Date.parse(iso)
 
-describe('normalizeProgram — export Cloud Nord 2026 réel', () => {
+describe('normalizeProgram — real Cloud Nord 2026 export', () => {
   const program = normalizeProgram(rawFixture)
 
-  it('expose les tracks amont comme salles', () => {
+  it('exposes the upstream tracks as rooms', () => {
     expect(program.rooms.map((room) => room.id)).toEqual([TRACK_1, TRACK_2, HANDS_ON])
   })
 
-  it('conserve les 27 sessions et les répartit par salle', () => {
+  it('keeps the 27 sessions and spreads them across rooms', () => {
     expect(program.sessions).toHaveLength(27)
     expect(sessionsForRoom(program, TRACK_1)).toHaveLength(15)
     expect(sessionsForRoom(program, TRACK_2)).toHaveLength(9)
     expect(sessionsForRoom(program, HANDS_ON)).toHaveLength(3)
   })
 
-  it("ne relève aucune anomalie bloquante sur l'export de référence", () => {
+  it('reports no blocking anomaly on the reference export', () => {
     const blocking = program.issues.filter((issue) =>
       ['unknown-speaker', 'unknown-track', 'missing-date', 'duplicate-id'].includes(issue.code),
     )
     expect(blocking).toEqual([])
   })
 
-  it('résout les speakers de chaque talk', () => {
+  it('resolves the speakers of every talk', () => {
     const honeySwamp = program.sessions.find((s) => s.id === 'cmqav0qto03qe01nsitbr18cn')
     expect(honeySwamp?.speakers).toHaveLength(1)
     expect(honeySwamp?.speakers[0]?.name).toBeTruthy()
     expect(honeySwamp?.category?.name).toBeTruthy()
   })
 
-  it('distingue les talks des créneaux sans speaker', () => {
+  it('tells talks from slots with no speaker', () => {
     const breaks = sessionsForRoom(program, TRACK_1).filter((s) => s.kind === 'break')
     expect(breaks.map((s) => s.title)).toContain('Déjeuner')
     expect(breaks.map((s) => s.title)).toContain('Pause croissants')
     const keynote = program.sessions.find((s) => s.id === 'SCGAR8iJEoCyZxxLyfbb')
-    // Sans speakerIds en amont, la keynote est un « break » : heuristique assumée.
+    // With no upstream speakerIds, the keynote is a "break": an assumed heuristic.
     expect(keynote?.kind).toBe('break')
   })
 
-  it('trie les tiers de sponsors sur `order` (l\'export ne le fait pas)', () => {
+  it("sorts the sponsor tiers on `order` (the export does not)", () => {
     expect(program.sponsorTiers.map((tier) => tier.order)).toEqual([0, 1, 2, 3])
     expect(program.sponsorTiers[0]?.name).toBe('Gold')
     expect(program.sponsorTiers[0]?.sponsors).toHaveLength(5)
   })
 
-  it('remonte le thème et le fuseau de l\'événement', () => {
+  it("carries the event's theme and timezone through", () => {
     expect(program.timezone).toBe('Europe/Paris')
     expect(program.event.name).toBe('Cloud Nord 2026')
     expect(program.event.theme.color).toBe('#1c71d8')
     expect(program.event.logoUrl).toMatch(/^https:\/\//)
   })
 
-  it('liste les assets distants à précharger, sans doublon', () => {
+  it('lists the remote assets to preload, with no duplicates', () => {
     const urls = assetUrls(program)
     expect(urls).toHaveLength(34)
     expect(new Set(urls).size).toBe(urls.length)
@@ -81,25 +81,25 @@ describe('normalizeProgram — export Cloud Nord 2026 réel', () => {
   })
 })
 
-describe('timeline d\'une salle', () => {
+describe("a room's timeline", () => {
   const program = normalizeProgram(rawFixture)
 
-  it('trouve la session en cours et la suivante', () => {
+  it('finds the running session and the next one', () => {
     const position = roomTimelinePosition(program, TRACK_1, at('2026-10-30T10:20:00Z'))
     expect(position.current?.id).toBe('cmqav0qto03qe01nsitbr18cn')
     expect(position.next?.id).toBe('eryK7jXLxb4r7DsPTmnC')
     expect(position.previous?.id).toBe('d88TFwa7AfvX9eEIgg5J')
   })
 
-  it('ne retourne aucune session en cours dans un inter-créneau', () => {
-    // 08:45 → 08:50 : cinq minutes de battement entre keynote et premier talk.
+  it('returns no running session in a gap between slots', () => {
+    // 08:45 → 08:50: five minutes between the keynote and the first talk.
     const position = roomTimelinePosition(program, TRACK_1, at('2026-10-30T08:47:00Z'))
     expect(position.current).toBeNull()
     expect(position.next?.id).toBe('cmotqj1r1008401pxxsm6y2fu')
     expect(position.previous?.id).toBe('SCGAR8iJEoCyZxxLyfbb')
   })
 
-  it('gère avant l\'ouverture et après la clôture', () => {
+  it('handles before the doors open and after the close', () => {
     const before = roomTimelinePosition(program, TRACK_1, at('2026-10-30T05:00:00Z'))
     expect(before.current).toBeNull()
     expect(before.previous).toBeNull()
@@ -111,72 +111,71 @@ describe('timeline d\'une salle', () => {
     expect(after.previous?.title).toBe('Apéro Networking')
   })
 
-  it('isole bien les salles entre elles', () => {
+  it('keeps the rooms properly isolated from each other', () => {
     const nowMs = at('2026-10-30T09:00:00Z')
     expect(currentSession(program, HANDS_ON, nowMs)?.title).toContain('usage responsable')
     expect(currentSession(program, TRACK_1, nowMs)?.title).toBe('IA for OPS on Scaleway')
   })
 
-  it('formate les horaires dans le fuseau de l\'événement, pas celui du PC', () => {
+  it("formats times in the event's timezone, not the machine's", () => {
     const session = program.sessions.find((s) => s.id === 'cmqav0qto03qe01nsitbr18cn')!
-    // 10:00 UTC → 11:00 à Paris (CET, +01:00 le 30 octobre).
+    // 10:00 UTC → 11:00 in Paris (CET, +01:00 on 30 October).
     expect(formatSessionRange(session, program.timezone)).toBe('11:00 – 11:50')
   })
 
-  it('retourne null sur une salle inconnue plutôt que de lever', () => {
+  it('returns null on an unknown room rather than throwing', () => {
     expect(currentSession(program, 'salle-inexistante', at('2026-10-30T10:20:00Z'))).toBeNull()
     expect(nextSession(program, 'salle-inexistante', at('2026-10-30T10:20:00Z'))).toBeNull()
   })
 })
 
-describe('programSchema — validation du modèle normalisé', () => {
+describe('programSchema — validating the normalized model', () => {
   const program = normalizeProgram(rawFixture)
 
-  it('valide le programme réel après normalisation', () => {
+  it('validates the real program after normalization', () => {
     expect(() => programSchema.parse(program)).not.toThrow()
   })
 
-  it('survit à un aller-retour JSON (cache SQLite, transport oRPC)', () => {
+  it('survives a JSON round trip (SQLite cache, oRPC transport)', () => {
     const roundTripped = programSchema.parse(JSON.parse(JSON.stringify(program)))
     expect(roundTripped.sessions).toHaveLength(27)
     expect(roundTripped.sponsorTiers[0]?.name).toBe('Gold')
     expect(roundTripped).toEqual(program)
   })
 
-  it('rejette un snapshot corrompu plutôt que de l\'afficher', () => {
+  it('rejects a corrupted snapshot rather than showing it', () => {
     const corrupted = { ...program, sessions: [{ id: 'x' }] }
     expect(() => programSchema.parse(corrupted)).toThrow()
   })
 })
 
 /**
- * Adresse OpenFeedback, fabriquée sans réseau.
+ * The OpenFeedback address, built with no network.
  *
- * Le QR projeté en salle et le lien affiché dans la console sortent d'ici tous
- * les deux : s'ils divergeaient, le public noterait un talk et le speaker en
- * lirait un autre.
+ * The QR code projected in the room and the link shown in the console both come
+ * from here: if they diverged, the audience would rate one talk and the speaker
+ * would read another.
  */
-describe('lien OpenFeedback', () => {
+describe('OpenFeedback link', () => {
   const program = normalizeProgram(rawFixture)
   const session = program.sessions.find((s) => s.id === 'cmqav0qto03qe01nsitbr18cn')!
 
-  it('suit la route publique /{projet}/{jour}/{session}', () => {
+  it('follows the public /{project}/{day}/{session} route', () => {
     expect(openFeedbackUrl(session, 'cloud-nord-2026', program.timezone)).toBe(
       `https://openfeedback.io/cloud-nord-2026/2026-10-30/${session.id}`,
     )
   })
 
-  it('date le créneau dans le fuseau de l\'événement, pas en UTC', () => {
-    // 23:30 à Paris le 30 octobre, c'est le 30 — mais 22:30 UTC. Lire le jour
-    // en UTC ferait tomber le lien sur une page inexistante une fois sur deux
-    // en soirée.
-    const tardif = { id: 'tardif', startsAt: '2026-10-30T23:30:00+01:00' }
-    expect(openFeedbackUrl(tardif, 'cloud-nord-2026', 'Europe/Paris')).toContain('/2026-10-30/')
+  it("dates the slot in the event's timezone, not in UTC", () => {
+    // 23:30 in Paris on 30 October is the 30th — but 22:30 UTC. Reading the day
+    // in UTC would drop the link on a non-existent page every other evening.
+    const late = { id: 'tardif', startsAt: '2026-10-30T23:30:00+01:00' }
+    expect(openFeedbackUrl(late, 'cloud-nord-2026', 'Europe/Paris')).toContain('/2026-10-30/')
   })
 
-  it('ne fabrique rien sans projet configuré', () => {
-    // Pas de lien vaut mieux qu'un lien mort : il finirait en QR devant deux
-    // cents personnes.
+  it('builds nothing with no project configured', () => {
+    // No link beats a dead link: it would end up as a QR code in front of two
+    // hundred people.
     expect(openFeedbackUrl(session, null, program.timezone)).toBeNull()
     expect(openFeedbackUrl(session, '   ', program.timezone)).toBeNull()
   })

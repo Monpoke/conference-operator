@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
-import { aplatirCouchesHtml } from '@cloudnord/ui'
+import { flattenLayersInHtml } from '@cloudnord/ui'
 import { renderProjectorPage } from '../src/core/display-page.js'
 import { renderOverlayPage } from '../src/core/overlay-page.js'
 
@@ -14,7 +14,7 @@ import { renderOverlayPage } from '../src/core/overlay-page.js'
  * effet alors que l'attribut, lui, changeait bien — signalé deux fois.
  *
  * Depuis le passage à Tailwind, ce test ne tient que grâce à
- * `aplatirCouchesHtml` : happy-dom ignore `@layer`, où vit toute la feuille.
+ * `flattenLayersInHtml` : happy-dom ignore `@layer`, où vit toute la feuille.
  */
 const PAGES: [string, () => string][] = [
   ['projection', renderProjectorPage],
@@ -22,7 +22,7 @@ const PAGES: [string, () => string][] = [
 ]
 
 function monter(html: string): void {
-  document.documentElement.innerHTML = aplatirCouchesHtml(html)
+  document.documentElement.innerHTML = flattenLayersInHtml(html)
 }
 
 describe('visibilité effective', () => {

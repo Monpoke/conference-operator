@@ -8,7 +8,7 @@ import { createORPCClient } from '@orpc/client'
 import { RPCLink as FetchLink } from '@orpc/client/fetch'
 import type { ContractRouterClient } from '@orpc/contract'
 import { contract, NO_EDITING_MARKS } from '@cloudnord/contract'
-import { FUSEAU_PAR_DEFAUT } from '@cloudnord/program'
+import { DEFAULT_TIMEZONE } from '@cloudnord/program'
 import { RoomRuntime } from './runtime.js'
 import { LocalStore } from './store.js'
 import { createObsTransport, keepObsConnected } from './obs-transport.js'
@@ -1283,7 +1283,7 @@ export class RoomApp implements ControlTarget {
       session: state.currentSession,
       roomId: state.roomId,
       roomSlug: config.fileSlug ?? slugify(config.name).slice(0, 16),
-      timezone: cached?.program.timezone ?? FUSEAU_PAR_DEFAUT,
+      timezone: cached?.program.timezone ?? DEFAULT_TIMEZONE,
     })
     /**
      * Le journal de la salle, et pas seulement la console du poste.

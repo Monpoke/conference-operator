@@ -9,12 +9,12 @@ defineProps<{
   type?: string
   placeholder?: string
   /**
-   * Ce que le trousseau doit proposer, et quel clavier ouvrir.
+   * What the keychain should offer, and which keyboard to open.
    *
-   * Sans importance sur un poste de régie, décisifs sur un téléphone : c'est ce
-   * qui décide si l'on tape une adresse à la main au fond d'une salle sombre ou
-   * si le gestionnaire de mots de passe la remplit. Passés à l'`input` et non
-   * laissés en attributs de repli, qui atterriraient sur le `div`.
+   * Irrelevant on a control machine, decisive on a phone: it decides whether you
+   * type an address by hand at the back of a dark room or the password manager
+   * fills it in. Passed to the `input` and not left as fallthrough attributes,
+   * which would land on the `div`.
    */
   autocomplete?: string
   inputmode?: 'text' | 'email' | 'numeric' | 'tel' | 'url' | 'search' | 'none' | 'decimal'

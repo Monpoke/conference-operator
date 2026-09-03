@@ -13,7 +13,7 @@ import { roomBreak } from '@cloudnord/room-state'
 import {
   currentSession,
   nextSession,
-  FUSEAU_PAR_DEFAUT,
+  DEFAULT_TIMEZONE,
   openFeedbackUrl,
   type Session,
 } from '@cloudnord/program'
@@ -237,7 +237,7 @@ export const router = os.router({
       if (snapshot == null) {
         return {
           contentHash: null,
-          timezone: FUSEAU_PAR_DEFAUT,
+          timezone: DEFAULT_TIMEZONE,
           serverTime: nowIso(context),
           // Le réglage se lit quand même : sans programme il n'y a aucun lien à
           // fabriquer, mais la console peut déjà dire s'il en manque un.

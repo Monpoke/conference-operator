@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { normalizeProgram, roomTimelinePosition, sessionsForRoom, type Program } from '../src/index.js'
 
 /**
- * Exports volontairement abîmés : le normaliseur doit dégrader proprement et
- * signaler, jamais lever. Un import partiel le jour J vaut mieux qu'un écran noir.
+ * Deliberately damaged exports: the normalizer must degrade cleanly and report,
+ * never throw. A partial import on the day beats a black screen.
  */
 
 const at = (iso: string): number => Date.parse(iso)
@@ -18,9 +18,9 @@ const baseEvent = {
   formats: [],
 }
 
-describe('normalizeProgram — exports dégradés', () => {
-  it('écarte un lien social qui n\'est pas une URL et le signale', () => {
-    // Cas réel : l'export Cloud Nord contient `link: "LinkedIn"` sur un membre d'équipe.
+describe('normalizeProgram — degraded exports', () => {
+  it('discards a social link that is not a URL and reports it', () => {
+    // Real case: the Cloud Nord export has `link: "LinkedIn"` on a team member.
     const program = normalizeProgram({
       event: baseEvent,
       speakers: [
@@ -42,7 +42,7 @@ describe('normalizeProgram — exports dégradés', () => {
     )
   })
 
-  it('signale un speakerId orphelin sans perdre la session', () => {
+  it('reports an orphan speakerId without losing the session', () => {
     const program = normalizeProgram({
       event: baseEvent,
       speakers: [],
@@ -66,7 +66,7 @@ describe('normalizeProgram — exports dégradés', () => {
     )
   })
 
-  it('signale une salle inconnue mais garde la session dans le programme', () => {
+  it('reports an unknown room but keeps the session in the program', () => {
     const program = normalizeProgram({
       event: baseEvent,
       sessions: [
@@ -86,7 +86,7 @@ describe('normalizeProgram — exports dégradés', () => {
     )
   })
 
-  it('exclut une session sans date exploitable et le signale', () => {
+  it('excludes a session with no usable date and reports it', () => {
     const program = normalizeProgram({
       event: baseEvent,
       sessions: [
@@ -100,7 +100,7 @@ describe('normalizeProgram — exports dégradés', () => {
     expect(program.issues.filter((i) => i.code === 'missing-date')).toHaveLength(2)
   })
 
-  it('déduit la fin d\'une session depuis sa durée, puis depuis la suivante', () => {
+  it('derives a session end from its duration, then from the next one', () => {
     const program = normalizeProgram({
       event: baseEvent,
       sessions: [
@@ -126,18 +126,18 @@ describe('normalizeProgram — exports dégradés', () => {
       ],
     })
 
-    // 09:20 : dans la fenêtre déduite de durationMinutes (09:00 → 09:30).
+    // 09:20: inside the window derived from durationMinutes (09:00 → 09:30).
     expect(sessionsForRoom(program, 'salle-a')[0]?.id).toBe('par-duree')
     expect(timeline(program, at('2026-10-30T09:20:00Z')).current?.id).toBe('par-duree')
-    // 09:40 : au-delà de la durée, donc plus rien en cours.
+    // 09:40: past the duration, so nothing is running.
     expect(timeline(program, at('2026-10-30T09:40:00Z')).current).toBeNull()
-    // 10:30 : sans fin ni durée, la session court jusqu'au début de la suivante.
+    // 10:30: with no end and no duration, the session runs until the next starts.
     expect(timeline(program, at('2026-10-30T10:30:00Z')).current?.id).toBe('par-suivante')
-    // 23:00 : la dernière session n'a aucune borne de fin, elle reste ouverte.
+    // 23:00: the last session has no end bound at all, it stays open.
     expect(timeline(program, at('2026-10-30T23:00:00Z')).current?.id).toBe('derniere')
   })
 
-  it('tolère les champs inconnus d\'un export enrichi en amont', () => {
+  it('tolerates unknown fields from an export enriched upstream', () => {
     const program = normalizeProgram({
       event: { ...baseEvent, champInedit: 42 },
       sessions: [
@@ -156,7 +156,7 @@ describe('normalizeProgram — exports dégradés', () => {
     expect(program.issues).toEqual([])
   })
 
-  it('rejette un JSON structurellement invalide', () => {
+  it('rejects structurally invalid JSON', () => {
     expect(() => normalizeProgram({ pasDEvent: true })).toThrow()
   })
 })

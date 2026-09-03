@@ -14,17 +14,15 @@ import type {
 } from './model.js'
 
 /**
- * Fuseau retenu quand l'export amont n'en donne aucun.
+ * Timezone used when the upstream export gives none.
  *
- * Un repli, pas une hypothèse sur l'événement : tout ce qui affiche une heure
- * lit `program.timezone`, que le normaliseur renseigne toujours. La constante
- * est exportée pour que les rares surfaces qui doivent afficher une heure
- * **avant** d'avoir un programme — la console d'un hub tout juste installé —
- * retombent sur la même valeur que le reste, plutôt que chacune sur la sienne.
+ * A fallback, not an assumption about the event: everything that shows a time
+ * reads `program.timezone`, which the normalizer always fills in. The constant is
+ * exported so that the rare surfaces which must show a time **before** having a
+ * program — the console of a hub that has just been installed — fall back on the
+ * same value as the rest, rather than each on its own.
  */
-export const FUSEAU_PAR_DEFAUT = 'Europe/Paris'
-
-const DEFAULT_TIMEZONE = FUSEAU_PAR_DEFAUT
+export const DEFAULT_TIMEZONE = 'Europe/Paris'
 
 function isHttpUrl(value: string): boolean {
   try {
@@ -41,7 +39,7 @@ function trimToNull(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
-/** Retourne `null` plutôt que `NaN` : un epoch invalide ne doit jamais fuiter. */
+/** Returns `null` rather than `NaN`: an invalid epoch must never leak. */
 function toEpochMs(iso: string | null): number | null {
   if (iso == null) return null
   const ms = Date.parse(iso)
@@ -78,8 +76,8 @@ function normalizeSocials(
     const url = trimToNull(social.link)
     const name = trimToNull(social.name) ?? trimToNull(social.icon) ?? 'link'
     if (url == null) continue
-    // Vu dans l'export réel : `link: "LinkedIn"` au lieu d'une URL. On écarte
-    // plutôt que d'afficher un lien mort sur le projecteur.
+    // Seen in the real export: `link: "LinkedIn"` instead of a URL. We discard
+    // rather than show a dead link on the projector.
     if (!isHttpUrl(url)) {
       issues.push({
         code: 'invalid-social-url',
@@ -94,15 +92,15 @@ function normalizeSocials(
 }
 
 /**
- * Normalise l'export amont en modèle exploitable.
+ * Normalizes the upstream export into a usable model.
  *
- * Ne lève jamais sur des données partielles : les anomalies sont collectées dans
- * `program.issues` pour être affichées dans l'admin. Seul un JSON structurellement
- * invalide (pas d'`event`) fait échouer l'appel.
+ * Never throws on partial data: anomalies are collected in `program.issues` to be
+ * shown in the admin console. Only structurally invalid JSON (no `event`) makes
+ * the call fail.
  *
- * Note : les sessions sans date de début exploitable sont exclues de
- * `program.sessions` — elles ne peuvent être placées sur aucune timeline — et
- * signalées via une issue `missing-date`.
+ * Note: sessions with no usable start date are excluded from `program.sessions` —
+ * they cannot be placed on any timeline — and reported through a `missing-date`
+ * issue.
  */
 export function normalizeProgram(input: unknown): Program {
   const raw = rawProgramSchema.parse(input)
@@ -191,11 +189,11 @@ export function normalizeProgram(input: unknown): Program {
       durationMinutes: rawSession.durationMinutes ?? null,
       roomId,
       kind: speakerIds.length > 0 ? 'talk' : 'break',
-      // Rien n'est projeté à la normalisation : la règle des pauses communes
-      // s'applique sur le programme normalisé, et se relit donc dessus.
+      // Nothing is projected at normalization time: the shared-breaks rule
+      // applies to the normalized program, and is therefore read back from it.
       sharedFrom: null,
-      // L'export ne connaît pas OpenFeedback : la correction, s'il en faut une,
-      // se pose sur le programme servi, pas sur celui qu'on vient de normaliser.
+      // The export knows nothing of OpenFeedback: the correction, if one is
+      // needed, is set on the served program, not on the one just normalized.
       feedbackId: null,
       speakers: resolvedSpeakers,
       category: (rawSession.categoryId != null ? categoryById.get(rawSession.categoryId) : undefined) ?? null,
@@ -208,8 +206,8 @@ export function normalizeProgram(input: unknown): Program {
   }
   sessions.sort((a, b) => a.startsAtMs - b.startsAtMs || a.id.localeCompare(b.id))
 
-  // L'export ne trie pas les tiers : dans le fichier réel, « Gold » (order 0)
-  // arrive en dernier. On trie ici, une fois, pour que l'écran n'ait pas à le faire.
+  // The export does not sort the tiers: in the real file, "Gold" (order 0) comes
+  // last. We sort here, once, so the screen does not have to.
   const sponsorTiers: SponsorTier[] = (raw.sponsors ?? [])
     .map((tier, index): SponsorTier => ({
       id: tier.id,

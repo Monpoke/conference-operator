@@ -3,7 +3,7 @@
 // code serveur appeler `document` sans que rien ne proteste.
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { aplatirCouchesHtml } from '@cloudnord/ui'
+import { flattenLayersInHtml } from '@cloudnord/ui'
 import { renderOverlayLivePage } from '../src/core/overlay-live-page.js'
 import type { DisplayPayload } from '../src/core/display-server.js'
 
@@ -26,7 +26,7 @@ function poserStyle(style: string | null): void {
 }
 
 function monterBandeau(payload: DisplayPayload): void {
-  document.documentElement.innerHTML = aplatirCouchesHtml(
+  document.documentElement.innerHTML = flattenLayersInHtml(
     renderOverlayLivePage({ initialPayload: payload }),
   )
   for (const script of document.querySelectorAll('script:not([type])')) {

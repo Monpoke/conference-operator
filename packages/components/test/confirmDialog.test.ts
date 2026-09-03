@@ -3,27 +3,26 @@ import { afterEach, describe, expect, it } from 'vitest'
 import ConfirmDialog from '../src/ui/ConfirmDialog.vue'
 
 /**
- * Les deux réponses, au clavier.
+ * The two answers, from the keyboard.
  *
- * Dans une salle sombre, viser un bouton coûte plus cher qu'appuyer sur une
- * touche : c'est la raison d'être des raccourcis d'une lettre de toute la
- * régie, et une question qui interrompt un talk est l'endroit où ça compte le
- * plus.
+ * In a dark room, aiming at a button costs more than pressing a key: that is the
+ * reason for the single-letter shortcuts throughout the control app, and a
+ * question that interrupts a talk is where it matters most.
  *
- * Les lettres étaient des **étiquettes**, liées par qui montait la modale. Deux
- * questions sur quatre en avaient, donc deux sur quatre répondaient au clavier,
- * et rien à l'écran ne les distinguait. Elles sont désormais imprimées et liées
- * au même endroit : elles ne peuvent plus diverger.
+ * The letters used to be **labels**, bound by whoever mounted the dialog. Two
+ * questions out of four had them, so two out of four answered the keyboard, and
+ * nothing on screen told them apart. They are now printed and bound in the same
+ * place: they can no longer diverge.
  */
 
-/** Le portail de Reka rend hors du composant : c'est le document qu'on lit. */
-const monter = (props: Record<string, unknown> = {}) =>
+/** Reka's portal renders outside the component: the document is what we read. */
+const mountDialog = (props: Record<string, unknown> = {}) =>
   mount(ConfirmDialog, {
     props: { open: true, title: 'Terminer en avance ?', confirmLabel: 'Terminer', ...props },
     attachTo: document.body,
   })
 
-const frappe = (key: string, options: KeyboardEventInit = {}): void => {
+const press = (key: string, options: KeyboardEventInit = {}): void => {
   document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, ...options }))
 }
 
@@ -31,23 +30,23 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-describe('ConfirmDialog au clavier', () => {
-  it('imprime Y et N sans qu’on ait à les demander', async () => {
-    const wrapper = monter()
+describe('ConfirmDialog from the keyboard', () => {
+  it('prints Y and N without being asked', async () => {
+    const wrapper = mountDialog()
     await flushPromises()
 
-    // Une modale muette au clavier et une modale qui répond se ressemblaient
-    // trait pour trait : le défaut est ce qui les réunit.
+    // A dialog that is deaf to the keyboard and one that answers looked exactly
+    // alike: the defect is what brought them together.
     expect(document.body.textContent).toContain('Y')
     expect(document.body.textContent).toContain('N')
     wrapper.unmount()
   })
 
-  it('confirme sur « y », et referme comme le ferait le clic', async () => {
-    const wrapper = monter()
+  it('confirms on "y", and closes as a click would', async () => {
+    const wrapper = mountDialog()
     await flushPromises()
 
-    frappe('y')
+    press('y')
     await flushPromises()
 
     expect(wrapper.emitted('confirm')).toHaveLength(1)
@@ -55,24 +54,24 @@ describe('ConfirmDialog au clavier', () => {
     wrapper.unmount()
   })
 
-  it('accepte « o » autant que « y »', async () => {
-    // La moitié des opérateurs tape l'un, l'autre moitié l'autre, et se tromper
-    // de lettre sur cette question-là coûte un talk.
-    const wrapper = monter()
+  it('accepts "o" as readily as "y"', async () => {
+    // Half the operators type one, the other half the other, and getting the
+    // letter wrong on that question costs a talk.
+    const wrapper = mountDialog()
     await flushPromises()
 
-    frappe('o')
+    press('o')
     await flushPromises()
 
     expect(wrapper.emitted('confirm')).toHaveLength(1)
     wrapper.unmount()
   })
 
-  it('referme sur « n » sans rien confirmer', async () => {
-    const wrapper = monter()
+  it('closes on "n" without confirming anything', async () => {
+    const wrapper = mountDialog()
     await flushPromises()
 
-    frappe('n')
+    press('n')
     await flushPromises()
 
     expect(wrapper.emitted('confirm')).toBeUndefined()
@@ -80,15 +79,15 @@ describe('ConfirmDialog au clavier', () => {
     wrapper.unmount()
   })
 
-  it('laisse au navigateur ce qui est tenu avec Ctrl, Cmd ou Alt', async () => {
-    // `Ctrl+N` ouvre une fenêtre : lire la seule lettre annulerait la question
-    // au passage, et rien à l'écran ne dirait d'où ça vient.
-    const wrapper = monter()
+  it('leaves to the browser what is held with Ctrl, Cmd or Alt', async () => {
+    // `Ctrl+N` opens a window: reading the letter alone would cancel the question
+    // along the way, and nothing on screen would say where it came from.
+    const wrapper = mountDialog()
     await flushPromises()
 
-    frappe('n', { ctrlKey: true })
-    frappe('y', { metaKey: true })
-    frappe('y', { altKey: true })
+    press('n', { ctrlKey: true })
+    press('y', { metaKey: true })
+    press('y', { altKey: true })
     await flushPromises()
 
     expect(wrapper.emitted('confirm')).toBeUndefined()
@@ -96,43 +95,30 @@ describe('ConfirmDialog au clavier', () => {
     wrapper.unmount()
   })
 
-  it('laisse au champ la frappe qui lui est destinée', async () => {
+  it('leaves the field the keystroke meant for it', async () => {
     /*
-     * La modale de remise à zéro arme son bouton en faisant taper un mot. Une
-     * lettre saisie là-dedans ne doit pas répondre à la question derrière — et
-     * un `<select>` compte autant qu'un champ texte.
+     * The reset dialog arms its button by making you type a word. A letter typed
+     * in there must not answer the question behind it — and a `<select>` counts
+     * as much as a text field.
      */
-    const wrapper = monter()
+    const wrapper = mountDialog()
     await flushPromises()
-    const champ = document.createElement('input')
-    document.body.appendChild(champ)
+    const field = document.createElement('input')
+    document.body.appendChild(field)
 
-    champ.dispatchEvent(new KeyboardEvent('keydown', { key: 'y', bubbles: true }))
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'y', bubbles: true }))
     await flushPromises()
 
     expect(wrapper.emitted('confirm')).toBeUndefined()
     wrapper.unmount()
   })
 
-  it('ne contourne pas un bouton désarmé', async () => {
-    // La touche est le bouton, pas un moyen de passer devant.
-    const wrapper = monter({ confirmDisabled: true })
+  it('does not get around a disarmed button', async () => {
+    // The key is the button, not a way past it.
+    const wrapper = mountDialog({ confirmDisabled: true })
     await flushPromises()
 
-    frappe('y')
-    await flushPromises()
-
-    expect(wrapper.emitted('confirm')).toBeUndefined()
-    expect(wrapper.emitted('update:open')).toBeUndefined()
-    wrapper.unmount()
-  })
-
-  it('n’imprime ni ne lie rien quand la lettre est retirée', async () => {
-    const wrapper = monter({ confirmKey: null, cancelKey: null })
-    await flushPromises()
-
-    frappe('y')
-    frappe('n')
+    press('y')
     await flushPromises()
 
     expect(wrapper.emitted('confirm')).toBeUndefined()
@@ -140,13 +126,26 @@ describe('ConfirmDialog au clavier', () => {
     wrapper.unmount()
   })
 
-  it('reste muette une fois refermée', async () => {
-    // L'écouteur vit avec le composant, pas avec l'ouverture : sans ce test,
-    // une modale fermée répondrait encore au clavier de la page derrière.
-    const wrapper = monter({ open: false })
+  it('neither prints nor binds anything when the letter is removed', async () => {
+    const wrapper = mountDialog({ confirmKey: null, cancelKey: null })
     await flushPromises()
 
-    frappe('y')
+    press('y')
+    press('n')
+    await flushPromises()
+
+    expect(wrapper.emitted('confirm')).toBeUndefined()
+    expect(wrapper.emitted('update:open')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('stays deaf once closed', async () => {
+    // The listener lives with the component, not with the opening: without this
+    // test, a closed dialog would still answer the keyboard of the page behind.
+    const wrapper = mountDialog({ open: false })
+    await flushPromises()
+
+    press('y')
     await flushPromises()
 
     expect(wrapper.emitted('confirm')).toBeUndefined()

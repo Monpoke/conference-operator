@@ -112,9 +112,9 @@ function auClavier(event: KeyboardEvent): void {
     return
   }
   if (props.confirmDisabled === true) return
-  // Fermée d'abord, comme le fait le clic sur le bouton : ce que le geste
-  // déclenche peut ouvrir la question suivante, et elle ne doit pas se faire
-  // recouvrir par celle qu'on vient de refermer.
+  // Closed first, as the button click does: what the gesture triggers can open
+  // the next question, and it must not be covered by the one we have just
+  // closed.
   open.value = false
   emit('confirm')
 }

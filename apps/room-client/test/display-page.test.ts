@@ -3,7 +3,7 @@
 // code serveur appeler `document` sans que rien ne proteste.
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { aplatirCouchesHtml } from '@cloudnord/ui'
+import { flattenLayersInHtml } from '@cloudnord/ui'
 import { renderProjectorPage } from '../src/core/display-page.js'
 import type { DisplayPayload } from '../src/core/display-server.js'
 
@@ -156,7 +156,7 @@ const MINUTEURS_REELS: number[] = []
 
 function monterEcran(payload: DisplayPayload = ETAT): void {
   centre = null
-  document.documentElement.innerHTML = aplatirCouchesHtml(
+  document.documentElement.innerHTML = flattenLayersInHtml(
     renderProjectorPage({ initialPayload: payload }),
   )
   // happy-dom ne calcule aucune mise en page : on observe l'intention, qui est

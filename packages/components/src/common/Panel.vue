@@ -11,10 +11,10 @@ defineProps<{
   shrink to scroll inside itself asks for it explicitly.
 -->
 <template>
-  <section class="flex shrink-0 flex-col rounded-xl border border-bord bg-surface p-4">
+  <section class="flex shrink-0 flex-col rounded-xl border border-edge bg-surface p-4">
     <h2
       v-if="title != null"
-      class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-attenue uppercase"
+      class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase"
     >
       {{ title }}
     </h2>

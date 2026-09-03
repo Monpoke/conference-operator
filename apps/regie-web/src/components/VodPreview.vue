@@ -66,9 +66,9 @@ function seek(position: number): void {
 </script>
 
 <template>
-  <div class="col-span-2 mt-2 border-t border-bord pt-2">
+  <div class="col-span-2 mt-2 border-t border-edge pt-2">
     <div class="mb-1.5 flex flex-wrap items-center gap-1.5">
-      <span v-if="ffmpeg" class="text-[11px] text-attenue">Extrait à partir de</span>
+      <span v-if="ffmpeg" class="text-[11px] text-dim">Extrait à partir de</span>
       <Button
         v-for="point in ffmpeg ? points : []"
         :key="point.at"
@@ -81,7 +81,7 @@ function seek(position: number): void {
         {{ point.label }}
       </Button>
       <a
-        class="ml-auto rounded-lg border border-bord bg-surface2 px-2 py-1 text-[11px] font-semibold text-texte no-underline"
+        class="ml-auto rounded-lg border border-edge bg-surface2 px-2 py-1 text-[11px] font-semibold text-text no-underline"
         target="_blank"
         rel="noreferrer"
         :href="`/control/recordings/fichier?file=${encoded}`"
@@ -104,7 +104,7 @@ function seek(position: number): void {
     ></video>
     <div
       class="mt-1 text-[11px]"
-      :class="broken ? 'text-alerte' : 'text-attenue'"
+      :class="broken ? 'text-alert' : 'text-dim'"
       data-role="vod-avis"
     >
       {{ notice }}

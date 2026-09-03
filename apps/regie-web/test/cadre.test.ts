@@ -20,8 +20,8 @@ describe('feuille de la régie', () => {
      * remplaçant sans reposer de classes ; ici, c'est une fenêtre qu'on ouvre
      * dans une salle sombre.
      */
-    expect(FEUILLE).toMatch(/body\s*\{[^}]*background:\s*var\(--color-fond\)/s)
-    expect(FEUILLE).toMatch(/body\s*\{[^}]*color:\s*var\(--color-texte\)/s)
+    expect(FEUILLE).toMatch(/body\s*\{[^}]*background:\s*var\(--color-canvas\)/s)
+    expect(FEUILLE).toMatch(/body\s*\{[^}]*color:\s*var\(--color-text\)/s)
   })
 
   it('occupe la hauteur, et ne défile pas d’un bloc', () => {

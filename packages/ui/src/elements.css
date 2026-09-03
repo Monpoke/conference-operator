@@ -1,22 +1,22 @@
 /*
- * Styles d'éléments nus.
+ * Bare element styles.
  *
- * Les deux consoles construisent beaucoup de markup en JavaScript, souvent
- * sans y poser de classe (`document.createElement('button')`). Tailwind
- * remet ces éléments à plat : sans ces règles, un bouton créé à l'exécution
- * n'aurait aucun style — défaut invisible au typage, visible seulement à
- * l'écran, et seulement dans la branche de code qui le crée.
+ * The two consoles build a lot of markup in JavaScript, often without putting a
+ * class on it (`document.createElement('button')`). Tailwind flattens those
+ * elements: without these rules, a button created at runtime would have no style
+ * at all — a defect invisible to the type checker, visible only on screen, and
+ * only in the branch of code that creates it.
  *
- * Les classes de la couche `components` (`.btn`, `.champ`…) restent
- * prioritaires : elles servent à s'écarter de ces défauts, pas à les répéter.
+ * The `components` layer classes (`.btn`, `.field`…) keep priority: they exist to
+ * depart from these defaults, not to repeat them.
  */
 @layer base {
   button {
-    @apply cursor-pointer rounded-lg border border-bord bg-surface2 px-[15px] py-2.5
-           text-sm font-semibold whitespace-nowrap text-texte;
+    @apply cursor-pointer rounded-lg border border-edge bg-surface2 px-[15px] py-2.5
+           text-sm font-semibold whitespace-nowrap text-text;
   }
   button:hover:not(:disabled) {
-    @apply border-marque;
+    @apply border-brand;
   }
   button:disabled {
     @apply cursor-not-allowed opacity-45;
@@ -24,27 +24,27 @@
 
   input,
   select {
-    @apply w-full rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte;
+    @apply w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text;
   }
   input:focus,
   select:focus {
-    @apply border-marque outline-none;
+    @apply border-brand outline-none;
   }
   input[type='checkbox'] {
     @apply w-auto;
   }
 
   label {
-    @apply mb-[5px] block text-xs text-attenue;
+    @apply mb-[5px] block text-xs text-dim;
   }
 
   table {
     @apply w-full border-collapse text-[13px];
   }
   th {
-    @apply pr-2.5 pb-2 text-left text-[11px] font-semibold tracking-[.08em] text-attenue uppercase;
+    @apply pr-2.5 pb-2 text-left text-[11px] font-semibold tracking-[.08em] text-dim uppercase;
   }
   td {
-    @apply border-t border-bord py-[9px] pr-2.5 align-middle;
+    @apply border-t border-edge py-[9px] pr-2.5 align-middle;
   }
 }

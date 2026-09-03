@@ -170,31 +170,31 @@ onMounted(async () => {
         <div
           v-for="device in pending"
           :key="device.clientId"
-          class="mb-2.5 rounded-[9px] border border-bord p-3"
+          class="mb-2.5 rounded-[9px] border border-edge p-3"
           :data-demande="device.clientId"
         >
-          <div class="mb-1.5 flex gap-2 text-xs text-attenue">
+          <div class="mb-1.5 flex gap-2 text-xs text-dim">
             <span>{{ device.clientId }}</span>
             <span>{{ timeAgo(device.requestedAt) }}</span>
           </div>
-          <div v-if="nomDeSalle(requestedRoom(device)) != null" class="mb-1.5 text-xs text-attenue">
+          <div v-if="nomDeSalle(requestedRoom(device)) != null" class="mb-1.5 text-xs text-dim">
             La machine demande : <strong>{{ nomDeSalle(requestedRoom(device)) }}</strong>
           </div>
 
           <div class="mb-[11px]">
-            <label class="mb-[5px] block text-xs text-attenue">Code affiché sur la machine</label>
+            <label class="mb-[5px] block text-xs text-dim">Code affiché sur la machine</label>
             <input
               v-model="champs(device).code"
               placeholder="XXXX-XXXX"
-              class="w-full rounded-lg border bg-fond px-3 py-2.5 text-sm text-texte focus:outline-none"
-              :class="codeDeLUrl != null ? 'border-marque' : 'border-bord'"
+              class="w-full rounded-lg border bg-canvas px-3 py-2.5 text-sm text-text focus:outline-none"
+              :class="codeDeLUrl != null ? 'border-brand' : 'border-edge'"
             />
           </div>
           <div class="mb-[11px]">
-            <label class="mb-[5px] block text-xs text-attenue">Salle desservie</label>
+            <label class="mb-[5px] block text-xs text-dim">Salle desservie</label>
             <select
               v-model="champs(device).roomId"
-              class="w-full rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte"
+              class="w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text"
             >
               <option v-for="salle in rooms" :key="salle.id" :value="salle.id">{{ salle.name }}</option>
             </select>
@@ -213,10 +213,10 @@ onMounted(async () => {
         <table class="w-full border-collapse text-[13px]">
           <thead>
             <tr>
-              <th class="pr-2.5 pb-2 text-left text-[11px] font-semibold tracking-[.08em] text-attenue uppercase">
+              <th class="pr-2.5 pb-2 text-left text-[11px] font-semibold tracking-[.08em] text-dim uppercase">
                 Machine
               </th>
-              <th class="pr-2.5 pb-2 text-left text-[11px] font-semibold tracking-[.08em] text-attenue uppercase">
+              <th class="pr-2.5 pb-2 text-left text-[11px] font-semibold tracking-[.08em] text-dim uppercase">
                 Salle
               </th>
               <th class="pb-2"></th>
@@ -224,15 +224,15 @@ onMounted(async () => {
           </thead>
           <tbody id="machines">
             <tr v-if="devices.length === 0">
-              <td colspan="3" class="py-3.5 text-[13px] text-attenue">Aucune machine appairée.</td>
+              <td colspan="3" class="py-3.5 text-[13px] text-dim">Aucune machine appairée.</td>
             </tr>
             <tr v-for="machine in devices" :key="machine.clientId" :data-machine="machine.clientId">
-              <td class="border-t border-bord py-[9px] pr-2.5 align-middle">
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
                 {{ machine.label ?? machine.clientId }}
               </td>
-              <td class="border-t border-bord py-[9px] pr-2.5 align-middle">{{ machine.roomId }}</td>
-              <td class="border-t border-bord py-[9px] align-middle">
-                <span v-if="machine.revokedAt != null" class="text-attenue">révoquée</span>
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle">{{ machine.roomId }}</td>
+              <td class="border-t border-edge py-[9px] align-middle">
+                <span v-if="machine.revokedAt != null" class="text-dim">révoquée</span>
                 <Button v-else variant="danger" size="small" @click="revoquer(machine.clientId)">
                   Révoquer
                 </Button>
@@ -251,21 +251,21 @@ onMounted(async () => {
         <div v-if="codeDeLUrl != null" class="mb-2 font-semibold tracking-[.12em] tabular-nums">
           {{ codeDeLUrl }}
         </div>
-        <p id="verdict-texte">{{ verdict.body }}</p>
+        <p id="verdict-text">{{ verdict.body }}</p>
       </div>
 
       <div v-if="verdict.decidable" id="verdict-decision" class="mt-3.5">
-        <label class="mb-[5px] block text-xs text-attenue" for="verdict-salle">Salle desservie</label>
+        <label class="mb-[5px] block text-xs text-dim" for="verdict-salle">Salle desservie</label>
         <select
           id="verdict-salle"
           v-model="verdict.roomId"
-          class="w-full rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte"
+          class="w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text"
         >
           <option v-for="salle in rooms" :key="salle.id" :value="salle.id">{{ salle.name }}</option>
         </select>
       </div>
 
-      <p v-if="verdict.error !== ''" id="verdict-erreur" class="mt-2 text-sm text-alerte">
+      <p v-if="verdict.error !== ''" id="verdict-erreur" class="mt-2 text-sm text-alert">
         {{ verdict.error }}
       </p>
 

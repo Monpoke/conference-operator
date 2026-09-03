@@ -22,16 +22,16 @@ export interface Appearance {
 }
 
 export const APPEARANCE: Record<RoomConferenceState, Appearance> = {
-  aucune: { tint: 'hors', word: 'hors créneau', text: 'text-attenue' },
+  aucune: { tint: 'off', word: 'hors créneau', text: 'text-dim' },
   // A shared slot is not a room state: there is nobody there.
   // "pause" made it sound like a talk on hold.
-  pause: { tint: 'hors', word: 'rien dans la salle', text: 'text-attenue' },
-  'pas-commencee': { tint: 'pas-commencee', word: 'pas commencée', text: 'text-attenue' },
-  retard: { tint: 'retard', word: 'retard au démarrage', text: 'text-attention' },
-  'en-cours': { tint: '', word: 'en cours', text: 'text-attenue' },
-  'fin-proche': { tint: 'fin-proche', word: 'vers la fin', text: 'text-attention' },
-  terminee: { tint: 'terminee', word: 'terminée en avance', text: 'text-attenue' },
-  depassement: { tint: 'depassement', word: 'dépassement', text: 'text-alerte' },
+  pause: { tint: 'off', word: 'rien dans la salle', text: 'text-dim' },
+  'pas-commencee': { tint: 'not-started', word: 'pas commencée', text: 'text-dim' },
+  retard: { tint: 'late', word: 'retard au démarrage', text: 'text-warn' },
+  'en-cours': { tint: '', word: 'en cours', text: 'text-dim' },
+  'fin-proche': { tint: 'ending-soon', word: 'vers la fin', text: 'text-warn' },
+  terminee: { tint: 'ended', word: 'terminée en avance', text: 'text-dim' },
+  depassement: { tint: 'overrun', word: 'dépassement', text: 'text-alert' },
 }
 
 /**
@@ -62,8 +62,8 @@ export function appearanceOf(state: string | null | undefined): Appearance {
  * where the question arises.
  */
 export function outlineOf(connectivity: string | null | undefined): string {
-  if (connectivity === 'DEGRADED') return ' doute'
-  return connectivity === 'ONLINE' ? '' : ' muette'
+  if (connectivity === 'DEGRADED') return ' unsure'
+  return connectivity === 'ONLINE' ? '' : ' silent'
 }
 
 /**

@@ -44,7 +44,7 @@ const elapsed = computed(() => {
 <template>
   <span
     class="text-[22px] font-bold tabular-nums"
-    :class="elapsed == null ? 'text-attenue' : ''"
+    :class="elapsed == null ? 'text-dim' : ''"
     data-role="recording-timer"
   >
     {{ elapsed == null ? '00:00' : shortDuration(elapsed) }}

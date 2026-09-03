@@ -71,7 +71,7 @@ ${etatInitial}
   <div class="w-[.9vh] rounded-l-[.45vh] bg-[var(--couleur)]"></div>
   <div class="rounded-r-[.6vh] bg-[rgba(12,14,22,.88)] px-[2.2vh] py-[1.4vh] backdrop-blur-[2px]">
     <div class="mb-[.6vh] text-[1.6vh] font-semibold tracking-[.12em] text-[var(--couleur)] uppercase">Question du public</div>
-    <div class="text-[2.5vh] leading-[1.25] font-semibold" id="question-texte"></div>
+    <div class="text-[2.5vh] leading-[1.25] font-semibold" id="question-text"></div>
     <div class="mt-[.5vh] text-[1.9vh] text-white/70" id="question-auteur" hidden></div>
   </div>
 </div>
@@ -116,7 +116,7 @@ ${etatInitial}
     const question = donnees.state.question
     document.body.dataset.question = question == null ? 'masque' : 'visible'
     if (question != null) {
-      texte('question-texte', question.text)
+      texte('question-text', question.text)
       const auteur = document.getElementById('question-auteur')
       auteur.hidden = !question.author
       texte('question-auteur', question.author)

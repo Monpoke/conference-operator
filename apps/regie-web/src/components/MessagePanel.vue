@@ -42,19 +42,19 @@ async function send(): Promise<void> {
     -->
     <div class="flex flex-wrap gap-1.5">
       <input
-        id="message-texte"
+        id="message-text"
         v-model="text"
         type="text"
         maxlength="500"
         placeholder="Besoin d'aide, question…"
-        class="min-w-[150px] flex-1 rounded-lg border border-bord bg-fond px-3 py-2 text-sm text-texte focus:border-marque focus:outline-none"
+        class="min-w-[150px] flex-1 rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text focus:border-brand focus:outline-none"
         @keydown.enter="send()"
       />
       <div class="flex flex-1 gap-1.5">
         <select
           id="message-niveau"
           v-model="level"
-          class="w-auto shrink-0 rounded-lg border border-bord bg-fond px-3 py-2 text-sm text-texte focus:border-marque focus:outline-none"
+          class="w-auto shrink-0 rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text focus:border-brand focus:outline-none"
         >
           <option v-for="option in LEVELS" :key="option.value" :value="option.value">
             {{ option.label }}
@@ -63,7 +63,7 @@ async function send(): Promise<void> {
         <Button id="btn-message" class="flex-1" size="small" @click="send()">Envoyer</Button>
       </div>
     </div>
-    <p class="mt-1.5 text-[11px] text-attenue">
+    <p class="mt-1.5 text-[11px] text-dim">
       Part par la file de remontée : un message envoyé hors ligne arrivera quand même.
     </p>
   </Panel>

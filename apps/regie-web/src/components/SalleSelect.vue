@@ -102,7 +102,7 @@ function ouvrir(salle: ControlRoom): void {
 <template>
   <main class="mx-auto w-full max-w-[560px] p-3">
     <h1 class="mb-1 text-base font-semibold">Régie mobile</h1>
-    <p class="mb-3 text-xs text-attenue">
+    <p class="mb-3 text-xs text-dim">
       Choisissez une salle. Une seule régie mobile la pilote à la fois — celle de
       la salle, elle, garde toujours la main.
     </p>
@@ -129,7 +129,7 @@ function ouvrir(salle: ControlRoom): void {
               chercher qui : la réponse est à deux salles de là, et c'est
               l'aller-retour qu'on évite.
             -->
-            <span v-if="tenuePar(salle) != null" class="mt-0.5 block text-xs text-attention">
+            <span v-if="tenuePar(salle) != null" class="mt-0.5 block text-xs text-warn">
               <template v-if="moi(salle)">
                 Tenue par votre compte · depuis {{ timeAgo(salle.lock!.heldSince, maintenant) }}
               </template>
@@ -139,12 +139,12 @@ function ouvrir(salle: ControlRoom): void {
               </template>
             </span>
           </span>
-          <span class="shrink-0 self-center text-xs text-attenue" aria-hidden="true">›</span>
+          <span class="shrink-0 self-center text-xs text-dim" aria-hidden="true">›</span>
         </button>
       </Panel>
     </div>
 
-    <div class="mt-4 flex items-center justify-between text-xs text-attenue">
+    <div class="mt-4 flex items-center justify-between text-xs text-dim">
       <span>{{ session.identity ?? 'Connecté' }}</span>
       <Button @click="session.signOut()">Se déconnecter</Button>
     </div>

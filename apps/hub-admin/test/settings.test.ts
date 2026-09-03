@@ -262,7 +262,7 @@ describe('vue des réglages', () => {
     await wrapper.get('#btn-resync').trigger('click')
     await flushPromises()
 
-    expect(document.querySelector('#resync-texte')?.textContent).toContain('toutes les salles')
+    expect(document.querySelector('#resync-text')?.textContent).toContain('toutes les salles')
     expect(calls.filter((appel) => appel.path === 'rooms/resync')).toHaveLength(0)
   })
 
@@ -271,7 +271,7 @@ describe('vue des réglages', () => {
 
     await wrapper.get('#btn-resync').trigger('click')
     await flushPromises()
-    ;(document.querySelector('#resync-texte')!
+    ;(document.querySelector('#resync-text')!
       .closest('[role="alertdialog"]')!
       .querySelectorAll('button')[1] as HTMLButtonElement).click()
     await flushPromises()

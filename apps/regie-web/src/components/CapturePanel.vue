@@ -97,7 +97,7 @@ defineExpose({ toggleRecording, mark, repere })
 <template>
   <Panel>
     <div class="mb-1.5 flex items-center gap-2">
-      <h2 class="flex-1 text-[11px] font-semibold tracking-[.14em] text-attenue uppercase">
+      <h2 class="flex-1 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
         Captation — OBS&nbsp;B<SimulatedBadge :when="obs?.simulated === true" />
       </h2>
       <!--
@@ -109,7 +109,7 @@ defineExpose({ toggleRecording, mark, repere })
       <button
         v-if="distant !== true"
         type="button"
-        class="shrink-0 cursor-pointer rounded border border-transparent px-1.5 py-0.5 text-[13px] leading-none opacity-60 hover:border-bord hover:opacity-100"
+        class="shrink-0 cursor-pointer rounded border border-transparent px-1.5 py-0.5 text-[13px] leading-none opacity-60 hover:border-edge hover:opacity-100"
         aria-label="Vérifier les enregistrements"
         title="Lister, contrôler et prévisualiser les enregistrements déjà produits"
         data-role="btn-vod"
@@ -121,7 +121,7 @@ defineExpose({ toggleRecording, mark, repere })
 
     <div v-if="distant !== true" class="mb-2 flex items-baseline gap-2.5">
       <RecordingTimer :recording="recording" :real-ms="realMs" :room-ms="roomMs" />
-      <span class="text-[11px] text-attenue" data-role="markers">{{ markers }}</span>
+      <span class="text-[11px] text-dim" data-role="markers">{{ markers }}</span>
     </div>
 
     <!--
@@ -130,7 +130,7 @@ defineExpose({ toggleRecording, mark, repere })
       pas — et une durée inventée à côté d'un point rouge juste ferait douter
       des deux.
     -->
-    <div v-else class="mb-2 text-sm" :class="active ? 'text-alerte' : 'text-attenue'">
+    <div v-else class="mb-2 text-sm" :class="active ? 'text-alert' : 'text-dim'">
       {{ active ? 'Enregistrement en cours' : 'Aucun enregistrement' }}
     </div>
 
@@ -184,16 +184,16 @@ defineExpose({ toggleRecording, mark, repere })
 
     <div v-if="distant !== true" class="mt-1.5 flex gap-1.5">
       <input
-        id="label-marqueur"
+        id="label-brandur"
         v-model="label"
         type="text"
         maxlength="80"
         placeholder="Libellé du marqueur"
-        class="flex-1 rounded-lg border border-bord bg-fond px-3 py-2 text-sm text-texte focus:border-marque focus:outline-none"
+        class="flex-1 rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text focus:border-brand focus:outline-none"
         :disabled="!active"
         @keydown.enter="active && mark()"
       />
-      <Button id="btn-marqueur" class="shrink-0" size="small" :disabled="!active" @click="mark()">
+      <Button id="btn-brandur" class="shrink-0" size="small" :disabled="!active" @click="mark()">
         Marquer<Key>M</Key>
       </Button>
     </div>

@@ -1,92 +1,91 @@
 @layer components {
-  /* — Étiquettes d'état — */
+  /* — State labels — */
   /*
-   * `text-sm`, et non `text-xs`.
+   * `text-sm`, and not `text-xs`.
    *
-   * Dans le tableau des conférences — 13 px de base — une étiquette de 12 px en
-   * majuscules resserrées se lisait comme une note de bas de page, alors que
-   * c'est l'état du talk qu'on vient y chercher : elle doit se repérer sans
-   * qu'on la lise. `inline-block` pour que le rembourrage compte réellement
-   * dans la ligne, `whitespace-nowrap` pour qu'« EN COURS » ne se coupe pas en
-   * deux dans une colonne étroite.
+   * In the talks table — 13 px base — a 12 px label in tightened uppercase read
+   * like a footnote, when the talk's state is what you came there for: it must
+   * be spotted without being read. `inline-block` so the padding really counts
+   * in the line, `whitespace-nowrap` so that "EN COURS" does not break in two in
+   * a narrow column.
    */
   .badge {
     @apply inline-block rounded-md bg-surface2 px-3 py-1 text-sm font-bold
-           tracking-[.06em] whitespace-nowrap text-attenue uppercase;
+           tracking-[.06em] whitespace-nowrap text-dim uppercase;
   }
   .badge.running {
     @apply bg-ok text-[#05231a];
   }
   .badge.ended {
-    @apply bg-[#3a2a13] text-attention;
+    @apply bg-[#3a2a13] text-warn;
   }
 
   /*
-   * — Pastille —
+   * — Status dot —
    *
-   * Deux informations, deux traits : le **remplissage** dit où en est la
-   * conférence, le **contour** dit ce qu'on sait de la salle. Les confondre
-   * rendait une salle verte alors qu'elle débordait de dix minutes : « vert »
-   * ne voulait dire que « la machine répond ».
+   * Two pieces of information, two features: the **fill** says where the talk
+   * stands, the **outline** says what we know of the room. Confusing them made a
+   * room green while it was ten minutes over: "green" only meant "the machine
+   * answers".
    *
-   * Le contour reste gris en toutes circonstances, pour ne jamais entrer en
-   * concurrence avec les couleurs du remplissage.
+   * The outline stays grey in all circumstances, so as never to compete with the
+   * fill's colours.
    */
-  .pastille {
+  .status-dot {
     @apply block size-2.5 shrink-0 rounded-full bg-ok;
   }
 
-  /* Connectivité seule — pastille d'une machine, pas d'une conférence. */
-  .pastille.degraded {
-    @apply bg-attention;
+  /* Connectivity alone — a machine's dot, not a talk's. */
+  .status-dot.degraded {
+    @apply bg-warn;
   }
-  .pastille.offline {
-    @apply bg-alerte;
+  .status-dot.offline {
+    @apply bg-alert;
   }
 
-  /* Remplissage : la conférence. Sans classe, c'est le talk en cours. */
-  .pastille.hors {
-    @apply bg-attenue;
+  /* Fill: the talk. With no class, it is the running talk. */
+  .status-dot.off {
+    @apply bg-dim;
   }
   /*
-   * Créneau commun : bleu, et non le vert par défaut.
+   * Shared slot: blue, and not the default green.
    *
-   * Il ne vient pas de la table des apparences — `APPEARANCE.pause` renvoie la
-   * teinte `hors` pour une *salle* en pause. Ici c'est le créneau lui-même
-   * qu'on peint, dans l'encart Global, et il est posé à la main.
+   * It does not come from the appearance table — `APPEARANCE.pause` returns the
+   * `off` tint for a *room* on a break. Here it is the slot itself we paint, in
+   * the Global panel, and it is set by hand.
    */
-  .pastille.pause {
-    @apply bg-marque;
+  .status-dot.break {
+    @apply bg-brand;
   }
-  .pastille.fin-proche {
-    @apply bg-attention;
+  .status-dot.ending-soon {
+    @apply bg-warn;
   }
   /*
-   * Un créneau que personne n'a lancé : rien ne tourne, donc gris — comme un
-   * hors-créneau. Ce qui les sépare est le mot affiché à côté, pas la couleur :
-   * dans les deux cas, il n'y a rien à l'antenne.
+   * A slot nobody launched: nothing is running, so grey — like being outside any
+   * slot. What separates them is the word shown next to it, not the colour: in
+   * both cases there is nothing on air.
    */
-  .pastille.pas-commencee,
-  .pastille.terminee {
-    @apply bg-attenue;
+  .status-dot.not-started,
+  .status-dot.ended {
+    @apply bg-dim;
   }
-  /* Passé le délai de courtoisie, l'absence de démarrage devient une question. */
-  .pastille.retard {
-    @apply bg-attention;
+  /* Past the courtesy delay, the missing start becomes a question. */
+  .status-dot.late {
+    @apply bg-warn;
   }
-  .pastille.depassement {
-    @apply bg-alerte;
+  .status-dot.overrun {
+    @apply bg-alert;
   }
 
-  /* Contour : la confiance qu'on accorde à ce remplissage. */
-  .pastille.doute {
-    @apply shadow-[0_0_0_2px_var(--color-attenue)];
+  /* Outline: how much we trust that fill. */
+  .status-dot.unsure {
+    @apply shadow-[0_0_0_2px_var(--color-dim)];
   }
   /*
-   * Salle muette : pastille creuse. On ne sait plus ce qui s'y joue, et le
-   * prétendre en couleur serait pire que de se taire.
+   * Silent room: hollow dot. We no longer know what is playing there, and
+   * claiming otherwise in colour would be worse than saying nothing.
    */
-  .pastille.muette {
-    @apply border-[1.5px] border-attenue bg-transparent;
+  .status-dot.silent {
+    @apply border-[1.5px] border-dim bg-transparent;
   }
 }

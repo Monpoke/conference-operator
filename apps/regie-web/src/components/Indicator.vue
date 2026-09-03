@@ -61,7 +61,7 @@ const spoken = computed(
 
 <template>
   <div
-    class="indicateur relative flex shrink-0 items-center gap-1.5 text-xs text-attenue"
+    class="indicateur relative flex shrink-0 items-center gap-1.5 text-xs text-dim"
     tabindex="0"
     :data-niveau="level"
     :aria-label="spoken"
@@ -76,7 +76,7 @@ const spoken = computed(
     -->
     <span><slot /></span>
     <div class="bulle" aria-hidden="true">
-      <div class="text-[10px] font-semibold tracking-[.12em] text-attenue uppercase">
+      <div class="text-[10px] font-semibold tracking-[.12em] text-dim uppercase">
         {{ title }}
       </div>
       <div class="mt-1 mb-2 flex items-baseline gap-2">
@@ -86,9 +86,9 @@ const spoken = computed(
         <span :class="tint" class="ml-auto text-right text-[11px] font-semibold">{{ label }}</span>
       </div>
       <Gauge v-if="gauge != null" :percent="gauge" :level="valueLevel ?? level" />
-      <div class="mt-1.5 text-[11px] text-attenue">{{ detail }}</div>
+      <div class="mt-1.5 text-[11px] text-dim">{{ detail }}</div>
       <slot name="extra" />
-      <div class="mt-2 border-t border-bord pt-2 text-xs leading-snug text-texte">
+      <div class="mt-2 border-t border-edge pt-2 text-xs leading-snug text-text">
         {{ verdict }}
       </div>
     </div>
@@ -111,10 +111,10 @@ const spoken = computed(
   z-index: 30;
   width: 270px;
   padding: 11px 13px;
-  border: 1px solid var(--color-bord);
+  border: 1px solid var(--color-edge);
   border-radius: 10px;
   background: var(--color-surface2);
-  color: var(--color-texte);
+  color: var(--color-text);
   box-shadow: 0 12px 30px rgb(0 0 0 / 0.5);
   opacity: 0;
   transform: translateY(-4px);
@@ -133,8 +133,8 @@ const spoken = computed(
   height: 8px;
   background: var(--color-surface2);
   transform: rotate(45deg);
-  border-left: 1px solid var(--color-bord);
-  border-top: 1px solid var(--color-bord);
+  border-left: 1px solid var(--color-edge);
+  border-top: 1px solid var(--color-edge);
 }
 .indicateur:hover .bulle,
 .indicateur:focus-visible .bulle {
@@ -155,13 +155,13 @@ const spoken = computed(
 .indicateur :deep(.niveau-ok) {
   color: var(--color-ok);
 }
-.indicateur :deep(.niveau-attention) {
-  color: var(--color-attention);
+.indicateur :deep(.niveau-warn) {
+  color: var(--color-warn);
 }
-.indicateur :deep(.niveau-alerte) {
-  color: var(--color-alerte);
+.indicateur :deep(.niveau-alert) {
+  color: var(--color-alert);
 }
 .indicateur :deep(.niveau-inconnu) {
-  color: var(--color-attenue);
+  color: var(--color-dim);
 }
 </style>

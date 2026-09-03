@@ -368,7 +368,7 @@ console.log(`écrit ${join(outDir, 'overlay-bandeau-live.html')}`)
  * `EventSource`, qui écrasait au premier message le rang de boucle forcé plus
  * bas : on relisait autre chose que ce qu'on croyait.
  */
-const OUVERTURE_BODY = '<body class="bg-fond'
+const OUVERTURE_BODY = '<body class="bg-canvas'
 
 for (const { nom, payload } of variantes) {
   const html = renderProjectorPage({ initialPayload: payload }).replace(

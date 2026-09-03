@@ -100,8 +100,8 @@ describe('écran de salle', () => {
 
     expect(envois[0]?.body).toEqual({ action: 'display.set', mode: 'sponsors' })
     // La boucle reste marquée : le flux n'a rien dit d'autre.
-    expect(wrapper.get('[data-command="loop"]').classes()).toContain('bg-marque')
-    expect(wrapper.get('[data-command="sponsors"]').classes()).not.toContain('bg-marque')
+    expect(wrapper.get('[data-command="loop"]').classes()).toContain('bg-brand')
+    expect(wrapper.get('[data-command="sponsors"]').classes()).not.toContain('bg-brand')
   })
 })
 
@@ -141,7 +141,7 @@ describe('message à la console', () => {
     const envois = stubFetch()
     const wrapper = mount(MessagePanel)
 
-    await wrapper.get('#message-texte').setValue('   ')
+    await wrapper.get('#message-text').setValue('   ')
     await wrapper.get('#btn-message').trigger('click')
     await flushPromises()
 
@@ -152,9 +152,9 @@ describe('message à la console', () => {
     const envois = stubFetch()
     const wrapper = mount(MessagePanel)
 
-    await wrapper.get('#message-texte').setValue('Le micro coupe')
+    await wrapper.get('#message-text').setValue('Le micro coupe')
     await wrapper.get('#message-niveau').setValue('urgent')
-    await wrapper.get('#message-texte').trigger('keydown.enter')
+    await wrapper.get('#message-text').trigger('keydown.enter')
     await flushPromises()
 
     expect(envois[0]?.body).toEqual({
@@ -162,7 +162,7 @@ describe('message à la console', () => {
       text: 'Le micro coupe',
       level: 'urgent',
     })
-    expect((wrapper.get('#message-texte').element as HTMLInputElement).value).toBe('')
+    expect((wrapper.get('#message-text').element as HTMLInputElement).value).toBe('')
   })
 })
 
@@ -201,8 +201,8 @@ describe('captation', () => {
 
     // Un marqueur sans prise ne se rattache à rien : le poste le refuserait, et
     // un bouton actif dont la commande est refusée est un piège.
-    expect(wrapper.get('#btn-marqueur').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('#label-marqueur').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('#btn-brandur').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('#label-brandur').attributes('disabled')).toBeDefined()
     expect(wrapper.get('[data-role="markers"]').text()).toBe('hors enregistrement')
   })
 
@@ -210,7 +210,7 @@ describe('captation', () => {
     const envois = stubFetch()
     const wrapper = monter(REC)
 
-    await wrapper.get('#btn-marqueur').trigger('click')
+    await wrapper.get('#btn-brandur').trigger('click')
     await flushPromises()
 
     // Au editing, savoir *où* vaut déjà mieux que rien, et exiger un mot ferait
@@ -222,12 +222,12 @@ describe('captation', () => {
     const envois = stubFetch()
     const wrapper = monter(REC)
 
-    await wrapper.get('#label-marqueur').setValue('Questions')
-    await wrapper.get('#btn-marqueur').trigger('click')
+    await wrapper.get('#label-brandur').setValue('Questions')
+    await wrapper.get('#btn-brandur').trigger('click')
     await flushPromises()
 
     expect(envois[0]?.body).toEqual({ action: 'recording.mark', label: 'Questions' })
-    expect((wrapper.get('#label-marqueur').element as HTMLInputElement).value).toBe('')
+    expect((wrapper.get('#label-brandur').element as HTMLInputElement).value).toBe('')
   })
 
   /*

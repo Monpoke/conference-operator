@@ -83,7 +83,7 @@ describe('state machine test bench', () => {
   it('opens on the state the machine reports, not on a hard-coded value', () => {
     // 09:00 UTC: the welcome slot is running, and a welcome slot is a break.
     expect(word()).toBe('rien dans la salle')
-    expect($('dot').className).toContain('hors')
+    expect($('dot').className).toContain('off')
   })
 
   it('follows the simulated clock', () => {

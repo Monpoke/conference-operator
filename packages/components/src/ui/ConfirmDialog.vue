@@ -49,7 +49,7 @@ const props = withDefaults(defineProps<{
    * it are, and in a room lit only by the screen the size and the amber are
    * what does that.
    */
-  tone?: 'quiet' | 'attention'
+  tone?: 'quiet' | 'warn'
   /**
    * Keyboard letters printed on the two buttons — **and bound here**.
    *
@@ -132,13 +132,13 @@ onBeforeUnmount(() => {
     <AlertDialogPortal>
       <AlertDialogOverlay class="fixed inset-0 z-50 bg-black/65" />
       <AlertDialogContent
-        class="fixed top-1/2 left-1/2 z-50 w-[calc(100vw-2rem)] max-w-[440px] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-bord bg-surface p-4"
+        class="fixed top-1/2 left-1/2 z-50 w-[calc(100vw-2rem)] max-w-[440px] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-edge bg-surface p-4"
       >
         <h2
           :class="
-            tone === 'attention'
-              ? 'mb-1.5 text-[17px] font-semibold text-attention'
-              : 'mb-2.5 text-[11px] font-semibold tracking-[.14em] text-attenue uppercase'
+            tone === 'warn'
+              ? 'mb-1.5 text-[17px] font-semibold text-warn'
+              : 'mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase'
           "
         >
           <AlertDialogTitle>{{ title }}</AlertDialogTitle>
@@ -150,7 +150,7 @@ onBeforeUnmount(() => {
 
         <div class="mt-3.5 flex flex-wrap justify-end gap-1.5">
           <AlertDialogCancel
-            class="cursor-pointer rounded-lg border border-bord bg-surface2 px-3 py-2 text-[13px] font-semibold text-texte"
+            class="cursor-pointer rounded-lg border border-edge bg-surface2 px-3 py-2 text-[13px] font-semibold text-text"
           >
             {{ cancelLabel ?? 'Annuler' }}<Key v-if="cancelKey != null">{{ cancelKey }}</Key>
           </AlertDialogCancel>
@@ -168,8 +168,8 @@ onBeforeUnmount(() => {
             class="cursor-pointer rounded-lg border px-3 py-2 text-[13px] font-semibold disabled:cursor-not-allowed disabled:opacity-40"
             :class="
               danger === true
-                ? 'border-[#6c2027] bg-[#3a1519] text-texte'
-                : 'border-marque bg-marque text-[#05070d]'
+                ? 'border-[#6c2027] bg-[#3a1519] text-text'
+                : 'border-brand bg-brand text-[#05070d]'
             "
             @click="emit('confirm')"
           >

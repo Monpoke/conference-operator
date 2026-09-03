@@ -1,78 +1,78 @@
 /*
- * Pont vers les composants copiés de shadcn-vue.
+ * Bridge to the components copied from shadcn-vue.
  *
- * Ils arrivent écrits sur `bg-background`, `text-muted-foreground`,
- * `border-input`… qui n'existent pas ici : la palette du dépôt est en français
- * (`bg-fond`, `text-attenue`, `border-bord`). Les traduire à la main à chaque
- * copie fabriquerait le défaut le plus coûteux de ce dépôt — une classe
- * Tailwind inconnue ne lève rien, elle ne peint simplement pas.
+ * They arrive written on `bg-background`, `text-muted-foreground`,
+ * `border-input`… which do not exist here: this repository's palette has its own
+ * names (`bg-canvas`, `text-dim`, `border-edge`). Translating them by hand on
+ * every copy would manufacture the most expensive defect in this repository — an
+ * unknown Tailwind class raises nothing, it simply does not paint.
  *
- * `inline` et non `@theme` : la valeur est résolue à la compilation, donc
- * `bg-primary` produit `background-color: var(--color-marque)`. C'est ce qui
- * laisse une page redéfinir la couleur de marque sur `:root` — elles viennent
- * du programme de l'événement, voir `base.css` — et voir les composants
- * suivre. Un niveau d'indirection de plus les aurait figés sur la valeur du
- * thème le jour où l'événement change de couleur.
+ * `inline` and not `@theme`: the value is resolved at compile time, so
+ * `bg-primary` produces `background-color: var(--color-brand)`. That is what lets
+ * a page redefine the brand colour on `:root` — they come from the event's
+ * program, see `base.css` — and see the components follow. One more level of
+ * indirection would have frozen them on the theme's value the day the event
+ * changes colour.
  *
- * Corollaire à connaître : `--color-primary` n'existe pas comme variable CSS.
- * Un `<style>` de page qui écrirait `var(--color-primary)` obtiendrait du vide,
- * sans erreur. Le CSS écrit à la main reste donc sur les noms français.
+ * A corollary worth knowing: `--color-primary` does not exist as a CSS variable.
+ * A page `<style>` writing `var(--color-primary)` would get nothing, with no
+ * error. Hand-written CSS therefore stays on the repository's own names.
  *
- * Ce fichier est un échafaudage. `test/pont-shadcn.test.ts` échoue le jour où
- * plus aucun composant ne s'en sert : c'est le signal de le supprimer.
+ * This file is scaffolding. `test/pont-shadcn.test.ts` fails the day no component
+ * uses it any more: that is the signal to delete it.
  *
- * Ni l'échelle de rayons de shadcn (`--radius-*`), ni son bloc `:root` clair ne
- * sont repris — voir la note en bas de fichier.
+ * Neither shadcn's radius scale (`--radius-*`) nor its light `:root` block is
+ * carried over — see the note at the end of the file.
  */
 @theme inline {
-  --color-background: var(--color-fond);
-  --color-foreground: var(--color-texte);
+  --color-background: var(--color-canvas);
+  --color-foreground: var(--color-text);
 
   --color-card: var(--color-surface);
-  --color-card-foreground: var(--color-texte);
+  --color-card-foreground: var(--color-text);
 
   --color-popover: var(--color-surface2);
-  --color-popover-foreground: var(--color-texte);
+  --color-popover-foreground: var(--color-text);
 
   /*
-   * `primary-foreground` est un noir, pas du blanc : la couleur de marque est
-   * claire, et du texte blanc dessus tombait sous le seuil de contraste dans
-   * une salle sombre. La même valeur est portée par la variante `primary` de
-   * `Button`, d'où elle vient — c'était le noir de l'ancien `.btn.actif`.
+   * `primary-foreground` is a black, not a white: the brand colour is light, and
+   * white text on it fell below the contrast threshold in a dark room. The same
+   * value is carried by `Button`'s `primary` variant, where it comes from — it
+   * was the black of the old `.btn.actif`.
    */
-  --color-primary: var(--color-marque);
+  --color-primary: var(--color-brand);
   --color-primary-foreground: #05070d;
 
   --color-secondary: var(--color-surface2);
-  --color-secondary-foreground: var(--color-texte);
+  --color-secondary-foreground: var(--color-text);
 
   --color-muted: var(--color-surface2);
-  --color-muted-foreground: var(--color-attenue);
+  --color-muted-foreground: var(--color-dim);
 
-  --color-accent: var(--color-bord);
-  --color-accent-foreground: var(--color-texte);
+  --color-accent: var(--color-edge);
+  --color-accent-foreground: var(--color-text);
 
-  --color-destructive: var(--color-alerte);
+  --color-destructive: var(--color-alert);
   --color-destructive-foreground: #ffffff;
 
-  --color-border: var(--color-bord);
-  --color-input: var(--color-bord);
-  --color-ring: var(--color-marque);
+  --color-border: var(--color-edge);
+  --color-input: var(--color-edge);
+  --color-ring: var(--color-brand);
 }
 
 /*
- * Deux choses à retirer de chaque composant copié, systématiquement.
+ * Two things to strip from every copied component, systematically.
  *
- * 1. **L'échelle de rayons.** Le préréglage Tailwind v4 de shadcn pose
- *    `--radius` puis `--radius-sm/md/lg/xl`. Or `--radius-*` est un espace de
- *    nom de thème : les redéfinir **redéfinit l'utilitaire `rounded-lg`**, qui
- *    sert à `.btn`, `.champ`, et aux `button`/`input` nus. L'arrondi de toute
- *    la console et de toute la régie changerait sans qu'une ligne le demande.
- *    Les rayons se codent en clair dans les composants copiés.
+ * 1. **The radius scale.** shadcn's Tailwind v4 preset sets `--radius` then
+ *    `--radius-sm/md/lg/xl`. But `--radius-*` is a theme namespace: redefining
+ *    them **redefines the `rounded-lg` utility**, which is used by `.btn`,
+ *    `.field`, and by the bare `button`/`input`. The rounding of the whole
+ *    console and the whole control app would change without a line asking for it.
+ *    Radii are written literally in the copied components.
  *
- * 2. **Le bloc `:root` clair et la classe `.dark`.** Le thème est sombre, et
- *    seulement sombre : la régie est un poste en salle noire, et la console est
- *    tenue par les mêmes personnes le même jour. Garder le modèle de shadcn
- *    laisserait une palette claire morte dans la feuille et une classe qu'un
- *    oubli sur `<html>` suffirait à faire virer au blanc.
+ * 2. **The light `:root` block and the `.dark` class.** The theme is dark, and
+ *    only dark: the control app is a machine in a blacked-out room, and the
+ *    console is held by the same people on the same day. Keeping shadcn's
+ *    template would leave a dead light palette in the sheet and a class that one
+ *    oversight on `<html>` would be enough to turn white.
  */

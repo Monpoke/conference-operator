@@ -40,7 +40,7 @@ describe('lien avec le hub', () => {
 
     // Se taire sur un état qu'on ne sait pas nommer laisserait la pastille
     // verte, qui est le seul contresens à ne pas commettre ici.
-    expect(wrapper.attributes('data-niveau')).toBe('alerte')
+    expect(wrapper.attributes('data-niveau')).toBe('alert')
     expect(wrapper.text()).toContain('hors ligne')
   })
 
@@ -75,7 +75,7 @@ describe('charge du poste', () => {
   it('avoue une mesure absente plutôt que d’afficher zéro', () => {
     const wrapper = mount(CpuIndicator, { props: { load: null } })
 
-    expect(wrapper.attributes('data-niveau')).toBe('inconnu')
+    expect(wrapper.attributes('data-niveau')).toBe('unknown')
     expect(wrapper.text()).toContain('Pastille sans valeur, pas poste au repos')
   })
 
@@ -94,7 +94,7 @@ describe('charge du poste', () => {
     // Le verdict revient à la mesure la plus grave : c'est l'autre façon dont
     // un poste lâche, et la plus sournoise — il commence à échanger sur le
     // disque qui écrit le rush.
-    expect(wrapper.attributes('data-niveau')).toBe('alerte')
+    expect(wrapper.attributes('data-niveau')).toBe('alert')
     expect(wrapper.text()).toContain('celui-là même qui écrit le rush')
   })
 
@@ -138,7 +138,7 @@ describe('charge du poste, en détail', () => {
     const wrapper = poste({ cpu: 0.31, cores: 8, windowMs: 5_000, memory: MEMOIRE_SAINE })
 
     expect(wrapper.attributes('data-niveau')).toBe('ok')
-    expect(wrapper.get('.pastille').classes()).toEqual(['pastille'])
+    expect(wrapper.get('.status-dot').classes()).toEqual(['status-dot'])
     expect(wrapper.text()).toContain('31 %')
     expect(wrapper.text()).toContain('8 cœurs')
     expect(wrapper.text()).toContain('sans forcer')
@@ -147,16 +147,16 @@ describe('charge du poste, en détail', () => {
   it('passe à l’orange sur une charge soutenue', () => {
     const wrapper = poste({ cpu: 0.78, cores: 8, windowMs: 5_000, memory: null })
 
-    expect(wrapper.attributes('data-niveau')).toBe('attention')
-    expect(wrapper.get('.pastille').classes()).toContain('degraded')
+    expect(wrapper.attributes('data-niveau')).toBe('warn')
+    expect(wrapper.get('.status-dot').classes()).toContain('degraded')
     expect(wrapper.text()).toContain('charge soutenue')
   })
 
   it('passe au rouge, et dit ce que ça coûte', () => {
     const wrapper = poste({ cpu: 0.96, cores: 4, windowMs: 5_000, memory: null })
 
-    expect(wrapper.attributes('data-niveau')).toBe('alerte')
-    expect(wrapper.get('.pastille').classes()).toContain('offline')
+    expect(wrapper.attributes('data-niveau')).toBe('alert')
+    expect(wrapper.get('.status-dot').classes()).toContain('offline')
     // Une couleur seule ne dit pas quoi faire : la bulle nomme le risque.
     expect(wrapper.text()).toContain('images')
   })
@@ -213,19 +213,19 @@ describe('mode d’exécution', () => {
     // Une salle de développement branchée sur le hub de l'événement enverrait
     // de vraies commandes depuis un poste qui simule tout.
     expect(wrapper.text()).toBe('dev · hub en production')
-    expect(wrapper.html()).toContain('text-alerte')
+    expect(wrapper.html()).toContain('text-alert')
   })
 
   it('crie aussi dans l’autre sens', () => {
     const wrapper = mount(ModeBadge, { props: { mode: { room: 'production', hub: 'dev' } } })
     expect(wrapper.text()).toBe('hub en dev')
-    expect(wrapper.html()).toContain('text-alerte')
+    expect(wrapper.html()).toContain('text-alert')
   })
 
   it('signale une salle de développement, sans alerter', () => {
     const wrapper = mount(ModeBadge, { props: { mode: { room: 'dev', hub: 'dev' } } })
     expect(wrapper.text()).toBe('mode dev')
-    expect(wrapper.html()).toContain('text-attention')
+    expect(wrapper.html()).toContain('text-warn')
   })
 
   it('attend le premier sync avant de conclure', () => {

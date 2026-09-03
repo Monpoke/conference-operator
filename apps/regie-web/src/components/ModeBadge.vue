@@ -28,7 +28,7 @@ const text = computed(() => {
   <span v-if="shown" class="shrink-0">
     <span
       class="rounded border px-1.5 py-px text-[10px] font-semibold tracking-[.08em] uppercase"
-      :class="divergent ? 'border-alerte/50 text-alerte' : 'border-attention/40 text-attention'"
+      :class="divergent ? 'border-alert/50 text-alert' : 'border-warn/40 text-warn'"
     >
       {{ text }}
     </span>

@@ -37,8 +37,8 @@ export const LISSAGE = 1 / 3
 
 export const VERDICT_BADGES: Record<string, [string, string]> = {
   ok: ['Exploitable', 'border-ok/50 text-ok'],
-  suspect: ['À revoir', 'border-attention/50 text-attention'],
-  illisible: ['Illisible', 'border-alerte/60 text-alerte'],
+  suspect: ['À revoir', 'border-warn/50 text-warn'],
+  illisible: ['Illisible', 'border-alert/60 text-alert'],
 }
 
 export const UPLOAD_WORDS: Record<string, string> = {

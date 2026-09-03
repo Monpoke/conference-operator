@@ -92,7 +92,7 @@ describe('panneau des niveaux', () => {
     const wrapper = mount(LevelMeters)
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.html()).toContain('text-alerte')
+    expect(wrapper.html()).toContain('text-alert')
     expect(wrapper.text()).toContain('-3 dB')
   })
 

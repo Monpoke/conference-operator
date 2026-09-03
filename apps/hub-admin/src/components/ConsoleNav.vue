@@ -39,7 +39,7 @@ function current(view: string): boolean {
 </script>
 
 <template>
-  <nav class="flex flex-wrap gap-1.5 border-b border-bord px-4 pb-3">
+  <nav class="flex flex-wrap gap-1.5 border-b border-edge px-4 pb-3">
     <RouterLink
       v-for="entry in views"
       :id="`nav-${entry.view}`"
@@ -48,8 +48,8 @@ function current(view: string): boolean {
       class="rounded-lg border px-3 py-2 text-[13px]"
       :class="
         current(entry.view)
-          ? 'border-bord bg-surface2 text-texte'
-          : 'border-transparent bg-transparent text-attenue'
+          ? 'border-edge bg-surface2 text-text'
+          : 'border-transparent bg-transparent text-dim'
       "
       :aria-current="current(entry.view) ? 'page' : undefined"
     >

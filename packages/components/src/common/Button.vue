@@ -17,10 +17,10 @@ const button = cva(
   {
     variants: {
       variant: {
-        neutral: 'border-bord bg-surface2 text-texte hover:not-disabled:border-marque hover:not-disabled:bg-bord',
-        primary: 'border-marque bg-marque text-[#05070d]',
-        danger: 'border-[#6c2027] bg-[#3a1519] text-texte hover:not-disabled:border-marque',
-        tab: 'border-transparent bg-transparent text-attenue hover:not-disabled:border-bord',
+        neutral: 'border-edge bg-surface2 text-text hover:not-disabled:border-brand hover:not-disabled:bg-edge',
+        primary: 'border-brand bg-brand text-[#05070d]',
+        danger: 'border-[#6c2027] bg-[#3a1519] text-text hover:not-disabled:border-brand',
+        tab: 'border-transparent bg-transparent text-dim hover:not-disabled:border-edge',
       },
       size: {
         normal: 'px-2.5 py-3.5',
@@ -36,9 +36,9 @@ const button = cva(
       active: { true: '', false: '' },
     },
     compoundVariants: [
-      { variant: 'neutral', active: true, class: 'border-marque bg-marque text-[#05070d]' },
-      { variant: 'danger', active: true, class: 'border-alerte bg-alerte text-white' },
-      { variant: 'tab', active: true, class: 'border-bord bg-surface2 text-texte' },
+      { variant: 'neutral', active: true, class: 'border-brand bg-brand text-[#05070d]' },
+      { variant: 'danger', active: true, class: 'border-alert bg-alert text-white' },
+      { variant: 'tab', active: true, class: 'border-edge bg-surface2 text-text' },
     ],
     defaultVariants: { variant: 'neutral', size: 'normal', active: false },
   },

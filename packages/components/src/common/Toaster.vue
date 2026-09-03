@@ -25,7 +25,7 @@ const { notices } = useToast()
       v-for="notice in notices"
       :key="notice.id"
       class="pointer-events-auto max-w-[min(560px,90vw)] rounded-[10px] px-4 py-3 text-sm shadow-lg"
-      :class="notice.failed ? 'bg-[#35161a] text-alerte' : 'bg-[#102e22] text-ok'"
+      :class="notice.failed ? 'bg-[#35161a] text-alert' : 'bg-[#102e22] text-ok'"
     >
       {{ notice.text }}
     </div>

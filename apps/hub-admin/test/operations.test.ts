@@ -78,9 +78,9 @@ describe('vue exploitation', () => {
 
     // Une pastille qui ne portait que la connectivité affichait une salle verte
     // alors qu'elle débordait de dix minutes.
-    const pastille = wrapper.get('[data-salle="track-1"] .pastille')
-    expect(pastille.classes()).toContain('depassement')
-    expect(pastille.classes()).toContain('doute')
+    const pastille = wrapper.get('[data-salle="track-1"] .status-dot')
+    expect(pastille.classes()).toContain('overrun')
+    expect(pastille.classes()).toContain('unsure')
   })
 
   it('dit « salle muette » plutôt que d’affirmer un état qu’on ignore', async () => {

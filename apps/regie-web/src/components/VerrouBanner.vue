@@ -26,12 +26,12 @@ const verrou = useVerrouStore()
 
 <template>
   <div
-    class="flex items-center gap-2 border-b border-bord bg-surface px-3 py-2 text-xs"
+    class="flex items-center gap-2 border-b border-edge bg-surface px-3 py-2 text-xs"
     data-role="verrou"
   >
     <Button class="shrink-0" @click="verrou.quitter()">‹ Salles</Button>
 
-    <span v-if="verrou.jeTiens" class="min-w-0 flex-1 truncate text-attenue">
+    <span v-if="verrou.jeTiens" class="min-w-0 flex-1 truncate text-dim">
       Vous pilotez cette salle
       <span v-if="verrou.verrou != null">
         · depuis {{ timeAgo(verrou.verrou.heldSince, props.nowMs) }}
@@ -44,14 +44,14 @@ const verrou = useVerrouStore()
     -->
     <span
       v-else-if="verrou.tenueAilleurs"
-      class="min-w-0 flex-1 truncate text-attention"
+      class="min-w-0 flex-1 truncate text-warn"
       data-role="verrou-porteur"
     >
       Lecture seule — {{ verrou.monAutreSession ? 'un autre de vos onglets' : verrou.porteur }}
     </span>
 
-    <span v-else class="min-w-0 flex-1 truncate text-attenue">Salle non prise</span>
+    <span v-else class="min-w-0 flex-1 truncate text-dim">Salle non prise</span>
 
-    <span class="shrink-0 text-attenue">{{ session.identity ?? '' }}</span>
+    <span class="shrink-0 text-dim">{{ session.identity ?? '' }}</span>
   </div>
 </template>

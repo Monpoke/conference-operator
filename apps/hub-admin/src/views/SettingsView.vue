@@ -266,25 +266,25 @@ async function confirmerResync(): Promise<void> {
     class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5"
   >
     <Panel title="L'événement">
-      <label class="mb-[5px] block text-xs text-attenue" for="event-nom">Nom affiché</label>
+      <label class="mb-[5px] block text-xs text-dim" for="event-nom">Nom affiché</label>
       <input
         id="event-nom"
         v-model="nom.value.value"
         type="text"
         maxlength="80"
         :placeholder="derived.name"
-        class="mb-[11px] w-full rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte focus:border-marque focus:outline-none"
+        class="mb-[11px] w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text focus:border-brand focus:outline-none"
       />
-      <label class="mb-[5px] block text-xs text-attenue" for="event-nom-court">Nom court</label>
+      <label class="mb-[5px] block text-xs text-dim" for="event-nom-court">Nom court</label>
       <input
         id="event-nom-court"
         v-model="nomCourt.value.value"
         type="text"
         maxlength="40"
         :placeholder="derived.shortName"
-        class="mb-[11px] w-full rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte focus:border-marque focus:outline-none"
+        class="mb-[11px] w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text focus:border-brand focus:outline-none"
       />
-      <label class="mb-[5px] block text-xs text-attenue" for="event-openfeedback">
+      <label class="mb-[5px] block text-xs text-dim" for="event-openfeedback">
         Projet OpenFeedback
       </label>
       <input
@@ -293,7 +293,7 @@ async function confirmerResync(): Promise<void> {
         type="text"
         maxlength="80"
         placeholder="mon-evenement-2026"
-        class="mb-[11px] w-full rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte focus:border-marque focus:outline-none"
+        class="mb-[11px] w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text focus:border-brand focus:outline-none"
       />
       <Button id="btn-event" variant="primary" class="w-full" @click="enregistrerEvenement">
         Enregistrer
@@ -302,7 +302,7 @@ async function confirmerResync(): Promise<void> {
     </Panel>
 
     <Panel title="Programme">
-      <label class="mb-[5px] block text-xs text-attenue" for="url-programme">
+      <label class="mb-[5px] block text-xs text-dim" for="url-programme">
         URL de l'export « conference-center »
       </label>
       <input
@@ -310,7 +310,7 @@ async function confirmerResync(): Promise<void> {
         v-model="urlProgramme.value.value"
         type="url"
         placeholder="https://…/programme.json"
-        class="mb-[11px] w-full rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte focus:border-marque focus:outline-none"
+        class="mb-[11px] w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text focus:border-brand focus:outline-none"
       />
       <div class="mb-[11px] flex gap-1.5">
         <Button id="btn-source-programme" variant="primary" size="small" @click="enregistrerSource">
@@ -330,7 +330,7 @@ async function confirmerResync(): Promise<void> {
       <div class="overflow-x-auto">
         <table class="w-full border-collapse text-[13px]">
           <thead>
-            <tr class="text-[11px] tracking-[.08em] text-attenue uppercase">
+            <tr class="text-[11px] tracking-[.08em] text-dim uppercase">
               <th class="pr-2.5 pb-2 text-left font-semibold">Version</th>
               <th class="pr-2.5 pb-2 text-left font-semibold">Créneaux</th>
               <th class="pr-2.5 pb-2 text-left font-semibold">Anomalies</th>
@@ -347,17 +347,17 @@ async function confirmerResync(): Promise<void> {
               :key="snapshot.contentHash"
               :data-snapshot="snapshot.contentHash"
             >
-              <td class="border-t border-bord py-[9px] pr-2.5 align-middle font-mono text-[11px]">
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle font-mono text-[11px]">
                 <span v-if="snapshot.active" class="text-ok">● actif </span>
                 {{ snapshot.contentHash.slice(0, 10) }}
               </td>
-              <td class="border-t border-bord py-[9px] pr-2.5 align-middle">
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
                 {{ snapshot.sessionCount }}
               </td>
-              <td class="border-t border-bord py-[9px] pr-2.5 align-middle">
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
                 {{ snapshot.issueCount > 0 ? snapshot.issueCount : '—' }}
               </td>
-              <td class="border-t border-bord py-[9px] align-middle">
+              <td class="border-t border-edge py-[9px] align-middle">
                 <!-- Un import raté le jour J se rollback en un clic. -->
                 <Button
                   v-if="!snapshot.active"
@@ -386,17 +386,17 @@ async function confirmerResync(): Promise<void> {
           <input
             v-model="lien.network"
             placeholder="Réseau"
-            class="min-w-0 rounded-lg border border-bord bg-fond px-2 py-1.5 text-sm text-texte"
+            class="min-w-0 rounded-lg border border-edge bg-canvas px-2 py-1.5 text-sm text-text"
           />
           <input
             v-model="lien.handle"
             placeholder="@handle"
-            class="min-w-0 rounded-lg border border-bord bg-fond px-2 py-1.5 text-sm text-texte"
+            class="min-w-0 rounded-lg border border-edge bg-canvas px-2 py-1.5 text-sm text-text"
           />
           <input
             v-model="lien.url"
             placeholder="https://…"
-            class="min-w-0 rounded-lg border border-bord bg-fond px-2 py-1.5 text-sm text-texte"
+            class="min-w-0 rounded-lg border border-edge bg-canvas px-2 py-1.5 text-sm text-text"
           />
           <Button variant="danger" size="small" title="Retirer ce compte" @click="reseaux.splice(index, 1)">
             ×
@@ -414,10 +414,10 @@ async function confirmerResync(): Promise<void> {
     </Panel>
 
     <Panel title="Clôture automatique">
-      <div class="flex items-center gap-3 border-b border-bord pb-3">
+      <div class="flex items-center gap-3 border-b border-edge pb-3">
         <div class="flex-1">
           <strong class="mb-[3px] block text-sm">Clôturer les conférences dépassées</strong>
-          <span class="text-xs text-attenue">
+          <span class="text-xs text-dim">
             Sans elle, un talk lancé reste « en cours » indéfiniment.
           </span>
         </div>
@@ -426,7 +426,7 @@ async function confirmerResync(): Promise<void> {
       <div class="flex items-baseline gap-3 pt-3">
         <label class="flex-1" for="auto-delai">
           <strong class="mb-[3px] block text-sm">Délai de grâce</strong>
-          <span class="text-xs text-attenue">Minutes après la fin du créneau avant clôture.</span>
+          <span class="text-xs text-dim">Minutes après la fin du créneau avant clôture.</span>
         </label>
       </div>
       <input
@@ -435,7 +435,7 @@ async function confirmerResync(): Promise<void> {
         type="number"
         min="0"
         max="120"
-        class="w-[92px] rounded-lg border border-bord bg-fond px-3 py-2 text-sm text-texte"
+        class="w-[92px] rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text"
       />
       <Button id="btn-reglages" variant="primary" class="mt-3 w-full" @click="enregistrerCloture">
         Enregistrer
@@ -467,23 +467,23 @@ async function confirmerResync(): Promise<void> {
         </template>
       </Hint>
 
-      <label class="mb-[5px] block text-xs text-attenue" for="vod-bucket">Bucket</label>
+      <label class="mb-[5px] block text-xs text-dim" for="vod-bucket">Bucket</label>
       <input
         id="vod-bucket"
         v-model="bucket.value.value"
         type="text"
         maxlength="200"
         placeholder="rushes-cloudnord"
-        class="mb-[11px] w-full rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte"
+        class="mb-[11px] w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text"
       />
-      <label class="mb-[5px] block text-xs text-attenue" for="vod-prefixe">Préfixe</label>
+      <label class="mb-[5px] block text-xs text-dim" for="vod-prefixe">Préfixe</label>
       <input
         id="vod-prefixe"
         v-model="prefixe.value.value"
         type="text"
         maxlength="200"
         placeholder="cn26"
-        class="mb-[11px] w-full rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte"
+        class="mb-[11px] w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text"
       />
 
       <label class="mb-2 flex items-center gap-2 text-sm">
@@ -493,24 +493,24 @@ async function confirmerResync(): Promise<void> {
 
       <div class="grid grid-cols-2 gap-2">
         <div>
-          <label class="mb-[5px] block text-xs text-attenue" for="vod-debit">Débit max (Ko/s)</label>
+          <label class="mb-[5px] block text-xs text-dim" for="vod-debit">Débit max (Ko/s)</label>
           <input id="vod-debit" v-model="debit" type="number" min="0" max="1000000"
-            class="w-full rounded-lg border border-bord bg-fond px-3 py-2 text-sm text-texte" />
+            class="w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text" />
         </div>
         <div>
-          <label class="mb-[5px] block text-xs text-attenue" for="vod-cpu">CPU max (%)</label>
+          <label class="mb-[5px] block text-xs text-dim" for="vod-cpu">CPU max (%)</label>
           <input id="vod-cpu" v-model="cpu" type="number" min="10" max="100"
-            class="w-full rounded-lg border border-bord bg-fond px-3 py-2 text-sm text-texte" />
+            class="w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text" />
         </div>
         <div>
-          <label class="mb-[5px] block text-xs text-attenue" for="vod-marge">Marge (min)</label>
+          <label class="mb-[5px] block text-xs text-dim" for="vod-marge">Marge (min)</label>
           <input id="vod-marge" v-model="marge" type="number" min="0" max="120"
-            class="w-full rounded-lg border border-bord bg-fond px-3 py-2 text-sm text-texte" />
+            class="w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text" />
         </div>
         <div>
-          <label class="mb-[5px] block text-xs text-attenue" for="vod-part">Taille de part (Mo)</label>
+          <label class="mb-[5px] block text-xs text-dim" for="vod-part">Taille de part (Mo)</label>
           <input id="vod-part" v-model="part" type="number" min="5" max="64"
-            class="w-full rounded-lg border border-bord bg-fond px-3 py-2 text-sm text-texte" />
+            class="w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text" />
         </div>
       </div>
 
@@ -537,11 +537,11 @@ async function confirmerResync(): Promise<void> {
         <div
           v-else-if="controle != null"
           class="rounded-lg border p-2"
-          :class="controle.ok ? 'border-bord' : 'border-alerte/40'"
+          :class="controle.ok ? 'border-edge' : 'border-alert/40'"
         >
           <div
             class="mb-1 text-[11px] font-semibold tracking-[.08em] uppercase"
-            :class="controle.ok ? 'text-attenue' : 'text-alerte'"
+            :class="controle.ok ? 'text-dim' : 'text-alert'"
           >
             {{ controle.ok ? 'Stockage joignable et accessible en écriture' : 'Contrôle interrompu' }}
           </div>
@@ -553,10 +553,10 @@ async function confirmerResync(): Promise<void> {
             class="flex items-baseline gap-2 text-[12px]"
           >
             <span>{{ etape.ok ? '✓' : '✗' }}</span>
-            <span :class="etape.ok ? '' : 'text-alerte'">
+            <span :class="etape.ok ? '' : 'text-alert'">
               {{ STORAGE_STEPS[etape.nom] ?? etape.nom }}
             </span>
-            <span v-if="etape.detail != null" class="min-w-0 flex-1 break-words text-attenue">
+            <span v-if="etape.detail != null" class="min-w-0 flex-1 break-words text-dim">
               {{ etape.detail }}
             </span>
           </div>
@@ -565,13 +565,13 @@ async function confirmerResync(): Promise<void> {
     </Panel>
 
     <Panel title="Resynchronisation des salles">
-      <label class="mb-[5px] block text-xs text-attenue" for="resync-salle">
+      <label class="mb-[5px] block text-xs text-dim" for="resync-salle">
         Salle à resynchroniser
       </label>
       <select
         id="resync-salle"
         v-model="salleResync"
-        class="mb-3 w-full rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte"
+        class="mb-3 w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text"
       >
         <option value="">Toutes les salles</option>
         <option v-for="salle in rooms" :key="salle.id" :value="salle.id">{{ salle.name }}</option>
@@ -587,7 +587,7 @@ async function confirmerResync(): Promise<void> {
       confirm-label="Demander"
       @confirm="confirmerResync"
     >
-      <span id="resync-texte">
+      <span id="resync-text">
         Demander une resynchronisation complète à
         <strong>{{ nomSalleResync ?? 'toutes les salles' }}</strong>.
       </span>

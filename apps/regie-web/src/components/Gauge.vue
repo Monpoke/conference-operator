@@ -24,7 +24,7 @@ const width = (): string => `${Math.max(0, Math.min(100, props.percent))}%`
   height: 5px;
   overflow: hidden;
   border-radius: 999px;
-  background: var(--color-bord);
+  background: var(--color-edge);
 }
 .jauge > span {
   display: block;
@@ -33,13 +33,13 @@ const width = (): string => `${Math.max(0, Math.min(100, props.percent))}%`
   background: var(--color-ok);
   transition: width 0.3s ease;
 }
-.jauge > span.niveau-attention {
-  background: var(--color-attention);
+.jauge > span.niveau-warn {
+  background: var(--color-warn);
 }
-.jauge > span.niveau-alerte {
-  background: var(--color-alerte);
+.jauge > span.niveau-alert {
+  background: var(--color-alert);
 }
 .jauge > span.niveau-inconnu {
-  background: var(--color-attenue);
+  background: var(--color-dim);
 }
 </style>

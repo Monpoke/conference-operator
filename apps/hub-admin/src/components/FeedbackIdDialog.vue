@@ -67,7 +67,7 @@ async function enregistrer(valeur: string | null): Promise<void> {
     width="wide"
   >
     <div class="mb-[11px]">
-      <label class="mb-[5px] block text-xs text-attenue" for="feedback-champ">
+      <label class="mb-[5px] block text-xs text-dim" for="feedback-champ">
         Identifiant servi
       </label>
       <!--
@@ -83,7 +83,7 @@ async function enregistrer(valeur: string | null): Promise<void> {
         maxlength="200"
         autocomplete="off"
         :placeholder="session?.id"
-        class="w-full rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte placeholder:text-attenue placeholder:italic focus:border-marque focus:outline-none"
+        class="w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text placeholder:text-dim placeholder:italic focus:border-brand focus:outline-none"
       />
     </div>
 
@@ -97,20 +97,20 @@ async function enregistrer(valeur: string | null): Promise<void> {
     <div id="feedback-apercu" class="mt-2">
       <a
         v-if="apercu != null"
-        class="font-mono text-[11px] break-all text-marque"
+        class="font-mono text-[11px] break-all text-brand"
         target="_blank"
         rel="noopener"
         :href="apercu"
       >
         {{ apercu }} ↗
       </a>
-      <span v-else class="text-attention">
+      <span v-else class="text-warn">
         Aucun projet OpenFeedback réglé : il n'y aura d'adresse pour personne tant que le champ
         des réglages est vide.
       </span>
     </div>
 
-    <p v-if="erreur !== ''" id="feedback-erreur" class="mt-2 text-sm text-alerte">{{ erreur }}</p>
+    <p v-if="erreur !== ''" id="feedback-erreur" class="mt-2 text-sm text-alert">{{ erreur }}</p>
 
     <Hint>
       La correction vaut jusqu'à ce qu'on la retire, réimports compris, et descend aux salles :

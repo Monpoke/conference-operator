@@ -5,9 +5,9 @@
  * mesure. Le confondre avec « ok » ferait passer un poste qu'on n'a pas su lire
  * pour un poste au repos.
  */
-export const SEVERITY = ['ok', 'attention', 'alerte'] as const
+export const SEVERITY = ['ok', 'warn', 'alert'] as const
 
-export type Level = 'ok' | 'attention' | 'alerte' | 'inconnu'
+export type Level = 'ok' | 'warn' | 'alert' | 'unknown'
 
 /**
  * Le pire de deux niveaux — ce que la pastille du bandeau doit montrer.

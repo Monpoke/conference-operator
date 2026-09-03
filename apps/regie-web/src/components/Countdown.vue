@@ -17,9 +17,9 @@ const countdown = computed(() => countdownFor(props.payload, props.atMs))
  */
 const tint = computed(() => {
   const count = countdown.value
-  if (count == null || count.beforeStart) return 'text-attenue'
-  if (count.ms < 0) return 'text-alerte'
-  return count.ms < NEARLY_OVER_MS ? 'text-attention' : 'text-texte'
+  if (count == null || count.beforeStart) return 'text-dim'
+  if (count.ms < 0) return 'text-alert'
+  return count.ms < NEARLY_OVER_MS ? 'text-warn' : 'text-text'
 })
 </script>
 

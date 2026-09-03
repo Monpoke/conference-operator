@@ -49,7 +49,7 @@ useKeyboardLayer(() => ({}), () => conference.stopRecordingOpen)
   -->
   <ConfirmDialog
     v-model:open="conference.tooEarlyOpen"
-    tone="attention"
+    tone="warn"
     title="Commencer très en avance ?"
     :detail="conference.tooEarlyDetail"
     cancel-label="Non"
@@ -65,7 +65,7 @@ useKeyboardLayer(() => ({}), () => conference.stopRecordingOpen)
   -->
   <ConfirmDialog
     v-model:open="conference.endEarlyOpen"
-    tone="attention"
+    tone="warn"
     title="Terminer en avance ?"
     :detail="conference.endEarlyDetail"
     cancel-label="Non"
@@ -82,7 +82,7 @@ useKeyboardLayer(() => ({}), () => conference.stopRecordingOpen)
   -->
   <ConfirmDialog
     v-model:open="conference.stopRecordingOpen"
-    tone="attention"
+    tone="warn"
     title="La captation tourne encore"
     :detail="conference.stopRecordingDetail"
     cancel-label="Annuler"
@@ -97,7 +97,7 @@ useKeyboardLayer(() => ({}), () => conference.stopRecordingOpen)
       -->
       <button
         type="button"
-        class="cursor-pointer rounded-lg border border-bord bg-surface2 px-3 py-2 text-[13px] font-semibold text-texte"
+        class="cursor-pointer rounded-lg border border-edge bg-surface2 px-3 py-2 text-[13px] font-semibold text-text"
         @click="conference.finish(false)"
       >
         Terminer sans arrêter
@@ -107,7 +107,7 @@ useKeyboardLayer(() => ({}), () => conference.stopRecordingOpen)
 
   <ConfirmDialog
     v-model:open="conference.recordingOpen"
-    tone="attention"
+    tone="warn"
     title="Rien n'enregistre"
     detail="La conférence va commencer et OBS-B n'enregistre pas. Une VOD manquante ne se rattrape pas le soir."
     cancel-label="Annuler"
@@ -117,7 +117,7 @@ useKeyboardLayer(() => ({}), () => conference.stopRecordingOpen)
     <template #other>
       <button
         type="button"
-        class="cursor-pointer rounded-lg border border-bord bg-surface2 px-3 py-2 text-[13px] font-semibold text-texte"
+        class="cursor-pointer rounded-lg border border-edge bg-surface2 px-3 py-2 text-[13px] font-semibold text-text"
         @click="conference.launch(false)"
       >
         Commencer sans enregistrer

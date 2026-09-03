@@ -304,7 +304,7 @@ describe('vue des conférences', () => {
 
     const ligne = wrapper.get('[data-session="talk-1"]')
     expect(ligne.text()).toContain('+3 min')
-    expect(ligne.html()).toContain('text-alerte')
+    expect(ligne.html()).toContain('text-alert')
   })
 
   it('nomme qui a décidé, pas seulement que c’est automatique', async () => {

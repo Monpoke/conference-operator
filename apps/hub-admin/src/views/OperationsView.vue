@@ -75,19 +75,19 @@ const detailGlobal = computed(() => {
           décrit une *salle* en pause, pas le créneau lui-même.
         -->
         <span
-          id="global-pastille"
-          class="pastille"
-          :class="globalBreak.state === 'en-cours' ? 'pause' : 'pas-commencee'"
+          id="global-status-dot"
+          class="status-dot"
+          :class="globalBreak.state === 'en-cours' ? 'break' : 'not-started'"
         ></span>
         <span id="global-titre" class="flex-1 truncate font-semibold">
           {{ globalBreak.title }}{{ globalBreak.state === 'en-cours' ? '' : ' — à venir' }}
         </span>
-        <span id="global-horaire" class="shrink-0 text-[13px] text-attenue tabular-nums">
+        <span id="global-horaire" class="shrink-0 text-[13px] text-dim tabular-nums">
           {{ time(globalBreak.startsAt, fuseau)
           }}{{ globalBreak.endsAt ? ` – ${time(globalBreak.endsAt, fuseau)}` : '' }}
         </span>
       </div>
-      <div id="global-detail" class="mt-1 text-xs text-attenue">{{ detailGlobal }}</div>
+      <div id="global-detail" class="mt-1 text-xs text-dim">{{ detailGlobal }}</div>
     </Panel>
 
     <Panel class="col-span-full" title="Salles">
@@ -100,7 +100,7 @@ const detailGlobal = computed(() => {
         <div
           v-for="salle in rooms"
           :key="salle.roomId"
-          class="rounded-xl border border-bord bg-fond p-3"
+          class="rounded-xl border border-edge bg-canvas p-3"
           :data-salle="salle.roomId"
         >
           <div class="flex items-center gap-2">
@@ -114,7 +114,7 @@ const detailGlobal = computed(() => {
               {{ enPause(salle) ? 'BREAK' : 'BREAK à venir' }}
             </Badge>
             <a
-              class="shrink-0 text-[13px] text-marque no-underline"
+              class="shrink-0 text-[13px] text-brand no-underline"
               target="_blank"
               rel="noopener"
               :href="`/mur?salle=${encodeURIComponent(salle.roomId)}`"
@@ -125,11 +125,11 @@ const detailGlobal = computed(() => {
 
           <!-- Ce qui se joue : la première chose qu'on vient vérifier. -->
           <div class="mt-1.5 text-[13px] leading-snug">
-            <span v-if="enPause(salle)" class="text-attenue">—</span>
+            <span v-if="enPause(salle)" class="text-dim">—</span>
             <template v-else-if="salle.currentSession != null">
               {{ salle.currentSession.title }}
             </template>
-            <span v-else class="text-attenue">Rien au programme</span>
+            <span v-else class="text-dim">Rien au programme</span>
           </div>
 
           <!--
@@ -139,7 +139,7 @@ const detailGlobal = computed(() => {
           <div
             v-if="reste(salle) != null"
             class="mt-0.5 text-xs"
-            :class="reste(salle)!.depasse ? 'text-alerte' : 'text-attenue'"
+            :class="reste(salle)!.depasse ? 'text-alert' : 'text-dim'"
           >
             {{ reste(salle)!.texte }}
           </div>
@@ -170,7 +170,7 @@ const detailGlobal = computed(() => {
             Le mot accompagne la couleur : une pastille seule ne se lit pas
             quand on ne distingue pas les teintes, et la carte se regarde de loin.
           -->
-          <div class="mt-2 text-xs text-attenue">
+          <div class="mt-2 text-xs text-dim">
             <span :class="appearance(salle).text">
               {{ salle.connectivity === 'ONLINE' ? appearance(salle).word : 'salle muette' }}
             </span>

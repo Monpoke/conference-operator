@@ -41,11 +41,11 @@ const timeZone = computed(() => props.timeZone)
 
 <template>
   <Dialog v-model:open="vod.open" title="🎞 Enregistrements" width="full">
-    <div class="mb-2.5 flex flex-wrap items-center gap-2 border-b border-bord pb-2.5">
-      <div class="min-w-0 flex-1 truncate font-mono text-[11px] text-attenue" data-role="vod-racine">
+    <div class="mb-2.5 flex flex-wrap items-center gap-2 border-b border-edge pb-2.5">
+      <div class="min-w-0 flex-1 truncate font-mono text-[11px] text-dim" data-role="vod-racine">
         {{ vod.listing?.root ?? '' }}
       </div>
-      <div class="shrink-0 text-xs text-attenue" data-role="vod-avancement">{{ vod.progress }}</div>
+      <div class="shrink-0 text-xs text-dim" data-role="vod-avancement">{{ vod.progress }}</div>
       <Button size="small" class="shrink-0" :disabled="vod.checking" @click="vod.checkAll()">
         Tout vérifier
       </Button>
@@ -77,7 +77,7 @@ const timeZone = computed(() => props.timeZone)
     -->
     <div
       v-if="vod.manualOnly"
-      class="mb-2.5 border-b border-bord pb-1.5 text-[11px] text-attenue"
+      class="mb-2.5 border-b border-edge pb-1.5 text-[11px] text-dim"
       data-role="vod-manuel"
     >
       Téléversement automatique désactivé sur le hub : les envois se font à la main, ⬆ par ligne
@@ -86,29 +86,29 @@ const timeZone = computed(() => props.timeZone)
 
     <div
       v-if="vod.waitReason != null"
-      class="mb-2.5 border-b border-bord pb-1.5 text-[11px] text-attention"
+      class="mb-2.5 border-b border-edge pb-1.5 text-[11px] text-warn"
       data-role="vod-regulateur"
     >
       {{ vod.waitReason }}
     </div>
 
     <div class="max-h-[62vh] min-h-0 overflow-y-auto">
-      <div v-if="vod.listing == null" class="text-xs text-attenue">Lecture du dossier…</div>
+      <div v-if="vod.listing == null" class="text-xs text-dim">Lecture du dossier…</div>
 
       <!-- Une liste vide se lirait comme une journée perdue : dire pourquoi. -->
-      <div v-else-if="vod.listing.root == null" class="text-sm text-attention">
+      <div v-else-if="vod.listing.root == null" class="text-sm text-warn">
         Aucun dossier d’enregistrement connu. Renseignez-le dans la configuration de la salle, ou
         connectez OBS-B — c’est lui qui dit où il écrit.
       </div>
 
-      <div v-else-if="vod.listing.entries.length === 0" class="text-sm text-attenue">
+      <div v-else-if="vod.listing.entries.length === 0" class="text-sm text-dim">
         Aucun fichier vidéo dans ce dossier.
       </div>
 
       <template v-else>
         <div
           v-if="vod.missingTools != null"
-          class="mb-2 rounded-lg border border-attention/40 px-2.5 py-1.5 text-[11px] text-attention"
+          class="mb-2 rounded-lg border border-warn/40 px-2.5 py-1.5 text-[11px] text-warn"
         >
           {{ vod.missingTools }}
         </div>
@@ -123,7 +123,7 @@ const timeZone = computed(() => props.timeZone)
       </template>
     </div>
 
-    <p class="mt-2.5 border-t border-bord pt-2 text-[11px] text-attenue">
+    <p class="mt-2.5 border-t border-edge pt-2 text-[11px] text-dim">
       « Vérifier » ouvre le conteneur avec ffprobe : pistes présentes, durée réelle contre durée
       chronométrée, débit. Ce qu'aucune sonde ne dit — le mauvais plan, le micro dans la poche —
       reste à l'œil : ✓ et ✕ posent ce verdict-là.

@@ -193,7 +193,7 @@ describe('enregistrer', () => {
     await config.save()
 
     expect(config.draft?.fileSlug).toBe('saisi')
-    expect(config.notice).toEqual({ text: 'Refusé', tone: 'alerte' })
+    expect(config.notice).toEqual({ text: 'Refusé', tone: 'alert' })
   })
 
   it('enregistre avant de connecter, pour ne pas brancher la mauvaise adresse', async () => {

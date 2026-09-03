@@ -1,47 +1,42 @@
 /*
- * Feuille des pages servies sans étape de build.
+ * Sheet for the pages served with no build step.
  *
- * Elle est compilée par `scripts/build-css.mjs`, figée dans
- * `src/generated/styles.ts`, et inlinée dans un `<style>` par chaque page —
- * l'écran projeté, les deux habillages, le mur public et l'écran d'adresse du
- * hub. Les surfaces passées à Vue ne lisent pas ce fichier : elles compilent
- * `apps.css`, qui partage les mêmes morceaux mais scanne d'autres sources.
+ * It is compiled by `scripts/build-css.mjs`, frozen into `src/generated/styles.ts`,
+ * and inlined into a `<style>` by each page — the projected screen, the two
+ * overlays, the public wall and the hub's address screen. The surfaces that moved
+ * to Vue do not read this file: they compile `apps.css`, which shares the same
+ * pieces but scans other sources.
  *
- * Ce qu'elle ne contient plus, depuis que la console est en Vue : les classes
- * qui n'étaient posées que par elle — `.message`, `.source`, `.reglage`,
- * `.vide`, `.aide` et les variantes de boutons de formulaire. Elles étaient une
- * prothèse pour du markup construit à la volée, et les composants suppriment la
- * cause.
+ * What it no longer contains, since the console moved to Vue: the classes only it
+ * used to set — `.message`, `.source`, `.reglage`, `.vide`, `.aide` and the form
+ * button variants. They were a prosthesis for markup built on the fly, and the
+ * components remove the cause.
  *
- * `components.css` a suivi la régie : c'était sa dernière lectrice, et ses huit
- * classes — `.btn`, `.champ`, `.panneau`, `.touche` et leurs variantes —
- * étaient une prothèse pour du markup construit à la volée depuis du
- * JavaScript. Les composants suppriment la cause. Vérifié sur le HTML
- * réellement produit par les cinq pages restantes, et pas seulement sur leurs
- * sources : c'est la concaténation de classes qui avait masqué le contraire la
- * première fois.
+ * `components.css` followed the control app: it was its last reader, and its
+ * eight classes — `.btn`, `.champ`, `.panneau`, `.touche` and their variants —
+ * were a prosthesis for markup built on the fly from JavaScript. The components
+ * remove the cause. Verified on the HTML actually produced by the five remaining
+ * pages, and not only on their sources: it was class concatenation that had
+ * hidden the opposite the first time.
  *
- * Ce qui reste, et pourquoi : `elements.css` habille les éléments nus —
- * `button`, `select`, `label`, `table` —, dont l'écran d'adresse du hub et le
- * mur se servent sans poser une seule classe ; `wall.css` au mur ; et
- * `status.css` a quitté cette feuille pour `apps.css` seule — plus aucun
- * gabarit ne pose de pastille, mais du code métier partagé en nomme
- * littéralement les teintes.
+ * What remains, and why: `elements.css` dresses the bare elements — `button`,
+ * `select`, `label`, `table` —, which the hub's address screen and the wall use
+ * without setting a single class; `wall.css` for the wall; and `status.css` has
+ * left this sheet for `apps.css` alone — no template sets a status dot any more,
+ * but shared business code names its tints literally.
  *
- * Le découpage en morceaux existe pour cette raison, et pour elle seule. Les
- * `@import` sont ordonnés comme l'était le fichier d'un seul tenant : les
- * changer de place réordonne la sortie compilée, et le test de fraîcheur
- * compare octet à octet.
+ * The split into pieces exists for that reason, and that reason alone. The
+ * `@import`s are ordered as the single file used to be: moving them reorders the
+ * compiled output, and the freshness test compares byte for byte.
  */
 
 /*
- * `source(none)` : détection automatique désactivée.
+ * `source(none)`: automatic detection disabled.
  *
- * Par défaut Tailwind v4 balaie tout le dépôt — y compris `src/generated/`, où
- * il écrit lui-même la feuille compilée. Cette sortie contient tous les noms de
- * classes en clair : elle se retrouvait donc rescannée au tour suivant, et la
- * compilation n'était plus reproductible. Les sources sont déclarées à la main
- * juste en dessous.
+ * By default Tailwind v4 sweeps the whole repository — including `src/generated/`,
+ * where it writes the compiled sheet itself. That output contains every class
+ * name in clear: it was therefore rescanned on the next pass, and the compilation
+ * was no longer reproducible. The sources are declared by hand just below.
  */
 @import "tailwindcss" source(none);
 
@@ -50,30 +45,30 @@
 @import "./wall.css";
 
 /*
- * Les pages sont servies sans étape de build : la feuille est compilée ici,
- * puis inlinée dans chaque page. Tailwind doit donc être pointé explicitement
- * sur les sources qui contiennent les classes — elles vivent dans des gabarits
- * TypeScript, pas dans des fichiers HTML.
+ * The pages are served with no build step: the sheet is compiled here, then
+ * inlined into each page. Tailwind must therefore be pointed explicitly at the
+ * sources containing the classes — they live in TypeScript templates, not in HTML
+ * files.
  *
- * `hub-server/src/pages` reste de la partie tant que le mur public y vit : il
- * n'a pas d'étape de build et n'en aura pas. En revanche, **aucun répertoire de
- * SFC ne doit apparaître ici** — la feuille figée gagnerait les utilitaires des
- * applications Vue, des dizaines de kilo-octets de style mort inlinés dans
- * l'écran projeté, et le test de fraîcheur produirait un diff à chaque retouche
- * de composant. Ces répertoires sont déclarés dans `apps.css`.
+ * `hub-server/src/pages` stays in the picture as long as the public wall lives
+ * there: it has no build step and will not get one. On the other hand, **no SFC
+ * directory must appear here** — the frozen sheet would gain the Vue
+ * applications' utilities, tens of kilobytes of dead style inlined into the
+ * projected screen, and the freshness test would produce a diff on every
+ * component tweak. Those directories are declared in `apps.css`.
  */
 /*
- * Le vocabulaire des états, là où il est écrit.
+ * The vocabulary of the states, where it is written.
  *
- * `APPEARANCE` et `outlineOf` produisent des noms de classes — `text-attenue`,
- * `depassement`, `muette` — que trois surfaces se contentent de rendre. Ces
- * chaînes vivent dans `etat-salle`, et rien ne les scannait : elles ne
- * survivaient que parce que les mêmes utilitaires étaient écrits à la main
- * ailleurs. La dernière retouche qui aurait fait disparaître ces occurrences
- * aurait éteint les couleurs d'état sans qu'aucun test ne bouge.
+ * `APPEARANCE` and `outlineOf` produce class names — `text-dim`, `overrun`,
+ * `silent` — that three surfaces merely render. Those strings live in
+ * `room-state`, and nothing scanned them: they survived only because the same
+ * utilities were written by hand elsewhere. The next tweak that made those
+ * occurrences disappear would have switched off the state colours without a
+ * single test moving.
  *
- * Pas de SFC ici, seulement du TypeScript : la mise en garde ci-dessus tient.
+ * No SFC here, only TypeScript: the warning above holds.
  */
-@source "../../../packages/etat-salle/src";
+@source "../../../packages/room-state/src";
 @source "../../../apps/room-client/src/core";
 @source "../../../apps/hub-server/src/pages";

@@ -40,7 +40,7 @@ const queueDepth = computed(
 </script>
 
 <template>
-  <header class="flex items-center gap-3 border-b border-bord bg-surface px-3 py-2">
+  <header class="flex items-center gap-3 border-b border-edge bg-surface px-3 py-2">
     <div class="truncate text-[15px] font-semibold" data-role="room">
       {{ payload.roomName ?? payload.state.roomId ?? 'Salle non appairée' }}
     </div>
@@ -67,14 +67,14 @@ const queueDepth = computed(
     -->
     <div
       v-if="payload.state.remoteHolder != null && distant !== true"
-      class="shrink-0 truncate text-xs text-attention"
+      class="shrink-0 truncate text-xs text-warn"
       data-role="remote-holder"
       :title="`${payload.state.remoteHolder} pilote cette salle depuis la régie mobile. Vos commandes restent actives.`"
     >
       pilotée à distance — {{ payload.state.remoteHolder }}
     </div>
 
-    <div v-if="queueDepth > 0" class="shrink-0 text-xs text-attention" data-role="queue">
+    <div v-if="queueDepth > 0" class="shrink-0 text-xs text-warn" data-role="queue">
       {{ queueDepth }} en attente
     </div>
 
@@ -89,7 +89,7 @@ const queueDepth = computed(
     -->
     <div
       v-if="streamDead"
-      class="shrink-0 text-xs font-semibold text-alerte"
+      class="shrink-0 text-xs font-semibold text-alert"
       role="alert"
       data-role="stream-dead"
     >

@@ -30,14 +30,14 @@ const entries = computed(() =>
        ligne d'un écran de régie qui n'en a pas de trop. -->
   <div
     v-if="entries.length > 0"
-    class="flex items-center gap-1.5 overflow-x-auto border-b border-bord bg-surface px-3 py-1.5"
+    class="flex items-center gap-1.5 overflow-x-auto border-b border-edge bg-surface px-3 py-1.5"
     data-role="rooms-strip"
   >
     <button
       v-for="entry in entries"
       :key="entry.id"
       type="button"
-      class="flex shrink-0 cursor-pointer items-center gap-2 rounded-md border border-bord bg-surface2 px-2.5 py-1 text-xs font-normal"
+      class="flex shrink-0 cursor-pointer items-center gap-2 rounded-md border border-edge bg-surface2 px-2.5 py-1 text-xs font-normal"
       :data-salle="entry.id"
       @click="emit('open', entry.id)"
     >
@@ -48,16 +48,16 @@ const entries = computed(() =>
         pas le programme. Lui repasser une classe toute faite serait un
         troisième usage que ses props ne décrivent pas.
       -->
-      <span class="pastille" :class="entry.dot"></span>
+      <span class="status-dot" :class="entry.dot"></span>
       <span class="font-semibold">{{ entry.name }}</span>
       <span
         v-if="entry.breakTag != null"
-        class="shrink-0 rounded bg-fond px-1.5 py-0.5 text-[11px]"
+        class="shrink-0 rounded bg-canvas px-1.5 py-0.5 text-[11px]"
         :class="entry.breakTag.tint"
       >
         {{ entry.breakTag.text }}
       </span>
-      <span v-if="entry.label !== ''" class="max-w-[26ch] truncate text-attenue">
+      <span v-if="entry.label !== ''" class="max-w-[26ch] truncate text-dim">
         {{ entry.label }}
       </span>
       <span class="tabular-nums" :class="entry.tint">{{ entry.detail }}</span>

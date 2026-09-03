@@ -60,7 +60,7 @@ function relancerTout(): void {
         <select
           id="vod-salle"
           v-model="room"
-          class="min-w-[150px] flex-1 rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte"
+          class="min-w-[150px] flex-1 rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text"
         >
           <option v-for="salle in salles" :key="salle.value" :value="salle.value">
             {{ salle.label }}
@@ -72,7 +72,7 @@ function relancerTout(): void {
       <div class="overflow-x-auto">
         <table class="w-full border-collapse text-[13px]">
           <thead>
-            <tr class="text-[11px] tracking-[.08em] text-attenue uppercase">
+            <tr class="text-[11px] tracking-[.08em] text-dim uppercase">
               <th class="pr-2.5 pb-2 text-left font-semibold">Salle</th>
               <th class="pr-2.5 pb-2 text-left font-semibold">Fichier</th>
               <th class="pr-2.5 pb-2 text-left font-semibold">État</th>
@@ -82,36 +82,36 @@ function relancerTout(): void {
           </thead>
           <tbody id="vod-lignes">
             <tr v-if="uploads.length === 0">
-              <td colspan="5" class="py-3.5 text-attenue">Aucun téléversement.</td>
+              <td colspan="5" class="py-3.5 text-dim">Aucun téléversement.</td>
             </tr>
             <tr
               v-for="upload in uploads"
               :key="`${upload.roomId}/${upload.file}`"
               :data-upload="upload.file"
             >
-              <td class="border-t border-bord py-[9px] pr-2.5 align-middle">
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
                 {{ upload.roomName ?? upload.roomId }}
               </td>
-              <td class="border-t border-bord py-[9px] pr-2.5 align-middle font-mono text-[11px]">
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle font-mono text-[11px]">
                 {{ upload.file }}
                 <!--
                   L'erreur du stockage est reprise telle quelle : « AccessDenied »
                   est le seul mot qu'on puisse porter à qui tient le bucket.
                 -->
-                <div v-if="upload.lastError != null" class="text-[11px] text-alerte">
+                <div v-if="upload.lastError != null" class="text-[11px] text-alert">
                   {{ upload.lastError }}
                 </div>
               </td>
               <td
-                class="border-t border-bord py-[9px] pr-2.5 align-middle"
+                class="border-t border-edge py-[9px] pr-2.5 align-middle"
                 :class="etat(upload).tone"
               >
                 {{ etat(upload).label }}
               </td>
-              <td class="border-t border-bord py-[9px] pr-2.5 align-middle">
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
                 {{ progress(upload) }} %{{ debit(upload) }}
               </td>
-              <td class="border-t border-bord py-[9px] align-middle">
+              <td class="border-t border-edge py-[9px] align-middle">
                 <Button
                   v-if="upload.state !== 'termine'"
                   size="small"

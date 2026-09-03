@@ -26,8 +26,8 @@ describe('Button', () => {
     const idle = mount(Button, { props: { active: false } })
     const active = mount(Button, { props: { active: true } })
 
-    expect(idle.classes()).not.toContain('bg-marque')
-    expect(active.classes()).toContain('bg-marque')
+    expect(idle.classes()).not.toContain('bg-brand')
+    expect(active.classes()).toContain('bg-brand')
   })
 
   it('lets the caller override without fighting the variant', () => {

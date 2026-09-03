@@ -31,7 +31,7 @@ describe('feuille de style', () => {
     // Garde-fou du garde-fou : une compilation vide passerait la comparaison
     // ci-dessus en ne prouvant rien.
     expect(TAILWIND_CSS.length).toBeGreaterThan(5_000)
-    expect(TAILWIND_CSS).toContain('--color-attenue')
+    expect(TAILWIND_CSS).toContain('--color-dim')
     expect(TAILWIND_CSS).toMatch(/\.flex\{/)
   })
 

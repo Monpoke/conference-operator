@@ -49,7 +49,7 @@ const WIDTHS = {
     <DialogPortal>
       <DialogOverlay class="fixed inset-0 z-50 bg-black/65" />
       <DialogContent
-        class="fixed top-1/2 left-1/2 z-50 max-h-[90vh] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-bord bg-surface p-4"
+        class="fixed top-1/2 left-1/2 z-50 max-h-[90vh] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-edge bg-surface p-4"
         :class="WIDTHS[width ?? 'normal']"
         :disable-outside-pointer-events="false"
         @open-auto-focus="
@@ -65,10 +65,10 @@ const WIDTHS = {
           }
         "
       >
-        <h2 class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-attenue uppercase">
+        <h2 class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
           <DialogTitle>{{ title }}</DialogTitle>
         </h2>
-        <DialogDescription v-if="description != null" class="mb-2.5 text-sm text-attenue">
+        <DialogDescription v-if="description != null" class="mb-2.5 text-sm text-dim">
           {{ description }}
         </DialogDescription>
 
@@ -77,7 +77,7 @@ const WIDTHS = {
         <div class="mt-3.5 flex justify-end gap-1.5">
           <slot name="actions" />
           <DialogClose
-            class="cursor-pointer rounded-lg border border-bord bg-surface2 px-3 py-2 text-[13px] font-semibold text-texte"
+            class="cursor-pointer rounded-lg border border-edge bg-surface2 px-3 py-2 text-[13px] font-semibold text-text"
           >
             Fermer
           </DialogClose>

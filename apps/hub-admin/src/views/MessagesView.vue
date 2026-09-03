@@ -111,7 +111,7 @@ async function masquerBandeau(): Promise<void> {
   >
     <Panel title="Envoyer un message">
       <Select id="msg-salle" v-model="target" label="Destinataire" :options="destinataires" />
-      <Field id="msg-texte" v-model="texte" label="Message" placeholder="Texte du message" />
+      <Field id="msg-text" v-model="texte" label="Message" placeholder="Texte du message" />
       <Select
         id="msg-cible"
         v-model="cible"
@@ -143,7 +143,7 @@ async function masquerBandeau(): Promise<void> {
 
       <Hint id="msg-avertissement">
         <template v-if="public_">
-          <strong class="text-attention">Ce message sera projeté devant le public</strong>
+          <strong class="text-warn">Ce message sera projeté devant le public</strong>
           et remplacera ce qui est à l'écran.
         </template>
         <template v-else>
@@ -158,9 +158,9 @@ async function masquerBandeau(): Promise<void> {
         <article
           v-for="message in received"
           :key="message.id"
-          class="mb-2.5 rounded-[9px] border border-bord p-3"
+          class="mb-2.5 rounded-[9px] border border-edge p-3"
         >
-          <div class="mb-1.5 flex items-center gap-2 text-xs text-attenue">
+          <div class="mb-1.5 flex items-center gap-2 text-xs text-dim">
             <Badge class="px-1.5 py-0.5 text-[10px] tracking-[.08em]">{{ message.level }}</Badge>
             <span>{{ message.roomName ?? message.roomId }}</span>
             <span>{{ timeAgo(message.receivedAt) }}</span>
@@ -176,7 +176,7 @@ async function masquerBandeau(): Promise<void> {
     -->
     <Panel class="col-span-full">
       <div class="mb-2.5 flex items-center gap-3">
-        <h2 class="mb-0 flex-1 text-[11px] font-semibold tracking-[.14em] text-attenue uppercase">
+        <h2 class="mb-0 flex-1 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
           Bandeau live
         </h2>
         <Button id="btn-bandeau-masquer" size="small" @click="masquerBandeau">
@@ -197,16 +197,16 @@ async function masquerBandeau(): Promise<void> {
 
       <div class="mb-[11px] flex gap-1.5">
         <input
-          id="bandeau-texte"
+          id="bandeau-text"
           v-model="bandeauTexte"
           maxlength="240"
           placeholder="Texte du bandeau"
-          class="flex-1 rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte focus:border-marque focus:outline-none"
+          class="flex-1 rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text focus:border-brand focus:outline-none"
         />
         <select
           id="bandeau-niveau"
           v-model="bandeauNiveau"
-          class="w-auto shrink-0 rounded-lg border border-bord bg-fond px-3 py-2.5 text-sm text-texte"
+          class="w-auto shrink-0 rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text"
         >
           <option v-for="option in NIVEAUX" :key="option.value" :value="option.value">
             {{ option.label }}
@@ -223,7 +223,7 @@ async function masquerBandeau(): Promise<void> {
         modifiable avant envoi.
       </Hint>
 
-      <h3 class="mt-3.5 mb-2.5 text-[11px] font-semibold tracking-[.14em] text-attenue uppercase">
+      <h3 class="mt-3.5 mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
         Déjà passés
       </h3>
       <div id="bandeau-historique">
@@ -231,11 +231,11 @@ async function masquerBandeau(): Promise<void> {
         <div
           v-for="(passe, index) in banners"
           :key="`${passe.issuedAt}-${index}`"
-          class="flex items-center gap-3 border-t border-bord py-3 first:border-t-0"
+          class="flex items-center gap-3 border-t border-edge py-3 first:border-t-0"
         >
           <div class="flex-1">
             <strong class="mb-[3px] block text-sm">{{ passe.message.text }}</strong>
-            <span class="text-xs text-attenue">
+            <span class="text-xs text-dim">
               {{ passe.message.level }} · {{ timeAgo(passe.issuedAt) }} ·
               {{ passe.roomId ?? 'toutes salles' }}
             </span>

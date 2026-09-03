@@ -122,7 +122,7 @@ const nextSpeakers = computed(() =>
     <div class="mb-2 line-clamp-2 text-sm leading-snug" data-role="conference-title">
       {{ title }}
     </div>
-    <div v-if="speakers !== ''" class="mb-2 line-clamp-1 text-xs text-attenue">
+    <div v-if="speakers !== ''" class="mb-2 line-clamp-1 text-xs text-dim">
       {{ speakers }}
     </div>
 
@@ -134,24 +134,24 @@ const nextSpeakers = computed(() =>
     -->
     <div
       class="mt-1 text-xs"
-      :class="overrun ? 'text-alerte' : 'text-attenue'"
+      :class="overrun ? 'text-alert' : 'text-dim'"
       data-role="conference-detail"
       @click="status === 'ended' && conference.reset()"
     >
       {{ detail }}
     </div>
 
-    <div class="mt-2 border-t border-bord pt-2 text-xs text-attenue" data-role="next">
+    <div class="mt-2 border-t border-edge pt-2 text-xs text-dim" data-role="next">
       <template v-if="next == null">Plus rien après au programme.</template>
       <template v-else>
-        <span class="text-attenue">Suivant</span>
-        <span class="text-texte tabular-nums"> {{ time(next.startsAt, payload.timezone) }}</span>
-        <span class="text-texte"> · {{ next.title }}</span>
+        <span class="text-dim">Suivant</span>
+        <span class="text-text tabular-nums"> {{ time(next.startsAt, payload.timezone) }}</span>
+        <span class="text-text"> · {{ next.title }}</span>
         <!--
           Sur une deuxième ligne : accolés au titre, les noms sortaient du cadre
           dès que le titre était long, et c'est le titre qui disparaissait.
         -->
-        <div v-if="nextSpeakers !== ''" class="mt-0.5 text-texte">{{ nextSpeakers }}</div>
+        <div v-if="nextSpeakers !== ''" class="mt-0.5 text-text">{{ nextSpeakers }}</div>
       </template>
     </div>
 

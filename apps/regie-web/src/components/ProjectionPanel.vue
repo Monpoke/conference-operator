@@ -45,7 +45,7 @@ const commands = computed<Command[]>(() => {
 
 <template>
   <Panel>
-    <h2 class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-attenue uppercase">
+    <h2 class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
       Projection — OBS&nbsp;A<SimulatedBadge :when="obs?.simulated === true" />
     </h2>
     <CommandGrid

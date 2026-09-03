@@ -70,7 +70,7 @@ export const useConfigStore = defineStore('config', () => {
   const open = ref(false)
   const draft = ref<ConfigDraft | null>(null)
   const saving = ref(false)
-  const notice = ref<{ text: string; tone: 'quiet' | 'ok' | 'alerte' } | null>(null)
+  const notice = ref<{ text: string; tone: 'quiet' | 'ok' | 'alert' } | null>(null)
 
   /**
    * Le panneau a été ouvert par la vérification de démarrage, pas par l'opérateur.
@@ -280,7 +280,7 @@ export const useConfigStore = defineStore('config', () => {
     saving.value = false
     notice.value = result.ok
       ? { text: 'Enregistré.', tone: 'ok' }
-      : { text: result.message ?? 'Échec', tone: 'alerte' }
+      : { text: result.message ?? 'Échec', tone: 'alert' }
     // Repeuplé sur l'état qui revient du hub, pas sur ce qu'on vient de taper.
     if (result.ok) seed()
   }

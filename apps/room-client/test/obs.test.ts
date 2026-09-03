@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ObsController, type ObsTransport } from '../src/core/obs.js'
 
-/** OBS factice : implémente le sous-ensemble utilisé, sans instance réelle. */
-function fakeObs(scenes: string[], current = scenes[0] ?? 'Scène') {
+/** A fake OBS: implements the subset in use, with no real instance. */
+function fakeObs(scenes: string[], current = scenes[0] ?? 'Scene') {
   const handlers = new Map<string, ((payload: unknown) => void)[]>()
   const calls: { request: string; args?: Record<string, unknown> }[] = []
   let currentScene = current
@@ -20,7 +20,7 @@ function fakeObs(scenes: string[], current = scenes[0] ?? 'Scène') {
       }
       if (request === 'SetCurrentProgramScene') {
         currentScene = args!.sceneName as string
-        // OBS confirme toujours par un événement : c'est lui qui fait foi.
+        // OBS always confirms with an event: that is what is authoritative.
         emit('CurrentProgramSceneChanged', { sceneName: currentScene })
       }
       return {}
@@ -41,8 +41,8 @@ function fakeObs(scenes: string[], current = scenes[0] ?? 'Scène') {
 
 const ROLES = { LIVE: 'Capture HDMI', HOLD: 'Habillage web' }
 
-describe('pilotage OBS par rôles', () => {
-  it('résout les rôles à la connexion', async () => {
+describe('driving OBS by roles', () => {
+  it('resolves the roles on connection', async () => {
     const obs = fakeObs(['Capture HDMI', 'Habillage web'], 'Habillage web')
     const controller = new ObsController({
       instance: 'A',
@@ -54,12 +54,12 @@ describe('pilotage OBS par rôles', () => {
     const state = await controller.connect()
     expect(state.connected).toBe(true)
     expect(state.unresolvedRoles).toEqual([])
-    // L'état vient d'OBS, pas d'une supposition.
+    // The state comes from OBS, not from a guess.
     expect(state.currentSceneName).toBe('Habillage web')
     expect(state.currentRole).toBe('HOLD')
   })
 
-  it('signale les rôles dont la scène n\'existe pas dans OBS', async () => {
+  it('reports the roles whose scene does not exist in OBS', async () => {
     const obs = fakeObs(['Capture HDMI'])
     const events: unknown[] = []
     const controller = new ObsController({
@@ -71,13 +71,13 @@ describe('pilotage OBS par rôles', () => {
     })
 
     const state = await controller.connect()
-    // La salle a renommé « Habillage web » : le problème doit se voir à la
-    // répétition, pas au moment de basculer pendant un talk.
+    // The room renamed "Habillage web": the problem must show up at the
+    // rehearsal, not when switching in the middle of a talk.
     expect(state.unresolvedRoles).toEqual(['HOLD'])
     expect(events[0]).toMatchObject({ type: 'connected', unresolvedRoles: ['HOLD'] })
   })
 
-  it('bascule de scène par rôle', async () => {
+  it('switches scene by role', async () => {
     const obs = fakeObs(['Capture HDMI', 'Habillage web'], 'Habillage web')
     const controller = new ObsController({
       instance: 'A',
@@ -92,7 +92,7 @@ describe('pilotage OBS par rôles', () => {
     expect(controller.snapshot().currentRole).toBe('LIVE')
   })
 
-  it('refuse un rôle non mappé avec un message actionnable', async () => {
+  it('refuses an unmapped role with an actionable message', async () => {
     const obs = fakeObs(['Capture HDMI'])
     const controller = new ObsController({
       instance: 'A',
@@ -104,7 +104,7 @@ describe('pilotage OBS par rôles', () => {
     await expect(controller.setRole('RELAY')).rejects.toThrow(/non configuré/)
   })
 
-  it('refuse un rôle dont la scène a disparu d\'OBS', async () => {
+  it('refuses a role whose scene has disappeared from OBS', async () => {
     const obs = fakeObs(['Capture HDMI'])
     const controller = new ObsController({
       instance: 'A',
@@ -116,7 +116,7 @@ describe('pilotage OBS par rôles', () => {
     await expect(controller.setRole('HOLD')).rejects.toThrow(/n'existe pas/)
   })
 
-  it('suit une bascule faite directement dans OBS', async () => {
+  it('follows a switch made directly in OBS', async () => {
     const obs = fakeObs(['Capture HDMI', 'Habillage web'], 'Habillage web')
     const controller = new ObsController({
       instance: 'A',
@@ -126,12 +126,12 @@ describe('pilotage OBS par rôles', () => {
     })
     await controller.connect()
 
-    // L'opérateur clique dans OBS, pas dans notre régie : l'affichage doit suivre.
+    // The operator clicks in OBS, not in our control app: the display must follow.
     obs.emit('CurrentProgramSceneChanged', { sceneName: 'Capture HDMI' })
     expect(controller.snapshot().currentRole).toBe('LIVE')
   })
 
-  it('suit l\'état d\'enregistrement et récupère le chemin de sortie', async () => {
+  it('follows the recording state and picks up the output path', async () => {
     const obs = fakeObs(['Talk'])
     const events: unknown[] = []
     const controller = new ObsController({
@@ -148,7 +148,7 @@ describe('pilotage OBS par rôles', () => {
 
     obs.emit('RecordStateChanged', { outputActive: false, outputPath: '/rec/talk.mkv' })
     expect(controller.snapshot().recording).toBe(false)
-    // Le chemin est ce qui permet de renommer le master et d'écrire le sidecar.
+    // The path is what lets us rename the master and write the sidecar.
     expect(events.at(-1)).toEqual({
       type: 'recording',
       active: false,
@@ -156,7 +156,7 @@ describe('pilotage OBS par rôles', () => {
     })
   })
 
-  it('attend `STOPPED` pour livrer le chemin, et ignore `STOPPING`', async () => {
+  it('waits for `STOPPED` to deliver the path, and ignores `STOPPING`', async () => {
     const obs = fakeObs(['Talk'])
     const events: unknown[] = []
     const controller = new ObsController({
@@ -168,7 +168,7 @@ describe('pilotage OBS par rôles', () => {
     })
     await controller.connect()
 
-    // La séquence d'un vrai OBS, que les simulateurs ne reproduisent pas.
+    // A real OBS's sequence, which the simulators do not reproduce.
     obs.emit('RecordStateChanged', {
       outputActive: false,
       outputState: 'OBS_WEBSOCKET_OUTPUT_STARTING',
@@ -180,8 +180,8 @@ describe('pilotage OBS par rôles', () => {
     expect(controller.snapshot().recording).toBe(true)
     expect(events.filter((event) => (event as { type: string }).type === 'recording')).toHaveLength(1)
 
-    // `STOPPING` dit déjà « inactif » mais ne porte aucun chemin : le laisser
-    // passer résolvait l'attente avec `null`, et le sidecar n'était pas écrit.
+    // `STOPPING` already says "inactive" but carries no path: letting it
+    // through resolved the wait with `null`, and the sidecar was not written.
     obs.emit('RecordStateChanged', {
       outputActive: false,
       outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPING',
@@ -201,7 +201,7 @@ describe('pilotage OBS par rôles', () => {
     })
   })
 
-  it('ne signale pas un arrêt de diffusion pendant une reconnexion', async () => {
+  it('does not report a stream stop during a reconnection', async () => {
     const obs = fakeObs(['Talk'])
     const events: unknown[] = []
     const controller = new ObsController({
@@ -217,8 +217,8 @@ describe('pilotage OBS par rôles', () => {
       outputActive: true,
       outputState: 'OBS_WEBSOCKET_OUTPUT_STARTED',
     })
-    // Le flux tombe et OBS le rattrape seul : annoncer un arrêt « opérateur »
-    // au hub à chaque hoquet réseau serait un mensonge.
+    // The stream drops and OBS recovers on its own: announcing an "operator"
+    // stop to the hub on every network hiccup would be a lie.
     obs.emit('StreamStateChanged', {
       outputActive: false,
       outputState: 'OBS_WEBSOCKET_OUTPUT_RECONNECTING',
@@ -227,7 +227,7 @@ describe('pilotage OBS par rôles', () => {
     expect(events.filter((event) => (event as { type: string }).type === 'streaming')).toHaveLength(1)
   })
 
-  it('repasse déconnecté quand OBS ferme la connexion', async () => {
+  it('goes back to disconnected when OBS closes the connection', async () => {
     const obs = fakeObs(['Capture HDMI', 'Habillage web'])
     const controller = new ObsController({
       instance: 'A',
@@ -240,14 +240,14 @@ describe('pilotage OBS par rôles', () => {
     obs.emit('ConnectionClosed', {})
     const state = controller.snapshot()
     expect(state.connected).toBe(false)
-    // On oublie la scène : afficher la dernière connue laisserait croire que
-    // la projection est encore pilotée.
+    // We forget the scene: showing the last known one would suggest the
+    // projection is still being driven.
     expect(state.currentSceneName).toBeNull()
   })
 })
 
-describe('état constaté à la connexion', () => {
-  it('adopte la scène déjà affichée par OBS', async () => {
+describe('state observed on connection', () => {
+  it('adopts the scene OBS is already showing', async () => {
     const obs = fakeObs(['Capture HDMI', 'Habillage web'], 'Habillage web')
     const events: unknown[] = []
     const controller = new ObsController({
@@ -259,14 +259,14 @@ describe('état constaté à la connexion', () => {
     })
     await controller.connect()
 
-    // Sans ça, la régie et la console affichent une scène vide jusqu'à la
-    // première bascule — c'est-à-dire potentiellement tout un talk.
+    // Without this, the control app and the console show an empty scene until
+    // the first switch — that is, potentially a whole talk.
     expect(events[0]).toMatchObject({ currentRole: 'HOLD', currentSceneName: 'Habillage web' })
   })
 
-  it('retrouve un enregistrement déjà en cours', async () => {
+  it('finds a recording already under way', async () => {
     const obs = fakeObs(['Talk'])
-    // OBS enregistrait déjà quand l'application a redémarré.
+    // OBS was already recording when the application restarted.
     const transport = {
       ...obs.transport,
       call: (async (request: string, args?: Record<string, unknown>) => {
@@ -288,12 +288,12 @@ describe('état constaté à la connexion', () => {
     })
     const state = await controller.connect()
 
-    // Repartir de « rien en cours » ferait croire à une prise perdue.
+    // Starting from "nothing running" would suggest a lost take.
     expect(state.recording).toBe(true)
     expect(events[0]).toMatchObject({ recording: true })
   })
 
-  it('se connecte même si OBS ignore ces requêtes', async () => {
+  it('connects even if OBS ignores those requests', async () => {
     const obs = fakeObs(['Capture HDMI', 'Habillage web'])
     const transport = {
       ...obs.transport,
@@ -314,7 +314,7 @@ describe('état constaté à la connexion', () => {
       sceneRoles: ROLES,
       transport,
     })
-    // Une instance qui ne répond pas à ces requêtes ne doit pas bloquer la régie.
+    // An instance that does not answer those requests must not block the room.
     await expect(controller.connect()).resolves.toMatchObject({ connected: true })
   })
 })

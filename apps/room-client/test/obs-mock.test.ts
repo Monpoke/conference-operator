@@ -27,17 +27,17 @@ beforeEach(() => {
 })
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
-describe('OBS simulé', () => {
+describe('simulated OBS', () => {
   /**
-   * Le cas signalé en régie : la captation était déjà « en cours » à
-   * l'allumage, sans que personne ne l'ait lancée, et il fallait l'arrêter
-   * avant de pouvoir en démarrer une.
+   * The case reported from the control room: the take was already "running" at
+   * power-on, without anyone having started it, and it had to be stopped before
+   * one could be started.
    *
-   * Adopter la prise d'OBS à la connexion existe pour l'appli redémarrée au
-   * milieu d'un talk. Une instance simulée n'a pas de talk derrière elle : ce
-   * qu'elle garde d'une connexion à l'autre n'est le souvenir d'aucune vidéo.
+   * Adopting OBS's take on connection exists for the app restarted in the middle
+   * of a talk. A simulated instance has no talk behind it: what it keeps from one
+   * connection to the next is the memory of no video at all.
    */
-  it("coupe une captation en cours au lieu de l'adopter", async () => {
+  it('cuts a running take instead of adopting it', async () => {
     const transport = createMockObsTransport({ instance: 'B', recordingDir: join(dir, 'rec') })
     await transport.call('StartRecord')
 
@@ -47,19 +47,19 @@ describe('OBS simulé', () => {
       sceneRoles: {},
       transport,
     })
-    const etat = await obs.connect()
+    const state = await obs.connect()
 
-    expect(etat.recording).toBe(false)
-    // Coupée pour de bon, et pas seulement masquée : sans ça, le prochain
-    // « Enregistrer » échouerait sur un « déjà en cours » que l'écran contredit.
+    expect(state.recording).toBe(false)
+    // Cut for good, and not merely hidden: without this, the next "Enregistrer"
+    // would fail on an "already running" that the screen contradicts.
     expect(await transport.call('GetRecordStatus')).toMatchObject({ outputActive: false })
   })
 
-  it("adopte la captation d'une instance réelle", async () => {
+  it("adopts a real instance's take", async () => {
     /**
-     * Le garde-fou du garde-fou : la règle ne vaut que pour le simulé. Une
-     * vraie prise en cours retrouvée au redémarrage doit rester adoptée, sinon
-     * la régie annoncerait une VOD perdue qui tourne pourtant.
+     * A guard for the guard: the rule only holds for the simulated one. A real
+     * take found running again at restart must stay adopted, otherwise the
+     * control app would announce a lost VOD that is in fact recording.
      */
     const transport = createMockObsTransport({ instance: 'B', recordingDir: join(dir, 'rec') })
     await transport.call('StartRecord')
@@ -75,10 +75,10 @@ describe('OBS simulé', () => {
     expect((await obs.connect()).recording).toBe(true)
   })
 
-  it('se déclare simulé, pour que la régie puisse le dire', async () => {
-    // Rien ne distingue à l'écran un enregistrement simulé d'un vrai : le
-    // transport porte l'information lui-même, plutôt qu'une variable
-    // d'environnement relue ailleurs, qui pourrait le contredire.
+  it('declares itself simulated, so the control app can say so', async () => {
+    // Nothing on screen tells a simulated recording from a real one: the
+    // transport carries the information itself, rather than an environment
+    // variable read back elsewhere, which could contradict it.
     const simulated = new ObsController({
       instance: 'A',
       url: 'mock',
@@ -87,7 +87,7 @@ describe('OBS simulé', () => {
     })
     expect(simulated.snapshot().simulated).toBe(true)
 
-    const reel = new ObsController({
+    const real = new ObsController({
       instance: 'A',
       url: 'ws://127.0.0.1:4455',
       sceneRoles: {},
@@ -98,26 +98,26 @@ describe('OBS simulé', () => {
         on: () => {},
       },
     })
-    expect(reel.snapshot().simulated).toBe(false)
+    expect(real.snapshot().simulated).toBe(false)
   })
 
-  it('porte les scènes que la salle a configurées, si personnelles soient-elles', async () => {
+  it('carries the scenes the room configured, however personal they are', async () => {
     /*
-     * Un OBS simulé n'a pas de scènes à lui : il a celles qu'on attend de lui.
+     * A simulated OBS has no scenes of its own: it has the ones expected of it.
      *
-     * Sans ça, tout nom un peu personnel — « Direct 4K », le nom d'un studio,
-     * une convention d'événement — ressortait en « rôle introuvable », rouge
-     * dans la régie, sur une instance qui n'existe pas. On ne débogue pas la
-     * faute de frappe d'un OBS qu'on n'a pas installé.
+     * Without this, any slightly personal name — "Direct 4K", a studio's name, an
+     * event convention — came back as "role not found", red in the control app,
+     * on an instance that does not exist. One does not debug the typo of an OBS
+     * one has not installed.
      */
-    const PERSO = { LIVE: 'Direct 4K — régie mobile', HOLD: 'Mon habillage à moi' }
+    const CUSTOM = { LIVE: 'Direct 4K — régie mobile', HOLD: 'Mon habillage à moi' }
     const controller = new ObsController({
       instance: 'A',
       url: 'mock',
-      sceneRoles: PERSO,
+      sceneRoles: CUSTOM,
       transport: createMockObsTransport({
         instance: 'A',
-        scenes: Object.values(PERSO),
+        scenes: Object.values(CUSTOM),
         recordingDir: join(dir, 'rec'),
       }),
     })
@@ -125,20 +125,20 @@ describe('OBS simulé', () => {
     const state = await controller.connect()
     expect(state.unresolvedRoles).toEqual([])
 
-    // Et la bascule passe : c'est le geste que le rouge annonçait comme voué à
-    // l'échec. L'état suit l'événement d'OBS, jamais l'appel — la régie ne
-    // peint pas d'avance.
+    // And the switch goes through: it is the gesture the red announced as bound
+    // to fail. The state follows OBS's event, never the call — the control app
+    // does not paint ahead.
     await controller.setRole('LIVE')
     await sleep(30)
-    expect(controller.snapshot().currentSceneName).toBe(PERSO.LIVE)
+    expect(controller.snapshot().currentSceneName).toBe(CUSTOM.LIVE)
     expect(controller.snapshot().currentRole).toBe('LIVE')
   })
 
-  it('garde les scènes plausibles à côté de celles de la salle', async () => {
+  it("keeps the plausible scenes alongside the room's own", async () => {
     /*
-     * Elles s'ajoutent, elles ne remplacent pas : le sélecteur du ⚙ doit garder
-     * une liste où choisir, y compris sur une salle dont la configuration ne
-     * couvre qu'un rôle.
+     * They add up, they do not replace: the ⚙ selector must keep a list to
+     * choose from, including on a room whose configuration covers a single
+     * role.
      */
     const transport = createMockObsTransport({
       instance: 'A',
@@ -149,16 +149,16 @@ describe('OBS simulé', () => {
     const { scenes } = (await transport.call('GetSceneList')) as {
       scenes: { sceneName: string }[]
     }
-    const noms = scenes.map((scene) => scene.sceneName)
+    const names = scenes.map((scene) => scene.sceneName)
 
-    expect(noms).toContain('Direct 4K — régie mobile')
-    for (const plausible of DEFAULT_SCENES.A) expect(noms).toContain(plausible)
-    // Dédoublonnées : une salle configurée sur les noms par défaut ne doit pas
-    // les voir deux fois dans le sélecteur.
-    expect(new Set(noms).size).toBe(noms.length)
+    expect(names).toContain('Direct 4K — régie mobile')
+    for (const plausible of DEFAULT_SCENES.A) expect(names).toContain(plausible)
+    // Deduplicated: a room configured on the default names must not see them
+    // twice in the selector.
+    expect(new Set(names).size).toBe(names.length)
   })
 
-  it('expose les mêmes scènes que le mapping posé à la création d\'une salle', async () => {
+  it('exposes the same scenes as the mapping laid down when a room is created', async () => {
     const controller = new ObsController({
       instance: 'A',
       url: 'mock',
@@ -170,13 +170,13 @@ describe('OBS simulé', () => {
     })
 
     const state = await controller.connect()
-    // Sans cet accord, la régie afficherait des rôles en rouge dès le démarrage
-    // du mode simulé — et on croirait à un bug.
+    // Without that agreement, the control app would show roles in red as soon as
+    // simulated mode starts — and one would think it a bug.
     expect(state.unresolvedRoles).toEqual([])
     expect(state.currentRole).toBe('HOLD')
   })
 
-  it('confirme la bascule par événement, comme le vrai OBS', async () => {
+  it('confirms the switch by event, like the real OBS', async () => {
     const controller = new ObsController({
       instance: 'A',
       url: 'mock',
@@ -186,20 +186,20 @@ describe('OBS simulé', () => {
     await controller.connect()
     await controller.setRole('LIVE')
 
-    // L'événement est asynchrone : l'état ne peut pas être juste immédiatement,
-    // exactement comme avec OBS.
+    // The event is asynchronous: the state cannot be right immediately, exactly
+    // as with OBS.
     await sleep(30)
     expect(controller.snapshot().currentRole).toBe('LIVE')
   })
 
-  it('refuse une scène inconnue', async () => {
+  it('refuses an unknown scene', async () => {
     const transport = createMockObsTransport({ instance: 'A', recordingDir: join(dir, 'rec') })
     await expect(transport.call('SetCurrentProgramScene', { sceneName: 'Inventée' })).rejects.toThrow(
       /Scène inconnue/,
     )
   })
 
-  it('produit un vrai fichier et permet d\'obtenir un sidecar', async () => {
+  it('produces a real file and allows a sidecar to be obtained', async () => {
     const recDir = join(dir, 'rec')
     const store = new LocalStore(':memory:')
     const runtime = new RoomRuntime(store)
@@ -212,9 +212,9 @@ describe('OBS simulé', () => {
     })
     await obs.connect()
 
-    let chemin: string | null = null
+    let path: string | null = null
     transport.on('RecordStateChanged', ((payload: { outputActive: boolean; outputPath?: string }) => {
-      if (!payload.outputActive && payload.outputPath != null) chemin = payload.outputPath
+      if (!payload.outputActive && payload.outputPath != null) path = payload.outputPath
     }) as never)
 
     const { readFile, rename, writeFile } = await import('node:fs/promises')
@@ -234,28 +234,28 @@ describe('OBS simulé', () => {
     const talk = program.sessions.find((s) => s.id === 'cmqav0qto03qe01nsitbr18cn')!
     await session.start({ session: talk, roomId: TRACK_1, roomSlug: 'track1', timezone: 'Europe/Paris' })
     session.mark('démo')
-    const attente = new Promise<string | null>((resolve) => setTimeout(() => resolve(chemin), 60))
-    const resultat = await session.stop(() => attente)
+    const pending = new Promise<string | null>((resolve) => setTimeout(() => resolve(path), 60))
+    const result = await session.stop(() => pending)
 
-    // Le fichier existe réellement : sans ça, la chaîne s'arrêterait au
-    // renommage et on ne verrait jamais le sidecar — la partie qu'on veut observer.
-    expect(resultat.videoPath).toContain('2026-10-30_track1_1100_honeyswamp')
-    const fichiers = readdirSync(recDir)
-    expect(fichiers.filter((f) => f.endsWith('.mkv'))).toHaveLength(1)
-    expect(fichiers.filter((f) => f.endsWith('.json'))).toHaveLength(1)
+    // The file really exists: without it, the chain would stop at the rename and
+    // we would never see the sidecar — the part we want to observe.
+    expect(result.videoPath).toContain('2026-10-30_track1_1100_honeyswamp')
+    const files = readdirSync(recDir)
+    expect(files.filter((f) => f.endsWith('.mkv'))).toHaveLength(1)
+    expect(files.filter((f) => f.endsWith('.json'))).toHaveLength(1)
 
-    const sidecar = JSON.parse(readFileSync(resultat.sidecarPath!, 'utf8')) as { markers: unknown[] }
+    const sidecar = JSON.parse(readFileSync(result.sidecarPath!, 'utf8')) as { markers: unknown[] }
     expect(sidecar.markers).toHaveLength(1)
     store.close()
   })
 
-  it("n'écrase jamais un fichier déjà là", async () => {
+  it('never overwrites a file that is already there', async () => {
     /**
-     * Le poste simulé écrit dans le dossier des captations, et deux arrêts sur
-     * la même conférence donnent le même nom de fichier. Anecdotique tant que
-     * ce dossier ne contenait que des fichiers de cinquante octets ; depuis que
-     * la régie sait les relire, on y dépose de vraies vidéos — et un
-     * « Arrêter » de trop les effaçait sans rien dire.
+     * The simulated machine writes into the recordings folder, and two stops on
+     * the same talk give the same file name. Anecdotal while that folder held
+     * only fifty-byte files; now that the control app can read them back, real
+     * videos are dropped there — and one "Arrêter" too many erased them without
+     * a word.
      */
     const rec = join(dir, 'rec')
     mkdirSync(rec, { recursive: true })
@@ -274,7 +274,7 @@ describe('OBS simulé', () => {
     expect(readdirSync(rec).sort()).toEqual(['keynote-2.mkv', 'keynote.mkv'])
   })
 
-  it('simulated la diffusion et sa télémétrie', async () => {
+  it('simulates the stream and its telemetry', async () => {
     const transport = createMockObsTransport({ instance: 'B', recordingDir: join(dir, 'rec') })
     const obs = new ObsController({ instance: 'B', url: 'mock', sceneRoles: {}, transport })
     await obs.connect()
@@ -284,7 +284,7 @@ describe('OBS simulé', () => {
     expect((await obs.streamStatus()).bitrateKbps).toBeGreaterThan(0)
   })
 
-  it('refuse deux enregistrements simultanés', async () => {
+  it('refuses two simultaneous recordings', async () => {
     const transport = createMockObsTransport({ instance: 'B', recordingDir: join(dir, 'rec') })
     await transport.call('StartRecord')
     await expect(transport.call('StartRecord')).rejects.toThrow(/déjà en cours/)

@@ -2,148 +2,146 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-/** L'accent grave, nommé pour ne pas l'écrire dans un fichier qui en parle. */
-const ACCENT = String.fromCharCode(96)
+/** The backtick, named so as not to write it in a file that talks about it. */
+const BACKTICK = String.fromCharCode(96)
 import { renderProjectorPage } from '../src/core/display-page.js'
 import { renderOverlayPage } from '../src/core/overlay-page.js'
 import { renderHubAddressPage } from '../src/core/hub-address-page.js'
 import { parseScripts, extractScripts } from './helpers/inline-scripts.js'
 
 /**
- * Garde-fous communs aux pages servies localement.
+ * Guards common to the locally served pages.
  *
- * Elles sont écrites comme des template literals : un backtick oublié dans un
- * commentaire coupe la chaîne et casse le fichier. Le compilateur l'attrape,
- * mais seulement après coup — ces tests disent *quelle* propriété on tient.
+ * They are written as template literals: a backtick forgotten in a comment cuts
+ * the string and breaks the file. The compiler catches it, but only afterwards —
+ * these tests say *which* property we hold.
  *
- * La régie en est sortie : c'est un bundle. Ceux de ses garde-fous qui ont
- * encore un sens l'ont suivie — l'origine des ressources et le document clos
- * dans `regie-servie.test.ts`, le fond et la disposition dans
- * `apps/regie-web/test/cadre.test.ts`. Les autres ne visaient que le gabarit
- * littéral, et Vite les rend sans objet.
+ * The control app has left them: it is a bundle. Those of its guards that still
+ * make sense followed it — the origin of the resources and the closed document in
+ * `control-served.test.ts`, the background and the layout in
+ * `apps/regie-web/test/cadre.test.ts`. The others only targeted the literal
+ * template, and Vite makes them moot.
  */
 const PAGES: [string, string][] = [
-  ['projection', renderProjectorPage()],
-  ['habillage', renderOverlayPage()],
-  ['adresse du hub', renderHubAddressPage({ initialValue: 'http://localhost:8787' })],
+  ['projector', renderProjectorPage()],
+  ['overlay', renderOverlayPage()],
+  ['hub address', renderHubAddressPage({ initialValue: 'http://localhost:8787' })],
 ]
 
 /**
- * Fichiers source des pages, pour les garde-fous d'écriture.
+ * The pages' source files, for the writing guards.
  *
- * Ces pages sont des gabarits littéraux : ce qu'on y écrit passe deux fois par
- * un analyseur, celui de TypeScript puis celui du navigateur.
+ * These pages are literal templates: what one writes in them goes through a
+ * parser twice, TypeScript's and then the browser's.
  */
 const SOURCES = [
   'display-page.ts',
   'overlay-page.ts',
   'overlay-live-page.ts',
   'hub-address-page.ts',
-].map((nom) => [nom, readFileSync(fileURLToPath(new URL('../src/core/' + nom, import.meta.url)), 'utf8')] as const)
+].map((name) => [name, readFileSync(fileURLToPath(new URL('../src/core/' + name, import.meta.url)), 'utf8')] as const)
 
-describe('écriture des gabarits', () => {
-  it.each(SOURCES)('%s : aucun accent grave dans le corps du gabarit', (_nom, source) => {
+describe('writing the templates', () => {
+  it.each(SOURCES)('%s: no bare backtick in the template body', (_name, source) => {
     /**
-     * L'erreur qui revient, et qui coûte cher à chaque fois.
+     * The mistake that keeps coming back, and costs dearly every time.
      *
-     * Un accent grave dans un commentaire — « voir CONFIG » écrit en style
-     * code — referme le gabarit littéral. TypeScript signale alors une erreur
-     * de syntaxe **à la fin du fichier**, à cent lignes de la cause, et la page
-     * entière cesse de compiler. Ce test la nomme.
+     * A backtick in a comment — "see CONFIG" written in code style — closes the
+     * literal template. TypeScript then reports a syntax error **at the end of
+     * the file**, a hundred lines from the cause, and the whole page stops
+     * compiling. This test names it.
      */
-    const debut = source.indexOf(ACCENT + '<!doctype html>')
-    const fin = source.lastIndexOf(ACCENT)
-    expect(debut).toBeGreaterThan(-1)
+    const start = source.indexOf(BACKTICK + '<!doctype html>')
+    const end = source.lastIndexOf(BACKTICK)
+    expect(start).toBeGreaterThan(-1)
 
-    // Les accents graves **échappés** sont légitimes : `display-page` s'en sert
-    // pour ses propres gabarits imbriqués. Seuls les nus referment la chaîne.
-    const corps = source.slice(debut + 1, fin).split('\\' + ACCENT).join('')
-    expect(corps).not.toContain(ACCENT)
+    // **Escaped** backticks are legitimate: `display-page` uses them for its own
+    // nested templates. Only the bare ones close the string.
+    const body = source.slice(start + 1, end).split('\\' + BACKTICK).join('')
+    expect(body).not.toContain(BACKTICK)
   })
 })
 
-describe('pages servies par le client', () => {
-  it.each(PAGES)('%s : aucune dépendance externe, hors exception nommée', (nom, html) => {
+describe('pages served by the client', () => {
+  it.each(PAGES)('%s: no external dependency, apart from the named exception', (name, html) => {
     /*
-     * Une balise vers un CDN casse la page dès la première coupure —
-     * c'est-à-dire exactement quand on en a besoin.
+     * A tag pointing at a CDN breaks the page at the first network cut — that is,
+     * exactly when it is needed.
      *
-     * **Une seule exception, nommée ici** : le bouton de X sur la slide
-     * Réseaux de la projection. Le test ne disparaît pas pour autant, et c'est
-     * le point : il liste les origines externes et refuse toute autre que
-     * celle-là. Une seconde dépendance qui s'inviterait — une police, une
-     * analytique — échouerait ici, et la première reste tenue à sa page et à
-     * son `async`.
+     * **A single exception, named here**: the X button on the projection's
+     * Réseaux slide. The test does not disappear for all that, and that is the
+     * point: it lists the external origins and refuses any other than that one. A
+     * second dependency that invited itself in — a font, an analytics script —
+     * would fail here, and the first stays tied to its page and to its `async`.
      */
-    const AUTORISEES: Record<string, string[]> = {
-      projection: ['https://platform.x.com/widgets.js'],
+    const ALLOWED: Record<string, string[]> = {
+      projector: ['https://platform.x.com/widgets.js'],
     }
-    const externes = [...html.matchAll(/<(?:script|link)\b[^>]*\b(?:src|href)="([^"]+)"/g)]
-      .map((trouve) => trouve[1]!)
-      .filter((adresse) => /^(?:https?:)?\/\//.test(adresse))
+    const external = [...html.matchAll(/<(?:script|link)\b[^>]*\b(?:src|href)="([^"]+)"/g)]
+      .map((found) => found[1]!)
+      .filter((address) => /^(?:https?:)?\/\//.test(address))
 
-    expect(externes).toEqual(AUTORISEES[nom] ?? [])
+    expect(external).toEqual(ALLOWED[name] ?? [])
     expect(html).not.toMatch(/@import\s+url/)
 
-    // Chargée en `async` : rien de ce qui se lit ne doit attendre le réseau.
-    for (const adresse of externes) {
-      expect(html).toMatch(new RegExp('<script async src="' + adresse.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '"'))
+    // Loaded `async`: nothing that is read should wait on the network.
+    for (const address of external) {
+      expect(html).toMatch(new RegExp('<script async src="' + address.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '"'))
     }
   })
 
-  it.each(PAGES)('%s : document complet et clos', (_nom, html) => {
+  it.each(PAGES)('%s: complete and closed document', (_name, html) => {
     expect(html.startsWith('<!doctype html>')).toBe(true)
     expect(html.trimEnd().endsWith('</html>')).toBe(true)
   })
 
-  it.each(PAGES)('%s : le JavaScript embarqué est analysable', (_nom, html) => {
-    // Sans ce test, rien ne vérifie ce code : il vit dans un template literal,
-    // où TypeScript ne voit qu'une chaîne. Une erreur y casse *toute* la page.
+  it.each(PAGES)('%s: the embedded JavaScript parses', (_name, html) => {
+    // Without this test nothing checks that code: it lives in a template literal,
+    // where TypeScript only sees a string. An error there breaks *all* the page.
     expect(parseScripts(html)).toEqual([])
   })
 
-  it.each(PAGES)('%s : contient bien du script à analyser', (_nom, html) => {
-    // Garde-fou du garde-fou : si l'extraction cessait de trouver quoi que ce
-    // soit, le test précédent passerait en ne vérifiant rien.
+  it.each(PAGES)('%s: does contain script to parse', (_name, html) => {
+    // A guard for the guard: if the extraction stopped finding anything at all,
+    // the previous test would pass while checking nothing.
     expect(extractScripts(html).length).toBeGreaterThan(0)
   })
 
-  it("l'écran d'adresse échappe la valeur qu'on lui remet sous les yeux", () => {
-    // Elle vient du disque ou de la ligne de commande : elle n'a rien à
-    // pouvoir refermer l'attribut qui la porte.
+  it('the address screen escapes the value it puts back before the eyes', () => {
+    // It comes from disk or from the command line: it has no business being able
+    // to close the attribute carrying it.
     const html = renderHubAddressPage({ initialValue: 'http://hub"><script>x' })
     expect(html).toContain('value="http://hub&quot;&gt;&lt;script&gt;x"')
   })
 
-  it("l'écran d'adresse ne conditionne jamais « Continuer » à une réponse du hub", () => {
-    // Un poste de régie se prépare la veille, hub éteint : la sonde informe,
-    // elle n'allowed pas. Un bouton désactivable ici serait une panne un matin
-    // d'événement.
+  it('the address screen never gates "Continuer" on an answer from the hub', () => {
+    // A control machine is prepared the day before, hub switched off: the probe
+    // informs, it does not authorise. A button that could be disabled here would
+    // be a failure on an event morning.
     const html = renderHubAddressPage({ initialValue: 'http://localhost:8787' })
-    // Le corps seul : la feuille Tailwind, en tête, parle de `:disabled` pour
-    // tous les boutons de l'application.
-    const corps = html.slice(html.indexOf('<body'))
-    expect(corps).toMatch(/<button[^>]*type="submit"/)
-    expect(corps).not.toMatch(/disabled/)
+    // The body alone: the Tailwind sheet, up top, speaks of `:disabled` for every
+    // button in the application.
+    const body = html.slice(html.indexOf('<body'))
+    expect(body).toMatch(/<button[^>]*type="submit"/)
+    expect(body).not.toMatch(/disabled/)
   })
 })
 
 /**
- * Les classes de l'ancienne feuille de composants, et pourquoi elles reviennent.
+ * The old component sheet's classes, and why they come back.
  *
- * `.btn`, `.champ`, `.panneau` ont été l'idiome de ce dépôt pendant toute la
- * vie des pages-gabarits. La feuille qui les définissait a suivi la régie, sa
- * dernière lectrice — mais l'habitude, elle, reste : ajouter un bouton à
- * l'écran d'adresse du hub et écrire `class="btn"` donne un bouton nu, sans
- * qu'aucune erreur ne parte.
+ * `.btn`, `.champ`, `.panneau` were this repository's idiom for the whole life of
+ * the template pages. The sheet that defined them followed the control app, its
+ * last reader — but the habit stays: adding a button to the hub address screen
+ * and writing `class="btn"` gives a bare button, with no error raised.
  *
- * Le garde-fou est étroit à dessein. Sa forme générale — toute classe posée
- * doit exister dans la feuille — a été essayée : la page de projection a son
- * propre `<style>` et une douzaine de classes qui ne servent que de prise à son
- * JavaScript, et il aurait fallu les maintenir à la main dans une liste. C'est
- * exactement le genre de liste qui finit par manquer quelque chose.
+ * The guard is deliberately narrow. Its general form — every class laid down must
+ * exist in the sheet — was tried: the projection page has its own `<style>` and a
+ * dozen classes that serve only as a handle for its JavaScript, and they would
+ * have had to be maintained by hand in a list. That is exactly the kind of list
+ * that ends up missing something.
  */
-const CLASSES_DISPARUES = [
+const REMOVED_CLASSES = [
   'btn',
   'btn-onglet',
   'btn-petit',
@@ -154,31 +152,31 @@ const CLASSES_DISPARUES = [
   'touche',
 ]
 
-describe('classes de la feuille de composants supprimée', () => {
-  it.each(PAGES)('%s : n\'en pose aucune', (_nom, html) => {
-    const corps = html.slice(html.indexOf('<body'))
-    const posees = new Set<string>()
-    for (const attribut of corps.matchAll(/class="([^"]*)"/g)) {
-      for (const nom of attribut[1]!.split(/\s+/)) posees.add(nom)
+describe('classes from the deleted component sheet', () => {
+  it.each(PAGES)('%s: lays down none of them', (_name, html) => {
+    const body = html.slice(html.indexOf('<body'))
+    const laidDown = new Set<string>()
+    for (const attribute of body.matchAll(/class="([^"]*)"/g)) {
+      for (const name of attribute[1]!.split(/\s+/)) laidDown.add(name)
     }
-    expect(CLASSES_DISPARUES.filter((classe) => posees.has(classe))).toEqual([])
+    expect(REMOVED_CLASSES.filter((className) => laidDown.has(className))).toEqual([])
   })
 })
 
-describe("l'attribut hidden est rendu prioritaire", () => {
+describe('the hidden attribute is made to win', () => {
   /**
-   * Piège rencontré sur la console : `[hidden] { display: none }` vient de la
-   * feuille du navigateur, et la moindre règle d'auteur posant un `display` la
-   * bat. Les onglets changeaient bien l'attribut, l'écran ne bougeait pas.
+   * A trap met on the console: `[hidden] { display: none }` comes from the
+   * browser's sheet, and the slightest author rule setting a `display` beats it.
+   * The tabs did change the attribute, the screen did not move.
    */
-  it.each(PAGES)('%s : neutralise toute règle de disposition concurrente', (_nom, html) => {
+  it.each(PAGES)('%s: neutralises any competing layout rule', (_name, html) => {
     expect(html).toMatch(/\[hidden\]\s*\{\s*display:\s*none\s*!important/)
   })
 
-  it("l'overlay porte bien un badge que la règle doit neutraliser", () => {
-    // Le badge de catégorie porte un `inline-block` : sans la règle, `hidden`
-    // ne le cacherait pas et une catégorie fantôme s'afficherait sur la VOD.
-    // La vérification de visibilité réelle est dans `visibilite-effective`.
+  it('the overlay does carry a badge the rule has to neutralise', () => {
+    // The category badge carries an `inline-block`: without the rule, `hidden`
+    // would not hide it and a ghost category would show up on the VOD.
+    // The real visibility check is in `effective-visibility`.
     expect(renderOverlayPage()).toMatch(/id="category"[^>]*hidden/)
   })
 })

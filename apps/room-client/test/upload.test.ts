@@ -6,7 +6,7 @@ import {
   type CandidatVod,
   type HubVod,
   type TeleversementDeps,
-} from '../src/core/televersement.js'
+} from '../src/core/upload.js'
 
 /**
  * Le rapatriement d'un rush doit **finir**.
@@ -117,8 +117,8 @@ function monter(
     politique: () => ({ ...DEFAULT_VOD_POLICY, actif: true }),
     charge: () => ({ cpu: 0.1, cores: 8, windowMs: 2000, memory: null }),
     enregistre: () => false,
-    conferenceEnCours: () => false,
-    msAvantProchaine: () => null,
+    talkRunning: () => false,
+    msBeforeNext: () => null,
     cheminDe: (file) => `/tmp/${file}`,
     lireTranche: async (file, debut, fin) => {
       tranches.push({ file, debut, fin })

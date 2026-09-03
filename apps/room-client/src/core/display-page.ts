@@ -1,39 +1,39 @@
 import { MACHINE_JS } from '@cloudnord/room-state'
 import { TAILWIND_CSS } from '@cloudnord/ui'
 
-import { OBS_ANTENNE_CSS, OBS_ANTENNE_JS } from './obs-browser.js'
+import { OBS_ON_AIR_CSS, OBS_ON_AIR_JS } from './obs-browser.js'
 
 /**
- * Page projetée en salle.
+ * The page projected in the room.
  *
- * Contraintes qui expliquent la forme : elle est rendue par la Browser Source
- * d'OBS-A (ou une fenêtre Electron de secours), doit tenir sans étape de build,
- * sans réseau, et rester lisible à dix mètres. D'où du HTML autonome, un
- * `EventSource` qui se reconnecte tout seul, et aucune dépendance externe.
+ * The constraints that explain its shape: it is rendered by OBS-A's Browser
+ * Source (or an Electron fallback window), must hold with no build step, no
+ * network, and stay readable from ten metres away. Hence standalone HTML, an
+ * `EventSource` that reconnects by itself, and no external dependency.
  *
- * **Une exception, et une seule** : le bouton de X sur la slide Réseaux, dont
- * le script est servi par X. Il est chargé en `async`, en dernier, et rien
- * n'en dépend — la slide porte le hashtag en grand, qui reste lisible quand le
- * script ne charge pas. La règle « sans réseau » n'est donc pas levée : elle
- * couvre toujours tout ce qui se lit.
+ * **One exception, and only one**: X's button on the Social slide, whose script
+ * is served by X. It is loaded `async`, last, and nothing depends on it — the
+ * slide carries the hashtag in large type, which stays readable when the script
+ * does not load. The "no network" rule is therefore not lifted: it still covers
+ * everything that is read.
  *
- * **Tout est dimensionné en `vmin`**, y compris via Tailwind. L'écran passe
- * d'un vidéoprojecteur 1024×768 à un 4K selon les salles : des tailles en `rem`
- * donneraient un texte minuscule sur l'un et débordant sur l'autre.
+ * **Everything is sized in `vmin`**, including through Tailwind. The screen goes
+ * from a 1024×768 video projector to a 4K one depending on the room: sizes in
+ * `rem` would give tiny text on one and overflowing text on the other.
  */
 export interface ProjectorPageOptions {
   /**
-   * État embarqué dans la page, rendu avant toute connexion.
+   * The state embedded in the page, rendered before any connection.
    *
-   * Évite l'écran vide entre le chargement et le premier message SSE — visible
-   * en salle à chaque rechargement de la Browser Source. Sert aussi à produire
-   * un aperçu hors ligne strictement identique à la page réelle.
+   * Avoids the blank screen between the load and the first SSE message — visible
+   * in the room on every reload of the Browser Source. Also serves to produce an
+   * offline preview strictly identical to the real page.
    */
   initialPayload?: unknown
 }
 
 export function renderProjectorPage(options: ProjectorPageOptions = {}): string {
-  const etatInitial =
+  const initialState =
     options.initialPayload == null
       ? ''
       : `<script id="etat-initial" type="application/json">${JSON.stringify(options.initialPayload).replace(/</g, '\\u003c')}</script>`
@@ -46,195 +46,192 @@ export function renderProjectorPage(options: ProjectorPageOptions = {}): string 
 <title>Écran de salle</title>
 <style>${TAILWIND_CSS}</style>
 <style>
-  :root { --couleur: #5b7cfa; --secondaire: #22d3ee; --or: #d4a24c; }
+  :root { --color: #5b7cfa; --secondary: #22d3ee; --gold: #d4a24c; }
   html, body { height: 100%; }
 
-  /* Curseur masqué : la page vit sur un vidéoprojecteur, pas sur un bureau. */
+  /* Cursor hidden: the page lives on a video projector, not on a desktop. */
   body { overflow: hidden; cursor: none; }
 
   /*
-   * Halos de marque, dérivés des couleurs de l'événement.
+   * Brand halos, derived from the event's colours.
    *
-   * Hors Tailwind : deux dégradés radiaux composés avec color-mix, que les
-   * utilitaires n'expriment pas, et qui doivent suivre --couleur à chaud.
+   * Outside Tailwind: two radial gradients composed with color-mix, which the
+   * utilities do not express, and which must follow --color live.
    *
-   * Sur leur propre couche, derrière la scène, parce qu'ils dérivent : une
-   * couche qui ne porte qu'un dégradé se déplace sur le GPU sans rien
-   * remettre en page de ce qui est écrit par-dessus. Le fond opaque reste sur
-   * le body, seul endroit où l'écran est garanti peint.
+   * On their own layer, behind the stage, because they drift: a layer carrying
+   * only a gradient moves on the GPU without relaying out anything written over
+   * it. The opaque background stays on the body, the only place where the screen
+   * is guaranteed painted.
    */
   #halo {
     background:
-      radial-gradient(120vmax 90vmax at 12% -10%, color-mix(in srgb, var(--couleur) 38%, transparent), transparent 60%),
-      radial-gradient(90vmax 70vmax at 110% 110%, color-mix(in srgb, var(--secondaire) 32%, transparent), transparent 60%);
-    animation: derive 44s ease-in-out infinite;
+      radial-gradient(120vmax 90vmax at 12% -10%, color-mix(in srgb, var(--color) 38%, transparent), transparent 60%),
+      radial-gradient(90vmax 70vmax at 110% 110%, color-mix(in srgb, var(--secondary) 32%, transparent), transparent 60%);
+    animation: drift 44s ease-in-out infinite;
     will-change: transform;
   }
 
   /*
-   * Dérive du fond.
+   * The background's drift.
    *
-   * Quarante-quatre secondes pour un aller-retour : à cette vitesse le
-   * mouvement ne se remarque pas, mais l'écran cesse d'être une image fixe.
-   * Une pause dure vingt minutes, et un vidéoprojecteur qui ne bouge pas du
-   * tout finit par se lire comme un poste éteint sur une image.
+   * Forty-four seconds for a round trip: at that speed the movement goes
+   * unnoticed, but the screen stops being a still image. A break lasts twenty
+   * minutes, and a video projector that does not move at all ends up reading as a
+   * machine switched off on an image.
    */
-  @keyframes derive {
+  @keyframes drift {
     0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
     50% { transform: translate3d(2.5vmin, -2vmin, 0) scale(1.07); }
   }
 
   /*
-   * Palier de tête, en doré.
+   * The top tier, in gold.
    *
-   * Une couleur qui ne vient pas du thème de l'événement, et c'est voulu : la
-   * marque habille l'écran, l'or dit le rang. Les deux ne disaient pas la même
-   * chose et se confondaient quand le bandeau reprenait --couleur — le palier
-   * qui a payé le plus cher se lisait alors comme un encadré de plus.
+   * A colour that does not come from the event's theme, and that is intended: the
+   * brand dresses the screen, the gold says the rank. The two were not saying the
+   * same thing and blurred together when the band took --color back — the tier
+   * that paid the most then read as one more framed box.
    *
-   * Il habille le **premier** palier, pas celui qui s'appelle « Gold ». Le nom
-   * peut changer d'une édition à l'autre, le rang non.
+   * It dresses the **first** tier, not the one called "Gold". The name can change
+   * from one edition to the next, the rank cannot.
    */
-  .palier-tete {
-    border-color: color-mix(in srgb, var(--or) 62%, transparent);
+  .top-tier {
+    border-color: color-mix(in srgb, var(--gold) 62%, transparent);
     border-width: .28vmin;
     background: linear-gradient(160deg,
-      color-mix(in srgb, var(--or) 30%, transparent),
-      color-mix(in srgb, var(--or) 10%, transparent) 70%);
-    /* Arête haute éclairée, et un halo qui décolle le bandeau du fond. */
+      color-mix(in srgb, var(--gold) 30%, transparent),
+      color-mix(in srgb, var(--gold) 10%, transparent) 70%);
+    /* A lit top edge, and a halo that lifts the band off the background. */
     box-shadow:
-      inset 0 .2vmin 0 color-mix(in srgb, var(--or) 75%, transparent),
-      0 0 4vmin color-mix(in srgb, var(--or) 12%, transparent);
+      inset 0 .2vmin 0 color-mix(in srgb, var(--gold) 75%, transparent),
+      0 0 4vmin color-mix(in srgb, var(--gold) 12%, transparent);
   }
-  .palier-tete .intitule {
-    color: color-mix(in srgb, var(--or) 92%, #fff);
-    text-shadow: 0 0 1.4vmin color-mix(in srgb, var(--or) 45%, transparent);
+  .top-tier .tier-name {
+    color: color-mix(in srgb, var(--gold) 92%, #fff);
+    text-shadow: 0 0 1.4vmin color-mix(in srgb, var(--gold) 45%, transparent);
   }
 
   /*
-   * Couches empilées : la page suivante pousse la précédente.
+   * Stacked layers: the next page pushes the previous one.
    *
-   * La sortante part vers la gauche pendant que l'entrante arrive par la
-   * droite, a la meme vitesse et sur la meme courbe. A tout instant elles sont
-   * exactement adjacentes : rien ne se recouvre, jamais. Les deux occupent la
-   * meme case, d'ou le positionnement absolu, et le cadre les clippe.
+   * The leaving one goes off to the left while the entering one arrives from the
+   * right, at the same speed and on the same curve. At every instant they are
+   * exactly adjacent: nothing overlaps, ever. Both occupy the same cell, hence
+   * the absolute positioning, and the frame clips them.
    *
-   * C'est un remplacement du fondu enchaine qui etait la avant, et qui laissait
-   * lire les deux slides en meme temps : ses deux courbes montaient dans le
-   * meme sens au pire moment — une entree en ease-out raide (67 % en un
-   * cinquieme de sa duree) pendant que la sortie en ease-in s'attardait encore
-   * a 87 %. Au pic, les deux pages etaient visibles a plus de 80 % chacune.
-   * Mesure a 0,838 en calcul, 0,836 en relevé.
+   * It replaces the crossfade that was there before, which let both slides be
+   * read at the same time: its two curves rose in the same direction at the worst
+   * moment — a steep ease-out entrance (67 % in a fifth of its duration) while
+   * the ease-in exit still lingered at 87 %. At the peak, both pages were more
+   * than 80 % visible each. Measured at 0.838 by computation, 0.836 observed.
    *
-   * Meme duree ET meme courbe pour les deux : un ecart ouvre un vide entre les
-   * couches, ou les fait se chevaucher.
+   * The same duration AND the same curve for both: a gap opens a void between the
+   * layers, or makes them overlap.
    *
-   * Seul transform est anime, la propriete que le compositeur traite sans
-   * repasser par la mise en page — et une translation lui coute moins cher que
-   * la recomposition de deux couches translucides. C'est ce qui tient dans une
-   * Browser Source OBS en 4K.
+   * Only transform is animated, the property the compositor handles without going
+   * back through layout — and a translation costs it less than recompositing two
+   * translucent layers. That is what holds inside a 4K OBS Browser Source.
    */
-  .calque { animation: entree .55s cubic-bezier(.4, 0, .2, 1) both; }
-  .calque.sortante { animation: sortie .55s cubic-bezier(.4, 0, .2, 1) both; pointer-events: none; }
-  @keyframes entree {
+  .layer { animation: enter .55s cubic-bezier(.4, 0, .2, 1) both; }
+  .layer.leaving { animation: leave .55s cubic-bezier(.4, 0, .2, 1) both; pointer-events: none; }
+  @keyframes enter {
     from { transform: translateX(100%); }
     to { transform: none; }
   }
-  @keyframes sortie {
+  @keyframes leave {
     from { transform: none; }
     to { transform: translateX(-100%); }
   }
 
   /*
-   * Entrée en cascade.
+   * A cascading entrance.
    *
-   * Une liste qui apparaît d'un bloc se lit comme un rafraîchissement ; la même
-   * liste dont les lignes arrivent l'une après l'autre se lit comme quelque
-   * chose qu'on est en train de vous montrer. Le pas se règle par élément
-   * parent : vingt-sept créneaux de programme ont besoin d'un pas plus court
-   * que quatre cartes.
+   * A list appearing all at once reads as a refresh; the same list whose rows
+   * arrive one after another reads as something being shown to you. The step is
+   * set per parent element: twenty-seven program slots need a shorter step than
+   * four cards.
    *
-   * Le decalage est lateral, et non vertical comme il l'etait : la page entiere
-   * arrive maintenant par la droite, et des lignes qui monteraient pendant que
-   * leur cadre glisse feraient deux gestes au lieu d'un. Elles trainent donc
-   * derriere la poussee et se posent apres elle.
+   * The offset is lateral, and not vertical as it was: the whole page now arrives
+   * from the right, and rows rising while their frame slides would make two
+   * gestures instead of one. They therefore trail behind the push and settle
+   * after it.
    */
   .cascade > * {
-    animation: poser .5s cubic-bezier(.22, 1, .36, 1) both;
-    animation-delay: calc(var(--pas, 55ms) * var(--i, 0));
+    animation: settle .5s cubic-bezier(.22, 1, .36, 1) both;
+    animation-delay: calc(var(--step, 55ms) * var(--i, 0));
   }
-  @keyframes poser {
+  @keyframes settle {
     from { opacity: 0; transform: translateX(3vmin); }
     to { opacity: 1; transform: none; }
   }
 
   /*
-   * Cartes : elles se posent au lieu de glisser.
+   * Cards: they settle instead of sliding.
    *
-   * Une carte encadree qui arrive en glissant se lit comme une ligne de liste ;
-   * la meme avec un soupcon d'echelle se lit comme un objet qui se pose.
+   * A framed card arriving by sliding reads as a list row; the same one with a
+   * hint of scale reads as an object being set down.
    *
-   * Reserve aux listes de cartes, et c'est tout l'interet d'un modificateur a
-   * poser a la main : sur vingt-sept lignes de programme, vingt-sept changements
-   * d'echelle feraient du bruit, pas un effet.
+   * Reserved for card lists, and that is the whole point of a modifier applied by
+   * hand: on twenty-seven program rows, twenty-seven scale changes would make
+   * noise, not an effect.
    */
-  .cascade.cartes > * {
-    animation-name: poser-carte;
+  .cascade.cards > * {
+    animation-name: settle-card;
   }
-  @keyframes poser-carte {
+  @keyframes settle-card {
     from { opacity: 0; transform: translateX(2vmin) scale(.965); }
     to { opacity: 1; transform: none; }
   }
 
   /*
-   * Le creneau en cours se pose en dernier, et d'un peu plus loin.
+   * The running slot settles last, and from a little further away.
    *
-   * Rien de clignotant ni de repetitif : il vient de la meme direction que ses
-   * voisins, un peu plus lentement et d'un peu plus loin. L'oeil suit le dernier
-   * mouvement, et le dernier mouvement est celui qui dit ou on en est de la
-   * journee. La mise en avant permanente — fond teinte, barre d'accroche — reste
-   * ce qu'elle etait ; ceci ne joue qu'a l'arrivee de la page.
+   * Nothing blinking or repetitive: it comes from the same direction as its
+   * neighbours, a little more slowly and from a little further. The eye follows
+   * the last movement, and the last movement is the one that says where we are in
+   * the day. The permanent highlight — tinted background, accent bar — stays what
+   * it was; this only plays when the page arrives.
    */
-  .cascade > .en-cours {
-    animation-name: poser-en-cours;
+  .cascade > .running {
+    animation-name: settle-running;
     animation-duration: .72s;
   }
-  @keyframes poser-en-cours {
+  @keyframes settle-running {
     from { opacity: 0; transform: translateX(6vmin); }
     to { opacity: 1; transform: none; }
   }
 
   /*
-   * Défilement du programme.
+   * Scrolling the program.
    *
-   * La journée fait deux à trois fois la hauteur de l'écran. Plutôt que de
-   * sauter sur le créneau en cours et de s'y arrêter, la liste part de là et
-   * glisse vers la suite pendant que la page est affichée. Les deux paliers
-   * laissent le temps de lire avant et après le mouvement.
+   * The day is two to three times the screen's height. Rather than jumping to the
+   * running slot and stopping there, the list starts from it and slides towards
+   * what follows while the page is displayed. The two plateaus leave time to read
+   * before and after the movement.
    *
-   * En translation, pas en scrollTop : le défilement natif repasse par la mise
-   * en page à chaque image, la translation non.
+   * As a translation, not as scrollTop: native scrolling goes back through layout
+   * on every frame, the translation does not.
    */
-  .defilant { overflow: hidden; }
-  .defile {
-    animation-name: defile;
+  .scroller { overflow: hidden; }
+  .scrolling {
+    animation-name: scroll;
     animation-timing-function: cubic-bezier(.4, 0, .2, 1);
     animation-fill-mode: both;
   }
-  @keyframes defile {
-    0%, 14% { transform: translateY(var(--depart)); }
-    86%, 100% { transform: translateY(var(--arrivee)); }
+  @keyframes scroll {
+    0%, 14% { transform: translateY(var(--from)); }
+    86%, 100% { transform: translateY(var(--to)); }
   }
 
   /*
-   * Repère de progression.
+   * The progress marker.
    *
-   * Le point actif se remplit sur la durée de la page : c'est la seule chose à
-   * l'écran qui dise *quand* ça va changer. Le décalage négatif reprend la
-   * jauge là où elle en est, pour qu'un état reçu en milieu de page ne la
-   * fasse pas repartir de zéro.
+   * The active dot fills over the page's duration: it is the only thing on screen
+   * that says *when* it is going to change. The negative offset picks the gauge
+   * up where it is, so that a state received mid-page does not restart it from
+   * zero.
    */
-  .point {
+  .dot {
     display: block;
     height: .7vmin;
     width: .7vmin;
@@ -242,43 +239,43 @@ export function renderProjectorPage(options: ProjectorPageOptions = {}): string 
     background: rgb(255 255 255 / .25);
     transition: width .45s cubic-bezier(.22, 1, .36, 1);
   }
-  .point.actif {
+  .dot.active {
     position: relative;
     width: 4vmin;
     overflow: hidden;
     background: rgb(255 255 255 / .18);
   }
-  .point.actif::after {
+  .dot.active::after {
     content: '';
     position: absolute;
     inset: 0;
-    background: var(--couleur);
+    background: var(--color);
     transform-origin: left;
-    animation: remplir var(--duree, 12000ms) linear both;
-    animation-delay: calc(-1 * var(--ecoule, 0ms));
+    animation: fill var(--duration, 12000ms) linear both;
+    animation-delay: calc(-1 * var(--elapsed, 0ms));
   }
-  @keyframes remplir {
+  @keyframes fill {
     from { transform: scaleX(0); }
     to { transform: scaleX(1); }
   }
 
-  /* Battement du compte à rebours, relancé à chaque seconde. */
-  .bat { animation: bat .5s ease-out; }
-  @keyframes bat {
+  /* The countdown's beat, restarted every second. */
+  .beat { animation: beat .5s ease-out; }
+  @keyframes beat {
     from { transform: scale(1.035); }
     to { transform: scale(1); }
   }
 
-  /* État réseau : discret, informatif, jamais alarmant pour le public. */
-  .etat-libelle { display: none; }
-  body[data-connectivite="OFFLINE"] .etat-hors-ligne { display: inline; }
-  body[data-connectivite="DEGRADED"] .etat-degrade { display: inline; }
+  /* Network state: discreet, informative, never alarming to the audience. */
+  .status-label { display: none; }
+  body[data-connectivity="OFFLINE"] .status-offline { display: inline; }
+  body[data-connectivity="DEGRADED"] .status-degraded { display: inline; }
 
   /*
-   * En direct, l'écran s'efface : c'est la capture HDMI qui occupe la scène.
+   * On live, the screen fades away: it is the HDMI capture that takes the stage.
    *
-   * En fondu, et non d'un coup : la bascule se fait devant la salle, et une
-   * disparition instantanée se lit comme une coupure de signal.
+   * As a fade, and not at once: the switch happens in front of the room, and an
+   * instant disappearance reads as a signal loss.
    */
   header, footer, main { transition: opacity .45s ease; }
   body[data-mode="live"] { background: #000; }
@@ -288,11 +285,11 @@ export function renderProjectorPage(options: ProjectorPageOptions = {}): string 
   body[data-mode="live"] main { opacity: 0; }
 
   /*
-   * Poste réglé sur mouvement réduit : on garde les états, pas les trajets.
-   * Ne concerne pas le vidéoprojecteur, mais bien les machines d'où l'on
-   * relit ces pages.
+   * A machine set to reduced motion: we keep the states, not the journeys. This
+   * does not concern the video projector, but the machines these pages get
+   * reviewed from.
    */
-  ${OBS_ANTENNE_CSS}
+  ${OBS_ON_AIR_CSS}
 
   @media (prefers-reduced-motion: reduce) {
     *, *::after {
@@ -303,154 +300,153 @@ export function renderProjectorPage(options: ProjectorPageOptions = {}): string 
   }
 </style>
 </head>
-<body class="bg-canvas font-sans text-text" data-mode="sponsors" data-connectivite="OFFLINE">
-${etatInitial}
+<body class="bg-canvas font-sans text-text" data-mode="sponsors" data-connectivity="OFFLINE">
+${initialState}
 <div id="halo" class="pointer-events-none absolute inset-0"></div>
 <div id="scene" class="absolute inset-0 flex flex-col gap-[3vmin] p-[4.5vmin]">
   <header class="flex flex-none items-center justify-between gap-[2vmin]">
     <img id="logo" alt="" data-logo class="h-[7vmin] max-w-[30vw] object-contain" hidden>
     <div class="flex items-center gap-[1.6vmin]">
       <!--
-        Le créneau commun, annoncé sur l'écran de la salle.
+        The shared slot, announced on the room's screen.
 
-        L'habillage bascule en boucle d'attente pendant une pause, ce qui ne dit
-        pas *pourquoi* : un participant entré au milieu ne sait pas s'il a raté
-        le talk ou si tout le monde déjeune. L'étiquette le dit, et l'annonce un
-        quart d'heure avant, pendant que la conférence se termine encore.
+        The styling switches to the waiting loop during a break, which does not
+        say *why*: an attendee who came in halfway does not know whether they
+        missed the talk or everyone is at lunch. The badge says it, and announces
+        it a quarter of an hour ahead, while the talk is still finishing.
       -->
       <span class="rounded-[.6vmin] bg-white/10 px-[1.4vmin] py-[.5vmin] text-[2vmin] tracking-[.14em] uppercase"
-            id="etiquette-break" hidden></span>
-      <div class="text-[2.6vmin] tracking-[.16em] text-dim uppercase" id="nom-salle"></div>
+            id="break-badge" hidden></span>
+      <div class="text-[2.6vmin] tracking-[.16em] text-dim uppercase" id="room-name"></div>
     </div>
   </header>
 
   <!--
-    Pile de couches : la page sortante y reste le temps de sortir du cadre.
+    A stack of layers: the leaving page stays there long enough to leave the frame.
 
-    overflow-hidden n'est pas decoratif : sans lui, la couche qui glisse
-    deborde sur l'en-tete et le pied de page au lieu d'etre coupee au bord.
+    overflow-hidden is not decorative: without it, the sliding layer overflows onto
+    the header and the footer instead of being cut at the edge.
   -->
-  <main id="contenu" class="relative flex min-h-0 flex-1 flex-col overflow-hidden"></main>
+  <main id="content" class="relative flex min-h-0 flex-1 flex-col overflow-hidden"></main>
 
   <footer class="flex flex-none items-center justify-between gap-[2vmin] border-t border-white/10 pt-[2vmin] text-[2.2vmin] text-dim">
-    <div id="prochain"></div>
+    <div id="next-up"></div>
     <div class="flex items-center gap-[1vmin]">
-      <span class="block size-[1.4vmin] rounded-full bg-ok" id="pastille"></span>
-      <span class="etat-libelle etat-hors-ligne">hors ligne</span>
-      <span class="etat-libelle etat-degrade">temps réel interrompu</span>
-      <span class="tabular-nums" id="horloge"></span>
+      <span class="block size-[1.4vmin] rounded-full bg-ok" id="status-dot"></span>
+      <span class="status-label status-offline">hors ligne</span>
+      <span class="status-label status-degraded">temps réel interrompu</span>
+      <span class="tabular-nums" id="clock"></span>
     </div>
   </footer>
 </div>
 
 <!--
-  L'automate, inliné comme dans la régie et la console.
+  The state machine, inlined as in the control app and the console.
 
-  L'écran n'a besoin que de la fin effective d'un créneau, mais il la déduisait
-  à sa façon — et sa façon était fausse pour un créneau que l'export ne borne
-  que par une durée.
+  The screen only needs a slot's effective end, but it derived it in its own way —
+  and its way was wrong for a slot the export bounds only by a duration.
 -->
 <script>${MACHINE_JS}</script>
 
 <!--
-  L'état de la scène OBS, avant tout le reste : la page doit savoir si elle est
-  à l'antenne dès sa première image, pas après le premier changement de scène.
+  The OBS scene's state, before everything else: the page must know whether it is
+  on air from its very first frame, not after the first scene change.
 -->
-<script>${OBS_ANTENNE_JS}</script>
+<script>${OBS_ON_AIR_JS}</script>
 
 <script>
 (() => {
-  const contenu = document.getElementById('contenu')
-  let dernier = null
-  // Ce qui est actuellement à l'écran : sert à décider d'une transition.
-  let modeAffiche = null
-  let rangAffiche = -1
+  const content = document.getElementById('content')
+  let last = null
+  // What is currently on screen: used to decide on a transition.
+  let shownMode = null
+  let shownIndex = -1
 
-  const echapper = (valeur) => String(valeur ?? '').replace(/[&<>"']/g, (c) =>
+  const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
-  const heure = (iso, tz) => new Intl.DateTimeFormat('fr-FR', {
+  const time = (iso, tz) => new Intl.DateTimeFormat('fr-FR', {
     hour: '2-digit', minute: '2-digit', timeZone: tz,
   }).format(new Date(iso))
 
-  // Intitulé de section, commun à tous les modes.
-  const TITRE_MODE = "mb-[2.5vmin] text-[3vmin] tracking-[.18em] text-dim uppercase"
+  // A section heading, shared by every mode.
+  const SECTION_TITLE = "mb-[2.5vmin] text-[3vmin] tracking-[.18em] text-dim uppercase"
 
-  function appliquerTheme(evenement) {
-    if (!evenement) return
-    const racine = document.documentElement.style
-    if (evenement.theme?.color) racine.setProperty('--couleur', evenement.theme.color)
-    if (evenement.theme?.colorSecondary) racine.setProperty('--secondaire', evenement.theme.colorSecondary)
+  function applyTheme(event) {
+    if (!event) return
+    const root = document.documentElement.style
+    if (event.theme?.color) root.setProperty('--color', event.theme.color)
+    if (event.theme?.colorSecondary) root.setProperty('--secondary', event.theme.colorSecondary)
     /*
-     * Posé une seule fois par URL.
+     * Set once per URL.
      *
-     * Le détourage remplace ensuite la source par l'image recadrée ; réaffecter
-     * l'originale à chaque état reçu la ferait réapparaître non détourée le
-     * temps d'une image.
+     * The cropping then replaces the source with the cropped image; reassigning
+     * the original on every received state would make it reappear uncropped for
+     * the length of one frame.
      */
     const logo = document.getElementById('logo')
-    if (evenement.logoUrl && logo.dataset.source !== evenement.logoUrl) {
-      logo.dataset.source = evenement.logoUrl
-      logo.src = evenement.logoUrl
+    if (event.logoUrl && logo.dataset.source !== event.logoUrl) {
+      logo.dataset.source = event.logoUrl
+      logo.src = event.logoUrl
       logo.hidden = false
     }
   }
 
   /**
-   * Détourage automatique des logos.
+   * Automatic cropping of the logos.
    *
-   * Les logos arrivent tels que les sponsors les ont déposés : certains sont
-   * cadrés au plus près, d'autres flottent au milieu d'une grande marge. Posés
-   * côte à côte à hauteur égale, les seconds paraissent deux fois plus petits —
-   * ce n'est pas une question de taille, c'est du vide qu'on affiche à leur
-   * place. On mesure donc l'encre et on recadre dessus.
+   * The logos arrive as the sponsors submitted them: some are cropped tight,
+   * others float in the middle of a large margin. Placed side by side at equal
+   * height, the latter look twice as small — it is not a question of size, it is
+   * emptiness being displayed in their place. So we measure the ink and crop to
+   * it.
    *
-   * Le calcul n'est possible que parce que les images du cache sont servies par
-   * le client lui-même, sur /assets : un logo encore distant — cache pas
-   * encore rempli — invalide le canvas, la lecture lève, et on garde l'image
-   * telle quelle. C'est aussi ce qui se passe hors navigateur.
+   * The computation is only possible because the cached images are served by the
+   * client itself, on /assets: a logo that is still remote — the cache not filled
+   * yet — invalidates the canvas, the read throws, and we keep the image as it
+   * is. That is also what happens outside a browser.
    *
-   * Une seule fois par URL : le résultat est gardé, et la page repasse toutes
-   * les cinquante secondes.
+   * Once per URL only: the result is kept, and the page comes round every fifty
+   * seconds.
    */
-  const detoures = new Map()
+  const cropped = new Map()
 
-  /** Le pixel est-il du fond ? Transparent, ou blanc — et rien d'autre. */
-  const estFond = (d, i) => d[i + 3] < 16 || (d[i] > 244 && d[i + 1] > 244 && d[i + 2] > 244)
+  /** Is the pixel background? Transparent, or white — and nothing else. */
+  const isBackground = (d, i) => d[i + 3] < 16 || (d[i] > 244 && d[i + 1] > 244 && d[i + 2] > 244)
 
   /**
-   * Recadre sur l'encre, et renvoie une image ou rien.
+   * Crops to the ink, and returns an image or nothing.
    *
-   * Seuls les fonds transparents ou blancs sont rognés. Un logo posé sur un
-   * aplat de couleur — le carré bleu d'AXA, le violet de HoppR — a cet aplat
-   * pour marque : le resserrer sur le texte qu'il contient abîmerait le logo
-   * au lieu de le servir. Les quatre coins doivent donc être du fond, sinon on
-   * ne touche à rien.
+   * Only transparent or white backgrounds are trimmed. A logo set on a flat
+   * colour — AXA's blue square, HoppR's purple — has that flat colour for its
+   * mark: tightening it onto the text it contains would damage the logo instead
+   * of serving it. All four corners must therefore be background, otherwise we
+   * touch nothing.
    */
-  function recadrer(img) {
-    const large = img.naturalWidth
-    const haut = img.naturalHeight
-    if (!large || !haut) return null
+  function crop(img) {
+    const width = img.naturalWidth
+    const height = img.naturalHeight
+    if (!width || !height) return null
 
-    const toile = document.createElement('canvas')
-    const pinceau = toile.getContext && toile.getContext('2d')
-    if (!pinceau || !pinceau.getImageData) return null
-    toile.width = large
-    toile.height = haut
-    pinceau.drawImage(img, 0, 0)
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext && canvas.getContext('2d')
+    if (!ctx || !ctx.getImageData) return null
+    canvas.width = width
+    canvas.height = height
+    ctx.drawImage(img, 0, 0)
 
-    // Lève si l'image vient d'une autre origine : c'est le cas nominal quand le
-    // cache d'assets n'a pas encore le logo.
+    // Throws if the image comes from another origin: that is the nominal case
+    // while the asset cache does not have the logo yet.
     let pixels
-    try { pixels = pinceau.getImageData(0, 0, large, haut).data } catch (_) { return null }
+    try { pixels = ctx.getImageData(0, 0, width, height).data } catch (_) { return null }
 
-    const coins = [0, (large - 1) * 4, (haut - 1) * large * 4, (haut * large - 1) * 4]
-    if (!coins.every((i) => estFond(pixels, i))) return null
+    const corners = [0, (width - 1) * 4, (height - 1) * width * 4, (height * width - 1) * 4]
+    if (!corners.every((i) => isBackground(pixels, i))) return null
 
-    let x1 = large, y1 = haut, x2 = -1, y2 = -1
-    for (let y = 0; y < haut; y += 1) {
-      for (let x = 0; x < large; x += 1) {
-        if (estFond(pixels, (y * large + x) * 4)) continue
+    let x1 = width, y1 = height, x2 = -1, y2 = -1
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        if (isBackground(pixels, (y * width + x) * 4)) continue
         if (x < x1) x1 = x
         if (x > x2) x2 = x
         if (y < y1) y1 = y
@@ -459,391 +455,389 @@ ${etatInitial}
     }
     if (x2 < x1 || y2 < y1) return null
 
-    const l = x2 - x1 + 1
+    const w = x2 - x1 + 1
     const h = y2 - y1 + 1
-    // Rien à gagner, ou trop à perdre : une encre qui ne couvre presque rien
-    // trahit un seuil mal choisi plutôt qu'un logo minuscule.
-    if (l > large * 0.97 && h > haut * 0.97) return null
-    if (l * h < large * haut * 0.02) return null
+    // Nothing to gain, or too much to lose: ink covering almost nothing betrays a
+    // badly chosen threshold rather than a tiny logo.
+    if (w > width * 0.97 && h > height * 0.97) return null
+    if (w * h < width * height * 0.02) return null
 
-    const coupe = document.createElement('canvas')
-    coupe.width = l
-    coupe.height = h
-    coupe.getContext('2d').drawImage(img, x1, y1, l, h, 0, 0, l, h)
-    return coupe.toDataURL('image/png')
+    const cut = document.createElement('canvas')
+    cut.width = w
+    cut.height = h
+    cut.getContext('2d').drawImage(img, x1, y1, w, h, 0, 0, w, h)
+    return cut.toDataURL('image/png')
   }
 
-  /** Détoure les logos d'une couche, une fois chacun, sans jamais lever. */
-  function detourerLogos(calque) {
-    for (const img of calque ? calque.querySelectorAll('img[data-logo]') : []) {
+  /** Crops a layer's logos, once each, never throwing. */
+  function cropLogos(layer) {
+    for (const img of layer ? layer.querySelectorAll('img[data-logo]') : []) {
       const source = img.getAttribute('src')
       if (!source || source.startsWith('data:')) continue
 
-      const connu = detoures.get(source)
-      if (connu !== undefined) { if (connu) img.src = connu; continue }
+      const known = cropped.get(source)
+      if (known !== undefined) { if (known) img.src = known; continue }
 
-      const mesurer = () => {
-        let recadre = null
-        try { recadre = recadrer(img) } catch (_) { recadre = null }
-        detoures.set(source, recadre)
-        if (recadre) img.src = recadre
+      const measure = () => {
+        let result = null
+        try { result = crop(img) } catch (_) { result = null }
+        cropped.set(source, result)
+        if (result) img.src = result
       }
-      if (img.complete && img.naturalWidth > 0) mesurer()
-      else img.addEventListener('load', mesurer, { once: true })
+      if (img.complete && img.naturalWidth > 0) measure()
+      else img.addEventListener('load', measure, { once: true })
     }
   }
 
   /**
-   * Identité d'un sponsor, d'un palier à l'autre.
+   * A sponsor's identity, from one tier to the next.
    *
-   * L'export amont donne un identifiant **par palier** : « ape factory », qui a
-   * pris trois packs, en porte trois différents. Le site est la seule chose qui
-   * ne bouge pas d'une ligne à l'autre ; le nom sert de repli pour les rares
-   * sponsors qui n'en déclarent pas.
+   * The upstream export gives one identifier **per tier**: "ape factory", which
+   * took three packs, carries three different ones. The website is the only thing
+   * that does not move from one row to another; the name serves as a fallback for
+   * the rare sponsors that declare none.
    */
-  // La barre finale passe par une classe de caractères : dans un gabarit
-  // littéral, une barre échappée s'évanouit avant d'atteindre le navigateur, et
-  // la regex qui reste ne compile plus.
-  const cleSponsor = (s) =>
+  // The trailing slash goes through a character class: in a literal template, an
+  // escaped slash vanishes before reaching the browser, and the regex that is
+  // left no longer compiles.
+  const sponsorKey = (s) =>
     (s.website || s.name || '').trim().toLowerCase().replace(/[/]+$/, '')
 
   /**
-   * Les partenaires, en podium.
+   * The partners, on a podium.
    *
-   * Le premier palier est celui qui a payé le plus cher — les paliers arrivent
-   * déjà triés par rang. Il prend donc le haut de l'écran, en grand, seul sur
-   * sa surface : c'est ce qu'on lui a vendu.
+   * The first tier is the one that paid the most — the tiers arrive already
+   * sorted by rank. It therefore takes the top of the screen, large, alone on its
+   * surface: that is what was sold to it.
    *
-   * Tout le reste est fondu en une rangée où chaque sponsor n'apparaît
-   * **qu'une fois**, avec la liste de ce qu'il a pris. Auparavant le même logo
-   * revenait à l'identique à trois lignes d'écart : projeté, un logo répété se
-   * lit comme un défaut d'affichage, pas comme de la générosité. Ceux qui se
-   * sont engagés sur plusieurs fronts y sont plus grands et encadrés de la
-   * couleur de marque — c'est la donnée qui le décide, pas une liste de noms
-   * écrite ici, qui serait fausse à la première édition suivante.
+   * All the rest is merged into one row where each sponsor appears **only once**,
+   * with the list of what it took. Previously the same logo came back identically
+   * three rows apart: projected, a repeated logo reads as a display defect, not as
+   * generosity. Those who committed on several fronts are bigger there and framed
+   * in the brand colour — it is the data that decides, not a list of names written
+   * here, which would be wrong at the very next edition.
    */
-  function rendreSponsors(donnees) {
-    const tiers = donnees.sponsorTiers.filter((t) => t.sponsors.length > 0)
-    if (tiers.length === 0) return '<div class="' + TITRE_MODE + '">Merci à nos partenaires</div>'
+  function renderSponsors(data) {
+    const tiers = data.sponsorTiers.filter((t) => t.sponsors.length > 0)
+    if (tiers.length === 0) return '<div class="' + SECTION_TITLE + '">Merci à nos partenaires</div>'
 
-    const tete = tiers[0]
-    const parSponsor = new Map()
+    const top = tiers[0]
+    const bySponsor = new Map()
     for (const tier of tiers.slice(1)) {
       for (const sponsor of tier.sponsors) {
-        const connu = parSponsor.get(cleSponsor(sponsor))
-        if (connu) connu.paliers.push(tier.name)
-        else parSponsor.set(cleSponsor(sponsor), { sponsor, paliers: [tier.name] })
+        const known = bySponsor.get(sponsorKey(sponsor))
+        if (known) known.tierNames.push(tier.name)
+        else bySponsor.set(sponsorKey(sponsor), { sponsor, tierNames: [tier.name] })
       }
     }
-    // Le plus engagé en premier : c'est celui qu'on met en avant, et le tri de
-    // JavaScript est stable, donc les autres gardent l'ordre des paliers.
-    const engages = [...parSponsor.values()].sort((a, b) => b.paliers.length - a.paliers.length)
-    const surTousLesFronts = engages.some((e) => e.paliers.length > 1)
+    // The most committed first: it is the one we put forward, and JavaScript's
+    // sort is stable, so the others keep the tiers' order.
+    const committed = [...bySponsor.values()].sort((a, b) => b.tierNames.length - a.tierNames.length)
+    const onEveryFront = committed.some((e) => e.tierNames.length > 1)
 
-    // L'écran ne s'étire pas : au-delà d'une poignée de logos, tout rétrécit
-    // d'un cran plutôt que de déborder sous le pied de page.
-    const dense = tete.sponsors.length > 5 || engages.length > 5
+    // The screen does not stretch: beyond a handful of logos, everything shrinks
+    // a notch rather than overflowing under the footer.
+    const dense = top.sponsors.length > 5 || committed.length > 5
 
     /**
-     * Un logo sur sa pastille blanche.
+     * A logo on its white badge.
      *
-     * La largeur est bornée par l'appelant, pas ici : dans le bandeau c'est
-     * l'écran qui limite, dans une carte c'est la carte. Un logo très allongé —
-     * celui d'ape factory fait cinq fois sa hauteur — sortait sinon de son
-     * cadre par les deux côtés.
+     * The width is bounded by the caller, not here: in the band it is the screen
+     * that limits, in a card it is the card. A very elongated logo — ape
+     * factory's is five times its height — otherwise came out of its frame on
+     * both sides.
      */
-    const pastille = (sponsor, hauteur, largeur, rang) => sponsor.logoUrl
-      ? '<img src="' + echapper(sponsor.logoUrl) + '" alt="' + echapper(sponsor.name) + '"' +
-        ' data-logo style="--i:' + rang + '" class="' + hauteur + ' ' + largeur + ' rounded-[1.2vmin] bg-white' +
+    const badge = (sponsor, height, width, index) => sponsor.logoUrl
+      ? '<img src="' + escape(sponsor.logoUrl) + '" alt="' + escape(sponsor.name) + '"' +
+        ' data-logo style="--i:' + index + '" class="' + height + ' ' + width + ' rounded-[1.2vmin] bg-white' +
         ' object-contain px-[2vmin] py-[1.4vmin] drop-shadow-[0_.4vmin_1.2vmin_rgba(0,0,0,.45)]">'
-      : '<span style="--i:' + rang + '" class="text-[3.2vmin] font-semibold">' +
-        echapper(sponsor.name) + '</span>'
+      : '<span style="--i:' + index + '" class="text-[3.2vmin] font-semibold">' +
+        escape(sponsor.name) + '</span>'
 
-    const bande =
-      '<section class="palier-tete rounded-[2vmin] border px-[4vmin] py-[3vmin]">' +
-      '<div class="intitule mb-[2.2vmin] text-center text-[2.4vmin] tracking-[.2em] uppercase">' +
-      echapper(tete.name) + '</div>' +
-      '<div class="cascade cartes flex flex-wrap items-center justify-center gap-[3vmin]" style="--pas:70ms">' +
-      tete.sponsors.map((s, rang) =>
-        pastille(s, dense ? 'h-[10vmin]' : 'h-[13vmin]', 'max-w-[24vw]', rang)).join('') +
+    const band =
+      '<section class="top-tier rounded-[2vmin] border px-[4vmin] py-[3vmin]">' +
+      '<div class="tier-name mb-[2.2vmin] text-center text-[2.4vmin] tracking-[.2em] uppercase">' +
+      escape(top.name) + '</div>' +
+      '<div class="cascade cards flex flex-wrap items-center justify-center gap-[3vmin]" style="--step:70ms">' +
+      top.sponsors.map((s, index) =>
+        badge(s, dense ? 'h-[10vmin]' : 'h-[13vmin]', 'max-w-[24vw]', index)).join('') +
       '</div></section>'
 
-    if (engages.length === 0) return '<div class="' + TITRE_MODE + '">Nos partenaires</div>' + bande
+    if (committed.length === 0) return '<div class="' + SECTION_TITLE + '">Nos partenaires</div>' + band
 
-    const rangee = engages.map((engage, rang) => {
-      const vedette = engage.paliers.length > 1
+    const row = committed.map((entry, index) => {
+      const featured = entry.tierNames.length > 1
       /**
-       * Même hauteur de logo pour toute la rangée, et même rembourrage vertical.
+       * The same logo height for the whole row, and the same vertical padding.
        *
-       * La hiérarchie est portée par le cadre — largeur, liseré de marque,
-       * teinte — pas par la taille du logo. Faire maigrir celui qui a pris un
-       * seul pack cassait la ligne : les pastilles ne partageaient plus ni haut
-       * ni bas, et les légendes flottaient à des hauteurs différentes. Une
-       * rangée de partenaires se lit comme une étagère, ou ne se lit pas.
+       * The hierarchy is carried by the frame — width, brand rule, tint — not by
+       * the logo's size. Slimming down the one that took a single pack broke the
+       * line: the badges no longer shared a top or a bottom, and the captions
+       * floated at different heights. A row of partners reads like a shelf, or it
+       * does not read at all.
        */
-      const cadre = vedette
-        ? 'border-[color-mix(in_srgb,var(--couleur)_50%,transparent)] bg-[color-mix(in_srgb,var(--couleur)_14%,transparent)] px-[3vmin] py-[2.2vmin]'
+      const frame = featured
+        ? 'border-[color-mix(in_srgb,var(--color)_50%,transparent)] bg-[color-mix(in_srgb,var(--color)_14%,transparent)] px-[3vmin] py-[2.2vmin]'
         : 'border-white/10 bg-white/5 px-[2.4vmin] py-[2.2vmin]'
-      const hauteur = dense ? 'h-[6.5vmin]' : 'h-[8vmin]'
-      // Largeur fixe : les cartes s'alignent, et la rangée cesse de dépendre de
-      // la longueur du nom des packs.
-      const large = vedette ? 'w-[38vmin]' : 'w-[27vmin]'
-      return '<article style="--i:' + rang + '" class="flex ' + large + ' flex-col items-center' +
-        ' gap-[1.4vmin] rounded-[1.6vmin] border text-center ' + cadre + '">' +
-        pastille(engage.sponsor, hauteur, 'max-w-full', 0) +
+      const height = dense ? 'h-[6.5vmin]' : 'h-[8vmin]'
+      // Fixed width: the cards line up, and the row stops depending on the length
+      // of the packs' names.
+      const width = featured ? 'w-[38vmin]' : 'w-[27vmin]'
+      return '<article style="--i:' + index + '" class="flex ' + width + ' flex-col items-center' +
+        ' gap-[1.4vmin] rounded-[1.6vmin] border text-center ' + frame + '">' +
+        badge(entry.sponsor, height, 'max-w-full', 0) +
         '<div class="text-[2vmin] leading-snug text-dim">' +
-        echapper(engage.paliers.join(' · ')) + '</div></article>'
+        escape(entry.tierNames.join(' · ')) + '</div></article>'
     }).join('')
 
-    return '<div class="' + TITRE_MODE + '">Nos partenaires</div>' + bande +
+    return '<div class="' + SECTION_TITLE + '">Nos partenaires</div>' + band +
       '<section class="mt-[3.5vmin]">' +
       '<div class="mb-[2vmin] text-[2.4vmin] tracking-[.2em] text-dim uppercase">' +
-      (surTousLesFronts ? 'Et sur tous les fronts' : 'Et aussi') + '</div>' +
-      '<div class="cascade cartes flex flex-wrap items-stretch justify-center gap-[2.5vmin]" style="--pas:70ms">' +
-      rangee + '</div></section>'
+      (onEveryFront ? 'Et sur tous les fronts' : 'Et aussi') + '</div>' +
+      '<div class="cascade cards flex flex-wrap items-stretch justify-center gap-[2.5vmin]" style="--step:70ms">' +
+      row + '</div></section>'
   }
 
-  function rendreProgramme(donnees) {
-    const maintenant = Date.now() + (donnees.state.serverTimeOffsetMs || 0)
-    const encours = donnees.state.currentSession?.id
+  function renderProgram(data) {
+    const now = Date.now() + (data.state.serverTimeOffsetMs || 0)
+    const running = data.state.currentSession?.id
     /**
-     * Ce que la salle doit trouver en premier : ce qui se passe, ou à défaut
-     * ce qui arrive. Entre deux talks, currentSession est vide — c'est
-     * justement le moment où l'on cherche l'heure du suivant.
+     * What the room must find first: what is happening, or failing that what is
+     * coming. Between two talks, currentSession is empty — which is precisely the
+     * moment one looks for the next one's time.
      *
-     * « repere » est une accroche, pas du style : rendre() s'en sert pour
-     * amener la ligne au centre.
+     * "anchor" is a hook, not styling: render() uses it to bring the row to the
+     * centre.
      */
-    const repere = encours ?? donnees.state.nextSession?.id
-    if (donnees.sessions.length === 0) return '<div class="' + TITRE_MODE + '">Programme indisponible</div>'
+    const anchor = running ?? data.state.nextSession?.id
+    if (data.sessions.length === 0) return '<div class="' + SECTION_TITLE + '">Programme indisponible</div>'
 
     /**
-     * Le cadre porte le débordement, la liste porte la translation.
+     * The frame carries the overflow, the list carries the translation.
      *
-     * Deux niveaux et non un : c'est la liste entière qui glisse, et elle ne
-     * peut le faire que si quelque chose au-dessus d'elle coupe ce qui sort.
+     * Two levels and not one: it is the whole list that slides, and it can only
+     * do so if something above it cuts off what goes out.
      */
-    return '<div class="' + TITRE_MODE + '">Programme de la salle</div>' +
-      '<div class="defilant min-h-0 flex-1">' +
-      '<div class="cascade flex flex-col gap-[1.1vmin]" style="--pas:25ms">' +
-      donnees.sessions.map((session, rang) => {
+    return '<div class="' + SECTION_TITLE + '">Programme de la salle</div>' +
+      '<div class="scroller min-h-0 flex-1">' +
+      '<div class="cascade flex flex-col gap-[1.1vmin]" style="--step:25ms">' +
+      data.sessions.map((session, index) => {
         /**
-         * La fin effective, pas l'heure de fin brute.
+         * The effective end, not the raw end time.
          *
-         * Sans repli sur la durée ni sur le créneau suivant, un talk que
-         * l'export ne borne que par sa durée était grisé dès son heure de
-         * début : la salle lisait « passé » sur la conférence en train de se
-         * jouer. Rend null pour un créneau que rien ne ferme, qu'on préfère ne
-         * pas griser du tout.
+         * With no fallback on the duration or on the next slot, a talk the export
+         * bounds only by its duration was greyed out from its start time: the room
+         * read "past" on the talk that was being given. Returns null for a slot
+         * nothing closes, which we prefer not to grey out at all.
          */
-        const fin = RoomState.effectiveEndAt(donnees.sessions, rang)
-        // Une seule mise en avant possible : en cours, sinon passée, sinon à venir.
-        const etat = session.id === encours
-          ? "en-cours bg-[color-mix(in_srgb,var(--couleur)_26%,transparent)] shadow-[inset_.5vmin_0_0_var(--couleur)]"
-          : fin != null && fin < maintenant ? "opacity-35" : ""
-        const pause = session.kind === 'break' ? "opacity-55" : ""
-        const heureTeinte = session.id === encours ? "text-text" : "text-dim"
-        const intervenants = session.speakers.map((s) =>
+        const end = RoomState.effectiveEndAt(data.sessions, index)
+        // Only one highlight possible: running, otherwise past, otherwise upcoming.
+        const state = session.id === running
+          ? "running bg-[color-mix(in_srgb,var(--color)_26%,transparent)] shadow-[inset_.5vmin_0_0_var(--color)]"
+          : end != null && end < now ? "opacity-35" : ""
+        const isBreak = session.kind === 'break' ? "opacity-55" : ""
+        const timeTint = session.id === running ? "text-text" : "text-dim"
+        const speakers = session.speakers.map((s) =>
           s.company ? \`\${s.name} — \${s.company}\` : s.name).join(' · ')
-        const accroche = session.id === repere ? 'repere' : ''
-        return \`<article style="--i:\${rang}" class="\${accroche} grid grid-cols-[15vmin_1fr] items-baseline gap-[2.5vmin] rounded-[1.2vmin] px-[2vmin] py-[1.4vmin] \${etat} \${pause}">
-          <div class="text-[2.8vmin] tabular-nums \${heureTeinte}">\${heure(session.startsAt, donnees.timezone)}</div>
+        const anchorClass = session.id === anchor ? 'anchor' : ''
+        return \`<article style="--i:\${index}" class="\${anchorClass} grid grid-cols-[15vmin_1fr] items-baseline gap-[2.5vmin] rounded-[1.2vmin] px-[2vmin] py-[1.4vmin] \${state} \${isBreak}">
+          <div class="text-[2.8vmin] tabular-nums \${timeTint}">\${time(session.startsAt, data.timezone)}</div>
           <div>
-            <div class="text-[3vmin] font-semibold">\${echapper(session.title)}</div>
-            \${intervenants ? \`<div class="mt-[.4vmin] text-[2.2vmin] text-dim">\${echapper(intervenants)}</div>\` : ''}
+            <div class="text-[3vmin] font-semibold">\${escape(session.title)}</div>
+            \${speakers ? \`<div class="mt-[.4vmin] text-[2.2vmin] text-dim">\${escape(speakers)}</div>\` : ''}
           </div>
         </article>\`
       }).join('') + '</div></div>'
   }
 
   /**
-   * Compte à rebours : le squelette seulement.
+   * The countdown: the skeleton only.
    *
-   * Les chiffres sont laissés vides et remplis par majCompte(). C'est ce qui
-   * permet à l'écran de vivre : tant que ce html ne change pas, le mémo de
-   * rendre() ne reconstruit rien, et une animation posée sur les chiffres
-   * survit d'une seconde à l'autre. L'ancienne version réécrivait tout le bloc
-   * à chaque seconde, ce qui interdisait toute animation par construction.
+   * The digits are left empty and filled by updateCountdown(). That is what lets
+   * the screen live: as long as this html does not change, render()'s memo
+   * rebuilds nothing, and an animation placed on the digits survives from one
+   * second to the next. The old version rewrote the whole block every second,
+   * which forbade any animation by construction.
    */
-  function rendreCompte(donnees) {
-    const suivante = donnees.state.nextSession
-    if (!suivante) return '<div class="text-center"><div class="text-[3.4vmin] text-dim">Fin des interventions</div></div>'
+  function renderCountdown(data) {
+    const next = data.state.nextSession
+    if (!next) return '<div class="text-center"><div class="text-[3.4vmin] text-dim">Fin des interventions</div></div>'
     return '<div class="text-center">' +
       '<div class="cd-chiffres text-[22vmin] leading-none font-bold tabular-nums">' +
       '<span class="cd-min">--</span>:<span class="cd-sec">--</span></div>' +
-      // Balayage d'une minute : sans instant de début de pause, c'est le seul
-      // repère honnête — et il suffit à montrer que le temps passe.
+      // A one-minute sweep: with no start-of-break instant, it is the only honest
+      // marker — and it is enough to show that time is passing.
       '<div class="mx-auto mt-[3vmin] h-[.8vmin] w-[40vmin] overflow-hidden rounded-full bg-white/15">' +
-      '<div class="cd-arc h-full w-full origin-left rounded-full bg-[var(--couleur)] transition-transform duration-1000 ease-linear"></div></div>' +
-      '<div class="mt-[2.5vmin] text-[3.4vmin] text-dim">Reprise — ' + echapper(suivante.title) + '</div></div>'
+      '<div class="cd-arc h-full w-full origin-left rounded-full bg-[var(--color)] transition-transform duration-1000 ease-linear"></div></div>' +
+      '<div class="mt-[2.5vmin] text-[3.4vmin] text-dim">Reprise — ' + escape(next.title) + '</div></div>'
   }
 
-  /** Les valeurs du compte à rebours, écrites sans toucher à la structure. */
-  let derniereSeconde = null
-  function majCompte(donnees) {
-    const calque = contenu.querySelector('.calque:not(.sortante)')
-    const min = calque?.querySelector('.cd-min')
-    const suivante = donnees.state.nextSession
-    if (!min || !suivante) return
+  /** The countdown's values, written without touching the structure. */
+  let lastSecond = null
+  function updateCountdown(data) {
+    const layer = content.querySelector('.layer:not(.leaving)')
+    const min = layer?.querySelector('.cd-min')
+    const next = data.state.nextSession
+    if (!min || !next) return
 
-    const maintenant = Date.now() + (donnees.state.serverTimeOffsetMs || 0)
-    const reste = Math.max(0, suivante.startsAtMs - maintenant)
-    const secondes = Math.floor((reste % 60000) / 1000)
-    min.textContent = String(Math.floor(reste / 60000)).padStart(2, '0')
-    calque.querySelector('.cd-sec').textContent = String(secondes).padStart(2, '0')
+    const now = Date.now() + (data.state.serverTimeOffsetMs || 0)
+    const remaining = Math.max(0, next.startsAtMs - now)
+    const seconds = Math.floor((remaining % 60000) / 1000)
+    min.textContent = String(Math.floor(remaining / 60000)).padStart(2, '0')
+    layer.querySelector('.cd-sec').textContent = String(seconds).padStart(2, '0')
 
     /**
-     * La barre se vide sur la minute en cours.
+     * The bar empties over the current minute.
      *
-     * Un compte à rebours qui se remplit dit le contraire de ce qu'il compte.
-     * Au passage à zéro elle remonte d'un coup : sans couper la transition, ce
-     * retour se lirait comme une seconde qui recule.
+     * A countdown that fills up says the opposite of what it counts. On crossing
+     * zero it jumps back up: without cutting the transition, that return would
+     * read as a second going backwards.
      */
-    const arc = calque.querySelector('.cd-arc')
+    const arc = layer.querySelector('.cd-arc')
     if (arc) {
-      arc.style.transitionDuration = derniereSeconde !== null && secondes > derniereSeconde ? '0s' : ''
-      arc.style.transform = 'scaleX(' + secondes / 60 + ')'
+      arc.style.transitionDuration = lastSecond !== null && seconds > lastSecond ? '0s' : ''
+      arc.style.transform = 'scaleX(' + seconds / 60 + ')'
     }
 
-    // Battement relancé à la main : réassigner la classe ne suffit pas, il faut
-    // que le navigateur ait recalculé entre le retrait et la repose.
-    if (secondes !== derniereSeconde) {
-      derniereSeconde = secondes
-      const chiffres = calque.querySelector('.cd-chiffres')
-      chiffres.classList.remove('bat')
-      void chiffres.offsetWidth
-      chiffres.classList.add('bat')
+    // The beat restarted by hand: reassigning the class is not enough, the
+    // browser has to have recomputed between the removal and the reapplication.
+    if (seconds !== lastSecond) {
+      lastSecond = seconds
+      const digits = layer.querySelector('.cd-chiffres')
+      digits.classList.remove('beat')
+      void digits.offsetWidth
+      digits.classList.add('beat')
     }
   }
 
   /**
-   * QR OpenFeedback du talk en cours.
+   * The running talk's OpenFeedback QR code.
    *
-   * Affiché en fin de conférence, pendant que le public est encore assis :
-   * c'est le seul moment où l'on obtient des retours, et un lien dicté à voix
-   * haute n'est jamais scanné.
+   * Displayed at the end of the talk, while the audience is still seated: it is
+   * the only moment one gets any feedback, and a link dictated out loud is never
+   * scanned.
    */
-  function rendreFeedback(donnees) {
-    const session = donnees.state.currentSession
-    const feedback = donnees.feedback
+  function renderFeedback(data) {
+    const session = data.state.currentSession
+    const feedback = data.feedback
     if (feedback == null || !feedback.qrSvg) {
-      return '<div class="' + TITRE_MODE + '">Aucune conférence à noter</div>'
+      return '<div class="' + SECTION_TITLE + '">Aucune conférence à noter</div>'
     }
 
-    return '<div class="' + TITRE_MODE + '">Votre avis sur cette conférence</div>' +
+    return '<div class="' + SECTION_TITLE + '">Votre avis sur cette conférence</div>' +
       '<div class="flex items-center justify-center gap-[6vmin]">' +
       '<div class="rounded-[1.4vmin] bg-white p-[1.4vmin] [&>svg]:h-[34vmin] [&>svg]:w-[34vmin]">' +
       feedback.qrSvg + '</div>' +
       '<div class="max-w-[46vmin]">' +
-      (session ? '<div class="text-[3.6vmin] leading-snug font-semibold">' + echapper(session.title) + '</div>' : '') +
+      (session ? '<div class="text-[3.6vmin] leading-snug font-semibold">' + escape(session.title) + '</div>' : '') +
       '<div class="mt-[2vmin] text-[2.8vmin] leading-relaxed text-dim">' +
       'Scannez pour noter la conférence et laisser un commentaire aux speakers.</div></div></div>'
   }
 
   /**
-   * Question du public, choisie en régie.
+   * An audience question, chosen in the control app.
    *
-   * Même donnée que sur les deux overlays — une seule sélection, trois
-   * surfaces : incrustée dans la captation, petite par-dessus la vidéo de
-   * salle, ou en grand devant le public. Elles ne servent pas au même moment,
-   * et l'opérateur choisit lesquelles.
+   * The same data as on both overlays — one selection, three surfaces: burned
+   * into the capture, small over the room's video, or large in front of the
+   * audience. They do not serve at the same moment, and the operator chooses
+   * which ones.
    *
-   * Lit la question, jamais le bandeau de la console : celui-ci a son propre
-   * mode d'écran, et les confondre projetait « on reprend dans 5
-   * minutes » sous le titre « Question du public ».
+   * Reads the question, never the console's banner: that one has its own screen
+   * mode, and confusing them projected "we resume in 5 minutes" under the heading
+   * "Question du public".
    */
-  function rendreQuestion(donnees) {
-    const question = donnees.state.question
+  function renderQuestion(data) {
+    const question = data.state.question
     if (question == null) {
-      return '<div class="' + TITRE_MODE + '">Aucune question affichée</div>'
+      return '<div class="' + SECTION_TITLE + '">Aucune question affichée</div>'
     }
-    // Aucune animation posée ici : la couche entière entre à chaque réécriture,
-    // et le rendu n'est réécrit que s'il diffère. Une question qui change est
-    // donc déjà annoncée — en poser une seconde par-dessus faisait bouger le
-    // texte deux fois pour un seul événement.
-    return '<div class="' + TITRE_MODE + '">Question du public</div>' +
+    // No animation placed here: the whole layer enters on every rewrite, and the
+    // render is only rewritten if it differs. A question that changes is therefore
+    // already announced — placing a second one on top made the text move twice for
+    // a single event.
+    return '<div class="' + SECTION_TITLE + '">Question du public</div>' +
       '<div class="max-w-[80vmin] text-[6vmin] leading-snug font-semibold">' +
-      echapper(question.text) + '</div>' +
+      escape(question.text) + '</div>' +
       (question.author
-        ? '<div class="mt-[2vmin] text-[3vmin] text-dim">' + echapper(question.author) + '</div>'
+        ? '<div class="mt-[2vmin] text-[3vmin] text-dim">' + escape(question.author) + '</div>'
         : '')
   }
 
-  function rendreMur(donnees) {
-    const messages = donnees.state.comments ?? []
-    const qr = donnees.wall
-    const colonne = qr
+  function renderWall(data) {
+    const messages = data.state.comments ?? []
+    const qr = data.wall
+    const column = qr
       ? '<div class="text-center">' +
         '<div class="rounded-[1.4vmin] bg-white p-[1vmin] [&>svg]:h-auto [&>svg]:w-full">' + qr.qrSvg + '</div>' +
         '<div class="mt-[1.4vmin] text-[2.2vmin] leading-relaxed text-dim">Scannez pour laisser un message<br>ou poser une question</div></div>'
       : ''
 
-    const carte = "rounded-[1.4vmin] bg-white/8 px-[2.4vmin] py-[1.8vmin]"
-    const corps = messages.length === 0
-      // Le mur peut être vide en début de journée : mieux vaut inviter que
-      // laisser un cadre désert.
-      ? '<div class="' + carte + '"><div class="text-[2.9vmin] leading-snug">Les premiers messages apparaîtront ici.</div></div>'
-      : messages.map((message, rang) =>
-          '<div class="' + carte + '" style="--i:' + rang + '">' +
-          '<div class="mb-[.6vmin] text-[2.1vmin] text-dim">' + echapper(message.author) + '</div>' +
-          '<div class="text-[2.9vmin] leading-snug">' + echapper(message.text) + '</div></div>').join('')
+    const card = "rounded-[1.4vmin] bg-white/8 px-[2.4vmin] py-[1.8vmin]"
+    const body = messages.length === 0
+      // The wall can be empty at the start of the day: better to invite than to
+      // leave a deserted frame.
+      ? '<div class="' + card + '"><div class="text-[2.9vmin] leading-snug">Les premiers messages apparaîtront ici.</div></div>'
+      : messages.map((message, index) =>
+          '<div class="' + card + '" style="--i:' + index + '">' +
+          '<div class="mb-[.6vmin] text-[2.1vmin] text-dim">' + escape(message.author) + '</div>' +
+          '<div class="text-[2.9vmin] leading-snug">' + escape(message.text) + '</div></div>').join('')
 
-    return '<div class="' + TITRE_MODE + '">Vos messages</div>' +
+    return '<div class="' + SECTION_TITLE + '">Vos messages</div>' +
       '<div class="grid h-full grid-cols-[1fr_26vmin] items-start gap-[4vmin]">' +
-      '<div class="cascade flex flex-col gap-[1.6vmin] overflow-hidden">' + corps + '</div>' + colonne + '</div>'
+      '<div class="cascade flex flex-col gap-[1.6vmin] overflow-hidden">' + body + '</div>' + column + '</div>'
   }
 
   /**
-   * Ce qui se joue à côté.
+   * What is going on next door.
    *
-   * La seule information qu'un participant assis dans cette salle ne peut pas
-   * deviner : les deux autres tracks tournent en même temps, et changer de
-   * salle entre deux talks se décide en trente secondes, pendant la pause.
+   * The only piece of information an attendee sitting in this room cannot guess:
+   * the other two tracks are running at the same time, and changing room between
+   * two talks is decided in thirty seconds, during the break.
    */
-  function rendreAutresSalles(donnees) {
-    const salles = (donnees.otherRooms ?? []).filter((salle) => salle.session != null)
-    if (salles.length === 0) return '<div class="' + TITRE_MODE + '">Pendant ce temps…</div>'
+  function renderOtherRooms(data) {
+    const rooms = (data.otherRooms ?? []).filter((room) => room.session != null)
+    if (rooms.length === 0) return '<div class="' + SECTION_TITLE + '">Pendant ce temps…</div>'
 
-    return '<div class="' + TITRE_MODE + '">Pendant ce temps, à côté</div>' +
-      '<div class="cascade cartes grid gap-[2.5vmin] ' +
-      (salles.length > 2 ? 'grid-cols-2' : 'grid-cols-1') + '">' +
-      salles.map((salle, rang) => \`<article style="--i:\${rang}" class="rounded-[1.6vmin] border border-white/10 bg-white/5 px-[3vmin] py-[2.4vmin]">
+    return '<div class="' + SECTION_TITLE + '">Pendant ce temps, à côté</div>' +
+      '<div class="cascade cards grid gap-[2.5vmin] ' +
+      (rooms.length > 2 ? 'grid-cols-2' : 'grid-cols-1') + '">' +
+      rooms.map((room, index) => \`<article style="--i:\${index}" class="rounded-[1.6vmin] border border-white/10 bg-white/5 px-[3vmin] py-[2.4vmin]">
         <div class="flex items-baseline justify-between gap-[2vmin]">
-          <div class="text-[2.6vmin] tracking-[.14em] text-dim uppercase">\${echapper(salle.name)}</div>
-          <div class="text-[2.4vmin] tabular-nums \${salle.enCours ? 'text-[var(--couleur)]' : 'text-dim'}">\${
-            salle.enCours ? 'en ce moment' : heure(salle.session.startsAt, donnees.timezone)}</div>
+          <div class="text-[2.6vmin] tracking-[.14em] text-dim uppercase">\${escape(room.name)}</div>
+          <div class="text-[2.4vmin] tabular-nums \${room.enCours ? 'text-[var(--color)]' : 'text-dim'}">\${
+            room.enCours ? 'en ce moment' : time(room.session.startsAt, data.timezone)}</div>
         </div>
-        <div class="mt-[1.2vmin] text-[3.2vmin] leading-snug font-semibold">\${echapper(salle.session.title)}</div>
-        \${salle.session.speakers.length > 0
-          ? \`<div class="mt-[.8vmin] text-[2.4vmin] text-dim">\${echapper(salle.session.speakers.join(' · '))}</div>\`
+        <div class="mt-[1.2vmin] text-[3.2vmin] leading-snug font-semibold">\${escape(room.session.title)}</div>
+        \${room.session.speakers.length > 0
+          ? \`<div class="mt-[.8vmin] text-[2.4vmin] text-dim">\${escape(room.session.speakers.join(' · '))}</div>\`
           : ''}
       </article>\`).join('') + '</div>'
   }
 
   /**
-   * Les comptes de l'événement, et le hashtag.
+   * The event's accounts, and the hashtag.
    *
-   * Réglés sur le hub et descendus au sync : l'export amont ne porte que les
-   * réseaux des speakers. Le handle est écrit en grand parce que c'est ce qu'on
-   * retape sur son téléphone depuis le fond de la salle — l'URL, elle, ne se
-   * recopie pas.
+   * Set on the hub and sent down at sync: the upstream export only carries the
+   * speakers' networks. The handle is written large because it is what one retypes
+   * on one's phone from the back of the room — the URL is not something one copies
+   * out.
    *
-   * **La carte du hashtag est écrite en dur**, contrairement aux comptes : elle
-   * porte le bouton officiel de X, dont le script vit chez
-   * \`platform.x.com\` (voir la note en bas de page). Le hashtag en grand est ce
-   * qui reste quand ce script ne charge pas — c'est-à-dire hors ligne, c'est-à-
-   * dire tous les cas pour lesquels cette page est bâtie. Le bouton se pose
-   * dessus quand il peut ; il ne porte jamais la lisibilité de la slide.
+   * **The hashtag's card is hard-written**, unlike the accounts: it carries X's
+   * official button, whose script lives at \`platform.x.com\` (see the note at the
+   * bottom of the page). The hashtag in large type is what remains when that
+   * script does not load — that is, offline, that is, every case this page is
+   * built for. The button lands on top of it when it can; it never carries the
+   * slide's readability.
    */
-  function rendreReseaux(donnees) {
-    const liens = donnees.socialLinks ?? []
-    const nom = nomCourt(donnees)
-    const cartes = liens.map((lien, rang) => \`<article style="--i:\${rang}" class="rounded-[1.6vmin] border border-white/10 bg-white/5 px-[4vmin] py-[3vmin] text-center">
-        <div class="text-[2.4vmin] tracking-[.16em] text-dim uppercase">\${echapper(lien.network)}</div>
-        <div class="mt-[1.2vmin] text-[4.2vmin] leading-none font-bold">\${echapper(lien.handle)}</div>
+  function renderSocial(data) {
+    const links = data.socialLinks ?? []
+    const name = shortName(data)
+    const cards = links.map((link, index) => \`<article style="--i:\${index}" class="rounded-[1.6vmin] border border-white/10 bg-white/5 px-[4vmin] py-[3vmin] text-center">
+        <div class="text-[2.4vmin] tracking-[.16em] text-dim uppercase">\${escape(link.network)}</div>
+        <div class="mt-[1.2vmin] text-[4.2vmin] leading-none font-bold">\${escape(link.handle)}</div>
       </article>\`).join('')
 
-    const hashtag = \`<article style="--i:\${liens.length}" class="rounded-[1.6vmin] border border-white/10 bg-white/5 px-[4vmin] py-[3vmin] text-center">
+    const hashtag = \`<article style="--i:\${links.length}" class="rounded-[1.6vmin] border border-white/10 bg-white/5 px-[4vmin] py-[3vmin] text-center">
         <div class="text-[2.4vmin] tracking-[.16em] text-dim uppercase">X</div>
         <div class="mt-[1.2vmin] text-[4.2vmin] leading-none font-bold">#CloudNord</div>
         <div class="mt-[1.8vmin] flex min-h-[3.6vmin] items-center justify-center">
@@ -851,381 +845,373 @@ ${etatInitial}
         </div>
       </article>\`
 
-    const titre = liens.length === 0 ? echapper(nom) : 'Suivez ' + echapper(nom)
-    return '<div class="' + TITRE_MODE + '">' + titre + '</div>' +
-      '<div class="cascade cartes flex flex-wrap items-stretch justify-center gap-[3vmin]">' +
-      cartes + hashtag + '</div>'
+    const title = links.length === 0 ? escape(name) : 'Suivez ' + escape(name)
+    return '<div class="' + SECTION_TITLE + '">' + title + '</div>' +
+      '<div class="cascade cards flex flex-wrap items-stretch justify-center gap-[3vmin]">' +
+      cards + hashtag + '</div>'
   }
 
   /**
-   * Boucle d'attente.
+   * The waiting loop.
    *
-   * Ce qu'on laisse tourner pendant les pauses : chaque page a sa durée, et
-   * celles qui n'ont rien à montrer sont **sautées** plutôt qu'affichées vides —
-   * dix secondes de cadre désert devant la salle se lisent comme une panne.
+   * What we leave running during the breaks: each page has its own duration, and
+   * those with nothing to show are **skipped** rather than displayed empty — ten
+   * seconds of a deserted frame in front of the room read as a failure.
    *
-   * Les durées ne sont pas égales : un programme de vingt-sept lignes se lit,
-   * une rangée de logos se regarde. Elles sont volontairement longues — un
-   * écran qui change toutes les trois secondes attire l'œil pendant une pause
-   * où les gens se parlent.
+   * The durations are not equal: a twenty-seven-line program is read, a row of
+   * logos is looked at. They are deliberately long — a screen that changes every
+   * three seconds draws the eye during a break where people are talking.
    */
-  const PAGES_BOUCLE = [
-    { duree: 12_000, dispo: (d) => (d.sponsorTiers ?? []).some((t) => t.sponsors.length > 0), rendre: rendreSponsors },
-    { duree: 15_000, dispo: (d) => (d.sessions ?? []).length > 0, rendre: rendreProgramme },
-    { duree: 12_000, dispo: (d) => (d.otherRooms ?? []).some((s) => s.session != null), rendre: rendreAutresSalles },
-    { duree: 10_000, dispo: (d) => (d.socialLinks ?? []).length > 0, rendre: rendreReseaux },
+  const LOOP_PAGES = [
+    { duration: 12_000, available: (d) => (d.sponsorTiers ?? []).some((t) => t.sponsors.length > 0), render: renderSponsors },
+    { duration: 15_000, available: (d) => (d.sessions ?? []).length > 0, render: renderProgram },
+    { duration: 12_000, available: (d) => (d.otherRooms ?? []).some((s) => s.session != null), render: renderOtherRooms },
+    { duration: 10_000, available: (d) => (d.socialLinks ?? []).length > 0, render: renderSocial },
   ]
   /**
-   * Rang dans PAGES_BOUCLE, et non dans la liste des pages disponibles.
+   * An index into LOOP_PAGES, and not into the list of available pages.
    *
-   * C'est la correction d'un défaut discret : quand une page perdait son
-   * contenu — le dernier talk des autres salles se termine — ou en gagnait un
-   * au sync, la liste filtrée changeait de longueur et le même indice désignait
-   * soudain une autre page. L'écran changeait alors en plein milieu, en gardant
-   * l'échéance de la page précédente, et sans transition puisque l'indice,
-   * lui, n'avait pas bougé. Un rang qui désigne toujours la même page ne peut pas
-   * glisser sous nos pieds.
+   * It is the fix for a discreet defect: when a page lost its content — the other
+   * rooms' last talk ends — or gained some at sync, the filtered list changed
+   * length and the same index suddenly designated another page. The screen then
+   * changed in the middle, keeping the previous page's deadline, and with no
+   * transition since the index itself had not moved. An index that always
+   * designates the same page cannot slide out from under us.
    */
-  let boucleRang = 0
-  let boucleJusqua = 0
-  // Rang et durée réellement affichés : c'est sur eux que se décide une
-  // transition, et sur eux que se calent la jauge et le défilement du programme.
-  let boucleRangAffiche = 0
-  let boucleDuree = 0
+  let loopIndex = 0
+  let loopUntil = 0
+  // The index and duration actually displayed: it is on them that a transition is
+  // decided, and on them that the gauge and the program's scroll are aligned.
+  let loopShownIndex = 0
+  let loopDuration = 0
 
-  const pagesBoucle = (donnees) => PAGES_BOUCLE.filter((page) => page.dispo(donnees))
+  const loopPages = (data) => LOOP_PAGES.filter((page) => page.available(data))
 
   /**
-   * La première page qui a quelque chose à montrer, en partant de ce rang.
+   * The first page that has something to show, starting from this index.
    *
-   * Renvoie -1 quand aucune n'a rien — salle jamais synchronisée.
+   * Returns -1 when none has anything — a room never synchronized.
    */
-  function pageDepuis(donnees, depart) {
-    for (let pas = 0; pas < PAGES_BOUCLE.length; pas += 1) {
-      const rang = (depart + pas) % PAGES_BOUCLE.length
-      if (PAGES_BOUCLE[rang].dispo(donnees)) return rang
+  function pageFrom(data, start) {
+    for (let step = 0; step < LOOP_PAGES.length; step += 1) {
+      const index = (start + step) % LOOP_PAGES.length
+      if (LOOP_PAGES[index].available(data)) return index
     }
     return -1
   }
 
-  function rendreBoucle(donnees) {
-    // Rien à montrer nulle part — salle jamais synchronisée : les sponsors
-    // disent au moins de quel événement il s'agit.
-    if (pageDepuis(donnees, boucleRang) === -1) return rendreSponsors(donnees)
-    const pages = pagesBoucle(donnees)
+  function renderLoop(data) {
+    // Nothing to show anywhere — a room never synchronized: the sponsors at least
+    // say which event this is.
+    if (pageFrom(data, loopIndex) === -1) return renderSponsors(data)
+    const pages = loopPages(data)
 
-    const rang = pageDepuis(donnees, boucleRang)
-    // La page visée a pu se vider depuis la dernière bascule : on adopte celle
-    // qu'on affiche réellement, et on lui donne sa propre durée — sinon elle
-    // hériterait de l'échéance d'une page qui n'est plus à l'écran.
-    if (rang !== boucleRang) { boucleRang = rang; boucleJusqua = 0 }
-    const page = PAGES_BOUCLE[rang]
-    if (boucleJusqua === 0) boucleJusqua = Date.now() + page.duree
-    boucleRangAffiche = rang
-    boucleDuree = page.duree
+    const index = pageFrom(data, loopIndex)
+    // The targeted page may have emptied since the last switch: we adopt the one
+    // we actually display, and give it its own duration — otherwise it would
+    // inherit the deadline of a page that is no longer on screen.
+    if (index !== loopIndex) { loopIndex = index; loopUntil = 0 }
+    const page = LOOP_PAGES[index]
+    if (loopUntil === 0) loopUntil = Date.now() + page.duration
+    loopShownIndex = index
+    loopDuration = page.duration
 
     /**
-     * Repère de progression.
+     * The progress marker.
      *
-     * Trois points en bas disent qu'il y a une suite, et qu'elle tourne : sans
-     * eux, un écran qui change tout seul se lit comme un écran instable. Le
-     * point actif se remplit sur la durée de la page, ce qui dit en plus
-     * *quand* elle va tourner.
+     * Three dots at the bottom say there is more to come, and that it turns:
+     * without them, a screen that changes on its own reads as an unstable screen.
+     * The active dot fills over the page's duration, which additionally says
+     * *when* it is going to turn.
      *
-     * La durée est écrite ici parce qu'elle ne bouge pas de toute la page ; le
-     * temps déjà écoulé, lui, est posé après coup depuis le script — l'inscrire
-     * dans le html le ferait changer à chaque seconde, et le moindre état reçu
-     * relancerait une transition en plein milieu.
+     * The duration is written here because it does not move for the whole page;
+     * the time already elapsed is set afterwards from the script — putting it in
+     * the html would make it change every second, and the slightest received
+     * state would restart a transition in the middle.
      */
     const position = pages.indexOf(page)
-    const points = pages.map((_, index) => index === position
-      ? '<span class="point actif" style="--duree:' + page.duree + 'ms"></span>'
-      : '<span class="point"></span>').join('')
+    const dots = pages.map((_, i) => i === position
+      ? '<span class="dot active" style="--duration:' + page.duration + 'ms"></span>'
+      : '<span class="dot"></span>').join('')
 
-    return '<div class="flex min-h-0 flex-1 flex-col justify-center">' + page.rendre(donnees) + '</div>' +
-      '<div class="mt-[2.5vmin] flex flex-none items-center justify-center gap-[1.2vmin]">' + points + '</div>'
+    return '<div class="flex min-h-0 flex-1 flex-col justify-center">' + page.render(data) + '</div>' +
+      '<div class="mt-[2.5vmin] flex flex-none items-center justify-center gap-[1.2vmin]">' + dots + '</div>'
   }
 
-  /** Passe à la page suivante, en sautant celles qui n'ont rien à dire. */
-  function avancerBoucle(donnees) {
-    const rang = pageDepuis(donnees, (boucleRang + 1) % PAGES_BOUCLE.length)
-    if (rang === -1) { boucleJusqua = Date.now() + 5_000; return }
-    boucleRang = rang
-    boucleJusqua = Date.now() + PAGES_BOUCLE[rang].duree
+  /** Moves to the next page, skipping those with nothing to say. */
+  function advanceLoop(data) {
+    const index = pageFrom(data, (loopIndex + 1) % LOOP_PAGES.length)
+    if (index === -1) { loopUntil = Date.now() + 5_000; return }
+    loopIndex = index
+    loopUntil = Date.now() + LOOP_PAGES[index].duration
   }
 
-  function rendreMessage(donnees) {
-    const message = donnees.state.message
-    if (!message) return '<div class="' + TITRE_MODE + '">—</div>'
-    const fond = message.level === 'urgent' ? "bg-[#7a1420]" : ""
-    const teinte = message.level === 'warning' ? "text-warn" : ""
-    return \`<div class="flex h-full flex-col justify-center gap-[3vmin] rounded-[2vmin] text-center \${fond}">
-      <div class="text-[7vmin] leading-[1.15] font-bold \${teinte}">\${echapper(message.text)}</div>
+  function renderMessage(data) {
+    const message = data.state.message
+    if (!message) return '<div class="' + SECTION_TITLE + '">—</div>'
+    const background = message.level === 'urgent' ? "bg-[#7a1420]" : ""
+    const tint = message.level === 'warning' ? "text-warn" : ""
+    return \`<div class="flex h-full flex-col justify-center gap-[3vmin] rounded-[2vmin] text-center \${background}">
+      <div class="text-[7vmin] leading-[1.15] font-bold \${tint}">\${escape(message.text)}</div>
     </div>\`
   }
 
   /**
-   * Écrit une page, en poussant l'ancienne hors du cadre si demandé.
+   * Writes a page, pushing the old one out of the frame if asked.
    *
-   * innerHTML détruit tout ce qui était là : la couche sortante est donc mise
-   * de côté avant, puis regreffée le temps de son animation de sortie. Elle
-   * s'enlève sur animationend, et de toute façon à la réécriture suivante — il
-   * ne peut jamais y en avoir deux.
+   * innerHTML destroys everything that was there: the leaving layer is therefore
+   * set aside first, then grafted back for the length of its exit animation. It
+   * removes itself on animationend, and in any case at the next rewrite — there
+   * can never be two of them.
    *
-   * Regreffée en tête, donc peinte *sous* la nouvelle. Sans importance depuis
-   * le passage au latéral, où les deux couches sont adjacentes et ne se
-   * recouvrent jamais ; ça comptait du temps du fondu.
+   * Grafted back at the front, so painted *under* the new one. Of no importance
+   * since the move to lateral motion, where the two layers are adjacent and never
+   * overlap; it mattered in the crossfade days.
    */
-  function ecrire(html, croiser) {
-    if (html === contenu.__html) return
-    const sortante = croiser ? contenu.querySelector('.calque:not(.sortante)') : null
-    contenu.__html = html
-    contenu.innerHTML = html
-    if (!sortante) return
-    sortante.classList.add('sortante')
-    contenu.insertBefore(sortante, contenu.firstChild)
+  function write(html, crossfade) {
+    if (html === content.__html) return
+    const leaving = crossfade ? content.querySelector('.layer:not(.leaving)') : null
+    content.__html = html
+    content.innerHTML = html
+    if (!leaving) return
+    leaving.classList.add('leaving')
+    content.insertBefore(leaving, content.firstChild)
 
-    // Deux façons de s'en aller, parce qu'une seule ne suffit pas : un moteur
-    // qui n'anime pas — Browser Source en arrière-plan, mouvement réduit — ne
-    // dit jamais animationend, et la couche resterait là, transparente, jusqu'à
-    // la réécriture suivante.
-    const enlever = () => sortante.remove()
-    sortante.addEventListener('animationend', enlever, { once: true })
-    setTimeout(enlever, 1_200)
+    // Two ways of leaving, because one is not enough: an engine that does not
+    // animate — a Browser Source in the background, reduced motion — never says
+    // animationend, and the layer would stay there, transparent, until the next
+    // rewrite.
+    const remove = () => leaving.remove()
+    leaving.addEventListener('animationend', remove, { once: true })
+    setTimeout(remove, 1_200)
   }
 
   /**
-   * Cale la jauge du point actif sur le temps déjà écoulé.
+   * Aligns the active dot's gauge on the time already elapsed.
    *
-   * Posé ici et non dans le html : la valeur change à chaque seconde, et la
-   * mettre dans le gabarit ferait différer le rendu en permanence.
+   * Set here and not in the html: the value changes every second, and putting it
+   * in the template would make the render differ permanently.
    */
-  function poserJauge(calque) {
-    const jauge = calque?.querySelector('.point.actif')
-    if (!jauge) return
-    jauge.style.setProperty('--ecoule', Math.max(0, boucleDuree - (boucleJusqua - Date.now())) + 'ms')
+  function setGauge(layer) {
+    const gauge = layer?.querySelector('.dot.active')
+    if (!gauge) return
+    gauge.style.setProperty('--elapsed', Math.max(0, loopDuration - (loopUntil - Date.now())) + 'ms')
   }
 
   /**
-   * Fait glisser le programme, du créneau en cours vers la suite de la journée.
+   * Slides the program, from the running slot towards the rest of the day.
    *
-   * Les deux bornes se mesurent après insertion : elles dépendent de la hauteur
-   * réelle de l'écran, qui va du 1024x768 au 4K. Hors d'un vrai navigateur
-   * toutes ces mesures valent zéro, la classe n'est pas posée, et la liste
-   * reste simplement là où elle est.
+   * Both bounds are measured after insertion: they depend on the screen's real
+   * height, which goes from 1024x768 to 4K. Outside a real browser all these
+   * measurements are zero, the class is not applied, and the list simply stays
+   * where it is.
    */
-  function poserDefilement(calque) {
-    const cadre = calque?.querySelector('.defilant')
-    const liste = cadre?.firstElementChild
-    if (!cadre || !liste || liste.classList.contains('defile')) return
+  function setScroll(layer) {
+    const frame = layer?.querySelector('.scroller')
+    const list = frame?.firstElementChild
+    if (!frame || !list || list.classList.contains('scrolling')) return
 
-    const haut = cadre.clientHeight
-    const course = liste.scrollHeight - haut
-    if (!(course > 0)) return
+    const height = frame.clientHeight
+    const travel = list.scrollHeight - height
+    if (!(travel > 0)) return
 
-    const repere = calque.querySelector('.repere')
-    const vise = repere ? repere.offsetTop - (haut - repere.offsetHeight) / 2 : 0
-    const depart = Math.max(0, Math.min(vise, course))
-    // Environ un écran plus bas, sans jamais dépasser le bas de la journée.
-    const arrivee = Math.min(depart + haut * 0.85, course)
+    const anchor = layer.querySelector('.anchor')
+    const aim = anchor ? anchor.offsetTop - (height - anchor.offsetHeight) / 2 : 0
+    const from = Math.max(0, Math.min(aim, travel))
+    // About one screen further down, without ever going past the end of the day.
+    const to = Math.min(from + height * 0.85, travel)
 
-    liste.style.setProperty('--depart', -depart + 'px')
-    liste.style.setProperty('--arrivee', -arrivee + 'px')
-    liste.style.animationDuration = boucleDuree + 'ms'
-    liste.classList.add('defile')
+    list.style.setProperty('--from', -from + 'px')
+    list.style.setProperty('--to', -to + 'px')
+    list.style.animationDuration = loopDuration + 'ms'
+    list.classList.add('scrolling')
   }
 
   /**
-   * Nom court de l'événement, poussé par le hub et gardé en cache par la salle.
+   * The event's short name, pushed by the hub and cached by the room.
    *
-   * Pas le nom du programme (donnees.event.name) : le hub peut le contredire par
-   * réglage, et il le connaît avant même qu'un programme soit importé.
+   * Not the program's name (data.event.name): the hub can contradict it by
+   * setting, and it knows it even before a program has been imported.
    */
-  function nomCourt(donnees) {
-    return donnees.eventIdentity?.shortName || ''
+  function shortName(data) {
+    return data.eventIdentity?.shortName || ''
   }
 
-  function rendre(donnees) {
-    dernier = donnees
-    // Le titre suit l'événement : la fenêtre de secours et l'onglet de la
-    // Browser Source doivent dire de quel événement il s'agit, sans qu'un nom
-    // soit compilé dans le binaire installé sur la machine.
-    const titre = donnees.eventIdentity?.name
-    if (titre) document.title = titre + ' — écran de salle'
-    document.body.dataset.mode = donnees.state.mode
-    document.body.dataset.connectivite = donnees.state.connectivity
-    appliquerTheme(donnees.event)
+  function render(data) {
+    last = data
+    // The title follows the event: the fallback window and the Browser Source's
+    // tab must say which event this is, without a name being compiled into the
+    // binary installed on the machine.
+    const title = data.eventIdentity?.name
+    if (title) document.title = title + ' — écran de salle'
+    document.body.dataset.mode = data.state.mode
+    document.body.dataset.connectivity = data.state.connectivity
+    applyTheme(data.event)
 
-    document.getElementById('nom-salle').textContent = donnees.roomName ?? donnees.state.roomId ?? ''
+    document.getElementById('room-name').textContent = data.roomName ?? data.state.roomId ?? ''
 
-    const pause = donnees.state.breakBadge
-    const etiquette = document.getElementById('etiquette-break')
-    etiquette.hidden = pause == null
-    if (pause != null) {
-      etiquette.textContent = pause.state === 'en-cours' ? 'Break' : 'Break à venir'
-      // « À venir » attire l'œil, « en cours » se contente d'exister : à ce
-      // moment-là, l'écran entier dit déjà que rien ne se joue.
-      etiquette.style.color = pause.state === 'en-cours' ? '' : 'var(--color-warn)'
+    const onBreak = data.state.breakBadge
+    const badge = document.getElementById('break-badge')
+    badge.hidden = onBreak == null
+    if (onBreak != null) {
+      badge.textContent = onBreak.state === 'en-cours' ? 'Break' : 'Break à venir'
+      // "Upcoming" draws the eye, "running" is content to exist: at that moment,
+      // the whole screen already says nothing is going on.
+      badge.style.color = onBreak.state === 'en-cours' ? '' : 'var(--color-warn)'
     }
-    const pastille = document.getElementById('pastille')
-    pastille.className = "block size-[1.4vmin] rounded-full " + (
-      donnees.state.connectivity === 'OFFLINE' ? "bg-alert"
-      : donnees.state.connectivity === 'DEGRADED' ? "bg-warn" : "bg-ok")
+    const statusDot = document.getElementById('status-dot')
+    statusDot.className = "block size-[1.4vmin] rounded-full " + (
+      data.state.connectivity === 'OFFLINE' ? "bg-alert"
+      : data.state.connectivity === 'DEGRADED' ? "bg-warn" : "bg-ok")
 
-    const suivante = donnees.state.nextSession
-    document.getElementById('prochain').textContent = suivante
-      ? \`À suivre \${heure(suivante.startsAt, donnees.timezone)} — \${suivante.title}\`
+    const next = data.state.nextSession
+    document.getElementById('next-up').textContent = next
+      ? \`À suivre \${time(next.startsAt, data.timezone)} — \${next.title}\`
       : ''
 
     const modes = {
-      sponsors: rendreSponsors,
-      programme: rendreProgramme,
-      countdown: rendreCompte,
-      message: rendreMessage,
-      feedback: rendreFeedback,
-      question: rendreQuestion,
-      wall: rendreMur,
-      loop: rendreBoucle,
+      sponsors: renderSponsors,
+      programme: renderProgram,
+      countdown: renderCountdown,
+      message: renderMessage,
+      feedback: renderFeedback,
+      question: renderQuestion,
+      wall: renderWall,
+      loop: renderLoop,
       live: () => '',
     }
     /**
-     * La boucle repart du début à chaque fois qu'on y revient.
+     * The loop restarts from the beginning every time one comes back to it.
      *
-     * Sortir sur un message puis revenir doit reprendre aux sponsors, pas
-     * atterrir au milieu du programme avec deux secondes avant la bascule
-     * suivante.
+     * Leaving on a message then coming back must resume at the sponsors, not land
+     * in the middle of the program with two seconds before the next switch.
      */
-    if (donnees.state.mode !== 'loop') { boucleRang = 0; boucleJusqua = 0 }
+    if (data.state.mode !== 'loop') { loopIndex = 0; loopUntil = 0 }
     /**
-     * Redessiné seulement quand le rendu change.
+     * Redrawn only when the render changes.
      *
-     * Un état arrive à chaque bascule de scène, chaque profondeur de file : tout
-     * réécrire à chaque fois relançait les animations et faisait clignoter
-     * l'écran devant la salle, pour un contenu identique.
+     * A state arrives on every scene switch, every queue depth: rewriting
+     * everything every time restarted the animations and made the screen flicker
+     * in front of the room, for identical content.
      */
-    const corps = (modes[donnees.state.mode] ?? rendreSponsors)(donnees)
-    const html = corps === ''
+    const body = (modes[data.state.mode] ?? renderSponsors)(data)
+    const html = body === ''
       ? ''
-      : '<div class="calque absolute inset-0 flex flex-col justify-center overflow-hidden">' + corps + '</div>'
+      : '<div class="layer absolute inset-0 flex flex-col justify-center overflow-hidden">' + body + '</div>'
 
     /**
-     * La transition, seulement là où elle veut dire quelque chose.
+     * The transition, only where it means something.
      *
-     * On croise à un vrai changement de page — un autre mode, ou la page
-     * suivante de la boucle. Pas sur un message de plus au mur ni sur une
-     * question réécrite : là, superposer deux textes différents ne se lirait
-     * pas, alors que l'entrée de la nouvelle couche suffit à dire que ça a
-     * bougé.
+     * We cross over on a real page change — another mode, or the loop's next
+     * page. Not on one more message on the wall nor on a rewritten question:
+     * there, superimposing two different texts would not read, whereas the new
+     * layer's entrance is enough to say that something moved.
      */
-    const croise = donnees.state.mode !== modeAffiche
-      || (donnees.state.mode === 'loop' && boucleRangAffiche !== rangAffiche)
-    ecrire(html, croise)
-    modeAffiche = donnees.state.mode
-    rangAffiche = boucleRangAffiche
+    const crossing = data.state.mode !== shownMode
+      || (data.state.mode === 'loop' && loopShownIndex !== shownIndex)
+    write(html, crossing)
+    shownMode = data.state.mode
+    shownIndex = loopShownIndex
 
     /**
-     * Amène au centre ce qui se passe maintenant.
+     * Brings what is happening now to the centre.
      *
-     * Une journée de conférence fait deux à trois fois la hauteur de l'écran,
-     * et personne ne peut faire défiler un vidéoprojecteur : sans cela, la
-     * salle regarderait le petit-déjeuner à seize heures. Le conteneur est en
-     * overflow caché, donc il ne montre aucune barre, mais il se positionne
-     * très bien depuis le script.
+     * A conference day is two to three times the screen's height, and nobody can
+     * scroll a video projector: without this, the room would be looking at
+     * breakfast at four in the afternoon. The container has overflow hidden, so it
+     * shows no bar, but it positions perfectly well from the script.
      *
-     * Dans la boucle, la même question a une meilleure réponse : la liste part
-     * du créneau en cours et glisse vers la suite pendant les quinze secondes
-     * de la page. Le mode « programme » de la régie, lui, est un écran qu'on
-     * pose et qu'on laisse : il se contente d'être au bon endroit.
+     * In the loop, the same question has a better answer: the list starts from the
+     * running slot and slides towards what follows during the page's fifteen
+     * seconds. The control app's "programme" mode, on the other hand, is a screen
+     * one sets and leaves: it is content to be in the right place.
      *
-     * Toujours sur la couche vivante, jamais sur celle qui s'efface.
+     * Always on the live layer, never on the one fading away.
      */
-    const vivante = contenu.querySelector('.calque:not(.sortante)')
+    const alive = content.querySelector('.layer:not(.leaving)')
     /**
-     * Le bouton de X, à chaque fois que la slide Réseaux revient.
+     * X's button, every time the Social slide comes back.
      *
-     * \`widgets.js\` remplace l'ancre par une iframe **au chargement du script**,
-     * une fois. Or la couche est réécrite entièrement à chaque retour de la
-     * boucle : sans ce rappel, le bouton n'apparaîtrait qu'au tout premier
-     * passage et la slide retomberait ensuite sur son lien nu.
+     * \`widgets.js\` replaces the anchor with an iframe **when the script loads**,
+     * once. But the layer is rewritten entirely on every return of the loop:
+     * without this reminder, the button would only appear on the very first pass
+     * and the slide would then fall back on its bare link.
      *
-     * Optionnel de bout en bout : \`twttr\` n'existe pas si le script n'a pas pu
-     * être chargé, ce qui est le cas normal d'une salle hors ligne.
+     * Optional end to end: \`twttr\` does not exist if the script could not be
+     * loaded, which is the normal case for an offline room.
      */
-    if (vivante?.querySelector('.twitter-hashtag-button')) {
-      try { window.twttr?.widgets?.load(vivante) } catch { /* le hashtag reste lisible */ }
+    if (alive?.querySelector('.twitter-hashtag-button')) {
+      try { window.twttr?.widgets?.load(alive) } catch { /* the hashtag stays readable */ }
     }
-    // Le document entier, et non la seule couche : le logo de l'événement vit
-    // dans l'en-tête. Le résultat étant gardé par URL, le balayage ne coûte
-    // rien de plus.
-    detourerLogos(document)
-    if (donnees.state.mode === 'loop') {
-      poserJauge(vivante)
-      poserDefilement(vivante)
+    // The whole document, and not just the layer: the event's logo lives in the
+    // header. Since the result is kept per URL, the sweep costs nothing more.
+    cropLogos(document)
+    if (data.state.mode === 'loop') {
+      setGauge(alive)
+      setScroll(alive)
     } else {
-      vivante?.querySelector('.repere')?.scrollIntoView({ block: 'center' })
+      alive?.querySelector('.anchor')?.scrollIntoView({ block: 'center' })
     }
   }
 
-  function tic() {
-    const tz = dernier?.timezone ?? 'Europe/Paris'
-    const decalage = dernier?.state.serverTimeOffsetMs ?? 0
-    document.getElementById('horloge').textContent = new Intl.DateTimeFormat('fr-FR', {
+  function tick() {
+    const tz = last?.timezone ?? 'Europe/Paris'
+    const offset = last?.state.serverTimeOffsetMs ?? 0
+    document.getElementById('clock').textContent = new Intl.DateTimeFormat('fr-FR', {
       hour: '2-digit', minute: '2-digit', timeZone: tz,
-    }).format(new Date(Date.now() + decalage))
-    // Le compte à rebours change de valeurs à la seconde, le reste attend un
-    // état. Seuls les chiffres bougent : la structure, elle, tient.
-    if (dernier?.state.mode === 'countdown') majCompte(dernier)
+    }).format(new Date(Date.now() + offset))
+    // The countdown changes values every second, the rest waits for a state. Only
+    // the digits move: the structure itself holds.
+    if (last?.state.mode === 'countdown') updateCountdown(last)
 
     /**
-     * La boucle avance sur ce même tic.
+     * The loop advances on this same tick.
      *
-     * Elle repasse par la fonction de rendu plutôt que d'écrire directement
-     * dans le conteneur : c'est elle
-     * qui recentre le programme sur le créneau en cours, et qui ne réécrit que
-     * si le html change — donc l'animation d'entrée ne se rejoue qu'au vrai
-     * changement de page.
+     * It goes back through the render function rather than writing directly into
+     * the container: it is the render function that recentres the program on the
+     * running slot, and that only rewrites if the html changes — so the entrance
+     * animation only replays on a real page change.
      */
-    if (dernier?.state.mode === 'loop' && Date.now() >= boucleJusqua) {
-      avancerBoucle(dernier)
-      rendre(dernier)
+    if (last?.state.mode === 'loop' && Date.now() >= loopUntil) {
+      advanceLoop(last)
+      render(last)
     }
   }
-  setInterval(tic, 1000)
+  setInterval(tick, 1000)
 
-  // État embarqué : la page affiche quelque chose dès le chargement, sans
-  // attendre le premier message du flux.
-  // Le flux n'envoie que ce qui change : on garde l'etat courant et on fusionne.
-  // Un message complet (a l'ouverture, et apres chaque reconnexion) le remplace.
-  let etatCourant = {}
-  const embarque = document.getElementById('etat-initial')
-  if (embarque) { etatCourant = JSON.parse(embarque.textContent); rendre(etatCourant); tic() }
+  // The embedded state: the page displays something as soon as it loads, without
+  // waiting for the stream's first message.
+  // The stream only sends what changes: we keep the current state and merge.
+  // A complete message (on opening, and after every reconnection) replaces it.
+  let currentState = {}
+  const embedded = document.getElementById('etat-initial')
+  if (embedded) { currentState = JSON.parse(embedded.textContent); render(currentState); tick() }
 
-  // EventSource se reconnecte seul : l'écran ne peut pas rester figé après
-  // un redémarrage de l'application locale, sans une ligne de code de reprise.
+  // EventSource reconnects by itself: the screen cannot stay frozen after a
+  // restart of the local application, with no line of resume code.
   if (typeof EventSource !== 'undefined' && !window.__APERCU__) {
-    const flux = new EventSource('/display/state?vue=projecteur')
-    flux.onmessage = (evenement) => {
-      etatCourant = JSON.parse(evenement.data); rendre(etatCourant); tic()
+    const stream = new EventSource('/display/state?vue=projecteur')
+    stream.onmessage = (event) => {
+      currentState = JSON.parse(event.data); render(currentState); tick()
     }
-    flux.addEventListener("delta", (evenement) => {
-      etatCourant = Object.assign({}, etatCourant, JSON.parse(evenement.data))
-      rendre(etatCourant); tic()
+    stream.addEventListener("delta", (event) => {
+      currentState = Object.assign({}, currentState, JSON.parse(event.data))
+      render(currentState); tick()
     })
   }
 })()
 </script>
 
 <!--
-  La seule dépendance externe de cette page, et elle est facultative.
+  This page's only external dependency, and it is optional.
 
-  Le reste du fichier tient sans réseau, par construction — c'est la raison
-  d'être de l'état embarqué et des assets mis en cache. Ce script-ci ne peut
-  pas : le bouton officiel de X est servi par X. Il est donc chargé en
-  \`async\`, en dernier, et **rien n'en dépend** : sans lui la slide Réseaux
-  affiche le hashtag en grand, ce qui est de toute façon ce qui se retape
-  depuis le fond de la salle. Une salle coupée d'Internet perd un bouton sur
-  lequel personne ne peut cliquer — un écran projeté n'a pas de souris — et
-  garde tout ce qui se lit.
+  The rest of the file holds with no network, by construction — that is the whole
+  point of the embedded state and the cached assets. This one script cannot: X's
+  official button is served by X. It is therefore loaded \`async\`, last, and
+  **nothing depends on it**: without it the Social slide shows the hashtag in
+  large type, which is in any case what gets retyped from the back of the room. A
+  room cut off from the Internet loses a button nobody can click — a projected
+  screen has no mouse — and keeps everything that is read.
 -->
 <script async src="https://platform.x.com/widgets.js" charset="utf-8"></script>
 </body>

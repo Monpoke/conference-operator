@@ -14,7 +14,7 @@ import type {
 import type { ObsState } from './obs.js'
 import type { StopResult } from './recording.js'
 import type { VodCheck, VodEntry, Extrait, FluxFichier, VodVerdict } from './vod-index.js'
-import type { UploadsView } from './televersement.js'
+import type { UploadsView } from './upload.js'
 
 /**
  * Actions que la fenêtre de régie peut déclencher.

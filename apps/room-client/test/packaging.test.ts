@@ -4,14 +4,14 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { load } from 'js-yaml'
 import { afterEach, describe, expect, it } from 'vitest'
-import { resoudreRegieDepuis } from '../src/core/regie-shell.js'
+import { resolveControlBundleFrom } from '../src/core/control-shell.js'
 
 /**
  * Ce que l'installeur pose, et ce que le poste va chercher.
  *
  * Deux fichiers doivent s'accorder sans se connaître : `electron-builder.yml`
  * décide **où** le bundle de la régie atterrit sur une machine installée, et
- * `resoudreRegieDepuis` remonte les dossiers pour l'y trouver. Leur désaccord
+ * `resolveControlBundleFrom` remonte les dossiers pour l'y trouver. Leur désaccord
  * ne se verrait qu'au editing d'une salle — la régie répondrait 503 sur une
  * machine où tout le reste marche, et personne ne relie ça à une ligne de YAML.
  *
@@ -48,13 +48,13 @@ describe('bundle de la régie dans le paquet', () => {
      * embarquées à côté, sous `resources/`.
      */
     dir = mkdtempSync(join(tmpdir(), 'cloudnord-paquet-'))
-    const manifeste = join(dir, 'resources', regie!.to, '.vite', 'manifest.json')
-    mkdirSync(dirname(manifeste), { recursive: true })
-    writeFileSync(manifeste, '{}')
+    const manifest = join(dir, 'resources', regie!.to, '.vite', 'manifest.json')
+    mkdirSync(dirname(manifest), { recursive: true })
+    writeFileSync(manifest, '{}')
 
-    const trouve = resoudreRegieDepuis(join(dir, 'resources', 'app.asar', 'dist'))
+    const found = resolveControlBundleFrom(join(dir, 'resources', 'app.asar', 'dist'))
 
-    expect(trouve?.manifeste).toBe(manifeste)
+    expect(found?.manifest).toBe(manifest)
   })
 
   it('ne laisse pas partir la source map', () => {

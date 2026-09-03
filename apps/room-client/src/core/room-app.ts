@@ -35,9 +35,9 @@ import {
 } from './vod-index.js'
 import { Outbox } from './outbox.js'
 import { OutboxPump, buildHeartbeat, heartbeatDedupKey } from './outbox-pump.js'
-import { AgregateurNiveaux } from './niveaux-audio.js'
-import { moniteurHote, type HostLoad } from './hote.js'
-import { Televersements, type CandidatVod, type HubVod, type UploadsView } from './televersement.js'
+import { LevelAggregator } from './audio-levels.js'
+import { hostMonitor, type HostLoad } from './host.js'
+import { Televersements, type CandidatVod, type HubVod, type UploadsView } from './upload.js'
 import { nextTalk } from '@cloudnord/room-state'
 import { sessionsForRoom } from '@cloudnord/program'
 import type { ExecutionMode, RoomConfigPatch, RoomEventPayload } from '@cloudnord/contract'
@@ -188,7 +188,7 @@ export class RoomApp implements ControlTarget {
    * distincts — un pour la régie, un pour le régulateur — garderaient chacun le
    * leur et rendraient deux chiffres également faux, sans que rien ne le dise.
    */
-  private readonly hote: () => HostLoad = moniteurHote()
+  private readonly hote: () => HostLoad = hostMonitor()
   private readonly televersements: Televersements
   /** Dernière racine d'enregistrement constatée : le téléverseur y résout ses chemins. */
   private racineConnue: string | null = null
@@ -319,7 +319,7 @@ export class RoomApp implements ControlTarget {
       viteOrigin: options.regieViteOrigin ?? null,
     })
 
-    this.niveaux = new AgregateurNiveaux((inputs) => this.display.publierNiveaux(inputs))
+    this.niveaux = new LevelAggregator((inputs) => this.display.publierNiveaux(inputs))
 
     /**
      * Rapatriement des rushes.
@@ -337,8 +337,8 @@ export class RoomApp implements ControlTarget {
       // L'état réel d'OBS-B, observé et non supposé : c'est le même booléen que
       // le témoin de la régie, et il vaut mieux que ce qu'on croit avoir lancé.
       enregistre: () => this.runtime.state().recording,
-      conferenceEnCours: () => this.runtime.currentSessionStatus() === 'running',
-      msAvantProchaine: () => this.msAvantProchaineConference(),
+      talkRunning: () => this.runtime.currentSessionStatus() === 'running',
+      msBeforeNext: () => this.msAvantProchaineConference(),
       cheminDe: (file) => this.cheminDansCaptations(file),
       // Relue du cache à chaque envoi, comme le reste : une CA corrigée sur le
       // hub prend effet au sync suivant, sans toucher à la machine de salle.
@@ -349,7 +349,7 @@ export class RoomApp implements ControlTarget {
 
   /** Une régie affiche-t-elle les niveaux en ce moment ? */
   private niveauxDemandes = false
-  private readonly niveaux: AgregateurNiveaux
+  private readonly niveaux: LevelAggregator
 
   /**
    * Met un événement en file de remontée.
@@ -1174,7 +1174,7 @@ export class RoomApp implements ControlTarget {
       onEvent: (event) => {
         switch (event.type) {
           case 'audio':
-            this.niveaux.pousser(event.inputs)
+            this.niveaux.push(event.inputs)
             break
           case 'recording':
             this.runtime.observeCapture({ recording: event.active })
@@ -1236,7 +1236,7 @@ export class RoomApp implements ControlTarget {
           case 'disconnected':
             // Le vumètre retombe à zéro plutôt que de figer la dernière mesure :
             // une régie muette ne doit pas montrer du signal.
-            this.niveaux.reinitialiser()
+            this.niveaux.reset()
             this.display.publierNiveaux([])
             this.emit({ type: 'obs.connection', obs: 'B', connected: false, unresolvedRoles: [] })
             break

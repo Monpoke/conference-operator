@@ -1,33 +1,33 @@
 import { TAILWIND_CSS } from '@cloudnord/ui'
 
-import { OBS_ANTENNE_CSS, OBS_ANTENNE_JS } from './obs-browser.js'
+import { OBS_ON_AIR_CSS, OBS_ON_AIR_JS } from './obs-browser.js'
 
 /**
- * Habillage transparent superposé à la captation dans OBS-B.
+ * The transparent overlay composited over the capture in OBS-B.
  *
- * **Tout ce qui est ici part dans le master.** Cette page est une source de la
- * scène d'OBS-B : elle est incrustée dans l'enregistrement et dans le direct.
- * Elle ne porte donc que ce qui a sa place dans une VOD — le titrage du talk
- * et le logo de l'événement. Un témoin d'enregistrement y a figuré : utile à
- * l'opérateur, mais gravé dans la vidéo livrée. Ce repère-là vit en régie,
- * dans le panneau « Captation », où il ne coûte rien à personne.
+ * **Everything here goes into the master.** This page is a source of OBS-B's
+ * scene: it is burned into the recording and into the live stream. It therefore
+ * carries only what has its place in a VOD — the talk's lower third and the
+ * event's logo. A recording indicator once appeared here: useful to the operator,
+ * but engraved into the delivered video. That marker lives in the control app, in
+ * the "Captation" panel, where it costs nobody anything.
  *
- * Contraintes : fond réellement transparent (la Browser Source compose par
- * dessus la caméra et les slides), aucune animation coûteuse — la page tourne
- * pendant qu'OBS encode —, et une zone de titrage placée hors des tiers
- * habituellement occupés par les slides.
+ * Constraints: a genuinely transparent background (the Browser Source composites
+ * over the camera and the slides), no expensive animation — the page runs while
+ * OBS encodes — and a lower-third area placed outside the thirds usually taken up
+ * by the slides.
  *
- * **Toutes les tailles sont en `vh`/`vw`, y compris via Tailwind.** L'habillage
- * doit suivre la résolution du canevas OBS : une régie en 720p et une autre en
- * 1080p rendent le même cadrage. Des unités `rem` figeraient la taille du
- * titrage en pixels et le feraient déborder ou rétrécir selon la machine.
+ * **All sizes are in `vh`/`vw`, including through Tailwind.** The overlay must
+ * follow the OBS canvas's resolution: a control room in 720p and another in 1080p
+ * render the same framing. `rem` units would freeze the lower third's size in
+ * pixels and make it overflow or shrink depending on the machine.
  */
 export interface OverlayPageOptions {
   initialPayload?: unknown
 }
 
 export function renderOverlayPage(options: OverlayPageOptions = {}): string {
-  const etatInitial =
+  const initialState =
     options.initialPayload == null
       ? ''
       : `<script id="etat-initial" type="application/json">${JSON.stringify(options.initialPayload).replace(/</g, '\\u003c')}</script>`
@@ -37,134 +37,134 @@ export function renderOverlayPage(options: OverlayPageOptions = {}): string {
 <head>
 <meta charset="utf-8">
 <title>Habillage captation</title>
-<style>${TAILWIND_CSS}  ${OBS_ANTENNE_CSS}
+<style>${TAILWIND_CSS}  ${OBS_ON_AIR_CSS}
 </style>
 <style>
-  :root { --couleur: #1c71d8; --categorie: #1c71d8; }
-  /* Fond réellement transparent : OBS compose cette page par-dessus la vidéo. */
+  :root { --color: #1c71d8; --category: #1c71d8; }
+  /* A genuinely transparent background: OBS composites this page over the video. */
   html, body { height: 100%; background: transparent; overflow: hidden; }
 
-  /* Rien ne s'affiche tant qu'aucun talk n'est en cours. */
-  #titrage { opacity: 0; transition: opacity .4s ease; }
-  body[data-titrage="visible"] #titrage { opacity: 1; }
+  /* Nothing shows while no talk is running. */
+  #lower-third { opacity: 0; transition: opacity .4s ease; }
+  body[data-lower-third="visible"] #lower-third { opacity: 1; }
 
   /*
-   * Question du public.
+   * A question from the audience.
    *
-   * Elle **a** sa place dans le master, contrairement au bandeau de la console :
-   * une VOD où le speaker répond à une question qu'on n'a jamais lue est
-   * incompréhensible. Elle monte de son bord, comme le titrage apparaît du sien.
+   * It **does** have its place in the master, unlike the console's banner: a VOD
+   * where the speaker answers a question one has never read is incomprehensible.
+   * It rises from its edge, as the lower third appears from its own.
    */
   #question { opacity: 0; transform: translateY(1.5vh); transition: opacity .35s ease, transform .35s ease; }
   body[data-question="visible"] #question { opacity: 1; transform: none; }
 </style>
 </head>
-<body class="font-sans text-white" data-titrage="masque" data-question="masque">
-${etatInitial}
+<body class="font-sans text-white" data-lower-third="hidden" data-question="hidden">
+${initialState}
 <img id="logo" alt="" class="absolute right-[3vw] top-[5vh] h-[7vh] opacity-90" hidden>
 
 <!--
-  Coin opposé au titrage : les deux peuvent être à l'écran en même temps — on
-  titre le speaker pendant qu'il répond — et ils ne doivent pas se recouvrir.
+  The corner opposite the lower third: both can be on screen at the same time —
+  the speaker is titled while they answer — and they must not overlap.
 -->
 <div id="question" class="absolute right-[3vw] bottom-[8vh] flex max-w-[34vw] items-stretch drop-shadow-[0_.6vh_1.6vh_rgba(0,0,0,.55)]">
-  <div class="w-[.9vh] rounded-l-[.45vh] bg-[var(--couleur)]"></div>
+  <div class="w-[.9vh] rounded-l-[.45vh] bg-[var(--color)]"></div>
   <div class="rounded-r-[.6vh] bg-[rgba(12,14,22,.88)] px-[2.2vh] py-[1.4vh] backdrop-blur-[2px]">
-    <div class="mb-[.6vh] text-[1.6vh] font-semibold tracking-[.12em] text-[var(--couleur)] uppercase">Question du public</div>
+    <div class="mb-[.6vh] text-[1.6vh] font-semibold tracking-[.12em] text-[var(--color)] uppercase">Question du public</div>
     <div class="text-[2.5vh] leading-[1.25] font-semibold" id="question-text"></div>
-    <div class="mt-[.5vh] text-[1.9vh] text-white/70" id="question-auteur" hidden></div>
+    <div class="mt-[.5vh] text-[1.9vh] text-white/70" id="question-author" hidden></div>
   </div>
 </div>
 
-<div id="titrage" class="absolute bottom-[8vh] left-[4vw] flex max-w-[60vw] items-stretch drop-shadow-[0_.6vh_1.6vh_rgba(0,0,0,.55)]">
-  <div class="w-[.9vh] rounded-l-[.45vh] bg-[var(--categorie)]"></div>
+<div id="lower-third" class="absolute bottom-[8vh] left-[4vw] flex max-w-[60vw] items-stretch drop-shadow-[0_.6vh_1.6vh_rgba(0,0,0,.55)]">
+  <div class="w-[.9vh] rounded-l-[.45vh] bg-[var(--category)]"></div>
   <div class="rounded-r-[.6vh] bg-[rgba(12,14,22,.88)] px-[2.4vh] py-[1.6vh] backdrop-blur-[2px]">
-    <div class="text-[3.4vh] leading-[1.15] font-bold" id="titre"></div>
-    <div class="mt-[.7vh] text-[2.4vh] text-white/80" id="personnes" hidden></div>
-    <span class="mt-[1vh] inline-block rounded-[.4vh] bg-[var(--categorie)] px-[1.1vh] py-[.35vh] text-[1.7vh] tracking-[.12em] uppercase" id="categorie" hidden></span>
+    <div class="text-[3.4vh] leading-[1.15] font-bold" id="title"></div>
+    <div class="mt-[.7vh] text-[2.4vh] text-white/80" id="people" hidden></div>
+    <span class="mt-[1vh] inline-block rounded-[.4vh] bg-[var(--category)] px-[1.1vh] py-[.35vh] text-[1.7vh] tracking-[.12em] uppercase" id="category" hidden></span>
   </div>
 </div>
 
 <script>
 (() => {
-  const texte = (id, valeur) => { document.getElementById(id).textContent = valeur ?? '' }
+  const setText = (id, value) => { document.getElementById(id).textContent = value ?? '' }
 
-  function rendre(donnees) {
-    // Le titre suit l'événement : rien n'est compilé en dur, le nom vient du
-    // hub et reste en cache pour survivre à un démarrage réseau coupé.
-    const nomEvenement = donnees.eventIdentity?.name
-    if (nomEvenement) document.title = nomEvenement + ' — habillage captation'
-    const session = donnees.state.currentSession
-    const racine = document.documentElement.style
+  function render(data) {
+    // The title follows the event: nothing is hard-compiled, the name comes from
+    // the hub and stays in cache to survive a start with the network cut.
+    const eventName = data.eventIdentity?.name
+    if (eventName) document.title = eventName + ' — habillage captation'
+    const session = data.state.currentSession
+    const root = document.documentElement.style
 
-    if (donnees.event?.theme?.color) racine.setProperty('--couleur', donnees.event.theme.color)
+    if (data.event?.theme?.color) root.setProperty('--color', data.event.theme.color)
     const logo = document.getElementById('logo')
-    if (donnees.event?.logoUrl) { logo.src = donnees.event.logoUrl; logo.hidden = false }
+    if (data.event?.logoUrl) { logo.src = data.event.logoUrl; logo.hidden = false }
 
     /**
-     * Question à l'antenne.
+     * A question on air.
      *
-     * Rendue **avant** le titrage et hors de sa condition : elle ne dépend pas
-     * qu'un talk soit titrable, et surtout le titrage sort par un retour
-     * anticipé — la placer après l'aurait laissée figée sur la question
-     * précédente entre deux conférences.
+     * Rendered **before** the lower third and outside its condition: it does not
+     * depend on a talk being titleable, and above all the lower third leaves
+     * through an early return — placing it after would have left it frozen on the
+     * previous question between two talks.
      *
-     * Lit la question, et jamais le bandeau de la console : ce qui est ici part
-     * dans le master, et les consignes d'exploitation de la console n'ont rien
-     * à faire dans une VOD.
+     * Reads the question, and never the console's banner: what is here goes into
+     * the master, and the console's operational instructions have no business in
+     * a VOD.
      */
-    const question = donnees.state.question
-    document.body.dataset.question = question == null ? 'masque' : 'visible'
+    const question = data.state.question
+    document.body.dataset.question = question == null ? 'hidden' : 'visible'
     if (question != null) {
-      texte('question-text', question.text)
-      const auteur = document.getElementById('question-auteur')
-      auteur.hidden = !question.author
-      texte('question-auteur', question.author)
+      setText('question-text', question.text)
+      const author = document.getElementById('question-author')
+      author.hidden = !question.author
+      setText('question-author', question.author)
     }
 
-    // Pas de talk, ou créneau sans intervenant : rien à titrer.
-    const titrable = session != null && session.kind === 'talk'
-    document.body.dataset.titrage = titrable ? 'visible' : 'masque'
-    if (!titrable) return
+    // No talk, or a slot with no speaker: nothing to title.
+    const titleable = session != null && session.kind === 'talk'
+    document.body.dataset.lowerThird = titleable ? 'visible' : 'hidden'
+    if (!titleable) return
 
-    racine.setProperty('--categorie', session.category?.color ?? donnees.event?.theme?.color ?? '#1c71d8')
-    texte('titre', session.title)
+    root.setProperty('--category', session.category?.color ?? data.event?.theme?.color ?? '#1c71d8')
+    setText('title', session.title)
     /**
-     * Ligne masquée quand personne n'est annoncé.
+     * The line hidden when nobody is announced.
      *
-     * Le cas existe depuis qu'un créneau peut être déclaré conférence à la main :
-     * une keynote d'ouverture dont le speaker n'est pas encore annoncé porte un
-     * titre et aucun nom. Une ligne vide sous le titre garderait sa marge et se
-     * lirait, dans le direct comme dans la VOD, comme un nom qui n'a pas chargé.
+     * The case has existed since a slot can be declared a talk by hand: an opening
+     * keynote whose speaker is not announced yet carries a title and no name. An
+     * empty line under the title would keep its margin and would read, in the live
+     * stream as in the VOD, as a name that failed to load.
      */
-    const noms = session.speakers.map((s) => s.company ? s.name + ' — ' + s.company : s.name).join(' · ')
-    document.getElementById('personnes').hidden = noms === ''
-    texte('personnes', noms)
+    const names = session.speakers.map((s) => s.company ? s.name + ' — ' + s.company : s.name).join(' · ')
+    document.getElementById('people').hidden = names === ''
+    setText('people', names)
 
-    const categorie = document.getElementById('categorie')
-    categorie.hidden = session.category == null
-    if (session.category) categorie.textContent = session.category.name
+    const category = document.getElementById('category')
+    category.hidden = session.category == null
+    if (session.category) category.textContent = session.category.name
   }
 
-  // Le flux n'envoie que ce qui change : on garde l'etat courant et on fusionne.
-  // Un message complet (a l'ouverture, et apres chaque reconnexion) le remplace.
-  let etatCourant = {}
-  const embarque = document.getElementById('etat-initial')
-  if (embarque) { etatCourant = JSON.parse(embarque.textContent); rendre(etatCourant) }
+  // The stream only sends what changes: we keep the current state and merge.
+  // A complete message (on opening, and after every reconnection) replaces it.
+  let currentState = {}
+  const embedded = document.getElementById('etat-initial')
+  if (embedded) { currentState = JSON.parse(embedded.textContent); render(currentState) }
 
   if (typeof EventSource !== 'undefined' && !window.__APERCU__) {
-    const flux = new EventSource('/display/state?vue=overlay')
-    flux.onmessage = (evenement) => {
-      etatCourant = JSON.parse(evenement.data); rendre(etatCourant)
+    const stream = new EventSource('/display/state?vue=overlay')
+    stream.onmessage = (event) => {
+      currentState = JSON.parse(event.data); render(currentState)
     }
-    flux.addEventListener("delta", (evenement) => {
-      etatCourant = Object.assign({}, etatCourant, JSON.parse(evenement.data))
-      rendre(etatCourant)
+    stream.addEventListener("delta", (event) => {
+      currentState = Object.assign({}, currentState, JSON.parse(event.data))
+      render(currentState)
     })
   }
 })()
 </script>
-<script>${OBS_ANTENNE_JS}</script>
+<script>${OBS_ON_AIR_JS}</script>
 </body>
 </html>`
 }

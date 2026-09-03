@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
-// La lib DOM est déclarée ici seulement : l'ajouter au tsconfig laisserait le
-// code serveur appeler `document` sans que rien ne proteste.
+// The DOM lib is declared here only: adding it to the tsconfig would let the
+// server code call `document` without anything objecting.
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { flattenLayersInHtml } from '@cloudnord/ui'
@@ -8,24 +8,24 @@ import { renderProjectorPage } from '../src/core/display-page.js'
 import type { DisplayPayload } from '../src/core/display-server.js'
 
 /**
- * Comportement de l'écran de salle dans un vrai DOM.
+ * The room screen's behaviour in a real DOM.
  *
- * Le programme d'une journée fait deux à trois fois la hauteur de l'écran, et
- * personne ne peut faire défiler un vidéoprojecteur : ce qui compte est donc
- * *quelle* ligne la page amène au centre.
+ * A day's program is two to three times the screen's height, and nobody can
+ * scroll a video projector: what matters is therefore *which* row the page brings
+ * to the centre.
  */
-const session = (id: string, heure: string, title: string, kind = 'talk') => ({
+const session = (id: string, hour: string, title: string, kind = 'talk') => ({
   id,
   title,
   kind,
-  startsAt: `2026-10-30T${heure}:00.000Z`,
-  endsAt: `2026-10-30T${heure}:45.000Z`,
-  startsAtMs: Date.parse(`2026-10-30T${heure}:00Z`),
-  endsAtMs: Date.parse(`2026-10-30T${heure}:45Z`),
+  startsAt: `2026-10-30T${hour}:00.000Z`,
+  endsAt: `2026-10-30T${hour}:45.000Z`,
+  startsAtMs: Date.parse(`2026-10-30T${hour}:00Z`),
+  endsAtMs: Date.parse(`2026-10-30T${hour}:45Z`),
   speakers: [],
 })
 
-/** Une vraie journée : plus longue que l'écran, c'est tout l'intérêt. */
+/** A real day: longer than the screen, which is the whole point. */
 const SESSIONS = [
   session('s-0', '07:30', 'Accueil', 'break'),
   session('s-1', '08:00', 'Keynote'),
@@ -36,7 +36,7 @@ const SESSIONS = [
   session('s-6', '13:00', 'Houston'),
 ]
 
-const ETAT = {
+const STATE = {
   state: {
     mode: 'programme',
     message: null,
@@ -55,9 +55,9 @@ const ETAT = {
   },
   roomName: 'Track #1',
   event: null,
-  // Ce que le hub a tranché et poussé au sync : c'est de là que la page tire
-  // son titre et le nom qu'elle écrit dans la boucle d'attente. Rien n'est
-  // compilé dans le binaire de la salle.
+  // What the hub decided and pushed at sync: it is from there that the page takes
+  // its title and the name it writes in the waiting loop. Nothing is compiled
+  // into the room's binary.
   eventIdentity: { name: 'Cloud Nord 2026', shortName: 'Cloud Nord' },
   timezone: 'Europe/Paris',
   sessions: SESSIONS,
@@ -68,112 +68,111 @@ const ETAT = {
   pairing: null,
 } as unknown as DisplayPayload
 
-/** Ce que la page a demandé d'amener à l'écran, et comment. */
-let centre: { element: Element; options: unknown } | null
+/** What the page asked to bring on screen, and how. */
+let centred: { element: Element; options: unknown } | null
 
 /**
- * Les `setInterval` posés par la page, rejoués à la main.
+ * The `setInterval`s the page sets, replayed by hand.
  *
- * La boucle avance sur le tic d'une seconde de la page, et le compte à rebours
- * s'y remet à jour : le rejouer nous-mêmes évite d'attendre une minute réelle
- * par test, et le décalage d'horloge doit **persister** d'un appel à l'autre —
- * la page compare à `Date.now()`, et la remettre à l'heure entre deux avances
- * ferait reculer le temps.
+ * The loop advances on the page's one-second tick, and the countdown updates
+ * itself there: replaying it ourselves avoids waiting a real minute per test, and
+ * the clock offset must **persist** from one call to the next — the page compares
+ * against `Date.now()`, and resetting it between two advances would make time go
+ * backwards.
  */
-const MINUTEURS: (() => void)[] = []
-const VRAI_NOW = Date.now
-const VRAI_INTERVAL = globalThis.setInterval
-let decalage = 0
+const TIMERS: (() => void)[] = []
+const REAL_NOW = Date.now
+const REAL_INTERVAL = globalThis.setInterval
+let offset = 0
 
-function avancer(secondes: number): void {
-  for (let passe = 0; passe < secondes; passe += 1) {
-    decalage += 1_000
-    for (const minuteur of MINUTEURS) minuteur()
+function advance(seconds: number): void {
+  for (let pass = 0; pass < seconds; pass += 1) {
+    offset += 1_000
+    for (const timer of TIMERS) timer()
   }
 }
 
 /**
- * Le flux d'état, simulé.
+ * The state stream, simulated.
  *
- * happy-dom ne fournit pas `EventSource`, si bien que la page sautait purement
- * et simplement sa branche temps réel : rien ne vérifiait la fusion des deltas,
- * qui est pourtant le chemin par lequel arrive **tout** changement pendant une
- * pause. Le stub l'ouvre, et permet de pousser un delta à la seconde près.
+ * happy-dom does not supply `EventSource`, so the page simply skipped its
+ * real-time branch: nothing checked the merging of the deltas, which is however
+ * the path by which **every** change arrives during a break. The stub opens it,
+ * and makes it possible to push a delta to the second.
  */
-type FluxSimule = { deltas: (charge: Record<string, unknown>) => void }
-let flux: FluxSimule | null = null
+type SimulatedStream = { deltas: (payload: Record<string, unknown>) => void }
+let stream: SimulatedStream | null = null
 
-const VRAI_EVENTSOURCE = globalThis.EventSource
+const REAL_EVENTSOURCE = globalThis.EventSource
 
-function poserFlux(): void {
-  flux = null
+function stubStream(): void {
+  stream = null
   globalThis.EventSource = class {
-    private ecouteurs: Record<string, (evenement: { data: string }) => void> = {}
+    private listeners: Record<string, (event: { data: string }) => void> = {}
     constructor() {
-      flux = { deltas: (charge) => this.ecouteurs.delta?.({ data: JSON.stringify(charge) }) }
+      stream = { deltas: (payload) => this.listeners.delta?.({ data: JSON.stringify(payload) }) }
     }
-    addEventListener(nom: string, fn: (evenement: { data: string }) => void): void {
-      this.ecouteurs[nom] = fn
+    addEventListener(name: string, fn: (event: { data: string }) => void): void {
+      this.listeners[name] = fn
     }
     close(): void {}
   } as unknown as typeof EventSource
 }
 
-function poserMinuteurs(): void {
-  MINUTEURS.length = 0
-  decalage = 0
-  poserFlux()
-  Date.now = () => VRAI_NOW.call(Date) + decalage
+function stubTimers(): void {
+  TIMERS.length = 0
+  offset = 0
+  stubStream()
+  Date.now = () => REAL_NOW.call(Date) + offset
   globalThis.setInterval = ((fn: () => void, ms: number) => {
-    // Seul le tic d'une seconde nous intéresse : c'est lui qui fait avancer la
-    // boucle. Les autres sont neutralisés — un aperçu de test n'a pas à vivre
-    // sa vie en arrière-plan.
-    if (ms === 1000) MINUTEURS.push(fn)
-    return VRAI_INTERVAL(() => {}, 1_000_000) as unknown as number
+    // Only the one-second tick interests us: it is the one that advances the
+    // loop. The others are neutralized — a test preview has no business living
+    // its own life in the background.
+    if (ms === 1000) TIMERS.push(fn)
+    return REAL_INTERVAL(() => {}, 1_000_000) as unknown as number
   }) as typeof setInterval
 }
 
-// Rendus au reste du fichier : ces deux remplacements sont globaux, et les
-// laisser en place ferait dépendre les autres tests de l'ordre d'exécution.
-function rendreMinuteurs(): void {
-  Date.now = VRAI_NOW
-  globalThis.setInterval = VRAI_INTERVAL
-  globalThis.EventSource = VRAI_EVENTSOURCE
+// Given back to the rest of the file: those two replacements are global, and
+// leaving them in place would make the other tests depend on the execution order.
+function restoreTimers(): void {
+  Date.now = REAL_NOW
+  globalThis.setInterval = REAL_INTERVAL
+  globalThis.EventSource = REAL_EVENTSOURCE
 }
 
 /**
- * Les minuteurs que la page a réellement démarrés, à éteindre après le test.
+ * The timers the page actually started, to be switched off after the test.
  *
- * La page projetée pose ses propres `setInterval` — la boucle d'attente, entre
- * autres. Hors des blocs qui neutralisent l'horloge, ce sont de vrais
- * minuteurs, et rien ne les arrêtait : ils continuaient de battre après que
- * happy-dom a démonté le document, et tombaient sur un `document is not
- * defined` qu'aucun test n'attrapait. La suite sortait alors en rouge une fois
- * sur trois, sans qu'aucun test n'ait échoué — le pire des deux, puisque ça
- * finit par masquer un vrai échec.
+ * The projected page sets its own `setInterval`s — the waiting loop, among
+ * others. Outside the blocks that neutralize the clock, those are real timers,
+ * and nothing stopped them: they kept beating after happy-dom had torn the
+ * document down, and fell over a `document is not defined` no test caught. The
+ * suite then came out red one run in three, without any test having failed — the
+ * worse of the two, since it ends up masking a real failure.
  */
-const MINUTEURS_REELS: number[] = []
+const REAL_TIMERS: number[] = []
 
-function monterEcran(payload: DisplayPayload = ETAT): void {
-  centre = null
+function mountScreen(payload: DisplayPayload = STATE): void {
+  centred = null
   document.documentElement.innerHTML = flattenLayersInHtml(
     renderProjectorPage({ initialPayload: payload }),
   )
-  // happy-dom ne calcule aucune mise en page : on observe l'intention, qui est
-  // la seule chose que la page décide elle-même.
+  // happy-dom computes no layout: we observe the intent, which is the only thing
+  // the page decides by itself.
   Element.prototype.scrollIntoView = function (options?: unknown) {
-    centre = { element: this as Element, options }
+    centred = { element: this as Element, options }
   }
 
   /*
-   * On enveloppe ce qui est en place, quel qu'il soit : selon le bloc, c'est
-   * le vrai `setInterval` ou celui que `poserMinuteurs` a substitué. Retenir
-   * les identifiants suffit dans les deux cas.
+   * We wrap whatever is in place, whichever it is: depending on the block, that
+   * is the real `setInterval` or the one `stubTimers` substituted. Keeping the
+   * identifiers is enough in both cases.
    */
-  const pose = globalThis.setInterval
+  const installed = globalThis.setInterval
   globalThis.setInterval = ((fn: () => void, ms?: number, ...args: unknown[]) => {
-    const id = (pose as (...a: unknown[]) => unknown)(fn, ms, ...args)
-    MINUTEURS_REELS.push(id as number)
+    const id = (installed as (...a: unknown[]) => unknown)(fn, ms, ...args)
+    REAL_TIMERS.push(id as number)
     return id
   }) as typeof setInterval
 
@@ -183,220 +182,220 @@ function monterEcran(payload: DisplayPayload = ETAT): void {
       new Function(script.textContent ?? '')()
     }
   } finally {
-    globalThis.setInterval = pose
+    globalThis.setInterval = installed
   }
 }
 
-const contenu = () => document.getElementById('contenu')!
+const content = () => document.getElementById('content')!
 
 /**
- * La couche en cours d'affichage.
+ * The layer currently being displayed.
  *
- * Pendant un fondu enchaîné, la page sortante est encore dans le document :
- * viser la couche vivante est la seule façon de dire ce que la salle est en
- * train de lire, plutôt que ce qu'elle achève de quitter.
+ * During a transition, the leaving page is still in the document: aiming at the
+ * live layer is the only way to say what the room is reading, rather than what it
+ * is finishing leaving.
  */
-const vivante = () => contenu().querySelector('.calque:not(.sortante)')!
+const alive = () => content().querySelector('.layer:not(.leaving)')!
 
 beforeEach(() => {
-  monterEcran()
+  mountScreen()
 })
 
 afterEach(() => {
-  for (const id of MINUTEURS_REELS.splice(0)) clearInterval(id)
+  for (const id of REAL_TIMERS.splice(0)) clearInterval(id)
 })
 
 /**
- * Le créneau commun, annoncé sur l'écran de la salle.
+ * The shared slot, announced on the room's screen.
  *
- * L'habillage bascule en boucle d'attente pendant une pause, ce qui ne dit pas
- * *pourquoi* : un participant entré au milieu ne sait pas s'il a raté le talk
- * ou si tout le monde déjeune.
+ * The styling switches to the waiting loop during a break, which does not say
+ * *why*: an attendee who came in halfway does not know whether they missed the
+ * talk or everyone is at lunch.
  */
-describe('étiquette de break', () => {
-  const etiquette = () => document.getElementById('etiquette-break')!
+describe('break badge', () => {
+  const badge = () => document.getElementById('break-badge')!
 
-  it('ne dit rien pendant une conférence', () => {
-    expect(etiquette().hidden).toBe(true)
+  it('says nothing during a talk', () => {
+    expect(badge().hidden).toBe(true)
   })
 
-  it('annonce le break en cours', () => {
-    monterEcran({
-      ...ETAT,
+  it('announces the running break', () => {
+    mountScreen({
+      ...STATE,
       state: {
-        ...ETAT.state,
+        ...STATE.state,
         breakBadge: { state: 'en-cours', title: 'Déjeuner', startsAt: '2026-10-30T11:15:00.000Z' },
       },
     } as unknown as DisplayPayload)
 
-    expect(etiquette().hidden).toBe(false)
-    expect(etiquette().textContent).toBe('Break')
+    expect(badge().hidden).toBe(false)
+    expect(badge().textContent).toBe('Break')
   })
 
-  it("l'annonce un quart d'heure avant, pendant que la conférence se termine", () => {
-    monterEcran({
-      ...ETAT,
+  it('announces it a quarter of an hour ahead, while the talk is still finishing', () => {
+    mountScreen({
+      ...STATE,
       state: {
-        ...ETAT.state,
+        ...STATE.state,
         breakBadge: { state: 'a-venir', title: 'Déjeuner', startsAt: '2026-10-30T11:15:00.000Z' },
       },
     } as unknown as DisplayPayload)
 
-    expect(etiquette().textContent).toBe('Break à venir')
-    // « À venir » attire l'œil ; « en cours » se contente d'exister.
-    expect(etiquette().style.color).toBeTruthy()
+    expect(badge().textContent).toBe('Break à venir')
+    // "Upcoming" draws the eye; "running" is content to exist.
+    expect(badge().style.color).toBeTruthy()
   })
 })
 
-describe('programme projeté', () => {
-  it('amène la conférence en cours au centre de l\'écran', () => {
-    // Sans cela, la salle regarderait le petit-déjeuner à seize heures.
-    const repere = contenu().querySelector('.repere')!
+describe('projected program', () => {
+  it('brings the running talk to the centre of the screen', () => {
+    // Without this, the room would be looking at breakfast at four in the
+    // afternoon.
+    const anchor = content().querySelector('.anchor')!
 
-    expect(repere.textContent).toContain('HoneySwamp')
-    expect(centre?.element).toBe(repere)
-    expect(centre?.options).toEqual({ block: 'center' })
+    expect(anchor.textContent).toContain('HoneySwamp')
+    expect(centred?.element).toBe(anchor)
+    expect(centred?.options).toEqual({ block: 'center' })
   })
 
-  it('vise la suivante entre deux conférences', () => {
-    // `currentSession` est vide à ce moment-là — et c'est justement quand on
-    // cherche l'heure de la suivante.
-    monterEcran({
-      ...ETAT,
-      state: { ...ETAT.state, currentSession: null, nextSession: SESSIONS[4] },
+  it('aims at the next one between two talks', () => {
+    // `currentSession` is empty at that moment — and that is precisely when one
+    // looks for the next one's time.
+    mountScreen({
+      ...STATE,
+      state: { ...STATE.state, currentSession: null, nextSession: SESSIONS[4] },
     } as unknown as DisplayPayload)
 
-    expect(contenu().querySelector('.repere')?.textContent).toContain('Blind ops')
+    expect(content().querySelector('.anchor')?.textContent).toContain('Blind ops')
   })
 
-  it('n\'en désigne qu\'une seule', () => {
-    expect(contenu().querySelectorAll('.repere').length).toBe(1)
+  it('designates only one', () => {
+    expect(content().querySelectorAll('.anchor').length).toBe(1)
   })
 
-  it('affiche quand même toute la journée', () => {
-    // Le repère positionne, il ne filtre pas : ce qui précède et ce qui suit
-    // restent lisibles de part et d'autre.
-    expect(contenu().querySelectorAll('article').length).toBe(SESSIONS.length)
+  it('still displays the whole day', () => {
+    // The anchor positions, it does not filter: what precedes and what follows
+    // stay readable on either side.
+    expect(content().querySelectorAll('article').length).toBe(SESSIONS.length)
   })
 
-  it('ne demande rien quand la journée est finie', () => {
-    monterEcran({
-      ...ETAT,
-      state: { ...ETAT.state, currentSession: null, nextSession: null },
+  it('asks for nothing when the day is over', () => {
+    mountScreen({
+      ...STATE,
+      state: { ...STATE.state, currentSession: null, nextSession: null },
     } as unknown as DisplayPayload)
 
-    expect(contenu().querySelector('.repere')).toBeNull()
-    expect(centre).toBeNull()
+    expect(content().querySelector('.anchor')).toBeNull()
+    expect(centred).toBeNull()
   })
 
-  it('ne cherche pas de repère dans les autres modes', () => {
-    monterEcran({
-      ...ETAT,
-      state: { ...ETAT.state, mode: 'sponsors' },
+  it('does not look for an anchor in the other modes', () => {
+    mountScreen({
+      ...STATE,
+      state: { ...STATE.state, mode: 'sponsors' },
     } as unknown as DisplayPayload)
 
-    expect(centre).toBeNull()
+    expect(centred).toBeNull()
   })
 })
 
 /**
- * QR OpenFeedback.
+ * The OpenFeedback QR code.
  *
- * Fabriqué hors ligne : OpenFeedback réutilise les identifiants de session de
- * l'export amont — les 27 concordent — donc l'adresse se déduit du programme
- * déjà en cache, sans clé d'API ni appel réseau le jour J.
+ * Built offline: OpenFeedback reuses the session identifiers of the upstream
+ * export — all 27 match — so the address is derived from the already cached
+ * program, with no API key and no network call on the day.
  */
-describe('écran « notez le talk »', () => {
-  const AVEC_QR = {
-    ...ETAT,
-    state: { ...ETAT.state, mode: 'feedback' },
+describe('the "rate the talk" screen', () => {
+  const WITH_QR = {
+    ...STATE,
+    state: { ...STATE.state, mode: 'feedback' },
     feedback: {
       url: 'https://openfeedback.io/cloud-nord-2026/2026-10-30/s-3',
       qrSvg: '<svg id="qr"></svg>',
     },
   } as unknown as DisplayPayload
 
-  it('affiche le QR et le titre de la conférence', () => {
-    monterEcran(AVEC_QR)
+  it('displays the QR code and the talk\'s title', () => {
+    mountScreen(WITH_QR)
 
-    expect(contenu().querySelector('#qr')).toBeTruthy()
-    expect(contenu().textContent).toContain('HoneySwamp')
-    expect(contenu().textContent).toContain('Scannez')
+    expect(content().querySelector('#qr')).toBeTruthy()
+    expect(content().textContent).toContain('HoneySwamp')
+    expect(content().textContent).toContain('Scannez')
   })
 
-  it('le dit plutôt que de montrer un cadre vide', () => {
-    // Hors conférence, il n'y a rien à noter — et un QR mort scanné par deux
-    // cents personnes coûte plus qu'un écran qui l'annonce.
-    monterEcran({
-      ...AVEC_QR,
+  it('says so rather than showing an empty frame', () => {
+    // Outside a talk there is nothing to rate — and a dead QR code scanned by two
+    // hundred people costs more than a screen that announces it.
+    mountScreen({
+      ...WITH_QR,
       feedback: null,
     } as unknown as DisplayPayload)
 
-    expect(contenu().textContent).toContain('Aucune conférence à noter')
-    expect(contenu().querySelector('#qr')).toBeNull()
+    expect(content().textContent).toContain('Aucune conférence à noter')
+    expect(content().querySelector('#qr')).toBeNull()
   })
 })
 
 /**
- * Question projetée.
+ * A projected question.
  *
- * Même donnée que sur les deux overlays — une seule sélection, trois surfaces.
- * Les overlays ne touchent que ceux qui regardent la captation ou la scène
- * live ; ce mode-ci la met devant toute la salle.
+ * The same data as on both overlays — one selection, three surfaces. The overlays
+ * only reach those watching the capture or the live scene; this mode puts it in
+ * front of the whole room.
  */
-describe('écran « question du public »', () => {
-  const enQuestion = (question: unknown) =>
+describe('the "audience question" screen', () => {
+  const withQuestion = (question: unknown) =>
     ({
-      ...ETAT,
-      state: { ...ETAT.state, mode: 'question', question },
+      ...STATE,
+      state: { ...STATE.state, mode: 'question', question },
     }) as unknown as DisplayPayload
 
-  it('projette la question choisie en régie', () => {
-    monterEcran(enQuestion({ text: 'Comment gérez-vous les faux positifs ?', author: 'Camille', sessionId: 's-3' }))
+  it('projects the question chosen in the control app', () => {
+    mountScreen(withQuestion({ text: 'Comment gérez-vous les faux positifs ?', author: 'Camille', sessionId: 's-3' }))
 
-    expect(contenu().textContent).toContain('Question du public')
-    expect(contenu().textContent).toContain('faux positifs')
-    expect(contenu().textContent).toContain('Camille')
+    expect(content().textContent).toContain('Question du public')
+    expect(content().textContent).toContain('faux positifs')
+    expect(content().textContent).toContain('Camille')
   })
 
-  it('ne prend pas le bandeau de la console pour une question', () => {
-    // Les deux ont longtemps partagé un champ : « on reprend dans 5 minutes »
-    // se projetait alors en grand sous le titre « Question du public ».
-    monterEcran({
-      ...ETAT,
+  it('does not take the console banner for a question', () => {
+    // The two long shared a field: "we resume in 5 minutes" was then projected in
+    // large type under the heading "Question du public".
+    mountScreen({
+      ...STATE,
       state: {
-        ...ETAT.state,
+        ...STATE.state,
         mode: 'question',
         question: null,
         liveMessage: { text: 'Reprise dans 5 minutes', level: 'info', expiresAtMs: null },
       },
     } as unknown as DisplayPayload)
 
-    expect(contenu().textContent).not.toContain('Reprise dans 5 minutes')
-    expect(contenu().textContent).toContain('Aucune question affichée')
+    expect(content().textContent).not.toContain('Reprise dans 5 minutes')
+    expect(content().textContent).toContain('Aucune question affichée')
   })
 
-  it('le dit quand aucune question n\'est choisie', () => {
-    monterEcran(enQuestion(null))
+  it('says so when no question is chosen', () => {
+    mountScreen(withQuestion(null))
 
-    expect(contenu().textContent).toContain('Aucune question affichée')
+    expect(content().textContent).toContain('Aucune question affichée')
   })
 })
 
 /**
- * Page partenaires.
+ * The partners page.
  *
- * Deux règles la gouvernent. Le premier palier a payé le plus cher : il occupe
- * seul le haut de l'écran. Et un sponsor qui a pris plusieurs packs n'apparaît
- * **qu'une fois** — l'export amont lui donne un identifiant par palier, si bien
- * que le même logo revenait trois fois à l'identique, ce qui se lit comme un
- * défaut d'affichage.
+ * Two rules govern it. The first tier paid the most: it occupies the top of the
+ * screen alone. And a sponsor that took several packs appears **only once** — the
+ * upstream export gives it one identifier per tier, so the same logo came back
+ * three times identically, which reads as a display defect.
  */
-describe('page partenaires', () => {
-  // Les identifiants diffèrent d'un palier à l'autre, comme dans le vrai
-  // export ; la barre finale du site aussi. C'est exactement ce que le
-  // dédoublonnage doit absorber.
-  const PALIERS = [
+describe('partners page', () => {
+  // The identifiers differ from one tier to the next, as in the real export; so
+  // does the site's trailing slash. That is exactly what the deduplication has to
+  // absorb.
+  const TIERS = [
     {
       id: 't0', name: 'Gold', order: 0,
       sponsors: [{ id: 'g1', name: 'HoppR', website: 'https://www.hoppr.tech/', logoUrl: null }],
@@ -414,124 +413,124 @@ describe('page partenaires', () => {
     },
   ]
 
-  const enPartenaires = (tiers: unknown = PALIERS) =>
-    ({ ...ETAT, state: { ...ETAT.state, mode: 'sponsors' }, sponsorTiers: tiers }) as unknown as DisplayPayload
+  const withPartners = (tiers: unknown = TIERS) =>
+    ({ ...STATE, state: { ...STATE.state, mode: 'sponsors' }, sponsorTiers: tiers }) as unknown as DisplayPayload
 
-  it('donne le haut de l\'écran au premier palier', () => {
-    monterEcran(enPartenaires())
+  it('gives the top of the screen to the first tier', () => {
+    mountScreen(withPartners())
 
-    expect(vivante().textContent).toContain('Gold')
-    expect(vivante().textContent).toContain('HoppR')
+    expect(alive().textContent).toContain('Gold')
+    expect(alive().textContent).toContain('HoppR')
   })
 
-  it('ne montre qu\'une fois celui qui a pris plusieurs packs', () => {
-    monterEcran(enPartenaires())
+  it('shows only once the one that took several packs', () => {
+    mountScreen(withPartners())
 
-    const texte = vivante().textContent ?? ''
-    expect(texte.match(/ape factory/g)?.length).toBe(1)
+    const text = alive().textContent ?? ''
+    expect(text.match(/ape factory/g)?.length).toBe(1)
   })
 
-  it('dit lesquels il a pris', () => {
-    monterEcran(enPartenaires())
+  it('says which ones it took', () => {
+    mountScreen(withPartners())
 
-    expect(vivante().textContent).toContain('Digital · Pack Inclusivité')
-    expect(vivante().textContent).toContain('Et sur tous les fronts')
+    expect(alive().textContent).toContain('Digital · Pack Inclusivité')
+    expect(alive().textContent).toContain('Et sur tous les fronts')
   })
 
-  it('ne promet pas plusieurs fronts quand personne n\'en a pris deux', () => {
-    // Le libellé est une affirmation : sans sponsor multi-packs, il mentirait.
-    monterEcran(enPartenaires(PALIERS.slice(0, 2).map((tier) => ({
+  it('does not promise several fronts when nobody took two', () => {
+    // The label is a claim: with no multi-pack sponsor, it would be lying.
+    mountScreen(withPartners(TIERS.slice(0, 2).map((tier) => ({
       ...tier,
       sponsors: tier.sponsors.slice(0, 1),
     }))))
 
-    expect(vivante().textContent).toContain('Et aussi')
-    expect(vivante().textContent).not.toContain('Et sur tous les fronts')
+    expect(alive().textContent).toContain('Et aussi')
+    expect(alive().textContent).not.toContain('Et sur tous les fronts')
   })
 
-  it('se réduit au bandeau quand il n\'y a qu\'un palier', () => {
-    monterEcran(enPartenaires(PALIERS.slice(0, 1)))
+  it('shrinks to the band when there is only one tier', () => {
+    mountScreen(withPartners(TIERS.slice(0, 1)))
 
-    const texte = vivante().textContent ?? ''
-    expect(texte).toContain('HoppR')
-    expect(texte).not.toContain('Et aussi')
-    expect(texte).not.toContain('Et sur tous les fronts')
+    const text = alive().textContent ?? ''
+    expect(text).toContain('HoppR')
+    expect(text).not.toContain('Et aussi')
+    expect(text).not.toContain('Et sur tous les fronts')
   })
 
-  it('propose ses logos au détourage', () => {
-    // L'accroche du détourage, et rien de plus : le recadrage lui-même demande
-    // un canvas, que happy-dom n'a pas. Ce que ce test tient, c'est que la page
-    // ne lève pas pour autant et que les logos restent repérables.
-    monterEcran(enPartenaires([
+  it('offers its logos for cropping', () => {
+    // The hook for the cropping, and nothing more: the crop itself needs a
+    // canvas, which happy-dom does not have. What this test holds is that the
+    // page does not throw for all that and that the logos stay identifiable.
+    mountScreen(withPartners([
       {
         id: 't0', name: 'Gold', order: 0,
         sponsors: [{ id: 'g1', name: 'HoppR', website: null, logoUrl: '/assets/abc123' }],
       },
     ]))
 
-    expect(vivante().querySelectorAll('img[data-logo]').length).toBe(1)
+    expect(alive().querySelectorAll('img[data-logo]').length).toBe(1)
   })
 
-  it('le dit quand il n\'y a aucun partenaire', () => {
-    monterEcran(enPartenaires([]))
+  it('says so when there is no partner at all', () => {
+    mountScreen(withPartners([]))
 
-    expect(vivante().textContent).toContain('Merci à nos partenaires')
+    expect(alive().textContent).toContain('Merci à nos partenaires')
   })
 })
 
 /**
- * Compte à rebours de reprise.
+ * The resume countdown.
  *
- * Il vit à la seconde, et c'est précisément ce qui interdisait de l'animer :
- * la page réécrivait tout le bloc à chaque tic, ce qui remettait à zéro tout
- * ce qui aurait pu bouger. Structure et valeurs sont désormais séparées.
+ * It lives to the second, and that is precisely what forbade animating it: the
+ * page rewrote the whole block on every tick, which reset everything that could
+ * have moved. Structure and values are now separated.
  */
-describe('compte à rebours', () => {
-  beforeEach(poserMinuteurs)
-  afterEach(rendreMinuteurs)
+describe('countdown', () => {
+  beforeEach(stubTimers)
+  afterEach(restoreTimers)
 
-  const enCompte = () =>
-    ({ ...ETAT, state: { ...ETAT.state, mode: 'countdown' } }) as unknown as DisplayPayload
+  const inCountdown = () =>
+    ({ ...STATE, state: { ...STATE.state, mode: 'countdown' } }) as unknown as DisplayPayload
 
-  it('met les chiffres à jour sans reconstruire le bloc', () => {
-    monterEcran(enCompte())
-    const secondes = vivante().querySelector('.cd-sec')!
-    const avant = secondes.textContent
+  it('updates the digits without rebuilding the block', () => {
+    mountScreen(inCountdown())
+    const seconds = alive().querySelector('.cd-sec')!
+    const before = seconds.textContent
 
-    avancer(2)
+    advance(2)
 
-    // Le même nœud, avec une autre valeur : c'est la condition pour qu'une
-    // animation posée dessus survive d'une seconde à l'autre.
-    expect(vivante().querySelector('.cd-sec')).toBe(secondes)
-    expect(secondes.textContent).not.toBe(avant)
+    // The same node, with another value: it is the condition for an animation
+    // placed on it to survive from one second to the next.
+    expect(alive().querySelector('.cd-sec')).toBe(seconds)
+    expect(seconds.textContent).not.toBe(before)
   })
 
-  it('annonce la conférence de reprise', () => {
-    monterEcran(enCompte())
+  it('announces the talk we resume on', () => {
+    mountScreen(inCountdown())
 
-    expect(vivante().textContent).toContain('Blind ops')
+    expect(alive().textContent).toContain('Blind ops')
   })
 
-  it('le dit quand la journée est finie', () => {
-    monterEcran({
-      ...ETAT,
-      state: { ...ETAT.state, mode: 'countdown', nextSession: null },
+  it('says so when the day is over', () => {
+    mountScreen({
+      ...STATE,
+      state: { ...STATE.state, mode: 'countdown', nextSession: null },
     } as unknown as DisplayPayload)
 
-    expect(vivante().textContent).toContain('Fin des interventions')
+    expect(alive().textContent).toContain('Fin des interventions')
   })
 })
 
 /**
- * Boucle d'attente.
+ * The waiting loop.
  *
- * Ce qu'on laisse tourner pendant les pauses. Deux règles la gouvernent : les
- * pages sans contenu sont **sautées** — dix secondes de cadre désert devant la
- * salle se lisent comme une panne — et le retour dans la boucle repart du
- * début, plutôt que d'atterrir au milieu du programme.
+ * What we leave running during the breaks. Two rules govern it: pages with no
+ * content are **skipped** — ten seconds of a deserted frame in front of the room
+ * read as a failure — and coming back into the loop restarts from the beginning,
+ * rather than landing in the middle of the program.
  */
-describe('boucle d\'attente', () => {
-  const AUTRES = [
+describe('waiting loop', () => {
+  const OTHERS = [
     {
       roomId: 'track-2',
       name: 'Track #2',
@@ -546,261 +545,260 @@ describe('boucle d\'attente', () => {
     },
   ]
 
-  const RESEAUX = [
+  const SOCIAL = [
     { network: 'Bluesky', handle: '@cloudnord.fr', url: 'https://bsky.app/profile/cloudnord.fr' },
   ]
 
   const SPONSORS = [{ id: 't1', name: 'Gold', order: 1, sponsors: [{ id: 's1', name: 'Clever Cloud', website: null, logoUrl: null }] }]
 
-  const enBoucle = (patch: Record<string, unknown> = {}) =>
+  const inLoop = (patch: Record<string, unknown> = {}) =>
     ({
-      ...ETAT,
-      state: { ...ETAT.state, mode: 'loop' },
+      ...STATE,
+      state: { ...STATE.state, mode: 'loop' },
       sponsorTiers: SPONSORS,
-      otherRooms: AUTRES,
-      socialLinks: RESEAUX,
+      otherRooms: OTHERS,
+      socialLinks: SOCIAL,
       ...patch,
     }) as unknown as DisplayPayload
 
-  beforeEach(poserMinuteurs)
-  afterEach(rendreMinuteurs)
+  beforeEach(stubTimers)
+  afterEach(restoreTimers)
 
-  it('ouvre sur les sponsors', () => {
-    monterEcran(enBoucle())
+  it('opens on the sponsors', () => {
+    mountScreen(inLoop())
 
-    expect(contenu().textContent).toContain('Nos partenaires')
-    expect(contenu().textContent).toContain('Clever Cloud')
+    expect(content().textContent).toContain('Nos partenaires')
+    expect(content().textContent).toContain('Clever Cloud')
   })
 
-  it('enchaîne les pages toute seule', () => {
-    monterEcran(enBoucle())
+  it('chains the pages by itself', () => {
+    mountScreen(inLoop())
 
-    // Sponsors 12 s, puis le programme.
-    avancer(13)
-    expect(vivante().textContent).toContain('Programme de la salle')
+    // Sponsors 12 s, then the program.
+    advance(13)
+    expect(alive().textContent).toContain('Programme de la salle')
 
-    // Puis les autres salles, puis les réseaux.
-    avancer(16)
-    expect(vivante().textContent).toContain('Pendant ce temps')
-    avancer(13)
-    expect(vivante().textContent).toContain('Suivez Cloud Nord')
+    // Then the other rooms, then the social accounts.
+    advance(16)
+    expect(alive().textContent).toContain('Pendant ce temps')
+    advance(13)
+    expect(alive().textContent).toContain('Suivez Cloud Nord')
   })
 
-  it('porte le hashtag en clair, bouton de X chargé ou non', () => {
+  it('carries the hashtag in clear, with X\'s button loaded or not', () => {
     /*
-     * Le script du bouton vit chez `platform.x.com` : une salle coupée
-     * d'Internet ne l'aura jamais, et c'est le cas pour lequel cette page est
-     * bâtie. Ce qui se lit depuis le fond de la salle — le hashtag en grand —
-     * ne doit donc dépendre de rien.
+     * The button's script lives at `platform.x.com`: a room cut off from the
+     * Internet will never have it, and that is the case this page is built for.
+     * What is read from the back of the room — the hashtag in large type — must
+     * therefore depend on nothing.
      */
-    monterEcran(enBoucle())
-    avancer(13 + 16 + 13)
+    mountScreen(inLoop())
+    advance(13 + 16 + 13)
 
-    expect(vivante().textContent).toContain('#CloudNord')
-    // L'ancre officielle est bien posée : c'est elle que `widgets.js` remplace
-    // par son iframe quand il arrive à charger.
-    const bouton = vivante().querySelector('a.twitter-hashtag-button')
-    expect(bouton?.getAttribute('href')).toContain('button_hashtag=CloudNord')
-    expect(bouton?.getAttribute('data-related')).toBe('@Cloud_Nord')
+    expect(alive().textContent).toContain('#CloudNord')
+    // The official anchor is indeed placed: it is the one `widgets.js` replaces
+    // with its iframe when it manages to load.
+    const button = alive().querySelector('a.twitter-hashtag-button')
+    expect(button?.getAttribute('href')).toContain('button_hashtag=CloudNord')
+    expect(button?.getAttribute('data-related')).toBe('@Cloud_Nord')
   })
 
-  it('n’ouvre pas la page des réseaux sur la seule carte du hashtag', () => {
-    // La règle de la boucle ne change pas : une page sans contenu se saute.
-    // Le hashtag accompagne les comptes, il ne fabrique pas une page à lui seul.
-    monterEcran(enBoucle({ socialLinks: [] }))
-    avancer(13 + 16 + 13)
+  it('does not open the social page on the hashtag card alone', () => {
+    // The loop's rule does not change: a page with no content is skipped. The
+    // hashtag accompanies the accounts, it does not make a page on its own.
+    mountScreen(inLoop({ socialLinks: [] }))
+    advance(13 + 16 + 13)
 
-    expect(vivante().textContent).not.toContain('#CloudNord')
+    expect(alive().textContent).not.toContain('#CloudNord')
   })
 
-  it('revient au début après le dernier écran', () => {
-    monterEcran(enBoucle())
-    avancer(13 + 16 + 13 + 11)
+  it('comes back to the beginning after the last screen', () => {
+    mountScreen(inLoop())
+    advance(13 + 16 + 13 + 11)
 
-    expect(vivante().textContent).toContain('Nos partenaires')
+    expect(alive().textContent).toContain('Nos partenaires')
   })
 
-  it('saute les pages qui n\'ont rien à montrer', () => {
-    // Sans sponsors ni réseaux, la boucle ne doit pas s'arrêter douze secondes
-    // sur un cadre vide : elle se réduit à ce qui existe.
-    monterEcran(enBoucle({ sponsorTiers: [], socialLinks: [] }))
+  it('skips the pages with nothing to show', () => {
+    // With no sponsors and no social accounts, the loop must not stop twelve
+    // seconds on an empty frame: it shrinks to what exists.
+    mountScreen(inLoop({ sponsorTiers: [], socialLinks: [] }))
 
-    expect(vivante().textContent).toContain('Programme de la salle')
-    avancer(16)
-    expect(vivante().textContent).toContain('Pendant ce temps')
-    avancer(13)
-    expect(vivante().textContent).toContain('Programme de la salle')
+    expect(alive().textContent).toContain('Programme de la salle')
+    advance(16)
+    expect(alive().textContent).toContain('Pendant ce temps')
+    advance(13)
+    expect(alive().textContent).toContain('Programme de la salle')
   })
 
-  it('dit ce qui se joue à côté, et à quelle heure', () => {
-    monterEcran(enBoucle())
-    avancer(13 + 16)
+  it('says what is going on next door, and at what time', () => {
+    mountScreen(inLoop())
+    advance(13 + 16)
 
-    const texte = vivante().textContent ?? ''
-    expect(texte).toContain('Track #2')
-    expect(texte).toContain('Au-dessus de la mêlée')
-    // 11:00 UTC = 12:00 à Paris, dans le fuseau de l'événement.
-    expect(texte).toContain('12:00')
-    // Une salle dont le talk a déjà commencé n'annonce pas une heure passée.
-    expect(texte).toContain('en ce moment')
+    const text = alive().textContent ?? ''
+    expect(text).toContain('Track #2')
+    expect(text).toContain('Au-dessus de la mêlée')
+    // 11:00 UTC = 12:00 in Paris, in the event's timezone.
+    expect(text).toContain('12:00')
+    // A room whose talk has already started does not announce a past time.
+    expect(text).toContain('en ce moment')
   })
 
-  it('montre le handle, pas l\'URL', () => {
-    // C'est le handle qu'on retape sur son téléphone depuis le fond de la
-    // salle ; une URL ne se recopie pas.
-    monterEcran(enBoucle())
-    avancer(13 + 16 + 13)
+  it('shows the handle, not the URL', () => {
+    // It is the handle one retypes on one's phone from the back of the room; a
+    // URL is not something one copies out.
+    mountScreen(inLoop())
+    advance(13 + 16 + 13)
 
-    expect(vivante().textContent).toContain('@cloudnord.fr')
-    expect(vivante().textContent).not.toContain('https://')
-  })
-
-  /**
-   * Fondu enchaîné.
-   *
-   * Les deux pages coexistent le temps de la bascule : la sortante s'efface
-   * par-dessus la nouvelle qui entre. Sans cela l'écran *saute*, et un saut
-   * devant la salle se lit comme un rafraîchissement, pas comme une suite.
-   *
-   * happy-dom ne termine aucune animation, donc `animationend` n'arrive jamais
-   * : ce que ces tests observent est exactement l'état intermédiaire qu'un
-   * navigateur traverse.
-   */
-  it('croise la page sortante avec celle qui arrive', () => {
-    monterEcran(enBoucle())
-    avancer(13)
-
-    expect(contenu().querySelectorAll('.calque').length).toBe(2)
-    expect(contenu().querySelector('.sortante')?.textContent).toContain('Nos partenaires')
-    expect(vivante().textContent).toContain('Programme de la salle')
-  })
-
-  it('n\'empile jamais deux couches mortes', () => {
-    // La réécriture suivante emporte la précédente : c'est ce qui garantit que
-    // trois bascules ne laissent pas trois pages fantômes superposées.
-    monterEcran(enBoucle())
-    avancer(13 + 16 + 13)
-
-    expect(contenu().querySelectorAll('.sortante').length).toBe(1)
-  })
-
-  it('cale la jauge sur la durée de la page affichée', () => {
-    // C'est la jauge qui dit *quand* ça va tourner : une durée fausse est un
-    // repère qui ment, pire que pas de repère du tout.
-    monterEcran(enBoucle())
-    const sponsors = contenu().querySelector('.point.actif') as HTMLElement
-
-    expect(sponsors.style.getPropertyValue('--duree')).toBe('12000ms')
-
-    avancer(13)
-    const programme = vivante().querySelector('.point.actif') as HTMLElement
-    expect(programme.style.getPropertyValue('--duree')).toBe('15000ms')
+    expect(alive().textContent).toContain('@cloudnord.fr')
+    expect(alive().textContent).not.toContain('https://')
   })
 
   /**
-   * Une page qui apparaît ou disparaît en cours de boucle.
+   * The page transition.
    *
-   * Le rang désigne une page, pas une position dans la liste de celles qui ont
-   * du contenu. Sans cela, un sync qui ajoute une page — ou un dernier talk
-   * qui se termine dans une autre salle — décalait tout : l'écran changeait au
-   * milieu d'une page, en gardant l'échéance de la précédente, et sans fondu
-   * puisque la position, elle, n'avait pas bougé.
+   * Both pages coexist for the length of the switch: the leaving one goes off
+   * while the new one comes in. Without it the screen *jumps*, and a jump in
+   * front of the room reads as a refresh, not as a continuation.
    *
-   * C'est un cas de pause : exactement quand la boucle tourne devant la salle.
+   * happy-dom finishes no animation, so `animationend` never arrives: what these
+   * tests observe is exactly the intermediate state a browser goes through.
    */
-  it("ne change pas de page quand une autre apparaît", () => {
-    monterEcran(enBoucle({ otherRooms: [] }))
-    // Sponsors 12 s, programme 15 s, puis les réseaux — « autres salles » étant
-    // sautée faute de contenu.
-    avancer(13)
-    avancer(16)
-    expect(vivante().textContent).toContain('Suivez Cloud Nord')
+  it('crosses the leaving page with the arriving one', () => {
+    mountScreen(inLoop())
+    advance(13)
 
-    // Les autres salles reprennent : la page existe de nouveau, mais ce n'est
-    // pas une raison pour interrompre celle qu'on est en train de lire.
-    flux!.deltas({ otherRooms: AUTRES })
-
-    expect(vivante().textContent).toContain('Suivez Cloud Nord')
-    expect(vivante().textContent).not.toContain('Pendant ce temps')
+    expect(content().querySelectorAll('.layer').length).toBe(2)
+    expect(content().querySelector('.leaving')?.textContent).toContain('Nos partenaires')
+    expect(alive().textContent).toContain('Programme de la salle')
   })
 
-  it('donne sa propre durée à la page adoptée quand la sienne se vide', () => {
-    monterEcran(enBoucle())
-    // Sponsors 12 s, programme 15 s : à 28 s on est sur « autres salles »,
-    // affichée depuis une seconde, et qui doit durer douze secondes.
-    avancer(13)
-    avancer(15)
-    expect(vivante().textContent).toContain('Pendant ce temps')
+  it('never stacks two dead layers', () => {
+    // The next rewrite carries the previous one away: that is what guarantees
+    // three switches do not leave three ghost pages superimposed.
+    mountScreen(inLoop())
+    advance(13 + 16 + 13)
 
-    // Le dernier talk d'à côté se termine : la page n'a plus rien à montrer.
-    // Les réseaux prennent la suite — avec leurs dix secondes à eux, pas le
-    // reliquat des douze de la page disparue.
-    flux!.deltas({ otherRooms: [] })
-    expect(vivante().textContent).toContain('Suivez Cloud Nord')
-
-    avancer(9)
-    expect(vivante().textContent).toContain('Suivez Cloud Nord')
-    avancer(1)
-    expect(vivante().textContent).toContain('Nos partenaires')
+    expect(content().querySelectorAll('.leaving').length).toBe(1)
   })
 
-  it('reste tenable sur une salle jamais synchronisée', () => {
-    // Ni programme, ni sponsors, ni réseaux : plutôt qu'un écran noir, elle
-    // affiche au moins de quel événement il s'agit.
-    monterEcran(enBoucle({ sponsorTiers: [], socialLinks: [], otherRooms: [], sessions: [] }))
+  it('aligns the gauge on the displayed page\'s duration', () => {
+    // It is the gauge that says *when* it is going to turn: a wrong duration is a
+    // marker that lies, worse than no marker at all.
+    mountScreen(inLoop())
+    const sponsors = content().querySelector('.dot.active') as HTMLElement
 
-    expect(contenu().textContent).toContain('partenaires')
-    // Et elle ne se met pas à clignoter faute de page à afficher.
-    avancer(30)
-    expect(contenu().textContent).toContain('partenaires')
+    expect(sponsors.style.getPropertyValue('--duration')).toBe('12000ms')
+
+    advance(13)
+    const program = alive().querySelector('.dot.active') as HTMLElement
+    expect(program.style.getPropertyValue('--duration')).toBe('15000ms')
+  })
+
+  /**
+   * A page that appears or disappears mid-loop.
+   *
+   * The index designates a page, not a position in the list of those that have
+   * content. Without that, a sync that adds a page — or a last talk ending in
+   * another room — shifted everything: the screen changed in the middle of a page,
+   * keeping the previous one's deadline, and with no transition since the position
+   * itself had not moved.
+   *
+   * It is a break-time case: exactly when the loop runs in front of the room.
+   */
+  it('does not change page when another one appears', () => {
+    mountScreen(inLoop({ otherRooms: [] }))
+    // Sponsors 12 s, program 15 s, then the social accounts — "other rooms" being
+    // skipped for want of content.
+    advance(13)
+    advance(16)
+    expect(alive().textContent).toContain('Suivez Cloud Nord')
+
+    // The other rooms come back: the page exists again, but that is no reason to
+    // interrupt the one being read.
+    stream!.deltas({ otherRooms: OTHERS })
+
+    expect(alive().textContent).toContain('Suivez Cloud Nord')
+    expect(alive().textContent).not.toContain('Pendant ce temps')
+  })
+
+  it('gives its own duration to the adopted page when its own empties', () => {
+    mountScreen(inLoop())
+    // Sponsors 12 s, program 15 s: at 28 s we are on "other rooms", displayed for
+    // one second, and which must last twelve seconds.
+    advance(13)
+    advance(15)
+    expect(alive().textContent).toContain('Pendant ce temps')
+
+    // The last talk next door ends: the page has nothing left to show. The social
+    // accounts take over — with their own ten seconds, not the remainder of the
+    // twelve of the page that vanished.
+    stream!.deltas({ otherRooms: [] })
+    expect(alive().textContent).toContain('Suivez Cloud Nord')
+
+    advance(9)
+    expect(alive().textContent).toContain('Suivez Cloud Nord')
+    advance(1)
+    expect(alive().textContent).toContain('Nos partenaires')
+  })
+
+  it('stays workable on a room never synchronized', () => {
+    // No program, no sponsors, no social accounts: rather than a black screen, it
+    // at least says which event this is.
+    mountScreen(inLoop({ sponsorTiers: [], socialLinks: [], otherRooms: [], sessions: [] }))
+
+    expect(content().textContent).toContain('partenaires')
+    // And it does not start blinking for want of a page to display.
+    advance(30)
+    expect(content().textContent).toContain('partenaires')
   })
 })
 
 /**
- * Le grisé des créneaux passés suit la fin **effective**.
+ * The greying of past slots follows the **effective** end.
  *
- * L'écran la déduisait à sa façon — `endsAtMs ?? startsAtMs` — et un talk que
- * l'export ne borne que par sa durée était grisé dès son heure de début : la
- * salle lisait « passé » sur la conférence en train de se jouer. Il inline
- * désormais le même automate que la régie.
+ * The screen derived it in its own way — `endsAtMs ?? startsAtMs` — and a talk the
+ * export bounds only by its duration was greyed out from its start time: the room
+ * read "past" on the talk that was being given. It now inlines the same state
+ * machine as the control app.
  */
-describe('créneaux passés, dans le programme projeté', () => {
-  /** La ligne du programme portant ce titre. */
-  const ligne = (titre: string) =>
-    [...contenu().querySelectorAll('article')].find((a) => a.textContent?.includes(titre))!
+describe('past slots, in the projected program', () => {
+  /** The program row carrying this title. */
+  const row = (title: string) =>
+    [...content().querySelectorAll('article')].find((a) => a.textContent?.includes(title))!
 
-  const grisee = (titre: string) => ligne(titre).className.includes('opacity-35')
+  const greyed = (title: string) => row(title).className.includes('opacity-35')
 
-  it('grise ce qui est fini, pas ce qui court', () => {
-    // L'horloge est à 10:20 : HoneySwamp (10:00–10:45) se joue.
-    monterEcran()
-    expect(grisee('IA for OPS')).toBe(true)
-    expect(grisee('HoneySwamp')).toBe(false)
-    expect(grisee('Blind ops')).toBe(false)
+  it('greys out what is finished, not what is running', () => {
+    // The clock is at 10:20: HoneySwamp (10:00–10:45) is being given.
+    mountScreen()
+    expect(greyed('IA for OPS')).toBe(true)
+    expect(greyed('HoneySwamp')).toBe(false)
+    expect(greyed('Blind ops')).toBe(false)
   })
 
-  it('tient sur un créneau que seule sa durée borne', () => {
-    const parDuree = SESSIONS.map((creneau) =>
-      creneau.id === 's-3'
-        ? { ...creneau, endsAt: null, endsAtMs: null, durationMinutes: 45 }
-        : creneau,
+  it('holds on a slot bounded only by its duration', () => {
+    const byDuration = SESSIONS.map((slot) =>
+      slot.id === 's-3'
+        ? { ...slot, endsAt: null, endsAtMs: null, durationMinutes: 45 }
+        : slot,
     )
-    monterEcran({ ...ETAT, sessions: parDuree } as unknown as DisplayPayload)
+    mountScreen({ ...STATE, sessions: byDuration } as unknown as DisplayPayload)
 
-    // 10:20, le talk court jusqu'à 10:45 : il ne doit pas se lire comme passé.
-    expect(grisee('HoneySwamp')).toBe(false)
-    expect(grisee('IA for OPS')).toBe(true)
+    // 10:20, the talk runs until 10:45: it must not read as past.
+    expect(greyed('HoneySwamp')).toBe(false)
+    expect(greyed('IA for OPS')).toBe(true)
   })
 
-  it('ne grise pas un créneau que rien ne ferme', () => {
-    // Ni heure de fin, ni durée, et un suivant qui n'existe pas : personne ne
-    // sait quand il finit, et le griser serait affirmer qu'il est passé.
-    const ouvert = [
+  it('does not grey out a slot that nothing closes', () => {
+    // No end time, no duration, and a next one that does not exist: nobody knows
+    // when it finishes, and greying it out would be claiming it is past.
+    const open = [
       SESSIONS[0]!,
       { ...SESSIONS[1]!, id: 's-ouvert', title: 'Atelier libre', endsAt: null, endsAtMs: null },
     ]
-    monterEcran({ ...ETAT, sessions: ouvert } as unknown as DisplayPayload)
+    mountScreen({ ...STATE, sessions: open } as unknown as DisplayPayload)
 
-    expect(grisee('Atelier libre')).toBe(false)
+    expect(greyed('Atelier libre')).toBe(false)
   })
 })

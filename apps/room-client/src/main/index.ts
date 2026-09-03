@@ -1,13 +1,13 @@
 import { join } from 'node:path'
 import { app, BrowserWindow, dialog, safeStorage, screen } from 'electron'
 import { RoomApp } from '../core/room-app.js'
-import { formaterLigneJournal } from '../core/journal-console.js'
+import { formatLogLine } from '../core/console-log.js'
 import { createMockObsTransport } from '../core/obs-mock.js'
-import { decalageDuMode, lireMode } from '../core/mode.js'
+import { modeOffset, readMode } from '../core/mode.js'
 import { loadOrCreateClientId } from './identity.js'
 import { createSecretVault } from './secrets.js'
-import { resoudreAdresseHub } from './adresse-hub.js'
-import { demanderAdresseHub } from './fenetre-hub.js'
+import { resolveHubAddress } from './hub-address.js'
+import { askHubAddress } from './hub-window.js'
 
 /**
  * Coquille Electron : volontairement mince.
@@ -25,7 +25,7 @@ import { demanderAdresseHub } from './fenetre-hub.js'
  * l'environnement — un `OBS_MOCK=1` oublié, c'est une journée filmée par une
  * instance OBS qui n'existe pas.
  */
-const MODE = lireMode()
+const MODE = readMode()
 
 async function main(): Promise<void> {
   await app.whenReady()
@@ -48,13 +48,13 @@ async function main(): Promise<void> {
 
   // Avant tout le reste : sans hub, il n'y a ni salle à choisir, ni programme
   // à projeter. Demandé une fois par machine, puis mémorisé.
-  const hubOrigin = await resoudreAdresseHub({
-    chemin: join(dataDir, 'hub'),
-    demander: (valeurInitiale) => demanderAdresseHub({ valeurInitiale }),
-    onLog: (niveau, message) => console.error(formaterLigneJournal(niveau, message)),
+  const hubOrigin = await resolveHubAddress({
+    path: join(dataDir, 'hub'),
+    ask: (initialValue) => askHubAddress({ initialValue }),
+    onLog: (niveau, message) => console.error(formatLogLine(niveau, message)),
   })
   if (hubOrigin == null) {
-    console.error(formaterLigneJournal('error', "Aucune adresse de hub : l'application s'arrête"))
+    console.error(formatLogLine('error', "Aucune adresse de hub : l'application s'arrête"))
     app.quit()
     return
   }
@@ -63,11 +63,11 @@ async function main(): Promise<void> {
     console.warn(message),
   )
 
-  for (const { variable, raison } of MODE.ignores) {
-    console.error(formaterLigneJournal('error', `${variable} ignoré : ${raison}`))
+  for (const { variable, reason } of MODE.ignores) {
+    console.error(formatLogLine('error', `${variable} ignoré : ${reason}`))
   }
   if (MODE.mode === 'dev') {
-    console.warn(formaterLigneJournal('warn', 'MODE DÉVELOPPEMENT — à ne pas laisser le jour J'))
+    console.warn(formatLogLine('warn', 'MODE DÉVELOPPEMENT — à ne pas laisser le jour J'))
   }
 
   const room = new RoomApp({
@@ -77,7 +77,7 @@ async function main(): Promise<void> {
     clientId,
     roomId: process.env.ROOM_ID,
     regieViteOrigin: process.env.REGIE_VITE_ORIGIN ?? null,
-    obsTransportFactory: MODE.obsSimule
+    obsTransportFactory: MODE.obsSimulated
       ? (instance, scenes) =>
           createMockObsTransport({
             instance,
@@ -95,7 +95,7 @@ async function main(): Promise<void> {
      * alors le bouton, parce qu'un bouton qui ne répond pas coûte plus qu'un
      * champ à remplir à la main.
      *
-     * `defaultPath` sur le dossier déjà saisi : corriger un chemin, c'est
+     * `defaultPath` sur le dossier déjà saisi : corriger un path, c'est
      * presque toujours en changer une branche, pas repartir de la racine.
      */
     choisirDossier: async (initial) => {
@@ -109,7 +109,7 @@ async function main(): Promise<void> {
     readToken: () => vault.read(),
     writeToken: (token) => vault.write(token),
     onLog: (level, message, context) =>
-      console[level === 'error' ? 'error' : 'log'](formaterLigneJournal(level, message, context)),
+      console[level === 'error' ? 'error' : 'log'](formatLogLine(level, message, context)),
     onPairingCode: (code) => {
       console.log(`Code d'appairage : ${code.user_code} — à approuver dans l'admin du hub`)
     },
@@ -117,7 +117,7 @@ async function main(): Promise<void> {
 
   // Heure simulée locale, s'il y en a une : posée comme décalage, exactement
   // comme le fera le hub dès qu'il répondra — et il reprendra la main.
-  const decalage = decalageDuMode(MODE)
+  const decalage = modeOffset(MODE)
   if (decalage !== 0) room.runtime.setClockOffset(decalage, true)
 
   // L'écran d'abord : la salle doit projeter même si le hub ne répond jamais.

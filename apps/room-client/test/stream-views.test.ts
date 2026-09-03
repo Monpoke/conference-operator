@@ -33,7 +33,7 @@ const PAGES: { vue: DisplayView; fichier: string }[] = [
  */
 function champsLus(fichier: string): string[] {
   const source = readFileSync(join(import.meta.dirname, '..', 'src', 'core', fichier), 'utf8')
-  const trouves = source.matchAll(/\bdonnees\??\.([a-zA-Z]+)/g)
+  const trouves = source.matchAll(/\bdata\??\.([a-zA-Z]+)/g)
   return [...new Set([...trouves].map((m) => m[1]!))].sort()
 }
 

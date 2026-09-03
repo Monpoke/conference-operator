@@ -1,82 +1,82 @@
 /**
- * Suivi d'un flux qui se reconnecte.
+ * Tracking a stream that reconnects.
  *
- * Deux défauts que ce petit objet corrige, tous deux constatés en journal :
+ * Two defects this small object fixes, both observed in the logs:
  *
- * 1. **On n'apprenait jamais que ça repartait.** Seuls les échecs étaient
- *    tracés. Devant une pile de « nouvelle tentative », rien ne disait si la
- *    salle avait fini par se rattacher — l'information qui décide si on va voir
- *    la baie réseau ou pas.
- * 2. **Une coupure longue noyait le reste.** Le flux de commandes réessaie
- *    toutes les 2 s : une demi-heure d'indisponibilité écrivait 900 lignes
- *    identiques, et le message important passait dessous.
+ * 1. **We never learned that it came back.** Only the failures were traced.
+ *    Faced with a stack of "retrying", nothing said whether the room had ended up
+ *    reattaching — the information that decides whether one goes and looks at the
+ *    network rack.
+ * 2. **A long outage drowned out the rest.** The command stream retries every
+ *    2 s: half an hour of unavailability wrote 900 identical lines, and the
+ *    important message went under them.
  *
- * D'où la politique : le premier échec est tracé, les suivants sont comptés et
- * résumés au plus une fois par minute, et le rétablissement est annoncé avec la
- * durée réelle de l'interruption.
+ * Hence the policy: the first failure is traced, the following ones are counted
+ * and summarized at most once a minute, and the recovery is announced with the
+ * real duration of the outage.
  */
-export interface EchecJournalise {
-  /** Ce qu'il faut écrire, ou `null` si l'échec est seulement comptabilisé. */
+export interface LoggedFailure {
+  /** What has to be written, or `null` if the failure is merely counted. */
   message: string | null
-  tentatives: number
+  attempts: number
 }
 
-export class SuiviInterruption {
-  private tentatives = 0
+export class OutageTracker {
+  private attempts = 0
   private startMs: number | null = null
-  private dernierJournalMs = 0
+  private lastLogMs = 0
 
   constructor(
-    private readonly libelle: string,
+    private readonly label: string,
     private readonly now: () => number = Date.now,
-    /** Silence entre deux rappels pendant une coupure qui dure. */
-    private readonly rappelMs = 60_000,
+    /** Silence between two reminders during an outage that lasts. */
+    private readonly reminderMs = 60_000,
   ) {}
 
-  /** Déclare un échec. Renvoie ce qu'il convient d'écrire, s'il y a lieu. */
-  echec(): EchecJournalise {
-    const maintenant = this.now()
-    this.tentatives += 1
-    if (this.startMs == null) this.startMs = maintenant
+  /** Declares a failure. Returns what should be written, if anything. */
+  failure(): LoggedFailure {
+    const now = this.now()
+    this.attempts += 1
+    if (this.startMs == null) this.startMs = now
 
-    const premier = this.tentatives === 1
-    if (premier || maintenant - this.dernierJournalMs >= this.rappelMs) {
-      this.dernierJournalMs = maintenant
+    const first = this.attempts === 1
+    if (first || now - this.lastLogMs >= this.reminderMs) {
+      this.lastLogMs = now
       return {
-        tentatives: this.tentatives,
-        message: premier
-          ? `${this.libelle} interrompu, nouvelle tentative`
-          : `${this.libelle} toujours interrompu — ${this.tentatives} tentatives depuis ${formaterDuree(maintenant - this.startMs)}`,
+        attempts: this.attempts,
+        message: first
+          ? `${this.label} interrompu, nouvelle tentative`
+          : `${this.label} toujours interrompu — ${this.attempts} tentatives depuis ${formatDuration(now - this.startMs)}`,
       }
     }
-    return { message: null, tentatives: this.tentatives }
+    return { message: null, attempts: this.attempts }
   }
 
   /**
-   * Déclare le flux établi.
+   * Declares the stream established.
    *
-   * Renvoie `null` si rien n'était cassé : le premier raccordement ne mérite
-   * pas d'être annoncé comme un rétablissement.
+   * Returns `null` if nothing was broken: the first connection does not deserve
+   * to be announced as a recovery.
    */
-  retabli(): { message: string; tentatives: number } | null {
+  restored(): { message: string; attempts: number } | null {
     if (this.startMs == null) return null
-    const duree = this.now() - this.startMs
-    const tentatives = this.tentatives
-    this.tentatives = 0
+    const duration = this.now() - this.startMs
+    const attempts = this.attempts
+    this.attempts = 0
     this.startMs = null
-    this.dernierJournalMs = 0
+    this.lastLogMs = 0
     return {
-      tentatives,
-      message: `${this.libelle} rétabli après ${formaterDuree(duree)} et ${tentatives} tentative${tentatives > 1 ? 's' : ''}`,
+      attempts,
+      message: `${this.label} rétabli après ${formatDuration(duration)} et ${attempts} tentative${attempts > 1 ? 's' : ''}`,
     }
   }
 }
 
-/** Durée courte et lisible : on lit ça en régie, pas dans un rapport. */
-export function formaterDuree(ms: number): string {
-  const secondes = Math.round(ms / 1000)
-  if (secondes < 60) return `${secondes} s`
-  const minutes = Math.floor(secondes / 60)
-  if (minutes < 60) return `${minutes} min ${String(secondes % 60).padStart(2, '0')} s`
+/** A short, readable duration: this is read in the control room, not in a report. */
+export function formatDuration(ms: number): string {
+  const seconds = Math.round(ms / 1000)
+  if (seconds < 60) return `${seconds} s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes} min ${String(seconds % 60).padStart(2, '0')} s`
   return `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, '0')}`
 }

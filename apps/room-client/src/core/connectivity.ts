@@ -2,18 +2,18 @@ import type { Connectivity } from '@cloudnord/contract'
 
 export interface ConnectivityProbeOptions {
   hubOrigin: string
-  /** Injectable pour les tests. */
+  /** Injectable for the tests. */
   fetchImpl?: typeof fetch
   timeoutMs?: number
 }
 
 /**
- * Distingue « le hub est injoignable » de « le temps réel est cassé ».
+ * Tells "the hub cannot be reached" from "real time is broken".
  *
- * Les deux situations n'appellent pas la même réaction en régie : réseau coupé,
- * on attend ; hub joignable mais flux mort, on soupçonne le hub ou un
- * intermédiaire qui coupe les WebSockets — et il faut le dire à l'opérateur
- * plutôt que de lui montrer un « hors ligne » trompeur.
+ * The two situations do not call for the same reaction in the control room:
+ * network cut, we wait; hub reachable but the stream dead, we suspect the hub or
+ * an intermediary cutting the WebSockets — and the operator must be told rather
+ * than shown a misleading "offline".
  */
 export async function probeConnectivity({
   hubOrigin,
@@ -24,7 +24,7 @@ export async function probeConnectivity({
     const response = await fetchImpl(new URL('/health', hubOrigin), {
       signal: AbortSignal.timeout(timeoutMs),
     })
-    // Le hub répond en HTTP mais le canal temps réel est tombé.
+    // The hub answers over HTTP but the real-time channel has gone down.
     return response.ok ? 'DEGRADED' : 'OFFLINE'
   } catch {
     return 'OFFLINE'
@@ -36,10 +36,11 @@ export interface ConnectivityTrackerOptions extends ConnectivityProbeOptions {
 }
 
 /**
- * Suit l'état de connectivité.
+ * Tracks the connectivity state.
  *
- * On ne se fie jamais à `navigator.onLine` : il dit si une carte réseau est
- * active, pas si notre hub répond — ce qui est la seule question qui compte en salle.
+ * We never trust `navigator.onLine`: it says whether a network card is active,
+ * not whether our hub answers — which is the only question that matters in a
+ * room.
  */
 export class ConnectivityTracker {
   private current: Connectivity = 'OFFLINE'
@@ -51,14 +52,14 @@ export class ConnectivityTracker {
     return this.current
   }
 
-  /** Le temps réel fonctionne : plus rien à sonder. */
+  /** Real time works: nothing left to probe. */
   markOnline(): void {
     this.set('ONLINE')
   }
 
   /**
-   * Le temps réel a échoué. Sonde le hub en HTTP pour trancher entre
-   * `DEGRADED` et `OFFLINE`.
+   * Real time has failed. Probes the hub over HTTP to decide between `DEGRADED`
+   * and `OFFLINE`.
    */
   async markRealtimeFailure(): Promise<Connectivity> {
     if (this.probing) return this.current

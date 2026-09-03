@@ -3,11 +3,11 @@ import { dirname } from 'node:path'
 import { ulid } from 'ulid'
 
 /**
- * Identité durable de la machine (`client_id` du flux device).
+ * The machine's durable identity (the device flow's `client_id`).
  *
- * Volontairement hors de la base SQLite : elle doit survivre à une remise à
- * zéro du cache local, sinon la machine réclamerait un nouvel appairage à
- * chaque incident — et il faudrait rappeler un opérateur en pleine journée.
+ * Deliberately outside the SQLite database: it must survive a reset of the local
+ * cache, otherwise the machine would demand a new pairing on every incident — and
+ * an operator would have to be called back in the middle of the day.
  */
 export function loadOrCreateClientId(path: string): string {
   if (existsSync(path)) {

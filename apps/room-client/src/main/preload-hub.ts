@@ -1,15 +1,18 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 /**
- * Pont de l'écran d'adresse du hub.
+ * The bridge of the hub-address screen.
  *
- * Le seul préchargement de l'application, et il ne sert qu'à cette fenêtre :
- * elle s'ouvre avant le serveur d'affichage local, elle n'a donc aucun `/control`
- * à qui parler — contrairement à la régie et à la projection, qui passent par
- * HTTP et n'ont besoin de rien d'Electron.
+ * The application's only preload, and it serves that window alone: it opens
+ * before the local display server, so it has no `/control` to talk to — unlike
+ * the control app and the projection, which go through HTTP and need nothing
+ * from Electron.
+ *
+ * The channel names `hub:tester` and `hub:valider` are a frozen contract between
+ * the main process and this bridge: they do not get renamed.
  */
 contextBridge.exposeInMainWorld('hub', {
-  tester: (adresse: string): Promise<boolean> => ipcRenderer.invoke('hub:tester', adresse),
-  valider: (adresse: string): Promise<{ ok: boolean; message?: string }> =>
-    ipcRenderer.invoke('hub:valider', adresse),
+  test: (address: string): Promise<boolean> => ipcRenderer.invoke('hub:tester', address),
+  validate: (address: string): Promise<{ ok: boolean; message?: string }> =>
+    ipcRenderer.invoke('hub:valider', address),
 })

@@ -13,8 +13,8 @@ import { RoomRuntime } from '../src/core/runtime.js'
 import {
   developmentAssets,
   productionAssets,
-  renderRegieShell,
-} from '../src/core/regie-shell.js'
+  renderControlShell,
+} from '../src/core/control-shell.js'
 
 /**
  * La fenêtre de l'opérateur, servie par le poste.
@@ -54,7 +54,7 @@ let origin: string
 async function demarrer(
   options: {
     viteOrigin?: string | null
-    bundleRegie?: () => { dossier: string; manifeste: string } | null
+    bundleRegie?: () => { directory: string; manifest: string } | null
   } = {},
 ): Promise<void> {
   const runtime = new RoomRuntime(store, {}, () => Date.parse('2026-10-30T10:20:00.000Z'))
@@ -249,7 +249,7 @@ describe('développement', () => {
 
 describe('autonomie de la page', () => {
   it('ne référence aucune ressource hors de son origine', () => {
-    const html = renderRegieShell({
+    const html = renderControlShell({
       initialPayload: { roomName: 'Track #1' } as never,
       assets: productionAssets(manifesteTemporaire()),
       eventName: 'Cloud Nord 2026',
@@ -273,7 +273,7 @@ describe('autonomie de la page', () => {
   })
 
   it('titre la fenêtre avec l’événement, qui n’est pas une constante du binaire', () => {
-    const html = renderRegieShell({
+    const html = renderControlShell({
       initialPayload: {} as never,
       assets: { scripts: [], styles: [] },
       eventName: 'Cloud Nord 2027',
@@ -285,7 +285,7 @@ describe('autonomie de la page', () => {
   })
 
   it('échappe ce qui pourrait fermer la balise du script d’état', () => {
-    const html = renderRegieShell({
+    const html = renderControlShell({
       initialPayload: { roomName: '</script><script>alert(1)</script>' } as never,
       assets: { scripts: [], styles: [] },
     })
@@ -312,10 +312,10 @@ function manifesteTemporaire(): string {
 }
 
 /** Le même, avec les fichiers derrière : de quoi servir pour de vrai. */
-function bundleFactice(): { dossier: string; manifeste: string } {
-  const manifeste = manifesteTemporaire()
+function bundleFactice(): { directory: string; manifest: string } {
+  const manifest = manifesteTemporaire()
   mkdirSync(join(dir, 'assets'), { recursive: true })
   writeFileSync(join(dir, 'assets', 'index-abc123.js'), 'export const rien = 0\n')
   writeFileSync(join(dir, 'assets', 'index-def456.css'), '.rien{}\n')
-  return { dossier: dir, manifeste }
+  return { directory: dir, manifest }
 }

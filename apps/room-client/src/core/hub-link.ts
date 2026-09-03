@@ -11,7 +11,7 @@ import {
   type RoomConfigPatch,
 } from '@cloudnord/contract'
 import { programSchema } from '@cloudnord/program'
-import { SuiviInterruption } from './interruptions.js'
+import { OutageTracker } from './interruptions.js'
 import type { LocalStore } from './store.js'
 import type { RoomRuntime } from './runtime.js'
 
@@ -251,7 +251,7 @@ export class HubLink {
     // Fonction plutôt que lecture directe : `aborted` change en cours de boucle,
     // et TypeScript figerait sinon la valeur observée à l'entrée du `while`.
     const isAborted = () => signal?.aborted === true
-    const suivi = new SuiviInterruption('flux de commandes', this.options.now)
+    const suivi = new OutageTracker('flux de commandes', this.options.now)
 
     while (!this.stopped && !isAborted()) {
       try {
@@ -263,7 +263,7 @@ export class HubLink {
         // seuls les échecs étaient tracés et l'incident ne se refermait jamais.
         // Le bandeau compte autant que le journal : c'est là que l'opérateur
         // regarde, et il vient de voir la salle passer hors ligne.
-        const retour = suivi.retabli()
+        const retour = suivi.restored()
         if (retour != null) {
           this.options.onLog?.('info', retour.message)
           runtime.notify({ level: 'info', text: `Hub rejoint — ${retour.message}` })
@@ -288,7 +288,7 @@ export class HubLink {
           return
         }
 
-        const echec = suivi.echec()
+        const echec = suivi.failure()
         if (echec.message != null) {
           this.options.onLog?.('warn', echec.message, { message: (cause as Error).message })
         }
@@ -307,7 +307,7 @@ export class HubLink {
   async consumeWall(signal?: AbortSignal): Promise<void> {
     const { runtime, store } = this.options
     const isAborted = () => signal?.aborted === true
-    const suivi = new SuiviInterruption('flux du mur', this.options.now)
+    const suivi = new OutageTracker('flux du mur', this.options.now)
 
     while (!this.stopped && !isAborted()) {
       try {
@@ -315,12 +315,12 @@ export class HubLink {
         const iterator = await this.client.wall.feed({ roomId }, { signal })
         // Le mur ne justifie pas un bandeau : une coupure y est sans
         // conséquence visible pour le public, contrairement aux commandes.
-        const retour = suivi.retabli()
+        const retour = suivi.restored()
         if (retour != null) this.options.onLog?.('info', retour.message)
         for await (const comment of iterator) runtime.addComment(comment)
       } catch (cause) {
         if (isAborted() || this.stopped) return
-        const echec = suivi.echec()
+        const echec = suivi.failure()
         if (echec.message != null) {
           this.options.onLog?.('warn', echec.message, { message: (cause as Error).message })
         }

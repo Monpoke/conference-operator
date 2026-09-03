@@ -14,8 +14,8 @@ import { join, resolve } from 'node:path'
 import { ulid } from 'ulid'
 import { RoomApp } from '../src/core/room-app.js'
 import { createMockObsTransport } from '../src/core/obs-mock.js'
-import { decalageDuMode, lireMode } from '../src/core/mode.js'
-import { formaterLigneJournal } from '../src/core/journal-console.js'
+import { modeOffset, readMode } from '../src/core/mode.js'
+import { formatLogLine } from '../src/core/console-log.js'
 
 const hubOrigin = process.env.HUB_ORIGIN ?? 'http://localhost:8787'
 const dataDir = resolve(process.env.DATA_DIR ?? './.donnees-locales')
@@ -34,11 +34,11 @@ const port = Number(process.env.DISPLAY_PORT ?? 7788)
  * `SIMULATED_TIME` sur le hub plutôt qu'ici — sinon les deux horloges divergent
  * et tout ce qui les compare se met à mentir.
  */
-const mode = lireMode({ MODE: 'dev', ...process.env })
-for (const { variable, raison } of mode.ignores) {
-  console.error(formaterLigneJournal('error', `${variable} ignoré : ${raison}`))
+const mode = readMode({ MODE: 'dev', ...process.env })
+for (const { variable, reason } of mode.ignores) {
+  console.error(formatLogLine('error', `${variable} ignoré : ${reason}`))
 }
-const decalage = decalageDuMode(mode)
+const decalage = modeOffset(mode)
 
 mkdirSync(dataDir, { recursive: true })
 
@@ -68,7 +68,7 @@ const room = new RoomApp({
   displayPort: port,
   readToken: () => (existsSync(cheminJeton) ? readFileSync(cheminJeton, 'utf8').trim() : null),
   writeToken: (jeton) => writeFileSync(cheminJeton, jeton),
-  obsTransportFactory: !mode.obsSimule
+  obsTransportFactory: !mode.obsSimulated
     ? undefined
     : (instance, scenes) =>
         createMockObsTransport({
@@ -78,9 +78,9 @@ const room = new RoomApp({
           // introuvable », rouge, sur une instance qui n'existe pas.
           scenes,
           recordingDir: join(dataDir, 'enregistrements'),
-          onLog: (message) => console.log(formaterLigneJournal('info', message)),
+          onLog: (message) => console.log(formatLogLine('info', message)),
         }),
-  onLog: (niveau, message, contexte) => console.log(formaterLigneJournal(niveau, message, contexte)),
+  onLog: (niveau, message, contexte) => console.log(formatLogLine(niveau, message, contexte)),
   onPairingCode: (code) => {
     console.log('')
     console.log('  ┌─────────────────────────────────────────────┐')
@@ -102,7 +102,7 @@ console.log(`  Régie       ${local}/regie`)
 console.log(`  Projection  ${local}/display/projector`)
 console.log(`  Habillage   ${local}/display/overlay`)
 console.log(`  Mode        ${mode.mode}`)
-console.log(`  OBS         ${mode.obsSimule ? 'SIMULÉ' : 'réel (obs-websocket)'}`)
+console.log(`  OBS         ${mode.obsSimulated ? 'SIMULÉ' : 'réel (obs-websocket)'}`)
 console.log('')
 
 if (decalage !== 0) {

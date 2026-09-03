@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_VOD_POLICY, type VodPolicy } from '@cloudnord/contract'
 import {
-  attenteApres,
-  verdictTeleversement,
-  DEBIT_PLANCHER_OCTETS_S,
-  type EntreesRegulateur,
-} from '../src/core/regulateur.js'
+  waitAfter,
+  uploadVerdict,
+  RATE_FLOOR_BYTES_S,
+  type RegulatorInputs,
+} from '../src/core/regulator.js'
 
 /**
  * Ce que le régulateur protège, et pourquoi l'ordre des règles compte.
@@ -23,23 +23,23 @@ import {
 
 const CHARGE_CALME = { cpu: 0.2, cores: 8, windowMs: 2000, memory: null }
 
-function entries(patch: Partial<EntreesRegulateur> = {}): EntreesRegulateur {
+function entries(patch: Partial<RegulatorInputs> = {}): RegulatorInputs {
   return {
-    stockagePret: true,
-    politique: { ...DEFAULT_VOD_POLICY, actif: true },
-    manuel: false,
-    enregistre: false,
-    conferenceEnCours: false,
-    msAvantProchaine: 60 * 60_000,
-    charge: CHARGE_CALME,
-    debitConstateOctetsS: null,
+    storageReady: true,
+    policy: { ...DEFAULT_VOD_POLICY, actif: true },
+    manual: false,
+    recording: false,
+    talkRunning: false,
+    msBeforeNext: 60 * 60_000,
+    load: CHARGE_CALME,
+    observedRateBytesS: null,
     ...patch,
   }
 }
 
 describe('ce qui interdit de téléverser', () => {
   it('allowed quand rien ne s\'y oppose', () => {
-    const verdict = verdictTeleversement(entries())
+    const verdict = uploadVerdict(entries())
     expect(verdict.allowed).toBe(true)
     expect(verdict.reason).toBeNull()
   })
@@ -47,7 +47,7 @@ describe('ce qui interdit de téléverser', () => {
   it('ne part jamais tout seul tant que l\'automatique est éteint', () => {
     // Le défaut du hub, et le bon : aucun octet ne quitte une salle sans que
     // quelqu'un l'ait décidé.
-    expect(verdictTeleversement(entries({ politique: DEFAULT_VOD_POLICY }))).toMatchObject({
+    expect(uploadVerdict(entries({ policy: DEFAULT_VOD_POLICY }))).toMatchObject({
       allowed: false,
       reason: 'auto-desactive',
     })
@@ -57,20 +57,20 @@ describe('ce qui interdit de téléverser', () => {
     // Le motif est distinct de l'absence de stockage, et c'est ce qui permet à
     // la régie de garder ses boutons sur le réglage par défaut du hub.
     expect(
-      verdictTeleversement(entries({ politique: DEFAULT_VOD_POLICY, manuel: true })),
+      uploadVerdict(entries({ policy: DEFAULT_VOD_POLICY, manual: true })),
     ).toMatchObject({ allowed: true, reason: null })
   })
 
   it('ne part nulle part quand le hub n\'a pas de stockage', () => {
     expect(
-      verdictTeleversement(entries({ stockagePret: false, manuel: true })),
+      uploadVerdict(entries({ storageReady: false, manual: true })),
     ).toMatchObject({ allowed: false, reason: 'sans-stockage' })
   })
 
   it('refuse pendant un enregistrement, avant toute autre raison', () => {
     // Le cas qui coûte une VOD : lire le disque sur lequel OBS écrit le master.
-    const verdict = verdictTeleversement(
-      entries({ enregistre: true, charge: { ...CHARGE_CALME, cpu: 0.95 }, msAvantProchaine: 0 }),
+    const verdict = uploadVerdict(
+      entries({ recording: true, load: { ...CHARGE_CALME, cpu: 0.95 }, msBeforeNext: 0 }),
     )
     expect(verdict.reason).toBe('enregistrement')
     expect(verdict.text).toContain('enregistrement')
@@ -78,21 +78,21 @@ describe('ce qui interdit de téléverser', () => {
 
   it('refuse pendant une conférence pilotée', () => {
     // L'uplink sert peut-être au direct, et le poste encode.
-    expect(verdictTeleversement(entries({ conferenceEnCours: true }))).toMatchObject({
+    expect(uploadVerdict(entries({ talkRunning: true }))).toMatchObject({
       reason: 'conference',
     })
   })
 
   it('s\'arrête un quart d\'heure avant la conférence suivante si on le lui demande', () => {
-    const politique: VodPolicy = {
+    const policy: VodPolicy = {
       ...DEFAULT_VOD_POLICY,
       actif: true,
       margeConferenceMinutes: 15,
     }
     expect(
-      verdictTeleversement(entries({ politique, msAvantProchaine: 14 * 60_000 })),
+      uploadVerdict(entries({ policy, msBeforeNext: 14 * 60_000 })),
     ).toMatchObject({ allowed: false, reason: 'fenetre' })
-    expect(verdictTeleversement(entries({ politique, msAvantProchaine: 16 * 60_000 })).allowed).toBe(
+    expect(uploadVerdict(entries({ policy, msBeforeNext: 16 * 60_000 })).allowed).toBe(
       true,
     )
   })
@@ -100,19 +100,19 @@ describe('ce qui interdit de téléverser', () => {
   it('dit combien de minutes il reste, pas seulement qu\'il attend', () => {
     // « en attente » sans chiffre se lit comme une panne ; « conférence dans
     // 6 min » se lit comme une décision.
-    const verdict = verdictTeleversement(entries({ msAvantProchaine: 6 * 60_000 }))
+    const verdict = uploadVerdict(entries({ msBeforeNext: 6 * 60_000 }))
     expect(verdict.text).toBe('conférence dans 6 min')
   })
 
   it('téléverse jusqu\'au bout d\'une journée finie', () => {
     // Plus de conférence au programme : c'est le moment idéal, pas un cas
     // limite. Une salle qu'on démonte à 19 h a toute la soirée devant elle.
-    expect(verdictTeleversement(entries({ msAvantProchaine: null })).allowed).toBe(true)
+    expect(uploadVerdict(entries({ msBeforeNext: null })).allowed).toBe(true)
   })
 
   it('laisse le processeur à l\'encodeur', () => {
     expect(
-      verdictTeleversement(entries({ charge: { ...CHARGE_CALME, cpu: 0.85 } })),
+      uploadVerdict(entries({ load: { ...CHARGE_CALME, cpu: 0.85 } })),
     ).toMatchObject({ reason: 'charge' })
   })
 
@@ -120,7 +120,7 @@ describe('ce qui interdit de téléverser', () => {
     // `cpu: null` est un aveu — on n'a pas su lire les compteurs. S'autoriser à
     // charger la machine sur cette ignorance est le mauvais pari : c'est
     // l'encodeur qui paierait, et en silence.
-    const verdict = verdictTeleversement(entries({ charge: { ...CHARGE_CALME, cpu: null } }))
+    const verdict = uploadVerdict(entries({ load: { ...CHARGE_CALME, cpu: null } }))
     expect(verdict).toMatchObject({ allowed: false, reason: 'charge' })
     expect(verdict.text).toContain('illisible')
   })
@@ -129,23 +129,23 @@ describe('ce qui interdit de téléverser', () => {
     // La machine ne ralentit pas franchement : elle commence à échanger sur le
     // disque, celui-là même qui écrit le rush.
     const memory = { usedBytes: 95, totalBytes: 100 }
-    expect(verdictTeleversement(entries({ charge: { ...CHARGE_CALME, memory } }))).toMatchObject({
+    expect(uploadVerdict(entries({ load: { ...CHARGE_CALME, memory } }))).toMatchObject({
       reason: 'charge',
     })
   })
 
   it('lève le pied quand le réseau s\'effondre', () => {
     expect(
-      verdictTeleversement(entries({ debitConstateOctetsS: DEBIT_PLANCHER_OCTETS_S - 1 })),
+      uploadVerdict(entries({ observedRateBytesS: RATE_FLOOR_BYTES_S - 1 })),
     ).toMatchObject({ reason: 'debit' })
     expect(
-      verdictTeleversement(entries({ debitConstateOctetsS: DEBIT_PLANCHER_OCTETS_S + 1 })).allowed,
+      uploadVerdict(entries({ observedRateBytesS: RATE_FLOOR_BYTES_S + 1 })).allowed,
     ).toBe(true)
   })
 
   it('descend le plafond de débit du hub jusqu\'au téléverseur', () => {
-    const politique = { ...DEFAULT_VOD_POLICY, actif: true, debitMaxOctetsS: 1_500_000 }
-    expect(verdictTeleversement(entries({ politique })).debitMaxOctetsS).toBe(1_500_000)
+    const policy = { ...DEFAULT_VOD_POLICY, actif: true, debitMaxOctetsS: 1_500_000 }
+    expect(uploadVerdict(entries({ policy })).debitMaxOctetsS).toBe(1_500_000)
   })
 })
 
@@ -153,13 +153,13 @@ describe('la demande manuelle', () => {
   it('passe outre la fenêtre, la charge et le débit', () => {
     // Celui qui appuie sur le bouton a la salle sous les yeux. Ces trois règles
     // protègent un automatisme ; il n'en est pas un.
-    const verdict = verdictTeleversement(
+    const verdict = uploadVerdict(
       entries({
-        manuel: true,
-        politique: DEFAULT_VOD_POLICY,
-        msAvantProchaine: 60_000,
-        charge: { ...CHARGE_CALME, cpu: 0.99 },
-        debitConstateOctetsS: 1,
+        manual: true,
+        policy: DEFAULT_VOD_POLICY,
+        msBeforeNext: 60_000,
+        load: { ...CHARGE_CALME, cpu: 0.99 },
+        observedRateBytesS: 1,
       }),
     )
     expect(verdict.allowed).toBe(true)
@@ -168,8 +168,8 @@ describe('la demande manuelle', () => {
   it('ne passe outre ni l\'enregistrement ni la conférence en cours', () => {
     // Les deux seuls cas où continuer coûterait la captation elle-même. La
     // régie prévient avant d'envoyer la demande : le refus ne surprend personne.
-    expect(verdictTeleversement(entries({ manuel: true, enregistre: true })).allowed).toBe(false)
-    expect(verdictTeleversement(entries({ manuel: true, conferenceEnCours: true })).allowed).toBe(
+    expect(uploadVerdict(entries({ manual: true, recording: true })).allowed).toBe(false)
+    expect(uploadVerdict(entries({ manual: true, talkRunning: true })).allowed).toBe(
       false,
     )
   })
@@ -177,8 +177,8 @@ describe('la demande manuelle', () => {
   it('respecte quand même le plafond de débit', () => {
     // Passer outre l'attente n'est pas passer outre le réseau de l'événement :
     // le plafond protège les autres salles, pas celle-ci.
-    const politique = { ...DEFAULT_VOD_POLICY, debitMaxOctetsS: 800_000 }
-    expect(verdictTeleversement(entries({ manuel: true, politique })).debitMaxOctetsS).toBe(800_000)
+    const policy = { ...DEFAULT_VOD_POLICY, debitMaxOctetsS: 800_000 }
+    expect(uploadVerdict(entries({ manual: true, policy })).debitMaxOctetsS).toBe(800_000)
   })
 })
 
@@ -186,16 +186,16 @@ describe('quand réessayer', () => {
   it('repasse vite sur ce qui se lève tout seul', () => {
     // Une conférence finit, un poste se calme : redemander coûte une lecture de
     // compteurs, et attendre dix minutes ferait rater la fenêtre.
-    expect(attenteApres('conference', 9)).toBe(15_000)
-    expect(attenteApres('charge', 9)).toBe(15_000)
-    expect(attenteApres('fenetre', 0)).toBe(15_000)
+    expect(waitAfter('conference', 9)).toBe(15_000)
+    expect(waitAfter('charge', 9)).toBe(15_000)
+    expect(waitAfter('fenetre', 0)).toBe(15_000)
   })
 
   it('recule en exponentiel sur le débit, et pas au-delà d\'un quart d\'heure', () => {
     // Un réseau saturé ne guérit pas parce qu'on redemande — insister est même
     // ce qui le garde saturé. Mais la salle ne doit pas s'endormir pour la nuit.
-    expect(attenteApres('debit', 0)).toBe(30_000)
-    expect(attenteApres('debit', 1)).toBe(60_000)
-    expect(attenteApres('debit', 20)).toBe(15 * 60_000)
+    expect(waitAfter('debit', 0)).toBe(30_000)
+    expect(waitAfter('debit', 1)).toBe(60_000)
+    expect(waitAfter('debit', 20)).toBe(15 * 60_000)
   })
 })

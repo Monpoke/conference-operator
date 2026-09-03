@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decalageDuMode, lireMode } from '../src/core/mode.js'
+import { modeOffset, readMode } from '../src/core/mode.js'
 
 /**
  * Mode d'exécution de la salle.
@@ -12,22 +12,22 @@ import { decalageDuMode, lireMode } from '../src/core/mode.js'
 describe('mode de la salle', () => {
   it('est en production quand rien n\'est demandé', () => {
     // Le défaut doit être le cas dangereux, pas le cas confortable.
-    expect(lireMode({})).toEqual({
+    expect(readMode({})).toEqual({
       mode: 'production',
-      obsSimule: false,
-      heureSimulee: null,
+      obsSimulated: false,
+      simulatedTime: null,
       ignores: [],
     })
   })
 
   it('neutralise les réglages de développement hors du mode dev', () => {
-    const mode = lireMode({ HEURE_SIMULEE: '2026-10-30T10:20:00Z' })
+    const mode = readMode({ HEURE_SIMULEE: '2026-10-30T10:20:00Z' })
 
-    expect(mode.obsSimule).toBe(false)
-    expect(mode.heureSimulee).toBeNull()
+    expect(mode.obsSimulated).toBe(false)
+    expect(mode.simulatedTime).toBeNull()
     // Et le dit, avec la raison : quelqu'un croit avoir réglé quelque chose.
     expect(mode.ignores).toEqual([
-      { variable: 'HEURE_SIMULEE', raison: 'réservé au mode développement (MODE=dev)' },
+      { variable: 'HEURE_SIMULEE', reason: 'réservé au mode développement (MODE=dev)' },
     ])
   })
 
@@ -36,9 +36,9 @@ describe('mode de la salle', () => {
     // défaut. Le trouver dans un raccourci veut dire que quelqu'un compte
     // dessus — et compter sur un OBS simulé le jour J coûte la journée.
     for (const env of [{ OBS_MOCK: '1' }, { MODE: 'dev', OBS_MOCK: '1' }]) {
-      expect(lireMode(env).ignores).toContainEqual({
+      expect(readMode(env).ignores).toContainEqual({
         variable: 'OBS_MOCK',
-        raison: 'remplacé par MODE=dev, qui simule OBS par défaut (OBS_REEL=1 pour de vraies instances)',
+        reason: 'remplacé par MODE=dev, qui simule OBS par défaut (OBS_REEL=1 pour de vraies instances)',
       })
     }
   })
@@ -46,28 +46,28 @@ describe('mode de la salle', () => {
   it('ne s\'alarme ni d\'un OBS_REEL ni d\'un OBS_MOCK à zéro', () => {
     // `OBS_REEL` est sans effet en production, mais ce qu'il demande est
     // justement ce qui se passe : avertir sèmerait le doute pour rien.
-    expect(lireMode({ OBS_REEL: '1' }).ignores).toEqual([])
-    expect(lireMode({ OBS_MOCK: '0' }).ignores).toEqual([])
+    expect(readMode({ OBS_REEL: '1' }).ignores).toEqual([])
+    expect(readMode({ OBS_MOCK: '0' }).ignores).toEqual([])
   })
 
   it('simule OBS par défaut en développement', () => {
     // Le cas courant du développement ; exiger une variable de plus pour le cas
     // courant se paie en oublis.
-    expect(lireMode({ MODE: 'dev' }).obsSimule).toBe(true)
-    expect(lireMode({ MODE: 'dev', OBS_REEL: '1' }).obsSimule).toBe(false)
+    expect(readMode({ MODE: 'dev' }).obsSimulated).toBe(true)
+    expect(readMode({ MODE: 'dev', OBS_REEL: '1' }).obsSimulated).toBe(false)
   })
 
   it('accepte une heure locale simulée en développement', () => {
-    const mode = lireMode({ MODE: 'dev', HEURE_SIMULEE: '2026-10-30T10:20:00Z' })
+    const mode = readMode({ MODE: 'dev', HEURE_SIMULEE: '2026-10-30T10:20:00Z' })
 
-    expect(mode.heureSimulee).toBe('2026-10-30T10:20:00Z')
+    expect(mode.simulatedTime).toBe('2026-10-30T10:20:00Z')
     expect(mode.ignores).toEqual([])
   })
 })
 
 describe('heure simulée de la salle', () => {
   it('ne décale rien quand rien n\'est simulé', () => {
-    expect(decalageDuMode(lireMode({ MODE: 'dev' }))).toBe(0)
+    expect(modeOffset(readMode({ MODE: 'dev' }))).toBe(0)
   })
 
   it('rend un décalage, et non une horloge de remplacement', () => {
@@ -79,8 +79,8 @@ describe('heure simulée de la salle', () => {
      * conférences des semaines après la fin de l'événement.
      */
     const base = () => Date.parse('2026-08-21T18:00:00Z')
-    const decalage = decalageDuMode(
-      lireMode({ MODE: 'dev', HEURE_SIMULEE: '2026-10-30T10:20:00Z' }),
+    const decalage = modeOffset(
+      readMode({ MODE: 'dev', HEURE_SIMULEE: '2026-10-30T10:20:00Z' }),
       base,
     )
 
@@ -91,7 +91,7 @@ describe('heure simulée de la salle', () => {
   })
 
   it('refuse une heure illisible plutôt que de démarrer de travers', () => {
-    expect(() => decalageDuMode(lireMode({ MODE: 'dev', HEURE_SIMULEE: 'hier soir' }))).toThrow(
+    expect(() => modeOffset(readMode({ MODE: 'dev', HEURE_SIMULEE: 'hier soir' }))).toThrow(
       /illisible/,
     )
   })

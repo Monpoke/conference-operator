@@ -26,16 +26,16 @@ import { renderOverlayLivePage } from './overlay-live-page.js'
 import {
   developmentAssets,
   productionAssets,
-  renderRegieShell,
+  renderControlShell,
   resolveControlBundle,
-} from './regie-shell.js'
+} from './control-shell.js'
 import {
   controlActionSchema,
   runControlAction,
   type ControlDiagnostics,
   type ControlTarget,
 } from './control-api.js'
-import { moniteurHote, type HostLoad } from './hote.js'
+import { hostMonitor, type HostLoad } from './host.js'
 
 export { FIELDS_BY_VIEW, type DisplayPayload, type DisplayView }
 
@@ -74,7 +74,7 @@ export interface DisplayServerOptions {
    * selon qu'un build traînait sur la machine. Le hub s'est fait prendre au
    * même piège avec la console, et le défaut ne se voit qu'en CI, une fois.
    */
-  bundleRegie?: () => { dossier: string; manifeste: string } | null
+  bundleRegie?: () => { directory: string; manifest: string } | null
   /** Cible des actions de régie. Absente, l'interface reste en lecture seule. */
   control?: ControlTarget
   /** État d'appairage, relu à chaque envoi. */
@@ -130,7 +130,7 @@ export class DisplayServer {
   private readonly hote: () => HostLoad
 
   constructor(private readonly options: DisplayServerOptions) {
-    this.hote = options.hote ?? moniteurHote()
+    this.hote = options.hote ?? hostMonitor()
     this.app = Fastify({ logger: false })
     this.registerRoutes()
     // Rediffuse à chaque changement d'état : l'écran n'interroge jamais.
@@ -400,7 +400,7 @@ export class DisplayServer {
      */
     if (vite == null && bundle != null) {
       void this.app.register(fastifyStatic, {
-        root: join(bundle.dossier, 'assets'),
+        root: join(bundle.directory, 'assets'),
         prefix: '/regie/assets/',
         wildcard: false,
         immutable: true,
@@ -450,10 +450,10 @@ export class DisplayServer {
       }
 
       return reply.send(
-        renderRegieShell({
+        renderControlShell({
           initialPayload: this.payload(),
           eventName: this.options.event?.().name ?? null,
-          assets: vite != null ? developmentAssets() : productionAssets(bundle!.manifeste),
+          assets: vite != null ? developmentAssets() : productionAssets(bundle!.manifest),
         }),
       )
     })

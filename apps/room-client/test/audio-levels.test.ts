@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AgregateurNiveaux, proportion } from '../src/core/niveaux-audio.js'
+import { LevelAggregator, proportion } from '../src/core/audio-levels.js'
 import { multiplicateurEnDb, DB_FLOOR, type InputLevel } from '../src/core/obs.js'
 
 function horloge(depart = 0) {
@@ -39,11 +39,11 @@ describe('agrégation du vumètre', () => {
   it('ramène 50 mesures par seconde à la cadence d\'affichage', () => {
     const temps = horloge()
     const recus: InputLevel[][] = []
-    const agregateur = new AgregateurNiveaux((inputs) => recus.push(inputs), 100, temps.lire)
+    const agregateur = new LevelAggregator((inputs) => recus.push(inputs), 100, temps.lire)
 
     // Une seconde de mesures OBS, toutes les 20 ms.
     for (let i = 0; i < 50; i += 1) {
-      agregateur.pousser([entree('Micro', -30)])
+      agregateur.push([entree('Micro', -30)])
       temps.avancer(20)
     }
     // Dix envois plutôt que cinquante : c'est ce qui garde le flux d'état
@@ -57,15 +57,15 @@ describe('agrégation du vumètre', () => {
     // une saturation d'un dixième de seconde — précisément ce qu'on regarde.
     const temps = horloge()
     const recus: InputLevel[][] = []
-    const agregateur = new AgregateurNiveaux((inputs) => recus.push(inputs), 100, temps.lire)
+    const agregateur = new LevelAggregator((inputs) => recus.push(inputs), 100, temps.lire)
 
-    agregateur.pousser([entree('Micro', -40)])
+    agregateur.push([entree('Micro', -40)])
     temps.avancer(20)
-    agregateur.pousser([entree('Micro', -2, -1)])
+    agregateur.push([entree('Micro', -2, -1)])
     temps.avancer(20)
-    agregateur.pousser([entree('Micro', -40)])
+    agregateur.push([entree('Micro', -40)])
     temps.avancer(100)
-    agregateur.pousser([entree('Micro', -40)])
+    agregateur.push([entree('Micro', -40)])
 
     expect(recus[0]![0]!.channels[0]!.magnitude).toBe(-2)
     expect(recus[0]![0]!.channels[0]!.peak).toBe(-1)
@@ -74,14 +74,14 @@ describe('agrégation du vumètre', () => {
   it('suit chaque entrée séparément, et chaque canal', () => {
     const temps = horloge()
     const recus: InputLevel[][] = []
-    const agregateur = new AgregateurNiveaux((inputs) => recus.push(inputs), 100, temps.lire)
+    const agregateur = new LevelAggregator((inputs) => recus.push(inputs), 100, temps.lire)
 
-    agregateur.pousser([
+    agregateur.push([
       { name: 'Micro', channels: [{ magnitude: -30, peak: -28 }] },
       { name: 'Ambiance', channels: [{ magnitude: -50, peak: -50 }, { magnitude: -12, peak: -10 }] },
     ])
     temps.avancer(150)
-    agregateur.pousser([{ name: 'Micro', channels: [{ magnitude: -35, peak: -35 }] }])
+    agregateur.push([{ name: 'Micro', channels: [{ magnitude: -35, peak: -35 }] }])
 
     const [micro, ambiance] = recus[0]!
     expect(micro!.channels[0]!.magnitude).toBe(-30)
@@ -95,12 +95,12 @@ describe('agrégation du vumètre', () => {
     // signal, sinon on croit le micro ouvert.
     const temps = horloge()
     const recus: InputLevel[][] = []
-    const agregateur = new AgregateurNiveaux((inputs) => recus.push(inputs), 100, temps.lire)
+    const agregateur = new LevelAggregator((inputs) => recus.push(inputs), 100, temps.lire)
 
-    agregateur.pousser([entree('Micro', -10)])
-    agregateur.reinitialiser()
+    agregateur.push([entree('Micro', -10)])
+    agregateur.reset()
     temps.avancer(500)
-    agregateur.pousser([entree('Micro', -45)])
+    agregateur.push([entree('Micro', -45)])
 
     expect(recus.at(-1)![0]!.channels[0]!.magnitude).toBe(-45)
   })

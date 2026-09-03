@@ -2,22 +2,22 @@ import OBSWebSocket from 'obs-websocket-js'
 import type { ObsTransport } from './obs.js'
 
 /**
- * Adaptateur `obs-websocket-js` v5 vers notre interface réduite.
+ * An adapter from `obs-websocket-js` v5 to our reduced interface.
  *
- * Tout le reste du code ne connaît que `ObsTransport`, ce qui permet de tester
- * la logique de rôles et de reconnexion sans instance OBS.
+ * All the rest of the code only knows `ObsTransport`, which makes it possible to
+ * test the role and reconnection logic with no OBS instance.
  */
 export function createObsTransport(): ObsTransport {
   const obs = new OBSWebSocket()
 
   return {
-    async connect(url, password, abonnements) {
-      await obs.connect(url, password, { eventSubscriptions: abonnements })
+    async connect(url, password, subscriptions) {
+      await obs.connect(url, password, { eventSubscriptions: subscriptions })
     },
-    async reidentify(abonnements) {
-      // Renégocie sans rouvrir : la connexion, les scènes et l'état en cours
-      // sont conservés, seul le volume d'événements change.
-      await obs.reidentify({ eventSubscriptions: abonnements })
+    async reidentify(subscriptions) {
+      // Renegotiates without reopening: the connection, the scenes and the
+      // current state are kept, only the volume of events changes.
+      await obs.reidentify({ eventSubscriptions: subscriptions })
     },
     async disconnect() {
       await obs.disconnect()
@@ -41,10 +41,10 @@ export interface ReconnectingObsOptions {
 }
 
 /**
- * Reconnexion à OBS en boucle.
+ * Reconnecting to OBS in a loop.
  *
- * OBS peut être lancé après la régie, ou redémarré en cours de journée : ne pas
- * réessayer obligerait l'opérateur à relancer l'application pendant l'événement.
+ * OBS can be started after the control app, or restarted during the day: not
+ * retrying would force the operator to relaunch the application during the event.
  */
 export async function keepObsConnected({
   connect,

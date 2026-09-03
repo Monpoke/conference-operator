@@ -1,157 +1,155 @@
 /**
- * Ce qu'une Browser Source OBS met à disposition de la page, et ce qu'on en fait.
+ * What an OBS Browser Source makes available to the page, and what we do with it.
  *
- * OBS injecte `window.obsstudio` dans chaque Browser Source. Cet objet n'existe
- * nulle part ailleurs : ni dans un navigateur ordinaire, ni dans la fenêtre
- * Electron de secours, ni dans les aperçus hors ligne. **Tout ce qui est ici
- * doit donc être strictement facultatif** — une page qui en dépendrait ne
- * s'afficherait plus en dehors d'OBS.
+ * OBS injects `window.obsstudio` into every Browser Source. That object exists
+ * nowhere else: not in an ordinary browser, not in the Electron fallback window,
+ * not in the offline previews. **Everything here must therefore be strictly
+ * optional** — a page that depended on it would no longer display outside OBS.
  *
- * ## Ce que l'objet expose
+ * ## What the object exposes
  *
- * | Membre | Ce qu'il rend |
+ * | Member | What it returns |
  * |---|---|
- * | `pluginVersion` | version du plugin navigateur, ex. `2.17.0` |
- * | `getCurrentScene(cb)` | `{ name, width, height }` de la scène programme |
+ * | `pluginVersion` | the browser plugin's version, e.g. `2.17.0` |
+ * | `getCurrentScene(cb)` | `{ name, width, height }` of the program scene |
  * | `getStatus(cb)` | `{ recording, streaming, recordingPaused, replaybuffer, virtualcam }` |
- * | `getControlLevel(cb)` | 0 à 5 — ce que la page a le droit de faire |
- * | `startRecording()` … | pilotage d'OBS, réservé aux niveaux élevés |
+ * | `getControlLevel(cb)` | 0 to 5 — what the page is allowed to do |
+ * | `startRecording()` … | driving OBS, reserved for the high levels |
  *
- * ⚠️ **Les méthodes de requête sont derrière un réglage.** Dans les propriétés
- * de la source, « Autorisations de la page » vaut *Aucune* par défaut : dans ce
- * cas `getCurrentScene` et `getStatus` sont absents ou muets. Les **événements**,
- * eux, sont diffusés sans condition — c'est pourquoi tout ce qui compte ici
- * passe par eux, et que les requêtes ne servent qu'à enrichir un diagnostic.
+ * ⚠️ **The query methods sit behind a setting.** In the source's properties, "Page
+ * permissions" defaults to *None*: in that case `getCurrentScene` and `getStatus`
+ * are absent or silent. The **events**, for their part, are broadcast
+ * unconditionally — which is why everything that matters here goes through them,
+ * and why the queries only serve to enrich a diagnosis.
  *
- * ## Les événements, diffusés sur `window`
+ * ## The events, broadcast on `window`
  *
- * - `obsSceneChanged` — `detail.name` : la scène programme a changé
- * - `obsSourceActiveChanged` — `detail.active` : **cette source est-elle rendue
- *   dans la scène programme**. C'est le sens strict de « à l'antenne » : en mode
- *   Studio, une source en préparation n'est pas active.
- * - `obsSourceVisibleChanged` — `detail.visible` : œil allumé dans la scène
- *   courante. Plus permissif, et ce n'est pas ce qu'on veut ici.
- * - `obsStreamingStarted` / `obsRecordingStarted` / … : état de la sortie, sans
- *   rapport avec le fait que *cette* source soit vue.
- * - `obsExit` : OBS se ferme.
+ * - `obsSceneChanged` — `detail.name`: the program scene has changed
+ * - `obsSourceActiveChanged` — `detail.active`: **is this source rendered in the
+ *   program scene**. That is the strict sense of "on air": in Studio mode, a
+ *   source in preview is not active.
+ * - `obsSourceVisibleChanged` — `detail.visible`: the eye lit in the current
+ *   scene. More permissive, and not what we want here.
+ * - `obsStreamingStarted` / `obsRecordingStarted` / …: the output's state, with no
+ *   bearing on whether *this* source is being seen.
+ * - `obsExit`: OBS is closing.
  *
- * ## Deux pièges de configuration qui priment sur tout ce code
+ * ## Two configuration traps that override all of this code
  *
- * 1. **« Éteindre la source lorsqu'elle n'est pas visible »** détruit la page
- *    quand la scène change : aucun script ne tourne, il n'y a rien à mettre en
- *    pause, et au retour la page repart de zéro (reconnexion SSE comprise).
- * 2. **« Rafraîchir le navigateur lorsque la scène devient active »** recharge
- *    la page à chaque retour, avec le même effet.
+ * 1. **"Shutdown source when not visible"** destroys the page when the scene
+ *    changes: no script runs, there is nothing to pause, and on the way back the
+ *    page starts from scratch (SSE reconnection included).
+ * 2. **"Refresh browser when scene becomes active"** reloads the page on every
+ *    return, with the same effect.
  *
- * Ces deux réglages doivent rester **décochés** pour que la mise en pause ait
- * un sens — et de toute façon pour que l'écran de salle ne clignote pas à
- * chaque bascule de scène.
+ * Both settings must stay **unchecked** for pausing to mean anything — and in any
+ * case so that the room screen does not flicker on every scene switch.
  */
 
 /**
- * Gel des animations hors antenne.
+ * Freezing the animations off air.
  *
- * `animation-play-state: paused` fige sans détruire : au retour, l'animation
- * reprend où elle en était au lieu de resauter à son début. Les transitions
- * sont coupées net, faute d'équivalent.
+ * `animation-play-state: paused` freezes without destroying: on the way back, the
+ * animation resumes where it was instead of jumping to its start. Transitions are
+ * cut dead, for want of an equivalent.
  *
- * Ce qui n'est PAS gelé : les minuteries JavaScript. L'horloge, la boucle de
- * pages et le flux SSE continuent, sinon la page reviendrait à l'antenne en
- * affichant l'heure d'il y a dix minutes.
+ * What is NOT frozen: the JavaScript timers. The clock, the page loop and the SSE
+ * stream carry on, otherwise the page would come back on air showing the time
+ * from ten minutes ago.
  */
-export const OBS_ANTENNE_CSS = `
-  body[data-antenne="non"] *,
-  body[data-antenne="non"] *::before,
-  body[data-antenne="non"] *::after {
+export const OBS_ON_AIR_CSS = `
+  body[data-on-air="no"] *,
+  body[data-on-air="no"] *::before,
+  body[data-on-air="no"] *::after {
     animation-play-state: paused !important;
     transition: none !important;
   }
 `
 
 /**
- * Script inliné dans les pages servies à OBS.
+ * The script inlined into the pages served to OBS.
  *
- * Écrit en chaîne, comme le reste de ces pages : elles n'ont pas d'étape de
- * build et ne peuvent pas `import`.
+ * Written as a string, like the rest of these pages: they have no build step and
+ * cannot `import`.
  */
-export const OBS_ANTENNE_JS = `
+export const OBS_ON_AIR_JS = `
 (() => {
   const obs = window.obsstudio
-  const corps = document.body
+  const body = document.body
 
   /*
-   * Hors OBS — navigateur, aperçu hors ligne, fenêtre Electron de secours — on
-   * ne pose rien du tout. L'absence de l'attribut vaut « à l'antenne », donc la
-   * page s'anime normalement partout ailleurs.
+   * Outside OBS — a browser, an offline preview, the Electron fallback window —
+   * we set nothing at all. The absence of the attribute means "on air", so the
+   * page animates normally everywhere else.
    */
-  corps.dataset.obs = obs ? 'oui' : 'non'
+  body.dataset.obs = obs ? 'yes' : 'no'
   if (!obs) return
 
-  if (obs.pluginVersion) corps.dataset.obsVersion = obs.pluginVersion
+  if (obs.pluginVersion) body.dataset.obsVersion = obs.pluginVersion
 
   /**
-   * État consolidé, lisible depuis la console d'OBS et depuis un test.
+   * The consolidated state, readable from OBS's console and from a test.
    *
-   * Exposé sur window et non gardé en fermeture : c'est le seul moyen de
-   * diagnostiquer une source depuis l'inspecteur d'OBS, qui n'a pas de
-   * point d'arrêt commode dans une page inlinée.
+   * Exposed on window and not kept in a closure: it is the only way to diagnose a
+   * source from OBS's inspector, which has no convenient breakpoint in an inlined
+   * page.
    */
-  const etat = window.__obs = {
+  const state = window.__obs = {
     version: obs.pluginVersion ?? null,
-    antenne: true,
+    onAir: true,
     scene: null,
-    sortie: null,
-    depuis: Date.now(),
+    output: null,
+    since: Date.now(),
   }
 
-  function poser(actif) {
-    if (etat.antenne === actif) return
-    etat.antenne = actif
-    etat.depuis = Date.now()
-    corps.dataset.antenne = actif ? 'oui' : 'non'
-    window.dispatchEvent(new CustomEvent('antenne', { detail: { actif } }))
+  function set(active) {
+    if (state.onAir === active) return
+    state.onAir = active
+    state.since = Date.now()
+    body.dataset.onAir = active ? 'yes' : 'no'
+    window.dispatchEvent(new CustomEvent('on-air', { detail: { active } }))
   }
 
   /*
-   * On part à l'antenne, délibérément.
+   * We start on air, deliberately.
    *
-   * OBS n'émet obsSourceActiveChanged que sur *changement* : une source déjà
-   * active au chargement n'émet rien. Partir de « hors antenne » figerait donc
-   * un écran qui est en train d'être projeté devant la salle, jusqu'au prochain
-   * changement de scène. Le sens de l'erreur est choisi : au pire on anime pour
-   * rien, jamais l'inverse.
+   * OBS only emits obsSourceActiveChanged on a *change*: a source already active
+   * at load time emits nothing. Starting from "off air" would therefore freeze a
+   * screen that is being projected in front of the room, until the next scene
+   * change. The direction of the error is chosen: at worst we animate for
+   * nothing, never the opposite.
    */
-  corps.dataset.antenne = 'oui'
+  body.dataset.onAir = 'yes'
 
-  window.addEventListener('obsSourceActiveChanged', (evenement) => {
-    poser(evenement.detail?.active !== false)
+  window.addEventListener('obsSourceActiveChanged', (event) => {
+    set(event.detail?.active !== false)
   })
 
-  // Nom de scène : pour le diagnostic seulement, rien n'en dépend.
-  window.addEventListener('obsSceneChanged', (evenement) => {
-    etat.scene = evenement.detail?.name ?? null
+  // The scene's name: for diagnosis only, nothing depends on it.
+  window.addEventListener('obsSceneChanged', (event) => {
+    state.scene = event.detail?.name ?? null
   })
 
-  for (const [nom, sortie] of [
-    ['obsStreamingStarted', 'diffusion'],
-    ['obsRecordingStarted', 'enregistrement'],
+  for (const [name, output] of [
+    ['obsStreamingStarted', 'streaming'],
+    ['obsRecordingStarted', 'recording'],
     ['obsStreamingStopped', null],
     ['obsRecordingStopped', null],
   ]) {
-    window.addEventListener(nom, () => { etat.sortie = sortie })
+    window.addEventListener(name, () => { state.output = output })
   }
 
   /*
-   * Les requêtes, en dernier et sans y compter.
+   * The queries, last and without counting on them.
    *
-   * Elles dépendent du réglage « Autorisations de la page » de la source, qui
-   * vaut Aucune par défaut. Absentes ou muettes, on garde simplement les
-   * valeurs nulles : rien de ce qui est affiché n'en dépend.
+   * They depend on the source's "Page permissions" setting, which defaults to
+   * None. Absent or silent, we simply keep the null values: nothing displayed
+   * depends on them.
    */
   try {
-    obs.getCurrentScene?.((scene) => { etat.scene = scene?.name ?? null })
-    obs.getStatus?.((statut) => {
-      etat.sortie = statut?.streaming ? 'diffusion' : statut?.recording ? 'enregistrement' : null
+    obs.getCurrentScene?.((scene) => { state.scene = scene?.name ?? null })
+    obs.getStatus?.((status) => {
+      state.output = status?.streaming ? 'streaming' : status?.recording ? 'recording' : null
     })
   } catch (cause) {
     console.warn('obsstudio : requêtes indisponibles', cause)

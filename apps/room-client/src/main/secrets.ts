@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 
-/** Chiffrement au repos fourni par Electron ; absent hors Electron. */
+/** Encryption at rest supplied by Electron; absent outside Electron. */
 export interface SecretVault {
   read(): string | null
   write(value: string): void
@@ -14,11 +14,12 @@ interface SafeStorageLike {
 }
 
 /**
- * Coffre du jeton de la machine.
+ * The vault for the machine's token.
  *
- * Passe par `safeStorage` d'Electron quand le chiffrement est disponible. Sinon
- * — poste Linux sans trousseau, par exemple — on écrit en clair **et on le dit** :
- * un secret silencieusement non chiffré serait pire qu'un secret annoncé comme tel.
+ * Goes through Electron's `safeStorage` when encryption is available. Otherwise —
+ * a Linux machine with no keyring, for instance — we write in clear **and say
+ * so**: a secret silently left unencrypted would be worse than one announced as
+ * such.
  */
 export function createSecretVault(
   path: string,
@@ -41,7 +42,7 @@ export function createSecretVault(
       try {
         return safeStorage!.decryptString(raw)
       } catch {
-        // Trousseau changé ou profil déplacé : mieux vaut réappairer que planter.
+        // Keyring changed or profile moved: better to pair again than to crash.
         return null
       }
     },

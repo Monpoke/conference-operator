@@ -5,13 +5,13 @@ import { and, asc, eq, inArray, ne } from 'drizzle-orm'
 import { televersement } from '@cloudnord/db/client'
 import type { VodKind, SignedPart, UploadPlan, VodPolicy } from '@cloudnord/contract'
 import type { LocalStore } from './store.js'
-import type { HostLoad } from './hote.js'
+import type { HostLoad } from './host.js'
 import {
-  attenteApres,
-  verdictTeleversement,
-  type EntreesRegulateur,
+  waitAfter,
+  uploadVerdict,
+  type RegulatorInputs,
   type UploadVerdict,
-} from './regulateur.js'
+} from './regulator.js'
 
 /**
  * Rapatriement des rushes, part par part.
@@ -71,9 +71,9 @@ export interface TeleversementDeps {
   charge: () => HostLoad
   /** OBS-B enregistre-t-il ? */
   enregistre: () => boolean
-  conferenceEnCours: () => boolean
+  talkRunning: () => boolean
   /** Millisecondes avant la prochaine conférence, sur l'horloge corrigée du hub. */
-  msAvantProchaine: () => number | null
+  msBeforeNext: () => number | null
   /** Lecture d'une tranche de fichier. Injectée pour tester sans disque. */
   lireTranche?: (file: string, debut: number, fin: number) => Promise<Buffer>
   /** Chemin absolu d'un fichier relatif à la racine des enregistrements. */
@@ -295,23 +295,23 @@ export class Televersements {
 
   private verdictPour(manual: boolean): UploadVerdict {
     const politique = this.deps.politique()
-    const entries: EntreesRegulateur = {
-      stockagePret: politique != null && this.deps.hub() != null,
-      politique: politique ?? {
+    const entries: RegulatorInputs = {
+      storageReady: politique != null && this.deps.hub() != null,
+      policy: politique ?? {
         actif: false,
         debitMaxOctetsS: null,
         cpuMax: 0.7,
         margeConferenceMinutes: 10,
         taillePartMo: 8,
       },
-      manuel: manual,
-      enregistre: this.deps.enregistre(),
-      conferenceEnCours: this.deps.conferenceEnCours(),
-      msAvantProchaine: this.deps.msAvantProchaine(),
-      charge: this.deps.charge(),
-      debitConstateOctetsS: null,
+      manual,
+      recording: this.deps.enregistre(),
+      talkRunning: this.deps.talkRunning(),
+      msBeforeNext: this.deps.msBeforeNext(),
+      load: this.deps.charge(),
+      observedRateBytesS: null,
     }
-    return verdictTeleversement(entries)
+    return uploadVerdict(entries)
   }
 
   private async uneFois(): Promise<void> {
@@ -328,7 +328,7 @@ export class Televersements {
     this.dernierVerdict = verdict
     if (!verdict.allowed) {
       if (verdict.reason === 'debit') this.echecsDeDebit += 1
-      const dans = attenteApres(verdict.reason ?? 'charge', this.echecsDeDebit)
+      const dans = waitAfter(verdict.reason ?? 'charge', this.echecsDeDebit)
       this.db
         .update(televersement)
         .set({ nextAttemptAt: new Date(this.maintenant + dans).toISOString() })

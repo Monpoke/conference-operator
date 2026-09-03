@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { moniteurHote } from '../src/core/hote.js'
+import { hostMonitor } from '../src/core/host.js'
 
 /**
  * Charge du poste.
@@ -13,9 +13,9 @@ function coeur(user: number, idle: number) {
   return { times: { user, nice: 0, sys: 0, idle, irq: 0 } }
 }
 
-describe('moniteurHote', () => {
+describe('hostMonitor', () => {
   it('n’annonce rien tant qu’aucune fenêtre n’est écoulée', () => {
-    const relever = moniteurHote({ lireCpus: () => [coeur(0, 0)], now: () => 1_000 })
+    const relever = hostMonitor({ readCpus: () => [coeur(0, 0)], now: () => 1_000 })
 
     // Premier appel, au même instant que la pose du repère : aucune durée
     // observée, donc aucun taux à donner.
@@ -25,7 +25,7 @@ describe('moniteurHote', () => {
   it('mesure la part occupée entre deux relevés', () => {
     let temps = 0
     let cpus = [coeur(0, 0), coeur(0, 0)]
-    const relever = moniteurHote({ lireCpus: () => cpus, now: () => temps })
+    const relever = hostMonitor({ readCpus: () => cpus, now: () => temps })
 
     temps = 2_000
     // Deux cœurs, 1 000 ticks écoulés chacun : l'un occupé aux trois quarts,
@@ -41,7 +41,7 @@ describe('moniteurHote', () => {
   it('rend le relevé précédent quand deux consultations se suivent de trop près', () => {
     let temps = 0
     let cpus = [coeur(0, 0)]
-    const relever = moniteurHote({ lireCpus: () => cpus, now: () => temps })
+    const relever = hostMonitor({ readCpus: () => cpus, now: () => temps })
 
     temps = 2_000
     cpus = [coeur(800, 200)]
@@ -57,10 +57,10 @@ describe('moniteurHote', () => {
   it('relit la mémoire à chaque appel, même sans fenêtre processeur', () => {
     let temps = 0
     let occupee = 4_000_000_000
-    const relever = moniteurHote({
-      lireCpus: () => [coeur(0, 0)],
+    const relever = hostMonitor({
+      readCpus: () => [coeur(0, 0)],
       now: () => temps,
-      lireMemoire: () => ({ usedBytes: occupee, totalBytes: 16_000_000_000 }),
+      readMemory: () => ({ usedBytes: occupee, totalBytes: 16_000_000_000 }),
     })
 
     // La mémoire est un instantané, pas une différence : elle vaut dès le
@@ -75,7 +75,7 @@ describe('moniteurHote', () => {
   })
 
   it('laisse la mémoire à null quand elle n’est pas lisible', () => {
-    const relever = moniteurHote({ lireCpus: () => [coeur(0, 0)], now: () => 0, lireMemoire: () => null })
+    const relever = hostMonitor({ readCpus: () => [coeur(0, 0)], now: () => 0, readMemory: () => null })
 
     expect(relever().memory).toBeNull()
   })
@@ -83,7 +83,7 @@ describe('moniteurHote', () => {
   it('garde le dernier chiffre honnête quand les compteurs n’avancent plus', () => {
     let temps = 0
     let cpus = [coeur(0, 0)]
-    const relever = moniteurHote({ lireCpus: () => cpus, now: () => temps })
+    const relever = hostMonitor({ readCpus: () => cpus, now: () => temps })
 
     temps = 2_000
     cpus = [coeur(600, 400)]

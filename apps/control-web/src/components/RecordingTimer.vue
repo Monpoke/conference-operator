@@ -4,23 +4,23 @@ import { shortDuration } from '@cloudnord/format'
 import { computed } from 'vue'
 
 /**
- * Depuis combien de temps ça tourne.
+ * How long it has been running.
  *
- * Deux horloges possibles, et la charge utile porte laquelle : un
- * `startedAtCorrectedMs` renseigné veut dire « compte sur l'horloge du hub » — le
- * cas du développement, où l'on déroule une journée en la poussant, et où le
- * chronomètre doit dire la même chose que la durée finalement enregistrée.
- * Absent, on compte en temps réel, comme en production.
+ * Two possible clocks, and the payload carries which one: a
+ * `startedAtCorrectedMs` that is set means "count on the hub's clock" — the
+ * development case, where a day is run through by pushing it, and where the
+ * stopwatch must say the same thing as the duration finally recorded. Absent, we
+ * count in real time, as in production.
  *
- * Un écart assumé avec la page d'origine, et le seul : au-delà de l'heure elle
- * affichait « 90:00 », ce format-ci affiche « 1:30:00 ». Une prise dépassant
- * l'heure existe — les keynotes — et un compte en minutes seules s'y lit mal.
+ * One deliberate departure from the original page, and the only one: past the
+ * hour it showed "90:00", this format shows "1:30:00". A take longer than an hour
+ * does happen — keynotes — and a count in minutes alone reads badly there.
  */
 const props = defineProps<{
   recording: ControlDiagnostics['recording'] | null
-  /** Temps réel de la machine. */
+  /** The machine's real time. */
   realMs: number
-  /** Heure de la salle, décalage du hub compris. */
+  /** The room's time, the hub's offset included. */
   roomMs: number
 }>()
 

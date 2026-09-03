@@ -4,7 +4,7 @@ import { stopwatch } from '@cloudnord/format'
 import { computed } from 'vue'
 import { countdownFor } from '../lib/countdown.js'
 
-/** Sous ce seuil, la fin devient une chose à surveiller plutôt qu'à savoir. */
+/** Below this threshold, the end becomes something to watch rather than to know. */
 const NEARLY_OVER_MS = 300_000
 
 const props = defineProps<{ payload: DisplayPayload; atMs: number }>()
@@ -12,8 +12,8 @@ const props = defineProps<{ payload: DisplayPayload; atMs: number }>()
 const countdown = computed(() => countdownFor(props.payload, props.atMs))
 
 /*
- * Avant le début, le décompte ne réclame rien : atténué, il se distingue d'un
- * créneau qui court — lequel vire à l'attention puis à l'alerte.
+ * Before the start, the countdown demands nothing: dimmed, it is told apart from
+ * a running slot — which turns to warning and then to alert.
  */
 const tint = computed(() => {
   const count = countdown.value
@@ -29,8 +29,8 @@ const tint = computed(() => {
       {{ countdown == null ? '--:--' : stopwatch(countdown.ms) }}
     </div>
     <!--
-      Le badge dit ce que le nombre décompte : un temps d'antenne qui s'épuise,
-      ou une attente avant que ça reparte. Les deux se lisent pareil sans lui.
+      The badge says what the number is counting down: air time running out, or a
+      wait before things start again. The two read alike without it.
     -->
     <span v-if="countdown?.beforeStart === true" class="badge">à venir</span>
   </div>

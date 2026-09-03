@@ -5,19 +5,18 @@ import { computed, ref } from 'vue'
 import { useActionsStore } from '../stores/actions.js'
 
 /**
- * Ce qui vient de se passer à côté.
+ * What has just happened next door.
  *
- * Ces encarts apparaissent trente secondes en bas d'un écran qu'on ne regarde
- * pas — pendant un talk, l'opérateur regarde la salle. D'où un fond **plein**,
- * et pas une teinte sourde comme le reste de la page : ce qui doit se voir du
- * coin de l'œil se voit à la couleur, pas au texte. Le texte passe en sombre,
- * la seule paire qui reste lisible sur de l'ambre.
+ * These cards appear for thirty seconds at the bottom of a screen nobody is
+ * looking at — during a talk the operator watches the room. Hence a **solid**
+ * background, and not a muted tint like the rest of the page: what must be seen
+ * out of the corner of the eye is seen by colour, not by text. The text goes
+ * dark, the only pairing that stays readable on amber.
  *
- * Trente secondes, parce qu'un bandeau qui ne part pas cesse d'être lu : la
- * régie finissait la journée avec cinq signalements empilés au-dessus des
- * commandes, tous périmés depuis longtemps. Ce qui doit rester consultable —
- * l'état des autres salles — est de toute façon dans le flux d'en-tête, qui lui
- * ne périme pas.
+ * Thirty seconds, because a banner that does not go away stops being read: the
+ * control app used to end the day with five notices stacked above the commands,
+ * all long expired. What must stay consultable — the other rooms' state — is in
+ * the header strip anyway, and that does not expire.
  */
 const TINTS: Record<string, string> = {
   info: 'bg-brand text-[#05070d]',
@@ -29,10 +28,10 @@ const props = defineProps<{ payload: DisplayPayload; nowMs: number }>()
 const actions = useActionsStore()
 
 /**
- * Écartés à la main, en attendant que le retrait fasse le tour.
+ * Dismissed by hand, while the removal makes its way round.
  *
- * L'état continue de les pousser le temps que la demande atteigne le runtime :
- * sans cette liste, la croix rendrait le signalement pour une seconde.
+ * The state goes on pushing them until the request reaches the runtime: without
+ * this list, the cross would give the notice back for a second.
  */
 const dismissed = ref<string[]>([])
 
@@ -49,14 +48,14 @@ async function dismiss(id: string): Promise<void> {
   const result = await actions.act({ action: 'notification.dismiss', id }, { silent: true })
 
   /*
-   * Refusé : on le remet.
+   * Refused: we put it back.
    *
-   * L'écart local existe pour couvrir l'aller-retour, pas pour effacer ce que
-   * le runtime a gardé. Sans ce retour en arrière, un signalement que le poste
-   * refuse d'oublier resterait invisible jusqu'au rechargement de la page —
-   * caché à celui qui l'a écarté, et toujours là pour tous les autres.
+   * The local dismissal exists to cover the round trip, not to erase what the
+   * runtime kept. Without this reversal, a notice the machine refuses to forget
+   * would stay invisible until the page is reloaded — hidden from whoever
+   * dismissed it, and still there for everybody else.
    */
-  if (!result.ok) dismissed.value = dismissed.value.filter((autre) => autre !== id)
+  if (!result.ok) dismissed.value = dismissed.value.filter((other) => other !== id)
 }
 </script>
 
@@ -67,15 +66,15 @@ async function dismiss(id: string): Promise<void> {
     data-role="notifications"
   >
     <!--
-      Tout l'encart est le bouton, et pas seulement sa croix.
-      Un signalement se lit d'un coup d'œil et s'écarte d'un revers de souris,
-      pendant qu'on tient le micro. Viser une croix de douze pixels dans une
-      salle sombre demande de s'arrêter et de regarder — c'est-à-dire de quitter
-      des yeux ce qui se passe sur scène, pour un geste qui ne mérite pas ça.
+      The whole card is the button, and not only its cross.
+      A notice is read at a glance and swept aside with a flick of the mouse,
+      while holding the microphone. Aiming at a twelve-pixel cross in a dark room
+      means stopping and looking — that is, taking one's eyes off what is
+      happening on stage, for a gesture that does not deserve it.
 
-      Un `<button>` plutôt qu'un `<div>` qui écoute le clic : il se met au
-      clavier, s'annonce comme actionnable, et répond à Entrée. La croix reste,
-      décorative — c'est elle qui dit que l'encart se ferme.
+      A `<button>` rather than a `<div>` listening for the click: it takes keyboard
+      focus, announces itself as actionable, and answers Enter. The cross stays,
+      decorative — it is what says the card can be closed.
     -->
     <button
       v-for="notice in notices"
@@ -89,8 +88,8 @@ async function dismiss(id: string): Promise<void> {
     >
       <span class="text-xs tabular-nums opacity-60">{{ time(notice.at, payload.timezone) }}</span>
       <span>{{ notice.text }}</span>
-      <!-- Hérite de la couleur du bloc : « attenue » est lisible sur le fond
-           sombre de la page, pas sur un fond plein. -->
+      <!-- Inherits the block's colour: the dimmed tone is readable on the page's
+           dark background, not on a solid one. -->
       <span class="ml-auto px-1.5 py-0.5 text-current opacity-60" aria-hidden="true">×</span>
     </button>
   </div>

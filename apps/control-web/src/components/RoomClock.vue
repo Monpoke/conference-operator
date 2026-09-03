@@ -2,12 +2,12 @@
 import { computed } from 'vue'
 
 /**
- * L'heure de la salle, celle sur laquelle tout le monde s'aligne.
+ * The room's time, the one everyone aligns on.
  *
- * Une heure calée sur un hub à horloge simulée se lit de travers si on ne le
- * dit pas : voir 11:00 un matin d'août sans explication ferait douter de tout
- * le reste de l'écran. Le mot est accolé à l'heure plutôt que rangé dans
- * l'info-bulle du hub, parce que c'est l'heure elle-même qu'il qualifie.
+ * A time set against a hub on a simulated clock reads wrong if that is not said:
+ * seeing 11:00 on an August morning with no explanation would cast doubt on
+ * everything else on screen. The word sits beside the time rather than tucked
+ * into the hub's tooltip, because it is the time itself that it qualifies.
  */
 const props = defineProps<{ atMs: number; timeZone: string; simulated: boolean }>()
 

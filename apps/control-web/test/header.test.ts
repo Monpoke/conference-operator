@@ -40,7 +40,7 @@ describe('lien avec le hub', () => {
 
     // Se taire sur un état qu'on ne sait pas nommer laisserait la pastille
     // verte, qui est le seul contresens à ne pas commettre ici.
-    expect(wrapper.attributes('data-niveau')).toBe('alert')
+    expect(wrapper.attributes('data-level')).toBe('alert')
     expect(wrapper.text()).toContain('hors ligne')
   })
 
@@ -75,7 +75,7 @@ describe('charge du poste', () => {
   it('avoue une mesure absente plutôt que d’afficher zéro', () => {
     const wrapper = mount(CpuIndicator, { props: { load: null } })
 
-    expect(wrapper.attributes('data-niveau')).toBe('unknown')
+    expect(wrapper.attributes('data-level')).toBe('unknown')
     expect(wrapper.text()).toContain('Pastille sans valeur, pas poste au repos')
   })
 
@@ -94,7 +94,7 @@ describe('charge du poste', () => {
     // Le verdict revient à la mesure la plus grave : c'est l'autre façon dont
     // un poste lâche, et la plus sournoise — il commence à échanger sur le
     // disque qui écrit le rush.
-    expect(wrapper.attributes('data-niveau')).toBe('alert')
+    expect(wrapper.attributes('data-level')).toBe('alert')
     expect(wrapper.text()).toContain('celui-là même qui écrit le rush')
   })
 
@@ -111,7 +111,7 @@ describe('charge du poste', () => {
     })
 
     // Un processeur au repos reste vert sous une pastille rouge de mémoire.
-    expect(wrapper.html()).toContain('niveau-ok')
+    expect(wrapper.html()).toContain('level-ok')
   })
 
   it('ne dit rien de la mémoire quand la première fenêtre n’est pas écoulée', () => {
@@ -137,7 +137,7 @@ describe('charge du poste, en détail', () => {
   it('reste verte tant que le poste a de la marge', () => {
     const wrapper = poste({ cpu: 0.31, cores: 8, windowMs: 5_000, memory: MEMOIRE_SAINE })
 
-    expect(wrapper.attributes('data-niveau')).toBe('ok')
+    expect(wrapper.attributes('data-level')).toBe('ok')
     expect(wrapper.get('.status-dot').classes()).toEqual(['status-dot'])
     expect(wrapper.text()).toContain('31 %')
     expect(wrapper.text()).toContain('8 cœurs')
@@ -147,7 +147,7 @@ describe('charge du poste, en détail', () => {
   it('passe à l’orange sur une charge soutenue', () => {
     const wrapper = poste({ cpu: 0.78, cores: 8, windowMs: 5_000, memory: null })
 
-    expect(wrapper.attributes('data-niveau')).toBe('warn')
+    expect(wrapper.attributes('data-level')).toBe('warn')
     expect(wrapper.get('.status-dot').classes()).toContain('degraded')
     expect(wrapper.text()).toContain('charge soutenue')
   })
@@ -155,7 +155,7 @@ describe('charge du poste, en détail', () => {
   it('passe au rouge, et dit ce que ça coûte', () => {
     const wrapper = poste({ cpu: 0.96, cores: 4, windowMs: 5_000, memory: null })
 
-    expect(wrapper.attributes('data-niveau')).toBe('alert')
+    expect(wrapper.attributes('data-level')).toBe('alert')
     expect(wrapper.get('.status-dot').classes()).toContain('offline')
     // Une couleur seule ne dit pas quoi faire : la bulle nomme le risque.
     expect(wrapper.text()).toContain('images')
@@ -166,7 +166,7 @@ describe('charge du poste, en détail', () => {
     // et c'est dans ce désaccord qu'on cesserait de croire l'indicateur.
     const wrapper = poste({ cpu: 0.96, cores: 4, windowMs: 5_000, memory: null })
 
-    expect(wrapper.get('.jauge > span').attributes('style')).toContain('96%')
+    expect(wrapper.get('.gauge > span').attributes('style')).toContain('96%')
   })
 
   it('montre la mémoire à côté du processeur', () => {
@@ -180,7 +180,7 @@ describe('charge du poste, en détail', () => {
   it('ne prend pas une mémoire illisible pour une mémoire pleine', () => {
     const wrapper = poste({ cpu: 0.31, cores: 8, windowMs: 5_000, memory: null })
 
-    expect(wrapper.attributes('data-niveau')).toBe('ok')
+    expect(wrapper.attributes('data-level')).toBe('ok')
     expect(wrapper.text()).toContain('mémoire illisible')
   })
 
@@ -191,7 +191,7 @@ describe('charge du poste, en détail', () => {
     // d'intervalle. L'annonce vocale, elle, passe par `aria-label`.
     expect(wrapper.attributes('title')).toBeUndefined()
     expect(wrapper.attributes('aria-label')).toContain('31 %')
-    expect(wrapper.get('.bulle').attributes('aria-hidden')).toBe('true')
+    expect(wrapper.get('.tooltip').attributes('aria-hidden')).toBe('true')
   })
 
   it('se laisse ouvrir au clavier, sans souris', () => {

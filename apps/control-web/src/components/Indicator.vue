@@ -5,52 +5,52 @@ import Gauge from './Gauge.vue'
 import type { Level } from './levels.js'
 
 /**
- * Un indicateur d'en-tête : sa pastille, son info-bulle, et ce qu'un lecteur
- * d'écran en dira.
+ * A header indicator: its dot, its tooltip, and what a screen reader will say of
+ * it.
  *
- * Les deux indicateurs passent par ici, et c'est le point : ils se lisent d'un
- * même coup d'œil parce qu'ils sont bâtis d'une même main — la couleur au même
- * endroit, le verdict à la même place, le chiffre au même format. Deux rendus
- * séparés auraient divergé au premier ajout.
+ * Both indicators go through here, and that is the point: they read at a single
+ * glance because they are built by a single hand — the colour in the same place,
+ * the verdict in the same place, the figure in the same format. Two separate
+ * renderings would have diverged at the first addition.
  *
- * L'info-bulle native disait la même chose, mais après une seconde d'attente,
- * dans la police du système, et sans pouvoir colorer le chiffre — qui est
- * justement toute l'information.
+ * The native tooltip said the same thing, but after a second's wait, in the
+ * system font, and without being able to colour the figure — which is precisely
+ * all the information.
  *
- * `data-niveau` ne pilote aucune couleur, contrairement à ce que la page
- * d'origine affirmait : aucune règle ne l'a jamais lu. Il reste parce qu'il est
- * ce que les tests observent — le niveau retenu pour la pastille, exposé sans
- * passer par une classe utilitaire qui pourrait changer de nom.
+ * `data-level` drives no colour, contrary to what the original page claimed: no
+ * rule ever read it. It stays because it is what the tests observe — the level
+ * chosen for the dot, exposed without going through a utility class that could
+ * change name.
  */
 const props = defineProps<{
   title: string
-  /** La mesure, déjà mise en forme. Une chaîne : « 42 % », « Connecté », « — ». */
+  /** The measurement, already formatted. A string: "42 %", "Connecté", "—". */
   value: string
-  /** Le verdict en deux mots, à droite du chiffre. */
+  /** The verdict in two words, to the right of the figure. */
   label: string
-  /** Niveau du bloc — celui de la pastille, lisible de l'autre bout de la salle. */
+  /** The block's level — the dot's, readable from the other end of the room. */
   level: Level
   /**
-   * Niveau de la mesure elle-même, quand il diffère de celui du bloc.
+   * The measurement's own level, when it differs from the block's.
    *
-   * Un processeur au repos reste vert sous une pastille rouge de mémoire : la
-   * couleur du grand chiffre est celle de *sa* mesure, pas celle du bloc.
+   * A processor at rest stays green under a red memory dot: the large figure's
+   * colour is that of *its* measurement, not the block's.
    */
   valueLevel?: Level
-  /** Part mesurée, de 0 à 100. Omis quand la mesure n'est pas une part. */
+  /** The measured share, 0 to 100. Omitted when the measurement is not a share. */
   gauge?: number
   detail: string
   verdict: string
   /**
-   * Ce que le lecteur d'écran annonce.
+   * What the screen reader announces.
    *
-   * L'info-bulle est décorative : elle ne fait que mettre en forme cette
-   * phrase-là. Reconstruite depuis les champs quand elle n'est pas fournie.
+   * The tooltip is decorative: all it does is lay this sentence out. Rebuilt from
+   * the fields when it is not supplied.
    */
   summary?: string
 }>()
 
-const tint = computed(() => `niveau-${props.valueLevel ?? props.level}`)
+const tint = computed(() => `level-${props.valueLevel ?? props.level}`)
 
 const spoken = computed(
   () =>
@@ -61,21 +61,21 @@ const spoken = computed(
 
 <template>
   <div
-    class="indicateur relative flex shrink-0 items-center gap-1.5 text-xs text-dim"
+    class="indicator relative flex shrink-0 items-center gap-1.5 text-xs text-dim"
     tabindex="0"
-    :data-niveau="level"
+    :data-level="level"
     :aria-label="spoken"
   >
     <StatusDot :level="level" />
     <!--
-      Le mot à côté de la pastille : « hors ligne », « Poste ».
+      The word beside the dot: "hors ligne", "Poste".
 
-      Le lecteur d'écran lit l'`aria-label` du bloc, qui est focusable : la
-      bulle rediait mot pour mot la même chose, découpée en cinq bribes sans
-      ordre. D'où `aria-hidden` sur elle, et rien ici.
+      The screen reader reads the block's `aria-label`, which is focusable: the
+      tooltip repeated word for word the same thing, cut into five unordered
+      fragments. Hence `aria-hidden` on it, and nothing here.
     -->
     <span><slot /></span>
-    <div class="bulle" aria-hidden="true">
+    <div class="tooltip" aria-hidden="true">
       <div class="text-[10px] font-semibold tracking-[.12em] text-dim uppercase">
         {{ title }}
       </div>
@@ -97,14 +97,14 @@ const spoken = computed(
 
 <style scoped>
 /*
- * Écrite à la main plutôt qu'en utilitaires : elle tient à trois choses
- * qu'aucune classe n'exprime — l'apparition au survol *et* au clavier, la
- * flèche en ::before, et un fond qui doit prolonger le coin du bloc.
+ * Written by hand rather than in utilities: it hangs on three things no class
+ * expresses — appearing on hover *and* on keyboard focus, the arrow in ::before,
+ * and a background that has to continue the block's corner.
  */
-.indicateur {
+.indicator {
   cursor: help;
 }
-.indicateur .bulle {
+.indicator .tooltip {
   position: absolute;
   top: calc(100% + 9px);
   left: -10px;
@@ -123,8 +123,8 @@ const spoken = computed(
     opacity 0.12s ease,
     transform 0.12s ease;
 }
-/* La flèche prolonge le coin : même fond, et les deux bords qu'elle croise. */
-.indicateur .bulle::before {
+/* The arrow continues the corner: same background, and the two edges it crosses. */
+.indicator .tooltip::before {
   content: '';
   position: absolute;
   top: -5px;
@@ -136,32 +136,32 @@ const spoken = computed(
   border-left: 1px solid var(--color-edge);
   border-top: 1px solid var(--color-edge);
 }
-.indicateur:hover .bulle,
-.indicateur:focus-visible .bulle {
+.indicator:hover .tooltip,
+.indicator:focus-visible .tooltip {
   opacity: 1;
   transform: translateY(0);
 }
-.indicateur:focus-visible {
+.indicator:focus-visible {
   outline: none;
 }
 
 /*
- * Un seul vocabulaire de couleurs, du chiffre à la jauge.
+ * A single colour vocabulary, from the figure to the gauge.
  *
- * `:deep()` parce que l'encart de la mémoire arrive par un slot : il porte la
- * portée de l'appelant, pas celle d'ici, et sans cela son pourcentage
- * resterait de la couleur du texte courant.
+ * `:deep()` because the memory panel arrives through a slot: it carries the
+ * caller's scope, not this one's, and without it its percentage would stay the
+ * colour of the surrounding text.
  */
-.indicateur :deep(.niveau-ok) {
+.indicator :deep(.level-ok) {
   color: var(--color-ok);
 }
-.indicateur :deep(.niveau-warn) {
+.indicator :deep(.level-warn) {
   color: var(--color-warn);
 }
-.indicateur :deep(.niveau-alert) {
+.indicator :deep(.level-alert) {
   color: var(--color-alert);
 }
-.indicateur :deep(.niveau-inconnu) {
+.indicator :deep(.level-unknown) {
   color: var(--color-dim);
 }
 </style>

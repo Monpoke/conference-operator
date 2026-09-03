@@ -6,12 +6,12 @@ import Indicator from './Indicator.vue'
 import type { Level } from './levels.js'
 
 /**
- * Le lien avec le hub, dans ses trois états.
+ * The link with the hub, in its three states.
  *
- * Ce que l'info-bulle ajoute à la couleur : **ce qui marche encore**. C'est la
- * seule question de l'opérateur quand la pastille change en pleine journée, et
- * la réponse est contre-intuitive — la salle projette, capte et déroule son
- * programme sans le hub. Le dire évite l'arrêt de séance réflexe.
+ * What the tooltip adds to the colour: **what still works**. It is the operator's
+ * only question when the dot changes mid-day, and the answer is
+ * counter-intuitive — the room projects, records and runs its program without the
+ * hub. Saying so avoids the reflex of stopping the session.
  */
 const STATES: Record<Connectivity, { level: Level; word: string; value: string; label: string; verdict: string }> = {
   ONLINE: {
@@ -25,8 +25,8 @@ const STATES: Record<Connectivity, { level: Level; word: string; value: string; 
     level: 'warn',
     word: 'temps réel interrompu',
     value: 'Différé',
-    // Pas « temps réel interrompu » : le bandeau le dit déjà à trois
-    // centimètres de là. L'étiquette sert à dire ce qu'il advient du reste.
+    // Not "temps réel interrompu": the banner already says so three centimetres
+    // away. The label is there to say what becomes of the rest.
     label: 'remontée en file',
     verdict:
       'Le hub répond encore, mais plus en direct : la salle continue seule et ce qu’elle produit part en file. Rien n’est perdu tant que l’application reste ouverte.',
@@ -43,7 +43,7 @@ const STATES: Record<Connectivity, { level: Level; word: string; value: string; 
 
 const props = defineProps<{
   connectivity: Connectivity | null
-  /** Profondeur de la file de remontée. C'est elle qu'on surveille en coupure. */
+  /** The uplink queue's depth. That is what one watches during an outage. */
   queueDepth: number
   offsetMs: number
   simulatedClock: boolean
@@ -52,8 +52,8 @@ const props = defineProps<{
 const state = computed(() => STATES[props.connectivity ?? 'OFFLINE'] ?? STATES.OFFLINE)
 
 /*
- * L'écart d'horloge se dit ici et nulle part ailleurs : c'est ce qui explique
- * un compte à rebours qui ne colle pas à la montre de l'opérateur.
+ * The clock offset is said here and nowhere else: it is what explains a countdown
+ * that does not match the operator's watch.
  */
 const detail = computed(() => {
   const clock = props.simulatedClock

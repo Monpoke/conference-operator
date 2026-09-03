@@ -3,23 +3,23 @@ import type { ExecutionMode } from '@cloudnord/contract'
 import { computed } from 'vue'
 
 /**
- * Le mode d'exécution, affiché seulement quand il n'est pas celui qu'on croit.
+ * The run mode, shown only when it is not the one being assumed.
  *
- * C'est leur **désaccord** qui compte : une salle de développement branchée sur
- * le hub de l'événement enverrait de vraies commandes depuis un poste qui
- * simule tout. Deux modes de production ne méritent aucun bandeau — ce serait
- * du bruit permanent pour une information nulle.
+ * It is their **disagreement** that counts: a development room plugged into the
+ * event's hub would send real commands from a machine that simulates everything.
+ * Two production modes deserve no banner — that would be permanent noise for no
+ * information at all.
  */
 const props = defineProps<{ mode: { room: ExecutionMode; hub: ExecutionMode | null } | null }>()
 
-const divergent = computed(() => props.mode?.hub != null && props.mode.hub !== props.mode.room)
+const diverging = computed(() => props.mode?.hub != null && props.mode.hub !== props.mode.room)
 
 const shown = computed(
   () => props.mode != null && !(props.mode.room === 'production' && (props.mode.hub ?? 'production') === 'production'),
 )
 
 const text = computed(() => {
-  if (!divergent.value) return 'mode dev'
+  if (!diverging.value) return 'mode dev'
   return props.mode?.room === 'dev' ? 'dev · hub en production' : 'hub en dev'
 })
 </script>
@@ -28,7 +28,7 @@ const text = computed(() => {
   <span v-if="shown" class="shrink-0">
     <span
       class="rounded border px-1.5 py-px text-[10px] font-semibold tracking-[.08em] uppercase"
-      :class="divergent ? 'border-alert/50 text-alert' : 'border-warn/40 text-warn'"
+      :class="diverging ? 'border-alert/50 text-alert' : 'border-warn/40 text-warn'"
     >
       {{ text }}
     </span>

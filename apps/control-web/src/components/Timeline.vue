@@ -5,21 +5,21 @@ import type { Session } from '@cloudnord/program'
 import { nextTick, onMounted, useTemplateRef, watch } from 'vue'
 
 /**
- * Une journée de créneaux, celui en cours surligné.
+ * A day of slots, the current one highlighted.
  *
- * Le surlignage n'est pas décoratif : la timeline fait une journée entière, et
- * sans lui on ouvre la modale sur un mur de titres où retrouver l'heure qu'il
- * est prend plus de temps qu'on n'en a. D'où le défilement automatique.
+ * The highlight is not decorative: the timeline spans a whole day, and without it
+ * one opens the modal onto a wall of titles where finding the current hour takes
+ * longer than one has. Hence the automatic scroll.
  */
 const props = defineProps<{
   sessions: Session[]
   timeZone: string
   /**
-   * Créneau à surligner, ou `null`.
+   * The slot to highlight, or `null`.
    *
-   * La salle passe l'état réel qu'elle pilote — un talk lancé en retard reste
-   * le talk en cours. Une autre salle passe ce que dit le programme à l'heure
-   * du hub : on ne connaît pas son état, mais on connaît son horaire.
+   * The room passes the real state it drives — a talk started late is still the
+   * current talk. Another room passes what the program says at the hub's time: we
+   * do not know its state, but we know its schedule.
    */
   currentId: string | null
   nowMs: number
@@ -27,9 +27,9 @@ const props = defineProps<{
 
 const root = useTemplateRef<HTMLElement>('root')
 
-/** Amène la conférence en cours sous les yeux. */
+/** Brings the current talk into view. */
 function scrollToCurrent(): void {
-  root.value?.querySelector('[data-actuel="true"]')?.scrollIntoView({ block: 'center' })
+  root.value?.querySelector('[data-current="true"]')?.scrollIntoView({ block: 'center' })
 }
 
 onMounted(() => void nextTick(scrollToCurrent))
@@ -39,7 +39,7 @@ function speakers(session: Session): string {
   return (session.speakers ?? []).map((person) => person.name).join(' · ')
 }
 
-/** Passé : atténué. Ce qui est fini n'a plus à concurrencer ce qui vient. */
+/** Past: dimmed. What is finished no longer competes with what is coming. */
 function past(index: number): boolean {
   const end = effectiveEndAt(props.sessions, index)
   return end != null && end < props.nowMs
@@ -61,7 +61,7 @@ function past(index: number): boolean {
             : '',
         session.kind === 'break' ? 'opacity-50' : '',
       ]"
-      :data-actuel="session.id === currentId ? 'true' : undefined"
+      :data-current="session.id === currentId ? 'true' : undefined"
     >
       <div class="text-[13px] text-dim tabular-nums">
         {{ time(session.startsAt, timeZone) }}

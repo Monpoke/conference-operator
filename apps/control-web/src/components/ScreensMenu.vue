@@ -4,10 +4,10 @@ import { Button } from '@cloudnord/components'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 /**
- * Les écrans servis localement.
+ * The locally served screens.
  *
- * Les ouvrir depuis la régie évite de retenir des adresses : le jour J,
- * personne ne tape http://127.0.0.1:7788/display/overlay de mémoire.
+ * Opening them from the control app saves having to remember addresses: on the
+ * day, nobody types http://127.0.0.1:7788/display/overlay from memory.
  */
 const SCREENS = [
   ['/display/projector', 'Projection', "Ce que voit la salle — Browser Source d'OBS-A"],
@@ -26,11 +26,10 @@ const props = defineProps<{ payload: DisplayPayload }>()
 const open = ref(false)
 
 /**
- * Le mur public dépend du hub, pas du serveur local.
+ * The public wall depends on the hub, not on the local server.
  *
- * Ajouté seulement quand la salle en connaît l'adresse : un lien mort dans
- * cette liste enverrait chercher une panne de réseau là où il n'y a qu'un
- * réglage absent.
+ * Added only when the room knows its address: a dead link in this list would send
+ * people looking for a network failure where there is only a missing setting.
  */
 const links = computed(() => {
   const wall = props.payload.wall?.url
@@ -52,15 +51,15 @@ onBeforeUnmount(() => document.removeEventListener('click', closeAnywhere))
 
 <template>
   <div class="relative">
-    <Button size="small" data-role="btn-ecrans" @click.stop="open = !open">Écrans ▾</Button>
+    <Button size="small" data-role="btn-screens" @click.stop="open = !open">Écrans ▾</Button>
     <div
       v-if="open"
       class="absolute top-[calc(100%+6px)] right-0 z-20 min-w-[260px] rounded-[9px] border border-edge bg-surface p-[5px] shadow-[0_10px_30px_rgba(0,0,0,.45)]"
-      data-role="liste-ecrans"
+      data-role="screens-list"
     >
       <!--
-        Nouvel onglet : ouvrir la projection dans la fenêtre de régie
-        remplacerait les commandes par l'écran de salle, en pleine intervention.
+        A new tab: opening the projection in the control window would replace the
+        commands with the room screen, in the middle of an intervention.
       -->
       <a
         v-for="link in links"

@@ -45,7 +45,7 @@ packages/components composants Vue : primitives Reka retravaillées + design sys
 apps/hub-server     Fastify + oRPC + SQLite + Better Auth : programme, salles, commandes, appairage
                     sert /mur (gabarit), la coquille de la console et celle de la régie mobile
 apps/hub-admin      console d'exploitation — Vue 3 + Vite, servie par le hub
-apps/regie-web      écran de régie — Vue 3 + Vite, servi par la salle et, en mobile, par le hub
+apps/control-web      écran de régie — Vue 3 + Vite, servi par la salle et, en mobile, par le hub
 apps/room-client    Electron — écran de salle, pilotage OBS, appairage, cache local
 ```
 
@@ -417,7 +417,7 @@ Le client sert trois surfaces sur son serveur local :
 
 ### La régie est un bundle, pas une page
 
-`/regie` charge un bundle construit depuis `apps/regie-web`. Le poste rend
+`/regie` charge un bundle construit depuis `apps/control-web`. Le poste rend
 toujours la coquille lui-même, avec l'état complet de la salle dedans : un F5
 en régie arrive presque toujours au pire moment — la fenêtre a gelé, et c'est
 en plein talk — et attendre le premier message du flux donnerait une
@@ -427,20 +427,20 @@ En production le bundle voyage dans l'installeur ; depuis les sources il faut
 le construire, sans quoi l'adresse répond 503 en le disant :
 
 ```bash
-pnpm --filter @cloudnord/regie-web build
+pnpm --filter @cloudnord/control-web build
 ```
 
 Pour la développer avec rechargement à chaud, le poste proxifie Vite — jamais
 l'inverse : c'est lui qui porte le flux d'état, les actions et le vumètre.
 
 ```bash
-pnpm --filter @cloudnord/regie-web dev          # dans un terminal
+pnpm --filter @cloudnord/control-web dev          # dans un terminal
 REGIE_VITE_ORIGIN=http://127.0.0.1:5174 pnpm dev:headless   # dans l'autre
 ```
 
 Le hub proxifie **le même** serveur Vite pour la régie mobile — les deux hôtes
 servent la régie sous `/regie/`, donc la même `base` convient aux deux. En
-production il lit `apps/regie-web/dist`, construit par l'image ; sans bundle,
+production il lit `apps/control-web/dist`, construit par l'image ; sans bundle,
 `/regie` répond 503 en le disant, comme le fait un poste de salle.
 
 ```bash
@@ -657,7 +657,7 @@ des exemples, pas des constantes du code.
   HTTP.
 - **Une régie mobile est la même régie, derrière une seconde porte.** Le
   transport est la seule chose qui change entre le poste de salle et le
-  téléphone : `apps/regie-web` ne sait pas d'où vient son état ni où part son
+  téléphone : `apps/control-web` ne sait pas d'où vient son état ni où part son
   geste. Le prix est un périmètre plus étroit à distance — le hub ne connaît ni
   les vumètres, ni les rushes, ni l'état détaillé des deux OBS —, et il est
   payé en ne montant pas les panneaux qui liraient du vide.
@@ -930,7 +930,7 @@ qu'on raccompagne un speaker, vérifier que l'enregistrement tourne depuis le
 couloir. Adresse `/regie` sur le hub, connexion opérateur — la même que la
 console, et sur le même appareil c'est la même session.
 
-**C'est la même application que l'écran de régie**, `apps/regie-web`, servie
+**C'est la même application que l'écran de régie**, `apps/control-web`, servie
 cette fois par le hub. Trois propriétés rendent cette réutilisation possible,
 et il faut les tenir : les panneaux prennent des `props` et non le store, le
 store d'état ne contient qu'un `DisplayPayload` — que la porte distante

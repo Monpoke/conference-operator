@@ -28,7 +28,7 @@ interface Config {
 }
 
 const config = load(readFileSync(join(ROOT, 'electron-builder.yml'), 'utf8')) as Config
-const control = config.extraResources.find((entry) => entry.from.includes('regie-web'))
+const control = config.extraResources.find((entry) => entry.from.includes('control-web'))
 
 let dir: string
 
@@ -39,7 +39,7 @@ afterEach(() => {
 describe('control bundle inside the package', () => {
   it('is indeed declared among the embedded resources', () => {
     expect(control).toBeDefined()
-    expect(control!.from).toBe('../regie-web/dist')
+    expect(control!.from).toBe('../control-web/dist')
   })
 
   it('lands where the folder walk-up looks for it', () => {

@@ -43,7 +43,7 @@ pnpm --filter @cloudnord/hub-admin dev   # puis MODE=dev pnpm dev côté hub
 
 # La régie a besoin d'une salle derrière elle : le poste proxifie Vite, jamais
 # l'inverse — c'est lui qui porte le flux d'état, les actions et le vumètre.
-pnpm --filter @cloudnord/regie-web dev
+pnpm --filter @cloudnord/control-web dev
 REGIE_VITE_ORIGIN=http://127.0.0.1:5174 pnpm --filter @cloudnord/room-client dev:headless
 
 # La régie **mobile** est la même application, servie par le hub sur /regie.
@@ -57,7 +57,7 @@ du vide à distance ne se voit pas en local.
 
 Les jeux de données figés qui alimentaient leurs aperçus n'ont pas été perdus :
 ils vivent dans `apps/hub-admin/test/fixtures/console.ts` et
-`apps/regie-web/test/fixtures.ts`, où ils servent aux tests — et où le
+`apps/control-web/test/fixtures.ts`, où ils servent aux tests — et où le
 compilateur vérifie qu'ils décrivent des états que le hub et la salle peuvent
 réellement produire.
 
@@ -104,7 +104,7 @@ qui fait qu'une salle continue de fonctionner quand le réseau de l'événement
 tombe.
 
 **La console du hub et la régie, elles, sont des applications Vue**
-(`apps/hub-admin`, `apps/regie-web`) : le processus qui les sert rend une
+(`apps/hub-admin`, `apps/control-web`) : le processus qui les sert rend une
 coquille et sert leur bundle. La régie en a **deux** — la machine de salle et le
 hub —, et l'invariant vaut pour les deux coquilles. L'invariant n'est pas abandonné pour autant, il est
 reformulé — parce que ce qu'il protégeait était le réseau, pas la balise :
@@ -202,7 +202,7 @@ initiale ni point final, 72 caractères au plus, type et scope compris. Deux
 
 Les scopes sont fermés, et la liste vit dans `commitlint.config.js` : les douze
 répertoires de `apps/` et `packages/` — `console` pour `hub-admin`, `hub` pour
-`hub-server`, `regie` pour `regie-web` — plus `vod`, `deps`, `dev`, `docker` et
+`hub-server`, `regie` pour `control-web` — plus `vod`, `deps`, `dev`, `docker` et
 `repo`.
 
 Le hook est posé par `prepare`, donc par n'importe quel `pnpm install`. Il ne

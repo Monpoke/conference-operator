@@ -1,0 +1,33 @@
+{
+  "name": "@cloudnord/control-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@cloudnord/components": "workspace:*",
+    "@cloudnord/contract": "workspace:*",
+    "@cloudnord/room-state": "workspace:*",
+    "@cloudnord/format": "workspace:*",
+    "@cloudnord/hub-client": "workspace:*",
+    "@cloudnord/program": "workspace:*",
+    "pinia": "3.0.3",
+    "vue": "3.5.22"
+  },
+  "devDependencies": {
+    "@cloudnord/ui": "workspace:*",
+    "@tailwindcss/vite": "4.3.3",
+    "@vitejs/plugin-vue": "6.0.1",
+    "@vue/test-utils": "2.4.6",
+    "happy-dom": "20.11.6",
+    "typescript": "6.0.3",
+    "vite": "7.1.7",
+    "vitest": "4.1.11",
+    "vue-tsc": "3.3.11"
+  }
+}

@@ -134,7 +134,7 @@ jobs:
       # to exist before electron-builder goes looking for it.
       - shell: bash
         run: |
-          pnpm --filter @cloudnord/regie-web build
+          pnpm --filter @cloudnord/control-web build
           pnpm --filter @cloudnord/room-client build
           pnpm --filter @cloudnord/room-client exec electron-builder \
             --win --publish never \
@@ -175,7 +175,7 @@ jobs:
           name: sourcemaps-${{ steps.version.outputs.number }}
           path: |
             apps/room-client/dist/*.map
-            apps/regie-web/dist/**/*.map
+            apps/control-web/dist/**/*.map
           retention-days: 90
 
   release:

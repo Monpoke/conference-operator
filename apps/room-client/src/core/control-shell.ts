@@ -55,7 +55,7 @@ export function resolveControlBundle(): { directory: string; manifest: string } 
 export function resolveControlBundleFrom(start: string): { directory: string; manifest: string } | null {
   let directory = start
   for (;;) {
-    const candidate = join(directory, 'apps', 'regie-web', 'dist')
+    const candidate = join(directory, 'apps', 'control-web', 'dist')
     const manifest = join(candidate, '.vite', 'manifest.json')
     if (existsSync(manifest)) return { directory: candidate, manifest }
     const parent = dirname(directory)

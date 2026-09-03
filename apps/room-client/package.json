@@ -8,8 +8,8 @@
     "typecheck": "tsc --noEmit",
     "preview": "tsx scripts/preview-display.ts",
     "build": "node scripts/build-main.mjs",
-    "package:win": "pnpm --filter @cloudnord/regie-web build && pnpm build && electron-builder --win --publish never",
-    "package:dir": "pnpm --filter @cloudnord/regie-web build && pnpm build && electron-builder --dir --publish never",
+    "package:win": "pnpm --filter @cloudnord/control-web build && pnpm build && electron-builder --win --publish never",
+    "package:dir": "pnpm --filter @cloudnord/control-web build && pnpm build && electron-builder --dir --publish never",
     "dev": "node scripts/build-main.mjs && electron dist/main.cjs",
     "dev:headless": "tsx scripts/dev-headless.ts"
   },
@@ -36,7 +36,7 @@
   },
   "devDependencies": {
     "@cloudnord/hub-server": "workspace:*",
-    "@cloudnord/regie-web": "workspace:*",
+    "@cloudnord/control-web": "workspace:*",
     "@types/better-sqlite3": "7.6.13",
     "@types/js-yaml": "4.0.9",
     "@types/node": "26.2.0",

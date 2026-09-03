@@ -3,38 +3,37 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /**
- * Le cadre de la page, décrit en règles et non en utilitaires.
+ * The page's frame, described in rules and not in utilities.
  *
- * Le `<body>` est rendu par le poste de salle, pas par ce paquet : ses classes
- * ne sont scannées par personne. Ce qui le tient debout vit donc dans cette
- * feuille, et ces trois règles sont exactement celles qu'on ne verrait manquer
- * qu'à l'écran — reprises des garde-fous des pages qu'elle remplace.
+ * The `<body>` is rendered by the room machine, not by this package: its classes
+ * are scanned by nobody. What holds it up therefore lives in this stylesheet, and
+ * these three rules are exactly the ones whose absence would only be seen on
+ * screen — taken over from the guards of the pages it replaces.
  */
-const FEUILLE = readFileSync(join(import.meta.dirname, '..', 'src', 'style.css'), 'utf8')
+const SHEET = readFileSync(join(import.meta.dirname, '..', 'src', 'style.css'), 'utf8')
 
-describe('feuille de la régie', () => {
-  it('peint son propre fond', () => {
+describe('the control app stylesheet', () => {
+  it('paints its own background', () => {
     /*
-     * Le fond venait d'une règle `body` des anciennes feuilles. La console du
-     * hub s'est retrouvée sur le blanc par défaut du navigateur en la
-     * remplaçant sans reposer de classes ; ici, c'est une fenêtre qu'on ouvre
-     * dans une salle sombre.
+     * The background used to come from a `body` rule in the old sheets. The hub
+     * console ended up on the browser's default white when they were replaced
+     * without laying classes back down; here it is a window opened in a dark room.
      */
-    expect(FEUILLE).toMatch(/body\s*\{[^}]*background:\s*var\(--color-canvas\)/s)
-    expect(FEUILLE).toMatch(/body\s*\{[^}]*color:\s*var\(--color-text\)/s)
+    expect(SHEET).toMatch(/body\s*\{[^}]*background:\s*var\(--color-canvas\)/s)
+    expect(SHEET).toMatch(/body\s*\{[^}]*color:\s*var\(--color-text\)/s)
   })
 
-  it('occupe la hauteur, et ne défile pas d’un bloc', () => {
-    // Une régie qui défile en entier fait sortir les commandes de l'écran au
-    // moment où l'on déroule une liste de rushes.
-    expect(FEUILLE).toMatch(/height:\s*100%/)
-    expect(FEUILLE).toMatch(/overflow:\s*hidden/)
+  it('fills the height, and does not scroll as one block', () => {
+    // A control app that scrolls in its entirety pushes the commands off screen at
+    // the very moment one is scrolling through a list of recordings.
+    expect(SHEET).toMatch(/height:\s*100%/)
+    expect(SHEET).toMatch(/overflow:\s*hidden/)
   })
 
-  it('laisse la racine de editing transparente à la disposition', () => {
-    // `#regie-root` est une boîte que le poste pose ; sans `display: contents`,
-    // l'en-tête et le contenu ne sont plus les enfants directs du `<body>` et
-    // la colonne flex ne s'applique à rien.
-    expect(FEUILLE).toMatch(/#regie-root\s*\{[^}]*display:\s*contents/s)
+  it('leaves the mount root transparent to the layout', () => {
+    // `#regie-root` is a box the machine lays down; without `display: contents`,
+    // the header and the content are no longer the `<body>`'s direct children and
+    // the flex column applies to nothing.
+    expect(SHEET).toMatch(/#regie-root\s*\{[^}]*display:\s*contents/s)
   })
 })

@@ -11,7 +11,7 @@ import Timeline from '../src/components/Timeline.vue'
 import type { Session } from '@cloudnord/program'
 import { stripEntry } from '../src/lib/rooms.js'
 import { useProgramsStore } from '../src/stores/programs.js'
-import { DEBUT_MS, FIN_MS, obsState, payload, talk } from './fixtures.js'
+import { START_MS, END_MS, obsState, payload, talk } from './fixtures.js'
 
 /**
  * Ce qu'on va chercher, et ce qui vient à soi.
@@ -29,13 +29,13 @@ let envois: Envoi[]
 let refuse: boolean
 
 const VOISINE: Session[] = [
-  talk({ id: 'v-1', title: 'Terraform sans peur', startsAtMs: DEBUT_MS, endsAtMs: FIN_MS }),
+  talk({ id: 'v-1', title: 'Terraform sans peur', startsAtMs: START_MS, endsAtMs: END_MS }),
   talk({
     id: 'v-2',
     title: 'Déjeuner',
     kind: 'break',
-    startsAtMs: FIN_MS,
-    endsAtMs: FIN_MS + 3_600_000,
+    startsAtMs: END_MS,
+    endsAtMs: END_MS + 3_600_000,
     startsAt: '2026-10-30T09:45:00.000Z',
   }),
 ]
@@ -84,7 +84,7 @@ describe('ce que dit une case du bandeau', () => {
   const salle = { id: 'track-2', name: 'Track #2', connectivity: 'ONLINE' }
 
   it('annonce la fin quand elle approche, avec le nombre qui décide', () => {
-    const entry = stripEntry(voisine({ conference: 'fin-proche' }), salle, VOISINE, FIN_MS - 180_000)
+    const entry = stripEntry(voisine({ conference: 'fin-proche' }), salle, VOISINE, END_MS - 180_000)
 
     // « L'autre salle finit dans 3 minutes » est la phrase qui fait attendre ou
     // lancer, et elle ne se déduit d'aucun autre écran.
@@ -93,7 +93,7 @@ describe('ce que dit une case du bandeau', () => {
   })
 
   it('donne l’heure de reprise pendant une pause, pas le nom du repas', () => {
-    const entry = stripEntry(voisine({ conference: 'pause' }), salle, VOISINE, FIN_MS + 60_000)
+    const entry = stripEntry(voisine({ conference: 'pause' }), salle, VOISINE, END_MS + 60_000)
 
     /*
      * « Déjeuner » à la place d'un titre de conférence se lisait comme une
@@ -105,7 +105,7 @@ describe('ce que dit une case du bandeau', () => {
 
   it('nomme le talk qui déborde, et le peint en alerte', () => {
     const etat = voisine({ conference: 'depassement', currentSessionId: 'v-1' })
-    const entry = stripEntry(etat, salle, VOISINE, FIN_MS + 600_000)
+    const entry = stripEntry(etat, salle, VOISINE, END_MS + 600_000)
 
     // Le programme est passé au créneau suivant ; la salle, non. C'est elle qui
     // a raison, et c'est ce qui décale toute la journée.
@@ -114,7 +114,7 @@ describe('ce que dit une case du bandeau', () => {
   })
 
   it('avoue un programme inconnu plutôt que d’annoncer un hors-créneau', () => {
-    const entry = stripEntry(voisine(), salle, [], DEBUT_MS)
+    const entry = stripEntry(voisine(), salle, [], START_MS)
 
     // « Hors créneau » se lirait comme une salle sans rien de prévu, alors
     // qu'on ignore tout de la sienne.
@@ -126,7 +126,7 @@ describe('ce que dit une case du bandeau', () => {
       voisine({ connectivity: 'OFFLINE' }),
       { ...salle, connectivity: 'OFFLINE' },
       VOISINE,
-      DEBUT_MS + 60_000,
+      START_MS + 60_000,
     )
 
     // Le remplissage reste celui du programme : on ne sait plus si elle le
@@ -135,7 +135,7 @@ describe('ce que dit une case du bandeau', () => {
   })
 
   it('annonce un break à venir pendant qu’une conférence court encore', () => {
-    const entry = stripEntry(voisine(), salle, VOISINE, FIN_MS - 300_000)
+    const entry = stripEntry(voisine(), salle, VOISINE, END_MS - 300_000)
     expect(entry.breakTag).toEqual({ text: 'BREAK à venir', tint: 'text-warn' })
   })
 })
@@ -143,7 +143,7 @@ describe('ce que dit une case du bandeau', () => {
 describe('bandeau des salles', () => {
   it('disparaît complètement sur un événement d’une seule salle', () => {
     const etat = payload()
-    const wrapper = mount(RoomsStrip, { props: { payload: etat, nowMs: DEBUT_MS } })
+    const wrapper = mount(RoomsStrip, { props: { payload: etat, nowMs: START_MS } })
 
     // Une bande vide occupe une ligne d'un écran de régie qui n'en a pas de
     // trop.
@@ -151,7 +151,7 @@ describe('bandeau des salles', () => {
   })
 
   it('ouvre le programme de la salle qu’on désigne', async () => {
-    const wrapper = mount(RoomsStrip, { props: { payload: voisine(), nowMs: DEBUT_MS } })
+    const wrapper = mount(RoomsStrip, { props: { payload: voisine(), nowMs: START_MS } })
 
     await wrapper.get('[data-room="track-2"]').trigger('click')
 
@@ -166,7 +166,7 @@ describe('timeline', () => {
         sessions: VOISINE,
         timeZone: 'Europe/Paris',
         currentId: 'v-2',
-        nowMs: FIN_MS + 60_000,
+        nowMs: END_MS + 60_000,
       },
     })
 
@@ -179,7 +179,7 @@ describe('timeline', () => {
 
   it('dit qu’il n’y a aucune session plutôt que de rendre un vide', () => {
     const wrapper = mount(Timeline, {
-      props: { sessions: [], timeZone: 'Europe/Paris', currentId: null, nowMs: DEBUT_MS },
+      props: { sessions: [], timeZone: 'Europe/Paris', currentId: null, nowMs: START_MS },
     })
     expect(wrapper.text()).toBe('Aucune session.')
   })
@@ -188,7 +188,7 @@ describe('timeline', () => {
 describe('onglet des salles', () => {
   it('dit « salle muette » plutôt que de reprendre le mot du programme', () => {
     const wrapper = mount(RoomsTab, {
-      props: { payload: voisine({ connectivity: 'OFFLINE' }), nowMs: DEBUT_MS },
+      props: { payload: voisine({ connectivity: 'OFFLINE' }), nowMs: START_MS },
     })
 
     // Reprendre le mot du programme laisserait croire qu'on sait encore ce qui
@@ -199,7 +199,7 @@ describe('onglet des salles', () => {
   it('date la vue au lieu de la vider quand le hub ne répond plus', () => {
     const etat = voisine()
     etat.diagnostics!.roomsRefreshedAt = new Date(Date.now() - 300_000).toISOString()
-    const wrapper = mount(RoomsTab, { props: { payload: etat, nowMs: DEBUT_MS } })
+    const wrapper = mount(RoomsTab, { props: { payload: etat, nowMs: START_MS } })
 
     // Une liste vide se lirait « aucune salle ». Ce qui est affiché n'est plus
     // l'état des salles mais le souvenir qu'on en a.
@@ -207,7 +207,7 @@ describe('onglet des salles', () => {
   })
 
   it('dit qu’aucune salle n’est connue, plutôt que de ne rien montrer', () => {
-    const wrapper = mount(RoomsTab, { props: { payload: payload(), nowMs: DEBUT_MS } })
+    const wrapper = mount(RoomsTab, { props: { payload: payload(), nowMs: START_MS } })
     expect(wrapper.text()).toBe('Aucune salle connue du hub.')
   })
 })
@@ -300,16 +300,16 @@ describe('signalements', () => {
   it('tombe de lui-même au bout de trente secondes', () => {
     // Un bandeau qui ne part pas cesse d'être lu : la régie finissait la
     // journée avec cinq signalements empilés au-dessus des commandes.
-    expect(avecSignalement(DEBUT_MS, DEBUT_MS + 31_000).find('[data-notification="n-1"]').exists()).toBe(
+    expect(avecSignalement(START_MS, START_MS + 31_000).find('[data-notification="n-1"]').exists()).toBe(
       false,
     )
-    expect(avecSignalement(DEBUT_MS, DEBUT_MS + 5_000).find('[data-notification="n-1"]').exists()).toBe(
+    expect(avecSignalement(START_MS, START_MS + 5_000).find('[data-notification="n-1"]').exists()).toBe(
       true,
     )
   })
 
   it('n’affiche rien quand il n’y a rien à signaler', () => {
-    const wrapper = mount(NotificationStack, { props: { payload: payload(), nowMs: DEBUT_MS } })
+    const wrapper = mount(NotificationStack, { props: { payload: payload(), nowMs: START_MS } })
     // Un conteneur vide occuperait sa place dans la pile du bas, en permanence.
     expect(wrapper.find('[data-role="notifications"]').exists()).toBe(false)
   })
@@ -317,10 +317,10 @@ describe('signalements', () => {
   it('peint le fond à la couleur du type, et le texte en sombre', () => {
     const etat = payload()
     etat.state.notifications = [
-      { id: 'n-1', level: 'info', text: 'une info', at: new Date(DEBUT_MS).toISOString() },
-      { id: 'n-2', level: 'warning', text: 'un avertissement', at: new Date(DEBUT_MS).toISOString() },
+      { id: 'n-1', level: 'info', text: 'une info', at: new Date(START_MS).toISOString() },
+      { id: 'n-2', level: 'warning', text: 'un avertissement', at: new Date(START_MS).toISOString() },
     ]
-    const wrapper = mount(NotificationStack, { props: { payload: etat, nowMs: DEBUT_MS + 1000 } })
+    const wrapper = mount(NotificationStack, { props: { payload: etat, nowMs: START_MS + 1000 } })
 
     // Un fond plein, pas une teinte sourde : ces encarts doivent se lire du
     // coin de l'œil, par un opérateur qui regarde la salle.
@@ -331,7 +331,7 @@ describe('signalements', () => {
   })
 
   it('s’écarte d’un clic n’importe où, pas seulement sur la croix', async () => {
-    const wrapper = avecSignalement(DEBUT_MS, DEBUT_MS + 5_000)
+    const wrapper = avecSignalement(START_MS, START_MS + 5_000)
 
     /*
      * Viser une croix de douze pixels dans une salle sombre demande de
@@ -347,14 +347,14 @@ describe('signalements', () => {
   })
 
   it('se met au clavier, comme tout ce qui agit', async () => {
-    const wrapper = avecSignalement(DEBUT_MS, DEBUT_MS + 5_000)
+    const wrapper = avecSignalement(START_MS, START_MS + 5_000)
     // Un `<div>` qui écoute le clic ne s'atteint pas à la tabulation et ne
     // répond pas à Entrée.
     expect(wrapper.get('[data-notification="n-1"]').element.tagName).toBe('BUTTON')
   })
 
   it('n’annonce pas le retrait : l’encart qui disparaît le dit déjà', async () => {
-    const wrapper = avecSignalement(DEBUT_MS, DEBUT_MS + 5_000)
+    const wrapper = avecSignalement(START_MS, START_MS + 5_000)
 
     await wrapper.get('[data-notification="n-1"]').trigger('click')
     await flushPromises()
@@ -369,7 +369,7 @@ describe('signalements', () => {
 
   it('remet le signalement quand le poste refuse de l’oublier', async () => {
     refuse = true
-    const wrapper = avecSignalement(DEBUT_MS, DEBUT_MS + 5_000)
+    const wrapper = avecSignalement(START_MS, START_MS + 5_000)
 
     await wrapper.get('[data-notification="n-1"]').trigger('click')
     await flushPromises()

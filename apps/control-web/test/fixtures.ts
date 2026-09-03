@@ -4,7 +4,7 @@ import type { Session, Speaker } from '@cloudnord/program'
 import { NO_EDITING_MARKS } from '@cloudnord/contract'
 
 /**
- * Une salle plausible, et **typée sans échappatoire**.
+ * A plausible room, and **typed with no escape hatch**.
  *
  * Aucun `as unknown as DisplayPayload` ici, et c'est le point. Le type est
  * partagé depuis `@cloudnord/contract` précisément pour que le poste et la
@@ -16,8 +16,8 @@ import { NO_EDITING_MARKS } from '@cloudnord/contract'
  * l'heure de la salle où ils veulent plutôt que de la dériver de `Date.now()`,
  * ce qui rendrait la moitié d'entre eux dépendants du moment où ils tournent.
  */
-export const DEBUT_MS = Date.parse('2026-10-30T09:00:00.000Z')
-export const FIN_MS = Date.parse('2026-10-30T09:45:00.000Z')
+export const START_MS = Date.parse('2026-10-30T09:00:00.000Z')
+export const END_MS = Date.parse('2026-10-30T09:45:00.000Z')
 
 export function speaker(name: string): Speaker {
   return {
@@ -39,8 +39,8 @@ export function talk(overrides: Partial<Session> = {}): Session {
     abstract: null,
     startsAt: '2026-10-30T09:00:00.000Z',
     endsAt: '2026-10-30T09:45:00.000Z',
-    startsAtMs: DEBUT_MS,
-    endsAtMs: FIN_MS,
+    startsAtMs: START_MS,
+    endsAtMs: END_MS,
     durationMinutes: null,
     roomId: 'track-1',
     kind: 'talk',

@@ -4,24 +4,23 @@ import { effectScope, nextTick, ref } from 'vue'
 import { useKeyboardLayer, useKeyboardStore } from '../src/stores/keyboard.js'
 
 /**
- * Les raccourcis, et ce qu'ils coûtent quand ils partent au mauvais moment.
+ * The shortcuts, and what they cost when they fire at the wrong moment.
  *
- * Deux d'entre eux basculent la projection devant du public, un troisième lance
- * une captation. Ce fichier existe avant la première modale de la régie, et
- * c'est délibéré : la protection de la page d'origine — lire `tagName`, lire
- * six attributs sur le `<body>` — ne survit pas à des modales qui n'écrivent
- * rien sur le `<body>` et dont les listes déroulantes sont des `<button>`.
+ * Two of them switch the projection in front of an audience, a third starts a
+ * take. This file exists ahead of the control app's first modal, and deliberately
+ * so: the original page's protection — reading `tagName`, reading six attributes
+ * on the `<body>` — does not survive modals that write nothing on the `<body>` and
+ * whose dropdowns are `<button>` elements.
  */
 
 /**
- * Une frappe réduite à ce que les règles lisent.
+ * A keystroke reduced to what the rules read.
  *
- * `Record<string, unknown>` plutôt que `Partial<KeyboardEvent>` : une cible
- * n'est ici qu'un `tagName` et un drapeau, et prétendre lui donner la surface
- * d'un `EventTarget` demanderait de fabriquer un élément par cas pour ne rien
- * vérifier de plus.
+ * `Record<string, unknown>` rather than `Partial<KeyboardEvent>`: a target here is
+ * only a `tagName` and a flag, and pretending to give it an `EventTarget`'s
+ * surface would mean building an element per case to check nothing more.
  */
-function frappe(key: string, extras: Record<string, unknown> = {}): KeyboardEvent {
+function press(key: string, extras: Record<string, unknown> = {}): KeyboardEvent {
   return {
     key,
     ctrlKey: false,
@@ -38,203 +37,202 @@ beforeEach(() => {
   setActivePinia(createPinia())
 })
 
-describe('ce qui appartient au navigateur', () => {
-  it('laisse passer Ctrl, Cmd et Alt sans rien déclencher', () => {
-    const clavier = useKeyboardStore()
-    const partis: string[] = []
-    clavier.push(() => ({ r: () => partis.push('rec') }))
+describe('what belongs to the browser', () => {
+  it('lets Ctrl, Cmd and Alt through without firing anything', () => {
+    const keyboard = useKeyboardStore()
+    const fired: string[] = []
+    keyboard.push(() => ({ r: () => fired.push('rec') }))
 
-    for (const modificateur of ['ctrlKey', 'metaKey', 'altKey']) {
-      clavier.handle(frappe('r', { [modificateur]: true }))
+    for (const modifier of ['ctrlKey', 'metaKey', 'altKey']) {
+      keyboard.handle(press('r', { [modifier]: true }))
     }
 
     /*
-     * Ctrl+R recharge la page — et lançait la captation au passage, puisque
-     * seule la lettre était lue. Une régie retrouvée en train d'enregistrer
-     * sans que personne ne l'ait demandé, et rien à l'écran pour dire d'où ça
-     * venait.
+     * Ctrl+R reloads the page — and used to start the take along the way, since
+     * only the letter was read. A control app found recording with nobody having
+     * asked for it, and nothing on screen to say where it came from.
      */
-    expect(partis).toEqual([])
+    expect(fired).toEqual([])
   })
 
-  it('laisse Maj passant, parce que ce n’est pas un raccourci du navigateur', () => {
-    const clavier = useKeyboardStore()
-    const partis: string[] = []
-    clavier.push(() => ({ r: () => partis.push('rec') }))
+  it('lets Shift through, because it is not a browser shortcut', () => {
+    const keyboard = useKeyboardStore()
+    const fired: string[] = []
+    keyboard.push(() => ({ r: () => fired.push('rec') }))
 
-    // « Maj+R » n'a pas de sens pour le navigateur, et c'est la même intention
-    // que « r » pour qui tape vite.
-    clavier.handle(frappe('R', { shiftKey: true }))
+    // "Shift+R" means nothing to the browser, and it is the same intent as "r"
+    // for somebody typing fast.
+    keyboard.handle(press('R', { shiftKey: true }))
 
-    expect(partis).toEqual(['rec'])
-  })
-})
-
-describe('ce qui appartient à un champ', () => {
-  it.each(['INPUT', 'SELECT', 'TEXTAREA'])('ne vole pas la frappe d’un %s', (balise) => {
-    const clavier = useKeyboardStore()
-    const partis: string[] = []
-    clavier.push(() => ({ l: () => partis.push('live') }))
-
-    // Les listes déroulantes comptent autant que les champs texte : un « l »
-    // dans un choix de scène ne doit pas basculer la projection en direct.
-    clavier.handle(frappe('l', { target: { tagName: balise } }))
-
-    expect(partis).toEqual([])
-  })
-
-  it('ne vole pas la frappe d’un contenu éditable', () => {
-    const clavier = useKeyboardStore()
-    const partis: string[] = []
-    clavier.push(() => ({ l: () => partis.push('live') }))
-
-    clavier.handle(frappe('l', { target: { tagName: 'DIV', isContentEditable: true } }))
-
-    expect(partis).toEqual([])
+    expect(fired).toEqual(['rec'])
   })
 })
 
-describe('empilement', () => {
-  it('ne sert que la couche du dessus', () => {
-    const clavier = useKeyboardStore()
-    const partis: string[] = []
-    clavier.push(() => ({ l: () => partis.push('live') }))
-    clavier.push(() => ({ y: () => partis.push('oui') }))
+describe('what belongs to a field', () => {
+  it.each(['INPUT', 'SELECT', 'TEXTAREA'])('does not steal a %s\'s keystroke', (tag) => {
+    const keyboard = useKeyboardStore()
+    const fired: string[] = []
+    keyboard.push(() => ({ l: () => fired.push('live') }))
 
-    clavier.handle(frappe('y'))
+    // Dropdowns count as much as text fields: an "l" in a scene picker must not
+    // switch the projection live.
+    keyboard.handle(press('l', { target: { tagName: tag } }))
 
-    expect(partis).toEqual(['oui'])
+    expect(fired).toEqual([])
   })
 
-  it('avale ce qu’elle n’a pas lié, au lieu de le laisser tomber en dessous', () => {
-    const clavier = useKeyboardStore()
-    const partis: string[] = []
-    clavier.push(() => ({ r: () => partis.push('rec') }))
-    clavier.push(() => ({ y: () => partis.push('oui') }))
+  it('does not steal an editable content\'s keystroke', () => {
+    const keyboard = useKeyboardStore()
+    const fired: string[] = []
+    keyboard.push(() => ({ l: () => fired.push('live') }))
 
-    clavier.handle(frappe('r'))
+    keyboard.handle(press('l', { target: { tagName: 'DIV', isContentEditable: true } }))
+
+    expect(fired).toEqual([])
+  })
+})
+
+describe('stacking', () => {
+  it('serves only the top layer', () => {
+    const keyboard = useKeyboardStore()
+    const fired: string[] = []
+    keyboard.push(() => ({ l: () => fired.push('live') }))
+    keyboard.push(() => ({ y: () => fired.push('yes') }))
+
+    keyboard.handle(press('y'))
+
+    expect(fired).toEqual(['yes'])
+  })
+
+  it('swallows what it has not bound, instead of letting it fall through', () => {
+    const keyboard = useKeyboardStore()
+    const fired: string[] = []
+    keyboard.push(() => ({ r: () => fired.push('rec') }))
+    keyboard.push(() => ({ y: () => fired.push('yes') }))
+
+    keyboard.handle(press('r'))
 
     /*
-     * Une question ouverte prend le clavier entier. Un « r » réflexe pendant
-     * qu'on demande s'il faut enregistrer basculerait la captation sous la
-     * question elle-même — c'est le geste qu'on ne peut pas défaire.
+     * An open question takes the whole keyboard. A reflex "r" while being asked
+     * whether to record would switch the take underneath the question itself — and
+     * that is the gesture one cannot undo.
      */
-    expect(partis).toEqual([])
+    expect(fired).toEqual([])
   })
 
-  it('rend le clavier à la couche du dessous quand celle du dessus s’en va', () => {
-    const clavier = useKeyboardStore()
-    const partis: string[] = []
-    clavier.push(() => ({ r: () => partis.push('rec') }))
-    const question = clavier.push(() => ({ y: () => partis.push('oui') }))
+  it('gives the keyboard back to the layer below when the top one leaves', () => {
+    const keyboard = useKeyboardStore()
+    const fired: string[] = []
+    keyboard.push(() => ({ r: () => fired.push('rec') }))
+    const question = keyboard.push(() => ({ y: () => fired.push('yes') }))
 
-    clavier.pop(question)
-    clavier.handle(frappe('r'))
+    keyboard.pop(question)
+    keyboard.handle(press('r'))
 
-    expect(partis).toEqual(['rec'])
+    expect(fired).toEqual(['rec'])
   })
 
-  it('dépile la bonne couche, même fermée dans le désordre', () => {
-    const clavier = useKeyboardStore()
-    const partis: string[] = []
-    const dessous = clavier.push(() => ({ r: () => partis.push('rec') }))
-    clavier.push(() => ({ y: () => partis.push('oui') }))
+  it('pops the right layer, even when they close out of order', () => {
+    const keyboard = useKeyboardStore()
+    const fired: string[] = []
+    const lower = keyboard.push(() => ({ r: () => fired.push('rec') }))
+    keyboard.push(() => ({ y: () => fired.push('yes') }))
 
-    // Deux modales empilées, et c'est celle du dessous qui se ferme la
-    // première : la régie superpose la liste des rushes au programme.
-    clavier.pop(dessous)
-    clavier.handle(frappe('y'))
+    // Two stacked modals, and it is the lower one that closes first: the control
+    // app layers the recordings list over the program.
+    keyboard.pop(lower)
+    keyboard.handle(press('y'))
 
-    expect(partis).toEqual(['oui'])
-    expect(clavier.depth()).toBe(1)
+    expect(fired).toEqual(['yes'])
+    expect(keyboard.depth()).toBe(1)
   })
 
-  it('ne fait rien quand plus personne n’écoute', () => {
-    const clavier = useKeyboardStore()
-    const id = clavier.push(() => ({ r: () => {} }))
-    clavier.pop(id)
+  it('does nothing when nobody is listening any more', () => {
+    const keyboard = useKeyboardStore()
+    const id = keyboard.push(() => ({ r: () => {} }))
+    keyboard.pop(id)
 
-    expect(() => clavier.handle(frappe('r'))).not.toThrow()
-    expect(clavier.depth()).toBe(0)
-  })
-})
-
-describe('branchement réel', () => {
-  it('écoute le document tant qu’une couche est posée, et pas après', () => {
-    const clavier = useKeyboardStore()
-    const partis: string[] = []
-    const id = clavier.push(() => ({ l: () => partis.push('live') }))
-
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', bubbles: true }))
-    expect(partis).toEqual(['live'])
-
-    clavier.pop(id)
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', bubbles: true }))
-
-    // Un écouteur laissé sur le document après la dernière couche est un
-    // raccourci qui part depuis une page où plus rien ne l'attend.
-    expect(partis).toEqual(['live'])
+    expect(() => keyboard.handle(press('r'))).not.toThrow()
+    expect(keyboard.depth()).toBe(0)
   })
 })
 
-describe('couche liée à un composant', () => {
-  it('se pose et se retire avec la portée qui la tient', () => {
-    const clavier = useKeyboardStore()
-    const partis: string[] = []
+describe('real wiring', () => {
+  it('listens to the document while a layer is laid down, and not after', () => {
+    const keyboard = useKeyboardStore()
+    const fired: string[] = []
+    const id = keyboard.push(() => ({ l: () => fired.push('live') }))
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', bubbles: true }))
+    expect(fired).toEqual(['live'])
+
+    keyboard.pop(id)
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', bubbles: true }))
+
+    // A listener left on the document after the last layer is a shortcut firing
+    // from a page where nothing is expecting it any more.
+    expect(fired).toEqual(['live'])
+  })
+})
+
+describe('layer tied to a component', () => {
+  it('is laid down and removed with the scope that holds it', () => {
+    const keyboard = useKeyboardStore()
+    const fired: string[] = []
     const scope = effectScope()
 
     scope.run(() => {
-      useKeyboardLayer({ l: () => partis.push('live') })
+      useKeyboardLayer({ l: () => fired.push('live') })
     })
-    expect(clavier.depth()).toBe(1)
+    expect(keyboard.depth()).toBe(1)
 
     scope.stop()
 
-    // Une couche qui survit à sa modale est le pire des deux mondes : elle
-    // avale les raccourcis d'une page qui n'a plus rien d'ouvert.
-    expect(clavier.depth()).toBe(0)
+    // A layer that outlives its modal is the worst of both worlds: it swallows the
+    // shortcuts of a page that has nothing open any more.
+    expect(keyboard.depth()).toBe(0)
   })
 
-  it('attend l’ouverture, plutôt que le editing', async () => {
-    const clavier = useKeyboardStore()
-    const ouverte = ref(false)
+  it('waits for the opening, rather than the mount', async () => {
+    const keyboard = useKeyboardStore()
+    const open = ref(false)
     const scope = effectScope()
 
     scope.run(() => {
-      useKeyboardLayer({ y: () => {} }, ouverte)
+      useKeyboardLayer({ y: () => {} }, open)
     })
 
-    // Reka rend souvent le contenu avant de l'ouvrir : une couche posée dès le
-    // editing volerait les touches à la page derrière.
-    expect(clavier.depth()).toBe(0)
+    // Reka often renders the content before opening it: a layer laid down at mount
+    // time would steal the keys from the page behind.
+    expect(keyboard.depth()).toBe(0)
 
-    ouverte.value = true
+    open.value = true
     await nextTick()
-    expect(clavier.depth()).toBe(1)
+    expect(keyboard.depth()).toBe(1)
 
-    ouverte.value = false
+    open.value = false
     await nextTick()
-    expect(clavier.depth()).toBe(0)
+    expect(keyboard.depth()).toBe(0)
     scope.stop()
   })
 
-  it('relit ses liaisons à chaque frappe, pas une fois pour toutes', () => {
-    const clavier = useKeyboardStore()
-    const partis: string[] = []
-    const cible = ref('live')
+  it('reads its bindings back on every keystroke, not once and for all', () => {
+    const keyboard = useKeyboardStore()
+    const fired: string[] = []
+    const target = ref('live')
     const scope = effectScope()
 
     scope.run(() => {
-      useKeyboardLayer(() => ({ l: () => partis.push(cible.value) }))
+      useKeyboardLayer(() => ({ l: () => fired.push(target.value) }))
     })
 
-    clavier.handle(frappe('l'))
-    cible.value = 'hold'
-    clavier.handle(frappe('l'))
+    keyboard.handle(press('l'))
+    target.value = 'hold'
+    keyboard.handle(press('l'))
 
-    // La conférence pilotée change en cours de journée : une liaison figée à
-    // l'ouverture agirait sur celle d'avant.
-    expect(partis).toEqual(['live', 'hold'])
+    // The talk being driven changes during the day: a binding frozen at opening
+    // time would act on the previous one.
+    expect(fired).toEqual(['live', 'hold'])
     scope.stop()
   })
 })

@@ -205,8 +205,8 @@ useKeyboardLayer(
      * libellé pour taper « Début » ferait rater l'instant qu'on voulait
      * marquer — et c'est l'instant, ici, qui est toute l'information.
      */
-    d: () => capture.value?.repere('debut'),
-    f: () => capture.value?.repere('fin'),
+    d: () => capture.value?.anchor('debut'),
+    f: () => capture.value?.anchor('fin'),
     s: () => consult.show('rooms'),
     p: () => consult.show('program'),
   }),
@@ -253,7 +253,7 @@ useKeyboardLayer(
           :payload="payload"
           :now-ms="room.now"
           :stream-dead="room.dead"
-          :distant="true"
+          :remote="true"
         />
 
         <main class="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto p-2.5">
@@ -264,7 +264,7 @@ useKeyboardLayer(
             téléphone et la machine de salle. Amputé de deux modes — voir le
             panneau.
           -->
-          <ScreenPanel :mode="payload.state.mode" :distant="true" />
+          <ScreenPanel :mode="payload.state.mode" :remote="true" />
           <ProjectionPanel
             :scene-role="payload.state.sceneRole"
             :relay-source-room-id="payload.diagnostics?.relaySourceRoomId ?? null"
@@ -277,7 +277,7 @@ useKeyboardLayer(
             :obs="null"
             :real-ms="clock.real"
             :room-ms="room.now"
-            :distant="true"
+            :remote="true"
           />
         </main>
       </template>

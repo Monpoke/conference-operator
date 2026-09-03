@@ -5,17 +5,17 @@ import { ref } from 'vue'
 import { useSessionStore } from '../stores/session.js'
 
 /**
- * La porte d'entrée de la régie mobile.
+ * The mobile control app's front door.
  *
- * Sa propre version plutôt que celle de la console, et c'est la disposition qui
- * les sépare : celle-ci s'ouvre sur un téléphone tenu d'une main, souvent au
- * fond d'une salle sombre. Ce qu'elles demandent au hub, en revanche, est
- * exactement la même chose — et vit dans `@cloudnord/hub-client`.
+ * Its own version rather than the console's, and it is the layout that separates
+ * them: this one opens on a phone held in one hand, often at the back of a dark
+ * room. What they ask the hub, on the other hand, is exactly the same thing — and
+ * lives in `@cloudnord/hub-client`.
  *
- * Le formulaire reste **au-dessus** du bouton Google, comme sur la console.
- * Google exige internet au moment où l'on se connecte, et tout ce système est
- * bâti pour survivre à sa disparition : une régie qui ne s'ouvre que par Google
- * enferme l'équipe dehors le matin précis où le réseau tombe.
+ * The form stays **above** the Google button, as on the console. Google requires
+ * the internet at the moment one signs in, and this whole system is built to
+ * survive its disappearance: a control app that only opens through Google locks
+ * the team out on the very morning the network goes down.
  */
 const session = useSessionStore()
 const { signingIn, error, google } = storeToRefs(session)
@@ -33,9 +33,9 @@ function submit(): void {
     <Panel title="Régie mobile">
       <form @submit.prevent="submit">
         <!--
-          `autocomplete` et `inputmode` : sur un téléphone, ce sont eux qui
-          décident si l'on tape une adresse d'une main au fond d'une salle
-          sombre, ou si le trousseau la remplit.
+          `autocomplete` and `inputmode`: on a phone they are what decides whether
+          an address is typed one-handed at the back of a dark room, or filled in
+          by the keychain.
         -->
         <Field
           id="email"

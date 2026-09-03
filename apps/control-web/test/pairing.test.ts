@@ -225,7 +225,7 @@ describe('entre deux codes', () => {
     // La salle desservie reste nommée, et l'attente est annoncée : sans quoi
     // l'écran ressemble à un appairage cassé alors qu'il se répare seul.
     expect(wrapper.text()).toContain('Track #1')
-    expect(wrapper.get('[data-role="pairing-attente"]').text()).toContain('nouveau code')
+    expect(wrapper.get('[data-role="pairing-waiting"]').text()).toContain('nouveau code')
   })
 
   it('demande la salle tant qu’aucune n’a été choisie', () => {

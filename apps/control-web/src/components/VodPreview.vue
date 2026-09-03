@@ -5,13 +5,12 @@ import { computed, ref } from 'vue'
 import { EXTRACT_MS, useVodStore } from '../stores/vod.js'
 
 /**
- * Aperçu d'un rush, déplié sous sa ligne.
+ * A preview of one file, unfolded under its row.
  *
- * Les rushes d'OBS sont des Matroska, qu'aucun navigateur ne sait ouvrir, et
- * ils pèsent plusieurs gigaoctets : le lecteur reçoit un extrait de vingt
- * secondes remballé en MP4 par ffmpeg, produit à la demande et jamais écrit sur
- * le disque. Les points de départ sautent aux endroits où une prise se casse
- * d'habitude — le tout début, et la fin.
+ * OBS's recordings are Matroska files, which no browser can open, and they weigh
+ * several gigabytes: the player receives a twenty-second excerpt repackaged into
+ * MP4 by ffmpeg, produced on demand and never written to disk. The starting points
+ * jump to the places a take usually breaks — the very beginning, and the end.
  */
 const props = defineProps<{ entry: VodEntry }>()
 
@@ -41,13 +40,13 @@ const points = computed(() => {
 const ffmpeg = computed(() => vod.listing?.tools?.ffmpeg === true)
 
 /*
- * Sans ffmpeg, on sert le fichier tel quel : le navigateur lira un MP4 et
- * butera sur un Matroska. Le dire d'avance vaut mieux qu'un lecteur noir.
+ * Without ffmpeg we serve the file as is: the browser will read an MP4 and choke
+ * on a Matroska. Saying so up front beats a black player.
  */
 const source = computed(() =>
   ffmpeg.value
-    ? `/control/recordings/extrait?file=${encoded.value}&at=${at.value}&duree=${EXTRACT_MS}`
-    : `/control/recordings/fichier?file=${encoded.value}`,
+    ? `/control/recordings/excerpt?file=${encoded.value}&at=${at.value}&duration=${EXTRACT_MS}`
+    : `/control/recordings/file?file=${encoded.value}`,
 )
 
 const notice = computed(() => {
@@ -84,14 +83,14 @@ function seek(position: number): void {
         class="ml-auto rounded-lg border border-edge bg-surface2 px-2 py-1 text-[11px] font-semibold text-text no-underline"
         target="_blank"
         rel="noreferrer"
-        :href="`/control/recordings/fichier?file=${encoded}`"
+        :href="`/control/recordings/file?file=${encoded}`"
       >
         Fichier brut
       </a>
     </div>
     <!--
-      Le clic sur 👁 vaut geste utilisateur : la lecture peut partir seule.
-      Refusée — politique du navigateur —, les commandes restent là.
+      The click on 👁 counts as a user gesture: playback may start on its own.
+      Refused — browser policy — the controls are still there.
     -->
     <video
       :key="source"
@@ -105,7 +104,7 @@ function seek(position: number): void {
     <div
       class="mt-1 text-[11px]"
       :class="broken ? 'text-alert' : 'text-dim'"
-      data-role="vod-avis"
+      data-role="vod-notice"
     >
       {{ notice }}
     </div>

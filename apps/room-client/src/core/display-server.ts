@@ -539,8 +539,8 @@ export class DisplayServer {
      * the list — "is there a picture and some sound?" — without writing anything to
      * disk or waiting for a download.
      */
-    this.app.get<{ Querystring: { file?: string; at?: string; duree?: string } }>(
-      '/control/recordings/extrait',
+    this.app.get<{ Querystring: { file?: string; at?: string; duration?: string } }>(
+      '/control/recordings/excerpt',
       async (request, reply) => {
         if (this.options.control == null) {
           return reply.status(503).send({ ok: false, message: 'Régie indisponible' })
@@ -555,7 +555,7 @@ export class DisplayServer {
           excerpt = await this.options.control.readRecordingExtract(
             file,
             Number(request.query.at ?? 0) || 0,
-            Number(request.query.duree ?? 20_000) || 20_000,
+            Number(request.query.duration ?? 20_000) || 20_000,
           )
         } catch (cause) {
           return reply.status(409).send({ ok: false, message: (cause as Error).message })
@@ -583,7 +583,7 @@ export class DisplayServer {
      * another machine — which a twenty-second preview will never replace.
      */
     this.app.get<{ Querystring: { file?: string } }>(
-      '/control/recordings/fichier',
+      '/control/recordings/file',
       async (request, reply) => {
         if (this.options.control == null) {
           return reply.status(503).send({ ok: false, message: 'Régie indisponible' })

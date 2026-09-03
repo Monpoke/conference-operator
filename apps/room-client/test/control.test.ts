@@ -495,7 +495,7 @@ describe('checking the recordings', () => {
     await act({ action: 'recording.start' })
     await act({ action: 'recording.stop' })
     const rush = (await lister()).entries[0]!
-    const adresse = `${regie}/control/recordings/fichier?file=` + encodeURIComponent(rush.file)
+    const adresse = `${regie}/control/recordings/file?file=` + encodeURIComponent(rush.file)
 
     const entier = await fetch(adresse)
     expect(entier.status).toBe(200)
@@ -514,15 +514,15 @@ describe('checking the recordings', () => {
   it('does not let just anything on the disk be read', async () => {
     // The control app is served over HTTP on the machine: these two routes return
     // bytes, and they are exactly where a `..` would cost dearly.
-    const lecture = await fetch(`${regie}/control/recordings/fichier?file=../../etc/passwd`)
+    const lecture = await fetch(`${regie}/control/recordings/file?file=../../etc/passwd`)
     expect(lecture.status).toBe(409)
 
-    const apercu = await fetch(`${regie}/control/recordings/extrait?file=../../etc/passwd`)
+    const apercu = await fetch(`${regie}/control/recordings/excerpt?file=../../etc/passwd`)
     expect(apercu.status).toBe(409)
   }, 40_000)
 
   it('returns 404 on footage that no longer exists', async () => {
-    const reponse = await fetch(`${regie}/control/recordings/fichier?file=jamais.mkv`)
+    const reponse = await fetch(`${regie}/control/recordings/file?file=jamais.mkv`)
     expect(reponse.status).toBe(404)
   }, 40_000)
 

@@ -5,25 +5,24 @@ import { computed } from 'vue'
 import { useActionsStore } from '../stores/actions.js'
 
 /**
- * Un état, et surtout pas une modale.
+ * A state, and certainly not a modal.
  *
- * Rien de ce qu'il recouvre n'est utilisable : une machine non appairée n'a ni
- * salle, ni programme, ni OBS à piloter. Une modale se ferme — sur Échap, sur
- * un clic à côté — et laisserait une régie complète à l'écran, dont chaque
- * bouton échouerait sans dire pourquoi. Le voile occupe l'écran tant que la
- * condition dure, et disparaît quand elle cesse. Il n'a pas de bouton fermer
- * parce qu'il n'y a rien derrière.
+ * Nothing it covers is usable: an unpaired machine has no room, no program and no
+ * OBS to drive. A modal closes — on Escape, on a click beside it — and would leave
+ * a complete control app on screen, every button of which would fail without
+ * saying why. The veil takes the screen for as long as the condition lasts, and
+ * disappears when it ends. It has no close button because there is nothing behind
+ * it.
  *
- * Il ne pose pas de couche clavier non plus : c'est la page qui retire la
- * sienne tant qu'il est là. Les raccourcis agissent sur une conférence et un
- * OBS que cette machine ne connaît pas encore.
+ * It lays down no keyboard layer either: it is the page that removes its own while
+ * the veil is there. The shortcuts act on a talk and an OBS this machine does not
+ * know yet.
  */
 const TITLES: Record<string, string> = {
   idle: 'Appairage de la salle',
   waiting: 'Appairage de la salle',
-  // Un jeton refusé n'est pas un premier démarrage : le dire évite de croire à
-  // une machine neuve alors qu'elle a été révoquée, ou que la base du hub a été
-  // recréée.
+  // A refused token is not a first start-up: saying so avoids believing in a new
+  // machine when it has in fact been revoked, or the hub's database recreated.
   expired: 'Cette machine doit être réappairée',
   failed: 'Appairage impossible',
 }
@@ -39,30 +38,28 @@ const requested = computed(
 )
 
 /**
- * On choisit une salle tant qu'aucune n'est choisie — et pas tant qu'aucun code
- * n'est affiché.
+ * A room is being chosen while none is chosen — and not while no code is shown.
  *
- * La nuance a coûté cher. Un code vit deux minutes ; appairer une salle puis
- * une seconde suffit à laisser mourir le premier, et la boucle de supervision
- * en redemande un sous quinze secondes. Pendant ce trou il n'y a pas de code,
- * et l'écran repartait demander quelle salle dessert le poste — une question
- * déjà tranchée, dont la réponse voyage toujours dans `requestedRoomId`. On
- * recliquait sur la salle, ce qui relançait l'appairage et donnait
- * l'impression que c'était le clic qui avait réparé.
+ * The distinction cost dearly. A code lives two minutes; pairing one room and then
+ * a second is enough to let the first die, and the supervision loop asks for
+ * another within fifteen seconds. During that gap there is no code, and the screen
+ * went back to asking which room this machine serves — a question already settled,
+ * whose answer still travels in `requestedRoomId`. One clicked the room again,
+ * which restarted the pairing and gave the impression the click had fixed it.
  */
 const choosing = computed(() => props.pairing?.requestedRoomId == null)
 
 /**
- * Salle choisie, pas encore de code : un nouveau arrive.
+ * Room chosen, no code yet: a new one is coming.
  *
- * Le seul état que l'écran ne nommait pas. Sans lui, un appairage qui se répare
- * tout seul ressemble à un appairage cassé.
+ * The only state the screen did not name. Without it, a pairing that repairs
+ * itself looks like a broken pairing.
  */
-const attente = computed(() => !choosing.value && props.pairing?.userCode == null)
+const waiting = computed(() => !choosing.value && props.pairing?.userCode == null)
 
 const title = computed(() => {
   if (choosing.value) return 'Quelle salle dessert ce poste ?'
-  if (attente.value) return 'Nouveau code en préparation'
+  if (waiting.value) return 'Nouveau code en préparation'
   return TITLES[props.pairing?.status ?? ''] ?? 'Appairage de la salle'
 })
 </script>
@@ -81,8 +78,8 @@ const title = computed(() => {
 
       <div v-if="choosing" class="mb-2 flex flex-col gap-3">
         <!--
-          Hub injoignable : le dire plutôt que d'afficher une liste vide, qui se
-          lirait comme un événement sans salles.
+          Hub unreachable: say so rather than show an empty list, which would read
+          as an event with no rooms.
         -->
         <p v-if="rooms.length === 0" class="py-3.5 text-sm text-dim">
           Hub injoignable — la liste des salles apparaîtra dès qu'il répondra.
@@ -104,16 +101,16 @@ const title = computed(() => {
         </p>
 
         <!--
-          Le trou entre deux codes, nommé.
+          The gap between two codes, named.
 
-          La boucle de supervision en redemande un toutes les quinze secondes :
-          il n'y a rien à faire, et surtout rien à recliquer. Le dire évite de
-          reprendre un geste qui n'a jamais manqué.
+          The supervision loop asks for another every fifteen seconds: there is
+          nothing to do, and above all nothing to click again. Saying so avoids
+          repeating a gesture that never failed.
         -->
         <p
-          v-if="attente"
+          v-if="waiting"
           class="mb-5 rounded-xl border border-edge bg-canvas px-[26px] py-5 text-[15px] leading-relaxed text-dim"
-          data-role="pairing-attente"
+          data-role="pairing-waiting"
         >
           Le code précédent n’est plus valable. Un nouveau code apparaîtra ici
           dans quelques secondes — rien à faire.
@@ -126,7 +123,7 @@ const title = computed(() => {
         >
           {{ pairing?.userCode ?? '········' }}
         </div>
-        <p v-if="!attente" class="text-sm leading-relaxed text-dim">
+        <p v-if="!waiting" class="text-sm leading-relaxed text-dim">
           Saisissez ce code dans la console du hub, onglet « Machines en attente », puis
           choisissez la salle desservie par ce poste.<br />
           <a

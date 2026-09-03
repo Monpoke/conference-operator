@@ -244,10 +244,10 @@ describe('le voile de verrou', () => {
     inTheRoom(lockOf('nuit@cloudnord.fr'))
     const wrapper = mount(App)
 
-    const veil = wrapper.get('[data-role="verrou-veil"]')
+    const veil = wrapper.get('[data-role="lock-veil"]')
     expect(veil.text()).toContain('pilotée par quelqu’un d’autre')
     expect(veil.text()).toContain('nuit@cloudnord.fr')
-    expect(wrapper.get('[data-role="verrou-reprendre"]').text()).toBe('Reprendre le contrôle')
+    expect(wrapper.get('[data-role="lock-take"]').text()).toBe('Reprendre le contrôle')
   })
 
   it('nomme l’autre onglet plutôt que de s’accuser soi-même', () => {
@@ -259,9 +259,9 @@ describe('le voile de verrou', () => {
     inTheRoom(lockOf('regie@cloudnord.fr', OTHER_TAB))
     const wrapper = mount(App)
 
-    const veil = wrapper.get('[data-role="verrou-veil"]')
+    const veil = wrapper.get('[data-role="lock-veil"]')
     expect(veil.text()).toContain('Vous pilotez déjà cette salle ailleurs')
-    expect(veil.get('[data-role="verrou-veil-detail"]').text()).toContain('votre compte')
+    expect(veil.get('[data-role="lock-veil-detail"]').text()).toContain('votre compte')
   })
 
   it('se lève aussi quand plus personne ne la tient', () => {
@@ -271,15 +271,15 @@ describe('le voile de verrou', () => {
     inTheRoom(null)
     const wrapper = mount(App)
 
-    expect(wrapper.get('[data-role="verrou-veil"]').text()).toContain('n’est pas prise')
-    expect(wrapper.get('[data-role="verrou-reprendre"]').text()).toBe('Prendre le contrôle')
+    expect(wrapper.get('[data-role="lock-veil"]').text()).toContain('n’est pas prise')
+    expect(wrapper.get('[data-role="lock-take"]').text()).toBe('Prendre le contrôle')
   })
 
   it('disparaît dès que cet onglet tient la salle', () => {
     inTheRoom(lockOf('regie@cloudnord.fr', MOI))
     const wrapper = mount(App)
 
-    expect(wrapper.find('[data-role="verrou-veil"]').exists()).toBe(false)
+    expect(wrapper.find('[data-role="lock-veil"]').exists()).toBe(false)
     // Et les commandes sont là : c'est bien la même page dessous.
     expect(wrapper.find('#btn-conf-demarrer').exists()).toBe(true)
   })
@@ -288,7 +288,7 @@ describe('le voile de verrou', () => {
     const hub = inTheRoom(lockOf('nuit@cloudnord.fr'))
     const wrapper = mount(App)
 
-    await wrapper.get('[data-role="verrou-reprendre"]').trigger('click')
+    await wrapper.get('[data-role="lock-take"]').trigger('click')
     await flushPromises()
 
     // Le voile *est* la question : la reposer en modale en ferait un clic de
@@ -300,7 +300,7 @@ describe('le voile de verrou', () => {
     const hub = inTheRoom(lockOf('nuit@cloudnord.fr'))
     const wrapper = mount(App)
 
-    await wrapper.get('[data-role="verrou-quitter"]').trigger('click')
+    await wrapper.get('[data-role="lock-leave"]').trigger('click')
     await flushPromises()
 
     expect(useGatewayStore().roomId).toBeNull()
@@ -389,7 +389,7 @@ describe('le bandeau de verrou', () => {
 
     // La décision vit dans le voile. Ici, une mention, pour que la ligne ne se
     // contredise pas quand le voile se referme.
-    expect(wrapper.get('[data-role="verrou-porteur"]').text()).toContain('Lecture seule')
+    expect(wrapper.get('[data-role="lock-holder"]').text()).toContain('Lecture seule')
     expect(wrapper.text()).not.toContain('Reprendre')
   })
 

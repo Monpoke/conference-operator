@@ -6,12 +6,12 @@ import { progress, useVodStore } from '../src/stores/vod.js'
 import { useSessionStore } from '../src/stores/session.js'
 
 /**
- * Téléversements des captations.
+ * Uploads of the takes.
  *
- * Cette vue se regarde à un moment précis : juste avant de démonter une salle,
- * quand son disque est encore branché. Ce qui compte donc, c'est qu'elle dise
- * la vérité sur ce qui reste à rapatrier — et qu'elle refuse clairement une
- * demande qu'elle ne saurait pas adresser.
+ * This view is looked at at a precise moment: just before dismantling a room,
+ * while its disk is still plugged in. What counts is therefore that it tells the
+ * truth about what is left to bring home — and that it clearly refuses a request
+ * it would not know where to address.
  */
 
 interface Call {
@@ -74,7 +74,7 @@ beforeEach(() => {
 })
 
 describe('avancement', () => {
-  it('ne dépasse pas cent pour cent quand le fichier grossit en route', () => {
+  it('does not exceed a hundred per cent when the file grows in transit', () => {
     // Une captation en cours grandit pendant qu'elle part : sans borne,
     // l'avancement affichait 137 %.
     expect(progress({ ...EN_COURS, sizeBytes: 100, bytesSent: 137 })).toBe(100)
@@ -86,12 +86,12 @@ describe('avancement', () => {
 })
 
 describe('vue VOD', () => {
-  it('dit qu’il n’y a rien plutôt que de laisser un tableau vide', async () => {
+  it('says there is nothing rather than leave an empty table', async () => {
     const { wrapper } = await monter([])
     expect(wrapper.get('#vod-lignes').text()).toContain('Aucun téléversement')
   })
 
-  it('montre l’avancement et le débit, qui disent si ça avance', async () => {
+  it('shows the progress and the rate, which say whether it is moving', async () => {
     const { wrapper } = await monter([EN_COURS])
     const ligne = wrapper.get('[data-upload="rush-01.mkv"]')
 
@@ -102,17 +102,17 @@ describe('vue VOD', () => {
   it('reprend l’erreur du stockage telle quelle', async () => {
     const { wrapper } = await monter([{ ...EN_COURS, state: 'echoue', lastError: 'AccessDenied' }])
 
-    // « AccessDenied » est le seul mot qu'on puisse porter à qui tient le
-    // bucket : le traduire ferait perdre la seule prise sur le problème.
+    // "AccessDenied" is the only word one can carry to whoever holds the bucket:
+    // translating it would lose the only handle on the problem.
     expect(wrapper.get('[data-upload="rush-01.mkv"]').text()).toContain('AccessDenied')
   })
 
-  it('ne propose pas de relancer ce qui est déjà arrivé', async () => {
+  it('does not offer to retry what has already arrived', async () => {
     const { wrapper } = await monter([{ ...EN_COURS, state: 'termine' }])
     expect(wrapper.find('[data-upload="rush-01.mkv"] button').exists()).toBe(false)
   })
 
-  it('relance un fichier précis', async () => {
+  it('retries one specific file', async () => {
     const { calls, wrapper } = await monter([EN_COURS])
 
     await wrapper.get('[data-upload="rush-01.mkv"] button').trigger('click')
@@ -130,7 +130,7 @@ describe('vue VOD', () => {
     await wrapper.get('#btn-vod-relancer').trigger('click')
     await flushPromises()
 
-    // La demande vise une machine : sans salle, il n'y a personne à qui parler.
+    // The request targets one machine: with no room there is nobody to talk to.
     expect(calls.filter((appel) => appel.path === 'vod/request')).toHaveLength(0)
   })
 

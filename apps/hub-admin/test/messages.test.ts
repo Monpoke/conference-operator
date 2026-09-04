@@ -6,15 +6,14 @@ import { useMessagesStore } from '../src/stores/messages.js'
 import { useSessionStore } from '../src/stores/session.js'
 
 /**
- * Ce que le hub adresse aux salles.
+ * What the hub addresses to the rooms.
  *
- * Deux choses valent d'être tenues ici, et aucune n'est du rendu : la
- * conversion minutes → secondes, qui n'est écrite nulle part ailleurs, et
- * l'avertissement qui dit qu'un message part **devant le public**. Le second
- * est le seul garde-fou entre une note à l'opérateur et une note projetée dans
- * une salle pleine, et il doit être juste au premier rendu — pas seulement
- * après la première interaction, ce qui était le cas quand il dépendait d'un
- * `onchange`.
+ * Two things are worth holding here, and neither is rendering: the minutes →
+ * seconds conversion, written nowhere else, and the warning that says a message is
+ * going **in front of the audience**. The second is the only guard between a note
+ * to the operator and a note projected in a full room, and it has to be right on
+ * the first render — not only after the first interaction, which was the case when
+ * it depended on an `onchange`.
  */
 
 interface Call {
@@ -68,10 +67,10 @@ beforeEach(() => {
 })
 
 describe('vue des messages', () => {
-  it('avertit dès le premier rendu quand le message ira devant le public', async () => {
+  it('warns from the first render when the message will go before the audience', async () => {
     const { wrapper } = await monter()
 
-    // Au repos la cible est l'opérateur : l'avertissement doit déjà le dire.
+    // At rest the target is the operator: the warning must already say so.
     expect(wrapper.get('#msg-avertissement').text()).toContain('bandeau de la régie')
 
     await wrapper.get('#msg-cible').setValue('audience')
@@ -98,14 +97,14 @@ describe('vue des messages', () => {
     })
   })
 
-  it("laisse le message à l'écran quand aucune durée n'est donnée", async () => {
+  it('leaves the message on screen when no duration is given', async () => {
     const { calls, wrapper } = await monter()
 
     await wrapper.get('#msg-text').setValue('Sans durée')
     await wrapper.get('#btn-envoyer-message').trigger('click')
     await flushPromises()
 
-    // Vide ne veut pas dire zéro : ça veut dire « jusqu'à remplacement ».
+    // Empty does not mean zero: it means "until replaced".
     const envoi = calls.find((appel) => appel.path === 'messages/send')
     expect((envoi?.input as { ttlSeconds: unknown }).ttlSeconds).toBe(null)
   })
@@ -132,19 +131,19 @@ describe('vue des messages', () => {
     expect((envoi?.input as { roomId: unknown }).roomId).toBe('track-1')
   })
 
-  it('remplit le champ avec un modèle, sans rien mettre à l’antenne', async () => {
+  it('fills the field with a template, without putting anything on air', async () => {
     const { calls, wrapper } = await monter()
 
     await wrapper.get('#bandeau-modeles').findAll('button')[0]!.trigger('click')
     await flushPromises()
 
-    // Un modèle est un point de départ, pas un rail : la date, la durée et le
-    // nom de la salle changent à chaque fois.
+    // A template is a starting point, not a rail: the date, the duration and the
+    // room's name change every time.
     expect((wrapper.get('#bandeau-text').element as HTMLInputElement).value.length).toBeGreaterThan(0)
     expect(calls.filter((appel) => appel.path === 'overlay/show')).toHaveLength(0)
   })
 
-  it('relit l’historique après avoir affiché un bandeau', async () => {
+  it('reads the history back after showing a banner', async () => {
     const { calls, wrapper } = await monter()
 
     await wrapper.get('#bandeau-text').setValue('Le son revient')

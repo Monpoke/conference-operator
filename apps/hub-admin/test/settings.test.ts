@@ -6,15 +6,15 @@ import { orNull, useSettingsStore } from '../src/stores/settings.js'
 import { useSessionStore } from '../src/stores/session.js'
 
 /**
- * Les réglages.
+ * The settings.
  *
- * Six panneaux et une contrainte commune : la vue se rafraîchit toutes les dix
- * secondes, et aucun champ ne doit se réécrire pendant qu'on tape dedans. Rien
- * n'est plus déroutant, et c'est invisible en relecture — d'où le test.
+ * Six panels and one shared constraint: the view refreshes every ten seconds, and
+ * no field must rewrite itself while somebody is typing in it. Nothing is more
+ * disorienting, and it is invisible on reading — hence the test.
  *
- * Trois autres décisions valent d'être tenues : « vide » n'est pas « absent »,
- * « Réimporter » part de l'URL enregistrée et non de celle à l'écran, et le
- * compte-rendu de resynchronisation donne le nombre de salles atteintes plutôt
+ * Three other decisions are worth holding: "empty" is not "absent", "Réimporter"
+ * starts from the saved URL and not from the one on screen, and the resync report
+ * gives the number of rooms reached rather
  * qu'un « c'est parti » qui serait exact sur un hub vide.
  */
 
@@ -54,8 +54,8 @@ function stub(options: {
   snapshots?: unknown[]
 }): { calls: Call[]; client: unknown; reglages: Record<string, unknown> } {
   const calls: Call[] = []
-  // Muté par les tests qui simulent un changement venu d'ailleurs — un autre
-  // opérateur, un import — entre deux tours de rafraîchissement.
+  // Mutated by the tests that simulate a change from elsewhere — another operator,
+  // an import — between two refresh rounds.
   const reglages: Record<string, unknown> = { ...REGLAGES, ...(options.reglages ?? {}) }
   const note =
     (path: string, result: unknown) =>
@@ -70,8 +70,8 @@ function stub(options: {
       token: { read: () => 'jeton', write: () => {}, clear: () => {} },
       rpc: {
         settings: {
-          // Un objet neuf à chaque appel, comme le ferait un vrai aller-retour
-          // RPC. Renvoyer la même référence contournerait la réactivité et
+          // A fresh object on every call, as a real RPC round trip would do.
+          // Returning the same reference would bypass reactivity and
           // ferait passer le test sur un artefact du bouchon.
           get: async (input?: unknown) => {
             calls.push({ path: 'settings/get', input })
@@ -125,24 +125,24 @@ beforeEach(() => {
 })
 
 describe('vide contre absent', () => {
-  it('rend un champ vidé à la déduction plutôt que de le figer', () => {
-    // Sans cette distinction, on ne pourrait plus jamais relâcher le réglage :
-    // le nom cesserait de suivre les imports de programme, définitivement.
+  it('hands an emptied field back to the deduction rather than pin it', () => {
+    // Without that distinction the setting could never be released again: the name
+    // would stop following program imports, permanently.
     expect(orNull('   ')).toBe(null)
     expect(orNull('')).toBe(null)
     expect(orNull(' Cloud Nord ')).toBe('Cloud Nord')
   })
 })
 
-describe('vue des réglages', () => {
-  it('nomme la clôture automatique comme la page le faisait', async () => {
+describe('settings view', () => {
+  it('names the automatic closure as the page did', async () => {
     /*
      * Repris mot pour mot, et tenu ici parce que le test HTTP du hub ne peut
-     * plus le faire : ces libellés vivent désormais dans le bundle.
+     * do it any more: these labels now live in the bundle.
      *
-     * Une migration n'a pas à reformuler ce que lit un opérateur. « Délai de
-     * grâce » est le terme des conversations de la journée ; le remplacer par un
-     * synonyme obligerait à traduire mentalement à chaque fois.
+     * A migration has no business rewording what an operator reads. "Délai de
+     * grâce" is the term used in the day's conversations; replacing it with a
+     * synonym would force a mental translation every time.
      */
     const { wrapper } = await monter()
     const texte = wrapper.text()
@@ -151,26 +151,26 @@ describe('vue des réglages', () => {
     expect(texte).toContain('Délai de grâce')
   })
 
-  it("n'écrase pas un champ pendant qu'on tape dedans", async () => {
+  it('does not overwrite a field while somebody is typing in it', async () => {
     const { wrapper } = await monter()
 
     const champ = wrapper.get('#event-name')
     ;(champ.element as HTMLInputElement).focus()
     await champ.setValue('Cloud Nord 2027')
 
-    // Le rafraîchissement de dix secondes passe : le hub répond toujours `null`,
-    // et le champ doit rester sur ce que l'opérateur est en train d'écrire.
+    // The ten-second refresh goes by: the hub still answers `null`, and the field
+    // must stay on what the operator is writing.
     await useSettingsStore().load()
     await flushPromises()
 
     expect((wrapper.get('#event-name').element as HTMLInputElement).value).toBe('Cloud Nord 2027')
   })
 
-  it('reprend la valeur du hub une fois le champ quitté', async () => {
+  it('takes the hub\'s value back once the field is left', async () => {
     const { wrapper, reglages } = await monter()
 
-    // Quitter le champ est exactement le moment où un changement fait ailleurs
-    // — un autre opérateur, un import — doit devenir visible.
+    // Leaving the field is exactly the moment a change made elsewhere — another
+    // operator, an import — should become visible.
     ;(wrapper.get('#event-name').element as HTMLInputElement).blur()
     reglages['eventName'] = 'Renommé ailleurs'
     await useSettingsStore().load()
@@ -179,17 +179,17 @@ describe('vue des réglages', () => {
     expect((wrapper.get('#event-name').element as HTMLInputElement).value).toBe('Renommé ailleurs')
   })
 
-  it('montre en placeholder ce que le hub déduirait, sans le pré-remplir', async () => {
+  it('shows as a placeholder what the hub would deduce, without pre-filling it', async () => {
     const { wrapper } = await monter()
 
     const champ = wrapper.get('#event-name').element as HTMLInputElement
-    // Pré-rempli, il ferait croire que la valeur est figée — et le premier
-    // enregistrement l'aurait effectivement figée.
+    // Pre-filled, it would suggest the value is pinned — and the first save would
+    // in fact have pinned it.
     expect(champ.value).toBe('')
     expect(champ.placeholder).toBe('Cloud Nord 2026')
   })
 
-  it('bloque « Réimporter » tant que l’URL affichée diffère de l’enregistrée', async () => {
+  it('blocks "Réimporter" while the displayed URL differs from the saved one', async () => {
     const { wrapper } = await monter()
 
     expect(wrapper.get('#btn-reimport').attributes('disabled')).toBeUndefined()
@@ -202,7 +202,7 @@ describe('vue des réglages', () => {
     expect(wrapper.get('#btn-reimport').attributes('disabled')).toBeDefined()
   })
 
-  it('réimporte depuis l’URL enregistrée', async () => {
+  it('re-imports from the saved URL', async () => {
     const { calls, wrapper } = await monter()
 
     await wrapper.get('#btn-reimport').trigger('click')
@@ -214,7 +214,7 @@ describe('vue des réglages', () => {
     })
   })
 
-  it('écarte les lignes de réseaux laissées vides', async () => {
+  it('drops social rows left empty', async () => {
     const { calls, wrapper } = await monter()
 
     await wrapper.get('#btn-social-add').trigger('click')
@@ -228,7 +228,7 @@ describe('vue des réglages', () => {
     expect((envoi?.input as { socialLinks: unknown[] }).socialLinks).toEqual([])
   })
 
-  it('convertit le débit affiché en Ko/s vers des octets', async () => {
+  it('converts the rate shown in kB/s into bytes', async () => {
     const { calls, wrapper } = await monter()
 
     await wrapper.get('#vod-rate').setValue('512')
@@ -240,19 +240,19 @@ describe('vue des réglages', () => {
       .toBe(512 * 1024)
   })
 
-  it("n'offre pas d'éprouver un stockage dont le hub n'a pas les clés", async () => {
+  it('does not offer to probe a storage the hub has no keys for', async () => {
     const { wrapper } = await monter({ stockage: null })
 
-    // Sans clés il n'y a rien à éprouver, et le panneau le dit déjà en haut.
+    // With no keys there is nothing to probe, and the panel already says so at the top.
     expect(wrapper.get('#btn-vod-probe').attributes('disabled')).toBeDefined()
     expect(wrapper.get('#vod-state').text()).toContain('Aucun stockage S3 configuré')
   })
 
-  it('distingue « clés posées, bucket manquant » des deux autres cas', async () => {
+  it('tells "keys set, bucket missing" from the other two cases', async () => {
     const { wrapper } = await monter({ stockage: { configure: false } })
 
-    // Le cas le plus déroutant des trois : la page est ouverte, les clés sont
-    // là, et rien ne part parce qu'il manque un nom de bucket.
+    // The most confusing of the three: the page is open, the keys are there, and
+    // nothing leaves because a bucket name is missing.
     expect(wrapper.get('#vod-state').text()).toContain('aucun bucket')
   })
 
@@ -276,8 +276,8 @@ describe('vue des réglages', () => {
       .querySelectorAll('button')[1] as HTMLButtonElement).click()
     await flushPromises()
 
-    // Un hub sans aucune salle appairée accepte la demande sans que rien ne
-    // parte : « demandé » serait alors exact et trompeur.
+    // A hub with no paired room at all accepts the request with nothing leaving:
+    // "requested" would then be exact and misleading.
     expect(calls).toContainEqual({ path: 'rooms/resync', input: { roomId: null } })
   })
 })

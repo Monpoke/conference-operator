@@ -10,11 +10,11 @@ import { useSessionStore } from '../src/stores/session.js'
 /**
  * Appairage des machines de salle.
  *
- * Le chemin qui compte n'est pas la liste, c'est le code : Better Auth envoie
- * la machine sur `/admin/devices?user_code=…`, et tout ce qui suit se décide
- * là. Ces tests tiennent les trois choses qui rendent ce chemin fragile — le
- * code qui doit survivre au chargement, la décision qui doit rester possible
- * sur place, et l'erreur qui doit s'afficher là où le geste a été fait.
+ * The path that matters is not the list, it is the code: Better Auth sends the
+ * machine to `/admin/devices?user_code=…`, and everything that follows is decided
+ * there. These tests hold the three things that make that path fragile — the code
+ * that must survive the load, the decision that must stay possible on the spot,
+ * and the error that must appear where the gesture was made.
  */
 
 interface Call {
@@ -67,12 +67,12 @@ async function monter(
   const session = useSessionStore()
   session.client = fake.client as never
   /*
-   * Le vrai routeur, pas un `$route` simulé.
+   * The real router, not a simulated `$route`.
    *
-   * `useRoute()` lit une injection : un mock sur `$route` ne l'atteint pas. Et
-   * puisqu'il faut un routeur, autant que ce soit celui de l'application —
-   * l'adresse `/admin/devices` est alors traversée pour de bon, alias compris,
-   * ce qui est précisément le chemin que Better Auth fait suivre aux machines.
+   * `useRoute()` reads an injection: a mock on `$route` does not reach it. And
+   * since a router is needed, it may as well be the application's — the address
+   * `/admin/devices` is then really traversed, alias included, which is precisely
+   * the path Better Auth makes the machines follow.
    */
   const router = createConsoleRouter()
   await router.push(
@@ -91,14 +91,14 @@ async function monter(
 }
 
 /**
- * Le contenu d'une modale vit hors du composant.
+ * A modal's content lives outside the component.
  *
- * Reka la rend dans un portail, sur `document.body` : c'est ce qui lui permet
- * de sortir de toute pile de contextes et de rester au-dessus. On l'interroge
- * donc là où elle est, ce qui vérifie au passage que le portail fonctionne.
+ * Reka renders it in a portal, on `document.body`: that is what lets it escape any
+ * stack of contexts and stay on top. So we query it where it is, which checks
+ * along the way that the portal works.
  */
-function modale(selecteur: string): HTMLElement | null {
-  return document.querySelector(selecteur)
+function modal(selector: string): HTMLElement | null {
+  return document.querySelector(selector)
 }
 
 beforeEach(() => {
@@ -108,12 +108,12 @@ beforeEach(() => {
 })
 
 describe('adresse d’appairage', () => {
-  it('est servie au même titre que la vue qu’elle ouvre', () => {
+  it('is served on the same footing as the view it opens', () => {
     /*
      * `/admin/devices` n'est pas une vue : c'est une seconde porte sur
      * `appairage`. Oublier de l'enregistrer enverrait toutes les machines que
      * Better Auth redirige sur un 404 — et seulement les machines : un
-     * opérateur qui clique l'onglet ne le verrait jamais.
+     * an operator clicking the tab would never see it.
      */
     expect(consolePaths(false)).toContain(PAIRING_ALIAS)
     expect(consolePaths(false)).toContain(viewPath('appairage'))
@@ -121,7 +121,7 @@ describe('adresse d’appairage', () => {
 })
 
 describe('vue d’appairage', () => {
-  it('présélectionne la salle que la machine dit desservir', async () => {
+  it('preselects the room the machine says it serves', async () => {
     const { wrapper } = await monter({
       pending: [
         { clientId: 'machine-a', requestedAt: '2026-10-30T09:00:00Z', scope: 'room:track-2' },
@@ -130,7 +130,7 @@ describe('vue d’appairage', () => {
 
     const select = wrapper.get('[data-demande="machine-a"] select')
       .element as HTMLSelectElement
-    // Présélectionnée mais modifiable : l'opérateur de la salle sait où il est,
+    // Preselected but editable: the room's operator knows where they are,
     // celui devant la console tranche.
     expect(select.value).toBe('track-2')
   })
@@ -151,56 +151,56 @@ describe('vue d’appairage', () => {
     })
   })
 
-  it('qualifie le code de l’URL sans rien décider à la place de l’opérateur', async () => {
+  it('qualifies the URL\'s code without deciding for the operator', async () => {
     const { calls, wrapper } = await monter({
       userCode: 'WXYZ-9876',
       lookup: { status: 'pending', clientId: 'machine-b', roomId: 'track-1' },
     })
 
     expect(calls).toContainEqual({ path: 'devices/lookup', input: { userCode: 'WXYZ-9876' } })
-    expect(modale('#verdict-text')?.textContent).toContain('machine-b')
+    expect(modal('#verdict-text')?.textContent).toContain('machine-b')
     // Consulter n'approuve pas : les deux boutons existent, rien n'est parti.
     expect(calls.filter((appel) => appel.path === 'devices/approve')).toHaveLength(0)
-    expect(modale('#verdict-approuver')).not.toBe(null)
+    expect(modal('#verdict-approuver')).not.toBe(null)
   })
 
-  it('ne propose pas de décider un code ouvert par un autre opérateur', async () => {
+  it('does not offer to decide a code opened by another operator', async () => {
     // Sans `clientId`, Better Auth ne nous a pas reconnus comme le consultant
-    // du code : approuver échouerait, autant ne pas le proposer.
+    // of the code: approving would fail, so better not to offer it.
     const { wrapper } = await monter({
       userCode: 'WXYZ-9876',
       lookup: { status: 'pending', clientId: null },
     })
 
-    expect(modale('#verdict-text')?.textContent).toContain('autre opérateur')
-    expect(modale('#verdict-approuver')).toBe(null)
+    expect(modal('#verdict-text')?.textContent).toContain('autre opérateur')
+    expect(modal('#verdict-approuver')).toBe(null)
   })
 
-  it('explique un code expiré au lieu d’afficher son statut', async () => {
+  it('explains an expired code instead of showing its status', async () => {
     const { wrapper } = await monter({
       userCode: 'WXYZ-9876',
       lookup: { status: 'invalid', reason: 'expire' },
     })
 
-    expect(modale('#verdict-text')?.textContent).toContain('durée de vie')
-    expect(modale('#verdict-approuver')).toBe(null)
+    expect(modal('#verdict-text')?.textContent).toContain('durée de vie')
+    expect(modal('#verdict-approuver')).toBe(null)
   })
 
-  it('affiche l’échec dans la modale, pas dans l’avis flottant', async () => {
+  it('shows the failure in the modal, not in the floating toast', async () => {
     const { wrapper } = await monter({
       userCode: 'WXYZ-9876',
       lookup: { status: 'pending', clientId: 'machine-b', roomId: 'track-1' },
       approveError: 'Ce code appartient à un autre opérateur',
     })
 
-    modale('#verdict-approuver')!.click()
+    modal('#verdict-approuver')!.click()
     await flushPromises()
 
     // L'erreur porte sur le geste qu'on vient de faire, et se lit en entier.
-    expect(modale('#verdict-erreur')?.textContent).toContain('autre opérateur')
+    expect(modal('#verdict-erreur')?.textContent).toContain('autre opérateur')
   })
 
-  it('révoque une machine appairée, et pas une déjà révoquée', async () => {
+  it('revokes a paired machine, and not one already revoked', async () => {
     const { calls, wrapper } = await monter({
       devices: [
         { clientId: 'machine-a', roomId: 'track-1', label: null, revokedAt: null },

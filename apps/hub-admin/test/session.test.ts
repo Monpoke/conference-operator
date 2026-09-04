@@ -4,14 +4,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useSessionStore } from '../src/stores/session.js'
 
 /**
- * Les deux façons d'entrer dans la console, et la seule qui laisse un jeton.
+ * The two ways into the console, and the only one that leaves a token.
  *
- * Rien ne couvrait ce chemin, et il s'est cassé en trois endroits d'un coup à
- * la migration : le bouton Google partait en GET là où Better Auth attend un
- * POST, le retour du round-trip n'était pas reconnu faute de jeton, et la
- * déconnexion ne touchait pas au cookie. Les trois se ressemblent : le mot de
- * passe range un jeton, Google range un cookie, et tout ce qui ne regarde que
- * le jeton ne voit qu'une moitié du système.
+ * Nothing covered this path, and it broke in three places at once during the
+ * migration: the Google button went out as a GET where Better Auth expects a POST,
+ * the round trip's return was not recognised for want of a token, and signing out
+ * did not touch the cookie. All three are alike: the password stores a token,
+ * Google stores a cookie, and anything that only looks at the token sees half the
+ * system.
  */
 
 const BOOT = {
@@ -27,9 +27,9 @@ interface Appel {
 }
 
 function stubFetch(reponses: Record<string, { status?: number; body: unknown }>): Appel[] {
-  const appels: Appel[] = []
+  const calls: Appel[] = []
   vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
-    appels.push({
+    calls.push({
       url,
       method: init?.method,
       body: init?.body == null ? undefined : JSON.parse(String(init.body)),
@@ -40,7 +40,7 @@ function stubFetch(reponses: Record<string, { status?: number; body: unknown }>)
       headers: { 'content-type': 'application/json' },
     })
   })
-  return appels
+  return calls
 }
 
 let destination: string | null = null
@@ -72,7 +72,7 @@ describe('connexion par mot de passe', () => {
     expect(session.client.token.read()).toBe('jeton-operateur')
   })
 
-  it('refuse sans laisser croire à une panne du hub', async () => {
+  it('refuses without suggesting the hub has failed', async () => {
     stubFetch({ '/api/auth/sign-in/email': { status: 401, body: {} } })
     const session = useSessionStore()
 
@@ -85,7 +85,7 @@ describe('connexion par mot de passe', () => {
 
 describe('connexion Google', () => {
   it('passe par un POST, et suit l’adresse rendue', async () => {
-    const appels = stubFetch({
+    const calls = stubFetch({
       '/api/auth/sign-in/social': { body: { url: 'https://accounts.google.com/o/oauth2/v2/auth?x=1' } },
     })
     const session = useSessionStore()
@@ -93,12 +93,12 @@ describe('connexion Google', () => {
     await session.signInWithGoogle()
 
     /*
-     * Le défaut d'origine tenait en un GET : Better Auth ne redirige pas depuis
-     * cette adresse, il répond `null`. Un `location.assign` dessus donne une
-     * page blanche qui ne dit rien de ce qui a manqué.
+     * The original defect came down to a GET: Better Auth does not redirect from
+     * this address, it answers `null`. A `location.assign` on it gives a blank page
+     * that says nothing about what was missing.
      */
-    expect(appels[0]?.method).toBe('POST')
-    expect(appels[0]?.body).toEqual({ provider: 'google', callbackURL: '/admin' })
+    expect(calls[0]?.method).toBe('POST')
+    expect(calls[0]?.body).toEqual({ provider: 'google', callbackURL: '/admin' })
     expect(destination).toBe('https://accounts.google.com/o/oauth2/v2/auth?x=1')
   })
 
@@ -114,7 +114,7 @@ describe('connexion Google', () => {
 })
 
 describe('retour de Google', () => {
-  it('reconnaît une session posée en cookie, sans jeton', async () => {
+  it('recognises a session set in a cookie, with no token', async () => {
     stubFetch({ '/api/auth/get-session': { body: { user: { email: 'regie@cloudnord.fr' } } } })
     const session = useSessionStore()
 
@@ -122,12 +122,12 @@ describe('retour de Google', () => {
     await flushPromises()
 
     // Le round-trip ne laisse aucun jeton : ne regarder que le stockage local
-    // renvoyait l'opérateur sur l'écran de connexion qu'il venait de quitter.
+    // sent the operator back to the sign-in screen they had just left.
     expect(session.signedIn).toBe(true)
     expect(session.identity).toBe('regie@cloudnord.fr')
   })
 
-  it('reste sur l’écran de connexion quand il n’y a aucune session', async () => {
+  it('stays on the sign-in screen when there is no session', async () => {
     stubFetch({ '/api/auth/get-session': { body: {} } })
     const session = useSessionStore()
 
@@ -138,7 +138,7 @@ describe('retour de Google', () => {
   })
 
   it('n’interroge pas le hub quand un jeton suffit', async () => {
-    const appels = stubFetch({})
+    const calls = stubFetch({})
     localStorage.setItem('hub-admin', 'jeton-range')
     const session = useSessionStore()
 
@@ -146,27 +146,27 @@ describe('retour de Google', () => {
     await flushPromises()
 
     // Un aller-retour de plus devant chaque chargement, pour une information
-    // que le premier appel protégé donnera de toute façon.
+    // that the first protected call will give anyway.
     expect(session.signedIn).toBe(true)
-    expect(appels).toEqual([])
+    expect(calls).toEqual([])
   })
 })
 
-describe('déconnexion', () => {
-  it('prévient le hub, parce qu’un cookie ne s’efface que côté serveur', async () => {
-    const appels = stubFetch({ '/api/auth/sign-out': { body: {} } })
+describe('signing out', () => {
+  it('tells the hub, because a cookie is only cleared server-side', async () => {
+    const calls = stubFetch({ '/api/auth/sign-out': { body: {} } })
     const session = useSessionStore()
     session.client.token.write('jeton-operateur')
 
     await session.signOut()
 
-    expect(appels[0]?.url).toBe('/api/auth/sign-out')
-    expect(appels[0]?.method).toBe('POST')
+    expect(calls[0]?.url).toBe('/api/auth/sign-out')
+    expect(calls[0]?.method).toBe('POST')
     expect(session.signedIn).toBe(false)
     expect(session.client.token.read()).toBe(null)
   })
 
-  it('ferme quand même ici si le hub ne répond pas', async () => {
+  it('closes here all the same if the hub does not answer', async () => {
     vi.stubGlobal('fetch', async () => {
       throw new Error('injoignable')
     })
@@ -175,7 +175,7 @@ describe('déconnexion', () => {
 
     await session.signOut()
 
-    // Rester connecté parce que le hub n'a pas répondu est le contraire de ce
+    // Staying signed in because the hub did not answer is the opposite of what
     // qu'on demande en cliquant.
     expect(session.signedIn).toBe(false)
     expect(session.client.token.read()).toBe(null)

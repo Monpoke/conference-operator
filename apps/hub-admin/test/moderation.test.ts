@@ -74,8 +74,8 @@ beforeEach(() => {
   })
 })
 
-describe('vue de modération', () => {
-  it('dit qu’il n’y a rien à relire plutôt que de laisser un vide', async () => {
+describe('moderation view', () => {
+  it('says there is nothing to review rather than leave a blank', async () => {
     const { wrapper } = mountView([])
     await useModerationStore().load()
     await flushPromises()
@@ -94,7 +94,7 @@ describe('vue de modération', () => {
     expect(carte.text()).toContain('mur')
   })
 
-  it('publie le message que l’opérateur a désigné', async () => {
+  it('publishes the message the operator pointed at', async () => {
     const { calls, wrapper } = mountView([MESSAGE])
     await useModerationStore().load()
     await flushPromises()
@@ -122,7 +122,7 @@ describe('vue de modération', () => {
     })
   })
 
-  it('relit la liste après une décision, au lieu de la corriger sur place', async () => {
+  it('reads the list back after a decision, instead of patching it in place', async () => {
     const { calls, wrapper } = mountView([MESSAGE])
     await useModerationStore().load()
     await flushPromises()
@@ -130,8 +130,8 @@ describe('vue de modération', () => {
     await wrapper.get(`[data-message="${MESSAGE.id}"]`).findAll('button')[0]!.trigger('click')
     await flushPromises()
 
-    // Retirer la carte localement suffirait à l'écran et divergerait dès que
-    // deux opérateurs modèrent en même temps. Une seule source de vérité, et
+    // Removing the card locally would be enough on screen and would diverge as
+    // soon as two operators moderate at once. A single source of truth, and
     // c'est le hub.
     expect(calls.filter((appel) => appel.path === 'wall/pending')).toHaveLength(2)
   })

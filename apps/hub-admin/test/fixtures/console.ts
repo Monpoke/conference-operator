@@ -1,19 +1,18 @@
 /**
- * Un hub d'événement, tel qu'il répond un 30 octobre à 10 h 12.
+ * An event hub, as it answers on 30 October at 10:12.
  *
- * Ces réponses servaient à figer les aperçus statiques de la console, du temps
- * où elle était un gabarit littéral qu'on pouvait ouvrir en `file://`. Une
- * application Vue ne s'ouvre pas ainsi — ses modules sont refusés depuis le
- * disque — et les aperçus ont donc cédé la place à `pnpm --filter
- * @cloudnord/hub-admin dev`, qui montre la vraie console.
+ * These responses used to freeze the console's static previews, back when it was a
+ * literal template that could be opened over `file://`. A Vue application does not
+ * open that way — its modules are refused from disk — so the previews gave way to
+ * `pnpm --filter @cloudnord/hub-admin dev`, which shows the real console.
  *
- * Le jeu de données, lui, méritait de survivre : trois salles dans trois états
- * différents, des téléversements aux trois stades, une horloge simulée, un
- * programme complet. Le rassembler prend une heure ; le retrouver après coup,
- * beaucoup plus. Il alimente maintenant les tests de la console.
+ * The data set, on the other hand, deserved to survive: three rooms in three
+ * different states, uploads at three stages, a simulated clock, a complete
+ * program. Assembling it takes an hour; finding it again afterwards, far longer.
+ * It now feeds the console's tests.
  */
 
-/** L'identité tranchée par le hub, et celle qu'il déduirait du programme. */
+/** The identity the hub decided, and the one it would deduce from the program. */
 export const EVENEMENT = {
   resolved: { name: 'Cloud Nord 2026', shortName: 'Cloud Nord' },
   derived: { name: 'Cloud Nord 2026', shortName: 'Cloud Nord' },
@@ -25,7 +24,7 @@ export const SALLES = [
   { id: 'hands-on', name: 'Hands on' },
 ]
 
-/** Réponses servies à la place du hub, par procédure oRPC. */
+/** Responses served in the hub's place, by oRPC procedure. */
 export const REPONSES: Record<string, unknown> = {
   'rooms/list': SALLES,
   'rooms/statuses': [
@@ -69,7 +68,7 @@ export const REPONSES: Record<string, unknown> = {
   ],
   'sessions/states': [
     // `remainingMs` vient du hub : c'est lui qui tient l'heure qui fait foi, et
-    // elle peut être simulée. L'aperçu doit donc le fournir, sinon la colonne
+    // it may be simulated. The fixture must therefore supply it, otherwise the column
     // « Reste » y reste vide sans qu'on sache pourquoi.
     { sessionId: 'ses-1', roomId: SALLES[0]!.id, roomName: SALLES[0]!.name, title: 'HoneySwamp : piéger les bots', status: 'running', scheduledStartsAt: '2026-10-30T10:00:00.000Z', scheduledEndsAt: '2026-10-30T10:50:00.000Z', remainingMs: 23 * 60_000, decidedBy: 'operator' },
     { sessionId: 'ses-2', roomId: SALLES[1]!.id, roomName: SALLES[1]!.name, title: 'Observabilité sous pression', status: 'ended', scheduledStartsAt: '2026-10-30T09:00:00.000Z', scheduledEndsAt: '2026-10-30T09:50:00.000Z', remainingMs: -4 * 60_000, decidedBy: 'auto' },
@@ -78,13 +77,13 @@ export const REPONSES: Record<string, unknown> = {
    * Planning du programme actif.
    *
    * Une pause y figure : c'est le cas qui montre qu'une ligne sans intervenant
-   * ne propose pas de lien OpenFeedback — on ne note pas un déjeuner.
+   * offers no OpenFeedback link — one does not rate a lunch.
    */
   'program/planning': {
     contentHash: 'a1b2c3d4e5f6',
     timezone: 'Europe/Paris',
-    // 10:12 UTC : le premier créneau est en cours, c'est lui que l'aperçu doit
-    // montrer surligné.
+    // 10:12 UTC: the first slot is running, and it is the one the fixture must
+    // show highlighted.
     serverTime: '2026-10-30T10:12:00.000Z',
     openFeedbackProjectId: 'cloud-nord-2026',
     rooms: SALLES,
@@ -100,9 +99,9 @@ export const REPONSES: Record<string, unknown> = {
     autoEndGraceMinutes: 5,
     autoEndEnabled: true,
     programSourceUrl: 'https://exemple.test/programme.json',
-    // Rien de réglé : les champs de l'onglet Réglages restent vides, et
-    // montrent en placeholder ce que le hub a déduit du programme. C'est l'état
-    // normal, et celui qu'il faut donner à relire.
+    // Nothing set: the Réglages tab's fields stay empty, and show as placeholders
+    // what the hub deduced from the program. That is the normal state, and the one
+    // worth giving to read.
     eventName: null,
     eventShortName: null,
     openFeedbackProjectId: 'cloud-nord-2026',
@@ -152,12 +151,11 @@ export const REPONSES: Record<string, unknown> = {
     },
   },
   /**
-   * Les trois états qu'un téléversement peut prendre sous les yeux.
+   * The three states an upload can take before one's eyes.
    *
-   * Un terminé, un en cours, un en échec avec le code du stockage : c'est cette
-   * dernière ligne qu'on relit à l'œil, parce qu'elle est la seule qui demande
-   * une décision — et la seule dont le rendu peut se dégrader sans qu'un test
-   * le voie.
+   * One finished, one running, one failed with the storage's code: it is that last
+   * row one reads by eye, because it is the only one that calls for a decision — and
+   * the only one whose rendering can degrade without a test seeing it.
    */
   'vod/check': {
     ok: true,
@@ -174,10 +172,10 @@ export const REPONSES: Record<string, unknown> = {
     { roomId: SALLES[2]!.id, roomName: SALLES[2]!.name, file: '2026-10-30_handson_0900_atelier.mkv', kind: 'rush', sessionId: 'ses-3', objectKey: 'cn26/2026-10-30/hands-on/2026-10-30_handson_0900_atelier.mkv', state: 'echoue', sizeBytes: 5_400_000_000, bytesSent: 210_000_000, debitOctetsS: null, startedAt: '2026-10-30T11:05:00.000Z', lastProgressAt: '2026-10-30T11:09:00.000Z', finishedAt: null, attempts: 4, lastError: 'Le stockage a refusé (AccessDenied) : quota dépassé sur le bucket' },
   ],
   /**
-   * Le dossier VOD d'une conférence, tel que la modale du planning le montre.
+   * A talk's VOD folder, as the schedule's modal shows it.
    *
-   * Une prise et son objet chez le stockage : c'est le cas nominal, celui qui
-   * doit se relire d'un coup d'œil sur l'aperçu.
+   * One take and its object at the storage: the nominal case, the one that must be
+   * readable at a glance.
    */
   'vod/conference': {
     sessionId: 'ses-1',

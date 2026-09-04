@@ -9,13 +9,13 @@ import {
 } from '../src/stores/notifications.js'
 
 /**
- * Ce dont la console prévient, et à qui.
+ * What the console warns about, and whom.
  *
- * La décision de *quoi* annoncer est une fonction pure, exportée exprès : c'est
- * la seule partie du système qui vaut d'être éprouvée sans navigateur, sans
+ * The decision of *what* to announce is a pure function, exported on purpose: it
+ * is the only part of the system worth exercising with no browser, no
  * permission et sans service worker. Le reste — demander l'autorisation,
- * s'abonner au push — n'a pas de comportement propre à protéger : il enchaîne
- * des API que le navigateur possède.
+ * subscribing to push — has no behaviour of its own to protect: it chains APIs the
+ * browser owns.
  */
 
 const SALLE = {
@@ -30,45 +30,45 @@ function vues(etat: Partial<RoomSeen> = {}): Map<string, RoomSeen> {
   return new Map([['track-1', { conference: 'en-cours', connectivity: 'ONLINE', ...etat }]])
 }
 
-describe('réglage lu du stockage', () => {
-  it('traite l’ancien réglage « 1 » comme les défauts', () => {
-    // Il valait « allumé » : l'interpréter comme un objet vide éteindrait en
-    // silence des notifications que quelqu'un avait acceptées.
+describe('setting read from storage', () => {
+  it('treats the old "1" setting as the defaults', () => {
+    // It meant "on": reading it as an empty object would silently switch off
+    // notifications somebody had accepted.
     const storage = { getItem: () => '"1"' } as unknown as Storage
     expect(readLevels(storage)).toEqual(DEFAULT_LEVELS)
   })
 
-  it('retombe sur les défauts plutôt que d’échouer sur un stockage illisible', () => {
+  it('falls back on the defaults rather than fail on unreadable storage', () => {
     const storage = { getItem: () => '{ pas du json' } as unknown as Storage
     expect(readLevels(storage)).toEqual(DEFAULT_LEVELS)
   })
 
-  it('complète un réglage partiel', () => {
+  it('fills in a partial setting', () => {
     const storage = { getItem: () => '{"technique":"rien"}' } as unknown as Storage
     expect(readLevels(storage)).toEqual({ technique: 'rien', exploitation: 'essentiel' })
   })
 })
 
-describe('portée', () => {
+describe('scope', () => {
   const tout: Levels = { technique: 'tout', exploitation: 'tout' }
   const essentiel: Levels = { technique: 'essentiel', exploitation: 'essentiel' }
   const rien: Levels = { technique: 'rien', exploitation: 'rien' }
 
-  it('laisse passer l’essentiel à qui demande l’essentiel', () => {
+  it('lets the essentials through to whoever asks for the essentials', () => {
     expect(passes(essentiel, 'technique', 'essentiel')).toBe(true)
   })
 
-  it('retient le récit ordinaire pour qui ne veut que l’essentiel', () => {
+  it('holds back the ordinary narrative from whoever wants only the essentials', () => {
     expect(passes(essentiel, 'exploitation', 'tout')).toBe(false)
     expect(passes(tout, 'exploitation', 'tout')).toBe(true)
   })
 
-  it('ne laisse rien passer à qui ne veut rien', () => {
+  it('lets nothing through to whoever wants nothing', () => {
     expect(passes(rien, 'technique', 'essentiel')).toBe(false)
   })
 
-  it('règle les deux familles séparément', () => {
-    // Quelqu'un peut vouloir tout savoir des machines et rien du déroulé.
+  it('sets the two families separately', () => {
+    // Somebody may want to know everything about the machines and nothing about the day.
     const mixte: Levels = { technique: 'tout', exploitation: 'rien' }
     expect(passes(mixte, 'technique', 'tout')).toBe(true)
     expect(passes(mixte, 'exploitation', 'essentiel')).toBe(false)
@@ -77,54 +77,54 @@ describe('portée', () => {
 
 describe('ce qui change dans une salle', () => {
   it('ne dit rien au premier chargement', () => {
-    // Annoncer l'état initial de six salles à l'ouverture de la console
+    // Announcing six rooms' initial state when the console opens
     // noierait ce qui change vraiment.
     expect(roomAlerts(new Map(), [SALLE])).toEqual([])
   })
 
-  it('annonce une salle qui ne répond plus, en essentiel', () => {
+  it('announces a room that no longer answers, as an essential', () => {
     const [premier] = roomAlerts(vues(), [{ ...SALLE, connectivity: 'OFFLINE' }])
     expect(premier?.family).toBe('technique')
     expect(premier?.alert.scope).toBe('essentiel')
     expect(premier?.alert.title).toContain('ne répond plus')
   })
 
-  it('réserve le retour d’une salle à qui veut tout suivre', () => {
-    // Un soulagement, pas une décision.
+  it("reserves a room's return for whoever wants to follow everything", () => {
+    // A relief, not a decision.
     const [premier] = roomAlerts(vues({ connectivity: 'OFFLINE' }), [SALLE])
     expect(premier?.alert.scope).toBe('tout')
   })
 
-  it('met le dépassement en essentiel : c’est lui qui décale la journée', () => {
+  it('makes the overrun an essential: it is what shifts the day', () => {
     const [premier] = roomAlerts(vues(), [{ ...SALLE, conference: 'depassement' }])
     expect(premier?.family).toBe('exploitation')
     expect(premier?.alert.scope).toBe('essentiel')
   })
 
-  it('sépare la clé de la machine de celle de la conférence', () => {
+  it("keeps the machine's key apart from the talk's", () => {
     const alertes = roomAlerts(vues({ connectivity: 'OFFLINE', conference: 'pas-commencee' }), [
       { ...SALLE, conference: 'depassement' },
     ])
-    // Deux étiquettes par salle : un « c'est parti » ne doit jamais venir
-    // effacer un « ne répond plus » resté non lu.
+    // Two keys per room: a "c'est parti" must never come and erase an unread
+    // "ne répond plus".
     expect(alertes.map((entree) => entree.alert.key).sort()).toEqual([
       'conf-track-1',
       'salle-track-1',
     ])
   })
 
-  it('se tait quand rien n’a changé', () => {
+  it('stays silent when nothing has changed', () => {
     expect(roomAlerts(vues(), [SALLE])).toEqual([])
   })
 
-  it('ne dit rien d’une salle qu’il n’avait jamais vue', () => {
-    // Elle vient d'être déclarée : son état n'est pas un changement.
+  it('says nothing about a room it had never seen', () => {
+    // It has just been declared: its state is not a change.
     const alertes = roomAlerts(vues(), [SALLE, { ...SALLE, roomId: 'track-2', conference: 'depassement' }])
     expect(alertes).toEqual([])
   })
 
-  it('conduit à la vue qui explique l’alerte', () => {
-    // Un encart qui dit « Track #1 déborde » sans y conduire laisse chercher.
+  it('leads to the view that explains the alert', () => {
+    // A card saying "Track #1 déborde" without leading there leaves one searching.
     const [premier] = roomAlerts(vues(), [{ ...SALLE, conference: 'retard' }])
     expect(premier?.alert.view).toBe('exploitation')
   })

@@ -9,7 +9,9 @@ import MessagePanel from '../src/components/MessagePanel.vue'
 import ProjectionPanel from '../src/components/ProjectionPanel.vue'
 import ScreenPanel from '../src/components/ScreenPanel.vue'
 import { useActionsStore } from '../src/stores/actions.js'
+import { useGatewayStore } from '../src/stores/gateway.js'
 import { useRoomStore } from '../src/stores/room.js'
+import { useSessionStore } from '../src/stores/session.js'
 import { obsState, payload } from './fixtures.js'
 
 /**
@@ -119,6 +121,53 @@ describe('projection', () => {
     expect(configured.get('[data-command="RELAY"]').text()).toContain('Relais → track-2')
   })
 
+  it('says nothing of a switch made in the room', async () => {
+    const calls = stubFetch({ ok: true, message: 'Scène : LIVE' })
+    const wrapper = mount(ProjectionPanel, {
+      props: { sceneRole: 'HOLD', relaySourceRoomId: null, obs: null },
+    })
+
+    await wrapper.get('[data-command="LIVE"]').trigger('click')
+    await flushPromises()
+
+    /*
+     * The gesture left, and it announced nothing.
+     *
+     * On the room's machine the answer comes back in milliseconds and the button
+     * repaints itself: "Scène : LIVE" only doubles what the operator is already
+     * looking at. Hunting for a shot during a talk used to leave four green
+     * rectangles stacked at the bottom of a screen in a dark room.
+     */
+    expect(calls[0]?.body).toEqual({ action: 'scene.set', role: 'LIVE' })
+    expect(useToast().notices.value).toEqual([])
+  })
+
+  it('still says a switch that was refused', async () => {
+    stubFetch({ ok: false, message: 'OBS-A ne répond pas' })
+
+    await useActionsStore().act({ action: 'scene.set', role: 'LIVE' })
+
+    // The silence covers the success only: a refusal has no visible effect to
+    // say it in its place.
+    expect(useToast().notices.value.at(-1)).toMatchObject({
+      text: 'OBS-A ne répond pas',
+      failed: true,
+    })
+  })
+
+  it('leaves one notice when the switches follow one another', async () => {
+    stubFetch({ ok: false, message: 'OBS-A ne répond pas' })
+    const actions = useActionsStore()
+
+    await actions.act({ action: 'scene.set', role: 'LIVE' })
+    await actions.act({ action: 'scene.set', role: 'HOLD' })
+    await actions.act({ action: 'scene.set', role: 'LIVE' })
+
+    // One refusal restated three times is one incident, not three: the later
+    // notice takes the earlier one's place.
+    expect(useToast().notices.value).toHaveLength(1)
+  })
+
   it('reminds that a simulated instance captures nothing', () => {
     const wrapper = mount(ProjectionPanel, {
       props: {
@@ -131,6 +180,47 @@ describe('projection', () => {
     // Nothing on screen tells simulated driving from real, except that no camera is
     // plugged in behind it.
     expect(wrapper.text()).toContain('simulé')
+  })
+})
+
+/**
+ * The same gesture, on the other side of the network.
+ *
+ * From a phone the round trip costs seconds and the button repaints only at the
+ * next poll: the notice is the one sign the gesture was heard, and taking it
+ * away there would leave one pressing twice. It stays — keyed, so that a hand
+ * running through the shots leaves one line and not four.
+ */
+describe('projection, from a phone', () => {
+  it('confirms the switch, keeping only the last', async () => {
+    const sent: unknown[] = []
+    // With no token the session store asks the hub whether a cookie is left:
+    // answering "nobody" beats leaving the call hanging until teardown.
+    vi.stubGlobal('fetch', async () => new Response('{}', { status: 401 }))
+
+    const gateway = useGatewayStore()
+    gateway.start({ portee: 'distante', roomId: 'track-1', salles: [], google: null })
+    useSessionStore().client = {
+      rpc: {
+        regie: {
+          view: async () => ({ lock: null }),
+          command: async ({ action }: { action: unknown }) => {
+            sent.push(action)
+            return { ok: true, applied: 'queued' as const }
+          },
+        },
+      },
+    } as never
+
+    const actions = useActionsStore()
+    await actions.act({ action: 'scene.set', role: 'LIVE' })
+    await actions.act({ action: 'scene.set', role: 'HOLD' })
+
+    expect(sent).toEqual([
+      { type: 'scene.set', role: 'LIVE' },
+      { type: 'scene.set', role: 'HOLD' },
+    ])
+    expect(useToast().notices.value).toHaveLength(1)
   })
 })
 

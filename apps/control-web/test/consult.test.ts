@@ -53,10 +53,10 @@ beforeEach(() => {
   })
 })
 
-/** Une room neighbour, avec son programme en cache et ce que le hub en dit. */
+/** A neighbouring room, with its cached program and what the hub says of it. */
 function neighbour(overrides: Record<string, unknown> = {}) {
-  const etat = payload()
-  etat.diagnostics!.rooms = [
+  const view = payload()
+  view.diagnostics!.rooms = [
     {
       roomId: 'track-2',
       name: 'Track #2',
@@ -70,14 +70,14 @@ function neighbour(overrides: Record<string, unknown> = {}) {
       ...overrides,
     },
   ]
-  etat.diagnostics!.roomsRefreshedAt = new Date().toISOString()
+  view.diagnostics!.roomsRefreshedAt = new Date().toISOString()
   const programs = useProgramsStore()
   programs.rooms = [
     { id: 'track-1', name: 'Track #1' },
     { id: 'track-2', name: 'Track #2' },
   ]
   programs.sessions = { 'track-2': NEIGHBOUR }
-  return etat
+  return view
 }
 
 describe('what one strip cell says', () => {
@@ -104,8 +104,8 @@ describe('what one strip cell says', () => {
   })
 
   it('names the talk that is overrunning, and paints it in alert', () => {
-    const etat = neighbour({ conference: 'depassement', currentSessionId: 'v-1' })
-    const entry = stripEntry(etat, room, NEIGHBOUR, END_MS + 600_000)
+    const view = neighbour({ conference: 'depassement', currentSessionId: 'v-1' })
+    const entry = stripEntry(view, room, NEIGHBOUR, END_MS + 600_000)
 
     // The program has moved on to the next slot; the room has not. The room is
     // right, and that is what shifts the whole day.
@@ -142,8 +142,8 @@ describe('what one strip cell says', () => {
 
 describe('rooms strip', () => {
   it('disappears entirely at a single-room event', () => {
-    const etat = payload()
-    const wrapper = mount(RoomsStrip, { props: { payload: etat, nowMs: START_MS } })
+    const view = payload()
+    const wrapper = mount(RoomsStrip, { props: { payload: view, nowMs: START_MS } })
 
     // An empty strip takes up a line on a control screen that has none to
     // trop.
@@ -197,9 +197,9 @@ describe('rooms tab', () => {
   })
 
   it('dates the view instead of emptying it when the hub stops answering', () => {
-    const etat = neighbour()
-    etat.diagnostics!.roomsRefreshedAt = new Date(Date.now() - 300_000).toISOString()
-    const wrapper = mount(RoomsTab, { props: { payload: etat, nowMs: START_MS } })
+    const view = neighbour()
+    view.diagnostics!.roomsRefreshedAt = new Date(Date.now() - 300_000).toISOString()
+    const wrapper = mount(RoomsTab, { props: { payload: view, nowMs: START_MS } })
 
     // An empty list would read as "no rooms". What is displayed is no longer the
     // rooms' state but our memory of it.
@@ -218,18 +218,18 @@ describe('questions tab', () => {
     { id: 'q-2', text: 'Compatible ARM ?', author: null, votes: 3 },
   ]
 
-  function avecQuestions(onAir: string | null = null) {
-    const etat = payload()
-    etat.diagnostics!.questions = QUESTIONS
-    etat.diagnostics!.questionsSession = { id: 'talk-1', title: 'Ce que le flux ne dit pas' }
-    etat.state.question = onAir == null ? null : { text: onAir, author: null, sessionId: null }
-    return mount(QuestionsTab, { props: { payload: etat } })
+  function withQuestions(onAir: string | null = null) {
+    const view = payload()
+    view.diagnostics!.questions = QUESTIONS
+    view.diagnostics!.questionsSession = { id: 'talk-1', title: 'Ce que le flux ne dit pas' }
+    view.state.question = onAir == null ? null : { text: onAir, author: null, sessionId: null }
+    return mount(QuestionsTab, { props: { payload: view } })
   }
 
   it('nomme le talk dont il lit les questions', () => {
     // Without that reminder, an empty list reads as "nobody has asked anything"
     // when it sometimes means "no talk is being driven".
-    expect(avecQuestions().text()).toContain('Ce que le flux ne dit pas')
+    expect(withQuestions().text()).toContain('Ce que le flux ne dit pas')
   })
 
   it('says so when no talk is being driven', () => {
@@ -238,7 +238,7 @@ describe('questions tab', () => {
   })
 
   it('recognises the question already on air', () => {
-    const wrapper = avecQuestions('Et le coût ?')
+    const wrapper = withQuestions('Et le coût ?')
 
     // Otherwise one puts it up again, or hunts for which is projected by re-reading
     // the first three — while the speaker waits.
@@ -247,7 +247,7 @@ describe('questions tab', () => {
   })
 
   it('puts a question on air, with its author', async () => {
-    const wrapper = avecQuestions()
+    const wrapper = withQuestions()
 
     await wrapper.get('[data-question="q-1"] button').trigger('click')
     await flushPromises()
@@ -260,7 +260,7 @@ describe('questions tab', () => {
   })
 
   it('relit la liste, parce qu’une liste d’il y a une heure ne vaut rien', async () => {
-    const wrapper = avecQuestions()
+    const wrapper = withQuestions()
 
     await wrapper.findAll('button')[0]!.trigger('click')
     await flushPromises()
@@ -269,11 +269,11 @@ describe('questions tab', () => {
   })
 
   it('dates the last refresh, or says there has never been one', () => {
-    expect(avecQuestions().text()).toContain('Jamais relues')
+    expect(withQuestions().text()).toContain('Jamais relues')
   })
 
-  it('retire de l’antenne sans rien afficher d’autre', async () => {
-    const wrapper = avecQuestions('Et le coût ?')
+  it('takes a question off air without showing anything else', async () => {
+    const wrapper = withQuestions('Et le coût ?')
 
     await wrapper.findAll('button')[1]!.trigger('click')
     await flushPromises()
@@ -284,17 +284,17 @@ describe('questions tab', () => {
   it('says what "Afficher" does not do', () => {
     // Sans le dire, on clique et on cherche la question sur le
     // projector.
-    expect(avecQuestions().text()).toContain('Question choisie')
+    expect(withQuestions().text()).toContain('Question choisie')
   })
 })
 
 describe('notices', () => {
   function withNotice(atMs: number, nowMs: number) {
-    const etat = payload()
-    etat.state.notifications = [
+    const view = payload()
+    view.state.notifications = [
       { id: 'n-1', level: 'warning', text: 'Track #2 vient de terminer', at: new Date(atMs).toISOString() },
     ]
-    return mount(NotificationStack, { props: { payload: etat, nowMs } })
+    return mount(NotificationStack, { props: { payload: view, nowMs } })
   }
 
   it('falls away by itself after thirty seconds', () => {
@@ -315,12 +315,12 @@ describe('notices', () => {
   })
 
   it('paints the background in the level\'s colour, and the text dark', () => {
-    const etat = payload()
-    etat.state.notifications = [
+    const view = payload()
+    view.state.notifications = [
       { id: 'n-1', level: 'info', text: 'une info', at: new Date(START_MS).toISOString() },
       { id: 'n-2', level: 'warning', text: 'un avertissement', at: new Date(START_MS).toISOString() },
     ]
-    const wrapper = mount(NotificationStack, { props: { payload: etat, nowMs: START_MS + 1000 } })
+    const wrapper = mount(NotificationStack, { props: { payload: view, nowMs: START_MS + 1000 } })
 
     // Un fond plein, pas une teinte sourde : ces encarts doivent se lire du
     // corner of the eye, by an operator watching the room.
@@ -386,19 +386,19 @@ describe('notices', () => {
 
 describe('diagnostics', () => {
   it('reports a configured role OBS does not know', () => {
-    const etat = payload()
-    etat.diagnostics!.obs = { A: obsState({ unresolvedRoles: ['RELAY'] }), B: null }
-    const wrapper = mount(DiagnosticsPanel, { props: { payload: etat } })
+    const view = payload()
+    view.diagnostics!.obs = { A: obsState({ unresolvedRoles: ['RELAY'] }), B: null }
+    const wrapper = mount(DiagnosticsPanel, { props: { payload: view } })
 
     // It is visible nowhere else: the switch will fail in the middle of a
-    // talk, sans autre signe avant-coureur.
+    // talk, with no other warning sign.
     expect(wrapper.get('[data-obs="A"]').text()).toContain('rôles absents : RELAY')
     expect(wrapper.get('[data-obs="B"]').text()).toContain('déconnecté')
   })
 
   it('says read-only rather than two silent OBS instances', () => {
-    const etat = payload({ diagnostics: null })
-    const wrapper = mount(DiagnosticsPanel, { props: { payload: etat } })
+    const view = payload({ diagnostics: null })
+    const wrapper = mount(DiagnosticsPanel, { props: { payload: view } })
 
     // Two empty lines would read as two disconnected OBS instances, when what
     // poste ne pilote simplement rien.

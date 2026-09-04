@@ -51,7 +51,7 @@ let origin: string
  * tests pass or fail depending on the machine. The defect is discovered in CI,
  * once, and nobody can say how long it had lasted.
  */
-async function demarrer(
+async function start(
   options: {
     viteOrigin?: string | null
     controlBundle?: () => { directory: string; manifest: string } | null
@@ -87,12 +87,12 @@ afterEach(async () => {
 
 describe('the shell', () => {
   it('renders the bundle\'s entry point, and no longer the template', async () => {
-    await demarrer({ viteOrigin: 'http://127.0.0.1:5174' })
+    await start({ viteOrigin: 'http://127.0.0.1:5174' })
 
-    const reponse = await fetch(`${origin}/regie`)
-    const html = await reponse.text()
+    const response = await fetch(`${origin}/regie`)
+    const html = await response.text()
 
-    expect(reponse.status).toBe(200)
+    expect(response.status).toBe(200)
     expect(html).toContain('id="regie-root"')
     /*
      * The old page inlined everything: the sheet frozen into a `<style>`, the
@@ -104,15 +104,15 @@ describe('the shell', () => {
     expect(html).not.toContain('<style>')
     expect(html).not.toContain('id="modale-vod"')
     // The embedded state now dominates the page, and that is the point.
-    const etat = /<script id="etat-initial"[^>]*>(.*?)<\/script>/s.exec(html)![1]!
-    expect(html.length - etat.length).toBeLessThan(1_500)
+    const boot = /<script id="etat-initial"[^>]*>(.*?)<\/script>/s.exec(html)![1]!
+    expect(html.length - boot.length).toBeLessThan(1_500)
   })
 
   it('renders a complete and closed document', async () => {
     // Taken over from the template pages' guards: a truncated shell still
     // rendered, in part, and the defect showed on screen with nobody knowing
     // where it came from.
-    await demarrer({ viteOrigin: 'http://127.0.0.1:5174' })
+    await start({ viteOrigin: 'http://127.0.0.1:5174' })
     const html = await (await fetch(`${origin}/regie`)).text()
 
     expect(html.startsWith('<!doctype html>')).toBe(true)
@@ -120,27 +120,27 @@ describe('the shell', () => {
   })
 
   it('embeds the complete state, because an F5 always lands mid-talk', async () => {
-    await demarrer({ viteOrigin: 'http://127.0.0.1:5174' })
+    await start({ viteOrigin: 'http://127.0.0.1:5174' })
 
     const html = await (await fetch(`${origin}/regie`)).text()
-    const brut = /<script id="etat-initial" type="application\/json">(.*?)<\/script>/s.exec(html)
-    const etat = JSON.parse(brut![1]!.replace(/\\u003c/g, '<')) as { roomName: string }
+    const raw = /<script id="etat-initial" type="application\/json">(.*?)<\/script>/s.exec(html)
+    const boot = JSON.parse(raw![1]!.replace(/\\u003c/g, '<')) as { roomName: string }
 
     // Waiting for the stream's first message to paint anything would give half a
     // second of blank screen at the exact moment the operator has just lost
     // their window.
-    expect(etat.roomName).toBe('Track #1 — Teilhard de Chardin')
+    expect(boot.roomName).toBe('Track #1 — Teilhard de Chardin')
   })
 
   it('never lets itself be cached: it carries the room\'s state', async () => {
-    await demarrer({ viteOrigin: 'http://127.0.0.1:5174' })
-    const reponse = await fetch(`${origin}/regie`)
-    expect(reponse.headers.get('cache-control')).toBe('no-store')
+    await start({ viteOrigin: 'http://127.0.0.1:5174' })
+    const response = await fetch(`${origin}/regie`)
+    expect(response.headers.get('cache-control')).toBe('no-store')
   })
 
   it('serves the bundle\'s hashed files, and lets them be cached', async () => {
-    const bundle = bundleFactice()
-    await demarrer({ controlBundle: () => bundle })
+    const bundle = fakeBundle()
+    await start({ controlBundle: () => bundle })
 
     const html = await (await fetch(`${origin}/regie`)).text()
     expect(html).toContain('src="/regie/assets/index-abc123.js"')
@@ -157,14 +157,14 @@ describe('the shell', () => {
   })
 
   it('says what to do when the bundle is missing, rather than returning a 404', async () => {
-    await demarrer()
+    await start()
 
-    const reponse = await fetch(`${origin}/regie`)
+    const response = await fetch(`${origin}/regie`)
 
     // This is not an operational state: the packaging embeds the bundle. A 404
     // would send people looking at the address instead.
-    expect(reponse.status).toBe(503)
-    expect(await reponse.text()).toContain('pnpm --filter @cloudnord/control-web build')
+    expect(response.status).toBe(503)
+    expect(await response.text()).toContain('pnpm --filter @cloudnord/control-web build')
   })
 })
 
@@ -181,10 +181,10 @@ describe('development', () => {
       reply.header('content-type', 'text/javascript')
       return reply.send('// servi par Vite')
     })
-    const origineVite = await vite.listen({ host: '127.0.0.1', port: 0 })
+    const viteAddress = await vite.listen({ host: '127.0.0.1', port: 0 })
 
     try {
-      await demarrer({ viteOrigin: origineVite })
+      await start({ viteOrigin: viteAddress })
 
       const html = await (await fetch(`${origin}/regie`)).text()
       expect(html).toContain('src="/regie/@vite/client"')
@@ -204,10 +204,10 @@ describe('development', () => {
     // page Vite serves from `index.html`, with no state inside.
     const vite = Fastify({ logger: false })
     vite.get('/regie', async (_request, reply) => reply.send('coquille de Vite'))
-    const origineVite = await vite.listen({ host: '127.0.0.1', port: 0 })
+    const viteAddress = await vite.listen({ host: '127.0.0.1', port: 0 })
 
     try {
-      await demarrer({ viteOrigin: origineVite })
+      await start({ viteOrigin: viteAddress })
       const html = await (await fetch(`${origin}/regie`)).text()
       expect(html).toContain('id="etat-initial"')
       expect(html).not.toContain('coquille de Vite')
@@ -217,8 +217,8 @@ describe('development', () => {
   })
 
   it('prefers Vite over the built bundle when both are there', async () => {
-    const bundle = bundleFactice()
-    await demarrer({ controlBundle: () => bundle, viteOrigin: 'http://127.0.0.1:1' })
+    const bundle = fakeBundle()
+    await start({ controlBundle: () => bundle, viteOrigin: 'http://127.0.0.1:1' })
 
     /*
      * The reverse order looked more careful — an installed machine has no Vite, a
@@ -237,8 +237,8 @@ describe('development', () => {
 
   it('serves the bundle as soon as no Vite origin is announced', async () => {
     // The installed machine's case: the variable is never set there.
-    const bundle = bundleFactice()
-    await demarrer({ controlBundle: () => bundle })
+    const bundle = fakeBundle()
+    await start({ controlBundle: () => bundle })
 
     const html = await (await fetch(`${origin}/regie`)).text()
     expect(html).toContain('/regie/assets/index-abc123.js')
@@ -250,7 +250,7 @@ describe('the page\'s self-sufficiency', () => {
   it('references no resource outside its own origin', () => {
     const html = renderControlShell({
       initialPayload: { roomName: 'Track #1' } as never,
-      assets: productionAssets(manifesteTemporaire()),
+      assets: productionAssets(temporaryManifest()),
       eventName: 'Cloud Nord 2026',
     })
 
@@ -297,22 +297,22 @@ describe('the page\'s self-sufficiency', () => {
 })
 
 /** Un manifeste Vite minimal, pour lire les assets sans construire le bundle. */
-function manifesteTemporaire(): string {
-  const dossier = join(dir, '.vite')
-  mkdirSync(dossier, { recursive: true })
-  const chemin = join(dossier, 'manifest.json')
+function temporaryManifest(): string {
+  const folder = join(dir, '.vite')
+  mkdirSync(folder, { recursive: true })
+  const path = join(folder, 'manifest.json')
   writeFileSync(
-    chemin,
+    path,
     JSON.stringify({
       'index.html': { file: 'assets/index-abc123.js', css: ['assets/index-def456.css'] },
     }),
   )
-  return chemin
+  return path
 }
 
 /** The same, with the files behind it: enough to serve for real. */
-function bundleFactice(): { directory: string; manifest: string } {
-  const manifest = manifesteTemporaire()
+function fakeBundle(): { directory: string; manifest: string } {
+  const manifest = temporaryManifest()
   mkdirSync(join(dir, 'assets'), { recursive: true })
   writeFileSync(join(dir, 'assets', 'index-abc123.js'), 'export const rien = 0\n')
   writeFileSync(join(dir, 'assets', 'index-def456.css'), '.rien{}\n')

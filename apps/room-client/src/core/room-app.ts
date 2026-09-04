@@ -242,8 +242,8 @@ export class RoomApp implements ControlTarget {
         uploadVod: (file) => {
           void this.uploads.request(file)
         },
-        razVod: () => {
-          void this.razVod()
+        resetVod: () => {
+          void this.resetVod()
         },
         refreshRoomStatuses: () => {
           void this.refreshRoomStatuses()
@@ -1608,7 +1608,7 @@ export class RoomApp implements ControlTarget {
    * into a form — sometimes a shared disk, sometimes not the one one thinks — and
    * emptying it entirely is not a gesture one recovers from.
    */
-  async razVod(): Promise<number> {
+  async resetVod(): Promise<number> {
     if (this.options.mode !== 'dev') {
       this.options.onLog?.(
         'error',
@@ -1650,7 +1650,7 @@ export class RoomApp implements ControlTarget {
     }
 
     this.uploads.forgetAll()
-    this.options.onLog?.('warn', 'rushes effacés (remise à zéro)', { root, fichiers: erased })
+    this.options.onLog?.('warn', 'rushes effacés (remise à zéro)', { root, files: erased })
     return erased
   }
 

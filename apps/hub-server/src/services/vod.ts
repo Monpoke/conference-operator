@@ -664,7 +664,7 @@ export class VodService {
         .run()
     }
     if (silent.length > 0) {
-      this.onLog('info', 'téléversements muets abandonnés', { nombre: silent.length })
+      this.onLog('info', 'téléversements muets abandonnés', { count: silent.length })
     }
     return silent.length
   }
@@ -712,7 +712,7 @@ export class VodService {
       abandoned += 1
     }
     if (abandoned > 0) {
-      this.onLog('info', 'multiparts orphelins abandonnés', { nombre: abandoned })
+      this.onLog('info', 'multiparts orphelins abandonnés', { count: abandoned })
     }
     return abandoned
   }

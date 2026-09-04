@@ -26,7 +26,7 @@ interface Appel {
   body?: unknown
 }
 
-function stubFetch(reponses: Record<string, { status?: number; body: unknown }>): Appel[] {
+function stubFetch(responses: Record<string, { status?: number; body: unknown }>): Appel[] {
   const calls: Appel[] = []
   vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
     calls.push({
@@ -34,9 +34,9 @@ function stubFetch(reponses: Record<string, { status?: number; body: unknown }>)
       method: init?.method,
       body: init?.body == null ? undefined : JSON.parse(String(init.body)),
     })
-    const reponse = reponses[url] ?? { status: 404, body: null }
-    return new Response(JSON.stringify(reponse.body), {
-      status: reponse.status ?? 200,
+    const response = responses[url] ?? { status: 404, body: null }
+    return new Response(JSON.stringify(response.body), {
+      status: response.status ?? 200,
       headers: { 'content-type': 'application/json' },
     })
   })
@@ -48,11 +48,11 @@ let destination: string | null = null
 beforeEach(() => {
   setActivePinia(createPinia())
   destination = null
-  const stockage = new Map<string, string>()
+  const storage = new Map<string, string>()
   vi.stubGlobal('localStorage', {
-    getItem: (cle: string) => stockage.get(cle) ?? null,
-    setItem: (cle: string, valeur: string) => stockage.set(cle, valeur),
-    removeItem: (cle: string) => stockage.delete(cle),
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => storage.set(key, value),
+    removeItem: (key: string) => storage.delete(key),
   })
   vi.stubGlobal('location', {
     assign: (url: string) => {

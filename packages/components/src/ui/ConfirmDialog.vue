@@ -96,18 +96,18 @@ function auClavier(event: KeyboardEvent): void {
   if (!open.value) return
   if (event.ctrlKey || event.metaKey || event.altKey) return
 
-  const cible = event.target as { tagName?: string; isContentEditable?: boolean } | null
-  if (cible?.isContentEditable === true) return
-  const balise = cible?.tagName
+  const target = event.target as { tagName?: string; isContentEditable?: boolean } | null
+  if (target?.isContentEditable === true) return
+  const balise = target?.tagName
   if (balise === 'INPUT' || balise === 'SELECT' || balise === 'TEXTAREA') return
 
-  const touche = event.key.toLowerCase()
-  const confirmer = props.confirmKey != null && (touche === props.confirmKey.toLowerCase() || touche === 'o')
-  const annuler = props.cancelKey != null && touche === props.cancelKey.toLowerCase()
-  if (!confirmer && !annuler) return
+  const pressed = event.key.toLowerCase()
+  const confirms = props.confirmKey != null && (pressed === props.confirmKey.toLowerCase() || pressed === 'o')
+  const cancels = props.cancelKey != null && pressed === props.cancelKey.toLowerCase()
+  if (!confirms && !cancels) return
 
   event.preventDefault()
-  if (annuler) {
+  if (cancels) {
     open.value = false
     return
   }

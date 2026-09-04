@@ -60,7 +60,7 @@ function stub(options: {
   }
 }
 
-async function monter(
+async function mountView(
   options: Parameters<typeof stub>[0] & { userCode?: string } = {},
 ): Promise<{ calls: Call[]; wrapper: ReturnType<typeof mount> }> {
   const fake = stub(options)
@@ -122,7 +122,7 @@ describe('adresse d’appairage', () => {
 
 describe('vue d’appairage', () => {
   it('preselects the room the machine says it serves', async () => {
-    const { wrapper } = await monter({
+    const { wrapper } = await mountView({
       pending: [
         { clientId: 'machine-a', requestedAt: '2026-10-30T09:00:00Z', scope: 'room:track-2' },
       ],
@@ -136,7 +136,7 @@ describe('vue d’appairage', () => {
   })
 
   it('approuve avec le code saisi et la salle retenue', async () => {
-    const { calls, wrapper } = await monter({
+    const { calls, wrapper } = await mountView({
       pending: [{ clientId: 'machine-a', requestedAt: '2026-10-30T09:00:00Z', scope: null }],
     })
 
@@ -152,7 +152,7 @@ describe('vue d’appairage', () => {
   })
 
   it('qualifies the URL\'s code without deciding for the operator', async () => {
-    const { calls, wrapper } = await monter({
+    const { calls, wrapper } = await mountView({
       userCode: 'WXYZ-9876',
       lookup: { status: 'pending', clientId: 'machine-b', roomId: 'track-1' },
     })
@@ -160,14 +160,14 @@ describe('vue d’appairage', () => {
     expect(calls).toContainEqual({ path: 'devices/lookup', input: { userCode: 'WXYZ-9876' } })
     expect(modal('#verdict-text')?.textContent).toContain('machine-b')
     // Consulter n'approuve pas : les deux boutons existent, rien n'est parti.
-    expect(calls.filter((appel) => appel.path === 'devices/approve')).toHaveLength(0)
+    expect(calls.filter((call) => call.path === 'devices/approve')).toHaveLength(0)
     expect(modal('#verdict-approuver')).not.toBe(null)
   })
 
   it('does not offer to decide a code opened by another operator', async () => {
     // Sans `clientId`, Better Auth ne nous a pas reconnus comme le consultant
     // of the code: approving would fail, so better not to offer it.
-    const { wrapper } = await monter({
+    const { wrapper } = await mountView({
       userCode: 'WXYZ-9876',
       lookup: { status: 'pending', clientId: null },
     })
@@ -177,7 +177,7 @@ describe('vue d’appairage', () => {
   })
 
   it('explains an expired code instead of showing its status', async () => {
-    const { wrapper } = await monter({
+    const { wrapper } = await mountView({
       userCode: 'WXYZ-9876',
       lookup: { status: 'invalid', reason: 'expire' },
     })
@@ -187,7 +187,7 @@ describe('vue d’appairage', () => {
   })
 
   it('shows the failure in the modal, not in the floating toast', async () => {
-    const { wrapper } = await monter({
+    const { wrapper } = await mountView({
       userCode: 'WXYZ-9876',
       lookup: { status: 'pending', clientId: 'machine-b', roomId: 'track-1' },
       approveError: 'Ce code appartient à un autre opérateur',
@@ -197,11 +197,11 @@ describe('vue d’appairage', () => {
     await flushPromises()
 
     // L'erreur porte sur le geste qu'on vient de faire, et se lit en entier.
-    expect(modal('#verdict-erreur')?.textContent).toContain('autre opérateur')
+    expect(modal('#verdict-error')?.textContent).toContain('autre opérateur')
   })
 
   it('revokes a paired machine, and not one already revoked', async () => {
-    const { calls, wrapper } = await monter({
+    const { calls, wrapper } = await mountView({
       devices: [
         { clientId: 'machine-a', roomId: 'track-1', label: null, revokedAt: null },
         { clientId: 'machine-b', roomId: 'track-2', label: null, revokedAt: '2026-10-29T10:00:00Z' },

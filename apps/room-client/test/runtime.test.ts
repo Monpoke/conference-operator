@@ -196,9 +196,9 @@ describe('applying the commands', () => {
 
     runtime.expireNotifications()
 
-    const restants = runtime.state().notifications
-    expect(restants).toHaveLength(1)
-    expect(restants[0]?.text).toContain('Second')
+    const remaining = runtime.state().notifications
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0]?.text).toContain('Second')
   })
 
   it('discards a command caught up on after it expired', async () => {
@@ -523,10 +523,10 @@ describe('command target and lifecycle', () => {
 
     // Without waiting for the clock tick: the gesture has just been made, and now
     // is when one wants to be able to start the talk after it.
-    const cible = runtime.state().targetSession
-    expect(cible?.id).not.toBe(terminee.id)
-    expect(cible?.kind).toBe('talk')
-    expect(cible!.startsAtMs).toBeGreaterThan(terminee.startsAtMs)
+    const target = runtime.state().targetSession
+    expect(target?.id).not.toBe(terminee.id)
+    expect(target?.kind).toBe('talk')
+    expect(target!.startsAtMs).toBeGreaterThan(terminee.startsAtMs)
   })
 
   it('stays on an ended talk during its own slot', () => {
@@ -534,11 +534,11 @@ describe('command target and lifecycle', () => {
     // repaired from the card, "Remettre à venir" within reach.
     clockMs = Date.parse('2026-10-30T10:20:00.000Z')
     const runtime = makeRuntime()
-    const courante = runtime.state().targetSession!
+    const current = runtime.state().targetSession!
 
-    runtime.setSessionStatus(courante.id, 'ended')
+    runtime.setSessionStatus(current.id, 'ended')
 
-    expect(runtime.state().targetSession?.id).toBe(courante.id)
+    expect(runtime.state().targetSession?.id).toBe(current.id)
   })
 
   /**
@@ -575,9 +575,9 @@ describe('command target and lifecycle', () => {
     runtime.refreshSessions()
     runtime.setSessionStatus(lancee.id, 'ended')
 
-    const cible = runtime.state().targetSession
-    expect(cible?.id).not.toBe(lancee.id)
-    expect(cible?.kind).toBe('talk')
+    const target = runtime.state().targetSession
+    expect(target?.id).not.toBe(lancee.id)
+    expect(target?.kind).toBe('talk')
   })
 
   /**

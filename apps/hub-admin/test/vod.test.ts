@@ -44,7 +44,7 @@ function stub(uploads: unknown[]): { calls: Call[]; client: unknown } {
   }
 }
 
-async function monter(uploads: unknown[] = []): Promise<{
+async function mountView(uploads: unknown[] = []): Promise<{
   calls: Call[]
   wrapper: ReturnType<typeof mount>
 }> {
@@ -87,20 +87,20 @@ describe('avancement', () => {
 
 describe('vue VOD', () => {
   it('says there is nothing rather than leave an empty table', async () => {
-    const { wrapper } = await monter([])
+    const { wrapper } = await mountView([])
     expect(wrapper.get('#vod-lignes').text()).toContain('Aucun téléversement')
   })
 
   it('shows the progress and the rate, which say whether it is moving', async () => {
-    const { wrapper } = await monter([EN_COURS])
-    const ligne = wrapper.get('[data-upload="rush-01.mkv"]')
+    const { wrapper } = await mountView([EN_COURS])
+    const row = wrapper.get('[data-upload="rush-01.mkv"]')
 
-    expect(ligne.text()).toContain('25 %')
-    expect(ligne.text()).toContain('2 Ko/s')
+    expect(row.text()).toContain('25 %')
+    expect(row.text()).toContain('2 Ko/s')
   })
 
   it('reprend l’erreur du stockage telle quelle', async () => {
-    const { wrapper } = await monter([{ ...EN_COURS, state: 'echoue', lastError: 'AccessDenied' }])
+    const { wrapper } = await mountView([{ ...EN_COURS, state: 'echoue', lastError: 'AccessDenied' }])
 
     // "AccessDenied" is the only word one can carry to whoever holds the bucket:
     // translating it would lose the only handle on the problem.
@@ -108,12 +108,12 @@ describe('vue VOD', () => {
   })
 
   it('does not offer to retry what has already arrived', async () => {
-    const { wrapper } = await monter([{ ...EN_COURS, state: 'termine' }])
+    const { wrapper } = await mountView([{ ...EN_COURS, state: 'termine' }])
     expect(wrapper.find('[data-upload="rush-01.mkv"] button').exists()).toBe(false)
   })
 
   it('retries one specific file', async () => {
-    const { calls, wrapper } = await monter([EN_COURS])
+    const { calls, wrapper } = await mountView([EN_COURS])
 
     await wrapper.get('[data-upload="rush-01.mkv"] button').trigger('click')
     await flushPromises()
@@ -125,17 +125,17 @@ describe('vue VOD', () => {
   })
 
   it('refuse « tout relancer » sans salle, au lieu de ne rien faire', async () => {
-    const { calls, wrapper } = await monter([EN_COURS])
+    const { calls, wrapper } = await mountView([EN_COURS])
 
     await wrapper.get('#btn-vod-relancer').trigger('click')
     await flushPromises()
 
     // The request targets one machine: with no room there is nobody to talk to.
-    expect(calls.filter((appel) => appel.path === 'vod/request')).toHaveLength(0)
+    expect(calls.filter((call) => call.path === 'vod/request')).toHaveLength(0)
   })
 
   it('rapatrie toute une salle une fois celle-ci choisie', async () => {
-    const { calls, wrapper } = await monter([EN_COURS])
+    const { calls, wrapper } = await mountView([EN_COURS])
 
     await wrapper.get('#vod-room').setValue('track-1')
     await flushPromises()

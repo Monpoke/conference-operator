@@ -53,9 +53,9 @@ let uploads: Record<string, unknown>
 function stub(): void {
   vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
     calls.push({ url, body: init?.body == null ? null : JSON.parse(String(init.body)) })
-    const corps =
+    const body =
       url === '/control/recordings' ? listing : url === '/control/uploads' ? uploads : { ok: true }
-    return new Response(JSON.stringify(corps), { headers: { 'content-type': 'application/json' } })
+    return new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } })
   })
 }
 
@@ -154,7 +154,7 @@ describe('uploading', () => {
      * opposite of the real state.
      */
     expect(vod.blocked).toBe('aucun stockage configuré sur le hub')
-    expect(wrapper.find('[data-vod-monter]').exists()).toBe(false)
+    expect(wrapper.find('[data-vod-upload]').exists()).toBe(false)
   })
 
   it('keeps the buttons when only automatic mode is off', async () => {
@@ -179,7 +179,7 @@ describe('uploading', () => {
 
     expect(vod.blocked).toBe(null)
     expect(vod.manualOnly).toBe(true)
-    expect(wrapper.find('[data-vod-monter]').exists()).toBe(true)
+    expect(wrapper.find('[data-vod-upload]').exists()).toBe(true)
     // No amber: it is a deliberate setting, not a wait.
     expect(vod.waitReason).toBe(null)
   })
@@ -200,8 +200,8 @@ describe('uploading', () => {
 
     // Failing which the operator who has just sent one by hand wonders
     // pourquoi les suivants ne partent pas seuls.
-    const ligne = document.body.querySelector('[data-role="vod-manual"]')
-    expect(ligne?.textContent).toContain('les envois se font à la main')
+    const row = document.body.querySelector('[data-role="vod-manual"]')
+    expect(row?.textContent).toContain('les envois se font à la main')
     // "Tout téléverser" stays armed: the same rule as the rows' ⬆.
     expect(
       document.body.querySelector('[data-role="btn-vod-upload-all"]')?.hasAttribute('disabled'),
@@ -244,10 +244,10 @@ describe('uploading', () => {
     await openVod()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
 
-    // A button would pay three gigabytes again on the event's network at the
-    // premier clic distrait.
-    expect(wrapper.find('[data-vod-monter]').exists()).toBe(false)
-    expect(wrapper.find('[data-vod-annuler]').exists()).toBe(false)
+    // A button would pay three gigabytes again on the event's network on the
+    // first distracted click.
+    expect(wrapper.find('[data-vod-upload]').exists()).toBe(false)
+    expect(wrapper.find('[data-vod-cancel]').exists()).toBe(false)
     expect(wrapper.text()).toContain('☁')
   })
 
@@ -267,11 +267,11 @@ describe('uploading', () => {
      * that said where that particular file stood: on a modal lining up fifteen of
      * them, one had to read the small detail line again to find the one uploading.
      */
-    const indicator = wrapper.get('[data-vod-progression]')
+    const indicator = wrapper.get('[data-vod-progress]')
     expect(indicator.attributes('title')).toContain('42 %')
     expect(indicator.get('span').classes()).toContain('animate-spin')
 
-    await wrapper.get('[data-vod-annuler]').trigger('click')
+    await wrapper.get('[data-vod-cancel]').trigger('click')
     await flushPromises()
     expect(calls.at(-2)?.body).toEqual({ action: 'vod.upload.cancel', file: RUSH.file })
   })
@@ -287,12 +287,12 @@ describe('uploading', () => {
     await openVod()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
 
-    const indicator = wrapper.get('[data-vod-progression]')
+    const indicator = wrapper.get('[data-vod-progress]')
     expect(indicator.attributes('title')).toContain('En file')
     expect(indicator.get('span').classes()).toContain('animate-pulse')
     expect(indicator.get('span').classes()).not.toContain('animate-spin')
     // Cancelling is still offered: an upload that has not started can be abandoned too.
-    expect(wrapper.find('[data-vod-annuler]').exists()).toBe(true)
+    expect(wrapper.find('[data-vod-cancel]').exists()).toBe(true)
   })
 
   it('says the time left, which the percentage leaves whole', async () => {
@@ -323,7 +323,7 @@ describe('uploading', () => {
     expect(wrapper.text()).toContain('téléversement en cours — 40 % · reste 1 min')
     // "environ" on the indicator: what is worth whatever the network is worth reads
     // comme une estimation, sans quoi on range le disque sur la foi du chiffre.
-    expect(wrapper.get('[data-vod-progression]').attributes('title')).toContain(
+    expect(wrapper.get('[data-vod-progress]').attributes('title')).toContain(
       'reste environ 1 min',
     )
   })
@@ -425,7 +425,7 @@ describe('uploading', () => {
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
     calls = []
 
-    await wrapper.get('[data-vod-progression]').trigger('click')
+    await wrapper.get('[data-vod-progress]').trigger('click')
     await flushPromises()
 
     // Three gigabytes already uploaded are not lost to a distracted finger:
@@ -450,22 +450,22 @@ describe('uploading', () => {
     await openVod()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
 
-    const icones = ['data-vod-apercu', 'data-vod-monter', 'data-vod-verdict-ok', 'data-vod-verdict-ko']
-    for (const marque of icones) {
-      const bouton = wrapper.get(`[${marque}]`)
-      expect(bouton.classes()).toContain('w-9')
-      // `px-0` retire le rembourrage du bouton, qui rendait la largeur
+    const icons = ['data-vod-preview', 'data-vod-upload', 'data-vod-verdict-ok', 'data-vod-verdict-ko']
+    for (const attribute of icons) {
+      const button = wrapper.get(`[${attribute}]`)
+      expect(button.classes()).toContain('w-9')
+      // `px-0` removes the button padding, which made the width
       // dependent on the content — it is the one `tailwind-merge` must carry away.
-      expect(bouton.classes()).toContain('px-0')
-      expect(bouton.classes()).not.toContain('px-3')
+      expect(button.classes()).toContain('px-0')
+      expect(button.classes()).not.toContain('px-3')
     }
 
     // The column reserves the widest case's space on every row, and pushes its
     // content right: ⬆, ☁ and "Annuler" share the edge
     // qui touche le ✓.
-    const colonne = wrapper.get('[data-vod-monter]').element.parentElement
-    expect(colonne?.className).toContain('w-[6.75rem]')
-    expect(colonne?.className).toContain('justify-end')
+    const column = wrapper.get('[data-vod-upload]').element.parentElement
+    expect(column?.className).toContain('w-[6.75rem]')
+    expect(column?.className).toContain('justify-end')
   })
 
   it('keeps the column at the same width during the upload', async () => {
@@ -479,9 +479,9 @@ describe('uploading', () => {
 
     // The indicator and "Annuler" fit in the same cell as the lone ⬆ of the row
     // beside it: failing which the ✓ and the ✕ jump from one row to the next.
-    const colonne = wrapper.get('[data-vod-annuler]').element.parentElement
-    expect(colonne?.className).toContain('w-[6.75rem]')
-    expect(wrapper.get('[data-vod-progression]').element.parentElement).toBe(colonne)
+    const column = wrapper.get('[data-vod-cancel]').element.parentElement
+    expect(column?.className).toContain('w-[6.75rem]')
+    expect(wrapper.get('[data-vod-progress]').element.parentElement).toBe(column)
   })
 
   it('gives the ☁ a button\'s width, for want of being one', async () => {
@@ -531,7 +531,7 @@ describe('uploading', () => {
     // `null` means "everything that is left": that is what "Tout téléverser" does.
     const demandes = calls
       .map((call) => call.body as { action?: string; file?: unknown } | null)
-      .filter((corps) => corps?.action === 'vod.upload')
+      .filter((body) => body?.action === 'vod.upload')
     expect(demandes).toEqual([
       { action: 'vod.upload', file: RUSH.file },
       { action: 'vod.upload', file: null },
@@ -565,8 +565,8 @@ describe('the control app\'s verdict', () => {
     await vod.loadListing()
     await vod.verdict(RUSH.file, 'ok')
 
-    // Without the removal, a slip would stay on screen with no way to
-    // reprendre — et se relirait au editing comme une information.
+    // Without the removal, a slip would stay on screen with no way to take it
+    // back — and would be read back at editing time as information.
     expect(calls.at(-2)?.body).toEqual({ action: 'vod.verdict', file: RUSH.file, status: null })
   })
 })
@@ -624,14 +624,14 @@ describe('one footage row', () => {
       props: { entry: { ...RUSH, beingWritten: true }, timeZone: 'Europe/Paris' },
     })
 
-    const texte = wrapper.text()
-    expect(texte).toContain('1 marqueur')
-    expect(texte).toContain('45:00')
-    expect(texte).toContain('4,2 Go')
-    expect(texte).toContain('encore en écriture')
+    const text = wrapper.text()
+    expect(text).toContain('1 marqueur')
+    expect(text).toContain('45:00')
+    expect(text).toContain('4,2 Go')
+    expect(text).toContain('encore en écriture')
     // No anchor on this footage: nothing is said. The take is over, no more can be
     // set, and a reproach with no remedy teaches nothing.
-    expect(texte).not.toContain('rognage')
+    expect(text).not.toContain('rognage')
   })
 
   it('says what editing will trim, while the file is still there', async () => {
@@ -649,10 +649,10 @@ describe('one footage row', () => {
     }
     const wrapper = mount(VodRow, { props: { entry, timeZone: 'Europe/Paris' } })
 
-    const texte = wrapper.text()
-    expect(texte).toContain('rognage 00:52 → 44:20')
+    const text = wrapper.text()
+    expect(text).toContain('rognage 00:52 → 44:20')
     // The two anchors are not chapters: only "Questions" is one.
-    expect(texte).toContain('1 marqueur')
+    expect(text).toContain('1 marqueur')
   })
 
   it('marks the missing anchor with a "?", rather than stay silent', async () => {
@@ -668,7 +668,7 @@ describe('one footage row', () => {
     }
     const wrapper = mount(VodRow, { props: { entry, timeZone: 'Europe/Paris' } })
 
-    // Le editing ira jusqu'au bout du fichier, blancs de fin compris : le dire
+    // Editing will run to the end of the file, trailing blanks included: saying
     // while the room is still standing beats discovering it on the published video.
     expect(wrapper.text()).toContain('rognage 00:52 → ?')
   })

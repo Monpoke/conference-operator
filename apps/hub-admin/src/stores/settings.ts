@@ -71,19 +71,19 @@ export const useSettingsStore = defineStore('settings', () => {
   const session = useSessionStore()
 
   async function load(): Promise<void> {
-    const [reglages, identite, instantanes, salles, stockage] = await Promise.all([
+    const [settingsData, identityData, snapshotsData, roomsData, storageData] = await Promise.all([
       session.client.rpc.settings.get(),
       session.client.rpc.event.identity(),
       session.client.rpc.program.snapshots(),
       session.client.rpc.rooms.list(),
       session.client.rpc.vod.status(),
     ])
-    settings.value = reglages as Settings
-    const identity = identite as { derived?: DerivedIdentity }
+    settings.value = settingsData as Settings
+    const identity = identityData as { derived?: DerivedIdentity }
     if (identity.derived != null) derived.value = identity.derived
-    snapshots.value = instantanes as Snapshot[]
-    rooms.value = salles as { id: string; name: string }[]
-    storage.value = stockage as StorageStatus
+    snapshots.value = snapshotsData as Snapshot[]
+    rooms.value = roomsData as { id: string; name: string }[]
+    storage.value = storageData as StorageStatus
   }
 
   /**
@@ -111,11 +111,11 @@ export const useSettingsStore = defineStore('settings', () => {
   async function reimport(): Promise<number> {
     const url = settings.value?.programSourceUrl
     if (url == null || url === '') throw new Error('Aucune URL de programme enregistrée')
-    const resultat = (await session.client.rpc.program.import({ sourceUrl: url })) as {
+    const result = (await session.client.rpc.program.import({ sourceUrl: url })) as {
       program: { sessions: unknown[] }
     }
     await load()
-    return resultat.program.sessions.length
+    return result.program.sessions.length
   }
 
   async function resync(roomId: string | null): Promise<{ rooms: number }> {

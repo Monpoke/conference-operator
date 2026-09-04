@@ -138,9 +138,9 @@ describe('code d’appairage', () => {
 
 describe('what the veil covers', () => {
   async function mountVeil(pairing: DisplayPayload['pairing']): Promise<ReturnType<typeof mount>> {
-    const etat = payload()
-    etat.pairing = pairing
-    useRoomStore().seed(etat)
+    const view = payload()
+    view.pairing = pairing
+    useRoomStore().seed(view)
     const wrapper = mount(App, { attachTo: document.body })
     mounted.push(wrapper)
     await flushPromises()

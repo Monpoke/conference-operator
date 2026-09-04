@@ -275,8 +275,8 @@ describe('sidecar', () => {
   })
 
   it('does not overwrite a file already present under the target name', async () => {
-    const cible = '/rec/2026-10-30_track1_1100_honeyswamp-active-defense-to-ruin-attackers.mkv'
-    const { fs } = fakeFs(['/rec/brut.mkv', cible])
+    const target = '/rec/2026-10-30_track1_1100_honeyswamp-active-defense-to-ruin-attackers.mkv'
+    const { fs } = fakeFs(['/rec/brut.mkv', target])
     const { session } = makeSession(fs)
 
     await session.start(START)
@@ -324,8 +324,8 @@ describe('sidecar', () => {
 
     expect(result.videoPath).toBe(`/rec/${attendu} (2).mp4`)
     expect(result.sidecarPath).toBe(`/rec/${attendu} (2).json`)
-    const ecrit = JSON.parse(files.get(result.sidecarPath!)!) as Sidecar
-    expect(ecrit.title).toContain('HoneySwamp')
+    const written = JSON.parse(files.get(result.sidecarPath!)!) as Sidecar
+    expect(written.title).toContain('HoneySwamp')
     expect(onLog).toHaveBeenCalledWith(
       'info',
       expect.stringContaining('sous la racine des captations'),
@@ -377,9 +377,9 @@ describe('sidecar', () => {
 
     expect(result.videoPath).toBe(`/rec/${attendu}.mp4`)
     expect(result.sidecarPath).toBe(`/rec/${attendu}.json`)
-    const ecrit = JSON.parse(files.get(result.sidecarPath!)!) as Sidecar
-    expect(ecrit.title).toContain('HoneySwamp')
-    expect(ecrit.videoFile).toBe(`${attendu}.mp4`)
+    const written = JSON.parse(files.get(result.sidecarPath!)!) as Sidecar
+    expect(written.title).toContain('HoneySwamp')
+    expect(written.videoFile).toBe(`${attendu}.mp4`)
     expect(onLog).toHaveBeenCalledWith(
       'info',
       expect.stringContaining('sous la racine des captations'),

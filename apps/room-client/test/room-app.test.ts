@@ -208,8 +208,8 @@ describe('room machine, full start-up', () => {
     // And the screen follows the requested mode.
     hub.services.commands.publish(TRACK_1, { type: 'display.set', mode: 'programme' }, null)
     await sleep(400)
-    const apres = (await (await fetch(`${url}/display/data`)).json()) as DisplayPayload
-    expect(apres.state.mode).toBe('programme')
+    const after = (await (await fetch(`${url}/display/data`)).json()) as DisplayPayload
+    expect(after.state.mode).toBe('programme')
   }, 30_000)
 
   it('caches the assets so the screen no longer depends on the network', async () => {
@@ -236,7 +236,7 @@ describe('room machine, full start-up', () => {
  */
 describe('the heartbeat', () => {
   /** Deux instances, deux transports : c'est tout l'objet de ces tests. */
-  async function salleAvecDeuxObs() {
+  async function roomWithTwoObs() {
     const a = fakeObs()
     const b = fakeObs(['Talk'])
     room = makeApp()
@@ -261,7 +261,7 @@ describe('the heartbeat', () => {
      * `recording.started` had just written there — the mobile control app showed a
      * dark indicator on a room in mid-take, and the console with it.
      */
-    const { b } = await salleAvecDeuxObs()
+    const { b } = await roomWithTwoObs()
 
     // Started from OBS itself: no `recording.started` is emitted, so this fact
     // only travels through the heartbeat. That is the worst case, so the right test.
@@ -279,7 +279,7 @@ describe('the heartbeat', () => {
      * nothing and awaits no path — and everything the take knew about itself went
      * in the bin, markers included, which exist nowhere else.
      */
-    const { b } = await salleAvecDeuxObs()
+    const { b } = await roomWithTwoObs()
     await room.startRecording()
     room.mark('demo')
 
@@ -305,7 +305,7 @@ describe('the heartbeat', () => {
   it('does not write a second sidecar when the stop comes from the control app', async () => {
     // Both paths lead to the sidecar and can cross: OBS's event arrives right
     // after `StopRecord`, while the take is still open.
-    const { b } = await salleAvecDeuxObs()
+    const { b } = await roomWithTwoObs()
     await room.startRecording()
 
     const master = join(dir, 'depuis-regie.mkv')
@@ -323,7 +323,7 @@ describe('the heartbeat', () => {
   }, 30_000)
 
   it('reports the room screen, so the phone knows which button to light', async () => {
-    await salleAvecDeuxObs()
+    await roomWithTwoObs()
 
     // A mobile control app's gesture: the hub publishes, the room applies, and
     // the room says so — without waiting for the next tick, otherwise the button
@@ -350,11 +350,11 @@ describe('audience questions', () => {
     const token = await room.ensurePaired()
     await room.connectHub(token!)
 
-    const cible = room.runtime.state().targetSession
-    expect(cible).not.toBeNull()
+    const target = room.runtime.state().targetSession
+    expect(target).not.toBeNull()
 
     hub.services.questions.post({
-      roomId: TRACK_1, sessionId: cible!.id, author: 'Camille',
+      roomId: TRACK_1, sessionId: target!.id, author: 'Camille',
       text: 'Comment gérez-vous les faux positifs ?',
     })
     hub.services.questions.post({
@@ -368,7 +368,7 @@ describe('audience questions', () => {
     expect(questions.map((q) => q.text)).toEqual(['Comment gérez-vous les faux positifs ?'])
     // The talk is named: an empty list does not mean the same thing when one is
     // driving a talk with no question and when one is driving none at all.
-    expect(questionsSession).toEqual({ id: cible!.id, title: cible!.title })
+    expect(questionsSession).toEqual({ id: target!.id, title: target!.title })
   }, 30_000)
 
   it('attaches the question put on air to that talk', async () => {

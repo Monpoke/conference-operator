@@ -25,11 +25,11 @@ interface Call {
   body: unknown
 }
 
-function stubFetch(reponse: unknown = { ok: true }): Call[] {
+function stubFetch(response: unknown = { ok: true }): Call[] {
   const calls: Call[] = []
   vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
     calls.push({ url, body: JSON.parse(String(init?.body)) })
-    return new Response(JSON.stringify(reponse), {
+    return new Response(JSON.stringify(response), {
       headers: { 'content-type': 'application/json' },
     })
   })
@@ -80,11 +80,11 @@ describe('poster une action', () => {
       throw new Error('injoignable')
     })
 
-    const resultat = await useActionsStore().act({ action: 'recording.start' })
+    const result = await useActionsStore().act({ action: 'recording.start' })
 
     // A failure here does not mean "the hub is far away": the room's application
     // core no longer answers, and that is the failure that stops everything.
-    expect(resultat).toEqual({ ok: false, message: 'Le service local ne répond pas' })
+    expect(result).toEqual({ ok: false, message: 'Le service local ne répond pas' })
     expect(useToast().notices.value.at(-1)?.failed).toBe(true)
   })
 })

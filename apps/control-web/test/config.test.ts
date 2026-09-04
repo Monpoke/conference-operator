@@ -35,20 +35,20 @@ const CONFIG: VisibleConfig = {
   sceneOnStart: 'LIVE',
 }
 
-interface Envoi {
+interface Send {
   body: unknown
 }
 
-let calls: Envoi[]
+let calls: Send[]
 let refuse: boolean
 /** What the machine answers, when the gesture brings something back. */
 let answer: { ok: boolean; detail?: unknown } | null
 
-function salle(overrides: Partial<VisibleConfig> = {}) {
-  const etat = payload()
-  etat.diagnostics!.config = { ...CONFIG, ...overrides }
-  useRoomStore().seed(etat)
-  return etat
+function room(overrides: Partial<VisibleConfig> = {}) {
+  const view = payload()
+  view.diagnostics!.config = { ...CONFIG, ...overrides }
+  useRoomStore().seed(view)
+  return view
 }
 
 beforeEach(() => {
@@ -58,8 +58,8 @@ beforeEach(() => {
   answer = null
   vi.stubGlobal('fetch', async (_url: string, init?: RequestInit) => {
     calls.push({ body: JSON.parse(String(init?.body)) })
-    const corps = answer ?? { ok: !refuse, message: refuse ? 'Refusé' : 'Fait' }
-    return new Response(JSON.stringify(corps), {
+    const body = answer ?? { ok: !refuse, message: refuse ? 'Refusé' : 'Fait' }
+    return new Response(JSON.stringify(body), {
       headers: { 'content-type': 'application/json' },
     })
   })
@@ -67,7 +67,7 @@ beforeEach(() => {
 
 describe('draft', () => {
   it('populates on opening, not on every state received', () => {
-    salle()
+    room()
     const config = useConfigStore()
     config.show()
 
@@ -80,9 +80,9 @@ describe('draft', () => {
   })
 
   it('offers nothing to configure while the hub has not answered', () => {
-    const etat = payload()
-    etat.diagnostics!.config = null
-    useRoomStore().seed(etat)
+    const view = payload()
+    view.diagnostics!.config = null
+    useRoomStore().seed(view)
     const config = useConfigStore()
 
     config.show()
@@ -95,7 +95,7 @@ describe('draft', () => {
 
 describe('what the form sends', () => {
   it('ne renvoie pas un mot de passe qu’il n’a jamais eu', () => {
-    salle()
+    room()
     const config = useConfigStore()
     config.show()
 
@@ -107,7 +107,7 @@ describe('what the form sends', () => {
   })
 
   it('sait retirer un mot de passe, ce qu’un champ vide ne dit pas', () => {
-    salle()
+    room()
     const config = useConfigStore()
     config.show()
     config.draft!.obs.A.clearPassword = true
@@ -116,7 +116,7 @@ describe('what the form sends', () => {
   })
 
   it('keeps a role mapped outside the three offered for the instance', () => {
-    salle()
+    room()
     const config = useConfigStore()
     config.show()
     config.draft!.sceneRoles.A.LIVE = 'Antenne'
@@ -132,7 +132,7 @@ describe('what the form sends', () => {
   })
 
   it('clears a role set back to "non configuré"', () => {
-    salle()
+    room()
     const config = useConfigStore()
     config.show()
     config.draft!.sceneRoles.A.LIVE = ''
@@ -143,7 +143,7 @@ describe('what the form sends', () => {
   })
 
   it('falls back on the existing port rather than on zero', () => {
-    salle()
+    room()
     const config = useConfigStore()
     config.show()
     config.draft!.displayPort = 'sept-mille'
@@ -154,7 +154,7 @@ describe('what the form sends', () => {
   })
 
   it('returns null for text fields left empty', () => {
-    salle({ fileSlug: 'track-1', recordingRoot: '/rushes' })
+    room({ fileSlug: 'track-1', recordingRoot: '/rushes' })
     const config = useConfigStore()
     config.show()
     config.draft!.fileSlug = '   '
@@ -168,7 +168,7 @@ describe('what the form sends', () => {
 
 describe('saving', () => {
   it('repopulates from what the hub kept, not from what was typed', async () => {
-    salle()
+    room()
     const config = useConfigStore()
     config.show()
     config.draft!.fileSlug = 'saisi'
@@ -183,7 +183,7 @@ describe('saving', () => {
   })
 
   it('garde la saisie quand le hub refuse', async () => {
-    salle()
+    room()
     const config = useConfigStore()
     config.show()
     config.draft!.fileSlug = 'saisi'
@@ -196,7 +196,7 @@ describe('saving', () => {
   })
 
   it('enregistre avant de connecter, pour ne pas brancher la mauvaise adresse', async () => {
-    salle()
+    room()
     const config = useConfigStore()
     config.show()
 
@@ -211,7 +211,7 @@ describe('saving', () => {
   })
 
   it('does not connect if the save fails', async () => {
-    salle()
+    room()
     const config = useConfigStore()
     config.show()
     refuse = true
@@ -224,8 +224,8 @@ describe('saving', () => {
   })
 
   it('connects all the same offline, without going through the hub', async () => {
-    const etat = salle()
-    etat.state.connectivity = 'OFFLINE'
+    const view = room()
+    view.state.connectivity = 'OFFLINE'
     const config = useConfigStore()
     config.show()
 
@@ -238,8 +238,8 @@ describe('saving', () => {
 })
 
 describe('OBS block', () => {
-  function bloc(obs: Partial<ObsState>, config: VisibleConfig = CONFIG) {
-    salle()
+  function block(obs: Partial<ObsState>, config: VisibleConfig = CONFIG) {
+    room()
     const store = useConfigStore()
     store.show()
     return mount(ObsConfigBlock, {
@@ -254,7 +254,7 @@ describe('OBS block', () => {
   }
 
   it('interdit de reconnecter sous une prise en cours', () => {
-    const wrapper = bloc({ connected: true, recording: true, scenes: [], currentSceneName: 'X' })
+    const wrapper = block({ connected: true, recording: true, scenes: [], currentSceneName: 'X' })
 
     // Reconnecter, c'est couper.
     expect(wrapper.get('[data-connect="A"]').attributes('disabled')).toBeDefined()
@@ -262,12 +262,12 @@ describe('OBS block', () => {
 
   it('lets a disconnected instance that said "recording" be reconnected', () => {
     // Its last known state is precisely the stale one.
-    const wrapper = bloc({ connected: false, recording: true, scenes: [] })
+    const wrapper = block({ connected: false, recording: true, scenes: [] })
     expect(wrapper.get('[data-connect="A"]').attributes('disabled')).toBeUndefined()
   })
 
   it('says a saved setting is not yet plugged in', () => {
-    const wrapper = bloc({ connected: true, recording: false, scenes: [], currentSceneName: 'X' }, {
+    const wrapper = block({ connected: true, recording: false, scenes: [], currentSceneName: 'X' }, {
       ...CONFIG,
       obs: { ...CONFIG.obs, A: { ...CONFIG.obs.A, pending: true } },
     })
@@ -278,7 +278,7 @@ describe('OBS block', () => {
   })
 
   it('keeps in the list a scene OBS does not know, named for what it is', () => {
-    const wrapper = bloc({ connected: true, recording: false, scenes: ['Autre'] })
+    const wrapper = block({ connected: true, recording: false, scenes: ['Autre'] })
 
     // That is in fact the defect being repaired here: clearing it by opening the
     // modal would make the offending setting disappear without showing it.
@@ -288,18 +288,18 @@ describe('OBS block', () => {
 
 describe('screens menu', () => {
   it('adds the public wall only when the room knows its address', async () => {
-    const sans = mount(ScreensMenu, { props: { payload: payload() } })
-    await sans.get('[data-role="btn-screens"]').trigger('click')
-    expect(sans.text()).not.toContain('Mur public')
+    const withoutWall = mount(ScreensMenu, { props: { payload: payload() } })
+    await withoutWall.get('[data-role="btn-screens"]').trigger('click')
+    expect(withoutWall.text()).not.toContain('Mur public')
 
-    const avec = mount(ScreensMenu, {
+    const withWall = mount(ScreensMenu, {
       props: { payload: payload({ wall: { url: 'https://mur.example', qrSvg: '' } }) },
     })
-    await avec.get('[data-role="btn-screens"]').trigger('click')
+    await withWall.get('[data-role="btn-screens"]').trigger('click')
 
     // A dead link in this list would send people looking for a network failure
     // where there is only a missing setting.
-    expect(avec.text()).toContain('https://mur.example')
+    expect(withWall.text()).toContain('https://mur.example')
   })
 
   it('opens each screen in another tab', async () => {
@@ -308,7 +308,7 @@ describe('screens menu', () => {
 
     // Opening the projection in the control window would replace the commands with
     // the room screen, in the middle of an intervention.
-    for (const lien of wrapper.findAll('a')) expect(lien.attributes('target')).toBe('_blank')
+    for (const link of wrapper.findAll('a')) expect(link.attributes('target')).toBe('_blank')
   })
 })
 
@@ -321,7 +321,7 @@ describe('screens menu', () => {
  */
 describe('choosing the VOD folder', () => {
   function openPanel(overrides: Partial<VisibleConfig> = {}) {
-    salle(overrides)
+    room(overrides)
     const config = useConfigStore()
     config.show()
     return config
@@ -390,18 +390,18 @@ describe('incomplete room at start-up', () => {
     overrides: Partial<VisibleConfig> = {},
     obs: { A?: ObsState | null; B?: ObsState | null } = {},
   ) {
-    const etat = payload()
-    etat.diagnostics!.config = {
+    const view = payload()
+    view.diagnostics!.config = {
       ...CONFIG,
       recordingRoot: 'D:\\captations',
       sceneRoles: { A: { LIVE: 'Direct' }, B: {} },
       ...overrides,
     }
-    etat.diagnostics!.obs = {
+    view.diagnostics!.obs = {
       A: obs.A === undefined ? obsState({ instance: 'A' }) : obs.A,
       B: obs.B === undefined ? obsState({ instance: 'B' }) : obs.B,
     }
-    useRoomStore().seed(etat)
+    useRoomStore().seed(view)
     return useConfigStore()
   }
 
@@ -492,9 +492,9 @@ describe('incomplete room at start-up', () => {
   })
 
   it('judges as soon as the hub finally returns the configuration', async () => {
-    const etat = payload()
-    etat.diagnostics!.config = null
-    useRoomStore().seed(etat)
+    const view = payload()
+    view.diagnostics!.config = null
+    useRoomStore().seed(view)
     const config = useConfigStore()
 
     config.checkAtStartup()

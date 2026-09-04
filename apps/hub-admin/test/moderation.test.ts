@@ -133,6 +133,6 @@ describe('moderation view', () => {
     // Removing the card locally would be enough on screen and would diverge as
     // soon as two operators moderate at once. A single source of truth, and
     // c'est le hub.
-    expect(calls.filter((appel) => appel.path === 'wall/pending')).toHaveLength(2)
+    expect(calls.filter((call) => call.path === 'wall/pending')).toHaveLength(2)
   })
 })

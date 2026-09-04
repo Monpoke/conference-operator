@@ -95,13 +95,13 @@ async function confirmReset(): Promise<void> {
       <div class="flex items-center gap-3 border-b border-edge pb-3">
         <div class="flex-1">
           <strong
-            id="horloge-etat"
+            id="clock-state"
             class="mb-[3px] block text-sm"
             :class="clock?.simulated === true ? 'text-warn' : ''"
           >
             {{ clock?.simulated === true ? 'Horloge SIMULÉE' : 'Heure réelle' }}
           </strong>
-          <span id="horloge-valeur" class="text-xs text-dim">{{ readable }}</span>
+          <span id="clock-value" class="text-xs text-dim">{{ readable }}</span>
         </div>
       </div>
 
@@ -134,7 +134,7 @@ async function confirmReset(): Promise<void> {
         </div>
       </div>
 
-      <Hint id="horloge-aide">
+      <Hint id="clock-hint">
         <template v-if="clock?.controllable === true">
           Déplacer l'heure déplace <strong>tout le système</strong> : les salles s'alignent
           aussitôt. Outil de développement — pendant l'événement, cela fausserait les timecodes

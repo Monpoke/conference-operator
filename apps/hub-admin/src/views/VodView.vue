@@ -125,8 +125,8 @@ function requestAll(): void {
         </table>
       </div>
 
-      <Hint id="vod-aide">
-        À regarder <strong>avant de démonter une room</strong> : c'est le dernier
+      <Hint id="vod-hint">
+        À regarder <strong>avant de démonter une salle</strong> : c'est le dernier
         moment où son disque est encore branché. Un rush qui n'est pas ici n'est
         nulle part ailleurs qu'à Lille.
       </Hint>

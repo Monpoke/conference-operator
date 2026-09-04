@@ -27,7 +27,7 @@ if (programSource != null && hub.services.programs.active() == null) {
     {
       contentHash: snapshot.contentHash,
       sessions: snapshot.program.sessions.length,
-      sallesCreees: created,
+      roomsCreated: created,
     },
     'programme importé au démarrage',
   )

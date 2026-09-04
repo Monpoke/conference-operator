@@ -26,22 +26,22 @@ import { useSessionStore } from '../src/stores/session.js'
  * — it began with a talk, so that "Première conférence" could aim at whatever slot
  * came first with nothing to report it.
  */
-const CRENEAUX = [
+const SLOTS = [
   { id: 'accueil', startsAt: '2026-10-30T07:30:00.000Z', endsAt: '2026-10-30T08:00:00.000Z', kind: 'break' },
   { id: 'a', startsAt: '2026-10-30T08:00:00.000Z', endsAt: '2026-10-30T08:45:00.000Z', kind: 'talk' },
   { id: 'b', startsAt: '2026-10-30T12:00:00.000Z', endsAt: '2026-10-30T13:00:00.000Z', kind: 'break' },
   { id: 'c', startsAt: '2026-10-30T16:00:00.000Z', endsAt: '2026-10-30T16:45:00.000Z', kind: 'talk' },
 ]
 
-let appels: string[]
+let calls: string[]
 
 function stub(): void {
-  appels = []
+  calls = []
   const note =
-    (chemin: string, resultat: unknown) =>
+    (path: string, result: unknown) =>
     async (): Promise<unknown> => {
-      appels.push(chemin)
-      return resultat
+      calls.push(path)
+      return result
     }
   useSessionStore().client = {
     token: { read: () => 'jeton', write: () => {}, clear: () => {} },
@@ -49,7 +49,7 @@ function stub(): void {
       sessions: { states: note('sessions/states', []) },
       program: {
         snapshots: note('program/snapshots', [{ active: true }]),
-        planning: note('program/planning', { timezone: 'Europe/Paris', sessions: CRENEAUX }),
+        planning: note('program/planning', { timezone: 'Europe/Paris', sessions: SLOTS }),
       },
       clock: {
         get: note('clock/get', {
@@ -76,7 +76,7 @@ beforeEach(() => {
   stub()
 })
 
-describe('moments du programme', () => {
+describe('program moments', () => {
   it('ne rend aucun raccourci sans programme', () => {
     // A jump to a date with no slot at all shows nothing and does not
     // dit pas pourquoi : mieux vaut aucun bouton qu'un bouton muet.
@@ -84,8 +84,8 @@ describe('moments du programme', () => {
   })
 
   it('deduces them from the slots, and skips the breaks for the midday one', () => {
-    const moments = programMoments(CRENEAUX)
-    expect(moments.map(([libelle]) => libelle)).toEqual([
+    const moments = programMoments(SLOTS)
+    expect(moments.map(([label]) => label)).toEqual([
       'Avant ouverture',
       'Première conférence',
       'Milieu de journée',
@@ -102,21 +102,21 @@ describe('moments du programme', () => {
      * are breaks. The button therefore led thirty minutes before the first talk, and
      * one believed the clock wrong when it was the label.
      */
-    const moments = programMoments(CRENEAUX)
+    const moments = programMoments(SLOTS)
     expect(moments[1]?.[1]).toBe('2026-10-30T08:05:00.000Z')
   })
 
   it('keeps "avant ouverture" on the first slot, break included', () => {
     // That one does aim at the welcome: "before opening" means before the
     // salle n'ouvre ses portes, pas avant le premier talk.
-    expect(programMoments(CRENEAUX)[0]?.[1]).toBe('2026-10-30T07:00:00.000Z')
+    expect(programMoments(SLOTS)[0]?.[1]).toBe('2026-10-30T07:00:00.000Z')
   })
 
   it('falls back on the first slot when the day has only breaks', () => {
     // Four buttons beat three, even if this one then aims at a lunch: a program
     // with no talk is an incomplete program, not
     // une raison de retirer un outil.
-    const pauses = CRENEAUX.filter((creneau) => creneau.kind === 'break')
+    const pauses = SLOTS.filter((slot) => slot.kind === 'break')
     expect(programMoments(pauses)[1]?.[1]).toBe('2026-10-30T07:35:00.000Z')
   })
 })
@@ -126,7 +126,7 @@ describe('what the development address loads', () => {
     await rafraichirDeveloppement()()
     await flushPromises()
 
-    expect(appels).toContain('program/planning')
+    expect(calls).toContain('program/planning')
     const planning = useConferencesStore().planning
     expect(programMoments(planning?.sessions ?? [])).toHaveLength(4)
     // And the event's time zone with it, in which the hub's clock is read.
@@ -137,7 +137,7 @@ describe('what the development address loads', () => {
     const refresh = rafraichirDeveloppement()
     await refresh()
     await flushPromises()
-    const apresPremier = appels.filter((appel) => appel === 'program/planning').length
+    const afterFirst = calls.filter((call) => call === 'program/planning').length
 
     await refresh()
     await flushPromises()
@@ -147,8 +147,8 @@ describe('what the development address loads', () => {
      * bouge pas pendant qu'on pousse l'horloge : le relire ferait trois appels
      * for an identical answer.
      */
-    expect(appels.filter((appel) => appel === 'program/planning')).toHaveLength(apresPremier)
+    expect(calls.filter((call) => call === 'program/planning')).toHaveLength(afterFirst)
     // The clock, on the other hand, is read back every time: it is what one watches.
-    expect(appels.filter((appel) => appel === 'clock/get')).toHaveLength(2)
+    expect(calls.filter((call) => call === 'clock/get')).toHaveLength(2)
   })
 })

@@ -33,7 +33,7 @@ const rawProgram = readFileSync(
   'utf8',
 )
 
-const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'motdepasse-regie-2026' }
+const OPERATOR = { email: 'control@cloudnord.fr', name: 'Régie', password: 'motdepasse-control-2026' }
 const CLIENT_ID = '01JB2ZK5T7QW9V0YHRXM3N4P6C'
 const TRACK_1 = 'track-1-teilhard-de-chardin'
 /** 10:20 UTC: "HoneySwamp" runs from 10:00 to 10:50. */
@@ -47,7 +47,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
  * vectors. It does the one thing this test needs done for real: glue the parts
  * back together **in part-number order**, and return the complete object.
  */
-function fauxStockage(tls: { key: string; cert: string } | null = null) {
+function fakeStorage(tls: { key: string; cert: string } | null = null) {
   // `FastifyInstance` spelled out: serving over HTTPS changes the underlying
   // server's type, and the rest of this fake storage has no reason to know two
   // variants of it.
@@ -56,9 +56,9 @@ function fauxStockage(tls: { key: string; cert: string } | null = null) {
       ? Fastify({ logger: false })
       : (Fastify({ logger: false, https: tls } as never) as unknown as FastifyInstance)
   const multiparts = new Map<string, Map<number, Buffer>>()
-  const objets = new Map<string, Buffer>()
-  const abandons: string[] = []
-  let compteur = 0
+  const objects = new Map<string, Buffer>()
+  const aborted: string[] = []
+  let counter = 0
 
   app.addContentTypeParser('*', { parseAs: 'buffer' }, (_req, body, done) => done(null, body))
 
@@ -73,8 +73,8 @@ function fauxStockage(tls: { key: string; cert: string } | null = null) {
       const body = request.body as Buffer | undefined
 
       if (request.method === 'POST' && query.has('uploads')) {
-        compteur += 1
-        const uploadId = `mp-${compteur}`
+        counter += 1
+        const uploadId = `mp-${counter}`
         multiparts.set(uploadId, new Map())
         return reply
           .type('application/xml')
@@ -84,14 +84,14 @@ function fauxStockage(tls: { key: string; cert: string } | null = null) {
       if (request.method === 'PUT' && query.has('uploadId')) {
         const parts = multiparts.get(query.get('uploadId') ?? '')
         if (parts == null) return reply.status(404).send('<Error><Code>NoSuchUpload</Code></Error>')
-        const numero = Number(query.get('partNumber'))
-        parts.set(numero, body ?? Buffer.alloc(0))
+        const partNumber = Number(query.get('partNumber'))
+        parts.set(partNumber, body ?? Buffer.alloc(0))
         // The ETag is what the hub will keep and ask for again at completion.
-        return reply.header('etag', `"part-${numero}"`).send('')
+        return reply.header('etag', `"part-${partNumber}"`).send('')
       }
 
       if (request.method === 'PUT') {
-        objets.set(key, body ?? Buffer.alloc(0))
+        objects.set(key, body ?? Buffer.alloc(0))
         return reply.header('etag', '"objet"').send('')
       }
 
@@ -101,33 +101,33 @@ function fauxStockage(tls: { key: string; cert: string } | null = null) {
         if (parts == null) return reply.status(404).send('<Error><Code>NoSuchUpload</Code></Error>')
         // Glued back in **part-number** order, not arrival order: that is what the
         // real one does, and it is what makes a replayed part harmless.
-        const ordre = [...parts.keys()].sort((a, b) => a - b)
-        objets.set(key, Buffer.concat(ordre.map((n) => parts.get(n) as Buffer)))
+        const order = [...parts.keys()].sort((a, b) => a - b)
+        objects.set(key, Buffer.concat(order.map((n) => parts.get(n) as Buffer)))
         multiparts.delete(uploadId)
         return reply.type('application/xml').send('<CompleteMultipartUploadResult/>')
       }
 
       if (request.method === 'DELETE' && query.has('uploadId')) {
         const uploadId = query.get('uploadId') ?? ''
-        abandons.push(uploadId)
+        aborted.push(uploadId)
         multiparts.delete(uploadId)
         return reply.status(204).send('')
       }
 
       if (request.method === 'GET' && query.has('uploads')) {
-        const ouverts = [...multiparts.keys()]
+        const open = [...multiparts.keys()]
           .map((id) => `<Upload><Key>x</Key><UploadId>${id}</UploadId></Upload>`)
           .join('')
         return reply
           .type('application/xml')
-          .send(`<ListMultipartUploadsResult><IsTruncated>false</IsTruncated>${ouverts}</ListMultipartUploadsResult>`)
+          .send(`<ListMultipartUploadsResult><IsTruncated>false</IsTruncated>${open}</ListMultipartUploadsResult>`)
       }
 
       return reply.status(400).send('<Error><Code>InvalidRequest</Code></Error>')
     },
   })
 
-  return { app, objets, abandons, multiparts }
+  return { app, objects, aborted, multiparts }
 }
 
 /**
@@ -138,15 +138,15 @@ function fauxStockage(tls: { key: string; cert: string } | null = null) {
  * in no store, and Node does not even use the system's. Without the PEM, the
  * connection fails on `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`.
  */
-function fabriquerCa(dossier: string): { caPem: string; key: string; cert: string } {
-  const ca = join(dossier, 'ca.pem')
-  const caKey = join(dossier, 'ca.key')
-  const srvKey = join(dossier, 'srv.key')
-  const srvCsr = join(dossier, 'srv.csr')
-  const srvPem = join(dossier, 'srv.pem')
-  const ext = join(dossier, 'ext.cnf')
-  const run = (commande: string): void => {
-    execSync(commande, { stdio: 'ignore' })
+function makeCa(folder: string): { caPem: string; key: string; cert: string } {
+  const ca = join(folder, 'ca.pem')
+  const caKey = join(folder, 'ca.key')
+  const srvKey = join(folder, 'srv.key')
+  const srvCsr = join(folder, 'srv.csr')
+  const srvPem = join(folder, 'srv.pem')
+  const ext = join(folder, 'ext.cnf')
+  const run = (command: string): void => {
+    execSync(command, { stdio: 'ignore' })
   }
   run(`openssl req -x509 -newkey rsa:2048 -sha256 -days 1 -nodes -keyout ${caKey} -out ${ca} -subj "/CN=CA interne de test" -addext "basicConstraints=critical,CA:TRUE"`)
   run(`openssl req -newkey rsa:2048 -nodes -keyout ${srvKey} -out ${srvCsr} -subj "/CN=localhost"`)
@@ -160,15 +160,15 @@ function fabriquerCa(dossier: string): { caPem: string; key: string; cert: strin
 }
 
 let hub: Hub
-let stockage: ReturnType<typeof fauxStockage>
-let stockageApp: FastifyInstance
+let storage: ReturnType<typeof fakeStorage>
+let storageApp: FastifyInstance
 let origin: string
 let dir: string
 let room: RoomApp
-let regie: string
+let control: string
 
-const agir = async (payload: unknown) => {
-  const response = await fetch(`${regie}/control/action`, {
+const act = async (payload: unknown) => {
+  const response = await fetch(`${control}/control/action`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),
@@ -177,16 +177,16 @@ const agir = async (payload: unknown) => {
 }
 
 const uploads = async () =>
-  (await (await fetch(`${regie}/control/uploads`)).json()) as {
+  (await (await fetch(`${control}/control/uploads`)).json()) as {
     ok: boolean
     entries: { file: string; state: string; percent: number }[]
     verdict: { allowed: boolean; text: string }
   }
 
 /** Waits for a condition to hold, or gives up: the assertions will speak. */
-async function jusqua(condition: () => boolean | Promise<boolean>, limiteMs = 15_000): Promise<void> {
-  const fin = Date.now() + limiteMs
-  while (Date.now() < fin) {
+async function until(condition: () => boolean | Promise<boolean>, limitMs = 15_000): Promise<void> {
+  const deadline = Date.now() + limitMs
+  while (Date.now() < deadline) {
     if (await condition()) return
     await sleep(100)
   }
@@ -195,11 +195,11 @@ async function jusqua(condition: () => boolean | Promise<boolean>, limiteMs = 15
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'cloudnord-vod-'))
 
-  stockage = fauxStockage()
-  stockageApp = stockage.app
-  await stockageApp.listen({ port: 0, host: '127.0.0.1' })
-  const adresseS3 = stockageApp.server.address()
-  const portS3 = typeof adresseS3 === 'object' && adresseS3 != null ? adresseS3.port : 0
+  storage = fakeStorage()
+  storageApp = storage.app
+  await storageApp.listen({ port: 0, host: '127.0.0.1' })
+  const s3Address = storageApp.server.address()
+  const s3Port = typeof s3Address === 'object' && s3Address != null ? s3Address.port : 0
 
   hub = await createHub({
     port: 0,
@@ -211,8 +211,8 @@ beforeEach(async () => {
     devicePollInterval: '1s',
     mode: 'dev',
     simulatedTime: new Date(PENDANT_LE_TALK).toISOString(),
-    s3Endpoint: `http://127.0.0.1:${portS3}`,
-    s3AccessKeyId: 'cle-de-test',
+    s3Endpoint: `http://127.0.0.1:${s3Port}`,
+    s3AccessKeyId: 'key-de-test',
     s3SecretAccessKey: 'secret-de-test',
   })
   await hub.app.listen({ port: 0, host: '127.0.0.1' })
@@ -262,9 +262,9 @@ beforeEach(async () => {
     },
   })
 
-  regie = await room.startDisplay()
-  const jeton = await room.ensurePaired()
-  await room.connectHub(jeton!)
+  control = await room.startDisplay()
+  const paired = await room.ensurePaired()
+  await room.connectHub(paired!)
   await room.connectObs()
   room.runtime.refreshSessions()
 })
@@ -272,7 +272,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await room.close()
   await hub.close().catch(() => {})
-  await stockageApp.close().catch(() => {})
+  await storageApp.close().catch(() => {})
   rmSync(dir, { recursive: true, force: true })
 })
 
@@ -290,55 +290,55 @@ afterEach(async () => {
  * everything just written look old. That is exactly the defect that showed a
  * running take as footage ready to leave in the VOD modal.
  */
-async function enregistrerUnTalk(): Promise<void> {
-  expect((await agir({ action: 'recording.start' })).ok).toBe(true)
+async function recordATalk(): Promise<void> {
+  expect((await act({ action: 'recording.start' })).ok).toBe(true)
   await sleep(50)
-  expect((await agir({ action: 'recording.stop' })).ok).toBe(true)
+  expect((await act({ action: 'recording.stop' })).ok).toBe(true)
   // The recordings root is the one OBS-B announces: we give the stop time to
   // return its path, otherwise the footage is not listed yet.
   await sleep(100)
-  vieillirLesRushes(join(dir, 'rec'))
+  ageTheRushes(join(dir, 'rec'))
 }
 
 /** One hour back on the whole folder: files nothing is writing any more. */
-function vieillirLesRushes(root: string): void {
-  const jadis = new Date(Date.now() - 3_600_000)
-  for (const nom of readdirSync(root)) {
-    utimesSync(join(root, nom), jadis, jadis)
+function ageTheRushes(root: string): void {
+  const longAgo = new Date(Date.now() - 3_600_000)
+  for (const name of readdirSync(root)) {
+    utimesSync(join(root, name), longAgo, longAgo)
   }
 }
 
 describe('from footage to storage', () => {
   it('uploads footage and sidecar, byte for byte', async () => {
-    await enregistrerUnTalk()
+    await recordATalk()
 
-    const liste = await room.listRecordings()
-    const rush = liste.entries[0]
+    const listing = await room.listRecordings()
+    const rush = listing.entries[0]
     expect(rush).toBeDefined()
-    const surDisque = readFileSync(join(liste.root as string, rush!.file))
+    const onDisk = readFileSync(join(listing.root as string, rush!.file))
 
-    expect((await agir({ action: 'vod.upload', file: rush!.file })).ok).toBe(true)
-    await jusqua(async () => (await uploads()).entries.some((e) => e.state === 'termine'))
+    expect((await act({ action: 'vod.upload', file: rush!.file })).ok).toBe(true)
+    await until(async () => (await uploads()).entries.some((e) => e.state === 'termine'))
 
-    const vue = await uploads()
-    expect(vue.entries.find((e) => e.file === rush!.file)).toMatchObject({
+    const view = await uploads()
+    expect(view.entries.find((e) => e.file === rush!.file)).toMatchObject({
       state: 'termine',
       percent: 100,
     })
 
     // The key carries the **footage**'s date, the room, and the name OBS produced.
-    const cle = [...stockage.objets.keys()].find((k) => k.endsWith(rush!.file))
-    expect(cle).toBeDefined()
-    expect(cle).toContain(`cn26/2026-10-30/${TRACK_1}/`)
+    const key = [...storage.objects.keys()].find((k) => k.endsWith(rush!.file))
+    expect(key).toBeDefined()
+    expect(key).toContain(`cn26/2026-10-30/${TRACK_1}/`)
 
     // The only check that matters on the event's evening.
-    expect(stockage.objets.get(cle as string)?.equals(surDisque)).toBe(true)
+    expect(storage.objects.get(key as string)?.equals(onDisk)).toBe(true)
 
     // The sidecar follows, under the same key bar the extension: editing finds
     // title, speakers and markers again without going back through the hub.
-    const cleSidecar = cle?.replace(/\.[^.]+$/, '.json')
-    expect(stockage.objets.has(cleSidecar as string)).toBe(true)
-    const sidecar = JSON.parse(String(stockage.objets.get(cleSidecar as string))) as {
+    const sidecarKey = key?.replace(/\.[^.]+$/, '.json')
+    expect(storage.objects.has(sidecarKey as string)).toBe(true)
+    const sidecar = JSON.parse(String(storage.objects.get(sidecarKey as string))) as {
       title: string
       videoFile: string
     }
@@ -347,51 +347,51 @@ describe('from footage to storage', () => {
   })
 
   it('records the upload in the hub\'s registry, room included', async () => {
-    await enregistrerUnTalk()
-    const liste = await room.listRecordings()
-    await agir({ action: 'vod.upload', file: liste.entries[0]!.file })
-    await jusqua(async () => (await uploads()).entries.some((e) => e.state === 'termine'))
+    await recordATalk()
+    const listing = await room.listRecordings()
+    await act({ action: 'vod.upload', file: listing.entries[0]!.file })
+    await until(async () => (await uploads()).entries.some((e) => e.state === 'termine'))
 
     // This is what the console shows: without that row, the organiser would not
     // know what has been brought home and what is still missing.
-    const registre = hub.services.vod!.uploads(null, () => 'Track #1')
-    expect(registre.some((l) => l.roomId === TRACK_1 && l.state === 'termine')).toBe(true)
-    expect(registre.some((l) => l.kind === 'sidecar')).toBe(true)
+    const registry = hub.services.vod!.uploads(null, () => 'Track #1')
+    expect(registry.some((l) => l.roomId === TRACK_1 && l.state === 'termine')).toBe(true)
+    expect(registry.some((l) => l.kind === 'sidecar')).toBe(true)
   })
 
   it('does not upload the same footage twice', async () => {
-    await enregistrerUnTalk()
-    const liste = await room.listRecordings()
-    await agir({ action: 'vod.upload', file: liste.entries[0]!.file })
-    await jusqua(async () => (await uploads()).entries.some((e) => e.state === 'termine'))
-    const premiers = stockage.objets.size
+    await recordATalk()
+    const listing = await room.listRecordings()
+    await act({ action: 'vod.upload', file: listing.entries[0]!.file })
+    await until(async () => (await uploads()).entries.some((e) => e.state === 'termine'))
+    const objectsBefore = storage.objects.size
 
-    await agir({ action: 'vod.upload', file: null })
+    await act({ action: 'vod.upload', file: null })
     await sleep(300)
     // Paying twice for the transfer of three-gigabyte footage on the event's
     // network is exactly what a "Tout téléverser" clicked twice must not do.
-    expect(stockage.objets.size).toBe(premiers)
+    expect(storage.objects.size).toBe(objectsBefore)
   })
 
   it('refuses to upload during a recording, and says why', async () => {
-    await enregistrerUnTalk()
-    const liste = await room.listRecordings()
+    await recordATalk()
+    const listing = await room.listRecordings()
 
     // We start a take again: the disk that would be read is the one OBS is writing.
-    await agir({ action: 'recording.start' })
-    await agir({ action: 'vod.upload', file: liste.entries[0]!.file })
+    await act({ action: 'recording.start' })
+    await act({ action: 'vod.upload', file: listing.entries[0]!.file })
     await sleep(300)
 
-    const vue = await uploads()
-    expect(vue.verdict.allowed).toBe(false)
-    expect(vue.verdict.text).toContain('enregistrement')
-    expect(stockage.objets.size).toBe(0)
+    const view = await uploads()
+    expect(view.verdict.allowed).toBe(false)
+    expect(view.verdict.text).toContain('enregistrement')
+    expect(storage.objects.size).toBe(0)
 
-    await agir({ action: 'recording.stop' })
+    await act({ action: 'recording.stop' })
   })
 
   it('obeys the console, which does not have the files', async () => {
-    await enregistrerUnTalk()
+    await recordATalk()
 
     // The request comes down the command stream, like a resynchronisation: a room
     // momentarily cut off would catch up on it when it reconnects.
@@ -408,8 +408,8 @@ describe('from footage to storage', () => {
     )
     expect(await admin.vod.request({ roomId: TRACK_1, file: null })).toEqual({ ok: true })
 
-    await jusqua(async () => (await uploads()).entries.some((e) => e.state === 'termine'))
-    expect(stockage.objets.size).toBeGreaterThan(0)
+    await until(async () => (await uploads()).entries.some((e) => e.state === 'termine'))
+    expect(storage.objects.size).toBeGreaterThan(0)
 
     // And the control app reports it: a room that starts saturating its uplink
     // with nobody having asked for it on site would read as an incident.
@@ -420,9 +420,9 @@ describe('from footage to storage', () => {
   it('exposes no storage key to the room', async () => {
     // Everything the room receives from the hub, flattened: no access key, no
     // secret. A control machine lives in a corridor, switched on all day.
-    const brut = JSON.stringify(room.store.settings())
-    expect(brut).not.toContain('secret-de-test')
-    expect(brut).not.toContain('cle-de-test')
+    const raw = JSON.stringify(room.store.settings())
+    expect(raw).not.toContain('secret-de-test')
+    expect(raw).not.toContain('key-de-test')
     // It only knows that there is a destination, and under which rules.
     expect(room.store.settings().vod?.actif).toBe(true)
   })
@@ -430,18 +430,18 @@ describe('from footage to storage', () => {
 
 describe('when the storage gives way', () => {
   it('keeps the storage\'s error rather than marking it done', async () => {
-    await enregistrerUnTalk()
-    const liste = await room.listRecordings()
+    await recordATalk()
+    const listing = await room.listRecordings()
 
     // The bucket disappears between two talks — rights revoked, quota reached.
-    await stockageApp.close()
+    await storageApp.close()
 
-    await agir({ action: 'vod.upload', file: liste.entries[0]!.file })
-    await jusqua(async () => (await uploads()).entries.some((e) => e.state !== 'en-cours'), 5_000)
+    await act({ action: 'vod.upload', file: listing.entries[0]!.file })
+    await until(async () => (await uploads()).entries.some((e) => e.state !== 'en-cours'), 5_000)
 
-    const vue = await uploads()
-    const entree = vue.entries.find((e) => e.file === liste.entries[0]!.file)
-    expect(entree?.state).not.toBe('termine')
+    const view = await uploads()
+    const entry = view.entries.find((e) => e.file === listing.entries[0]!.file)
+    expect(entry?.state).not.toBe('termine')
   })
 })
 
@@ -459,25 +459,25 @@ describe('when the storage gives way', () => {
  * discovered in the evening, when the footage does not leave.
  */
 describe('storage behind an internal CA', () => {
-  let dossierCa: string
-  let stockageTls: ReturnType<typeof fauxStockage>
+  let caDir: string
+  let storageTls: ReturnType<typeof fakeStorage>
   let appTls: FastifyInstance
   let hubTls: Hub
   let roomTls: RoomApp
-  let regieTls: string
+  let controlTls: string
   let dirTls: string
 
   /** Brings the whole chain up over HTTPS. A null `caCert` = the hub pushes nothing. */
-  async function monterTout(avecCa: boolean): Promise<void> {
-    dossierCa = mkdtempSync(join(tmpdir(), 'cloudnord-ca-'))
+  async function mountAll(withCa: boolean): Promise<void> {
+    caDir = mkdtempSync(join(tmpdir(), 'cloudnord-ca-'))
     dirTls = mkdtempSync(join(tmpdir(), 'cloudnord-vodtls-'))
-    const ca = fabriquerCa(dossierCa)
+    const ca = makeCa(caDir)
 
-    stockageTls = fauxStockage({ key: ca.key, cert: ca.cert })
-    appTls = stockageTls.app
+    storageTls = fakeStorage({ key: ca.key, cert: ca.cert })
+    appTls = storageTls.app
     await appTls.listen({ port: 0, host: '127.0.0.1' })
-    const adresse = appTls.server.address()
-    const port = typeof adresse === 'object' && adresse != null ? adresse.port : 0
+    const address = appTls.server.address()
+    const port = typeof address === 'object' && address != null ? address.port : 0
 
     hubTls = await createHub({
       port: 0,
@@ -490,20 +490,20 @@ describe('storage behind an internal CA', () => {
       mode: 'dev',
       simulatedTime: new Date(PENDANT_LE_TALK).toISOString(),
       s3Endpoint: `https://localhost:${port}`,
-      s3AccessKeyId: 'cle-de-test',
+      s3AccessKeyId: 'key-de-test',
       s3SecretAccessKey: 'secret-de-test',
-      ...(avecCa ? { s3CaCert: ca.caPem } : {}),
+      ...(withCa ? { s3CaCert: ca.caPem } : {}),
     })
     await hubTls.app.listen({ port: 0, host: '127.0.0.1' })
-    const adresseHub = hubTls.app.server.address()
-    const originHub = `http://127.0.0.1:${typeof adresseHub === 'object' && adresseHub != null ? adresseHub.port : 0}`
+    const hubAddress = hubTls.app.server.address()
+    const originHub = `http://127.0.0.1:${typeof hubAddress === 'object' && hubAddress != null ? hubAddress.port : 0}`
 
     await provisionOperator(hubTls.auth, OPERATOR)
     const snapshot = hubTls.services.programs.importFromText(rawProgram, 'https://exemple/programme.json')
     hubTls.services.rooms.ensureFromTracks(snapshot.program.rooms)
     hubTls.services.settings.update({ vodBucket: 'rushes', vodPolitique: { taillePartMo: 5 } })
 
-    let jeton: string | null = null
+    let token: string | null = null
     roomTls = new RoomApp({
       dataDir: dirTls,
       hubOrigin: originHub,
@@ -512,18 +512,18 @@ describe('storage behind an internal CA', () => {
       displayPort: 0,
       obsTransportFactory: (instance) =>
         createMockObsTransport({ instance, recordingDir: join(dirTls, 'rec') }),
-      readToken: () => jeton,
-      writeToken: (valeur) => {
-        jeton = valeur
+      readToken: () => token,
+      writeToken: (value) => {
+        token = value
       },
       onPairingCode: (code) => {
         void (async () => {
-          const reponse = await fetch(`${originHub}/api/auth/sign-in/email`, {
+          const response = await fetch(`${originHub}/api/auth/sign-in/email`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ email: OPERATOR.email, password: OPERATOR.password }),
           })
-          const session = (await reponse.json()) as { token: string }
+          const session = (await response.json()) as { token: string }
           const admin: ContractRouterClient<typeof contract> = createORPCClient(
             new RPCLink({ origin: originHub, url: '/rpc', headers: () => ({ authorization: `Bearer ${session.token}` }) }),
           )
@@ -531,9 +531,9 @@ describe('storage behind an internal CA', () => {
         })()
       },
     })
-    regieTls = await roomTls.startDisplay()
-    const obtenu = await roomTls.ensurePaired()
-    await roomTls.connectHub(obtenu!)
+    controlTls = await roomTls.startDisplay()
+    const got = await roomTls.ensurePaired()
+    await roomTls.connectHub(got!)
     await roomTls.connectObs()
     roomTls.runtime.refreshSessions()
   }
@@ -542,71 +542,71 @@ describe('storage behind an internal CA', () => {
     await roomTls?.close()
     await hubTls?.close().catch(() => {})
     await appTls?.close().catch(() => {})
-    rmSync(dossierCa, { recursive: true, force: true })
+    rmSync(caDir, { recursive: true, force: true })
     rmSync(dirTls, { recursive: true, force: true })
   })
 
-  const agirTls = async (payload: unknown) => {
-    const reponse = await fetch(`${regieTls}/control/action`, {
+  const actTls = async (payload: unknown) => {
+    const response = await fetch(`${controlTls}/control/action`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload),
     })
-    return (await reponse.json()) as { ok: boolean; message?: string }
+    return (await response.json()) as { ok: boolean; message?: string }
   }
 
   const uploadsTls = async () =>
-    (await (await fetch(`${regieTls}/control/uploads`)).json()) as {
+    (await (await fetch(`${controlTls}/control/uploads`)).json()) as {
       entries: { file: string; state: string; error: string | null }[]
     }
 
-  async function enregistrer(): Promise<string> {
-    await agirTls({ action: 'recording.start' })
+  async function record(): Promise<string> {
+    await actTls({ action: 'recording.start' })
     await sleep(50)
-    await agirTls({ action: 'recording.stop' })
+    await actTls({ action: 'recording.stop' })
     await sleep(100)
     // Same reason as above: footage stopped a moment ago stays "still being
     // written" for half a minute, and the uploader skips its turn on it.
-    vieillirLesRushes(join(dirTls, 'rec'))
-    const liste = await roomTls.listRecordings()
-    return liste.entries[0]!.file
+    ageTheRushes(join(dirTls, 'rec'))
+    const listing = await roomTls.listRecordings()
+    return listing.entries[0]!.file
   }
 
   it('fails clearly when the CA is not known', async () => {
-    await monterTout(false)
-    const rush = await enregistrer()
+    await mountAll(false)
+    const rush = await record()
 
-    await agirTls({ action: 'vod.upload', file: rush })
-    await jusqua(async () => (await uploadsTls()).entries.some((e) => e.error != null), 8_000)
+    await actTls({ action: 'vod.upload', file: rush })
+    await until(async () => (await uploadsTls()).entries.some((e) => e.error != null), 8_000)
 
-    const erreur = (await uploadsTls()).entries.find((e) => e.file === rush)?.error ?? ''
+    const error = (await uploadsTls()).entries.find((e) => e.file === rush)?.error ?? ''
     // The message must name the trust failure, not talk about the network: one
     // does not go looking for a firewall when a certificate is missing.
-    expect(erreur).toMatch(/CERT|SIGNATURE|SELF_SIGNED/)
-    expect(stockage.objets.size).toBe(0)
+    expect(error).toMatch(/CERT|SIGNATURE|SELF_SIGNED/)
+    expect(storage.objects.size).toBe(0)
   })
 
   it('uploads without the room having to know anything about the CA', async () => {
-    await monterTout(true)
-    const rush = await enregistrer()
+    await mountAll(true)
+    const rush = await record()
 
     // The CA came down at sync time, with the rest of the policy. No environment
     // variable was set on this machine.
     expect(roomTls.store.settings().vod?.caCert).toContain('BEGIN CERTIFICATE')
 
-    await agirTls({ action: 'vod.upload', file: rush })
-    await jusqua(async () => (await uploadsTls()).entries.some((e) => e.state === 'termine'), 15_000)
+    await actTls({ action: 'vod.upload', file: rush })
+    await until(async () => (await uploadsTls()).entries.some((e) => e.state === 'termine'), 15_000)
 
-    const entree = (await uploadsTls()).entries.find((e) => e.file === rush)
-    expect(entree?.state).toBe('termine')
-    expect(entree?.error).toBeNull()
+    const entry = (await uploadsTls()).entries.find((e) => e.file === rush)
+    expect(entry?.state).toBe('termine')
+    expect(entry?.error).toBeNull()
 
-    const cle = [...stockageTls.objets.keys()].find((k) => k.endsWith(rush))
-    expect(cle).toBeDefined()
+    const key = [...storageTls.objects.keys()].find((k) => k.endsWith(rush))
+    expect(key).toBeDefined()
     // And never the storage's secret key: the room only received an authority
     // certificate, which is public by construction.
-    const reglages = JSON.stringify(roomTls.store.settings())
-    expect(reglages).not.toContain('secret-de-test')
+    const settingsJson = JSON.stringify(roomTls.store.settings())
+    expect(settingsJson).not.toContain('secret-de-test')
   })
 })
 
@@ -628,15 +628,15 @@ describe('resetting the footage', () => {
    * bringing up a second full chain — hub, pairing, OBS — to exercise two lines
    * of guard.
    */
-  function enDeveloppement(): RoomApp {
+  function inDevelopment(): RoomApp {
     ;(room as unknown as { options: { mode: string } }).options.mode = 'dev'
     return room
   }
 
-  async function fichiersPresents(): Promise<string[]> {
+  async function filesPresent(): Promise<string[]> {
     const { readdir } = await import('node:fs/promises')
-    const liste = await room.listRecordings()
-    return await readdir(liste.root as string)
+    const listing = await room.listRecordings()
+    return await readdir(listing.root as string)
   }
 
   it('refuses to erase when the room is not in development', async () => {
@@ -644,44 +644,44 @@ describe('resetting the footage', () => {
     // hub can end up plugged into each other — that is precisely the accident the
     // control app's mode badge makes visible. The hub guards its side; the room
     // guards its own, as close to the disk as possible.
-    await enregistrerUnTalk()
-    const avant = await fichiersPresents()
+    await recordATalk()
+    const before = await filesPresent()
 
     // `room` is brought up with no mode: that is, in production, the default.
-    expect(await room.razVod()).toBe(0)
-    expect(await fichiersPresents()).toEqual(avant)
+    expect(await room.resetVod()).toBe(0)
+    expect(await filesPresent()).toEqual(before)
   })
 
   it('erases the footage, its sidecars and the verdicts — and nothing else', async () => {
-    await enregistrerUnTalk()
-    const liste = await room.listRecordings()
-    const root = liste.root as string
+    await recordATalk()
+    const listing = await room.listRecordings()
+    const root = listing.root as string
 
     // A verdict laid down by hand: it lives in `.controles-vod.json`, at the
     // root, and describes a review that is moot once the footage has gone.
-    await agir({ action: 'vod.verdict', file: liste.entries[0]!.file, status: 'ok' })
+    await act({ action: 'vod.verdict', file: listing.entries[0]!.file, status: 'ok' })
     // And a file the application did not produce: the recordings folder is
     // sometimes shared with something else.
-    writeFileSync(join(root, 'notes-de-la-regie.txt'), 'à ne pas effacer')
+    writeFileSync(join(root, 'notes-de-la-control.txt'), 'à ne pas effacer')
 
-    expect(await enDeveloppement().razVod()).toBeGreaterThan(0)
+    expect(await inDevelopment().resetVod()).toBeGreaterThan(0)
 
-    const restants = await fichiersPresents()
-    expect(restants.filter((nom) => nom.endsWith('.mkv'))).toEqual([])
-    expect(restants.filter((nom) => nom.endsWith('.json'))).toEqual([])
-    expect(restants).not.toContain('.controles-vod.json')
+    const remaining = await filesPresent()
+    expect(remaining.filter((name) => name.endsWith('.mkv'))).toEqual([])
+    expect(remaining.filter((name) => name.endsWith('.json'))).toEqual([])
+    expect(remaining).not.toContain('.controles-vod.json')
     // What the operator dropped there stays: emptying a folder one does not own
     // entirely is not a gesture one can take back.
-    expect(restants).toContain('notes-de-la-regie.txt')
+    expect(remaining).toContain('notes-de-la-control.txt')
   })
 
   it('forgets the upload queue along the way', async () => {
-    await enregistrerUnTalk()
-    const liste = await room.listRecordings()
-    await agir({ action: 'vod.upload', file: liste.entries[0]!.file })
-    await jusqua(async () => (await uploads()).entries.some((e) => e.state === 'termine'))
+    await recordATalk()
+    const listing = await room.listRecordings()
+    await act({ action: 'vod.upload', file: listing.entries[0]!.file })
+    await until(async () => (await uploads()).entries.some((e) => e.state === 'termine'))
 
-    await enDeveloppement().razVod()
+    await inDevelopment().resetVod()
     // Keeping "terminé" rows pointing at erased files would make the modal say
     // everything is safe.
     expect((await uploads()).entries).toEqual([])

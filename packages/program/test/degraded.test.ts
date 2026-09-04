@@ -139,7 +139,7 @@ describe('normalizeProgram — degraded exports', () => {
 
   it('tolerates unknown fields from an export enriched upstream', () => {
     const program = normalizeProgram({
-      event: { ...baseEvent, champInedit: 42 },
+      event: { ...baseEvent, unknownField: 42 },
       sessions: [
         {
           id: 'ses-1',

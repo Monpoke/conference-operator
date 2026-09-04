@@ -7,24 +7,24 @@ import { programMoments } from '../src/stores/dev.js'
 import { useSessionStore } from '../src/stores/session.js'
 
 /**
- * Ce que la vue de développement a besoin de savoir, et qu'elle ne demandait
+ * What the development view needs to know, and was not asking for
  * pas.
  *
- * Les raccourcis d'horloge sont déduits des créneaux du programme, jamais
- * écrits en dur — une date d'édition dans le code ne vaut que pour cette
- * édition-là. Mais rien ne chargeait ce programme : les boutons apparaissaient
- * en venant de l'onglet Conférences, qui l'avait chargé au passage, et pas
- * autrement. Le même oubli emportait le fuseau dans lequel l'heure du hub
+ * The clock shortcuts are deduced from the program's slots, never hard-coded — a
+ * date for one edition in the code only holds for that edition. But nothing loaded
+ * that program: the buttons appeared when arriving from the Conférences tab, which
+ * had loaded it along the way, and not otherwise. The same omission carried away
+ * the time zone in which the hub's clock
  * s'affiche — sans lui, elle se lit dans celui du poste, ce qui est exactement
- * l'erreur que ce réglage sert à débusquer.
+ * the mistake this setting exists to flush out.
  */
 
 /**
- * Une journée réaliste : elle **s'ouvre sur un accueil**.
+ * A realistic day: it **opens on a welcome**.
  *
  * C'est ce que fait l'export amont, et ce que la fixture d'origine n'avait pas
- * — elle commençait par un talk, si bien que « Première conférence » pouvait
- * viser le premier créneau venu sans que rien ne le signale.
+ * — it began with a talk, so that "Première conférence" could aim at whatever slot
+ * came first with nothing to report it.
  */
 const CRENEAUX = [
   { id: 'accueil', startsAt: '2026-10-30T07:30:00.000Z', endsAt: '2026-10-30T08:00:00.000Z', kind: 'break' },
@@ -62,7 +62,7 @@ function stub(): void {
   } as never
 }
 
-/** Le `refresh` que le routeur attache à l'adresse de développement. */
+/** The `refresh` the router attaches to the development address. */
 function rafraichirDeveloppement(): () => Promise<void> {
   const route = createConsoleRouter()
     .getRoutes()
@@ -78,12 +78,12 @@ beforeEach(() => {
 
 describe('moments du programme', () => {
   it('ne rend aucun raccourci sans programme', () => {
-    // Un déplacement à une date sans le moindre créneau ne montre rien et ne
+    // A jump to a date with no slot at all shows nothing and does not
     // dit pas pourquoi : mieux vaut aucun bouton qu'un bouton muet.
     expect(programMoments([])).toEqual([])
   })
 
-  it('les déduit des créneaux, et saute les pauses pour le milieu', () => {
+  it('deduces them from the slots, and skips the breaks for the midday one', () => {
     const moments = programMoments(CRENEAUX)
     expect(moments.map(([libelle]) => libelle)).toEqual([
       'Avant ouverture',
@@ -91,38 +91,37 @@ describe('moments du programme', () => {
       'Milieu de journée',
       'Fin de journée',
     ])
-    // Le milieu vise un talk, pas le déjeuner : c'est un talk qu'on vient
-    // regarder se dérouler.
+    // The midday one aims at a talk, not the lunch: it is a talk one comes to
+    // watch unfold.
     expect(moments[2]?.[1]).toBe('2026-10-30T16:05:00.000Z')
   })
 
-  it('vise la première conférence, pas l’accueil qui ouvre la journée', () => {
+  it('aims at the first talk, not the welcome that opens the day', () => {
     /*
-     * Le défaut qu'on vient corriger : une journée s'ouvre sur un accueil ou un
-     * petit déjeuner, qui sont des pauses. Le bouton menait donc trente minutes
-     * avant la première conférence, et l'on croyait l'horloge fausse alors que
-     * c'était l'étiquette.
+     * The defect being corrected: a day opens on a welcome or a breakfast, which
+     * are breaks. The button therefore led thirty minutes before the first talk, and
+     * one believed the clock wrong when it was the label.
      */
     const moments = programMoments(CRENEAUX)
     expect(moments[1]?.[1]).toBe('2026-10-30T08:05:00.000Z')
   })
 
-  it('garde « avant ouverture » sur le premier créneau, pause comprise', () => {
-    // Celui-là vise bien l'accueil : « avant ouverture », c'est avant que la
+  it('keeps "avant ouverture" on the first slot, break included', () => {
+    // That one does aim at the welcome: "before opening" means before the
     // salle n'ouvre ses portes, pas avant le premier talk.
     expect(programMoments(CRENEAUX)[0]?.[1]).toBe('2026-10-30T07:00:00.000Z')
   })
 
-  it('retombe sur le premier créneau quand la journée n’a que des pauses', () => {
-    // Quatre boutons valent mieux que trois, même si celui-ci vise alors un
-    // déjeuner : un programme sans conférence est un programme incomplet, pas
+  it('falls back on the first slot when the day has only breaks', () => {
+    // Four buttons beat three, even if this one then aims at a lunch: a program
+    // with no talk is an incomplete program, not
     // une raison de retirer un outil.
     const pauses = CRENEAUX.filter((creneau) => creneau.kind === 'break')
     expect(programMoments(pauses)[1]?.[1]).toBe('2026-10-30T07:35:00.000Z')
   })
 })
 
-describe('ce que l’adresse de développement charge', () => {
+describe('what the development address loads', () => {
   it('charge le programme, sans quoi les raccourcis n’existent pas', async () => {
     await rafraichirDeveloppement()()
     await flushPromises()
@@ -130,11 +129,11 @@ describe('ce que l’adresse de développement charge', () => {
     expect(appels).toContain('program/planning')
     const planning = useConferencesStore().planning
     expect(programMoments(planning?.sessions ?? [])).toHaveLength(4)
-    // Et le fuseau de l'événement avec, dans lequel l'heure du hub se lit.
+    // And the event's time zone with it, in which the hub's clock is read.
     expect(planning?.timezone).toBe('Europe/Paris')
   })
 
-  it('ne le relit pas à chaque rafraîchissement', async () => {
+  it('does not read it back on every refresh', async () => {
     const refresh = rafraichirDeveloppement()
     await refresh()
     await flushPromises()
@@ -144,12 +143,12 @@ describe('ce que l’adresse de développement charge', () => {
     await flushPromises()
 
     /*
-     * Le rafraîchissement tourne toutes les dix secondes. Le programme, lui, ne
+     * The refresh runs every ten seconds. The program, on the other hand, does not
      * bouge pas pendant qu'on pousse l'horloge : le relire ferait trois appels
-     * pour une réponse identique.
+     * for an identical answer.
      */
     expect(appels.filter((appel) => appel === 'program/planning')).toHaveLength(apresPremier)
-    // L'horloge, en revanche, est relue à chaque fois : c'est elle qu'on regarde.
+    // The clock, on the other hand, is read back every time: it is what one watches.
     expect(appels.filter((appel) => appel === 'clock/get')).toHaveLength(2)
   })
 })

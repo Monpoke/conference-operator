@@ -11,15 +11,15 @@ import {
 import { useSessionStore } from '../src/stores/session.js'
 
 /**
- * Conférences et planning.
+ * Talks and schedule.
  *
- * La vue la plus dense de la console, et celle où les décisions structurantes
- * sont les moins visibles : l'heure lue dans le fuseau de l'événement et non du
- * poste, le repère « en ce moment » calé sur l'horloge du hub qui peut être
- * simulée, la colonne d'action repliée parce qu'elle écrit là où six colonnes
+ * The console's densest view, and the one where the structural decisions are least
+ * visible: the time read in the event's time zone and not the machine's, the "en ce
+ * moment" marker set against the hub's clock which may be simulated, the action
+ * column collapsed because it writes where six columns
  * lisent, et le menu qui n'offre que l'action contredisant l'export.
  *
- * Aucune de ces quatre-là ne se voit en relecture. Ce sont elles qu'on tient.
+ * None of those four is visible on reading. They are what is held here.
  */
 
 interface Call {
@@ -128,12 +128,12 @@ beforeEach(() => {
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} })
 })
 
-describe('place dans la journée', () => {
+describe('place in the day', () => {
   const midi = Date.parse('2026-10-30T09:20:00Z')
 
-  it('tient un créneau sans fin pour en cours, pas pour passé', () => {
-    // Il court jusqu'à preuve du contraire, plutôt que d'être déclaré passé à
-    // la seconde où il commence.
+  it('holds a slot with no end as running, not as past', () => {
+    // It runs until proven otherwise, rather than be declared past the second it
+    // begins.
     expect(placeInDay({ ...TALK, endsAt: null }, midi)).toBe('en-cours')
   })
 
@@ -146,15 +146,15 @@ describe('place dans la journée', () => {
   })
 })
 
-describe('menu de décision', () => {
+describe('decision menu', () => {
   it("n'offre que l'action qui contredit l'export", () => {
-    // L'autre ne ferait rien : proposer « considérer comme conférence » sur une
-    // conférence est un choix sans effet, au milieu d'un tableau qu'on parcourt.
+    // The other would do nothing: offering "treat as a talk" on a talk is a choice
+    // with no effect, in the middle of a table one is scanning.
     expect(overrideChoice(TALK)).toEqual({ scheduled: 'talk', action: 'break' })
     expect(overrideChoice(PAUSE)).toEqual({ scheduled: 'break', action: 'talk' })
   })
 
-  it('propose de revenir sur une décision déjà prise', () => {
+  it('offers to go back on a decision already made', () => {
     expect(overrideChoice({ ...TALK, overriddenAs: 'break' })).toEqual({
       scheduled: 'talk',
       action: 'break',
@@ -162,16 +162,16 @@ describe('menu de décision', () => {
   })
 })
 
-describe('vue des conférences', () => {
-  it("lit les heures dans le fuseau de l'événement, pas celui du poste", async () => {
+describe('conferences view', () => {
+  it("reads the times in the event's time zone, not the machine's", async () => {
     const { wrapper } = await monter()
 
-    // 09:00 UTC = 10:00 à Paris. La console s'ouvre depuis n'importe où et le
-    // programme, lui, ne se décale pas.
+    // 09:00 UTC = 10:00 in Paris. The console opens from anywhere and the program
+    // does not shift.
     expect(wrapper.get('[data-creneau="talk-1"]').text()).toContain('10:00')
   })
 
-  it("cale « en ce moment » sur l'horloge du hub, qui peut être simulée", async () => {
+  it('sets "en ce moment" against the hub\'s clock, which may be simulated', async () => {
     const { wrapper } = await monter({ serverTime: '2026-10-30T09:20:00Z' })
 
     const ligne = wrapper.get('[data-creneau="talk-1"]')
@@ -179,13 +179,13 @@ describe('vue des conférences', () => {
     expect(ligne.text()).toContain('en ce moment')
   })
 
-  it('replie la colonne d’action, et dit combien de décisions sont en vigueur', async () => {
+  it('collapses the action column, and says how many decisions are in force', async () => {
     const { wrapper } = await monter({
       sessions: [TALK, { ...PAUSE, overriddenAs: 'talk' }],
     })
 
-    // Elle est la seule colonne qui écrit, au milieu de six qui lisent, et sa
-    // décision se propage jusqu'aux QR projetés.
+    // It is the only column that writes, among six that read, and its decision
+    // propagates all the way to the projected QR codes.
     expect(wrapper.find('[data-session-action]').exists()).toBe(false)
     expect(wrapper.get('#btn-planning-actions').text()).toContain('1 décision')
 
@@ -193,17 +193,17 @@ describe('vue des conférences', () => {
     expect(wrapper.find('[data-session-action]').exists()).toBe(true)
   })
 
-  it('ne propose pas de décider une pause héritée d’une autre salle', async () => {
+  it('does not offer to decide a break inherited from another room', async () => {
     const { wrapper } = await monter({ sessions: [HERITEE] })
     await wrapper.get('#btn-planning-actions').trigger('click')
 
     // C'est le créneau d'origine qu'on corrige, et la projection suit : un menu
-    // sur la copie laisserait croire à deux décisions indépendantes.
+    // on the copy would suggest two independent decisions.
     expect(wrapper.get('[data-creneau="pause-2"]').text()).toContain('héritée')
     expect(wrapper.find('[data-session-action="pause-2"]').exists()).toBe(false)
   })
 
-  it('enregistre une décision et relit le programme depuis le hub', async () => {
+  it('saves a decision and reads the program back from the hub', async () => {
     const { calls, wrapper } = await monter()
     await wrapper.get('#btn-planning-actions').trigger('click')
 
@@ -214,43 +214,43 @@ describe('vue des conférences', () => {
       path: 'sessions/override',
       input: { sessionId: 'talk-1', action: 'break' },
     })
-    // Relu plutôt que reconstruit : le hub sert le programme corrigé, et une
+    // Read back rather than rebuilt: the hub serves the corrected program, and a
     // reconstruction locale divergerait de ce que voient les salles.
     expect(calls.filter((appel) => appel.path === 'program/planning')).toHaveLength(2)
   })
 
-  it('ne laisse pas le menu sur une décision que le hub a refusée', async () => {
+  it('does not leave the menu on a decision the hub refused', async () => {
     const { calls, wrapper } = await monter({ overrideError: 'Programme verrouillé' })
     await wrapper.get('#btn-planning-actions').trigger('click')
 
     await wrapper.get('[data-session-action="talk-1"]').setValue('break')
     await flushPromises()
 
-    // Rien n'a changé côté hub : le rechargement serait un aller-retour pour
-    // rien, et la donnée reviendrait identique — donc sans repatcher le menu,
-    // que Vue laisserait sur l'option cliquée. On le remet à la main.
+    // Nothing changed on the hub side: reloading would be a round trip for nothing,
+    // and the data would come back identical — so without patching the menu, which
+    // Vue would leave on the clicked option. We put it back by hand.
     expect(calls.filter((appel) => appel.path === 'program/planning')).toHaveLength(1)
     const menu = wrapper.get('[data-session-action="talk-1"]').element as HTMLSelectElement
     expect(menu.value).toBe('')
   })
 
-  it('laisse la case Feedback vide plutôt que d’offrir un lien mort', async () => {
+  it('leaves the Feedback cell empty rather than offer a dead link', async () => {
     const { wrapper } = await monter({ sessions: [PAUSE] })
 
-    // Sans projet réglé, ou sur une pause, il n'y a rien à noter.
+    // With no project set, or on a break, there is nothing to rate.
     expect(wrapper.find('[data-creneau="pause-1"] a').exists()).toBe(false)
   })
 
   it('ne propose pas de captation sur une pause', async () => {
     const { wrapper } = await monter({ sessions: [TALK, PAUSE] })
 
-    // Personne ne cherche le rush du déjeuner, et un bouton ouvrant une modale
+    // Nobody looks for the lunch's footage, and a button opening a modal
     // vide sur vingt-sept lignes ferait douter des vingt-sept.
     expect(wrapper.find('[data-vod-session="talk-1"]').exists()).toBe(true)
     expect(wrapper.find('[data-vod-session="pause-1"]').exists()).toBe(false)
   })
 
-  it('signale un identifiant de feedback corrigé', async () => {
+  it('reports a corrected feedback identifier', async () => {
     const { wrapper } = await monter({
       sessions: [{ ...TALK, feedbackIdOverride: 'vue-et-les-regies' }],
     })
@@ -258,7 +258,7 @@ describe('vue des conférences', () => {
     expect(wrapper.get('[data-feedback-session="talk-1"]').text()).toContain('✱')
   })
 
-  it('avertit quand aucun projet OpenFeedback n’est réglé', async () => {
+  it('warns when no OpenFeedback project is set', async () => {
     const { wrapper } = await monter({ projectId: null })
 
     // Sans projet, les salles ne projettent aucun QR « notez ce talk » — et
@@ -297,7 +297,7 @@ describe('vue des conférences', () => {
     expect(ligne.text()).not.toContain('Commencer')
   })
 
-  it('met le dépassement en évidence : c’est lui qui déclenche une décision', async () => {
+  it('highlights the overrun: it is what triggers a decision', async () => {
     const { wrapper } = await monter({
       states: [{ sessionId: 'talk-1', status: 'running', remainingMs: -180_000 }],
     })
@@ -307,12 +307,12 @@ describe('vue des conférences', () => {
     expect(ligne.html()).toContain('text-alert')
   })
 
-  it('nomme qui a décidé, pas seulement que c’est automatique', async () => {
+  it('names who decided, not only that it was automatic', async () => {
     const { wrapper } = await monter({
       states: [{ sessionId: 'talk-1', status: 'ended', decidedBy: 'regie@cloudnord.fr' }],
     })
 
-    // « Je n'ai pas fait ça » est la première question posée devant cette ligne.
+    // "I did not do that" is the first question asked in front of this row.
     expect(wrapper.get('[data-session="talk-1"]').text()).toContain('regie@cloudnord.fr')
   })
 })

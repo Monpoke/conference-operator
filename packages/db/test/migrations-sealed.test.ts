@@ -20,14 +20,14 @@ describe('sealed migrations', () => {
         anomalies.length === 0
           ? ''
           : [
-              `Migration(s) publiée(s) ${anomalies.map((a: { problem: string }) => a.problem).join(', ')} dans migrations/${set} :`,
+              `Published migration(s) ${anomalies.map((a: { problem: string }) => a.problem).join(', ')} in migrations/${set}:`,
               ...anomalies.map((a: { tag: string; problem: string }) => `  ${a.tag} — ${a.problem}`),
               '',
-              "Une migration publiée ne se modifie pas : ajoutez-en une nouvelle.",
+              'A published migration is not modified: add a new one instead.',
               '  git checkout -- packages/db/migrations',
               `  pnpm --filter @cloudnord/db generate:${set}`,
               '',
-              "Si la modification est délibérée et qu'aucune base n'existe ailleurs :",
+              "If the change is deliberate and no database exists anywhere else:",
               '  pnpm --filter @cloudnord/db seal',
             ].join('\n'),
       ).toEqual([])

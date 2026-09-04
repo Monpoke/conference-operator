@@ -1,6 +1,6 @@
-# Tout ce qui n'a rien à faire dans le contexte de build du hub.
-# Règle : on n'envoie que les sources du monorepo — le hub tourne en TypeScript
-# via tsx, il n'y a pas d'étape de build à préserver.
+# Everything that has no business in the hub's build context.
+# The rule: only the monorepo's sources are sent — the hub runs in TypeScript
+# through tsx, there is no build output to preserve.
 
 .git
 .github
@@ -16,9 +16,9 @@ release
 **/.turbo
 *.tsbuildinfo
 
-# Données d'exécution : une base de dev copiée dans l'image serait pire qu'inutile.
-# `.out` est le dossier de captation d'OBS en développement — plusieurs centaines
-# de mégaoctets de rushes, que `out` (sans point) ne filtre pas.
+# Runtime data: a dev database copied into the image would be worse than useless.
+# `.out` is OBS's recording folder in development — several hundred megabytes of
+# raw footage, which `out` (without the dot) does not filter.
 data
 **/data
 .out
@@ -26,28 +26,28 @@ data
 *.db
 *.db-wal
 *.db-shm
-.donnees-locales
-**/.donnees-locales
+.local-data
+**/.local-data
 
-# Secrets : jamais dans une image.
+# Secrets: never in an image.
 .env
 .env.*
 !.env.example
 
-# Aperçus HTML régénérés, cache graft, outillage d'agent.
+# Regenerated HTML previews, graft cache, agent tooling.
 **/preview/
 graft
 .claude
 .mcp.json
 .ignore
 
-# Le client de salle n'est pas installé (filtre pnpm) mais son manifeste l'est —
-# voir le Dockerfile. Le reste ne sert à rien ici.
+# The room client is not installed (pnpm filter) but its manifest is — see the
+# Dockerfile. The rest is of no use here.
 apps/room-client/src
 apps/room-client/test
 apps/room-client/scripts
 apps/room-client/build
 
-# Bacs à sable locaux : hors dépôt depuis qu'ils sont gitignorés, mais présents
-# sur le poste qui les a joués — et le contexte de build les enverrait.
+# Local sandboxes: out of the repository since they were gitignored, but present
+# on the machine that ran them — and the build context would send them.
 spikes

@@ -1,28 +1,28 @@
 /**
- * Convention des messages de commit : Conventional Commits, en français.
+ * Commit message convention: Conventional Commits, written in French.
  *
- * Le type et le scope servent à retrouver un changement des mois plus tard,
- * quand le contexte a disparu. Le reste de la convention — corps, `BREAKING
- * CHANGE`, `!` — vient de `config-conventional` et n'est pas redéfini ici.
+ * The type and the scope are what let a change be found again months later, once
+ * the context is gone. The rest of the convention — body, `BREAKING CHANGE`, `!`
+ * — comes from `config-conventional` and is not redefined here.
  */
 export default {
   extends: ['@commitlint/config-conventional'],
   rules: {
     /*
-     * 72 caractères, type et scope compris.
+     * 72 characters, type and scope included.
      *
-     * `git log --oneline` ajoute le hachage court et un espace : au-delà, la
-     * ligne se replie dans un terminal de 80 colonnes et la liste devient
-     * illisible. Le défaut de `config-conventional` est à 100.
+     * `git log --oneline` adds the short hash and a space: beyond that, the line
+     * wraps in an 80-column terminal and the list becomes unreadable. The
+     * `config-conventional` default is 100.
      */
     'header-max-length': [2, 'always', 72],
     /*
-     * Les scopes sont fermés.
+     * The scopes are a closed list.
      *
-     * Une liste ouverte donne `regie`, `régie`, `regie-web` et `Regie` sur
-     * quatre commits qui touchent la même application : le scope ne sert plus
-     * à filtrer. Les douze premiers sont les répertoires de `apps/` et
-     * `packages/` — sous leur nom court quand il est sans ambiguïté.
+     * An open list yields `control`, `contrôle`, `control-web` and `Control` on
+     * four commits touching the same application: the scope no longer filters
+     * anything. The first twelve are the directories of `apps/` and `packages/` —
+     * under their short name where that is unambiguous.
      */
     'scope-enum': [
       2,
@@ -37,14 +37,14 @@ export default {
         'hub', // apps/hub-server
         'hub-client',
         'program',
-        'regie', // apps/regie-web
+        'control', // apps/control-web
         'room-client',
         'ui',
-        'vod', // la chaîne de captation, qui traverse le hub, la salle et le contrat
+        'vod', // the recording chain, spanning the hub, the room and the contract
         'deps',
-        'dev', // scripts/dev-salles.sh, dev:trio, le proxy Vite
+        'dev', // scripts/dev-rooms.sh, dev:trio, the Vite proxy
         'docker',
-        'repo', // outillage, ignore, espace de travail
+        'repo', // tooling, ignore files, workspace
       ],
     ],
   },

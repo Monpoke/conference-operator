@@ -3,12 +3,12 @@
   "extends": ["//"],
   "tasks": {
     /*
-     * Même arbitrage que pour la console : le bundle est un artefact.
+     * The same call as for the console: the bundle is an artefact.
      *
-     * `room-client` ne dépend pas de cette tâche — il cherche un dossier au
-     * moment de servir, il n'importe rien d'ici. C'est ce qui garde `pnpm test`
-     * hors de tout build Vite. Le build a lieu là où il sert : dans
-     * l'empaquetage Electron, qui embarque le résultat.
+     * `room-client` does not depend on this task — it looks for a folder when it
+     * serves, it imports nothing from here. That is what keeps `pnpm test` clear
+     * of any Vite build. The build happens where it is useful: in the Electron
+     * packaging, which embeds the result.
      */
     "build": {
       "dependsOn": ["^build"],

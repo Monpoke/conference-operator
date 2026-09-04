@@ -1,4 +1,4 @@
 #!/bin/sh
-# Un message fautif ne se corrige qu'avant d'être poussé : après, il faut
-# réécrire l'historique. Le contrôle a donc lieu ici, pas seulement en CI.
+# A faulty message can only be fixed before it is pushed: afterwards, the history
+# has to be rewritten. So the check happens here, not only in CI.
 exec pnpm exec commitlint --edit "$1"

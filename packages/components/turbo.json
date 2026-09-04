@@ -3,9 +3,9 @@
   "extends": ["//"],
   "tasks": {
     /*
-     * Aucune sortie : les composants sont consommés en source par Vite, comme
-     * tous les paquets de cet espace de travail. Seul `typecheck` a un coût, et
-     * il passe par `vue-tsc`, qui impose TypeScript 6 à ce paquet.
+     * No output: the components are consumed as source by Vite, like every package
+     * in this workspace. Only `typecheck` has a cost, and it goes through
+     * `vue-tsc`, which pins this package to TypeScript 6.
      */
     "typecheck": {}
   }

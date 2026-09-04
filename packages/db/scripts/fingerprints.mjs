@@ -49,8 +49,8 @@ export function verify(set) {
   const anomalies = []
 
   for (const [tag, hash] of Object.entries(expected)) {
-    if (!(tag in onDisk)) anomalies.push({ tag, problem: 'supprimée' })
-    else if (onDisk[tag] !== hash) anomalies.push({ tag, problem: 'modifiée' })
+    if (!(tag in onDisk)) anomalies.push({ tag, problem: 'deleted' })
+    else if (onDisk[tag] !== hash) anomalies.push({ tag, problem: 'modified' })
   }
   const added = Object.keys(onDisk).filter((tag) => !(tag in expected))
   return { anomalies, added }

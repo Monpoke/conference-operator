@@ -17,7 +17,7 @@ import { modeOffset, readMode } from '../src/core/mode.js'
 import { formatLogLine } from '../src/core/console-log.js'
 
 const hubOrigin = process.env.HUB_ORIGIN ?? 'http://localhost:8787'
-const dataDir = resolve(process.env.DATA_DIR ?? './.donnees-locales')
+const dataDir = resolve(process.env.DATA_DIR ?? './.local-data')
 const port = Number(process.env.DISPLAY_PORT ?? 7788)
 
 /**

@@ -218,7 +218,7 @@ la console, la modération : ces bugs-là ne se voient pas à une salle.
 
 Chaque salle a son `DATA_DIR`, donc sa propre identité machine, et son
 `ROOM_ID`, ce qui évite l'écran de choix de salle : elles affichent directement
-leur code d'appairage. `HUB_ORIGIN`, `SALLE_1`, `SALLE_2`, `PORT_1`, `PORT_2`,
+leur code d'appairage. `HUB_ORIGIN`, `ROOM_1`, `ROOM_2`, `PORT_1`, `PORT_2`,
 `OBS_REEL` et `SIMULATED_TIME` restent réglables — elles descendent aux
 processus par l'environnement. Ctrl-C arrête tout le monde, en laissant au hub
 le temps de refermer sa base (voir « Arrêt du hub »).
@@ -245,7 +245,7 @@ fenêtres, le menu « Écrans » qui place la projection en plein écran sur la
 sortie vidéoprojecteur, le sélecteur de dossier des VOD, le coffre du jeton.
 Deux différences à connaître, parce qu'elles viennent du processus principal et
 non du script : Electron **ignore `DATA_DIR`** — il range ses données dans le
-dossier du système, celui que `pnpm raz:dev` sait nettoyer — et **ignore
+dossier du système, celui que `pnpm reset:dev` sait nettoyer — et **ignore
 `DISPLAY_PORT`**, son serveur d'écrans étant figé sur 7788. Une seule salle
 Electron à la fois, donc. Sous WSL, il faut WSLg ou un serveur X.
 
@@ -263,12 +263,12 @@ provisionnées avec les mêmes adresses par défaut (`ws://127.0.0.1:4455` et
 **Repartir d'un environnement vierge** — applications arrêtées :
 
 ```bash
-pnpm raz:dev          # liste ce qui part, demande confirmation
-pnpm raz:dev --oui    # sans la question
+pnpm reset:dev          # liste ce qui part, demande confirmation
+pnpm reset:dev --yes    # sans la question
 ```
 
 Efface la base du hub (`apps/hub-server/data/`), celles des salles headless
-(`apps/room-client/.donnees-locales/`) et, pour la salle Electron, les seuls
+(`apps/room-client/.local-data/`) et, pour la salle Electron, les seuls
 fichiers qu'elle écrit dans le dossier de données du système — base, identité
 machine, jeton, adresse du hub mémorisée, cache d'assets, captations simulées.
 Le dossier lui-même n'est pas supprimé : hors empaquetage, Electron le nomme
@@ -1304,7 +1304,7 @@ le groupe de processus au premier plan : le hub le reçoit alors en même temps
 que le `node --watch` qui le supervise, et meurt avant la fin de son drainage —
 les mêmes fichiers résiduels, par un autre chemin. Et `pnpm`, sur SIGTERM, tue
 son enveloppe `sh -c` en laissant le processus node orphelin, base ouverte.
-C'est pour ça que `scripts/dev-salles.sh` lance les applications directement,
+C'est pour ça que `scripts/dev-rooms.sh` lance les applications directement,
 hors `pnpm run`, chacune dans son propre groupe de processus, et leur adresse
 SIGTERM une par une — puis SIGKILL après 8 s, pour la salle qui se bloque dans
 sa fermeture après avoir déjà rendu son port.
@@ -2652,7 +2652,7 @@ Un `pnpm install` de la racine produirait 620 Mo. Trois coupes, dans cet ordre :
    salle, et avec lui le téléchargement d'Electron — cent cinquante mégaoctets
    pour un binaire qui ne tournera jamais là.
 2. **`--prod`** écarte typescript, turbo et les tests.
-3. **`scripts/elaguer-modules-conteneur.mjs`** écarte les 109 Mo que `--prod` ne
+3. **`scripts/prune-container-modules.mjs`** écarte les 109 Mo que `--prod` ne
    suffit pas à retenir. Ce n'est pas un défaut de pnpm : `better-auth` déclare
    `vitest` et `drizzle-kit` en peer dependencies **non optionnelles**, et pnpm
    doit donc les matérialiser, avec derrière eux rolldown, lightningcss,

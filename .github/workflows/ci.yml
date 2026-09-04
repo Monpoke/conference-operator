@@ -1,41 +1,41 @@
-# Typage et tests, à chaque poussée et à chaque proposition.
+# Types and tests, on every push and every pull request.
 #
-# La suite entière tient en moins d'une minute : rien ne justifie de la
-# découper, ni de ne la lancer qu'au moment de fusionner.
+# The whole suite runs in under a minute: nothing justifies splitting it up, nor
+# running it only at merge time.
 name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
-  # Appelée telle quelle par `release.yml`. Rien ne se publie sans avoir passé
-  # exactement la vérification d'une proposition ordinaire, et il n'y a qu'un
-  # seul endroit qui la décrit.
+  # Called as is by `release.yml`. Nothing ships without having passed exactly
+  # the check an ordinary pull request goes through, and only one place describes
+  # it.
   workflow_call:
 
-# Une proposition qu'on pousse trois fois de suite n'occupe qu'un coureur : les
-# exécutions précédentes n'ont plus rien à dire.
+# A pull request pushed three times in a row occupies only one runner: the
+# earlier runs have nothing left to say.
 concurrency:
-  # Préfixe littéral, et non `github.workflow` : appelée depuis `release.yml`,
-  # cette expression rendrait « Release » et le groupe se confondrait avec celui
-  # de l'appelant — qui s'annulerait lui-même en lançant sa propre vérification.
+  # A literal prefix, not `github.workflow`: called from `release.yml`, that
+  # expression would render as "Release" and the group would collide with the
+  # caller's — which would cancel itself by launching its own verification.
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  verifier:
+  verify:
     runs-on: ubuntu-latest
     env:
-      # Aucun test ne démarre Electron — toute la logique du client de salle vit
-      # en dehors, c'est précisément ce qui rend le mode « headless » possible.
-      # Éviter le binaire épargne une centaine de mégaoctets par exécution.
+      # No test starts Electron — the whole of the room client's logic lives
+      # outside it, which is precisely what makes the "headless" mode possible.
+      # Avoiding the binary saves a hundred megabytes or so per run.
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
 
     steps:
       - uses: actions/checkout@v4
 
-      # La version de pnpm est figée par le champ `packageManager` du
-      # package.json : corepack la lit, et personne n'a à la répéter ici.
+      # pnpm's version is pinned by the package.json's `packageManager` field:
+      # corepack reads it, and nobody has to repeat it here.
       - run: corepack enable
 
       - uses: actions/setup-node@v4
@@ -45,31 +45,31 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Typage
+      - name: Types
         run: pnpm typecheck
 
-      # Recompile aussi la feuille Tailwind et la compare à celle qui est
-      # committée : une classe ajoutée dans une page sans régénération n'a
-      # aucun style, et rien d'autre ne l'attraperait.
+      # This also recompiles the Tailwind sheet and compares it to the committed
+      # one: a class added to a page without regenerating has no style at all, and
+      # nothing else would catch it.
       - name: Tests
         run: pnpm test
 
-      # Les bundles, parce que ni le typage ni les tests ne les construisent.
+      # The bundles, because neither the typecheck nor the tests build them.
       #
-      # Vite et Tailwind échouent sur des choses qu'aucun des deux ne voit : un
-      # `@source` vers un dossier disparu, un import que le bundler ne résout
-      # pas, une feuille qui ne compile plus. Sans cette étape, la panne
-      # n'apparaît qu'au déploiement du hub ou à l'empaquetage du client — chez
-      # quelqu'un, sur sa machine, la semaine d'avant l'événement.
+      # Vite and Tailwind fail on things neither of the other two sees: an
+      # `@source` pointing at a vanished folder, an import the bundler does not
+      # resolve, a sheet that no longer compiles. Without this step the breakage
+      # only shows up when deploying the hub or packaging the client — at
+      # somebody's desk, on their machine, the week before the event.
       - name: Bundles
         run: pnpm build
 
-  # Les messages de commit de la proposition, contre `commitlint.config.js`.
+  # The pull request's commit messages, against `commitlint.config.js`.
   #
-  # Sur proposition seulement. L'historique d'avant la convention ne la suit
-  # pas, et une plage calculée sur une poussée directe le rejouerait. C'est le
-  # hook `commit-msg` qui couvre les commits poussés sans passer par une
-  # proposition — il est posé par `prepare`, donc à l'installation.
+  # On pull requests only. The history from before the convention does not follow
+  # it, and a range computed on a direct push would replay it. The `commit-msg`
+  # hook is what covers commits pushed without going through a pull request — it
+  # is installed by `prepare`, so at install time.
   messages:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -77,8 +77,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # commitlint lit une plage de commits : un clone superficiel n'a pas
-          # la base de la proposition.
+          # commitlint reads a range of commits: a shallow clone does not have
+          # the pull request's base.
           fetch-depth: 0
 
       - run: corepack enable
@@ -88,11 +88,11 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      # `--ignore-scripts` : ce job ne construit rien, et le seul script du
-      # graphe compile better-sqlite3.
+      # `--ignore-scripts`: this job builds nothing, and the graph's only script
+      # compiles better-sqlite3.
       - run: pnpm install --frozen-lockfile --ignore-scripts
 
-      - name: Messages de commit
+      - name: Commit messages
         run: >
           pnpm exec commitlint --verbose
           --from ${{ github.event.pull_request.base.sha }}

@@ -20,7 +20,34 @@ export interface ActOptions {
    * it in its place.
    */
   silent?: boolean
+  /**
+   * Announce this in place of the last notice carrying the same key.
+   *
+   * For a gesture one repeats: the last word is the only one worth reading, and
+   * the earlier ones stand between the operator and the room. Failures are
+   * keyed too — a switch that fails three times is one refusal restated, not
+   * three incidents.
+   */
+  key?: string
 }
+
+/**
+ * Switching the shot: the gesture one repeats.
+ *
+ * Locally the machine that serves the page is the machine that drives OBS: the
+ * answer comes back in milliseconds and the button repaints itself. "Scène :
+ * LIVE" therefore says nothing the operator is not already looking at, and
+ * hunting for a shot during a talk left four green rectangles stacked at the
+ * bottom of the screen, in a dark room. It stays quiet.
+ *
+ * From a phone the round trip costs seconds, and the notice is the only sign
+ * the gesture was heard: it speaks, but keyed — a second switch takes the first
+ * one's place rather than piling on it.
+ *
+ * A failure always speaks, near or far: it has no visible effect to say it in
+ * its place.
+ */
+const SCENE = 'scene.set'
 
 /**
  * The control commands, and the rule that governs them all.
@@ -59,8 +86,11 @@ export const useActionsStore = defineStore('actions', () => {
        */
       const result = await gateway.act(gesture)
       const message = result.message ?? (result.ok ? 'Fait' : 'Échec')
-      if (!result.ok) toast.fail(message)
-      else if (options.silent !== true) toast.say(message)
+      const scene = gesture.action === SCENE
+      const notice = { key: options.key ?? (scene ? SCENE : undefined) }
+      const quiet = options.silent === true || (scene && !gateway.remote)
+      if (!result.ok) toast.fail(message, notice)
+      else if (!quiet) toast.say(message, notice)
       return result
     } finally {
       pending.value -= 1

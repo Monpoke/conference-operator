@@ -482,10 +482,21 @@ export async function openExcerpt(
   file: string,
   options: { atMs?: number; durationMs?: number; command?: string } = {},
 ): Promise<Excerpt | null> {
+  /*
+   * The name is confined to the recordings folder *before* anything else.
+   *
+   * This route is served over HTTP on the machine, and a `..` in the name is
+   * exactly what must never be followed. Behind the ffmpeg probe, the guard
+   * became conditional on a tool: on a machine without ffmpeg the traversal was
+   * answered with "ffmpeg absent" instead of being refused, which reads as an
+   * environment problem rather than as the refusal it is. A refusal must not
+   * depend on what happens to be installed.
+   */
+  const path = pathUnder(resolve(deps.root), file)
+
   const command = options.command ?? 'ffmpeg'
   if (!(await toolAvailable(command))) return null
 
-  const path = pathUnder(resolve(deps.root), file)
   if ((await deps.fs.stat(path)) == null) throw new Error('Fichier absent du disque')
 
   const start = Math.max(0, Math.round((options.atMs ?? 0) / 1000))

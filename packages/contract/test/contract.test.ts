@@ -47,7 +47,7 @@ describe('outbox envelope', () => {
   })
 
   it('refuses an id that is not a ULID', () => {
-    expect(() => envelopeSchema.parse(envelopeOf({ type: 'incident', level: 'warn', message: 'x' }, { id: 'pas-un-ulid' })))
+    expect(() => envelopeSchema.parse(envelopeOf({ type: 'incident', level: 'warn', message: 'x' }, { id: 'not-a-ulid' })))
       .toThrow()
   })
 
@@ -302,7 +302,7 @@ describe('talk lifecycle', () => {
     expect(() => hubSettingsSchema.parse({ autoEndGraceMinutes: 121 })).toThrow()
     // The URL is validated as such: a "yes" typed into the console must not be
     // discovered at the next startup, when the hub attempts the import.
-    expect(() => hubSettingsSchema.parse({ programSourceUrl: 'pas-une-url' })).toThrow()
+    expect(() => hubSettingsSchema.parse({ programSourceUrl: 'not-a-url' })).toThrow()
   })
 
   it('carries a state change to every room', () => {
@@ -359,7 +359,7 @@ describe('message exchange', () => {
         type: 'message.broadcast',
         text: 'x',
         level: 'urgent',
-        target: 'tout-le-monde',
+        target: 'everyone',
       }),
     ).toThrow()
   })

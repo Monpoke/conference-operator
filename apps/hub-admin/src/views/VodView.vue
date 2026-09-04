@@ -66,7 +66,7 @@ function requestAll(): void {
             {{ room.label }}
           </option>
         </select>
-        <Button id="btn-vod-relancer" size="small" @click="requestAll">Tout relancer</Button>
+        <Button id="btn-vod-retry" size="small" @click="requestAll">Tout relancer</Button>
       </div>
 
       <div class="overflow-x-auto">
@@ -80,7 +80,7 @@ function requestAll(): void {
               <th class="pb-2"></th>
             </tr>
           </thead>
-          <tbody id="vod-lignes">
+          <tbody id="vod-rows">
             <tr v-if="uploads.length === 0">
               <td colspan="5" class="py-3.5 text-dim">Aucun téléversement.</td>
             </tr>

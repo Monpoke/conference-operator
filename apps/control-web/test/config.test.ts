@@ -146,9 +146,9 @@ describe('what the form sends', () => {
     room()
     const config = useConfigStore()
     config.show()
-    config.draft!.displayPort = 'sept-mille'
+    config.draft!.displayPort = 'seven-thousand'
 
-    // `Number('sept-mille')` is NaN: sending it would cut the local screen at the
+    // `Number('seven-thousand')` is NaN: sending it would cut the local screen at the
     // next start-up, with nothing on screen to say why.
     expect((config.patch() as { displayPort: number }).displayPort).toBe(7788)
   })

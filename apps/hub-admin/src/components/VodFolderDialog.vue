@@ -122,7 +122,7 @@ function uploadState(row: Upload): { label: string; tone: string } {
       }}{{ session != null && session.speakers.length > 0 ? ` · ${session.speakers.join(', ')}` : '' }}
     </p>
 
-    <div id="vod-corps" class="mt-3">
+    <div id="vod-body" class="mt-3">
       <p v-if="loading" class="text-dim">Lecture…</p>
       <p v-else-if="error !== ''" class="text-alert">{{ error }}</p>
 

@@ -88,7 +88,7 @@ describe('room state', () => {
   it('ignores a state about a talk missing from the program', () => {
     // Import replaced mid-day: with no slot there is nothing to overrun, and we
     // fall back on what the program says.
-    expect(roomConferenceState(program, TRACK_1, at('2026-10-30T11:30:00Z'), { 'ses-fantome': 'running' })).toBe('pause')
+    expect(roomConferenceState(program, TRACK_1, at('2026-10-30T11:30:00Z'), { 'ses-ghost': 'running' })).toBe('pause')
   })
 })
 

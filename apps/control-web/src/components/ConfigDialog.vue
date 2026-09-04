@@ -179,10 +179,10 @@ const FIELD =
           </span>
         </label>
         <div class="mt-2">
-          <label class="mb-0.5 block text-xs text-dim" for="cfg-scene-demarrage">
+          <label class="mb-0.5 block text-xs text-dim" for="cfg-scene-startup">
             Scène prise automatiquement
           </label>
-          <select id="cfg-scene-demarrage" v-model="config.draft.sceneOnStart" :class="FIELD">
+          <select id="cfg-scene-startup" v-model="config.draft.sceneOnStart" :class="FIELD">
             <option value="">— aucune bascule —</option>
             <option v-for="entry in ROLES.A" :key="entry.role" :value="entry.role">
               {{ entry.label }}
@@ -209,7 +209,7 @@ const FIELD =
         }}
       </span>
       <Button
-        id="btn-config-enregistrer"
+        id="btn-config-save"
         variant="primary"
         size="small"
         :disabled="!config.online || config.saving || config.draft == null"

@@ -29,17 +29,17 @@ const typed = reactive<Record<string, { code: string; roomId: string }>>({})
 
 function fields(device: PendingDevice): { code: string; roomId: string } {
   typed[device.clientId] ??= {
-    code: codeDeLUrl.value ?? '',
+    code: codeFromUrl.value ?? '',
     roomId: requestedRoom(device) ?? rooms.value[0]?.id ?? '',
   }
   return typed[device.clientId]!
 }
 
 function roomName(id: string | null): string | null {
-  return rooms.value.find((salle) => salle.id === id)?.name ?? null
+  return rooms.value.find((room) => room.id === id)?.name ?? null
 }
 
-const codeDeLUrl = ref<string | null>(null)
+const codeFromUrl = ref<string | null>(null)
 
 const verdict = reactive({
   open: false,
@@ -80,9 +80,9 @@ async function qualifier(code: string): Promise<void> {
       verdict.body =
         'Une machine attend, mais ce code a été ouvert par un autre opérateur : son approbation lui revient.'
     } else {
-      const dit = VERDICTS[response.reason ?? response.status]
-      verdict.title = dit?.title ?? 'Code illisible'
-      verdict.body = dit?.body ?? "Le hub n'a pas su qualifier ce code."
+      const said = VERDICTS[response.reason ?? response.status]
+      verdict.title = said?.title ?? 'Code illisible'
+      verdict.body = said?.body ?? "Le hub n'a pas su qualifier ce code."
     }
   } catch (cause) {
     verdict.title = 'Vérification impossible'
@@ -96,13 +96,13 @@ async function decider(approuver: boolean): Promise<void> {
   try {
     if (approuver) {
       await store.approve({
-        userCode: codeDeLUrl.value ?? '',
+        userCode: codeFromUrl.value ?? '',
         clientId: verdict.clientId!,
         roomId: verdict.roomId,
       })
       toast.say('Machine appairée')
     } else {
-      await store.deny(codeDeLUrl.value ?? '')
+      await store.deny(codeFromUrl.value ?? '')
       toast.say('Appairage refusé')
     }
     verdict.open = false
@@ -137,7 +137,7 @@ async function refuseRequest(device: PendingDevice): Promise<void> {
   }
 }
 
-async function revoquer(clientId: string): Promise<void> {
+async function revokeMachine(clientId: string): Promise<void> {
   try {
     await store.revoke(clientId)
     toast.say('Machine révoquée')
@@ -148,8 +148,8 @@ async function revoquer(clientId: string): Promise<void> {
 
 onMounted(async () => {
   const code = route.query['user_code']
-  codeDeLUrl.value = typeof code === 'string' && code !== '' ? code : null
-  if (codeDeLUrl.value != null) await qualifier(codeDeLUrl.value)
+  codeFromUrl.value = typeof code === 'string' && code !== '' ? code : null
+  if (codeFromUrl.value != null) await qualifier(codeFromUrl.value)
 })
 </script>
 
@@ -159,10 +159,10 @@ onMounted(async () => {
     class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5"
   >
     <Panel title="Machines en attente d'appairage">
-      <div id="appairages">
+      <div id="pairings">
         <Empty v-if="pending.length === 0">
-          <template v-if="codeDeLUrl != null">
-            Aucune machine en attente. Le code {{ codeDeLUrl }} a peut-être déjà été traité, ou expiré.
+          <template v-if="codeFromUrl != null">
+            Aucune machine en attente. Le code {{ codeFromUrl }} a peut-être déjà été traité, ou expiré.
           </template>
           <template v-else>Aucune machine en attente.</template>
         </Empty>
@@ -187,7 +187,7 @@ onMounted(async () => {
               v-model="fields(device).code"
               placeholder="XXXX-XXXX"
               class="w-full rounded-lg border bg-canvas px-3 py-2.5 text-sm text-text focus:outline-none"
-              :class="codeDeLUrl != null ? 'border-brand' : 'border-edge'"
+              :class="codeFromUrl != null ? 'border-brand' : 'border-edge'"
             />
           </div>
           <div class="mb-[11px]">
@@ -233,7 +233,7 @@ onMounted(async () => {
               <td class="border-t border-edge py-[9px] pr-2.5 align-middle">{{ machine.roomId }}</td>
               <td class="border-t border-edge py-[9px] align-middle">
                 <span v-if="machine.revokedAt != null" class="text-dim">révoquée</span>
-                <Button v-else variant="danger" size="small" @click="revoquer(machine.clientId)">
+                <Button v-else variant="danger" size="small" @click="revokeMachine(machine.clientId)">
                   Révoquer
                 </Button>
               </td>
@@ -248,8 +248,8 @@ onMounted(async () => {
     -->
     <Dialog id="verdict-code" v-model:open="verdict.open" :title="verdict.title">
       <div class="text-sm leading-relaxed">
-        <div v-if="codeDeLUrl != null" class="mb-2 font-semibold tracking-[.12em] tabular-nums">
-          {{ codeDeLUrl }}
+        <div v-if="codeFromUrl != null" class="mb-2 font-semibold tracking-[.12em] tabular-nums">
+          {{ codeFromUrl }}
         </div>
         <p id="verdict-text">{{ verdict.body }}</p>
       </div>
@@ -272,7 +272,7 @@ onMounted(async () => {
       <template #actions>
         <Button
           v-if="verdict.decidable"
-          id="verdict-refuser"
+          id="verdict-reject"
           variant="danger"
           size="small"
           :disabled="verdict.busy"
@@ -282,7 +282,7 @@ onMounted(async () => {
         </Button>
         <Button
           v-if="verdict.decidable"
-          id="verdict-approuver"
+          id="verdict-approve"
           variant="primary"
           size="small"
           :disabled="verdict.busy"

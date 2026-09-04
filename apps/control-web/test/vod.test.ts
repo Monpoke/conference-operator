@@ -39,14 +39,14 @@ const RUSH: VodEntry = {
   check: null,
 }
 
-const OUTILS = { ffmpeg: true, ffprobe: true }
+const TOOLS = { ffmpeg: true, ffprobe: true }
 
-interface Appel {
+interface Call {
   url: string
   body: unknown
 }
 
-let calls: Appel[]
+let calls: Call[]
 let listing: Record<string, unknown>
 let uploads: Record<string, unknown>
 
@@ -63,7 +63,7 @@ beforeEach(() => {
   setActivePinia(createPinia())
   useToast().clear()
   calls = []
-  listing = { root: '/rushes', entries: [RUSH], tools: OUTILS }
+  listing = { root: '/rushes', entries: [RUSH], tools: TOOLS }
   uploads = { ok: true, entries: [], verdict: { allowed: true, reason: null, text: '' } }
   useRoomStore().seed(payload())
   stub()
@@ -118,7 +118,7 @@ describe('opening', () => {
 
 describe('what the modal says when there is nothing', () => {
   it('names the cause of an unknown folder, rather than an empty list', async () => {
-    listing = { root: null, entries: [], tools: OUTILS }
+    listing = { root: null, entries: [], tools: TOOLS }
     await openVod()
     const wrapper = mount(VodDialog, { props: { timeZone: 'Europe/Paris' }, attachTo: document.body })
     await flushPromises()
@@ -496,8 +496,8 @@ describe('uploading', () => {
     await openVod()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
 
-    const nuage = wrapper.findAll('span').find((span) => span.text() === '☁')
-    expect(nuage?.classes()).toContain('w-9')
+    const cloud = wrapper.findAll('span').find((span) => span.text() === '☁')
+    expect(cloud?.classes()).toContain('w-9')
   })
 
   it('aligns the file names, whatever the verdict', async () => {
@@ -561,7 +561,7 @@ describe('the control app\'s verdict', () => {
     listing = {
       root: '/rushes',
       entries: [{ ...RUSH, check: { status: 'ok', at: '', by: 'operateur', reasons: [], probe: null } }],
-      tools: OUTILS,
+      tools: TOOLS,
     }
     await vod.loadListing()
     await vod.verdict(RUSH.file, 'ok')
@@ -577,7 +577,7 @@ describe('checking the whole folder', () => {
     listing = {
       root: '/rushes',
       entries: [RUSH, { ...RUSH, file: 'b.mkv' }, { ...RUSH, file: 'c.mkv' }],
-      tools: OUTILS,
+      tools: TOOLS,
     }
     const vod = await openVod()
     calls = []
@@ -605,7 +605,7 @@ describe('checking the whole folder', () => {
         { ...RUSH, check: { status: 'ok', at: '', by: 'auto', reasons: [], probe: null } },
         { ...RUSH, file: 'b.mkv', check: { status: 'illisible', at: '', by: 'auto', reasons: ['vide'], probe: null } },
       ],
-      tools: OUTILS,
+      tools: TOOLS,
     }
     const vod = await openVod()
 

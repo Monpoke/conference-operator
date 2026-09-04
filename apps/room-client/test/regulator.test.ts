@@ -21,7 +21,7 @@ import {
  * that explains itself least well on its own.
  */
 
-const CHARGE_CALME = { cpu: 0.2, cores: 8, windowMs: 2000, memory: null }
+const CALM_LOAD = { cpu: 0.2, cores: 8, windowMs: 2000, memory: null }
 
 function entries(patch: Partial<RegulatorInputs> = {}): RegulatorInputs {
   return {
@@ -31,7 +31,7 @@ function entries(patch: Partial<RegulatorInputs> = {}): RegulatorInputs {
     recording: false,
     talkRunning: false,
     msBeforeNext: 60 * 60_000,
-    load: CHARGE_CALME,
+    load: CALM_LOAD,
     observedRateBytesS: null,
     ...patch,
   }
@@ -70,7 +70,7 @@ describe('what forbids uploading', () => {
   it('refuses during a recording, before any other reason', () => {
     // The case that costs a VOD: reading the disk OBS is writing the master to.
     const verdict = uploadVerdict(
-      entries({ recording: true, load: { ...CHARGE_CALME, cpu: 0.95 }, msBeforeNext: 0 }),
+      entries({ recording: true, load: { ...CALM_LOAD, cpu: 0.95 }, msBeforeNext: 0 }),
     )
     expect(verdict.reason).toBe('enregistrement')
     expect(verdict.text).toContain('enregistrement')
@@ -112,7 +112,7 @@ describe('what forbids uploading', () => {
 
   it('leaves the processor to the encoder', () => {
     expect(
-      uploadVerdict(entries({ load: { ...CHARGE_CALME, cpu: 0.85 } })),
+      uploadVerdict(entries({ load: { ...CALM_LOAD, cpu: 0.85 } })),
     ).toMatchObject({ reason: 'charge' })
   })
 
@@ -120,7 +120,7 @@ describe('what forbids uploading', () => {
     // `cpu: null` is an admission — we failed to read the counters. Allowing
     // ourselves to load the machine on that ignorance is the wrong bet: the
     // encoder would pay for it, and in silence.
-    const verdict = uploadVerdict(entries({ load: { ...CHARGE_CALME, cpu: null } }))
+    const verdict = uploadVerdict(entries({ load: { ...CALM_LOAD, cpu: null } }))
     expect(verdict).toMatchObject({ allowed: false, reason: 'charge' })
     expect(verdict.text).toContain('illisible')
   })
@@ -129,7 +129,7 @@ describe('what forbids uploading', () => {
     // The machine does not slow down outright: it starts swapping to disk — the
     // very one writing the footage.
     const memory = { usedBytes: 95, totalBytes: 100 }
-    expect(uploadVerdict(entries({ load: { ...CHARGE_CALME, memory } }))).toMatchObject({
+    expect(uploadVerdict(entries({ load: { ...CALM_LOAD, memory } }))).toMatchObject({
       reason: 'charge',
     })
   })
@@ -158,7 +158,7 @@ describe('the manual request', () => {
         manual: true,
         policy: DEFAULT_VOD_POLICY,
         msBeforeNext: 60_000,
-        load: { ...CHARGE_CALME, cpu: 0.99 },
+        load: { ...CALM_LOAD, cpu: 0.99 },
         observedRateBytesS: 1,
       }),
     )

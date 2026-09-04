@@ -63,13 +63,13 @@ describe('simulated OBS', () => {
      */
     const transport = createMockObsTransport({ instance: 'B', recordingDir: join(dir, 'rec') })
     await transport.call('StartRecord')
-    const commeReel = { ...transport, simulated: false }
+    const asReal = { ...transport, simulated: false }
 
     const obs = new ObsController({
       instance: 'B',
       url: 'ws://127.0.0.1:4456',
       sceneRoles: {},
-      transport: commeReel,
+      transport: asReal,
     })
 
     expect((await obs.connect()).recording).toBe(true)

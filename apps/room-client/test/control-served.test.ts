@@ -102,7 +102,7 @@ describe('the shell', () => {
      * this same machine.
      */
     expect(html).not.toContain('<style>')
-    expect(html).not.toContain('id="modale-vod"')
+    expect(html).not.toContain('id="vod-dialog"')
     // The embedded state now dominates the page, and that is the point.
     const boot = /<script id="etat-initial"[^>]*>(.*?)<\/script>/s.exec(html)![1]!
     expect(html.length - boot.length).toBeLessThan(1_500)

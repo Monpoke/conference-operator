@@ -8,12 +8,12 @@ import { normalizeProgram, roomTimelinePosition, sessionsForRoom, type Program }
 
 const at = (iso: string): number => Date.parse(iso)
 const timeline = (program: Program, nowMs: number) =>
-  roomTimelinePosition(program, 'salle-a', nowMs)
+  roomTimelinePosition(program, 'room-a', nowMs)
 
 const baseEvent = {
   id: 'evt',
   name: 'Test',
-  tracks: [{ id: 'salle-a', name: 'Salle A' }],
+  tracks: [{ id: 'room-a', name: 'Salle A' }],
   categories: [],
   formats: [],
 }
@@ -52,8 +52,8 @@ describe('normalizeProgram — degraded exports', () => {
           title: 'Talk fantôme',
           dateStart: '2026-10-30T09:00:00.000+00:00',
           dateEnd: '2026-10-30T09:50:00.000+00:00',
-          speakerIds: ['spk-inconnu'],
-          trackId: 'salle-a',
+          speakerIds: ['spk-unknown'],
+          trackId: 'room-a',
         },
       ],
     })
@@ -74,13 +74,13 @@ describe('normalizeProgram — degraded exports', () => {
           id: 'ses-1',
           title: 'Talk égaré',
           dateStart: '2026-10-30T09:00:00.000+00:00',
-          trackId: 'salle-supprimee',
+          trackId: 'deleted-room',
         },
       ],
     })
 
     expect(program.sessions).toHaveLength(1)
-    expect(sessionsForRoom(program, 'salle-a')).toEqual([])
+    expect(sessionsForRoom(program, 'room-a')).toEqual([])
     expect(program.issues).toContainEqual(
       expect.objectContaining({ code: 'unknown-track', ref: 'ses-1' }),
     )
@@ -90,9 +90,9 @@ describe('normalizeProgram — degraded exports', () => {
     const program = normalizeProgram({
       event: baseEvent,
       sessions: [
-        { id: 'ses-ok', title: 'OK', dateStart: '2026-10-30T09:00:00.000+00:00', trackId: 'salle-a' },
-        { id: 'ses-nodate', title: 'Sans date', dateStart: null, trackId: 'salle-a' },
-        { id: 'ses-baddate', title: 'Date illisible', dateStart: 'pas-une-date', trackId: 'salle-a' },
+        { id: 'ses-ok', title: 'OK', dateStart: '2026-10-30T09:00:00.000+00:00', trackId: 'room-a' },
+        { id: 'ses-nodate', title: 'Sans date', dateStart: null, trackId: 'room-a' },
+        { id: 'ses-baddate', title: 'Date illisible', dateStart: 'not-a-date', trackId: 'room-a' },
       ],
     })
 
@@ -105,34 +105,34 @@ describe('normalizeProgram — degraded exports', () => {
       event: baseEvent,
       sessions: [
         {
-          id: 'par-duree',
+          id: 'by-duration',
           title: 'Durée connue',
           dateStart: '2026-10-30T09:00:00.000+00:00',
           durationMinutes: 30,
-          trackId: 'salle-a',
+          trackId: 'room-a',
         },
         {
-          id: 'par-suivante',
+          id: 'by-next',
           title: 'Ni fin ni durée',
           dateStart: '2026-10-30T10:00:00.000+00:00',
-          trackId: 'salle-a',
+          trackId: 'room-a',
         },
         {
           id: 'derniere',
           title: 'Dernière',
           dateStart: '2026-10-30T11:00:00.000+00:00',
-          trackId: 'salle-a',
+          trackId: 'room-a',
         },
       ],
     })
 
     // 09:20: inside the window derived from durationMinutes (09:00 → 09:30).
-    expect(sessionsForRoom(program, 'salle-a')[0]?.id).toBe('par-duree')
-    expect(timeline(program, at('2026-10-30T09:20:00Z')).current?.id).toBe('par-duree')
+    expect(sessionsForRoom(program, 'room-a')[0]?.id).toBe('by-duration')
+    expect(timeline(program, at('2026-10-30T09:20:00Z')).current?.id).toBe('by-duration')
     // 09:40: past the duration, so nothing is running.
     expect(timeline(program, at('2026-10-30T09:40:00Z')).current).toBeNull()
     // 10:30: with no end and no duration, the session runs until the next starts.
-    expect(timeline(program, at('2026-10-30T10:30:00Z')).current?.id).toBe('par-suivante')
+    expect(timeline(program, at('2026-10-30T10:30:00Z')).current?.id).toBe('by-next')
     // 23:00: the last session has no end bound at all, it stays open.
     expect(timeline(program, at('2026-10-30T23:00:00Z')).current?.id).toBe('derniere')
   })
@@ -145,11 +145,11 @@ describe('normalizeProgram — degraded exports', () => {
           id: 'ses-1',
           title: 'Talk',
           dateStart: '2026-10-30T09:00:00.000+00:00',
-          trackId: 'salle-a',
-          nouveauChamp: { imbrique: true },
+          trackId: 'room-a',
+          newField: { nested: true },
         },
       ],
-      nouvelleSectionRacine: [1, 2, 3],
+      newRootSection: [1, 2, 3],
     })
 
     expect(program.sessions).toHaveLength(1)

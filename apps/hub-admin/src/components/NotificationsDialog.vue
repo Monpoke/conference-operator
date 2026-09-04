@@ -33,7 +33,7 @@ const permissionNote = (): string =>
     ? 'Cet appareil est autorisé à notifier.'
     : "Le navigateur demandera l'autorisation à la première application."
 
-async function appliquer(): Promise<void> {
+async function apply(): Promise<void> {
   saving.value = true
   try {
     const issue = await store.apply({
@@ -83,7 +83,7 @@ async function appliquer(): Promise<void> {
     <Hint id="notif-permissionNote" class="mt-0">{{ permissionNote() }}</Hint>
 
     <template #actions>
-      <Button id="notif-appliquer" variant="primary" size="small" :disabled="saving" @click="appliquer">
+      <Button id="notif-apply" variant="primary" size="small" :disabled="saving" @click="apply">
         Appliquer
       </Button>
     </template>

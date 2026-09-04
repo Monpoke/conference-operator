@@ -17,7 +17,7 @@ const rawProgram = readFileSync(
   'utf8',
 )
 
-const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'motdepasse-regie-2026' }
+const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'control-password-2026' }
 const CLIENT_ID = '01JB2ZK5T7QW9V0YHRXM3N4P6C'
 const TRACK_1 = 'track-1-teilhard-de-chardin'
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -362,7 +362,7 @@ describe('resynchronizing the rooms', () => {
   it('refuses an unknown room rather than emitting into the void', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
 
-    await expect(admin.rooms.resync({ roomId: 'salle-fantome' })).rejects.toThrow(/inconnue/)
+    await expect(admin.rooms.resync({ roomId: 'ghost-room' })).rejects.toThrow(/inconnue/)
   })
 
   it('stays closed to the rooms: it is a console gesture', async () => {
@@ -605,7 +605,7 @@ describe('correcting a slot\'s kind', () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
 
     await expect(
-      admin.sessions.override({ sessionId: 'creneau-fantome', action: 'break' }),
+      admin.sessions.override({ sessionId: 'ghost-slot', action: 'break' }),
     ).rejects.toThrow(/inconnu/)
   })
 
@@ -1058,7 +1058,7 @@ describe('a talk\'s VOD folder', () => {
         occurredAt: '2026-10-30T10:06:00.000+00:00',
         monotonicMs: 1000,
         delivery: 'required',
-        payload: { type: 'recording.started', obs: 'B', sessionId: 'un-autre-creneau' },
+        payload: { type: 'recording.started', obs: 'B', sessionId: 'another-slot' },
       },
     ])
 
@@ -1072,7 +1072,7 @@ describe('a talk\'s VOD folder', () => {
   it('refuses a talk unknown to the program', async () => {
     const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
 
-    await expect(admin.vod.conference({ sessionId: 'ses-inexistante' })).rejects.toThrow()
+    await expect(admin.vod.conference({ sessionId: 'ses-missing' })).rejects.toThrow()
   })
 
   it('stays closed to room machines', async () => {

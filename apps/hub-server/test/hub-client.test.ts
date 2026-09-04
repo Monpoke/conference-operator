@@ -27,7 +27,7 @@ const rawProgram = readFileSync(
   'utf8',
 )
 
-const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'motdepasse-regie-2026' }
+const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'control-password-2026' }
 
 let hub: Hub
 let origin: string
@@ -98,7 +98,7 @@ describe('typed hub client', () => {
     const onExpired = vi.fn()
     const onError = vi.fn()
     const client = createHubClient({ origin, tokenKey: 'hub-admin', onExpired, onError })
-    client.token.write('jeton-qui-ne-vaut-rien')
+    client.token.write('worthless-token')
 
     await expect(client.rpc.program.snapshots()).rejects.toThrow()
 

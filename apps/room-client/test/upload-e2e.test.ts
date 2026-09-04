@@ -33,11 +33,11 @@ const rawProgram = readFileSync(
   'utf8',
 )
 
-const OPERATOR = { email: 'control@cloudnord.fr', name: 'Régie', password: 'motdepasse-control-2026' }
+const OPERATOR = { email: 'control@cloudnord.fr', name: 'Régie', password: 'control-password-2026' }
 const CLIENT_ID = '01JB2ZK5T7QW9V0YHRXM3N4P6C'
 const TRACK_1 = 'track-1-teilhard-de-chardin'
 /** 10:20 UTC: "HoneySwamp" runs from 10:00 to 10:50. */
-const PENDANT_LE_TALK = Date.parse('2026-10-30T10:20:00.000Z')
+const DURING_THE_TALK = Date.parse('2026-10-30T10:20:00.000Z')
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
@@ -210,10 +210,10 @@ beforeEach(async () => {
     logLevel: 'fatal',
     devicePollInterval: '1s',
     mode: 'dev',
-    simulatedTime: new Date(PENDANT_LE_TALK).toISOString(),
+    simulatedTime: new Date(DURING_THE_TALK).toISOString(),
     s3Endpoint: `http://127.0.0.1:${s3Port}`,
-    s3AccessKeyId: 'key-de-test',
-    s3SecretAccessKey: 'secret-de-test',
+    s3AccessKeyId: 'test-key',
+    s3SecretAccessKey: 'test-secret',
   })
   await hub.app.listen({ port: 0, host: '127.0.0.1' })
   const address = hub.app.server.address()
@@ -421,8 +421,8 @@ describe('from footage to storage', () => {
     // Everything the room receives from the hub, flattened: no access key, no
     // secret. A control machine lives in a corridor, switched on all day.
     const raw = JSON.stringify(room.store.settings())
-    expect(raw).not.toContain('secret-de-test')
-    expect(raw).not.toContain('key-de-test')
+    expect(raw).not.toContain('test-secret')
+    expect(raw).not.toContain('test-key')
     // It only knows that there is a destination, and under which rules.
     expect(room.store.settings().vod?.actif).toBe(true)
   })
@@ -488,10 +488,10 @@ describe('storage behind an internal CA', () => {
       logLevel: 'fatal',
       devicePollInterval: '1s',
       mode: 'dev',
-      simulatedTime: new Date(PENDANT_LE_TALK).toISOString(),
+      simulatedTime: new Date(DURING_THE_TALK).toISOString(),
       s3Endpoint: `https://localhost:${port}`,
-      s3AccessKeyId: 'key-de-test',
-      s3SecretAccessKey: 'secret-de-test',
+      s3AccessKeyId: 'test-key',
+      s3SecretAccessKey: 'test-secret',
       ...(withCa ? { s3CaCert: ca.caPem } : {}),
     })
     await hubTls.app.listen({ port: 0, host: '127.0.0.1' })
@@ -606,7 +606,7 @@ describe('storage behind an internal CA', () => {
     // And never the storage's secret key: the room only received an authority
     // certificate, which is public by construction.
     const settingsJson = JSON.stringify(roomTls.store.settings())
-    expect(settingsJson).not.toContain('secret-de-test')
+    expect(settingsJson).not.toContain('test-secret')
   })
 })
 

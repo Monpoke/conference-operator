@@ -72,7 +72,7 @@ async function mountApp(
 }
 
 afterEach(() => {
-  for (const montee of mounted.splice(0)) montee.unmount()
+  for (const mountedApp of mounted.splice(0)) mountedApp.unmount()
 })
 
 function press(key: string): void {

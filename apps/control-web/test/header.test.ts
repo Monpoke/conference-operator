@@ -71,7 +71,7 @@ describe('clock offset', () => {
   })
 })
 
-describe('charge du poste', () => {
+describe('machine load', () => {
   it('admits a missing measurement rather than display zero', () => {
     const wrapper = mount(CpuIndicator, { props: { load: null } })
 
@@ -128,14 +128,14 @@ describe('charge du poste', () => {
 })
 
 describe('machine load, in detail', () => {
-  const MEMOIRE_SAINE = { usedBytes: 4_000_000_000, totalBytes: 16_000_000_000 }
+  const HEALTHY_MEMORY = { usedBytes: 4_000_000_000, totalBytes: 16_000_000_000 }
 
-  function poste(load: HostLoad | null): ReturnType<typeof mount> {
+  function machine(load: HostLoad | null): ReturnType<typeof mount> {
     return mount(CpuIndicator, { props: { load } })
   }
 
   it('stays green for as long as the machine has headroom', () => {
-    const wrapper = poste({ cpu: 0.31, cores: 8, windowMs: 5_000, memory: MEMOIRE_SAINE })
+    const wrapper = machine({ cpu: 0.31, cores: 8, windowMs: 5_000, memory: HEALTHY_MEMORY })
 
     expect(wrapper.attributes('data-level')).toBe('ok')
     expect(wrapper.get('.status-dot').classes()).toEqual(['status-dot'])
@@ -145,7 +145,7 @@ describe('machine load, in detail', () => {
   })
 
   it('turns amber on a sustained load', () => {
-    const wrapper = poste({ cpu: 0.78, cores: 8, windowMs: 5_000, memory: null })
+    const wrapper = machine({ cpu: 0.78, cores: 8, windowMs: 5_000, memory: null })
 
     expect(wrapper.attributes('data-level')).toBe('warn')
     expect(wrapper.get('.status-dot').classes()).toContain('degraded')
@@ -153,7 +153,7 @@ describe('machine load, in detail', () => {
   })
 
   it('turns red, and says what it costs', () => {
-    const wrapper = poste({ cpu: 0.96, cores: 4, windowMs: 5_000, memory: null })
+    const wrapper = machine({ cpu: 0.96, cores: 4, windowMs: 5_000, memory: null })
 
     expect(wrapper.attributes('data-level')).toBe('alert')
     expect(wrapper.get('.status-dot').classes()).toContain('offline')
@@ -164,13 +164,13 @@ describe('machine load, in detail', () => {
   it('colours the dot and the gauge from the same decision', () => {
     // Deux chemins finiraient par se contredire — pastille verte, jauge rouge —
     // and it is in that disagreement that one would stop believing the indicator.
-    const wrapper = poste({ cpu: 0.96, cores: 4, windowMs: 5_000, memory: null })
+    const wrapper = machine({ cpu: 0.96, cores: 4, windowMs: 5_000, memory: null })
 
     expect(wrapper.get('.gauge > span').attributes('style')).toContain('96%')
   })
 
   it('shows the memory beside the processor', () => {
-    const wrapper = poste({ cpu: 0.31, cores: 8, windowMs: 5_000, memory: MEMOIRE_SAINE })
+    const wrapper = machine({ cpu: 0.31, cores: 8, windowMs: 5_000, memory: HEALTHY_MEMORY })
 
     expect(wrapper.text()).toContain('Mémoire')
     expect(wrapper.text()).toContain('25 %')
@@ -178,14 +178,14 @@ describe('machine load, in detail', () => {
   })
 
   it('does not take an unreadable memory for a full one', () => {
-    const wrapper = poste({ cpu: 0.31, cores: 8, windowMs: 5_000, memory: null })
+    const wrapper = machine({ cpu: 0.31, cores: 8, windowMs: 5_000, memory: null })
 
     expect(wrapper.attributes('data-level')).toBe('ok')
     expect(wrapper.text()).toContain('mémoire illisible')
   })
 
   it('does not add a native tooltip on top of its own', () => {
-    const wrapper = poste({ cpu: 0.31, cores: 8, windowMs: 5_000, memory: MEMOIRE_SAINE })
+    const wrapper = machine({ cpu: 0.31, cores: 8, windowMs: 5_000, memory: HEALTHY_MEMORY })
 
     // A leftover `title` would show both, one over the other, a second apart.
     // The spoken announcement goes through `aria-label`.
@@ -194,10 +194,10 @@ describe('machine load, in detail', () => {
     expect(wrapper.get('.tooltip').attributes('aria-hidden')).toBe('true')
   })
 
-  it('se laisse ouvrir au clavier, sans souris', () => {
+  it('opens from the keyboard, with no mouse', () => {
     // The control app is also driven from the keyboard during a talk: a tooltip
     // that only opens on hover would be invisible to somebody still on shortcuts.
-    expect(poste(null).attributes('tabindex')).toBe('0')
+    expect(machine(null).attributes('tabindex')).toBe('0')
   })
 })
 
@@ -251,11 +251,11 @@ describe('horloge', () => {
 
 describe('bandeau complet', () => {
   it('names the room, and says so when it is paired to nothing', () => {
-    const sans = payload()
-    sans.roomName = null
-    sans.state.roomId = null
+    const without = payload()
+    without.roomName = null
+    without.state.roomId = null
     const wrapper = mount(ControlHeader, {
-      props: { payload: sans, nowMs: Date.now(), streamDead: false },
+      props: { payload: without, nowMs: Date.now(), streamDead: false },
     })
     expect(wrapper.get('[data-role="room"]').text()).toBe('Salle non appairée')
   })
@@ -271,15 +271,15 @@ describe('bandeau complet', () => {
   })
 
   it('shows the queue only when there is something in it', () => {
-    const vide = mount(ControlHeader, {
+    const empty = mount(ControlHeader, {
       props: { payload: payload(), nowMs: Date.now(), streamDead: false },
     })
-    expect(vide.find('[data-role="queue"]').exists()).toBe(false)
+    expect(empty.find('[data-role="queue"]').exists()).toBe(false)
 
-    const pleine = payload()
-    pleine.diagnostics!.outboxDepth = 4
+    const full = payload()
+    full.diagnostics!.outboxDepth = 4
     const wrapper = mount(ControlHeader, {
-      props: { payload: pleine, nowMs: Date.now(), streamDead: false },
+      props: { payload: full, nowMs: Date.now(), streamDead: false },
     })
     expect(wrapper.get('[data-role="queue"]').text()).toBe('4 en attente')
   })

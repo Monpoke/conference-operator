@@ -136,7 +136,7 @@ describe('ingestion idempotency (hub)', () => {
     const orm = drizzle(db, { schema: hubSchema })
     expect(() =>
       orm.insert(ingestEvent).values({
-        roomId: 'salle-fantome',
+        roomId: 'ghost-room',
         id: '01JB2ZK5T7QW9V0YHRXM3N4P6C',
         seq: 1,
         type: 'incident',

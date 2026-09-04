@@ -14,7 +14,7 @@ import { createHub, type Hub } from '../src/server.js'
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'motdepasse-regie-2026' }
+const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'control-password-2026' }
 const CLIENT_ID = '01JB2ZK5T7QW9V0YHRXM3N4P6C'
 
 interface Harness {
@@ -109,7 +109,7 @@ describe('pairing a room machine', () => {
 
   it('refuses an unknown `client_id`', async () => {
     await expect(
-      harness.auth.api.deviceCode({ body: { client_id: 'machine-non-declaree' } }),
+      harness.auth.api.deviceCode({ body: { client_id: 'undeclared-machine' } }),
     ).rejects.toBeDefined()
   })
 

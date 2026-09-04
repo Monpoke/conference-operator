@@ -270,8 +270,8 @@ export class RecordingSession {
     let videoPath = await this.resolveMaster(outputPath, input)
     if (videoPath != null && videoPath !== outputPath) {
       this.deps.onLog?.('info', 'master retrouvé sous la racine des captations', {
-        annonce: outputPath,
-        retenu: videoPath,
+        announced: outputPath,
+        kept: videoPath,
       })
     }
 
@@ -337,7 +337,7 @@ export class RecordingSession {
    * OBS announces a path in the namespace of the machine running it, and that is
    * not always ours. The case was seen in the open: OBS under Windows recording
    * into a WSL folder, and announcing
-   * `//wsl.localhost/distro/home/…/prise.mp4`. The file was indeed there, at a
+   * `//wsl.localhost/distro/home/…/take.mp4`. The file was indeed there, at a
    * perfectly ordinary Linux path; we wrote the sidecar next to a path that does
    * not exist on this side, the write failed, and every take of the day lost its
    * title, speakers and markers. The same happens with a network folder mounted

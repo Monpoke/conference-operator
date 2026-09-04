@@ -35,8 +35,8 @@ function room(overrides: Partial<ControlRoom> = {}): ControlRoom {
 }
 
 /** The test's tab: the same one the store will build. */
-const ME = 'session-de-ce-test'
-const OTHER_TAB = 'session-tablette'
+const ME = 'session-of-this-test'
+const OTHER_TAB = 'session-tablet'
 
 function lockOf(holder: string, holderId = OTHER_TAB): ControlRoom['lock'] {
   return {
@@ -154,7 +154,7 @@ describe('the three screens', () => {
     const wrapper = mount(App)
     // No room list before signing in: the names are public, but their state and
     // their lock are not.
-    expect(wrapper.find('#connexion').exists()).toBe(true)
+    expect(wrapper.find('#sign-in').exists()).toBe(true)
     expect(wrapper.find('[data-room="track-1"]').exists()).toBe(false)
   })
 
@@ -295,7 +295,7 @@ describe('the lock veil', () => {
     expect(hub.calls).toContain('hold:force')
   })
 
-  it('laisse revenir au choix des rooms', async () => {
+  it('lets one go back to the room choice', async () => {
     const hub = inTheRoom(lockOf('nuit@cloudnord.fr'))
     const wrapper = mount(App)
 

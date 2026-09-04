@@ -13,7 +13,7 @@ import { useSessionStore } from '../src/stores/session.js'
  * anything calls for a gesture now.
  */
 
-const SALLE = {
+const ROOM = {
   roomId: 'track-1',
   name: 'Track #1',
   conference: 'en-cours',
@@ -37,7 +37,7 @@ function stub(rooms: unknown[], pause: unknown = null): unknown {
   }
 }
 
-async function mountView(rooms: unknown[] = [SALLE], pause: unknown = null): Promise<ReturnType<typeof mount>> {
+async function mountView(rooms: unknown[] = [ROOM], pause: unknown = null): Promise<ReturnType<typeof mount>> {
   useSessionStore().client = stub(rooms, pause) as never
   const wrapper = mount(OperationsView, { attachTo: document.body, global: { stubs: { RouterLink: true } } })
   await useOperationsStore().load()
@@ -74,45 +74,45 @@ describe('vue exploitation', () => {
   })
 
   it('separates the talk\'s fill from the room\'s outline', async () => {
-    const wrapper = await mountView([{ ...SALLE, conference: 'depassement', connectivity: 'DEGRADED' }])
+    const wrapper = await mountView([{ ...ROOM, conference: 'depassement', connectivity: 'DEGRADED' }])
 
     // A dot carrying only the connectivity showed a green room while it was
     // overrunning by ten minutes.
-    const pastille = wrapper.get('[data-room="track-1"] .status-dot')
-    expect(pastille.classes()).toContain('overrun')
-    expect(pastille.classes()).toContain('unsure')
+    const dot = wrapper.get('[data-room="track-1"] .status-dot')
+    expect(dot.classes()).toContain('overrun')
+    expect(dot.classes()).toContain('unsure')
   })
 
   it('says "salle muette" rather than assert a state that is unknown', async () => {
-    const wrapper = await mountView([{ ...SALLE, connectivity: 'OFFLINE' }])
+    const wrapper = await mountView([{ ...ROOM, connectivity: 'OFFLINE' }])
     expect(wrapper.get('[data-room="track-1"]').text()).toContain('salle muette')
   })
 
   it('does not present a shared slot as a talk', async () => {
-    const wrapper = await mountView([{ ...SALLE, breakBadge: { state: 'en-cours' } }])
+    const wrapper = await mountView([{ ...ROOM, breakBadge: { state: 'en-cours' } }])
 
     // "Déjeuner · 22 min restantes" read as a busy room where there is nobody. A
     // tag, and the line below stays silent.
-    const carte = wrapper.get('[data-room="track-1"]')
-    expect(carte.text()).toContain('BREAK')
-    expect(carte.text()).not.toContain('restantes')
+    const card = wrapper.get('[data-room="track-1"]')
+    expect(card.text()).toContain('BREAK')
+    expect(card.text()).not.toContain('restantes')
   })
 
   it('shows what matters for a decision: REC, LIVE, and the queue', async () => {
     const wrapper = await mountView([
-      { ...SALLE, recording: true, streaming: true, outboxDepth: 3, sceneRole: 'LIVE' },
+      { ...ROOM, recording: true, streaming: true, outboxDepth: 3, sceneRole: 'LIVE' },
     ])
 
-    const carte = wrapper.get('[data-room="track-1"]')
-    expect(carte.text()).toContain('● REC')
-    expect(carte.text()).toContain('● LIVE')
-    expect(carte.text()).toContain('3 en file')
+    const card = wrapper.get('[data-room="track-1"]')
+    expect(card.text()).toContain('● REC')
+    expect(card.text()).toContain('● LIVE')
+    expect(card.text()).toContain('3 en file')
   })
 
   it('shows the Global panel only when a shared slot exists', async () => {
     expect((await mountView()).find('#global-panel').exists()).toBe(false)
 
-    const wrapper = await mountView([SALLE], {
+    const wrapper = await mountView([ROOM], {
       title: 'Déjeuner',
       state: 'en-cours',
       startsAt: '2026-10-30T11:00:00Z',
@@ -127,7 +127,7 @@ describe('vue exploitation', () => {
   })
 
   it('announces an upcoming shared slot without saying it has begun', async () => {
-    const wrapper = await mountView([SALLE], {
+    const wrapper = await mountView([ROOM], {
       title: 'Déjeuner',
       state: 'a-venir',
       startsAt: '2026-10-30T11:00:00Z',

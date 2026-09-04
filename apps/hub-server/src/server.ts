@@ -151,7 +151,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   const openFeedbackTakeover = services.rooms.takeOverOpenFeedbackProject(settings)
   if (openFeedbackTakeover.cleanedRooms.length > 0) {
     app.log.info(
-      { adopte: openFeedbackTakeover.adopted, salles: openFeedbackTakeover.cleanedRooms },
+      { adopted: openFeedbackTakeover.adopted, rooms: openFeedbackTakeover.cleanedRooms },
       openFeedbackTakeover.adopted == null
         ? 'projet OpenFeedback : surcharges de salle effacées, le réglage du hub fait foi'
         : 'projet OpenFeedback repris depuis une salle vers les réglages du hub',
@@ -220,7 +220,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   if (clock.simulated) {
     // Deliberately noisy: a simulated clock left on in production would skew the
     // VOD timecodes and the automatic closing.
-    app.log.warn({ heure: clock.nowIso() }, 'HORLOGE SIMULÉE — développement uniquement')
+    app.log.warn({ time: clock.nowIso() }, 'HORLOGE SIMULÉE — développement uniquement')
   }
 
   /**
@@ -676,7 +676,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       void services.push
         .send(notification)
         .then((reached) => {
-          if (reached > 0) app.log.info({ avis: notification.title, atteints: reached }, 'avis poussé')
+          if (reached > 0) app.log.info({ notice: notification.title, reached }, 'avis poussé')
         })
         .catch((cause) => app.log.warn({ cause }, "avis non poussé"))
     }

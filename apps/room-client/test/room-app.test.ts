@@ -18,7 +18,7 @@ const rawProgram = readFileSync(
   'utf8',
 )
 
-const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'motdepasse-regie-2026' }
+const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'control-password-2026' }
 const CLIENT_ID = '01JB2ZK5T7QW9V0YHRXM3N4P6C'
 const TRACK_1 = 'track-1-teilhard-de-chardin'
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -50,7 +50,7 @@ function fakeObs(scenes = ['Capture HDMI', 'Habillage']) {
     transport,
     get currentScene() { return current },
     /** What OBS pushes on its own: a recording started on the machine. */
-    emettre(event: string, payload: unknown) {
+    emit(event: string, payload: unknown) {
       for (const h of handlers.get(event) ?? []) h(payload)
     },
   }
@@ -164,11 +164,11 @@ describe('room machine, full start-up', () => {
      * this, any slightly personal name came back as "role not found" on an
      * instance that does not exist.
      */
-    const recus: [string, string[]][] = []
+    const received: [string, string[]][] = []
     room = makeApp()
     ;(room as unknown as { options: { obsTransportFactory: unknown } }).options.obsTransportFactory =
       (instance: string, scenes: string[]) => {
-        recus.push([instance, scenes])
+        received.push([instance, scenes])
         return obs.transport
       }
 
@@ -178,7 +178,7 @@ describe('room machine, full start-up', () => {
     await room.connectObs()
 
     // The names from the room's configuration, not those of a constant.
-    expect(recus).toEqual([
+    expect(received).toEqual([
       ['A', ['Capture HDMI', 'Habillage']],
       ['B', ['Talk']],
     ])
@@ -250,7 +250,7 @@ describe('the heartbeat', () => {
     return { a, b }
   }
 
-  const statut = () => hub.services.rooms.statuses().find((s) => s.roomId === TRACK_1)
+  const statusOf = () => hub.services.rooms.statuses().find((s) => s.roomId === TRACK_1)
 
   it("carries OBS-B's take, not OBS-A's", async () => {
     /*
@@ -265,11 +265,11 @@ describe('the heartbeat', () => {
 
     // Started from OBS itself: no `recording.started` is emitted, so this fact
     // only travels through the heartbeat. That is the worst case, so the right test.
-    b.emettre('RecordStateChanged', { outputActive: true })
+    b.emit('RecordStateChanged', { outputActive: true })
     await sleep(800)
 
     expect(room.runtime.state().recording).toBe(true)
-    expect(statut()?.recording).toBe(true)
+    expect(statusOf()?.recording).toBe(true)
   }, 30_000)
 
   it('writes the sidecar when the take is stopped from OBS', async () => {
@@ -285,7 +285,7 @@ describe('the heartbeat', () => {
 
     const master = join(dir, 'depuis-obs.mkv')
     writeFileSync(master, 'FAUX')
-    b.emettre('RecordStateChanged', {
+    b.emit('RecordStateChanged', {
       outputActive: false,
       outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPED',
       outputPath: master,
@@ -310,13 +310,13 @@ describe('the heartbeat', () => {
 
     const master = join(dir, 'depuis-regie.mkv')
     writeFileSync(master, 'FAUX')
-    const arret = room.stopRecording()
-    b.emettre('RecordStateChanged', {
+    const stopping = room.stopRecording()
+    b.emit('RecordStateChanged', {
       outputActive: false,
       outputState: 'OBS_WEBSOCKET_OUTPUT_STOPPED',
       outputPath: master,
     })
-    await arret
+    await stopping
     await sleep(300)
 
     expect(readdirSync(dir).filter((nom) => nom.endsWith('.json'))).toHaveLength(1)
@@ -332,7 +332,7 @@ describe('the heartbeat', () => {
     await sleep(800)
 
     expect(room.runtime.state().mode).toBe('programme')
-    expect(statut()?.displayMode).toBe('programme')
+    expect(statusOf()?.displayMode).toBe('programme')
   }, 30_000)
 })
 
@@ -358,7 +358,7 @@ describe('audience questions', () => {
       text: 'Comment gérez-vous les faux positifs ?',
     })
     hub.services.questions.post({
-      roomId: TRACK_1, sessionId: 'un-autre-talk', author: null,
+      roomId: TRACK_1, sessionId: 'another-talk', author: null,
       text: 'Question du talk de ce matin',
     })
 

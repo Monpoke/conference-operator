@@ -18,7 +18,7 @@ const rawProgram = readFileSync(
   'utf8',
 )
 
-const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'motdepasse-regie-2026' }
+const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'control-password-2026' }
 const CLIENT_ID = '01JB2ZK5T7QW9V0YHRXM3N4P6C'
 const TRACK_2 = 'track-2-mf-1092'
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -137,7 +137,7 @@ describe('choosing the room at power-on', () => {
 
   it('refuses a room that does not exist', async () => {
     await room.ensurePaired()
-    const result = await act({ action: 'pairing.chooseRoom', roomId: 'salle-inventee' })
+    const result = await act({ action: 'pairing.chooseRoom', roomId: 'made-up-room' })
 
     expect(result.status).toBe(409)
     expect(result.body.message).toContain('Salle inconnue')

@@ -22,8 +22,8 @@ const rawProgram = readFileSync(
   'utf8',
 )
 
-const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'motdepasse-regie-2026' }
-const OTHER = { email: 'nuit@cloudnord.fr', name: 'Nuit', password: 'motdepasse-nuit-2026' }
+const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'control-password-2026' }
+const OTHER = { email: 'nuit@cloudnord.fr', name: 'Nuit', password: 'night-password-2026' }
 const TRACK_1 = 'track-1-teilhard-de-chardin'
 
 /**
@@ -33,8 +33,8 @@ const TRACK_1 = 'track-1-teilhard-de-chardin'
  * tablet on the table belong to the same person and must not drive the same room
  * each believing itself alone.
  */
-const PHONE = 'session-telephone'
-const TABLET = 'session-tablette'
+const PHONE = 'session-phone'
+const TABLET = 'session-tablet'
 
 let hub: Hub
 
@@ -302,6 +302,6 @@ describe('the view', () => {
   it('refuses an unknown room rather than returning an empty view', () => {
     // A `/regie/<id>` address gets bookmarked and shared: an identifier that no
     // longer designates anything must say so, not read as a room switched off.
-    expect(() => controlView(hub.services, 'salle-fantome', Date.now())).toThrow('Salle inconnue')
+    expect(() => controlView(hub.services, 'ghost-room', Date.now())).toThrow('Salle inconnue')
   })
 })

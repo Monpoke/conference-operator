@@ -35,12 +35,12 @@ function signInWithGoogle(): void {
 </script>
 
 <template>
-  <main id="connexion" class="mx-auto max-w-[420px] px-4 pt-[12vh]">
+  <main id="sign-in" class="mx-auto max-w-[420px] px-4 pt-[12vh]">
     <Panel title="Console d'exploitation">
       <form @submit.prevent="submit">
         <Field id="email" v-model="email" label="Adresse" type="email" />
-        <Field id="motdepasse" v-model="password" label="Mot de passe" type="password" />
-        <Button id="btn-connexion" type="submit" variant="primary" class="w-full" :disabled="signingIn">
+        <Field id="password" v-model="password" label="Mot de passe" type="password" />
+        <Button id="btn-sign-in" type="submit" variant="primary" class="w-full" :disabled="signingIn">
           {{ signingIn ? 'Connexion…' : 'Se connecter' }}
         </Button>
       </form>

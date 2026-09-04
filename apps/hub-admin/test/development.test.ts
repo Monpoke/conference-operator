@@ -62,7 +62,7 @@ function stub(): void {
 }
 
 /** The `refresh` the router attaches to the development address. */
-function rafraichirDeveloppement(): () => Promise<void> {
+function refreshDevelopment(): () => Promise<void> {
   const route = createConsoleRouter()
     .getRoutes()
     .find((candidate) => candidate.name === 'developpement')
@@ -121,7 +121,7 @@ describe('program moments', () => {
 
 describe('what the development address loads', () => {
   it('loads the program, failing which the shortcuts do not exist', async () => {
-    await rafraichirDeveloppement()()
+    await refreshDevelopment()()
     await flushPromises()
 
     expect(calls).toContain('program/planning')
@@ -132,7 +132,7 @@ describe('what the development address loads', () => {
   })
 
   it('does not read it back on every refresh', async () => {
-    const refresh = rafraichirDeveloppement()
+    const refresh = refreshDevelopment()
     await refresh()
     await flushPromises()
     const afterFirst = calls.filter((call) => call === 'program/planning').length

@@ -118,9 +118,9 @@ describe('questions to the speaker', () => {
     const a = questions.post({ roomId: TRACK_1, sessionId: 'ses-1', author: 'A', text: 'Question A' })
     const b = questions.post({ roomId: TRACK_1, sessionId: 'ses-1', author: 'B', text: 'Question B' })
 
-    questions.vote(b.id, 'appareil-1')
-    questions.vote(b.id, 'appareil-2')
-    questions.vote(a.id, 'appareil-1')
+    questions.vote(b.id, 'device-1')
+    questions.vote(b.id, 'device-2')
+    questions.vote(a.id, 'device-1')
 
     // It is the order in which the speaker must see them.
     expect(questions.list(TRACK_1, 'ses-1').map((q) => q.text)).toEqual(['Question B', 'Question A'])
@@ -129,11 +129,11 @@ describe('questions to the speaker', () => {
   it('counts only one vote per device', () => {
     const q = questions.post({ roomId: TRACK_1, sessionId: null, author: null, text: 'Q' })
 
-    expect(questions.vote(q.id, 'appareil-1')).toBe(1)
+    expect(questions.vote(q.id, 'device-1')).toBe(1)
     // A second call has no effect, and is not an error: a slipping finger is more
     // frequent than fraud.
-    expect(questions.vote(q.id, 'appareil-1')).toBe(1)
-    expect(questions.vote(q.id, 'appareil-2')).toBe(2)
+    expect(questions.vote(q.id, 'device-1')).toBe(1)
+    expect(questions.vote(q.id, 'device-2')).toBe(2)
   })
 
   it('isolates the questions by session', () => {

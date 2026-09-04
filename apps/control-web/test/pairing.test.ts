@@ -20,12 +20,12 @@ const ROOMS = [
   { id: 'track-2', name: 'Track #2' },
 ]
 
-interface Envoi {
+interface Sent {
   url: string
   body: unknown
 }
 
-let sent: Envoi[]
+let sent: Sent[]
 const mounted: { unmount: () => void }[] = []
 
 beforeEach(() => {
@@ -50,7 +50,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  for (const montee of mounted.splice(0)) montee.unmount()
+  for (const mountedApp of mounted.splice(0)) mountedApp.unmount()
 })
 
 function veil(pairing: DisplayPayload['pairing']): ReturnType<typeof mount> {

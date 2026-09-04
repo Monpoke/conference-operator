@@ -57,7 +57,7 @@ const PAUSE: PlannedSession = {
   feedbackUrl: null,
 }
 
-const HERITEE: PlannedSession = { ...PAUSE, id: 'pause-2', sharedFrom: 'track-1' }
+const INHERITED: PlannedSession = { ...PAUSE, id: 'pause-2', sharedFrom: 'track-1' }
 
 function stub(options: {
   states?: unknown[]
@@ -129,12 +129,12 @@ beforeEach(() => {
 })
 
 describe('place in the day', () => {
-  const midi = Date.parse('2026-10-30T09:20:00Z')
+  const noon = Date.parse('2026-10-30T09:20:00Z')
 
   it('holds a slot with no end as running, not as past', () => {
     // It runs until proven otherwise, rather than be declared past the second it
     // begins.
-    expect(placeInDay({ ...TALK, endsAt: null }, midi)).toBe('en-cours')
+    expect(placeInDay({ ...TALK, endsAt: null }, noon)).toBe('en-cours')
   })
 
   it.each([
@@ -142,7 +142,7 @@ describe('place in the day', () => {
     ['en-cours', '2026-10-30T09:00:00Z', '2026-10-30T09:45:00Z'],
     ['passe', '2026-10-30T08:00:00Z', '2026-10-30T08:45:00Z'],
   ])('situe %s', (attendu, startsAt, endsAt) => {
-    expect(placeInDay({ ...TALK, startsAt, endsAt }, midi)).toBe(attendu)
+    expect(placeInDay({ ...TALK, startsAt, endsAt }, noon)).toBe(attendu)
   })
 })
 
@@ -194,7 +194,7 @@ describe('conferences view', () => {
   })
 
   it('does not offer to decide a break inherited from another room', async () => {
-    const { wrapper } = await mountView({ sessions: [HERITEE] })
+    const { wrapper } = await mountView({ sessions: [INHERITED] })
     await wrapper.get('#btn-planning-actions').trigger('click')
 
     // It is the original slot that gets corrected, and the projection follows: a
@@ -292,7 +292,7 @@ describe('conferences view', () => {
     })
 
     const row = wrapper.get('[data-session="talk-1"]')
-    // `running` : on peut terminer, pas commencer.
+    // `running`: it can be ended, not started.
     expect(row.text()).toContain('Terminer')
     expect(row.text()).not.toContain('Commencer')
   })

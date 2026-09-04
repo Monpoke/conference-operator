@@ -29,10 +29,10 @@ describe('machine token vault', () => {
     const path = join(dir, 'jeton')
     const vault = createSecretVault(path, fakeSafeStorage(true))
 
-    vault.write('jeton-secret')
+    vault.write('secret-token')
     // The token must not be readable as is on disk.
-    expect(readFileSync(path, 'utf8')).not.toContain('jeton-secret')
-    expect(vault.read()).toBe('jeton-secret')
+    expect(readFileSync(path, 'utf8')).not.toContain('secret-token')
+    expect(vault.read()).toBe('secret-token')
   })
 
   it('warns explicitly when encryption is unavailable', () => {
@@ -41,13 +41,13 @@ describe('machine token vault', () => {
 
     // A secret silently in clear would be worse than one announced as such.
     expect(onWarn).toHaveBeenCalledWith(expect.stringContaining('en clair'))
-    vault.write('jeton-secret')
-    expect(vault.read()).toBe('jeton-secret')
+    vault.write('secret-token')
+    expect(vault.read()).toBe('secret-token')
   })
 
   it('asks for a pairing again rather than crashing if the keyring changed', () => {
     const path = join(dir, 'jeton')
-    createSecretVault(path, fakeSafeStorage(true)).write('jeton-secret')
+    createSecretVault(path, fakeSafeStorage(true)).write('secret-token')
 
     const broken = createSecretVault(path, {
       ...fakeSafeStorage(true),

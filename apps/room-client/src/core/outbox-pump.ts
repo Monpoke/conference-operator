@@ -112,7 +112,7 @@ export class OutboxPump {
       outbox.defer(batch.map((envelope) => envelope.id))
       this.setConnectivity('OFFLINE')
       this.options.store.log('warn', 'remontée impossible, lot reporté', {
-        taille: batch.length,
+        size: batch.length,
         message: (cause as Error).message,
       })
       return {

@@ -795,7 +795,7 @@ describe('past slots, in the projected program', () => {
     // when it finishes, and greying it out would be claiming it is past.
     const open = [
       SESSIONS[0]!,
-      { ...SESSIONS[1]!, id: 's-ouvert', title: 'Atelier libre', endsAt: null, endsAtMs: null },
+      { ...SESSIONS[1]!, id: 's-open', title: 'Atelier libre', endsAt: null, endsAtMs: null },
     ]
     mountScreen({ ...STATE, sessions: open } as unknown as DisplayPayload)
 

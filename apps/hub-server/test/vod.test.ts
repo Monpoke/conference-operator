@@ -153,9 +153,9 @@ describe('configuration', () => {
       s3Endpoint: 'http://localhost:9000',
       s3AccessKeyId: 'cle',
       s3SecretAccessKey: 'secret',
-      s3Bucket: 'rushes-amorce',
+      s3Bucket: 'rushes-seed',
     })
-    expect(first.services.settings.get().vodBucket).toBe('rushes-amorce')
+    expect(first.services.settings.get().vodBucket).toBe('rushes-seed')
     // And the hub announces itself ready on the first go: seeding later would have
     // made it say "no bucket set" on an otherwise complete installation.
     expect(first.services.vod?.ready()).toBe(true)
@@ -174,7 +174,7 @@ describe('configuration', () => {
       s3Endpoint: 'http://localhost:9000',
       s3AccessKeyId: 'cle',
       s3SecretAccessKey: 'secret',
-      s3Bucket: 'rushes-amorce',
+      s3Bucket: 'rushes-seed',
     })
     // A restart does not overwrite again: a correction made during an event must
     // survive it, and it is precisely on that day that the hub gets restarted.
@@ -294,7 +294,7 @@ describe('opening and resuming', () => {
     const plan = await vod.begin(A_RUSH)
     // The `roomId` comes from the token: a room that guessed a neighbouring
     // upload's identifier must be able to do nothing with it.
-    expect(() => vod.parts('autre-salle', plan.uploadId, [1])).toThrow(IncompleteStorage)
+    expect(() => vod.parts('other-room', plan.uploadId, [1])).toThrow(IncompleteStorage)
   })
 })
 
@@ -442,7 +442,7 @@ describe('unreachable storage', () => {
     await provisionOperator(hub.auth, {
       email: 'regie@cloudnord.fr',
       name: 'Régie',
-      password: 'motdepasse-regie-2026',
+      password: 'control-password-2026',
     })
     const snapshot = hub.services.programs.importFromText(rawProgram, 'https://exemple/programme.json')
     hub.services.rooms.ensureFromTracks(snapshot.program.rooms)
@@ -506,7 +506,7 @@ describe('testing the connection', () => {
     // the height of irony for a feature half of which is housekeeping.
     expect(fake.calls.some((c) => c.method === 'DELETE')).toBe(true)
     // And the check object is recognizable by name, in case an abort ever fails.
-    expect(fake.calls.some((c) => c.url.includes('.controle-de-connexion'))).toBe(true)
+    expect(fake.calls.some((c) => c.url.includes('.connection-check'))).toBe(true)
   })
 
   it('stops at "joindre" when the storage does not answer, without blaming the keys', async () => {
@@ -751,12 +751,12 @@ describe('reset: the locks', () => {
     await provisionOperator(hub.auth, {
       email: 'regie@cloudnord.fr',
       name: 'Régie',
-      password: 'motdepasse-regie-2026',
+      password: 'control-password-2026',
     })
     const signIn = await fetch(`${origin}/api/auth/sign-in/email`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: 'regie@cloudnord.fr', password: 'motdepasse-regie-2026' }),
+      body: JSON.stringify({ email: 'regie@cloudnord.fr', password: 'control-password-2026' }),
     })
     const { token } = (await signIn.json()) as { token: string }
     const response = await fetch(`${origin}/rpc/vod/reset`, {

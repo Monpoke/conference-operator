@@ -18,11 +18,11 @@ const rawProgram = readFileSync(
   'utf8',
 )
 
-const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'motdepasse-regie-2026' }
+const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'control-password-2026' }
 const CLIENT_ID = '01JB2ZK5T7QW9V0YHRXM3N4P6C'
 const TRACK_1 = 'track-1-teilhard-de-chardin'
 /** 10:20 UTC: "HoneySwamp" runs from 10:00 to 10:50. */
-const PENDANT_LE_TALK = Date.parse('2026-10-30T10:20:00.000Z')
+const DURING_THE_TALK = Date.parse('2026-10-30T10:20:00.000Z')
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 let hub: Hub
@@ -51,7 +51,7 @@ beforeEach(async () => {
      * a simulated clock.
      */
     mode: 'dev',
-    simulatedTime: new Date(PENDANT_LE_TALK).toISOString(),
+    simulatedTime: new Date(DURING_THE_TALK).toISOString(),
   })
   await hub.app.listen({ port: 0, host: '127.0.0.1' })
   const address = hub.app.server.address()
@@ -478,7 +478,7 @@ describe("the other rooms' state", () => {
     hub.services.programs
       .active()!
       .program.sessions.find(
-        (s) => s.roomId === OTHER && s.startsAtMs <= PENDANT_LE_TALK && (s.endsAtMs ?? 0) > PENDANT_LE_TALK,
+        (s) => s.roomId === OTHER && s.startsAtMs <= DURING_THE_TALK && (s.endsAtMs ?? 0) > DURING_THE_TALK,
       )!
 
   it('pushes the decision into the stream, without waiting for the poll', async () => {
@@ -740,8 +740,8 @@ describe('exchanging messages', () => {
     // Goes through the outbox: time for the batch to leave.
     await sleep(3_000)
 
-    const recus = await rpcAdmin('messages/fromRooms', { limit: 10 })
-    const messages = recus.body.json as unknown as { text: string; roomName: string; level: string }[]
+    const received = await rpcAdmin('messages/fromRooms', { limit: 10 })
+    const messages = received.body.json as unknown as { text: string; roomName: string; level: string }[]
     expect(messages[0]).toMatchObject({
       text: "Besoin d'aide en salle",
       level: 'urgent',

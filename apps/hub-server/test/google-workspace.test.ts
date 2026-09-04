@@ -59,7 +59,7 @@ describe('configuration', () => {
     const withoutDomain = configSchema.safeParse({
       ...BASE,
       googleClientId: 'client-de-test.apps.googleusercontent.com',
-      googleClientSecret: 'secret-de-test',
+      googleClientSecret: 'test-secret',
     })
     expect(withoutDomain.success).toBe(false)
   })
@@ -82,7 +82,7 @@ describe('Google sign-in', () => {
   it('takes you to Google while imposing the domain', async () => {
     const origin = await start({
       googleClientId: 'client-de-test.apps.googleusercontent.com',
-      googleClientSecret: 'secret-de-test',
+      googleClientSecret: 'test-secret',
       googleHostedDomain: 'cloudnord.fr',
     })
 
@@ -102,7 +102,7 @@ describe('Google sign-in', () => {
   it('honours a domain other than the default one', async () => {
     const origin = await start({
       googleClientId: 'client-de-test.apps.googleusercontent.com',
-      googleClientSecret: 'secret-de-test',
+      googleClientSecret: 'test-secret',
       googleHostedDomain: 'exemple.org',
     })
 
@@ -115,7 +115,7 @@ describe('Google sign-in', () => {
     // survive an outage. The local door does not close.
     const origin = await start({
       googleClientId: 'client-de-test.apps.googleusercontent.com',
-      googleClientSecret: 'secret-de-test',
+      googleClientSecret: 'test-secret',
       googleHostedDomain: 'cloudnord.fr',
     })
 

@@ -14,8 +14,8 @@ import { useSessionStore } from '../src/stores/session.js'
  *
  * Three other decisions are worth holding: "empty" is not "absent", "Réimporter"
  * starts from the saved URL and not from the one on screen, and the resync report
- * gives the number of rooms reached rather
- * qu'un « c'est parti » qui serait exact sur un hub vide.
+ * gives the number of rooms reached rather than a "sent" that would be accurate on
+ * an empty hub.
  */
 
 interface Call {
@@ -71,8 +71,8 @@ function stub(options: {
       rpc: {
         settings: {
           // A fresh object on every call, as a real RPC round trip would do.
-          // Returning the same reference would bypass reactivity and
-          // ferait passer le test sur un artefact du bouchon.
+          // Returning the same reference would bypass reactivity and make the test
+          // pass on an artefact of the stub.
           get: async (input?: unknown) => {
             calls.push({ path: 'settings/get', input })
             return { ...settings }
@@ -137,8 +137,8 @@ describe('vide contre absent', () => {
 describe('settings view', () => {
   it('names the automatic closure as the page did', async () => {
     /*
-     * Repris mot pour mot, et tenu ici parce que le test HTTP du hub ne peut
-     * do it any more: these labels now live in the bundle.
+     * Repeated word for word, and held here because the hub's HTTP test can no
+     * longer do it: these labels now live in the bundle.
      *
      * A migration has no business rewording what an operator reads. "Délai de
      * grâce" is the term used in the day's conversations; replacing it with a
@@ -197,8 +197,8 @@ describe('settings view', () => {
     await wrapper.get('#program-url').setValue('https://autre/programme.json')
     await flushPromises()
 
-    // Sinon on tape une adresse, on clique, et le hub relit l'ancienne sans que
-    // rien ne le dise.
+    // Failing which one types an address, clicks, and the hub reads the old one
+    // again with nothing saying so.
     expect(wrapper.get('#btn-reimport').attributes('disabled')).toBeDefined()
   })
 
@@ -222,8 +222,8 @@ describe('settings view', () => {
     await wrapper.get('#btn-social-links').trigger('click')
     await flushPromises()
 
-    // Ajouter une ligne puis se raviser est un geste normal, et le hub
-    // refuserait une URL vide.
+    // Adding a row then thinking better of it is a normal gesture, and the hub
+    // would refuse an empty URL.
     const sent = calls.find((call) => call.path === 'settings/update')
     expect((sent?.input as { socialLinks: unknown[] }).socialLinks).toEqual([])
   })
@@ -256,7 +256,7 @@ describe('settings view', () => {
     expect(wrapper.get('#vod-state').text()).toContain('aucun bucket')
   })
 
-  it('demande confirmation avant de resynchroniser, et dit ce qui va partir', async () => {
+  it('asks for confirmation before resyncing, and says what will go out', async () => {
     const { calls, wrapper } = await mountView()
 
     await wrapper.get('#btn-resync').trigger('click')
@@ -266,7 +266,7 @@ describe('settings view', () => {
     expect(calls.filter((call) => call.path === 'rooms/resync')).toHaveLength(0)
   })
 
-  it('dit combien de salles la demande a atteintes, pas qu’elle est partie', async () => {
+  it('says how many rooms the request reached, not that it was sent', async () => {
     const { calls, wrapper } = await mountView({ resyncRooms: 0 })
 
     await wrapper.get('#btn-resync').trigger('click')

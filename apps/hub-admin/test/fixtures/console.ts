@@ -67,17 +67,17 @@ export const REPONSES: Record<string, unknown> = {
     { id: 'm-2', roomId: SALLES[0]!.id, roomName: SALLES[0]!.name, text: 'Speaker arrivé, tout est prêt', level: 'info', at: '2026-10-30T09:58:00.000Z' },
   ],
   'sessions/states': [
-    // `remainingMs` vient du hub : c'est lui qui tient l'heure qui fait foi, et
-    // it may be simulated. The fixture must therefore supply it, otherwise the column
-    // « Reste » y reste vide sans qu'on sache pourquoi.
+    // `remainingMs` comes from the hub: it is the hub that holds the authoritative
+    // time, and it may be simulated. The fixture must therefore supply it, otherwise
+    // the "Reste" column stays empty with nobody knowing why.
     { sessionId: 'ses-1', roomId: SALLES[0]!.id, roomName: SALLES[0]!.name, title: 'HoneySwamp : piéger les bots', status: 'running', scheduledStartsAt: '2026-10-30T10:00:00.000Z', scheduledEndsAt: '2026-10-30T10:50:00.000Z', remainingMs: 23 * 60_000, decidedBy: 'operator' },
     { sessionId: 'ses-2', roomId: SALLES[1]!.id, roomName: SALLES[1]!.name, title: 'Observabilité sous pression', status: 'ended', scheduledStartsAt: '2026-10-30T09:00:00.000Z', scheduledEndsAt: '2026-10-30T09:50:00.000Z', remainingMs: -4 * 60_000, decidedBy: 'auto' },
   ],
   /**
-   * Planning du programme actif.
+   * The active program's schedule.
    *
-   * Une pause y figure : c'est le cas qui montre qu'une ligne sans intervenant
-   * offers no OpenFeedback link — one does not rate a lunch.
+   * A break appears in it: that is the case showing a row with no speaker offers no
+   * OpenFeedback link — one does not rate a lunch.
    */
   'program/planning': {
     contentHash: 'a1b2c3d4e5f6',

@@ -16,8 +16,8 @@ import { useSessionStore } from '../src/stores/session.js'
  * The console's densest view, and the one where the structural decisions are least
  * visible: the time read in the event's time zone and not the machine's, the "en ce
  * moment" marker set against the hub's clock which may be simulated, the action
- * column collapsed because it writes where six columns
- * lisent, et le menu qui n'offre que l'action contredisant l'export.
+ * column collapsed because it writes where six columns read, and the menu that
+ * offers only the action contradicting the export.
  *
  * None of those four is visible on reading. They are what is held here.
  */
@@ -197,8 +197,8 @@ describe('conferences view', () => {
     const { wrapper } = await mountView({ sessions: [HERITEE] })
     await wrapper.get('#btn-planning-actions').trigger('click')
 
-    // C'est le créneau d'origine qu'on corrige, et la projection suit : un menu
-    // on the copy would suggest two independent decisions.
+    // It is the original slot that gets corrected, and the projection follows: a
+    // menu on the copy would suggest two independent decisions.
     expect(wrapper.get('[data-slot="pause-2"]').text()).toContain('héritée')
     expect(wrapper.find('[data-session-action="pause-2"]').exists()).toBe(false)
   })
@@ -215,7 +215,7 @@ describe('conferences view', () => {
       input: { sessionId: 'talk-1', action: 'break' },
     })
     // Read back rather than rebuilt: the hub serves the corrected program, and a
-    // reconstruction locale divergerait de ce que voient les salles.
+    // local reconstruction would drift from what the rooms see.
     expect(calls.filter((call) => call.path === 'program/planning')).toHaveLength(2)
   })
 
@@ -241,11 +241,11 @@ describe('conferences view', () => {
     expect(wrapper.find('[data-slot="pause-1"] a').exists()).toBe(false)
   })
 
-  it('ne propose pas de captation sur une pause', async () => {
+  it('offers no take on a break', async () => {
     const { wrapper } = await mountView({ sessions: [TALK, PAUSE] })
 
-    // Nobody looks for the lunch's footage, and a button opening a modal
-    // vide sur vingt-sept lignes ferait douter des vingt-sept.
+    // Nobody looks for the lunch's footage, and a button opening an empty modal on
+    // twenty-seven rows would cast doubt on all twenty-seven.
     expect(wrapper.find('[data-vod-session="talk-1"]').exists()).toBe(true)
     expect(wrapper.find('[data-vod-session="pause-1"]').exists()).toBe(false)
   })
@@ -261,12 +261,12 @@ describe('conferences view', () => {
   it('warns when no OpenFeedback project is set', async () => {
     const { wrapper } = await mountView({ projectId: null })
 
-    // Sans projet, les salles ne projettent aucun QR « notez ce talk » — et
-    // rien d'autre ne le dirait.
+    // With no project, the rooms project no "notez ce talk" QR — and nothing else
+    // would say so.
     expect(wrapper.get('#planning-feedback-hint').text()).toContain('Aucun projet OpenFeedback')
   })
 
-  it('n’interroge OpenFeedback que sur demande', async () => {
+  it('queries OpenFeedback only on request', async () => {
     const { calls, wrapper } = await mountView()
 
     expect(calls.filter((a) => a.path === 'program/controleOpenFeedback')).toHaveLength(0)
@@ -278,7 +278,7 @@ describe('conferences view', () => {
     expect(wrapper.get('#check-feedback').text()).toContain('27 talks')
   })
 
-  it('offre les actions que la table du cycle de vie allowed, et pas d’autres', async () => {
+  it('offers the actions the lifecycle table allows, and no others', async () => {
     const { wrapper } = await mountView({
       states: [
         {

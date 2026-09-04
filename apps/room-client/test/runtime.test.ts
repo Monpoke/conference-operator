@@ -51,7 +51,7 @@ describe('room state', () => {
   it('starts on the waiting loop, without depending on the network', () => {
     // This is the screen one wants to find in the room in the morning without
     // anyone having touched anything. It reduces itself to the pages that have
-    // contenu : sans programme en cache, elle montre les sponsors.
+    // content: with no cached program, it shows the sponsors.
     expect(new RoomRuntime(store, {}, () => clockMs).state()).toMatchObject({
       mode: 'loop',
       connectivity: 'OFFLINE',
@@ -173,7 +173,7 @@ describe('applying the commands', () => {
     )
     expect(runtime.state().notifications).toHaveLength(1)
 
-    // Vingt-neuf secondes plus tard : encore lisible.
+    // Twenty-nine seconds later: still readable.
     clockMs += 29_000
     runtime.expireNotifications()
     expect(runtime.state().notifications).toHaveLength(1)
@@ -348,8 +348,8 @@ describe("the room's clock", () => {
      * The defect reported: a room launched on a simulated clock, then connected
      * to a hub also simulated, added the two offsets together. The control app
      * looked for its talks weeks after the event was over — "aucune conférence à
-     * piloter" — while the other rooms' stream, computed
-     * dans la page, tombait juste.
+     * piloter" — while the other rooms' stream, computed in the page, came out
+     * right.
      */
     const runtime = inTheRoom()
     runtime.setClockOffset(Date.parse('2026-10-30T16:00:00Z') - Date.now(), true)

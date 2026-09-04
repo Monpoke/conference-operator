@@ -60,7 +60,7 @@ describe('starting', () => {
   it('starts without asking anything when the hour is close', async () => {
     roomAt(START_MS - 60_000)
     // The take is already running: the other guard has nothing to say, and it is
-    // celui de l'avance qu'on regarde ici.
+    // the early-start one being looked at here.
     useRoomStore().payload!.diagnostics!.recording = {
       active: true,
       markers: 0,
@@ -73,8 +73,8 @@ describe('starting', () => {
     talkStore.askStart()
     await flushPromises()
 
-    // Lancer une minute avant l'heure est le geste normal du matin : le
-    // confirming it every time would turn it into a reflex.
+    // Starting a minute early is the normal morning gesture: confirming it every
+    // time would turn it into a reflex.
     expect(talkStore.tooEarlyOpen).toBe(false)
     expect(actions()).toEqual(['session.start', 'scene.set'])
   })
@@ -114,7 +114,7 @@ describe('starting', () => {
 })
 
 describe('the take warning', () => {
-  it('se pose quand rien n’enregistre', async () => {
+  it('settles when nothing is recording', async () => {
     roomAt(START_MS)
     const talkStore = useTalkStore()
 
@@ -318,7 +318,7 @@ describe('stopping the take while ending', () => {
     expect(actions()).toEqual(['session.end'])
   })
 
-  it('ne demande rien quand aucune captation ne tourne', async () => {
+  it('asks nothing when no take is running', async () => {
     roomAt(END_MS + 60_000)
     const talkStore = useTalkStore()
 
@@ -381,7 +381,7 @@ describe('talk panel', () => {
     return mount(TalkPanel, { props: { payload: view, nowMs: atMs } })
   }
 
-  it('refuse un geste que le hub refuserait, et dit pourquoi', () => {
+  it('refuses a gesture the hub would refuse, and says why', () => {
     const wrapper = mountPanel(START_MS)
 
     // The lifecycle table is the one the hub applies on write: an active button

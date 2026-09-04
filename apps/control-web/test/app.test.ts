@@ -79,8 +79,8 @@ function press(key: string): void {
   document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
 }
 
-describe('raccourcis de la page', () => {
-  it('bascule la projection sans passer par la souris', async () => {
+describe('the page\'s shortcuts', () => {
+  it('switches the projection without going through the mouse', async () => {
     await mountApp()
 
     press('l')
@@ -95,7 +95,7 @@ describe('raccourcis de la page', () => {
     ])
   })
 
-  it('lance la captation quand rien ne tourne', async () => {
+  it('starts the take when nothing is running', async () => {
     await mountApp()
 
     press('r')
@@ -113,7 +113,7 @@ describe('raccourcis de la page', () => {
     expect(calls.at(-1)?.body).toEqual({ action: 'recording.stop' })
   })
 
-  it('pose un marqueur pendant une prise', async () => {
+  it('lays down a marker during a take', async () => {
     await mountApp({ active: true, markers: 0, startedAtMs: 0, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS })
 
     press('m')
@@ -126,8 +126,8 @@ describe('raccourcis de la page', () => {
     await mountApp({ active: true, markers: 0, startedAtMs: 0, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS })
 
     // These are gestures made while watching the room, not the screen: the speaker
-    // starts, the speaker finishes. Going through the label field
-    // ferait rater l'instant, qui est ici toute l'information.
+    // starts, the speaker finishes. Going through the label field would miss the
+    // instant, which here is the whole of the information.
     press('d')
     await flushPromises()
     expect(calls.at(-1)?.body).toEqual({ action: 'recording.mark', label: 'Début', role: 'debut' })
@@ -147,7 +147,7 @@ describe('raccourcis de la page', () => {
     expect(calls.filter((call) => call.url === '/control/action')).toEqual([])
   })
 
-  it('ne pose pas de marqueur quand rien n’enregistre', async () => {
+  it('lays down no marker when nothing is recording', async () => {
     await mountApp()
 
     press('m')
@@ -158,7 +158,7 @@ describe('raccourcis de la page', () => {
     expect(calls.filter((call) => call.url === '/control/action')).toEqual([])
   })
 
-  it('rend la press au champ qui l’attend', async () => {
+  it('hands the keypress back to the field waiting for it', async () => {
     const wrapper = await mountApp()
     const field = wrapper.get('#message-text')
 
@@ -187,7 +187,7 @@ describe('window title', () => {
 })
 
 describe('programmes des salles voisines', () => {
-  it('ne les relit pas tant que l’empreinte du programme ne change pas', async () => {
+  it('does not read them again while the program\'s fingerprint holds', async () => {
     await mountApp()
     callCount = calls.filter((call) => call.url.startsWith('/display/sessions')).length
 
@@ -275,7 +275,7 @@ describe('consultation', () => {
   })
 })
 
-describe('une question ouverte prend le clavier', () => {
+describe('an open question takes the keyboard', () => {
   it('answers "yes" to the early end, and nothing else gets through', async () => {
     await mountApp()
     const talk = useTalkStore()
@@ -366,7 +366,7 @@ describe('une question ouverte prend le clavier', () => {
   })
 })
 
-describe('avant le premier octet', () => {
+describe('before the first byte', () => {
   it('says it is waiting, rather than paint an empty room', async () => {
     const wrapper = mount(App)
     await flushPromises()

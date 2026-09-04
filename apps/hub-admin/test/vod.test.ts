@@ -75,12 +75,12 @@ beforeEach(() => {
 
 describe('avancement', () => {
   it('does not exceed a hundred per cent when the file grows in transit', () => {
-    // Une captation en cours grandit pendant qu'elle part : sans borne,
-    // l'avancement affichait 137 %.
+    // A running take grows while it is being sent: with no cap, the progress read
+    // 137 %.
     expect(progress({ ...EN_COURS, sizeBytes: 100, bytesSent: 137 })).toBe(100)
   })
 
-  it('ne divise pas par une taille inconnue', () => {
+  it('does not divide by an unknown size', () => {
     expect(progress({ ...EN_COURS, sizeBytes: 0, bytesSent: 0 })).toBe(0)
   })
 })
@@ -124,7 +124,7 @@ describe('vue VOD', () => {
     })
   })
 
-  it('refuse « tout relancer » sans salle, au lieu de ne rien faire', async () => {
+  it('refuses "tout relancer" with no room, rather than doing nothing', async () => {
     const { calls, wrapper } = await mountView([EN_COURS])
 
     await wrapper.get('#btn-vod-relancer').trigger('click')
@@ -134,7 +134,7 @@ describe('vue VOD', () => {
     expect(calls.filter((call) => call.path === 'vod/request')).toHaveLength(0)
   })
 
-  it('rapatrie toute une salle une fois celle-ci choisie', async () => {
+  it('brings back a whole room once one has been chosen', async () => {
     const { calls, wrapper } = await mountView([EN_COURS])
 
     await wrapper.get('#vod-room').setValue('track-1')

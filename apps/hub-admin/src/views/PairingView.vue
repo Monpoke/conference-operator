@@ -7,17 +7,17 @@ import { useRoute } from 'vue-router'
 import { requestedRoom, VERDICTS, usePairingStore, type PendingDevice } from '../stores/pairing.js'
 
 /**
- * Appairage des machines de salle.
+ * Pairing the room machines.
  *
  * Two paths lead here, and the second is the real one: Better Auth gives the
  * machine the address `/admin/devices?user_code=…`, the operator follows it, and
  * the code must be handled **on the spot**. Sending them to the list behind the
- * modale faisait chercher la bonne ligne parmi d'autres, pour refaire le geste
- * qu'on venait de valider des yeux.
+ * modal made them hunt for the right row among others, to redo the gesture they
+ * had just checked with their eyes.
  *
  * The code lives in the URL and does not move from it: the route is declared as
  * an alias, and a redirect would erase it on load — that is, at the one moment
- * quelqu'un en a besoin.
+ * anybody needs it.
  */
 const store = usePairingStore()
 const { pending, devices, rooms } = storeToRefs(store)
@@ -55,8 +55,8 @@ const verdict = reactive({
 /**
  * Qualifies the code on load, deciding nothing.
  *
- * Sans `clientId`, Better Auth ne nous a pas reconnus comme le consultant du
- * code: approving would fail, so better not to offer it.
+ * Without a `clientId`, Better Auth has not recognised us as the one consulting
+ * the code: approving would fail, so better not to offer it.
  */
 async function qualifier(code: string): Promise<void> {
   Object.assign(verdict, {
@@ -108,8 +108,8 @@ async function decider(approuver: boolean): Promise<void> {
     verdict.open = false
   } catch (cause) {
     /*
-     * Dans la modale, pas dans l'avis flottant : l'erreur porte sur le geste
-     * one has just done, and refusing a code opened by another operator requires
+     * In the modal, not in the floating notice: the error is about the gesture one
+     * has just made, and refusing a code opened by another operator requires
      * reading a whole sentence.
      */
     verdict.error = cause instanceof Error ? cause.message : 'Le geste a échoué.'

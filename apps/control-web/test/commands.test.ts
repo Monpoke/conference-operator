@@ -62,7 +62,7 @@ describe('poster une action', () => {
     expect(room.payload?.state.sceneRole).toBe(before)
   })
 
-  it('reprend le refus du poste, mot pour mot', async () => {
+  it("repeats the machine's refusal, word for word", async () => {
     stubFetch({ ok: false, message: 'OBS-A ne répond pas' })
 
     await useActionsStore().act({ action: 'scene.set', role: 'LIVE' })
@@ -75,7 +75,7 @@ describe('poster une action', () => {
     })
   })
 
-  it('nomme la panne locale, qui n’est pas une panne du hub', async () => {
+  it('names the local failure, which is not a hub failure', async () => {
     vi.stubGlobal('fetch', async () => {
       throw new Error('injoignable')
     })
@@ -90,7 +90,7 @@ describe('poster une action', () => {
 })
 
 describe('room screen', () => {
-  it('marque le mode en vigueur, pas celui qu’on vient de cliquer', async () => {
+  it('marks the mode in force, not the one just clicked', async () => {
     const calls = stubFetch()
     const wrapper = mount(ScreenPanel, { props: { mode: 'loop' } })
 
@@ -194,7 +194,7 @@ describe('captation', () => {
     ])
   })
 
-  it('ne laisse pas poser un marqueur hors enregistrement', () => {
+  it('does not allow a marker to be laid outside a recording', () => {
     const wrapper = mountPanel(null)
 
     // A marker with no take attaches to nothing: the machine would refuse it, and

@@ -22,7 +22,7 @@ beforeEach(() => {
   setActivePinia(createPinia())
 })
 
-describe('lien avec le hub', () => {
+describe('link with the hub', () => {
   it('says what still works, rather than what is broken', () => {
     const wrapper = mount(HubIndicator, {
       props: { connectivity: 'OFFLINE', queueDepth: 0, offsetMs: 0, simulatedClock: false },
@@ -98,7 +98,7 @@ describe('charge du poste', () => {
     expect(wrapper.text()).toContain('celui-là même qui écrit le rush')
   })
 
-  it('garde au grand chiffre la couleur de sa propre mesure', () => {
+  it('keeps the large figure the colour of its own measurement', () => {
     const wrapper = mount(CpuIndicator, {
       props: {
         load: {
@@ -134,7 +134,7 @@ describe('machine load, in detail', () => {
     return mount(CpuIndicator, { props: { load } })
   }
 
-  it('reste verte tant que le poste a de la marge', () => {
+  it('stays green for as long as the machine has headroom', () => {
     const wrapper = poste({ cpu: 0.31, cores: 8, windowMs: 5_000, memory: MEMOIRE_SAINE })
 
     expect(wrapper.attributes('data-level')).toBe('ok')
@@ -157,7 +157,7 @@ describe('machine load, in detail', () => {
 
     expect(wrapper.attributes('data-level')).toBe('alert')
     expect(wrapper.get('.status-dot').classes()).toContain('offline')
-    // Une couleur seule ne dit pas quoi faire : la bulle nomme le risque.
+    // A colour alone does not say what to do: the tooltip names the risk.
     expect(wrapper.text()).toContain('images')
   })
 
@@ -184,11 +184,11 @@ describe('machine load, in detail', () => {
     expect(wrapper.text()).toContain('mémoire illisible')
   })
 
-  it('n’ajoute pas de bulle native par-dessus la sienne', () => {
+  it('does not add a native tooltip on top of its own', () => {
     const wrapper = poste({ cpu: 0.31, cores: 8, windowMs: 5_000, memory: MEMOIRE_SAINE })
 
-    // A leftover `title` would show both, one over the other, one second
-    // d'intervalle. L'annonce vocale, elle, passe par `aria-label`.
+    // A leftover `title` would show both, one over the other, a second apart.
+    // The spoken announcement goes through `aria-label`.
     expect(wrapper.attributes('title')).toBeUndefined()
     expect(wrapper.attributes('aria-label')).toContain('31 %')
     expect(wrapper.get('.tooltip').attributes('aria-hidden')).toBe('true')
@@ -202,7 +202,7 @@ describe('machine load, in detail', () => {
 })
 
 describe('run mode', () => {
-  it('se tait quand tout est en production', () => {
+  it('stays quiet when everything is in production', () => {
     const wrapper = mount(ModeBadge, { props: { mode: { room: 'production', hub: 'production' } } })
     expect(wrapper.text()).toBe('')
   })
@@ -210,13 +210,13 @@ describe('run mode', () => {
   it('cries out when the room and the hub are not on the same side', () => {
     const wrapper = mount(ModeBadge, { props: { mode: { room: 'dev', hub: 'production' } } })
 
-    // A development room plugged into the event's hub would send
-    // de vraies commandes depuis un poste qui simule tout.
+    // A development room plugged into the event's hub would send real commands
+    // from a machine that simulates everything.
     expect(wrapper.text()).toBe('dev · hub en production')
     expect(wrapper.html()).toContain('text-alert')
   })
 
-  it('crie aussi dans l’autre sens', () => {
+  it('shouts in the other direction too', () => {
     const wrapper = mount(ModeBadge, { props: { mode: { room: 'production', hub: 'dev' } } })
     expect(wrapper.text()).toBe('hub en dev')
     expect(wrapper.html()).toContain('text-alert')
@@ -228,7 +228,7 @@ describe('run mode', () => {
     expect(wrapper.html()).toContain('text-warn')
   })
 
-  it('attend le premier sync avant de conclure', () => {
+  it('waits for the first sync before concluding', () => {
     // Hub not reached yet: nothing to compare, and a premature alert would teach
     // people to ignore the badge.
     const wrapper = mount(ModeBadge, { props: { mode: { room: 'production', hub: null } } })
@@ -270,7 +270,7 @@ describe('bandeau complet', () => {
     expect(wrapper.get('[data-role="stream-dead"]').text()).toContain('écran figé')
   })
 
-  it('ne montre la file que lorsqu’il y a quelque chose dedans', () => {
+  it('shows the queue only when there is something in it', () => {
     const vide = mount(ControlHeader, {
       props: { payload: payload(), nowMs: Date.now(), streamDead: false },
     })
@@ -309,13 +309,13 @@ describe('driven remotely', () => {
     expect(wrapper.get('[data-role="remote-holder"]').text()).toContain('regie@cloudnord.fr')
   })
 
-  it('ne grise aucune commande de la salle', () => {
+  it('greys out none of the room\'s commands', () => {
     const wrapper = mount(ControlHeader, {
       props: { payload: withHolder('regie@cloudnord.fr'), nowMs: Date.now(), streamDead: false },
     })
 
-    // Les boutons du bandeau restent tous actifs : le verrou n'exclut que les
-    // mobile control apps among themselves.
+    // The banner's buttons all stay active: the lock only shuts out the mobile
+    // control apps among themselves.
     for (const button of wrapper.findAll('button')) {
       expect(button.attributes('disabled')).toBeUndefined()
     }

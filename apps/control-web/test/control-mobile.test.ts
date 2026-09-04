@@ -265,8 +265,8 @@ describe('the lock veil', () => {
 
   it('lifts too when nobody holds it any more', () => {
     // An expired hold — phone locked in a pocket, a tunnel — leaves the room free.
-    // Nothing is broken, and the button does not say "Reprendre"
-    // sur une salle que personne ne tient.
+    // Nothing is broken, and the button does not say "Reprendre" over a room nobody
+    // is holding.
     inTheRoom(null)
     const wrapper = mount(App)
 
@@ -283,15 +283,15 @@ describe('the lock veil', () => {
     expect(wrapper.find('#btn-talk-start').exists()).toBe(true)
   })
 
-  it('reprend sans reposer la question', async () => {
+  it('takes over without asking again', async () => {
     const hub = inTheRoom(lockOf('nuit@cloudnord.fr'))
     const wrapper = mount(App)
 
     await wrapper.get('[data-role="lock-take"]').trigger('click')
     await flushPromises()
 
-    // Le voile *est* la question : la reposer en modale en ferait un clic de
-    // a reflex, and that is exactly what is being removed.
+    // The veil *is* the question: asking it again in a modal would turn it into a
+    // reflex click, and that is exactly what is being removed.
     expect(hub.calls).toContain('hold:force')
   })
 
@@ -331,7 +331,7 @@ describe('the room screen', () => {
     return hub
   }
 
-  it('offre les modes que le hub peut tenir, et pas les deux autres', () => {
+  it('offers the modes the hub can hold, and not the other two', () => {
     inTheRoom()
     const wrapper = mount(App)
     const modes = wrapper
@@ -368,7 +368,7 @@ describe('the room screen', () => {
   })
 })
 
-describe('le bandeau de verrou', () => {
+describe('the lock banner', () => {
   function mountBanner(lock: ControlRoom['lock']) {
     const hub = mountRemote([room({ lock })])
     const gateway = useGatewayStore()
@@ -378,7 +378,7 @@ describe('le bandeau de verrou', () => {
     return { hub, wrapper: mount(LockBanner, { props: { nowMs: AT } }) }
   }
 
-  it('dit qu’on pilote, quand cet onglet tient la salle', () => {
+  it('says one is driving, when this tab holds the room', () => {
     const { wrapper } = mountBanner(lockOf('regie@cloudnord.fr', ME))
     expect(wrapper.text()).toContain('Vous pilotez cette salle')
   })
@@ -386,8 +386,8 @@ describe('le bandeau de verrou', () => {
   it('no longer carries a button to take over', () => {
     const { wrapper } = mountBanner(lockOf('nuit@cloudnord.fr'))
 
-    // The decision lives in the veil. Here, a mention, so the line does not
-    // contredise pas quand le voile se referme.
+    // The decision lives in the veil. Here, a mention, so that the line does not
+    // contradict it once the veil closes.
     expect(wrapper.get('[data-role="lock-holder"]').text()).toContain('Lecture seule')
     expect(wrapper.text()).not.toContain('Reprendre')
   })
@@ -397,7 +397,7 @@ describe('le bandeau de verrou', () => {
     await wrapper.get('button').trigger('click')
     await flushPromises()
 
-    // Rendre en partant : l'expiration couvrirait le cas, mais trente secondes
+    // Hand it back on the way out: expiry would cover the case, but thirty seconds
     // of a blocked room while a colleague waits are visible.
     expect(hub.calls).toContain('release')
     expect(useGatewayStore().roomId).toBeNull()

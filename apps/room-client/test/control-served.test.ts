@@ -296,7 +296,7 @@ describe('the page\'s self-sufficiency', () => {
   })
 })
 
-/** Un manifeste Vite minimal, pour lire les assets sans construire le bundle. */
+/** A minimal Vite manifest, to read the assets without building the bundle. */
 function temporaryManifest(): string {
   const folder = join(dir, '.vite')
   mkdirSync(folder, { recursive: true })

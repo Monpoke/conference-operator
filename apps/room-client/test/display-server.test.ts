@@ -101,15 +101,15 @@ async function readSse(
 }
 
 /** Counts the messages received during a given time window. */
-async function compterSse(url: string, durationMs: number): Promise<number> {
+async function countSse(url: string, durationMs: number): Promise<number> {
   const controller = new AbortController()
   const response = await fetch(url, { signal: controller.signal })
   const reader = response.body!.getReader()
   const decoder = new TextDecoder()
-  let recus = 0
+  let receivedCount = 0
   let buffer = ''
   const fin = Date.now() + durationMs
-  const arret = setTimeout(() => controller.abort(), durationMs)
+  const abortTimer = setTimeout(() => controller.abort(), durationMs)
   try {
     while (Date.now() < fin) {
       const { value, done } = await reader.read()
@@ -119,15 +119,15 @@ async function compterSse(url: string, durationMs: number): Promise<number> {
       while ((index = buffer.indexOf('\n\n')) !== -1) {
         const block = buffer.slice(0, index)
         buffer = buffer.slice(index + 2)
-        if (block.includes('data: ')) recus += 1
+        if (block.includes('data: ')) receivedCount += 1
       }
     }
   } catch {
     // Aborting the stream is the normal way to end this read.
   }
-  clearTimeout(arret)
+  clearTimeout(abortTimer)
   controller.abort()
-  return recus
+  return receivedCount
 }
 
 describe('local display server', () => {
@@ -175,10 +175,10 @@ describe('local display server', () => {
   it('sends nothing when the clock tick changes nothing', async () => {
     // The tick recomputes the timeline every 5 s. With no real change it must
     // produce no traffic: that is what republished 43 KB for nothing.
-    const flux = compterSse(`${origin}/display/state?vue=projecteur`, 1_500)
+    const stream = countSse(`${origin}/display/state?vue=projecteur`, 1_500)
     for (let i = 0; i < 20; i++) runtime.refreshSessions()
     // Only the opening snapshot should have travelled.
-    expect(await flux).toBe(1)
+    expect(await stream).toBe(1)
   })
 
   it('sends the overlay only the fields it reads', async () => {
@@ -201,12 +201,12 @@ describe('local display server', () => {
 
   it('serves the assets from the local cache', async () => {
     const fetchImpl = vi.fn(async () =>
-      new Response('PNG-OCTETS', { status: 200, headers: { 'content-type': 'image/png' } }),
+      new Response('PNG-BYTES', { status: 200, headers: { 'content-type': 'image/png' } }),
     ) as unknown as typeof fetch
     const ref = await assets.fetchOne('https://cdn.exemple/logo.png', fetchImpl)
 
     const response = await fetch(`${origin}${ref.localUrl}`)
-    expect(await response.text()).toBe('PNG-OCTETS')
+    expect(await response.text()).toBe('PNG-BYTES')
     expect(response.headers.get('content-type')).toBe('image/png')
     // Content-addressed: cacheable indefinitely by OBS's Browser Source.
     expect(response.headers.get('cache-control')).toContain('immutable')
@@ -217,10 +217,10 @@ describe('local display server', () => {
   })
 
   it('stays serveable with no program cached', async () => {
-    const vide = new LocalStore(':memory:')
+    const empty = new LocalStore(':memory:')
     const other = new DisplayServer({
-      runtime: new RoomRuntime(vide),
-      assets: new AssetCache(vide, join(dir, 'vide')),
+      runtime: new RoomRuntime(empty),
+      assets: new AssetCache(empty, join(dir, 'empty')),
       program: () => null,
       port: 0,
     })
@@ -234,7 +234,7 @@ describe('local display server', () => {
     expect((await fetch(`${otherOrigin}/display/projector`)).status).toBe(200)
 
     await other.close()
-    vide.close()
+    empty.close()
   })
 })
 
@@ -255,9 +255,9 @@ describe('VU meter', () => {
     try {
       expect(demandes).toEqual([])
 
-      const controleur = new AbortController()
-      const flux = await fetch(`${url}/display/audio`, { signal: controleur.signal })
-      const reader = flux.body!.getReader()
+      const controller = new AbortController()
+      const stream = await fetch(`${url}/display/audio`, { signal: controller.signal })
+      const reader = stream.body!.getReader()
       // The subscription is laid down when the stream opens.
       await vi.waitFor(() => expect(demandes).toEqual([true]))
 
@@ -266,14 +266,14 @@ describe('VU meter', () => {
       // The first block is the opening comment, which pushes the headers; we read
       // on to the first measurement.
       const decoder = new TextDecoder()
-      let recu = ''
-      while (!recu.includes('data: ')) {
-        recu += decoder.decode((await reader.read()).value, { stream: true })
+      let receivedText = ''
+      while (!receivedText.includes('data: ')) {
+        receivedText += decoder.decode((await reader.read()).value, { stream: true })
       }
-      expect(recu).toContain('"name":"Micro"')
-      expect(recu).toContain('-18')
+      expect(receivedText).toContain('"name":"Micro"')
+      expect(receivedText).toContain('-18')
 
-      controleur.abort()
+      controller.abort()
       // And withdrawn as soon as the last page closes.
       await vi.waitFor(() => expect(demandes).toEqual([true, false]))
     } finally {
@@ -329,7 +329,7 @@ describe('other rooms, effective end', () => {
   /** 08:50 → 09:40 UTC, Track #2's first talk. */
   const MORNING = 'cmq3nx20102h901ppuyjkennd'
   /** 10:00 → 10:50 UTC: the one really playing at the test's hour. */
-  const MIDI = 'cmqb69foj000p01nl361us8f0'
+  const NOON = 'cmqb69foj000p01nl361us8f0'
 
   async function neighbour(): Promise<DisplayPayload['otherRooms'][number] | undefined> {
     const payload = (await (await fetch(`${origin}/display/data`)).json()) as DisplayPayload
@@ -339,7 +339,7 @@ describe('other rooms, effective end', () => {
   it('announces the talk that is playing, not the morning one left open', async () => {
     // The morning talk loses its end time: only its duration is left, as in an
     // export that carries start times only.
-    const servi: Program = {
+    const served: Program = {
       ...program,
       sessions: program.sessions.map((session) =>
         session.id === MORNING
@@ -347,13 +347,13 @@ describe('other rooms, effective end', () => {
           : session,
       ),
     }
-    store.saveProgram('hash-2', servi)
-    runtime.setProgram('hash-2', servi)
+    store.saveProgram('hash-2', served)
+    runtime.setProgram('hash-2', served)
 
     // The file's clock is at 10:20 UTC: the duration closes the morning talk at
     // 09:40, and it is the 10:00 one that is playing.
     const vue = await neighbour()
-    expect(vue?.session?.id).toBe(MIDI)
+    expect(vue?.session?.id).toBe(NOON)
     expect(vue?.running).toBe(true)
   })
 
@@ -364,7 +364,7 @@ describe('other rooms, effective end', () => {
 
     const vue = await neighbour()
     expect(vue?.running).toBe(false)
-    expect(vue?.session?.id).toBe(MIDI)
+    expect(vue?.session?.id).toBe(NOON)
   })
 })
 

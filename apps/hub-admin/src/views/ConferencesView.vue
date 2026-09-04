@@ -307,14 +307,14 @@ function openVod(session: PlannedSession): void {
           class="w-auto shrink-0 rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text"
         >
           <option value="">Toutes les salles</option>
-          <option v-for="salle in planning?.rooms ?? []" :key="salle.id" :value="salle.id">
-            {{ salle.name }}
+          <option v-for="room in planning?.rooms ?? []" :key="room.id" :value="room.id">
+            {{ room.name }}
           </option>
         </select>
         <!--
           Le contrôle des liens de feedback : sur demande et non en continu. Il
           sort du hub pour interroger OpenFeedback, et c'est un geste
-          d'before-événement — on le passe une fois le programme importé, on
+          d'avant-événement — on le passe une fois le programme importé, on
           corrige ce qu'il signale, et on n'y revient plus.
         -->
         <Button
@@ -380,9 +380,9 @@ function openVod(session: PlannedSession): void {
             <span class="text-dim">sur {{ check.talksConnus }} talks connus.</span>
             {{ check.detail }}
             <ul class="mt-1.5 list-disc pl-4">
-              <li v-for="manquant in check.manquants" :key="manquant.feedbackId">
-                {{ manquant.title }}
-                <span class="font-mono text-[11px] text-dim">{{ manquant.feedbackId }}</span>
+              <li v-for="missing in check.manquants" :key="missing.feedbackId">
+                {{ missing.title }}
+                <span class="font-mono text-[11px] text-dim">{{ missing.feedbackId }}</span>
               </li>
             </ul>
           </template>

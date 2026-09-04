@@ -56,7 +56,7 @@ async function mountView(uploads: unknown[] = []): Promise<{
   return { calls: fake.calls, wrapper }
 }
 
-const EN_COURS = {
+const IN_PROGRESS = {
   roomId: 'track-1',
   roomName: 'Track #1',
   file: 'rush-01.mkv',
@@ -77,22 +77,22 @@ describe('avancement', () => {
   it('does not exceed a hundred per cent when the file grows in transit', () => {
     // A running take grows while it is being sent: with no cap, the progress read
     // 137 %.
-    expect(progress({ ...EN_COURS, sizeBytes: 100, bytesSent: 137 })).toBe(100)
+    expect(progress({ ...IN_PROGRESS, sizeBytes: 100, bytesSent: 137 })).toBe(100)
   })
 
   it('does not divide by an unknown size', () => {
-    expect(progress({ ...EN_COURS, sizeBytes: 0, bytesSent: 0 })).toBe(0)
+    expect(progress({ ...IN_PROGRESS, sizeBytes: 0, bytesSent: 0 })).toBe(0)
   })
 })
 
 describe('vue VOD', () => {
   it('says there is nothing rather than leave an empty table', async () => {
     const { wrapper } = await mountView([])
-    expect(wrapper.get('#vod-lignes').text()).toContain('Aucun téléversement')
+    expect(wrapper.get('#vod-rows').text()).toContain('Aucun téléversement')
   })
 
   it('shows the progress and the rate, which say whether it is moving', async () => {
-    const { wrapper } = await mountView([EN_COURS])
+    const { wrapper } = await mountView([IN_PROGRESS])
     const row = wrapper.get('[data-upload="rush-01.mkv"]')
 
     expect(row.text()).toContain('25 %')
@@ -100,7 +100,7 @@ describe('vue VOD', () => {
   })
 
   it('reprend l’erreur du stockage telle quelle', async () => {
-    const { wrapper } = await mountView([{ ...EN_COURS, state: 'echoue', lastError: 'AccessDenied' }])
+    const { wrapper } = await mountView([{ ...IN_PROGRESS, state: 'echoue', lastError: 'AccessDenied' }])
 
     // "AccessDenied" is the only word one can carry to whoever holds the bucket:
     // translating it would lose the only handle on the problem.
@@ -108,12 +108,12 @@ describe('vue VOD', () => {
   })
 
   it('does not offer to retry what has already arrived', async () => {
-    const { wrapper } = await mountView([{ ...EN_COURS, state: 'termine' }])
+    const { wrapper } = await mountView([{ ...IN_PROGRESS, state: 'termine' }])
     expect(wrapper.find('[data-upload="rush-01.mkv"] button').exists()).toBe(false)
   })
 
   it('retries one specific file', async () => {
-    const { calls, wrapper } = await mountView([EN_COURS])
+    const { calls, wrapper } = await mountView([IN_PROGRESS])
 
     await wrapper.get('[data-upload="rush-01.mkv"] button').trigger('click')
     await flushPromises()
@@ -125,9 +125,9 @@ describe('vue VOD', () => {
   })
 
   it('refuses "tout relancer" with no room, rather than doing nothing', async () => {
-    const { calls, wrapper } = await mountView([EN_COURS])
+    const { calls, wrapper } = await mountView([IN_PROGRESS])
 
-    await wrapper.get('#btn-vod-relancer').trigger('click')
+    await wrapper.get('#btn-vod-retry').trigger('click')
     await flushPromises()
 
     // The request targets one machine: with no room there is nobody to talk to.
@@ -135,11 +135,11 @@ describe('vue VOD', () => {
   })
 
   it('brings back a whole room once one has been chosen', async () => {
-    const { calls, wrapper } = await mountView([EN_COURS])
+    const { calls, wrapper } = await mountView([IN_PROGRESS])
 
     await wrapper.get('#vod-room').setValue('track-1')
     await flushPromises()
-    await wrapper.get('#btn-vod-relancer').trigger('click')
+    await wrapper.get('#btn-vod-retry').trigger('click')
     await flushPromises()
 
     expect(calls).toContainEqual({

@@ -20,14 +20,14 @@ const BOOT = {
   google: { domain: 'cloudnord.fr' },
 }
 
-interface Appel {
+interface Call {
   url: string
   method?: string
   body?: unknown
 }
 
-function stubFetch(responses: Record<string, { status?: number; body: unknown }>): Appel[] {
-  const calls: Appel[] = []
+function stubFetch(responses: Record<string, { status?: number; body: unknown }>): Call[] {
+  const calls: Call[] = []
   vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
     calls.push({
       url,
@@ -63,13 +63,13 @@ beforeEach(() => {
 
 describe('signing in with a password', () => {
   it('stores the token the hub sends back', async () => {
-    stubFetch({ '/api/auth/sign-in/email': { body: { token: 'jeton-operateur' } } })
+    stubFetch({ '/api/auth/sign-in/email': { body: { token: 'operator-token' } } })
     const session = useSessionStore()
 
     await session.signIn('regie@cloudnord.fr', 'motdepasse')
 
     expect(session.signedIn).toBe(true)
-    expect(session.client.token.read()).toBe('jeton-operateur')
+    expect(session.client.token.read()).toBe('operator-token')
   })
 
   it('refuses without suggesting the hub has failed', async () => {
@@ -139,7 +139,7 @@ describe('retour de Google', () => {
 
   it('does not query the hub when a token is enough', async () => {
     const calls = stubFetch({})
-    localStorage.setItem('hub-admin', 'jeton-range')
+    localStorage.setItem('hub-admin', 'stored-token')
     const session = useSessionStore()
 
     session.start(BOOT)
@@ -156,7 +156,7 @@ describe('signing out', () => {
   it('tells the hub, because a cookie is only cleared server-side', async () => {
     const calls = stubFetch({ '/api/auth/sign-out': { body: {} } })
     const session = useSessionStore()
-    session.client.token.write('jeton-operateur')
+    session.client.token.write('operator-token')
 
     await session.signOut()
 
@@ -171,7 +171,7 @@ describe('signing out', () => {
       throw new Error('injoignable')
     })
     const session = useSessionStore()
-    session.client.token.write('jeton-operateur')
+    session.client.token.write('operator-token')
 
     await session.signOut()
 

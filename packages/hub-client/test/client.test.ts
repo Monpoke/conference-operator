@@ -75,11 +75,11 @@ describe('createHubClient', () => {
   it('sends the bearer once a token is stored', async () => {
     const spy = capture()
     const client = createHubClient({ origin: 'http://hub.test', tokenKey: 'hub-admin', fetch: spy.fetch })
-    client.token.write('jeton-de-test')
+    client.token.write('test-token')
 
     await client.rpc.meta.hello({ protocolVersion: 1 })
 
-    expect(headersOf(spy.calls[0])['authorization']).toBe('Bearer jeton-de-test')
+    expect(headersOf(spy.calls[0])['authorization']).toBe('Bearer test-token')
   })
 
   it('sends no bearer at all when it has no token', async () => {
@@ -98,13 +98,13 @@ describe('createHubClient', () => {
     const client = createHubClient({
       origin: 'http://hub.test',
       tokenKey: null,
-      headers: () => ({ 'x-room-client-id': 'salle-1' }),
+      headers: () => ({ 'x-room-client-id': 'room-1' }),
       fetch: spy.fetch,
     })
 
     await client.rpc.meta.hello({ protocolVersion: 1 })
 
-    expect(headersOf(spy.calls[0])['x-room-client-id']).toBe('salle-1')
+    expect(headersOf(spy.calls[0])['x-room-client-id']).toBe('room-1')
   })
 
   it('drops the session and says so when the hub answers 401', async () => {
@@ -117,7 +117,7 @@ describe('createHubClient', () => {
       onError,
       fetch: respondWith(401, { json: { code: 'UNAUTHORIZED', message: 'Session expirée' } }),
     })
-    client.token.write('jeton-perime')
+    client.token.write('stale-token')
 
     await expect(client.rpc.meta.hello({ protocolVersion: 1 })).rejects.toThrow()
 
@@ -141,13 +141,13 @@ describe('createHubClient', () => {
       onError,
       fetch: respondWith(500, { json: { code: 'INTERNAL_SERVER_ERROR', message: 'boum' } }),
     })
-    client.token.write('jeton-valide')
+    client.token.write('valid-token')
 
     await expect(client.rpc.meta.hello({ protocolVersion: 1 })).rejects.toThrow()
 
     expect(onError).toHaveBeenCalledOnce()
     expect(onExpired).not.toHaveBeenCalled()
     // The hook does not swallow: the caller still decides what to do.
-    expect(client.token.read()).toBe('jeton-valide')
+    expect(client.token.read()).toBe('valid-token')
   })
 })

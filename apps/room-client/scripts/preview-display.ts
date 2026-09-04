@@ -41,7 +41,7 @@ const base: DisplayPayload = {
     sceneRole: 'HOLD',
     connectivity: 'ONLINE',
     roomId: TRACK_1,
-    contentHash: 'apercu',
+    contentHash: 'preview',
     currentSession: current,
     nextSession: next,
     targetSession: current ?? next,
@@ -225,7 +225,7 @@ const base: DisplayPayload = {
 const variants: { name: string; payload: DisplayPayload }[] = [
   { name: 'sponsors', payload: base },
   { name: 'programme', payload: { ...base, state: { ...base.state, mode: 'programme' } } },
-  { name: 'compte-a-rebours', payload: { ...base, state: { ...base.state, mode: 'countdown' } } },
+  { name: 'countdown', payload: { ...base, state: { ...base.state, mode: 'countdown' } } },
   { name: 'feedback', payload: { ...base, state: { ...base.state, mode: 'feedback' as const } } },
   {
     name: 'question',
@@ -245,7 +245,7 @@ const variants: { name: string; payload: DisplayPayload }[] = [
   {
     // The wall: the only screen the audience photographs. It was missing from the
     // preview, for want of a `wall` in the payload.
-    name: 'mur',
+    name: 'wall',
     payload: {
       ...base,
       state: {
@@ -268,7 +268,7 @@ const variants: { name: string; payload: DisplayPayload }[] = [
     },
   },
   {
-    name: 'message-urgent',
+    name: 'urgent-message',
     payload: {
       ...base,
       state: {
@@ -292,8 +292,8 @@ const checkerboard =
   'background-position:0 0,0 20px,20px -20px,-20px 0;background-color:#1d1d22}</style>'
 const overlay = renderOverlayPage({ initialPayload: base })
   .replace('<body ', `<script>window.__PREVIEW__ = true</script>${checkerboard}<body `)
-writeFileSync(join(outDir, 'overlay-captation.html'), overlay)
-console.log(`written ${join(outDir, 'overlay-captation.html')}`)
+writeFileSync(join(outDir, 'overlay-recording.html'), overlay)
+console.log(`written ${join(outDir, 'overlay-recording.html')}`)
 
 /**
  * The same overlay, with an audience question on air.
@@ -315,8 +315,8 @@ const overlayQuestion = renderOverlayPage({
     },
   },
 }).replace('<body ', `<script>window.__PREVIEW__ = true</script>${checkerboard}<body `)
-writeFileSync(join(outDir, 'overlay-captation-question.html'), overlayQuestion)
-console.log(`written ${join(outDir, 'overlay-captation-question.html')}`)
+writeFileSync(join(outDir, 'overlay-recording-question.html'), overlayQuestion)
+console.log(`written ${join(outDir, 'overlay-recording-question.html')}`)
 
 // The live banner: the only surface a preview can show in situation, since it only
 // displays on the console's order.
@@ -354,8 +354,8 @@ const banner = renderOverlayLivePage({
     },
   },
 }).replace('<body ', `<script>window.__PREVIEW__ = true</script>${checkerboard}<body `)
-writeFileSync(join(outDir, 'overlay-bandeau-live.html'), banner)
-console.log(`written ${join(outDir, 'overlay-bandeau-live.html')}`)
+writeFileSync(join(outDir, 'overlay-live-banner.html'), banner)
+console.log(`written ${join(outDir, 'overlay-live-banner.html')}`)
 
 /**
  * The start of the screen's `body` tag, as the page writes it.
@@ -374,7 +374,7 @@ for (const { name, payload } of variants) {
     BODY_OPENING,
     '<script>window.__PREVIEW__ = true</script>' + BODY_OPENING,
   )
-  const filePath = join(outDir, `ecran-${name}.html`)
+  const filePath = join(outDir, `display-${name}.html`)
   writeFileSync(filePath, html)
   console.log(`written ${filePath}`)
 }
@@ -387,14 +387,14 @@ for (const { name, payload } of variants) {
  * is forced in the script, like the card's style above: the served page itself
  * always starts from zero.
  */
-const LOOP_PAGES = ['sponsors', 'programme', 'salles', 'reseaux']
+const LOOP_PAGES = ['sponsors', 'programme', 'rooms', 'socials']
 for (const [index, name] of LOOP_PAGES.entries()) {
   const html = renderProjectorPage({
     initialPayload: { ...base, state: { ...base.state, mode: 'loop' as const } },
   })
     .replace(BODY_OPENING, '<script>window.__PREVIEW__ = true</script>' + BODY_OPENING)
     .replace('let loopIndex = 0', `let loopIndex = ${index}`)
-  const filePath = join(outDir, `ecran-boucle-${index + 1}-${name}.html`)
+  const filePath = join(outDir, `display-loop-${index + 1}-${name}.html`)
   writeFileSync(filePath, html)
   console.log(`written ${filePath}`)
 }

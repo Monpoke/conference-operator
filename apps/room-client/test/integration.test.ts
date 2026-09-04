@@ -21,7 +21,7 @@ const rawProgram = readFileSync(
   'utf8',
 )
 
-const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'motdepasse-regie-2026' }
+const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'control-password-2026' }
 const CLIENT_ID = '01JB2ZK5T7QW9V0YHRXM3N4P6C'
 const TRACK_1 = 'track-1-teilhard-de-chardin'
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -284,7 +284,7 @@ describe('mobile control app, from the phone to the room', () => {
    * open, and they must not both believe they hold it. `session` lets a second
    * one be simulated.
    */
-  async function asPhone(token: string, session = 'session-telephone') {
+  async function asPhone(token: string, session = 'session-phone') {
     const client: ContractRouterClient<typeof contract> = createORPCClient(
       new RPCLink({
         origin,

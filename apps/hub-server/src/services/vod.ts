@@ -228,7 +228,7 @@ export class VodService {
 
     const client = this.client()
     const prefix = (this.settings.get().vodPrefix ?? '').replace(/^\/+|\/+$/g, '')
-    const key = [prefix, '.controle-de-connexion', ulid()].filter((part) => part !== '').join('/')
+    const key = [prefix, '.connection-check', ulid()].filter((part) => part !== '').join('/')
 
     let uploadId: string
     try {
@@ -242,7 +242,7 @@ export class VodService {
       const response = await this.transport(client.presignPart(key, uploadId, 1, 300), {
         method: 'PUT',
         headers: {},
-        body: 'controle-de-connexion',
+        body: 'connection-check',
         ca: this.keys.caCert ?? null,
       })
       if (response.status >= 300) {
@@ -309,8 +309,8 @@ export class VodService {
     this.db.delete(vodUpload).run()
 
     this.onLog('info', 'remise à zéro du stockage', {
-      prefixe: under,
-      objets: keys.length,
+      prefix: under,
+      objects: keys.length,
       multiparts: open.length,
     })
     return { objets: keys.length, multiparts: open.length }

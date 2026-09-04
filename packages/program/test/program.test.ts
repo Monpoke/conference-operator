@@ -124,8 +124,8 @@ describe("a room's timeline", () => {
   })
 
   it('returns null on an unknown room rather than throwing', () => {
-    expect(currentSession(program, 'salle-inexistante', at('2026-10-30T10:20:00Z'))).toBeNull()
-    expect(nextSession(program, 'salle-inexistante', at('2026-10-30T10:20:00Z'))).toBeNull()
+    expect(currentSession(program, 'missing-room', at('2026-10-30T10:20:00Z'))).toBeNull()
+    expect(nextSession(program, 'missing-room', at('2026-10-30T10:20:00Z'))).toBeNull()
   })
 })
 

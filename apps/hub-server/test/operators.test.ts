@@ -25,32 +25,32 @@ const signIn = (password: string) =>
 
 describe('provisioning an operator', () => {
   it('creates a usable account', async () => {
-    const result = await provisionOperator(auth, { ...ACCOUNT, password: 'motdepasse-initial' })
+    const result = await provisionOperator(auth, { ...ACCOUNT, password: 'initial-password' })
 
     expect(result.created).toBe(true)
-    await expect(signIn('motdepasse-initial')).resolves.toBeDefined()
+    await expect(signIn('initial-password')).resolves.toBeDefined()
   })
 
   it('replaces the password of an existing account', async () => {
-    const first = await provisionOperator(auth, { ...ACCOUNT, password: 'motdepasse-initial' })
-    const second = await provisionOperator(auth, { ...ACCOUNT, password: 'nouveau-motdepasse' })
+    const first = await provisionOperator(auth, { ...ACCOUNT, password: 'initial-password' })
+    const second = await provisionOperator(auth, { ...ACCOUNT, password: 'new-password' })
 
     // Same account, password replaced — and the command says so.
     expect(second.id).toBe(first.id)
     expect(second.created).toBe(false)
 
-    await expect(signIn('nouveau-motdepasse')).resolves.toBeDefined()
-    await expect(signIn('motdepasse-initial')).rejects.toBeDefined()
+    await expect(signIn('new-password')).resolves.toBeDefined()
+    await expect(signIn('initial-password')).rejects.toBeDefined()
   })
 
   it('never leaves an account announced as ready without its password', async () => {
     // The original trap: returning without doing anything when the account
     // exists. The command announced "ready" and signing in failed with no
     // explanation.
-    await provisionOperator(auth, { ...ACCOUNT, password: 'ancien-oublie' })
-    await provisionOperator(auth, { ...ACCOUNT, password: 'celui-que-je-viens-de-taper' })
+    await provisionOperator(auth, { ...ACCOUNT, password: 'old-forgotten' })
+    await provisionOperator(auth, { ...ACCOUNT, password: 'the-one-just-typed' })
 
-    await expect(signIn('celui-que-je-viens-de-taper')).resolves.toBeDefined()
+    await expect(signIn('the-one-just-typed')).resolves.toBeDefined()
   })
 
   it('stays idempotent on the same password', async () => {

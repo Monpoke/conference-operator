@@ -92,14 +92,14 @@ const emit = defineEmits<{ confirm: [] }>()
  * and being wrong about the letter on this particular question costs a talk.
  * Only `Y` is printed — two letters on a button read as a word.
  */
-function auClavier(event: KeyboardEvent): void {
+function onKeydown(event: KeyboardEvent): void {
   if (!open.value) return
   if (event.ctrlKey || event.metaKey || event.altKey) return
 
   const target = event.target as { tagName?: string; isContentEditable?: boolean } | null
   if (target?.isContentEditable === true) return
-  const balise = target?.tagName
-  if (balise === 'INPUT' || balise === 'SELECT' || balise === 'TEXTAREA') return
+  const tag = target?.tagName
+  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return
 
   const pressed = event.key.toLowerCase()
   const confirms = props.confirmKey != null && (pressed === props.confirmKey.toLowerCase() || pressed === 'o')
@@ -120,10 +120,10 @@ function auClavier(event: KeyboardEvent): void {
 }
 
 onMounted(() => {
-  if (typeof document !== 'undefined') document.addEventListener('keydown', auClavier)
+  if (typeof document !== 'undefined') document.addEventListener('keydown', onKeydown)
 })
 onBeforeUnmount(() => {
-  if (typeof document !== 'undefined') document.removeEventListener('keydown', auClavier)
+  if (typeof document !== 'undefined') document.removeEventListener('keydown', onKeydown)
 })
 </script>
 

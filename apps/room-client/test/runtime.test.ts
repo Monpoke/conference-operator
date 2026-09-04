@@ -96,7 +96,7 @@ describe('applying the commands', () => {
     await runtime.applyCommand(
       command({
         type: 'session.state',
-        sessionId: 'ses-voisine',
+        sessionId: 'ses-neighbour',
         roomId: 'track-2',
         sessionTitle: 'Blind ops',
         status: 'ended',
@@ -106,7 +106,7 @@ describe('applying the commands', () => {
 
     expect(refreshRoomStatuses).toHaveBeenCalledTimes(1)
     // Without touching our own lifecycle: the one next door has no business there.
-    expect(runtime.state().sessionStates['ses-voisine']).toBeUndefined()
+    expect(runtime.state().sessionStates['ses-neighbour']).toBeUndefined()
   })
 
   it("asks for nothing again on a decision concerning itself", async () => {
@@ -338,8 +338,8 @@ describe("the room's clock", () => {
 
     runtime.setServerTime('2026-10-30T10:20:00.000Z')
 
-    const vuParUnePage = Date.now() + runtime.state().serverTimeOffsetMs
-    expect(Math.abs(vuParUnePage - runtime.correctedNow())).toBeLessThan(50)
+    const seenByAPage = Date.now() + runtime.state().serverTimeOffsetMs
+    expect(Math.abs(seenByAPage - runtime.correctedNow())).toBeLessThan(50)
     expect(new Date(runtime.correctedNow()).toISOString()).toMatch(/^2026-10-30T10:20/)
   })
 
@@ -366,12 +366,12 @@ describe("the room's clock", () => {
     const runtime = inTheRoom()
 
     runtime.setServerTime('2026-10-30T07:00:00.000Z')
-    const matin = runtime.state().currentSession?.title
+    const morning = runtime.state().currentSession?.title
 
     runtime.setServerTime('2026-10-30T10:20:00.000Z')
 
     expect(runtime.state().currentSession?.title).toContain('HoneySwamp')
-    expect(runtime.state().currentSession?.title).not.toBe(matin)
+    expect(runtime.state().currentSession?.title).not.toBe(morning)
   })
 })
 
@@ -551,15 +551,15 @@ describe('command target and lifecycle', () => {
   it('stays on the running talk when its slot is overrun', () => {
     clockMs = BEFORE
     const runtime = makeRuntime()
-    const lancee = runtime.state().targetSession!
-    runtime.setSessionStatus(lancee.id, 'running')
+    const started = runtime.state().targetSession!
+    runtime.setSessionStatus(started.id, 'running')
 
     // One second after the slot's scheduled end: the talk is overrunning.
-    clockMs = lancee.endsAtMs! + 1_000
+    clockMs = started.endsAtMs! + 1_000
     runtime.refreshSessions()
 
-    expect(runtime.state().currentSession?.id).not.toBe(lancee.id)
-    expect(runtime.state().targetSession?.id).toBe(lancee.id)
+    expect(runtime.state().currentSession?.id).not.toBe(started.id)
+    expect(runtime.state().targetSession?.id).toBe(started.id)
     // Neither "à venir" — it is on air — nor undrivable.
     expect(runtime.state().targetIsUpcoming).toBe(false)
     expect(runtime.currentSessionStatus()).toBe('running')
@@ -568,15 +568,15 @@ describe('command target and lifecycle', () => {
   it("hands over to the next one once the overrun has ended", () => {
     clockMs = BEFORE
     const runtime = makeRuntime()
-    const lancee = runtime.state().targetSession!
-    runtime.setSessionStatus(lancee.id, 'running')
+    const started = runtime.state().targetSession!
+    runtime.setSessionStatus(started.id, 'running')
 
-    clockMs = lancee.endsAtMs! + 1_000
+    clockMs = started.endsAtMs! + 1_000
     runtime.refreshSessions()
-    runtime.setSessionStatus(lancee.id, 'ended')
+    runtime.setSessionStatus(started.id, 'ended')
 
     const target = runtime.state().targetSession
-    expect(target?.id).not.toBe(lancee.id)
+    expect(target?.id).not.toBe(started.id)
     expect(target?.kind).toBe('talk')
   })
 
@@ -587,8 +587,8 @@ describe('command target and lifecycle', () => {
   it('prefers the current slot to a talk left open', () => {
     clockMs = BEFORE
     const runtime = makeRuntime()
-    const oubliee = runtime.state().targetSession!
-    runtime.setSessionStatus(oubliee.id, 'running')
+    const forgotten = runtime.state().targetSession!
+    runtime.setSessionStatus(forgotten.id, 'running')
 
     // 11:20 in Paris: "HoneySwamp" has its own slot.
     clockMs = Date.parse('2026-10-30T10:20:00.000Z')
@@ -671,13 +671,13 @@ describe('mobile control app commands', () => {
   it('does not replay an already applied command', async () => {
     const captations: boolean[] = []
     const runtime = makeRuntime({ setRecording: (on: boolean) => captations.push(on) })
-    const rejouee = command({ type: 'recording.set', on: true, requestedBy: null }, 90)
+    const replayed = command({ type: 'recording.set', on: true, requestedBy: null }, 90)
 
-    await runtime.applyCommand(rejouee)
+    await runtime.applyCommand(replayed)
     // A reconnection's catch-up can redeliver what is already applied.
-    const seconde = await runtime.applyCommand(rejouee)
+    const secondOutcome = await runtime.applyCommand(replayed)
 
-    expect(seconde).toEqual({ applied: false, reason: 'already-applied' })
+    expect(secondOutcome).toEqual({ applied: false, reason: 'already-applied' })
     expect(captations).toEqual([true])
   })
 

@@ -160,7 +160,7 @@ describe('vue d’appairage', () => {
     expect(modal('#verdict-text')?.textContent).toContain('machine-b')
     // Consulting does not approve: both buttons exist, nothing was sent.
     expect(calls.filter((call) => call.path === 'devices/approve')).toHaveLength(0)
-    expect(modal('#verdict-approuver')).not.toBe(null)
+    expect(modal('#verdict-approve')).not.toBe(null)
   })
 
   it('does not offer to decide a code opened by another operator', async () => {
@@ -172,7 +172,7 @@ describe('vue d’appairage', () => {
     })
 
     expect(modal('#verdict-text')?.textContent).toContain('autre opérateur')
-    expect(modal('#verdict-approuver')).toBe(null)
+    expect(modal('#verdict-approve')).toBe(null)
   })
 
   it('explains an expired code instead of showing its status', async () => {
@@ -182,7 +182,7 @@ describe('vue d’appairage', () => {
     })
 
     expect(modal('#verdict-text')?.textContent).toContain('durée de vie')
-    expect(modal('#verdict-approuver')).toBe(null)
+    expect(modal('#verdict-approve')).toBe(null)
   })
 
   it('shows the failure in the modal, not in the floating toast', async () => {
@@ -192,7 +192,7 @@ describe('vue d’appairage', () => {
       approveError: 'Ce code appartient à un autre opérateur',
     })
 
-    modal('#verdict-approuver')!.click()
+    modal('#verdict-approve')!.click()
     await flushPromises()
 
     // The error is about the gesture just made, and is read in full.

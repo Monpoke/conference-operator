@@ -19,7 +19,7 @@ const rawProgram = readFileSync(
   'utf8',
 )
 
-const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'motdepasse-regie-2026' }
+const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'control-password-2026' }
 const CLIENT_ID = '01JB2ZK5T7QW9V0YHRXM3N4P6C'
 const TRACK_1 = 'track-1-teilhard-de-chardin'
 
@@ -362,7 +362,7 @@ describe('configuring the room from the control app', () => {
       action: 'room.configure',
       patch: {
         obs: {
-          A: { url: 'ws://127.0.0.1:4455', password: 'mot-de-passe-tres-secret' },
+          A: { url: 'ws://127.0.0.1:4455', password: 'very-secret-password' },
           B: { url: 'ws://127.0.0.1:4456' },
         },
       },
@@ -375,7 +375,7 @@ describe('configuring the room from the control app', () => {
       pending: true,
     })
     // The whole payload: the secret must appear nowhere.
-    expect(JSON.stringify(diagnostics)).not.toContain('mot-de-passe-tres-secret')
+    expect(JSON.stringify(diagnostics)).not.toContain('very-secret-password')
   }, 40_000)
 
   it('refuses a malformed patch before it reaches the hub', async () => {

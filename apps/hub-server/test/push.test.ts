@@ -174,8 +174,8 @@ describe('subscriptions', () => {
     // A badly copied `.env` line must not condemn the event: push is a
     // supervision comfort, not the heart of the system.
     const service = new PushService(db, {
-      publicKey: 'pas-une-cle',
-      privateKey: 'pas-une-cle-non-plus',
+      publicKey: 'not-a-key',
+      privateKey: 'not-a-key-either',
       subject: 'mailto:ops@cloudnord.fr',
     })
 

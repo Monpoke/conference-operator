@@ -9,7 +9,7 @@ const rawProgram = readFileSync(
   'utf8',
 )
 
-const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'motdepasse-regie-2026' }
+const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'control-password-2026' }
 const CLIENT_ID = '01JB2ZK5T7QW9V0YHRXM3N4P6C'
 const TRACK_1 = 'track-1-teilhard-de-chardin'
 const TRACK_2 = 'track-2-mf-1092'
@@ -233,7 +233,7 @@ describe('what a room cannot do', () => {
     const before = hub.services.rooms.get(TRACK_1)!
     const result = await asRoom('rooms/configure', {
       name: 'Salle pirate',
-      trackId: 'autre-track',
+      trackId: 'other-track',
       stream: { rtmpUrl: 'rtmp://ailleurs/live', streamKey: 'volée' },
       displayPort: 7999,
     })
@@ -259,7 +259,7 @@ describe('what a room cannot do', () => {
     const itself = await asRoom('rooms/configure', { relaySourceRoomId: TRACK_1 })
     expect(itself.status).toBe(400)
 
-    const unknown = await asRoom('rooms/configure', { relaySourceRoomId: 'track-9-inexistante' })
+    const unknown = await asRoom('rooms/configure', { relaySourceRoomId: 'track-9-missing' })
     expect(unknown.status).toBe(400)
   })
 
@@ -358,7 +358,7 @@ describe('uploading the rushes', () => {
   })
 
   it('refuses a console request for a room that does not exist', async () => {
-    const result = await asConsole('vod/request', { roomId: 'salle-fantome', file: null })
+    const result = await asConsole('vod/request', { roomId: 'ghost-room', file: null })
     // 501 for as long as no storage is mounted: the feature comes before the
     // target, and saying "unknown room" on a hub with no S3 would send one looking
     // in the wrong place.
@@ -382,8 +382,8 @@ describe('uploading the rushes', () => {
  */
 describe('mobile control app: what the lock guards', () => {
   /** The first operator's tab, and that of a second device. */
-  const PHONE = 'session-telephone'
-  const TABLET = 'session-tablette'
+  const PHONE = 'session-phone'
+  const TABLET = 'session-tablet'
 
   const asRoom = (path: string, input: unknown) =>
     rpc(path, input, roomToken, undefined, PHONE)
@@ -426,12 +426,12 @@ describe('mobile control app: what the lock guards', () => {
     await provisionOperator(hub.auth, {
       email: 'second@cloudnord.fr',
       name: 'Second',
-      password: 'motdepasse-second-2026',
+      password: 'second-password-2026',
     })
     const signIn = await fetch(`${origin}/api/auth/sign-in/email`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: 'second@cloudnord.fr', password: 'motdepasse-second-2026' }),
+      body: JSON.stringify({ email: 'second@cloudnord.fr', password: 'second-password-2026' }),
     })
     const secondToken = ((await signIn.json()) as { token: string }).token
 

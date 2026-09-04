@@ -381,11 +381,11 @@ describe('IngestService', () => {
     const ingest = new IngestService(db)
 
     const outcome = ingest.push(TRACK_1, [
-      { id: 'pas-un-ulid', roomId: TRACK_1, seq: 1, payload: { type: 'inconnu' } },
+      { id: 'not-a-ulid', roomId: TRACK_1, seq: 1, payload: { type: 'inconnu' } },
       envelope('01CCCCCCCCCCCCCCCCCCCCCCCC', 2, { type: 'incident', level: 'warn', message: 'ok' }),
     ])
 
-    expect(outcome.rejected).toEqual([{ id: 'pas-un-ulid', reason: 'invalid-schema' }])
+    expect(outcome.rejected).toEqual([{ id: 'not-a-ulid', reason: 'invalid-schema' }])
     expect(outcome.acked).toEqual(['01CCCCCCCCCCCCCCCCCCCCCCCC'])
   })
 
@@ -478,6 +478,6 @@ describe('DeviceService', () => {
   it('filters out `client_id`s outside the ULID format', () => {
     const devices = new DeviceService(db, PAIRING_TTL)
     expect(devices.isKnownClient(CLIENT_ID)).toBe(true)
-    expect(devices.isKnownClient('machine-du-stagiaire')).toBe(false)
+    expect(devices.isKnownClient('interns-machine')).toBe(false)
   })
 })

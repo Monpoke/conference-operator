@@ -18,7 +18,7 @@ const START = Date.parse('2026-10-30T09:00:00Z')
 const MIN = 60_000
 
 const ROOM: RoomPreview = {
-  id: 'salle-1',
+  id: 'room-1',
   name: 'Track #1',
   slots: [
     {
@@ -168,11 +168,11 @@ describe('state machine test bench', () => {
     // Last slot of the day, with no end time and no duration: nobody knows when
     // it finishes. Closing it would mean inventing a time.
     mount({
-      id: 'salle-ouverte',
+      id: 'open-room',
       name: 'Salle ouverte',
       slots: [
         {
-          id: 'sans-fin-du-tout',
+          id: 'no-end-at-all',
           title: 'Atelier libre',
           kind: 'talk',
           startsAt: new Date(START).toISOString(),

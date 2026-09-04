@@ -85,7 +85,7 @@ export function publicIdentity(context: HubContext, deviceId?: string | null): s
     context.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
     context.headers.get('x-real-ip') ??
     'inconnu'
-  return `${ip}|${deviceId ?? 'sans-appareil'}`
+  return `${ip}|${deviceId ?? 'no-device'}`
 }
 
 export interface OperatorContext extends HubContext {

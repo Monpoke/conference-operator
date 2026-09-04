@@ -20,7 +20,7 @@ const rawProgram = readFileSync(
   'utf8',
 )
 
-const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'motdepasse-regie-2026' }
+const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'control-password-2026' }
 const CLIENT_ID = '01JB2ZK5T7QW9V0YHRXM3N4P6C'
 const TRACK_1 = 'track-1-teilhard-de-chardin'
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -181,19 +181,19 @@ describe('network cut in the middle of a recording', () => {
     expect(room.runtime.state().connectivity).toBe('ONLINE')
 
     // Hub side: everything is there, once each, in emission order.
-    const recus = hub.services.ingest.eventsFor(TRACK_1)
-    const types = recus.map((e) => e.type)
+    const received = hub.services.ingest.eventsFor(TRACK_1)
+    const types = received.map((e) => e.type)
 
     expect(types).toContain('recording.started')
     expect(types).toContain('recording.stopped')
     expect(types.filter((t) => t === 'talk.marker')).toHaveLength(3)
 
     // No duplicate despite the reconnection's replays.
-    expect(new Set(recus.map((e) => e.id)).size).toBe(recus.length)
+    expect(new Set(received.map((e) => e.id)).size).toBe(received.length)
 
     // The `seq` are strictly increasing: emission order is preserved, which is
     // what keeps the talk's timecodes usable at editing time.
-    const seqs = recus.map((e) => e.seq)
+    const seqs = received.map((e) => e.seq)
     expect(seqs).toEqual([...seqs].sort((a, b) => a - b))
 
     // The `recording.stopped` does arrive after its `recording.started`.
@@ -205,9 +205,9 @@ describe('events emitted while offline', () => {
   it('queues as soon as the room is known, with no network', async () => {
     const dbPath = join(dir, 'salle.db')
     // First commissioning: the room is already known to the local cache.
-    const amorce = new LocalStore(dbPath)
-    amorce.saveSettings({ roomId: TRACK_1 })
-    amorce.close()
+    const seeded = new LocalStore(dbPath)
+    seeded.saveSettings({ roomId: TRACK_1 })
+    seeded.close()
 
     proxy.unplug()
     room = new RoomApp({
@@ -218,7 +218,7 @@ describe('events emitted while offline', () => {
       roomId: TRACK_1,
       displayPort: 0,
       obsTransportFactory: fakeObs,
-      readToken: () => 'jeton-en-cache',
+      readToken: () => 'cached-token',
       writeToken: () => {},
     })
     await room.startDisplay()
@@ -278,8 +278,8 @@ describe('falling back to a local file', () => {
     await room.startDisplay()
     const local = await room.importProgramFile(path)
 
-    const cote = hub.services.programs.active()
-    expect(local.contentHash).toBe(cote?.contentHash)
+    const sideProgram = hub.services.programs.active()
+    expect(local.contentHash).toBe(sideProgram?.contentHash)
   }, 30_000)
 })
 
@@ -291,7 +291,7 @@ describe('hard restart while offline', () => {
 
     const outbox = new Outbox(store, TRACK_1)
     outbox.enqueue({ type: 'recording.started', obs: 'B', sessionId: 'ses-1' })
-    outbox.enqueue(marker('avant-coupure'))
+    outbox.enqueue(marker('before-cut'))
     const seqBefore = outbox.claimBatch().map((e) => e.seq)
     store.close()
 

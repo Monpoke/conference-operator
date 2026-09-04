@@ -234,6 +234,6 @@ function freeze(html: string): string {
   return html.replace('<body', `${preamble}<body`)
 }
 
-const wall = join(outDir, 'mur-public.html')
+const wall = join(outDir, 'public-wall.html')
 writeFileSync(wall, freeze(renderWallPage({ roomId: ROOMS[0]!.id, rooms: ROOMS, event: EVENT.resolved })))
 console.log(`written ${wall}`)

@@ -230,7 +230,7 @@ describe('sidecar', () => {
   })
 
   it('carries the anchors\' role, and nothing at all on a chapter', async () => {
-    const { fs, files } = fakeFs(['/rec/prise.mkv'])
+    const { fs, files } = fakeFs(['/rec/take.mkv'])
     const { session } = makeSession(fs)
 
     await session.start(START)
@@ -241,7 +241,7 @@ describe('sidecar', () => {
     clockMs += 400_000
     session.mark('Fin', 'fin')
 
-    const result = await session.stop(async () => '/rec/prise.mkv')
+    const result = await session.stop(async () => '/rec/take.mkv')
     const sidecar = JSON.parse(files.get(result.sidecarPath!)!) as Sidecar
 
     /*
@@ -309,21 +309,21 @@ describe('sidecar', () => {
      * on this side, the write failed, and every take of the day lost its title,
      * its speakers and its markers.
      */
-    const attendu = buildFilenameFormat(START)
+    const expected = buildFilenameFormat(START)
     // The "(2)" comes from OBS: it adds it when the name is taken — the first
     // take of the same talk is there, and that is what forbids renaming. OBS
     // stays the source of the name; only the folder changes sides.
-    const { fs, files } = fakeFs([`/rec/${attendu}.mp4`, `/rec/${attendu} (2).mp4`])
+    const { fs, files } = fakeFs([`/rec/${expected}.mp4`, `/rec/${expected} (2).mp4`])
     const onLog = vi.fn()
     const { session } = makeSession(fs, { onLog, recordingRoot: async () => '/rec' })
 
     await session.start(START)
     const result = await session.stop(
-      async () => `//wsl.localhost/distro/ailleurs/${attendu} (2).mp4`,
+      async () => `//wsl.localhost/distro/ailleurs/${expected} (2).mp4`,
     )
 
-    expect(result.videoPath).toBe(`/rec/${attendu} (2).mp4`)
-    expect(result.sidecarPath).toBe(`/rec/${attendu} (2).json`)
+    expect(result.videoPath).toBe(`/rec/${expected} (2).mp4`)
+    expect(result.sidecarPath).toBe(`/rec/${expected} (2).json`)
     const written = JSON.parse(files.get(result.sidecarPath!)!) as Sidecar
     expect(written.title).toContain('HoneySwamp')
     expect(onLog).toHaveBeenCalledWith(
@@ -336,28 +336,28 @@ describe('sidecar', () => {
   it('also splits a Windows path, which `basename` would return whole', async () => {
     // Node's `basename` only knows the current platform's separator: on Linux it
     // returns `C:\prises\talk.mkv` whole.
-    const attendu = buildFilenameFormat(START)
-    const { fs } = fakeFs([`/rec/${attendu}.mkv`])
+    const expected = buildFilenameFormat(START)
+    const { fs } = fakeFs([`/rec/${expected}.mkv`])
     const { session } = makeSession(fs, { recordingRoot: async () => '/rec' })
 
     await session.start(START)
-    const result = await session.stop(async () => `C:\\prises\\${attendu}.mkv`)
+    const result = await session.stop(async () => `C:\\prises\\${expected}.mkv`)
 
-    expect(result.sidecarPath).toBe(`/rec/${attendu}.json`)
+    expect(result.sidecarPath).toBe(`/rec/${expected}.json`)
   })
 
   it('keeps the announced path when it names a file we can see', async () => {
     // The most common case — OBS and the room on the same machine — and the exact
     // answer: it alone knows what was written.
     const { fs } = fakeFs(['/ailleurs/brut.mkv'])
-    const racine = vi.fn(async () => '/rec')
-    const { session } = makeSession(fs, { recordingRoot: racine })
+    const root = vi.fn(async () => '/rec')
+    const { session } = makeSession(fs, { recordingRoot: root })
 
     await session.start(START)
     const result = await session.stop(async () => '/ailleurs/brut.mkv')
 
     expect(result.videoPath).toBe(`/ailleurs/${buildFilenameFormat(START)}.mkv`)
-    expect(racine).not.toHaveBeenCalled()
+    expect(root).not.toHaveBeenCalled()
   })
 
   it('finds the master by its name when OBS announces nothing', async () => {
@@ -367,19 +367,19 @@ describe('sidecar', () => {
      * title, speakers and markers over a missing event would be paying very dearly
      * for one second of waiting.
      */
-    const attendu = buildFilenameFormat(START)
-    const { fs, files } = fakeFs([`/rec/${attendu}.mp4`])
+    const expected = buildFilenameFormat(START)
+    const { fs, files } = fakeFs([`/rec/${expected}.mp4`])
     const onLog = vi.fn()
     const { session } = makeSession(fs, { onLog, recordingRoot: async () => '/rec' })
 
     await session.start(START)
     const result = await session.stop(async () => null)
 
-    expect(result.videoPath).toBe(`/rec/${attendu}.mp4`)
-    expect(result.sidecarPath).toBe(`/rec/${attendu}.json`)
+    expect(result.videoPath).toBe(`/rec/${expected}.mp4`)
+    expect(result.sidecarPath).toBe(`/rec/${expected}.json`)
     const written = JSON.parse(files.get(result.sidecarPath!)!) as Sidecar
     expect(written.title).toContain('HoneySwamp')
-    expect(written.videoFile).toBe(`${attendu}.mp4`)
+    expect(written.videoFile).toBe(`${expected}.mp4`)
     expect(onLog).toHaveBeenCalledWith(
       'info',
       expect.stringContaining('sous la racine des captations'),
@@ -411,15 +411,15 @@ describe('sidecar', () => {
      * alike.
      */
     const { fs, files } = fakeFs(['/rec/talk.mkv'])
-    let decalage = 0
+    let drift = 0
     const { session } = makeSession(fs, {
-      correctedNow: () => clockMs + decalage,
+      correctedNow: () => clockMs + drift,
       followsClock: true,
     })
 
     await session.start(START)
     // The hub moves fifty minutes ahead; real time does not move.
-    decalage = 50 * 60_000
+    drift = 50 * 60_000
     const result = await session.stop(async () => '/rec/talk.mkv')
 
     expect(result.sidecar.durationMs).toBe(50 * 60_000)
@@ -431,16 +431,16 @@ describe('sidecar', () => {
     // Otherwise a marker laid down after a clock jump would fall past the end of
     // the file it annotates.
     const { fs } = fakeFs(['/rec/talk.mkv'])
-    let decalage = 0
+    let drift = 0
     const { session } = makeSession(fs, {
-      correctedNow: () => clockMs + decalage,
+      correctedNow: () => clockMs + drift,
       followsClock: true,
     })
 
     await session.start(START)
-    decalage = 12 * 60_000
+    drift = 12 * 60_000
     const marker = session.mark('demo')
-    decalage = 30 * 60_000
+    drift = 30 * 60_000
     const result = await session.stop(async () => '/rec/talk.mkv')
 
     expect(marker.offsetMs).toBe(12 * 60_000)
@@ -452,12 +452,12 @@ describe('sidecar', () => {
     // clock mid-talk: a three-minute talk lasts three minutes, whatever the wall
     // clock says.
     const { fs } = fakeFs(['/rec/talk.mkv'])
-    let decalage = 0
-    const { session } = makeSession(fs, { correctedNow: () => clockMs + decalage })
+    let drift = 0
+    const { session } = makeSession(fs, { correctedNow: () => clockMs + drift })
 
     await session.start(START)
     clockMs += 3 * 60_000
-    decalage = 50 * 60_000
+    drift = 50 * 60_000
     const result = await session.stop(async () => '/rec/talk.mkv')
 
     expect(result.sidecar.durationMs).toBe(3 * 60_000)
@@ -468,14 +468,14 @@ describe('sidecar', () => {
     // accepted consequence of following it — and it beats a negative duration that
     // would break everything reading it downstream.
     const { fs } = fakeFs(['/rec/talk.mkv'])
-    let decalage = 0
+    let drift = 0
     const { session } = makeSession(fs, {
-      correctedNow: () => clockMs + decalage,
+      correctedNow: () => clockMs + drift,
       followsClock: true,
     })
 
     await session.start(START)
-    decalage = -24 * 60 * 60_000
+    drift = -24 * 60 * 60_000
     const result = await session.stop(async () => '/rec/talk.mkv')
 
     expect(result.sidecar.durationMs).toBe(0)

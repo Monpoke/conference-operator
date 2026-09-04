@@ -88,10 +88,10 @@ describe('moderation view', () => {
     await useModerationStore().load()
     await flushPromises()
 
-    const carte = wrapper.get(`[data-message="${MESSAGE.id}"]`)
-    expect(carte.text()).toContain('Bravo pour ce talk !')
-    expect(carte.text()).toContain('Camille')
-    expect(carte.text()).toContain('mur')
+    const card = wrapper.get(`[data-message="${MESSAGE.id}"]`)
+    expect(card.text()).toContain('Bravo pour ce talk !')
+    expect(card.text()).toContain('Camille')
+    expect(card.text()).toContain('mur')
   })
 
   it('publishes the message the operator pointed at', async () => {

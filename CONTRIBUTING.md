@@ -24,8 +24,8 @@ Les pages n'ont pas de suite de tests visuels. Deux générateurs produisent des
 aperçus HTML statiques à partir des **vraies** pages et des **vraies** données :
 
 ```bash
-pnpm --filter @cloudnord/room-client preview ./apercu   # écran de salle, habillages
-pnpm --filter @cloudnord/hub-server  preview ./apercu   # mur public
+pnpm --filter @cloudnord/room-client preview ./preview   # écran de salle, habillages
+pnpm --filter @cloudnord/hub-server  preview ./preview   # mur public
 ```
 
 Ouvrez-les dans un navigateur. Toute modification qui touche à une page doit

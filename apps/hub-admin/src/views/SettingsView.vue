@@ -122,7 +122,7 @@ watch(
   (links) => {
     // The same precaution as the fields: do not rewrite the list while somebody is
     // typing in it.
-    const area = globalThis.document?.getElementById('reseaux')
+    const area = globalThis.document?.getElementById('socials')
     if (area != null && area.contains(globalThis.document.activeElement)) return
     socialLinks.value = (links ?? []).map((link) => ({ ...link }))
   },
@@ -373,27 +373,27 @@ async function confirmResync(): Promise<void> {
     </Panel>
 
     <Panel title="Nos réseaux">
-      <div id="reseaux">
+      <div id="socials">
         <Empty v-if="socialLinks.length === 0">
           Aucun compte déclaré. La boucle des salles saute cette page.
         </Empty>
         <div
-          v-for="(lien, index) in socialLinks"
+          v-for="(link, index) in socialLinks"
           :key="index"
           class="mb-1.5 grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,2fr)_auto] items-center gap-1.5"
         >
           <input
-            v-model="lien.network"
+            v-model="link.network"
             placeholder="Réseau"
             class="min-w-0 rounded-lg border border-edge bg-canvas px-2 py-1.5 text-sm text-text"
           />
           <input
-            v-model="lien.handle"
+            v-model="link.handle"
             placeholder="@handle"
             class="min-w-0 rounded-lg border border-edge bg-canvas px-2 py-1.5 text-sm text-text"
           />
           <input
-            v-model="lien.url"
+            v-model="link.url"
             placeholder="https://…"
             class="min-w-0 rounded-lg border border-edge bg-canvas px-2 py-1.5 text-sm text-text"
           />
@@ -547,16 +547,16 @@ async function confirmResync(): Promise<void> {
           <!-- The last step attempted carries the reason; the earlier ones say
                jusqu'où on est allé, ce qui est la moitié de l'information. -->
           <div
-            v-for="etape in check.etapes"
-            :key="etape.nom"
+            v-for="step in check.etapes"
+            :key="step.nom"
             class="flex items-baseline gap-2 text-[12px]"
           >
-            <span>{{ etape.ok ? '✓' : '✗' }}</span>
-            <span :class="etape.ok ? '' : 'text-alert'">
-              {{ STORAGE_STEPS[etape.nom] ?? etape.nom }}
+            <span>{{ step.ok ? '✓' : '✗' }}</span>
+            <span :class="step.ok ? '' : 'text-alert'">
+              {{ STORAGE_STEPS[step.nom] ?? step.nom }}
             </span>
-            <span v-if="etape.detail != null" class="min-w-0 flex-1 break-words text-dim">
-              {{ etape.detail }}
+            <span v-if="step.detail != null" class="min-w-0 flex-1 break-words text-dim">
+              {{ step.detail }}
             </span>
           </div>
         </div>

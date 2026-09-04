@@ -387,7 +387,7 @@ fenêtre ne s'ouvre (pas de serveur X), utiliser `dev:headless`.
 **Voir les pages sans rien lancer** :
 
 ```bash
-pnpm --filter @cloudnord/room-client preview ./apercu
+pnpm --filter @cloudnord/room-client preview ./preview
 ```
 
 Régénérer les migrations après modification d'un schéma :
@@ -400,7 +400,7 @@ pnpm --filter @cloudnord/db generate:client
 ## Voir l'écran de salle
 
 ```bash
-pnpm --filter @cloudnord/room-client preview ./apercu
+pnpm --filter @cloudnord/room-client preview ./preview
 ```
 
 Génère les pages réelles — écran de salle dans ses quatre modes, habillage de

@@ -29,7 +29,7 @@ function submit(): void {
 </script>
 
 <template>
-  <main id="connexion" class="mx-auto w-full max-w-[420px] px-4 pt-[10vh]">
+  <main id="sign-in" class="mx-auto w-full max-w-[420px] px-4 pt-[10vh]">
     <Panel title="Régie mobile">
       <form @submit.prevent="submit">
         <!--
@@ -46,13 +46,13 @@ function submit(): void {
           inputmode="email"
         />
         <Field
-          id="motdepasse"
+          id="password"
           v-model="password"
           label="Mot de passe"
           type="password"
           autocomplete="current-password"
         />
-        <Button id="btn-connexion" type="submit" variant="primary" class="w-full" :disabled="signingIn">
+        <Button id="btn-sign-in" type="submit" variant="primary" class="w-full" :disabled="signingIn">
           {{ signingIn ? 'Connexion…' : 'Se connecter' }}
         </Button>
       </form>

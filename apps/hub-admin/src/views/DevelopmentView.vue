@@ -45,9 +45,9 @@ const readable = computed(() =>
       }).format(new Date(clock.value.serverTime)),
 )
 
-const raccourcis = computed(() => programMoments(activeSessions()))
+const shortcuts = computed(() => programMoments(activeSessions()))
 
-async function appliquer(): Promise<void> {
+async function applyClock(): Promise<void> {
   if (target.value === '') return
   try {
     await store.setClock(new Date(target.value).toISOString())
@@ -57,7 +57,7 @@ async function appliquer(): Promise<void> {
   }
 }
 
-async function revenir(): Promise<void> {
+async function backToRealClock(): Promise<void> {
   try {
     await store.setClock(null)
     toast.say("Retour à l'heure réelle")
@@ -74,11 +74,11 @@ async function openReset(): Promise<void> {
 
 async function confirmReset(): Promise<void> {
   try {
-    const bilan = await store.reset()
+    const report = await store.reset()
     resetOpen.value = false
     toast.say(
-      `${bilan.objets} objet(s) supprimé(s), ${bilan.multiparts} téléversement(s) abandonné(s), ` +
-        `${bilan.salles} salle(s) prévenue(s).`,
+      `${report.objets} objet(s) supprimé(s), ${report.multiparts} téléversement(s) abandonné(s), ` +
+        `${report.salles} salle(s) prévenue(s).`,
     )
   } catch {
     /* already reported */
@@ -105,7 +105,7 @@ async function confirmReset(): Promise<void> {
         </div>
       </div>
 
-      <div v-if="clock?.controllable === true" id="horloge-controles" class="mt-3">
+      <div v-if="clock?.controllable === true" id="clock-controls" class="mt-3">
         <label class="mb-[5px] block text-xs text-dim" for="clock-target">Se placer à</label>
         <input
           id="clock-target"
@@ -115,21 +115,21 @@ async function confirmReset(): Promise<void> {
           class="mb-[11px] w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text"
         />
         <div class="flex gap-1.5">
-          <Button id="btn-horloge-appliquer" variant="primary" size="small" @click="appliquer">
+          <Button id="btn-clock-apply" variant="primary" size="small" @click="applyClock">
             Appliquer
           </Button>
-          <Button id="btn-horloge-reelle" size="small" @click="revenir">
+          <Button id="btn-clock-real" size="small" @click="backToRealClock">
             Revenir à l'heure réelle
           </Button>
         </div>
-        <div id="horloge-raccourcis" class="mt-2 flex flex-wrap gap-1.5">
+        <div id="clock-shortcuts" class="mt-2 flex flex-wrap gap-1.5">
           <Button
-            v-for="[libelle, iso] in raccourcis"
+            v-for="[label, iso] in shortcuts"
             :key="iso"
             size="small"
             @click="target = forInput(iso)"
           >
-            {{ libelle }}
+            {{ label }}
           </Button>
         </div>
       </div>
@@ -165,7 +165,7 @@ async function confirmReset(): Promise<void> {
         sont la même chose. Côté salle, seuls les fichiers que l'application connaît partent — la
         racine des captations est parfois un disque partagé.
       </Hint>
-      <Button id="btn-raz" class="mt-3 w-full" @click="openReset">Remettre à zéro…</Button>
+      <Button id="btn-reset" class="mt-3 w-full" @click="openReset">Remettre à zéro…</Button>
     </Panel>
 
     <Panel title="Ce menu n'existe qu'en mode dev">
@@ -184,7 +184,7 @@ async function confirmReset(): Promise<void> {
       :confirm-disabled="resetWord.trim() !== 'RAZ'"
       @confirm="confirmReset"
     >
-      <p id="raz-text">
+      <p id="reset-text">
         Tout ce qui est sous <strong>{{ resetTarget.target }}</strong> sera supprimé, et
         <strong>{{ resetTarget.rooms }} salle{{ resetTarget.rooms > 1 ? 's' : '' }}</strong>
         effaceront leurs rushes.
@@ -197,7 +197,7 @@ async function confirmReset(): Promise<void> {
         rattrape.
       </p>
       <div class="mt-3">
-        <label class="mb-[5px] block text-xs text-dim" for="raz-mot">
+        <label class="mb-[5px] block text-xs text-dim" for="reset-word">
           Recopier <strong>RAZ</strong> pour confirmer
         </label>
         <!--
@@ -205,7 +205,7 @@ async function confirmReset(): Promise<void> {
           lu » de « avoir cliqué ».
         -->
         <input
-          id="raz-mot"
+          id="reset-word"
           v-model="resetWord"
           type="text"
           autocomplete="off"

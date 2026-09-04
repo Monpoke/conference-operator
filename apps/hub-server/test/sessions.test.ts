@@ -77,7 +77,7 @@ describe('a talk\'s lifecycle', () => {
 
   it('filters the states by room', () => {
     sessions.start(TALK.id, TRACK_1, 'op')
-    sessions.start('autre-session', 'track-2-mf-1092', 'op')
+    sessions.start('other-session', 'track-2-mf-1092', 'op')
 
     expect(sessions.states(TRACK_1).map((e) => e.sessionId)).toEqual([TALK.id])
     expect(sessions.states(null)).toHaveLength(2)
@@ -184,11 +184,11 @@ describe('automatic closing', () => {
   })
 
   it('ignores a session absent from the current program', () => {
-    sessions.start('session-supprimee-au-reimport', TRACK_1, 'op')
+    sessions.start('session-deleted-on-reimport', TRACK_1, 'op')
 
     clock = END + 60 * 60_000
     expect(sessions.sweep(program).ended).toEqual([])
-    expect(sessions.get('session-supprimee-au-reimport')?.status).toBe('running')
+    expect(sessions.get('session-deleted-on-reimport')?.status).toBe('running')
   })
 
   it('does not re-close what already is', () => {
@@ -289,9 +289,9 @@ describe('enriched program views', () => {
   it('does not invent it with no reference slot', () => {
     // A session absent from the current program: with no known end, "0 min" would
     // be a lie.
-    sessions.start('session-hors-programme', TRACK_1, 'op')
+    sessions.start('session-off-program', TRACK_1, 'op')
 
-    const view = sessions.views(TRACK_1, program).find((e) => e.sessionId === 'session-hors-programme')!
+    const view = sessions.views(TRACK_1, program).find((e) => e.sessionId === 'session-off-program')!
     expect(view.scheduledEndsAt).toBeNull()
     expect(view.remainingMs).toBeNull()
   })
@@ -420,11 +420,11 @@ describe('automatic closing on a derived end', () => {
 
   it('decides nothing on a talk absent from the program', () => {
     // Reimport, cancellation: with no reference slot, we touch nothing.
-    sessions.start('session-hors-programme', TRACK_1, 'op')
+    sessions.start('session-off-program', TRACK_1, 'op')
     clock = END + 60 * 60_000
 
     expect(sessions.sweep(program).ended.map((e) => e.sessionId)).not.toContain(
-      'session-hors-programme',
+      'session-off-program',
     )
   })
 })

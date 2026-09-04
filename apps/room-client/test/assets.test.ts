@@ -15,7 +15,7 @@ const program = normalizeProgram({
     id: 'evt',
     name: 'Cloud Nord',
     logoUrl: LOGO,
-    tracks: [{ id: 'salle-a', name: 'Salle A' }],
+    tracks: [{ id: 'room-a', name: 'Salle A' }],
   },
   speakers: [{ id: 'spk-1', name: 'Alice', photoUrl: PHOTO }],
   sessions: [
@@ -24,7 +24,7 @@ const program = normalizeProgram({
       title: 'Talk',
       dateStart: '2026-10-30T09:00:00.000+00:00',
       speakerIds: ['spk-1'],
-      trackId: 'salle-a',
+      trackId: 'room-a',
     },
   ],
   sponsors: [

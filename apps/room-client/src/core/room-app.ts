@@ -627,7 +627,7 @@ export class RoomApp implements ControlTarget {
    * loop on a silent failure. We erase it and display the code again.
    */
   async repair(reason: string): Promise<void> {
-    this.options.onLog?.('warn', 'réappairage nécessaire', { raison: reason })
+    this.options.onLog?.('warn', 'réappairage nécessaire', { reason })
     this.options.writeToken('')
     this.setPairing({ status: 'expired', message: reason })
 
@@ -1396,8 +1396,8 @@ export class RoomApp implements ControlTarget {
       this.captureClosing = false
     }
     this.options.onLog?.('info', 'captation arrêtée depuis la régie', {
-      duree: Math.round(result.sidecar.durationMs / 1000) + ' s',
-      fichier: result.sidecar.videoFile,
+      duration: Math.round(result.sidecar.durationMs / 1000) + ' s',
+      file: result.sidecar.videoFile,
     })
     this.emit({
       type: 'recording.stopped',
@@ -1438,8 +1438,8 @@ export class RoomApp implements ControlTarget {
           ? 'captation arrêtée depuis OBS, sidecar non écrit'
           : 'captation arrêtée depuis OBS, sidecar écrit',
         {
-          duree: Math.round(result.sidecar.durationMs / 1000) + ' s',
-          fichier: result.sidecar.videoFile,
+          duration: Math.round(result.sidecar.durationMs / 1000) + ' s',
+          file: result.sidecar.videoFile,
         },
       )
       this.emit({
@@ -1705,7 +1705,7 @@ export class RoomApp implements ControlTarget {
     this.options.onLog?.(
       check.status === 'ok' ? 'info' : check.status === 'suspect' ? 'warn' : 'error',
       `contrôle VOD ${check.status} : ${file}`,
-      { raisons: check.reasons },
+      { reasons: check.reasons },
     )
     return check
   }

@@ -79,7 +79,7 @@ watch(
 
 onScopeDispose(stop)
 
-function rafraichir(): void {
+function refresh(): void {
   void route.meta.refresh?.()
 }
 </script>
@@ -98,7 +98,7 @@ function rafraichir(): void {
         aucun jeton derrière lui : c'est la seule confirmation qu'on a bien
         atterri avec le bon compte.
       -->
-      <div v-if="identity != null" id="identite" class="hidden text-[13px] text-dim sm:block">
+      <div v-if="identity != null" id="identity" class="hidden text-[13px] text-dim sm:block">
         {{ identity }}
       </div>
       <div class="ml-auto flex gap-1.5">
@@ -120,8 +120,8 @@ function rafraichir(): void {
         >
           {{ on ? 'Notifications ●' : 'Notifications' }}
         </Button>
-        <Button id="btn-rafraichir" size="small" @click="rafraichir">Rafraîchir</Button>
-        <Button id="btn-deconnexion" size="small" @click="session.signOut()">Déconnexion</Button>
+        <Button id="btn-refresh" size="small" @click="refresh">Rafraîchir</Button>
+        <Button id="btn-sign-out" size="small" @click="session.signOut()">Déconnexion</Button>
       </div>
     </header>
 

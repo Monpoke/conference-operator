@@ -128,7 +128,7 @@ describe('the mobile control app', () => {
      * demands a session. Refusing here would return a 404 to someone who is not
      * signed in yet, which reads as a dead address.
      */
-    const response = await fetch(`${origin}/regie/salle-fantome`)
+    const response = await fetch(`${origin}/regie/ghost-room`)
     expect(response.status).not.toBe(404)
   })
 

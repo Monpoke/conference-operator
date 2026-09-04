@@ -11,7 +11,7 @@ const rawProgram = readFileSync(
   'utf8',
 )
 
-const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'motdepasse-regie-2026' }
+const OPERATOR = { email: 'regie@cloudnord.fr', name: 'Régie', password: 'control-password-2026' }
 const TRACK_1 = 'track-1-teilhard-de-chardin'
 
 let hub: Hub
@@ -235,11 +235,11 @@ describe('public posting and moderation', () => {
     })
     const question = asked.body.json as unknown as { id: string }
 
-    const vote = await rpc('questions/vote', { id: question.id, deviceId: 'appareil-mobile-1' })
+    const vote = await rpc('questions/vote', { id: question.id, deviceId: 'mobile-device-1' })
     expect((vote.body.json as unknown as { votes: number }).votes).toBe(1)
 
     // A second vote from the same device has no effect, and is not an error.
-    const again = await rpc('questions/vote', { id: question.id, deviceId: 'appareil-mobile-1' })
+    const again = await rpc('questions/vote', { id: question.id, deviceId: 'mobile-device-1' })
     expect((again.body.json as unknown as { votes: number }).votes).toBe(1)
 
     const list = await rpc('questions/list', { roomId: TRACK_1, sessionId: null })

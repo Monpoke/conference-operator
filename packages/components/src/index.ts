@@ -22,7 +22,7 @@ export { default as Key } from './common/Key.vue'
 export { default as Panel } from './common/Panel.vue'
 export { default as Select } from './common/Select.vue'
 export { default as Toaster } from './common/Toaster.vue'
-export { useToast, NOTICE_MS, type Notice } from './common/toast.js'
+export { useToast, NOTICE_MS, type Notice, type NoticeOptions } from './common/toast.js'
 
 /*
  * Primitives, built on Reka.

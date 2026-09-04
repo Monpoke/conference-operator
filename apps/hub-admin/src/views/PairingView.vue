@@ -35,7 +35,7 @@ function champs(device: PendingDevice): { code: string; roomId: string } {
   return saisie[device.clientId]!
 }
 
-function nomDeSalle(id: string | null): string | null {
+function roomName(id: string | null): string | null {
   return rooms.value.find((salle) => salle.id === id)?.name ?? null
 }
 
@@ -118,7 +118,7 @@ async function decider(approuver: boolean): Promise<void> {
   }
 }
 
-async function approuverDemande(device: PendingDevice): Promise<void> {
+async function approveRequest(device: PendingDevice): Promise<void> {
   const { code, roomId } = champs(device)
   try {
     await store.approve({ userCode: code.trim(), clientId: device.clientId, roomId })
@@ -128,7 +128,7 @@ async function approuverDemande(device: PendingDevice): Promise<void> {
   }
 }
 
-async function refuserDemande(device: PendingDevice): Promise<void> {
+async function refuseRequest(device: PendingDevice): Promise<void> {
   try {
     await store.deny(champs(device).code.trim())
     toast.say('Demande refusée')
@@ -155,7 +155,7 @@ onMounted(async () => {
 
 <template>
   <div
-    id="vue-appairage"
+    id="pairing-view"
     class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5"
   >
     <Panel title="Machines en attente d'appairage">
@@ -177,8 +177,8 @@ onMounted(async () => {
             <span>{{ device.clientId }}</span>
             <span>{{ timeAgo(device.requestedAt) }}</span>
           </div>
-          <div v-if="nomDeSalle(requestedRoom(device)) != null" class="mb-1.5 text-xs text-dim">
-            La machine demande : <strong>{{ nomDeSalle(requestedRoom(device)) }}</strong>
+          <div v-if="roomName(requestedRoom(device)) != null" class="mb-1.5 text-xs text-dim">
+            La machine demande : <strong>{{ roomName(requestedRoom(device)) }}</strong>
           </div>
 
           <div class="mb-[11px]">
@@ -201,8 +201,8 @@ onMounted(async () => {
           </div>
 
           <div class="flex gap-2">
-            <Button variant="primary" size="small" @click="approuverDemande(device)">Approuver</Button>
-            <Button variant="danger" size="small" @click="refuserDemande(device)">Refuser</Button>
+            <Button variant="primary" size="small" @click="approveRequest(device)">Approuver</Button>
+            <Button variant="danger" size="small" @click="refuseRequest(device)">Refuser</Button>
           </div>
         </div>
       </div>

@@ -75,7 +75,7 @@ watch(
  * confondre empilait des enregistrements prétendument actifs sur une salle qui
  * n'enregistrait rien.
  */
-function etatPrise(prise: Capture): { texte: string; tone: string } {
+function takeState(prise: Capture): { texte: string; tone: string } {
   if (prise.finInconnue) return { texte: 'interrompue, fin jamais reçue', tone: 'text-warn' }
   if (prise.enCours) return { texte: 'enregistrement en cours', tone: 'text-brand' }
   if (prise.file == null) return { texte: 'arrêtée sans fichier', tone: 'text-alert' }
@@ -112,7 +112,7 @@ async function rapatrier(roomId: string, file: string | null): Promise<void> {
   }
 }
 
-function etatMontee(ligne: Upload): { label: string; tone: string } {
+function uploadState(ligne: Upload): { label: string; tone: string } {
   return UPLOAD_STATES[ligne.state] ?? { label: ligne.state, tone: '' }
 }
 </script>
@@ -158,7 +158,7 @@ function etatMontee(ligne: Upload): { label: string; tone: string } {
           data-prise
         >
           <div class="text-sm">
-            <span :class="etatPrise(prise).tone">{{ etatPrise(prise).texte }}</span>
+            <span :class="takeState(prise).tone">{{ takeState(prise).texte }}</span>
             · OBS {{ prise.obs }}
             <template v-if="prise.durationMs != null">
               · {{ Math.round(prise.durationMs / 60000) }} min
@@ -218,7 +218,7 @@ function etatMontee(ligne: Upload): { label: string; tone: string } {
           data-montee
         >
           <div class="text-sm">
-            <span :class="etatMontee(ligne).tone">{{ etatMontee(ligne).label }}</span>
+            <span :class="uploadState(ligne).tone">{{ uploadState(ligne).label }}</span>
             · {{ ligne.kind }} · {{ progress(ligne) }} %
           </div>
           <!--

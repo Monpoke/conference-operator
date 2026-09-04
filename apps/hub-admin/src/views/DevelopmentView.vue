@@ -24,9 +24,9 @@ const { clock } = storeToRefs(store)
 const toast = useToast()
 
 const cible = ref('')
-const razOuverte = ref(false)
-const razMot = ref('')
-const razCible = ref({ cible: '', salles: 0 })
+const resetOpen = ref(false)
+const resetWord = ref('')
+const resetTarget = ref({ cible: '', salles: 0 })
 
 const fuseau = computed(() => useConferencesStore().planning?.timezone)
 
@@ -67,16 +67,16 @@ async function revenir(): Promise<void> {
   }
 }
 
-async function ouvrirRaz(): Promise<void> {
-  razMot.value = ''
-  razCible.value = await store.resetTarget()
-  razOuverte.value = true
+async function openReset(): Promise<void> {
+  resetWord.value = ''
+  resetTarget.value = await store.resetTarget()
+  resetOpen.value = true
 }
 
-async function confirmerRaz(): Promise<void> {
+async function confirmReset(): Promise<void> {
   try {
     const bilan = await store.reset()
-    razOuverte.value = false
+    resetOpen.value = false
     toast.say(
       `${bilan.objets} objet(s) supprimé(s), ${bilan.multiparts} téléversement(s) abandonné(s), ` +
         `${bilan.salles} salle(s) prévenue(s).`,
@@ -89,7 +89,7 @@ async function confirmerRaz(): Promise<void> {
 
 <template>
   <div
-    id="vue-developpement"
+    id="development-view"
     class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5"
   >
     <Panel title="Heure du hub">
@@ -166,7 +166,7 @@ async function confirmerRaz(): Promise<void> {
         sont la même chose. Côté salle, seuls les fichiers que l'application connaît partent — la
         racine des captations est parfois un disque partagé.
       </Hint>
-      <Button id="btn-raz" class="mt-3 w-full" @click="ouvrirRaz">Remettre à zéro…</Button>
+      <Button id="btn-raz" class="mt-3 w-full" @click="openReset">Remettre à zéro…</Button>
     </Panel>
 
     <Panel title="Ce menu n'existe qu'en mode dev">
@@ -178,16 +178,16 @@ async function confirmerRaz(): Promise<void> {
     </Panel>
 
     <ConfirmDialog
-      v-model:open="razOuverte"
+      v-model:open="resetOpen"
       title="Tout remettre à zéro ?"
       confirm-label="Remettre à zéro"
       danger
-      :confirm-disabled="razMot.trim() !== 'RAZ'"
-      @confirm="confirmerRaz"
+      :confirm-disabled="resetWord.trim() !== 'RAZ'"
+      @confirm="confirmReset"
     >
       <p id="raz-text">
-        Tout ce qui est sous <strong>{{ razCible.cible }}</strong> sera supprimé, et
-        <strong>{{ razCible.salles }} salle{{ razCible.salles > 1 ? 's' : '' }}</strong>
+        Tout ce qui est sous <strong>{{ resetTarget.cible }}</strong> sera supprimé, et
+        <strong>{{ resetTarget.salles }} salle{{ resetTarget.salles > 1 ? 's' : '' }}</strong>
         effaceront leurs rushes.
       </p>
       <p class="mt-3 text-[13px] leading-relaxed text-dim">
@@ -207,7 +207,7 @@ async function confirmerRaz(): Promise<void> {
         -->
         <input
           id="raz-mot"
-          v-model="razMot"
+          v-model="resetWord"
           type="text"
           autocomplete="off"
           placeholder="RAZ"

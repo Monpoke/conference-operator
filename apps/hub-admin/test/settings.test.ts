@@ -154,7 +154,7 @@ describe('vue des réglages', () => {
   it("n'écrase pas un champ pendant qu'on tape dedans", async () => {
     const { wrapper } = await monter()
 
-    const champ = wrapper.get('#event-nom')
+    const champ = wrapper.get('#event-name')
     ;(champ.element as HTMLInputElement).focus()
     await champ.setValue('Cloud Nord 2027')
 
@@ -163,7 +163,7 @@ describe('vue des réglages', () => {
     await useSettingsStore().load()
     await flushPromises()
 
-    expect((wrapper.get('#event-nom').element as HTMLInputElement).value).toBe('Cloud Nord 2027')
+    expect((wrapper.get('#event-name').element as HTMLInputElement).value).toBe('Cloud Nord 2027')
   })
 
   it('reprend la valeur du hub une fois le champ quitté', async () => {
@@ -171,18 +171,18 @@ describe('vue des réglages', () => {
 
     // Quitter le champ est exactement le moment où un changement fait ailleurs
     // — un autre opérateur, un import — doit devenir visible.
-    ;(wrapper.get('#event-nom').element as HTMLInputElement).blur()
+    ;(wrapper.get('#event-name').element as HTMLInputElement).blur()
     reglages['eventName'] = 'Renommé ailleurs'
     await useSettingsStore().load()
     await flushPromises()
 
-    expect((wrapper.get('#event-nom').element as HTMLInputElement).value).toBe('Renommé ailleurs')
+    expect((wrapper.get('#event-name').element as HTMLInputElement).value).toBe('Renommé ailleurs')
   })
 
   it('montre en placeholder ce que le hub déduirait, sans le pré-remplir', async () => {
     const { wrapper } = await monter()
 
-    const champ = wrapper.get('#event-nom').element as HTMLInputElement
+    const champ = wrapper.get('#event-name').element as HTMLInputElement
     // Pré-rempli, il ferait croire que la valeur est figée — et le premier
     // enregistrement l'aurait effectivement figée.
     expect(champ.value).toBe('')
@@ -192,20 +192,20 @@ describe('vue des réglages', () => {
   it('bloque « Réimporter » tant que l’URL affichée diffère de l’enregistrée', async () => {
     const { wrapper } = await monter()
 
-    expect(wrapper.get('#btn-reimporter').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('#btn-reimport').attributes('disabled')).toBeUndefined()
 
-    await wrapper.get('#url-programme').setValue('https://autre/programme.json')
+    await wrapper.get('#program-url').setValue('https://autre/programme.json')
     await flushPromises()
 
     // Sinon on tape une adresse, on clique, et le hub relit l'ancienne sans que
     // rien ne le dise.
-    expect(wrapper.get('#btn-reimporter').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('#btn-reimport').attributes('disabled')).toBeDefined()
   })
 
   it('réimporte depuis l’URL enregistrée', async () => {
     const { calls, wrapper } = await monter()
 
-    await wrapper.get('#btn-reimporter').trigger('click')
+    await wrapper.get('#btn-reimport').trigger('click')
     await flushPromises()
 
     expect(calls).toContainEqual({
@@ -217,9 +217,9 @@ describe('vue des réglages', () => {
   it('écarte les lignes de réseaux laissées vides', async () => {
     const { calls, wrapper } = await monter()
 
-    await wrapper.get('#btn-reseau-ajouter').trigger('click')
+    await wrapper.get('#btn-social-add').trigger('click')
     await flushPromises()
-    await wrapper.get('#btn-reseaux').trigger('click')
+    await wrapper.get('#btn-social-links').trigger('click')
     await flushPromises()
 
     // Ajouter une ligne puis se raviser est un geste normal, et le hub
@@ -231,8 +231,8 @@ describe('vue des réglages', () => {
   it('convertit le débit affiché en Ko/s vers des octets', async () => {
     const { calls, wrapper } = await monter()
 
-    await wrapper.get('#vod-debit').setValue('512')
-    await wrapper.get('#btn-vod-reglages').trigger('click')
+    await wrapper.get('#vod-rate').setValue('512')
+    await wrapper.get('#btn-vod-save').trigger('click')
     await flushPromises()
 
     const envoi = calls.find((appel) => appel.path === 'settings/update')
@@ -244,8 +244,8 @@ describe('vue des réglages', () => {
     const { wrapper } = await monter({ stockage: null })
 
     // Sans clés il n'y a rien à éprouver, et le panneau le dit déjà en haut.
-    expect(wrapper.get('#btn-vod-eprouver').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('#vod-etat').text()).toContain('Aucun stockage S3 configuré')
+    expect(wrapper.get('#btn-vod-probe').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('#vod-state').text()).toContain('Aucun stockage S3 configuré')
   })
 
   it('distingue « clés posées, bucket manquant » des deux autres cas', async () => {
@@ -253,7 +253,7 @@ describe('vue des réglages', () => {
 
     // Le cas le plus déroutant des trois : la page est ouverte, les clés sont
     // là, et rien ne part parce qu'il manque un nom de bucket.
-    expect(wrapper.get('#vod-etat').text()).toContain('aucun bucket')
+    expect(wrapper.get('#vod-state').text()).toContain('aucun bucket')
   })
 
   it('demande confirmation avant de resynchroniser, et dit ce qui va partir', async () => {

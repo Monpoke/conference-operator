@@ -10,13 +10,12 @@ import { useVodStore } from '../src/stores/vod.js'
 import { payload } from './fixtures.js'
 
 /**
- * Le contrôle des rushes, et la question du démontage.
+ * Checking the footage, and the packing-up question.
  *
- * « Est-ce qu'on a bien tout ? » Le chronomètre de la régie a dit qu'on
- * enregistrait ; il ne dit pas qu'OBS écrivait quelque chose d'exploitable.
- * Entre les deux : un disque plein, un encodeur qui a lâché, une carte
- * d'acquisition débranchée — et personne ne s'en aperçoit avant le editing,
- * quand la salle n'existe plus.
+ * "Have we really got everything?" The control app's stopwatch said we were
+ * recording; it does not say OBS was writing anything usable. In between: a full
+ * disk, an encoder that gave out, a capture card unplugged — and nobody notices
+ * before editing, when the room no longer exists.
  */
 
 const RUSH: VodEntry = {
@@ -47,13 +46,13 @@ interface Appel {
   body: unknown
 }
 
-let appels: Appel[]
+let calls: Appel[]
 let listing: Record<string, unknown>
 let uploads: Record<string, unknown>
 
 function stub(): void {
   vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
-    appels.push({ url, body: init?.body == null ? null : JSON.parse(String(init.body)) })
+    calls.push({ url, body: init?.body == null ? null : JSON.parse(String(init.body)) })
     const corps =
       url === '/control/recordings' ? listing : url === '/control/uploads' ? uploads : { ok: true }
     return new Response(JSON.stringify(corps), { headers: { 'content-type': 'application/json' } })
@@ -63,108 +62,108 @@ function stub(): void {
 beforeEach(() => {
   setActivePinia(createPinia())
   useToast().clear()
-  appels = []
+  calls = []
   listing = { root: '/rushes', entries: [RUSH], tools: OUTILS }
   uploads = { ok: true, entries: [], verdict: { allowed: true, reason: null, text: '' } }
   useRoomStore().seed(payload())
   stub()
 })
 
-async function ouvrir(): Promise<ReturnType<typeof useVodStore>> {
+async function openVod(): Promise<ReturnType<typeof useVodStore>> {
   const vod = useVodStore()
   vod.show()
   await flushPromises()
   return vod
 }
 
-describe('ouverture', () => {
-  it('ne lit le disque qu’à l’ouverture', async () => {
+describe('opening', () => {
+  it('reads the disk only on opening', async () => {
     const vod = useVodStore()
 
-    // Lire le dossier à chaque tic d'horloge coûterait un accès disque par
-    // seconde pour une liste qu'on consulte trois fois dans la journée.
-    expect(appels).toEqual([])
+    // Reading the folder on every clock tick would cost one disk access a second
+    // for a list consulted three times a day.
+    expect(calls).toEqual([])
 
     vod.show()
     await flushPromises()
-    expect(appels.map((appel) => appel.url)).toContain('/control/recordings')
+    expect(calls.map((call) => call.url)).toContain('/control/recordings')
   })
 
-  it('relit le dossier à chaque ouverture', async () => {
-    const vod = await ouvrir()
+  it('reads the folder again on every opening', async () => {
+    const vod = await openVod()
     vod.hide()
-    appels = []
+    calls = []
 
     vod.show()
     await flushPromises()
 
-    // Il s'est rempli depuis la dernière fois.
-    expect(appels.filter((appel) => appel.url === '/control/recordings')).toHaveLength(1)
+    // It has filled up since last time.
+    expect(calls.filter((call) => call.url === '/control/recordings')).toHaveLength(1)
   })
 
-  it('coupe le sondage à la fermeture', async () => {
+  it('cuts the polling on closing', async () => {
     vi.useFakeTimers()
     const vod = useVodStore()
     vod.show()
     vod.hide()
-    appels = []
+    calls = []
 
     vi.advanceTimersByTime(20_000)
     vi.useRealTimers()
 
-    // Sans quoi il survivrait à toutes les ouvertures de la journée.
-    expect(appels.filter((appel) => appel.url === '/control/uploads')).toEqual([])
+    // Failing which it would outlive every opening of the day.
+    expect(calls.filter((call) => call.url === '/control/uploads')).toEqual([])
   })
 })
 
-describe('ce que la modale dit quand il n’y a rien', () => {
-  it('nomme la cause d’un dossier inconnu, plutôt qu’une liste vide', async () => {
+describe('what the modal says when there is nothing', () => {
+  it('names the cause of an unknown folder, rather than an empty list', async () => {
     listing = { root: null, entries: [], tools: OUTILS }
-    await ouvrir()
+    await openVod()
     const wrapper = mount(VodDialog, { props: { timeZone: 'Europe/Paris' }, attachTo: document.body })
     await flushPromises()
 
-    // Une liste vide se lirait comme une journée perdue.
+    // An empty list would read as a lost day.
     expect(document.body.textContent).toContain('Aucun dossier d’enregistrement connu')
     wrapper.unmount()
   })
 
   it('signale une machine sans ffprobe, une fois en haut', async () => {
     listing = { root: '/rushes', entries: [RUSH], tools: { ffmpeg: true, ffprobe: false } }
-    const vod = await ouvrir()
+    const vod = await openVod()
 
-    // Dit une fois plutôt que découvert bouton par bouton.
+    // Said once rather than discovered button by button.
     expect(vod.missingTools).toContain('ffprobe introuvable')
     expect(vod.missingTools).toContain('taille et au sidecar')
   })
 })
 
-describe('téléversement', () => {
-  it('retire les boutons partout quand il n’y a nulle part où envoyer', async () => {
+describe('uploading', () => {
+  it('removes the buttons everywhere when there is nowhere to send', async () => {
     uploads = {
       ok: true,
       entries: [],
       verdict: { allowed: false, reason: 'sans-stockage', text: 'aucun stockage configuré sur le hub' },
     }
-    const vod = await ouvrir()
+    const vod = await openVod()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
 
     /*
-     * Une seule règle pour les deux boutons : séparées, elles avaient divergé,
-     * et la régie donnait à lire « on peut tout envoyer, mais rien en
-     * particulier » — l'inverse exact de l'état réel.
+     * A single rule for both buttons: kept apart, they had diverged, and the control
+     * app read as "everything can be sent, but nothing in particular" — the exact
+     * opposite of the real state.
      */
     expect(vod.blocked).toBe('aucun stockage configuré sur le hub')
     expect(wrapper.find('[data-vod-monter]').exists()).toBe(false)
   })
 
-  it('garde les boutons quand seul l’automatique est éteint', async () => {
+  it('keeps the buttons when only automatic mode is off', async () => {
     /*
-     * Le réglage **par défaut** du hub : rien ne part sans qu'on l'ait demandé.
-     * Les deux motifs partageaient un code, et la régie retirait ses boutons
-     * ici comme sur un hub sans stockage — une installation parfaitement
-     * configurée n'offrait alors aucun moyen d'envoyer quoi que ce soit, alors
-     * que le régulateur, lui, acceptait déjà les demandes manuelles.
+     * The hub's **default** setting: nothing leaves unless asked. The two reasons
+     * shared one code, and the control app withdrew its buttons here as on a hub
+     * with no storage — a perfectly configured installation then offered no way of
+     * sending anything at all, while the regulator was already accepting manual
+     * requests.
      */
     uploads = {
       ok: true,
@@ -175,17 +174,17 @@ describe('téléversement', () => {
         text: 'téléversement automatique désactivé',
       },
     }
-    const vod = await ouvrir()
+    const vod = await openVod()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
 
     expect(vod.blocked).toBe(null)
     expect(vod.manualOnly).toBe(true)
     expect(wrapper.find('[data-vod-monter]').exists()).toBe(true)
-    // Pas d'ambre : c'est un réglage assumé, pas une attente.
+    // No amber: it is a deliberate setting, not a wait.
     expect(vod.waitReason).toBe(null)
   })
 
-  it('dit en haut que les envois se font à la main', async () => {
+  it('says at the top that sending is done by hand', async () => {
     uploads = {
       ok: true,
       entries: [],
@@ -195,15 +194,15 @@ describe('téléversement', () => {
         text: 'téléversement automatique désactivé',
       },
     }
-    await ouvrir()
+    await openVod()
     const wrapper = mount(VodDialog, { props: { timeZone: 'Europe/Paris' }, attachTo: document.body })
     await flushPromises()
 
-    // Sans quoi l'opérateur qui vient d'en monter un à la main se demande
+    // Failing which the operator who has just sent one by hand wonders
     // pourquoi les suivants ne partent pas seuls.
     const ligne = document.body.querySelector('[data-role="vod-manual"]')
     expect(ligne?.textContent).toContain('les envois se font à la main')
-    // « Tout téléverser » reste armé : la même règle que les ⬆ des lignes.
+    // "Tout téléverser" stays armed: the same rule as the rows' ⬆.
     expect(
       document.body.querySelector('[data-role="btn-vod-upload-all"]')?.hasAttribute('disabled'),
     ).toBe(false)
@@ -216,12 +215,12 @@ describe('téléversement', () => {
       entries: [],
       verdict: { allowed: false, reason: 'sans-stockage', text: 'aucun stockage' },
     }
-    let vod = await ouvrir()
+    let vod = await openVod()
 
     /*
-     * « sans-stockage » n'est pas une attente : c'est une fonctionnalité que
-     * personne n'a demandée. L'annoncer en ambre toute la journée la ferait
-     * passer pour une panne, et userait le bandeau avant le jour où il dit vrai.
+     * `sans-stockage` is not a wait: it is a feature nobody asked for. Announcing it
+     * in amber all day long would make it look like a failure, and would wear the
+     * banner out before the day it tells the truth.
      */
     expect(vod.waitReason).toBe(null)
 
@@ -232,77 +231,75 @@ describe('téléversement', () => {
       entries: [],
       verdict: { allowed: false, reason: 'conference', text: 'conférence dans 6 min' },
     }
-    vod = await ouvrir()
+    vod = await openVod()
     expect(vod.waitReason).toBe('Téléversement en attente — conférence dans 6 min.')
   })
 
-  it('ne propose pas de renvoyer un rush déjà chez le stockage', async () => {
+  it('does not offer to resend footage already at the storage', async () => {
     uploads = {
       ok: true,
       entries: [{ file: RUSH.file, state: 'termine', percent: 100, remainingBytes: 0, debitOctetsS: null, error: null, manual: false }],
       verdict: { allowed: true, reason: null, text: '' },
     }
-    await ouvrir()
+    await openVod()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
 
-    // Un bouton repaierait trois gigaoctets sur le réseau de l'événement au
+    // A button would pay three gigabytes again on the event's network at the
     // premier clic distrait.
     expect(wrapper.find('[data-vod-monter]').exists()).toBe(false)
     expect(wrapper.find('[data-vod-annuler]').exists()).toBe(false)
     expect(wrapper.text()).toContain('☁')
   })
 
-  it('offre d’annuler ce qui est en vol, sans perdre le témoin', async () => {
+  it('offers to cancel what is in flight, without losing the indicator', async () => {
     uploads = {
       ok: true,
       entries: [{ file: RUSH.file, state: 'en-cours', percent: 42, remainingBytes: 2_400_000_000, debitOctetsS: 12_000_000, error: null, manual: true }],
       verdict: { allowed: true, reason: null, text: '' },
     }
-    await ouvrir()
+    await openVod()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
 
     expect(wrapper.text()).toContain('téléversement en cours — 42 %')
 
     /*
-     * Le ⬆ laissait la place à « Annuler », et la ligne perdait d'un coup le
-     * seul repère qui disait où en était ce fichier-là : sur une modale qui en
-     * aligne quinze, il fallait relire le détail en petit pour retrouver celui
-     * qui montait.
+     * The ⬆ gave way to "Annuler", and the row lost at a stroke the only landmark
+     * that said where that particular file stood: on a modal lining up fifteen of
+     * them, one had to read the small detail line again to find the one uploading.
      */
-    const temoin = wrapper.get('[data-vod-progression]')
-    expect(temoin.attributes('title')).toContain('42 %')
-    expect(temoin.get('span').classes()).toContain('animate-spin')
+    const indicator = wrapper.get('[data-vod-progression]')
+    expect(indicator.attributes('title')).toContain('42 %')
+    expect(indicator.get('span').classes()).toContain('animate-spin')
 
     await wrapper.get('[data-vod-annuler]').trigger('click')
     await flushPromises()
-    expect(appels.at(-2)?.body).toEqual({ action: 'vod.upload.cancel', file: RUSH.file })
+    expect(calls.at(-2)?.body).toEqual({ action: 'vod.upload.cancel', file: RUSH.file })
   })
 
   it('bat au lieu de tourner tant que rien ne part encore', async () => {
-    // Un anneau qui tourne sur une file d'attente ferait croire à une montée
-    // qui n'avance pas : ça tourne quand des octets partent, ça bat sinon.
+    // A spinner on a queue would suggest an upload going nowhere: it spins when
+    // bytes are leaving, it pulses otherwise.
     uploads = {
       ok: true,
       entries: [{ file: RUSH.file, state: 'attente', percent: 0, remainingBytes: 4_200_000_000, debitOctetsS: null, error: null, manual: true }],
       verdict: { allowed: false, reason: 'conference', text: 'conférence en cours' },
     }
-    await ouvrir()
+    await openVod()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
 
-    const temoin = wrapper.get('[data-vod-progression]')
-    expect(temoin.attributes('title')).toContain('En file')
-    expect(temoin.get('span').classes()).toContain('animate-pulse')
-    expect(temoin.get('span').classes()).not.toContain('animate-spin')
-    // Annuler reste offert : une montée qui n'a pas commencé s'abandonne aussi.
+    const indicator = wrapper.get('[data-vod-progression]')
+    expect(indicator.attributes('title')).toContain('En file')
+    expect(indicator.get('span').classes()).toContain('animate-pulse')
+    expect(indicator.get('span').classes()).not.toContain('animate-spin')
+    // Cancelling is still offered: an upload that has not started can be abandoned too.
     expect(wrapper.find('[data-vod-annuler]').exists()).toBe(true)
   })
 
-  it('dit le temps qu’il reste, que le pourcentage laisse entier', async () => {
+  it('says the time left, which the percentage leaves whole', async () => {
     /*
-     * La question du démontage n'est pas « où en est-il ? » mais « est-ce que
-     * je peux débrancher ce disque avant de partir ? ». 60 % sur un rush de
-     * quatre gigas, c'est deux minutes ou quarante, selon un débit que
-     * l'opérateur n'a aucune raison de connaître.
+     * The packing-up question is not "how far along is it?" but "can I unplug this
+     * disk before I leave?". 60 % on four gigabytes of footage is two minutes or
+     * forty, depending on a rate the operator has no reason to know.
      */
     uploads = {
       ok: true,
@@ -319,24 +316,24 @@ describe('téléversement', () => {
       ],
       verdict: { allowed: true, reason: null, text: '', debitMaxOctetsS: null },
     }
-    await ouvrir()
+    await openVod()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
 
-    // Soixante méga-octets à un méga-octet par seconde.
+    // Sixty megabytes at one megabyte a second.
     expect(wrapper.text()).toContain('téléversement en cours — 40 % · reste 1 min')
-    // « environ » sur le témoin : ce qui vaut ce que vaut le réseau se lit
+    // "environ" on the indicator: what is worth whatever the network is worth reads
     // comme une estimation, sans quoi on range le disque sur la foi du chiffre.
     expect(wrapper.get('[data-vod-progression]').attributes('title')).toContain(
       'reste environ 1 min',
     )
   })
 
-  it('compte avec le plafond du hub, pas avec la vitesse d’une part', async () => {
+  it('counts with the hub\'s ceiling, not with one part\'s speed', async () => {
     /*
-     * Le débit remonté est celui de l'envoi d'une part, mesuré *avant* la pause
-     * qui applique le plafond. Sans le plafond dans le calcul, un uplink dix
-     * fois plus rapide que le réglage annoncerait dix fois moins de temps — et
-     * une estimation trop courte est pire que pas d'estimation du tout.
+     * The reported rate is that of sending one part, measured *before* the pause
+     * that applies the ceiling. Without the ceiling in the computation, an uplink
+     * ten times faster than the setting would announce ten times less time — and an
+     * estimate that is too short is worse than no estimate at all.
      */
     uploads = {
       ok: true,
@@ -353,19 +350,19 @@ describe('téléversement', () => {
       ],
       verdict: { allowed: true, reason: null, text: '', debitMaxOctetsS: 1_000_000 },
     }
-    const vod = await ouvrir()
+    const vod = await openVod()
 
     expect(vod.etaOf(RUSH.file)).toBe(60_000)
   })
 
-  it('lisse le débit, pour que le chiffre ne danse pas', async () => {
+  it('smooths the rate, so the figure does not dance', async () => {
     /*
-     * `debitOctetsS` est le débit de la dernière part, mesurée seule : sur le
-     * réseau d'un événement il varie du simple au triple d'une part à l'autre.
-     * Brut, le temps restant sauterait de « 1 min » à « 10 min » toutes les
-     * trois secondes — un chiffre qui danse, on cesse de le regarder.
+     * `debitOctetsS` is the last part's rate, measured on its own: on an event's
+     * network it varies threefold from one part to the next. Raw, the time left
+     * would jump from "1 min" to "10 min" every three seconds — a figure that
+     * dances is a figure one stops looking at.
      */
-    const ligne = (debitOctetsS: number): Record<string, unknown> => ({
+    const row = (debitOctetsS: number): Record<string, unknown> => ({
       ok: true,
       entries: [
         {
@@ -381,21 +378,21 @@ describe('téléversement', () => {
       verdict: { allowed: true, reason: null, text: '', debitMaxOctetsS: null },
     })
 
-    uploads = ligne(1_000_000)
-    const vod = await ouvrir()
+    uploads = row(1_000_000)
+    const vod = await openVod()
 
-    // Une part malchanceuse : le débit s'effondre d'un coup.
-    uploads = ligne(100_000)
+    // One unlucky part: the rate collapses at a stroke.
+    uploads = row(100_000)
     await vod.loadUploads()
 
-    // Un tiers de poids au dernier relevé : 700 ko/s, et non les 100 ko/s qui
-    // auraient annoncé dix minutes.
+    // One third of the weight to the last reading: 700 kB/s, and not the 100 kB/s
+    // that would have announced ten minutes.
     expect(vod.etaOf(RUSH.file)).toBe(Math.round((60_000_000 / 700_000) * 1000))
   })
 
   it('n’annonce aucun temps tant que rien n’est parti', async () => {
-    // « Ça y est dans un instant » sur une file d'attente qui n'a pas commencé
-    // serait une promesse inventée : rien n'est parti, rien n'a été mesuré.
+    // "Any moment now" on a queue that has not started would be an invented
+    // promise: nothing has left, nothing has been measured.
     uploads = {
       ok: true,
       entries: [
@@ -411,47 +408,46 @@ describe('téléversement', () => {
       ],
       verdict: { allowed: false, reason: 'conference', text: 'conférence dans 6 min' },
     }
-    const vod = await ouvrir()
+    const vod = await openVod()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
 
     expect(vod.etaOf(RUSH.file)).toBeNull()
     expect(wrapper.text()).not.toContain('reste')
   })
 
-  it('n’annule pas au clic sur le témoin', async () => {
+  it('does not cancel on a click on the indicator', async () => {
     uploads = {
       ok: true,
       entries: [{ file: RUSH.file, state: 'en-cours', percent: 80, remainingBytes: 840_000_000, debitOctetsS: 12_000_000, error: null, manual: true }],
       verdict: { allowed: true, reason: null, text: '' },
     }
-    await ouvrir()
+    await openVod()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
-    appels = []
+    calls = []
 
     await wrapper.get('[data-vod-progression]').trigger('click')
     await flushPromises()
 
-    // Trois gigaoctets déjà montés ne se perdent pas sur un doigt distrait :
-    // « Annuler » est un bouton nommé, le témoin n'en est pas un.
-    expect(appels).toEqual([])
+    // Three gigabytes already uploaded are not lost to a distracted finger:
+    // "Annuler" is a named button, the indicator is not one.
+    expect(calls).toEqual([])
   })
 
-  it('donne la même case aux quatre icônes, et réserve celle du téléversement', async () => {
+  it('gives the four icons the same cell, and reserves the upload one', async () => {
     /*
-     * Rien ne s'alignait d'une ligne à l'autre, pour deux raisons cumulées.
+     * Nothing lined up from one row to the next, for two reasons combined.
      *
-     * Chaque bouton était large de son glyphe : 👁 et ⬆ sont des emoji, ✓ et ✕
-     * des caractères de texte bien plus étroits. Et la colonne du téléversement
-     * portait tantôt un ⬆, tantôt un ☁, tantôt un témoin **et** un bouton
-     * « Annuler » — trois largeurs, donc un ✓ et un ✕ qui ne tombaient au même
-     * endroit sur aucune ligne.
+     * Each button was as wide as its glyph: 👁 and ⬆ are emoji, ✓ and ✕ are text
+     * characters that are far narrower. And the upload column carried sometimes a
+     * ⬆, sometimes a ☁, sometimes an indicator **and** a "Annuler" button — three
+     * widths, and therefore a ✓ and a ✕ that landed in the same place on no row.
      */
     uploads = {
       ok: true,
       entries: [],
       verdict: { allowed: true, reason: null, text: '' },
     }
-    await ouvrir()
+    await openVod()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
 
     const icones = ['data-vod-apercu', 'data-vod-monter', 'data-vod-verdict-ok', 'data-vod-verdict-ko']
@@ -459,44 +455,44 @@ describe('téléversement', () => {
       const bouton = wrapper.get(`[${marque}]`)
       expect(bouton.classes()).toContain('w-9')
       // `px-0` retire le rembourrage du bouton, qui rendait la largeur
-      // dépendante du contenu — c'est lui que `tailwind-merge` doit emporter.
+      // dependent on the content — it is the one `tailwind-merge` must carry away.
       expect(bouton.classes()).toContain('px-0')
       expect(bouton.classes()).not.toContain('px-3')
     }
 
-    // La colonne réserve la place du cas le plus large sur toutes les lignes,
-    // et pousse son contenu à droite : ⬆, ☁ et « Annuler » partagent le bord
+    // The column reserves the widest case's space on every row, and pushes its
+    // content right: ⬆, ☁ and "Annuler" share the edge
     // qui touche le ✓.
     const colonne = wrapper.get('[data-vod-monter]').element.parentElement
     expect(colonne?.className).toContain('w-[6.75rem]')
     expect(colonne?.className).toContain('justify-end')
   })
 
-  it('garde la colonne à la même largeur pendant la montée', async () => {
+  it('keeps the column at the same width during the upload', async () => {
     uploads = {
       ok: true,
       entries: [{ file: RUSH.file, state: 'en-cours', percent: 42, remainingBytes: 2_400_000_000, debitOctetsS: 12_000_000, error: null, manual: true }],
       verdict: { allowed: true, reason: null, text: '' },
     }
-    await ouvrir()
+    await openVod()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
 
-    // Le témoin et « Annuler » tiennent dans la même case que le seul ⬆ de la
-    // ligne d'à côté : sans quoi le ✓ et le ✕ sautent d'une ligne à l'autre.
+    // The indicator and "Annuler" fit in the same cell as the lone ⬆ of the row
+    // beside it: failing which the ✓ and the ✕ jump from one row to the next.
     const colonne = wrapper.get('[data-vod-annuler]').element.parentElement
     expect(colonne?.className).toContain('w-[6.75rem]')
     expect(wrapper.get('[data-vod-progression]').element.parentElement).toBe(colonne)
   })
 
-  it('donne au ☁ la largeur d’un bouton, faute d’en être un', async () => {
+  it('gives the ☁ a button\'s width, for want of being one', async () => {
     // Il n'est pas cliquable — repayer trois gigaoctets au premier clic distrait
-    // est ce qu'on évite — mais il occupe la même case, sinon la ligne se décale.
+    // is what is being avoided — but it occupies the same cell, otherwise the row shifts.
     uploads = {
       ok: true,
       entries: [{ file: RUSH.file, state: 'termine', percent: 100, remainingBytes: 0, debitOctetsS: null, error: null, manual: false }],
       verdict: { allowed: true, reason: null, text: '' },
     }
-    await ouvrir()
+    await openVod()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
 
     const nuage = wrapper.findAll('span').find((span) => span.text() === '☁')
@@ -504,9 +500,9 @@ describe('téléversement', () => {
   })
 
   it('aligne les noms de fichier, quel que soit le verdict', async () => {
-    // « Non vérifié », « Exploitable », « À revoir » et « Illisible » n'ont pas
-    // la même longueur : le nom commençait à quatre abscisses différentes.
-    await ouvrir()
+    // "Non vérifié", "Exploitable", "À revoir" and "Illisible" are not the same
+    // length: the name began at four different offsets.
+    await openVod()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
 
     expect(wrapper.get('[data-role="vod-badge"]').classes()).toContain('w-24')
@@ -518,23 +514,23 @@ describe('téléversement', () => {
       entries: [{ file: RUSH.file, state: 'echoue', percent: 12, remainingBytes: 3_696_000_000, debitOctetsS: null, error: 'AccessDenied', manual: false }],
       verdict: { allowed: true, reason: null, text: '' },
     }
-    await ouvrir()
+    await openVod()
     const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
 
-    // Le seul mot qu'on puisse porter à qui tient le bucket.
+    // The only word one can carry to whoever holds the bucket.
     expect(wrapper.text()).toContain('AccessDenied')
   })
 
   it('met un fichier en file, ou tout ce qui reste', async () => {
-    const vod = await ouvrir()
-    appels = []
+    const vod = await openVod()
+    calls = []
 
     await vod.upload(RUSH.file)
     await vod.upload(null)
 
-    // `null` vaut « tout ce qui reste » : c'est ce que fait « Tout téléverser ».
-    const demandes = appels
-      .map((appel) => appel.body as { action?: string; file?: unknown } | null)
+    // `null` means "everything that is left": that is what "Tout téléverser" does.
+    const demandes = calls
+      .map((call) => call.body as { action?: string; file?: unknown } | null)
       .filter((corps) => corps?.action === 'vod.upload')
     expect(demandes).toEqual([
       { action: 'vod.upload', file: RUSH.file },
@@ -542,24 +538,24 @@ describe('téléversement', () => {
     ])
   })
 
-  it('prévient qu’une captation en cours retient le départ', async () => {
+  it('warns that a running take holds back the departure', async () => {
     useRoomStore().payload!.state.recording = true
-    const vod = await ouvrir()
+    const vod = await openVod()
 
     await vod.upload(RUSH.file)
 
-    // Le seul cas où le régulateur refuse *malgré* la demande manuelle : on ne
-    // lit pas le disque sur lequel un master s'écrit.
+    // The only case where the regulator refuses *despite* the manual request: one
+    // does not read the disk a master is being written to.
     expect(useToast().notices.value.at(-1)?.text).toContain('départ à l’arrêt de la captation')
   })
 })
 
-describe('verdict de la régie', () => {
-  it('pose le verdict, puis le retire au même bouton', async () => {
-    const vod = await ouvrir()
+describe('the control app\'s verdict', () => {
+  it('sets the verdict, then removes it with the same button', async () => {
+    const vod = await openVod()
 
     await vod.verdict(RUSH.file, 'ok')
-    expect(appels.at(-2)?.body).toEqual({ action: 'vod.verdict', file: RUSH.file, status: 'ok' })
+    expect(calls.at(-2)?.body).toEqual({ action: 'vod.verdict', file: RUSH.file, status: 'ok' })
 
     listing = {
       root: '/rushes',
@@ -569,40 +565,39 @@ describe('verdict de la régie', () => {
     await vod.loadListing()
     await vod.verdict(RUSH.file, 'ok')
 
-    // Sans le retrait, une fausse manœuvre resterait à l'écran sans moyen de la
+    // Without the removal, a slip would stay on screen with no way to
     // reprendre — et se relirait au editing comme une information.
-    expect(appels.at(-2)?.body).toEqual({ action: 'vod.verdict', file: RUSH.file, status: null })
+    expect(calls.at(-2)?.body).toEqual({ action: 'vod.verdict', file: RUSH.file, status: null })
   })
 })
 
-describe('contrôle de tout le dossier', () => {
-  it('y va en série, un fichier après l’autre', async () => {
+describe('checking the whole folder', () => {
+  it('goes through in series, one file after another', async () => {
     listing = {
       root: '/rushes',
       entries: [RUSH, { ...RUSH, file: 'b.mkv' }, { ...RUSH, file: 'c.mkv' }],
       tools: OUTILS,
     }
-    const vod = await ouvrir()
-    appels = []
+    const vod = await openVod()
+    calls = []
 
     await vod.checkAll()
 
     /*
-     * ffprobe lit réellement les fichiers : lancer six lectures de rushes de
-     * deux heures sur le disque qui enregistre est exactement ce qu'on ne veut
-     * pas pendant une conférence.
+     * ffprobe really reads the files: launching six reads of two-hour recordings on
+     * the disk that is recording is exactly what one does not want during a talk.
      */
-    const inspections = appels.filter(
-      (appel) => (appel.body as { action?: string } | null)?.action === 'vod.inspect',
+    const inspections = calls.filter(
+      (call) => (call.body as { action?: string } | null)?.action === 'vod.inspect',
     )
-    expect(inspections.map((appel) => (appel.body as { file: string }).file)).toEqual([
+    expect(inspections.map((call) => (call.body as { file: string }).file)).toEqual([
       RUSH.file,
       'b.mkv',
       'c.mkv',
     ])
   })
 
-  it('résume en un mot plutôt qu’en douze', async () => {
+  it('sums up in one word rather than twelve', async () => {
     listing = {
       root: '/rushes',
       entries: [
@@ -611,20 +606,20 @@ describe('contrôle de tout le dossier', () => {
       ],
       tools: OUTILS,
     }
-    const vod = await ouvrir()
+    const vod = await openVod()
 
     await vod.checkAll()
 
-    // Douze messages à la suite ne disent rien de plus que le compte affiché
+    // Twelve messages in a row say nothing more than the count shown
     // en haut.
     expect(useToast().notices.value).toHaveLength(1)
     expect(useToast().notices.value[0]?.text).toBe('1 enregistrement(s) à revoir')
   })
 })
 
-describe('ligne d’un rush', () => {
-  it('lit d’un coup d’œil quand, combien, et ce qui manque déjà', async () => {
-    await ouvrir()
+describe('one footage row', () => {
+  it('reads at a glance when, how much, and what is already missing', async () => {
+    await openVod()
     const wrapper = mount(VodRow, {
       props: { entry: { ...RUSH, beingWritten: true }, timeZone: 'Europe/Paris' },
     })
@@ -634,13 +629,13 @@ describe('ligne d’un rush', () => {
     expect(texte).toContain('45:00')
     expect(texte).toContain('4,2 Go')
     expect(texte).toContain('encore en écriture')
-    // Aucun repère sur ce rush : rien n'est dit. La prise est finie, on ne peut
-    // plus en poser, et un reproche sans remède n'apprend rien.
+    // No anchor on this footage: nothing is said. The take is over, no more can be
+    // set, and a reproach with no remedy teaches nothing.
     expect(texte).not.toContain('rognage')
   })
 
-  it('dit ce que le editing coupera, tant que le fichier est encore là', async () => {
-    await ouvrir()
+  it('says what editing will trim, while the file is still there', async () => {
+    await openVod()
     const entry = {
       ...RUSH,
       sidecar: {
@@ -656,12 +651,12 @@ describe('ligne d’un rush', () => {
 
     const texte = wrapper.text()
     expect(texte).toContain('rognage 00:52 → 44:20')
-    // Les deux repères ne sont pas des chapitres : seul « Questions » en est un.
+    // The two anchors are not chapters: only "Questions" is one.
     expect(texte).toContain('1 marqueur')
   })
 
-  it('marque d’un « ? » le repère qui manque, plutôt que de se taire', async () => {
-    await ouvrir()
+  it('marks the missing anchor with a "?", rather than stay silent', async () => {
+    await openVod()
     const entry = {
       ...RUSH,
       sidecar: {
@@ -674,24 +669,23 @@ describe('ligne d’un rush', () => {
     const wrapper = mount(VodRow, { props: { entry, timeZone: 'Europe/Paris' } })
 
     // Le editing ira jusqu'au bout du fichier, blancs de fin compris : le dire
-    // pendant que la salle est encore montée vaut mieux que de le découvrir
-    // sur la vidéo publiée.
+    // while the room is still standing beats discovering it on the published video.
     expect(wrapper.text()).toContain('rognage 00:52 → ?')
   })
 
   it('dit le sidecar absent, qui est justement le cas qu’on cherche', async () => {
-    await ouvrir()
+    await openVod()
     const wrapper = mount(VodRow, {
       props: { entry: { ...RUSH, sidecar: null }, timeZone: 'Europe/Paris' },
     })
 
-    // OBS tué en plein arrêt : le rush est là, ce qui le décrit ne l'est pas.
+    // OBS killed mid-stop: the footage is there, what describes it is not.
     expect(wrapper.text()).toContain('sidecar absent')
     expect(wrapper.text()).toContain('Titre inconnu')
   })
 
-  it('explique un badge rouge, plutôt que de le laisser nu', async () => {
-    await ouvrir()
+  it('explains a red badge, rather than leave it bare', async () => {
+    await openVod()
     const wrapper = mount(VodRow, {
       props: {
         entry: {

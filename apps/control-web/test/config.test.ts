@@ -10,15 +10,15 @@ import { useRoomStore } from '../src/stores/room.js'
 import { obsState, payload } from './fixtures.js'
 
 /**
- * La configuration de la salle, saisie sur un brouillon.
+ * The room's configuration, typed into a draft.
  *
- * Le formulaire est peuplé à l'ouverture et jamais à chaque état reçu : la
- * régie en reçoit un toutes les quelques secondes, et repeupler les champs sous
- * les doigts effacerait la saisie en cours.
+ * The form is populated on opening and never on every state received: the control
+ * app gets one every few seconds, and repopulating the fields under the fingers
+ * would erase what is being typed.
  */
 
 const CONFIG: VisibleConfig = {
-  // Poste installé : c'est lui qui sait ouvrir un sélecteur.
+  // An installed machine: it is the one that can open a picker.
   canBrowse: true,
   obs: {
     A: { url: 'ws://127.0.0.1:4455', hasPassword: true, pending: false },
@@ -39,10 +39,10 @@ interface Envoi {
   body: unknown
 }
 
-let envois: Envoi[]
+let calls: Envoi[]
 let refuse: boolean
-/** Ce que le poste répond, quand le geste rapporte quelque chose. */
-let reponse: { ok: boolean; detail?: unknown } | null
+/** What the machine answers, when the gesture brings something back. */
+let answer: { ok: boolean; detail?: unknown } | null
 
 function salle(overrides: Partial<VisibleConfig> = {}) {
   const etat = payload()
@@ -53,33 +53,33 @@ function salle(overrides: Partial<VisibleConfig> = {}) {
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  envois = []
+  calls = []
   refuse = false
-  reponse = null
+  answer = null
   vi.stubGlobal('fetch', async (_url: string, init?: RequestInit) => {
-    envois.push({ body: JSON.parse(String(init?.body)) })
-    const corps = reponse ?? { ok: !refuse, message: refuse ? 'Refusé' : 'Fait' }
+    calls.push({ body: JSON.parse(String(init?.body)) })
+    const corps = answer ?? { ok: !refuse, message: refuse ? 'Refusé' : 'Fait' }
     return new Response(JSON.stringify(corps), {
       headers: { 'content-type': 'application/json' },
     })
   })
 })
 
-describe('brouillon', () => {
-  it('se peuple à l’ouverture, pas à chaque état reçu', () => {
+describe('draft', () => {
+  it('populates on opening, not on every state received', () => {
     salle()
     const config = useConfigStore()
     config.show()
 
     config.draft!.fileSlug = 'track-1'
-    // Un nouvel état arrive : la régie en reçoit un toutes les quelques
+    // A new state arrives: the control app gets one every few
     // secondes, et repeupler effacerait la saisie en cours.
     useRoomStore().payload!.diagnostics!.config = { ...CONFIG, fileSlug: 'other' }
 
     expect(config.draft?.fileSlug).toBe('track-1')
   })
 
-  it('ne propose rien à configurer tant que le hub n’a pas répondu', () => {
+  it('offers nothing to configure while the hub has not answered', () => {
     const etat = payload()
     etat.diagnostics!.config = null
     useRoomStore().seed(etat)
@@ -87,13 +87,13 @@ describe('brouillon', () => {
 
     config.show()
 
-    // Un formulaire vide se remplirait de zéros et les enverrait.
+    // An empty form would fill itself with zeros and send them.
     expect(config.draft).toBe(null)
     expect(config.patch()).toBe(null)
   })
 })
 
-describe('ce que le formulaire envoie', () => {
+describe('what the form sends', () => {
   it('ne renvoie pas un mot de passe qu’il n’a jamais eu', () => {
     salle()
     const config = useConfigStore()
@@ -101,7 +101,7 @@ describe('ce que le formulaire envoie', () => {
 
     const patch = config.patch() as { obs: { A: Record<string, unknown> } }
 
-    // Champ vide vaut « inchangé » : la page n'a jamais eu le mot de passe,
+    // An empty field means "unchanged": the page never had the password,
     // elle ne peut pas le renvoyer pour le conserver.
     expect(patch.obs.A).toEqual({ url: 'ws://127.0.0.1:4455' })
   })
@@ -115,24 +115,23 @@ describe('ce que le formulaire envoie', () => {
     expect((config.patch() as { obs: { A: { password: unknown } } }).obs.A.password).toBe(null)
   })
 
-  it('garde un rôle mappé hors des trois proposés pour l’instance', () => {
+  it('keeps a role mapped outside the three offered for the instance', () => {
     salle()
     const config = useConfigStore()
     config.show()
     config.draft!.sceneRoles.A.LIVE = 'Antenne'
 
     /*
-     * `TALK` sur OBS-A : les trois rôles offerts par instance sont une
-     * convention du formulaire, pas une contrainte du modèle — la carte accepte
-     * n'importe lequel des six des deux côtés. Le brouillon repart de
-     * l'existant, sinon ouvrir la modale et enregistrer suffirait à perdre un
-     * réglage qu'on n'a pas touché.
+     * `TALK` on OBS-A: the three roles offered per instance are a convention of the
+     * form, not a constraint of the model — the map accepts any of the six on either
+     * side. The draft starts from what exists, otherwise opening the modal and
+     * saving would be enough to lose a setting nobody touched.
      */
     const patch = config.patch() as { sceneRoles: { A: Record<string, string> } }
     expect(patch.sceneRoles.A).toEqual({ LIVE: 'Antenne', TALK: 'Plan large' })
   })
 
-  it('efface un rôle qu’on remet à « non configuré »', () => {
+  it('clears a role set back to "non configuré"', () => {
     salle()
     const config = useConfigStore()
     config.show()
@@ -143,18 +142,18 @@ describe('ce que le formulaire envoie', () => {
     })
   })
 
-  it('retombe sur le port existant plutôt que sur zéro', () => {
+  it('falls back on the existing port rather than on zero', () => {
     salle()
     const config = useConfigStore()
     config.show()
     config.draft!.displayPort = 'sept-mille'
 
-    // `Number('sept-mille')` vaut NaN : l'envoyer couperait l'écran local au
-    // prochain démarrage, sans rien à l'écran pour dire pourquoi.
+    // `Number('sept-mille')` is NaN: sending it would cut the local screen at the
+    // next start-up, with nothing on screen to say why.
     expect((config.patch() as { displayPort: number }).displayPort).toBe(7788)
   })
 
-  it('rend nuls les champs texte laissés vides', () => {
+  it('returns null for text fields left empty', () => {
     salle({ fileSlug: 'track-1', recordingRoot: '/rushes' })
     const config = useConfigStore()
     config.show()
@@ -167,8 +166,8 @@ describe('ce que le formulaire envoie', () => {
   })
 })
 
-describe('enregistrer', () => {
-  it('repeuple sur ce que le hub a retenu, pas sur ce qu’on a tapé', async () => {
+describe('saving', () => {
+  it('repopulates from what the hub kept, not from what was typed', async () => {
     salle()
     const config = useConfigStore()
     config.show()
@@ -177,8 +176,8 @@ describe('enregistrer', () => {
     await config.save()
     await flushPromises()
 
-    // C'est la seule façon de voir ce qui a réellement été retenu : le hub
-    // normalise, et un champ refusé resterait à l'écran comme s'il tenait.
+    // It is the only way to see what was really kept: the hub normalises, and a
+    // refused field would stay on screen as if it had held.
     expect(config.draft?.fileSlug).toBe('')
     expect(config.notice).toEqual({ text: 'Enregistré.', tone: 'ok' })
   })
@@ -203,15 +202,15 @@ describe('enregistrer', () => {
 
     await config.connect('A')
 
-    // Brancher sur l'ancienne adresse pendant que la nouvelle est à l'écran
-    // donnerait une connexion réussie sur le mauvais OBS, et rien pour le dire.
-    expect(envois.map((envoi) => (envoi.body as { action: string }).action)).toEqual([
+    // Plugging into the old address while the new one is on screen would give a
+    // successful connection to the wrong OBS, and nothing to say so.
+    expect(calls.map((call) => (call.body as { action: string }).action)).toEqual([
       'room.configure',
       'obs.connect',
     ])
   })
 
-  it('ne connecte pas si l’enregistrement échoue', async () => {
+  it('does not connect if the save fails', async () => {
     salle()
     const config = useConfigStore()
     config.show()
@@ -219,12 +218,12 @@ describe('enregistrer', () => {
 
     await config.connect('A')
 
-    expect(envois.map((envoi) => (envoi.body as { action: string }).action)).toEqual([
+    expect(calls.map((call) => (call.body as { action: string }).action)).toEqual([
       'room.configure',
     ])
   })
 
-  it('connecte quand même hors ligne, sans passer par le hub', async () => {
+  it('connects all the same offline, without going through the hub', async () => {
     const etat = salle()
     etat.state.connectivity = 'OFFLINE'
     const config = useConfigStore()
@@ -234,11 +233,11 @@ describe('enregistrer', () => {
 
     // La configuration s'enregistre sur le hub ; brancher OBS, non — c'est un
     // geste local, et c'est justement quand le hub manque qu'on en a besoin.
-    expect(envois.map((envoi) => (envoi.body as { action: string }).action)).toEqual(['obs.connect'])
+    expect(calls.map((call) => (call.body as { action: string }).action)).toEqual(['obs.connect'])
   })
 })
 
-describe('bloc OBS', () => {
+describe('OBS block', () => {
   function bloc(obs: Partial<ObsState>, config: VisibleConfig = CONFIG) {
     salle()
     const store = useConfigStore()
@@ -261,34 +260,34 @@ describe('bloc OBS', () => {
     expect(wrapper.get('[data-connect="A"]').attributes('disabled')).toBeDefined()
   })
 
-  it('laisse reconnecter une instance déconnectée qui disait « enregistre »', () => {
-    // Son dernier état connu est justement périmé.
+  it('lets a disconnected instance that said "recording" be reconnected', () => {
+    // Its last known state is precisely the stale one.
     const wrapper = bloc({ connected: false, recording: true, scenes: [] })
     expect(wrapper.get('[data-connect="A"]').attributes('disabled')).toBeUndefined()
   })
 
-  it('dit qu’un réglage enregistré n’est pas encore branché', () => {
+  it('says a saved setting is not yet plugged in', () => {
     const wrapper = bloc({ connected: true, recording: false, scenes: [], currentSceneName: 'X' }, {
       ...CONFIG,
       obs: { ...CONFIG.obs, A: { ...CONFIG.obs.A, pending: true } },
     })
 
-    // Sans le dire, un réglage juste resterait sans effet sans que personne ne
+    // Without saying so, a correct setting would stay without effect with nobody
     // voie pourquoi : enregistrer ne reconnecte pas.
     expect(wrapper.get('[data-state="A"]').text()).toContain('réglages non appliqués')
   })
 
-  it('garde dans la liste une scène qu’OBS ne connaît pas, dite pour ce qu’elle est', () => {
+  it('keeps in the list a scene OBS does not know, named for what it is', () => {
     const wrapper = bloc({ connected: true, recording: false, scenes: ['Autre'] })
 
-    // C'est même le défaut qu'on vient réparer ici : l'effacer en ouvrant la
-    // modale ferait disparaître le réglage fautif sans le montrer.
+    // That is in fact the defect being repaired here: clearing it by opening the
+    // modal would make the offending setting disappear without showing it.
     expect(wrapper.get('#cfg-role-A-LIVE').text()).toContain("Direct — absente d'OBS")
   })
 })
 
-describe('menu des écrans', () => {
-  it('n’ajoute le mur public que quand la salle en connaît l’adresse', async () => {
+describe('screens menu', () => {
+  it('adds the public wall only when the room knows its address', async () => {
     const sans = mount(ScreensMenu, { props: { payload: payload() } })
     await sans.get('[data-role="btn-screens"]').trigger('click')
     expect(sans.text()).not.toContain('Mur public')
@@ -298,30 +297,30 @@ describe('menu des écrans', () => {
     })
     await avec.get('[data-role="btn-screens"]').trigger('click')
 
-    // Un lien mort dans cette liste enverrait chercher une panne de réseau là
-    // où il n'y a qu'un réglage absent.
+    // A dead link in this list would send people looking for a network failure
+    // where there is only a missing setting.
     expect(avec.text()).toContain('https://mur.example')
   })
 
-  it('ouvre chaque écran dans un autre onglet', async () => {
+  it('opens each screen in another tab', async () => {
     const wrapper = mount(ScreensMenu, { props: { payload: payload() } })
     await wrapper.get('[data-role="btn-screens"]').trigger('click')
 
-    // Ouvrir la projection dans la fenêtre de régie remplacerait les commandes
-    // par l'écran de salle, en pleine intervention.
+    // Opening the projection in the control window would replace the commands with
+    // the room screen, in the middle of an intervention.
     for (const lien of wrapper.findAll('a')) expect(lien.attributes('target')).toBe('_blank')
   })
 })
 
 /**
- * Le dossier des VOD, choisi plutôt que retapé.
+ * The VOD folder, chosen rather than retyped.
  *
- * Un chemin de disque se saisit à la main sans erreur seulement quand on l'a
- * sous les yeux — et c'est justement le disque de la **machine de salle** qu'il
- * désigne, pas celui d'où l'on regarde la page.
+ * A disk path can only be typed by hand without error when one has it in front of
+ * them — and it is precisely the **room machine**'s disk it names, not the disk of
+ * wherever the page is being read.
  */
-describe('choisir le dossier des VOD', () => {
-  function ouvrir(overrides: Partial<VisibleConfig> = {}) {
+describe('choosing the VOD folder', () => {
+  function openPanel(overrides: Partial<VisibleConfig> = {}) {
     salle(overrides)
     const config = useConfigStore()
     config.show()
@@ -329,63 +328,64 @@ describe('choisir le dossier des VOD', () => {
   }
 
   it('remplit le champ avec ce que le poste a choisi', async () => {
-    reponse = { ok: true, detail: 'D:\\captations\\2026' }
-    const config = ouvrir()
+    answer = { ok: true, detail: 'D:\\captations\\2026' }
+    const config = openPanel()
 
     await config.browse()
 
-    expect(envois.at(-1)?.body).toEqual({ action: 'config.chooseFolder' })
+    expect(calls.at(-1)?.body).toEqual({ action: 'config.chooseFolder' })
     expect(config.draft?.recordingRoot).toBe('D:\\captations\\2026')
   })
 
   it('n’enregistre rien au passage', async () => {
-    reponse = { ok: true, detail: 'D:\\captations\\2026' }
-    const config = ouvrir()
+    answer = { ok: true, detail: 'D:\\captations\\2026' }
+    const config = openPanel()
 
     await config.browse()
 
     /*
-     * C'est « Enregistrer » qui décide, comme pour tout le reste du panneau.
-     * Un sélecteur qui écrirait dans la foulée ferait d'un coup d'œil dans
-     * l'arborescence une modification de la salle.
+     * "Enregistrer" is what decides, as for the rest of the panel. A picker that
+     * wrote straight away would turn a glance at the directory tree into a change to
+     * the room.
      */
-    expect(envois.map((envoi) => (envoi.body as { action: string }).action)).toEqual([
+    expect(calls.map((call) => (call.body as { action: string }).action)).toEqual([
       'config.chooseFolder',
     ])
   })
 
-  it('laisse le champ tel quel quand on renonce', async () => {
-    // Fermer un sélecteur est un geste, pas une panne.
-    reponse = { ok: true, detail: null }
-    const config = ouvrir({ recordingRoot: 'D:\\déjà\\là' })
+  it('leaves the field as it was when one gives up', async () => {
+    // Closing a picker is a gesture, not a failure.
+    answer = { ok: true, detail: null }
+    const config = openPanel({ recordingRoot: 'D:\\déjà\\là' })
 
     await config.browse()
 
     expect(config.draft?.recordingRoot).toBe('D:\\déjà\\là')
   })
 
-  it('n’offre pas le geste quand le poste ne sait pas l’ouvrir', () => {
+  it('does not offer the gesture when the machine cannot open it', () => {
     /*
-     * `dev:headless`, ou la régie ouverte depuis un navigateur : il n'y a pas
-     * de sélecteur à ouvrir. Un bouton qui ne répond pas vaut moins qu'un champ
-     * à remplir à la main — la modale le masque sur cette valeur.
+     * `dev:headless`, or the control app opened from a browser: there is no picker
+     * to open. A button that does not answer is worth less than a field to fill in
+     * by hand — the modal hides it on that value.
      */
-    expect(ouvrir({ canBrowse: false }).canBrowse).toBe(false)
-    expect(ouvrir({ canBrowse: true }).canBrowse).toBe(true)
+    expect(openPanel({ canBrowse: false }).canBrowse).toBe(false)
+    expect(openPanel({ canBrowse: true }).canBrowse).toBe(true)
   })
 })
 
 /**
- * Ce qui manque pour piloter la salle, et le panneau qui s'ouvre pour le dire.
+ * What is missing before the room can be driven, and the panel that opens to say
+ * so.
  *
- * Le verdict est pris sans attendre : l'installation d'une salle se fait avant
- * la première conférence, pas pendant, et une salle mal réglée doit le dire
- * quand quelqu'un est encore devant l'écran. Ce qui se répare tout seul — le
- * poste rebranche OBS toutes les trois secondes — s'efface de la liste, panneau
- * ouvert, sans le refermer sous les doigts.
+ * The verdict is taken without waiting: setting a room up happens before the first
+ * talk, not during it, and a badly configured room must say so while somebody is
+ * still in front of the screen. What repairs itself — the machine reconnects OBS
+ * every three seconds — clears from the list, with the panel open, without closing
+ * it under the fingers.
  */
-describe('salle incomplète au démarrage', () => {
-  /** Une salle réglée et branchée : le point de départ, qu'on abîme champ par champ. */
+describe('incomplete room at start-up', () => {
+  /** A configured, plugged-in room: the starting point, damaged field by field. */
   function configuredRoom(
     overrides: Partial<VisibleConfig> = {},
     obs: { A?: ObsState | null; B?: ObsState | null } = {},
@@ -408,7 +408,7 @@ describe('salle incomplète au démarrage', () => {
   const codes = (config: ReturnType<typeof useConfigStore>) =>
     config.missing.map((entry) => entry.code)
 
-  it('ne reproche rien à une salle réglée et branchée', () => {
+  it('reproaches nothing to a configured, plugged-in room', () => {
     expect(configuredRoom().missing).toEqual([])
   })
 
@@ -418,9 +418,9 @@ describe('salle incomplète au démarrage', () => {
     expect(codes(config)).toEqual(['obs-A', 'obs-B', 'vod'])
   })
 
-  it('dit l’adresse manquante plutôt que la déconnexion', () => {
-    // « Pas connecté » sur une instance dont l'adresse est vide enverrait
-    // chercher du côté du réseau.
+  it('says the missing address rather than the disconnection', () => {
+    // "Not connected" on an instance whose address is empty would send people
+    // looking at the network.
     const config = configuredRoom(
       { obs: { A: { url: '', hasPassword: false, pending: false }, B: CONFIG.obs.B } },
       { A: null },
@@ -430,7 +430,7 @@ describe('salle incomplète au démarrage', () => {
     expect(codes(config)).not.toContain('obs-A')
   })
 
-  it('signale un rôle configuré mais introuvable dans OBS', () => {
+  it('reports a role that is configured but not found in OBS', () => {
     const config = configuredRoom({}, { B: obsState({ unresolvedRoles: ['TALK'] }) })
 
     expect(config.missing).toEqual([
@@ -438,26 +438,26 @@ describe('salle incomplète au démarrage', () => {
     ])
   })
 
-  it('ne reproche pas à la captation de n’avoir aucun rôle mappé', () => {
+  it('does not reproach the take for having no role mapped', () => {
     // Beaucoup de salles ne changent jamais de plan pendant un talk : ce serait
-    // un faux motif. La projection sans rôle, elle, n'a aucun bouton.
+    // a false reason. Projection with no role, on the other hand, has no button.
     expect(configuredRoom({ sceneRoles: { A: { LIVE: 'Direct' }, B: {} } }).missing).toEqual([])
     expect(codes(configuredRoom({ sceneRoles: { A: {}, B: {} } }))).toEqual(['scenes-A'])
   })
 
-  it('ouvre le panneau sans attendre sur une salle incomplète', () => {
+  it('opens the panel without waiting on an incomplete room', () => {
     const config = configuredRoom({ recordingRoot: null }, { B: obsState({ connected: false }) })
 
     config.checkAtStartup()
 
     expect(config.open).toBe(true)
     // Le bandeau dit pourquoi : un panneau qui s'ouvre tout seul se lit comme
-    // une fausse manœuvre tant qu'il n'a pas donné sa raison.
+    // a slip until it has given its reason.
     expect(config.openAtStartup).toBe(true)
     expect(codes(config)).toEqual(['obs-B', 'vod'])
   })
 
-  it('n’ouvre rien sur une salle réglée et branchée', () => {
+  it('opens nothing on a configured, plugged-in room', () => {
     const config = configuredRoom()
 
     config.checkAtStartup()
@@ -465,9 +465,9 @@ describe('salle incomplète au démarrage', () => {
     expect(config.open).toBe(false)
   })
 
-  it('efface de la liste ce que le poste répare tout seul', () => {
-    // OBS est souvent lancé après la régie et le poste réessaie sans fin. La
-    // ligne s'en va d'elle-même, sans que le panneau se referme sous les doigts.
+  it('clears from the list what the machine repairs by itself', () => {
+    // OBS is often started after the control app and the machine retries endlessly.
+    // The row goes away by itself, without the panel closing under the fingers.
     const config = configuredRoom({}, { B: obsState({ connected: false }) })
     config.checkAtStartup()
     expect(codes(config)).toEqual(['obs-B'])
@@ -478,7 +478,7 @@ describe('salle incomplète au démarrage', () => {
     expect(config.open).toBe(true)
   })
 
-  it('ne rouvre pas le panneau que l’opérateur vient de fermer', () => {
+  it('does not reopen the panel the operator has just closed', () => {
     const config = configuredRoom({ recordingRoot: null })
     config.checkAtStartup()
     expect(config.open).toBe(true)
@@ -491,14 +491,14 @@ describe('salle incomplète au démarrage', () => {
     expect(config.open).toBe(false)
   })
 
-  it('juge dès que le hub rend enfin la configuration', async () => {
+  it('judges as soon as the hub finally returns the configuration', async () => {
     const etat = payload()
     etat.diagnostics!.config = null
     useRoomStore().seed(etat)
     const config = useConfigStore()
 
     config.checkAtStartup()
-    // Une salle dont on ne sait rien n'est pas une salle mal réglée.
+    // A room nothing is known about is not a badly configured room.
     expect(config.open).toBe(false)
 
     configuredRoom({ recordingRoot: null })
@@ -507,7 +507,7 @@ describe('salle incomplète au démarrage', () => {
     expect(config.open).toBe(true)
   })
 
-  it('ne présente pas comme un rappel un panneau ouvert à la main', () => {
+  it('does not present a hand-opened panel as a reminder', () => {
     const config = configuredRoom()
     config.show()
     expect(config.openAtStartup).toBe(false)

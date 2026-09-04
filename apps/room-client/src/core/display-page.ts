@@ -469,23 +469,58 @@ ${initialState}
     return cut.toDataURL('image/png')
   }
 
-  /** Crops a layer's logos, once each, never throwing. */
+  /**
+   * The same visual weight for every logo.
+   *
+   * Lined up on their height, an elongated logo covers five times the surface of
+   * a square one: side by side, the second reads as small even though both were
+   * given the same room. So it is the **area** that is held constant. The height
+   * carried by the markup is that of a logo of ordinary proportions — about
+   * 2.2:1 — and each logo deduces its own from its ratio, within a range that
+   * keeps a row from tipping over: a banner does not become a thread, a square
+   * does not become a poster.
+   *
+   * Runs on the displayed image, therefore after the crop: the empty margins the
+   * crop removes are exactly what falsified the comparison.
+   */
+  const NOMINAL_RATIO = 2.2
+
+  function fitLogo(img) {
+    const base = Number(img.dataset.height)
+    if (!base || !img.naturalWidth || !img.naturalHeight) return
+    const height = base * Math.sqrt(NOMINAL_RATIO / (img.naturalWidth / img.naturalHeight))
+    img.style.height = Math.min(Math.max(height, base * 0.68), base * 1.45).toFixed(2) + 'vmin'
+  }
+
+  /** Runs \`then\` on the image's real dimensions: now, or once it is loaded. */
+  const whenLoaded = (img, then) => {
+    if (img.complete && img.naturalWidth > 0) then()
+    else img.addEventListener('load', then, { once: true })
+  }
+
+  /** Crops a layer's logos, once each, sizes them all alike, never throwing. */
   function cropLogos(layer) {
     for (const img of layer ? layer.querySelectorAll('img[data-logo]') : []) {
+      const fit = () => fitLogo(img)
       const source = img.getAttribute('src')
-      if (!source || source.startsWith('data:')) continue
+      if (!source || source.startsWith('data:')) { whenLoaded(img, fit); continue }
 
+      // Already measured: the crop is replayed from the cache and only the
+      // sizing is redone — the layer is rewritten on every pass of the loop.
       const known = cropped.get(source)
-      if (known !== undefined) { if (known) img.src = known; continue }
+      if (known !== undefined) {
+        if (known) img.src = known
+        whenLoaded(img, fit)
+        continue
+      }
 
-      const measure = () => {
+      whenLoaded(img, () => {
         let result = null
         try { result = crop(img) } catch (_) { result = null }
         cropped.set(source, result)
-        if (result) img.src = result
-      }
-      if (img.complete && img.naturalWidth > 0) measure()
-      else img.addEventListener('load', measure, { once: true })
+        // The cropped image reloads: its proportions are the ones to size on.
+        if (result) { img.src = result; whenLoaded(img, fit) } else fit()
+      })
     }
   }
 
@@ -542,6 +577,13 @@ ${initialState}
     /**
      * A logo on its white badge.
      *
+     * \`height\` is a number of \`vmin\`, and the height of a logo of ordinary
+     * proportions only: the page then reworks each one so that they all cover
+     * the same surface (see \`fitLogo\`). It is written inline rather than as a
+     * class because the value serves twice — as a size before the images load,
+     * and as the base for that computation — and because a preview rendered
+     * without a browser keeps it that way.
+     *
      * The width is bounded by the caller, not here: in the band it is the screen
      * that limits, in a card it is the card. A very elongated logo — ape
      * factory's is five times its height — otherwise came out of its frame on
@@ -549,7 +591,9 @@ ${initialState}
      */
     const badge = (sponsor, height, width, index) => sponsor.logoUrl
       ? '<img src="' + escape(sponsor.logoUrl) + '" alt="' + escape(sponsor.name) + '"' +
-        ' data-logo style="--i:' + index + '" class="' + height + ' ' + width + ' rounded-[1.2vmin] bg-white' +
+        ' data-logo data-height="' + height + '"' +
+        ' style="--i:' + index + ';height:' + height + 'vmin"' +
+        ' class="' + width + ' rounded-[1.2vmin] bg-white' +
         ' object-contain px-[2vmin] py-[1.4vmin] drop-shadow-[0_.4vmin_1.2vmin_rgba(0,0,0,.45)]">'
       : '<span style="--i:' + index + '" class="text-[3.2vmin] font-semibold">' +
         escape(sponsor.name) + '</span>'
@@ -560,7 +604,7 @@ ${initialState}
       escape(top.name) + '</div>' +
       '<div class="cascade cards flex flex-wrap items-center justify-center gap-[3vmin]" style="--step:70ms">' +
       top.sponsors.map((s, index) =>
-        badge(s, dense ? 'h-[10vmin]' : 'h-[13vmin]', 'max-w-[24vw]', index)).join('') +
+        badge(s, dense ? 11 : 14, 'max-w-[28vw]', index)).join('') +
       '</div></section>'
 
     if (committed.length === 0) return '<div class="' + SECTION_TITLE + '">Nos partenaires</div>' + band
@@ -568,24 +612,32 @@ ${initialState}
     const row = committed.map((entry, index) => {
       const featured = entry.tierNames.length > 1
       /**
-       * The same logo height for the whole row, and the same vertical padding.
+       * The same weight for the whole row, and the same vertical padding.
        *
        * The hierarchy is carried by the frame — width, brand rule, tint — not by
        * the logo's size. Slimming down the one that took a single pack broke the
        * line: the badges no longer shared a top or a bottom, and the captions
        * floated at different heights. A row of partners reads like a shelf, or it
-       * does not read at all.
+       * does not read at all. Hence one surface for every logo, and one slot of
+       * fixed height to hold them: what varies from one badge to the next is the
+       * shape of the logo, never how much of the screen it takes.
        */
       const frame = featured
         ? 'border-[color-mix(in_srgb,var(--color)_50%,transparent)] bg-[color-mix(in_srgb,var(--color)_14%,transparent)] px-[3vmin] py-[2.2vmin]'
         : 'border-white/10 bg-white/5 px-[2.4vmin] py-[2.2vmin]'
-      const height = dense ? 'h-[6.5vmin]' : 'h-[8vmin]'
+      const height = dense ? 6.5 : 8
+      // A slot of fixed height for the badge, whatever the logo's own height:
+      // that is what keeps the captions on one line. It is cut to the tallest a
+      // logo can be, a square one, and no taller — otherwise the row would carry
+      // empty space that nothing ever fills.
+      const slot = dense ? 'h-[9.5vmin]' : 'h-[11.6vmin]'
       // Fixed width: the cards line up, and the row stops depending on the length
       // of the packs' names.
       const width = featured ? 'w-[38vmin]' : 'w-[27vmin]'
       return '<article style="--i:' + index + '" class="flex ' + width + ' flex-col items-center' +
         ' gap-[1.4vmin] rounded-[1.6vmin] border text-center ' + frame + '">' +
-        badge(entry.sponsor, height, 'max-w-full', 0) +
+        '<div class="flex ' + slot + ' items-center justify-center">' +
+        badge(entry.sponsor, height, 'max-w-full', 0) + '</div>' +
         '<div class="text-[2vmin] leading-snug text-dim">' +
         escape(entry.tierNames.join(' · ')) + '</div></article>'
     }).join('')

@@ -271,11 +271,11 @@ describe('vue des conférences', () => {
 
     expect(calls.filter((a) => a.path === 'program/controleOpenFeedback')).toHaveLength(0)
 
-    await wrapper.get('#btn-controle-feedback').trigger('click')
+    await wrapper.get('#btn-check-feedback').trigger('click')
     await flushPromises()
 
     expect(calls.filter((a) => a.path === 'program/controleOpenFeedback')).toHaveLength(1)
-    expect(wrapper.get('#controle-feedback').text()).toContain('27 talks')
+    expect(wrapper.get('#check-feedback').text()).toContain('27 talks')
   })
 
   it('offre les actions que la table du cycle de vie allowed, et pas d’autres', async () => {

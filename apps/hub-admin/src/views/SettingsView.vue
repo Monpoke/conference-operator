@@ -12,45 +12,44 @@ import {
 } from '../stores/settings.js'
 
 /**
- * Ce qui se règle une fois, et vaut pour la journée.
+ * What is set once, and holds for the day.
  *
- * Six panneaux qui partagent une contrainte : la vue se rafraîchit toutes les
- * dix secondes, et **aucun champ ne doit se réécrire pendant qu'on tape
- * dedans**. C'est `useSeededField` qui la tient, plutôt qu'un test de focus
- * recopié dans chaque panneau.
+ * Six panels sharing one constraint: the view refreshes every ten seconds, and
+ * **no field must rewrite itself while somebody is typing in it**. It is
+ * `useSeededField` that holds that, rather than a focus check copied into every
+ * panel.
  */
 const store = useSettingsStore()
 const { settings, derived, snapshots, rooms, storage } = storeToRefs(store)
 const toast = useToast()
 
-// — L'événement —
-const nom = useSeededField(() => settings.value?.eventName ?? '', 'event-nom')
-const nomCourt = useSeededField(() => settings.value?.eventShortName ?? '', 'event-nom-court')
-const projet = useSeededField(
+// — The event —
+const name = useSeededField(() => settings.value?.eventName ?? '', 'event-name')
+const shortName = useSeededField(() => settings.value?.eventShortName ?? '', 'event-short-name')
+const project = useSeededField(
   () => settings.value?.openFeedbackProjectId ?? '',
   'event-openfeedback',
 )
 
 /**
- * Les champs restent vides quand rien n'est réglé.
+ * The fields stay empty when nothing is set.
  *
- * Le placeholder montre alors ce que le hub a déduit du programme. Un champ
- * pré-rempli avec la valeur déduite ferait croire qu'elle est figée, et le
- * premier enregistrement l'aurait effectivement figée — le nom cesserait de
- * suivre les imports suivants.
+ * The placeholder then shows what the hub deduced from the program. A field
+ * pre-filled with the deduced value would suggest it is pinned, and the first save
+ * would in fact have pinned it — the name would stop following later imports.
  */
-const aideEvenement = computed(() =>
+const eventHelp = computed(() =>
   settings.value?.eventName
     ? `Nom imposé ici : il ne suivra plus les imports de programme. Videz le champ pour revenir à « ${derived.value.name} ».`
     : `Déduit du programme importé (« ${derived.value.name} »). Renseignez un nom pour contredire l'export amont.`,
 )
 
-async function enregistrerEvenement(): Promise<void> {
+async function saveEvent(): Promise<void> {
   try {
     await store.update({
-      eventName: orNull(nom.value.value),
-      eventShortName: orNull(nomCourt.value.value),
-      openFeedbackProjectId: orNull(projet.value.value),
+      eventName: orNull(name.value.value),
+      eventShortName: orNull(shortName.value.value),
+      openFeedbackProjectId: orNull(project.value.value),
     })
     toast.say('Événement enregistré')
   } catch {
@@ -58,56 +57,56 @@ async function enregistrerEvenement(): Promise<void> {
   }
 }
 
-// — Programme —
-const urlProgramme = useSeededField(() => settings.value?.programSourceUrl ?? '', 'url-programme')
+// — Program —
+const programUrl = useSeededField(() => settings.value?.programSourceUrl ?? '', 'program-url')
 
 /**
- * « Réimporter » part de l'URL **enregistrée**, pas de celle qui est à l'écran.
+ * "Réimporter" starts from the **saved** URL, not the one on screen.
  *
- * Le bouton est donc bloqué tant que les deux diffèrent : sans cela, on tape
- * une nouvelle adresse, on clique Réimporter, et le hub relit l'ancienne sans
- * que rien ne le dise.
+ * The button is therefore blocked while the two differ: without that, one types a
+ * new address, clicks Réimporter, and the hub reads the old one with nothing to
+ * say so.
  */
-const sourceEnAttente = computed(
-  () => urlProgramme.value.value.trim() !== (settings.value?.programSourceUrl ?? ''),
+const pendingSource = computed(
+  () => programUrl.value.value.trim() !== (settings.value?.programSourceUrl ?? ''),
 )
 
-const reimportPossible = computed(
-  () => settings.value?.programSourceUrl != null && !sourceEnAttente.value,
+const canReimport = computed(
+  () => settings.value?.programSourceUrl != null && !pendingSource.value,
 )
 
-const titreReimport = computed(() =>
+const reimportTitle = computed(() =>
   settings.value?.programSourceUrl == null
     ? 'Renseignez une URL, puis enregistrez'
-    : sourceEnAttente.value
+    : pendingSource.value
       ? "Enregistrez d'abord : l'import part de l'URL enregistrée"
       : settings.value.programSourceUrl,
 )
 
-async function enregistrerSource(): Promise<void> {
+async function saveSource(): Promise<void> {
   try {
-    // Vidé = plus de source. Le hub n'importe alors plus rien tout seul, ce qui
-    // est un état légitime : un programme déjà en base continue de servir.
-    await store.update({ programSourceUrl: orNull(urlProgramme.value.value) })
+    // Emptied means no source. The hub then imports nothing by itself, which is a
+    // legitimate state: a program already in the database goes on serving.
+    await store.update({ programSourceUrl: orNull(programUrl.value.value) })
     toast.say('Source du programme enregistrée')
   } catch {
     /* déjà remonté */
   }
 }
 
-async function reimporter(): Promise<void> {
+async function reimport(): Promise<void> {
   try {
-    // Le nombre de sessions, pas « importé » : c'est le seul chiffre qui dit
-    // si l'export d'en face contenait bien ce qu'on croyait.
+    // The session count, not "imported": it is the only figure that says whether
+    // the export at the other end really contained what one thought.
     toast.say(`${await store.reimport()} sessions importées`)
   } catch (cause) {
     if (cause instanceof Error && cause.message.startsWith('Aucune URL')) toast.fail(cause.message)
   }
 }
 
-async function activer(contentHash: string): Promise<void> {
+async function activate(contentHash: string): Promise<void> {
   try {
-    // Un import raté le jour J se rollback en un clic.
+    // A failed import on the day is rolled back with one click.
     await store.activate(contentHash)
     toast.say('Programme activé')
   } catch {
@@ -115,56 +114,56 @@ async function activer(contentHash: string): Promise<void> {
   }
 }
 
-// — Nos réseaux —
-const reseaux = ref<SocialLink[]>([])
+// — Our social links —
+const socialLinks = ref<SocialLink[]>([])
 
 watch(
   () => settings.value?.socialLinks,
-  (liens) => {
-    // Même précaution que les champs : ne pas réécrire la liste pendant qu'on
-    // tape dedans.
-    const zone = globalThis.document?.getElementById('reseaux')
-    if (zone != null && zone.contains(globalThis.document.activeElement)) return
-    reseaux.value = (liens ?? []).map((lien) => ({ ...lien }))
+  (links) => {
+    // The same precaution as the fields: do not rewrite the list while somebody is
+    // typing in it.
+    const area = globalThis.document?.getElementById('reseaux')
+    if (area != null && area.contains(globalThis.document.activeElement)) return
+    socialLinks.value = (links ?? []).map((link) => ({ ...link }))
   },
   { immediate: true, deep: true },
 )
 
-async function enregistrerReseaux(): Promise<void> {
-  // Les lignes vides sont écartées ici : ajouter une ligne puis se raviser est
-  // un geste normal, et le hub refuserait une URL vide.
-  const propres = reseaux.value.filter(
-    (lien) => lien.network.trim() !== '' && lien.handle.trim() !== '' && lien.url.trim() !== '',
+async function saveSocialLinks(): Promise<void> {
+  // Empty rows are dropped here: adding a row and then thinking better of it is a
+  // normal gesture, and the hub would refuse an empty URL.
+  const filled = socialLinks.value.filter(
+    (link) => link.network.trim() !== '' && link.handle.trim() !== '' && link.url.trim() !== '',
   )
   try {
-    await store.update({ socialLinks: propres })
+    await store.update({ socialLinks: filled })
     toast.say('Réseaux enregistrés')
   } catch {
     /* déjà remonté */
   }
 }
 
-// — Clôture automatique —
-const autoActif = ref(false)
-const autoDelai = ref(5)
+// — Automatic closure —
+const autoEnabled = ref(false)
+const autoGrace = ref(5)
 
 watch(
   settings,
-  (valeur) => {
-    if (valeur == null) return
-    autoActif.value = valeur.autoEndEnabled
-    if (globalThis.document?.activeElement?.id !== 'auto-delai') {
-      autoDelai.value = valeur.autoEndGraceMinutes
+  (value) => {
+    if (value == null) return
+    autoEnabled.value = value.autoEndEnabled
+    if (globalThis.document?.activeElement?.id !== 'auto-grace') {
+      autoGrace.value = value.autoEndGraceMinutes
     }
   },
   { immediate: true },
 )
 
-async function enregistrerCloture(): Promise<void> {
+async function saveAutoEnd(): Promise<void> {
   try {
     await store.update({
-      autoEndEnabled: autoActif.value,
-      autoEndGraceMinutes: Number(autoDelai.value),
+      autoEndEnabled: autoEnabled.value,
+      autoEndGraceMinutes: Number(autoGrace.value),
     })
     toast.say('Réglages enregistrés')
   } catch {
@@ -172,40 +171,41 @@ async function enregistrerCloture(): Promise<void> {
   }
 }
 
-// — Stockage —
+// — Storage —
 const bucket = useSeededField(() => storage.value?.bucket ?? '', 'vod-bucket')
-const prefixe = useSeededField(() => storage.value?.prefix ?? '', 'vod-prefixe')
+const prefix = useSeededField(() => storage.value?.prefix ?? '', 'vod-prefix')
 const vodAuto = ref(false)
-const debit = ref('')
+const rate = ref('')
 const cpu = ref(80)
-const marge = ref(5)
+const margin = ref(5)
 const part = ref(16)
 
 watch(
   storage,
-  (valeur) => {
-    if (valeur == null) return
-    const politique = valeur.politique
-    vodAuto.value = politique.actif
-    debit.value =
-      politique.debitMaxOctetsS == null ? '' : String(Math.round(politique.debitMaxOctetsS / 1024))
-    cpu.value = Math.round(politique.cpuMax * 100)
-    marge.value = politique.margeConferenceMinutes
-    part.value = politique.taillePartMo
+  (value) => {
+    if (value == null) return
+    // `politique` and its fields are the contract's own names: not renamed.
+    const policy = value.politique
+    vodAuto.value = policy.actif
+    rate.value =
+      policy.debitMaxOctetsS == null ? '' : String(Math.round(policy.debitMaxOctetsS / 1024))
+    cpu.value = Math.round(policy.cpuMax * 100)
+    margin.value = policy.margeConferenceMinutes
+    part.value = policy.taillePartMo
   },
   { immediate: true },
 )
 
-async function enregistrerStockage(): Promise<void> {
+async function saveStorage(): Promise<void> {
   try {
     await store.update({
       vodBucket: orNull(bucket.value.value),
-      vodPrefix: orNull(prefixe.value.value),
+      vodPrefix: orNull(prefix.value.value),
       vodPolitique: {
         actif: vodAuto.value,
-        debitMaxOctetsS: debit.value === '' || Number(debit.value) <= 0 ? null : Number(debit.value) * 1024,
+        debitMaxOctetsS: rate.value === '' || Number(rate.value) <= 0 ? null : Number(rate.value) * 1024,
         cpuMax: Math.min(1, Math.max(0.1, Number(cpu.value) / 100)),
-        margeConferenceMinutes: Number(marge.value),
+        margeConferenceMinutes: Number(margin.value),
         taillePartMo: Number(part.value),
       },
     })
@@ -215,44 +215,43 @@ async function enregistrerStockage(): Promise<void> {
   }
 }
 
-const controle = ref<StorageCheck | null>(null)
-const controleEnCours = ref(false)
+const check = ref<StorageCheck | null>(null)
+const checking = ref(false)
 
-async function eprouver(): Promise<void> {
-  controleEnCours.value = true
-  controle.value = null
+async function probeStorage(): Promise<void> {
+  checking.value = true
+  check.value = null
   try {
-    controle.value = await store.checkStorage()
+    check.value = await store.checkStorage()
   } catch {
-    /* déjà remonté */
+    /* already reported */
   } finally {
-    controleEnCours.value = false
+    checking.value = false
   }
 }
 
 // — Resynchronisation —
-const salleResync = ref('')
-const confirmationResync = ref(false)
+const resyncRoom = ref('')
+const resyncConfirmation = ref(false)
 
-const nomSalleResync = computed(
-  () => rooms.value.find((salle) => salle.id === salleResync.value)?.name ?? null,
+const resyncRoomName = computed(
+  () => rooms.value.find((room) => room.id === resyncRoom.value)?.name ?? null,
 )
 
-async function confirmerResync(): Promise<void> {
+async function confirmResync(): Promise<void> {
   try {
-    const resultat = await store.resync(salleResync.value === '' ? null : salleResync.value)
+    const result = await store.resync(resyncRoom.value === '' ? null : resyncRoom.value)
     /*
-     * Le nombre de salles visées, pas un « c'est parti ».
-     *
-     * Un hub sans aucune salle appairée accepte la demande sans que rien ne
-     * parte : dire « demandé » serait alors exact et trompeur.
+     * The number of rooms targeted, not a "it's off". A hub with no paired room at
+     * all accepts the request with nothing leaving: saying "requested" would then be
+     * exact and misleading.
      */
     toast.say(
-      nomSalleResync.value != null
-        ? `Resynchronisation demandée à ${nomSalleResync.value}`
-        : resultat.rooms === 0
+      resyncRoomName.value != null
+        ? `Resynchronisation demandée à ${resyncRoomName.value}`
+        : result.rooms === 0
           ? "Aucune salle sur ce hub : la demande n'atteindra personne"
-          : `Resynchronisation demandée à ${resultat.rooms} salle(s)`,
+          : `Resynchronisation demandée à ${result.rooms} salle(s)`,
     )
   } catch {
     /* déjà remonté */
@@ -262,23 +261,23 @@ async function confirmerResync(): Promise<void> {
 
 <template>
   <div
-    id="vue-reglages"
+    id="settings-view"
     class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5"
   >
     <Panel title="L'événement">
-      <label class="mb-[5px] block text-xs text-dim" for="event-nom">Nom affiché</label>
+      <label class="mb-[5px] block text-xs text-dim" for="event-name">Nom affiché</label>
       <input
-        id="event-nom"
-        v-model="nom.value.value"
+        id="event-name"
+        v-model="name.value.value"
         type="text"
         maxlength="80"
         :placeholder="derived.name"
         class="mb-[11px] w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text focus:border-brand focus:outline-none"
       />
-      <label class="mb-[5px] block text-xs text-dim" for="event-nom-court">Nom court</label>
+      <label class="mb-[5px] block text-xs text-dim" for="event-short-name">Nom court</label>
       <input
-        id="event-nom-court"
-        v-model="nomCourt.value.value"
+        id="event-short-name"
+        v-model="shortName.value.value"
         type="text"
         maxlength="40"
         :placeholder="derived.shortName"
@@ -289,39 +288,39 @@ async function confirmerResync(): Promise<void> {
       </label>
       <input
         id="event-openfeedback"
-        v-model="projet.value.value"
+        v-model="project.value.value"
         type="text"
         maxlength="80"
         placeholder="mon-evenement-2026"
         class="mb-[11px] w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text focus:border-brand focus:outline-none"
       />
-      <Button id="btn-event" variant="primary" class="w-full" @click="enregistrerEvenement">
+      <Button id="btn-event" variant="primary" class="w-full" @click="saveEvent">
         Enregistrer
       </Button>
-      <Hint id="event-aide">{{ aideEvenement }}</Hint>
+      <Hint id="event-help">{{ eventHelp }}</Hint>
     </Panel>
 
     <Panel title="Programme">
-      <label class="mb-[5px] block text-xs text-dim" for="url-programme">
+      <label class="mb-[5px] block text-xs text-dim" for="program-url">
         URL de l'export « conference-center »
       </label>
       <input
-        id="url-programme"
-        v-model="urlProgramme.value.value"
+        id="program-url"
+        v-model="programUrl.value.value"
         type="url"
         placeholder="https://…/programme.json"
         class="mb-[11px] w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text focus:border-brand focus:outline-none"
       />
       <div class="mb-[11px] flex gap-1.5">
-        <Button id="btn-source-programme" variant="primary" size="small" @click="enregistrerSource">
+        <Button id="btn-program-source" variant="primary" size="small" @click="saveSource">
           Enregistrer
         </Button>
         <Button
-          id="btn-reimporter"
+          id="btn-reimport"
           size="small"
-          :disabled="!reimportPossible"
-          :title="titreReimport"
-          @click="reimporter"
+          :disabled="!canReimport"
+          :title="reimportTitle"
+          @click="reimport"
         >
           Réimporter
         </Button>
@@ -358,11 +357,11 @@ async function confirmerResync(): Promise<void> {
                 {{ snapshot.issueCount > 0 ? snapshot.issueCount : '—' }}
               </td>
               <td class="border-t border-edge py-[9px] align-middle">
-                <!-- Un import raté le jour J se rollback en un clic. -->
+                <!-- A failed import on the day is rolled back with one click. -->
                 <Button
                   v-if="!snapshot.active"
                   size="small"
-                  @click="activer(snapshot.contentHash)"
+                  @click="activate(snapshot.contentHash)"
                 >
                   Activer
                 </Button>
@@ -375,11 +374,11 @@ async function confirmerResync(): Promise<void> {
 
     <Panel title="Nos réseaux">
       <div id="reseaux">
-        <Empty v-if="reseaux.length === 0">
+        <Empty v-if="socialLinks.length === 0">
           Aucun compte déclaré. La boucle des salles saute cette page.
         </Empty>
         <div
-          v-for="(lien, index) in reseaux"
+          v-for="(lien, index) in socialLinks"
           :key="index"
           class="mb-1.5 grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,2fr)_auto] items-center gap-1.5"
         >
@@ -398,16 +397,16 @@ async function confirmerResync(): Promise<void> {
             placeholder="https://…"
             class="min-w-0 rounded-lg border border-edge bg-canvas px-2 py-1.5 text-sm text-text"
           />
-          <Button variant="danger" size="small" title="Retirer ce compte" @click="reseaux.splice(index, 1)">
+          <Button variant="danger" size="small" title="Retirer ce compte" @click="socialLinks.splice(index, 1)">
             ×
           </Button>
         </div>
       </div>
       <div class="mt-2 flex gap-1.5">
-        <Button id="btn-reseau-ajouter" size="small" @click="reseaux.push({ network: '', handle: '', url: '' })">
+        <Button id="btn-social-add" size="small" @click="socialLinks.push({ network: '', handle: '', url: '' })">
           Ajouter un compte
         </Button>
-        <Button id="btn-reseaux" variant="primary" size="small" @click="enregistrerReseaux">
+        <Button id="btn-social-links" variant="primary" size="small" @click="saveSocialLinks">
           Enregistrer
         </Button>
       </div>
@@ -421,31 +420,31 @@ async function confirmerResync(): Promise<void> {
             Sans elle, un talk lancé reste « en cours » indéfiniment.
           </span>
         </div>
-        <input id="auto-actif" v-model="autoActif" type="checkbox" class="w-auto" />
+        <input id="auto-enabled" v-model="autoEnabled" type="checkbox" class="w-auto" />
       </div>
       <div class="flex items-baseline gap-3 pt-3">
-        <label class="flex-1" for="auto-delai">
+        <label class="flex-1" for="auto-grace">
           <strong class="mb-[3px] block text-sm">Délai de grâce</strong>
           <span class="text-xs text-dim">Minutes après la fin du créneau avant clôture.</span>
         </label>
       </div>
       <input
-        id="auto-delai"
-        v-model="autoDelai"
+        id="auto-grace"
+        v-model="autoGrace"
         type="number"
         min="0"
         max="120"
         class="w-[92px] rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text"
       />
-      <Button id="btn-reglages" variant="primary" class="mt-3 w-full" @click="enregistrerCloture">
+      <Button id="btn-auto-end" variant="primary" class="mt-3 w-full" @click="saveAutoEnd">
         Enregistrer
       </Button>
     </Panel>
 
     <Panel title="Stockage">
-      <Hint id="vod-etat" class="mt-0 mb-3">
+      <Hint id="vod-state" class="mt-0 mb-3">
         <template v-if="storage?.endpoint == null">
-          <!-- Pas de clés : rien à régler ici, et le dire évite qu'on remplisse
+          <!-- No keys: nothing to set here, and saying so stops people filling in
                le formulaire en se demandant pourquoi rien ne part. -->
           Aucun stockage S3 configuré sur ce hub. Les clés se posent dans son environnement
           (<code>S3_ENDPOINT</code>, <code>S3_ACCESS_KEY_ID</code>,
@@ -453,8 +452,8 @@ async function confirmerResync(): Promise<void> {
           de cette page qui ne se change pas en cours d'événement.
         </template>
         <template v-else-if="!storage.configure">
-          <!-- Le cas le plus déroutant des trois : les clés sont là, la page est
-               ouverte, et rien ne part parce qu'il manque un nom de bucket. -->
+          <!-- The most confusing of the three: the keys are there, the page is
+               ouverte, et rien ne part parce qu'il manque un name de bucket. -->
           Clés en place sur <strong>{{ storage.endpoint }}</strong>, mais
           <strong>aucun bucket</strong> : renseignez-le ci-dessous.
         </template>
@@ -476,10 +475,10 @@ async function confirmerResync(): Promise<void> {
         placeholder="rushes-cloudnord"
         class="mb-[11px] w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text"
       />
-      <label class="mb-[5px] block text-xs text-dim" for="vod-prefixe">Préfixe</label>
+      <label class="mb-[5px] block text-xs text-dim" for="vod-prefix">Préfixe</label>
       <input
-        id="vod-prefixe"
-        v-model="prefixe.value.value"
+        id="vod-prefix"
+        v-model="prefix.value.value"
         type="text"
         maxlength="200"
         placeholder="cn26"
@@ -493,8 +492,8 @@ async function confirmerResync(): Promise<void> {
 
       <div class="grid grid-cols-2 gap-2">
         <div>
-          <label class="mb-[5px] block text-xs text-dim" for="vod-debit">Débit max (Ko/s)</label>
-          <input id="vod-debit" v-model="debit" type="number" min="0" max="1000000"
+          <label class="mb-[5px] block text-xs text-dim" for="vod-rate">Débit max (Ko/s)</label>
+          <input id="vod-rate" v-model="rate" type="number" min="0" max="1000000"
             class="w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text" />
         </div>
         <div>
@@ -503,8 +502,8 @@ async function confirmerResync(): Promise<void> {
             class="w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text" />
         </div>
         <div>
-          <label class="mb-[5px] block text-xs text-dim" for="vod-marge">Marge (min)</label>
-          <input id="vod-marge" v-model="marge" type="number" min="0" max="120"
+          <label class="mb-[5px] block text-xs text-dim" for="vod-margin">Marge (min)</label>
+          <input id="vod-margin" v-model="margin" type="number" min="0" max="120"
             class="w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text" />
         </div>
         <div>
@@ -515,40 +514,40 @@ async function confirmerResync(): Promise<void> {
       </div>
 
       <div class="mt-3 flex gap-1.5">
-        <Button id="btn-vod-reglages" variant="primary" size="small" @click="enregistrerStockage">
+        <Button id="btn-vod-save" variant="primary" size="small" @click="saveStorage">
           Enregistrer
         </Button>
-        <!-- Le bouton n'a de sens que si le hub a des clés : sans elles, il n'y
+        <!-- The button only makes sense if the hub has keys: without them there is
              a rien à éprouver, et le panneau le dit déjà en haut. -->
         <Button
-          id="btn-vod-eprouver"
+          id="btn-vod-probe"
           size="small"
-          :disabled="storage?.endpoint == null || controleEnCours"
-          @click="eprouver"
+          :disabled="storage?.endpoint == null || checking"
+          @click="probeStorage"
         >
           Éprouver la connexion
         </Button>
       </div>
 
-      <div id="vod-controle" class="mt-2">
-        <!-- Le contrôle fait quatre allers-retours réseau : sans ce mot, on
+      <div id="vod-check" class="mt-2">
+        <!-- The check makes four network round trips: without this word, one
              croit que le bouton n'a rien fait et on reclique. -->
-        <Hint v-if="controleEnCours" class="mt-0">Contrôle en cours…</Hint>
+        <Hint v-if="checking" class="mt-0">Contrôle en cours…</Hint>
         <div
-          v-else-if="controle != null"
+          v-else-if="check != null"
           class="rounded-lg border p-2"
-          :class="controle.ok ? 'border-edge' : 'border-alert/40'"
+          :class="check.ok ? 'border-edge' : 'border-alert/40'"
         >
           <div
             class="mb-1 text-[11px] font-semibold tracking-[.08em] uppercase"
-            :class="controle.ok ? 'text-dim' : 'text-alert'"
+            :class="check.ok ? 'text-dim' : 'text-alert'"
           >
-            {{ controle.ok ? 'Stockage joignable et accessible en écriture' : 'Contrôle interrompu' }}
+            {{ check.ok ? 'Stockage joignable et accessible en écriture' : 'Contrôle interrompu' }}
           </div>
-          <!-- La dernière étape tentée porte le motif ; les précédentes disent
+          <!-- The last step attempted carries the reason; the earlier ones say
                jusqu'où on est allé, ce qui est la moitié de l'information. -->
           <div
-            v-for="etape in controle.etapes"
+            v-for="etape in check.etapes"
             :key="etape.nom"
             class="flex items-baseline gap-2 text-[12px]"
           >
@@ -570,26 +569,26 @@ async function confirmerResync(): Promise<void> {
       </label>
       <select
         id="resync-salle"
-        v-model="salleResync"
+        v-model="resyncRoom"
         class="mb-3 w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text"
       >
         <option value="">Toutes les salles</option>
-        <option v-for="salle in rooms" :key="salle.id" :value="salle.id">{{ salle.name }}</option>
+        <option v-for="room in rooms" :key="room.id" :value="room.id">{{ room.name }}</option>
       </select>
-      <Button id="btn-resync" class="w-full" @click="confirmationResync = true">
+      <Button id="btn-resync" class="w-full" @click="resyncConfirmation = true">
         Demander une resynchronisation
       </Button>
     </Panel>
 
     <ConfirmDialog
-      v-model:open="confirmationResync"
+      v-model:open="resyncConfirmation"
       title="Resynchronisation"
       confirm-label="Demander"
-      @confirm="confirmerResync"
+      @confirm="confirmResync"
     >
       <span id="resync-text">
         Demander une resynchronisation complète à
-        <strong>{{ nomSalleResync ?? 'toutes les salles' }}</strong>.
+        <strong>{{ resyncRoomName ?? 'toutes les salles' }}</strong>.
       </span>
     </ConfirmDialog>
   </div>

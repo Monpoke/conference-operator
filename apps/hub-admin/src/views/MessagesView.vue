@@ -18,7 +18,7 @@ const store = useMessagesStore()
 const { rooms, received, banners, target } = storeToRefs(store)
 const toast = useToast()
 
-const NIVEAUX = [
+const LEVELS = [
   { value: 'info', label: 'Info' },
   { value: 'warning', label: 'Important' },
   { value: 'urgent', label: 'Urgent' },
@@ -44,8 +44,8 @@ const duree = ref('')
  */
 const public_ = computed(() => cible.value === 'audience')
 
-const bandeauTexte = ref('')
-const bandeauNiveau = ref<'info' | 'warning' | 'urgent'>('info')
+const bannerText = ref('')
+const bannerLevel = ref<'info' | 'warning' | 'urgent'>('info')
 
 /** Changer de salle change l'historique consulté. */
 watch(target, () => void store.load())
@@ -77,24 +77,24 @@ async function envoyer(): Promise<void> {
  * salle changent à chaque fois.
  */
 function appliquerModele(modele: Banner): void {
-  bandeauTexte.value = modele.text
-  bandeauNiveau.value = modele.level
+  bannerText.value = modele.text
+  bannerLevel.value = modele.level
 }
 
-async function afficherBandeau(): Promise<void> {
-  if (bandeauTexte.value.trim().length === 0) {
+async function showBanner(): Promise<void> {
+  if (bannerText.value.trim().length === 0) {
     toast.fail('Renseignez un texte')
     return
   }
   try {
-    await store.showBanner({ text: bandeauTexte.value.trim(), level: bandeauNiveau.value })
+    await store.showBanner({ text: bannerText.value.trim(), level: bannerLevel.value })
     toast.say('Bandeau affiché')
   } catch {
     /* déjà remonté */
   }
 }
 
-async function masquerBandeau(): Promise<void> {
+async function hideBanner(): Promise<void> {
   try {
     await store.hideBanner()
     toast.say('Bandeau retiré')
@@ -106,7 +106,7 @@ async function masquerBandeau(): Promise<void> {
 
 <template>
   <div
-    id="vue-messages"
+    id="messages-view"
     class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5"
   >
     <Panel title="Envoyer un message">
@@ -121,7 +121,7 @@ async function masquerBandeau(): Promise<void> {
           { value: 'audience', label: 'Le public (écran de la salle)' },
         ]"
       />
-      <Select id="msg-niveau" v-model="niveau" label="Niveau" :options="NIVEAUX" />
+      <Select id="msg-niveau" v-model="niveau" label="Niveau" :options="LEVELS" />
       <!--
         `inputmode` et non `type="number"` : Vue applique un cast numérique
         implicite aux `input[type=number]`, et rendait donc un `number` au
@@ -179,7 +179,7 @@ async function masquerBandeau(): Promise<void> {
         <h2 class="mb-0 flex-1 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
           Bandeau live
         </h2>
-        <Button id="btn-bandeau-masquer" size="small" @click="masquerBandeau">
+        <Button id="btn-bandeau-masquer" size="small" @click="hideBanner">
           Masquer le bandeau
         </Button>
       </div>
@@ -198,21 +198,21 @@ async function masquerBandeau(): Promise<void> {
       <div class="mb-[11px] flex gap-1.5">
         <input
           id="bandeau-text"
-          v-model="bandeauTexte"
+          v-model="bannerText"
           maxlength="240"
           placeholder="Texte du bandeau"
           class="flex-1 rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text focus:border-brand focus:outline-none"
         />
         <select
           id="bandeau-niveau"
-          v-model="bandeauNiveau"
+          v-model="bannerLevel"
           class="w-auto shrink-0 rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text"
         >
-          <option v-for="option in NIVEAUX" :key="option.value" :value="option.value">
+          <option v-for="option in LEVELS" :key="option.value" :value="option.value">
             {{ option.label }}
           </option>
         </select>
-        <Button id="btn-bandeau-afficher" variant="primary" class="shrink-0" @click="afficherBandeau">
+        <Button id="btn-bandeau-afficher" variant="primary" class="shrink-0" @click="showBanner">
           Afficher
         </Button>
       </div>
@@ -243,7 +243,7 @@ async function masquerBandeau(): Promise<void> {
           <Badge v-if="passe.visible" variant="running">en cours</Badge>
           <Button
             size="small"
-            @click="passe.visible ? masquerBandeau() : store.showBanner(passe.message)"
+            @click="passe.visible ? hideBanner() : store.showBanner(passe.message)"
           >
             {{ passe.visible ? 'Masquer' : 'Remettre' }}
           </Button>

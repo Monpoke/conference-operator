@@ -16,88 +16,87 @@ import {
 } from '../stores/conferences.js'
 
 /**
- * Les conférences, et le planning.
+ * The talks, and the schedule.
  *
- * Deux tableaux dans le même onglet parce qu'ils répondent à deux questions
- * qu'on se pose l'une après l'autre : « où en est-on » puis « et après ». Les
- * séparer en deux vues ferait naviguer entre les deux toute la journée.
+ * Two tables in the same tab because they answer two questions asked one after the
+ * other: "where are we" and then "what comes next". Splitting them into two views
+ * would mean navigating between them all day long.
  *
- * Toutes les heures sont lues dans le fuseau de l'**événement**. La console
- * s'ouvre depuis n'importe où — un train, un autre pays — et le programme, lui,
- * ne se décale pas : afficher l'heure du poste ferait annoncer un talk une
- * heure trop tôt à qui appelle la salle.
+ * Every time is read in the **event's** time zone. The console opens from
+ * anywhere — a train, another country — and the program does not shift: showing
+ * the machine's own time would announce a talk an hour too early to whoever rings
+ * the room.
  */
 const store = useConferencesStore()
 const { states, planning, hasActiveProgram, room, actionsShown } = storeToRefs(store)
 const toast = useToast()
 
-const fuseau = computed(() => planning.value?.timezone ?? 'Europe/Paris')
+const zone = computed(() => planning.value?.timezone ?? 'Europe/Paris')
 
-const heure = (iso: string | null | undefined): string =>
-  iso == null ? '—' : timeFormatter(fuseau.value).format(new Date(iso))
+const hour = (iso: string | null | undefined): string =>
+  iso == null ? '—' : timeFormatter(zone.value).format(new Date(iso))
 
-const creneaux = computed(() =>
+const slots = computed(() =>
   (planning.value?.sessions ?? []).filter(
     (session) => room.value === '' || session.roomId === room.value,
   ),
 )
 
 /**
- * Le jour n'apparaît que s'il y en a plusieurs.
+ * The day only appears when there is more than one.
  *
- * Sur un événement d'une journée, il ne dirait rien et prendrait la place du
- * titre.
+ * At a one-day event it would say nothing and take the title's place.
  */
-const jourFormatter = computed(
+const dayFormatter = computed(
   () =>
     new Intl.DateTimeFormat('fr-FR', {
       weekday: 'short',
       day: '2-digit',
       month: '2-digit',
-      timeZone: fuseau.value,
+      timeZone: zone.value,
     }),
 )
 
-const plusieursJours = computed(
-  () => new Set(creneaux.value.map((s) => jourFormatter.value.format(new Date(s.startsAt)))).size > 1,
+const severalDays = computed(
+  () => new Set(slots.value.map((s) => dayFormatter.value.format(new Date(s.startsAt)))).size > 1,
 )
 
-/** Heure du hub, pas du navigateur : elle peut être simulée, et elle fait foi. */
-const maintenant = computed(() =>
+/** The hub's time, not the browser's: it may be simulated, and it is authoritative. */
+const now = computed(() =>
   planning.value == null ? Date.now() : Date.parse(planning.value.serverTime),
 )
 
-function situer(session: PlannedSession): 'a-venir' | 'en-cours' | 'passe' {
-  return placeInDay(session, maintenant.value)
+function placeOf(session: PlannedSession): 'a-venir' | 'en-cours' | 'passe' {
+  return placeInDay(session, now.value)
 }
 
-function creneauLisible(session: PlannedSession): string {
-  const jour = plusieursJours.value
-    ? `${jourFormatter.value.format(new Date(session.startsAt))} `
+function slotLabel(session: PlannedSession): string {
+  const day = severalDays.value
+    ? `${dayFormatter.value.format(new Date(session.startsAt))} `
     : ''
-  const fin = session.endsAt == null ? '' : `–${heure(session.endsAt)}`
-  return `${jour}${heure(session.startsAt)}${fin}`
+  const end = session.endsAt == null ? '' : `–${hour(session.endsAt)}`
+  return `${day}${hour(session.startsAt)}${end}`
 }
 
-/** Ce qui reste au programme : le dépassement est ce qui déclenche une décision. */
-function reste(etat: SessionState): { texte: string; classe: string } {
-  if (etat.status !== 'running' || etat.remainingMs == null) {
-    return { texte: '—', classe: 'text-dim' }
+/** What is left of the slot: the overrun is what triggers a decision. */
+function remaining(state: SessionState): { text: string; tone: string } {
+  if (state.status !== 'running' || state.remainingMs == null) {
+    return { text: '—', tone: 'text-dim' }
   }
-  const minutes = Math.round(etat.remainingMs / 60000)
+  const minutes = Math.round(state.remainingMs / 60000)
   if (minutes >= 0) {
-    return { texte: `${minutes} min`, classe: minutes <= 5 ? 'text-warn' : '' }
+    return { text: `${minutes} min`, tone: minutes <= 5 ? 'text-warn' : '' }
   }
-  return { texte: `+${Math.abs(minutes)} min`, classe: 'font-semibold text-alert' }
+  return { text: `+${Math.abs(minutes)} min`, tone: 'font-semibold text-alert' }
 }
 
 /**
- * Les actions suivent la table du cycle de vie, pas une condition écrite ici.
+ * The actions follow the lifecycle table, not a condition written here.
  *
- * C'est celle que le hub applique en écriture et que la régie lit pour griser
- * ses boutons. Une condition écrite à la main disait la même chose — mais par
- * une coïncidence entretenue, et c'est ce genre de coïncidence qui cesse d'être
- * vraie le jour où la table change.
+ * It is the table the hub applies on write and the control app reads to grey out
+ * its buttons. A hand-written condition said the same thing — but by a maintained
+ * coincidence, and it is that kind of coincidence that stops being true the day the
+ * table changes.
  */
 function actions(etat: SessionState): { libelle: string; action: 'start' | 'end' | 'reset'; danger: boolean }[] {
   const offertes: { libelle: string; action: 'start' | 'end' | 'reset'; danger: boolean }[] = []
@@ -120,28 +119,28 @@ function actions(etat: SessionState): { libelle: string; action: 'start' | 'end'
 async function agir(etat: SessionState, action: 'start' | 'end' | 'reset'): Promise<void> {
   try {
     await store.decide(etat.sessionId, action)
-    toast.say('Conférence mise à jour')
+    toast.say('Conférence mise à day')
   } catch {
-    /* déjà remonté */
+    /* already reported */
   }
 }
 
 /**
- * Le vécu : ce que le cycle de vie a réellement enregistré.
+ * What actually happened: what the lifecycle really recorded.
  *
- * L'instant complet passe en infobulle — l'heure suffit pour lire la journée,
- * la date entière sert au editing et à l'export VOD.
+ * The full instant goes into the tooltip — the time is enough to read the day, the
+ * whole date serves editing and the VOD export.
  */
-function vecu(session: PlannedSession): { texte: string; encours: boolean; titre: string } | null {
+function actual(session: PlannedSession): { text: string; running: boolean; title: string } | null {
   if (session.startedAt == null) return null
-  const par =
+  const by =
     session.decidedBy == null
       ? ''
       : ` · décidé par ${session.decidedBy === 'auto' ? 'la règle horaire' : session.decidedBy}`
   return {
-    texte: heure(session.startedAt),
-    encours: session.endedAt == null,
-    titre: session.startedAt + (session.endedAt == null ? '' : ` → ${session.endedAt}`) + par,
+    text: hour(session.startedAt),
+    running: session.endedAt == null,
+    title: session.startedAt + (session.endedAt == null ? '' : ` → ${session.endedAt}`) + by,
   }
 }
 
@@ -149,11 +148,11 @@ const decisions = computed(
   () => (planning.value?.sessions ?? []).filter((s) => s.overriddenAs != null).length,
 )
 
-async function changerOverride(session: PlannedSession, menu: HTMLSelectElement): Promise<void> {
-  // Le contrat n'accepte que ces deux mots, ou rien : le menu n'en propose pas
-  // d'autres, mais c'est le type qui le garantit plutôt que la confiance.
+async function changeOverride(session: PlannedSession, menu: HTMLSelectElement): Promise<void> {
+  // The contract accepts only these two words, or nothing: the menu offers no
+  // others, but it is the type that guarantees it rather than trust.
   const action = menu.value === '' ? null : (menu.value as 'talk' | 'break')
-  const avant = session.overriddenAs ?? ''
+  const before = session.overriddenAs ?? ''
   try {
     await store.override(session.id, action)
     toast.say(
@@ -165,54 +164,54 @@ async function changerOverride(session: PlannedSession, menu: HTMLSelectElement)
     )
   } catch {
     /*
-     * Remis à la main sur sa valeur d'avant.
+     * Put back by hand to its previous value.
      *
-     * Recharger le store ne suffit pas : la donnée revient identique, donc Vue
-     * ne voit aucun changement à propager et le `<select>` garde l'option que
-     * l'opérateur a cliquée. Le menu resterait alors sur une décision que
-     * personne n'a enregistrée — et qui ne descend ni aux salles ni aux QR.
+     * Reloading the store is not enough: the data comes back identical, so Vue sees
+     * no change to propagate and the `<select>` keeps the option the operator
+     * clicked. The menu would then stay on a decision nobody saved — one that
+     * reaches neither the rooms nor the QR codes.
      */
-    menu.value = avant
+    menu.value = before
   }
 }
 
-const controle = ref<FeedbackCheck | null>(null)
-const controleErreur = ref('')
-const controleEnCours = ref(false)
+const check = ref<FeedbackCheck | null>(null)
+const checkError = ref('')
+const checking = ref(false)
 
 async function verifierLiens(): Promise<void> {
-  controleEnCours.value = true
-  controleErreur.value = ''
-  controle.value = null
+  checking.value = true
+  checkError.value = ''
+  check.value = null
   try {
-    controle.value = await store.checkFeedback()
+    check.value = await store.checkFeedback()
   } catch (cause) {
-    controleErreur.value = cause instanceof Error ? cause.message : 'Contrôle impossible.'
+    checkError.value = cause instanceof Error ? cause.message : 'Contrôle impossible.'
   } finally {
-    controleEnCours.value = false
+    checking.value = false
   }
 }
 
-const feedbackOuvert = ref(false)
-const creneauFeedback = ref<PlannedSession | null>(null)
+const feedbackOpen = ref(false)
+const feedbackSlot = ref<PlannedSession | null>(null)
 
-function ouvrirFeedback(session: PlannedSession): void {
-  creneauFeedback.value = session
-  feedbackOuvert.value = true
+function openFeedback(session: PlannedSession): void {
+  feedbackSlot.value = session
+  feedbackOpen.value = true
 }
 
-const vodOuverte = ref(false)
-const creneauVod = ref<PlannedSession | null>(null)
+const vodOpen = ref(false)
+const vodSlot = ref<PlannedSession | null>(null)
 
-function ouvrirVod(session: PlannedSession): void {
-  creneauVod.value = session
-  vodOuverte.value = true
+function openVod(session: PlannedSession): void {
+  vodSlot.value = session
+  vodOpen.value = true
 }
 </script>
 
 <template>
   <div
-    id="vue-conferences"
+    id="conferences-view"
     class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5"
   >
     <Panel class="col-span-full" title="Conférences — toutes salles">
@@ -244,17 +243,17 @@ function ouvrirVod(session: PlannedSession): void {
               <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
                 {{ etat.roomName ?? etat.roomId ?? '—' }}
               </td>
-              <!-- Le titre, pas l'identifiant : personne ne reconnaît une conférence à son id. -->
+              <!-- The title, not the identifier: nobody recognises a talk by its id. -->
               <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
                 {{ etat.title ?? etat.sessionId }}
               </td>
               <td class="border-t border-edge py-[9px] pr-2.5 align-middle text-dim">
                 {{ etat.scheduledStartsAt == null
                   ? '—'
-                  : `${heure(etat.scheduledStartsAt)}–${heure(etat.scheduledEndsAt)}` }}
+                  : `${hour(etat.scheduledStartsAt)}–${hour(etat.scheduledEndsAt)}` }}
               </td>
               <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
-                <span :class="reste(etat).classe">{{ reste(etat).texte }}</span>
+                <span :class="remaining(etat).tone">{{ remaining(etat).text }}</span>
               </td>
               <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
                 <Badge :variant="etat.status === 'running' ? 'running' : 'ended'">
@@ -315,14 +314,14 @@ function ouvrirVod(session: PlannedSession): void {
         <!--
           Le contrôle des liens de feedback : sur demande et non en continu. Il
           sort du hub pour interroger OpenFeedback, et c'est un geste
-          d'avant-événement — on le passe une fois le programme importé, on
+          d'before-événement — on le passe une fois le programme importé, on
           corrige ce qu'il signale, et on n'y revient plus.
         -->
         <Button
-          id="btn-controle-feedback"
+          id="btn-check-feedback"
           size="small"
           class="shrink-0"
-          :disabled="controleEnCours"
+          :disabled="checking"
           @click="verifierLiens"
         >
           Vérifier les liens
@@ -352,36 +351,36 @@ function ouvrirVod(session: PlannedSession): void {
         </Button>
       </div>
 
-      <div v-if="controleEnCours || controle != null || controleErreur !== ''" id="controle-feedback" class="mb-2.5">
-        <Hint v-if="controleEnCours" class="mt-0">Interrogation d'OpenFeedback…</Hint>
-        <Hint v-else-if="controleErreur !== ''" class="mt-0 text-alert">{{ controleErreur }}</Hint>
-        <Hint v-else-if="controle != null" class="mt-0">
-          <!-- Projet introuvable : la panne la plus bête et la plus totale — une
+      <div v-if="checking || check != null || checkError !== ''" id="check-feedback" class="mb-2.5">
+        <Hint v-if="checking" class="mt-0">Interrogation d'OpenFeedback…</Hint>
+        <Hint v-else-if="checkError !== ''" class="mt-0 text-alert">{{ checkError }}</Hint>
+        <Hint v-else-if="check != null" class="mt-0">
+          <!-- Project not found: the silliest and most total failure — a
                faute de frappe dans un champ, et les vingt-sept adresses sont mortes. -->
-          <template v-if="!controle.projetTrouve">
+          <template v-if="!check.projetTrouve">
             <strong class="text-alert">
-              Projet « {{ controle.projet }} » introuvable chez OpenFeedback.
+              Projet « {{ check.projet }} » introuvable chez OpenFeedback.
             </strong>
-            {{ controle.detail }}
+            {{ check.detail }}
           </template>
-          <template v-else-if="controle.talksConnus == null">
-            <strong>Projet trouvé.</strong> {{ controle.detail }}
+          <template v-else-if="check.talksConnus == null">
+            <strong>Projet trouvé.</strong> {{ check.detail }}
           </template>
-          <template v-else-if="controle.manquants.length === 0">
+          <template v-else-if="check.manquants.length === 0">
             <strong class="text-ok">
-              {{ controle.talksConnus }} talks chez OpenFeedback, tous les créneaux ont le leur.
+              {{ check.talksConnus }} talks chez OpenFeedback, tous les créneaux ont le leur.
             </strong>
-            {{ controle.detail }}
+            {{ check.detail }}
           </template>
           <template v-else>
             <strong class="text-warn">
-              {{ controle.manquants.length }} créneau{{ controle.manquants.length > 1 ? 'x' : '' }}
+              {{ check.manquants.length }} créneau{{ check.manquants.length > 1 ? 'x' : '' }}
               sans page OpenFeedback
             </strong>
-            <span class="text-dim">sur {{ controle.talksConnus }} talks connus.</span>
-            {{ controle.detail }}
+            <span class="text-dim">sur {{ check.talksConnus }} talks connus.</span>
+            {{ check.detail }}
             <ul class="mt-1.5 list-disc pl-4">
-              <li v-for="manquant in controle.manquants" :key="manquant.feedbackId">
+              <li v-for="manquant in check.manquants" :key="manquant.feedbackId">
                 {{ manquant.title }}
                 <span class="font-mono text-[11px] text-dim">{{ manquant.feedbackId }}</span>
               </li>
@@ -409,40 +408,40 @@ function ouvrirVod(session: PlannedSession): void {
                 <Empty>Aucun programme actif. Il s'importe depuis les réglages.</Empty>
               </td>
             </tr>
-            <tr v-else-if="creneaux.length === 0">
+            <tr v-else-if="slots.length === 0">
               <td colspan="7"><Empty>Aucun créneau dans cette salle.</Empty></td>
             </tr>
             <tr
-              v-for="session in creneaux"
+              v-for="session in slots"
               v-else
               :key="session.id"
               :data-creneau="session.id"
-              :data-quand="situer(session)"
+              :data-quand="placeOf(session)"
               :class="{
-                'bg-surface2': situer(session) === 'en-cours',
-                'opacity-55': situer(session) === 'passe',
+                'bg-surface2': placeOf(session) === 'en-cours',
+                'opacity-55': placeOf(session) === 'passe',
               }"
             >
               <td
                 class="border-t border-edge py-[9px] pr-2.5 align-middle whitespace-nowrap tabular-nums"
                 :class="
-                  situer(session) === 'en-cours' ? 'font-semibold text-text' : 'text-dim'
+                  placeOf(session) === 'en-cours' ? 'font-semibold text-text' : 'text-dim'
                 "
               >
                 <span
-                  v-if="situer(session) === 'en-cours'"
+                  v-if="placeOf(session) === 'en-cours'"
                   class="mr-1.5 inline-block h-3.5 w-[3px] translate-y-0.5 rounded-full bg-brand"
                 ></span>
-                {{ creneauLisible(session) }}
+                {{ slotLabel(session) }}
               </td>
               <td class="border-t border-edge py-[9px] pr-2.5 align-middle whitespace-nowrap tabular-nums">
-                <span v-if="vecu(session) == null" class="text-dim">—</span>
-                <span v-else :title="vecu(session)!.titre">
-                  {{ vecu(session)!.texte }}–<span
-                    v-if="vecu(session)!.encours"
+                <span v-if="actual(session) == null" class="text-dim">—</span>
+                <span v-else :title="actual(session)!.title">
+                  {{ actual(session)!.text }}–<span
+                    v-if="actual(session)!.running"
                     class="text-brand"
                     >en cours</span
-                  ><template v-else>{{ heure(session.endedAt) }}</template>
+                  ><template v-else>{{ hour(session.endedAt) }}</template>
                 </span>
               </td>
               <td class="border-t border-edge py-[9px] pr-2.5 align-middle whitespace-nowrap">
@@ -466,20 +465,20 @@ function ouvrirVod(session: PlannedSession): void {
                 </div>
                 <!--
                   Dit en toutes lettres ce que le trait montre : le surlignage
-                  seul se confondrait avec une ligne survolée, et l'heure
+                  seul se confondrait avec une ligne survolée, et l'hour
                   affichée peut être simulée — auquel cas « en ce moment » est la
                   seule chose qui explique pourquoi c'est cette ligne-là qui est
                   marquée.
                 -->
                 <div
-                  v-if="situer(session) === 'en-cours'"
+                  v-if="placeOf(session) === 'en-cours'"
                   class="text-xs font-semibold text-brand"
                 >
                   en ce moment
                 </div>
               </td>
               <td class="border-t border-edge py-[9px] pr-2.5 align-middle whitespace-nowrap">
-                <!-- Case vide plutôt que lien mort : sans projet OpenFeedback
+                <!-- An empty cell rather than a dead link: with no OpenFeedback project
                      réglé, ou sur une pause, il n'y a rien à noter. -->
                 <a
                   v-if="session.feedbackUrl != null"
@@ -502,7 +501,7 @@ function ouvrirVod(session: PlannedSession): void {
                       ? 'Identifiant OpenFeedback corrigé'
                       : 'Identifiant OpenFeedback'
                   "
-                  @click="ouvrirFeedback(session)"
+                  @click="openFeedback(session)"
                 >
                   {{ session.feedbackIdOverride != null ? 'id ✱' : 'id' }}
                 </Button>
@@ -518,7 +517,7 @@ function ouvrirVod(session: PlannedSession): void {
                   size="small"
                   :data-vod-session="session.id"
                   title="Où en est la captation de cette conférence"
-                  @click="ouvrirVod(session)"
+                  @click="openVod(session)"
                 >
                   captation
                 </Button>
@@ -543,7 +542,7 @@ function ouvrirVod(session: PlannedSession): void {
                   class="w-auto rounded-lg border border-edge bg-canvas px-2 py-1 text-xs text-text"
                   :data-session-action="session.id"
                   :value="session.overriddenAs ?? ''"
-                  @change="changerOverride(session, $event.target as HTMLSelectElement)"
+                  @change="changeOverride(session, $event.target as HTMLSelectElement)"
                 >
                   <option value="">
                     Aucune — {{ overrideChoice(session).scheduled === 'break' ? 'pause' : 'conférence' }}
@@ -563,19 +562,19 @@ function ouvrirVod(session: PlannedSession): void {
 
       <Hint>
         « Prévu » vient du programme, « Réel » du cycle de vie — l'instant du « Commencer » et
-        celui du « Terminer », clôture automatique comprise. Les deux sont lus dans le fuseau de
+        celui du « Terminer », clôture automatique comprise. Les deux sont lus dans le zone de
         l'événement, pas celui du poste d'où l'on regarde. Le lien « noter » ouvre la page
         OpenFeedback de la conférence, la même que celle du QR projeté en salle.
       </Hint>
 
       <Hint v-if="planning != null && planning.openFeedbackProjectId == null" id="planning-feedback-aide">
-        <strong>Aucun projet OpenFeedback réglé</strong> : la colonne « Feedback » reste vide, et
+        <strong>Aucun projet OpenFeedback réglé</strong> : la colonne « Feedback » remaining vide, et
         les salles ne projettent aucun QR « notez ce talk ». Il se règle dans
         <strong>Réglages → L'événement</strong>, une fois pour tout l'événement.
       </Hint>
     </Panel>
 
-    <FeedbackIdDialog v-model:open="feedbackOuvert" :session="creneauFeedback" />
-    <VodFolderDialog v-model:open="vodOuverte" :session="creneauVod" :timezone="fuseau" />
+    <FeedbackIdDialog v-model:open="feedbackOpen" :session="feedbackSlot" />
+    <VodFolderDialog v-model:open="vodOpen" :session="vodSlot" :timezone="zone" />
   </div>
 </template>

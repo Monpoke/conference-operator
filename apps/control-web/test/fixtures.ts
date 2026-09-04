@@ -6,15 +6,15 @@ import { NO_EDITING_MARKS } from '@cloudnord/contract'
 /**
  * A plausible room, and **typed with no escape hatch**.
  *
- * Aucun `as unknown as DisplayPayload` ici, et c'est le point. Le type est
- * partagé depuis `@cloudnord/contract` précisément pour que le poste et la
- * régie ne puissent pas diverger ; le caster dans les fixtures rendait ce
- * partage décoratif — un champ ajouté à la charge utile aurait laissé toute la
- * suite au vert sur une salle qui ne peut pas exister.
+ * No `as unknown as DisplayPayload` here, and that is the point. The type is
+ * shared from `@cloudnord/contract` precisely so that the machine and the control
+ * app cannot diverge; casting it in the fixtures made that sharing decorative — a
+ * field added to the payload would have left the whole suite green on a room that
+ * cannot exist.
  *
- * Les instants sont absolus et choisis autour de 10:00 : les tests placent
- * l'heure de la salle où ils veulent plutôt que de la dériver de `Date.now()`,
- * ce qui rendrait la moitié d'entre eux dépendants du moment où ils tournent.
+ * The instants are absolute and chosen around 10:00: the tests place the room's
+ * time wherever they want rather than derive it from `Date.now()`, which would
+ * make half of them depend on when they run.
  */
 export const START_MS = Date.parse('2026-10-30T09:00:00.000Z')
 export const END_MS = Date.parse('2026-10-30T09:45:00.000Z')
@@ -57,7 +57,7 @@ export function talk(overrides: Partial<Session> = {}): Session {
   }
 }
 
-/** Une instance OBS branchée, à retoucher champ par champ. */
+/** A plugged-in OBS instance, to be touched up field by field. */
 export function obsState(overrides: Partial<ObsState> = {}): ObsState {
   return {
     instance: 'A',
@@ -73,7 +73,7 @@ export function obsState(overrides: Partial<ObsState> = {}): ObsState {
   }
 }
 
-/** La configuration d'une salle, complète. Les surcharges portent sur un champ. */
+/** A room's configuration, complete. The overrides apply to one field. */
 export function config(overrides: Partial<VisibleConfig> = {}): VisibleConfig {
   return {
     obs: {
@@ -88,8 +88,8 @@ export function config(overrides: Partial<VisibleConfig> = {}): VisibleConfig {
     openFeedbackProjectId: null,
     promptRecordingOnStart: true,
     promptRecordingOnStop: true,
-    // Le poste installé sait ouvrir un sélecteur ; la régie ouverte dans un
-    // navigateur, non. Les deux se testent en surchargeant ce champ.
+    // An installed machine can open a picker; the control app opened in a browser
+    // cannot. Both are tested by overriding this field.
     canBrowse: true,
     sceneOnStart: 'LIVE',
     ...overrides,

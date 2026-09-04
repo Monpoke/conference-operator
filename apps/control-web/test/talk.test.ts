@@ -10,12 +10,12 @@ import { useRoomStore } from '../src/stores/room.js'
 import { START_MS, END_MS, config, payload, speaker, talk } from './fixtures.js'
 
 /**
- * Commencer et terminer, et les quatre questions qui se mettent en travers.
+ * Starting and ending, and the four questions that get in the way.
  *
- * Ce sont les deux gestes de la journée qu'on ne peut pas défaire d'un clic :
- * l'un inscrit un talk comme tenu à une heure, l'autre le clôt devant les
- * autres régies. Leur ordre — l'avance avant l'enregistrement — est le fond du
- * sujet, pas un détail d'implémentation.
+ * These are the day's two gestures that cannot be undone with a click: one writes
+ * a talk down as held at a given hour, the other closes it in front of the other
+ * control apps. Their order — earliness before recording — is the heart of the
+ * matter, not an implementation detail.
  */
 
 interface Envoi {
@@ -38,12 +38,12 @@ function stubFetch(): void {
   })
 }
 
-/** Une salle placée à un instant donné, avec l'horloge arrêtée là. */
-function salleA(atMs: number, overrides: Record<string, unknown> = {}): void {
+/** A room placed at a given instant, with the clock stopped there. */
+function roomAt(atMs: number, overrides: Record<string, unknown> = {}): void {
   const etat = payload()
   Object.assign(etat.state, overrides)
-  // Le décalage porte l'heure de la salle : le store lit `clock.real + offset`,
-  // et l'horloge n'avance pas d'elle-même dans un test.
+  // The offset carries the room's time: the store reads `clock.real + offset`, and
+  // the clock does not advance by itself in a test.
   etat.state.serverTimeOffsetMs = atMs - Date.now()
   useRoomStore().seed(etat)
 }
@@ -56,10 +56,10 @@ beforeEach(() => {
   stubFetch()
 })
 
-describe('commencer', () => {
-  it('démarre sans rien demander quand l’heure est proche', async () => {
-    salleA(START_MS - 60_000)
-    // La captation tourne déjà : l'autre garde-fou n'a rien à dire, et c'est
+describe('starting', () => {
+  it('starts without asking anything when the hour is close', async () => {
+    roomAt(START_MS - 60_000)
+    // The take is already running: the other guard has nothing to say, and it is
     // celui de l'avance qu'on regarde ici.
     useRoomStore().payload!.diagnostics!.recording = {
       active: true,
@@ -68,67 +68,67 @@ describe('commencer', () => {
       startedAtCorrectedMs: null,
       editing: NO_EDITING_MARKS,
     }
-    const conference = useTalkStore()
+    const talkStore = useTalkStore()
 
-    conference.askStart()
+    talkStore.askStart()
     await flushPromises()
 
     // Lancer une minute avant l'heure est le geste normal du matin : le
-    // confirmer à chaque fois en ferait un réflexe.
-    expect(conference.tooEarlyOpen).toBe(false)
+    // confirming it every time would turn it into a reflex.
+    expect(talkStore.tooEarlyOpen).toBe(false)
     expect(actions()).toEqual(['session.start', 'scene.set'])
   })
 
-  it('demande confirmation très en avance, et dit de combien', async () => {
-    salleA(START_MS - TOO_EARLY_MS - 60_000)
-    const conference = useTalkStore()
+  it('asks for confirmation very early, and says by how much', async () => {
+    roomAt(START_MS - TOO_EARLY_MS - 60_000)
+    const talkStore = useTalkStore()
 
-    conference.askStart()
+    talkStore.askStart()
     await flushPromises()
 
     /*
-     * Un « Commencer » de trop y écrivait un talk tenu de 08:45 à 08:45 — un
-     * créneau marqué comme s'étant déroulé alors que la salle était vide.
+     * One "Commencer" too many wrote a talk as held from 08:45 to 08:45 — a slot
+     * marked as having taken place while the room was empty.
      */
-    expect(conference.tooEarlyOpen).toBe(true)
+    expect(talkStore.tooEarlyOpen).toBe(true)
     expect(actions()).toEqual([])
-    expect(conference.tooEarlyDetail).toContain('16 min')
-    expect(conference.tooEarlyDetail).toContain('est au programme à')
+    expect(talkStore.tooEarlyDetail).toContain('16 min')
+    expect(talkStore.tooEarlyDetail).toContain('est au programme à')
   })
 
-  it('pose la question de l’avance avant celle de l’enregistrement', async () => {
-    salleA(START_MS - TOO_EARLY_MS - 60_000)
-    const conference = useTalkStore()
+  it('asks the earliness question before the recording one', async () => {
+    roomAt(START_MS - TOO_EARLY_MS - 60_000)
+    const talkStore = useTalkStore()
 
-    conference.askStart()
+    talkStore.askStart()
     await flushPromises()
 
     /*
-     * L'une porte sur la conférence qu'on lance, l'autre sur la manière de la
-     * lancer. Dans l'autre ordre, une captation démarrerait pour un talk qu'on
-     * va renoncer à lancer.
+     * One is about the talk being started, the other about how to start it. The
+     * other way round, a take would start for a talk one is about to decline to
+     * start.
      */
-    expect(conference.tooEarlyOpen).toBe(true)
-    expect(conference.recordingOpen).toBe(false)
+    expect(talkStore.tooEarlyOpen).toBe(true)
+    expect(talkStore.recordingOpen).toBe(false)
   })
 })
 
-describe('l’avertissement de captation', () => {
+describe('the take warning', () => {
   it('se pose quand rien n’enregistre', async () => {
-    salleA(START_MS)
-    const conference = useTalkStore()
+    roomAt(START_MS)
+    const talkStore = useTalkStore()
 
-    conference.askStart()
+    talkStore.askStart()
     await flushPromises()
 
-    // La question n'a de sens qu'avant : une fois la conférence lancée,
-    // l'enregistrement démarré manquera toujours les premières minutes.
-    expect(conference.recordingOpen).toBe(true)
+    // The question only makes sense beforehand: once the talk has started, a
+    // recording begun now will always miss the first few minutes.
+    expect(talkStore.recordingOpen).toBe(true)
     expect(actions()).toEqual([])
   })
 
-  it('se tait quand la captation tourne déjà', async () => {
-    salleA(START_MS)
+  it('stays silent when the take is already running', async () => {
+    roomAt(START_MS)
     const room = useRoomStore()
     room.payload!.diagnostics!.recording = {
       active: true,
@@ -137,130 +137,130 @@ describe('l’avertissement de captation', () => {
       startedAtCorrectedMs: null,
       editing: NO_EDITING_MARKS,
     }
-    const conference = useTalkStore()
+    const talkStore = useTalkStore()
 
-    conference.askStart()
+    talkStore.askStart()
     await flushPromises()
 
-    expect(conference.recordingOpen).toBe(false)
+    expect(talkStore.recordingOpen).toBe(false)
     expect(actions()).toEqual(['session.start', 'scene.set'])
   })
 
-  it('se tait quand la salle a décoché le garde-fou', async () => {
-    salleA(START_MS)
+  it('stays silent when the room has unticked the guard', async () => {
+    roomAt(START_MS)
     const room = useRoomStore()
     room.payload!.diagnostics!.config = config({ promptRecordingOnStart: false })
-    const conference = useTalkStore()
+    const talkStore = useTalkStore()
 
-    conference.askStart()
+    talkStore.askStart()
     await flushPromises()
 
-    expect(conference.recordingOpen).toBe(false)
+    expect(talkStore.recordingOpen).toBe(false)
   })
 
-  it('garde le garde-fou quand le réglage n’est pas encore arrivé', async () => {
-    salleA(START_MS)
-    const conference = useTalkStore()
+  it('keeps the guard while the setting has not arrived yet', async () => {
+    roomAt(START_MS)
+    const talkStore = useTalkStore()
 
-    conference.askStart()
+    talkStore.askStart()
     await flushPromises()
 
-    // Lire un champ absent comme « ne rien faire » désactiverait un garde-fou
-    // en silence, ce qui est exactement ce qu'il est censé empêcher.
-    expect(conference.recordingOpen).toBe(true)
+    // Reading a missing field as "do nothing" would silently disable a guard,
+    // which is exactly what it is meant to prevent.
+    expect(talkStore.recordingOpen).toBe(true)
   })
 
   it('enregistre d’abord, et seulement s’il part', async () => {
-    salleA(START_MS)
-    const conference = useTalkStore()
+    roomAt(START_MS)
+    const talkStore = useTalkStore()
     refuse = 'recording.start'
 
-    await conference.launch(true)
+    await talkStore.launch(true)
 
-    // Commencer quand même rendrait l'avertissement mensonger la prochaine
-    // fois : il aurait dit « enregistre » sur un talk qui ne l'était pas.
+    // Beginning anyway would make the warning a lie the next time round: it would
+    // have said "recording" of a talk that was not.
     expect(actions()).toEqual(['recording.start'])
   })
 
-  it('enchaîne captation, conférence, puis scène', async () => {
-    salleA(START_MS)
-    const conference = useTalkStore()
+  it('chains take, talk, then scene', async () => {
+    roomAt(START_MS)
+    const talkStore = useTalkStore()
 
-    await conference.launch(true)
+    await talkStore.launch(true)
 
-    // La scène après le démarrage : une bascule sans conférence lancée
-    // laisserait la salle à l'antenne sur rien.
+    // The scene after the start: a switch with no talk started would leave the
+    // room on air over nothing.
     expect(actions()).toEqual(['recording.start', 'session.start', 'scene.set'])
   })
 
-  it('ne bascule aucune scène quand la salle a choisi de ne pas basculer', async () => {
-    salleA(START_MS)
+  it('switches no scene when the room chose not to switch', async () => {
+    roomAt(START_MS)
     useRoomStore().payload!.diagnostics!.config = config({ sceneOnStart: null })
-    const conference = useTalkStore()
+    const talkStore = useTalkStore()
 
-    await conference.launch(false)
+    await talkStore.launch(false)
 
-    // `null` est un choix explicite, distinct d'un réglage absent.
+    // `null` is an explicit choice, distinct from a missing setting.
     expect(actions()).toEqual(['session.start'])
   })
 })
 
-describe('terminer', () => {
-  it('termine sans rien demander à l’heure ou en dépassement', async () => {
-    salleA(END_MS + 60_000)
-    const conference = useTalkStore()
+describe('ending', () => {
+  it('ends without asking anything on time or in overrun', async () => {
+    roomAt(END_MS + 60_000)
+    const talkStore = useTalkStore()
 
-    conference.askEnd()
+    talkStore.askEnd()
     await flushPromises()
 
-    // Terminer à l'heure est le geste normal de la journée : le confirmer à
-    // chaque fois reviendrait à ne plus le lire du tout.
-    expect(conference.endEarlyOpen).toBe(false)
+    // Ending on time is the day's normal gesture: confirming it every time would
+    // amount to no longer reading it at all.
+    expect(talkStore.endEarlyOpen).toBe(false)
     expect(actions()).toEqual(['session.end'])
   })
 
-  it('demande confirmation en avance, et dit ce que ça change', async () => {
-    salleA(END_MS - 8 * 60_000)
-    const conference = useTalkStore()
+  it('asks for confirmation when early, and says what it changes', async () => {
+    roomAt(END_MS - 8 * 60_000)
+    const talkStore = useTalkStore()
 
-    conference.askEnd()
+    talkStore.askEnd()
     await flushPromises()
 
-    expect(conference.endEarlyOpen).toBe(true)
+    expect(talkStore.endEarlyOpen).toBe(true)
     expect(actions()).toEqual([])
-    expect(conference.endEarlyDetail).toContain('8 min')
-    expect(conference.endEarlyDetail).toContain('les autres régies le verront')
+    expect(talkStore.endEarlyDetail).toContain('8 min')
+    expect(talkStore.endEarlyDetail).toContain('les autres régies le verront')
   })
 
-  it('ne demande rien sur un créneau sans heure de fin', async () => {
+  it('asks nothing on a slot with no end time', async () => {
     const etat = payload({ sessions: [talk({ endsAtMs: null })] })
     etat.state.targetSession = talk({ endsAtMs: null })
     etat.state.serverTimeOffsetMs = START_MS - Date.now()
     useRoomStore().seed(etat)
-    const conference = useTalkStore()
+    const talkStore = useTalkStore()
 
-    conference.askEnd()
+    talkStore.askEnd()
     await flushPromises()
 
-    // Pas d'avance possible : rien à demander.
-    expect(conference.endEarlyOpen).toBe(false)
+    // No earliness possible: nothing to ask.
+    expect(talkStore.endEarlyOpen).toBe(false)
     expect(actions()).toEqual(['session.end'])
   })
 })
 
 /**
- * La captation oubliée au « Terminer ».
+ * The take forgotten at "Terminer".
  *
- * Elle ne se voit nulle part : rien ne clignote, le témoin dit « enregistre »
- * comme il le disait pendant le talk. Elle court pendant la pause, le talk
- * suivant s'écrit dans le même fichier — sous le titre et les intervenants du
- * précédent — et le garde-fou du démarrage se tait, puisqu'une captation
- * tourne. Le prix ne se découvre qu'au editing.
+ * It is visible nowhere: nothing blinks, the indicator says "recording" as it did
+ * during the talk. It runs through the break, the next talk is written into the
+ * same file — under the previous one's title and speakers — and the start-up guard
+ * stays silent, since a take is running. The price is only discovered at editing
+ * time.
  */
-describe('arrêter la captation en terminant', () => {
-  /** Une salle en fin de créneau, captation en cours. */
-  function enCaptation(atMs = END_MS + 60_000): void {
-    salleA(atMs)
+describe('stopping the take while ending', () => {
+  /** A room at the end of its slot, take running. */
+  function recording(atMs = END_MS + 60_000): void {
+    roomAt(atMs)
     useRoomStore().payload!.diagnostics!.recording = {
       active: true,
       markers: 2,
@@ -270,111 +270,111 @@ describe('arrêter la captation en terminant', () => {
     }
   }
 
-  it('propose d’arrêter, et ne termine rien avant la réponse', async () => {
-    enCaptation()
-    const conference = useTalkStore()
+  it('offers to stop, and ends nothing before the answer', async () => {
+    recording()
+    const talkStore = useTalkStore()
 
-    conference.askEnd()
+    talkStore.askEnd()
     await flushPromises()
 
-    expect(conference.stopRecordingOpen).toBe(true)
+    expect(talkStore.stopRecordingOpen).toBe(true)
     expect(actions()).toEqual([])
-    expect(conference.stopRecordingDetail).toContain('enregistre encore')
-    expect(conference.stopRecordingDetail).toContain('le même fichier')
+    expect(talkStore.stopRecordingDetail).toContain('enregistre encore')
+    expect(talkStore.stopRecordingDetail).toContain('le même fichier')
   })
 
-  it('arrête d’abord, et termine ensuite', async () => {
-    enCaptation()
-    const conference = useTalkStore()
-    conference.askEnd()
+  it('stops first, and ends afterwards', async () => {
+    recording()
+    const talkStore = useTalkStore()
+    talkStore.askEnd()
     await flushPromises()
 
-    await conference.finish(true)
+    await talkStore.finish(true)
 
     // L'ordre compte : terminer d'abord laisserait la captation courir sans que
     // rien ne le repose jamais.
     expect(actions()).toEqual(['recording.stop', 'session.end'])
-    expect(conference.stopRecordingOpen).toBe(false)
+    expect(talkStore.stopRecordingOpen).toBe(false)
   })
 
-  it('ne termine pas si l’arrêt échoue', async () => {
-    enCaptation()
+  it('does not end if the stop fails', async () => {
+    recording()
     refuse = 'recording.stop'
-    const conference = useTalkStore()
+    const talkStore = useTalkStore()
 
-    await conference.finish(true)
+    await talkStore.finish(true)
 
     expect(actions()).toEqual(['recording.stop'])
   })
 
-  it('laisse terminer sans arrêter, pour un talk enregistré d’une traite', async () => {
-    enCaptation()
-    const conference = useTalkStore()
-    conference.askEnd()
+  it('allows ending without stopping, for a talk recorded in one go', async () => {
+    recording()
+    const talkStore = useTalkStore()
+    talkStore.askEnd()
     await flushPromises()
 
-    await conference.finish(false)
+    await talkStore.finish(false)
 
     expect(actions()).toEqual(['session.end'])
   })
 
   it('ne demande rien quand aucune captation ne tourne', async () => {
-    salleA(END_MS + 60_000)
-    const conference = useTalkStore()
+    roomAt(END_MS + 60_000)
+    const talkStore = useTalkStore()
 
-    conference.askEnd()
+    talkStore.askEnd()
     await flushPromises()
 
-    expect(conference.stopRecordingOpen).toBe(false)
+    expect(talkStore.stopRecordingOpen).toBe(false)
     expect(actions()).toEqual(['session.end'])
   })
 
-  it('pose la question de l’avance avant celle de la captation', async () => {
-    // La première porte sur la conférence qu'on termine, la seconde sur la
-    // manière de la terminer : couper la captation d'un talk qu'on va renoncer
-    // à terminer serait le pire des deux ordres.
-    enCaptation(END_MS - 8 * 60_000)
-    const conference = useTalkStore()
+  it('asks the earliness question before the take one', async () => {
+    // The first is about the talk being ended, the second about how to end it:
+    // cutting the take of a talk one is about to decline to end would be the worse
+    // of the two orders.
+    recording(END_MS - 8 * 60_000)
+    const talkStore = useTalkStore()
 
-    conference.askEnd()
+    talkStore.askEnd()
     await flushPromises()
-    expect(conference.endEarlyOpen).toBe(true)
-    expect(conference.stopRecordingOpen).toBe(false)
+    expect(talkStore.endEarlyOpen).toBe(true)
+    expect(talkStore.stopRecordingOpen).toBe(false)
 
-    await conference.end()
+    await talkStore.end()
 
-    expect(conference.endEarlyOpen).toBe(false)
-    expect(conference.stopRecordingOpen).toBe(true)
+    expect(talkStore.endEarlyOpen).toBe(false)
+    expect(talkStore.stopRecordingOpen).toBe(true)
     expect(actions()).toEqual([])
   })
 
-  it('se tait quand la salle a décoché le garde-fou', async () => {
-    enCaptation()
+  it('stays silent when the room has unticked the guard', async () => {
+    recording()
     useRoomStore().payload!.diagnostics!.config = config({ promptRecordingOnStop: false })
-    const conference = useTalkStore()
+    const talkStore = useTalkStore()
 
-    conference.askEnd()
+    talkStore.askEnd()
     await flushPromises()
 
-    expect(conference.stopRecordingOpen).toBe(false)
+    expect(talkStore.stopRecordingOpen).toBe(false)
     expect(actions()).toEqual(['session.end'])
   })
 
-  it('garde le garde-fou quand le réglage n’est pas encore arrivé', async () => {
-    enCaptation()
+  it('keeps the guard while the setting has not arrived yet', async () => {
+    recording()
     useRoomStore().payload!.diagnostics!.config = null
-    const conference = useTalkStore()
+    const talkStore = useTalkStore()
 
-    conference.askEnd()
+    talkStore.askEnd()
     await flushPromises()
 
-    // Lire un champ absent comme « ne rien faire » désactiverait un garde-fou
-    // en silence, ce qui est exactement ce qu'il est censé empêcher.
-    expect(conference.stopRecordingOpen).toBe(true)
+    // Reading a missing field as "do nothing" would silently disable a guard,
+    // which is exactly what it is meant to prevent.
+    expect(talkStore.stopRecordingOpen).toBe(true)
   })
 })
 
-describe('panneau de la conférence', () => {
+describe('talk panel', () => {
   function monter(atMs: number, states: Record<string, SessionStatus> = {}) {
     const etat = payload()
     etat.state.sessionStates = states
@@ -384,23 +384,23 @@ describe('panneau de la conférence', () => {
   it('refuse un geste que le hub refuserait, et dit pourquoi', () => {
     const wrapper = monter(START_MS)
 
-    // La table du cycle de vie est celle que le hub applique en écriture : un
-    // bouton actif dont la procédure refuserait le geste n'est plus possible.
+    // The lifecycle table is the one the hub applies on write: an active button
+    // whose procedure would refuse the gesture is no longer possible.
     const terminer = wrapper.get('#btn-talk-end')
     expect(terminer.attributes('disabled')).toBeDefined()
     expect(terminer.attributes('title')).toBeTruthy()
   })
 
-  it('nomme ce que le décompte vise une fois la conférence terminée', () => {
-    const suivante = talk({ id: 'talk-2', startsAtMs: END_MS + 900_000, endsAtMs: null })
-    const etat = payload({ sessions: [talk(), suivante] })
+  it('names what the countdown aims at once the talk has ended', () => {
+    const following = talk({ id: 'talk-2', startsAtMs: END_MS + 900_000, endsAtMs: null })
+    const etat = payload({ sessions: [talk(), following] })
     etat.state.sessionStates = { 'talk-1': 'ended' }
     const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: END_MS } })
 
     /*
-     * Le grand nombre compte jusqu'à la prochaine conférence, la ligne
-     * « Suivant » annonce le prochain *créneau* — qui peut être une pause. Les
-     * deux différaient sans que rien ne l'explique.
+     * The large number counts down to the next talk, while the "Suivant" line
+     * announces the next *slot* — which may be a break. The two differed with
+     * nothing to explain it.
      */
     expect(wrapper.get('[data-role="talk-detail"]').text()).toContain(
       'Prochaine conférence à',
@@ -408,14 +408,14 @@ describe('panneau de la conférence', () => {
     expect(wrapper.get('[data-role="talk-detail"]').text()).toContain('Remettre à venir')
   })
 
-  it('peint le dépassement en alerte : c’est lui qui déclenche une décision', () => {
+  it('paints the overrun in alert: it is what triggers a decision', () => {
     const wrapper = monter(END_MS + 600_000, { 'talk-1': 'running' })
 
     expect(wrapper.get('[data-role="talk-detail"]').text()).toContain('dépassement de')
     expect(wrapper.get('[data-role="talk-detail"]').classes()).toContain('text-alert')
   })
 
-  it('dit qu’il n’y a rien à piloter plutôt que de laisser un titre vide', () => {
+  it('says there is nothing to drive rather than leave an empty title', () => {
     const etat = payload()
     etat.state.targetSession = null
     const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: START_MS } })
@@ -426,7 +426,7 @@ describe('panneau de la conférence', () => {
     expect(wrapper.get('#btn-talk-start').attributes('disabled')).toBeDefined()
   })
 
-  it('annonce l’heure devant le titre tant que le créneau n’a pas commencé', () => {
+  it('announces the hour before the title while the slot has not begun', () => {
     const etat = payload()
     etat.state.targetIsUpcoming = true
     const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: START_MS - 600_000 } })
@@ -437,13 +437,13 @@ describe('panneau de la conférence', () => {
     )
   })
 
-  it('dit que plus rien ne suit, plutôt que de ne rien dire', () => {
+  it('says nothing follows any more, rather than say nothing', () => {
     expect(monter(START_MS).get('[data-role="next"]').text()).toBe('Plus rien après au programme.')
   })
 })
 
-describe('intervenants', () => {
-  it('les sépare quand ils sont plusieurs', () => {
+describe('speakers', () => {
+  it('separates them when there are several', () => {
     const etat = payload()
     etat.state.targetSession = talk({
       speakers: [speaker('Steven'), speaker('Nuno')],
@@ -453,8 +453,8 @@ describe('intervenants', () => {
     expect(wrapper.text()).toContain('Steven · Nuno')
   })
 
-  it('se retire sur un créneau sans speaker, plutôt que de laisser un vide', () => {
-    // Une ligne vide sous « Pause déjeuner » ferait chercher un nom absent.
+  it('withdraws on a slot with no speaker, rather than leave a blank', () => {
+    // An empty line under "Pause déjeuner" would send people looking for a missing name.
     const etat = payload()
     etat.state.targetSession = talk({ kind: 'break', speakers: [] })
     const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: START_MS } })
@@ -462,15 +462,15 @@ describe('intervenants', () => {
     expect(wrapper.text()).not.toContain('·')
   })
 
-  it('donne aussi celui de la conférence suivante', () => {
-    const suivante = talk({
+  it('gives the next talk\'s one too', () => {
+    const following = talk({
       id: 'talk-2',
       title: 'Blind ops',
       startsAtMs: END_MS + 600_000,
       endsAtMs: null,
       speakers: [speaker('Nuno')],
     })
-    const etat = payload({ sessions: [talk(), suivante] })
+    const etat = payload({ sessions: [talk(), following] })
     const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: START_MS } })
 
     expect(wrapper.get('[data-role="next"]').text()).toContain('Blind ops')
@@ -478,7 +478,7 @@ describe('intervenants', () => {
   })
 })
 
-describe('les deux boutons suivent la table du cycle de vie', () => {
+describe('both buttons follow the lifecycle table', () => {
   function boutons(statut: SessionStatus | null) {
     const etat = payload()
     etat.state.sessionStates = statut == null ? {} : { 'talk-1': statut }
@@ -489,25 +489,25 @@ describe('les deux boutons suivent la table du cycle de vie', () => {
     }
   }
 
-  it('dit pourquoi « Terminer » est fermé sur une conférence non lancée', () => {
+  it('says why "Terminer" is closed on a talk that has not started', () => {
     const { demarrer, terminer } = boutons(null)
 
     expect(terminer.attributes('disabled')).toBeDefined()
     expect(terminer.attributes('title')).toContain("n'a pas été lancée")
-    // Le geste possible, lui, n'a rien à expliquer.
+    // The gesture that is possible has nothing to explain.
     expect(demarrer.attributes('disabled')).toBeUndefined()
     expect(demarrer.attributes('title')).toBeUndefined()
   })
 
-  it('dit pourquoi « Commencer » est fermé sur un talk en cours', () => {
+  it('says why "Commencer" is closed on a running talk', () => {
     const { demarrer, terminer } = boutons('running')
 
     expect(demarrer.attributes('title')).toContain('déjà lancée')
     expect(terminer.attributes('title')).toBeUndefined()
   })
 
-  it('rouvre « Commencer » après une clôture, sans passer par « Remettre à venir »', () => {
-    // Une conférence close par la règle horaire alors qu'elle n'était pas finie
+  it('reopens "Commencer" after a close, without going through "Remettre à venir"', () => {
+    // A talk closed by the scheduling rule while it was not finished
     // se rattrape d'un geste.
     const { demarrer, terminer } = boutons('ended')
 
@@ -516,43 +516,42 @@ describe('les deux boutons suivent la table du cycle de vie', () => {
   })
 })
 
-describe('terminée avant son créneau', () => {
-  /** Le talk de 09:00 n'a pas commencé, et un autre suit à 11:00. */
-  function avantLeCreneau(statuts: Record<string, SessionStatus>) {
-    const apres = talk({
+describe('ended before its slot', () => {
+  /** The 09:00 talk has not started, and another follows at 11:00. */
+  function beforeTheSlot(statuses: Record<string, SessionStatus>) {
+    const next = talk({
       id: 'talk-2',
       title: 'Le talk suivant',
       startsAt: '2026-10-30T11:00:00.000Z',
       startsAtMs: Date.parse('2026-10-30T11:00:00Z'),
       endsAtMs: Date.parse('2026-10-30T11:50:00Z'),
     })
-    const etat = payload({ sessions: [talk(), apres] })
+    const etat = payload({ sessions: [talk(), next] })
     etat.state.targetIsUpcoming = true
-    etat.state.sessionStates = statuts
+    etat.state.sessionStates = statuses
     return etat
   }
 
-  it('ne se désigne pas elle-même comme prochaine conférence', () => {
-    const etat = avantLeCreneau({ 'talk-1': 'ended' })
+  it('does not name itself as the next talk', () => {
+    const etat = beforeTheSlot({ 'talk-1': 'ended' })
     const wrapper = mount(TalkPanel, {
       props: { payload: etat, nowMs: Date.parse('2026-10-30T08:00:00Z') },
     })
 
     /*
-     * La salle se désignait elle-même : le détail annonçait « prochaine
-     * conférence à 09:50 » sur la conférence de 09:50 qu'on venait de terminer.
-     * 11:00 UTC, soit 12:00 à Paris.
+     * The room named itself: the detail announced "prochaine conférence à 09:50" on
+     * the 09:50 talk one had just ended. 11:00 UTC, that is 12:00 in Paris.
      */
     expect(wrapper.get('[data-role="talk-badge"]').text()).toBe('terminée')
     expect(wrapper.get('[data-role="talk-detail"]').text()).toContain('12:00')
     expect(wrapper.get('[data-role="talk-detail"]').text()).not.toContain('10:00')
   })
 
-  it('ne saute rien tant que la conférence tient toujours', () => {
-    // Sans décision, la prochaine conférence reste celle du créneau — c'est ce
-    // que vise « Commencer », et les deux doivent désigner le même.
+  it('skips nothing while the talk still holds', () => {
+    // With no decision, the next talk stays the slot's — it is what "Commencer"
+    // aims at, and the two must name the same one.
     const wrapper = mount(TalkPanel, {
-      props: { payload: avantLeCreneau({}), nowMs: Date.parse('2026-10-30T08:00:00Z') },
+      props: { payload: beforeTheSlot({}), nowMs: Date.parse('2026-10-30T08:00:00Z') },
     })
 
     expect(wrapper.get('[data-role="talk-badge"]').text()).toBe('à venir')

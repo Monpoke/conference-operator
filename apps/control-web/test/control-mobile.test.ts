@@ -13,18 +13,17 @@ import { useLockStore } from '../src/stores/lock.js'
 import { talk } from './fixtures.js'
 
 /**
- * Les trois écrans de la régie mobile, dans l'ordre où on les traverse.
+ * The mobile control app's three screens, in the order one crosses them.
  *
- * Se connecter, choisir une salle, la piloter — et chacun **remplace** le
- * précédent : un pupitre tenu d'une main n'a pas de place pour deux choses à la
- * fois. Ce que ce fichier tient est ce qu'aucun typage ne dit : que le bon
- * écran est monté au bon moment, et qu'on ne pilote rien tant qu'on n'a pas
- * pris la salle.
+ * Sign in, choose a room, drive it — and each **replaces** the previous one: a
+ * desk held in one hand has no room for two things at once. What this file holds
+ * is what no typing says: that the right screen is mounted at the right moment,
+ * and that nothing is driven until the room has been taken.
  */
 
 const AT = Date.parse('2026-10-30T09:10:00.000Z')
 
-function salle(overrides: Partial<ControlRoom> = {}): ControlRoom {
+function room(overrides: Partial<ControlRoom> = {}): ControlRoom {
   return {
     roomId: 'track-1',
     name: 'Track #1',
@@ -35,8 +34,8 @@ function salle(overrides: Partial<ControlRoom> = {}): ControlRoom {
   }
 }
 
-/** L'onglet de test : le même que celui que le store fabriquera. */
-const MOI = 'session-de-ce-test'
+/** The test's tab: the same one the store will build. */
+const ME = 'session-de-ce-test'
 const OTHER_TAB = 'session-tablette'
 
 function lockOf(holder: string, holderId = OTHER_TAB): ControlRoom['lock'] {
@@ -79,32 +78,32 @@ function vue(overrides: Partial<ControlView> = {}): ControlView {
   }
 }
 
-/** Le hub, réduit à ce que ces écrans lui demandent. */
-function hubFactice(salles: ControlRoom[], vueRendue: Partial<ControlView> = {}) {
-  const appels: string[] = []
-  /** Ce que la salle recevrait. Séparé de `appels` : on y lit un geste, pas un tour de liste. */
-  const commandes: ControlCommand[] = []
+/** The hub, reduced to what these screens ask of it. */
+function fakeHub(rooms: ControlRoom[], viewOverrides: Partial<ControlView> = {}) {
+  const calls: string[] = []
+  /** What the room would receive. Kept apart from `calls`: a gesture, not a poll. */
+  const commands: ControlCommand[] = []
   return {
-    appels,
-    commandes,
+    calls,
+    commands,
     client: {
       rpc: {
         regie: {
           locks: async () => {
-            appels.push('locks')
-            return salles
+            calls.push('locks')
+            return rooms
           },
           hold: async ({ force }: { force: boolean }) => {
-            appels.push(force ? 'hold:force' : 'hold')
-            return lockOf('regie@cloudnord.fr', MOI)
+            calls.push(force ? 'hold:force' : 'hold')
+            return lockOf('regie@cloudnord.fr', ME)
           },
           release: async () => {
-            appels.push('release')
+            calls.push('release')
             return { ok: true }
           },
-          view: async () => vue(vueRendue),
+          view: async () => vue(viewOverrides),
           command: async ({ action }: { action: ControlCommand }) => {
-            commandes.push(action)
+            commands.push(action)
             return { ok: true, applied: 'queued' as const }
           },
         },
@@ -113,17 +112,17 @@ function hubFactice(salles: ControlRoom[], vueRendue: Partial<ControlView> = {})
   }
 }
 
-function monterDistante(
-  salles: ControlRoom[],
-  connecte = true,
-  vueRendue: Partial<ControlView> = {},
+function mountRemote(
+  rooms: ControlRoom[],
+  signedIn = true,
+  viewOverrides: Partial<ControlView> = {},
 ) {
   const gateway = useGatewayStore()
   gateway.start({ portee: 'distante', roomId: null, salles: [], google: null })
   const session = useSessionStore()
-  const hub = hubFactice(salles, vueRendue)
+  const hub = fakeHub(rooms, viewOverrides)
   session.client = hub.client
-  session.signedIn = connecte
+  session.signedIn = signedIn
   session.identity = 'regie@cloudnord.fr'
   return hub
 }
@@ -131,63 +130,63 @@ function monterDistante(
 beforeEach(() => {
   setActivePinia(createPinia())
   vi.stubGlobal('EventSource', class {} as never)
-  // L'identité de l'onglet : figée pour que « c'est moi » et « c'est un autre »
-  // soient décidables dans un test.
-  globalThis.sessionStorage.setItem('regie-session', MOI)
+  // The tab's identity: pinned so that "it is me" and "it is somebody else" are
+  // decidable in a test.
+  globalThis.sessionStorage.setItem('regie-session', ME)
   /*
-   * Faute de jeton, le store demande au hub s'il reste une session par cookie
-   * — un vrai appel, et le seul de ces écrans qui ne passe pas par le client
-   * oRPC. Y répondre « personne » vaut mieux que le laisser pendre : happy-dom
-   * l'interrompt au démontage, et la trace ressemble à une panne.
+   * With no token, the store asks the hub whether a cookie session is left — a real
+   * call, and the only one of these screens that does not go through the oRPC
+   * client. Answering "nobody" beats leaving it hanging: happy-dom aborts it on
+   * teardown, and the trace looks like a failure.
    */
   vi.stubGlobal('fetch', async () => new Response('{}', { status: 401 }))
 })
 
 afterEach(() => {
-  // La porte distante sonde chaque seconde : la laisser ouverte ferait courir
-  // un minuteur d'un fichier de test au suivant.
+  // The remote gateway polls every second: leaving it open would let a timer run
+  // from one test file into the next.
   useGatewayStore().close()
 })
 
-describe('les trois écrans', () => {
-  it('demande la connexion avant tout le reste', () => {
-    monterDistante([salle()], false)
+describe('the three screens', () => {
+  it('asks for the sign-in before anything else', () => {
+    mountRemote([room()], false)
     const wrapper = mount(App)
-    // Pas de liste de salles avant d'être connecté : les noms sont publics,
-    // mais leur état et leur verrou ne le sont pas.
+    // No room list before signing in: the names are public, but their state and
+    // their lock are not.
     expect(wrapper.find('#connexion').exists()).toBe(true)
     expect(wrapper.find('[data-room="track-1"]').exists()).toBe(false)
   })
 
-  it('propose les salles avant que le hub ait répondu', async () => {
+  it('offers the rooms before the hub has answered', async () => {
     const gateway = useGatewayStore()
     gateway.start({
       portee: 'distante',
       roomId: null,
-      // Les noms sont posés dans la coquille : une liste vide le temps d'un
-      // aller-retour se lirait comme un hub sans programme.
+      // The names are laid down in the shell: an empty list for the duration of a
+      // round trip would read as a hub with no program.
       salles: [{ id: 'track-1', name: 'Track #1' }],
       google: null,
     })
     const session = useSessionStore()
-    session.client = hubFactice([]).client
+    session.client = fakeHub([]).client
     session.signedIn = true
 
     const wrapper = mount(RoomSelect)
     expect(wrapper.text()).toContain('Track #1')
   })
 
-  it('nomme qui tient une salle, et depuis quand', async () => {
-    monterDistante([salle({ lock: lockOf('nuit@cloudnord.fr') })])
+  it('names who holds a room, and since when', async () => {
+    mountRemote([room({ lock: lockOf('nuit@cloudnord.fr') })])
     const wrapper = mount(RoomSelect)
     await flushPromises()
 
-    // « Occupée » seul enverrait chercher qui, à deux salles de là.
+    // "Occupée" on its own would send people looking for who, two rooms away.
     expect(wrapper.text()).toContain('nuit@cloudnord.fr')
   })
 
-  it('entre sans prendre, même sur une salle tenue', async () => {
-    const hub = monterDistante([salle({ lock: lockOf('nuit@cloudnord.fr') })])
+  it('enters without taking, even on a held room', async () => {
+    const hub = mountRemote([room({ lock: lockOf('nuit@cloudnord.fr') })])
     const wrapper = mount(RoomSelect)
     await flushPromises()
 
@@ -195,44 +194,44 @@ describe('les trois écrans', () => {
     await flushPromises()
 
     /*
-     * Une seule décision, au même endroit : le voile de la salle.
+     * A single decision, in a single place: the room's veil.
      *
-     * Prendre depuis la liste obligeait à trancher sur la foi d'une ligne, sans
-     * voir ce qui se joue dans la salle — alors que c'est exactement ce qu'on
-     * veut regarder avant de retirer ses commandes à quelqu'un.
+     * Taking from the list forced a decision on the strength of one row, without
+     * seeing what is happening in the room — when that is exactly what one wants to
+     * look at before removing somebody's controls.
      */
-    expect(hub.appels).not.toContain('hold')
-    expect(hub.appels).not.toContain('hold:force')
+    expect(hub.calls).not.toContain('hold')
+    expect(hub.calls).not.toContain('hold:force')
     expect(useGatewayStore().roomId).toBe('track-1')
   })
 
-  it('entre sans prendre une salle libre non plus', async () => {
-    const hub = monterDistante([salle()])
+  it('enters without taking a free room either', async () => {
+    const hub = mountRemote([room()])
     const wrapper = mount(RoomSelect)
     await flushPromises()
 
     await wrapper.get('[data-room="track-1"]').trigger('click')
     await flushPromises()
 
-    // Le même chemin pour les deux : une salle libre montre le voile « pas
-    // prise », dont le bouton dit « Prendre » et non « Reprendre ».
-    expect(hub.appels).not.toContain('hold')
+    // The same path for both: a free room shows the "not held" veil, whose button
+    // says "Prendre" and not "Reprendre".
+    expect(hub.calls).not.toContain('hold')
     expect(useGatewayStore().roomId).toBe('track-1')
   })
 })
 
 /**
- * Le voile de verrou : un état, et surtout pas un bouton dans un coin.
+ * The lock veil: a state, and certainly not a button in a corner.
  *
- * Ce qu'il tient est la propriété qui manquait : quand cet onglet ne pilote
- * pas, **rien de ce que la page montre n'est utilisable**. Un petit
- * « Reprendre » en barre laissait « Commencer » et « Enregistrer » actifs en
- * apparence, chacun partant se faire refuser au hub — on appuie d'abord, on lit
- * ensuite, et c'est en plein talk qu'on découvre pourquoi rien ne s'est passé.
+ * What it holds is the property that was missing: when this tab is not driving,
+ * **nothing the page shows is usable**. A small "Reprendre" in a bar left
+ * "Commencer" and "Enregistrer" apparently active, each leaving only to be refused
+ * by the hub — one presses first and reads afterwards, and it is in the middle of
+ * a talk that one discovers why nothing happened.
  */
-describe('le voile de verrou', () => {
+describe('the lock veil', () => {
   function inTheRoom(lock: ControlRoom['lock']) {
-    const hub = monterDistante([salle({ lock })])
+    const hub = mountRemote([room({ lock })])
     const gateway = useGatewayStore()
     gateway.roomId = 'track-1'
     gateway.currentLock = lock
@@ -240,7 +239,7 @@ describe('le voile de verrou', () => {
     return hub
   }
 
-  it('se lève quand quelqu’un d’autre tient la salle', () => {
+  it('lifts when somebody else holds the room', () => {
     inTheRoom(lockOf('nuit@cloudnord.fr'))
     const wrapper = mount(App)
 
@@ -250,11 +249,11 @@ describe('le voile de verrou', () => {
     expect(wrapper.get('[data-role="lock-take"]').text()).toBe('Reprendre le contrôle')
   })
 
-  it('nomme l’autre onglet plutôt que de s’accuser soi-même', () => {
+  it('names the other tab rather than accuse oneself', () => {
     /*
-     * Le cas qui déroutait : la régie ouverte sur le téléphone puis sur la
-     * tablette. Son propre nom affiché comme celui d'un tiers se lit comme une
-     * panne — on cherche le second compte, et il n'existe pas.
+     * The case that confused: the control app opened on the phone and then on the
+     * tablet. One's own name shown as a third party's reads as a failure — one
+     * looks for the second account, and it does not exist.
      */
     inTheRoom(lockOf('regie@cloudnord.fr', OTHER_TAB))
     const wrapper = mount(App)
@@ -264,9 +263,9 @@ describe('le voile de verrou', () => {
     expect(veil.get('[data-role="lock-veil-detail"]').text()).toContain('votre compte')
   })
 
-  it('se lève aussi quand plus personne ne la tient', () => {
-    // Une prise expirée — téléphone verrouillé dans une poche, tunnel — laisse
-    // la salle libre. Rien n'est cassé, et le bouton ne dit pas « Reprendre »
+  it('lifts too when nobody holds it any more', () => {
+    // An expired hold — phone locked in a pocket, a tunnel — leaves the room free.
+    // Nothing is broken, and the button does not say "Reprendre"
     // sur une salle que personne ne tient.
     inTheRoom(null)
     const wrapper = mount(App)
@@ -275,12 +274,12 @@ describe('le voile de verrou', () => {
     expect(wrapper.get('[data-role="lock-take"]').text()).toBe('Prendre le contrôle')
   })
 
-  it('disparaît dès que cet onglet tient la salle', () => {
-    inTheRoom(lockOf('regie@cloudnord.fr', MOI))
+  it('disappears as soon as this tab holds the room', () => {
+    inTheRoom(lockOf('regie@cloudnord.fr', ME))
     const wrapper = mount(App)
 
     expect(wrapper.find('[data-role="lock-veil"]').exists()).toBe(false)
-    // Et les commandes sont là : c'est bien la même page dessous.
+    // And the commands are there: it really is the same page underneath.
     expect(wrapper.find('#btn-talk-start').exists()).toBe(true)
   })
 
@@ -292,11 +291,11 @@ describe('le voile de verrou', () => {
     await flushPromises()
 
     // Le voile *est* la question : la reposer en modale en ferait un clic de
-    // réflexe, et c'est exactement ce qu'on retire.
-    expect(hub.appels).toContain('hold:force')
+    // a reflex, and that is exactly what is being removed.
+    expect(hub.calls).toContain('hold:force')
   })
 
-  it('laisse revenir au choix des salles', async () => {
+  it('laisse revenir au choix des rooms', async () => {
     const hub = inTheRoom(lockOf('nuit@cloudnord.fr'))
     const wrapper = mount(App)
 
@@ -304,31 +303,31 @@ describe('le voile de verrou', () => {
     await flushPromises()
 
     expect(useGatewayStore().roomId).toBeNull()
-    // On ne rend pas ce qu'on ne tient pas : le badge de la salle appartient à
+    // One does not release what one does not hold: the room's badge belongs to
     // son porteur.
-    expect(hub.appels).not.toContain('release')
+    expect(hub.calls).not.toContain('release')
   })
 })
 
 /**
- * L'écran de salle, piloté d'un téléphone.
+ * The room screen, driven from a phone.
  *
- * Il passe par le flux de commandes descendant, celui-là même qui porte les
- * bascules de scène : rien de neuf ne relie un téléphone à la machine de salle,
- * et une commande qu'elle rate est rattrapée à sa reconnexion — ou périme.
+ * It goes through the downstream command flow, the very one that carries the scene
+ * switches: nothing new links a phone to the room machine, and a command the room
+ * misses is caught up on when it reconnects — or expires.
  *
- * Ce que ce bloc tient est la seule chose qu'aucun typage ne dit : que la
- * grille n'offre pas des modes dont le contenu se choisit ailleurs, et qu'elle
- * décrit la salle plutôt que le clic.
+ * What this block holds is the one thing no typing says: that the grid does not
+ * offer modes whose content is chosen elsewhere, and that it describes the room
+ * rather than the click.
  */
-describe("l'écran de salle", () => {
-  function inTheRoom(vueRendue: Partial<ControlView> = {}) {
-    const lock = lockOf('regie@cloudnord.fr', MOI)
-    const hub = monterDistante([salle({ lock })], true, vueRendue)
+describe('the room screen', () => {
+  function inTheRoom(viewOverrides: Partial<ControlView> = {}) {
+    const lock = lockOf('regie@cloudnord.fr', ME)
+    const hub = mountRemote([room({ lock })], true, viewOverrides)
     const gateway = useGatewayStore()
     gateway.roomId = 'track-1'
     gateway.currentLock = lock
-    useRoomStore().seed(payloadFromView(vue({ lock, ...vueRendue }), Date.now()))
+    useRoomStore().seed(payloadFromView(vue({ lock, ...viewOverrides }), Date.now()))
     return hub
   }
 
@@ -343,35 +342,35 @@ describe("l'écran de salle", () => {
     expect(modes).toContain('feedback')
     expect(modes).toContain('wall')
     /*
-     * « Message » montre le bandeau saisi dans un panneau qui n'est pas monté
-     * ici, « Question choisie » la question retenue dans la modération de la
-     * régie de salle. Les offrir donnerait un bouton qui prend l'écran de la
-     * salle pour y projeter « Aucune question affichée » devant le public : le
-     * geste réussirait, et c'est bien ce qui le rend mauvais.
+     * "Message" shows the banner typed in a panel that is not mounted here,
+     * "Question choisie" the question picked in the room control app's moderation.
+     * Offering them would give a button that takes over the room's screen to project
+     * "Aucune question affichée" in front of the audience: the gesture would
+     * succeed, and that is exactly what makes it bad.
      */
     expect(modes).not.toContain('message')
     expect(modes).not.toContain('question')
   })
 
-  it('allume ce que la salle affiche, pas ce qu\u2019on a demandé', async () => {
+  it('lights what the room displays, not what was asked for', async () => {
     const hub = inTheRoom({ displayMode: 'sponsors' })
     const wrapper = mount(App)
 
     expect(wrapper.get('[data-command="sponsors"]').classes().join(' ')).toContain('bg-brand')
 
-    // Le clic poste, et s'arrête là. Le bouton ne bougera qu'au sondage qui
-    // rapportera la bascule — comme en régie de salle, où il attend OBS.
+    // The click posts, and stops there. The button will only move at the poll that
+    // reports the switch — as in the room's control app, where it waits for OBS.
     await wrapper.get('[data-command="programme"]').trigger('click')
     await flushPromises()
 
-    expect(hub.commandes).toEqual([{ type: 'display.set', mode: 'programme' }])
+    expect(hub.commands).toEqual([{ type: 'display.set', mode: 'programme' }])
     expect(wrapper.get('[data-command="sponsors"]').classes().join(' ')).toContain('bg-brand')
   })
 })
 
 describe('le bandeau de verrou', () => {
   function mountBanner(lock: ControlRoom['lock']) {
-    const hub = monterDistante([salle({ lock })])
+    const hub = mountRemote([room({ lock })])
     const gateway = useGatewayStore()
     gateway.roomId = 'track-1'
     gateway.currentLock = lock
@@ -380,27 +379,27 @@ describe('le bandeau de verrou', () => {
   }
 
   it('dit qu’on pilote, quand cet onglet tient la salle', () => {
-    const { wrapper } = mountBanner(lockOf('regie@cloudnord.fr', MOI))
+    const { wrapper } = mountBanner(lockOf('regie@cloudnord.fr', ME))
     expect(wrapper.text()).toContain('Vous pilotez cette salle')
   })
 
   it('ne porte plus de bouton pour reprendre', () => {
     const { wrapper } = mountBanner(lockOf('nuit@cloudnord.fr'))
 
-    // La décision vit dans le voile. Ici, une mention, pour que la ligne ne se
+    // The decision lives in the veil. Here, a mention, so the line does not
     // contredise pas quand le voile se referme.
     expect(wrapper.get('[data-role="lock-holder"]').text()).toContain('Lecture seule')
     expect(wrapper.text()).not.toContain('Reprendre')
   })
 
-  it('ramène au choix des salles en rendant ce qu’on tenait', async () => {
-    const { hub, wrapper } = mountBanner(lockOf('regie@cloudnord.fr', MOI))
+  it('returns to the room choice, releasing what was held', async () => {
+    const { hub, wrapper } = mountBanner(lockOf('regie@cloudnord.fr', ME))
     await wrapper.get('button').trigger('click')
     await flushPromises()
 
     // Rendre en partant : l'expiration couvrirait le cas, mais trente secondes
-    // de salle bloquée pendant qu'un collègue attend se voient.
-    expect(hub.appels).toContain('release')
+    // of a blocked room while a colleague waits are visible.
+    expect(hub.calls).toContain('release')
     expect(useGatewayStore().roomId).toBeNull()
   })
 })

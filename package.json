@@ -9,10 +9,10 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "dev:duo": "bash scripts/dev-salles.sh 1",
-    "dev:trio": "bash scripts/dev-salles.sh 2",
-    "prepare": "node scripts/hooks-git.mjs",
-    "raz:dev": "bash scripts/raz-dev.sh",
+    "dev:duo": "bash scripts/dev-rooms.sh 1",
+    "dev:trio": "bash scripts/dev-rooms.sh 2",
+    "prepare": "node scripts/git-hooks.mjs",
+    "reset:dev": "bash scripts/reset-dev.sh",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck"
   },

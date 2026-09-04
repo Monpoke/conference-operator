@@ -1,11 +1,11 @@
-# Identité de l'**application**, pas de l'événement.
+# The **application**'s identity, not the event's.
 #
-# Ce qui s'affiche dans le produit — titres de fenêtres, écrans, mur public —
-# vient du hub et suit l'événement importé ; rien ici n'a besoin de changer
-# d'une édition à l'autre. Ces trois lignes nomment le logiciel installé sur la
-# machine de salle, et `appId` en particulier ne se renomme pas à la légère :
-# Electron en dérive le dossier `userData`, donc la base locale — cache du
-# programme et file de remontée non vidée.
+# What the product displays — window titles, screens, public wall — comes from the
+# hub and follows the imported event; nothing here needs to change from one
+# edition to the next. These three lines name the software installed on the room
+# machine, and `appId` in particular is not renamed lightly: Electron derives the
+# `userData` folder from it, hence the local database — the programme cache and an
+# unflushed outbound queue.
 appId: fr.cloudnord.roomclient
 productName: Régie de salle
 copyright: Cloud Nord
@@ -14,77 +14,78 @@ directories:
   output: release
   buildResources: build
 
-# Le nom par défaut — `${productName} Setup ${version}.exe` — porte un espace et
-# un accent : lisible dans un dossier, il devient une URL de release échappée de
-# part en part, et un nom de fichier que `sha256sum -c` fait trébucher. Le
-# produit garde son nom partout où quelqu'un le lit : raccourci, menu Démarrer,
-# désinstalleur. Ici, c'est un nom de fichier.
+# The default name — `${productName} Setup ${version}.exe` — carries a space and
+# an accent: readable in a folder, it becomes a release URL escaped from end to
+# end, and a filename `sha256sum -c` trips over. The product keeps its name
+# everywhere anyone reads it: shortcut, Start menu, uninstaller. Here, it is a
+# filename.
 #
-# `${version}` vaut `0.0.0` depuis le dépôt, et le vrai numéro en publication —
-# `release.yml` l'injecte par `-c.extraMetadata.version`, les manifestes du
-# monorepo n'ayant pas de version à eux.
+# `${version}` is `0.0.0` from the repository, and the real number on a release —
+# `release.yml` injects it through `-c.extraMetadata.version`, the monorepo's
+# manifests having no version of their own.
 artifactName: regie-de-salle-${version}.${ext}
 
 files:
   - dist/**
-  # La source map ne part pas sur le poste de régie : rien n'active
-  # `--enable-source-maps` dans le client, elle y serait huit mégaoctets que
-  # personne n'ouvre.
+  # The source map does not travel to the control machine: nothing turns on
+  # `--enable-source-maps` in the client, it would be eight megabytes there that
+  # nobody opens.
   #
-  # Elle n'est pas perdue pour autant, et ce n'est plus « la machine de build »
-  # qui la garde — depuis que `release.yml` empaquette, cette machine est un
-  # coureur détruit à la fin du job. Deux chemins la retrouvent :
+  # It is not lost for all that, and it is no longer "the build machine" that keeps
+  # it — since `release.yml` does the packaging, that machine is a runner destroyed
+  # at the end of the job. Two paths lead back to it:
   #
-  #  - **Reconstruire depuis le tag.** `scripts/build-main.mjs` n'a aucune
-  #    entrée non déterministe et esbuild est figé par le lockfile : un
-  #    `pnpm --filter @cloudnord/room-client build` sur `vX.Y.Z` redonne la même
-  #    map. Elle embarque `sourcesContent`, elle se relit donc seule.
-  #  - **L'artefact `sourcemaps-X.Y.Z`** de l'exécution qui a publié la version,
-  #    90 jours durant — l'événement et les semaines d'après, quand une trace
-  #    remontée d'une salle mérite d'être lue sans rien reconstruire.
+  #  - **Rebuild from the tag.** `scripts/build-main.mjs` has no non-deterministic
+  #    input and esbuild is pinned by the lockfile: a
+  #    `pnpm --filter @cloudnord/room-client build` on `vX.Y.Z` gives back the same
+  #    map. It embeds `sourcesContent`, so it reads back on its own.
+  #  - **The `sourcemaps-X.Y.Z` artefact** from the run that published the version,
+  #    for 90 days — the event and the weeks after it, when a trace coming back
+  #    from a room deserves reading without rebuilding anything.
   - "!dist/*.map"
   - package.json
-  # Migrations du schéma local : lues au démarrage depuis le paquet.
+  # The local schema's migrations: read at start-up from the package.
   - "!node_modules/**"
   - node_modules/better-sqlite3/**
-  # `better-sqlite3` livre un binaire par plateforme — huit, dont un seul peut
-  # servir dans un paquet Windows x64. Les sept autres (macOS, arm, musl)
-  # pesaient treize mégaoctets transportés jusqu'au poste de régie pour rien.
-  # L'ordre compte : la négation d'abord, la réintégration ensuite.
+  # `better-sqlite3` ships one binary per platform — eight, only one of which can
+  # serve in a Windows x64 package. The other seven (macOS, arm, musl) were
+  # thirteen megabytes carried all the way to the control machine for nothing. The
+  # order matters: the negation first, the reinstatement after.
   - "!node_modules/better-sqlite3/prebuilds/*"
   - node_modules/better-sqlite3/prebuilds/win32-x64.node
-  # Et rien de ce qui sert à *compiler* la bibliothèque : l'amalgame C de SQLite
-  # pèse à lui seul dix mégaoctets, pour un binaire qu'on ne construit jamais
-  # sur le poste — il voyage déjà tout fait juste au-dessus.
+  # And nothing that serves to *compile* the library: SQLite's C amalgamation
+  # weighs ten megabytes on its own, for a binary that is never built on the
+  # machine — it already travels ready-made just above.
   - "!node_modules/better-sqlite3/deps/**"
   - "!node_modules/better-sqlite3/src/**"
 
-# Chromium embarque ses traductions, cinquante-cinq langues et 47 Mo, pour une
-# application qui ne parle que français. On garde l'anglais comme repli : c'est
-# la langue vers laquelle Chromium retombe pour ses propres chaînes (menus
-# contextuels, messages réseau) si le fichier demandé manque.
+# Chromium embeds its translations, fifty-five languages and 47 MB, for an
+# application that speaks nothing but French. English is kept as a fallback: it is
+# the language Chromium falls back to for its own strings (context menus, network
+# messages) if the requested file is missing.
 electronLanguages:
   - fr
   - en-US
 
-# LZMA au maximum plutôt que par défaut. Un installeur se construit une fois et
-# se recopie sur trois postes : le temps de compression se paie une seule fois,
-# les mégaoctets à chaque copie sur clé USB un matin d'événement.
+# LZMA at maximum rather than the default. An installer is built once and copied
+# onto three machines: the compression time is paid once, the megabytes on every
+# copy to a USB stick on an event morning.
 compression: maximum
 
 extraResources:
-  # Le client migre sa base au lancement ; les fichiers SQL doivent voyager avec.
+  # The client migrates its database at start-up; the SQL files have to travel
+  # with it.
   - from: ../../packages/db/migrations/client
     to: migrations/client
-  # Bundle de la régie. Hors de l'asar, et à cette place précise : `resolveControlBundle`
-  # remonte les dossiers depuis le bundle du processus principal jusqu'à trouver
-  # `apps/control-web/dist`, exactement comme il le fait depuis les sources.
+  # The control app's bundle. Outside the asar, and at this exact place:
+  # `resolveControlBundle` walks up the folders from the main process's bundle
+  # until it finds `apps/control-web/dist`, exactly as it does from the sources.
   #
-  # Sans sa source map, pour la même raison que celle du processus principal, et
-  # elle se retrouve par les deux mêmes chemins — reconstruction depuis le tag,
-  # ou artefact `sourcemaps-X.Y.Z`. Celle-ci a une troisième vie : le hub sert le
-  # même bundle pour la régie mobile, et le `Dockerfile` y copie `dist` entier,
-  # map comprise.
+  # Without its source map, for the same reason as the main process's, and it is
+  # found again by the same two paths — a rebuild from the tag, or the
+  # `sourcemaps-X.Y.Z` artefact. This one has a third life: the hub serves the same
+  # bundle for the mobile control app, and the `Dockerfile` copies the whole `dist`
+  # there, map included.
   - from: ../control-web/dist
     to: apps/control-web/dist
     filter:
@@ -95,8 +96,8 @@ win:
   target:
     - target: nsis
       arch: [x64]
-  # Sans signature, SmartScreen avertira au premier lancement : prévoir de
-  # l'installer avant le jour J, pas devant une salle qui attend.
+  # Unsigned, SmartScreen will warn on first launch: plan to install it before the
+  # day, not in front of a room that is waiting.
   signAndEditExecutable: false
 
 nsis:
@@ -106,17 +107,17 @@ nsis:
   createDesktopShortcut: true
   shortcutName: Régie de salle
 
-# Modules natifs : RIEN À RECOMPILER, et c'est délibéré.
+# Native modules: NOTHING TO REBUILD, and that is deliberate.
 #
-# `better-sqlite3` 13 est un module **Node-API** (`NAPI_VERSION=10`) et publie
-# dans son paquet npm un binaire par plateforme — `prebuilds/win32-x64.node`
-# part tel quel dans l'installeur. Node-API garantit la stabilité binaire entre
-# Node et Electron : l'ABI d'Electron ne le concerne plus, contrairement aux
-# versions antérieures de la bibliothèque.
+# `better-sqlite3` 13 is a **Node-API** module (`NAPI_VERSION=10`) and publishes
+# one binary per platform in its npm package — `prebuilds/win32-x64.node` goes into
+# the installer as is. Node-API guarantees binary stability between Node and
+# Electron: Electron's ABI no longer concerns it, unlike earlier versions of the
+# library.
 #
-# Laisser `npmRebuild: true` ne rendait donc rien de plus, et INTERDISAIT
-# d'empaqueter ailleurs que sous Windows : @electron/rebuild tente une
-# compilation croisée que node-gyp ne sait pas faire, et s'arrête sur
-# « node-gyp does not support cross-compiling native modules from source ».
+# Leaving `npmRebuild: true` therefore returned nothing extra, and FORBADE
+# packaging anywhere but on Windows: @electron/rebuild attempts a cross
+# compilation node-gyp cannot do, and stops on "node-gyp does not support
+# cross-compiling native modules from source".
 npmRebuild: false
 nodeGypRebuild: false

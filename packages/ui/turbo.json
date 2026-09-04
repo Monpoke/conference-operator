@@ -3,20 +3,20 @@
   "extends": ["//"],
   "tasks": {
     /*
-     * La feuille est compilée à partir des pages des applications.
+     * The sheet is compiled from the applications' pages.
      *
-     * Sans ces entrées, le cache de turbo ne voit que ce paquet : une classe
-     * ajoutée dans une page du hub laissait la compilation en cache, la feuille
-     * committée périmée, et le test qui devait le dire ne se rejouait même pas.
-     * La classe n'avait alors aucun style — exactement la panne silencieuse
-     * contre laquelle ce test existe. Les chemins suivent les `@source` de
-     * `src/theme.css` : les changer ici sans les changer là ne servirait à rien.
+     * Without these inputs, turbo's cache only sees this package: a class added to
+     * one of the hub's pages left the compilation cached, the committed sheet
+     * stale, and the test that was meant to say so did not even replay. The class
+     * then had no style at all — exactly the silent breakage this test exists
+     * against. The paths follow `src/theme.css`'s `@source` entries: changing them
+     * here without changing them there would achieve nothing.
      *
-     * Ils ne suivent **pas** ceux de `src/apps.css`, et c'est voulu : cette
-     * feuille-là est compilée par Vite, à la demande de chaque application Vue,
-     * et ne passe jamais par `src/generated/`. Y ajouter les répertoires de
-     * composants ferait recompiler la feuille figée — et la ferait grossir de
-     * tous les utilitaires des applications — à chaque retouche d'un `.vue`.
+     * They do **not** follow `src/apps.css`'s, and that is deliberate: that sheet
+     * is compiled by Vite, on demand for each Vue application, and never goes
+     * through `src/generated/`. Adding the component directories to it would
+     * recompile the frozen sheet — and grow it by all the applications' utilities
+     * — on every tweak to a `.vue`.
      */
     "build": {
       "inputs": [

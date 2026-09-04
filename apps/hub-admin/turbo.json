@@ -3,13 +3,13 @@
   "extends": ["//"],
   "tasks": {
     /*
-     * Le bundle est un artefact, pas une source.
+     * The bundle is an artefact, not a source.
      *
-     * `hub-server` ne dépend pas de cette tâche : il lit un dossier au moment
-     * de servir, il n'importe rien de la console. C'est ce qui permet à
-     * `pnpm typecheck` et `pnpm test` de ne déclencher aucun build Vite — et
-     * à la suite de tenir dans la minute que la CI revendique. Le build a lieu
-     * là où il sert : dans l'étape « Console » du Dockerfile.
+     * `hub-server` does not depend on this task: it reads a folder when it
+     * serves, it imports nothing from the console. That is what lets `pnpm
+     * typecheck` and `pnpm test` trigger no Vite build at all — and the suite stay
+     * inside the minute CI claims. The build happens where it is useful: in the
+     * Dockerfile's "Console" stage.
      */
     "build": {
       "dependsOn": ["^build"],

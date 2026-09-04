@@ -3,12 +3,12 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vitest/config'
 
 /**
- * Le premier fichier de configuration vitest du dépôt, et il faut le dire.
+ * The repository's first vitest configuration file, and that is worth saying.
  *
- * Partout ailleurs, l'environnement se choisit par pragma en tête de fichier et
- * la configuration par défaut suffit. Monter un composant Vue demande que
- * `@vitejs/plugin-vue` soit enregistré, ce qu'aucun pragma ne fait — d'où cette
- * exception, limitée aux applications qui contiennent des `.vue`.
+ * Everywhere else the environment is chosen by a pragma at the top of the file and
+ * the default configuration is enough. Mounting a Vue component requires
+ * `@vitejs/plugin-vue` to be registered, which no pragma does — hence this
+ * exception, limited to the applications that contain `.vue` files.
  */
 export default defineConfig({
   plugins: [vue()],

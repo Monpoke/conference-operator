@@ -10,8 +10,8 @@ import { SETS, seal, verify } from './fingerprints.mjs'
 for (const set of SETS) {
   const { anomalies } = verify(set)
   for (const { tag, problem } of anomalies) {
-    console.warn(`⚠  ${set}/${tag} : migration publiée ${problem} — vérifiez que c'est voulu.`)
+    console.warn(`⚠  ${set}/${tag}: published migration ${problem} — check that it is intended.`)
   }
   const sealedSet = seal(set)
-  console.log(`${set} : ${Object.keys(sealedSet).length} migration(s) scellée(s)`)
+  console.log(`${set}: ${Object.keys(sealedSet).length} migration(s) sealed`)
 }

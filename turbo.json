@@ -26,11 +26,11 @@
       "cache": false,
       "persistent": true,
       /*
-       * Turbo 2 filtre l'environnement des tâches (mode « strict ».
-       * Sans cette liste, `MODE=dev pnpm dev` à la racine démarrerait les deux
-       * applications en production, sans un mot — exactement le silence que le
-       * mode sert à éviter. `OBS_MOCK` y figure aussi : le garde-fou doit le
-       * voir pour pouvoir dire qu'il l'ignore.
+       * Turbo 2 filters the tasks' environment ("strict" mode).
+       * Without this list, `MODE=dev pnpm dev` at the root would start both
+       * applications in production, without a word — exactly the silence the mode
+       * exists to avoid. `OBS_MOCK` is listed too: the guard has to see it in
+       * order to be able to say it is ignoring it.
        */
       "passThroughEnv": [
         "MODE",

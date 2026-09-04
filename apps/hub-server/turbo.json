@@ -3,16 +3,16 @@
   "extends": ["//"],
   "tasks": {
     /*
-     * Les tests du hub ont besoin du bundle de la console.
+     * The hub's tests need the console's bundle.
      *
-     * Le hub ne l'importe pas — il lit un dossier au moment de servir — mais ce
-     * qu'on vérifie ici, c'est justement qu'il le sert. Faire dépendre le test
-     * d'un `dist/` présent par hasard donnerait une suite qui passe ou échoue
-     * selon ce qui traîne sur la machine : c'était le cas, et ça ne se voyait
-     * qu'en intégration continue.
+     * The hub does not import it — it reads a folder when it serves — but what is
+     * verified here is precisely that it serves it. Letting the test depend on a
+     * `dist/` that happens to be present would give a suite that passes or fails
+     * according to what is lying around on the machine: that was the case, and it
+     * only showed up in continuous integration.
      *
-     * Le coût est un `vite build` de trois secondes, mis en cache par turbo
-     * tant que la console ne change pas.
+     * The cost is a three-second `vite build`, cached by turbo for as long as the
+     * console does not change.
      */
     "test": {
       "dependsOn": ["^build"]

@@ -51,7 +51,7 @@ suppression est un dernier recours, et voici ce qu'elle coûte :
 | Base | Emplacement | Ce qu'on perd |
 |---|---|---|
 | hub | `apps/hub-server/data/` | comptes opérateurs, appairages, modération, états de conférence |
-| salle | `<userData>` ou `.donnees-locales/` | cache du programme, file de remontée non vidée |
+| salle | `<userData>` ou `.local-data/` | cache du programme, file de remontée non vidée |
 
 Côté salle, **vérifier d'abord que le compteur d'événements en attente est à
 zéro** : sinon la suppression perd des enregistrements et des marqueurs non

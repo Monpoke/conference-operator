@@ -471,6 +471,54 @@ describe('partners page', () => {
     expect(alive().querySelectorAll('img[data-logo]').length).toBe(1)
   })
 
+  it('gives the first tier bigger logos than the others', () => {
+    // The rank is read from ten metres away, before any name: what the top tier
+    // bought is that surface.
+    mountScreen(withPartners([
+      { ...TIERS[0], sponsors: [{ ...TIERS[0]!.sponsors[0], logoUrl: '/assets/gold' }] },
+      { ...TIERS[1], sponsors: [{ ...TIERS[1]!.sponsors[0], logoUrl: '/assets/other' }] },
+    ]))
+
+    const [gold, other] = [...alive().querySelectorAll('img[data-logo]')]
+      .map((img) => Number((img as HTMLElement).dataset.height))
+
+    expect(gold).toBeGreaterThan(other!)
+    // And the fallback height is written inline: a preview rendered without a
+    // browser never runs the sizing, and would show logos with no height at all.
+    expect(alive().querySelector('img[data-logo]')?.getAttribute('style'))
+      .toContain('height:' + gold + 'vmin')
+  })
+
+  it('puts a banner and a square at the same surface', () => {
+    // Aligned on their height, the banner covered five times the square: the
+    // square then reads as small, whereas both were given the same room.
+    mountScreen(withPartners([{
+      id: 't0', name: 'Gold', order: 0,
+      sponsors: [
+        { id: 'g1', name: 'Banner', website: null, logoUrl: '/assets/banner' },
+        { id: 'g2', name: 'Square', website: null, logoUrl: '/assets/square' },
+      ],
+    }]))
+
+    const logos = [...alive().querySelectorAll('img[data-logo]')] as HTMLImageElement[]
+    const area = (img: HTMLImageElement, width: number, height: number) => {
+      // happy-dom has neither canvas nor loader: the natural dimensions are
+      // declared, and the load is announced by hand.
+      Object.defineProperty(img, 'naturalWidth', { value: width, configurable: true })
+      Object.defineProperty(img, 'naturalHeight', { value: height, configurable: true })
+      img.dispatchEvent(new Event('load'))
+      const rendered = Number.parseFloat(img.style.height)
+      return rendered * rendered * (width / height)
+    }
+
+    const banner = area(logos[0]!, 500, 100)
+    const square = area(logos[1]!, 200, 200)
+
+    // Not to the pixel: the range that keeps a banner from becoming a thread
+    // stops short of full equality. A sixth is under what the eye separates.
+    expect(Math.abs(banner - square) / square).toBeLessThan(0.16)
+  })
+
   it('says so when there is no partner at all', () => {
     mountScreen(withPartners([]))
 

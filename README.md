@@ -36,7 +36,7 @@ contribuer : [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```
 packages/program    parseur/normaliseur de l'export « conference-center » + sélecteurs par salle
-packages/etat-salle automate d'une salle : états, transitions, apparence — partagé hub ↔ régie
+packages/room-state automate d'une salle : états, transitions, apparence — partagé hub ↔ régie
 packages/contract   contrat oRPC v2 (zod) : procédures, événements, commandes
 packages/db         schémas Drizzle + migrations (hub et client), helper SQLite
 packages/format     formateurs partagés : durées, instants, tailles, échappement
@@ -45,7 +45,7 @@ packages/components composants Vue : primitives Reka retravaillées + design sys
 apps/hub-server     Fastify + oRPC + SQLite + Better Auth : programme, salles, commandes, appairage
                     sert /mur (gabarit), la coquille de la console et celle de la régie mobile
 apps/hub-admin      console d'exploitation — Vue 3 + Vite, servie par le hub
-apps/control-web      écran de régie — Vue 3 + Vite, servi par la salle et, en mobile, par le hub
+apps/control-web    écran de régie — Vue 3 + Vite, servi par la salle et, en mobile, par le hub
 apps/room-client    Electron — écran de salle, pilotage OBS, appairage, cache local
 ```
 
@@ -953,7 +953,7 @@ Ce sont des gestes de poste, ou des gestes dont le hub n'a pas la matière — l
 monter vides serait pire que de ne pas les monter.
 
 Le compte à rebours, l'avertissement d'enregistrement, la confirmation de fin
-anticipée : tout cela est le **même code**, `stores/conference.ts`. Un opérateur
+anticipée : tout cela est le **même code**, `stores/talk.ts`. Un opérateur
 sur un téléphone et un opérateur devant la machine voient la même question.
 
 ### Une salle, un **onglet** à la fois
@@ -2144,7 +2144,7 @@ par erreur, et « Remettre à venir » doit rester lisible sans chercher.
 Deux automates, et la distinction porte tout le reste : **celui qui a des
 transitions n'est pas celui qu'on affiche.**
 
-Les deux vivent dans **`packages/etat-salle`**, et nulle part ailleurs. Le hub
+Les deux vivent dans **`packages/room-state`**, et nulle part ailleurs. Le hub
 l'importe pour calculer l'état de chaque salle et pour refuser un geste
 impossible ; les pages — régie, console — **inlinent** le même module, compilé
 en une constante `MACHINE_JS` que `<script>` reçoit telle quelle, comme la
@@ -2170,7 +2170,7 @@ soit une décision, et il vit chez le hub : la régie appelle `sessions.start`,
 elle ne se déclare pas commencée dans son coin, sinon l'organisateur ne verrait
 rien depuis la console et les autres salles non plus.
 
-Les flèches ci-dessous sont une **table**, `cycle-de-vie.ts`, et les deux côtés
+Les flèches ci-dessous sont une **table**, `lifecycle.ts`, et les deux côtés
 la lisent : la régie pour griser un bouton — le refus devient son infobulle —,
 le hub pour refuser l'écriture d'un `CONFLICT`. Un bouton actif dont la
 procédure refuserait le geste, ou l'inverse, n'est plus une chose possible.
@@ -2204,7 +2204,7 @@ Trois détails qui ne se devinent pas :
   **terminée** : « Remettre à venir » répare une fausse manœuvre, il n'annule
   pas un talk en cours.
 - **Reculer l'horloge annule des décisions**, sans rien effacer
-  (`decisionApplicable`, partagée avec le banc d'essai). Un état daté
+  (`isDecisionApplicable`, partagée avec le banc d'essai). Un état daté
   d'après l'instant du hub est écarté *à la lecture* : le talk de 09:50 lancé
   pendant un essai à 11 h redevient « à venir » quand on revient à 08:38, et
   ré-avancer l'horloge le retrouve intact. Sous une horloge réelle, la règle ne
@@ -2213,14 +2213,14 @@ Trois détails qui ne se devinent pas :
 #### Le banc d'essai
 
 ```bash
-pnpm --filter @cloudnord/etat-salle preview   # écrit preview/automate.html
+pnpm --filter @cloudnord/room-state preview   # écrit preview/state-machine.html
 ```
 
 Une page autonome où l'on charge le programme d'une salle, où l'on pousse
 l'heure à la vitesse qu'on veut, et où l'on regarde l'automate répondre. Elle
 n'imite rien : elle inline le même `MACHINE_JS` que la régie et appelle les
-mêmes fonctions — les boutons passent par `refusDeTransition`, la clôture
-automatique par `doitEtreClose`. Un état qui colle ici colle en salle.
+mêmes fonctions — les boutons passent par `transitionRefusal`, la clôture
+automatique par `shouldAutoEnd`. Un état qui colle ici colle en salle.
 
 Elle porte quatre choses qu'on ne voit nulle part ailleurs : le **journal** des
 changements d'état horodaté à l'heure simulée, qui montre si une salle revient
@@ -2378,7 +2378,7 @@ projeté déduit la fin d'un créneau avec la même règle que le hub — il la
 déduisait à sa façon, et grisait dès son heure de début un talk que l'export ne
 borne que par sa durée.
 
-Le calcul vit dans `@cloudnord/etat-salle` et fait autorité chez le hub :
+Le calcul vit dans `@cloudnord/room-state` et fait autorité chez le hub :
 l'heure qui fait foi est la sienne — elle peut être simulée — et lui seul tient
 le cycle de vie de toutes les salles. La régie **reprend du hub les quatre états qu'il est seul à
 connaître** (pas commencée, retard, terminée, dépassement) et **recalcule le
@@ -2394,7 +2394,7 @@ prochaine, ni pour le décompte ni pour les boutons. La régie autorise
 alors lui-même — le compte à rebours visait le début d'un talk qu'on venait de
 clore, le détail annonçait « prochaine conférence à 09:50 » sur la conférence
 de 09:50, et la régie restait **bloquée dessus jusqu'à l'heure prévue**, sans
-pouvoir piloter la suivante. La règle vit dans `prochaineConference`, et le
+pouvoir piloter la suivante. La règle vit dans `nextTalk`, et le
 choix de la conférence pilotée en dépend comme le décompte : les deux doivent
 désigner le même créneau, sinon le chrono annonce une chose et le bouton en
 lance une autre. Le rattrapage d'une clôture posée par erreur avant l'heure se
@@ -2560,7 +2560,7 @@ constante inlinée dans le bundle ne peut pas manquer à l'appel.
   compilation n'était pas reproductible. D'où `source(none)` et des `@source`
   explicites.
 - *happy-dom ignore `@layer`*, où vit toute la sortie Tailwind. Sans
-  `aplatirCouchesHtml` (exporté par `@cloudnord/ui`), les tests de visibilité
+  `flattenLayersInHtml` (exporté par `@cloudnord/ui`), les tests de visibilité
   effective — ceux qui ont attrapé le défaut des onglets — cesseraient
   silencieusement de vérifier quoi que ce soit.
 

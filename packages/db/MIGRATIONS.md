@@ -19,7 +19,7 @@ pnpm --filter @cloudnord/db sceller
 
 `migrations/<jeu>/empreintes.json` fige le SHA-256 de chaque migration publiée —
 la même grandeur que Drizzle stocke dans `__drizzle_migrations`. Un test
-(`test/migrations-scellees.test.ts`) échoue si un fichier publié est modifié ou
+(`test/migrations-sealed.test.ts`) échoue si un fichier publié est modifié ou
 supprimé ; une migration *nouvelle* passe sans bruit, puisque c'est le geste
 normal.
 

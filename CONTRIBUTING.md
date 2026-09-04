@@ -73,27 +73,90 @@ sien.
 
 ### La langue : code en anglais, libellés en français
 
-**Tout ce qui s'écrit aujourd'hui est en anglais** — identifiants, noms de
-fichiers, commentaires. C'est la langue de `packages/format`,
-`packages/hub-client`, `packages/components` et des applications Vue, et celle
-des bibliothèques qu'on y assemble : garder deux langues dans un même fichier
-coûte plus que d'en choisir une.
+**Tout le code est en anglais**, sans exception : identifiants, noms de
+fichiers, commentaires, titres de tests, classes CSS, ids du DOM, scripts npm.
+C'est la langue des bibliothèques qu'on assemble, et garder deux langues dans un
+même fichier coûte plus que d'en choisir une. Il n'y a plus de « module
+français » : la conversion a été faite en bloc, et une exception rouvrirait la
+frontière qu'elle a fermée.
 
-**Ce que lit un opérateur reste en français, sans exception.** Une migration n'a
-pas à reformuler ce qui s'affiche : « Délai de grâce » est le terme des
-conversations de la journée, et le remplacer par un synonyme obligerait à
-traduire mentalement à chaque fois.
+**Tout ce que lit un humain reste en français**, sans exception non plus : les
+libellés des trois fronts — écran de salle, régie, console —, les messages
+qu'un opérateur voit passer, les bannières des scripts de développement, le nom
+du produit installé, les notes de publication, et cette documentation. Une
+traduction n'a pas à reformuler ce qui s'affiche : « Délai de grâce » est le
+terme des conversations de la journée, et le remplacer par un synonyme
+obligerait à traduire mentalement à chaque fois.
 
-Deux frontières, pour que la règle ne se transforme pas en chantier :
+Un fichier porte donc les deux : du code anglais qui produit des chaînes
+françaises. Quand la chaîne dépend d'une valeur, elle passe par une table de
+libellés plutôt que par l'interpolation d'un identifiant — voir `SOURCE_LABELS`
+dans `apps/room-client/src/main/hub-address.ts`, qui rend « environnement » à
+partir de `'environment'`.
 
-- **les modules français existants ne sont pas renommés.** Renommer l'API de
-  `@cloudnord/etat-salle` — `apparenceDe`, `etatDesCreneaux`,
-  `conferenceAPiloter` — se propagerait au contrat, au hub, au client et à un
-  millier de tests, pour un gain nul. Une fonction ajoutée à un fichier français
-  suit la convention de son fichier ;
-- **le vocabulaire métier reste français** là où il nomme le produit : `regie`,
-  `salle`, `conference`, `creneau` sont les mots du RUNBOOK et de l'étiquette
-  collée sur la machine.
+#### Le glossaire
+
+Les mots du métier ont chacun une traduction, et une seule. Un synonyme ajouté
+au hasard d'un fichier rend le code ingrepable, ce qui est exactement le défaut
+que la règle évite.
+
+| français | anglais |
+| --- | --- |
+| régie (l'application) | control |
+| salle | room |
+| conférence, talk | talk |
+| créneau | slot |
+| mur public | wall |
+| appairage | pairing |
+| verrou | lock |
+| captation | recording |
+| téléversement | upload |
+| programme | program |
+| repère | anchor |
+| débit | rate |
+| jauge | gauge |
+| réglages | settings |
+| porte (vers une salle) | gateway |
+
+#### Ce qui reste en français dans le code
+
+Ces valeurs traversent un réseau, un disque ou une base de données. Les
+renommer casserait un contrat, une migration ou un appairage déjà posé, sans
+rien rendre en lisibilité. Elles sont figées telles quelles, quelle que soit
+leur langue, et une valeur figée ne se renomme pas « au passage » :
+
+- **les procédures et les champs du contrat oRPC** : `regie.*`,
+  `program.controleOpenFeedback`, `dureeMs`, `recues`, `etapes`, `objets`,
+  `captations`, `televersements`, `salles`, `portee`, `conference` ;
+- **les valeurs d'énumération du contrat** : `aucune`, `pause`,
+  `pas-commencee`, `retard`, `en-cours`, `fin-proche`, `terminee`,
+  `depassement`, `a-venir`, `RAZ`, `inconnu`, `expire`, `attente`, `termine`,
+  `abandonne`, `echoue`, `debut`, `fin`, `ok`, `suspect`, `illisible`, `auto`,
+  `operateur`, `rien`, `essentiel`, `tout`, `technique`, `exploitation`,
+  `sans-stockage`, `auto-desactive` ;
+- **les routes HTTP** : `/mur`, `/regie/:roomId`, `/admin/*`, `/rpc`, `/ws`,
+  `/health`, `/display/*` ;
+- **les tables et colonnes SQLite**, et les propriétés Drizzle qui les portent :
+  `televersement`, `tailleOctets`, `octetsEnvoyes`, `debitOctetsS`, `manuel`,
+  `demandeA`, `commenceA`, `finiA`, `taillePartOctets`, `partsJson` ;
+- **les noms de vues du routeur**, qui sont dans les URL de la console :
+  `appairage`, `exploitation`, `developpement`, `moderation`, `reglages`,
+  `vod`, `messages`, `conferences` ;
+- **les clés de `localStorage`, les en-têtes et les paramètres d'URL** :
+  `mur-device`, `mur-votes`, `mur-salle`, `hub-admin`, `hub-notifs`,
+  `regie-session`, `x-regie-session`, `x-room-client-id`, `vue`, `salle`,
+  `duree` ;
+- **les ids du DOM que la coquille sert** : `etat-initial`, `regie-portee`,
+  `regie-root`, `console-boot` ;
+- **les variables d'environnement** : `MODE`, `OBS_MOCK`, `OBS_REEL`,
+  `HEURE_SIMULEE`, `HUB_ORIGIN`, `ROOM_ID`, `REGIE_VITE_ORIGIN`, `DATA_DIR`,
+  `DISPLAY_PORT` ;
+- **les fichiers écrits sur disque par une salle** : `salle.db`, `client-id`,
+  `jeton`, `hub`, `assets`, `enregistrements`, `.controles-vod.json` ;
+- **les canaux IPC d'Electron** : `hub:tester`, `hub:valider`.
+
+Le code qui les manipule, lui, est en anglais : `const upload = row.televersement`
+est la forme attendue, pas l'inverse.
 
 ### Les pages d'affichage n'ont pas d'étape de build
 
@@ -115,13 +178,13 @@ reformulé — parce que ce qu'il protégeait était le réseau, pas la balise :
 Un asset servi par le processus qui sert déjà la page ne peut pas disparaître
 d'une coupure du réseau de l'événement ; n'importe quelle autre origine, si.
 Vérifié par `apps/hub-server/test/public-pages.test.ts` pour la console, et par
-`apps/room-client/test/regie-servie.test.ts` pour la régie — où il pèse plus
+`apps/room-client/test/control-served.test.ts` pour la régie — où il pèse plus
 lourd encore : la machine de salle tourne parfois sans réseau du tout.
 
 En conséquence, pour les pages restées des gabarits :
 
 - **aucun `<script src>`, aucun `<link href>`, aucun `@import url`.** Tout est
-  inliné. Vérifié par `apps/room-client/test/pages-autonomes.test.ts` ;
+  inliné. Vérifié par `apps/room-client/test/standalone-pages.test.ts` ;
 - **aucun accent grave nu** dans le corps d'un gabarit. Un backtick oublié dans
   un commentaire referme la chaîne, et TypeScript signale alors une erreur à
   cent lignes de la cause. Vérifié par le même fichier ;
@@ -139,7 +202,7 @@ pnpm --filter @cloudnord/ui build
 
 Sans cela la classe n'a tout simplement aucun style : rien ne lève, rien ne
 casse au typage, l'écran s'affiche de travers et on le découvre en salle.
-`packages/ui/test/feuille-a-jour.test.ts` recompile et compare, pour que
+`packages/ui/test/sheet-up-to-date.test.ts` recompile et compare, pour que
 l'oubli soit une erreur de test plutôt qu'une mauvaise surprise.
 
 Le CSS qui n'est pas exprimable en utilitaires — keyframes, dégradés composés
@@ -156,15 +219,15 @@ passe par des valeurs arbitraires : `text-[3vmin]`, `p-[4.5vmin]`,
 ### Le flux d'état est différentiel, et vérifié dans les deux sens
 
 Les pages reçoivent leur état par SSE, champ par champ, et chaque vue ne reçoit
-que ce qu'elle lit. `apps/room-client/test/vues-du-flux.test.ts` relit le source
+que ce qu'elle lit. `apps/room-client/test/stream-views.test.ts` relit le source
 d'une page, en extrait les `donnees.<champ>` et exige une correspondance exacte
-avec `CHAMPS_PAR_VUE` : un champ lu mais non poussé fait échouer les tests, un
+avec `FIELDS_BY_VIEW` : un champ lu mais non poussé fait échouer les tests, un
 champ poussé mais plus lu aussi.
 
 ### Les migrations sont scellées
 
 Une migration publiée ne se réécrit pas — les salles ont déjà appliqué la
-leur. `packages/db/test/migrations-scellees.test.ts` le garantit. Pour changer
+leur. `packages/db/test/migrations-sealed.test.ts` le garantit. Pour changer
 un schéma, ajoutez une migration.
 
 ## Tests
@@ -190,20 +253,20 @@ Format Conventional Commits, en français : `type(scope): sujet`.
 moment du commit, et la CI la rejoue sur les commits d'une proposition.
 
 ```
-feat(regie): couches de raccourcis clavier
+feat(control): couches de raccourcis clavier
 fix(hub): le RAZ efface les prises du journal d'ingestion
 refactor(ui): supprime components.css, plus aucune page ne le lit
 ```
 
 Le sujet dit l'intention plutôt que le geste : « ne plus répéter le logo d'un
-sponsor multi-paliers » plutôt que « modifie rendreSponsors ». Sans majuscule
+sponsor multi-paliers » plutôt que « modifie renderSponsors ». Sans majuscule
 initiale ni point final, 72 caractères au plus, type et scope compris. Deux
 « et » dans un sujet valent deux commits.
 
 Les scopes sont fermés, et la liste vit dans `commitlint.config.js` : les douze
 répertoires de `apps/` et `packages/` — `console` pour `hub-admin`, `hub` pour
-`hub-server`, `regie` pour `control-web` — plus `vod`, `deps`, `dev`, `docker` et
-`repo`.
+`hub-server`, `control` pour `control-web` — plus `vod`, `deps`, `dev`,
+`docker` et `repo`.
 
 Le hook est posé par `prepare`, donc par n'importe quel `pnpm install`. Il ne
 part pas avec le dépôt : un clone qui n'a jamais installé ne l'a pas.

@@ -5,14 +5,14 @@ import { useRouter } from 'vue-router'
 import { useNotificationsStore } from '../stores/notifications.js'
 
 /**
- * Les signalements, en bas de la console.
+ * The notices, at the bottom of the console.
  *
- * Fond plein et texte sombre : ces encarts doivent se lire du coin de l'œil, et
- * c'est la seule paire lisible sur de l'ambre — celle que le bouton actif de la
- * console utilise déjà.
+ * Solid background and dark text: these cards must be readable out of the corner
+ * of the eye, and that is the only pairing readable on amber — the one the
+ * console's active button already uses.
  *
- * Cliquables, comme la notification système l'est : un encart qui dit
- * « Track #2 déborde » sans y conduire laisse chercher.
+ * Clickable, as the system notification is: a card saying "Track #2 déborde"
+ * without leading there leaves one searching.
  */
 const store = useNotificationsStore()
 const { alerts } = storeToRefs(store)

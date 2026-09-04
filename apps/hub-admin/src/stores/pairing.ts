@@ -4,12 +4,12 @@ import { useNotificationsStore } from './notifications.js'
 import { useSessionStore } from './session.js'
 
 /**
- * Machines de salle : celles qui demandent à entrer, et celles déjà entrées.
+ * Room machines: those asking to come in, and those already in.
  */
 export interface PendingDevice {
   clientId: string
   requestedAt: string
-  /** Salle demandée par la machine, transmise sous la forme `room:<id>`. */
+  /** The room the machine asks for, carried in the form `room:<id>`. */
   scope?: string | null
 }
 
@@ -81,10 +81,10 @@ export const usePairingStore = defineStore('pairing', () => {
 })
 
 /**
- * Salle que la machine dit desservir.
+ * The room the machine says it serves.
  *
- * Pré-sélectionnée mais modifiable : c'est l'opérateur de la salle qui sait où
- * il se trouve, et celui devant la console qui tranche.
+ * Preselected but editable: it is the room's operator who knows where they are,
+ * and the one at the console who decides.
  */
 export function requestedRoom(device: PendingDevice): string | null {
   const scope = device.scope ?? ''
@@ -92,10 +92,10 @@ export function requestedRoom(device: PendingDevice): string | null {
 }
 
 /**
- * Ce qu'un code refusé veut dire, en toutes lettres.
+ * What a refused code means, spelled out.
  *
- * Un statut brut ne dit pas quoi faire ensuite, et c'est la seule question que
- * se pose quelqu'un qui tient une machine devant lui.
+ * A raw status does not say what to do next, and that is the only question asked
+ * by somebody standing in front of a machine.
  */
 export const VERDICTS: Record<string, { title: string; body: string }> = {
   inconnu: {

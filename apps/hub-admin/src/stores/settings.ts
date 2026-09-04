@@ -3,11 +3,11 @@ import { ref } from 'vue'
 import { useSessionStore } from './session.js'
 
 /**
- * Ce qui se règle une fois, et vaut pour toute la journée.
+ * What is set once, and holds for the whole day.
  *
  * Six panneaux dans une seule vue, et un seul store : ils partagent tous
  * `settings/update`, et c'est le hub qui tranche ce qu'il retient. Le store ne
- * déduit rien — il repose ce que le hub a répondu.
+ * deduces nothing — it lays down again what the hub answered.
  */
 export interface Settings {
   eventName?: string | null
@@ -34,7 +34,7 @@ export interface Snapshot {
   active: boolean
 }
 
-/** Ce que le hub déduirait du programme importé, réglages ignorés. */
+/** What the hub would deduce from the imported program, settings ignored. */
 export interface DerivedIdentity {
   name: string
   shortName: string
@@ -87,11 +87,10 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   /**
-   * Enregistre, puis repose ce que le hub a répondu.
+   * Saves, then lays down again what the hub answered.
    *
-   * Et non ce que la page aurait déduit à sa place : c'est lui qui tranche, et
-   * l'écart entre les deux est précisément ce qu'un opérateur vient vérifier
-   * après avoir enregistré.
+   * And not what the page would have deduced in its place: the hub decides, and the
+   * gap between the two is precisely what an operator comes to check after saving.
    */
   async function update(patch: Record<string, unknown>): Promise<void> {
     settings.value = (await session.client.rpc.settings.update(patch)) as Settings
@@ -104,10 +103,10 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   /**
-   * Réimporte depuis l'URL **enregistrée**, jamais depuis celle qui est à l'écran.
+   * Re-imports from the **saved** URL, never from the one on screen.
    *
-   * C'est ce que le hub lira de toute façon : partir d'une autre ferait croire
-   * qu'on a importé ce qu'on venait de taper.
+   * It is what the hub will read anyway: starting from another would suggest one
+   * had imported what one had just typed.
    */
   async function reimport(): Promise<number> {
     const url = settings.value?.programSourceUrl
@@ -142,12 +141,12 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 })
 
-/** Vidé = revenir à la déduction. Distinguer « vide » d'« absent » est tout l'intérêt. */
+/** Emptied means going back to the deduction. Telling "empty" from "absent" is the whole point. */
 export function orNull(value: string): string | null {
   return value.trim() === '' ? null : value.trim()
 }
 
-/** Ce que dit chaque étape du contrôle de stockage. */
+/** What each step of the storage check says. */
 export const STORAGE_STEPS: Record<string, string> = {
   joindre: 'Joindre le stockage',
   authentifier: 'Clés et bucket',

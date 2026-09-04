@@ -1,9 +1,9 @@
 /*
- * Feuille de la console.
+ * The console's stylesheet.
  *
- * Tout vient de `@cloudnord/ui` : la palette, les pastilles, et le pont vers
- * les tokens de shadcn. Les sources scannées sont déclarées là-bas, dans
- * `apps.css` — surtout pas dans `theme.css`, qui alimente la feuille figée des
- * pages restées des gabarits.
+ * Everything comes from `@cloudnord/ui`: the palette, the status dots, and the
+ * bridge to shadcn's tokens. The scanned sources are declared over there, in
+ * `apps.css` — and certainly not in `theme.css`, which feeds the frozen sheet of
+ * the pages still built from templates.
  */
 @import "@cloudnord/ui/apps.css";

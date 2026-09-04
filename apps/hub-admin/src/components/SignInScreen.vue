@@ -23,11 +23,11 @@ function submit(): void {
 }
 
 /**
- * Le store porte l'appel : il faut un POST, puis une navigation.
+ * The store carries the call: it needs a POST, then a navigation.
  *
- * Better Auth ne redirige pas depuis un GET sur cette adresse — il répond
- * `null`. C'est la réponse à laquelle mène un `location.assign` naïf, et elle
- * ne dit rien de ce qui a manqué.
+ * Better Auth does not redirect from a GET on this address — it answers `null`.
+ * That is the answer a naive `location.assign` leads to, and it says nothing about
+ * what was missing.
  */
 function signInWithGoogle(): void {
   void session.signInWithGoogle()

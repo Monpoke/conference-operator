@@ -4,13 +4,13 @@ import { ref, watch } from 'vue'
 import { useNotificationsStore, type Scope } from '../stores/notifications.js'
 
 /**
- * Ce dont cet appareil-ci veut être prévenu.
+ * What this device wants to be told about.
  *
- * Deux familles réglées séparément, parce qu'elles n'intéressent pas les mêmes
- * personnes au même moment : les machines relèvent de qui tient la technique,
- * le déroulé de qui tient la journée. Et deux appareils du même opérateur — le
- * téléphone dans la poche, la console posée sur la table — ont deux réponses
- * légitimes, d'où un réglage local et non un réglage de compte.
+ * Two families set separately, because they do not interest the same people at the
+ * same moment: the machines are the concern of whoever holds the technical side,
+ * the day's run of whoever holds the day. And two devices belonging to the same
+ * operator — the phone in the pocket, the console on the table — have two
+ * legitimate answers, hence a local setting and not an account setting.
  */
 const open = defineModel<boolean>('open', { required: true })
 
@@ -19,22 +19,22 @@ const toast = useToast()
 
 const technique = ref<Scope>(store.levels.technique)
 const exploitation = ref<Scope>(store.levels.exploitation)
-const enCours = ref(false)
+const saving = ref(false)
 
-watch(open, (ouvert) => {
-  if (!ouvert) return
+watch(open, (isOpen) => {
+  if (!isOpen) return
   technique.value = store.levels.technique
   exploitation.value = store.levels.exploitation
 })
 
-/** Ce que le navigateur a déjà accordé, dit avant de demander quoi que ce soit. */
-const portee = (): string =>
+/** What the browser has already granted, said before asking for anything. */
+const permissionNote = (): string =>
   typeof Notification !== 'undefined' && Notification.permission === 'granted'
     ? 'Cet appareil est autorisé à notifier.'
     : "Le navigateur demandera l'autorisation à la première application."
 
 async function appliquer(): Promise<void> {
-  enCours.value = true
+  saving.value = true
   try {
     const issue = await store.apply({
       technique: technique.value,
@@ -53,7 +53,7 @@ async function appliquer(): Promise<void> {
           : issue.message,
     )
   } finally {
-    enCours.value = false
+    saving.value = false
   }
 }
 </script>
@@ -80,10 +80,10 @@ async function appliquer(): Promise<void> {
         { value: 'tout', label: 'Tout : débuts, fins, et fins dans cinq minutes' },
       ]"
     />
-    <Hint id="notif-portee" class="mt-0">{{ portee() }}</Hint>
+    <Hint id="notif-permissionNote" class="mt-0">{{ permissionNote() }}</Hint>
 
     <template #actions>
-      <Button id="notif-appliquer" variant="primary" size="small" :disabled="enCours" @click="appliquer">
+      <Button id="notif-appliquer" variant="primary" size="small" :disabled="saving" @click="appliquer">
         Appliquer
       </Button>
     </template>

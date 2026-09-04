@@ -137,7 +137,7 @@ describe('vue VOD', () => {
   it('rapatrie toute une salle une fois celle-ci choisie', async () => {
     const { calls, wrapper } = await monter([EN_COURS])
 
-    await wrapper.get('#vod-salle').setValue('track-1')
+    await wrapper.get('#vod-room').setValue('track-1')
     await flushPromises()
     await wrapper.get('#btn-vod-relancer').trigger('click')
     await flushPromises()

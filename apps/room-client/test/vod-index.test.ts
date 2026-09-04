@@ -75,7 +75,7 @@ function sidecar(nom: string, patch: Partial<Sidecar> = {}): void {
   writeFileSync(join(racine, nom), JSON.stringify({ ...SIDECAR, ...patch }, null, 2))
 }
 
-/** Sonde factice : ce que ffprobe aurait lu, sans ffprobe. */
+/** A fake probe: what ffprobe would have read, without ffprobe. */
 function sonde(patch: Partial<VodProbe> = {}): (path: string) => Promise<VodProbe | null> {
   return async () => ({
     ouvert: true,

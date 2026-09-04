@@ -5,8 +5,8 @@ import { useSessionStore } from './session.js'
 /**
  * What is set once, and holds for the whole day.
  *
- * Six panneaux dans une seule vue, et un seul store : ils partagent tous
- * `settings/update`, et c'est le hub qui tranche ce qu'il retient. Le store ne
+ * Six panels in a single view, and a single store: they all share
+ * `settings/update`, and it is the hub that settles what it keeps. The store
  * deduces nothing — it lays down again what the hub answered.
  */
 export interface Settings {

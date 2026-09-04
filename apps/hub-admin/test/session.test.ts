@@ -61,8 +61,8 @@ beforeEach(() => {
   })
 })
 
-describe('connexion par mot de passe', () => {
-  it('range le jeton que le hub renvoie', async () => {
+describe('signing in with a password', () => {
+  it('stores the token the hub sends back', async () => {
     stubFetch({ '/api/auth/sign-in/email': { body: { token: 'jeton-operateur' } } })
     const session = useSessionStore()
 
@@ -84,7 +84,7 @@ describe('connexion par mot de passe', () => {
 })
 
 describe('connexion Google', () => {
-  it('passe par un POST, et suit l’adresse rendue', async () => {
+  it('goes through a POST, and follows the address it gets back', async () => {
     const calls = stubFetch({
       '/api/auth/sign-in/social': { body: { url: 'https://accounts.google.com/o/oauth2/v2/auth?x=1' } },
     })
@@ -102,7 +102,7 @@ describe('connexion Google', () => {
     expect(destination).toBe('https://accounts.google.com/o/oauth2/v2/auth?x=1')
   })
 
-  it('ne navigue nulle part quand le hub ne rend pas d’adresse', async () => {
+  it('navigates nowhere when the hub gives back no address', async () => {
     stubFetch({ '/api/auth/sign-in/social': { status: 500, body: { message: 'Google non configuré' } } })
     const session = useSessionStore()
 
@@ -121,8 +121,8 @@ describe('retour de Google', () => {
     session.start(BOOT)
     await flushPromises()
 
-    // Le round-trip ne laisse aucun jeton : ne regarder que le stockage local
-    // sent the operator back to the sign-in screen they had just left.
+    // The round trip leaves no token: looking only at local storage sent the
+    // operator back to the sign-in screen they had just left.
     expect(session.signedIn).toBe(true)
     expect(session.identity).toBe('regie@cloudnord.fr')
   })
@@ -137,7 +137,7 @@ describe('retour de Google', () => {
     expect(session.signedIn).toBe(false)
   })
 
-  it('n’interroge pas le hub quand un jeton suffit', async () => {
+  it('does not query the hub when a token is enough', async () => {
     const calls = stubFetch({})
     localStorage.setItem('hub-admin', 'jeton-range')
     const session = useSessionStore()
@@ -145,8 +145,8 @@ describe('retour de Google', () => {
     session.start(BOOT)
     await flushPromises()
 
-    // Un aller-retour de plus devant chaque chargement, pour une information
-    // that the first protected call will give anyway.
+    // One more round trip in front of every load, for a piece of information the
+    // first protected call will give anyway.
     expect(session.signedIn).toBe(true)
     expect(calls).toEqual([])
   })

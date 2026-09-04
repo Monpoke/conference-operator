@@ -83,7 +83,7 @@ describe('moderation view', () => {
     expect(wrapper.get('#moderation').text()).toContain('Rien à relire')
   })
 
-  it('affiche ce que le message dit, son auteur et sa provenance', async () => {
+  it('shows what the message says, its author and where it came from', async () => {
     const { wrapper } = mountView([MESSAGE])
     await useModerationStore().load()
     await flushPromises()
@@ -108,7 +108,7 @@ describe('moderation view', () => {
     })
   })
 
-  it('rejette par le second bouton, jamais par le premier', async () => {
+  it('rejects with the second button, never with the first', async () => {
     const { calls, wrapper } = mountView([MESSAGE])
     await useModerationStore().load()
     await flushPromises()
@@ -131,8 +131,8 @@ describe('moderation view', () => {
     await flushPromises()
 
     // Removing the card locally would be enough on screen and would diverge as
-    // soon as two operators moderate at once. A single source of truth, and
-    // c'est le hub.
+    // soon as two operators moderate at once. A single source of truth, and it is
+    // the hub.
     expect(calls.filter((call) => call.path === 'wall/pending')).toHaveLength(2)
   })
 })

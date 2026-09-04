@@ -7,23 +7,22 @@ import { programMoments } from '../src/stores/dev.js'
 import { useSessionStore } from '../src/stores/session.js'
 
 /**
- * What the development view needs to know, and was not asking for
- * pas.
+ * What the development view needs to know, and was not asking for.
  *
  * The clock shortcuts are deduced from the program's slots, never hard-coded — a
  * date for one edition in the code only holds for that edition. But nothing loaded
  * that program: the buttons appeared when arriving from the Conférences tab, which
  * had loaded it along the way, and not otherwise. The same omission carried away
- * the time zone in which the hub's clock
- * s'affiche — sans lui, elle se lit dans celui du poste, ce qui est exactement
- * the mistake this setting exists to flush out.
+ * the time zone the hub's clock is displayed in — without it, the clock reads in
+ * the machine's own zone, which is exactly the mistake this setting exists to
+ * flush out.
  */
 
 /**
  * A realistic day: it **opens on a welcome**.
  *
- * C'est ce que fait l'export amont, et ce que la fixture d'origine n'avait pas
- * — it began with a talk, so that "Première conférence" could aim at whatever slot
+ * That is what the upstream export does, and what the original fixture did not —
+ * it began with a talk, so that "Première conférence" could aim at whatever slot
  * came first with nothing to report it.
  */
 const SLOTS = [
@@ -77,9 +76,9 @@ beforeEach(() => {
 })
 
 describe('program moments', () => {
-  it('ne rend aucun raccourci sans programme', () => {
-    // A jump to a date with no slot at all shows nothing and does not
-    // dit pas pourquoi : mieux vaut aucun bouton qu'un bouton muet.
+  it('renders no shortcut with no program', () => {
+    // A jump to a date with no slot at all shows nothing and does not say why:
+    // no button beats a mute one.
     expect(programMoments([])).toEqual([])
   })
 
@@ -107,22 +106,21 @@ describe('program moments', () => {
   })
 
   it('keeps "avant ouverture" on the first slot, break included', () => {
-    // That one does aim at the welcome: "before opening" means before the
-    // salle n'ouvre ses portes, pas avant le premier talk.
+    // That one does aim at the welcome: "before opening" means before the room
+    // opens its doors, not before the first talk.
     expect(programMoments(SLOTS)[0]?.[1]).toBe('2026-10-30T07:00:00.000Z')
   })
 
   it('falls back on the first slot when the day has only breaks', () => {
     // Four buttons beat three, even if this one then aims at a lunch: a program
-    // with no talk is an incomplete program, not
-    // une raison de retirer un outil.
+    // with no talk is an incomplete program, not a reason to remove a tool.
     const pauses = SLOTS.filter((slot) => slot.kind === 'break')
     expect(programMoments(pauses)[1]?.[1]).toBe('2026-10-30T07:35:00.000Z')
   })
 })
 
 describe('what the development address loads', () => {
-  it('charge le programme, sans quoi les raccourcis n’existent pas', async () => {
+  it('loads the program, failing which the shortcuts do not exist', async () => {
     await rafraichirDeveloppement()()
     await flushPromises()
 
@@ -144,7 +142,7 @@ describe('what the development address loads', () => {
 
     /*
      * The refresh runs every ten seconds. The program, on the other hand, does not
-     * bouge pas pendant qu'on pousse l'horloge : le relire ferait trois appels
+     * move while the clock is being pushed: reading it again would make three calls
      * for an identical answer.
      */
     expect(calls.filter((call) => call === 'program/planning')).toHaveLength(afterFirst)

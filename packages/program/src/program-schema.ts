@@ -153,8 +153,8 @@ export const programSchema = z.object({
 })
 
 /**
- * Garde-fou de compilation : si `model.ts` et `programSchema` divergent, l'une
- * de ces deux affectations cesse de compiler.
+ * A compile-time guard: if `model.ts` and `programSchema` drift apart, one of
+ * these two assignments stops compiling.
  */
 type SchemaProgram = z.infer<typeof programSchema>
 const _schemaMatchesModel: SchemaProgram = null as unknown as Program

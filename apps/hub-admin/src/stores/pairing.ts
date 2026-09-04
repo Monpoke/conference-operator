@@ -47,8 +47,8 @@ export const usePairingStore = defineStore('pairing', () => {
       session.client.rpc.devices.list(),
     ])
     pending.value = attente as PendingDevice[]
-    // Une machine qui attend son code est la seule chose de cette vue qui doive
-    // atteindre quelqu'un qui ne la regarde pas.
+    // A machine waiting for its code is the only thing in this view that has to
+    // reach somebody who is not looking at it.
     notifications.observePairings(pending.value)
     rooms.value = salles as Room[]
     devices.value = machines as PairedDevice[]

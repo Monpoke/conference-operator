@@ -80,7 +80,7 @@ let control: string
 /** What the fake folder picker returns, and the starting point it received. */
 let chosenFolder: string | null
 let folderRequestedWith: string | null | undefined
-/** Le dossier que la salle a en configuration, pour comparer. */
+/** The folder the room has in its configuration, for comparison. */
 let recordingRootConfigure: string
 
 beforeEach(async () => {

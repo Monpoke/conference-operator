@@ -128,7 +128,7 @@ describe('what the modal says when there is nothing', () => {
     wrapper.unmount()
   })
 
-  it('signale une machine sans ffprobe, une fois en haut', async () => {
+  it('reports a machine with no ffprobe, once at the top', async () => {
     listing = { root: '/rushes', entries: [RUSH], tools: { ffmpeg: true, ffprobe: false } }
     const vod = await openVod()
 
@@ -198,8 +198,8 @@ describe('uploading', () => {
     const wrapper = mount(VodDialog, { props: { timeZone: 'Europe/Paris' }, attachTo: document.body })
     await flushPromises()
 
-    // Failing which the operator who has just sent one by hand wonders
-    // pourquoi les suivants ne partent pas seuls.
+    // Failing which the operator who has just sent one by hand wonders why the
+    // next ones do not leave on their own.
     const row = document.body.querySelector('[data-role="vod-manual"]')
     expect(row?.textContent).toContain('les envois se font à la main')
     // "Tout téléverser" stays armed: the same rule as the rows' ⬆.
@@ -209,7 +209,7 @@ describe('uploading', () => {
     wrapper.unmount()
   })
 
-  it('se tait sur une absence de stockage, et parle d’une attente', async () => {
+  it('stays quiet about missing storage, and speaks about a wait', async () => {
     uploads = {
       ok: true,
       entries: [],
@@ -276,7 +276,7 @@ describe('uploading', () => {
     expect(calls.at(-2)?.body).toEqual({ action: 'vod.upload.cancel', file: RUSH.file })
   })
 
-  it('bat au lieu de tourner tant que rien ne part encore', async () => {
+  it('pulses instead of spinning while nothing is leaving yet', async () => {
     // A spinner on a queue would suggest an upload going nowhere: it spins when
     // bytes are leaving, it pulses otherwise.
     uploads = {
@@ -321,8 +321,9 @@ describe('uploading', () => {
 
     // Sixty megabytes at one megabyte a second.
     expect(wrapper.text()).toContain('téléversement en cours — 40 % · reste 1 min')
-    // "environ" on the indicator: what is worth whatever the network is worth reads
-    // comme une estimation, sans quoi on range le disque sur la foi du chiffre.
+    // "environ" on the indicator: what is worth whatever the network is worth has
+    // to read as an estimate, failing which the disk is put away on the figure's
+    // word.
     expect(wrapper.get('[data-vod-progress]').attributes('title')).toContain(
       'reste environ 1 min',
     )
@@ -390,7 +391,7 @@ describe('uploading', () => {
     expect(vod.etaOf(RUSH.file)).toBe(Math.round((60_000_000 / 700_000) * 1000))
   })
 
-  it('n’annonce aucun temps tant que rien n’est parti', async () => {
+  it('announces no time while nothing has left', async () => {
     // "Any moment now" on a queue that has not started would be an invented
     // promise: nothing has left, nothing has been measured.
     uploads = {
@@ -461,8 +462,7 @@ describe('uploading', () => {
     }
 
     // The column reserves the widest case's space on every row, and pushes its
-    // content right: ⬆, ☁ and "Annuler" share the edge
-    // qui touche le ✓.
+    // content right: ⬆, ☁ and "Annuler" share the edge that touches the ✓.
     const column = wrapper.get('[data-vod-upload]').element.parentElement
     expect(column?.className).toContain('w-[6.75rem]')
     expect(column?.className).toContain('justify-end')
@@ -485,8 +485,9 @@ describe('uploading', () => {
   })
 
   it('gives the ☁ a button\'s width, for want of being one', async () => {
-    // Il n'est pas cliquable — repayer trois gigaoctets au premier clic distrait
-    // is what is being avoided — but it occupies the same cell, otherwise the row shifts.
+    // It is not clickable — paying three gigabytes again on the first distracted
+    // click is what is being avoided — but it occupies the same cell, otherwise the
+    // row shifts.
     uploads = {
       ok: true,
       entries: [{ file: RUSH.file, state: 'termine', percent: 100, remainingBytes: 0, debitOctetsS: null, error: null, manual: false }],
@@ -499,7 +500,7 @@ describe('uploading', () => {
     expect(nuage?.classes()).toContain('w-9')
   })
 
-  it('aligne les noms de fichier, quel que soit le verdict', async () => {
+  it('aligns the file names, whatever the verdict', async () => {
     // "Non vérifié", "Exploitable", "À revoir" and "Illisible" are not the same
     // length: the name began at four different offsets.
     await openVod()
@@ -521,7 +522,7 @@ describe('uploading', () => {
     expect(wrapper.text()).toContain('AccessDenied')
   })
 
-  it('met un fichier en file, ou tout ce qui reste', async () => {
+  it('queues one file, or everything that is left', async () => {
     const vod = await openVod()
     calls = []
 
@@ -673,7 +674,7 @@ describe('one footage row', () => {
     expect(wrapper.text()).toContain('rognage 00:52 → ?')
   })
 
-  it('dit le sidecar absent, qui est justement le cas qu’on cherche', async () => {
+  it('reports the missing sidecar, which is precisely the case being looked for', async () => {
     await openVod()
     const wrapper = mount(VodRow, {
       props: { entry: { ...RUSH, sidecar: null }, timeZone: 'Europe/Paris' },

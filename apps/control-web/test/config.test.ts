@@ -94,19 +94,19 @@ describe('draft', () => {
 })
 
 describe('what the form sends', () => {
-  it('ne renvoie pas un mot de passe qu’il n’a jamais eu', () => {
+  it('does not send back a password it never had', () => {
     room()
     const config = useConfigStore()
     config.show()
 
     const patch = config.patch() as { obs: { A: Record<string, unknown> } }
 
-    // An empty field means "unchanged": the page never had the password,
-    // elle ne peut pas le renvoyer pour le conserver.
+    // An empty field means "unchanged": the page never had the password, so it
+    // cannot send it back in order to keep it.
     expect(patch.obs.A).toEqual({ url: 'ws://127.0.0.1:4455' })
   })
 
-  it('sait retirer un mot de passe, ce qu’un champ vide ne dit pas', () => {
+  it('can remove a password, which an empty field does not say', () => {
     room()
     const config = useConfigStore()
     config.show()
@@ -182,7 +182,7 @@ describe('saving', () => {
     expect(config.notice).toEqual({ text: 'Enregistré.', tone: 'ok' })
   })
 
-  it('garde la saisie quand le hub refuse', async () => {
+  it('keeps what was typed when the hub refuses', async () => {
     room()
     const config = useConfigStore()
     config.show()
@@ -195,7 +195,7 @@ describe('saving', () => {
     expect(config.notice).toEqual({ text: 'Refusé', tone: 'alert' })
   })
 
-  it('enregistre avant de connecter, pour ne pas brancher la mauvaise adresse', async () => {
+  it('saves before connecting, so as not to plug in the wrong address', async () => {
     room()
     const config = useConfigStore()
     config.show()
@@ -231,8 +231,8 @@ describe('saving', () => {
 
     await config.connect('A')
 
-    // La configuration s'enregistre sur le hub ; brancher OBS, non — c'est un
-    // geste local, et c'est justement quand le hub manque qu'on en a besoin.
+    // The configuration is saved on the hub; plugging into OBS is not — that is a
+    // local gesture, and it is precisely when the hub is missing that it is needed.
     expect(calls.map((call) => (call.body as { action: string }).action)).toEqual(['obs.connect'])
   })
 })
@@ -253,7 +253,7 @@ describe('OBS block', () => {
     })
   }
 
-  it('interdit de reconnecter sous une prise en cours', () => {
+  it('forbids reconnecting under a running take', () => {
     const wrapper = block({ connected: true, recording: true, scenes: [], currentSceneName: 'X' })
 
     // Reconnecter, c'est couper.
@@ -273,7 +273,7 @@ describe('OBS block', () => {
     })
 
     // Without saying so, a correct setting would stay without effect with nobody
-    // voie pourquoi : enregistrer ne reconnecte pas.
+    // seeing why: saving does not reconnect.
     expect(wrapper.get('[data-state="A"]').text()).toContain('réglages non appliqués')
   })
 
@@ -327,7 +327,7 @@ describe('choosing the VOD folder', () => {
     return config
   }
 
-  it('remplit le champ avec ce que le poste a choisi', async () => {
+  it('fills the field with what the machine chose', async () => {
     answer = { ok: true, detail: 'D:\\captations\\2026' }
     const config = openPanel()
 
@@ -412,7 +412,7 @@ describe('incomplete room at start-up', () => {
     expect(configuredRoom().missing).toEqual([])
   })
 
-  it('nomme les deux OBS absents et le dossier des VOD', () => {
+  it('names the two missing OBS instances and the VOD folder', () => {
     const config = configuredRoom({ recordingRoot: null }, { A: null, B: obsState({ connected: false }) })
 
     expect(codes(config)).toEqual(['obs-A', 'obs-B', 'vod'])
@@ -439,8 +439,8 @@ describe('incomplete room at start-up', () => {
   })
 
   it('does not reproach the take for having no role mapped', () => {
-    // Beaucoup de salles ne changent jamais de plan pendant un talk : ce serait
-    // a false reason. Projection with no role, on the other hand, has no button.
+    // Many rooms never change shot during a talk: that would be a false reason.
+    // Projection with no role, on the other hand, has no button.
     expect(configuredRoom({ sceneRoles: { A: { LIVE: 'Direct' }, B: {} } }).missing).toEqual([])
     expect(codes(configuredRoom({ sceneRoles: { A: {}, B: {} } }))).toEqual(['scenes-A'])
   })
@@ -451,8 +451,8 @@ describe('incomplete room at start-up', () => {
     config.checkAtStartup()
 
     expect(config.open).toBe(true)
-    // Le bandeau dit pourquoi : un panneau qui s'ouvre tout seul se lit comme
-    // a slip until it has given its reason.
+    // The banner says why: a panel that opens on its own reads as a slip until it
+    // has given its reason.
     expect(config.openAtStartup).toBe(true)
     expect(codes(config)).toEqual(['obs-B', 'vod'])
   })
@@ -484,8 +484,8 @@ describe('incomplete room at start-up', () => {
     expect(config.open).toBe(true)
 
     config.open = false
-    // Une salle sans dossier de VOD reste pilotable pour tout le reste : un
-    // panneau qui se rouvre n'est plus un rappel, c'est un obstacle.
+    // A room with no VOD folder stays drivable for everything else: a panel that
+    // reopens is no longer a reminder, it is an obstacle.
     config.checkAtStartup()
 
     expect(config.open).toBe(false)

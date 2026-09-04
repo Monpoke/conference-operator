@@ -12,10 +12,9 @@ import {
  * What the console warns about, and whom.
  *
  * The decision of *what* to announce is a pure function, exported on purpose: it
- * is the only part of the system worth exercising with no browser, no
- * permission et sans service worker. Le reste — demander l'autorisation,
- * subscribing to push — has no behaviour of its own to protect: it chains APIs the
- * browser owns.
+ * is the only part of the system worth exercising with no browser, no permission
+ * and no service worker. The rest — asking for permission, subscribing to push —
+ * has no behaviour of its own to protect: it chains APIs the browser owns.
  */
 
 const ROOM = {
@@ -75,10 +74,10 @@ describe('scope', () => {
   })
 })
 
-describe('ce qui change dans une salle', () => {
+describe('what changes in a room', () => {
   it('says nothing on the first load', () => {
-    // Announcing six rooms' initial state when the console opens
-    // noierait ce qui change vraiment.
+    // Announcing six rooms' initial state when the console opens would drown out
+    // what actually changes.
     expect(roomAlerts(new Map(), [ROOM])).toEqual([])
   })
 

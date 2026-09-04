@@ -116,8 +116,8 @@ describe('what one strip cell says', () => {
   it('admits an unknown program rather than announce an out-of-slot', () => {
     const entry = stripEntry(neighbour(), room, [], START_MS)
 
-    // "Hors créneau" would read as a room with nothing scheduled, when
-    // qu'on ignore tout de la sienne.
+    // "Hors créneau" would read as a room with nothing scheduled, when in fact
+    // nothing is known of its own program.
     expect(entry.detail).toBe('programme inconnu')
   })
 
@@ -129,8 +129,8 @@ describe('what one strip cell says', () => {
       START_MS + 60_000,
     )
 
-    // Le remplissage reste celui du programme : on ne sait plus si elle le
-    // follows, and claiming it in colour would be worse than staying silent.
+    // The fill stays the program's: whether the room still follows it is no longer
+    // known, and claiming it in colour would be worse than staying silent.
     expect(entry.dot).toContain('silent')
   })
 
@@ -191,8 +191,8 @@ describe('rooms tab', () => {
       props: { payload: neighbour({ connectivity: 'OFFLINE' }), nowMs: START_MS },
     })
 
-    // Reprendre le mot du programme laisserait croire qu'on sait encore ce qui
-    // s'y joue.
+    // Repeating the program's word would suggest what is playing there is still
+    // known.
     expect(wrapper.get('[data-room="track-2"]').text()).toContain('salle muette')
   })
 
@@ -226,7 +226,7 @@ describe('questions tab', () => {
     return mount(QuestionsTab, { props: { payload: view } })
   }
 
-  it('nomme le talk dont il lit les questions', () => {
+  it('names the talk whose questions it is reading', () => {
     // Without that reminder, an empty list reads as "nobody has asked anything"
     // when it sometimes means "no talk is being driven".
     expect(withQuestions().text()).toContain('Ce que le flux ne dit pas')
@@ -259,7 +259,7 @@ describe('questions tab', () => {
     })
   })
 
-  it('relit la liste, parce qu’une liste d’il y a une heure ne vaut rien', async () => {
+  it('reads the list again, because an hour-old list is worth nothing', async () => {
     const wrapper = withQuestions()
 
     await wrapper.findAll('button')[0]!.trigger('click')
@@ -282,7 +282,7 @@ describe('questions tab', () => {
   })
 
   it('says what "Afficher" does not do', () => {
-    // Sans le dire, on clique et on cherche la question sur le
+    // Without saying so, one clicks and then looks for the question on the
     // projector.
     expect(withQuestions().text()).toContain('Question choisie')
   })
@@ -310,7 +310,7 @@ describe('notices', () => {
 
   it('displays nothing when there is nothing to report', () => {
     const wrapper = mount(NotificationStack, { props: { payload: payload(), nowMs: START_MS } })
-    // Un conteneur vide occuperait sa place dans la pile du bas, en permanence.
+    // An empty container would take its place in the bottom stack, permanently.
     expect(wrapper.find('[data-role="notifications"]').exists()).toBe(false)
   })
 
@@ -322,11 +322,11 @@ describe('notices', () => {
     ]
     const wrapper = mount(NotificationStack, { props: { payload: view, nowMs: START_MS + 1000 } })
 
-    // Un fond plein, pas une teinte sourde : ces encarts doivent se lire du
-    // corner of the eye, by an operator watching the room.
+    // A solid background, not a muted tint: these boxes have to be readable out of
+    // the corner of the eye, by an operator watching the room.
     expect(wrapper.get('[data-notification="n-1"]').classes()).toContain('bg-brand')
     expect(wrapper.get('[data-notification="n-2"]').classes()).toContain('bg-warn')
-    // Et un texte sombre, seule paire lisible sur de l'ambre.
+    // And dark text, the only pairing readable on amber.
     expect(wrapper.get('[data-notification="n-2"]').classes()).toContain('text-[#05070d]')
   })
 
@@ -346,7 +346,7 @@ describe('notices', () => {
     expect(calls[0]?.body).toEqual({ action: 'notification.dismiss', id: 'n-1' })
   })
 
-  it('se met au clavier, comme tout ce qui agit', async () => {
+  it('takes to the keyboard, like everything that acts', async () => {
     const wrapper = withNotice(START_MS, START_MS + 5_000)
     // A `<div>` listening for the click cannot be reached by tabbing and does not
     // answer Enter.
@@ -400,8 +400,8 @@ describe('diagnostics', () => {
     const view = payload({ diagnostics: null })
     const wrapper = mount(DiagnosticsPanel, { props: { payload: view } })
 
-    // Two empty lines would read as two disconnected OBS instances, when what
-    // poste ne pilote simplement rien.
+    // Two empty lines would read as two disconnected OBS instances, when in fact
+    // the machine simply drives nothing.
     expect(wrapper.text()).toContain('Régie en lecture seule')
   })
 })

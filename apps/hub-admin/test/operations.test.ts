@@ -6,7 +6,7 @@ import { slotRemaining, useOperationsStore } from '../src/stores/operations.js'
 import { useSessionStore } from '../src/stores/session.js'
 
 /**
- * Le tableau de bord.
+ * The dashboard.
  *
  * The view left open all day, and looked at from afar. What it must say without
  * being read: where each room stands, whether it can be trusted, and whether
@@ -60,7 +60,7 @@ describe('time left in the slot', () => {
     expect(slotRemaining(-180_000)).toEqual({ text: 'dépassement de 3 min', overrun: true })
   })
 
-  it('ne dit rien quand le hub ne sait pas', () => {
+  it('says nothing when the hub does not know', () => {
     expect(slotRemaining(null)).toBe(null)
   })
 })
@@ -68,8 +68,8 @@ describe('time left in the slot', () => {
 describe('vue exploitation', () => {
   it('carries the word beside the colour', async () => {
     const wrapper = await mountView()
-    // Une pastille seule ne se lit pas quand on ne distingue pas les teintes,
-    // et la carte se regarde de loin.
+    // A status dot alone cannot be read by someone who does not tell the tints
+    // apart, and the card is looked at from afar.
     expect(wrapper.get('[data-room="track-1"]').text()).toContain('en cours')
   })
 

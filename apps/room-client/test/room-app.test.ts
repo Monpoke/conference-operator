@@ -235,7 +235,7 @@ describe('room machine, full start-up', () => {
  * recording.
  */
 describe('the heartbeat', () => {
-  /** Deux instances, deux transports : c'est tout l'objet de ces tests. */
+  /** Two instances, two transports: that is the whole point of these tests. */
   async function roomWithTwoObs() {
     const a = fakeObs()
     const b = fakeObs(['Talk'])

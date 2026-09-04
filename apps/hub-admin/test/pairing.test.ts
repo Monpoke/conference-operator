@@ -8,7 +8,7 @@ import { usePairingStore } from '../src/stores/pairing.js'
 import { useSessionStore } from '../src/stores/session.js'
 
 /**
- * Appairage des machines de salle.
+ * Pairing the room machines.
  *
  * The path that matters is not the list, it is the code: Better Auth sends the
  * machine to `/admin/devices?user_code=…`, and everything that follows is decided
@@ -110,10 +110,9 @@ beforeEach(() => {
 describe('adresse d’appairage', () => {
   it('is served on the same footing as the view it opens', () => {
     /*
-     * `/admin/devices` n'est pas une vue : c'est une seconde porte sur
-     * `appairage`. Oublier de l'enregistrer enverrait toutes les machines que
-     * Better Auth redirige sur un 404 — et seulement les machines : un
-     * an operator clicking the tab would never see it.
+     * `/admin/devices` is not a view: it is a second door onto `appairage`.
+     * Forgetting to register it would send every machine Better Auth redirects to a
+     * 404 — and only the machines: an operator clicking the tab would never see it.
      */
     expect(consolePaths(false)).toContain(PAIRING_ALIAS)
     expect(consolePaths(false)).toContain(viewPath('appairage'))
@@ -135,7 +134,7 @@ describe('vue d’appairage', () => {
     expect(select.value).toBe('track-2')
   })
 
-  it('approuve avec le code saisi et la salle retenue', async () => {
+  it('approves with the typed code and the chosen room', async () => {
     const { calls, wrapper } = await mountView({
       pending: [{ clientId: 'machine-a', requestedAt: '2026-10-30T09:00:00Z', scope: null }],
     })
@@ -159,14 +158,14 @@ describe('vue d’appairage', () => {
 
     expect(calls).toContainEqual({ path: 'devices/lookup', input: { userCode: 'WXYZ-9876' } })
     expect(modal('#verdict-text')?.textContent).toContain('machine-b')
-    // Consulter n'approuve pas : les deux boutons existent, rien n'est parti.
+    // Consulting does not approve: both buttons exist, nothing was sent.
     expect(calls.filter((call) => call.path === 'devices/approve')).toHaveLength(0)
     expect(modal('#verdict-approuver')).not.toBe(null)
   })
 
   it('does not offer to decide a code opened by another operator', async () => {
-    // Sans `clientId`, Better Auth ne nous a pas reconnus comme le consultant
-    // of the code: approving would fail, so better not to offer it.
+    // Without a `clientId`, Better Auth has not recognised us as the one
+    // consulting the code: approving would fail, so better not to offer it.
     const { wrapper } = await mountView({
       userCode: 'WXYZ-9876',
       lookup: { status: 'pending', clientId: null },
@@ -196,7 +195,7 @@ describe('vue d’appairage', () => {
     modal('#verdict-approuver')!.click()
     await flushPromises()
 
-    // L'erreur porte sur le geste qu'on vient de faire, et se lit en entier.
+    // The error is about the gesture just made, and is read in full.
     expect(modal('#verdict-error')?.textContent).toContain('autre opérateur')
   })
 

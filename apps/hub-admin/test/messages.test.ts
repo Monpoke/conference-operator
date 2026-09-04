@@ -66,7 +66,7 @@ beforeEach(() => {
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} })
 })
 
-describe('vue des messages', () => {
+describe('messages view', () => {
   it('warns from the first render when the message will go before the audience', async () => {
     const { wrapper } = await mountView()
 
@@ -77,7 +77,7 @@ describe('vue des messages', () => {
     expect(wrapper.get('#msg-warning').text()).toContain('projeté devant le public')
   })
 
-  it('convertit les minutes saisies en secondes', async () => {
+  it('converts the typed minutes into seconds', async () => {
     const { calls, wrapper } = await mountView()
 
     await wrapper.get('#msg-text').setValue('On reprend dans 5 minutes')
@@ -109,7 +109,7 @@ describe('vue des messages', () => {
     expect((sent?.input as { ttlSeconds: unknown }).ttlSeconds).toBe(null)
   })
 
-  it('refuse d’envoyer un message vide sans rien appeler', async () => {
+  it('refuses to send an empty message without calling anything', async () => {
     const { calls, wrapper } = await mountView()
 
     await wrapper.get('#btn-send-message').trigger('click')
@@ -118,7 +118,7 @@ describe('vue des messages', () => {
     expect(calls.filter((call) => call.path === 'messages/send')).toHaveLength(0)
   })
 
-  it('vise la salle choisie, et elle seule', async () => {
+  it('targets the chosen room, and it alone', async () => {
     const { calls, wrapper } = await mountView()
 
     await wrapper.get('#msg-room').setValue('track-1')

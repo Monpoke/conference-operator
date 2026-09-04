@@ -57,7 +57,7 @@ function veil(pairing: DisplayPayload['pairing']): ReturnType<typeof mount> {
   return mount(PairingVeil, { props: { pairing } })
 }
 
-describe('choix de la salle', () => {
+describe('choosing the room', () => {
   it('offers the rooms while no code has been requested', async () => {
     const wrapper = veil({ status: 'idle', rooms: ROOMS })
 
@@ -74,7 +74,7 @@ describe('choix de la salle', () => {
   })
 })
 
-describe('code d’appairage', () => {
+describe('pairing code', () => {
   it('shows the code and the address to type it into', () => {
     const wrapper = veil({
       status: 'waiting',
@@ -168,7 +168,7 @@ describe('what the veil covers', () => {
     expect(wrapper.find('[data-role="pairing"]').exists()).toBe(false)
   })
 
-  it('coupe les raccourcis, qui viseraient un OBS que la machine n’a pas', async () => {
+  it('cuts the shortcuts, which would aim at an OBS the machine does not have', async () => {
     await mountVeil({ status: 'waiting', userCode: 'ABCD-1234', rooms: ROOMS })
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', bubbles: true }))

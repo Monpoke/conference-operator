@@ -109,12 +109,12 @@ export const useSessionStore = defineStore('session', () => {
    */
   async function signInWithGoogle(): Promise<void> {
     error.value = null
-    const resultat = await hubAuth.googleUrl('/admin')
-    if (!resultat.ok) {
-      error.value = resultat.message
+    const result = await hubAuth.googleUrl('/admin')
+    if (!result.ok) {
+      error.value = result.message
       return
     }
-    globalThis.location.assign(resultat.url)
+    globalThis.location.assign(result.url)
   }
 
   /**
@@ -129,9 +129,9 @@ export const useSessionStore = defineStore('session', () => {
     signingIn.value = true
     error.value = null
     try {
-      const resultat = await hubAuth.signIn(email, password)
-      if (!resultat.ok) {
-        error.value = resultat.message
+      const result = await hubAuth.signIn(email, password)
+      if (!result.ok) {
+        error.value = result.message
         return
       }
       signedIn.value = true

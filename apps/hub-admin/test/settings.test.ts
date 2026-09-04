@@ -23,7 +23,7 @@ interface Call {
   input: unknown
 }
 
-const REGLAGES = {
+const SETTINGS = {
   eventName: null,
   eventShortName: null,
   openFeedbackProjectId: null,
@@ -33,7 +33,7 @@ const REGLAGES = {
   socialLinks: [],
 }
 
-const STOCKAGE = {
+const STORAGE = {
   endpoint: 's3.exemple',
   bucket: 'rushes',
   prefix: 'cn26',
@@ -48,15 +48,15 @@ const STOCKAGE = {
 }
 
 function stub(options: {
-  reglages?: Record<string, unknown>
-  stockage?: Record<string, unknown> | null
+  settings?: Record<string, unknown>
+  storage?: Record<string, unknown> | null
   resyncRooms?: number
   snapshots?: unknown[]
-}): { calls: Call[]; client: unknown; reglages: Record<string, unknown> } {
+}): { calls: Call[]; client: unknown; settings: Record<string, unknown> } {
   const calls: Call[] = []
   // Mutated by the tests that simulate a change from elsewhere — another operator,
   // an import — between two refresh rounds.
-  const reglages: Record<string, unknown> = { ...REGLAGES, ...(options.reglages ?? {}) }
+  const settings: Record<string, unknown> = { ...SETTINGS, ...(options.settings ?? {}) }
   const note =
     (path: string, result: unknown) =>
     async (input: unknown = undefined) => {
@@ -65,7 +65,7 @@ function stub(options: {
     }
   return {
     calls,
-    reglages,
+    settings,
     client: {
       token: { read: () => 'jeton', write: () => {}, clear: () => {} },
       rpc: {
@@ -75,11 +75,11 @@ function stub(options: {
           // ferait passer le test sur un artefact du bouchon.
           get: async (input?: unknown) => {
             calls.push({ path: 'settings/get', input })
-            return { ...reglages }
+            return { ...settings }
           },
           update: async (input?: unknown) => {
             calls.push({ path: 'settings/update', input })
-            return { ...reglages }
+            return { ...settings }
           },
         },
         event: {
@@ -97,7 +97,7 @@ function stub(options: {
           resync: note('rooms/resync', { rooms: options.resyncRooms ?? 2 }),
         },
         vod: {
-          status: note('vod/status', options.stockage === null ? { configure: false, politique: STOCKAGE.politique } : { ...STOCKAGE, ...(options.stockage ?? {}) }),
+          status: note('vod/status', options.storage === null ? { configure: false, politique: STORAGE.politique } : { ...STORAGE, ...(options.storage ?? {}) }),
           check: note('vod/check', { ok: true, etapes: [{ nom: 'joindre', ok: true }] }),
         },
       },
@@ -105,17 +105,17 @@ function stub(options: {
   }
 }
 
-async function monter(options: Parameters<typeof stub>[0] = {}): Promise<{
+async function mountView(options: Parameters<typeof stub>[0] = {}): Promise<{
   calls: Call[]
   wrapper: ReturnType<typeof mount>
-  reglages: Record<string, unknown>
+  settings: Record<string, unknown>
 }> {
   const fake = stub(options)
   useSessionStore().client = fake.client as never
   const wrapper = mount(SettingsView, { attachTo: document.body })
   await useSettingsStore().load()
   await flushPromises()
-  return { calls: fake.calls, wrapper, reglages: fake.reglages }
+  return { calls: fake.calls, wrapper, settings: fake.settings }
 }
 
 beforeEach(() => {
@@ -144,19 +144,19 @@ describe('settings view', () => {
      * grâce" is the term used in the day's conversations; replacing it with a
      * synonym would force a mental translation every time.
      */
-    const { wrapper } = await monter()
-    const texte = wrapper.text()
-    expect(texte).toContain('Clôture automatique')
-    expect(texte).toContain('Clôturer les conférences dépassées')
-    expect(texte).toContain('Délai de grâce')
+    const { wrapper } = await mountView()
+    const text = wrapper.text()
+    expect(text).toContain('Clôture automatique')
+    expect(text).toContain('Clôturer les conférences dépassées')
+    expect(text).toContain('Délai de grâce')
   })
 
   it('does not overwrite a field while somebody is typing in it', async () => {
-    const { wrapper } = await monter()
+    const { wrapper } = await mountView()
 
-    const champ = wrapper.get('#event-name')
-    ;(champ.element as HTMLInputElement).focus()
-    await champ.setValue('Cloud Nord 2027')
+    const field = wrapper.get('#event-name')
+    ;(field.element as HTMLInputElement).focus()
+    await field.setValue('Cloud Nord 2027')
 
     // The ten-second refresh goes by: the hub still answers `null`, and the field
     // must stay on what the operator is writing.
@@ -167,12 +167,12 @@ describe('settings view', () => {
   })
 
   it('takes the hub\'s value back once the field is left', async () => {
-    const { wrapper, reglages } = await monter()
+    const { wrapper, settings } = await mountView()
 
     // Leaving the field is exactly the moment a change made elsewhere — another
     // operator, an import — should become visible.
     ;(wrapper.get('#event-name').element as HTMLInputElement).blur()
-    reglages['eventName'] = 'Renommé ailleurs'
+    settings['eventName'] = 'Renommé ailleurs'
     await useSettingsStore().load()
     await flushPromises()
 
@@ -180,17 +180,17 @@ describe('settings view', () => {
   })
 
   it('shows as a placeholder what the hub would deduce, without pre-filling it', async () => {
-    const { wrapper } = await monter()
+    const { wrapper } = await mountView()
 
-    const champ = wrapper.get('#event-name').element as HTMLInputElement
+    const field = wrapper.get('#event-name').element as HTMLInputElement
     // Pre-filled, it would suggest the value is pinned — and the first save would
     // in fact have pinned it.
-    expect(champ.value).toBe('')
-    expect(champ.placeholder).toBe('Cloud Nord 2026')
+    expect(field.value).toBe('')
+    expect(field.placeholder).toBe('Cloud Nord 2026')
   })
 
   it('blocks "Réimporter" while the displayed URL differs from the saved one', async () => {
-    const { wrapper } = await monter()
+    const { wrapper } = await mountView()
 
     expect(wrapper.get('#btn-reimport').attributes('disabled')).toBeUndefined()
 
@@ -203,7 +203,7 @@ describe('settings view', () => {
   })
 
   it('re-imports from the saved URL', async () => {
-    const { calls, wrapper } = await monter()
+    const { calls, wrapper } = await mountView()
 
     await wrapper.get('#btn-reimport').trigger('click')
     await flushPromises()
@@ -215,7 +215,7 @@ describe('settings view', () => {
   })
 
   it('drops social rows left empty', async () => {
-    const { calls, wrapper } = await monter()
+    const { calls, wrapper } = await mountView()
 
     await wrapper.get('#btn-social-add').trigger('click')
     await flushPromises()
@@ -224,24 +224,24 @@ describe('settings view', () => {
 
     // Ajouter une ligne puis se raviser est un geste normal, et le hub
     // refuserait une URL vide.
-    const envoi = calls.find((appel) => appel.path === 'settings/update')
-    expect((envoi?.input as { socialLinks: unknown[] }).socialLinks).toEqual([])
+    const sent = calls.find((call) => call.path === 'settings/update')
+    expect((sent?.input as { socialLinks: unknown[] }).socialLinks).toEqual([])
   })
 
   it('converts the rate shown in kB/s into bytes', async () => {
-    const { calls, wrapper } = await monter()
+    const { calls, wrapper } = await mountView()
 
     await wrapper.get('#vod-rate').setValue('512')
     await wrapper.get('#btn-vod-save').trigger('click')
     await flushPromises()
 
-    const envoi = calls.find((appel) => appel.path === 'settings/update')
-    expect((envoi?.input as { vodPolitique: { debitMaxOctetsS: number } }).vodPolitique.debitMaxOctetsS)
+    const sent = calls.find((call) => call.path === 'settings/update')
+    expect((sent?.input as { vodPolitique: { debitMaxOctetsS: number } }).vodPolitique.debitMaxOctetsS)
       .toBe(512 * 1024)
   })
 
   it('does not offer to probe a storage the hub has no keys for', async () => {
-    const { wrapper } = await monter({ stockage: null })
+    const { wrapper } = await mountView({ storage: null })
 
     // With no keys there is nothing to probe, and the panel already says so at the top.
     expect(wrapper.get('#btn-vod-probe').attributes('disabled')).toBeDefined()
@@ -249,7 +249,7 @@ describe('settings view', () => {
   })
 
   it('tells "keys set, bucket missing" from the other two cases', async () => {
-    const { wrapper } = await monter({ stockage: { configure: false } })
+    const { wrapper } = await mountView({ storage: { configure: false } })
 
     // The most confusing of the three: the page is open, the keys are there, and
     // nothing leaves because a bucket name is missing.
@@ -257,17 +257,17 @@ describe('settings view', () => {
   })
 
   it('demande confirmation avant de resynchroniser, et dit ce qui va partir', async () => {
-    const { calls, wrapper } = await monter()
+    const { calls, wrapper } = await mountView()
 
     await wrapper.get('#btn-resync').trigger('click')
     await flushPromises()
 
     expect(document.querySelector('#resync-text')?.textContent).toContain('toutes les salles')
-    expect(calls.filter((appel) => appel.path === 'rooms/resync')).toHaveLength(0)
+    expect(calls.filter((call) => call.path === 'rooms/resync')).toHaveLength(0)
   })
 
   it('dit combien de salles la demande a atteintes, pas qu’elle est partie', async () => {
-    const { calls, wrapper } = await monter({ resyncRooms: 0 })
+    const { calls, wrapper } = await mountView({ resyncRooms: 0 })
 
     await wrapper.get('#btn-resync').trigger('click')
     await flushPromises()

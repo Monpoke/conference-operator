@@ -18,7 +18,7 @@ import {
  * browser owns.
  */
 
-const SALLE = {
+const ROOM = {
   roomId: 'track-1',
   name: 'Track #1',
   conference: 'en-cours',
@@ -26,8 +26,8 @@ const SALLE = {
   currentSession: { title: 'Vue et les régies' },
 }
 
-function vues(etat: Partial<RoomSeen> = {}): Map<string, RoomSeen> {
-  return new Map([['track-1', { conference: 'en-cours', connectivity: 'ONLINE', ...etat }]])
+function views(overrides: Partial<RoomSeen> = {}): Map<string, RoomSeen> {
+  return new Map([['track-1', { conference: 'en-cours', connectivity: 'ONLINE', ...overrides }]])
 }
 
 describe('setting read from storage', () => {
@@ -69,63 +69,63 @@ describe('scope', () => {
 
   it('sets the two families separately', () => {
     // Somebody may want to know everything about the machines and nothing about the day.
-    const mixte: Levels = { technique: 'tout', exploitation: 'rien' }
-    expect(passes(mixte, 'technique', 'tout')).toBe(true)
-    expect(passes(mixte, 'exploitation', 'essentiel')).toBe(false)
+    const mixed: Levels = { technique: 'tout', exploitation: 'rien' }
+    expect(passes(mixed, 'technique', 'tout')).toBe(true)
+    expect(passes(mixed, 'exploitation', 'essentiel')).toBe(false)
   })
 })
 
 describe('ce qui change dans une salle', () => {
-  it('ne dit rien au premier chargement', () => {
+  it('says nothing on the first load', () => {
     // Announcing six rooms' initial state when the console opens
     // noierait ce qui change vraiment.
-    expect(roomAlerts(new Map(), [SALLE])).toEqual([])
+    expect(roomAlerts(new Map(), [ROOM])).toEqual([])
   })
 
   it('announces a room that no longer answers, as an essential', () => {
-    const [premier] = roomAlerts(vues(), [{ ...SALLE, connectivity: 'OFFLINE' }])
-    expect(premier?.family).toBe('technique')
-    expect(premier?.alert.scope).toBe('essentiel')
-    expect(premier?.alert.title).toContain('ne répond plus')
+    const [first] = roomAlerts(views(), [{ ...ROOM, connectivity: 'OFFLINE' }])
+    expect(first?.family).toBe('technique')
+    expect(first?.alert.scope).toBe('essentiel')
+    expect(first?.alert.title).toContain('ne répond plus')
   })
 
   it("reserves a room's return for whoever wants to follow everything", () => {
     // A relief, not a decision.
-    const [premier] = roomAlerts(vues({ connectivity: 'OFFLINE' }), [SALLE])
-    expect(premier?.alert.scope).toBe('tout')
+    const [first] = roomAlerts(views({ connectivity: 'OFFLINE' }), [ROOM])
+    expect(first?.alert.scope).toBe('tout')
   })
 
   it('makes the overrun an essential: it is what shifts the day', () => {
-    const [premier] = roomAlerts(vues(), [{ ...SALLE, conference: 'depassement' }])
-    expect(premier?.family).toBe('exploitation')
-    expect(premier?.alert.scope).toBe('essentiel')
+    const [first] = roomAlerts(views(), [{ ...ROOM, conference: 'depassement' }])
+    expect(first?.family).toBe('exploitation')
+    expect(first?.alert.scope).toBe('essentiel')
   })
 
   it("keeps the machine's key apart from the talk's", () => {
-    const alertes = roomAlerts(vues({ connectivity: 'OFFLINE', conference: 'pas-commencee' }), [
-      { ...SALLE, conference: 'depassement' },
+    const alerts = roomAlerts(views({ connectivity: 'OFFLINE', conference: 'pas-commencee' }), [
+      { ...ROOM, conference: 'depassement' },
     ])
     // Two keys per room: a "c'est parti" must never come and erase an unread
     // "ne répond plus".
-    expect(alertes.map((entree) => entree.alert.key).sort()).toEqual([
+    expect(alerts.map((entry) => entry.alert.key).sort()).toEqual([
       'conf-track-1',
       'salle-track-1',
     ])
   })
 
   it('stays silent when nothing has changed', () => {
-    expect(roomAlerts(vues(), [SALLE])).toEqual([])
+    expect(roomAlerts(views(), [ROOM])).toEqual([])
   })
 
   it('says nothing about a room it had never seen', () => {
     // It has just been declared: its state is not a change.
-    const alertes = roomAlerts(vues(), [SALLE, { ...SALLE, roomId: 'track-2', conference: 'depassement' }])
-    expect(alertes).toEqual([])
+    const alerts = roomAlerts(views(), [ROOM, { ...ROOM, roomId: 'track-2', conference: 'depassement' }])
+    expect(alerts).toEqual([])
   })
 
   it('leads to the view that explains the alert', () => {
     // A card saying "Track #1 déborde" without leading there leaves one searching.
-    const [premier] = roomAlerts(vues(), [{ ...SALLE, conference: 'retard' }])
-    expect(premier?.alert.view).toBe('exploitation')
+    const [first] = roomAlerts(views(), [{ ...ROOM, conference: 'retard' }])
+    expect(first?.alert.view).toBe('exploitation')
   })
 })

@@ -314,7 +314,7 @@ export class RecordingSession {
       try {
         await this.deps.fs.writeFile(sidecarPath, JSON.stringify(sidecar, null, 2))
       } catch (cause) {
-        this.deps.onLog?.('error', "sidecar non écrit : le editing devra être fait à la main", {
+        this.deps.onLog?.('error', "sidecar non écrit : le montage devra être fait à la main", {
           path: sidecarPath,
           message: (cause as Error).message,
         })

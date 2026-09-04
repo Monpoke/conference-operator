@@ -25,14 +25,14 @@ const toast = useToast()
 const route = useRoute()
 
 /** Code saisi et salle choisie, par machine en attente. */
-const saisie = reactive<Record<string, { code: string; roomId: string }>>({})
+const typed = reactive<Record<string, { code: string; roomId: string }>>({})
 
-function champs(device: PendingDevice): { code: string; roomId: string } {
-  saisie[device.clientId] ??= {
+function fields(device: PendingDevice): { code: string; roomId: string } {
+  typed[device.clientId] ??= {
     code: codeDeLUrl.value ?? '',
     roomId: requestedRoom(device) ?? rooms.value[0]?.id ?? '',
   }
-  return saisie[device.clientId]!
+  return typed[device.clientId]!
 }
 
 function roomName(id: string | null): string | null {
@@ -68,19 +68,19 @@ async function qualifier(code: string): Promise<void> {
     decidable: false,
   })
   try {
-    const reponse = await store.lookup(code)
-    if (reponse.status === 'pending' && reponse.clientId != null) {
+    const response = await store.lookup(code)
+    if (response.status === 'pending' && response.clientId != null) {
       verdict.title = 'Code valide'
-      verdict.body = `La machine ${reponse.clientId} attend son approbation.`
-      verdict.clientId = reponse.clientId
-      verdict.roomId = reponse.roomId ?? rooms.value[0]?.id ?? ''
+      verdict.body = `La machine ${response.clientId} attend son approbation.`
+      verdict.clientId = response.clientId
+      verdict.roomId = response.roomId ?? rooms.value[0]?.id ?? ''
       verdict.decidable = true
-    } else if (reponse.status === 'pending') {
+    } else if (response.status === 'pending') {
       verdict.title = 'Code valide'
       verdict.body =
         'Une machine attend, mais ce code a été ouvert par un autre opérateur : son approbation lui revient.'
     } else {
-      const dit = VERDICTS[reponse.reason ?? reponse.status]
+      const dit = VERDICTS[response.reason ?? response.status]
       verdict.title = dit?.title ?? 'Code illisible'
       verdict.body = dit?.body ?? "Le hub n'a pas su qualifier ce code."
     }
@@ -119,7 +119,7 @@ async function decider(approuver: boolean): Promise<void> {
 }
 
 async function approveRequest(device: PendingDevice): Promise<void> {
-  const { code, roomId } = champs(device)
+  const { code, roomId } = fields(device)
   try {
     await store.approve({ userCode: code.trim(), clientId: device.clientId, roomId })
     toast.say('Machine appairée')
@@ -130,7 +130,7 @@ async function approveRequest(device: PendingDevice): Promise<void> {
 
 async function refuseRequest(device: PendingDevice): Promise<void> {
   try {
-    await store.deny(champs(device).code.trim())
+    await store.deny(fields(device).code.trim())
     toast.say('Demande refusée')
   } catch {
     /* already reported */
@@ -184,7 +184,7 @@ onMounted(async () => {
           <div class="mb-[11px]">
             <label class="mb-[5px] block text-xs text-dim">Code affiché sur la machine</label>
             <input
-              v-model="champs(device).code"
+              v-model="fields(device).code"
               placeholder="XXXX-XXXX"
               class="w-full rounded-lg border bg-canvas px-3 py-2.5 text-sm text-text focus:outline-none"
               :class="codeDeLUrl != null ? 'border-brand' : 'border-edge'"
@@ -193,7 +193,7 @@ onMounted(async () => {
           <div class="mb-[11px]">
             <label class="mb-[5px] block text-xs text-dim">Salle desservie</label>
             <select
-              v-model="champs(device).roomId"
+              v-model="fields(device).roomId"
               class="w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text"
             >
               <option v-for="salle in rooms" :key="salle.id" :value="salle.id">{{ salle.name }}</option>
@@ -255,9 +255,9 @@ onMounted(async () => {
       </div>
 
       <div v-if="verdict.decidable" id="verdict-decision" class="mt-3.5">
-        <label class="mb-[5px] block text-xs text-dim" for="verdict-salle">Salle desservie</label>
+        <label class="mb-[5px] block text-xs text-dim" for="verdict-room">Salle desservie</label>
         <select
-          id="verdict-salle"
+          id="verdict-room"
           v-model="verdict.roomId"
           class="w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text"
         >
@@ -265,7 +265,7 @@ onMounted(async () => {
         </select>
       </div>
 
-      <p v-if="verdict.error !== ''" id="verdict-erreur" class="mt-2 text-sm text-alert">
+      <p v-if="verdict.error !== ''" id="verdict-error" class="mt-2 text-sm text-alert">
         {{ verdict.error }}
       </p>
 

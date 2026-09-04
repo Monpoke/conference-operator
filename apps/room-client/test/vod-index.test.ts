@@ -65,10 +65,10 @@ function deps(options: Partial<VodIndexDeps> = {}): VodIndexDeps {
  * is needed: `truncate` gives one without filling the disk.
  */
 function video(nom: string, octets = 2_700_000_000): string {
-  const chemin = join(racine, nom)
-  writeFileSync(chemin, '')
-  truncateSync(chemin, octets)
-  return chemin
+  const path = join(racine, nom)
+  writeFileSync(path, '')
+  truncateSync(path, octets)
+  return path
 }
 
 function sidecar(nom: string, patch: Partial<Sidecar> = {}): void {
@@ -76,7 +76,7 @@ function sidecar(nom: string, patch: Partial<Sidecar> = {}): void {
 }
 
 /** Sonde factice : ce que ffprobe aurait lu, sans ffprobe. */
-function sonde(patch: Partial<VodProbe> = {}): (chemin: string) => Promise<VodProbe | null> {
+function sonde(patch: Partial<VodProbe> = {}): (path: string) => Promise<VodProbe | null> {
   return async () => ({
     ouvert: true,
     durationMs: 45 * 60_000,
@@ -104,7 +104,7 @@ describe('listing the recordings', () => {
 
     const entries = await listRecordings(deps())
 
-    expect(entries.map((entree) => entree.file)).toEqual([
+    expect(entries.map((entry) => entry.file)).toEqual([
       '2026-10-30_track1_1100_blind-ops.mkv',
       '2026-10-30_track1_1000_honeyswamp.mkv',
     ])
@@ -120,7 +120,7 @@ describe('listing the recordings', () => {
 
     const entries = await listRecordings(deps())
 
-    expect(entries.map((entree) => entree.file)).toEqual(['prise.mkv'])
+    expect(entries.map((entry) => entry.file)).toEqual(['prise.mkv'])
   })
 
   it('descends into a dated folder', async () => {
@@ -129,15 +129,15 @@ describe('listing the recordings', () => {
 
     const entries = await listRecordings(deps())
 
-    expect(entries.map((entree) => entree.file)).toEqual(['2026-10-30/prise.mp4'])
+    expect(entries.map((entry) => entry.file)).toEqual(['2026-10-30/prise.mp4'])
   })
 
   it('reports a file still being written rather than judging it', async () => {
     video('prise.mkv')
 
-    const entree = (await listRecordings(deps({ realNow: () => Date.now() })))[0]!
+    const entry = (await listRecordings(deps({ realNow: () => Date.now() })))[0]!
 
-    expect(entree.beingWritten).toBe(true)
+    expect(entry.beingWritten).toBe(true)
   })
 
   it('judges the writing window on the machine\'s time, not the hub\'s', async () => {
@@ -153,13 +153,13 @@ describe('listing the recordings', () => {
      */
     video('prise.mkv')
 
-    const entree = (
+    const entry = (
       await listRecordings(
         deps({ now: () => Date.now() + 60 * 24 * 3_600_000, realNow: () => Date.now() }),
       )
     )[0]!
 
-    expect(entree.beingWritten).toBe(true)
+    expect(entry.beingWritten).toBe(true)
   })
 
   it('does not judge a running take, and accuses it of nothing', async () => {
@@ -289,12 +289,12 @@ describe('the operator\'s verdict', () => {
     await inspectRecording(deps({ probe: sonde() }), 'prise.mkv')
 
     await setVerdict(deps(), 'prise.mkv', 'illisible')
-    const entree = (await listRecordings(deps()))[0]!
+    const entry = (await listRecordings(deps()))[0]!
 
-    expect(entree.check?.status).toBe('illisible')
-    expect(entree.check?.by).toBe('operateur')
+    expect(entry.check?.status).toBe('illisible')
+    expect(entry.check?.by).toBe('operateur')
     // What the probe had read stays in view: the verdict completes it.
-    expect(entree.check?.probe?.video?.codec).toBe('h264')
+    expect(entry.check?.probe?.video?.codec).toBe('h264')
   })
 
   it('can be cleared, to take back a slip', async () => {
@@ -313,8 +313,8 @@ describe('the operator\'s verdict', () => {
 
     const entries = await listRecordings(deps())
 
-    expect(entries.find((entree) => entree.file === 'a.mkv')?.check?.status).toBe('ok')
-    expect(entries.find((entree) => entree.file === 'b.mkv')?.check?.status).toBe('illisible')
+    expect(entries.find((entry) => entry.file === 'a.mkv')?.check?.status).toBe('ok')
+    expect(entries.find((entry) => entry.file === 'b.mkv')?.check?.status).toBe('illisible')
   })
 })
 
@@ -444,18 +444,18 @@ describe('reading ffprobe', () => {
  */
 async function fabriquerRush(nom: string): Promise<string | null> {
   if (!(await toolAvailable('ffmpeg'))) return null
-  const chemin = join(racine, nom)
+  const path = join(racine, nom)
   const fait = await new Promise<boolean>((termine) => {
     execFile(
       'ffmpeg',
       ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc=size=320x240:rate=10',
        '-f', 'lavfi', '-i', 'sine=frequency=440', '-t', '3', '-c:v', 'libx264', '-preset', 'ultrafast',
-       '-c:a', 'aac', '-y', chemin],
+       '-c:a', 'aac', '-y', path],
       { timeout: 60_000 },
-      (erreur) => termine(erreur == null),
+      (error) => termine(error == null),
     )
   })
-  return fait ? chemin : null
+  return fait ? path : null
 }
 
 /**
@@ -524,8 +524,8 @@ describe('preview', () => {
   })
 
   it('repackages a Matroska into MP4 without touching the file', async () => {
-    const chemin = await fabriquerRush('essai.mkv')
-    if (chemin == null) return
+    const path = await fabriquerRush('essai.mkv')
+    if (path == null) return
 
     const extrait = (await openExcerpt(deps({ probe: ffprobeProbe() }), 'essai.mkv', {
       atMs: 0,

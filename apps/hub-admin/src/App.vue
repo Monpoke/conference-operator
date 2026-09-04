@@ -71,8 +71,8 @@ watch(
  */
 watch(
   eventName,
-  (nom) => {
-    if (nom !== '') document.title = `${nom} — console hub`
+  (name) => {
+    if (name !== '') document.title = `${name} — console hub`
   },
   { immediate: true },
 )
@@ -89,7 +89,7 @@ function rafraichir(): void {
 
   <div v-else id="console" class="mx-auto min-h-dvh max-w-[1180px] p-3 sm:p-5">
     <header class="flex flex-wrap items-center gap-3 pb-3">
-      <h1 id="titre-console" class="text-[17px] font-semibold sm:text-[19px]">
+      <h1 id="console-title" class="text-[17px] font-semibold sm:text-[19px]">
         {{ eventName }} — console hub
       </h1>
       <Badge v-if="mode !== 'production'" id="badge-mode" variant="warning">{{ mode }}</Badge>

@@ -336,7 +336,7 @@ describe('the room screen', () => {
     const wrapper = mount(App)
     const modes = wrapper
       .findAll('[data-command]')
-      .map((bouton) => bouton.attributes('data-command'))
+      .map((button) => button.attributes('data-command'))
 
     expect(modes).toContain('loop')
     expect(modes).toContain('feedback')
@@ -383,7 +383,7 @@ describe('le bandeau de verrou', () => {
     expect(wrapper.text()).toContain('Vous pilotez cette salle')
   })
 
-  it('ne porte plus de bouton pour reprendre', () => {
+  it('no longer carries a button to take over', () => {
     const { wrapper } = mountBanner(lockOf('nuit@cloudnord.fr'))
 
     // The decision lives in the veil. Here, a mention, so the line does not

@@ -160,7 +160,7 @@ defineExpose({ toggleRecording, mark, anchor })
         size="small"
         :active="editing.startMs != null"
         :disabled="!active"
-        title="Là où commence ce qu'on publie : le editing coupe tout ce qui précède. Reposer remplace le repère précédent."
+        title="Là où commence ce qu'on publie : le montage coupe tout ce qui précède. Reposer remplace le repère précédent."
         data-role="anchor-start"
         @click="anchor('debut')"
       >
@@ -171,7 +171,7 @@ defineExpose({ toggleRecording, mark, anchor })
         size="small"
         :active="editing.endMs != null"
         :disabled="!active"
-        title="Là où finit ce qu'on publie : le editing coupe tout ce qui suit. Reposer remplace le repère précédent."
+        title="Là où finit ce qu'on publie : le montage coupe tout ce qui suit. Reposer remplace le repère précédent."
         data-role="anchor-end"
         @click="anchor('fin')"
       >

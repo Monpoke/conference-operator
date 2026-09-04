@@ -195,7 +195,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       caCert = readFileSync(config.s3CaCert, 'utf8')
     } catch (cause) {
       app.log.error(
-        { chemin: config.s3CaCert, message: (cause as Error).message },
+        { path: config.s3CaCert, message: (cause as Error).message },
         "S3_CA_CERT illisible : le stockage sera refusé si son certificat n'est pas signé par une CA publique",
       )
     }

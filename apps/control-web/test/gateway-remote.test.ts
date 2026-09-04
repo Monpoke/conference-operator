@@ -59,15 +59,15 @@ function view(overrides: Partial<ControlView> = {}): ControlView {
  */
 function fakeClient(views: ControlView[]) {
   const commands: ControlCommand[] = []
-  let restantes = [...views]
+  let remaining = [...views]
   return {
     commands,
     client: {
       rpc: {
         regie: {
           view: async () => {
-            const suivante = restantes.length > 1 ? restantes.shift()! : restantes[0]!
-            return suivante
+            const next_ = remaining.length > 1 ? remaining.shift()! : remaining[0]!
+            return next_
           },
           command: async ({ action }: { action: ControlCommand }) => {
             commands.push(action)

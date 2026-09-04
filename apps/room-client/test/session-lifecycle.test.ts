@@ -29,7 +29,7 @@ let hub: Hub
 let origin: string
 let dir: string
 let room: RoomApp
-let regie: string
+let control: string
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'cloudnord-cycle-'))
@@ -91,9 +91,9 @@ beforeEach(async () => {
     },
   })
 
-  regie = await room.startDisplay()
-  const jeton = await room.ensurePaired()
-  await room.connectHub(jeton!)
+  control = await room.startDisplay()
+  const paired = await room.ensurePaired()
+  await room.connectHub(paired!)
   await room.connectObs()
   room.runtime.refreshSessions()
 })
@@ -104,15 +104,15 @@ afterEach(async () => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-const agir = async (payload: unknown) => {
-  const response = await fetch(`${regie}/control/action`, {
+const act = async (payload: unknown) => {
+  const response = await fetch(`${control}/control/action`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),
   })
   return { status: response.status, body: (await response.json()) as { ok: boolean; message?: string } }
 }
-const etat = async () => (await (await fetch(`${regie}/display/data`)).json()) as DisplayPayload
+const view = async () => (await (await fetch(`${control}/display/data`)).json()) as DisplayPayload
 
 /**
  * Measures the delay between a decision and its arrival in the control app's
@@ -127,59 +127,59 @@ const etat = async () => (await (await fetch(`${regie}/display/data`)).json()) a
  * afterwards: measuring from the opening would count the time we allow the room
  * to fall silent, and the delay would no longer mean anything.
  */
-async function delaiDansLeFlux(
-  condition: (etat: Record<string, unknown>) => boolean,
+async function delayInStream(
+  condition: (view: Record<string, unknown>) => boolean,
   action: () => Promise<void>,
-  limiteMs: number,
+  limitMs: number,
 ): Promise<number | null> {
-  const abandon = new AbortController()
-  const reponse = await fetch(`${regie}/display/state?vue=regie`, { signal: abandon.signal })
-  const lecteur = reponse.body!.getReader()
+  const aborter = new AbortController()
+  const response = await fetch(`${control}/display/state?vue=regie`, { signal: aborter.signal })
+  const reader = response.body!.getReader()
 
   // Nothing is read during that time: what arrives piles up, and will be read
   // back afterwards without satisfying the condition — the change has not happened yet.
   await action()
 
-  const depart = Date.now()
-  const minuterie = setTimeout(() => abandon.abort(), limiteMs)
-  const decodeur = new TextDecoder()
-  let courant: Record<string, unknown> = {}
-  let tampon = ''
+  const startedAt = Date.now()
+  const timer = setTimeout(() => aborter.abort(), limitMs)
+  const decoder = new TextDecoder()
+  let current: Record<string, unknown> = {}
+  let buffer = ''
   try {
     for (;;) {
-      const { value, done } = await lecteur.read()
+      const { value, done } = await reader.read()
       if (done) return null
-      tampon += decodeur.decode(value, { stream: true })
+      buffer += decoder.decode(value, { stream: true })
 
-      let coupure: number
-      while ((coupure = tampon.indexOf('\n\n')) !== -1) {
-        const block = tampon.slice(0, coupure)
-        tampon = tampon.slice(coupure + 2)
+      let cut: number
+      while ((cut = buffer.indexOf('\n\n')) !== -1) {
+        const block = buffer.slice(0, cut)
+        buffer = buffer.slice(cut + 2)
         const lines = block.split('\n')
-        const data = lines.find((ligne) => ligne.startsWith('data: '))
+        const data = lines.find((line) => line.startsWith('data: '))
         if (data == null) continue
-        const brut = JSON.parse(data.slice(6)) as Record<string, unknown>
-        courant = lines.includes('event: delta') ? { ...courant, ...brut } : brut
-        if (condition(courant)) return Date.now() - depart
+        const raw = JSON.parse(data.slice(6)) as Record<string, unknown>
+        current = lines.includes('event: delta') ? { ...current, ...raw } : raw
+        if (condition(current)) return Date.now() - startedAt
       }
     }
   } catch {
     // Given up on a timeout: the condition never came.
     return null
   } finally {
-    clearTimeout(minuterie)
-    abandon.abort()
+    clearTimeout(timer)
+    aborter.abort()
   }
 }
 
 /** A room's state in the supervision view the control app receives. */
-function salleDuFlux(etat: Record<string, unknown>, roomId: string): { conference?: string } | null {
-  const diagnostics = etat.diagnostics as { rooms?: { roomId: string; conference?: string }[] } | null
-  return diagnostics?.rooms?.find((salle) => salle.roomId === roomId) ?? null
+function roomInStream(view: Record<string, unknown>, roomId: string): { conference?: string } | null {
+  const diagnostics = view.diagnostics as { rooms?: { roomId: string; conference?: string }[] } | null
+  return diagnostics?.rooms?.find((candidate) => candidate.roomId === roomId) ?? null
 }
 
 /** Operator client: what the console holds once connected. */
-async function operateur(): Promise<ContractRouterClient<typeof contract>> {
+async function operatorClient(): Promise<ContractRouterClient<typeof contract>> {
   const response = await fetch(`${origin}/api/auth/sign-in/email`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -196,13 +196,13 @@ describe('lifecycle driven from the control app', () => {
     const session = room.runtime.state().currentSession!
     expect(session.title).toContain('HoneySwamp')
 
-    expect((await agir({ action: 'session.start' })).body.ok).toBe(true)
-    expect((await etat()).state.sessionStates[session.id]).toBe('running')
+    expect((await act({ action: 'session.start' })).body.ok).toBe(true)
+    expect((await view()).state.sessionStates[session.id]).toBe('running')
     // The decision is visible on the hub side: that is where it counts for the console.
     expect(hub.services.sessions.get(session.id)?.status).toBe('running')
 
-    expect((await agir({ action: 'session.end' })).body.ok).toBe(true)
-    expect((await etat()).state.sessionStates[session.id]).toBe('ended')
+    expect((await act({ action: 'session.end' })).body.ok).toBe(true)
+    expect((await view()).state.sessionStates[session.id]).toBe('ended')
   }, 40_000)
 
   it('receives a decision made from the console', async () => {
@@ -223,18 +223,18 @@ describe('lifecycle driven from the control app', () => {
     await sleep(500)
 
     // A talk can overrun with no room operator available.
-    expect((await etat()).state.sessionStates[session.id]).toBe('running')
+    expect((await view()).state.sessionStates[session.id]).toBe('running')
   }, 40_000)
 
   it('receives an automatic close and shows it as such', async () => {
     const session = room.runtime.state().currentSession!
-    await agir({ action: 'session.start' })
-    expect((await etat()).state.sessionStates[session.id]).toBe('running')
+    await act({ action: 'session.start' })
+    expect((await view()).state.sessionStates[session.id]).toBe('running')
 
     // The scheduling *rule* is checked in the hub's tests, with a simulated
     // clock. Here we check the wire: what the rule decides does reach the room,
     // and is told apart there from a human decision.
-    const clos = hub.services.sessions.end(session.id, TRACK_1, 'auto')
+    const ended = hub.services.sessions.end(session.id, TRACK_1, 'auto')
     hub.services.commands.publish(
       TRACK_1,
       {
@@ -249,8 +249,8 @@ describe('lifecycle driven from the control app', () => {
     )
     await sleep(500)
 
-    expect(clos.decidedBy).toBe('auto')
-    expect((await etat()).state.sessionStates[session.id]).toBe('ended')
+    expect(ended.decidedBy).toBe('auto')
+    expect((await view()).state.sessionStates[session.id]).toBe('ended')
   }, 40_000)
 
   it('aims at the first talk when the day has not started', async () => {
@@ -261,7 +261,7 @@ describe('lifecycle driven from the control app', () => {
 
     expect(room.runtime.state().currentSession).toBeNull()
     expect(room.runtime.state().targetSession?.kind).toBe('talk')
-    expect((await agir({ action: 'session.start' })).status).toBe(200)
+    expect((await act({ action: 'session.start' })).status).toBe(200)
   }, 40_000)
 
   it('has nothing left to drive once the day is over', async () => {
@@ -270,19 +270,19 @@ describe('lifecycle driven from the control app', () => {
     room.runtime.refreshSessions()
 
     expect(room.runtime.state().targetSession).toBeNull()
-    const result = await agir({ action: 'session.start' })
+    const result = await act({ action: 'session.start' })
     expect(result.status).toBe(409)
     expect(result.body.message).toContain('Aucune conférence')
   }, 40_000)
 
   it('exposes the other rooms\' state to the control app', async () => {
     await sleep(300)
-    const rooms = (await etat()).diagnostics?.rooms ?? []
+    const rooms = (await view()).diagnostics?.rooms ?? []
     // The program's three tracks have become rooms.
     expect(rooms.map((r) => r.roomId).sort()).toEqual(
       ['hands-on', 'track-1-teilhard-de-chardin', 'track-2-mf-1092'],
     )
-    expect((await etat()).diagnostics?.roomsRefreshedAt).toBeTruthy()
+    expect((await view()).diagnostics?.roomsRefreshedAt).toBeTruthy()
   }, 40_000)
 })
 
@@ -301,8 +301,8 @@ describe("simulated time", () => {
 
     expect(room.runtime.state().currentSession?.title).toContain('HoneySwamp')
     // And the pages see the same instant: all they have is their own `Date.now()`.
-    const vuParUnePage = Date.now() + room.runtime.state().serverTimeOffsetMs
-    expect(Math.abs(vuParUnePage - room.runtime.correctedNow())).toBeLessThan(100)
+    const seenByAPage = Date.now() + room.runtime.state().serverTimeOffsetMs
+    expect(Math.abs(seenByAPage - room.runtime.correctedNow())).toBeLessThan(100)
   }, 40_000)
 
   it("cancels, in the control app, decisions made later in the day", async () => {
@@ -313,17 +313,17 @@ describe("simulated time", () => {
      * state came from a day that had not happened yet.
      */
     const session = room.runtime.state().currentSession!
-    await agir({ action: 'session.start' })
-    expect((await etat()).state.sessionStates[session.id]).toBe('running')
+    await act({ action: 'session.start' })
+    expect((await view()).state.sessionStates[session.id]).toBe('running')
 
-    const admin = await operateur()
+    const admin = await operatorClient()
     await admin.clock.set({ at: '2026-10-30T07:38:00.000Z' })
     await sleep(600)
 
     // The hub no longer applies the decision…
     expect(hub.services.sessions.get(session.id)).toBeNull()
     // …and neither does the room: it reads the lifecycle back when the time moves.
-    const payload = await etat()
+    const payload = await view()
     expect(payload.state.sessionStates[session.id]).toBeUndefined()
     // And the control app goes back to the morning: the next talk, not started yet.
     expect(payload.state.currentSession?.id).not.toBe(session.id)
@@ -342,13 +342,13 @@ describe("simulated time", () => {
  */
 describe('full resynchronisation', () => {
   it("reads everything back on the console's request, without cutting the room", async () => {
-    const admin = await operateur()
-    const avant = room.runtime.state().recording
+    const admin = await operatorClient()
+    const before = room.runtime.state().recording
 
     await admin.rooms.resync({ roomId: TRACK_1 })
     await sleep(800)
 
-    const payload = await etat()
+    const payload = await view()
     const texts = payload.state.notifications.map((n) => n.text)
     // Reported in the control app: a room that starts downloading its program
     // again with nobody having asked for it on site reads as an incident.
@@ -356,7 +356,7 @@ describe('full resynchronisation', () => {
     expect(texts).toContain('Resynchronisation complète terminée')
 
     // Nothing was cut: that is the whole point of the gesture.
-    expect(payload.state.recording).toBe(avant)
+    expect(payload.state.recording).toBe(before)
     expect(payload.pairing?.status).toBe('paired')
     expect(payload.state.connectivity).toBe('ONLINE')
     // And the room is still on the hub's program.
@@ -371,18 +371,18 @@ describe('full resynchronisation', () => {
      * is observed by the write to the local database.
      */
     const store = (room as unknown as { store: { saveProgram: (...args: never[]) => void } }).store
-    const ecrit = vi.spyOn(store, 'saveProgram')
+    const written = vi.spyOn(store, 'saveProgram')
 
     // The ordinary sync writes nothing: the fingerprint has not moved.
     await room.resync()
-    expect(ecrit).not.toHaveBeenCalled()
+    expect(written).not.toHaveBeenCalled()
 
-    const admin = await operateur()
+    const admin = await operatorClient()
     await admin.rooms.resync({ roomId: null })
     await sleep(800)
 
-    expect(ecrit).toHaveBeenCalled()
-    ecrit.mockRestore()
+    expect(written).toHaveBeenCalled()
+    written.mockRestore()
   }, 40_000)
 })
 
@@ -399,24 +399,24 @@ describe('a slot\'s kind corrected from the hub', () => {
     expect(session.title).toContain('HoneySwamp')
     expect(room.runtime.state().targetSession?.id).toBe(session.id)
 
-    const admin = await operateur()
+    const admin = await operatorClient()
     await admin.sessions.override({ sessionId: session.id, action: 'break' })
     // The hub broadcasts `program.invalidate`: the room resynchronises by itself.
     await sleep(1_000)
     room.runtime.refreshSessions()
 
-    const etatSalle = room.runtime.state()
+    const roomState = room.runtime.state()
     // The slot is still running — it occupies the room — but it is no longer a
     // talk: the control app aims at the next one, the one that can be started.
-    expect(etatSalle.currentSession?.id).toBe(session.id)
-    expect(etatSalle.currentSession?.kind).toBe('break')
-    expect(etatSalle.targetSession?.id).not.toBe(session.id)
-    expect(etatSalle.targetSession?.kind).toBe('talk')
-    expect(etatSalle.targetIsUpcoming).toBe(true)
+    expect(roomState.currentSession?.id).toBe(session.id)
+    expect(roomState.currentSession?.kind).toBe('break')
+    expect(roomState.targetSession?.id).not.toBe(session.id)
+    expect(roomState.targetSession?.kind).toBe('talk')
+    expect(roomState.targetIsUpcoming).toBe(true)
 
     // And nothing was cut along the way.
-    expect(etatSalle.connectivity).toBe('ONLINE')
-    expect((await etat()).pairing?.status).toBe('paired')
+    expect(roomState.connectivity).toBe('ONLINE')
+    expect((await view()).pairing?.status).toBe('paired')
   }, 40_000)
 
   it("makes drivable a keynote the export reports as a break", async () => {
@@ -425,7 +425,7 @@ describe('a slot\'s kind corrected from the hub', () => {
      * the export gives it none, so the normaliser makes it a break. The control app
      * had nothing to start, and nothing went on air.
      */
-    const admin = await operateur()
+    const admin = await operatorClient()
     const keynote = hub.services.programs
       .active()!
       .program.sessions.find((s) => s.title.includes('Keynote'))!
@@ -438,18 +438,18 @@ describe('a slot\'s kind corrected from the hub', () => {
     room.runtime.setClockOffset(Date.parse('2026-10-30T08:10:00Z') - Date.now())
     room.runtime.refreshSessions()
 
-    const etatSalle = room.runtime.state()
-    expect(etatSalle.currentSession?.id).toBe(keynote.id)
-    expect(etatSalle.currentSession?.kind).toBe('talk')
+    const roomState = room.runtime.state()
+    expect(roomState.currentSession?.id).toBe(keynote.id)
+    expect(roomState.currentSession?.kind).toBe('talk')
     // It is now the talk the control app drives.
-    expect(etatSalle.targetSession?.id).toBe(keynote.id)
-    expect(etatSalle.targetIsUpcoming).toBe(false)
-    expect((await agir({ action: 'session.start' })).status).toBe(200)
+    expect(roomState.targetSession?.id).toBe(keynote.id)
+    expect(roomState.targetIsUpcoming).toBe(false)
+    expect((await act({ action: 'session.start' })).status).toBe(200)
   }, 40_000)
 
   it('becomes a talk again when the decision is withdrawn', async () => {
     const session = room.runtime.state().currentSession!
-    const admin = await operateur()
+    const admin = await operatorClient()
 
     await admin.sessions.override({ sessionId: session.id, action: 'break' })
     await sleep(1_000)
@@ -471,24 +471,24 @@ describe('a slot\'s kind corrected from the hub', () => {
  * dot still said "en cours".
  */
 describe("the other rooms' state", () => {
-  const AUTRE = 'track-2-mf-1092'
+  const OTHER = 'track-2-mf-1092'
 
   /** Track #2's talk running at the simulated instant. */
-  const conferenceVoisine = () =>
+  const neighbouringTalk = () =>
     hub.services.programs
       .active()!
       .program.sessions.find(
-        (s) => s.roomId === AUTRE && s.startsAtMs <= PENDANT_LE_TALK && (s.endsAtMs ?? 0) > PENDANT_LE_TALK,
+        (s) => s.roomId === OTHER && s.startsAtMs <= PENDANT_LE_TALK && (s.endsAtMs ?? 0) > PENDANT_LE_TALK,
       )!
 
   it('pushes the decision into the stream, without waiting for the poll', async () => {
-    const voisine = conferenceVoisine()
+    const neighbour = neighbouringTalk()
     // Nobody started it: the slot has been running for twenty minutes.
-    expect((await etat()).diagnostics?.rooms?.find((s) => s.roomId === AUTRE)?.conference)
+    expect((await view()).diagnostics?.rooms?.find((s) => s.roomId === OTHER)?.conference)
       .toBe('retard')
 
-    const delai = await delaiDansLeFlux(
-      (recu) => salleDuFlux(recu, AUTRE)?.conference === 'en-cours',
+    const delay = await delayInStream(
+      (received) => roomInStream(received, OTHER)?.conference === 'en-cours',
       async () => {
         /**
          * First we let the room fall silent.
@@ -504,14 +504,14 @@ describe("the other rooms' state", () => {
          */
         await sleep(5_200)
 
-        hub.services.sessions.start(voisine.id, AUTRE, 'regie-voisine@cloudnord.fr')
+        hub.services.sessions.start(neighbour.id, OTHER, 'regie-voisine@cloudnord.fr')
         hub.services.commands.publish(
           null,
           {
             type: 'session.state',
-            sessionId: voisine.id,
-            roomId: AUTRE,
-            sessionTitle: voisine.title,
+            sessionId: neighbour.id,
+            roomId: OTHER,
+            sessionTitle: neighbour.title,
             status: 'running',
             decidedBy: 'regie-voisine@cloudnord.fr',
           },
@@ -530,7 +530,7 @@ describe("the other rooms' state", () => {
       1_500,
     )
 
-    expect(delai).not.toBeNull()
+    expect(delay).not.toBeNull()
   }, 40_000)
 
   it('re-dates the view on every poll, change or no change', async () => {
@@ -540,14 +540,14 @@ describe("the other rooms' state", () => {
      * timestamp must move forward even when nothing changes, otherwise the view
      * degrades in silence while the hub is answering perfectly well.
      */
-    const avant = (await etat()).diagnostics?.roomsRefreshedAt
-    expect(avant).toBeTruthy()
+    const before = (await view()).diagnostics?.roomsRefreshedAt
+    expect(before).toBeTruthy()
 
     // One poll, and a little margin.
     await sleep(5_500)
 
-    const apres = (await etat()).diagnostics?.roomsRefreshedAt
-    expect(Date.parse(apres!)).toBeGreaterThan(Date.parse(avant!))
+    const after = (await view()).diagnostics?.roomsRefreshedAt
+    expect(Date.parse(after!)).toBeGreaterThan(Date.parse(before!))
   }, 40_000)
 })
 
@@ -567,12 +567,12 @@ describe("credentials refused by the hub", () => {
 
     // The control screen now carries the pairing state.
     await sleep(300)
-    const payload = await etat()
+    const payload = await view()
     expect(payload.pairing?.status).not.toBe('paired')
   }, 40_000)
 
   it("exposes the pairing state to the control app from start-up", async () => {
-    const payload = await etat()
+    const payload = await view()
     // A paired machine must display nothing: the veil only serves the opposite
     // case.
     expect(payload.pairing?.status).toBe('paired')
@@ -581,19 +581,19 @@ describe("credentials refused by the hub", () => {
 
 describe('cross-room notifications', () => {
   it("reports the end of a talk in another room without touching its own state", async () => {
-    const autre = hub.services.programs
+    const other = hub.services.programs
       .active()!
       .program.sessions.find((s) => s.roomId === 'track-2-mf-1092' && s.kind === 'talk')!
 
-    hub.services.sessions.start(autre.id, 'track-2-mf-1092', 'organisateur')
+    hub.services.sessions.start(other.id, 'track-2-mf-1092', 'organisateur')
     hub.services.commands.publish(
       // Broadcast to all: that is what makes the notification possible.
       null,
       {
         type: 'session.state',
-        sessionId: autre.id,
+        sessionId: other.id,
         roomId: 'track-2-mf-1092',
-        sessionTitle: autre.title,
+        sessionTitle: other.title,
         status: 'ended',
         decidedBy: 'auto',
       },
@@ -601,12 +601,12 @@ describe('cross-room notifications', () => {
     )
     await sleep(600)
 
-    const payload = await etat()
+    const payload = await view()
     const texts = payload.state.notifications.map((n) => n.text)
-    expect(texts.some((t) => t.includes(autre.title))).toBe(true)
+    expect(texts.some((t) => t.includes(other.title))).toBe(true)
 
     // Another room's state must not pollute ours.
-    expect(payload.state.sessionStates[autre.id]).toBeUndefined()
+    expect(payload.state.sessionStates[other.id]).toBeUndefined()
   }, 40_000)
 
   it("applies a decision concerning its own room as usual", async () => {
@@ -626,15 +626,15 @@ describe('cross-room notifications', () => {
     )
     await sleep(600)
 
-    const payload = await etat()
+    const payload = await view()
     expect(payload.state.sessionStates[session.id]).toBe('running')
     // Its own room does not notify itself: the screen already shows it.
     expect(payload.state.notifications).toEqual([])
   }, 40_000)
 
   it("serves another room's program on request", async () => {
-    const reponse = await fetch(`${regie}/display/sessions?salle=track-2-mf-1092`)
-    const corps = (await reponse.json()) as {
+    const response = await fetch(`${control}/display/sessions?salle=track-2-mf-1092`)
+    const body = (await response.json()) as {
       sessions: { sharedFrom: string | null }[]
       rooms: unknown[]
     }
@@ -643,39 +643,39 @@ describe('cross-room notifications', () => {
     // #1's six breaks, which all fall while it is free. That is precisely what the
     // control app comes to read — without it, the neighbouring room looked
     // deserted during lunch.
-    expect(corps.sessions).toHaveLength(15)
-    expect(corps.sessions.filter((s) => s.sharedFrom != null)).toHaveLength(6)
-    expect(corps.rooms).toHaveLength(3)
+    expect(body.sessions).toHaveLength(15)
+    expect(body.sessions.filter((s) => s.sharedFrom != null)).toHaveLength(6)
+    expect(body.rooms).toHaveLength(3)
 
     // Outside the state stream: carrying the whole program on every SSE send
     // would cost dearly for data consulted when a tab is opened.
-    const payload = await etat()
+    const payload = await view()
     expect(payload.sessions).toHaveLength(15)
   }, 40_000)
 
   it("refuses a room absent from the program", async () => {
-    expect((await fetch(`${regie}/display/sessions?salle=inventee`)).status).toBe(404)
+    expect((await fetch(`${control}/display/sessions?salle=inventee`)).status).toBe(404)
   }, 40_000)
 })
 
 describe('exchanging messages', () => {
-  const rpcAdmin = async (chemin: string, entree: unknown) => {
-    const reponse = await fetch(`${origin}/api/auth/sign-in/email`, {
+  const rpcAdmin = async (path: string, entry: unknown) => {
+    const response = await fetch(`${origin}/api/auth/sign-in/email`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: OPERATOR.email, password: OPERATOR.password }),
     })
-    const session = (await reponse.json()) as { token: string }
-    const appel = await fetch(`${origin}/rpc/${chemin}`, {
+    const session = (await response.json()) as { token: string }
+    const call = await fetch(`${origin}/rpc/${path}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${session.token}` },
-      body: JSON.stringify({ json: entree }),
+      body: JSON.stringify({ json: entry }),
     })
-    return { status: appel.status, body: (await appel.json()) as { json?: never } }
+    return { status: call.status, body: (await call.json()) as { json?: never } }
   }
 
   it("addresses a message to the operator without touching the room screen", async () => {
-    const avant = (await etat()).state.mode
+    const before = (await view()).state.mode
 
     await rpcAdmin('messages/send', {
       roomId: TRACK_1,
@@ -686,9 +686,9 @@ describe('exchanging messages', () => {
     })
     await sleep(600)
 
-    const payload = await etat()
+    const payload = await view()
     // Projecting a note meant for the operator in front of the audience cannot be undone.
-    expect(payload.state.mode).toBe(avant)
+    expect(payload.state.mode).toBe(before)
     expect(payload.state.message).toBeNull()
     expect(payload.state.notifications.map((n) => n.text).join(' ')).toContain('speaker est arrivé')
   }, 40_000)
@@ -709,7 +709,7 @@ describe('exchanging messages', () => {
     })
     await sleep(600)
 
-    const payload = await etat()
+    const payload = await view()
     expect(payload.state.mode).toBe('message')
     expect(payload.state.message).toMatchObject({ level: 'urgent' })
     // The control app knows what is being projected in its own room.
@@ -726,13 +726,13 @@ describe('exchanging messages', () => {
     })
     expect(result.status).toBe(200)
     await sleep(600)
-    expect((await etat()).state.notifications.map((n) => n.text).join(' ')).toContain(
+    expect((await view()).state.notifications.map((n) => n.text).join(' ')).toContain(
       'Ouverture des portes',
     )
   }, 40_000)
 
   it('reports a message from the room to the console', async () => {
-    await fetch(`${regie}/control/action`, {
+    await fetch(`${control}/control/action`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ action: 'message.send', text: "Besoin d'aide en salle", level: 'urgent' }),
@@ -750,13 +750,13 @@ describe('exchanging messages', () => {
   }, 40_000)
 
   it('reserves sending to operators', async () => {
-    const anonyme = await fetch(`${origin}/rpc/messages/send`, {
+    const anonymous = await fetch(`${origin}/rpc/messages/send`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         json: { roomId: null, text: 'coucou', level: 'info', target: 'audience', ttlSeconds: null },
       }),
     })
-    expect(anonyme.status).toBe(401)
+    expect(anonymous.status).toBe(401)
   }, 40_000)
 })

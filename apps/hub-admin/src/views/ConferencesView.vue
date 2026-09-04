@@ -98,27 +98,27 @@ function remaining(state: SessionState): { text: string; tone: string } {
  * coincidence, and it is that kind of coincidence that stops being true the day the
  * table changes.
  */
-function actions(etat: SessionState): { libelle: string; action: 'start' | 'end' | 'reset'; danger: boolean }[] {
-  const offertes: { libelle: string; action: 'start' | 'end' | 'reset'; danger: boolean }[] = []
-  if (isTransitionAllowed(etat.status as never, 'end')) {
-    offertes.push({ libelle: 'Terminer', action: 'end', danger: false })
+function actions(state: SessionState): { label: string; action: 'start' | 'end' | 'reset'; danger: boolean }[] {
+  const offered: { label: string; action: 'start' | 'end' | 'reset'; danger: boolean }[] = []
+  if (isTransitionAllowed(state.status as never, 'end')) {
+    offered.push({ label: 'Terminer', action: 'end', danger: false })
   }
-  if (isTransitionAllowed(etat.status as never, 'start')) {
-    offertes.push({
-      libelle: etat.status === 'ended' ? 'Relancer' : 'Commencer',
+  if (isTransitionAllowed(state.status as never, 'start')) {
+    offered.push({
+      label: state.status === 'ended' ? 'Relancer' : 'Commencer',
       action: 'start',
       danger: false,
     })
   }
-  if (isTransitionAllowed(etat.status as never, 'reset')) {
-    offertes.push({ libelle: 'Remettre à venir', action: 'reset', danger: true })
+  if (isTransitionAllowed(state.status as never, 'reset')) {
+    offered.push({ label: 'Remettre à venir', action: 'reset', danger: true })
   }
-  return offertes
+  return offered
 }
 
-async function agir(etat: SessionState, action: 'start' | 'end' | 'reset'): Promise<void> {
+async function act(state: SessionState, action: 'start' | 'end' | 'reset'): Promise<void> {
   try {
-    await store.decide(etat.sessionId, action)
+    await store.decide(state.sessionId, action)
     toast.say('Conférence mise à day')
   } catch {
     /* already reported */
@@ -179,7 +179,7 @@ const check = ref<FeedbackCheck | null>(null)
 const checkError = ref('')
 const checking = ref(false)
 
-async function verifierLiens(): Promise<void> {
+async function checkLinks(): Promise<void> {
   checking.value = true
   checkError.value = ''
   check.value = null
@@ -239,25 +239,25 @@ function openVod(session: PlannedSession): void {
                 </Empty>
               </td>
             </tr>
-            <tr v-for="etat in states" v-else :key="etat.sessionId" :data-session="etat.sessionId">
+            <tr v-for="state in states" v-else :key="state.sessionId" :data-session="state.sessionId">
               <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
-                {{ etat.roomName ?? etat.roomId ?? '—' }}
+                {{ state.roomName ?? state.roomId ?? '—' }}
               </td>
               <!-- The title, not the identifier: nobody recognises a talk by its id. -->
               <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
-                {{ etat.title ?? etat.sessionId }}
+                {{ state.title ?? state.sessionId }}
               </td>
               <td class="border-t border-edge py-[9px] pr-2.5 align-middle text-dim">
-                {{ etat.scheduledStartsAt == null
+                {{ state.scheduledStartsAt == null
                   ? '—'
-                  : `${hour(etat.scheduledStartsAt)}–${hour(etat.scheduledEndsAt)}` }}
+                  : `${hour(state.scheduledStartsAt)}–${hour(state.scheduledEndsAt)}` }}
               </td>
               <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
-                <span :class="remaining(etat).tone">{{ remaining(etat).text }}</span>
+                <span :class="remaining(state).tone">{{ remaining(state).text }}</span>
               </td>
               <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
-                <Badge :variant="etat.status === 'running' ? 'running' : 'ended'">
-                  {{ etat.status === 'running' ? 'en cours' : 'terminée' }}
+                <Badge :variant="state.status === 'running' ? 'running' : 'ended'">
+                  {{ state.status === 'running' ? 'en cours' : 'terminée' }}
                 </Badge>
                 <!--
                   L'auteur, et pas seulement le fait que ce soit automatique. Une
@@ -265,20 +265,20 @@ function openVod(session: PlannedSession): void {
                   ça » sans réponse : c'est la première question posée devant
                   cette ligne.
                 -->
-                <span v-if="etat.decidedBy != null" class="ml-1 text-dim">
-                  {{ etat.decidedBy === 'auto' ? 'auto' : etat.decidedBy }}
+                <span v-if="state.decidedBy != null" class="ml-1 text-dim">
+                  {{ state.decidedBy === 'auto' ? 'auto' : state.decidedBy }}
                 </span>
               </td>
               <td class="border-t border-edge py-[9px] align-middle">
                 <div class="flex gap-1.5">
                   <Button
-                    v-for="offerte in actions(etat)"
-                    :key="offerte.action"
+                    v-for="offered in actions(state)"
+                    :key="offered.action"
                     size="small"
-                    :variant="offerte.danger ? 'danger' : 'neutral'"
-                    @click="agir(etat, offerte.action)"
+                    :variant="offered.danger ? 'danger' : 'neutral'"
+                    @click="act(state, offered.action)"
                   >
-                    {{ offerte.libelle }}
+                    {{ offered.label }}
                   </Button>
                 </div>
               </td>
@@ -302,7 +302,7 @@ function openVod(session: PlannedSession): void {
           Planning du programme actif
         </h2>
         <select
-          id="planning-salle"
+          id="planning-room"
           v-model="room"
           class="w-auto shrink-0 rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text"
         >
@@ -322,7 +322,7 @@ function openVod(session: PlannedSession): void {
           size="small"
           class="shrink-0"
           :disabled="checking"
-          @click="verifierLiens"
+          @click="checkLinks"
         >
           Vérifier les liens
         </Button>
@@ -415,8 +415,8 @@ function openVod(session: PlannedSession): void {
               v-for="session in slots"
               v-else
               :key="session.id"
-              :data-creneau="session.id"
-              :data-quand="placeOf(session)"
+              :data-slot="session.id"
+              :data-when="placeOf(session)"
               :class="{
                 'bg-surface2': placeOf(session) === 'en-cours',
                 'opacity-55': placeOf(session) === 'passe',
@@ -567,7 +567,7 @@ function openVod(session: PlannedSession): void {
         OpenFeedback de la conférence, la même que celle du QR projeté en salle.
       </Hint>
 
-      <Hint v-if="planning != null && planning.openFeedbackProjectId == null" id="planning-feedback-aide">
+      <Hint v-if="planning != null && planning.openFeedbackProjectId == null" id="planning-feedback-hint">
         <strong>Aucun projet OpenFeedback réglé</strong> : la colonne « Feedback » remaining vide, et
         les salles ne projettent aucun QR « notez ce talk ». Il se règle dans
         <strong>Réglages → L'événement</strong>, une fois pour tout l'événement.

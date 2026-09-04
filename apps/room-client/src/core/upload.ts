@@ -157,7 +157,7 @@ export class Uploads {
       queued += 1
     }
     if (queued > 0) {
-      this.deps.onLog?.('info', 'téléversement demandé', { file, fichiers: queued })
+      this.deps.onLog?.('info', 'téléversement demandé', { file, queued })
       void this.pass()
     }
     return queued

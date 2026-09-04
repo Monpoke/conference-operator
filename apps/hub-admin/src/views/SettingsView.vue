@@ -564,11 +564,11 @@ async function confirmResync(): Promise<void> {
     </Panel>
 
     <Panel title="Resynchronisation des salles">
-      <label class="mb-[5px] block text-xs text-dim" for="resync-salle">
+      <label class="mb-[5px] block text-xs text-dim" for="resync-room">
         Salle à resynchroniser
       </label>
       <select
-        id="resync-salle"
+        id="resync-room"
         v-model="resyncRoom"
         class="mb-3 w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text"
       >

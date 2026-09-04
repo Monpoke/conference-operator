@@ -129,9 +129,9 @@ async function bootRoom(dataDir = dir): Promise<RoomApp> {
   })
 
   await app.startDisplay()
-  const jeton = await app.ensurePaired()
-  expect(jeton).toBeTruthy()
-  await app.connectHub(jeton!)
+  const paired = await app.ensurePaired()
+  expect(paired).toBeTruthy()
+  await app.connectHub(paired!)
   return app
 }
 
@@ -232,9 +232,9 @@ describe('events emitted while offline', () => {
 
 describe('falling back to a local file', () => {
   it('opens a room without the hub ever having answered', async () => {
-    const chemin = join(dir, 'programme.json')
+    const path = join(dir, 'programme.json')
     const { writeFileSync } = await import('node:fs')
-    writeFileSync(chemin, rawProgram)
+    writeFileSync(path, rawProgram)
 
     proxy.unplug()
     room = new RoomApp({
@@ -251,8 +251,8 @@ describe('falling back to a local file', () => {
     const url = await room.startDisplay()
 
     // The start-up chain's last resort: the USB stick.
-    const resultat = await room.importProgramFile(chemin)
-    expect(resultat.sessions).toBe(27)
+    const result = await room.importProgramFile(path)
+    expect(result.sessions).toBe(27)
 
     room.runtime.setRoomId(TRACK_1)
     const payload = (await (await fetch(`${url}/display/data`)).json()) as { sessions: unknown[] }
@@ -260,9 +260,9 @@ describe('falling back to a local file', () => {
   }, 30_000)
 
   it('produces the same fingerprint as the hub, so as not to duplicate the version', async () => {
-    const chemin = join(dir, 'programme.json')
+    const path = join(dir, 'programme.json')
     const { writeFileSync } = await import('node:fs')
-    writeFileSync(chemin, rawProgram)
+    writeFileSync(path, rawProgram)
 
     room = new RoomApp({
       dataDir: dir,
@@ -276,7 +276,7 @@ describe('falling back to a local file', () => {
       writeToken: () => {},
     })
     await room.startDisplay()
-    const local = await room.importProgramFile(chemin)
+    const local = await room.importProgramFile(path)
 
     const cote = hub.services.programs.active()
     expect(local.contentHash).toBe(cote?.contentHash)
@@ -292,17 +292,17 @@ describe('hard restart while offline', () => {
     const outbox = new Outbox(store, TRACK_1)
     outbox.enqueue({ type: 'recording.started', obs: 'B', sessionId: 'ses-1' })
     outbox.enqueue(marker('avant-coupure'))
-    const seqAvant = outbox.claimBatch().map((e) => e.seq)
+    const seqBefore = outbox.claimBatch().map((e) => e.seq)
     store.close()
 
     // Power cut: the application could flush nothing.
-    const rouvert = new LocalStore(dbPath)
-    const reprise = new Outbox(rouvert, TRACK_1)
+    const reopenedStore = new LocalStore(dbPath)
+    const reopened = new Outbox(reopenedStore, TRACK_1)
 
-    expect(reprise.depth()).toBe(2)
-    expect(reprise.claimBatch().map((e) => e.seq)).toEqual(seqAvant)
+    expect(reopened.depth()).toBe(2)
+    expect(reopened.claimBatch().map((e) => e.seq)).toEqual(seqBefore)
     // The counter does not restart from zero: the hub would otherwise see duplicate `seq`.
-    expect(rouvert.settings().nextSeq).toBeGreaterThan(seqAvant.at(-1)!)
-    rouvert.close()
+    expect(reopenedStore.settings().nextSeq).toBeGreaterThan(seqBefore.at(-1)!)
+    reopenedStore.close()
   })
 })

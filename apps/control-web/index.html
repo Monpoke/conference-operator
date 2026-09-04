@@ -8,12 +8,12 @@
   </head>
   <body>
     <!--
-      Développement seulement.
+      Development only.
 
-      En production, c'est le poste de salle qui rend cette coquille : il y
-      embarque l'état complet de la salle, pour qu'un rechargement en plein talk
-      n'affiche jamais d'écran vide le temps d'un aller-retour. Ici, pas d'état
-      embarqué — la page se remplit à l'ouverture du flux.
+      In production it is the room machine that renders this shell: it embeds the
+      room's complete state in it, so that a reload in the middle of a talk never
+      shows a blank screen for the length of a round trip. Here there is no
+      embedded state — the page fills up when the stream opens.
     -->
     <div id="regie-root"></div>
     <script type="module" src="/src/main.ts"></script>

@@ -110,7 +110,7 @@ function stub(options: {
   }
 }
 
-async function monter(options: Parameters<typeof stub>[0] = {}): Promise<{
+async function mountView(options: Parameters<typeof stub>[0] = {}): Promise<{
   calls: Call[]
   wrapper: ReturnType<typeof mount>
 }> {
@@ -164,23 +164,23 @@ describe('decision menu', () => {
 
 describe('conferences view', () => {
   it("reads the times in the event's time zone, not the machine's", async () => {
-    const { wrapper } = await monter()
+    const { wrapper } = await mountView()
 
     // 09:00 UTC = 10:00 in Paris. The console opens from anywhere and the program
     // does not shift.
-    expect(wrapper.get('[data-creneau="talk-1"]').text()).toContain('10:00')
+    expect(wrapper.get('[data-slot="talk-1"]').text()).toContain('10:00')
   })
 
   it('sets "en ce moment" against the hub\'s clock, which may be simulated', async () => {
-    const { wrapper } = await monter({ serverTime: '2026-10-30T09:20:00Z' })
+    const { wrapper } = await mountView({ serverTime: '2026-10-30T09:20:00Z' })
 
-    const ligne = wrapper.get('[data-creneau="talk-1"]')
-    expect(ligne.attributes('data-quand')).toBe('en-cours')
-    expect(ligne.text()).toContain('en ce moment')
+    const row = wrapper.get('[data-slot="talk-1"]')
+    expect(row.attributes('data-when')).toBe('en-cours')
+    expect(row.text()).toContain('en ce moment')
   })
 
   it('collapses the action column, and says how many decisions are in force', async () => {
-    const { wrapper } = await monter({
+    const { wrapper } = await mountView({
       sessions: [TALK, { ...PAUSE, overriddenAs: 'talk' }],
     })
 
@@ -194,17 +194,17 @@ describe('conferences view', () => {
   })
 
   it('does not offer to decide a break inherited from another room', async () => {
-    const { wrapper } = await monter({ sessions: [HERITEE] })
+    const { wrapper } = await mountView({ sessions: [HERITEE] })
     await wrapper.get('#btn-planning-actions').trigger('click')
 
     // C'est le créneau d'origine qu'on corrige, et la projection suit : un menu
     // on the copy would suggest two independent decisions.
-    expect(wrapper.get('[data-creneau="pause-2"]').text()).toContain('héritée')
+    expect(wrapper.get('[data-slot="pause-2"]').text()).toContain('héritée')
     expect(wrapper.find('[data-session-action="pause-2"]').exists()).toBe(false)
   })
 
   it('saves a decision and reads the program back from the hub', async () => {
-    const { calls, wrapper } = await monter()
+    const { calls, wrapper } = await mountView()
     await wrapper.get('#btn-planning-actions').trigger('click')
 
     await wrapper.get('[data-session-action="talk-1"]').setValue('break')
@@ -216,11 +216,11 @@ describe('conferences view', () => {
     })
     // Read back rather than rebuilt: the hub serves the corrected program, and a
     // reconstruction locale divergerait de ce que voient les salles.
-    expect(calls.filter((appel) => appel.path === 'program/planning')).toHaveLength(2)
+    expect(calls.filter((call) => call.path === 'program/planning')).toHaveLength(2)
   })
 
   it('does not leave the menu on a decision the hub refused', async () => {
-    const { calls, wrapper } = await monter({ overrideError: 'Programme verrouillé' })
+    const { calls, wrapper } = await mountView({ overrideError: 'Programme verrouillé' })
     await wrapper.get('#btn-planning-actions').trigger('click')
 
     await wrapper.get('[data-session-action="talk-1"]').setValue('break')
@@ -229,20 +229,20 @@ describe('conferences view', () => {
     // Nothing changed on the hub side: reloading would be a round trip for nothing,
     // and the data would come back identical — so without patching the menu, which
     // Vue would leave on the clicked option. We put it back by hand.
-    expect(calls.filter((appel) => appel.path === 'program/planning')).toHaveLength(1)
+    expect(calls.filter((call) => call.path === 'program/planning')).toHaveLength(1)
     const menu = wrapper.get('[data-session-action="talk-1"]').element as HTMLSelectElement
     expect(menu.value).toBe('')
   })
 
   it('leaves the Feedback cell empty rather than offer a dead link', async () => {
-    const { wrapper } = await monter({ sessions: [PAUSE] })
+    const { wrapper } = await mountView({ sessions: [PAUSE] })
 
     // With no project set, or on a break, there is nothing to rate.
-    expect(wrapper.find('[data-creneau="pause-1"] a').exists()).toBe(false)
+    expect(wrapper.find('[data-slot="pause-1"] a').exists()).toBe(false)
   })
 
   it('ne propose pas de captation sur une pause', async () => {
-    const { wrapper } = await monter({ sessions: [TALK, PAUSE] })
+    const { wrapper } = await mountView({ sessions: [TALK, PAUSE] })
 
     // Nobody looks for the lunch's footage, and a button opening a modal
     // vide sur vingt-sept lignes ferait douter des vingt-sept.
@@ -251,7 +251,7 @@ describe('conferences view', () => {
   })
 
   it('reports a corrected feedback identifier', async () => {
-    const { wrapper } = await monter({
+    const { wrapper } = await mountView({
       sessions: [{ ...TALK, feedbackIdOverride: 'vue-et-les-regies' }],
     })
 
@@ -259,15 +259,15 @@ describe('conferences view', () => {
   })
 
   it('warns when no OpenFeedback project is set', async () => {
-    const { wrapper } = await monter({ projectId: null })
+    const { wrapper } = await mountView({ projectId: null })
 
     // Sans projet, les salles ne projettent aucun QR « notez ce talk » — et
     // rien d'autre ne le dirait.
-    expect(wrapper.get('#planning-feedback-aide').text()).toContain('Aucun projet OpenFeedback')
+    expect(wrapper.get('#planning-feedback-hint').text()).toContain('Aucun projet OpenFeedback')
   })
 
   it('n’interroge OpenFeedback que sur demande', async () => {
-    const { calls, wrapper } = await monter()
+    const { calls, wrapper } = await mountView()
 
     expect(calls.filter((a) => a.path === 'program/controleOpenFeedback')).toHaveLength(0)
 
@@ -279,7 +279,7 @@ describe('conferences view', () => {
   })
 
   it('offre les actions que la table du cycle de vie allowed, et pas d’autres', async () => {
-    const { wrapper } = await monter({
+    const { wrapper } = await mountView({
       states: [
         {
           sessionId: 'talk-1',
@@ -291,24 +291,24 @@ describe('conferences view', () => {
       ],
     })
 
-    const ligne = wrapper.get('[data-session="talk-1"]')
+    const row = wrapper.get('[data-session="talk-1"]')
     // `running` : on peut terminer, pas commencer.
-    expect(ligne.text()).toContain('Terminer')
-    expect(ligne.text()).not.toContain('Commencer')
+    expect(row.text()).toContain('Terminer')
+    expect(row.text()).not.toContain('Commencer')
   })
 
   it('highlights the overrun: it is what triggers a decision', async () => {
-    const { wrapper } = await monter({
+    const { wrapper } = await mountView({
       states: [{ sessionId: 'talk-1', status: 'running', remainingMs: -180_000 }],
     })
 
-    const ligne = wrapper.get('[data-session="talk-1"]')
-    expect(ligne.text()).toContain('+3 min')
-    expect(ligne.html()).toContain('text-alert')
+    const row = wrapper.get('[data-session="talk-1"]')
+    expect(row.text()).toContain('+3 min')
+    expect(row.html()).toContain('text-alert')
   })
 
   it('names who decided, not only that it was automatic', async () => {
-    const { wrapper } = await monter({
+    const { wrapper } = await mountView({
       states: [{ sessionId: 'talk-1', status: 'ended', decidedBy: 'regie@cloudnord.fr' }],
     })
 

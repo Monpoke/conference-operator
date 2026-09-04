@@ -162,7 +162,7 @@ function uploadState(row: Upload): { label: string; tone: string } {
               · {{ Math.round(take.durationMs / 60000) }} min
             </template>
             <!--
-              Le sidecar n'est pas un détail : sans lui le rush arrive au editing
+              Le sidecar n'est pas un détail : sans lui le rush arrive au montage
               sans titre, sans intervenants et sans marqueurs.
             -->
             <template v-if="!take.enCours && !take.finInconnue">

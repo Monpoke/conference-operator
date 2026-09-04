@@ -61,7 +61,7 @@ export interface RuntimeEffects {
    * The runtime deletes nothing itself: it passes on, as for the rest. The
    * production refusal lives in `RoomApp`, as close to the disk as possible.
    */
-  razVod?: () => void
+  resetVod?: () => void
   /**
    * OBS-B's capture, asked for remotely.
    *
@@ -526,7 +526,7 @@ export class RoomRuntime extends EventEmitter {
               ? 'Remise à zéro des rushes demandée depuis la console'
               : `Remise à zéro des rushes demandée par ${payload.requestedBy}`,
         })
-        this.effects.razVod?.()
+        this.effects.resetVod?.()
         break
       case 'recording.set':
         /**

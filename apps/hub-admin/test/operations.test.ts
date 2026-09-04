@@ -37,7 +37,7 @@ function stub(rooms: unknown[], pause: unknown = null): unknown {
   }
 }
 
-async function monter(rooms: unknown[] = [SALLE], pause: unknown = null): Promise<ReturnType<typeof mount>> {
+async function mountView(rooms: unknown[] = [SALLE], pause: unknown = null): Promise<ReturnType<typeof mount>> {
   useSessionStore().client = stub(rooms, pause) as never
   const wrapper = mount(OperationsView, { attachTo: document.body, global: { stubs: { RouterLink: true } } })
   await useOperationsStore().load()
@@ -67,14 +67,14 @@ describe('time left in the slot', () => {
 
 describe('vue exploitation', () => {
   it('carries the word beside the colour', async () => {
-    const wrapper = await monter()
+    const wrapper = await mountView()
     // Une pastille seule ne se lit pas quand on ne distingue pas les teintes,
     // et la carte se regarde de loin.
     expect(wrapper.get('[data-room="track-1"]').text()).toContain('en cours')
   })
 
   it('separates the talk\'s fill from the room\'s outline', async () => {
-    const wrapper = await monter([{ ...SALLE, conference: 'depassement', connectivity: 'DEGRADED' }])
+    const wrapper = await mountView([{ ...SALLE, conference: 'depassement', connectivity: 'DEGRADED' }])
 
     // A dot carrying only the connectivity showed a green room while it was
     // overrunning by ten minutes.
@@ -84,12 +84,12 @@ describe('vue exploitation', () => {
   })
 
   it('says "salle muette" rather than assert a state that is unknown', async () => {
-    const wrapper = await monter([{ ...SALLE, connectivity: 'OFFLINE' }])
+    const wrapper = await mountView([{ ...SALLE, connectivity: 'OFFLINE' }])
     expect(wrapper.get('[data-room="track-1"]').text()).toContain('salle muette')
   })
 
   it('does not present a shared slot as a talk', async () => {
-    const wrapper = await monter([{ ...SALLE, breakBadge: { state: 'en-cours' } }])
+    const wrapper = await mountView([{ ...SALLE, breakBadge: { state: 'en-cours' } }])
 
     // "Déjeuner · 22 min restantes" read as a busy room where there is nobody. A
     // tag, and the line below stays silent.
@@ -99,7 +99,7 @@ describe('vue exploitation', () => {
   })
 
   it('shows what matters for a decision: REC, LIVE, and the queue', async () => {
-    const wrapper = await monter([
+    const wrapper = await mountView([
       { ...SALLE, recording: true, streaming: true, outboxDepth: 3, sceneRole: 'LIVE' },
     ])
 
@@ -110,9 +110,9 @@ describe('vue exploitation', () => {
   })
 
   it('shows the Global panel only when a shared slot exists', async () => {
-    expect((await monter()).find('#global-panel').exists()).toBe(false)
+    expect((await mountView()).find('#global-panel').exists()).toBe(false)
 
-    const wrapper = await monter([SALLE], {
+    const wrapper = await mountView([SALLE], {
       title: 'Déjeuner',
       state: 'en-cours',
       startsAt: '2026-10-30T11:00:00Z',
@@ -127,7 +127,7 @@ describe('vue exploitation', () => {
   })
 
   it('announces an upcoming shared slot without saying it has begun', async () => {
-    const wrapper = await monter([SALLE], {
+    const wrapper = await mountView([SALLE], {
       title: 'Déjeuner',
       state: 'a-venir',
       startsAt: '2026-10-30T11:00:00Z',
@@ -142,6 +142,6 @@ describe('vue exploitation', () => {
   })
 
   it('says no room is declared rather than leave an empty grid', async () => {
-    expect((await monter([])).get('#rooms').text()).toContain('Aucune salle déclarée')
+    expect((await mountView([])).get('#rooms').text()).toContain('Aucune salle déclarée')
   })
 })

@@ -18,19 +18,19 @@ import { START_MS, END_MS, config, payload, speaker, talk } from './fixtures.js'
  * matter, not an implementation detail.
  */
 
-interface Envoi {
+interface Send {
   body: unknown
 }
 
-let envois: Envoi[]
+let sends: Send[]
 let refuse: string | null
 
 function stubFetch(): void {
-  envois = []
+  sends = []
   refuse = null
   vi.stubGlobal('fetch', async (_url: string, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body)) as { action: string }
-    envois.push({ body })
+    sends.push({ body })
     const ok = body.action !== refuse
     return new Response(JSON.stringify({ ok, message: ok ? 'Fait' : 'Refusé' }), {
       headers: { 'content-type': 'application/json' },
@@ -40,15 +40,15 @@ function stubFetch(): void {
 
 /** A room placed at a given instant, with the clock stopped there. */
 function roomAt(atMs: number, overrides: Record<string, unknown> = {}): void {
-  const etat = payload()
-  Object.assign(etat.state, overrides)
+  const view = payload()
+  Object.assign(view.state, overrides)
   // The offset carries the room's time: the store reads `clock.real + offset`, and
   // the clock does not advance by itself in a test.
-  etat.state.serverTimeOffsetMs = atMs - Date.now()
-  useRoomStore().seed(etat)
+  view.state.serverTimeOffsetMs = atMs - Date.now()
+  useRoomStore().seed(view)
 }
 
-const actions = (): string[] => envois.map((envoi) => (envoi.body as { action: string }).action)
+const actions = (): string[] => sends.map((send) => (send.body as { action: string }).action)
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -233,10 +233,10 @@ describe('ending', () => {
   })
 
   it('asks nothing on a slot with no end time', async () => {
-    const etat = payload({ sessions: [talk({ endsAtMs: null })] })
-    etat.state.targetSession = talk({ endsAtMs: null })
-    etat.state.serverTimeOffsetMs = START_MS - Date.now()
-    useRoomStore().seed(etat)
+    const view = payload({ sessions: [talk({ endsAtMs: null })] })
+    view.state.targetSession = talk({ endsAtMs: null })
+    view.state.serverTimeOffsetMs = START_MS - Date.now()
+    useRoomStore().seed(view)
     const talkStore = useTalkStore()
 
     talkStore.askEnd()
@@ -291,8 +291,8 @@ describe('stopping the take while ending', () => {
 
     await talkStore.finish(true)
 
-    // L'ordre compte : terminer d'abord laisserait la captation courir sans que
-    // rien ne le repose jamais.
+    // The order matters: ending first would leave the take running with nothing
+    // ever putting it down.
     expect(actions()).toEqual(['recording.stop', 'session.end'])
     expect(talkStore.stopRecordingOpen).toBe(false)
   })
@@ -375,27 +375,27 @@ describe('stopping the take while ending', () => {
 })
 
 describe('talk panel', () => {
-  function monter(atMs: number, states: Record<string, SessionStatus> = {}) {
-    const etat = payload()
-    etat.state.sessionStates = states
-    return mount(TalkPanel, { props: { payload: etat, nowMs: atMs } })
+  function mountPanel(atMs: number, states: Record<string, SessionStatus> = {}) {
+    const view = payload()
+    view.state.sessionStates = states
+    return mount(TalkPanel, { props: { payload: view, nowMs: atMs } })
   }
 
   it('refuse un geste que le hub refuserait, et dit pourquoi', () => {
-    const wrapper = monter(START_MS)
+    const wrapper = mountPanel(START_MS)
 
     // The lifecycle table is the one the hub applies on write: an active button
     // whose procedure would refuse the gesture is no longer possible.
-    const terminer = wrapper.get('#btn-talk-end')
-    expect(terminer.attributes('disabled')).toBeDefined()
-    expect(terminer.attributes('title')).toBeTruthy()
+    const end = wrapper.get('#btn-talk-end')
+    expect(end.attributes('disabled')).toBeDefined()
+    expect(end.attributes('title')).toBeTruthy()
   })
 
   it('names what the countdown aims at once the talk has ended', () => {
     const following = talk({ id: 'talk-2', startsAtMs: END_MS + 900_000, endsAtMs: null })
-    const etat = payload({ sessions: [talk(), following] })
-    etat.state.sessionStates = { 'talk-1': 'ended' }
-    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: END_MS } })
+    const view = payload({ sessions: [talk(), following] })
+    view.state.sessionStates = { 'talk-1': 'ended' }
+    const wrapper = mount(TalkPanel, { props: { payload: view, nowMs: END_MS } })
 
     /*
      * The large number counts down to the next talk, while the "Suivant" line
@@ -409,16 +409,16 @@ describe('talk panel', () => {
   })
 
   it('paints the overrun in alert: it is what triggers a decision', () => {
-    const wrapper = monter(END_MS + 600_000, { 'talk-1': 'running' })
+    const wrapper = mountPanel(END_MS + 600_000, { 'talk-1': 'running' })
 
     expect(wrapper.get('[data-role="talk-detail"]').text()).toContain('dépassement de')
     expect(wrapper.get('[data-role="talk-detail"]').classes()).toContain('text-alert')
   })
 
   it('says there is nothing to drive rather than leave an empty title', () => {
-    const etat = payload()
-    etat.state.targetSession = null
-    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: START_MS } })
+    const view = payload()
+    view.state.targetSession = null
+    const wrapper = mount(TalkPanel, { props: { payload: view, nowMs: START_MS } })
 
     expect(wrapper.get('[data-role="talk-title"]').text()).toBe(
       'Aucune conférence à piloter',
@@ -427,9 +427,9 @@ describe('talk panel', () => {
   })
 
   it('announces the hour before the title while the slot has not begun', () => {
-    const etat = payload()
-    etat.state.targetIsUpcoming = true
-    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: START_MS - 600_000 } })
+    const view = payload()
+    view.state.targetIsUpcoming = true
+    const wrapper = mount(TalkPanel, { props: { payload: view, nowMs: START_MS - 600_000 } })
 
     expect(wrapper.get('[data-role="talk-title"]').text()).toContain('·')
     expect(wrapper.get('[data-role="talk-detail"]').text()).toContain(
@@ -438,26 +438,26 @@ describe('talk panel', () => {
   })
 
   it('says nothing follows any more, rather than say nothing', () => {
-    expect(monter(START_MS).get('[data-role="next"]').text()).toBe('Plus rien après au programme.')
+    expect(mountPanel(START_MS).get('[data-role="next"]').text()).toBe('Plus rien après au programme.')
   })
 })
 
 describe('speakers', () => {
   it('separates them when there are several', () => {
-    const etat = payload()
-    etat.state.targetSession = talk({
+    const view = payload()
+    view.state.targetSession = talk({
       speakers: [speaker('Steven'), speaker('Nuno')],
     })
-    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: START_MS } })
+    const wrapper = mount(TalkPanel, { props: { payload: view, nowMs: START_MS } })
 
     expect(wrapper.text()).toContain('Steven · Nuno')
   })
 
   it('withdraws on a slot with no speaker, rather than leave a blank', () => {
     // An empty line under "Pause déjeuner" would send people looking for a missing name.
-    const etat = payload()
-    etat.state.targetSession = talk({ kind: 'break', speakers: [] })
-    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: START_MS } })
+    const view = payload()
+    view.state.targetSession = talk({ kind: 'break', speakers: [] })
+    const wrapper = mount(TalkPanel, { props: { payload: view, nowMs: START_MS } })
 
     expect(wrapper.text()).not.toContain('·')
   })
@@ -470,8 +470,8 @@ describe('speakers', () => {
       endsAtMs: null,
       speakers: [speaker('Nuno')],
     })
-    const etat = payload({ sessions: [talk(), following] })
-    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: START_MS } })
+    const view = payload({ sessions: [talk(), following] })
+    const wrapper = mount(TalkPanel, { props: { payload: view, nowMs: START_MS } })
 
     expect(wrapper.get('[data-role="next"]').text()).toContain('Blind ops')
     expect(wrapper.get('[data-role="next"]').text()).toContain('Nuno')
@@ -479,40 +479,40 @@ describe('speakers', () => {
 })
 
 describe('both buttons follow the lifecycle table', () => {
-  function boutons(statut: SessionStatus | null) {
-    const etat = payload()
-    etat.state.sessionStates = statut == null ? {} : { 'talk-1': statut }
-    const wrapper = mount(TalkPanel, { props: { payload: etat, nowMs: START_MS } })
+  function buttons(status: SessionStatus | null) {
+    const view = payload()
+    view.state.sessionStates = status == null ? {} : { 'talk-1': status }
+    const wrapper = mount(TalkPanel, { props: { payload: view, nowMs: START_MS } })
     return {
-      demarrer: wrapper.get('#btn-talk-start'),
-      terminer: wrapper.get('#btn-talk-end'),
+      start: wrapper.get('#btn-talk-start'),
+      end: wrapper.get('#btn-talk-end'),
     }
   }
 
   it('says why "Terminer" is closed on a talk that has not started', () => {
-    const { demarrer, terminer } = boutons(null)
+    const { start, end } = buttons(null)
 
-    expect(terminer.attributes('disabled')).toBeDefined()
-    expect(terminer.attributes('title')).toContain("n'a pas été lancée")
+    expect(end.attributes('disabled')).toBeDefined()
+    expect(end.attributes('title')).toContain("n'a pas été lancée")
     // The gesture that is possible has nothing to explain.
-    expect(demarrer.attributes('disabled')).toBeUndefined()
-    expect(demarrer.attributes('title')).toBeUndefined()
+    expect(start.attributes('disabled')).toBeUndefined()
+    expect(start.attributes('title')).toBeUndefined()
   })
 
   it('says why "Commencer" is closed on a running talk', () => {
-    const { demarrer, terminer } = boutons('running')
+    const { start, end } = buttons('running')
 
-    expect(demarrer.attributes('title')).toContain('déjà lancée')
-    expect(terminer.attributes('title')).toBeUndefined()
+    expect(start.attributes('title')).toContain('déjà lancée')
+    expect(end.attributes('title')).toBeUndefined()
   })
 
   it('reopens "Commencer" after a close, without going through "Remettre à venir"', () => {
     // A talk closed by the scheduling rule while it was not finished
     // se rattrape d'un geste.
-    const { demarrer, terminer } = boutons('ended')
+    const { start, end } = buttons('ended')
 
-    expect(demarrer.attributes('disabled')).toBeUndefined()
-    expect(terminer.attributes('title')).toContain('déjà terminée')
+    expect(start.attributes('disabled')).toBeUndefined()
+    expect(end.attributes('title')).toContain('déjà terminée')
   })
 })
 
@@ -526,16 +526,16 @@ describe('ended before its slot', () => {
       startsAtMs: Date.parse('2026-10-30T11:00:00Z'),
       endsAtMs: Date.parse('2026-10-30T11:50:00Z'),
     })
-    const etat = payload({ sessions: [talk(), next] })
-    etat.state.targetIsUpcoming = true
-    etat.state.sessionStates = statuses
-    return etat
+    const view = payload({ sessions: [talk(), next] })
+    view.state.targetIsUpcoming = true
+    view.state.sessionStates = statuses
+    return view
   }
 
   it('does not name itself as the next talk', () => {
-    const etat = beforeTheSlot({ 'talk-1': 'ended' })
+    const view = beforeTheSlot({ 'talk-1': 'ended' })
     const wrapper = mount(TalkPanel, {
-      props: { payload: etat, nowMs: Date.parse('2026-10-30T08:00:00Z') },
+      props: { payload: view, nowMs: Date.parse('2026-10-30T08:00:00Z') },
     })
 
     /*

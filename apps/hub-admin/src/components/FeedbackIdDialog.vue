@@ -16,13 +16,13 @@ const props = defineProps<{ session: PlannedSession | null }>()
 const store = useConferencesStore()
 const toast = useToast()
 
-const saisie = ref('')
+const typed = ref('')
 const error = ref('')
 
 watch(
   () => props.session,
-  (creneau) => {
-    saisie.value = creneau?.feedbackIdOverride ?? ''
+  (slot) => {
+    typed.value = slot?.feedbackIdOverride ?? ''
     error.value = ''
   },
   { immediate: true },
@@ -34,16 +34,16 @@ watch(
  * It is the only way to check a correction before saving it: the OpenFeedback page
  * is authoritative, not the export, and one recognises it by its address.
  */
-const apercu = computed(() => {
-  const creneau = props.session
-  if (creneau == null) return null
-  if (creneau.feedbackUrl == null) return null
-  const identifiant = saisie.value.trim() === '' ? creneau.id : saisie.value.trim()
-  const base = creneau.feedbackUrl
-  return base.slice(0, base.lastIndexOf('/') + 1) + encodeURIComponent(identifiant)
+const preview = computed(() => {
+  const slot = props.session
+  if (slot == null) return null
+  if (slot.feedbackUrl == null) return null
+  const id_ = typed.value.trim() === '' ? slot.id : typed.value.trim()
+  const base = slot.feedbackUrl
+  return base.slice(0, base.lastIndexOf('/') + 1) + encodeURIComponent(id_)
 })
 
-async function enregistrer(value_: string | null): Promise<void> {
+async function save(value_: string | null): Promise<void> {
   if (props.session == null) return
   error.value = ''
   try {
@@ -67,18 +67,18 @@ async function enregistrer(value_: string | null): Promise<void> {
     width="wide"
   >
     <div class="mb-[11px]">
-      <label class="mb-[5px] block text-xs text-dim" for="feedback-champ">
+      <label class="mb-[5px] block text-xs text-dim" for="feedback-field">
         Identifiant servi
       </label>
       <!--
-        Le placeholder est atténué à la main : la feuille du thème ne le
-        distingue pas d'une value_ saisie, et ici les deux disent la même chose
-        — l'identifiant de l'export. Confondus, le champ paraît déjà rempli, et
-        « Enregistrer » semble poser une correction qui n'en est pas une.
+        The placeholder is dimmed by hand: the theme's sheet does not tell it from
+        a typed value, and here the two say the same thing — the export's id.
+        Confused with each other, the field looks already filled in, and "Save"
+        looks as if it lays down a correction that is not one.
       -->
       <input
-        id="feedback-champ"
-        v-model="saisie"
+        id="feedback-field"
+        v-model="typed"
         type="text"
         maxlength="200"
         autocomplete="off"
@@ -94,15 +94,15 @@ async function enregistrer(value_: string | null): Promise<void> {
       pas l'export.
     </Hint>
 
-    <div id="feedback-apercu" class="mt-2">
+    <div id="feedback-preview" class="mt-2">
       <a
-        v-if="apercu != null"
+        v-if="preview != null"
         class="font-mono text-[11px] break-all text-brand"
         target="_blank"
         rel="noopener"
-        :href="apercu"
+        :href="preview"
       >
-        {{ apercu }} ↗
+        {{ preview }} ↗
       </a>
       <span v-else class="text-warn">
         Aucun projet OpenFeedback réglé : il n'y aura d'adresse pour personne tant que le champ
@@ -119,14 +119,14 @@ async function enregistrer(value_: string | null): Promise<void> {
     </Hint>
 
     <template #actions>
-      <Button id="feedback-rendre" size="small" @click="enregistrer(null)">
+      <Button id="feedback-reset" size="small" @click="save(null)">
         Rendre à l'export
       </Button>
       <Button
-        id="feedback-enregistrer"
+        id="feedback-save"
         variant="primary"
         size="small"
-        @click="enregistrer(saisie.trim() === '' ? null : saisie.trim())"
+        @click="save(typed.trim() === '' ? null : typed.trim())"
       >
         Enregistrer
       </Button>

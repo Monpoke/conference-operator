@@ -191,7 +191,7 @@ function posed(status: string): boolean {
         :class="ICON_CELL"
         title="Voir et entendre un extrait"
         :active="vod.preview?.file === entry.file"
-        :data-vod-apercu="entry.file"
+        :data-vod-preview="entry.file"
         @click="vod.togglePreview(entry.file)"
       >
         👁
@@ -227,7 +227,7 @@ function posed(status: string): boolean {
           <span
             class="flex h-6 w-6 shrink-0 items-center justify-center"
             :title="progressTitle"
-            :data-vod-progression="entry.file"
+            :data-vod-progress="entry.file"
           >
             <!--
               Deux allures pour deux états, parce qu'ils ne disent pas la même
@@ -247,7 +247,7 @@ function posed(status: string): boolean {
           <Button
             size="small"
             title="Renoncer à ce téléversement"
-            :data-vod-annuler="entry.file"
+            :data-vod-cancel="entry.file"
             @click="vod.cancelUpload(entry.file)"
           >
             Annuler
@@ -269,7 +269,7 @@ function posed(status: string): boolean {
               ? 'Prise encore en cours : le fichier partira une fois arrêtée'
               : 'Envoyer ce rush et son sidecar au stockage'
           "
-          :data-vod-monter="entry.file"
+          :data-vod-upload="entry.file"
           @click="vod.upload(entry.file)"
         >
           ⬆

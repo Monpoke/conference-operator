@@ -316,8 +316,8 @@ describe('driven remotely', () => {
 
     // Les boutons du bandeau restent tous actifs : le verrou n'exclut que les
     // mobile control apps among themselves.
-    for (const bouton of wrapper.findAll('button')) {
-      expect(bouton.attributes('disabled')).toBeUndefined()
+    for (const button of wrapper.findAll('button')) {
+      expect(button.attributes('disabled')).toBeUndefined()
     }
   })
 

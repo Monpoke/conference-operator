@@ -62,9 +62,9 @@ beforeEach(() => {
 async function mountApp(
   recording: ControlDiagnostics['recording'] | null = null,
 ): Promise<ReturnType<typeof mount>> {
-  const etat = payload()
-  etat.diagnostics!.recording = recording ?? { active: false, markers: 0, startedAtMs: null, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS }
-  useRoomStore().seed(etat)
+  const view = payload()
+  view.diagnostics!.recording = recording ?? { active: false, markers: 0, startedAtMs: null, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS }
+  useRoomStore().seed(view)
   const wrapper = mount(App, { attachTo: document.body })
   mounted.push(wrapper)
   await flushPromises()
@@ -160,10 +160,10 @@ describe('raccourcis de la page', () => {
 
   it('rend la press au champ qui l’attend', async () => {
     const wrapper = await mountApp()
-    const champ = wrapper.get('#message-text')
+    const field = wrapper.get('#message-text')
 
-    await champ.setValue('l')
-    champ.element.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', bubbles: true }))
+    await field.setValue('l')
+    field.element.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', bubbles: true }))
     await flushPromises()
 
     // Typing "le micro coupe" into the message to the console must not switch the
@@ -200,7 +200,7 @@ describe('programmes des salles voisines', () => {
     expect(calls.filter((call) => call.url.startsWith('/display/sessions'))).toHaveLength(callCount)
   })
 
-  it('ne charge la liste qu’une fois au editing', async () => {
+  it('loads the listing only once, on mount', async () => {
     await mountApp()
 
     // An effect that watches what it writes fires twice: the second round costs
@@ -212,8 +212,8 @@ describe('programmes des salles voisines', () => {
 
 describe('control app in read-only', () => {
   it('mounts with no diagnostics, rather than fail', async () => {
-    const etat = payload({ diagnostics: null })
-    useRoomStore().seed(etat)
+    const view = payload({ diagnostics: null })
+    useRoomStore().seed(view)
     const wrapper = mount(App, { attachTo: document.body })
     mounted.push(wrapper)
     await flushPromises()
@@ -226,7 +226,7 @@ describe('control app in read-only', () => {
 })
 
 describe('consultation', () => {
-  it('s’ouvre au clavier, sur l’onglet que la touche nomme', async () => {
+  it('opens from the keyboard, on the tab the key names', async () => {
     await mountApp()
     const consult = useConsultStore()
 
@@ -356,7 +356,7 @@ describe('une question ouverte prend le clavier', () => {
     talk.recordingOpen = true
     await flushPromises()
 
-    for (const touche of ['r', 'l', 'm']) press(touche)
+    for (const key of ['r', 'l', 'm']) press(key)
     await flushPromises()
 
     // And the layer still swallows what it has not bound: a reflex "r" would

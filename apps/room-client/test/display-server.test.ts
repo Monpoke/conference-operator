@@ -54,7 +54,7 @@ afterEach(async () => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-/** Lit les N premiers messages d'un flux SSE puis referme. */
+/** Reads the first N messages of an SSE stream, then closes. */
 /**
  * Reads the stream as a page would: a complete snapshot on opening, then deltas
  * merged over it. Returns the state rebuilt after each message, and the raw
@@ -70,7 +70,7 @@ async function readSse(
   const reader = response.body!.getReader()
   const decoder = new TextDecoder()
   const messages: { merged: DisplayPayload; raw: Record<string, unknown>; delta: boolean }[] = []
-  let courant: Record<string, unknown> = {}
+  let current: Record<string, unknown> = {}
   let buffer = ''
   let triggered = false
 
@@ -84,12 +84,12 @@ async function readSse(
       const block = buffer.slice(0, index)
       buffer = buffer.slice(index + 2)
       const lines = block.split('\n')
-      const data = lines.find((ligne) => ligne.startsWith('data: '))
+      const data = lines.find((line) => line.startsWith('data: '))
       if (data == null) continue
-      const delta = lines.some((ligne) => ligne === 'event: delta')
+      const delta = lines.some((line) => line === 'event: delta')
       const raw = JSON.parse(data.slice(6)) as Record<string, unknown>
-      courant = delta ? { ...courant, ...raw } : raw
-      messages.push({ merged: courant as unknown as DisplayPayload, raw, delta })
+      current = delta ? { ...current, ...raw } : raw
+      messages.push({ merged: current as unknown as DisplayPayload, raw, delta })
     }
     if (!triggered && trigger != null) {
       triggered = true
@@ -140,10 +140,10 @@ describe('local display server', () => {
      * read depends on it — the Réseaux slide carries the hashtag in large type,
      * which stays there without it.
      */
-    const externes = [...html.matchAll(/<(?:script|link)\b[^>]*\b(?:src|href)="([^"]+)"/g)]
-      .map((trouve) => trouve[1]!)
-      .filter((adresse) => /^(?:https?:)?\/\//.test(adresse))
-    expect(externes).toEqual(['https://platform.x.com/widgets.js'])
+    const external = [...html.matchAll(/<(?:script|link)\b[^>]*\b(?:src|href)="([^"]+)"/g)]
+      .map((found) => found[1]!)
+      .filter((url) => /^(?:https?:)?\/\//.test(url))
+    expect(external).toEqual(['https://platform.x.com/widgets.js'])
     expect(html).toContain("new EventSource('/display/state?vue=projecteur')")
   })
 
@@ -218,22 +218,22 @@ describe('local display server', () => {
 
   it('stays serveable with no program cached', async () => {
     const vide = new LocalStore(':memory:')
-    const autre = new DisplayServer({
+    const other = new DisplayServer({
       runtime: new RoomRuntime(vide),
       assets: new AssetCache(vide, join(dir, 'vide')),
       program: () => null,
       port: 0,
     })
-    const autreOrigin = await autre.listen()
+    const otherOrigin = await other.listen()
 
     // First commissioning, before any sync: the page must display all the same
     // rather than leave a black screen in the room.
-    const payload = (await (await fetch(`${autreOrigin}/display/data`)).json()) as DisplayPayload
+    const payload = (await (await fetch(`${otherOrigin}/display/data`)).json()) as DisplayPayload
     expect(payload.sessions).toEqual([])
     expect(payload.state.mode).toBe('loop')
-    expect((await fetch(`${autreOrigin}/display/projector`)).status).toBe(200)
+    expect((await fetch(`${otherOrigin}/display/projector`)).status).toBe(200)
 
-    await autre.close()
+    await other.close()
     vide.close()
   })
 })
@@ -257,7 +257,7 @@ describe('VU meter', () => {
 
       const controleur = new AbortController()
       const flux = await fetch(`${url}/display/audio`, { signal: controleur.signal })
-      const lecteur = flux.body!.getReader()
+      const reader = flux.body!.getReader()
       // The subscription is laid down when the stream opens.
       await vi.waitFor(() => expect(demandes).toEqual([true]))
 
@@ -265,10 +265,10 @@ describe('VU meter', () => {
 
       // The first block is the opening comment, which pushes the headers; we read
       // on to the first measurement.
-      const decodeur = new TextDecoder()
+      const decoder = new TextDecoder()
       let recu = ''
       while (!recu.includes('data: ')) {
-        recu += decodeur.decode((await lecteur.read()).value, { stream: true })
+        recu += decoder.decode((await reader.read()).value, { stream: true })
       }
       expect(recu).toContain('"name":"Micro"')
       expect(recu).toContain('-18')
@@ -326,12 +326,12 @@ describe('VU meter', () => {
  */
 describe('other rooms, effective end', () => {
   const TRACK_2 = 'track-2-mf-1092'
-  /** 08:50 → 09:40 UTC, le premier talk de Track #2. */
-  const MATIN = 'cmq3nx20102h901ppuyjkennd'
+  /** 08:50 → 09:40 UTC, Track #2's first talk. */
+  const MORNING = 'cmq3nx20102h901ppuyjkennd'
   /** 10:00 → 10:50 UTC: the one really playing at the test's hour. */
   const MIDI = 'cmqb69foj000p01nl361us8f0'
 
-  async function voisine(): Promise<DisplayPayload['otherRooms'][number] | undefined> {
+  async function neighbour(): Promise<DisplayPayload['otherRooms'][number] | undefined> {
     const payload = (await (await fetch(`${origin}/display/data`)).json()) as DisplayPayload
     return payload.otherRooms.find((salle) => salle.roomId === TRACK_2)
   }
@@ -342,7 +342,7 @@ describe('other rooms, effective end', () => {
     const servi: Program = {
       ...program,
       sessions: program.sessions.map((session) =>
-        session.id === MATIN
+        session.id === MORNING
           ? { ...session, endsAt: null, endsAtMs: null, durationMinutes: 50 }
           : session,
       ),
@@ -352,7 +352,7 @@ describe('other rooms, effective end', () => {
 
     // The file's clock is at 10:20 UTC: the duration closes the morning talk at
     // 09:40, and it is the 10:00 one that is playing.
-    const vue = await voisine()
+    const vue = await neighbour()
     expect(vue?.session?.id).toBe(MIDI)
     expect(vue?.running).toBe(true)
   })
@@ -362,7 +362,7 @@ describe('other rooms, effective end', () => {
     // "en ce moment", it announces the next one's time.
     runtime.setServerTime(new Date(Date.parse('2026-10-30T09:50:00.000Z')).toISOString(), true)
 
-    const vue = await voisine()
+    const vue = await neighbour()
     expect(vue?.running).toBe(false)
     expect(vue?.session?.id).toBe(MIDI)
   })
@@ -377,10 +377,10 @@ describe('other rooms, effective end', () => {
  */
 describe('machine load', () => {
   it('answers on its own route', async () => {
-    const reponse = await fetch(`${origin}/control/host`)
-    expect(reponse.status).toBe(200)
+    const response = await fetch(`${origin}/control/host`)
+    expect(response.status).toBe(200)
 
-    const charge = (await reponse.json()) as {
+    const charge = (await response.json()) as {
       cpu: number | null
       cores: number
       windowMs: number
@@ -414,9 +414,9 @@ describe('machine load', () => {
       }),
       port: 0,
     })
-    const adresse = await local.listen()
+    const origin_ = await local.listen()
     try {
-      expect(await (await fetch(`${adresse}/control/host`)).json()).toEqual({
+      expect(await (await fetch(`${origin_}/control/host`)).json()).toEqual({
         cpu: 0.42,
         cores: 8,
         windowMs: 5_000,

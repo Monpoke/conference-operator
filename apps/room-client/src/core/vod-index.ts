@@ -190,7 +190,7 @@ export async function inspectRecording(
 
   const sidecar = await readSidecar(deps, path)
   if (sidecar == null) {
-    downgrade('suspect', 'sidecar absent : titre, intervenants et marqueurs manquent au editing')
+    downgrade('suspect', 'sidecar absent : titre, intervenants et marqueurs manquent au montage')
   }
 
   const probe = deps.probe == null ? null : await deps.probe(path)

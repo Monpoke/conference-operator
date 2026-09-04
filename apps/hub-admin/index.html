@@ -7,12 +7,12 @@
   </head>
   <body class="bg-canvas font-sans text-text">
     <!--
-      Développement seulement.
+      Development only.
 
-      En production le hub rend cette coquille lui-même, parce qu'il y injecte
-      ce que la console doit connaître avant son premier appel : le mode, le nom
-      de l'événement, et si le bouton Google a une raison d'exister. Ce fichier
-      n'existe que pour que `vite dev` ait une porte d'entrée.
+      In production the hub renders this shell itself, because it injects into it
+      what the console has to know before its first call: the mode, the event's
+      name, and whether the Google button has any reason to exist. This file only
+      exists so that `vite dev` has a way in.
     -->
     <div id="console-root"></div>
     <script id="console-boot" type="application/json">{"mode":"dev","event":{"name":"Cloud Nord (dev)","shortName":"Cloud Nord"},"google":null}</script>

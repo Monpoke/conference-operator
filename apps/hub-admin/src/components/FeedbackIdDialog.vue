@@ -4,11 +4,11 @@ import { computed, ref, watch } from 'vue'
 import { useConferencesStore, type PlannedSession } from '../stores/conferences.js'
 
 /**
- * L'identifiant OpenFeedback servi pour un créneau.
+ * The OpenFeedback identifier served for one slot.
  *
- * La correction vaut jusqu'à ce qu'on la retire, réimports compris, et descend
- * aux salles : le QR projeté suit. Sans cela, la console et l'écran de salle
- * afficheraient deux adresses différentes pour le même talk.
+ * The correction holds until it is removed, re-imports included, and reaches the
+ * rooms: the projected QR code follows. Without it, the console and the room
+ * screen would show two different addresses for the same talk.
  */
 const open = defineModel<boolean>('open', { required: true })
 const props = defineProps<{ session: PlannedSession | null }>()
@@ -17,22 +17,22 @@ const store = useConferencesStore()
 const toast = useToast()
 
 const saisie = ref('')
-const erreur = ref('')
+const error = ref('')
 
 watch(
   () => props.session,
   (creneau) => {
     saisie.value = creneau?.feedbackIdOverride ?? ''
-    erreur.value = ''
+    error.value = ''
   },
   { immediate: true },
 )
 
 /**
- * L'adresse que servira le QR, mise à jour à la frappe.
+ * The address the QR code will serve, updated as one types.
  *
- * C'est la seule façon de vérifier une correction avant de l'enregistrer : la
- * page OpenFeedback fait foi, pas l'export, et on la reconnaît à son adresse.
+ * It is the only way to check a correction before saving it: the OpenFeedback page
+ * is authoritative, not the export, and one recognises it by its address.
  */
 const apercu = computed(() => {
   const creneau = props.session
@@ -43,19 +43,19 @@ const apercu = computed(() => {
   return base.slice(0, base.lastIndexOf('/') + 1) + encodeURIComponent(identifiant)
 })
 
-async function enregistrer(valeur: string | null): Promise<void> {
+async function enregistrer(value_: string | null): Promise<void> {
   if (props.session == null) return
-  erreur.value = ''
+  error.value = ''
   try {
-    await store.setFeedbackId(props.session.id, valeur)
+    await store.setFeedbackId(props.session.id, value_)
     toast.say(
-      valeur == null ? "Créneau rendu à l'identifiant de l'export" : 'Identifiant OpenFeedback corrigé',
+      value_ == null ? "Créneau rendu à l'identifiant de l'export" : 'Identifiant OpenFeedback corrigé',
     )
     open.value = false
   } catch (cause) {
-    // Dans la modale et non dans l'avis flottant : l'erreur porte sur ce qu'on
-    // vient de taper, et c'est là qu'on va le corriger.
-    erreur.value = cause instanceof Error ? cause.message : "L'enregistrement a échoué."
+    // In the modal and not in the floating toast: the error is about what one
+    // has just typed, and that is where it will be corrected.
+    error.value = cause instanceof Error ? cause.message : "L'enregistrement a échoué."
   }
 }
 </script>
@@ -72,7 +72,7 @@ async function enregistrer(valeur: string | null): Promise<void> {
       </label>
       <!--
         Le placeholder est atténué à la main : la feuille du thème ne le
-        distingue pas d'une valeur saisie, et ici les deux disent la même chose
+        distingue pas d'une value_ saisie, et ici les deux disent la même chose
         — l'identifiant de l'export. Confondus, le champ paraît déjà rempli, et
         « Enregistrer » semble poser une correction qui n'en est pas une.
       -->
@@ -110,7 +110,7 @@ async function enregistrer(valeur: string | null): Promise<void> {
       </span>
     </div>
 
-    <p v-if="erreur !== ''" id="feedback-erreur" class="mt-2 text-sm text-alert">{{ erreur }}</p>
+    <p v-if="error !== ''" id="feedback-error" class="mt-2 text-sm text-alert">{{ error }}</p>
 
     <Hint>
       La correction vaut jusqu'à ce qu'on la retire, réimports compris, et descend aux salles :

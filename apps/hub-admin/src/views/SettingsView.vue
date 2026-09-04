@@ -53,7 +53,7 @@ async function saveEvent(): Promise<void> {
     })
     toast.say('Événement enregistré')
   } catch {
-    /* déjà remonté */
+    /* already reported */
   }
 }
 
@@ -90,7 +90,7 @@ async function saveSource(): Promise<void> {
     await store.update({ programSourceUrl: orNull(programUrl.value.value) })
     toast.say('Source du programme enregistrée')
   } catch {
-    /* déjà remonté */
+    /* already reported */
   }
 }
 
@@ -110,7 +110,7 @@ async function activate(contentHash: string): Promise<void> {
     await store.activate(contentHash)
     toast.say('Programme activé')
   } catch {
-    /* déjà remonté */
+    /* already reported */
   }
 }
 
@@ -139,7 +139,7 @@ async function saveSocialLinks(): Promise<void> {
     await store.update({ socialLinks: filled })
     toast.say('Réseaux enregistrés')
   } catch {
-    /* déjà remonté */
+    /* already reported */
   }
 }
 
@@ -167,7 +167,7 @@ async function saveAutoEnd(): Promise<void> {
     })
     toast.say('Réglages enregistrés')
   } catch {
-    /* déjà remonté */
+    /* already reported */
   }
 }
 
@@ -211,7 +211,7 @@ async function saveStorage(): Promise<void> {
     })
     toast.say('Stockage enregistré')
   } catch {
-    /* déjà remonté */
+    /* already reported */
   }
 }
 
@@ -254,7 +254,7 @@ async function confirmResync(): Promise<void> {
           : `Resynchronisation demandée à ${result.rooms} salle(s)`,
     )
   } catch {
-    /* déjà remonté */
+    /* already reported */
   }
 }
 </script>

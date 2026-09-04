@@ -45,11 +45,11 @@ export const useSessionStore = defineStore('session', () => {
   )
 
   /**
-   * Better Auth vit dans `@cloudnord/hub-client`, à côté du jeton.
+   * Better Auth lives in `@cloudnord/hub-client`, next to the token.
    *
-   * La régie mobile fait exactement les mêmes appels, et ce sont ceux où une
-   * seconde copie coûte cher — un `signOut` qui oublie de prévenir le hub
-   * laisse une session Google se rouvrir au rechargement.
+   * The mobile control app makes exactly the same calls, and they are the ones
+   * where a second copy costs dearly — a `signOut` that forgets to tell the hub
+   * lets a Google session reopen on reload.
    */
   const hubAuth = createHubAuth({ token: client.value.token })
 

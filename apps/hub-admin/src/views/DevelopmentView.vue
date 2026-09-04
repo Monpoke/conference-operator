@@ -11,50 +11,49 @@ import {
 import { useConferencesStore } from '../stores/conferences.js'
 
 /**
- * Les commodités de développement.
+ * The development conveniences.
  *
- * Elles n'ont rien à faire devant une salle, et trois verrous le garantissent —
- * chacun couvrant ce que les autres laissent passer : cette vue n'est pas
- * servie hors mode dev, son module n'entre pas dans le bundle de production
- * (le routeur l'importe à la demande), et le hub refuse `clock/set` comme
- * `vod/reset` de son côté.
+ * They have no business in front of a room, and three locks guarantee it — each
+ * covering what the others let through: this view is not served outside dev mode,
+ * its module does not enter the production bundle (the router imports it on
+ * demand), and the hub refuses `clock/set` and `vod/reset` on its own side.
  */
 const store = useDevStore()
 const { clock } = storeToRefs(store)
 const toast = useToast()
 
-const cible = ref('')
+const target = ref('')
 const resetOpen = ref(false)
 const resetWord = ref('')
-const resetTarget = ref({ cible: '', salles: 0 })
+const resetTarget = ref({ target: '', rooms: 0 })
 
-const fuseau = computed(() => useConferencesStore().planning?.timezone)
+const zone = computed(() => useConferencesStore().planning?.timezone)
 
 /**
- * L'heure du hub, lue dans le fuseau de l'événement.
+ * The hub's time, read in the event's time zone.
  *
- * Comme partout ailleurs dans la console : la lire dans celui du poste d'où
- * l'on regarde est justement l'erreur que ce réglage sert à débusquer.
+ * As everywhere else in the console: reading it in the time zone of the machine
+ * one is looking from is precisely the mistake this setting exists to flush out.
  */
-const lisible = computed(() =>
+const readable = computed(() =>
   clock.value == null
     ? '—'
     : new Intl.DateTimeFormat('fr-FR', {
         dateStyle: 'full',
         timeStyle: 'medium',
-        timeZone: fuseau.value,
+        timeZone: zone.value,
       }).format(new Date(clock.value.serverTime)),
 )
 
 const raccourcis = computed(() => programMoments(activeSessions()))
 
 async function appliquer(): Promise<void> {
-  if (cible.value === '') return
+  if (target.value === '') return
   try {
-    await store.setClock(new Date(cible.value).toISOString())
+    await store.setClock(new Date(target.value).toISOString())
     toast.say('Heure du hub modifiée')
   } catch {
-    /* déjà remonté */
+    /* already reported */
   }
 }
 
@@ -63,7 +62,7 @@ async function revenir(): Promise<void> {
     await store.setClock(null)
     toast.say("Retour à l'heure réelle")
   } catch {
-    /* déjà remonté */
+    /* already reported */
   }
 }
 
@@ -82,7 +81,7 @@ async function confirmReset(): Promise<void> {
         `${bilan.salles} salle(s) prévenue(s).`,
     )
   } catch {
-    /* déjà remonté */
+    /* already reported */
   }
 }
 </script>
@@ -102,15 +101,15 @@ async function confirmReset(): Promise<void> {
           >
             {{ clock?.simulated === true ? 'Horloge SIMULÉE' : 'Heure réelle' }}
           </strong>
-          <span id="horloge-valeur" class="text-xs text-dim">{{ lisible }}</span>
+          <span id="horloge-valeur" class="text-xs text-dim">{{ readable }}</span>
         </div>
       </div>
 
       <div v-if="clock?.controllable === true" id="horloge-controles" class="mt-3">
-        <label class="mb-[5px] block text-xs text-dim" for="horloge-cible">Se placer à</label>
+        <label class="mb-[5px] block text-xs text-dim" for="clock-target">Se placer à</label>
         <input
-          id="horloge-cible"
-          v-model="cible"
+          id="clock-target"
+          v-model="target"
           type="datetime-local"
           step="60"
           class="mb-[11px] w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text"
@@ -128,7 +127,7 @@ async function confirmReset(): Promise<void> {
             v-for="[libelle, iso] in raccourcis"
             :key="iso"
             size="small"
-            @click="cible = forInput(iso)"
+            @click="target = forInput(iso)"
           >
             {{ libelle }}
           </Button>
@@ -186,8 +185,8 @@ async function confirmReset(): Promise<void> {
       @confirm="confirmReset"
     >
       <p id="raz-text">
-        Tout ce qui est sous <strong>{{ resetTarget.cible }}</strong> sera supprimé, et
-        <strong>{{ resetTarget.salles }} salle{{ resetTarget.salles > 1 ? 's' : '' }}</strong>
+        Tout ce qui est sous <strong>{{ resetTarget.target }}</strong> sera supprimé, et
+        <strong>{{ resetTarget.rooms }} salle{{ resetTarget.rooms > 1 ? 's' : '' }}</strong>
         effaceront leurs rushes.
       </p>
       <p class="mt-3 text-[13px] leading-relaxed text-dim">

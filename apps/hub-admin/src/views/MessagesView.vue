@@ -9,9 +9,10 @@ import { useMessagesStore } from '../stores/messages.js'
 /**
  * Ce que le hub adresse aux salles.
  *
- * Deux gestes que rien ne rapproche sinon l'écran : un **message**, qui prend
- * la salle entière ou parle à l'opérateur, et un **bandeau live**, qui se
- * superpose à la vidéo sans rien interrompre — c'est toute la différence, et
+ * Two gestures nothing brings together but the screen: a **message**, which takes
+ * the whole room or speaks to the operator, and a **live banner**, which is
+ * composited over the video without interrupting anything — that is the whole
+ * difference, and
  * elle justifie que les deux ne se ressemblent pas.
  */
 const store = useMessagesStore()
@@ -35,19 +36,19 @@ const cible = ref<'operator' | 'audience'>('operator')
 const duree = ref('')
 
 /**
- * Dit où va le message **avant** qu'il parte.
+ * Says where the message goes **before** it leaves.
  *
- * La confusion coûterait cher : une note à l'opérateur projetée devant le
- * public ne se rattrape pas. L'avertissement est donc calculé, pas déclenché
+ * The confusion would cost dearly: a note to the operator projected in front of
+ * the audience cannot be undone. The warning is therefore computed, not fired
  * par un `change` — c'est ce qui garantit qu'il est juste au premier rendu et
- * pas seulement après la première interaction.
+ * not only after the first interaction.
  */
 const public_ = computed(() => cible.value === 'audience')
 
 const bannerText = ref('')
 const bannerLevel = ref<'info' | 'warning' | 'urgent'>('info')
 
-/** Changer de salle change l'historique consulté. */
+/** Changing room changes the history being consulted. */
 watch(target, () => void store.load())
 
 async function envoyer(): Promise<void> {
@@ -66,15 +67,15 @@ async function envoyer(): Promise<void> {
     texte.value = ''
     toast.say('Message envoyé')
   } catch {
-    // Déjà remonté par le crochet d'erreur du client.
+    // Already reported by the client's error hook.
   }
 }
 
 /**
- * Un modèle remplit le champ, il n'envoie pas.
+ * A template fills the field, it does not send.
  *
- * C'est un point de départ, pas un rail : la date, la durée, le nom de la
- * salle changent à chaque fois.
+ * It is a starting point, not a rail: the date, the duration and the room's name
+ * change every time.
  */
 function appliquerModele(modele: Banner): void {
   bannerText.value = modele.text
@@ -90,7 +91,7 @@ async function showBanner(): Promise<void> {
     await store.showBanner({ text: bannerText.value.trim(), level: bannerLevel.value })
     toast.say('Bandeau affiché')
   } catch {
-    /* déjà remonté */
+    /* already reported */
   }
 }
 
@@ -99,7 +100,7 @@ async function hideBanner(): Promise<void> {
     await store.hideBanner()
     toast.say('Bandeau retiré')
   } catch {
-    /* déjà remonté */
+    /* already reported */
   }
 }
 </script>

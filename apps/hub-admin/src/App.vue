@@ -11,13 +11,13 @@ import { useNotificationsStore } from './stores/notifications.js'
 import { useSessionStore } from './stores/session.js'
 
 /**
- * La coquille de la console, et sa boucle de rafraîchissement.
+ * The console's shell, and its refresh loop.
  *
- * Une seule boucle qui lit `route.meta.refresh` remplace un `if/else if` de
- * trente lignes qu'il fallait étendre à la main pour chaque vue — et où oublier
- * une branche voulait dire que la vue ne se rafraîchissait simplement jamais,
- * en silence. Deux choses en tombent gratuitement : un onglet caché cesse de
- * sonder, et une vue se charge tout de suite au lieu d'attendre le tour suivant.
+ * A single loop reading `route.meta.refresh` replaces a thirty-line `if/else if`
+ * that had to be extended by hand for every view — and where forgetting a branch
+ * meant the view simply never refreshed, in silence. Two things fall out for free:
+ * a hidden tab stops polling, and a view loads at once instead of waiting for the
+ * next round.
  */
 const session = useSessionStore()
 const notifications = useNotificationsStore()
@@ -25,7 +25,7 @@ const { signedIn, eventName, mode, identity } = storeToRefs(session)
 const { supported, on } = storeToRefs(notifications)
 const route = useRoute()
 
-const reglageNotifs = ref(false)
+const notifSettingsOpen = ref(false)
 const timer = ref<ReturnType<typeof setTimeout> | null>(null)
 
 function stop(): void {
@@ -34,12 +34,11 @@ function stop(): void {
 }
 
 /**
- * `setTimeout` enchaîné, et non `setInterval`.
+ * A chained `setTimeout`, and not `setInterval`.
  *
- * L'intervalle compte à partir de la **fin** de la requête. Avec `setInterval`,
- * un hub qui répond plus lentement que la période empilait les appels les uns
- * sur les autres — c'est-à-dire précisément quand il pouvait le moins se le
- * permettre.
+ * The interval counts from the **end** of the request. With `setInterval`, a hub
+ * answering more slowly than the period piled the calls on top of one another —
+ * that is, precisely when it could least afford it.
  */
 async function tick(): Promise<void> {
   const { refresh, intervalMs } = route.meta
@@ -48,7 +47,7 @@ async function tick(): Promise<void> {
     try {
       await refresh()
     } catch {
-      // Déjà remonté par le crochet d'erreur du client.
+      // Already reported by the client's error hook.
     }
   }
   stop()
@@ -65,10 +64,10 @@ watch(
 )
 
 /**
- * Le titre suit le nom de l'événement.
+ * The title follows the event's name.
  *
- * Renommer l'événement et continuer à lire l'ancien nom en haut de sa propre
- * console serait le premier endroit où douter que le réglage soit pris.
+ * Renaming the event and going on reading the old name at the top of one's own
+ * console would be the first place to doubt the setting had been taken.
  */
 watch(
   eventName,
@@ -117,7 +116,7 @@ function rafraichir(): void {
               ? 'Alertes activées sur cet appareil'
               : `Être prévenu d'un dépassement, d'une salle coupée ou d'une machine à appairer`
           "
-          @click="reglageNotifs = true"
+          @click="notifSettingsOpen = true"
         >
           {{ on ? 'Notifications ●' : 'Notifications' }}
         </Button>
@@ -132,7 +131,7 @@ function rafraichir(): void {
       <RouterView />
     </main>
 
-    <NotificationsDialog v-model:open="reglageNotifs" />
+    <NotificationsDialog v-model:open="notifSettingsOpen" />
     <AlertStack />
   </div>
 

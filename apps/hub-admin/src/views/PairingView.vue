@@ -9,14 +9,14 @@ import { requestedRoom, VERDICTS, usePairingStore, type PendingDevice } from '..
 /**
  * Appairage des machines de salle.
  *
- * Deux chemins mènent ici, et le second est le vrai : Better Auth donne à la
- * machine l'adresse `/admin/devices?user_code=…`, l'opérateur la suit, et le
- * code doit être traité **sur place**. Renvoyer vers la liste derrière la
+ * Two paths lead here, and the second is the real one: Better Auth gives the
+ * machine the address `/admin/devices?user_code=…`, the operator follows it, and
+ * the code must be handled **on the spot**. Sending them to the list behind the
  * modale faisait chercher la bonne ligne parmi d'autres, pour refaire le geste
  * qu'on venait de valider des yeux.
  *
- * Le code vit dans l'URL et n'en bouge pas : la route est déclarée en alias, et
- * une redirection l'effacerait au chargement — c'est-à-dire au seul moment où
+ * The code lives in the URL and does not move from it: the route is declared as
+ * an alias, and a redirect would erase it on load — that is, at the one moment
  * quelqu'un en a besoin.
  */
 const store = usePairingStore()
@@ -53,10 +53,10 @@ const verdict = reactive({
 })
 
 /**
- * Qualifie le code au chargement, sans rien décider.
+ * Qualifies the code on load, deciding nothing.
  *
  * Sans `clientId`, Better Auth ne nous a pas reconnus comme le consultant du
- * code : approuver échouerait, autant ne pas le proposer.
+ * code: approving would fail, so better not to offer it.
  */
 async function qualifier(code: string): Promise<void> {
   Object.assign(verdict, {
@@ -109,8 +109,8 @@ async function decider(approuver: boolean): Promise<void> {
   } catch (cause) {
     /*
      * Dans la modale, pas dans l'avis flottant : l'erreur porte sur le geste
-     * qu'on vient de faire, et le refus d'un code ouvert par un autre opérateur
-     * demande de lire une phrase entière.
+     * one has just done, and refusing a code opened by another operator requires
+     * reading a whole sentence.
      */
     verdict.error = cause instanceof Error ? cause.message : 'Le geste a échoué.'
   } finally {
@@ -124,7 +124,7 @@ async function approveRequest(device: PendingDevice): Promise<void> {
     await store.approve({ userCode: code.trim(), clientId: device.clientId, roomId })
     toast.say('Machine appairée')
   } catch {
-    /* déjà remonté */
+    /* already reported */
   }
 }
 
@@ -133,7 +133,7 @@ async function refuseRequest(device: PendingDevice): Promise<void> {
     await store.deny(champs(device).code.trim())
     toast.say('Demande refusée')
   } catch {
-    /* déjà remonté */
+    /* already reported */
   }
 }
 
@@ -142,7 +142,7 @@ async function revoquer(clientId: string): Promise<void> {
     await store.revoke(clientId)
     toast.say('Machine révoquée')
   } catch {
-    /* déjà remonté */
+    /* already reported */
   }
 }
 

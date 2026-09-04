@@ -40,7 +40,7 @@ export const useDevStore = defineStore('dev', () => {
   }
 
   /** What the reset will target, said before offering it. */
-  async function resetTarget(): Promise<{ cible: string; salles: number }> {
+  async function resetTarget(): Promise<{ target: string; rooms: number }> {
     let target = 'le préfixe du bucket'
     try {
       const status = (await session.client.rpc.vod.status()) as {
@@ -55,7 +55,7 @@ export const useDevStore = defineStore('dev', () => {
       // The hub does not answer: we open anyway, it will refuse by itself.
     }
     const rooms = (await session.client.rpc.rooms.list().catch(() => [])) as unknown[]
-    return { cible: target, salles: rooms.length }
+    return { target, rooms: rooms.length }
   }
 
   async function reset(): Promise<ResetReport> {

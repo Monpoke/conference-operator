@@ -55,12 +55,11 @@ const routes: RouteRecordRaw[] = [
   {
     path: viewPath('appairage'),
     /*
-     * Un **alias**, jamais une redirection.
+     * An **alias**, never a redirect.
      *
-     * `/admin/devices?user_code=…` est l'adresse que Better Auth donne aux
-     * machines. Réécrire l'URL vers `/admin/appairage` effacerait le code que
-     * l'opérateur s'apprête à approuver — au chargement, c'est-à-dire au seul
-     * moment où quelqu'un en a besoin.
+     * `/admin/devices?user_code=…` is the address Better Auth gives the machines.
+     * Rewriting the URL to `/admin/appairage` would erase the code the operator is
+     * about to approve — on load, that is, at the one moment anybody needs it.
      */
     alias: PAIRING_ALIAS,
     name: 'appairage',
@@ -99,34 +98,33 @@ const routes: RouteRecordRaw[] = [
     path: viewPath('developpement'),
     name: 'developpement',
     /*
-     * Importé à la demande, et c'est un verrou, pas une optimisation.
+     * Imported on demand, and it is a lock, not an optimisation.
      *
-     * `consoleViews(dev)` empêche déjà le hub de servir cette adresse en
-     * production. Mais un `import` statique ferait entrer le code qui déplace
-     * l'heure de tout le système — et celui qui efface les rushes — dans le
-     * bundle servi le jour J, à un `fetch` de distance de qui inspecte la page.
+     * `consoleViews(dev)` already stops the hub serving this address in production.
+     * But a static `import` would bring the code that moves the whole system's
+     * clock — and the one that erases the footage — into the bundle served on the
+     * day, one `fetch` away from whoever inspects the page.
      */
     component: () => import('./views/DevelopmentView.vue'),
     meta: {
       view: 'developpement',
       refresh: async () => {
         /*
-         * Le planning, en plus de l'horloge.
+         * The schedule, in addition to the clock.
          *
-         * La vue en tire deux choses, et elle ne le chargeait pas : les
-         * raccourcis vers les moments du programme — déduits des créneaux, donc
-         * absents quand le planning l'est — et le fuseau dans lequel l'heure du
-         * hub s'affiche. Sans lui, cette heure se lit dans le fuseau du poste
-         * d'où l'on regarde, ce qui est précisément l'erreur que ce réglage
-         * sert à débusquer.
+         * The view draws two things from it, and it was not loading it: the
+         * shortcuts to the program's moments — deduced from the slots, so absent
+         * when the schedule is — and the time zone the hub's clock is displayed in.
+         * Without it, that time reads in the time zone of the machine one is looking
+         * from, which is precisely the mistake this setting exists to flush out.
          *
-         * On ne voyait rien de tout ça en venant de l'onglet Conférences, qui
-         * l'avait chargé au passage : les boutons apparaissaient ou non selon
-         * le chemin emprunté.
+         * None of this was visible when arriving from the Conférences tab, which had
+         * loaded it along the way: the buttons appeared or not depending on the path
+         * taken.
          *
-         * Chargé une seule fois, s'il manque : le programme ne bouge pas
-         * pendant qu'on pousse l'horloge, et le relire toutes les dix secondes
-         * ferait trois appels pour une réponse identique.
+         * Loaded once, if it is missing: the program does not move while the clock
+         * is being pushed, and re-reading it every ten seconds would make three
+         * calls for an identical answer.
          */
         const conferences = useConferencesStore()
         if (conferences.planning == null) await conferences.load()

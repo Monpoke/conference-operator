@@ -3,11 +3,10 @@ import { ref } from 'vue'
 import { useSessionStore } from './session.js'
 
 /**
- * Rapatriement des captations.
+ * Bringing the takes home.
  *
- * À regarder **avant de démonter une salle** : c'est le dernier moment où son
- * disque est encore branché. Un rush qui n'est pas ici n'est nulle part
- * ailleurs qu'à Lille.
+ * To be looked at **before dismantling a room**: it is the last moment its disk is
+ * still plugged in. Footage that is not here is nowhere else but in Lille.
  */
 export interface Upload {
   roomId: string
@@ -33,20 +32,20 @@ export const useVodStore = defineStore('vod', () => {
   const session = useSessionStore()
 
   async function load(): Promise<void> {
-    const [lignes, salles] = await Promise.all([
+    const [rows, roomList] = await Promise.all([
       session.client.rpc.vod.uploads({ roomId: room.value === '' ? null : room.value }),
       session.client.rpc.rooms.list(),
     ])
-    uploads.value = lignes as Upload[]
-    rooms.value = salles as Room[]
+    uploads.value = rows as Upload[]
+    rooms.value = roomList as Room[]
   }
 
   /**
-   * Demande un rapatriement.
+   * Requests a repatriation.
    *
-   * `file` nul = toute la salle. La demande vise **une** machine : sans salle,
-   * il n'y a personne à qui parler, et c'est la vue qui le dit plutôt que de
-   * laisser un bouton sans effet.
+   * A null `file` means the whole room. The request targets **one** machine: with
+   * no room there is nobody to talk to, and it is the view that says so rather than
+   * leave a button with no effect.
    */
   async function request(roomId: string, file: string | null): Promise<void> {
     await session.client.rpc.vod.request({ roomId, file })
@@ -56,7 +55,7 @@ export const useVodStore = defineStore('vod', () => {
   return { uploads, rooms, room, load, request }
 })
 
-/** Ce que dit un état de téléversement, et de quelle couleur. */
+/** What an upload state says, and in what colour. */
 export const UPLOAD_STATES: Record<string, { label: string; tone: string }> = {
   'en-cours': { label: 'en cours', tone: '' },
   termine: { label: 'terminé', tone: 'text-dim' },
@@ -64,7 +63,7 @@ export const UPLOAD_STATES: Record<string, { label: string; tone: string }> = {
   echoue: { label: 'en échec', tone: 'text-alert' },
 }
 
-/** Avancement en percent, borné : un fichier qui grossit en route dépasserait. */
+/** Progress as a percentage, bounded: a file that grows in transit would exceed it. */
 export function progress(upload: Upload): number {
   if (upload.sizeBytes <= 0) return 0
   return Math.min(100, Math.round((upload.bytesSent / upload.sizeBytes) * 100))

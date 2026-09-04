@@ -53,11 +53,11 @@ beforeEach(() => {
 
 describe('temps restant sur le créneau', () => {
   it('arrondit à la minute : la seconde serait fausse aussitôt affichée', () => {
-    expect(slotRemaining(600_000)).toEqual({ texte: '10 min restantes', depasse: false })
+    expect(slotRemaining(600_000)).toEqual({ text: '10 min restantes', overrun: false })
   })
 
   it('distingue le dépassement, qui est la raison d’être de l’affichage', () => {
-    expect(slotRemaining(-180_000)).toEqual({ texte: 'dépassement de 3 min', depasse: true })
+    expect(slotRemaining(-180_000)).toEqual({ text: 'dépassement de 3 min', overrun: true })
   })
 
   it('ne dit rien quand le hub ne sait pas', () => {
@@ -70,7 +70,7 @@ describe('vue exploitation', () => {
     const wrapper = await monter()
     // Une pastille seule ne se lit pas quand on ne distingue pas les teintes,
     // et la carte se regarde de loin.
-    expect(wrapper.get('[data-salle="track-1"]').text()).toContain('en cours')
+    expect(wrapper.get('[data-room="track-1"]').text()).toContain('en cours')
   })
 
   it('sépare le remplissage de la conférence du contour de la salle', async () => {
@@ -78,14 +78,14 @@ describe('vue exploitation', () => {
 
     // Une pastille qui ne portait que la connectivité affichait une salle verte
     // alors qu'elle débordait de dix minutes.
-    const pastille = wrapper.get('[data-salle="track-1"] .status-dot')
+    const pastille = wrapper.get('[data-room="track-1"] .status-dot')
     expect(pastille.classes()).toContain('overrun')
     expect(pastille.classes()).toContain('unsure')
   })
 
   it('dit « salle muette » plutôt que d’affirmer un état qu’on ignore', async () => {
     const wrapper = await monter([{ ...SALLE, connectivity: 'OFFLINE' }])
-    expect(wrapper.get('[data-salle="track-1"]').text()).toContain('salle muette')
+    expect(wrapper.get('[data-room="track-1"]').text()).toContain('salle muette')
   })
 
   it('ne présente pas un créneau commun comme une conférence', async () => {
@@ -93,7 +93,7 @@ describe('vue exploitation', () => {
 
     // « Déjeuner · 22 min restantes » se lisait comme une salle occupée là où il
     // n'y a personne. Une étiquette, et la ligne du dessous se tait.
-    const carte = wrapper.get('[data-salle="track-1"]')
+    const carte = wrapper.get('[data-room="track-1"]')
     expect(carte.text()).toContain('BREAK')
     expect(carte.text()).not.toContain('restantes')
   })
@@ -103,14 +103,14 @@ describe('vue exploitation', () => {
       { ...SALLE, recording: true, streaming: true, outboxDepth: 3, sceneRole: 'LIVE' },
     ])
 
-    const carte = wrapper.get('[data-salle="track-1"]')
+    const carte = wrapper.get('[data-room="track-1"]')
     expect(carte.text()).toContain('● REC')
     expect(carte.text()).toContain('● LIVE')
     expect(carte.text()).toContain('3 en file')
   })
 
   it('n’affiche l’encart Global que lorsqu’un créneau commun existe', async () => {
-    expect((await monter()).find('#encart-global').exists()).toBe(false)
+    expect((await monter()).find('#global-panel').exists()).toBe(false)
 
     const wrapper = await monter([SALLE], {
       title: 'Déjeuner',
@@ -136,12 +136,12 @@ describe('vue exploitation', () => {
       serverTime: '2026-10-30T10:50:00Z',
     })
 
-    expect(wrapper.get('#global-titre').text()).toContain('à venir')
+    expect(wrapper.get('#global-title').text()).toContain('à venir')
     expect(wrapper.get('#global-detail').text()).toContain('dans 10 min')
     expect(wrapper.get('#global-detail').text()).toContain('1 salle')
   })
 
   it('dit qu’aucune salle n’est déclarée plutôt que de laisser une grille vide', async () => {
-    expect((await monter([])).get('#salles').text()).toContain('Aucune salle déclarée')
+    expect((await monter([])).get('#rooms').text()).toContain('Aucune salle déclarée')
   })
 })

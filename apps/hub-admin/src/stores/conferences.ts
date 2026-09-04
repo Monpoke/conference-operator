@@ -3,12 +3,11 @@ import { ref } from 'vue'
 import { useSessionStore } from './session.js'
 
 /**
- * Les conférences, sous deux angles qui ne se remplacent pas.
+ * The talks, from two angles that do not replace each other.
  *
- * Le premier tableau ne montre que ce qui a été **démarré** : il répond à « où
- * en est-on ». Le planning répond à « et après, il y a quoi » — la question
- * qu'on pose à l'organisateur toute la journée, et pour laquelle il fallait
- * jusqu'ici rouvrir le site de l'événement.
+ * The first table shows only what has been **started**: it answers "where are we".
+ * The schedule answers "and what comes next" — the question the organiser is asked
+ * all day long, and for which one had until now to reopen the event's website.
  */
 export interface SessionState {
   sessionId: string
@@ -37,7 +36,7 @@ export interface PlannedSession {
   feedbackUrl?: string | null
   feedbackIdOverride?: string | null
   overriddenAs?: string | null
-  /** Pause héritée d'une autre salle : elle n'a pas d'existence propre. */
+  /** A break inherited from another room: it has no existence of its own. */
   sharedFrom?: string | null
 }
 
@@ -45,7 +44,7 @@ export interface Planning {
   sessions: PlannedSession[]
   rooms: { id: string; name: string }[]
   timezone: string
-  /** Heure du hub — elle peut être simulée, et c'est elle qui fait foi. */
+  /** The hub's time — it may be simulated, and it is authoritative. */
   serverTime: string
   openFeedbackProjectId?: string | null
 }
@@ -64,33 +63,33 @@ export const useConferencesStore = defineStore('conferences', () => {
   const hasActiveProgram = ref(true)
   const room = ref('')
 
-  /** Repliée par défaut — voir `ConferencesView`. */
+  /** Collapsed by default — see `ConferencesView`. */
   const actionsShown = ref(false)
 
   const session = useSessionStore()
 
   async function load(): Promise<void> {
-    const [etats, snapshots, plan] = await Promise.all([
+    const [sessionStates, snapshots, plan] = await Promise.all([
       session.client.rpc.sessions.states({ roomId: null }),
       session.client.rpc.program.snapshots(),
       session.client.rpc.program.planning(),
     ])
-    states.value = etats as SessionState[]
+    states.value = sessionStates as SessionState[]
     hasActiveProgram.value = (snapshots as { active?: boolean }[]).some((s) => s.active === true)
     planning.value = plan as Planning
   }
 
-  /** Démarrer, terminer, remettre à venir — la table du cycle de vie décide. */
+  /** Start, end, put back as upcoming — the lifecycle table decides. */
   async function decide(sessionId: string, action: 'start' | 'end' | 'reset'): Promise<void> {
     await session.client.rpc.sessions[action]({ sessionId })
     await load()
   }
 
   /**
-   * Considérer un créneau autrement que l'export ne le dit.
+   * Treating a slot as something other than what the export says.
    *
-   * Relu depuis le hub après coup : c'est lui qui sert le programme corrigé, et
-   * le reconstruire ici le ferait diverger de ce que voient les salles.
+   * Read back from the hub afterwards: it is the hub that serves the corrected
+   * program, and rebuilding it here would make it diverge from what the rooms see.
    */
   async function override(sessionId: string, action: 'talk' | 'break' | null): Promise<void> {
     await session.client.rpc.sessions.override({ sessionId, action })
@@ -103,11 +102,11 @@ export const useConferencesStore = defineStore('conferences', () => {
   }
 
   /**
-   * Contrôle des liens OpenFeedback.
+   * Checking the OpenFeedback links.
    *
-   * Sur demande et non en continu : il sort du hub pour interroger un service
-   * tiers, et c'est un geste d'avant-événement — on le passe une fois le
-   * programme importé, on corrige ce qu'il signale, et on n'y revient plus.
+   * On demand and not continuously: it leaves the hub to query a third-party
+   * service, and it is a pre-event gesture — one runs it once the program has been
+   * imported, corrects what it reports, and never comes back to it.
    */
   async function checkFeedback(): Promise<FeedbackCheck> {
     return (await session.client.rpc.program.controleOpenFeedback()) as FeedbackCheck
@@ -137,22 +136,23 @@ export const useConferencesStore = defineStore('conferences', () => {
   }
 })
 
-/** Où en est la journée pour ce créneau, d'après l'heure du hub. */
+/** Where the day stands for this slot, according to the hub's time. */
 export function placeInDay(session: PlannedSession, nowMs: number): 'a-venir' | 'en-cours' | 'passe' {
   const start = Date.parse(session.startsAt)
   const end = session.endsAt == null ? null : Date.parse(session.endsAt)
   if (start > nowMs) return 'a-venir'
-  // Fin inconnue : le créneau court jusqu'à preuve du contraire, plutôt que
-  // d'être déclaré passé à la seconde où il commence.
+  // End unknown: the slot runs until proven otherwise, rather than be declared
+  // past the second it begins.
   if (end == null || nowMs < end) return 'en-cours'
   return 'passe'
 }
 
 /**
- * L'action que le menu propose.
+ * The action the menu offers.
  *
- * Celle qui **contredit** l'export : l'autre ne ferait rien. Un créneau déjà
- * décidé propose donc de revenir dessus, et le choix vide rend au programme.
+ * The one that **contradicts** the export: the other would do nothing. A slot
+ * already decided therefore offers to go back on it, and the empty choice hands it
+ * back to the program.
  */
 export function overrideChoice(session: PlannedSession): {
   scheduled: 'talk' | 'break'

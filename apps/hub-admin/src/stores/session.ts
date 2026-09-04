@@ -18,7 +18,7 @@ export const TOKEN_KEY = 'hub-admin'
 export const useSessionStore = defineStore('session', () => {
   const boot = ref<Boot | null>(null)
   const signedIn = ref(false)
-  /** Qui est connecté, quand le hub le dit — le retour de Google le porte. */
+  /** Who is signed in, when the hub says so — the return from Google carries it. */
   const identity = ref<string | null>(null)
   const signingIn = ref(false)
   const error = ref<string | null>(null)

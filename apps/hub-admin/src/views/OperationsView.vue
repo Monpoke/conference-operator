@@ -8,173 +8,173 @@ import { useConferencesStore } from '../stores/conferences.js'
 import { slotRemaining, useOperationsStore, type RoomStatus } from '../stores/operations.js'
 
 /**
- * Le tableau de bord.
+ * The dashboard.
  *
- * C'est la vue laissée ouverte toute la journée, et celle qu'on regarde de
- * loin : d'où des cartes plutôt qu'un tableau, un mot à côté de chaque couleur,
- * et rien qui demande de lire pour comprendre qu'une salle va mal.
+ * This is the view left open all day, and the one looked at from afar: hence cards
+ * rather than a table, a word beside every colour, and nothing that requires
+ * reading to understand that a room is in trouble.
  */
 const store = useOperationsStore()
 const { rooms, globalBreak } = storeToRefs(store)
 
 /**
- * Le fuseau de l'événement, quand il est connu.
+ * The event's time zone, when it is known.
  *
- * Il vient du planning, que cette vue ne charge pas — elle n'en a besoin que
- * pour deux heures dans l'encart Global. Sans lui, l'heure du poste sert, ce
- * qui reproduit exactement ce que faisait la page. Une salle n'est pas
- * concernée : les cartes ne portent aucune heure absolue, seulement des durées.
+ * It comes from the schedule, which this view does not load — it only needs it for
+ * two times in the Global panel. Without it the machine's own time zone serves,
+ * which reproduces exactly what the page used to do. A room is not affected: the
+ * cards carry no absolute time, only durations.
  */
-const fuseau = computed(() => useConferencesStore().planning?.timezone)
+const zone = computed(() => useConferencesStore().planning?.timezone)
 
-function appearance(salle: RoomStatus): { word: string; text: string } {
-  const { word, text } = appearanceOf(salle.conference)
+function appearance(room: RoomStatus): { word: string; text: string } {
+  const { word, text } = appearanceOf(room.conference)
   return { word, text }
 }
 
 /**
- * Un créneau commun ne se présente pas comme une conférence.
+ * A shared slot does not present itself as a talk.
  *
- * Pendant le déjeuner, la carte annonçait « Déjeuner · 22 min restantes »
- * exactement comme elle annonce un talk : même place, même forme, même
- * décompte. On lisait une salle occupée là où il n'y a personne. Une étiquette
- * à côté du nom, et la ligne du dessous se tait — le détail du créneau vit dans
- * l'encart Global, où il est dit une fois pour toutes.
+ * During lunch the card announced "Déjeuner · 22 min restantes" exactly as it
+ * announces a talk: same place, same shape, same countdown. One read a busy room
+ * where there is nobody. A tag beside the name, and the line below stays silent —
+ * the slot's detail lives in the Global panel, where it is said once and for all.
  */
-function enPause(salle: RoomStatus): boolean {
-  return salle.breakBadge?.state === 'en-cours'
+function onBreak(room: RoomStatus): boolean {
+  return room.breakBadge?.state === 'en-cours'
 }
 
-function reste(salle: RoomStatus): ReturnType<typeof slotRemaining> {
-  return enPause(salle) ? null : slotRemaining(salle.currentSession?.remainingMs)
+function remaining(room: RoomStatus): ReturnType<typeof slotRemaining> {
+  return onBreak(room) ? null : slotRemaining(room.currentSession?.remainingMs)
 }
 
-/** Ce qu'on vient chercher dans l'encart : quand ça reprend, ou quand ça commence. */
-const detailGlobal = computed(() => {
-  const pause = globalBreak.value
-  if (pause == null) return ''
-  const salles = `${pause.rooms} ${pause.rooms > 1 ? 'salles' : 'salle'}`
-  const enCours = pause.state === 'en-cours'
-  const bord = enCours ? pause.endsAt : pause.startsAt
-  if (bord == null) return salles
-  const minutes = Math.round((Date.parse(bord) - Date.parse(pause.serverTime)) / 60000)
-  return `${enCours ? 'reprise dans ' : 'dans '}${minutes} min · ${salles}`
+/** What one comes to the panel for: when it resumes, or when it starts. */
+const globalDetail = computed(() => {
+  const slot = globalBreak.value
+  if (slot == null) return ''
+  const roomCount = `${slot.rooms} ${slot.rooms > 1 ? 'salles' : 'salle'}`
+  const running = slot.state === 'en-cours'
+  const edge = running ? slot.endsAt : slot.startsAt
+  if (edge == null) return roomCount
+  const minutes = Math.round((Date.parse(edge) - Date.parse(slot.serverTime)) / 60000)
+  return `${running ? 'reprise dans ' : 'dans '}${minutes} min · ${roomCount}`
 })
 </script>
 
 <template>
   <div
-    id="vue-exploitation"
+    id="operations-view"
     class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5"
   >
-    <Panel v-if="globalBreak != null" id="encart-global" class="col-span-full" title="Global">
+    <Panel v-if="globalBreak != null" id="global-panel" class="col-span-full" title="Global">
       <div class="flex items-center gap-2">
         <!--
-          Le créneau commun n'est pas une conférence : sa teinte est posée à la
-          main, et ne vient pas de la table des apparences — `APPEARANCE.pause`
-          décrit une *salle* en pause, pas le créneau lui-même.
+          The shared slot is not a talk: its tint is set by hand, and does not come
+          from the appearance table — `APPEARANCE.pause` describes a *room* on a
+          break, not the slot itself.
         -->
         <span
           id="global-status-dot"
           class="status-dot"
           :class="globalBreak.state === 'en-cours' ? 'break' : 'not-started'"
         ></span>
-        <span id="global-titre" class="flex-1 truncate font-semibold">
+        <span id="global-title" class="flex-1 truncate font-semibold">
           {{ globalBreak.title }}{{ globalBreak.state === 'en-cours' ? '' : ' — à venir' }}
         </span>
-        <span id="global-horaire" class="shrink-0 text-[13px] text-dim tabular-nums">
-          {{ time(globalBreak.startsAt, fuseau)
-          }}{{ globalBreak.endsAt ? ` – ${time(globalBreak.endsAt, fuseau)}` : '' }}
+        <span id="global-hours" class="shrink-0 text-[13px] text-dim tabular-nums">
+          {{ time(globalBreak.startsAt, zone)
+          }}{{ globalBreak.endsAt ? ` – ${time(globalBreak.endsAt, zone)}` : '' }}
         </span>
       </div>
-      <div id="global-detail" class="mt-1 text-xs text-dim">{{ detailGlobal }}</div>
+      <div id="global-detail" class="mt-1 text-xs text-dim">{{ globalDetail }}</div>
     </Panel>
 
     <Panel class="col-span-full" title="Salles">
       <div
-        id="salles"
+        id="rooms"
         class="grid grid-cols-[repeat(auto-fit,minmax(min(260px,100%),1fr))] gap-2.5"
       >
         <Empty v-if="rooms.length === 0">Aucune salle déclarée.</Empty>
 
         <div
-          v-for="salle in rooms"
-          :key="salle.roomId"
+          v-for="room in rooms"
+          :key="room.roomId"
           class="rounded-xl border border-edge bg-canvas p-3"
-          :data-salle="salle.roomId"
+          :data-room="room.roomId"
         >
           <div class="flex items-center gap-2">
-            <StatusDot :state="salle.conference" :connectivity="salle.connectivity" />
-            <span class="min-w-0 flex-1 truncate font-semibold">{{ salle.name }}</span>
+            <StatusDot :state="room.conference" :connectivity="room.connectivity" />
+            <span class="min-w-0 flex-1 truncate font-semibold">{{ room.name }}</span>
             <Badge
-              v-if="salle.breakBadge != null"
+              v-if="room.breakBadge != null"
               class="px-1.5 py-0.5 text-[11px] tracking-normal"
-              :variant="enPause(salle) ? 'neutral' : 'warning'"
+              :variant="onBreak(room) ? 'neutral' : 'warning'"
             >
-              {{ enPause(salle) ? 'BREAK' : 'BREAK à venir' }}
+              {{ onBreak(room) ? 'BREAK' : 'BREAK à venir' }}
             </Badge>
             <a
               class="shrink-0 text-[13px] text-brand no-underline"
               target="_blank"
               rel="noopener"
-              :href="`/mur?salle=${encodeURIComponent(salle.roomId)}`"
+              :href="`/mur?salle=${encodeURIComponent(room.roomId)}`"
             >
               mur ↗
             </a>
           </div>
 
-          <!-- Ce qui se joue : la première chose qu'on vient vérifier. -->
+          <!-- What is playing: the first thing one comes to check. -->
           <div class="mt-1.5 text-[13px] leading-snug">
-            <span v-if="enPause(salle)" class="text-dim">—</span>
-            <template v-else-if="salle.currentSession != null">
-              {{ salle.currentSession.title }}
+            <span v-if="onBreak(room)" class="text-dim">—</span>
+            <template v-else-if="room.currentSession != null">
+              {{ room.currentSession.title }}
             </template>
             <span v-else class="text-dim">Rien au programme</span>
           </div>
 
           <!--
-            Et pour combien de temps encore : sans ça, savoir ce qui se joue ne
-            dit pas si la salle est en avance, à l'heure, ou en train de déborder.
+            And for how much longer: without it, knowing what is playing does not
+            say whether the room is early, on time, or overrunning.
           -->
           <div
-            v-if="reste(salle) != null"
+            v-if="remaining(room) != null"
             class="mt-0.5 text-xs"
-            :class="reste(salle)!.depasse ? 'text-alert' : 'text-dim'"
+            :class="remaining(room)!.overrun ? 'text-alert' : 'text-dim'"
           >
-            {{ reste(salle)!.texte }}
+            {{ remaining(room)!.text }}
           </div>
 
           <div
-            v-if="salle.recording || salle.streaming || salle.sceneRole != null || salle.outboxDepth > 0"
+            v-if="room.recording || room.streaming || room.sceneRole != null || room.outboxDepth > 0"
             class="mt-2 flex flex-wrap gap-1.5"
           >
-            <Badge v-if="salle.recording" class="px-1.5 py-0.5 text-[11px] tracking-normal" variant="alert">
+            <Badge v-if="room.recording" class="px-1.5 py-0.5 text-[11px] tracking-normal" variant="alert">
               ● REC
             </Badge>
-            <Badge v-if="salle.streaming" class="px-1.5 py-0.5 text-[11px] tracking-normal text-ok">
+            <Badge v-if="room.streaming" class="px-1.5 py-0.5 text-[11px] tracking-normal text-ok">
               ● LIVE
             </Badge>
-            <Badge v-if="salle.sceneRole != null" class="px-1.5 py-0.5 text-[11px] tracking-normal">
-              {{ salle.sceneRole }}
+            <Badge v-if="room.sceneRole != null" class="px-1.5 py-0.5 text-[11px] tracking-normal">
+              {{ room.sceneRole }}
             </Badge>
             <Badge
-              v-if="salle.outboxDepth > 0"
+              v-if="room.outboxDepth > 0"
               class="px-1.5 py-0.5 text-[11px] tracking-normal"
               variant="warning"
             >
-              {{ salle.outboxDepth }} en file
+              {{ room.outboxDepth }} en file
             </Badge>
           </div>
 
           <!--
-            Le mot accompagne la couleur : une pastille seule ne se lit pas
-            quand on ne distingue pas les teintes, et la carte se regarde de loin.
+            The word accompanies the colour: a dot on its own cannot be read by
+            somebody who does not tell the tints apart, and the card is looked at
+            from afar.
           -->
           <div class="mt-2 text-xs text-dim">
-            <span :class="appearance(salle).text">
-              {{ salle.connectivity === 'ONLINE' ? appearance(salle).word : 'salle muette' }}
+            <span :class="appearance(room).text">
+              {{ room.connectivity === 'ONLINE' ? appearance(room).word : 'salle muette' }}
             </span>
-            · {{ salle.connectivity.toLowerCase() }} · vu {{ timeAgo(salle.lastSeenAt) }}
+            · {{ room.connectivity.toLowerCase() }} · vu {{ timeAgo(room.lastSeenAt) }}
           </div>
         </div>
       </div>

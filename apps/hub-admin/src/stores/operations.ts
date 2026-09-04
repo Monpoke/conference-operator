@@ -5,11 +5,10 @@ import { useNotificationsStore } from './notifications.js'
 import { useSessionStore } from './session.js'
 
 /**
- * Le tableau de bord : où en est chaque salle, et ce qui vaut pour toutes.
+ * The dashboard: where each room stands, and what holds for all of them.
  *
- * C'est la vue sur laquelle la console est laissée ouverte toute la journée,
- * et la seule qui *observe* — elle alimente les alertes en comparant chaque
- * tour au précédent.
+ * This is the view the console is left open on all day, and the only one that
+ * *observes* — it feeds the alerts by comparing each round with the previous one.
  */
 export interface RoomStatus {
   roomId: string
@@ -25,7 +24,7 @@ export interface RoomStatus {
   breakBadge?: { state: string } | null
 }
 
-/** Le créneau commun, quand il y en a un. */
+/** The shared slot, when there is one. */
 export interface GlobalBreak {
   title: string
   state: string
@@ -43,14 +42,14 @@ export const useOperationsStore = defineStore('operations', () => {
   const notifications = useNotificationsStore()
 
   async function load(): Promise<void> {
-    const [statuts, pause] = await Promise.all([
+    const [statuses, sharedBreak] = await Promise.all([
       session.client.rpc.rooms.statuses(),
       session.client.rpc.program.globalBreak(),
     ])
-    rooms.value = statuts as RoomStatus[]
-    globalBreak.value = pause as GlobalBreak | null
-    // Observer après avoir posé l'état : une alerte compare le tour précédent
-    // au tour courant, et c'est le seul endroit qui connaît les deux.
+    rooms.value = statuses as RoomStatus[]
+    globalBreak.value = sharedBreak as GlobalBreak | null
+    // Observe after setting the state: an alert compares the previous round with
+    // the current one, and this is the only place that knows both.
     notifications.observeRooms(rooms.value)
   }
 
@@ -58,18 +57,18 @@ export const useOperationsStore = defineStore('operations', () => {
 })
 
 /**
- * Ce qu'il reste au créneau d'une salle, prêt à afficher.
+ * What is left of a room's slot, ready to display.
  *
- * Arrondi à la minute : sur un écran de supervision rafraîchi toutes les dix
- * secondes, la seconde serait fausse aussitôt affichée — et ce n'est pas ici
- * qu'on tient la fin d'un talk, c'est en régie.
+ * Rounded to the minute: on a supervision screen refreshed every ten seconds, the
+ * second would be wrong the instant it was shown — and it is not here that a
+ * talk's end is held, it is in the control app.
  *
- * Le dépassement est la raison d'être de cet affichage : c'est lui qui décale
- * le reste de la journée, donc il se distingue du reste.
+ * The overrun is this display's reason for being: it is what shifts the rest of
+ * the day, so it is set apart from the rest.
  */
-export function slotRemaining(ms: number | null | undefined): { texte: string; depasse: boolean } | null {
+export function slotRemaining(ms: number | null | undefined): { text: string; overrun: boolean } | null {
   if (ms == null) return null
   const minutes = Math.round(ms / 60000)
-  if (minutes < 0) return { texte: `dépassement de ${duration(-minutes)}`, depasse: true }
-  return { texte: `${duration(minutes)} restantes`, depasse: false }
+  if (minutes < 0) return { text: `dépassement de ${duration(-minutes)}`, overrun: true }
+  return { text: `${duration(minutes)} restantes`, overrun: false }
 }

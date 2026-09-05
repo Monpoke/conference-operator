@@ -188,12 +188,13 @@ jobs:
           [IO.File]::WriteAllText("$PWD/SHA256SUMS-windows.txt", "$digest  $($exe.Name)`n")
           Get-Content SHA256SUMS-windows.txt
 
-      # `regie-windows-`, and the checksums named after their platform: the two
-      # packaging jobs land in the same folder in `release` (`merge-multiple`),
-      # where a shared `SHA256SUMS.txt` would silently overwrite the other's.
+      # `room-control-windows-`, and the checksums named after their platform:
+      # the two packaging jobs land in the same folder in `release`
+      # (`merge-multiple`), where a shared `SHA256SUMS.txt` would silently
+      # overwrite the other's.
       - uses: actions/upload-artifact@v4
         with:
-          name: regie-windows-${{ steps.version.outputs.number }}
+          name: room-control-windows-${{ steps.version.outputs.number }}
           path: |
             apps/room-client/release/*.exe
             apps/room-client/release/SHA256SUMS-windows.txt
@@ -222,7 +223,7 @@ jobs:
       # event: not that the binary is safe, but that it is *this* repository's,
       # built by this workflow at this commit.
       #
-      #   gh attestation verify regie-de-salle-X.Y.Z.exe --repo <owner>/<repo>
+      #   gh attestation verify room-control-X.Y.Z.exe --repo <owner>/<repo>
       #
       # It replaces nothing. The binary stays unsigned, SmartScreen still warns,
       # and `SHA256SUMS.txt` still answers a different question — "is this the
@@ -288,7 +289,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: regie-linux-${{ steps.version.outputs.number }}
+          name: room-control-linux-${{ steps.version.outputs.number }}
           path: |
             apps/room-client/release/*.AppImage
             apps/room-client/release/*.tar.gz
@@ -312,7 +313,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: regie-*
+          pattern: room-control-*
           merge-multiple: true
           path: artifacts
 
@@ -377,14 +378,14 @@ jobs:
           (\`chmod +x\`). Si la machine n'a pas FUSE 2 — Ubuntu ne l'installe
           plus par défaut depuis la 22.04 — au choix
           \`--appimage-extract-and-run\`, ou l'archive \`tar.gz\` qui n'en
-          demande pas : on l'extrait et on lance \`regie-de-salle\`.
+          demande pas : on l'extrait et on lance \`room-control\`.
 
           Et, avec le réseau et la \`gh\` CLI, de quel dépôt et de quel commit
           ils sortent — ce que l'empreinte seule ne dit pas :
 
           \`\`\`bash
-          gh attestation verify regie-de-salle-${version}.exe --repo ${GITHUB_REPOSITORY}
-          gh attestation verify regie-de-salle-${version}.AppImage --repo ${GITHUB_REPOSITORY}
+          gh attestation verify room-control-${version}.exe --repo ${GITHUB_REPOSITORY}
+          gh attestation verify room-control-${version}.AppImage --repo ${GITHUB_REPOSITORY}
           \`\`\`
 
           ⚠️ Cette provenance **n'est pas une signature de code** : le binaire

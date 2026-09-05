@@ -24,12 +24,13 @@ directories:
 # an accent: readable in a folder, it becomes a release URL escaped from end to
 # end, and a filename `sha256sum -c` trips over. The product keeps its name
 # everywhere anyone reads it: shortcut, Start menu, uninstaller. Here, it is a
-# filename.
+# filename — so it follows the same rule as the code, and the glossary in
+# CONTRIBUTING gives the words: `régie` is `control`, `salle` is `room`.
 #
 # `${version}` is `0.0.0` from the repository, and the real number on a release —
 # `release.yml` injects it through `-c.extraMetadata.version`, the monorepo's
 # manifests having no version of their own.
-artifactName: regie-de-salle-${version}.${ext}
+artifactName: room-control-${version}.${ext}
 
 files:
   - dist/**
@@ -120,7 +121,7 @@ win:
 #    +x`, run. It needs FUSE 2, which Ubuntu has not shipped by default since
 #    22.04; `--appimage-extract-and-run` gets around it, but that is a thing to
 #    know on the morning of an event rather than discover.
-#  - **tar.gz** knows nothing of FUSE. Extract, run `regie-de-salle`. It is the
+#  - **tar.gz** knows nothing of FUSE. Extract, run `room-control`. It is the
 #    format that cannot fail, and the reason the AppImage is allowed to be the
 #    convenient one.
 #
@@ -139,9 +140,10 @@ linux:
   category: AudioVideo
   # `productName` would give a binary called `Régie de salle` — a space and an
   # accent to quote at every invocation, in a shell, over SSH, in a systemd unit.
-  # The product keeps its name where it is read; here, it is a command.
-  executableName: regie-de-salle
-  # And names the `.desktop` entry after it — `regie-de-salle.desktop` rather than
+  # The product keeps its name where it is read; here, it is a command, and a
+  # command is code.
+  executableName: room-control
+  # And names the `.desktop` entry after it — `room-control.desktop` rather than
   # the default `Régie de salle.desktop`, a filename with a space and an accent
   # for the same reasons as above.
   #

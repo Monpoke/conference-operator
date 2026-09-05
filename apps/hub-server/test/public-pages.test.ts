@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { PAIRING_ALIAS, consoleViews, viewPath } from '@cloudnord/contract'
+import { PAIRING_ALIAS, consoleViews, viewPath } from '@conference-operator/contract'
 import { createHub, type Hub } from '../src/server.js'
 import { renderWallPage } from '../src/pages/wall-page.js'
 import { provisionOperator } from '../src/operators.js'

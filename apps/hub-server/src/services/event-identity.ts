@@ -1,4 +1,4 @@
-import { resolveEventIdentity, type EventIdentity } from '@cloudnord/contract'
+import { resolveEventIdentity, type EventIdentity } from '@conference-operator/contract'
 import type { ProgramService } from './program.js'
 import type { SettingsService } from './sessions.js'
 

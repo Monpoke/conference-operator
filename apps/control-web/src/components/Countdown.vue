@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { DisplayPayload } from '@cloudnord/contract'
-import { stopwatch } from '@cloudnord/format'
+import type { DisplayPayload } from '@conference-operator/contract'
+import { stopwatch } from '@conference-operator/format'
 import { computed } from 'vue'
 import { countdownFor } from '../lib/countdown.js'
 

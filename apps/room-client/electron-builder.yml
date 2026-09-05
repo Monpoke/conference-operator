@@ -6,9 +6,15 @@
 # machine, and `appId` in particular is not renamed lightly: Electron derives the
 # `userData` folder from it, hence the local database — the programme cache and an
 # unflushed outbound queue.
-appId: fr.cloudnord.roomclient
+#
+# It was renamed once, when the software stopped being named after the event that
+# first ran it (`fr.cloudnord.roomclient`). A room installed before that keeps its
+# old folder, which the new build no longer reads: it comes up unpaired, and has
+# to be approved again from the console. Nothing is lost that a pairing does not
+# rebuild — but it has to be done before the day, not in front of a room.
+appId: fr.conference-operator.roomclient
 productName: Régie de salle
-copyright: Cloud Nord
+copyright: Conference Operator
 
 directories:
   output: release
@@ -37,7 +43,7 @@ files:
   #
   #  - **Rebuild from the tag.** `scripts/build-main.mjs` has no non-deterministic
   #    input and esbuild is pinned by the lockfile: a
-  #    `pnpm --filter @cloudnord/room-client build` on `vX.Y.Z` gives back the same
+  #    `pnpm --filter @conference-operator/room-client build` on `vX.Y.Z` gives back the same
   #    map. It embeds `sourcesContent`, so it reads back on its own.
   #  - **The `sourcemaps-X.Y.Z` artefact** from the run that published the version,
   #    for 90 days — the event and the weeks after it, when a trace coming back

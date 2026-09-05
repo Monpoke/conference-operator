@@ -4,7 +4,7 @@
  * These responses used to freeze the console's static previews, back when it was a
  * literal template that could be opened over `file://`. A Vue application does not
  * open that way — its modules are refused from disk — so the previews gave way to
- * `pnpm --filter @cloudnord/hub-admin dev`, which shows the real console.
+ * `pnpm --filter @conference-operator/hub-admin dev`, which shows the real console.
  *
  * The data set, on the other hand, deserved to survive: three rooms in three
  * different states, uploads at three stages, a simulated clock, a complete

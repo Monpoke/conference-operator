@@ -1,6 +1,6 @@
-import { roomBreak, roomConferenceState, type SessionStatuses } from '@cloudnord/room-state'
-import { currentSession } from '@cloudnord/program'
-import type { RoomStatus } from '@cloudnord/contract'
+import { roomBreak, roomConferenceState, type SessionStatuses } from '@conference-operator/room-state'
+import { currentSession } from '@conference-operator/program'
+import type { RoomStatus } from '@conference-operator/contract'
 import type { Services } from './context.js'
 import type { PushPayload } from './services/push.js'
 

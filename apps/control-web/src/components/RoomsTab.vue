@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { DisplayPayload } from '@cloudnord/contract'
-import { Badge } from '@cloudnord/components'
-import { outlineOf } from '@cloudnord/room-state'
+import type { DisplayPayload } from '@conference-operator/contract'
+import { Badge } from '@conference-operator/components'
+import { outlineOf } from '@conference-operator/room-state'
 import { computed } from 'vue'
 import { roomState } from '../lib/rooms.js'
 import { useProgramsStore } from '../stores/programs.js'

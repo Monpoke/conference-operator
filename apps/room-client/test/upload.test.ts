@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_VOD_POLICY, type SignedPart, type UploadPlan } from '@cloudnord/contract'
+import { DEFAULT_VOD_POLICY, type SignedPart, type UploadPlan } from '@conference-operator/contract'
 import { LocalStore } from '../src/core/store.js'
 import {
   Uploads,

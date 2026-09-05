@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Badge, Button, Toaster } from '@cloudnord/components'
+import { Badge, Button, Toaster } from '@conference-operator/components'
 import { storeToRefs } from 'pinia'
 import { onScopeDispose, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'

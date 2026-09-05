@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button, Panel } from '@cloudnord/components'
+import { Button, Panel } from '@conference-operator/components'
 import { ref } from 'vue'
 import { useActionsStore } from '../stores/actions.js'
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { ObsState } from '@cloudnord/contract'
-import { Panel } from '@cloudnord/components'
+import type { ObsState } from '@conference-operator/contract'
+import { Panel } from '@conference-operator/components'
 import { computed } from 'vue'
 import CommandGrid, { type Command } from './CommandGrid.vue'
 import SimulatedBadge from './SimulatedBadge.vue'

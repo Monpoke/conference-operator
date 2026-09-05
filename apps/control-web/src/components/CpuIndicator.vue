@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { HostLoad } from '@cloudnord/contract'
+import type { HostLoad } from '@conference-operator/contract'
 import { computed } from 'vue'
 import Gauge from './Gauge.vue'
 import Indicator from './Indicator.vue'

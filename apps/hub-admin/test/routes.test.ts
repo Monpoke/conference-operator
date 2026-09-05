@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { consolePaths, consoleViews, viewPath } from '@cloudnord/contract'
+import { consolePaths, consoleViews, viewPath } from '@conference-operator/contract'
 
 /**
  * The console's addresses, and what serves them.

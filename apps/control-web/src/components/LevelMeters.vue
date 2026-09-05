@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { DB_FLOOR } from '@cloudnord/contract'
-import { Panel } from '@cloudnord/components'
+import { DB_FLOOR } from '@conference-operator/contract'
+import { Panel } from '@conference-operator/components'
 import { useAudioStore } from '../stores/audio.js'
 
 /**

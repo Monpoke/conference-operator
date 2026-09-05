@@ -3,7 +3,7 @@
  * that stayed string templates.
  *
  * Pure TypeScript, no dependency, and **no DOM**: the server imports it too,
- * and so does the browser bundle of `@cloudnord/room-state`.
+ * and so does the browser bundle of `@conference-operator/room-state`.
  *
  * What is *not* here: anything that needs to know what time it is. The hub's
  * clock offset is state, not formatting — it belongs to the clock store.

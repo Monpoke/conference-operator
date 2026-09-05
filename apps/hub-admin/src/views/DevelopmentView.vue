@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button, ConfirmDialog, Hint, Panel, useToast } from '@cloudnord/components'
+import { Button, ConfirmDialog, Hint, Panel, useToast } from '@conference-operator/components'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import {

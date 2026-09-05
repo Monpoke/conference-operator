@@ -10,14 +10,14 @@ import {
   type ControlRoom,
   type ControlView,
   type SceneRole,
-} from '@cloudnord/contract'
+} from '@conference-operator/contract'
 import {
   talkToControl,
   stateOfSlots,
   type SessionStatuses,
-} from '@cloudnord/room-state'
-import { DEFAULT_TIMEZONE, sessionsForRoom } from '@cloudnord/program'
-import { regieLock } from '@cloudnord/db/hub'
+} from '@conference-operator/room-state'
+import { DEFAULT_TIMEZONE, sessionsForRoom } from '@conference-operator/program'
+import { regieLock } from '@conference-operator/db/hub'
 import type { HubDatabase } from '../db.js'
 import type { Services } from '../context.js'
 

@@ -5,9 +5,9 @@ import type {
   ControlCommand,
   ControlView,
   SceneRole,
-} from '@cloudnord/contract'
-import { NO_EDITING_MARKS } from '@cloudnord/contract'
-import type { HubClient } from '@cloudnord/hub-client'
+} from '@conference-operator/contract'
+import { NO_EDITING_MARKS } from '@conference-operator/contract'
+import type { HubClient } from '@conference-operator/hub-client'
 
 /**
  * The control app, and the two ways of reaching it.

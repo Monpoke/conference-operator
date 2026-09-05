@@ -1,7 +1,7 @@
 import { basename, dirname, extname, join } from 'node:path'
-import type { Session } from '@cloudnord/program'
+import type { Session } from '@conference-operator/program'
 
-import type { Marker, MarkerRole, EditingMarks, Sidecar } from '@cloudnord/contract'
+import type { Marker, MarkerRole, EditingMarks, Sidecar } from '@conference-operator/contract'
 
 export type { Marker, MarkerRole, EditingMarks, Sidecar }
 

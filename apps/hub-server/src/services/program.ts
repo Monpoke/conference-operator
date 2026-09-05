@@ -6,8 +6,8 @@ import {
   programSchema,
   type Program,
   type SessionKind,
-} from '@cloudnord/program'
-import { programSnapshot, sessionFeedback, sessionOverride } from '@cloudnord/db/hub'
+} from '@conference-operator/program'
+import { programSnapshot, sessionFeedback, sessionOverride } from '@conference-operator/db/hub'
 import type { HubDatabase } from '../db.js'
 
 export interface Snapshot {

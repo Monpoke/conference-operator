@@ -3,7 +3,7 @@
 // server code call `document` without anything objecting.
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { flattenLayersInHtml } from '@cloudnord/ui'
+import { flattenLayersInHtml } from '@conference-operator/ui'
 import { renderOverlayLivePage } from '../src/core/overlay-live-page.js'
 import type { DisplayPayload } from '../src/core/display-server.js'
 

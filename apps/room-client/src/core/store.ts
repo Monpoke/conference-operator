@@ -4,15 +4,15 @@ import { fileURLToPath } from 'node:url'
 import { desc, eq, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
-import { openDatabase } from '@cloudnord/db'
+import { openDatabase } from '@conference-operator/db'
 import {
   appliedCommand,
   clientSchema,
   journal,
   programCache,
   roomSettings,
-} from '@cloudnord/db/client'
-import { programSchema, type Program } from '@cloudnord/program'
+} from '@conference-operator/db/client'
+import { programSchema, type Program } from '@conference-operator/program'
 import {
   eventIdentitySchema,
   DEFAULT_EVENT_IDENTITY,
@@ -23,7 +23,7 @@ import {
   type RoomConfig,
   type SocialLink,
   type VodSync,
-} from '@cloudnord/contract'
+} from '@conference-operator/contract'
 
 /**
  * The accounts read back from the local cache.

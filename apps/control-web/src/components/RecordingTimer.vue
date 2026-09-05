@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { ControlDiagnostics } from '@cloudnord/contract'
-import { shortDuration } from '@cloudnord/format'
+import type { ControlDiagnostics } from '@conference-operator/contract'
+import { shortDuration } from '@conference-operator/format'
 import { computed } from 'vue'
 
 /**

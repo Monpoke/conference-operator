@@ -6,7 +6,7 @@
  * screen (an empty or a full moderation queue) that cannot be reproduced on
  * demand on the day.
  *
- *   pnpm --filter @cloudnord/hub-server preview [directory]
+ *   pnpm --filter @conference-operator/hub-server preview [directory]
  *
  * The wall only, from now on.
  *
@@ -16,7 +16,7 @@
  * modules served over `file://` — and replacing it with a preview that would no
  * longer be the served page would lose exactly what made those files useful.
  *
- * What we look at instead: `pnpm --filter @cloudnord/hub-admin dev`, which shows
+ * What we look at instead: `pnpm --filter @conference-operator/hub-admin dev`, which shows
  * the real console. The frozen dataset itself moved to
  * `apps/hub-admin/test/fixtures/console.ts` rather than being lost.
  */

@@ -3,8 +3,8 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { readFile, rename, writeFile } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 import { eq } from 'drizzle-orm'
-import { assetCache } from '@cloudnord/db/client'
-import { assetUrls, type Program } from '@cloudnord/program'
+import { assetCache } from '@conference-operator/db/client'
+import { assetUrls, type Program } from '@conference-operator/program'
 import type { LocalStore } from './store.js'
 
 export interface AssetRef {

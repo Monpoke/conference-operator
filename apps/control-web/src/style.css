@@ -2,10 +2,10 @@
  * The control app's stylesheet.
  *
  * The same entry point as the console: palette, status dots and the shadcn bridge
- * come from `@cloudnord/ui/apps.css`, which also declares the scanned sources.
+ * come from `@conference-operator/ui/apps.css`, which also declares the scanned sources.
  * What is specific to a component lives in its `<style scoped>`, and nowhere else.
  */
-@import "@cloudnord/ui/apps.css";
+@import "@conference-operator/ui/apps.css";
 
 /*
  * The page's frame, in rules and not in utilities.

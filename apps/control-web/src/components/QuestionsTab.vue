@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { DisplayPayload } from '@cloudnord/contract'
-import { Button } from '@cloudnord/components'
-import { time } from '@cloudnord/format'
+import type { DisplayPayload } from '@conference-operator/contract'
+import { Button } from '@conference-operator/components'
+import { time } from '@conference-operator/format'
 import { computed } from 'vue'
 import { useActionsStore } from '../stores/actions.js'
 

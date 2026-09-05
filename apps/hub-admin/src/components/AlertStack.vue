@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { viewPath } from '@cloudnord/contract'
+import { viewPath } from '@conference-operator/contract'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useNotificationsStore } from '../stores/notifications.js'

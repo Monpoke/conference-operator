@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { DisplayPayload } from '@cloudnord/contract'
-import { Panel } from '@cloudnord/components'
+import type { DisplayPayload } from '@conference-operator/contract'
+import { Panel } from '@conference-operator/components'
 import { computed } from 'vue'
 import SimulatedBadge from './SimulatedBadge.vue'
 

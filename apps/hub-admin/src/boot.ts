@@ -1,4 +1,4 @@
-import type { EventIdentity, ExecutionMode } from '@cloudnord/contract'
+import type { EventIdentity, ExecutionMode } from '@conference-operator/contract'
 
 /**
  * What the hub tells the console before its first request.

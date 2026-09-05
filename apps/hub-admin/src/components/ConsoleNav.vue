@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { consoleViews, viewPath } from '@cloudnord/contract'
+import { consoleViews, viewPath } from '@conference-operator/contract'
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useSessionStore } from '../stores/session.js'

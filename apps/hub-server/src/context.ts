@@ -12,7 +12,7 @@ import type { ControlService } from './services/control.js'
 import type { SessionStateService, SettingsService } from './services/sessions.js'
 import type { EventIdentityService } from './services/event-identity.js'
 import type { MutableClock } from './services/clock.js'
-import type { ExecutionMode } from '@cloudnord/contract'
+import type { ExecutionMode } from '@conference-operator/contract'
 
 export interface Services {
   programs: ProgramService

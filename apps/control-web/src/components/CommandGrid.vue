@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button, Key } from '@cloudnord/components'
+import { Button, Key } from '@conference-operator/components'
 import { useActionsStore } from '../stores/actions.js'
 
 /** A command in the grid: its value, its label, its key if it has one. */

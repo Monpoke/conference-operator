@@ -7,8 +7,8 @@ import {
   DEFAULT_EVENT_IDENTITY,
   type DisplayPayload,
   type DisplayView,
-} from '@cloudnord/contract'
-import { timelinePosition } from '@cloudnord/program/selectors'
+} from '@conference-operator/contract'
+import { timelinePosition } from '@conference-operator/program/selectors'
 import {
   DEFAULT_TIMEZONE,
   openFeedbackUrl,
@@ -16,7 +16,7 @@ import {
   type Program,
   type Session,
   type SponsorTier,
-} from '@cloudnord/program'
+} from '@conference-operator/program'
 import type { AssetCache } from './assets.js'
 import type { InputLevel } from './obs.js'
 import type { DisplayState, RoomRuntime } from './runtime.js'
@@ -447,7 +447,7 @@ export class DisplayServer {
         reply.status(503)
         return reply.send(
           'Régie non construite. Depuis les sources : ' +
-            'pnpm --filter @cloudnord/control-web build',
+            'pnpm --filter @conference-operator/control-web build',
         )
       }
 

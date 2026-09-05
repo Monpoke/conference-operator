@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { DisplayPayload } from '@cloudnord/contract'
-import { Button } from '@cloudnord/components'
+import type { DisplayPayload } from '@conference-operator/contract'
+import { Button } from '@conference-operator/components'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 /**

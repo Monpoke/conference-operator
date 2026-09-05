@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import { ROOM_STATES, SESSION_STATUSES } from '@cloudnord/room-state'
-import { programSchema } from '@cloudnord/program'
+import { ROOM_STATES, SESSION_STATUSES } from '@conference-operator/room-state'
+import { programSchema } from '@conference-operator/program'
 import { eventIdentitySchema, DEFAULT_EVENT_IDENTITY } from './event-identity.js'
 import {
   connectivitySchema,
@@ -180,7 +180,7 @@ export type RoomConfigInput = z.input<typeof roomConfigSchema>
  * `scheduled` is the default state and is never stored: we only record what
  * happened.
  *
- * The list comes from `@cloudnord/room-state`, which also carries the allowed
+ * The list comes from `@conference-operator/room-state`, which also carries the allowed
  * transitions: the contract and the state machine therefore cannot know
  * different states.
  */

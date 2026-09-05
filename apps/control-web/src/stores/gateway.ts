@@ -1,4 +1,4 @@
-import { controlPath, controlRoomIdFromPath, type ControlLock } from '@cloudnord/contract'
+import { controlPath, controlRoomIdFromPath, type ControlLock } from '@conference-operator/contract'
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
 import type { BootScope } from '../boot.js'

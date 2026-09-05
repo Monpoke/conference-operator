@@ -1,5 +1,5 @@
-import type { ControlLock, ControlRoom } from '@cloudnord/contract'
-import { useToast } from '@cloudnord/components'
+import type { ControlLock, ControlRoom } from '@conference-operator/contract'
+import { useToast } from '@conference-operator/components'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useGatewayStore } from './gateway.js'

@@ -1,5 +1,5 @@
-import { createHubAuth, createHubClient, type HubClient } from '@cloudnord/hub-client'
-import { useToast } from '@cloudnord/components'
+import { createHubAuth, createHubClient, type HubClient } from '@conference-operator/hub-client'
+import { useToast } from '@conference-operator/components'
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
 import type { Boot } from '../boot.js'
@@ -45,7 +45,7 @@ export const useSessionStore = defineStore('session', () => {
   )
 
   /**
-   * Better Auth lives in `@cloudnord/hub-client`, next to the token.
+   * Better Auth lives in `@conference-operator/hub-client`, next to the token.
    *
    * The mobile control app makes exactly the same calls, and they are the ones
    * where a second copy costs dearly — a `signOut` that forgets to tell the hub

@@ -1,4 +1,4 @@
-import type { HostLoad } from '@cloudnord/contract'
+import type { HostLoad } from '@conference-operator/contract'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'

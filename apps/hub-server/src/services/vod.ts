@@ -8,8 +8,8 @@ import {
   type VodPolicy,
   type StorageCheck,
   type UploadView,
-} from '@cloudnord/contract'
-import { vodUpload } from '@cloudnord/db/hub'
+} from '@conference-operator/contract'
+import { vodUpload } from '@conference-operator/db/hub'
 import type { HubDatabase } from '../db.js'
 import type { Config } from '../config.js'
 import { S3Client, S3Error, nodeTransport, type S3Keys, type S3Transport } from './s3.js'

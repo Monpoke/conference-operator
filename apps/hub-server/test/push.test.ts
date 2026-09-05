@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openHubDatabase, type HubDatabase } from '../src/db.js'
 import { PushService } from '../src/services/push.js'
 import { SupervisionWatch } from '../src/supervision.js'
-import type { RoomStatus } from '@cloudnord/contract'
+import type { RoomStatus } from '@conference-operator/contract'
 
 /**
  * Notifications pushed to closed consoles.

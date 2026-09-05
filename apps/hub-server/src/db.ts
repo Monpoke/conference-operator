@@ -3,8 +3,8 @@ import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
-import { openDatabase, type SqliteDatabase } from '@cloudnord/db'
-import { hubSchema } from '@cloudnord/db/hub'
+import { openDatabase, type SqliteDatabase } from '@conference-operator/db'
+import { hubSchema } from '@conference-operator/db/hub'
 
 export type HubDatabase = ReturnType<typeof drizzle<typeof hubSchema>>
 
@@ -14,7 +14,7 @@ export type HubDatabase = ReturnType<typeof drizzle<typeof hubSchema>>
  */
 export type HubTransaction = Parameters<Parameters<HubDatabase['transaction']>[0]>[0]
 
-/** `@cloudnord/db`'s migrations folder, resolved from this package. */
+/** `@conference-operator/db`'s migrations folder, resolved from this package. */
 const migrationsFolder = fileURLToPath(
   new URL('../../../packages/db/migrations/hub', import.meta.url),
 )
@@ -62,11 +62,11 @@ function explainMigrationFailure(cause: unknown, path: string): Error {
         '    git checkout -- packages/db/migrations',
         '',
         "Si le schéma a réellement évolué, la migration doit s'ajouter, jamais remplacer :",
-        '    pnpm --filter @cloudnord/db generate:hub && pnpm --filter @cloudnord/db seal',
+        '    pnpm --filter @conference-operator/db generate:hub && pnpm --filter @conference-operator/db seal',
         '',
         'En dernier recours seulement, et seulement si cette base est jetable :',
         `    rm -rf ${dirname(path)}`,
-        '    pnpm --filter @cloudnord/hub-server operator <email> "<nom>" <mot-de-passe>',
+        '    pnpm --filter @conference-operator/hub-server operator <email> "<nom>" <mot-de-passe>',
         '    (les machines de salle devront être réappairées)',
         `Détail : ${message}`,
       ].join('\n'),

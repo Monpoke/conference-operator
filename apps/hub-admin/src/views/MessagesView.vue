@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { BANNER_TEMPLATES, type Banner } from '@cloudnord/contract'
-import { Badge, Button, Empty, Field, Hint, Panel, Select, useToast } from '@cloudnord/components'
-import { timeAgo } from '@cloudnord/format'
+import { BANNER_TEMPLATES, type Banner } from '@conference-operator/contract'
+import { Badge, Button, Empty, Field, Hint, Panel, Select, useToast } from '@conference-operator/components'
+import { timeAgo } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { useMessagesStore } from '../stores/messages.js'

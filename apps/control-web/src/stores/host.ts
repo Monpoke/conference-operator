@@ -1,4 +1,4 @@
-import type { HostLoad } from '@cloudnord/contract'
+import type { HostLoad } from '@conference-operator/contract'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 

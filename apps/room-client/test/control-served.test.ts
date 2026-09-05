@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import Fastify from 'fastify'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { normalizeProgram } from '@cloudnord/program'
+import { normalizeProgram } from '@conference-operator/program'
 import { AssetCache } from '../src/core/assets.js'
 import { DisplayServer } from '../src/core/display-server.js'
 import { LocalStore } from '../src/core/store.js'
@@ -20,7 +20,7 @@ import {
  * The operator's window, served by the machine.
  *
  * What is checked here is not the rendering — that is checked in
- * `@cloudnord/control-web`, which mounts the components — but the two things only
+ * `@conference-operator/control-web`, which mounts the components — but the two things only
  * the room machine can guarantee: that the page leaves with the complete state
  * inside it, and that it asks nothing of any origin but its own.
  */
@@ -164,7 +164,7 @@ describe('the shell', () => {
     // This is not an operational state: the packaging embeds the bundle. A 404
     // would send people looking at the address instead.
     expect(response.status).toBe(503)
-    expect(await response.text()).toContain('pnpm --filter @cloudnord/control-web build')
+    expect(await response.text()).toContain('pnpm --filter @conference-operator/control-web build')
   })
 })
 

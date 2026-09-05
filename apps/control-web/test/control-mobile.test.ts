@@ -1,4 +1,4 @@
-import type { ControlCommand, ControlRoom, ControlView } from '@cloudnord/contract'
+import type { ControlCommand, ControlRoom, ControlView } from '@conference-operator/contract'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

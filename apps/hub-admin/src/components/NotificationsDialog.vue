@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button, Dialog, Hint, Select, useToast } from '@cloudnord/components'
+import { Button, Dialog, Hint, Select, useToast } from '@conference-operator/components'
 import { ref, watch } from 'vue'
 import { useNotificationsStore, type Scope } from '../stores/notifications.js'
 

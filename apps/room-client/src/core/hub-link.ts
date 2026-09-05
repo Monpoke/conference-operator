@@ -9,8 +9,8 @@ import {
   type ExecutionMode,
   type Question,
   type RoomConfigPatch,
-} from '@cloudnord/contract'
-import { programSchema } from '@cloudnord/program'
+} from '@conference-operator/contract'
+import { programSchema } from '@conference-operator/program'
 import { OutageTracker } from './interruptions.js'
 import type { LocalStore } from './store.js'
 import type { RoomRuntime } from './runtime.js'

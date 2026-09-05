@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button, Field, Hint, Panel } from '@cloudnord/components'
+import { Button, Field, Hint, Panel } from '@conference-operator/components'
 import { storeToRefs } from 'pinia'
 import { ref } from 'vue'
 import { useSessionStore } from '../stores/session.js'
@@ -10,7 +10,7 @@ import { useSessionStore } from '../stores/session.js'
  * Its own version rather than the console's, and it is the layout that separates
  * them: this one opens on a phone held in one hand, often at the back of a dark
  * room. What they ask the hub, on the other hand, is exactly the same thing — and
- * lives in `@cloudnord/hub-client`.
+ * lives in `@conference-operator/hub-client`.
  *
  * The form stays **above** the Google button, as on the console. Google requires
  * the internet at the moment one signs in, and this whole system is built to

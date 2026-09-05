@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { OpenFeedbackCheck } from '@cloudnord/contract'
+import type { OpenFeedbackCheck } from '@conference-operator/contract'
 
 /**
  * Checking that the "rate this talk" links lead somewhere.

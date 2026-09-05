@@ -4,7 +4,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { waitForRender } from './helpers/wait-for-render.js'
-import { flattenLayersInHtml } from '@cloudnord/ui'
+import { flattenLayersInHtml } from '@conference-operator/ui'
 import { renderWallPage } from '../src/pages/wall-page.js'
 
 /**

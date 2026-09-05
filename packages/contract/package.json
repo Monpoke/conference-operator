@@ -1,5 +1,5 @@
 {
-  "name": "@cloudnord/contract",
+  "name": "@conference-operator/contract",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -11,8 +11,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@cloudnord/room-state": "workspace:*",
-    "@cloudnord/program": "workspace:*",
+    "@conference-operator/room-state": "workspace:*",
+    "@conference-operator/program": "workspace:*",
     "@orpc/contract": "2.0.0-beta.29",
     "zod": "4.4.3"
   },

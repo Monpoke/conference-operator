@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { NOTIFICATION_TTL_MS, type DisplayPayload } from '@cloudnord/contract'
-import { time } from '@cloudnord/format'
+import { NOTIFICATION_TTL_MS, type DisplayPayload } from '@conference-operator/contract'
+import { time } from '@conference-operator/format'
 import { computed, ref } from 'vue'
 import { useActionsStore } from '../stores/actions.js'
 

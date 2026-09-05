@@ -6,8 +6,8 @@ import {
   type Delivery,
   type Envelope,
   type RoomEventPayload,
-} from '@cloudnord/contract'
-import { outbox } from '@cloudnord/db/client'
+} from '@conference-operator/contract'
+import { outbox } from '@conference-operator/db/client'
 import type { LocalStore } from './store.js'
 
 /** Default lifetimes, per delivery policy. */

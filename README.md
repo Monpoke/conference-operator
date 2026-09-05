@@ -72,7 +72,7 @@ openssl rand -base64 48
 étape, la console est inaccessible et personne ne peut appairer une machine.
 
 ```bash
-pnpm --filter @cloudnord/hub-server operator regie@cloudnord.fr "Régie" <mot-de-passe>
+pnpm --filter @conference-operator/hub-server operator regie@cloudnord.fr "Régie" <mot-de-passe>
 ```
 
 **Ce compte reste nécessaire même avec Google** (ci-dessous) : Google exige
@@ -119,7 +119,7 @@ au-dessus, toujours.
 **3. Lancer le hub**
 
 ```bash
-pnpm --filter @cloudnord/hub-server dev
+pnpm --filter @conference-operator/hub-server dev
 ```
 
 Au premier démarrage il importe le programme depuis `PROGRAM_SOURCE_URL` et
@@ -142,7 +142,7 @@ HUB_ORIGIN=http://localhost:8787 HEURE_SIMULEE=2026-10-30T10:20:00Z pnpm dev:hea
 ```
 
 `dev:headless` est un script de `apps/room-client`, pas de la racine — depuis la
-racine, `pnpm --filter @cloudnord/room-client dev:headless` fait la même chose.
+racine, `pnpm --filter @conference-operator/room-client dev:headless` fait la même chose.
 Il ne lance **que la salle** : le hub, les deux Vite et une seconde salle sont
 l'affaire de `pnpm dev:duo` / `dev:trio`, ci-dessous, qui les montent tous
 headless d'un seul terminal.
@@ -154,7 +154,7 @@ Electron, c'est ce qui rend ce mode possible.
 **Avec Electron** :
 
 ```bash
-MODE=dev HUB_ORIGIN=http://localhost:8787 pnpm --filter @cloudnord/room-client dev
+MODE=dev HUB_ORIGIN=http://localhost:8787 pnpm --filter @conference-operator/room-client dev
 ```
 
 Sans `HUB_ORIGIN` ni `--hub`, l'application **demande l'adresse du hub** dans une
@@ -174,17 +174,17 @@ qui marche sous WSL sans serveur X :
 
 ```bash
 # 1 — le hub
-MODE=dev pnpm --filter @cloudnord/hub-server dev
+MODE=dev pnpm --filter @conference-operator/hub-server dev
 
 # 2 — une salle, sans Electron ni OBS
-HUB_ORIGIN=http://localhost:8787 pnpm --filter @cloudnord/room-client dev:headless
+HUB_ORIGIN=http://localhost:8787 pnpm --filter @conference-operator/room-client dev:headless
 ```
 
 `dev:headless` se met de lui-même en `MODE=dev` : c'est ce qu'il sert à faire.
 Avec Electron, à la place du second terminal :
 
 ```bash
-MODE=dev HUB_ORIGIN=http://localhost:8787 pnpm --filter @cloudnord/room-client dev
+MODE=dev HUB_ORIGIN=http://localhost:8787 pnpm --filter @conference-operator/room-client dev
 ```
 
 **Ou les deux d'un coup**, depuis la racine — turbo lance le hub *et* le client
@@ -282,7 +282,7 @@ le programme depuis `PROGRAM_SOURCE_URL` à son premier démarrage.
 salles s'alignent, il n'y a rien à régler de leur côté :
 
 ```bash
-MODE=dev SIMULATED_TIME=2026-10-30T10:20:00Z pnpm --filter @cloudnord/hub-server dev
+MODE=dev SIMULATED_TIME=2026-10-30T10:20:00Z pnpm --filter @conference-operator/hub-server dev
 ```
 
 Hors de ce mode, les réglages ci-dessous sont **neutralisés même s'ils sont
@@ -387,20 +387,20 @@ fenêtre ne s'ouvre (pas de serveur X), utiliser `dev:headless`.
 **Voir les pages sans rien lancer** :
 
 ```bash
-pnpm --filter @cloudnord/room-client preview ./preview
+pnpm --filter @conference-operator/room-client preview ./preview
 ```
 
 Régénérer les migrations après modification d'un schéma :
 
 ```bash
-pnpm --filter @cloudnord/db generate:hub
-pnpm --filter @cloudnord/db generate:client
+pnpm --filter @conference-operator/db generate:hub
+pnpm --filter @conference-operator/db generate:client
 ```
 
 ## Voir l'écran de salle
 
 ```bash
-pnpm --filter @cloudnord/room-client preview ./preview
+pnpm --filter @conference-operator/room-client preview ./preview
 ```
 
 Génère les pages réelles — écran de salle dans ses quatre modes, habillage de
@@ -427,14 +427,14 @@ En production le bundle voyage dans l'installeur ; depuis les sources il faut
 le construire, sans quoi l'adresse répond 503 en le disant :
 
 ```bash
-pnpm --filter @cloudnord/control-web build
+pnpm --filter @conference-operator/control-web build
 ```
 
 Pour la développer avec rechargement à chaud, le poste proxifie Vite — jamais
 l'inverse : c'est lui qui porte le flux d'état, les actions et le vumètre.
 
 ```bash
-pnpm --filter @cloudnord/control-web dev          # dans un terminal
+pnpm --filter @conference-operator/control-web dev          # dans un terminal
 REGIE_VITE_ORIGIN=http://127.0.0.1:5174 pnpm dev:headless   # dans l'autre
 ```
 
@@ -444,7 +444,7 @@ production il lit `apps/control-web/dist`, construit par l'image ; sans bundle,
 `/regie` répond 503 en le disant, comme le fait un poste de salle.
 
 ```bash
-REGIE_VITE_ORIGIN=http://127.0.0.1:5174 MODE=dev pnpm --filter @cloudnord/hub-server dev
+REGIE_VITE_ORIGIN=http://127.0.0.1:5174 MODE=dev pnpm --filter @conference-operator/hub-server dev
 ```
 
 ## L'écran d'attente : une boucle
@@ -596,13 +596,22 @@ Lille ») et rend le nom inchangé dès qu'il n'est sûr de rien : un nom court 
 se lirait sur chaque écran de la journée, un nom court trop long ne se remarque
 pas.
 
-**Ce qui reste au nom de Cloud Nord, et pourquoi.** Le scope npm
-(`@cloudnord/*`), l'`appId` du paquet Electron (`fr.cloudnord.roomclient`) et le
-copyright nomment le **logiciel** et son éditeur, pas l'événement projeté :
-rien de tout cela ne s'affiche devant une salle. L'`appId` en particulier ne se
-renomme pas à la légère — Electron en dérive le dossier `userData`, donc la base
-locale d'une machine de salle : son cache de programme et sa file de remontée
-non vidée.
+**Le logiciel ne porte plus le nom d'un événement.** Le scope npm
+(`@conference-operator/*`), l'`appId` du paquet Electron
+(`fr.conference-operator.roomclient`) et le copyright nomment le **logiciel**,
+pas l'événement projeté — rien de tout cela ne s'affiche devant une salle, et
+rien n'y renvoie plus à l'édition qui l'a fait naître. Ce qui garde le nom de
+Cloud Nord relève de l'exemple : ce README, le RUNBOOK, les jeux d'essai et les
+scripts de prévisualisation décrivent l'édition sur laquelle tout a été éprouvé.
+
+**L'`appId` a changé une fois, et ça se paie.** Electron en dérive le dossier
+`userData`, donc la base locale d'une machine de salle : son cache de programme
+et sa file de remontée non vidée. Une salle installée avant ce renommage garde
+son ancien dossier, que la nouvelle version ne lit plus — elle démarre non
+appairée et doit être réapprouvée dans la console. Rien qui ne se reconstruise
+en appairant à nouveau, mais c'est un geste d'avant-veille, pas du jour J. C'est
+aussi pourquoi l'`appId` ne se renomme pas à la légère : la prochaine fois
+coûtera la même chose.
 
 Le reste de ce README décrit l'édition 2026 parce que c'est celle sur laquelle
 tout a été éprouvé ; les chemins, identifiants de track et horaires cités sont
@@ -1251,7 +1260,7 @@ se lirait sinon comme un incident.
 ## Empaqueter le client de salle
 
 ```bash
-pnpm --filter @cloudnord/room-client package:win
+pnpm --filter @conference-operator/room-client package:win
 ```
 
 Bundle esbuild du processus principal puis electron-builder (NSIS x64). Les
@@ -2148,7 +2157,7 @@ Les deux vivent dans **`packages/room-state`**, et nulle part ailleurs. Le hub
 l'importe pour calculer l'état de chaque salle et pour refuser un geste
 impossible ; les pages — régie, console — **inlinent** le même module, compilé
 en une constante `MACHINE_JS` que `<script>` reçoit telle quelle, comme la
-feuille Tailwind de `@cloudnord/ui` : elles n'ont pas d'étape de build et
+feuille Tailwind de `@conference-operator/ui` : elles n'ont pas d'étape de build et
 doivent s'ouvrir sans réseau. Un test recompile et compare à chaque passe, puis
 **exécute** le bundle pour vérifier qu'il répond comme le module source — une
 règle changée sans régénération ferait tourner les pages sur l'ancienne, et on
@@ -2213,7 +2222,7 @@ Trois détails qui ne se devinent pas :
 #### Le banc d'essai
 
 ```bash
-pnpm --filter @cloudnord/room-state preview   # écrit preview/state-machine.html
+pnpm --filter @conference-operator/room-state preview   # écrit preview/state-machine.html
 ```
 
 Une page autonome où l'on charge le programme d'une salle, où l'on pousse
@@ -2378,7 +2387,7 @@ projeté déduit la fin d'un créneau avec la même règle que le hub — il la
 déduisait à sa façon, et grisait dès son heure de début un talk que l'export ne
 borne que par sa durée.
 
-Le calcul vit dans `@cloudnord/room-state` et fait autorité chez le hub :
+Le calcul vit dans `@conference-operator/room-state` et fait autorité chez le hub :
 l'heure qui fait foi est la sienne — elle peut être simulée — et lui seul tient
 le cycle de vie de toutes les salles. La régie **reprend du hub les quatre états qu'il est seul à
 connaître** (pas commencée, retard, terminée, dépassement) et **recalcule le
@@ -2542,7 +2551,7 @@ build à l'exécution**. La feuille est compilée dans `packages/ui` et figée d
 un module TypeScript, que chaque page inline dans un `<style>` :
 
 ```bash
-pnpm --filter @cloudnord/ui build      # après avoir ajouté des classes
+pnpm --filter @conference-operator/ui build      # après avoir ajouté des classes
 ```
 
 Trois raisons à ce détour plutôt qu'un `<link>` ou un CDN : une page doit
@@ -2560,15 +2569,15 @@ constante inlinée dans le bundle ne peut pas manquer à l'appel.
   compilation n'était pas reproductible. D'où `source(none)` et des `@source`
   explicites.
 - *happy-dom ignore `@layer`*, où vit toute la sortie Tailwind. Sans
-  `flattenLayersInHtml` (exporté par `@cloudnord/ui`), les tests de visibilité
+  `flattenLayersInHtml` (exporté par `@conference-operator/ui`), les tests de visibilité
   effective — ceux qui ont attrapé le défaut des onglets — cesseraient
   silencieusement de vérifier quoi que ce soit.
 
 Aperçus statiques, sans rien démarrer :
 
 ```bash
-pnpm --filter @cloudnord/room-client preview <dossier>   # salle, habillage, régie
-pnpm --filter @cloudnord/hub-server  preview <dossier>   # console, mur
+pnpm --filter @conference-operator/room-client preview <dossier>   # salle, habillage, régie
+pnpm --filter @conference-operator/hub-server  preview <dossier>   # console, mur
 ```
 
 ## Base bloquée après une mise à jour du schéma
@@ -2585,8 +2594,8 @@ git checkout -- packages/db/migrations   # restaure les migrations publiées
 Si le schéma a réellement évolué, la migration s'**ajoute** :
 
 ```bash
-pnpm --filter @cloudnord/db generate:hub
-pnpm --filter @cloudnord/db sceller
+pnpm --filter @conference-operator/db generate:hub
+pnpm --filter @conference-operator/db sceller
 ```
 
 Le sceau (`migrations/<jeu>/empreintes.json`) est vérifié par les tests : une
@@ -2603,18 +2612,18 @@ une base jetable. Détails : `packages/db/MIGRATIONS.md`.
 ```bash
 cp apps/hub-server/.env.example apps/hub-server/.env
 # renseigner BETTER_AUTH_SECRET : openssl rand -base64 48
-pnpm --filter @cloudnord/hub-server dev
+pnpm --filter @conference-operator/hub-server dev
 ```
 
 ## Le hub en conteneur
 
 ```bash
-docker build -t cloudnord/hub:local .
+docker build -t conference-operator/hub:local .
 docker run -d --name hub -p 8787:8787 \
   -e BETTER_AUTH_SECRET="$(openssl rand -base64 48)" \
   -e PUBLIC_URL=https://hub.exemple.fr \
   -v hub-data:/data \
-  cloudnord/hub:local
+  conference-operator/hub:local
 ```
 
 L'image pèse **351 Mo décompressés** — dont 232 pour le socle Node officiel — et
@@ -2636,7 +2645,7 @@ qu'il ne ressemble pas à un Dockerfile Node ordinaire :
 
 - **Il n'y a pas d'étape de build.** Le hub démarre en TypeScript via `tsx` ;
   ce sont les sources qui partent dans l'image, et la feuille Tailwind de
-  `@cloudnord/ui` y arrive déjà compilée puisqu'elle est versionnée. C'est aussi
+  `@conference-operator/ui` y arrive déjà compilée puisqu'elle est versionnée. C'est aussi
   pourquoi `tsx` est déclaré en **dépendance de production** du hub et non en
   dépendance de développement : en conteneur, c'est lui qui exécute le serveur.
 - **La disposition des dossiers est porteuse de sens.** `src/db.ts` résout ses
@@ -2648,7 +2657,7 @@ qu'il ne ressemble pas à un Dockerfile Node ordinaire :
 
 Un `pnpm install` de la racine produirait 620 Mo. Trois coupes, dans cet ordre :
 
-1. **Le filtre** (`--filter @cloudnord/hub-server...`) écarte le client de
+1. **Le filtre** (`--filter @conference-operator/hub-server...`) écarte le client de
    salle, et avec lui le téléchargement d'Electron — cent cinquante mégaoctets
    pour un binaire qui ne tournera jamais là.
 2. **`--prod`** écarte typescript, turbo et les tests.

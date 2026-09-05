@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { PAIRING_ALIAS, consolePaths, viewPath } from '@cloudnord/contract'
+import { PAIRING_ALIAS, consolePaths, viewPath } from '@conference-operator/contract'
 import { createConsoleRouter } from '../src/router.js'
 import PairingView from '../src/views/PairingView.vue'
 import { usePairingStore } from '../src/stores/pairing.js'

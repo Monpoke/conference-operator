@@ -12,7 +12,7 @@ import {
  * The hub's schema (SQLite/WAL, single instance).
  *
  * Structured payloads are stored as JSON text rather than exploded into columns:
- * their shape is already guaranteed by the zod schemas of `@cloudnord/contract`,
+ * their shape is already guaranteed by the zod schemas of `@conference-operator/contract`,
  * and adding a field must not force a migration on the eve of the event.
  *
  * Column and table names never change: they are the disk. Where one is French

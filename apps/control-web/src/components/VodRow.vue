@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { VodEntry } from '@cloudnord/contract'
-import { Button } from '@cloudnord/components'
-import { fileSize, remaining, shortDuration, time } from '@cloudnord/format'
+import type { VodEntry } from '@conference-operator/contract'
+import { Button } from '@conference-operator/components'
+import { fileSize, remaining, shortDuration, time } from '@conference-operator/format'
 import { computed } from 'vue'
 import { UPLOAD_WORDS, VERDICT_BADGES, useVodStore } from '../stores/vod.js'
 import VodPreview from './VodPreview.vue'

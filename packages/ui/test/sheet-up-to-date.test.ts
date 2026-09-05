@@ -23,7 +23,7 @@ describe('stylesheet', () => {
       fresh === TAILWIND_CSS,
       'The committed sheet differs from a recompilation: a page uses classes that ' +
         'are not in the served CSS (or nothing uses them any more).\n' +
-        '    pnpm --filter @cloudnord/ui build',
+        '    pnpm --filter @conference-operator/ui build',
     ).toBe(true)
   })
 

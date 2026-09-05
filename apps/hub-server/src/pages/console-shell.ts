@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { DEFAULT_EVENT_IDENTITY, type EventIdentity, type ExecutionMode } from '@cloudnord/contract'
-import { escapeHtml } from '@cloudnord/format'
+import { DEFAULT_EVENT_IDENTITY, type EventIdentity, type ExecutionMode } from '@conference-operator/contract'
+import { escapeHtml } from '@conference-operator/format'
 
 /**
  * The console's shell.

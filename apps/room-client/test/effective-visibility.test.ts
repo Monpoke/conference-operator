@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
-import { flattenLayersInHtml } from '@cloudnord/ui'
+import { flattenLayersInHtml } from '@conference-operator/ui'
 import { renderProjectorPage } from '../src/core/display-page.js'
 import { renderOverlayPage } from '../src/core/overlay-page.js'
 

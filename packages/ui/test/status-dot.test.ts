@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 // A relative path: `ui` does not depend on `components`, and the reverse would
 // be a cycle. This test already reads sources by path — that is its nature.
 import { DOT_LEVELS } from '../../components/src/domain/status-levels.js'
-import { APPEARANCE, outlineOf } from '@cloudnord/room-state'
+import { APPEARANCE, outlineOf } from '@conference-operator/room-state'
 import { describe, expect, it } from 'vitest'
 
 /**

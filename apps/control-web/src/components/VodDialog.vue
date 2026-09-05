@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button, Dialog } from '@cloudnord/components'
+import { Button, Dialog } from '@conference-operator/components'
 import { computed } from 'vue'
 import { useKeyboardLayer } from '../stores/keyboard.js'
 import { useVodStore } from '../stores/vod.js'

@@ -1,4 +1,4 @@
-import { TAILWIND_CSS } from '@cloudnord/ui'
+import { TAILWIND_CSS } from '@conference-operator/ui'
 
 import { OBS_ON_AIR_CSS, OBS_ON_AIR_JS } from './obs-browser.js'
 

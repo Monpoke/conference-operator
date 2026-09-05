@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Badge, Button, Empty, Hint, Panel, useToast } from '@cloudnord/components'
-import { timeAgo } from '@cloudnord/format'
+import { Badge, Button, Empty, Hint, Panel, useToast } from '@conference-operator/components'
+import { timeAgo } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
 import { useModerationStore } from '../stores/moderation.js'
 

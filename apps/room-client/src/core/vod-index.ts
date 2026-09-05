@@ -7,7 +7,7 @@ import type {
   VodProbe,
   Sidecar,
   VodVerdict,
-} from '@cloudnord/contract'
+} from '@conference-operator/contract'
 
 export type { VodCheck, VodEntry, VodProbe, VodVerdict }
 

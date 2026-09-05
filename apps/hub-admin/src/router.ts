@@ -1,4 +1,4 @@
-import { PAIRING_ALIAS, viewPath } from '@cloudnord/contract'
+import { PAIRING_ALIAS, viewPath } from '@conference-operator/contract'
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import ConferencesView from './views/ConferencesView.vue'
 import OperationsView from './views/OperationsView.vue'

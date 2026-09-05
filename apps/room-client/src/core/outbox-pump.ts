@@ -1,4 +1,4 @@
-import type { Connectivity, DisplayMode, Envelope, RoomEventPayload, SceneRole } from '@cloudnord/contract'
+import type { Connectivity, DisplayMode, Envelope, RoomEventPayload, SceneRole } from '@conference-operator/contract'
 import { heartbeatDedupKey, type Outbox } from './outbox.js'
 
 // Re-exported here: it is the pump that uses it when emitting.

@@ -7,13 +7,13 @@ import { httpPairingTransport, runPairing, type DeviceCodeResponse } from './pai
 import { createORPCClient } from '@orpc/client'
 import { RPCLink as FetchLink } from '@orpc/client/fetch'
 import type { ContractRouterClient } from '@orpc/contract'
-import { contract, NO_EDITING_MARKS } from '@cloudnord/contract'
-import { DEFAULT_TIMEZONE } from '@cloudnord/program'
+import { contract, NO_EDITING_MARKS } from '@conference-operator/contract'
+import { DEFAULT_TIMEZONE } from '@conference-operator/program'
 import { RoomRuntime } from './runtime.js'
 import { LocalStore } from './store.js'
 import { createObsTransport, keepObsConnected } from './obs-transport.js'
 import type { ObsTransport } from './obs.js'
-import type { ObsInstance } from '@cloudnord/contract'
+import type { ObsInstance } from '@conference-operator/contract'
 import { ConnectivityTracker, probeConnectivity } from './connectivity.js'
 import { RecordingSession, slugify, type MarkerRole, type StopResult } from './recording.js'
 import type { ControlDiagnostics, ControlTarget, VisibleObsEndpoint, VodList } from './control-api.js'
@@ -38,9 +38,9 @@ import { OutboxPump, buildHeartbeat, heartbeatDedupKey } from './outbox-pump.js'
 import { LevelAggregator } from './audio-levels.js'
 import { hostMonitor, type HostLoad } from './host.js'
 import { Uploads, type VodCandidate, type HubVod, type UploadsView } from './upload.js'
-import { nextTalk } from '@cloudnord/room-state'
-import { sessionsForRoom } from '@cloudnord/program'
-import type { ExecutionMode, RoomConfigPatch, RoomEventPayload } from '@cloudnord/contract'
+import { nextTalk } from '@conference-operator/room-state'
+import { sessionsForRoom } from '@conference-operator/program'
+import type { ExecutionMode, RoomConfigPatch, RoomEventPayload } from '@conference-operator/contract'
 
 /** A room's configuration in the local cache, as the hub pushed it. */
 type RoomConfigCache = NonNullable<ReturnType<LocalStore['settings']>['config']>
@@ -883,7 +883,7 @@ export class RoomApp implements ControlTarget {
   async importProgramFile(path: string): Promise<{ contentHash: string; sessions: number }> {
     const { readFile } = await import('node:fs/promises')
     const { createHash } = await import('node:crypto')
-    const { normalizeProgram } = await import('@cloudnord/program')
+    const { normalizeProgram } = await import('@conference-operator/program')
 
     const raw = await readFile(path, 'utf8')
     const program = normalizeProgram(JSON.parse(raw))

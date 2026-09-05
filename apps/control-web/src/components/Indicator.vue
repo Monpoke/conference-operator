@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { StatusDot } from '@cloudnord/components'
+import { StatusDot } from '@conference-operator/components'
 import { computed } from 'vue'
 import Gauge from './Gauge.vue'
 import type { Level } from './levels.js'

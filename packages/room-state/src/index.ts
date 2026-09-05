@@ -12,7 +12,7 @@
  * `appearance` translates the second into a colour and a word, so that the hub
  * console and the control app can no longer describe the same room differently.
  *
- * The `@cloudnord/room-state/browser` entry serves the subset that build-less
+ * The `@conference-operator/room-state/browser` entry serves the subset that build-less
  * pages inline — see `src/browser.ts`.
  */
 export * from './state.js'

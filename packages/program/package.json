@@ -1,5 +1,5 @@
 {
-  "name": "@cloudnord/program",
+  "name": "@conference-operator/program",
   "version": "0.0.0",
   "private": true,
   "type": "module",

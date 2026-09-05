@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { effectiveEndAt } from '@cloudnord/room-state'
-import { time } from '@cloudnord/format'
-import type { Session } from '@cloudnord/program'
+import { effectiveEndAt } from '@conference-operator/room-state'
+import { time } from '@conference-operator/format'
+import type { Session } from '@conference-operator/program'
 import { nextTick, onMounted, useTemplateRef, watch } from 'vue'
 
 /**

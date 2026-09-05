@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { normalizeProgram } from '@cloudnord/program'
+import { normalizeProgram } from '@conference-operator/program'
 import { AssetCache } from '../src/core/assets.js'
 import { LocalStore } from '../src/core/store.js'
 

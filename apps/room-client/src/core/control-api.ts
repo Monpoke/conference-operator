@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { displayModeSchema, obsInstanceSchema, roomConfigPatchSchema, sceneRoleSchema } from '@cloudnord/contract'
+import { displayModeSchema, obsInstanceSchema, roomConfigPatchSchema, sceneRoleSchema } from '@conference-operator/contract'
 import type {
   VisibleConfig,
   VodList,
@@ -10,7 +10,7 @@ import type {
   VisibleObsEndpoint,
   RoomConfigPatch,
   SceneRoleMap,
-} from '@cloudnord/contract'
+} from '@conference-operator/contract'
 import type { ObsState } from './obs.js'
 import type { StopResult } from './recording.js'
 import type { VodCheck, VodEntry, Excerpt, FileStream, VodVerdict } from './vod-index.js'

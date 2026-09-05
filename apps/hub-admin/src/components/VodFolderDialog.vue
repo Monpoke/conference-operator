@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Button, Dialog, Hint, useToast } from '@cloudnord/components'
-import { time } from '@cloudnord/format'
+import { Button, Dialog, Hint, useToast } from '@conference-operator/components'
+import { time } from '@conference-operator/format'
 import { ref, watch } from 'vue'
 import { UPLOAD_STATES, progress, type Upload } from '../stores/vod.js'
 import { useConferencesStore, type PlannedSession } from '../stores/conferences.js'

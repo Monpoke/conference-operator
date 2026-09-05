@@ -1,4 +1,4 @@
-import type { VisibleConfig, ObsState } from '@cloudnord/contract'
+import type { VisibleConfig, ObsState } from '@conference-operator/contract'
 import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'

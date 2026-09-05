@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { isTransitionAllowed } from '@cloudnord/room-state'
-import { Badge, Button, Empty, Hint, Panel, useToast } from '@cloudnord/components'
-import { timeFormatter } from '@cloudnord/format'
+import { isTransitionAllowed } from '@conference-operator/room-state'
+import { Badge, Button, Empty, Hint, Panel, useToast } from '@conference-operator/components'
+import { timeFormatter } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import FeedbackIdDialog from '../components/FeedbackIdDialog.vue'

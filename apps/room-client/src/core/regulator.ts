@@ -1,5 +1,5 @@
 import type { HostLoad } from './host.js'
-import type { VodPolicy } from '@cloudnord/contract'
+import type { VodPolicy } from '@conference-operator/contract'
 
 /**
  * When a room is allowed to upload its rushes.
@@ -15,7 +15,7 @@ import type { VodPolicy } from '@cloudnord/contract'
  * what makes it possible to run the whole day through a test, minute by minute,
  * without setting up a room.
  */
-import type { WaitReason, UploadVerdict } from '@cloudnord/contract'
+import type { WaitReason, UploadVerdict } from '@conference-operator/contract'
 
 export type { WaitReason, UploadVerdict }
 

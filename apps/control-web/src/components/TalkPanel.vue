@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { DisplayPayload } from '@cloudnord/contract'
-import { Badge, Button, Panel } from '@cloudnord/components'
-import { transitionRefusal } from '@cloudnord/room-state'
-import { duration, time } from '@cloudnord/format'
+import type { DisplayPayload } from '@conference-operator/contract'
+import { Badge, Button, Panel } from '@conference-operator/components'
+import { transitionRefusal } from '@conference-operator/room-state'
+import { duration, time } from '@conference-operator/format'
 import { computed } from 'vue'
 import { nextTalkFor, scheduleGapMs } from '../lib/countdown.js'
 import { useTalkStore } from '../stores/talk.js'

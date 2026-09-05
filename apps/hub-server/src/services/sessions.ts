@@ -8,7 +8,7 @@ import {
   type SessionState,
   type SessionStateView,
   type SessionStatus,
-} from '@cloudnord/contract'
+} from '@conference-operator/contract'
 import {
   isDecisionApplicable,
   shouldAutoEnd,
@@ -16,9 +16,9 @@ import {
   transitionRefusal,
   statusAfter,
   type SessionAction,
-} from '@cloudnord/room-state'
-import { hubSetting, sessionState } from '@cloudnord/db/hub'
-import type { Program } from '@cloudnord/program'
+} from '@conference-operator/room-state'
+import { hubSetting, sessionState } from '@conference-operator/db/hub'
+import type { Program } from '@conference-operator/program'
 import type { HubDatabase } from '../db.js'
 
 const SETTINGS_KEY = 'hub'
@@ -266,7 +266,7 @@ export class SessionStateService {
 
     for (const state of this.states(null)) {
       /**
-       * The rule lives in `@cloudnord/room-state`, and the end it reads is the
+       * The rule lives in `@conference-operator/room-state`, and the end it reads is the
        * overrun's: explicit time, else duration, else start of the next slot. The
        * two rules used to speak of different times, and a room could stay in
        * overrun all day without this sweep ever seeing it.

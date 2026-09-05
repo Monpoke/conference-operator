@@ -41,6 +41,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # Provenance: a Sigstore signing certificate is minted from the job's OIDC
+      # identity, and the attestation is recorded against the repository.
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
 
@@ -80,7 +84,8 @@ jobs:
       # On the cache: the pnpm install layers are already isolated in the
       # Dockerfile — manifests first, sources after. A release that only changes
       # code therefore reuses the whole install.
-      - uses: docker/build-push-action@v6
+      - id: build
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64
@@ -94,8 +99,39 @@ jobs:
           provenance: ${{ startsWith(github.ref, 'refs/tags/v') && 'mode=max' || 'false' }}
           sbom: ${{ startsWith(github.ref, 'refs/tags/v') }}
 
+      # GHCR only accepts a lowercase name, and the repository's own need not be
+      # one. `metadata-action` lowercases what it is given; this action does not,
+      # and would sign a name nobody can resolve.
+      - id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}/hub" >> "$GITHUB_OUTPUT"
+
+      # Signed provenance for the image: which workflow, at which commit, built
+      # this exact digest. It is not the same thing as the `provenance: mode=max`
+      # above — BuildKit's is unsigned metadata carried inside the image, this one
+      # is a Sigstore attestation anyone can verify without pulling anything:
+      #
+      #   gh attestation verify oci://<image>:<version> --repo <owner>/<repo>
+      #
+      # A rehearsal pushes no image, so there is no digest to attest. And this
+      # runs *after* the push on purpose: a release whose attestation fails still
+      # has its image, and the step can be replayed.
+      - uses: actions/attest-build-provenance@v4
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          subject-name: ${{ steps.name.outputs.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          # The attestation travels with the image, for whoever reads the
+          # registry rather than the repository.
+          push-to-registry: true
+
   installer:
     needs: verify
+    permissions:
+      contents: read
+      # Same as the image job: the provenance attestation is signed against this
+      # job's OIDC identity.
+      id-token: write
+      attestations: write
     # Windows rather than Ubuntu, even though packaging does work from Linux
     # (see the README). It saves installing 32-bit wine and its opaque "exit
     # status 123", and a Windows runner is free on a public repository. The
@@ -178,6 +214,24 @@ jobs:
             apps/control-web/dist/**/*.map
           retention-days: 90
 
+      # Signed provenance for the installer, and the one thing this repository
+      # can offer whoever copies an `.exe` onto a USB stick on the morning of an
+      # event: not that the binary is safe, but that it is *this* repository's,
+      # built by this workflow at this commit.
+      #
+      #   gh attestation verify regie-de-salle-X.Y.Z.exe --repo <owner>/<repo>
+      #
+      # It replaces nothing. The binary stays unsigned, SmartScreen still warns,
+      # and `SHA256SUMS.txt` still answers a different question — "is this the
+      # file the release published?" — without needing a network or the `gh` CLI.
+      #
+      # After the upload on purpose: an attestation that fails leaves the
+      # installer in the run's artifacts all the same.
+      - uses: actions/attest-build-provenance@v4
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          subject-path: apps/room-client/release/*.exe
+
   release:
     # A rehearsal stops here: both packages were built, neither is published.
     if: startsWith(github.ref, 'refs/tags/v')
@@ -232,6 +286,12 @@ jobs:
           Image \`linux/amd64\`. La console et la régie mobile y sont, servies par
           le hub — il n'y a rien d'autre à déployer de ce côté.
 
+          Provenance signée, si vous voulez vérifier d'où sort cette image :
+
+          \`\`\`bash
+          gh attestation verify oci://${image} --repo ${GITHUB_REPOSITORY}
+          \`\`\`
+
           ## La régie de salle
 
           Installeur NSIS x64. Vérifier l'empreinte avant de recopier le fichier :
@@ -240,7 +300,15 @@ jobs:
           sha256sum -c SHA256SUMS.txt
           \`\`\`
 
-          ⚠️ Le binaire n'est pas signé : SmartScreen avertira au premier
+          Et, avec le réseau et la \`gh\` CLI, de quel dépôt et de quel commit il
+          sort — ce que l'empreinte seule ne dit pas :
+
+          \`\`\`bash
+          gh attestation verify regie-de-salle-${version}.exe --repo ${GITHUB_REPOSITORY}
+          \`\`\`
+
+          ⚠️ Cette provenance **n'est pas une signature de code** : le binaire
+          n'est pas signé, SmartScreen avertira au premier
           lancement. Installer les machines **avant** le jour J, pas devant une
           salle qui attend. Procédures d'exploitation : [RUNBOOK](${runbook}).
 

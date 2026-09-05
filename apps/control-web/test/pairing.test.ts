@@ -186,7 +186,7 @@ describe('what the veil covers', () => {
 /**
  * What happens between two codes.
  *
- * A pairing code lives two minutes by default. Pairing one room, then a second, is
+ * A pairing code lives ten minutes by default. Pairing one room, then a second, is
  * enough to let it die before one has finished: the supervision loop asks for
  * another within fifteen seconds, and that is expected. What was not expected is
  * what the control app displays during that gap — it went back to asking which

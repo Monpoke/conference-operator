@@ -64,19 +64,23 @@ const configSchema = z.object({
    * you click "Approuver" on something that can no longer succeed, and the queue
    * ends up meaning nothing.
    *
-   * Short by default, unlike the RFC value: a queue that empties itself beats a
-   * code that survives the day. Nothing is lost when it expires — the supervision
-   * loop asks for another within 15 s, and the control screen shows the new one.
-   * What it costs is crossing the room: an operator who copies the code and walks
-   * to the console can arrive after its death. **On the day, set
-   * `DEVICE_CODE_TTL=30m`**; the console says in plain words that a code has
-   * expired anyway.
+   * Ten minutes: short of the RFC's value, long enough to cross a room.
+   *
+   * The two ends of the trade-off are real. Too long, and the console's queue
+   * fills with codes nobody will approve, so that approving one means reading a
+   * list where most entries are dead. Too short, and an operator who copies the
+   * code and walks to the console arrives after its death — which is what two
+   * minutes bought, and why the day called for raising it every time.
+   *
+   * Nothing is lost when it does expire: the supervision loop asks for another
+   * within 15 s, the room screen shows the new one, and the console says in plain
+   * words that a code has expired.
    */
   deviceCodeTtl: z
     .custom<`${number}${'s' | 'm' | 'h'}`>(
       (value) => typeof value === 'string' && /^\d+[smh]$/.test(value),
     )
-    .default('2m'),
+    .default('10m'),
 
   /**
    * Operator sign-in through Google Workspace.

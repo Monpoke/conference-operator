@@ -40,7 +40,7 @@ const requested = computed(
 /**
  * A room is being chosen while none is chosen — and not while no code is shown.
  *
- * The distinction cost dearly. A code lives two minutes; pairing one room and then
+ * The distinction cost dearly. A code lives ten minutes; pairing one room and then
  * a second is enough to let the first die, and the supervision loop asks for
  * another within fifteen seconds. During that gap there is no code, and the screen
  * went back to asking which room this machine serves — a question already settled,

@@ -425,8 +425,8 @@ describe('IngestService', () => {
   })
 })
 
-/** Thirty minutes, the default value of `DEVICE_CODE_TTL`. */
-const PAIRING_TTL = 30 * 60_000
+/** Ten minutes, the default value of `DEVICE_CODE_TTL`. */
+const PAIRING_TTL = 10 * 60_000
 
 describe('DeviceService', () => {
   it('binds a machine to a room and revokes it without touching the account', () => {

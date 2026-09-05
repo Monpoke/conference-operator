@@ -475,15 +475,19 @@ chaque `DATA_DIR` neuf produit une machine de plus, la file se vide toute
 seule. Rien n'est perdu quand un code expire : la boucle de supervision en
 redemande un sous 15 s et la régie affiche le nouveau.
 
-⚠️ **Le jour J, poser `DEVICE_CODE_TTL=30m`.** Deux minutes, c'est le temps de
-traverser une salle : l'opérateur qui recopie le code sur l'écran de régie et
-marche jusqu'à la console peut arriver après sa mort. La modale le dira, mais
-c'est un aller-retour de perdu — et il se paie devant une salle qui attend.
+**Un code vit dix minutes** (`DEVICE_CODE_TTL`), et ce chiffre est un
+compromis entre deux pannes réelles. Trop long, la file de la console accumule
+des codes morts et approuver revient à lire une liste de fantômes. Trop court —
+deux minutes, la valeur d'origine — et l'opérateur qui recopie le code sur
+l'écran de régie puis marche jusqu'à la console arrive après sa mort : la modale
+le dit, mais c'est un aller-retour de perdu, devant une salle qui attend.
 
-C'est aussi trop court pour **appairer deux salles d'affilée**, ce que
-`pnpm dev:trio` demande à chaque lancement : le temps d'approuver la seconde, le
-code de la première est mort. Le script pose donc `DEVICE_CODE_TTL=30m` lui
-aussi, et la variable reste surchargeable pour éprouver l'expiration exprès.
+Deux minutes ne suffisaient pas non plus pour **appairer deux salles
+d'affilée**, ce que `pnpm dev:trio` demande à chaque lancement : le temps
+d'approuver la seconde, le code de la première était mort. Le script surchargeait
+donc la variable ; il ne le fait plus, et c'est mieux ainsi — un hub de
+développement réglé sur une autre expiration que le vrai est un hub qui ment sur
+précisément ce défaut-là.
 
 Quand un code meurt, **il n'y a rien à refaire** : la boucle de supervision en
 redemande un sous quinze secondes et la régie l'affiche. Elle le dit désormais

@@ -275,14 +275,13 @@ start apps/control-web node_modules/.bin/vite \
 # The hub proxies **both** Vite servers: the console's, and the control app's —
 # which it also serves, for the mobile control app. The same server suits both
 # hosts, since both serve the control app under `/regie/`.
-# `DEVICE_CODE_TTL`: the same value as on the day, and for the same reason.
 #
-# Two minutes — the default — are not enough for what this script does on every
-# launch: pair one room, then a second. By the time the second is approved, the
-# first one's code is dead, and the control app went back to waiting for a new code
-# with nobody understanding why.
+# No `DEVICE_CODE_TTL` here any more. This script used to raise it, because two
+# minutes were not enough for what it does on every launch — pair one room, then
+# a second, the first code dying before the second was approved. The default is
+# now ten minutes, which covers it; and a development hub that runs on another
+# expiry than the real one is a development hub that lies about this exact bug.
 start apps/hub-server MODE=dev VITE_ORIGIN="$VITE_CONSOLE" REGIE_VITE_ORIGIN="$VITE_CONTROL" \
-  DEVICE_CODE_TTL="${DEVICE_CODE_TTL:-30m}" \
   node --watch --env-file-if-exists=.env --import tsx src/main.ts
 
 # The rooms start straight away: a missing hub does not condemn them, they join it

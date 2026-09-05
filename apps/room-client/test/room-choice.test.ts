@@ -30,6 +30,8 @@ let room: RoomApp
 let control: string
 /** The machine's credentials, at module scope: a test asserts they are erased. */
 let token: string | null = null
+/** `/api/auth/device/token` hits, counted on the hub itself. */
+let polls = 0
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'cloudnord-choice-'))
@@ -41,6 +43,10 @@ beforeEach(async () => {
     authSecret: 'test-secret-'.padEnd(48, 'x'),
     logLevel: 'fatal',
     devicePollInterval: '1s',
+  })
+  polls = 0
+  hub.app.addHook('onRequest', async (request) => {
+    if (request.url.startsWith('/api/auth/device/token')) polls += 1
   })
   await hub.app.listen({ port: 0, host: '127.0.0.1' })
   const address = hub.app.server.address()
@@ -82,17 +88,22 @@ const act = async (payload: unknown) => {
 }
 const readState = async () => (await (await fetch(`${control}/display/data`)).json()) as DisplayPayload
 
-/** Approves the pending request, keeping the room the console proposes. */
-async function approveKeepingTheProposal(): Promise<string> {
+/** The console's own client, signed in as the operator. */
+async function adminClient(): Promise<ContractRouterClient<typeof contract>> {
   const response = await fetch(`${origin}/api/auth/sign-in/email`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ email: OPERATOR.email, password: OPERATOR.password }),
   })
   const session = (await response.json()) as { token: string }
-  const admin: ContractRouterClient<typeof contract> = createORPCClient(
+  return createORPCClient(
     new RPCLink({ origin, url: '/rpc', headers: () => ({ authorization: `Bearer ${session.token}` }) }),
   )
+}
+
+/** Approves the pending request, keeping the room the console proposes. */
+async function approveKeepingTheProposal(): Promise<string> {
+  const admin = await adminClient()
 
   const pending = await admin.devices.pending()
   expect(pending).toHaveLength(1)
@@ -161,6 +172,57 @@ describe('choosing the room at power-on', () => {
     expect(room.pairingState().userCode).toBeUndefined()
     expect((await readState()).pairing?.rooms?.length).toBeGreaterThan(0)
   }, 60_000)
+
+  it('stops polling the hub once the machine is paired', async () => {
+    /*
+     * Two loops start a pairing: the operator's choice, and the supervision pass
+     * that catches up on a hub absent at start-up. Neither looked at whether the
+     * other was already waiting for an approval, so both polled `/device/token`
+     * with a code of their own. The console approves one; the other keeps asking
+     * until its code expires — ten minutes of polls from a machine that is already
+     * paired, which is what a hub's log showed.
+     *
+     * The supervision interval is shortened here to make in a second what takes
+     * fifteen in a room.
+     */
+    void act({ action: 'pairing.chooseRoom', roomId: TRACK_2 })
+    for (let i = 0; i < 40 && room.pairingState().userCode == null; i += 1) await sleep(200)
+    room.startSupervision(100)
+    await sleep(400)
+
+    await approveKeepingTheProposal()
+    for (let i = 0; i < 60 && room.pairingState().status !== 'paired'; i += 1) await sleep(250)
+    expect(room.pairingState().status).toBe('paired')
+
+    polls = 0
+    await sleep(1_500)
+    expect(polls).toBe(0)
+  }, 60_000)
+
+  it('asks for one code at a time, not one every fifteen seconds', async () => {
+    /*
+     * Two loops start a pairing: the operator's choice, and the supervision pass
+     * that catches up on a hub absent at start-up. Neither used to look at whether
+     * the other was already waiting for an approval — so every pass asked the hub
+     * for a **new** code while the previous one was still being polled.
+     *
+     * What that costs is visible from both ends: the console's queue fills with
+     * requests for a single machine, and the hub keeps taking `/device/token`
+     * polls from the abandoned loops until each code expires — ten minutes each.
+     *
+     * The supervision interval is shortened here to make in a second what takes a
+     * minute in a room.
+     */
+    void act({ action: 'pairing.chooseRoom', roomId: TRACK_2 })
+    for (let i = 0; i < 40 && room.pairingState().userCode == null; i += 1) await sleep(200)
+    expect(room.pairingState().userCode).toBeTruthy()
+
+    room.startSupervision(100)
+    await sleep(1_500)
+
+    const waiting = await (await adminClient()).devices.pending()
+    expect(waiting.filter((device) => device.clientId === CLIENT_ID).length).toBe(1)
+  }, 40_000)
 
   it('refuses a room that does not exist', async () => {
     await room.ensurePaired()

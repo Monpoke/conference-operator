@@ -219,6 +219,8 @@ export class RoomApp implements ControlTarget {
   private knownRooms: { id: string; name: string }[] = []
   /** Pairing in the background, to let settle before closing. */
   private pairingInFlight: Promise<void> | null = null
+  /** Interrupts the pairing under way — the operator has chosen another room. */
+  private pairingAbort: AbortController | null = null
   private readonly connectivity: ConnectivityTracker
 
   constructor(private readonly options: RoomAppOptions) {
@@ -415,9 +417,31 @@ export class RoomApp implements ControlTarget {
      * would end up giving up. The screen follows the progress through the state
      * stream.
      */
-    this.pairingInFlight = this.startPairing().finally(() => {
-      this.pairingInFlight = null
+    // The code in the air was asked for another room: it is abandoned rather than
+    // left polling beside the one about to be shown.
+    this.pairingAbort?.abort()
+    this.pairingInFlight = null
+    void this.beginPairing()
+  }
+
+  /**
+   * Starts a pairing, or joins the one already waiting for an approval.
+   *
+   * Two loops ask for one: the operator's choice, and the supervision pass that
+   * catches up on a hub absent at start-up. Each used to take its own code and
+   * poll `/device/token` with it. The console approves one of the two — the other
+   * goes on asking until its code expires, ten minutes later, from a machine that
+   * is already paired. A hub's log showed it before this did.
+   */
+  private beginPairing(): Promise<void> {
+    if (this.pairingInFlight != null) return this.pairingInFlight
+    const attempt = this.startPairing().finally(() => {
+      // By identity: an attempt interrupted by `chooseRoom` settles after its
+      // replacement has been recorded, and must not clear it.
+      if (this.pairingInFlight === attempt) this.pairingInFlight = null
     })
+    this.pairingInFlight = attempt
+    return attempt
   }
 
   private async startPairing(): Promise<void> {
@@ -499,12 +523,14 @@ export class RoomApp implements ControlTarget {
       return
     }
 
+    // A code already displayed is a code somebody is about to approve: asking for
+    // a second one gives the console two requests for one machine, and leaves this
+    // pass polling with a code nobody will ever read.
+    if (this.pairingInFlight != null) return
+
     try {
-      const token = await this.ensurePaired()
-      if (token == null) return
-      await this.connectHub(token)
-      await this.connectObs()
-      this.options.onLog?.('info', 'hub rejoint après indisponibilité')
+      await this.beginPairing()
+      if (this.link != null) this.options.onLog?.('info', 'hub rejoint après indisponibilité')
     } catch (cause) {
       this.options.onLog?.('warn', 'rattrapage du hub sans succès', {
         message: (cause as Error).message,
@@ -562,13 +588,19 @@ export class RoomApp implements ControlTarget {
     }
 
     try {
+      /*
+       * Two ways out of the wait: closing the application, and choosing another
+       * room — the second abandons a code asked for the previous one instead of
+       * leaving it polling beside the code about to be shown.
+       */
+      const attempt = new AbortController()
+      this.pairingAbort = attempt
       const { accessToken } = await runPairing(
         httpPairingTransport(this.options.hubOrigin),
         this.options.clientId,
         {
           scope: this.wantedRoomId == null ? undefined : `room:${this.wantedRoomId}`,
-          // Closing the application must interrupt the wait, not endure it.
-          signal: this.abort.signal,
+          signal: AbortSignal.any([this.abort.signal, attempt.signal]),
           onUnreachable: () => {
             // The code stays displayed: it is still valid on the hub side.
             this.setPairing({ ...this.pairing, message: 'Hub momentanément injoignable…' })
@@ -602,6 +634,8 @@ export class RoomApp implements ControlTarget {
       this.setPairing({ status: 'failed', message })
       this.options.onLog?.('warn', 'appairage impossible pour le moment', { message })
       return null
+    } finally {
+      this.pairingAbort = null
     }
   }
 

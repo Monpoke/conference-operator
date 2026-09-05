@@ -14,8 +14,8 @@ pnpm typecheck
 ```
 
 Node 24 ou plus, pnpm 10 (la version exacte est figée par `packageManager`).
-Pour lancer le hub et un client de salle, voir la section « Lancer en local » du
-[README](README.md) — le mode `dev:headless` du client permet de tout faire
+Pour lancer le hub et un client de salle, voir « Lancer le hub » et « Lancer une
+régie » du [README](README.md) — le mode `dev:headless` du client permet de tout faire
 sans Electron ni OBS, y compris sous WSL ou sur une machine distante.
 
 ## Ce qui se relit à l'œil

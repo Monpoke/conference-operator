@@ -109,7 +109,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       # No `ELECTRON_SKIP_BINARY_DOWNLOAD` here, unlike CI: that binary is

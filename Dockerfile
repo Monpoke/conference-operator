@@ -27,11 +27,11 @@
 # install the room client and download Electron — a hundred and fifty megabytes
 # for a binary that will never run here.
 
-# An interchangeable base: `--build-arg NODE_VERSION=22-alpine` removes another
+# An interchangeable base: `--build-arg NODE_VERSION=24-alpine` removes another
 # 66 MB. glibc stays the default — an event hub makes outbound calls (programme
 # import, S3, Web Push), and `better-sqlite3`'s musl binary is not the one the
 # team develops against. The choice is open, not imposed.
-ARG NODE_VERSION=22-bookworm-slim
+ARG NODE_VERSION=24-bookworm-slim
 
 # --- Console --------------------------------------------------------------
 # The only stage in this file that compiles anything, and it does not survive.

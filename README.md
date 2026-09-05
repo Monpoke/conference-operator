@@ -2627,8 +2627,10 @@ docker run -d --name hub -p 8787:8787 \
 ```
 
 L'image pèse **351 Mo décompressés** — dont 232 pour le socle Node officiel — et
-**98 Mo à télécharger**. `--build-arg NODE_VERSION=22-alpine` descend à 279 Mo
-décompressés, 76 à télécharger ; la glibc reste le défaut, parce qu'un hub
+**98 Mo à télécharger**. `--build-arg NODE_VERSION=24-alpine` descend à 279 Mo
+décompressés, 76 à télécharger ; ces trois chiffres ont été relevés sur le socle
+`22-bookworm-slim` et n'ont pas été repris depuis le passage à Node 24 — l'ordre
+de grandeur tient, le détail est à remesurer au premier build ; la glibc reste le défaut, parce qu'un hub
 d'événement fait des appels sortants (import du programme, S3, Web Push) et que
 le binaire musl de `better-sqlite3` n'est pas celui contre lequel l'équipe
 développe. Les deux variantes sont testées.

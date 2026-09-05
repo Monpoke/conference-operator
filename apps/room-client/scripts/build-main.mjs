@@ -18,7 +18,10 @@ await rm('dist', { recursive: true, force: true })
 const common = {
   bundle: true,
   platform: 'node',
-  target: 'node22',
+  // Electron's embedded Node, not the machine's: this bundle only ever runs in
+  // the main process. Electron 44 ships Node 24.20, so nothing here has to be
+  // transpiled down any further.
+  target: 'node24',
   format: 'cjs',
   sourcemap: true,
   // `better-sqlite3` embeds a native binary; `qrcode` and `obs-websocket-js` are

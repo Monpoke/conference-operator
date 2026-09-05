@@ -26,12 +26,10 @@ l'opérateur a l'application ouverte et rien d'autre.
    Choisir la bonne : la console la retrouvera pré-sélectionnée.
 4. La régie affiche ensuite un **code d'appairage**. Le donner à la personne qui
    tient la console hub (`/admin`), qui vérifie la salle et approuve.
-   *Le code a une durée de vie courte — deux minutes, sauf réglage contraire du
-   hub. Rien n'est perdu s'il expire : la salle en redemande un dans les quinze
+   *Le code vit dix minutes — le temps de traverser la salle jusqu'à la console.
+   Rien n'est perdu s'il expire : la salle en redemande un dans les quinze
    secondes et l'écran affiche le nouveau ; la console, elle, dit clairement
-   qu'un code a expiré. Ce qui échoue, c'est de traverser la salle avec le code
-   noté sur la main : si l'appairage se fait à pied, demander que le hub soit
-   réglé sur `DEVICE_CODE_TTL=30m` pour la journée.*
+   qu'un code a expiré plutôt que de laisser approuver dans le vide.*
 5. Vérifier le panneau **Diagnostic**. Quatre choses, dans cet ordre :
    - les deux OBS **verts** ;
    - **aucun rôle en rouge** — un rôle rouge = une scène renommée ou absente ;

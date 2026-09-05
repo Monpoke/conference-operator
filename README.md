@@ -162,7 +162,7 @@ dans la console.
 | Variable | Rôle | Défaut |
 |---|---|---|
 | `DEVICE_POLL_INTERVAL` | Cadence de polling imposée aux machines (RFC 8628) | `5s` |
-| `DEVICE_CODE_TTL` | Durée de vie d'un code d'appairage. **La rallonger le jour J** : deux minutes, c'est le temps de traverser une salle | `2m` |
+| `DEVICE_CODE_TTL` | Durée de vie d'un code d'appairage, et de la demande dans la console. Assez long pour traverser une salle, assez court pour que la file se vide seule | `10m` |
 
 **Connexion Google Workspace** — facultative. Renseigner `GOOGLE_CLIENT_ID` sans
 les deux autres **empêche le hub de démarrer**, plutôt que de monter une console

@@ -57,7 +57,7 @@ export function createAuthOptions({
   onDeviceRequest,
   isKnownClient,
   deviceInterval = '5s',
-  deviceCodeExpiresIn = '2m',
+  deviceCodeExpiresIn = '10m',
   google,
 }: AuthDeps) {
   return {
@@ -76,11 +76,10 @@ export function createAuthOptions({
       bearer(),
       deviceAuthorization({
         /**
-         * Short, unlike the RFC value: a pairing queue that empties itself beats
-         * a code that survives the day. The machine asks for another within 15 s,
-         * its supervision loop is made for that. See `DEVICE_CODE_TTL` — to be
-         * lengthened on the day, when the operator crosses the room between
-         * reading the code and reaching the console.
+         * Short of the RFC's value, long enough to cross a room between reading
+         * the code and reaching the console. The machine asks for another within
+         * 15 s if it expires anyway — its supervision loop is made for that. The
+         * trade-off is argued where the default lives, in `config.ts`.
          */
         expiresIn: deviceCodeExpiresIn,
         /**

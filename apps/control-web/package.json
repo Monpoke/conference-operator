@@ -17,11 +17,13 @@
     "@conference-operator/program": "workspace:*",
     "@conference-operator/room-state": "workspace:*",
     "pinia": "4.0.3",
+    "qrcode": "1.5.4",
     "vue": "3.5.42"
   },
   "devDependencies": {
     "@conference-operator/ui": "workspace:*",
     "@tailwindcss/vite": "4.3.3",
+    "@types/qrcode": "1.5.6",
     "@vitejs/plugin-vue": "6.0.8",
     "@vue/test-utils": "2.5.0",
     "happy-dom": "20.14.0",

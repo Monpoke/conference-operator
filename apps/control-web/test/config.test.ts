@@ -310,7 +310,87 @@ describe('screens menu', () => {
     // the room screen, in the middle of an intervention.
     for (const link of wrapper.findAll('a')) expect(link.attributes('target')).toBe('_blank')
   })
+
+  it('copies the whole address, not the path it lists', async () => {
+    const written: string[] = []
+    stubClipboard(async (text) => void written.push(text))
+
+    const wrapper = mount(ScreensMenu, { props: { payload: payload() } })
+    await wrapper.get('[data-role="btn-screens"]').trigger('click')
+    await wrapper.get('[data-role="btn-copy-/display/overlay"]').trigger('click')
+    await flushPromises()
+
+    // An OBS Browser Source resolves nothing: pasting `/display/overlay` there
+    // gives a source that never loads.
+    expect(written).toEqual([`${globalThis.location.origin}/display/overlay`])
+    expect(wrapper.get('[data-role="btn-copy-/display/overlay"]').text()).toBe('Copié')
+  })
+
+  it('leaves the menu open, the next source being set right after', async () => {
+    stubClipboard(async () => {})
+
+    const wrapper = mount(ScreensMenu, { props: { payload: payload() } })
+    await wrapper.get('[data-role="btn-screens"]').trigger('click')
+    await wrapper.get('[data-role="btn-copy-/display/overlay"]').trigger('click')
+    await flushPromises()
+
+    // The three capture sources are set one after the other; reopening the menu
+    // between each is a gesture nothing justifies.
+    expect(wrapper.find('[data-role="screens-list"]').exists()).toBe(true)
+  })
+
+  it('falls back to the old copy where there is no clipboard', async () => {
+    // No clipboard at all: what the page gets as soon as it is read over the
+    // network, at an address which is not `127.0.0.1`.
+    stubClipboard(null)
+    stubExecCommand(() => true)
+
+    const wrapper = mount(ScreensMenu, { props: { payload: payload() } })
+    await wrapper.get('[data-role="btn-screens"]').trigger('click')
+    await wrapper.get('[data-role="btn-copy-/display/overlay"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-role="btn-copy-/display/overlay"]').text()).toBe('Copié')
+  })
+
+  it('says so when nothing could be copied', async () => {
+    stubClipboard(null)
+    stubExecCommand(() => false)
+
+    const wrapper = mount(ScreensMenu, { props: { payload: payload() } })
+    await wrapper.get('[data-role="btn-screens"]').trigger('click')
+    await wrapper.get('[data-role="btn-copy-/display/overlay"]').trigger('click')
+    await flushPromises()
+
+    // A button that answered "Copié" over an empty clipboard would be found out
+    // in front of OBS, with nothing to paste and no idea why.
+    expect(wrapper.get('[data-role="btn-copy-/display/overlay"]').text()).toBe('Échec')
+  })
 })
+
+/**
+ * The clipboard, which the test DOM does not provide.
+ *
+ * `null` puts the page back in the case it meets over the network: only
+ * `127.0.0.1` counts as a trusted origin, and everywhere else
+ * `navigator.clipboard` is simply absent.
+ */
+function stubClipboard(writeText: ((text: string) => Promise<void>) | null): void {
+  Object.defineProperty(globalThis.navigator, 'clipboard', {
+    value: writeText == null ? undefined : { writeText },
+    configurable: true,
+    writable: true,
+  })
+}
+
+/** `execCommand` is not implemented either, and it is the fallback being tested. */
+function stubExecCommand(answer: () => boolean): void {
+  Object.defineProperty(document, 'execCommand', {
+    value: answer,
+    configurable: true,
+    writable: true,
+  })
+}
 
 /**
  * The VOD folder, chosen rather than retyped.

@@ -9,7 +9,60 @@ Pour le reste — décisions, appairage, OBS, empaquetage, publication —
 [CONCEPTION.md](CONCEPTION.md). Pour tenir une salle le jour J,
 [le RUNBOOK](apps/room-client/RUNBOOK.md).
 
-## Prérequis
+## Déployer en production
+
+Rien à construire sur place : un tag publie l'image du hub et les paquets de la
+régie — voir [CONCEPTION.md](CONCEPTION.md).
+
+**Le hub**, en conteneur :
+
+```bash
+docker run -d --name hub -p 8787:8787 \
+  -e BETTER_AUTH_SECRET="$(openssl rand -base64 48)" \
+  -e PUBLIC_URL=https://hub.exemple.fr \
+  -e PROGRAM_SOURCE_URL=https://…/export.json \
+  -v hub-data:/data \
+  ghcr.io/monpoke/conference-operator/hub:1.2.0
+```
+
+L'image pose déjà `MODE=production`, `HOST=0.0.0.0`, `PORT=8787` et
+`DATABASE_PATH=/data/hub.db` : **le volume `/data` est ce qui survit au
+remplacement de l'image**, et c'est la seule chose que le hub écrit. Un
+`HEALTHCHECK` intégré interroge `/health`, qui ne touche ni la base ni le
+programme — il répond tant que Fastify écoute, ce qui est la question qu'un
+orchestrateur pose.
+
+`PUBLIC_URL` doit être l'**adresse publique**, celle que voit un navigateur
+derrière le proxy HTTPS : Better Auth signe ses cookies avec, et l'URI que
+recopie un opérateur pour appairer une machine en découle.
+
+Le compte opérateur, une fois :
+
+```bash
+docker exec -it hub node --import tsx src/cli/operator.ts vous@exemple.fr "Régie" <mot-de-passe>
+```
+
+Garder ce compte même avec Google : Google exige internet au moment de la
+connexion, et tout ceci est bâti pour survivre à une coupure. Un hub qui ne
+s'ouvre que par Google enferme l'équipe dehors le matin où le réseau tombe.
+
+**Les salles.** Installer le paquet de la release sur chaque machine —
+`room-control-<version>.exe` sous Windows, `.AppImage` ou `.tar.gz` sous Linux —
+après avoir vérifié son empreinte :
+
+```bash
+sha256sum -c SHA256SUMS-windows.txt
+```
+
+Au premier lancement, la machine demande l'adresse du hub, puis affiche son code
+d'appairage. **Faire ces trois postes avant le jour J**, pas devant une salle qui
+attend : le binaire Windows n'est pas signé et SmartScreen avertit au premier
+lancement. Ensuite, tout se passe dans [le RUNBOOK](apps/room-client/RUNBOOK.md).
+
+Une version = un couple : l'image et les paquets de régie d'un même tag parlent
+le même contrat. Les mélanger n'est pas prévu.
+
+## Démarrer en développement
 
 Node 24 ou plus, et pnpm par corepack (la version exacte est figée par
 `packageManager`).
@@ -17,8 +70,6 @@ Node 24 ou plus, et pnpm par corepack (la version exacte est figée par
 ```bash
 corepack enable && pnpm install
 ```
-
-## Démarrer en développement
 
 `MODE=dev` est **l'unique interrupteur** devant les commodités de développement,
 de chaque côté : OBS simulé, heure réglable depuis la console, remise à zéro des
@@ -81,59 +132,6 @@ pnpm dev:duo --electron    # la première salle sous Electron
 
 **4. Appairer.** La salle affiche un code : le saisir dans la console
 (« Machines en attente »), choisir une salle, approuver.
-
-## Déployer en production
-
-Rien à construire sur place : un tag publie l'image du hub et les paquets de la
-régie — voir [CONCEPTION.md](CONCEPTION.md).
-
-**Le hub**, en conteneur :
-
-```bash
-docker run -d --name hub -p 8787:8787 \
-  -e BETTER_AUTH_SECRET="$(openssl rand -base64 48)" \
-  -e PUBLIC_URL=https://hub.exemple.fr \
-  -e PROGRAM_SOURCE_URL=https://…/export.json \
-  -v hub-data:/data \
-  ghcr.io/monpoke/conference-operator/hub:1.2.0
-```
-
-L'image pose déjà `MODE=production`, `HOST=0.0.0.0`, `PORT=8787` et
-`DATABASE_PATH=/data/hub.db` : **le volume `/data` est ce qui survit au
-remplacement de l'image**, et c'est la seule chose que le hub écrit. Un
-`HEALTHCHECK` intégré interroge `/health`, qui ne touche ni la base ni le
-programme — il répond tant que Fastify écoute, ce qui est la question qu'un
-orchestrateur pose.
-
-`PUBLIC_URL` doit être l'**adresse publique**, celle que voit un navigateur
-derrière le proxy HTTPS : Better Auth signe ses cookies avec, et l'URI que
-recopie un opérateur pour appairer une machine en découle.
-
-Le compte opérateur, une fois :
-
-```bash
-docker exec -it hub node --import tsx src/cli/operator.ts vous@exemple.fr "Régie" <mot-de-passe>
-```
-
-Garder ce compte même avec Google : Google exige internet au moment de la
-connexion, et tout ceci est bâti pour survivre à une coupure. Un hub qui ne
-s'ouvre que par Google enferme l'équipe dehors le matin où le réseau tombe.
-
-**Les salles.** Installer le paquet de la release sur chaque machine —
-`room-control-<version>.exe` sous Windows, `.AppImage` ou `.tar.gz` sous Linux —
-après avoir vérifié son empreinte :
-
-```bash
-sha256sum -c SHA256SUMS-windows.txt
-```
-
-Au premier lancement, la machine demande l'adresse du hub, puis affiche son code
-d'appairage. **Faire ces trois postes avant le jour J**, pas devant une salle qui
-attend : le binaire Windows n'est pas signé et SmartScreen avertit au premier
-lancement. Ensuite, tout se passe dans [le RUNBOOK](apps/room-client/RUNBOOK.md).
-
-Une version = un couple : l'image et les paquets de régie d'un même tag parlent
-le même contrat. Les mélanger n'est pas prévu.
 
 ## Variables d'environnement — hub
 

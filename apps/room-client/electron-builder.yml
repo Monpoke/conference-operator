@@ -53,12 +53,19 @@ files:
   # The local schema's migrations: read at start-up from the package.
   - "!node_modules/**"
   - node_modules/better-sqlite3/**
-  # `better-sqlite3` ships one binary per platform — eight, only one of which can
-  # serve in a Windows x64 package. The other seven (macOS, arm, musl) were
-  # thirteen megabytes carried all the way to the control machine for nothing. The
-  # order matters: the negation first, the reinstatement after.
+  # `better-sqlite3` ships one binary per platform — eight, of which a package can
+  # only ever use one. The six left out (macOS, arm, musl) were eleven megabytes
+  # carried all the way to the control machine for nothing. The order matters: the
+  # negation first, the reinstatement after.
+  #
+  # Both packaged platforms are listed here rather than under `win:` and `linux:`.
+  # Two megabytes travel with each package for nothing, and that is the price of a
+  # list that cannot silently ship the wrong binary: whether electron-builder
+  # merges a platform's `files` with the common ones or replaces them is not
+  # something a room should discover on `better_sqlite3.node` at start-up.
   - "!node_modules/better-sqlite3/prebuilds/*"
   - node_modules/better-sqlite3/prebuilds/win32-x64.node
+  - node_modules/better-sqlite3/prebuilds/linux-x64.node
   # And nothing that serves to *compile* the library: SQLite's C amalgamation
   # weighs ten megabytes on its own, for a binary that is never built on the
   # machine — it already travels ready-made just above.
@@ -105,6 +112,45 @@ win:
   # Unsigned, SmartScreen will warn on first launch: plan to install it before the
   # day, not in front of a room that is waiting.
   signAndEditExecutable: false
+
+# The same application, for a room machine that does not run Windows. Two formats
+# rather than one, and not for symmetry:
+#
+#  - **AppImage** is the one-file equivalent of the installer — copy it, `chmod
+#    +x`, run. It needs FUSE 2, which Ubuntu has not shipped by default since
+#    22.04; `--appimage-extract-and-run` gets around it, but that is a thing to
+#    know on the morning of an event rather than discover.
+#  - **tar.gz** knows nothing of FUSE. Extract, run `regie-de-salle`. It is the
+#    format that cannot fail, and the reason the AppImage is allowed to be the
+#    convenient one.
+#
+# No `deb`: it installs system-wide, asks for root, and ties the package to one
+# family of distributions — three things a machine prepared before the event does
+# not need.
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: tar.gz
+      arch: [x64]
+  # The freedesktop category, from which the desktop entry is derived. Nothing
+  # reads it on a machine that boots straight into the application, but leaving it
+  # out makes electron-builder guess.
+  category: AudioVideo
+  # `productName` would give a binary called `Régie de salle` — a space and an
+  # accent to quote at every invocation, in a shell, over SSH, in a systemd unit.
+  # The product keeps its name where it is read; here, it is a command.
+  executableName: regie-de-salle
+  # And names the `.desktop` entry after it — `regie-de-salle.desktop` rather than
+  # the default `Régie de salle.desktop`, a filename with a space and an accent
+  # for the same reasons as above.
+  #
+  # It does not fully settle window association: the entry carries
+  # `StartupWMClass=Régie de salle`, which is what Electron reports under X11, so
+  # the launcher and the window match there. Under Wayland the association goes
+  # through an `app_id` the main process would have to declare — application
+  # work, not packaging, and nothing a room notices today.
+  syncDesktopName: true
 
 nsis:
   oneClick: false

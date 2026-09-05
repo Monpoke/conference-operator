@@ -45,8 +45,16 @@ export function thisTabSession(): string {
   }
 }
 
+/**
+ * The fallback for browsers without `crypto.randomUUID` — an insecure context,
+ * mostly. Nothing reads the shape of what comes out: the hub compares session
+ * identifiers for equality and never parses them, which is what lets this prefix
+ * be renamed without touching anything else. `regie-session` and
+ * `x-regie-session` around it cannot: they are written on operators' devices and
+ * carried over the wire, and CONTRIBUTING freezes them for that reason.
+ */
 function newIdentifier(): string {
-  return globalThis.crypto?.randomUUID?.() ?? `regie-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  return globalThis.crypto?.randomUUID?.() ?? `control-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
 /**

@@ -179,6 +179,24 @@ function openControlWindow(url: string): BrowserWindow {
    * a click on "minimize".
    */
   wireFullScreen(window)
+  /**
+   * A page that does not load, said out loud too.
+   *
+   * The window is created hidden and shown on `ready-to-show`, which never fires
+   * when the load fails: the operator then gets no window at all, indistinguishable
+   * from the startup failure above. The local server is a loopback one — a refusal
+   * here means it is not listening, not that the network is down.
+   *
+   * `errorCode` -3 is `ABORTED`, which a navigation replaced by another one
+   * reports as it goes; showing it would fire on an ordinary reload.
+   */
+  window.webContents.on('did-fail-load', (_event, errorCode, errorDescription, failedUrl) => {
+    if (errorCode === -3) return
+    dialog.showErrorBox(
+      'Régie de salle — écran de régie indisponible',
+      `${failedUrl}\n\n${errorDescription} (${errorCode})`,
+    )
+  })
   window.once('ready-to-show', () => {
     // Maximized before being shown, but **once painted**: on a window that is
     // still hidden, the request goes to a window manager that does not know the
@@ -271,4 +289,23 @@ function openProjectorWindow(url: string): BrowserWindow {
   return window
 }
 
-void main()
+/**
+ * Startup failures, said out loud.
+ *
+ * `void main()` on its own dropped every one of them. On a room machine there is
+ * no console to read them in, and the moment they happen is the worst possible:
+ * the address window has just closed, the control window is not open yet, and the
+ * `startupFinished` latch — there so the application does not quit between the
+ * two — keeps it alive with no window and no explanation. The operator sees the
+ * window switch off, and that is all anyone ever learns.
+ *
+ * `showErrorBox` needs no parent window, which is exactly the situation, and the
+ * messages it shows are worth reading: `resolveMigrationsFolder` lists the paths
+ * it tried, `startDisplay` names the port it could not take.
+ */
+void main().catch((error: unknown) => {
+  const detail = error instanceof Error ? (error.stack ?? error.message) : String(error)
+  console.error(formatLogLine('error', `Démarrage impossible : ${detail}`))
+  dialog.showErrorBox('Régie de salle — démarrage impossible', detail)
+  app.quit()
+})

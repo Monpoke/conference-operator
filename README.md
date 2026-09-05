@@ -18,7 +18,15 @@ Node 24 ou plus, et pnpm par corepack (la version exacte est figée par
 corepack enable && pnpm install
 ```
 
-## Lancer le hub
+## Démarrer en développement
+
+`MODE=dev` est **l'unique interrupteur** devant les commodités de développement,
+de chaque côté : OBS simulé, heure réglable depuis la console, remise à zéro des
+données. Le défaut est `production` — le défaut doit être le cas dangereux, pas
+le cas confortable — et en production ces réglages sont **ignorés même s'ils
+sont renseignés**, bruyamment.
+
+**1. Le hub**
 
 ```bash
 cd apps/hub-server
@@ -26,16 +34,11 @@ cp .env.example .env
 openssl rand -base64 48        # à coller dans BETTER_AUTH_SECRET
 ```
 
-Créer un compte opérateur — l'inscription publique est fermée, sans ce compte la
-console est inaccessible et personne ne peut appairer une machine :
+L'inscription publique est fermée : sans un compte opérateur, la console est
+inaccessible et personne ne peut appairer une machine.
 
 ```bash
 pnpm --filter @conference-operator/hub-server operator vous@exemple.fr "Régie" <mot-de-passe>
-```
-
-Puis :
-
-```bash
 MODE=dev pnpm --filter @conference-operator/hub-server dev
 ```
 
@@ -48,30 +51,27 @@ crée les salles à partir de `event.tracks[]`.
 | Mur public | <http://localhost:8787/mur?salle=…> |
 | Régie mobile | <http://localhost:8787/regie> |
 
-## Lancer une régie
+**2. Une régie**
 
-**Sans Electron ni OBS** — le mode recommandé pour développer, notamment sous
-WSL, en conteneur ou sur une machine distante. Toute la logique du client vit
-hors d'Electron, c'est ce qui le rend possible ; les pages s'ouvrent dans un
+Sans Electron ni OBS — le mode recommandé pour développer, notamment sous WSL,
+en conteneur ou sur une machine distante. Toute la logique du client vit hors
+d'Electron, c'est ce qui le rend possible ; les pages s'ouvrent dans un
 navigateur sur le port affiché (`/regie`, `/display/projector`).
 
 ```bash
 HUB_ORIGIN=http://localhost:8787 pnpm --filter @conference-operator/room-client dev:headless
 ```
 
-**Avec Electron** — pour les fenêtres, le menu « Écrans », le sélecteur de
-dossier VOD :
+Avec Electron, pour les fenêtres, le menu « Écrans » et le sélecteur de dossier
+VOD :
 
 ```bash
 MODE=dev HUB_ORIGIN=http://localhost:8787 pnpm --filter @conference-operator/room-client dev
 ```
 
-Sans `HUB_ORIGIN`, l'application demande l'adresse dans une fenêtre au
-démarrage, et la retient.
-
-**Un hub et une ou deux salles d'un seul terminal** — deux salles sont
-nécessaires dès qu'on touche à ce qui est partagé entre elles (mur des
-questions, message poussé, modération) :
+**3. Ou tout d'un seul terminal.** Deux salles sont nécessaires dès qu'on touche
+à ce qui est partagé entre elles — mur des questions, message poussé,
+modération : ces bugs sont invisibles avec une seule.
 
 ```bash
 pnpm dev:duo               # hub + une salle headless
@@ -79,8 +79,61 @@ pnpm dev:trio              # hub + deux salles headless
 pnpm dev:duo --electron    # la première salle sous Electron
 ```
 
-Dans tous les cas la salle affiche un **code d'appairage** : le saisir dans la
-console (« Machines en attente »), choisir une salle, approuver.
+**4. Appairer.** La salle affiche un code : le saisir dans la console
+(« Machines en attente »), choisir une salle, approuver.
+
+## Déployer en production
+
+Rien à construire sur place : un tag publie l'image du hub et les paquets de la
+régie — voir [CONCEPTION.md](CONCEPTION.md).
+
+**Le hub**, en conteneur :
+
+```bash
+docker run -d --name hub -p 8787:8787 \
+  -e BETTER_AUTH_SECRET="$(openssl rand -base64 48)" \
+  -e PUBLIC_URL=https://hub.exemple.fr \
+  -e PROGRAM_SOURCE_URL=https://…/export.json \
+  -v hub-data:/data \
+  ghcr.io/monpoke/conference-operator/hub:1.2.0
+```
+
+L'image pose déjà `MODE=production`, `HOST=0.0.0.0`, `PORT=8787` et
+`DATABASE_PATH=/data/hub.db` : **le volume `/data` est ce qui survit au
+remplacement de l'image**, et c'est la seule chose que le hub écrit. Un
+`HEALTHCHECK` intégré interroge `/health`, qui ne touche ni la base ni le
+programme — il répond tant que Fastify écoute, ce qui est la question qu'un
+orchestrateur pose.
+
+`PUBLIC_URL` doit être l'**adresse publique**, celle que voit un navigateur
+derrière le proxy HTTPS : Better Auth signe ses cookies avec, et l'URI que
+recopie un opérateur pour appairer une machine en découle.
+
+Le compte opérateur, une fois :
+
+```bash
+docker exec -it hub node --import tsx src/cli/operator.ts vous@exemple.fr "Régie" <mot-de-passe>
+```
+
+Garder ce compte même avec Google : Google exige internet au moment de la
+connexion, et tout ceci est bâti pour survivre à une coupure. Un hub qui ne
+s'ouvre que par Google enferme l'équipe dehors le matin où le réseau tombe.
+
+**Les salles.** Installer le paquet de la release sur chaque machine —
+`room-control-<version>.exe` sous Windows, `.AppImage` ou `.tar.gz` sous Linux —
+après avoir vérifié son empreinte :
+
+```bash
+sha256sum -c SHA256SUMS-windows.txt
+```
+
+Au premier lancement, la machine demande l'adresse du hub, puis affiche son code
+d'appairage. **Faire ces trois postes avant le jour J**, pas devant une salle qui
+attend : le binaire Windows n'est pas signé et SmartScreen avertit au premier
+lancement. Ensuite, tout se passe dans [le RUNBOOK](apps/room-client/RUNBOOK.md).
+
+Une version = un couple : l'image et les paquets de régie d'un même tag parlent
+le même contrat. Les mélanger n'est pas prévu.
 
 ## Variables d'environnement — hub
 
@@ -96,7 +149,7 @@ dans la console.
 | `BETTER_AUTH_SECRET` | Secret de signature des sessions | **obligatoire** |
 | `PUBLIC_URL` | Base publique du hub : Better Auth et l'URI de vérification d'appairage | `http://localhost:8787` |
 | `PORT` / `HOST` | Écoute | `8787` / `0.0.0.0` |
-| `DATABASE_PATH` | Fichier SQLite du hub | `./data/hub.db` |
+| `DATABASE_PATH` | Fichier SQLite du hub — la seule chose qu'il écrit | `./data/hub.db`, `/data/hub.db` dans l'image |
 | `LOG_LEVEL` | Niveau de journal | `info` |
 | `PROGRAM_SOURCE_URL` | Export « conference-center ». **Amorce le premier démarrage seulement** — ensuite le réglage de la console fait foi. C'est aussi ce qui **nomme l'événement** partout | — |
 
@@ -158,16 +211,25 @@ survivre à une base recréée.
 
 ## Variables d'environnement — régie de salle
 
+Sur une machine installée, tout se règle au premier lancement : ces variables ne
+servent qu'à imposer d'avance ce que la fenêtre demanderait, depuis un raccourci
+ou un script de provisionnement.
+
 | Variable | Rôle | Défaut |
 |---|---|---|
 | `HUB_ORIGIN` | Adresse du hub. Absente, elle est demandée dans une fenêtre au démarrage, puis retenue | — |
 | `ROOM_ID` | Salle servie par ce poste | — |
+| `DISPLAY_PORT` | Port du serveur local — à changer si quelque chose l'occupe déjà sur le poste | `7788` |
 | `DATA_DIR` | Dossier de données en mode headless. Sous Electron, c'est le dossier applicatif du système | `./.local-data` |
-| `DISPLAY_PORT` | Port du serveur local — à changer si quelque chose l'occupe déjà | `7788` |
-| `REGIE_VITE_ORIGIN` | Sert la régie depuis Vite au lieu du bundle compilé | — |
+
+**Développement** — `MODE=dev` seulement.
+
+| Variable | Rôle | Défaut |
+|---|---|---|
 | `MODE` | `dev` simule OBS (scènes, enregistrement, diffusion) et écrit un vrai fichier à l'arrêt | `production` |
 | `HEURE_SIMULEE` | Heure locale, pour développer **sans hub**. Dès qu'un hub répond, son heure remplace la valeur | — |
-| `OBS_REEL` | En `MODE=dev`, parle à de vraies instances OBS plutôt qu'au simulateur | — |
+| `OBS_REEL` | Parle à de vraies instances OBS plutôt qu'au simulateur | — |
+| `REGIE_VITE_ORIGIN` | Sert la régie depuis Vite au lieu du bundle compilé | — |
 
 `OBS_MOCK` n'existe plus : la simulation d'OBS suit `MODE`. Comme
 `CLOCK_CONTROL`, la laisser traîner ne fait rien, et la salle le dit.

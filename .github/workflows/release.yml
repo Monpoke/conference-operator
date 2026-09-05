@@ -198,6 +198,12 @@ jobs:
       - shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          # `gh` works out which repository to talk to by reading the git remote,
+          # and this job never checks the sources out — it downloads the two
+          # artifacts the other jobs produced, and that is all it needs. Without
+          # this it stops on "failed to run git: not a git repository". Naming the
+          # repository outright costs less than cloning one for a single command.
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"

@@ -22,6 +22,11 @@ l'opérateur a l'application ouverte et rien d'autre.
    C'est la seule fenêtre au démarrage. Les autres écrans s'ouvrent à la
    demande, par le menu **Écrans** en haut à droite — dont la **Projection**,
    qui s'ouvre en plein écran sur l'écran secondaire quand il y en a un.
+
+   Chaque ligne de ce menu a deux boutons : **Copier**, qui met l'adresse
+   entière dans le presse-papiers — c'est ce qui se colle dans le champ d'une
+   Browser Source OBS — et **Ouvrir**. Le menu reste ouvert après une copie :
+   les sources de captation se montent l'une après l'autre.
 3. Au premier lancement, la régie demande **quelle salle dessert ce poste**.
    Choisir la bonne : la console la retrouvera pré-sélectionnée.
 4. La régie affiche ensuite un **code d'appairage**. Le donner à la personne qui
@@ -183,8 +188,11 @@ Deux causes se rencontrent en salle :
   DISPLAY_PORT=7799
   ```
 
-  à poser en variable d'environnement du raccourci. Le port ne se voit nulle
-  part ailleurs : les écrans s'ouvrent depuis le menu « Écrans ».
+  à poser en variable d'environnement du raccourci. Les écrans, eux, s'ouvrent
+  depuis le menu « Écrans » : rien à retaper. Restent les **Browser Sources
+  d'OBS**, qui portent l'ancien port en dur et ne chargeront plus — leur champ
+  se recolle depuis le bouton **Copier** du même menu, qui donne l'adresse au
+  port du jour.
 
 ---
 

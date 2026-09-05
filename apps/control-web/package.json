@@ -12,22 +12,22 @@
   "dependencies": {
     "@conference-operator/components": "workspace:*",
     "@conference-operator/contract": "workspace:*",
-    "@conference-operator/room-state": "workspace:*",
     "@conference-operator/format": "workspace:*",
     "@conference-operator/hub-client": "workspace:*",
     "@conference-operator/program": "workspace:*",
-    "pinia": "3.0.3",
-    "vue": "3.5.22"
+    "@conference-operator/room-state": "workspace:*",
+    "pinia": "4.0.3",
+    "vue": "3.5.42"
   },
   "devDependencies": {
     "@conference-operator/ui": "workspace:*",
     "@tailwindcss/vite": "4.3.3",
-    "@vitejs/plugin-vue": "6.0.1",
-    "@vue/test-utils": "2.4.6",
-    "happy-dom": "20.11.6",
+    "@vitejs/plugin-vue": "6.0.8",
+    "@vue/test-utils": "2.5.0",
+    "happy-dom": "20.14.0",
     "typescript": "6.0.3",
-    "vite": "7.1.7",
-    "vitest": "4.1.11",
+    "vite": "8.2.2",
+    "vitest": "5.0.0",
     "vue-tsc": "3.3.11"
   }
 }

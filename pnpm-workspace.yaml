@@ -26,5 +26,10 @@ onlyBuiltDependencies:
 # The `Dockerfile` already installs with `--ignore-scripts` for this exact
 # reason, and `electron-builder.yml` packages `prebuilds/win32-x64.node` as is
 # with `npmRebuild: false`. This line makes the three agree.
+# `electron-winstaller` comes in behind `electron-builder-squirrel-windows`,
+# itself only there to satisfy `app-builder-lib`'s peer. Its script downloads the
+# Squirrel toolchain, for a target this project does not build — the Windows
+# package is NSIS.
 ignoredBuiltDependencies:
   - better-sqlite3
+  - electron-winstaller

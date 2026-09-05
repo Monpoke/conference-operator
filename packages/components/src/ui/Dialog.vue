@@ -26,7 +26,8 @@ import {
  *    Escape dismissed both — which nobody expects.
  *
  * Two of Reka's defaults are turned off on purpose, and both would be visible:
- * see the scroll-lock note below, and `@interactOutside` on touch screens.
+ * the scroll lock — see the note below — and dismissal on an outside
+ * interaction, which `@interact-outside` refuses.
  */
 const open = defineModel<boolean>('open', { required: true })
 
@@ -52,6 +53,21 @@ const WIDTHS = {
         class="fixed top-1/2 left-1/2 z-50 max-h-[90vh] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-edge bg-surface p-4"
         :class="WIDTHS[width ?? 'normal']"
         :disable-outside-pointer-events="false"
+        @interact-outside="
+          /*
+           * A dialog closes on «&nbsp;Fermer&nbsp;» or on Escape, and on nothing
+           * else. Reka dismisses on any interaction outside the panel; the
+           * comment above has been claiming this was turned off since the day the
+           * dialogs were introduced, and the handler that did it was never there.
+           *
+           * The room machine is the reason. Its screen is touched, in the dark,
+           * next to a talk in progress: brushing the edge of a settings panel
+           * half filled in must not throw it away — and, worse, must not hand the
+           * click through to the LIVE and HOLD buttons behind. Two ways out
+           * remain, both deliberate.
+           */
+          (event: Event) => event.preventDefault()
+        "
         @open-auto-focus="
           /*
            * Reka focuses the first focusable child. Here that is often a

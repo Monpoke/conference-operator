@@ -9,6 +9,7 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
+    "dev:hub": "bash scripts/dev-rooms.sh 0",
     "dev:duo": "bash scripts/dev-rooms.sh 1",
     "dev:trio": "bash scripts/dev-rooms.sh 2",
     "prepare": "node scripts/git-hooks.mjs",

@@ -1260,12 +1260,29 @@ se lirait sinon comme un incident.
 ## Empaqueter le client de salle
 
 ```bash
-pnpm --filter @conference-operator/room-client package:win
+pnpm --filter @conference-operator/room-client package:win     # NSIS x64
+pnpm --filter @conference-operator/room-client package:linux   # AppImage + tar.gz x64
 ```
 
-Bundle esbuild du processus principal puis electron-builder (NSIS x64). Les
-migrations du schéma local voyagent dans `resources/` — le client les y cherche
-en priorité, et retombe sur le monorepo en développement.
+Bundle esbuild du processus principal puis electron-builder. Les migrations du
+schéma local voyagent dans `resources/` — le client les y cherche en priorité,
+et retombe sur le monorepo en développement.
+
+**Deux formats sous Linux, et pas par symétrie.** L'AppImage est l'équivalent
+un-fichier de l'installeur : on la copie, `chmod +x`, on lance. Elle réclame
+FUSE 2, qu'Ubuntu n'installe plus par défaut depuis la 22.04 —
+`--appimage-extract-and-run` s'en passe, mais c'est une chose à savoir avant le
+jour J, pas à découvrir devant une salle. Le `tar.gz` ignore FUSE : on extrait,
+on lance `regie-de-salle`. C'est le format qui ne peut pas échouer, et c'est ce
+qui autorise l'autre à être le format commode. Pas de `deb` : il s'installe pour
+tout le système, demande root et lie le paquet à une famille de distributions.
+
+L'exécutable Linux s'appelle `regie-de-salle`, pas « Régie de salle » : le
+produit garde son nom là où on le lit — fenêtre, entrée de menu — mais ici,
+c'est une commande, qu'on tape dans un shell, en SSH ou dans une unité systemd.
+
+Les paquets Linux pèsent **96 Mo** (AppImage) et **115 Mo** (`tar.gz`) : le même
+contenu, la première en squashfs compressé, la seconde en gzip.
 
 L'installeur pèse **99 Mo**. Le plancher, c'est Electron : ce qui restait
 au-dessus est parti, et se lit dans `electron-builder.yml` — les cinquante-trois
@@ -2733,7 +2750,8 @@ porte :
 | | Où | Quoi |
 |---|---|---|
 | Hub | `ghcr.io/monpoke/conference-operator/hub` | image `linux/amd64`, taguée `1.2.0`, `1.2` et `latest` |
-| Régie de salle | pièces jointes de la release | `regie-de-salle-1.2.0.exe` et son `SHA256SUMS.txt` |
+| Régie de salle, Windows | pièces jointes de la release | `regie-de-salle-1.2.0.exe` et `SHA256SUMS-windows.txt` |
+| Régie de salle, Linux | pièces jointes de la release | `regie-de-salle-1.2.0.AppImage`, `.tar.gz` et `SHA256SUMS-linux.txt` |
 
 **Un tag, un couple.** Le hub et le client de salle parlent le même contrat
 oRPC, versionné nulle part ailleurs que dans ce dépôt. Les publier séparément
@@ -2759,15 +2777,22 @@ un conteneur. Ouvrir l'architecture demande d'abord de rouvrir cet élagage — 
 de construire sur un coureur ARM, la traduction QEMU coûtant plus que ce qu'elle
 rapporte ici.
 
-**L'installeur se construit sous Windows**, alors que l'empaquetage marche
-depuis Linux (voir plus haut). Ça épargne l'installation de wine 32 bits et son
-« exit status 123 », et un coureur Windows est gratuit sur un dépôt public. La
-recette Linux garde sa raison d'être — empaqueter depuis un poste de
-développement — mais elle n'a pas à être le chemin d'une publication.
+**Chaque paquet se construit sur son propre système**, dans son propre job.
+L'installeur Windows épargne ainsi wine 32 bits et son « exit status 123 », et
+un coureur Windows est gratuit sur un dépôt public ; les paquets Linux n'ont
+besoin de rien de particulier — electron-builder va chercher appimagetool
+lui-même, et FUSE ne sert qu'à *exécuter* une AppImage, jamais à en construire
+une. Deux jobs plutôt qu'une matrice : l'un écrit son empreinte en PowerShell et
+l'autre en `sha256sum`, une matrice aurait passé ses lignes à réintroduire les
+différences qu'elle venait d'aplatir.
+
+Les sommes portent le nom de leur plateforme (`SHA256SUMS-windows.txt`,
+`SHA256SUMS-linux.txt`) : les deux jobs déposent leurs pièces jointes dans le
+même dossier, où un `SHA256SUMS.txt` commun écraserait l'autre sans rien dire.
 
 **La répétition.** Le même workflow se déclenche à la main
-(`workflow_dispatch`) : il construit les deux paquets, dépose l'installeur en
-artefact pour 90 jours, et ne publie rien. C'est ce qui permet d'éprouver la
+(`workflow_dispatch`) : il construit l'image et les deux paquets client, les
+dépose en artefacts pour 90 jours, et ne publie rien. C'est ce qui permet d'éprouver la
 chaîne d'empaquetage la semaine d'avant sans brûler un numéro de version.
 
 **Les source maps ne sont pas dans les paquets**, et c'est déjà le cas depuis

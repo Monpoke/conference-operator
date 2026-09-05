@@ -9,6 +9,7 @@
     "preview": "tsx scripts/preview-display.ts",
     "build": "node scripts/build-main.mjs",
     "package:win": "pnpm --filter @conference-operator/control-web build && pnpm build && electron-builder --win --publish never",
+    "package:linux": "pnpm --filter @conference-operator/control-web build && pnpm build && electron-builder --linux --publish never",
     "package:dir": "pnpm --filter @conference-operator/control-web build && pnpm build && electron-builder --dir --publish never",
     "dev": "node scripts/build-main.mjs && electron dist/main.cjs",
     "dev:headless": "tsx scripts/dev-headless.ts"

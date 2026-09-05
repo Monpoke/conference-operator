@@ -161,6 +161,30 @@ repos. Si elle reste grise, relancer l'application entre deux talks.
 
 ---
 
+## L'application se referme au démarrage, ou n'ouvre aucune fenêtre
+
+Elle dit maintenant pourquoi : une boîte de dialogue **« Régie de salle —
+démarrage impossible »** porte le message, et il est fait pour être lu tel quel
+— il nomme le fichier introuvable ou le port occupé.
+
+Deux causes se rencontrent en salle :
+
+- **« Une régie est déjà lancée sur ce poste »** : un premier lancement tourne
+  déjà, parfois sans fenêtre visible. Sa fenêtre revient au premier plan toute
+  seule ; sinon, la fermer depuis le gestionnaire des tâches et relancer.
+- **« address already in use ... 7788 »** : autre chose occupe le port du
+  serveur local. Lancer l'application avec un autre port règle la journée sans
+  toucher à la machine :
+
+  ```
+  DISPLAY_PORT=7799
+  ```
+
+  à poser en variable d'environnement du raccourci. Le port ne se voit nulle
+  part ailleurs : les écrans s'ouvrent depuis le menu « Écrans ».
+
+---
+
 ## Le hub est injoignable au démarrage
 
 La salle démarre quand même, sur son dernier programme en cache.

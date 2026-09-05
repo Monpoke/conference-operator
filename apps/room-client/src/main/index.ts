@@ -28,6 +28,25 @@ import { askHubAddress } from './hub-window.js'
 const MODE = readMode()
 
 async function main(): Promise<void> {
+  /**
+   * One room per machine, and the lock is taken before anything else.
+   *
+   * A second launch — an operator who double-clicks the shortcut again because
+   * the first window is slow to appear — used to start a whole second room: it
+   * fought the first for the local server's port, for the same SQLite database,
+   * and for the OBS connection. It lost on the port, and until startup failures
+   * were said out loud it lost in silence, leaving a process with no window.
+   *
+   * The lock is keyed on the application, not on `DATA_DIR`: only one room per
+   * machine ever runs under Electron — `dev-rooms.sh` puts the second one in
+   * headless mode, which does not go through here.
+   */
+  if (!app.requestSingleInstanceLock()) {
+    console.error(formatLogLine('warn', 'Une régie est déjà lancée sur ce poste : celle-ci se referme'))
+    app.quit()
+    return
+  }
+
   await app.whenReady()
 
   /**
@@ -76,6 +95,7 @@ async function main(): Promise<void> {
     hubOrigin,
     clientId,
     roomId: process.env.ROOM_ID,
+    displayPort: displayPort(),
     regieViteOrigin: process.env.REGIE_VITE_ORIGIN ?? null,
     obsTransportFactory: MODE.obsSimulated
       ? (instance, scenes) =>
@@ -122,7 +142,14 @@ async function main(): Promise<void> {
 
   // The screen first: the room must project even if the hub never answers.
   const displayUrl = await room.startDisplay()
-  wireScreenOpenings(openControlWindow(`${displayUrl}/regie`))
+  const control = openControlWindow(`${displayUrl}/regie`)
+  wireScreenOpenings(control)
+  // The second launch the lock above turned away: bring forward the window the
+  // operator was looking for rather than leaving their double-click unanswered.
+  app.on('second-instance', () => {
+    if (control.isMinimized()) control.restore()
+    control.focus()
+  })
   // The control app is open: closing the last window means "we switch off" again.
   startupFinished = true
 
@@ -140,6 +167,29 @@ async function main(): Promise<void> {
     // the application never closes.
     void room.close()
   })
+}
+
+/**
+ * The local server's port, from the environment.
+ *
+ * Documented as free to set, and until now read nowhere but `dev-headless.ts` —
+ * a script that never ships. The installed application was therefore nailed to
+ * 7788, so a machine where something else already holds it had no way out.
+ *
+ * A wrong value is said out loud and ignored rather than turned into a listen on
+ * port 0, which would open the room on a port nobody can predict.
+ */
+function displayPort(): number | undefined {
+  const raw = process.env.DISPLAY_PORT
+  if (raw == null || raw === '') return undefined
+  const port = Number(raw)
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    console.error(
+      formatLogLine('error', `DISPLAY_PORT ignoré : « ${raw} » n'est pas un port (défaut 7788)`),
+    )
+    return undefined
+  }
+  return port
 }
 
 /**

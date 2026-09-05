@@ -66,6 +66,11 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --ignore-scripts \
       --filter @conference-operator/hub-admin... --filter @conference-operator/control-web...
 
+# The base config the two applications' `tsconfig.json` extend. Vite reads it to
+# transform the TypeScript, and refuses to build without it — `failed to resolve
+# "extends"`. It travels here rather than with the manifests above so that
+# touching it does not invalidate the install layer.
+COPY tsconfig.base.json ./
 COPY packages/ packages/
 COPY apps/hub-admin/ apps/hub-admin/
 COPY apps/control-web/ apps/control-web/
@@ -122,6 +127,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 # The sources next. `tsx` reads them as they are at start-up; `@conference-operator/ui`'s
 # Tailwind sheet is committed (`src/generated/`), so there is nothing to compile
 # here either.
+COPY tsconfig.base.json ./
 COPY packages/ packages/
 COPY apps/hub-server/ apps/hub-server/
 

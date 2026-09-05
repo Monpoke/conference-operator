@@ -88,8 +88,8 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      # `--ignore-scripts`: this job builds nothing, and the graph's only script
-      # compiles better-sqlite3.
+      # `--ignore-scripts`: this job reads commit messages, it builds nothing —
+      # no need for the esbuild and Electron binaries the install would fetch.
       - run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Commit messages

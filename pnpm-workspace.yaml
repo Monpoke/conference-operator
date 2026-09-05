@@ -2,7 +2,29 @@ packages:
   - "apps/*"
   - "packages/*"
 
+# Dependencies allowed to run their install scripts. `esbuild` and `electron`
+# download a binary there; without it, neither has anything to run.
 onlyBuiltDependencies:
   - esbuild
-  - better-sqlite3
   - electron
+
+# `better-sqlite3` is the one that is deliberately *not* allowed.
+#
+# It is a Node-API module and ships one prebuilt binary per platform in its npm
+# package; `lib/binding.js` loads `prebuilds/<platform>-<arch>.node` and only
+# falls back to `build/Release` when there is none. Its `binding.gyp` even runs
+# that same script to decide, so the build compiles nothing — it produces a
+# stamp file and stops.
+#
+# What it does do is run node-gyp's *configure* first, which needs a full
+# compilation toolchain to establish that it has nothing to compile. On Linux
+# that is a few wasted seconds. On the Windows runner that packages the
+# installer it is a failed release: node-gyp 11 does not recognise the Visual
+# Studio 18 shipped by `windows-latest`, and stops on "could not find a version
+# of Visual Studio 2017 or newer to use".
+#
+# The `Dockerfile` already installs with `--ignore-scripts` for this exact
+# reason, and `electron-builder.yml` packages `prebuilds/win32-x64.node` as is
+# with `npmRebuild: false`. This line makes the three agree.
+ignoredBuiltDependencies:
+  - better-sqlite3

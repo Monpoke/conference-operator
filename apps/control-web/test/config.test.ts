@@ -9,6 +9,7 @@ import ScreensMenu from '../src/components/ScreensMenu.vue'
 import { useActionsStore } from '../src/stores/actions.js'
 import { useConfigStore } from '../src/stores/config.js'
 import { useGatewayStore } from '../src/stores/gateway.js'
+import { useSessionStore } from '../src/stores/session.js'
 import { useRoomStore } from '../src/stores/room.js'
 import { obsState, payload } from './fixtures.js'
 
@@ -608,6 +609,22 @@ describe('incomplete room at start-up', () => {
 describe('unpairing a machine', () => {
   /** Reka portals the panel out of the component: the document is what we read. */
   const mountDialog = () => mount(ConfigDialog, { props: { payload: payload() }, attachTo: document.body })
+
+  /**
+   * Waits for what the portal renders, rather than for a fixed number of ticks.
+   *
+   * A single `flushPromises` was enough on an idle machine and not while the rest
+   * of the suite ran beside it: the test failed about one run in three, which is
+   * worse than a test that fails.
+   */
+  const until = async (find: () => Element | null | undefined): Promise<Element> => {
+    for (let i = 0; i < 50; i += 1) {
+      const found = find()
+      if (found != null) return found
+      await flushPromises()
+    }
+    throw new Error('rien trouvé dans le document après cinquante tours')
+  }
   /**
    * Scoped to the confirmation itself: the button that opens it says
    * «&nbsp;Déconnecter ce poste&nbsp;», and any looser search finds that one first.
@@ -636,17 +653,14 @@ describe('unpairing a machine', () => {
     const wrapper = mountDialog()
     await flushPromises()
 
-    const open = document.querySelector('#btn-unpair') as HTMLElement | null
-    expect(open).not.toBeNull()
-    open!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    await flushPromises()
+    const open = await until(() => document.querySelector('#btn-unpair'))
+    open.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     // Asked, not done: the room leaves the air, and the way back is in front of
     // the machine.
     expect(sent).toEqual([])
 
-    const confirm = button('Déconnecter')
-    expect(confirm).toBeDefined()
-    confirm!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    const confirm = await until(() => button('Déconnecter'))
+    confirm.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await flushPromises()
 
     expect(sent).toEqual([{ action: 'pairing.forget' }])
@@ -656,12 +670,16 @@ describe('unpairing a machine', () => {
   })
 
   it('does not offer it to a control app served remotely', async () => {
+    // The boot scope only: `start` would also open a session against a hub that
+    // does not exist here, and its refusal would land in whichever test runs next.
+    vi.spyOn(useSessionStore(), 'start').mockImplementation(() => {})
     useGatewayStore().start({ portee: 'distante', roomId: 'track-1', salles: [], google: null })
     room()
     useConfigStore().show()
 
     const wrapper = mountDialog()
-    await flushPromises()
+    // The panel is there — so its absent button is an absence, not a slow render.
+    await until(() => document.querySelector('#cfg-port'))
 
     expect(document.querySelector('#btn-unpair')).toBeNull()
     wrapper.unmount()

@@ -81,6 +81,15 @@ export const controlActionSchema = z.discriminatedUnion('action', [
   /** Choosing the room served, from the pairing screen. */
   z.object({ action: z.literal('pairing.chooseRoom'), roomId: z.string().min(1) }),
   /**
+   * Forgetting the pairing, from the configuration.
+   *
+   * Offered on the machine's own screen only — the control app hides it when it is
+   * served remotely. Disconnecting a room from a phone takes it off the air until
+   * somebody approves a new code at the console, and a phone is exactly where a
+   * misplaced thumb lands.
+   */
+  z.object({ action: z.literal('pairing.forget') }),
+  /**
    * The live scenes' banner, set from the control app.
    *
    * The room drives its own surfaces — that is already the case for its screen —
@@ -175,6 +184,7 @@ export interface ControlTarget {
   endSession(): Promise<void>
   resetSession(): Promise<void>
   chooseRoom(roomId: string): Promise<void>
+  unpair(): Promise<void>
   dismissNotification(id: string): void
   sendMessage(text: string, level: 'info' | 'warning' | 'urgent'): void
   setLiveMessage(text: string | null, level: 'info' | 'warning' | 'urgent'): void
@@ -302,6 +312,9 @@ export async function runControlAction(
       case 'pairing.chooseRoom':
         await target.chooseRoom(action.roomId)
         return { ok: true, message: 'Demande d\'appairage envoyée' }
+      case 'pairing.forget':
+        await target.unpair()
+        return { ok: true, message: 'Poste déconnecté — un nouveau code va apparaître' }
       case 'notification.dismiss':
         target.dismissNotification(action.id)
         return { ok: true }

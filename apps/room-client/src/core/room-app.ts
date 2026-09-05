@@ -647,6 +647,30 @@ export class RoomApp implements ControlTarget {
     if (token != null) await this.connectHub(token)
   }
 
+  /**
+   * Forgets the pairing, because somebody asked for it.
+   *
+   * The same path as a refused token — the machine has no credentials left, shows
+   * a code again, and the hub re-approves it — with one difference: the room it
+   * serves is forgotten too, so the screen asks the question again. That is the
+   * reason one disconnects a machine on purpose. It is being moved to another
+   * room, or handed over; re-pairing it silently to the same room would make the
+   * button look like it did nothing.
+   *
+   * What stays: the machine's identity (`client-id`), so the console recognises it
+   * rather than listing a stranger, and everything on the local disk — the
+   * programme cache, and above all the queue of what has not been sent back yet.
+   * Disconnecting is not erasing.
+   *
+   * Nothing is said to the hub. It keeps this machine listed as paired until it
+   * pairs again or somebody revokes it from the console: a room that disconnects
+   * itself while the network is down must not depend on a call going through.
+   */
+  async unpair(): Promise<void> {
+    this.wantedRoomId = null
+    await this.repair('Poste déconnecté depuis la configuration')
+  }
+
   /** Connects the hub: synchronizes then consumes the commands in the background. */
   async connectHub(token: string): Promise<void> {
     this.link = new HubLink({

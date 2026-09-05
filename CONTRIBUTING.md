@@ -13,7 +13,7 @@ pnpm test        # 1391 tests
 pnpm typecheck
 ```
 
-Node 22 ou plus, pnpm 10 (la version exacte est figée par `packageManager`).
+Node 24 ou plus, pnpm 10 (la version exacte est figée par `packageManager`).
 Pour lancer le hub et un client de salle, voir la section « Lancer en local » du
 [README](README.md) — le mode `dev:headless` du client permet de tout faire
 sans Electron ni OBS, y compris sous WSL ou sur une machine distante.

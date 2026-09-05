@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_VOD_POLICY, type VodPolicy } from '@cloudnord/contract'
+import { DEFAULT_VOD_POLICY, type VodPolicy } from '@conference-operator/contract'
 import {
   waitAfter,
   uploadVerdict,

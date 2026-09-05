@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Panel } from '@cloudnord/components'
+import { Panel } from '@conference-operator/components'
 import { computed } from 'vue'
 import CommandGrid, { type Command } from './CommandGrid.vue'
 

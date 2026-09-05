@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Connectivity, Envelope, RoomEventPayload } from '@cloudnord/contract'
+import type { Connectivity, Envelope, RoomEventPayload } from '@conference-operator/contract'
 import { LocalStore } from '../src/core/store.js'
 import { Outbox } from '../src/core/outbox.js'
 import { OutboxPump, type PushResult } from '../src/core/outbox-pump.js'

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { RoomEventPayload } from '@cloudnord/contract'
+import type { RoomEventPayload } from '@conference-operator/contract'
 import { LocalStore } from '../src/core/store.js'
 import { Outbox, backoffMs, heartbeatDedupKey } from '../src/core/outbox.js'
 

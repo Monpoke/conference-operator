@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { ObsInstance } from '@cloudnord/contract'
+import type { ObsInstance } from '@conference-operator/contract'
 import type { ObsTransport } from './obs.js'
 
 /**

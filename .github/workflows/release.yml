@@ -134,9 +134,9 @@ jobs:
       # to exist before electron-builder goes looking for it.
       - shell: bash
         run: |
-          pnpm --filter @cloudnord/control-web build
-          pnpm --filter @cloudnord/room-client build
-          pnpm --filter @cloudnord/room-client exec electron-builder \
+          pnpm --filter @conference-operator/control-web build
+          pnpm --filter @conference-operator/room-client build
+          pnpm --filter @conference-operator/room-client exec electron-builder \
             --win --publish never \
             -c.extraMetadata.version=${{ steps.version.outputs.number }}
 

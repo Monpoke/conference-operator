@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button, Hint, Panel, useToast } from '@cloudnord/components'
+import { Button, Hint, Panel, useToast } from '@conference-operator/components'
 import { storeToRefs } from 'pinia'
 import { computed, watch } from 'vue'
 import { UPLOAD_STATES, progress, useVodStore, type Upload } from '../stores/vod.js'

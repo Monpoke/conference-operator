@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { VisibleConfig, ObsInstance, ObsState } from '@cloudnord/contract'
-import { Button, Panel } from '@cloudnord/components'
+import type { VisibleConfig, ObsInstance, ObsState } from '@conference-operator/contract'
+import { Button, Panel } from '@conference-operator/components'
 import { computed } from 'vue'
 import { ROLES, type ConfigDraft } from '../stores/config.js'
 import SimulatedBadge from './SimulatedBadge.vue'

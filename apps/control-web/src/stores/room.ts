@@ -1,4 +1,4 @@
-import type { DisplayPayload } from '@cloudnord/contract'
+import type { DisplayPayload } from '@conference-operator/contract'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import type { StateStream } from '../lib/gateway.js'

@@ -4,7 +4,7 @@
  * Public sign-up is closed on the hub: without this command, nobody can open the
  * console, and so nobody can approve a machine or moderate.
  *
- *   pnpm --filter @cloudnord/hub-server operator <email> "<name>" <password>
+ *   pnpm --filter @conference-operator/hub-server operator <email> "<name>" <password>
  */
 import { loadConfig } from '../config.js'
 import { openHubDatabase } from '../db.js'
@@ -15,7 +15,7 @@ const [email, name, password] = process.argv.slice(2)
 
 if (email == null || name == null || password == null) {
   console.error(
-    'Usage : pnpm --filter @cloudnord/hub-server operator <email> "<nom>" <mot-de-passe>',
+    'Usage : pnpm --filter @conference-operator/hub-server operator <email> "<nom>" <mot-de-passe>',
   )
   process.exit(1)
 }

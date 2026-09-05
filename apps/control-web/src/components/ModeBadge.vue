@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ExecutionMode } from '@cloudnord/contract'
+import type { ExecutionMode } from '@conference-operator/contract'
 import { computed } from 'vue'
 
 /**

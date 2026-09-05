@@ -1,5 +1,5 @@
 {
-  "name": "@cloudnord/ui",
+  "name": "@conference-operator/ui",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -15,7 +15,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@cloudnord/room-state": "workspace:*",
+    "@conference-operator/room-state": "workspace:*",
     "@tailwindcss/cli": "4.3.3",
     "tailwindcss": "4.3.3"
   }

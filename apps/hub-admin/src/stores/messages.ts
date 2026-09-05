@@ -1,4 +1,4 @@
-import type { Banner } from '@cloudnord/contract'
+import type { Banner } from '@conference-operator/contract'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useSessionStore } from './session.js'

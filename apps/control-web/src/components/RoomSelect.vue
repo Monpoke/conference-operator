@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { ControlRoom } from '@cloudnord/contract'
-import { Button, Panel, StatusDot } from '@cloudnord/components'
-import { appearanceOf } from '@cloudnord/room-state'
-import { timeAgo } from '@cloudnord/format'
+import type { ControlRoom } from '@conference-operator/contract'
+import { Button, Panel, StatusDot } from '@conference-operator/components'
+import { appearanceOf } from '@conference-operator/room-state'
+import { timeAgo } from '@conference-operator/format'
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import { useGatewayStore } from '../stores/gateway.js'
 import { useSessionStore } from '../stores/session.js'

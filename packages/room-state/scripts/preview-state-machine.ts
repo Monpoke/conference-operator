@@ -4,12 +4,12 @@
  * By default the Cloud Nord 2026 export that also backs the tests: the schedule
  * played out there is the one from the day itself, shared breaks included.
  *
- *     pnpm --filter @cloudnord/room-state preview [directory] [path/export.json]
+ *     pnpm --filter @conference-operator/room-state preview [directory] [path/export.json]
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { applySharedBreaks, normalizeProgram, sessionsForRoom } from '@cloudnord/program'
+import { applySharedBreaks, normalizeProgram, sessionsForRoom } from '@conference-operator/program'
 import { renderStateMachinePage, type RoomPreview } from '../src/state-machine-page.js'
 
 const outDir = resolve(process.argv[2] ?? './preview')

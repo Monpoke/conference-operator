@@ -1,5 +1,5 @@
 {
-  "name": "@cloudnord/control-web",
+  "name": "@conference-operator/control-web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,17 +10,17 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "@cloudnord/components": "workspace:*",
-    "@cloudnord/contract": "workspace:*",
-    "@cloudnord/room-state": "workspace:*",
-    "@cloudnord/format": "workspace:*",
-    "@cloudnord/hub-client": "workspace:*",
-    "@cloudnord/program": "workspace:*",
+    "@conference-operator/components": "workspace:*",
+    "@conference-operator/contract": "workspace:*",
+    "@conference-operator/room-state": "workspace:*",
+    "@conference-operator/format": "workspace:*",
+    "@conference-operator/hub-client": "workspace:*",
+    "@conference-operator/program": "workspace:*",
     "pinia": "3.0.3",
     "vue": "3.5.22"
   },
   "devDependencies": {
-    "@cloudnord/ui": "workspace:*",
+    "@conference-operator/ui": "workspace:*",
     "@tailwindcss/vite": "4.3.3",
     "@vitejs/plugin-vue": "6.0.1",
     "@vue/test-utils": "2.4.6",

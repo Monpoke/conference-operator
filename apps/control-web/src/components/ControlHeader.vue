@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { DisplayPayload } from '@cloudnord/contract'
+import type { DisplayPayload } from '@conference-operator/contract'
 import { computed } from 'vue'
-import { Button, Key } from '@cloudnord/components'
+import { Button, Key } from '@conference-operator/components'
 import { useHostStore } from '../stores/host.js'
 import CpuIndicator from './CpuIndicator.vue'
 import HubIndicator from './HubIndicator.vue'

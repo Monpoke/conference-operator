@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button, Dialog, Hint, useToast } from '@cloudnord/components'
+import { Button, Dialog, Hint, useToast } from '@conference-operator/components'
 import { computed, ref, watch } from 'vue'
 import { useConferencesStore, type PlannedSession } from '../stores/conferences.js'
 

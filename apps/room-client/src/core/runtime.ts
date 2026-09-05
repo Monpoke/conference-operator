@@ -12,19 +12,19 @@ import {
   type Notification,
   type SceneRole,
   type SessionStatus,
-} from '@cloudnord/contract'
-import { talkToControl, roomBreak } from '@cloudnord/room-state'
+} from '@conference-operator/contract'
+import { talkToControl, roomBreak } from '@conference-operator/room-state'
 import {
   currentSession,
   nextSession,
   sessionsForRoom,
   type Program,
   type Session,
-} from '@cloudnord/program'
+} from '@conference-operator/program'
 import type { LocalStore } from './store.js'
 
 /*
- * Re-exported, not redefined: the definitions live in `@cloudnord/contract` since
+ * Re-exported, not redefined: the definitions live in `@conference-operator/contract` since
  * the control app became a package of its own. Keeping them visible here saves
  * touching the imports of everything that reads a room's state.
  */

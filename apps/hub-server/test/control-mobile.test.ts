@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { CONTROL_LOCK_TTL_MS, CONTROL_COMMAND_TTL } from '@cloudnord/contract'
+import { CONTROL_LOCK_TTL_MS, CONTROL_COMMAND_TTL } from '@conference-operator/contract'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createHub, type Hub } from '../src/server.js'
 import { provisionOperator } from '../src/operators.js'

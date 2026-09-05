@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { consolePaths } from '@cloudnord/contract'
+import { consolePaths } from '@conference-operator/contract'
 import { createHub, type Hub } from '../src/server.js'
 import { resolveConsoleBundle } from '../src/pages/console-shell.js'
 
@@ -117,7 +117,7 @@ describe('the mobile control app', () => {
        */
       expect([200, 503], path).toContain(response.status)
       if (response.status === 503) {
-        expect(await response.text()).toContain('pnpm --filter @cloudnord/control-web build')
+        expect(await response.text()).toContain('pnpm --filter @conference-operator/control-web build')
       }
     }
   })

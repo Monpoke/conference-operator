@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { FIELDS_BY_VIEW } from '@cloudnord/contract'
+import { FIELDS_BY_VIEW } from '@conference-operator/contract'
 import { describe, expect, it } from 'vitest'
 
 /**

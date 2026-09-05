@@ -1,4 +1,4 @@
-import { DEFAULT_EVENT_IDENTITY, type EventIdentity } from '@cloudnord/contract'
+import { DEFAULT_EVENT_IDENTITY, type EventIdentity } from '@conference-operator/contract'
 
 export interface ServiceWorkerOptions {
   /**

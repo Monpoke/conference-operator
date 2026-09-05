@@ -1,5 +1,5 @@
 {
-  "name": "@cloudnord/db",
+  "name": "@conference-operator/db",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -16,7 +16,7 @@
     "seal": "node scripts/seal-migrations.mjs"
   },
   "dependencies": {
-    "@cloudnord/contract": "workspace:*",
+    "@conference-operator/contract": "workspace:*",
     "better-sqlite3": "13.0.3",
     "drizzle-orm": "0.45.2"
   },

@@ -60,7 +60,7 @@ const room = new RoomApp({
   // `ROOM_ID` short-circuits the choice screen, for a provisioned machine.
   roomId: process.env.ROOM_ID,
   // Fill in to develop the rebuilt control app with hot reloading:
-  // REGIE_VITE_ORIGIN=http://127.0.0.1:5174, with `pnpm --filter @cloudnord/control-web dev` alongside.
+  // REGIE_VITE_ORIGIN=http://127.0.0.1:5174, with `pnpm --filter @conference-operator/control-web dev` alongside.
   regieViteOrigin: process.env.REGIE_VITE_ORIGIN ?? null,
   hubOrigin,
   clientId,

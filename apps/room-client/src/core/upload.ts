@@ -2,8 +2,8 @@ import { createReadStream } from 'node:fs'
 import { request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
 import { and, asc, eq, inArray, ne } from 'drizzle-orm'
-import { televersement } from '@cloudnord/db/client'
-import type { VodKind, SignedPart, UploadPlan, VodPolicy } from '@cloudnord/contract'
+import { televersement } from '@conference-operator/db/client'
+import type { VodKind, SignedPart, UploadPlan, VodPolicy } from '@conference-operator/contract'
 import type { LocalStore } from './store.js'
 import type { HostLoad } from './host.js'
 import {
@@ -91,7 +91,7 @@ export interface UploadDeps {
   now?: () => number
   onLog?: (level: 'info' | 'warn' | 'error', message: string, context?: unknown) => void
 }
-import type { UploadRow, UploadsView } from '@cloudnord/contract'
+import type { UploadRow, UploadsView } from '@conference-operator/contract'
 
 export type { UploadRow, UploadsView }
 

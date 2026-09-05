@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { appearanceOf, outlineOf } from '@cloudnord/room-state'
+import { appearanceOf, outlineOf } from '@conference-operator/room-state'
 import { computed } from 'vue'
 import { DOT_LEVELS, type DotLevel } from './status-levels.js'
 

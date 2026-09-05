@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { ControlDiagnostics, MarkerRole, ObsState } from '@cloudnord/contract'
-import { NO_EDITING_MARKS } from '@cloudnord/contract'
-import { Button, Key, Panel } from '@cloudnord/components'
-import { shortDuration } from '@cloudnord/format'
+import type { ControlDiagnostics, MarkerRole, ObsState } from '@conference-operator/contract'
+import { NO_EDITING_MARKS } from '@conference-operator/contract'
+import { Button, Key, Panel } from '@conference-operator/components'
+import { shortDuration } from '@conference-operator/format'
 import { computed, ref } from 'vue'
 import { useActionsStore } from '../stores/actions.js'
 import RecordingTimer from './RecordingTimer.vue'

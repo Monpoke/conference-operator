@@ -23,7 +23,7 @@ describe('state machine inlined into the pages', () => {
       escapeForScriptTag(compileBrowserBundle()) === MACHINE_JS,
       'The committed module differs from a recompilation: the state machine changed ' +
         'without being regenerated, and the pages are running on the old version.\n' +
-        '    pnpm --filter @cloudnord/room-state build',
+        '    pnpm --filter @conference-operator/room-state build',
     ).toBe(true)
   })
 
@@ -47,7 +47,7 @@ describe('state machine inlined into the pages', () => {
 
   it('does not embed the program schemas', () => {
     /**
-     * The root of `@cloudnord/program` re-exports zod: importing it from the
+     * The root of `@conference-operator/program` re-exports zod: importing it from the
      * browser entry point inlined six hundred kilobytes into every page, for
      * three scheduling functions. The threshold leaves room for the state machine
      * while catching the return of the whole library.

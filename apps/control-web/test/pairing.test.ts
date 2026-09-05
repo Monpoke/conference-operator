@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { DisplayPayload } from '@cloudnord/contract'
+import type { DisplayPayload } from '@conference-operator/contract'
 import App from '../src/App.vue'
 import PairingVeil from '../src/components/PairingVeil.vue'
 import { useRoomStore } from '../src/stores/room.js'

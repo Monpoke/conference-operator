@@ -4,8 +4,8 @@ import {
   type Envelope,
   type ObsInstance,
   type RoomEventPayload,
-} from '@cloudnord/contract'
-import { ingestEvent, roomState } from '@cloudnord/db/hub'
+} from '@conference-operator/contract'
+import { ingestEvent, roomState } from '@conference-operator/db/hub'
 import type { HubDatabase, HubTransaction } from '../db.js'
 
 export interface IngestOutcome {

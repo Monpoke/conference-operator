@@ -24,8 +24,8 @@ Les pages n'ont pas de suite de tests visuels. Deux générateurs produisent des
 aperçus HTML statiques à partir des **vraies** pages et des **vraies** données :
 
 ```bash
-pnpm --filter @cloudnord/room-client preview ./preview   # écran de salle, habillages
-pnpm --filter @cloudnord/hub-server  preview ./preview   # mur public
+pnpm --filter @conference-operator/room-client preview ./preview   # écran de salle, habillages
+pnpm --filter @conference-operator/hub-server  preview ./preview   # mur public
 ```
 
 Ouvrez-les dans un navigateur. Toute modification qui touche à une page doit
@@ -39,16 +39,16 @@ seraient plus les pages servies ferait perdre exactement ce qui rendait ces
 fichiers utiles. On les relit donc en les lançant :
 
 ```bash
-pnpm --filter @cloudnord/hub-admin dev   # puis MODE=dev pnpm dev côté hub
+pnpm --filter @conference-operator/hub-admin dev   # puis MODE=dev pnpm dev côté hub
 
 # La régie a besoin d'une salle derrière elle : le poste proxifie Vite, jamais
 # l'inverse — c'est lui qui porte le flux d'état, les actions et le vumètre.
-pnpm --filter @cloudnord/control-web dev
-REGIE_VITE_ORIGIN=http://127.0.0.1:5174 pnpm --filter @cloudnord/room-client dev:headless
+pnpm --filter @conference-operator/control-web dev
+REGIE_VITE_ORIGIN=http://127.0.0.1:5174 pnpm --filter @conference-operator/room-client dev:headless
 
 # La régie **mobile** est la même application, servie par le hub sur /regie.
 # Le même serveur Vite convient : les deux hôtes la servent sous /regie/.
-REGIE_VITE_ORIGIN=http://127.0.0.1:5174 MODE=dev pnpm --filter @cloudnord/hub-server dev
+REGIE_VITE_ORIGIN=http://127.0.0.1:5174 MODE=dev pnpm --filter @conference-operator/hub-server dev
 ```
 
 Les deux portées se relisent séparément, et il le faut : la disposition mobile
@@ -197,7 +197,7 @@ En conséquence, pour les pages restées des gabarits :
 Tailwind employée dans une page impose de le régénérer :
 
 ```bash
-pnpm --filter @cloudnord/ui build
+pnpm --filter @conference-operator/ui build
 ```
 
 Sans cela la classe n'a tout simplement aucun style : rien ne lève, rien ne

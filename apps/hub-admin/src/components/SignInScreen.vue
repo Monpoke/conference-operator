@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button, Field, Hint, Panel } from '@cloudnord/components'
+import { Button, Field, Hint, Panel } from '@conference-operator/components'
 import { storeToRefs } from 'pinia'
 import { ref } from 'vue'
 import { useSessionStore } from '../stores/session.js'

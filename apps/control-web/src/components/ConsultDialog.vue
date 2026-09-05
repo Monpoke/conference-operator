@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { DisplayPayload } from '@cloudnord/contract'
-import { Button, Dialog } from '@cloudnord/components'
-import { timelinePosition } from '@cloudnord/program/selectors'
+import type { DisplayPayload } from '@conference-operator/contract'
+import { Button, Dialog } from '@conference-operator/components'
+import { timelinePosition } from '@conference-operator/program/selectors'
 import { computed } from 'vue'
 import { otherRooms } from '../lib/rooms.js'
 import { CONSULT_TABS, useConsultStore, type ConsultTab } from '../stores/consult.js'

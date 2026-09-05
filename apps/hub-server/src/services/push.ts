@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import webpush from 'web-push'
-import { hubSetting, pushSubscription } from '@cloudnord/db/hub'
-import type { NotifLevels } from '@cloudnord/contract'
+import { hubSetting, pushSubscription } from '@conference-operator/db/hub'
+import type { NotifLevels } from '@conference-operator/contract'
 import type { HubDatabase } from '../db.js'
 
 /**

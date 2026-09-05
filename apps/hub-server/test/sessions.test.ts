@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { normalizeProgram, sessionsForRoom, type Program } from '@cloudnord/program'
-import { DEFAULT_VOD_POLICY } from '@cloudnord/contract'
+import { normalizeProgram, sessionsForRoom, type Program } from '@conference-operator/program'
+import { DEFAULT_VOD_POLICY } from '@conference-operator/contract'
 import { openHubDatabase, type HubDatabase } from '../src/db.js'
 import { SessionStateService, SettingsService } from '../src/services/sessions.js'
 import { RoomService } from '../src/services/rooms.js'
@@ -302,7 +302,7 @@ describe('enriched program views', () => {
  *
  * The UI already greyed out "End" on a talk that had not been launched; the
  * procedure itself accepted it. Nothing broke — we simply wrote `ended` on a talk
- * that had not taken place. The table now lives in `@cloudnord/room-state`, and
+ * that had not taken place. The table now lives in `@conference-operator/room-state`, and
  * both sides read it.
  */
 describe('gestures refused by the lifecycle', () => {

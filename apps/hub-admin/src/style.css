@@ -1,9 +1,9 @@
 /*
  * The console's stylesheet.
  *
- * Everything comes from `@cloudnord/ui`: the palette, the status dots, and the
+ * Everything comes from `@conference-operator/ui`: the palette, the status dots, and the
  * bridge to shadcn's tokens. The scanned sources are declared over there, in
  * `apps.css` — and certainly not in `theme.css`, which feeds the frozen sheet of
  * the pages still built from templates.
  */
-@import "@cloudnord/ui/apps.css";
+@import "@conference-operator/ui/apps.css";

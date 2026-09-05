@@ -1,7 +1,7 @@
 import { createORPCClient } from '@orpc/client'
 import { RPCLink } from '@orpc/client/fetch'
 import type { ContractRouterClient } from '@orpc/contract'
-import { contract } from '@cloudnord/contract'
+import { contract } from '@conference-operator/contract'
 import { anonymousTokenStore, browserTokenStore, type TokenStore } from './token.js'
 
 /**

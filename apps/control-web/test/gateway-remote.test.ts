@@ -1,4 +1,4 @@
-import type { ControlCommand, ControlView } from '@cloudnord/contract'
+import type { ControlCommand, ControlView } from '@conference-operator/contract'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   OBSERVATION_MS,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Toaster } from '@cloudnord/components'
+import { Toaster } from '@conference-operator/components'
 import { computed, onBeforeUnmount, onMounted, useTemplateRef, watch, watchEffect } from 'vue'
 import CapturePanel from './components/CapturePanel.vue'
 import TalkDialogs from './components/TalkDialogs.vue'

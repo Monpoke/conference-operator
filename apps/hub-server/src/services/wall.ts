@@ -7,8 +7,8 @@ import {
   type Comment,
   type CommentSource,
   type Question,
-} from '@cloudnord/contract'
-import { comment, question, questionVote } from '@cloudnord/db/hub'
+} from '@conference-operator/contract'
+import { comment, question, questionVote } from '@conference-operator/db/hub'
 import type { HubDatabase } from '../db.js'
 
 const CHANNEL = 'wall'

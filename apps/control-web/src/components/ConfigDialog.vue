@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { DisplayPayload } from '@cloudnord/contract'
-import { Button, Dialog, Panel } from '@cloudnord/components'
+import type { DisplayPayload } from '@conference-operator/contract'
+import { Button, Dialog, Panel } from '@conference-operator/components'
 import { computed } from 'vue'
 import { ROLES, useConfigStore } from '../stores/config.js'
 import { useKeyboardLayer } from '../stores/keyboard.js'

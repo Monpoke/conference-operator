@@ -1,5 +1,5 @@
 {
-  "name": "@cloudnord/hub-server",
+  "name": "@conference-operator/hub-server",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,12 +13,12 @@
   },
   "dependencies": {
     "@better-auth/core": "1.7.1",
-    "@cloudnord/contract": "workspace:*",
-    "@cloudnord/db": "workspace:*",
-    "@cloudnord/room-state": "workspace:*",
-    "@cloudnord/format": "workspace:*",
-    "@cloudnord/program": "workspace:*",
-    "@cloudnord/ui": "workspace:*",
+    "@conference-operator/contract": "workspace:*",
+    "@conference-operator/db": "workspace:*",
+    "@conference-operator/room-state": "workspace:*",
+    "@conference-operator/format": "workspace:*",
+    "@conference-operator/program": "workspace:*",
+    "@conference-operator/ui": "workspace:*",
     "@fastify/http-proxy": "11.3.0",
     "@fastify/static": "8.2.0",
     "@orpc/server": "2.0.0-beta.29",
@@ -33,8 +33,8 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@cloudnord/hub-admin": "workspace:*",
-    "@cloudnord/hub-client": "workspace:*",
+    "@conference-operator/hub-admin": "workspace:*",
+    "@conference-operator/hub-client": "workspace:*",
     "@orpc/client": "2.0.0-beta.29",
     "@orpc/contract": "2.0.0-beta.29",
     "@types/better-sqlite3": "7.6.13",

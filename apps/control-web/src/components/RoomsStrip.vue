@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { DisplayPayload } from '@cloudnord/contract'
+import type { DisplayPayload } from '@conference-operator/contract'
 import { computed } from 'vue'
 import { otherRooms, stripEntry } from '../lib/rooms.js'
 import { useProgramsStore } from '../stores/programs.js'

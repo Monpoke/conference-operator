@@ -32,22 +32,22 @@ importers:
 
   apps/control-web:
     dependencies:
-      '@cloudnord/components':
+      '@conference-operator/components':
         specifier: workspace:*
         version: link:../../packages/components
-      '@cloudnord/contract':
+      '@conference-operator/contract':
         specifier: workspace:*
         version: link:../../packages/contract
-      '@cloudnord/format':
+      '@conference-operator/format':
         specifier: workspace:*
         version: link:../../packages/format
-      '@cloudnord/hub-client':
+      '@conference-operator/hub-client':
         specifier: workspace:*
         version: link:../../packages/hub-client
-      '@cloudnord/program':
+      '@conference-operator/program':
         specifier: workspace:*
         version: link:../../packages/program
-      '@cloudnord/room-state':
+      '@conference-operator/room-state':
         specifier: workspace:*
         version: link:../../packages/room-state
       pinia:
@@ -57,7 +57,7 @@ importers:
         specifier: 3.5.22
         version: 3.5.22(typescript@6.0.3)
     devDependencies:
-      '@cloudnord/ui':
+      '@conference-operator/ui':
         specifier: workspace:*
         version: link:../../packages/ui
       '@tailwindcss/vite':
@@ -87,19 +87,19 @@ importers:
 
   apps/hub-admin:
     dependencies:
-      '@cloudnord/components':
+      '@conference-operator/components':
         specifier: workspace:*
         version: link:../../packages/components
-      '@cloudnord/contract':
+      '@conference-operator/contract':
         specifier: workspace:*
         version: link:../../packages/contract
-      '@cloudnord/format':
+      '@conference-operator/format':
         specifier: workspace:*
         version: link:../../packages/format
-      '@cloudnord/hub-client':
+      '@conference-operator/hub-client':
         specifier: workspace:*
         version: link:../../packages/hub-client
-      '@cloudnord/room-state':
+      '@conference-operator/room-state':
         specifier: workspace:*
         version: link:../../packages/room-state
       pinia:
@@ -112,7 +112,7 @@ importers:
         specifier: 4.5.1
         version: 4.5.1(vue@3.5.22(typescript@6.0.3))
     devDependencies:
-      '@cloudnord/ui':
+      '@conference-operator/ui':
         specifier: workspace:*
         version: link:../../packages/ui
       '@tailwindcss/vite':
@@ -145,22 +145,22 @@ importers:
       '@better-auth/core':
         specifier: 1.7.1
         version: 1.7.1(@better-auth/utils@0.5.0)(@better-fetch/fetch@1.3.1)(better-call@1.4.0(zod@4.4.3))(jose@6.2.9)(kysely@0.29.5)(nanostores@1.5.2)
-      '@cloudnord/contract':
+      '@conference-operator/contract':
         specifier: workspace:*
         version: link:../../packages/contract
-      '@cloudnord/db':
+      '@conference-operator/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@cloudnord/format':
+      '@conference-operator/format':
         specifier: workspace:*
         version: link:../../packages/format
-      '@cloudnord/program':
+      '@conference-operator/program':
         specifier: workspace:*
         version: link:../../packages/program
-      '@cloudnord/room-state':
+      '@conference-operator/room-state':
         specifier: workspace:*
         version: link:../../packages/room-state
-      '@cloudnord/ui':
+      '@conference-operator/ui':
         specifier: workspace:*
         version: link:../../packages/ui
       '@fastify/http-proxy':
@@ -200,10 +200,10 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
     devDependencies:
-      '@cloudnord/hub-admin':
+      '@conference-operator/hub-admin':
         specifier: workspace:*
         version: link:../hub-admin
-      '@cloudnord/hub-client':
+      '@conference-operator/hub-client':
         specifier: workspace:*
         version: link:../../packages/hub-client
       '@orpc/client':
@@ -236,22 +236,22 @@ importers:
 
   apps/room-client:
     dependencies:
-      '@cloudnord/contract':
+      '@conference-operator/contract':
         specifier: workspace:*
         version: link:../../packages/contract
-      '@cloudnord/db':
+      '@conference-operator/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@cloudnord/format':
+      '@conference-operator/format':
         specifier: workspace:*
         version: link:../../packages/format
-      '@cloudnord/program':
+      '@conference-operator/program':
         specifier: workspace:*
         version: link:../../packages/program
-      '@cloudnord/room-state':
+      '@conference-operator/room-state':
         specifier: workspace:*
         version: link:../../packages/room-state
-      '@cloudnord/ui':
+      '@conference-operator/ui':
         specifier: workspace:*
         version: link:../../packages/ui
       '@fastify/http-proxy':
@@ -294,10 +294,10 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
     devDependencies:
-      '@cloudnord/control-web':
+      '@conference-operator/control-web':
         specifier: workspace:*
         version: link:../control-web
-      '@cloudnord/hub-server':
+      '@conference-operator/hub-server':
         specifier: workspace:*
         version: link:../hub-server
       '@types/better-sqlite3':
@@ -342,10 +342,10 @@ importers:
 
   packages/components:
     dependencies:
-      '@cloudnord/format':
+      '@conference-operator/format':
         specifier: workspace:*
         version: link:../format
-      '@cloudnord/room-state':
+      '@conference-operator/room-state':
         specifier: workspace:*
         version: link:../room-state
       class-variance-authority:
@@ -385,10 +385,10 @@ importers:
 
   packages/contract:
     dependencies:
-      '@cloudnord/program':
+      '@conference-operator/program':
         specifier: workspace:*
         version: link:../program
-      '@cloudnord/room-state':
+      '@conference-operator/room-state':
         specifier: workspace:*
         version: link:../room-state
       '@orpc/contract':
@@ -407,7 +407,7 @@ importers:
 
   packages/db:
     dependencies:
-      '@cloudnord/contract':
+      '@conference-operator/contract':
         specifier: workspace:*
         version: link:../contract
       better-sqlite3:
@@ -441,7 +441,7 @@ importers:
 
   packages/hub-client:
     dependencies:
-      '@cloudnord/contract':
+      '@conference-operator/contract':
         specifier: workspace:*
         version: link:../contract
       '@orpc/client':
@@ -476,7 +476,7 @@ importers:
 
   packages/room-state:
     dependencies:
-      '@cloudnord/program':
+      '@conference-operator/program':
         specifier: workspace:*
         version: link:../program
     devDependencies:
@@ -498,7 +498,7 @@ importers:
 
   packages/ui:
     devDependencies:
-      '@cloudnord/room-state':
+      '@conference-operator/room-state':
         specifier: workspace:*
         version: link:../room-state
       '@tailwindcss/cli':

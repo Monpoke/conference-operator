@@ -1,5 +1,5 @@
-import type { VodEntry, UploadRow, VodList, UploadsView } from '@cloudnord/contract'
-import { useToast } from '@cloudnord/components'
+import type { VodEntry, UploadRow, VodList, UploadsView } from '@conference-operator/contract'
+import { useToast } from '@conference-operator/components'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useActionsStore } from './actions.js'

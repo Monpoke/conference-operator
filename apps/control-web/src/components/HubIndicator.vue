@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Connectivity } from '@cloudnord/contract'
+import type { Connectivity } from '@conference-operator/contract'
 import { computed } from 'vue'
 import { clockDrift } from '../lib/clock-drift.js'
 import Indicator from './Indicator.vue'

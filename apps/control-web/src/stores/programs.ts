@@ -1,4 +1,4 @@
-import type { Session } from '@cloudnord/program'
+import type { Session } from '@conference-operator/program'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 

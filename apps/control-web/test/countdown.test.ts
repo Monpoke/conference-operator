@@ -1,4 +1,4 @@
-import { NO_EDITING_MARKS } from '@cloudnord/contract'
+import { NO_EDITING_MARKS } from '@conference-operator/contract'
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import Countdown from '../src/components/Countdown.vue'

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ConfirmDialog } from '@cloudnord/components'
+import { ConfirmDialog } from '@conference-operator/components'
 import { useTalkStore } from '../stores/talk.js'
 import { useKeyboardLayer } from '../stores/keyboard.js'
 

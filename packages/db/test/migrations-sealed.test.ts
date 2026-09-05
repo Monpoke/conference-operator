@@ -25,10 +25,10 @@ describe('sealed migrations', () => {
               '',
               'A published migration is not modified: add a new one instead.',
               '  git checkout -- packages/db/migrations',
-              `  pnpm --filter @cloudnord/db generate:${set}`,
+              `  pnpm --filter @conference-operator/db generate:${set}`,
               '',
               "If the change is deliberate and no database exists anywhere else:",
-              '  pnpm --filter @cloudnord/db seal',
+              '  pnpm --filter @conference-operator/db seal',
             ].join('\n'),
       ).toEqual([])
     })

@@ -5,7 +5,7 @@
  * order of magnitude counts: a machine two hours from the hub does not have the
  * same problem as one two seconds away, and that is what needs reading.
  *
- * Here rather than in `@cloudnord/format`: the control app is the only surface
+ * Here rather than in `@conference-operator/format`: the control app is the only surface
  * that displays it, because it is the only one that has to explain a countdown
  * that does not match the operator's watch.
  */

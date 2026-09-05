@@ -1,4 +1,4 @@
-import { TAILWIND_CSS } from '@cloudnord/ui'
+import { TAILWIND_CSS } from '@conference-operator/ui'
 
 /**
  * The window for entering the hub's address, on the very first launch.

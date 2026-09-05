@@ -6,7 +6,7 @@ import {
   type RoomConfig,
   type RoomConfigInput,
   type RoomStatus,
-} from '@cloudnord/contract'
+} from '@conference-operator/contract'
 import {
   deviceRequest,
   room,
@@ -14,7 +14,7 @@ import {
   roomState,
   sessionFeedback,
   sessionOverride,
-} from '@cloudnord/db/hub'
+} from '@conference-operator/db/hub'
 import type { HubDatabase } from '../db.js'
 
 /**

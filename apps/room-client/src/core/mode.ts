@@ -1,4 +1,4 @@
-import type { ExecutionMode } from '@cloudnord/contract'
+import type { ExecutionMode } from '@conference-operator/contract'
 
 /**
  * The room's execution mode.

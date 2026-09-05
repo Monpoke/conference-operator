@@ -5,7 +5,7 @@
  * string, with no network, no CDN and no bundler. So they cannot `import`. This
  * module is the entry point `scripts/build-browser.mjs` freezes into
  * `MACHINE_JS`, which the pages inline in a `<script>` — the same pattern as the
- * Tailwind sheet of `@cloudnord/ui`.
+ * Tailwind sheet of `@conference-operator/ui`.
  *
  * It exports pure computation only: nothing from zod, nothing from Node, no DOM
  * access. That is what lets the same function decide the colour of a status dot
@@ -55,4 +55,4 @@ export {
 } from './lifecycle.js'
 export type { SessionAction, SessionStatus } from './lifecycle.js'
 
-export { timelinePosition } from '@cloudnord/program/selectors'
+export { timelinePosition } from '@conference-operator/program/selectors'

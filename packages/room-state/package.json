@@ -1,5 +1,5 @@
 {
-  "name": "@cloudnord/room-state",
+  "name": "@conference-operator/room-state",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -16,7 +16,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@cloudnord/program": "workspace:*"
+    "@conference-operator/program": "workspace:*"
   },
   "devDependencies": {
     "esbuild": "0.28.2",

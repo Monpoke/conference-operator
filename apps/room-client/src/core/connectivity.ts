@@ -1,4 +1,4 @@
-import type { Connectivity } from '@cloudnord/contract'
+import type { Connectivity } from '@conference-operator/contract'
 
 export interface ConnectivityProbeOptions {
   hubOrigin: string

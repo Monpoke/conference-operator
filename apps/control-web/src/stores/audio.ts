@@ -1,4 +1,4 @@
-import { DB_FLOOR, type InputLevel } from '@cloudnord/contract'
+import { DB_FLOOR, type InputLevel } from '@conference-operator/contract'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { StateStream } from './room.js'

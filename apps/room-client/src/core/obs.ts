@@ -1,4 +1,4 @@
-import { DB_FLOOR, type InputLevel, type ObsInstance, type ObsState, type SceneRole } from '@cloudnord/contract'
+import { DB_FLOOR, type InputLevel, type ObsInstance, type ObsState, type SceneRole } from '@conference-operator/contract'
 
 /**
  * The surface of OBS we actually need.

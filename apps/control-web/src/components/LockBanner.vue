@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Button } from '@cloudnord/components'
-import { timeAgo } from '@cloudnord/format'
+import { Button } from '@conference-operator/components'
+import { timeAgo } from '@conference-operator/format'
 import { useSessionStore } from '../stores/session.js'
 import { useLockStore } from '../stores/lock.js'
 

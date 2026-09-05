@@ -1,7 +1,7 @@
 import { EventEmitter, on } from 'node:events'
 import { and, asc, desc, eq, gt, isNull, or } from 'drizzle-orm'
-import { commandSchema, type Command, type CommandPayloadInput } from '@cloudnord/contract'
-import { command } from '@cloudnord/db/hub'
+import { commandSchema, type Command, type CommandPayloadInput } from '@conference-operator/contract'
+import { command } from '@conference-operator/db/hub'
 import type { HubDatabase } from '../db.js'
 
 /** Internal envelope: the command plus its target, to filter the fanout. */

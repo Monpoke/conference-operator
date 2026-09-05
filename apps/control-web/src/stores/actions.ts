@@ -1,4 +1,4 @@
-import { useToast } from '@cloudnord/components'
+import { useToast } from '@conference-operator/components'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { ActionResult } from '../lib/gateway.js'

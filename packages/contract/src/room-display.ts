@@ -1,4 +1,4 @@
-import type { Program, Session, SponsorTier } from '@cloudnord/program'
+import type { Program, Session, SponsorTier } from '@conference-operator/program'
 import type { EventIdentity } from './event-identity.js'
 import type {
   Connectivity,

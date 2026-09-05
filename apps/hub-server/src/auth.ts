@@ -3,7 +3,7 @@ import type { BetterAuthOptions } from 'better-auth'
 import { getMigrations } from 'better-auth/db/migration'
 import { bearer } from 'better-auth/plugins'
 import { deviceAuthorization } from 'better-auth/plugins/device-authorization'
-import type { SqliteDatabase } from '@cloudnord/db'
+import type { SqliteDatabase } from '@conference-operator/db'
 
 /**
  * Better Auth style duration ("5s", "30m"). The package's `TimeString` type is

@@ -8,15 +8,15 @@ import {
   isCommandExpired,
   type CaptureView,
   type Command,
-} from '@cloudnord/contract'
-import { roomBreak } from '@cloudnord/room-state'
+} from '@conference-operator/contract'
+import { roomBreak } from '@conference-operator/room-state'
 import {
   currentSession,
   nextSession,
   DEFAULT_TIMEZONE,
   openFeedbackUrl,
   type Session,
-} from '@cloudnord/program'
+} from '@conference-operator/program'
 import type { RawCapture } from './services/ingest.js'
 import { checkOpenFeedback } from './services/openfeedback.js'
 import {

@@ -1,5 +1,5 @@
-import type { DisplayPayload } from '@cloudnord/contract'
-import { nextTalk } from '@cloudnord/room-state'
+import type { DisplayPayload } from '@conference-operator/contract'
+import { nextTalk } from '@conference-operator/room-state'
 
 /**
  * What the large stopwatch counts.

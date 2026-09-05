@@ -2,7 +2,7 @@ import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify'
 import fastifyProxy from '@fastify/http-proxy'
 import fastifyStatic from '@fastify/static'
 import { join } from 'node:path'
-import { consolePaths, CONTROL_PATH, controlRoomIdFromPath } from '@cloudnord/contract'
+import { consolePaths, CONTROL_PATH, controlRoomIdFromPath } from '@conference-operator/contract'
 import { WebSocketServer, type WebSocket as NodeWebSocket } from 'ws'
 import { RPCHandler as FastifyRPCHandler } from '@orpc/server/fastify'
 import { RPCHandler as WebSocketRPCHandler } from '@orpc/server/websocket'
@@ -507,7 +507,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
         reply.status(503)
         return reply.send(
           'Console non construite. Depuis les sources : ' +
-            'pnpm --filter @cloudnord/hub-admin build',
+            'pnpm --filter @conference-operator/hub-admin build',
         )
       }
       return reply.send(
@@ -551,7 +551,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       reply.status(503)
       return reply.send(
         'Régie non construite. Depuis les sources : ' +
-          'pnpm --filter @cloudnord/control-web build',
+          'pnpm --filter @conference-operator/control-web build',
       )
     }
 

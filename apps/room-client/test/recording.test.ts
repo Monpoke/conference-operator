@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { normalizeProgram, sessionsForRoom, type Session } from '@cloudnord/program'
+import { normalizeProgram, sessionsForRoom, type Session } from '@conference-operator/program'
 import {
   RecordingSession,
   buildFilenameFormat,

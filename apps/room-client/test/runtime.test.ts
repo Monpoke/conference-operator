@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { commandSchema, type Command, type CommandPayloadInput } from '@cloudnord/contract'
-import { normalizeProgram } from '@cloudnord/program'
+import { commandSchema, type Command, type CommandPayloadInput } from '@conference-operator/contract'
+import { normalizeProgram } from '@conference-operator/program'
 import { LocalStore } from '../src/core/store.js'
 import { RoomRuntime } from '../src/core/runtime.js'
 

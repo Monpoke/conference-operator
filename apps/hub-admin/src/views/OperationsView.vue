@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { appearanceOf } from '@cloudnord/room-state'
-import { Badge, Empty, Panel, StatusDot } from '@cloudnord/components'
-import { time, timeAgo } from '@cloudnord/format'
+import { appearanceOf } from '@conference-operator/room-state'
+import { Badge, Empty, Panel, StatusDot } from '@conference-operator/components'
+import { time, timeAgo } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
 import { useConferencesStore } from '../stores/conferences.js'

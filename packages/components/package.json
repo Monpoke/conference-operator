@@ -1,5 +1,5 @@
 {
-  "name": "@cloudnord/components",
+  "name": "@conference-operator/components",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -11,8 +11,8 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "@cloudnord/room-state": "workspace:*",
-    "@cloudnord/format": "workspace:*",
+    "@conference-operator/room-state": "workspace:*",
+    "@conference-operator/format": "workspace:*",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "reka-ui": "2.6.0",

@@ -1,4 +1,4 @@
-import { duration } from '@cloudnord/format'
+import { duration } from '@conference-operator/format'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useNotificationsStore } from './notifications.js'

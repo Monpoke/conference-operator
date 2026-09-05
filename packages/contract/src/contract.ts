@@ -1,6 +1,6 @@
 import { eventIterator, oc } from '@orpc/contract'
 import { z } from 'zod'
-import { programSchema } from '@cloudnord/program'
+import { programSchema } from '@conference-operator/program'
 import { bannerSchema, commandSchema } from './commands.js'
 import { envelopeSchema, ingestResultSchema } from './events.js'
 import {

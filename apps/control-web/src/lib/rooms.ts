@@ -1,4 +1,4 @@
-import type { ControlDiagnostics, DisplayPayload } from '@cloudnord/contract'
+import type { ControlDiagnostics, DisplayPayload } from '@conference-operator/contract'
 import {
   appearanceOf,
   outlineOf,
@@ -7,10 +7,10 @@ import {
   effectiveEndAt,
   breakOfSlots,
   STALE_VIEW_MS,
-} from '@cloudnord/room-state'
-import type { Session } from '@cloudnord/program'
-import { timelinePosition } from '@cloudnord/program/selectors'
-import { duration, time } from '@cloudnord/format'
+} from '@conference-operator/room-state'
+import type { Session } from '@conference-operator/program'
+import { timelinePosition } from '@conference-operator/program/selectors'
+import { duration, time } from '@conference-operator/format'
 
 /** What the hub knows of a room, or `null` if its view does not have it yet. */
 export function hubView(

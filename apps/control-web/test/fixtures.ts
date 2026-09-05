@@ -1,13 +1,13 @@
-import type { DisplayPayload } from '@cloudnord/contract'
-import type { VisibleConfig, ObsState } from '@cloudnord/contract'
-import type { Session, Speaker } from '@cloudnord/program'
-import { NO_EDITING_MARKS } from '@cloudnord/contract'
+import type { DisplayPayload } from '@conference-operator/contract'
+import type { VisibleConfig, ObsState } from '@conference-operator/contract'
+import type { Session, Speaker } from '@conference-operator/program'
+import { NO_EDITING_MARKS } from '@conference-operator/contract'
 
 /**
  * A plausible room, and **typed with no escape hatch**.
  *
  * No `as unknown as DisplayPayload` here, and that is the point. The type is
- * shared from `@cloudnord/contract` precisely so that the machine and the control
+ * shared from `@conference-operator/contract` precisely so that the machine and the control
  * app cannot diverge; casting it in the fixtures made that sharing decorative — a
  * field added to the payload would have left the whole suite green on a room that
  * cannot exist.

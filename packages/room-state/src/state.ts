@@ -10,8 +10,8 @@ import {
   sessionsForRoom,
   timelinePosition,
   type ScheduledSession,
-} from '@cloudnord/program/selectors'
-import type { Program, Session } from '@cloudnord/program'
+} from '@conference-operator/program/selectors'
+import type { Program, Session } from '@conference-operator/program'
 import type { SessionStatus } from './lifecycle.js'
 
 /**

@@ -1,5 +1,5 @@
-import { MACHINE_JS } from '@cloudnord/room-state'
-import { TAILWIND_CSS } from '@cloudnord/ui'
+import { MACHINE_JS } from '@conference-operator/room-state'
+import { TAILWIND_CSS } from '@conference-operator/ui'
 
 import { OBS_ON_AIR_CSS, OBS_ON_AIR_JS } from './obs-browser.js'
 

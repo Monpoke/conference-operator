@@ -1,4 +1,4 @@
-import type { DisplayPayload } from '@cloudnord/contract'
+import type { DisplayPayload } from '@conference-operator/contract'
 
 /**
  * The room's state, embedded in the shell.

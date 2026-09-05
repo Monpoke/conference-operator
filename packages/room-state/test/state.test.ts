@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { applySharedBreaks, currentSession, normalizeProgram, sessionsForRoom } from '@cloudnord/program'
+import { applySharedBreaks, currentSession, normalizeProgram, sessionsForRoom } from '@conference-operator/program'
 
 import {
   roomBreak,

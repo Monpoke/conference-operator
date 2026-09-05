@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import { ROOM_STATES } from '@cloudnord/room-state'
-import { sessionSchema } from '@cloudnord/program'
+import { ROOM_STATES } from '@conference-operator/room-state'
+import { sessionSchema } from '@conference-operator/program'
 import {
   connectivitySchema,
   displayModeSchema,

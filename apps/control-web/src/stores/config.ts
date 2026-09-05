@@ -1,4 +1,4 @@
-import type { VisibleConfig, ObsInstance } from '@cloudnord/contract'
+import type { VisibleConfig, ObsInstance } from '@conference-operator/contract'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { useActionsStore } from './actions.js'

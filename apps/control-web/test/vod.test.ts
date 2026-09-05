@@ -1,5 +1,5 @@
-import type { VodEntry } from '@cloudnord/contract'
-import { useToast } from '@cloudnord/components'
+import type { VodEntry } from '@conference-operator/contract'
+import { useToast } from '@conference-operator/components'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'

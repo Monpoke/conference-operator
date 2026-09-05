@@ -23,7 +23,7 @@
 #     that follows it — `--prod` is not enough, see below.
 #
 # The install is moreover **filtered on the hub**
-# (`--filter @cloudnord/hub-server...`): without that filter, `pnpm` would also
+# (`--filter @conference-operator/hub-server...`): without that filter, `pnpm` would also
 # install the room client and download Electron — a hundred and fifty megabytes
 # for a binary that will never run here.
 
@@ -64,16 +64,16 @@ COPY packages/ui/package.json packages/ui/
 # limits the install to the two applications' graphs.
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --ignore-scripts \
-      --filter @cloudnord/hub-admin... --filter @cloudnord/control-web...
+      --filter @conference-operator/hub-admin... --filter @conference-operator/control-web...
 
 COPY packages/ packages/
 COPY apps/hub-admin/ apps/hub-admin/
 COPY apps/control-web/ apps/control-web/
-RUN pnpm --filter @cloudnord/hub-admin build
+RUN pnpm --filter @conference-operator/hub-admin build
 # The control app, served by the hub for the mobile control app — the same bundle
 # a room machine's installer embeds. Without it, `/regie` answers 503 saying so,
 # which is an incomplete deployment and not an operating state.
-RUN pnpm --filter @cloudnord/control-web build
+RUN pnpm --filter @conference-operator/control-web build
 
 
 # --- Build ----------------------------------------------------------------
@@ -117,9 +117,9 @@ COPY packages/ui/package.json packages/ui/
 # at the cost of a full compilation toolchain in the build image. Doing without it
 # also makes the base interchangeable: see `NODE_VERSION` above.
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm install --frozen-lockfile --prod --ignore-scripts --filter @cloudnord/hub-server...
+    pnpm install --frozen-lockfile --prod --ignore-scripts --filter @conference-operator/hub-server...
 
-# The sources next. `tsx` reads them as they are at start-up; `@cloudnord/ui`'s
+# The sources next. `tsx` reads them as they are at start-up; `@conference-operator/ui`'s
 # Tailwind sheet is committed (`src/generated/`), so there is nothing to compile
 # here either.
 COPY packages/ packages/

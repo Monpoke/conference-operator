@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { CommentSource } from '@cloudnord/contract'
+import type { CommentSource } from '@conference-operator/contract'
 import type { PostInput, WallService } from './wall.js'
 
 /**

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Badge, Button, Dialog, Empty, Panel, useToast } from '@cloudnord/components'
-import { timeAgo } from '@cloudnord/format'
+import { Badge, Button, Dialog, Empty, Panel, useToast } from '@conference-operator/components'
+import { timeAgo } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'

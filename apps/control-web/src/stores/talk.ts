@@ -1,4 +1,4 @@
-import { remaining, time } from '@cloudnord/format'
+import { remaining, time } from '@conference-operator/format'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useActionsStore } from './actions.js'

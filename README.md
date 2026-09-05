@@ -46,16 +46,22 @@ Garder ce compte même avec Google : Google exige internet au moment de la
 connexion, et tout ceci est bâti pour survivre à une coupure. Un hub qui ne
 s'ouvre que par Google enferme l'équipe dehors le matin où le réseau tombe.
 
-**Les salles.** Installer le paquet de la release sur chaque machine —
-`room-control-<version>.exe` sous Windows, `.AppImage` ou `.tar.gz` sous Linux —
-après avoir vérifié son empreinte :
+**Les salles.** La même application est publiée pour les deux systèmes, avec un
+fichier d'empreintes par plateforme. Vérifier avant de recopier :
 
 ```bash
-sha256sum -c SHA256SUMS-windows.txt
+sha256sum -c SHA256SUMS-windows.txt   # room-control-<version>.exe
+sha256sum -c SHA256SUMS-linux.txt     # room-control-<version>.AppImage et .tar.gz
 ```
 
+Sous Windows, l'installeur NSIS s'installe pour l'utilisateur courant. Sous
+Linux, l'AppImage se copie et se lance telle quelle (`chmod +x`) ; si la machine
+n'a pas FUSE 2 — Ubuntu ne l'installe plus par défaut depuis la 22.04 — prendre
+l'archive `tar.gz`, qui n'en demande pas : on l'extrait et on lance
+`room-control`.
+
 Au premier lancement, la machine demande l'adresse du hub, puis affiche son code
-d'appairage. **Faire ces trois postes avant le jour J**, pas devant une salle qui
+d'appairage. **Faire les postes avant le jour J**, pas devant une salle qui
 attend : le binaire Windows n'est pas signé et SmartScreen avertit au premier
 lancement. Ensuite, tout se passe dans [le RUNBOOK](apps/room-client/RUNBOOK.md).
 

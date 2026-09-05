@@ -1273,13 +1273,19 @@ un-fichier de l'installeur : on la copie, `chmod +x`, on lance. Elle réclame
 FUSE 2, qu'Ubuntu n'installe plus par défaut depuis la 22.04 —
 `--appimage-extract-and-run` s'en passe, mais c'est une chose à savoir avant le
 jour J, pas à découvrir devant une salle. Le `tar.gz` ignore FUSE : on extrait,
-on lance `regie-de-salle`. C'est le format qui ne peut pas échouer, et c'est ce
+on lance `room-control`. C'est le format qui ne peut pas échouer, et c'est ce
 qui autorise l'autre à être le format commode. Pas de `deb` : il s'installe pour
 tout le système, demande root et lie le paquet à une famille de distributions.
 
-L'exécutable Linux s'appelle `regie-de-salle`, pas « Régie de salle » : le
-produit garde son nom là où on le lit — fenêtre, entrée de menu — mais ici,
-c'est une commande, qu'on tape dans un shell, en SSH ou dans une unité systemd.
+**Les fichiers portent des noms anglais** — `room-control-1.2.0.exe`,
+`room-control-1.2.0.AppImage`, et l'exécutable `room-control` — là où le produit
+s'appelle « Régie de salle » partout où on le lit : fenêtre, raccourci, menu
+Démarrer, entrée d'ajout/suppression de programmes. C'est la règle du dépôt,
+appliquée là où elle vaut : un nom de fichier se tape dans un shell, en SSH,
+dans une unité systemd, et se retrouve dans une URL de release ; c'est du code,
+pas un libellé. Les mots viennent du glossaire de [CONTRIBUTING](CONTRIBUTING.md)
+— *régie* donne `control`, *salle* donne `room` — et pas d'une traduction
+improvisée par paquet.
 
 Les paquets Linux pèsent **96 Mo** (AppImage) et **115 Mo** (`tar.gz`) : le même
 contenu, la première en squashfs compressé, la seconde en gzip.
@@ -2750,8 +2756,8 @@ porte :
 | | Où | Quoi |
 |---|---|---|
 | Hub | `ghcr.io/monpoke/conference-operator/hub` | image `linux/amd64`, taguée `1.2.0`, `1.2` et `latest` |
-| Régie de salle, Windows | pièces jointes de la release | `regie-de-salle-1.2.0.exe` et `SHA256SUMS-windows.txt` |
-| Régie de salle, Linux | pièces jointes de la release | `regie-de-salle-1.2.0.AppImage`, `.tar.gz` et `SHA256SUMS-linux.txt` |
+| Régie de salle, Windows | pièces jointes de la release | `room-control-1.2.0.exe` et `SHA256SUMS-windows.txt` |
+| Régie de salle, Linux | pièces jointes de la release | `room-control-1.2.0.AppImage`, `.tar.gz` et `SHA256SUMS-linux.txt` |
 
 **Un tag, un couple.** Le hub et le client de salle parlent le même contrat
 oRPC, versionné nulle part ailleurs que dans ce dépôt. Les publier séparément
@@ -2814,7 +2820,7 @@ fichier » — quel dépôt, quel workflow, quel commit, pour ce condensé exact
 ```bash
 gh attestation verify oci://ghcr.io/monpoke/conference-operator/hub:1.2.0 \
   --repo Monpoke/conference-operator
-gh attestation verify regie-de-salle-1.2.0.exe --repo Monpoke/conference-operator
+gh attestation verify room-control-1.2.0.exe --repo Monpoke/conference-operator
 ```
 
 Ça ne recouvre ni l'un ni l'autre des deux gestes déjà là. `SHA256SUMS.txt`

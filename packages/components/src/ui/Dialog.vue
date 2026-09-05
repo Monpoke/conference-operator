@@ -25,8 +25,17 @@ import {
  *    once, so stacking the recordings modal over the schedule and pressing
  *    Escape dismissed both — which nobody expects.
  *
- * Two of Reka's defaults are turned off on purpose, and both would be visible:
- * see the scroll-lock note below, and `@interactOutside` on touch screens.
+ * One of Reka's defaults is turned off on purpose — the scroll lock, see the note
+ * below. The other one was, and must not be: `disableOutsidePointerEvents`.
+ *
+ * Reka blocks the outside by switching off `<body>`'s pointer events and
+ * switching them back on, layer by layer, for whatever declared itself the
+ * blocking layer. Setting the prop to `false` opted this content out of that
+ * declaration while the overlay still made the declaration — so the overlay got
+ * `pointer-events: auto` and the panel inherited the body's `none`. It rendered,
+ * it was read, and it answered nothing: every click went through to the overlay
+ * behind, which reads as an outside interaction and closes. A room reported it as
+ * «&nbsp;la modale se ferme dès qu'on la touche&nbsp;».
  */
 const open = defineModel<boolean>('open', { required: true })
 
@@ -51,7 +60,6 @@ const WIDTHS = {
       <DialogContent
         class="fixed top-1/2 left-1/2 z-50 max-h-[90vh] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-edge bg-surface p-4"
         :class="WIDTHS[width ?? 'normal']"
-        :disable-outside-pointer-events="false"
         @open-auto-focus="
           /*
            * Reka focuses the first focusable child. Here that is often a

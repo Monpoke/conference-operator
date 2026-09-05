@@ -2699,8 +2699,22 @@ orchestrateur.
 ## Publier une version
 
 ```bash
-git tag v1.2.0 && git push origin v1.2.0
+pnpm release 1.2.0     # ou : patch, minor, major
 ```
+
+Le script (`scripts/tag-release.sh`) pose le tag annoté `v1.2.0` et le pousse —
+c'est le seul geste qui déclenche la publication. Il refuse au passage ce qu'on
+ne rattrape pas après coup : un numéro qui n'est pas du semver ou qui porte des
+métadonnées de build (`+` est interdit dans un tag Docker), un tag déjà publié,
+un numéro antérieur au dernier (« latest » désignerait une image plus ancienne),
+un arbre de travail sale, ou un `main` qui n'est pas exactement `origin/main`.
+Il n'exécute pas les tests : `release.yml` appelle `ci.yml` avant de construire
+quoi que ce soit et ne publie rien derrière une suite rouge. `--dry-run` montre
+ce qui serait posé, `--yes` se passe de la confirmation.
+
+Une pré-version se nomme en toutes lettres (`pnpm release 1.3.0-rc.1`) ; ensuite
+`pnpm release patch` la finalise en `1.3.0` — après `1.3.0-rc.2`, la version
+suivante *est* `1.3.0`, et non `1.3.1`.
 
 `.github/workflows/release.yml` en tire deux paquets et la release qui les
 porte :

@@ -12,6 +12,7 @@
     "dev:duo": "bash scripts/dev-rooms.sh 1",
     "dev:trio": "bash scripts/dev-rooms.sh 2",
     "prepare": "node scripts/git-hooks.mjs",
+    "release": "bash scripts/tag-release.sh",
     "reset:dev": "bash scripts/reset-dev.sh",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck"

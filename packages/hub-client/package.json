@@ -12,8 +12,8 @@
   },
   "dependencies": {
     "@conference-operator/contract": "workspace:*",
-    "@orpc/client": "2.0.0-beta.29",
-    "@orpc/contract": "2.0.0-beta.29"
+    "@orpc/client": "2.0.0-beta.32",
+    "@orpc/contract": "2.0.0-beta.32"
   },
   "devDependencies": {
     "happy-dom": "20.14.0",

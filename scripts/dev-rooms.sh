@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 #
-# Starts a hub and **one or two headless rooms**, from a single terminal.
+# Starts a hub, and **zero, one or two headless rooms**, from a single terminal.
 #
+#   pnpm dev:hub    — the hub alone
 #   pnpm dev:duo    — hub + one room
 #   pnpm dev:trio   — hub + two rooms
+#
+# `MODE` decides what a hub started here is: `dev` by default, which is what this
+# script exists for. `MODE=production pnpm dev:hub` runs the hub as an event would
+# — no Vite, the built bundles served as they are, the development conveniences
+# refused. It then starts no room: a room in production talks to real OBS
+# instances and is installed from a release, not launched from a repository.
 #
 # Adding `--electron` replaces the **first** room with the real Electron client,
 # the one used on the day. What that buys: the windows, the "Écrans" menu that
@@ -74,6 +81,44 @@ for argument in "$@"; do
       ;;
   esac
 done
+
+MODE="${MODE:-dev}"
+case "$MODE" in
+  dev | production) ;;
+  *)
+    echo "  MODE inconnu : ${MODE} (attendus : dev, production)" >&2
+    exit 1
+    ;;
+esac
+if [ "$MODE" = "production" ] && [ "$ROOM_COUNT" -gt 0 ]; then
+  echo "  MODE=production ne lance pas de salle depuis ce dépôt." >&2
+  echo "  Une salle de production parle à de vrais OBS et s'installe depuis une release." >&2
+  echo "  Pour le hub seul : MODE=production pnpm dev:hub" >&2
+  exit 1
+fi
+if [ "$ELECTRON" -eq 1 ] && [ "$ROOM_COUNT" -eq 0 ]; then
+  echo "  --electron sans salle à lancer : demander au moins une salle." >&2
+  exit 1
+fi
+
+MODE_LABEL=""
+if [ "$MODE" = "production" ]; then
+  MODE_LABEL="   (MODE=production)"
+  # In production the hub serves the two bundles as they are. Missing, it answers
+  # 503 on `/admin` and `/regie` — an incomplete deployment, and a thing to learn
+  # here rather than in front of the console.
+  missing=()
+  for bundle in apps/hub-admin apps/control-web; do
+    [ -f "${bundle}/dist/.vite/manifest.json" ] || missing+=("${bundle}/dist")
+  done
+  if [ ${#missing[@]} -gt 0 ]; then
+    echo "  Bundles absents : ${missing[*]}" >&2
+    echo "  En production le hub les sert tels quels — sans eux, /admin et /regie" >&2
+    echo "  répondent 503. Les construire d'abord :" >&2
+    echo "      pnpm build" >&2
+    exit 1
+  fi
+fi
 
 HUB_ORIGIN="${HUB_ORIGIN:-http://localhost:8787}"
 ROOM_1="${ROOM_1:-track-1-teilhard-de-chardin}"
@@ -223,7 +268,11 @@ if [ "$ELECTRON" -eq 1 ]; then
   PORT_1="$PORT_ELECTRON"
 fi
 
-PORTS=("$(port_of "$VITE_CONSOLE")" "$(port_of "$VITE_CONTROL")" "$PORT_1")
+PORTS=()
+# The Vite servers only exist in development: in production the hub serves the
+# bundles committed under `dist/`, and nothing proxies anywhere.
+[ "$MODE" = "dev" ] && PORTS+=("$(port_of "$VITE_CONSOLE")" "$(port_of "$VITE_CONTROL")")
+[ "$ROOM_COUNT" -ge 1 ] && PORTS+=("$PORT_1")
 [ "$ROOM_COUNT" -ge 2 ] && PORTS+=("$PORT_2")
 # The hub takes its port from its own configuration, not from here — but
 # `HUB_ORIGIN` names it, and it is the one everybody points at. Ignored if the
@@ -245,32 +294,45 @@ if [ "$ELECTRON" -eq 1 ]; then
 fi
 
 echo ""
-echo "  Hub         ${HUB_ORIGIN}/admin"
-if [ "$ELECTRON" -eq 1 ]; then
-  echo "  Salle 1     Electron — fenêtre de régie      ${ROOM_1}"
-  echo "              écrans aussi sur http://127.0.0.1:${PORT_1}/"
-  echo "              dossier de données du système, pas ./.local-data"
-else
-  echo "  Salle 1     http://127.0.0.1:${PORT_1}/regie      ${ROOM_1}"
+echo "  Hub         ${HUB_ORIGIN}/admin${MODE_LABEL}"
+if [ "$ROOM_COUNT" -ge 1 ]; then
+  if [ "$ELECTRON" -eq 1 ]; then
+    echo "  Salle 1     Electron — fenêtre de régie      ${ROOM_1}"
+    echo "              écrans aussi sur http://127.0.0.1:${PORT_1}/"
+    echo "              dossier de données du système, pas ./.local-data"
+  else
+    echo "  Salle 1     http://127.0.0.1:${PORT_1}/regie      ${ROOM_1}"
+  fi
 fi
 [ "$ROOM_COUNT" -ge 2 ] && echo "  Salle 2     http://127.0.0.1:${PORT_2}/regie      ${ROOM_2}"
 echo "  Mur public  ${HUB_ORIGIN}/mur?salle=${ROOM_1}"
-echo "  Régie mobile ${HUB_ORIGIN}/regie" 
+echo "  Régie mobile ${HUB_ORIGIN}/regie"
 echo ""
-# The two Vite servers no longer announce themselves: we do it for them, failing
-# which nothing on screen says they are running — nor where to look if they fall.
-echo "  Vite        ${VITE_CONSOLE} console · ${VITE_CONTROL} régie"
-echo "              muets tant que tout va ; leurs erreurs, elles, passent."
+if [ "$MODE" = "dev" ]; then
+  # The two Vite servers no longer announce themselves: we do it for them, failing
+  # which nothing on screen says they are running — nor where to look if they fall.
+  echo "  Vite        ${VITE_CONSOLE} console · ${VITE_CONTROL} régie"
+  echo "              muets tant que tout va ; leurs erreurs, elles, passent."
+else
+  echo "  Sans Vite : la console et la régie sont servies depuis leurs dist/."
+fi
 echo ""
-echo "  Code d'appairage à saisir dans la console, « Machines en attente »."
-echo ""
+if [ "$ROOM_COUNT" -ge 1 ]; then
+  echo "  Code d'appairage à saisir dans la console, « Machines en attente »."
+  echo ""
+fi
 
 # Vite first: the hub and the rooms proxy to it, and a page opened before it
 # answers reloads by itself as soon as it is there.
-start apps/hub-admin node_modules/.bin/vite \
-  --port "$(port_of "$VITE_CONSOLE")" --strictPort --clearScreen false --logLevel warn
-start apps/control-web node_modules/.bin/vite \
-  --port "$(port_of "$VITE_CONTROL")" --strictPort --clearScreen false --logLevel warn
+#
+# In production there is none: the hub serves `dist/`, and pointing it at a Vite
+# server that is not there would give it a proxy answering nothing.
+if [ "$MODE" = "dev" ]; then
+  start apps/hub-admin node_modules/.bin/vite \
+    --port "$(port_of "$VITE_CONSOLE")" --strictPort --clearScreen false --logLevel warn
+  start apps/control-web node_modules/.bin/vite \
+    --port "$(port_of "$VITE_CONTROL")" --strictPort --clearScreen false --logLevel warn
+fi
 
 # The hub proxies **both** Vite servers: the console's, and the control app's —
 # which it also serves, for the mobile control app. The same server suits both
@@ -281,12 +343,21 @@ start apps/control-web node_modules/.bin/vite \
 # a second, the first code dying before the second was approved. The default is
 # now ten minutes, which covers it; and a development hub that runs on another
 # expiry than the real one is a development hub that lies about this exact bug.
-start apps/hub-server MODE=dev VITE_ORIGIN="$VITE_CONSOLE" REGIE_VITE_ORIGIN="$VITE_CONTROL" \
-  node --watch --env-file-if-exists=.env --import tsx src/main.ts
+if [ "$MODE" = "dev" ]; then
+  start apps/hub-server MODE=dev VITE_ORIGIN="$VITE_CONSOLE" REGIE_VITE_ORIGIN="$VITE_CONTROL" \
+    node --watch --env-file-if-exists=.env --import tsx src/main.ts
+else
+  # No `--watch` either: restarting on a saved file is a development comfort, and
+  # this mode exists to look like what runs on the day.
+  start apps/hub-server MODE=production \
+    node --env-file-if-exists=.env --import tsx src/main.ts
+fi
 
 # The rooms start straight away: a missing hub does not condemn them, they join it
 # as soon as it answers. So there is nothing to wait for here.
-if [ "$ELECTRON" -eq 1 ]; then
+if [ "$ROOM_COUNT" -eq 0 ]; then
+  :
+elif [ "$ELECTRON" -eq 1 ]; then
   # An explicit `MODE=dev`, and it is the difference that costs dearly.
   #
   # `dev-headless.ts` puts itself into development — that is what it is for.

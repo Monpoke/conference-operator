@@ -96,8 +96,16 @@ inaccessible et personne ne peut appairer une machine.
 
 ```bash
 pnpm --filter @conference-operator/hub-server operator vous@exemple.fr "Régie" <mot-de-passe>
-MODE=dev pnpm --filter @conference-operator/hub-server dev
+pnpm dev:hub
 ```
+
+`dev:hub` lance le hub **et les deux serveurs Vite** — celui de la console,
+celui de la régie. Sans eux, le hub sert le `dist/` qui traîne : on développe
+alors contre une page compilée, sans rechargement à chaud, et l'extension Vue
+refuse d'inspecter ce qu'elle prend pour de la production.
+
+`MODE=production pnpm dev:hub` fait tourner le même hub comme le jour J : pas de
+Vite, les bundles servis tels quels, les commodités de développement refusées.
 
 Au premier démarrage, le hub importe le programme depuis `PROGRAM_SOURCE_URL` et
 crée les salles à partir de `event.tracks[]`.
@@ -131,6 +139,7 @@ MODE=dev HUB_ORIGIN=http://localhost:8787 pnpm --filter @conference-operator/roo
 modération : ces bugs sont invisibles avec une seule.
 
 ```bash
+pnpm dev:hub               # le hub seul
 pnpm dev:duo               # hub + une salle headless
 pnpm dev:trio              # hub + deux salles headless
 pnpm dev:duo --electron    # la première salle sous Electron

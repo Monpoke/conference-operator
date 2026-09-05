@@ -18,6 +18,33 @@ describe('hub mode', () => {
     expect(config.ignores).toEqual([])
   })
 
+  it('still says what it neutralized after a second parse', () => {
+    /*
+     * The config goes through this schema twice: `main.ts` parses the
+     * environment, `createHub` parses the result again. The second pass sees a
+     * config the first one has already cleaned — `simulatedTime` undefined,
+     * `clockControl` gone — so it found nothing to report, and the hub started in
+     * production with a `SIMULATED_TIME` in its `.env` without a word.
+     *
+     * Everything that says it out loud reads `config.ignores` after that second
+     * parse. This is the property the promise rests on.
+     */
+    const once = configSchema.parse({
+      ...BASE,
+      simulatedTime: '2026-10-30T10:20:00.000Z',
+      clockControl: 'true',
+    })
+    const twice = configSchema.parse(once)
+
+    expect(twice.ignores).toEqual(once.ignores)
+    expect(twice.ignores.map((ignore) => ignore.variable)).toEqual([
+      'CLOCK_CONTROL',
+      'SIMULATED_TIME',
+    ])
+    // And a third one does not duplicate what the second carried over.
+    expect(configSchema.parse(twice).ignores).toEqual(once.ignores)
+  })
+
   it('neutralizes the simulated time in production', () => {
     // A mistake that cannot be caught up afterwards: skewed timecodes and
     // automatic closings at the wrong moment.

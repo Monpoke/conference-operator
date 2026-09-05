@@ -230,6 +230,18 @@ const configSchema = z.object({
    * send them looking elsewhere. It is never read afterwards.
    */
   clockControl: z.union([z.string(), z.boolean()]).optional(),
+
+  /**
+   * Neutralizations already established, on the way in.
+   *
+   * Never read from the environment — `loadConfig` does not fill it. It only
+   * exists so that a config parsed twice keeps what the first pass found: see the
+   * transform below, and `main.ts`, which hands `createHub` a config that has
+   * already been through here.
+   */
+  ignores: z
+    .array(z.object({ variable: z.string(), reason: z.string() }))
+    .optional(),
 })
   /**
    * A half-configured Google does not start.
@@ -293,10 +305,22 @@ const configSchema = z.object({
    * and the console: "ignored" with no explanation would send people looking in
    * the wrong place.
    */
-  .transform(({ clockControl, ...config }) => {
-    const ignores: IgnoreConfig[] = []
+  .transform(({ clockControl, ignores: alreadyFound, ...config }) => {
+    /*
+     * The neutralizations already established, if this config has been through
+     * here before.
+     *
+     * `main.ts` parses the environment, then hands the result to `createHub`,
+     * which parses it again — and the second pass sees a config the first one has
+     * already cleaned: `simulatedTime` set to `undefined`, `clockControl` gone.
+     * It therefore found nothing to neutralize and the hub said nothing, exactly
+     * where it promises to be loud. Carrying the findings across makes the parse
+     * idempotent, which is the property the second pass depends on.
+     */
+    const ignores: IgnoreConfig[] = [...(alreadyFound ?? [])]
+    const already = (variable: string) => ignores.some((ignore) => ignore.variable === variable)
 
-    if (clockControl === true || clockControl === '1' || clockControl === 'true') {
+    if (!already('CLOCK_CONTROL') && (clockControl === true || clockControl === '1' || clockControl === 'true')) {
       ignores.push({
         variable: 'CLOCK_CONTROL',
         reason: "remplacé par MODE=dev, qui ouvre le réglage de l'heure",
@@ -304,7 +328,7 @@ const configSchema = z.object({
     }
 
     const dev = config.mode === 'dev'
-    if (!dev && config.simulatedTime != null) {
+    if (!dev && !already('SIMULATED_TIME') && config.simulatedTime != null) {
       ignores.push({ variable: 'SIMULATED_TIME', reason: 'réservé au mode développement (MODE=dev)' })
     }
 

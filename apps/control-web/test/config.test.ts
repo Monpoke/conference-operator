@@ -2,10 +2,13 @@ import type { VisibleConfig, ObsState } from '@conference-operator/contract'
 import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import ConfigDialog from '../src/components/ConfigDialog.vue'
 import ObsConfigBlock from '../src/components/ObsConfigBlock.vue'
 import ScreensMenu from '../src/components/ScreensMenu.vue'
+import { useActionsStore } from '../src/stores/actions.js'
 import { useConfigStore } from '../src/stores/config.js'
+import { useGatewayStore } from '../src/stores/gateway.js'
 import { useRoomStore } from '../src/stores/room.js'
 import { obsState, payload } from './fixtures.js'
 
@@ -591,5 +594,76 @@ describe('incomplete room at start-up', () => {
     const config = configuredRoom()
     config.show()
     expect(config.openAtStartup).toBe(false)
+  })
+})
+
+/**
+ * Disconnecting the machine, from the configuration.
+ *
+ * The gesture exists because the alternative was going to delete a file in
+ * `%APPDATA%` — on a machine in a room, the morning of an event. It is offered
+ * on that machine's own screen only: driven from a phone, the same page would
+ * take a room off the air until somebody walks to the console.
+ */
+describe('unpairing a machine', () => {
+  /** Reka portals the panel out of the component: the document is what we read. */
+  const mountDialog = () => mount(ConfigDialog, { props: { payload: payload() }, attachTo: document.body })
+  /**
+   * Scoped to the confirmation itself: the button that opens it says
+   * «&nbsp;Déconnecter ce poste&nbsp;», and any looser search finds that one first.
+   */
+  const button = (label: string) =>
+    [...document.querySelectorAll('[role="alertdialog"] button')].find((node) =>
+      node.textContent?.includes(label),
+    )
+
+  // The panel is portalled into the body and outlives the wrapper: left there, the
+  // next test would find the previous one's button and believe it.
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('offers the button on the machine, and confirms before acting', async () => {
+    room()
+    const config = useConfigStore()
+    config.show()
+    const sent: unknown[] = []
+    vi.spyOn(useActionsStore(), 'act').mockImplementation(async (action) => {
+      sent.push(action)
+      return { ok: true }
+    })
+
+    const wrapper = mountDialog()
+    await flushPromises()
+
+    const open = document.querySelector('#btn-unpair') as HTMLElement | null
+    expect(open).not.toBeNull()
+    open!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flushPromises()
+    // Asked, not done: the room leaves the air, and the way back is in front of
+    // the machine.
+    expect(sent).toEqual([])
+
+    const confirm = button('Déconnecter')
+    expect(confirm).toBeDefined()
+    confirm!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flushPromises()
+
+    expect(sent).toEqual([{ action: 'pairing.forget' }])
+    // The panel closes with it: what it configures is about to ask for a code.
+    expect(config.open).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('does not offer it to a control app served remotely', async () => {
+    useGatewayStore().start({ portee: 'distante', roomId: 'track-1', salles: [], google: null })
+    room()
+    useConfigStore().show()
+
+    const wrapper = mountDialog()
+    await flushPromises()
+
+    expect(document.querySelector('#btn-unpair')).toBeNull()
+    wrapper.unmount()
   })
 })

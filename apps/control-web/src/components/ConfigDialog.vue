@@ -1,14 +1,33 @@
 <script setup lang="ts">
 import type { DisplayPayload } from '@conference-operator/contract'
-import { Button, Dialog, Panel } from '@conference-operator/components'
-import { computed } from 'vue'
+import { Button, ConfirmDialog, Dialog, Panel } from '@conference-operator/components'
+import { computed, ref } from 'vue'
+import { useActionsStore } from '../stores/actions.js'
 import { ROLES, useConfigStore } from '../stores/config.js'
+import { useGatewayStore } from '../stores/gateway.js'
 import { useKeyboardLayer } from '../stores/keyboard.js'
 import ObsConfigBlock from './ObsConfigBlock.vue'
 
 const props = defineProps<{ payload: DisplayPayload }>()
 
 const config = useConfigStore()
+const actions = useActionsStore()
+const gateway = useGatewayStore()
+
+/**
+ * Disconnecting the machine, and why the button is not offered from a phone.
+ *
+ * It takes the room off the air until somebody approves a new code at the
+ * console — physically, in front of the machine. Served remotely, the same page
+ * drives a room from a pocket, which is exactly where a misplaced thumb lands.
+ */
+const unpairOpen = ref(false)
+const canUnpair = computed(() => !gateway.remote)
+
+async function unpair(): Promise<void> {
+  await actions.act({ action: 'pairing.forget' })
+  config.open = false
+}
 
 // An empty layer: addresses and passwords are typed here, and an "r" outside a
 // field must not start a take behind the modal.
@@ -149,6 +168,20 @@ const FIELD =
           </div>
         </div>
 
+        <div
+          v-if="canUnpair"
+          class="mt-3.5 flex items-center justify-between gap-4 rounded-lg border border-edge px-3 py-2.5"
+        >
+          <p class="text-[11px] leading-relaxed text-dim">
+            Déconnecter ce poste efface son appairage : il redemandera quelle salle il dessert,
+            puis un nouveau code à approuver dans la console. Les enregistrements et la file de
+            remontée restent sur la machine.
+          </p>
+          <Button id="btn-unpair" class="shrink-0" @click="unpairOpen = true">
+            Déconnecter ce poste
+          </Button>
+        </div>
+
         <!--
           What "Commencer" brings with it.
 
@@ -219,4 +252,14 @@ const FIELD =
       </Button>
     </template>
   </Dialog>
+
+  <ConfirmDialog
+    v-model:open="unpairOpen"
+    tone="warn"
+    title="Déconnecter ce poste ?"
+    detail="La salle quitte l'antenne le temps qu'un nouveau code soit approuvé dans la console, devant la machine. Rien n'est effacé sur le disque."
+    cancel-label="Non"
+    confirm-label="Déconnecter"
+    @confirm="unpair()"
+  />
 </template>

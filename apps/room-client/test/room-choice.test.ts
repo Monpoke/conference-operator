@@ -28,6 +28,8 @@ let origin: string
 let dir: string
 let room: RoomApp
 let control: string
+/** The machine's credentials, at module scope: a test asserts they are erased. */
+let token: string | null = null
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'cloudnord-choice-'))
@@ -48,7 +50,7 @@ beforeEach(async () => {
   const snapshot = hub.services.programs.importFromText(rawProgram, 'https://exemple/programme.json')
   hub.services.rooms.ensureFromTracks(snapshot.program.rooms)
 
-  let token: string | null = null
+  token = null
   room = new RoomApp({
     dataDir: dir,
     hubOrigin: origin,
@@ -133,6 +135,31 @@ describe('choosing the room at power-on', () => {
 
     for (let i = 0; i < 60 && room.store.settings().roomId == null; i += 1) await sleep(250)
     expect(room.store.settings().roomId).toBe(TRACK_2)
+  }, 60_000)
+
+  it('lets the machine be disconnected, and asks the room again', async () => {
+    /*
+     * The gesture exists so nobody has to delete a file in `%APPDATA%` on a
+     * machine in a room. It forgets the room served on purpose: one disconnects a
+     * machine that is being moved or handed over, and re-pairing it silently to
+     * the same room would make the button look like it did nothing.
+     */
+    void act({ action: 'pairing.chooseRoom', roomId: TRACK_2 })
+    for (let i = 0; i < 40 && room.pairingState().userCode == null; i += 1) await sleep(200)
+    await approveKeepingTheProposal()
+    for (let i = 0; i < 60 && room.pairingState().status !== 'paired'; i += 1) await sleep(250)
+    expect(token).not.toBe('')
+
+    const result = await act({ action: 'pairing.forget' })
+    expect(result.status).toBe(200)
+
+    // No credentials left, and the question asked again rather than a code shown
+    // for a room nobody has chosen.
+    expect(token).toBe('')
+    for (let i = 0; i < 40 && room.pairingState().requestedRoomId != null; i += 1) await sleep(200)
+    expect(room.pairingState().requestedRoomId).toBeNull()
+    expect(room.pairingState().userCode).toBeUndefined()
+    expect((await readState()).pairing?.rooms?.length).toBeGreaterThan(0)
   }, 60_000)
 
   it('refuses a room that does not exist', async () => {

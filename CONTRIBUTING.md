@@ -230,6 +230,20 @@ Une migration publiée ne se réécrit pas — les salles ont déjà appliqué l
 leur. `packages/db/test/migrations-sealed.test.ts` le garantit. Pour changer
 un schéma, ajoutez une migration.
 
+### TypeScript reste en 6 là où `vue-tsc` typecheck
+
+Les trois paquets Vue — `components`, `control-web`, `hub-admin` — épinglent
+`typescript` en **6.0.3**, pas en 7. Ce n'est pas un oubli : `vue-tsc` 3.3
+résout `typescript/lib/tsc`, un chemin que TypeScript 7 n'exporte plus, et
+tombe sur `ERR_PACKAGE_PATH_NOT_EXPORTED` avant même de lire une ligne de code.
+Son `peerDependencies` annonce pourtant `>=5.0.0`, donc rien ne l'empêche de
+s'installer.
+
+Partout ailleurs — les paquets typés par `tsc` seul — c'est TypeScript 7. Un
+`pnpm update --latest` remet les trois à 7 et casse `pnpm typecheck` : les
+redescendre fait partie de la montée de versions, jusqu'à ce que `vue-tsc`
+sache parler à TypeScript 7.
+
 ## Tests
 
 `vitest`, avec `happy-dom` pour tout ce qui monte une page dans un vrai DOM. Un

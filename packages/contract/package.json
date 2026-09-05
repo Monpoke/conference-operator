@@ -11,13 +11,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@conference-operator/room-state": "workspace:*",
     "@conference-operator/program": "workspace:*",
+    "@conference-operator/room-state": "workspace:*",
     "@orpc/contract": "2.0.0-beta.29",
-    "zod": "4.4.3"
+    "zod": "4.5.4"
   },
   "devDependencies": {
     "typescript": "7.0.2",
-    "vitest": "4.1.11"
+    "vitest": "5.0.0"
   }
 }

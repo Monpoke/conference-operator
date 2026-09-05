@@ -2780,9 +2780,28 @@ on reconstruit — `build-main.mjs` n'a aucune entrée non déterministe, esbuil
 figé par le lockfile, et un build sur le tag redonne la même map,
 `sourcesContent` compris.
 
+**La provenance est signée, le binaire ne l'est pas.** Chaque version attache
+une attestation SLSA signée par Sigstore à l'image *et* à l'installeur :
+`actions/attest-build-provenance` la fabrique depuis l'identité OIDC du job, il
+n'y a donc aucune clé à garder quelque part. Elle répond à « d'où sort ce
+fichier » — quel dépôt, quel workflow, quel commit, pour ce condensé exact :
+
+```bash
+gh attestation verify oci://ghcr.io/monpoke/conference-operator/hub:1.2.0 \
+  --repo Monpoke/conference-operator
+gh attestation verify regie-de-salle-1.2.0.exe --repo Monpoke/conference-operator
+```
+
+Ça ne recouvre ni l'un ni l'autre des deux gestes déjà là. `SHA256SUMS.txt`
+répond à une autre question — « est-ce bien le fichier publié ? » — et y répond
+sans réseau ni `gh`, ce qui compte quand on vérifie une clé USB dans une salle.
+Et la provenance BuildKit (`provenance: mode=max`) reste dans l'image : elle
+n'est pas signée et ne se lit qu'en tirant l'image, les deux se complètent.
+
 **Ce qui n'y est pas, et pourquoi.**
 
-- *La signature de code.* Sans elle, SmartScreen avertit au premier lancement —
+- *La signature de code.* La provenance ci-dessus n'en est pas une : sans
+  signature Authenticode, SmartScreen avertit toujours au premier lancement —
   d'où l'empreinte SHA-256 publiée à côté du binaire, et le rappel d'installer
   les machines avant le jour J. C'est un pis-aller assumé, pas un oubli.
 - *La mise à jour automatique.* Publier sur les releases rendrait

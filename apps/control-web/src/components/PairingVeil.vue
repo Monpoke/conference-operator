@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DisplayPayload } from '@conference-operator/contract'
 import { Button } from '@conference-operator/components'
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useActionsStore } from '../stores/actions.js'
 
 /**
@@ -56,6 +56,49 @@ const choosing = computed(() => props.pairing?.requestedRoomId == null)
  * itself looks like a broken pairing.
  */
 const waiting = computed(() => !choosing.value && props.pairing?.userCode == null)
+
+/**
+ * The address, as a QR code.
+ *
+ * Typing the code into the console stays the way in; this is the shortcut, for
+ * whoever has a phone rather than the console under their hand. `verificationUri`
+ * is the hub's `verification_uri_complete` when it sends one — the code is then
+ * already in the address, and scanning lands on the request rather than on a form
+ * to fill in.
+ *
+ * Drawn here rather than shipped in the state payload: it is derived from an
+ * address the control app already has, and going through the contract would mean
+ * a hub and a room agreeing on a picture. The library is imported on demand, so it
+ * stays out of the bundle a phone downloads to drive a room — this veil never
+ * shows there.
+ */
+const qrSvg = ref<string | null>(null)
+
+watch(
+  () => (waiting.value ? null : (props.pairing?.verificationUri ?? null)),
+  async (uri) => {
+    if (uri == null) {
+      qrSvg.value = null
+      return
+    }
+    try {
+      const { toString } = await import('qrcode')
+      qrSvg.value = await toString(uri, {
+        type: 'svg',
+        margin: 1,
+        // The screen is read across a room, sometimes at an angle: the highest
+        // correction level survives a hand in the way and a lens that hesitates.
+        errorCorrectionLevel: 'H',
+        color: { dark: '#0d0f16', light: '#ffffff' },
+      })
+    } catch {
+      // A QR that cannot be drawn is not an incident: the code and the address
+      // above it are the way in, and they are still there.
+      qrSvg.value = null
+    }
+  },
+  { immediate: true },
+)
 
 const title = computed(() => {
   if (choosing.value) return 'Quelle salle dessert ce poste ?'
@@ -135,6 +178,20 @@ const title = computed(() => {
             >{{ pairing.verificationUri }}</a
           >
         </p>
+
+        <!--
+          `aria-hidden`: the address is right above, as text and as a link. A
+          screen reader announcing a picture of it twice says nothing more.
+        -->
+        <div
+          v-if="qrSvg != null"
+          class="mt-4 flex flex-col items-center gap-2"
+          data-role="pairing-qr"
+          aria-hidden="true"
+        >
+          <div class="w-[164px] rounded-lg bg-white p-2 [&>svg]:h-auto [&>svg]:w-full" v-html="qrSvg" />
+          <p class="text-[13px] text-dim">…ou scannez avec un téléphone.</p>
+        </div>
       </template>
 
       <p v-if="pairing?.message != null" class="mt-[18px] text-sm text-alert">

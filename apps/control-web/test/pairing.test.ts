@@ -91,6 +91,42 @@ describe('pairing code', () => {
     expect(wrapper.text()).toContain('Track #1')
   })
 
+  it('draws the address as a QR code, beside the code to type', async () => {
+    /*
+     * The shortcut, for whoever has a phone rather than the console under their
+     * hand. It carries `verification_uri_complete` when the hub sends one, so
+     * scanning lands on the request instead of a form to fill in.
+     */
+    const wrapper = veil({
+      status: 'waiting',
+      userCode: 'ABCD-1234',
+      verificationUri: 'https://hub.example/appairage?user_code=ABCD-1234',
+      rooms: ROOMS,
+      requestedRoomId: 'track-1',
+    })
+    await flushPromises()
+
+    const qr = wrapper.get('[data-role="pairing-qr"]')
+    expect(qr.html()).toContain('<svg')
+    // The code stays the way in: the picture is beside it, never instead of it.
+    expect(wrapper.get('[data-role="pairing-code"]').text()).toBe('ABCD-1234')
+  })
+
+  it('draws no QR code while waiting for the next code', async () => {
+    // The address left over from a dead code would send a phone to a request that
+    // no longer exists.
+    const wrapper = veil({
+      status: 'failed',
+      message: "Le code d'appairage a expiré, relancer l'opération",
+      verificationUri: 'https://hub.example/x',
+      rooms: ROOMS,
+      requestedRoomId: 'track-1',
+    })
+    await flushPromises()
+
+    expect(wrapper.find('[data-role="pairing-qr"]').exists()).toBe(false)
+  })
+
   it('does not claim to know a code it does not have', () => {
     // The field is **absent**, not null: that is what the room produces, and the
     // typing reminded us — a `null` written here described a state it never emits.

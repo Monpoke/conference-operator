@@ -1008,6 +1008,14 @@ Deux instances par salle, et le partage est net : **OBS-A projette dans la
 salle, OBS-B enregistre et diffuse**. L'application ne crée jamais ni scène ni
 source — elle bascule les scènes d'OBS-A, lit et enregistre sur OBS-B.
 
+Les adresses qui suivent ne se retapent pas : chaque ligne du menu **Écrans** de
+la régie porte un bouton **Copier**, qui met l'adresse entière dans le
+presse-papiers — prête à coller dans le champ d'une Browser Source, qui ne
+résout rien — et un bouton **Ouvrir**, pour aller la voir. C'est le seul chemin
+sous Electron, où la fenêtre de régie n'a pas de menu contextuel d'où sortir
+l'adresse d'un lien. L'adresse copiée est celle par laquelle cette page-là a été
+atteinte, port compris : c'est celle qui répond.
+
 ### OBS-A — ce que voit la salle
 
 Sa sortie part au vidéoprojecteur (clic droit sur l'aperçu → *Projecteur plein

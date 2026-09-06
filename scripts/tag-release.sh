@@ -270,8 +270,18 @@ fi
 if [[ $NO_QUESTION -eq 0 ]]; then
   # Read from the terminal, not from standard input: called with no terminal, we
   # publish nothing rather than take an end of file for a "yes".
+  #
+  # The question is written by hand rather than left to `read -p`, which prints to
+  # stderr — the stream muted here so that a missing /dev/tty stays quiet. The
+  # prompt went out with the complaint, and the script waited on an answer nobody
+  # had been asked for. The redirection sits on the group so that it is already in
+  # place when the `exec` fails.
   answer=""
-  read -r -p "Publier $TAG (o/N) ? " answer 2>/dev/null < /dev/tty || answer=""
+  if { exec 3<> /dev/tty; } 2>/dev/null; then
+    printf 'Publier %s (o/N) ? ' "$TAG" >&3
+    read -r answer <&3 || answer=""
+    exec 3>&-
+  fi
   if [[ "$answer" != "o" && "$answer" != "O" ]]; then
     echo "Annulé — aucun tag n'a été posé."
     exit 1

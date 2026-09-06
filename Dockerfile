@@ -160,7 +160,8 @@ RUN find node_modules/.pnpm -path '*/better-sqlite3/prebuilds/*.node' \
 # has any reason to be there.
 FROM node:${NODE_VERSION} AS runtime
 
-# The hub writes its SQLite database and nothing else. The default path leaves the
+# The hub writes its SQLite database and, beside it, the programme's images — the
+# rooms fetch them from here rather than from the upstream export. The default path leaves the
 # code's tree: a volume mounted on `/data` survives the image being replaced,
 # which a `./data` relative to the repository would not guarantee.
 ENV NODE_ENV=production \

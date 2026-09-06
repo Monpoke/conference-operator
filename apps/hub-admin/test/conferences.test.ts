@@ -89,6 +89,7 @@ function stub(options: {
         },
         program: {
           snapshots: note('program/snapshots', [{ active: true }]),
+          images: note('program/images', { held: 0, failed: [] }),
           planning: note('program/planning', {
             sessions: options.sessions ?? [TALK],
             rooms: [{ id: 'track-1', name: 'Track #1' }],

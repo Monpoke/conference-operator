@@ -1,5 +1,6 @@
 import { ORPCError } from '@orpc/server'
 import type { Auth } from './auth.js'
+import type { AssetStore } from './services/assets.js'
 import type { ProgramService } from './services/program.js'
 import type { CommandService } from './services/commands.js'
 import type { IngestService } from './services/ingest.js'
@@ -16,6 +17,7 @@ import type { ExecutionMode } from '@conference-operator/contract'
 
 export interface Services {
   programs: ProgramService
+  assets: AssetStore
   rooms: RoomService
   devices: DeviceService
   commands: CommandService

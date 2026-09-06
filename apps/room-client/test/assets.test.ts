@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -120,5 +121,68 @@ describe('asset cache', () => {
     await expect(cache.fetchOne(LOGO, failing)).rejects.toThrow('connection lost')
     // Nothing is recorded: the cache must not believe it holds a truncated file.
     expect(cache.lookup(LOGO)).toBeNull()
+  })
+})
+
+/**
+ * Where the bytes come from.
+ *
+ * The programme reaches a room from the hub; its images used to come from the
+ * upstream export, which made a room depend on reaching the internet — the one
+ * thing the rest of it promises it does not. The hub now holds them.
+ */
+describe('the hub as the source', () => {
+  const HUB = 'https://hub.exemple.fr'
+  const hashOf = (url: string) => createHash('sha256').update(url).digest('hex')
+
+  it('asks the hub, and never the source, when the hub answers', async () => {
+    const network = fakeNetwork({
+      [`${HUB}/assets/${hashOf(LOGO)}`]: 'PNG-BYTES',
+      [`${HUB}/assets/${hashOf(PHOTO)}`]: 'JPG-BYTES',
+    })
+    const viaHub = new AssetCache(store, join(dir, 'assets'), HUB)
+
+    const report = await viaHub.prefetch(program, network.fetchImpl)
+
+    expect(report.downloaded).toBe(2)
+    expect(report.fromHub).toBe(2)
+    expect(report.fromUpstream).toBe(0)
+    // The point of the whole change: the room went nowhere near the export.
+    expect(network.calls.some((url) => url === LOGO || url === PHOTO)).toBe(false)
+  })
+
+  it('falls back to the source, and counts it', async () => {
+    // A hub that has not imported this programme yet answers 404 — not an
+    // incident, but a room that still needs the internet, and that has to show.
+    const network = fakeNetwork({ [LOGO]: 'PNG-BYTES', [PHOTO]: 'JPG-BYTES' })
+    const viaHub = new AssetCache(store, join(dir, 'assets'), HUB)
+
+    const report = await viaHub.prefetch(program, network.fetchImpl)
+
+    expect(report.downloaded).toBe(2)
+    expect(report.fromHub).toBe(0)
+    expect(report.fromUpstream).toBe(2)
+    expect(network.calls).toContain(LOGO)
+  })
+
+  it('keys an image the same way whichever side supplied it', async () => {
+    /*
+     * The regression that would cost the most: keying on the address the bytes
+     * came from would give two entries for one image, and would make every cache
+     * already filled from upstream useless the day the hub starts serving them.
+     */
+    const upstream = new AssetCache(store, join(dir, 'assets'))
+    await upstream.fetchOne(LOGO, fakeNetwork().fetchImpl)
+    const first = upstream.lookup(LOGO)
+
+    const viaHub = new AssetCache(store, join(dir, 'assets'), HUB)
+    const hubNetwork = fakeNetwork({ [`${HUB}/assets/${hashOf(LOGO)}`]: 'PNG-BYTES' })
+    const report = await viaHub.prefetch(program, hubNetwork.fetchImpl)
+
+    expect(first?.sha256).toBe(hashOf(LOGO))
+    // Already held: the hub is not even asked for it.
+    expect(hubNetwork.calls).not.toContain(`${HUB}/assets/${hashOf(LOGO)}`)
+    expect(report.reused).toBeGreaterThanOrEqual(1)
+    expect(viaHub.lookup(LOGO)?.sha256).toBe(first?.sha256)
   })
 })

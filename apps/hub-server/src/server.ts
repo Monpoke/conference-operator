@@ -1,7 +1,7 @@
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify'
 import fastifyProxy from '@fastify/http-proxy'
 import fastifyStatic from '@fastify/static'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { consolePaths, CONTROL_PATH, controlRoomIdFromPath } from '@conference-operator/contract'
 import { WebSocketServer, type WebSocket as NodeWebSocket } from 'ws'
 import { RPCHandler as FastifyRPCHandler } from '@orpc/server/fastify'
@@ -11,6 +11,7 @@ import { configSchema, durationMs, type ConfigInput } from './config.js'
 import { openHubDatabase } from './db.js'
 import { router } from './router.js'
 import type { HubContext, Services } from './context.js'
+import { AssetStore } from './services/assets.js'
 import { ProgramService } from './services/program.js'
 import { CommandService } from './services/commands.js'
 import { IngestService } from './services/ingest.js'
@@ -77,10 +78,18 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   })
   const settings = new SettingsService(orm)
   const programs = new ProgramService(orm)
+  /*
+   * The images live beside the database, in the same directory — so on the same
+   * volume, wherever the hub is deployed. Until now the image wrote its database
+   * and nothing else; this is the one addition, and it is what spares the rooms
+   * an outing to the internet.
+   */
+  const assets = new AssetStore(orm, join(dirname(config.databasePath), 'assets'))
   const clock = mutableClock(config.simulatedTime ?? null)
 
   const services: Services = {
     programs,
+    assets,
     rooms: new RoomService(orm),
     devices,
     commands: new CommandService(orm, () => clock.now()),
@@ -279,6 +288,29 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   })
 
   app.get('/health', async () => ({ ok: true, serverTime: new Date().toISOString() }))
+
+  /**
+   * The programme's images, for the rooms.
+   *
+   * A room computes the hash itself — SHA-256 of the source URL, the key it
+   * already uses for its own cache — so nothing has to travel to tell it what to
+   * ask for.
+   *
+   * Public, like `/mur`: these bytes are already public at the source, and the
+   * hash is derived from a public URL. Putting the machine token in front would
+   * mean carrying that authentication outside oRPC to protect nothing more.
+   *
+   * `immutable`, because the key is the URL and an upstream export names its
+   * images by UUID: this hash will never stand for other bytes.
+   */
+  app.get<{ Params: { sha256: string } }>('/assets/:sha256', async (request, reply) => {
+    const file = await services.assets.read(request.params.sha256)
+    if (file == null) return reply.status(404).send({ error: 'image absente du hub' })
+
+    reply.header('content-type', file.contentType ?? 'application/octet-stream')
+    reply.header('cache-control', 'public, max-age=31536000, immutable')
+    return reply.send(file.bytes)
+  })
 
   /**
    * Public wall: the page attendees scan.

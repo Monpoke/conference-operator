@@ -12,7 +12,7 @@ sceller :
 ```bash
 pnpm --filter @conference-operator/db generate:hub
 pnpm --filter @conference-operator/db generate:client
-pnpm --filter @conference-operator/db sceller
+pnpm --filter @conference-operator/db seal
 ```
 
 ## Le sceau
@@ -27,7 +27,7 @@ La règle était auparavant une convention écrite ici, et elle a été enfreint
 plusieurs fois pendant le développement — à chaque fois au prix de la base du
 hub. Elle est désormais vérifiée.
 
-`pnpm --filter @conference-operator/db sceller` sert à enregistrer un ajout, **pas** à
+`pnpm --filter @conference-operator/db seal` sert à enregistrer un ajout, **pas** à
 faire taire une anomalie : sceller une ligne de base régénérée réintroduit
 exactement le défaut que la vérification existe pour attraper.
 

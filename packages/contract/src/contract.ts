@@ -186,6 +186,23 @@ export const contract = {
     ),
     activate: oc.input(z.object({ contentHash: z.string() })).output(z.object({ ok: z.boolean() })),
     /**
+     * The programme's images, as the hub holds them. Admin.
+     *
+     * The rooms fetch their images from the hub rather than from the upstream
+     * export — that is what keeps a room from needing the internet. An image the
+     * hub could not fetch is therefore a fact worth reading here: it is from this
+     * console that an export gets corrected, and the alternative is the same
+     * refusal repeated in every room's log, where nobody looks.
+     */
+    images: oc.output(
+      z.object({
+        held: z.number().int(),
+        failed: z.array(
+          z.object({ url: z.string(), reason: z.string(), at: isoDateTimeSchema }),
+        ),
+      }),
+    ),
+    /**
      * The active program, flattened and ready to display. Admin.
      *
      * The hub already holds the program; without this procedure the console only

@@ -48,6 +48,7 @@ function stub(): void {
       sessions: { states: note('sessions/states', []) },
       program: {
         snapshots: note('program/snapshots', [{ active: true }]),
+        images: note('program/images', { held: 0, failed: [] }),
         planning: note('program/planning', { timezone: 'Europe/Paris', sessions: SLOTS }),
       },
       clock: {

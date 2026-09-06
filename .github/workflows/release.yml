@@ -311,6 +311,13 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Before the artifacts: `checkout` cleans the workspace, and would take the
+      # downloads with it. Only `manifests/` is fetched — it is all this job reads
+      # from the repository.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: manifests
+
       - uses: actions/download-artifact@v4
         with:
           pattern: room-control-*
@@ -323,11 +330,10 @@ jobs:
       - shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          # `gh` works out which repository to talk to by reading the git remote,
-          # and this job never checks the sources out — it downloads the two
-          # artifacts the other jobs produced, and that is all it needs. Without
-          # this it stops on "failed to run git: not a git repository". Naming the
-          # repository outright costs less than cloning one for a single command.
+          # `gh` works out which repository to talk to by reading the git remote.
+          # The sparse checkout above happens to provide one, but naming the
+          # repository outright keeps this command independent of it — it stopped
+          # on "failed to run git: not a git repository" back when there was none.
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -335,6 +341,21 @@ jobs:
           # GHCR only accepts lowercase; the repository name need not be.
           image="ghcr.io/${GITHUB_REPOSITORY,,}/hub:${version}"
           runbook="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/apps/room-client/RUNBOOK.md"
+
+          # The Kubernetes manifests, pinned to the version being published.
+          #
+          # The number lives in the tag and nowhere else — the manifests carry
+          # `0.0.0` in the repository, as the `package.json` files do. Writing it
+          # here is what makes an operator's deployment name a version that
+          # exists, without keeping in git a figure that would be wrong between
+          # two releases.
+          #
+          # An archive rather than a single rendered file: `kustomize` flattens
+          # the comments away, and those comments are what say why the hub holds
+          # to one replica and why a rolling update would put two writers on one
+          # SQLite file. That is worth more than saving a `tar xzf`.
+          sed -i "s|^    newTag: .*|    newTag: \"${version}\"|" manifests/kustomization.yaml
+          tar czf "artifacts/manifests-${version}.tar.gz" manifests
 
           # A tag carrying a dash (`v1.2.0-rc.1`) is a pre-release: it does not
           # show up as the repository's latest version.
@@ -356,6 +377,17 @@ jobs:
 
           Image \`linux/amd64\`. La console et la régie mobile y sont, servies par
           le hub — il n'y a rien d'autre à déployer de ce côté.
+
+          Sur Kubernetes, \`manifests-${version}.tar.gz\` porte les manifestes de
+          cette version — l'image y est déjà épinglée :
+
+          \`\`\`bash
+          tar xzf manifests-${version}.tar.gz
+          kubectl apply -k manifests/
+          \`\`\`
+
+          Le secret et l'adresse publique restent à renseigner : voir le README du
+          dossier.
 
           Provenance signée, si vous voulez vérifier d'où sort cette image :
 

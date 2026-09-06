@@ -14,11 +14,28 @@ kubectl -n conference-operator create secret generic hub \
 kubectl apply -k manifests/
 ```
 
+Le `newTag` du dépôt reste à `0.0.0`, comme les `package.json` : **le numéro
+n'existe que dans le tag.** Chaque release publie un
+`manifests-<version>.tar.gz` où il est déjà écrit — c'est la façon de déployer
+une version sans tenir dans git un chiffre qui serait faux entre deux
+publications :
+
+```bash
+tar xzf manifests-1.2.0.tar.gz
+kubectl apply -k manifests/
+```
+
+Pour déployer une version depuis le dépôt sans passer par l'archive, la ligne
+qui pose le numéro au bon endroit :
+
+```bash
+cd manifests && kustomize edit set image ghcr.io/monpoke/conference-operator/hub:1.2.0
+```
+
 ## Ce qu'il faut régler avant
 
 | Où | Quoi |
 |---|---|
-| `kustomization.yaml` | `newTag` : la version publiée à déployer |
 | `configmap.yaml` | `PUBLIC_URL`, l'adresse **publique** du hub, et `PROGRAM_SOURCE_URL` |
 | `ingress.yaml` | l'hôte, la classe d'ingress, le secret TLS |
 | `pvc.yaml` | la `storageClassName`, si le cluster n'en a pas de défaut |

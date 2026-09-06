@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, statSync } from 'node:fs'
 import { readFile, rename, writeFile } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 import { eq } from 'drizzle-orm'
@@ -103,7 +103,7 @@ export class AssetStore {
 
     for (const url of assetUrls(program)) {
       const sha256 = this.keyOf(url)
-      if ((await this.read(sha256)) != null) {
+      if ((await this.read(sha256)) != null || this.adopt(sha256, url)) {
         report.reused += 1
         continue
       }
@@ -117,6 +117,30 @@ export class AssetStore {
       }
     }
     return report
+  }
+
+  /**
+   * Takes back a file already on disk whose row has gone.
+   *
+   * The index lives in the database; the bytes do not. Emptying the database —
+   * which `pnpm reset:dev` does, and which happens to any hub restarted on a
+   * fresh volume — would otherwise send every image to be downloaded again from
+   * the upstream export, for files sitting right there. Keeping them is only
+   * worth something if they are then used.
+   *
+   * The URL is what makes it possible: it gives the name and the extension. The
+   * content type is read back from that extension rather than kept somewhere —
+   * it is the same one the download would have recorded.
+   */
+  private adopt(sha256: string, url: string): boolean {
+    const path = this.fileFor(sha256, url)
+    if (!existsSync(path)) return false
+
+    this.remember(sha256, url, {
+      contentType: contentTypeFor(path),
+      byteSize: statSync(path).size,
+    })
+    return true
   }
 
   private async fetchOne(url: string, fetchImpl: typeof fetch): Promise<void> {
@@ -170,6 +194,28 @@ export class AssetStore {
  * Browsers and OBS still go by it, and the file is served by name. Anything that
  * does not look like an extension is dropped rather than glued onto a filename.
  */
+/**
+ * The type an extension stands for.
+ *
+ * Only used when taking back a file whose row has gone — a downloaded file gets
+ * the type the server announced. Unknown extensions get no type rather than a
+ * guessed one: a browser sniffs better than this list would.
+ */
+function contentTypeFor(path: string): string | null {
+  const types: Record<string, string> = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.svg': 'image/svg+xml',
+    '.webp': 'image/webp',
+    '.avif': 'image/avif',
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+  }
+  return types[extname(path).toLowerCase()] ?? null
+}
+
 function extensionFor(url: string): string {
   const extension = extname(new URL(url).pathname).toLowerCase()
   return /^\.[a-z0-9]{2,5}$/.test(extension) ? extension : ''

@@ -165,6 +165,22 @@ describe('the hub as the source', () => {
     expect(network.calls).toContain(LOGO)
   })
 
+  it('takes back the files when the database went without them', async () => {
+    // `pnpm reset:dev` empties `salle.db` and keeps the images: the point is that
+    // a room then downloads nothing, neither from the hub nor from the export.
+    const network = fakeNetwork()
+    await new AssetCache(store, join(dir, 'assets')).prefetch(program, network.fetchImpl)
+    expect(network.calls).toHaveLength(2)
+
+    const emptied = new AssetCache(new LocalStore(':memory:'), join(dir, 'assets'), HUB)
+    const after = fakeNetwork()
+    const report = await emptied.prefetch(program, after.fetchImpl)
+
+    expect(report.reused).toBe(2)
+    expect(after.calls).toEqual([])
+    expect(emptied.lookup(LOGO)?.contentType).toBe('image/png')
+  })
+
   it('keys an image the same way whichever side supplied it', async () => {
     /*
      * The regression that would cost the most: keying on the address the bytes

@@ -122,6 +122,27 @@ describe('the hub as an image store', () => {
     expect((await assets.read(hashOf(LOGO)))?.bytes.toString()).toBe('PNG')
   })
 
+  it('takes back the files when the database went without them', async () => {
+    /*
+     * What makes `pnpm reset:dev` able to spare the upstream export: the index
+     * lives in the database, the bytes do not. A hub restarted on an emptied
+     * database — or on a fresh volume beside a kept directory — must use what is
+     * already there rather than pay for the same logos again.
+     */
+    const network = fakeNetwork()
+    await assets.prefetch(program, network.fetchImpl)
+    expect(network.calls).toHaveLength(2)
+
+    const emptied = new AssetStore(openHubDatabase(':memory:').orm, join(dir, 'assets'))
+    const after = fakeNetwork()
+    const report = await emptied.prefetch(program, after.fetchImpl)
+
+    expect(report.reused).toBe(2)
+    expect(after.calls).toEqual([])
+    // And the route serves them again, type included.
+    expect((await emptied.read(hashOf(LOGO)))?.contentType).toBe('image/png')
+  })
+
   it('gives up on an image server that never answers', async () => {
     // `fetch` sets no ceiling of its own: one silent host would otherwise hold
     // the import open with no way out.

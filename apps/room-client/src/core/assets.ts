@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, statSync } from 'node:fs'
 import { readFile, rename, writeFile } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 import { eq } from 'drizzle-orm'
@@ -99,7 +99,7 @@ export class AssetCache {
     url: string,
     fetchImpl: typeof fetch = fetch,
   ): Promise<AssetRef & { fromHub: boolean }> {
-    const existing = this.lookup(url)
+    const existing = this.lookup(url) ?? this.adopt(url)
     if (existing != null) return { ...existing, fromHub: false }
 
     const { response, fromHub } = await this.download(url, fetchImpl)
@@ -128,6 +128,30 @@ export class AssetCache {
       contentType,
       fromHub,
     }
+  }
+
+  /**
+   * Takes back a file already on disk whose row has gone.
+   *
+   * The index lives in `salle.db`; the bytes are beside it. Emptying the database
+   * alone — what `pnpm reset:dev` does when asked to keep the images — would
+   * otherwise send them all to be downloaded again, for files sitting right
+   * there. The URL gives the name, the extension gives the type.
+   */
+  private adopt(url: string): AssetRef | null {
+    const sha256 = this.keyOf(url)
+    const path = join(this.directory, sha256 + extensionFor(url))
+    if (!existsSync(path)) return null
+
+    const contentType = contentTypeFor(path)
+    const byteSize = statSync(path).size
+    this.store.db
+      .insert(assetCache)
+      .values({ sha256, sourceUrl: url, contentType, byteSize })
+      .onConflictDoUpdate({ target: assetCache.sha256, set: { contentType, byteSize } })
+      .run()
+
+    return { sha256, localUrl: `${this.basePath}/${sha256}`, byteSize, contentType }
   }
 
   /**
@@ -180,7 +204,7 @@ export class AssetCache {
     }
 
     for (const url of assetUrls(program)) {
-      if (this.lookup(url) != null) {
+      if ((this.lookup(url) ?? this.adopt(url)) != null) {
         report.reused += 1
         continue
       }
@@ -248,6 +272,22 @@ export class AssetCache {
 }
 
 /** Keeps the original extension: OBS and the browsers still rely on it. */
+/** The type an extension stands for, for a file taken back without its row. */
+function contentTypeFor(path: string): string | null {
+  const types: Record<string, string> = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.svg': 'image/svg+xml',
+    '.webp': 'image/webp',
+    '.avif': 'image/avif',
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+  }
+  return types[extname(path).toLowerCase()] ?? null
+}
+
 function extensionFor(url: string): string {
   try {
     const extension = extname(new URL(url).pathname)

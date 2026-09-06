@@ -169,6 +169,10 @@ describe('contract surface', () => {
       // what OpenFeedback knows, on demand and never in the background.
       'controleOpenFeedback',
       'globalBreak',
+      // What the hub holds of the programme's images, and what it could not
+      // fetch: the rooms take them from the hub rather than from the export, so
+      // a refusal is missing on every screen at once.
+      'images',
       'import',
       'planning',
       'snapshots',

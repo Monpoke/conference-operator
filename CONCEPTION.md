@@ -284,6 +284,16 @@ des exemples, pas des constantes du code.
   demande jamais de toucher à OBS.
 - **SQLite des deux côtés, instance hub unique.** Supprime Redis (fanout WebSocket
   en process), partage un seul ORM, et rend les tests exécutables sans conteneur.
+- **Les images du programme passent par le hub.** Il les télécharge une fois à
+  l'import et les sert sous `/assets/<sha256 de l'URL source>` ; les salles
+  demandent cette clé, qu'elles calculent elles-mêmes, et retombent sur l'URL
+  amont si le hub ne l'a pas — en le comptant. Une salle n'a donc plus besoin
+  d'Internet, ce que le reste du système lui promettait déjà. Les URL du
+  programme, elles, ne changent pas : la clé reste l'URL amont des deux côtés,
+  sans quoi le cache déjà rempli d'une salle deviendrait inutilisable et un repli
+  créerait deux entrées pour une image. Et le payload continue de porter des
+  adresses locales à la salle, sans quoi le recadrage des logos par canvas
+  cesserait de fonctionner (même origine).
 - **oRPC v2 contract-first**, un contrat pour trois transports : HTTP, WebSocket,
   MessagePort/Electron. Version **épinglée** (beta) ; doc de référence `v2.orpc.dev`.
 - **Le client n'est pas « en mode dégradé », il est autonome par défaut.** Aucune
@@ -899,7 +909,7 @@ Ce que la salle refait, à réception :
 | Relu | Pourquoi ça compte |
 |---|---|
 | Le programme **entier** | Sans se fier à l'empreinte en cache — c'est justement le cache qu'on soupçonne. Un `sync` ordinaire, lui, s'appuie dessus pour ne pas retélécharger 70 ko à chaque battement |
-| Les assets manquants | Un logo ou une photo tombés au premier `sync` sont repris ; ceux déjà en cache ne sont pas retéléchargés |
+| Les assets manquants | Un logo ou une photo tombés au premier `sync` sont repris — auprès du hub, qui les détient ; ceux déjà en cache ne sont pas retéléchargés |
 | Configuration, réseaux, événement, horloge | Ce que le `sync` redescend de toute façon, mais qu'on force ici |
 | Le cycle de vie des conférences | Relu au hub, qui fait foi — voir « Ce que « Commencer » entraîne » |
 

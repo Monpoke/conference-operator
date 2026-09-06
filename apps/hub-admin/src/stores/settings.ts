@@ -67,23 +67,37 @@ export const useSettingsStore = defineStore('settings', () => {
   const snapshots = ref<Snapshot[]>([])
   const rooms = ref<{ id: string; name: string }[]>([])
   const storage = ref<StorageStatus | null>(null)
+  /**
+   * The programme's images, as the hub holds them.
+   *
+   * The rooms fetch them from the hub rather than from the upstream export — an
+   * image the hub could not get is therefore missing on every screen at once, and
+   * this is the page from which the export gets corrected.
+   */
+  const images = ref<{ held: number; failed: { url: string; reason: string; at: string }[] }>({
+    held: 0,
+    failed: [],
+  })
 
   const session = useSessionStore()
 
   async function load(): Promise<void> {
-    const [settingsData, identityData, snapshotsData, roomsData, storageData] = await Promise.all([
-      session.client.rpc.settings.get(),
-      session.client.rpc.event.identity(),
-      session.client.rpc.program.snapshots(),
-      session.client.rpc.rooms.list(),
-      session.client.rpc.vod.status(),
-    ])
+    const [settingsData, identityData, snapshotsData, roomsData, storageData, imagesData] =
+      await Promise.all([
+        session.client.rpc.settings.get(),
+        session.client.rpc.event.identity(),
+        session.client.rpc.program.snapshots(),
+        session.client.rpc.rooms.list(),
+        session.client.rpc.vod.status(),
+        session.client.rpc.program.images(),
+      ])
     settings.value = settingsData as Settings
     const identity = identityData as { derived?: DerivedIdentity }
     if (identity.derived != null) derived.value = identity.derived
     snapshots.value = snapshotsData as Snapshot[]
     rooms.value = roomsData as { id: string; name: string }[]
     storage.value = storageData as StorageStatus
+    images.value = imagesData as typeof images.value
   }
 
   /**
@@ -132,6 +146,7 @@ export const useSettingsStore = defineStore('settings', () => {
     snapshots,
     rooms,
     storage,
+    images,
     load,
     update,
     activate,

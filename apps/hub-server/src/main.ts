@@ -33,6 +33,31 @@ if (programSource != null && hub.services.programs.active() == null) {
   )
 }
 
+/*
+ * The programme's images, in the background, at every start.
+ *
+ * Not only after an import: a hub restarted with a programme already in its
+ * database has nothing to import, and would otherwise never hold the images the
+ * rooms come to fetch. Already-held images cost a lookup each, nothing more.
+ *
+ * Never awaited — the hub must listen even if an image server does not answer —
+ * and never fatal: a missing logo is recorded, and a room falls back to the
+ * upstream URL while saying so.
+ */
+const active = hub.services.programs.active()
+if (active != null) {
+  void hub.services.assets
+    .prefetch(active.program)
+    .then((report) => {
+      const level = report.failed.length > 0 ? 'warn' : 'info'
+      hub.app.log[level](
+        { downloaded: report.downloaded, reused: report.reused, failed: report.failed.length },
+        'images du programme',
+      )
+    })
+    .catch((cause: Error) => hub.app.log.error({ err: cause }, 'images du programme'))
+}
+
 try {
   await hub.app.listen({ port: config.port, host: config.host })
 } catch (cause) {

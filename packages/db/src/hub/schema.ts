@@ -449,6 +449,36 @@ export const vodUpload = sqliteTable(
   ],
 )
 
+/**
+ * The programme's images, downloaded once by the hub.
+ *
+ * The rooms used to fetch them from the upstream export themselves, which made a
+ * room depend on reaching the internet — everything else it needs comes from the
+ * hub. They now pull the bytes from here.
+ *
+ * `sha256` is the hash of the **source URL**, not of the content: it is what one
+ * knows before downloading, and it is the same key the rooms use for their own
+ * cache. The two sides therefore name an image identically without agreeing on
+ * anything.
+ *
+ * A row exists for a failure too — `failed_at` and its reason, `downloaded_at`
+ * null. An export pointing at an image that answers 403 is a fact to be read in
+ * the console, not a line lost in three rooms' logs.
+ */
+export const asset = sqliteTable(
+  'asset',
+  {
+    sha256: text('sha256').primaryKey(),
+    sourceUrl: text('source_url').notNull(),
+    contentType: text('content_type'),
+    byteSize: integer('byte_size'),
+    downloadedAt: text('downloaded_at'),
+    failedAt: text('failed_at'),
+    failureReason: text('failure_reason'),
+  },
+  (table) => [index('asset_source_idx').on(table.sourceUrl)],
+)
+
 export const hubSchema = {
   programSnapshot,
   room,
@@ -466,4 +496,5 @@ export const hubSchema = {
   hubSetting,
   pushSubscription,
   vodUpload,
+  asset,
 }

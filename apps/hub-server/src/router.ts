@@ -108,11 +108,27 @@ export const router = os.router({
           },
           null,
         )
+
+        /*
+         * The images, in the background.
+         *
+         * Awaiting them would hold the console's button for as long as an image
+         * server takes to answer, for a result the operator is not waiting on:
+         * the rooms fall back to the upstream URL while the hub is catching up,
+         * and say so. What matters is that the hub ends up holding them.
+         */
+        void context.services.assets.prefetch(snapshot.program).catch(() => {})
+
         return snapshot
       }),
     snapshots: os.program.snapshots
       .use(operatorOnly)
       .handler(({ context }) => context.services.programs.list()),
+    images: os.program.images.use(operatorOnly).handler(({ context }) => {
+      const failed = context.services.assets.failures()
+      return { held: context.services.assets.held(), failed }
+    }),
+
     activate: os.program.activate.use(operatorOnly).handler(({ input, context }) => {
       context.services.programs.activate(input.contentHash)
       // Read back after the switch, and for the same reason as at import time:

@@ -18,6 +18,15 @@ export interface AssetRef {
 export interface PrefetchReport {
   downloaded: number
   reused: number
+  /** Downloaded from the hub, which is where they are meant to come from. */
+  fromHub: number
+  /**
+   * Downloaded from the upstream export, the hub not holding them.
+   *
+   * Counted rather than silent: it is the number that says this room still needs
+   * the internet, which everything else about it promises it does not.
+   */
+  fromUpstream: number
   failed: { url: string; reason: string }[]
 }
 
@@ -32,7 +41,25 @@ export class AssetCache {
   constructor(
     private readonly store: LocalStore,
     private readonly directory: string,
+    /**
+     * Where the bytes come from, in order of preference.
+     *
+     * The hub holds the programme's images and serves them under the same hash
+     * this cache uses — so the room asks for a key it computed itself, with
+     * nothing having travelled to tell it what to ask for. The upstream URL stays
+     * as the fallback: a hub still catching up on an import must not leave a
+     * projector without logos.
+     */
+    private readonly hubOrigin: string | null = null,
     private readonly basePath = '/assets',
+    /**
+     * The ceiling on one download.
+     *
+     * `fetch` sets none of its own. One image server that accepts the connection
+     * and then says nothing used to hold this loop open with no way out — and the
+     * loop is awaited by the sync that follows a reconnection.
+     */
+    private readonly timeoutMs = 20_000,
   ) {
     mkdirSync(directory, { recursive: true })
   }
@@ -68,13 +95,14 @@ export class AssetCache {
    * middle of a download would otherwise leave a truncated file the cache would
    * believe valid.
    */
-  async fetchOne(url: string, fetchImpl: typeof fetch = fetch): Promise<AssetRef> {
+  async fetchOne(
+    url: string,
+    fetchImpl: typeof fetch = fetch,
+  ): Promise<AssetRef & { fromHub: boolean }> {
     const existing = this.lookup(url)
-    if (existing != null) return existing
+    if (existing != null) return { ...existing, fromHub: false }
 
-    const response = await fetchImpl(url)
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
-
+    const { response, fromHub } = await this.download(url, fetchImpl)
     const bytes = Buffer.from(await response.arrayBuffer())
     const sha256 = this.keyOf(url)
     const target = join(this.directory, sha256 + extensionFor(url))
@@ -93,7 +121,47 @@ export class AssetCache {
       })
       .run()
 
-    return { sha256, localUrl: `${this.basePath}/${sha256}`, byteSize: bytes.byteLength, contentType }
+    return {
+      sha256,
+      localUrl: `${this.basePath}/${sha256}`,
+      byteSize: bytes.byteLength,
+      contentType,
+      fromHub,
+    }
+  }
+
+  /**
+   * The hub first, the source second.
+   *
+   * The key does not change between the two: it stays the SHA-256 of the
+   * **source URL**, which is what the hub hashes too. Keying on where the bytes
+   * came from would give two entries for one image, and would make every cache
+   * already filled from upstream useless the day the hub starts serving them.
+   *
+   * A hub that answers 404 is not an incident — it has not imported that
+   * programme yet, or the image failed on its side too. We go upstream and the
+   * count says so.
+   */
+  private async download(
+    url: string,
+    fetchImpl: typeof fetch,
+  ): Promise<{ response: Response; fromHub: boolean }> {
+    const signal = (): AbortSignal => AbortSignal.timeout(this.timeoutMs)
+
+    if (this.hubOrigin != null) {
+      const from = `${this.hubOrigin.replace(/\/$/, '')}${this.basePath}/${this.keyOf(url)}`
+      try {
+        const response = await fetchImpl(from, { signal: signal() })
+        if (response.ok) return { response, fromHub: true }
+      } catch {
+        // The hub is unreachable — which the rest of the room already knows and
+        // says. Nothing to add here beyond going to the source.
+      }
+    }
+
+    const response = await fetchImpl(url, { signal: signal() })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    return { response, fromHub: false }
   }
 
   /**
@@ -103,7 +171,13 @@ export class AssetCache {
    * failures are returned so they can be displayed in the control app.
    */
   async prefetch(program: Program, fetchImpl: typeof fetch = fetch): Promise<PrefetchReport> {
-    const report: PrefetchReport = { downloaded: 0, reused: 0, failed: [] }
+    const report: PrefetchReport = {
+      downloaded: 0,
+      reused: 0,
+      fromHub: 0,
+      fromUpstream: 0,
+      failed: [],
+    }
 
     for (const url of assetUrls(program)) {
       if (this.lookup(url) != null) {
@@ -111,8 +185,10 @@ export class AssetCache {
         continue
       }
       try {
-        await this.fetchOne(url, fetchImpl)
+        const { fromHub } = await this.fetchOne(url, fetchImpl)
         report.downloaded += 1
+        if (fromHub) report.fromHub += 1
+        else report.fromUpstream += 1
       } catch (cause) {
         report.failed.push({ url, reason: (cause as Error).message })
       }

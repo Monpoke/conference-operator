@@ -225,7 +225,7 @@ export class RoomApp implements ControlTarget {
 
   constructor(private readonly options: RoomAppOptions) {
     this.store = new LocalStore(join(options.dataDir, 'salle.db'))
-    this.assets = new AssetCache(this.store, join(options.dataDir, 'assets'))
+    this.assets = new AssetCache(this.store, join(options.dataDir, 'assets'), options.hubOrigin)
     this.runtime = new RoomRuntime(
       this.store,
       {
@@ -782,6 +782,23 @@ export class RoomApp implements ControlTarget {
         // program's display.
         const report = await this.assets.prefetch(cached.program)
         this.options.onLog?.('info', 'assets préchargés', report)
+
+        /*
+         * In the journal, and not only on stdout.
+         *
+         * That is what puts it in front of the operator — `diagnostics().log`
+         * feeds the control app's Diagnostic panel, where a room says what is
+         * wrong with it. Two facts deserve to be read there: an image the hub
+         * could not supply, and an image this room went to fetch on the internet,
+         * which it is not supposed to need.
+         */
+        if (report.failed.length > 0 || report.fromUpstream > 0) {
+          this.store.log('warn', 'images du programme', {
+            depuisHub: report.fromHub,
+            depuisSource: report.fromUpstream,
+            echecs: report.failed.length,
+          })
+        }
       }
     }
     return result.ok

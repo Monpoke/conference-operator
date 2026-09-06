@@ -80,9 +80,9 @@ spec:
             capabilities:
               drop: [ALL]
             # `readOnlyRootFilesystem: true` is within reach — the hub writes its
-            # database and nothing else — but it has not been run that way here.
-            # Turning it on means mounting an `emptyDir` on /tmp and watching the
-            # first start.
+            # database and the programme's images, both under /data — but it has
+            # not been run that way here. Turning it on means mounting an
+            # `emptyDir` on /tmp and watching the first start.
           resources:
             # A starting point, not a measurement: the image is a Node process
             # serving a handful of rooms and a console. Watch it for an hour

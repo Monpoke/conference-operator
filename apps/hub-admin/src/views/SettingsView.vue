@@ -20,7 +20,7 @@ import {
  * panel.
  */
 const store = useSettingsStore()
-const { settings, derived, snapshots, rooms, storage } = storeToRefs(store)
+const { settings, derived, snapshots, rooms, storage, images } = storeToRefs(store)
 const toast = useToast()
 
 // — The event —
@@ -369,6 +369,39 @@ async function confirmResync(): Promise<void> {
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!--
+        Les images, et ce qui manque.
+
+        Les salles ne vont plus les chercher chez la source : elles les prennent
+        sur le hub. Une image que le hub n'a pas obtenue manque donc sur tous les
+        écrans à la fois — et c'est d'ici qu'on corrige l'export, pas depuis le
+        journal de trois salles.
+      -->
+      <div class="mt-4 border-t border-edge pt-3.5" id="program-images">
+        <h3 class="mb-1.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+          Images
+        </h3>
+        <p class="text-[13px] text-dim">
+          {{ images.held }} image{{ images.held > 1 ? 's' : '' }} servie{{
+            images.held > 1 ? 's' : ''
+          }}
+          aux salles depuis ce hub.
+        </p>
+        <ul v-if="images.failed.length > 0" class="mt-2 flex flex-col gap-1">
+          <li
+            v-for="failure in images.failed"
+            :key="failure.url"
+            class="text-[13px] text-alert"
+            data-role="image-failure"
+          >
+            {{ failure.reason }} — <span class="break-all opacity-80">{{ failure.url }}</span>
+          </li>
+        </ul>
+        <p v-else class="mt-1 text-[13px] text-dim">
+          Aucune image manquante. Une salle n'a donc rien à aller chercher sur Internet.
+        </p>
       </div>
     </Panel>
 

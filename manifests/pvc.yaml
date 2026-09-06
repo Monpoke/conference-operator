@@ -1,8 +1,9 @@
-# The hub's database, and nothing else.
+# The hub's database, and the programme's images beside it.
 #
-# One gibibyte is generous: what lives here is a SQLite file holding the
-# programme, the operators, the pairings and the moderation of a day. The rushes
-# never pass through — they go from the rooms to S3.
+# One gibibyte is generous: a SQLite file holding the programme, the operators,
+# the pairings and the moderation of a day, plus the images the rooms come to
+# fetch — a couple of megabytes for an event, since they are logos and portraits.
+# The rushes never pass through: they go from the rooms to S3.
 #
 # `ReadWriteOnce` is not a limitation to work around: SQLite tolerates exactly
 # one writer, which is also why the deployment below stays at one replica.

@@ -52,6 +52,7 @@ function stub(options: {
   storage?: Record<string, unknown> | null
   resyncRooms?: number
   snapshots?: unknown[]
+  images?: { held: number; failed: { url: string; reason: string; at: string }[] }
 }): { calls: Call[]; client: unknown; settings: Record<string, unknown> } {
   const calls: Call[] = []
   // Mutated by the tests that simulate a change from elsewhere — another operator,
@@ -89,6 +90,7 @@ function stub(options: {
         },
         program: {
           snapshots: note('program/snapshots', options.snapshots ?? []),
+          images: note('program/images', options.images ?? { held: 0, failed: [] }),
           activate: note('program/activate', { ok: true }),
           import: note('program/import', { program: { sessions: [1, 2, 3] } }),
         },

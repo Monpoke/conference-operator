@@ -1,0 +1,31 @@
+# The one file to adjust to a cluster: the host, the class, and the TLS.
+#
+# The annotations are ingress-nginx's. Whatever the controller, the point they
+# make has to be made somehow: **the hub holds long-lived WebSockets** on `/ws` —
+# that is how a room receives its commands and reports back. A proxy that closes
+# idle connections after a minute leaves rooms reconnecting all day, which reads
+# as a flaky network and is a timeout.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hub
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - hub.exemple.fr
+      secretName: hub-tls
+  rules:
+    - host: hub.exemple.fr
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hub
+                port:
+                  name: http

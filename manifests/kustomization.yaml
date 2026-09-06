@@ -1,0 +1,22 @@
+# `kubectl apply -k manifests/` — everything, in one command.
+#
+# `secret.example.yaml` is deliberately absent: it is a template with an empty
+# secret, and applying it would raise a hub that refuses to start.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: conference-operator
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+
+# The version deployed, in one place. `newTag` is what a release changes:
+#   kustomize edit set image ghcr.io/monpoke/conference-operator/hub:1.2.0
+images:
+  - name: ghcr.io/monpoke/conference-operator/hub
+    newTag: "0.0.0"

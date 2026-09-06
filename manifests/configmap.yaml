@@ -1,0 +1,24 @@
+# What is not a secret. Everything here has a default in the image or in the
+# hub's own configuration; only `PUBLIC_URL` really has to be decided.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hub
+data:
+  # The address a browser sees, behind the ingress — not the address of the pod.
+  # Better Auth signs its cookies with it, and the URI an operator reads to pair a
+  # room machine is derived from it. Wrong here, pairing sends people nowhere.
+  PUBLIC_URL: "https://hub.exemple.fr"
+
+  # The "conference-center" export. It only seeds the very first start: after
+  # that the console's setting is what counts, and this line would overwrite it
+  # on every restart if the hub read it again. It is also what names the event
+  # everywhere.
+  PROGRAM_SOURCE_URL: "https://exemple.fr/programme.json"
+
+  LOG_LEVEL: "info"
+
+  # Pairing. Ten minutes is the default; it is long enough to walk across a room
+  # with the code and short enough that the console's queue empties itself.
+  DEVICE_CODE_TTL: "10m"
+  DEVICE_POLL_INTERVAL: "5s"

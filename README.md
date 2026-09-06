@@ -36,6 +36,10 @@ orchestrateur pose.
 derrière le proxy HTTPS : Better Auth signe ses cookies avec, et l'URI que
 recopie un opérateur pour appairer une machine en découle.
 
+Sur Kubernetes, les manifestes sont dans [`manifests/`](manifests/) —
+`kubectl apply -k manifests/`, et son README dit ce qu'il faut régler avant et
+pourquoi le hub y tient en une seule réplique.
+
 Le compte opérateur, une fois :
 
 ```bash

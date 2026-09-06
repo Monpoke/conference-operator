@@ -1,0 +1,20 @@
+# The hub's database, and nothing else.
+#
+# One gibibyte is generous: what lives here is a SQLite file holding the
+# programme, the operators, the pairings and the moderation of a day. The rushes
+# never pass through — they go from the rooms to S3.
+#
+# `ReadWriteOnce` is not a limitation to work around: SQLite tolerates exactly
+# one writer, which is also why the deployment below stays at one replica.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hub-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  # Left to the cluster's default. A named class goes here.
+  # storageClassName: ""

@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hub
+spec:
+  # One, and it is not a starting point to scale from.
+  #
+  # The hub keeps its state in a SQLite file on the volume below, and fans its
+  # WebSockets out in-process — that is a deliberate decision of this repository,
+  # which removes Redis and lets the tests run without a container. Two replicas
+  # would fight over the same file and would each know only their own rooms.
+  replicas: 1
+  strategy:
+    # `Recreate`, not the default rolling update: a rollout that starts the new
+    # pod before the old one has let go would put two writers on one SQLite file.
+    # It costs a few seconds of interruption on every deploy, which is a thing to
+    # do outside an event rather than a thing to make lock-free.
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hub
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: hub
+    spec:
+      # The graceful shutdown drains the requests, cuts the WebSockets and closes
+      # the database, giving up after five seconds of its own accord. Twenty
+      # leaves room without making a stuck pod linger.
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        runAsNonRoot: true
+        # `node`, the user the image already runs as. Repeated here so the cluster
+        # enforces it rather than trusting the image.
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: hub
+          image: ghcr.io/monpoke/conference-operator/hub:0.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8787
+          # `MODE=production`, the listen address and `DATABASE_PATH=/data/hub.db`
+          # are already set by the image: they are not repeated here, so that
+          # there is one place to read them.
+          envFrom:
+            - configMapRef:
+                name: hub
+            - secretRef:
+                name: hub
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          # `/health` touches neither the database nor the programme: it answers
+          # as long as Fastify is listening, which is the question a probe asks.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            # The first start imports the programme and runs the migrations.
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 20
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            # `readOnlyRootFilesystem: true` is within reach — the hub writes its
+            # database and nothing else — but it has not been run that way here.
+            # Turning it on means mounting an `emptyDir` on /tmp and watching the
+            # first start.
+          resources:
+            # A starting point, not a measurement: the image is a Node process
+            # serving a handful of rooms and a console. Watch it for an hour
+            # before trusting these.
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 768Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: hub-data

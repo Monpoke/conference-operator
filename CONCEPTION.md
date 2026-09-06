@@ -2419,6 +2419,7 @@ porte :
 | Hub | `ghcr.io/monpoke/conference-operator/hub` | image `linux/amd64`, taguée `1.2.0`, `1.2` et `latest` |
 | Régie de salle, Windows | pièces jointes de la release | `room-control-1.2.0.exe` et `SHA256SUMS-windows.txt` |
 | Régie de salle, Linux | pièces jointes de la release | `room-control-1.2.0.AppImage`, `.tar.gz` et `SHA256SUMS-linux.txt` |
+| Manifestes Kubernetes | pièces jointes de la release | `manifests-1.2.0.tar.gz`, l'image y est déjà épinglée |
 
 **Un tag, un couple.** Le hub et le client de salle parlent le même contrat
 oRPC, versionné nulle part ailleurs que dans ce dépôt. Les publier séparément
@@ -2429,6 +2430,13 @@ rien ne saurait répondre. Le tag est donc l'unité d'exploitation : qui install
 La régie web, elle, n'est pas un paquet — elle n'a pas d'existence autonome. Le
 hub la sert (régie mobile) et l'installeur l'embarque dans ses `resources` :
 c'est le même bundle, publié deux fois parce qu'il est utilisé de deux façons.
+
+Les manifestes Kubernetes suivent la même règle que les paquets : le dépôt garde
+`newTag: "0.0.0"`, et c'est la release qui publie une archive où le numéro est
+écrit. Une archive plutôt qu'un fichier rendu par `kustomize` — celui-ci aplatit
+les commentaires, et ce sont eux qui disent pourquoi le hub tient à une seule
+réplique et pourquoi une mise à jour progressive mettrait deux écrivains sur un
+fichier SQLite.
 
 **Le numéro n'existe que dans le tag.** Les `package.json` restent à `0.0.0` et
 `private: true` — aucun n'est publié sur un registre npm, leur tenir une

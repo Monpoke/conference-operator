@@ -115,10 +115,20 @@ echo "Les salles perdront leur appairage et devront être réapprouvées dans la
 if [[ $NO_QUESTION -eq 0 ]]; then
   # Read from the terminal, not from standard input: called with no terminal, we
   # erase nothing rather than take an end of file for a "yes".
+  #
+  # The question is written to the terminal by hand rather than left to `read -p`.
+  # That one prints to **stderr** — the very stream muted here so that a missing
+  # /dev/tty does not complain — so the prompt went out with the complaint, and
+  # the script waited on an answer it had never asked for.
+  #
+  # The redirection sits on the group: laid down after the `exec`, it would arrive
+  # too late to catch the failure it exists for.
   answer=""
-  # `2>` before `<`: the redirections are laid down left to right, and a missing
-  # /dev/tty would complain before its complaint could be diverted.
-  read -r -p "Confirmer (o/N) ? " answer 2>/dev/null < /dev/tty || answer=""
+  if { exec 3<> /dev/tty; } 2>/dev/null; then
+    printf 'Confirmer (o/N) ? ' >&3
+    read -r answer <&3 || answer=""
+    exec 3>&-
+  fi
   if [[ "$answer" != "o" && "$answer" != "O" ]]; then
     echo "Annulé — rien n'a été supprimé."
     exit 1

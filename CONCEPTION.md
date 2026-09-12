@@ -621,7 +621,7 @@ donne une page qui n'est bien nulle part.
 
 | | Régie de salle | Régie mobile |
 |---|---|---|
-| État | SSE `/display/state?vue=regie` | `regie.view`, sondée à 1 Hz |
+| État | SSE `/display/state?vue=regie` | `regie.watch` sur `/ws` à ticket ; `regie.view` sondée en repli |
 | Gestes | `POST /control/action` | `regie.command` → flux descendant |
 | Servie par | la machine de salle | le hub |
 | Identité | aucune (boucle locale) | opérateur Better Auth |
@@ -665,10 +665,14 @@ toujours en regardant, et c'est le voile qui porte la décision.
 | Rendre | bouton « ‹ Salles », ou fermeture de l'onglet |
 | Ne plus donner de nouvelles | le verrou tombe seul au bout de **30 s** |
 
-Le battement voyage dans le sondage d'état : `regie.view` renouvelle la prise de
-son porteur — et seulement de lui, session comprise. Un second minuteur serait
-un geste de plus à ne pas oublier d'arrêter, et un verrou qui survit à la page
-qui le tenait.
+Le battement voyage dans le flux d'état : chaque vue que `regie.watch` pousse
+renouvelle la prise de son porteur — et seulement de lui, session comprise. Le
+hub en pousse une à chaque changement, et au moins toutes les **10 s**
+(`CONTROL_WATCH_FLOOR_MS`) : le temps fait avancer le compte à rebours, une salle
+ne passe hors ligne que par son silence, et le verrou tient tant que le socket
+vit. Quand le flux ne passe pas, c'est `regie.view`, sondée chaque seconde, qui
+porte le battement à sa place. Un second minuteur serait un geste de plus à ne
+pas oublier d'arrêter, et un verrou qui survit à la page qui le tenait.
 
 ### Le voile, et pas un bouton dans un coin
 
@@ -717,8 +721,9 @@ La distinction n'est pas cosmétique. « Commencer » **abandonne le démarrage 
 l'enregistrement refuse de partir** — c'est ce qui rend l'avertissement honnête.
 Prise telle quelle, la réponse du hub aurait suffi à faire croire que
 l'enregistrement tourne. La régie mobile **confirme donc par l'observation** :
-elle sonde jusqu'à voir `recording` passer à vrai, avec un délai de garde de
-cinq secondes, et déclare le geste manqué au bout. Sans cela, la garantie
+elle attend la vue suivante — poussée dès que la salle a remonté, ou sondée si
+rien n'arrive dans la seconde — jusqu'à voir `recording` passer à vrai, avec un
+délai de garde de cinq secondes, et déclare le geste manqué au bout. Sans cela, la garantie
 disparaissait sans que rien ne le dise, et on l'aurait découvert le soir devant
 une VOD absente.
 
@@ -726,6 +731,37 @@ Corollaire côté salle : après une bascule d'OBS, le poste **réveille sa file
 remontée** au lieu d'attendre son tic. Sans ce réveil, un bouton resterait
 plusieurs secondes à décrire l'état d'avant — sur une page dont toute la
 discipline est de ne jamais peindre d'avance — et on appuierait une seconde fois.
+
+### Le flux, sur un WebSocket à ticket
+
+La vue descend en **push** : le hub réveille chaque régie mobile qui regarde une
+salle dès que son état bouge — remontée de la salle, décision de cycle de vie,
+changement de verrou — et la vue est recomposée depuis ce qui est stocké, comme
+un sondage. Le signal ne porte aucun état : ce serait une seconde version de la
+salle, qui finirait par contredire la première.
+
+Un navigateur ne pose **aucun en-tête** sur un WebSocket, alors que le jeton
+opérateur et `x-regie-session` voyagent en en-têtes. D'où un ticket :
+`regie.ticket`, en HTTP, rend une chaîne aléatoire que `/ws?ticket=…` échange à
+l'upgrade contre l'opérateur et la session d'onglet.
+
+| | Pourquoi |
+|---|---|
+| Usage unique | Un ticket vu deux fois est un ticket que quelqu'un d'autre a vu |
+| 30 s | Le temps d'ouvrir un socket sur un réseau de téléphone, pas plus |
+| En mémoire | Un redémarrage les oublie ; la page en redemande un, elle doit se reconnecter de toute façon |
+| Refus en 401 à l'upgrade | Un socket accepté sur un ticket mort n'échouerait qu'au premier appel, indiscernable d'une coupure |
+
+**Pas le jeton en query** : il finirait dans les journaux d'accès du proxy et de
+l'ingress. Le contexte du socket est figé à l'upgrade, comme pour les salles : un
+compte révoqué est coupé à la reconnexion suivante, qui exige un nouveau ticket.
+
+**Le sondage reste**, en repli. Il tourne jusqu'à la première vue du flux, et
+chaque fois que le flux échoue ; le flux est rouvert avec un délai croissant, de
+1 à 30 s. Un proxy d'événement qui refuse les WebSockets donne une page plus
+lente, jamais figée. Un flux muet plus de **25 s** — deux planchers et une marge —
+est présumé mort : un socket à moitié ouvert par un téléphone qui change de
+cellule ne lève aucune erreur.
 
 ### Ce qu'une commande de régie mobile vaut dans le temps
 

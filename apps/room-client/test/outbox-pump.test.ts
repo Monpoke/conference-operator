@@ -209,6 +209,43 @@ describe('waking the pump', () => {
     pump.stop()
   })
 
+  it('does not lose a wake-up that arrives while a drain is in flight', async () => {
+    /*
+     * The remote gesture's case, and it is the rule rather than the exception.
+     *
+     * The applied command drains the heartbeat it has just emitted; OBS's echo
+     * wakes the pump again while that batch is still on its way to the hub. The
+     * guard used to drop that second wake-up, and the new scene waited for the
+     * tick — two seconds of a button still describing the state from before.
+     */
+    const hub = fakeHub()
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const deliver = hub.push.getMockImplementation()!
+    hub.push.mockImplementationOnce(async (batch) => {
+      await held
+      return deliver(batch)
+    })
+    const { pump } = makePump(hub)
+
+    outbox.enqueue(marker('heartbeat'))
+    pump.start()
+    pump.wake()
+    await vi.waitFor(() => expect(hub.push).toHaveBeenCalledTimes(1))
+
+    // OBS answers while the first batch is still in flight.
+    outbox.enqueue(marker('scene'))
+    pump.wake()
+
+    release()
+    await vi.waitFor(() => expect(hub.received.size).toBe(2))
+    // The replay, not the two-second tick: the test is over well before it.
+    expect(hub.push).toHaveBeenCalledTimes(2)
+    pump.stop()
+  })
+
   it('does not write to the database when the batch comes back after closing', async () => {
     /*
      * The race that killed the process, one time in three.

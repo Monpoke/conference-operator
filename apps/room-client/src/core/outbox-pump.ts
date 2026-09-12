@@ -51,6 +51,15 @@ export class OutboxPump {
    * write after it. See `drainOnce`.
    */
   private stopped = false
+  /**
+   * A pass was asked for while a drain was in flight.
+   *
+   * Dropping it lost exactly the fact the wake-up exists for. On a remote gesture
+   * the crossing is the rule, not the exception: the applied command drains the
+   * heartbeat it has just emitted, and OBS's echo wakes the pump ~150 ms later,
+   * while that drain is still in flight. The new scene then waited for the tick.
+   */
+  private wakeAgain = false
   private connectivity: Connectivity = 'OFFLINE'
 
   constructor(private readonly options: OutboxPumpOptions) {}
@@ -154,12 +163,22 @@ export class OutboxPump {
    * batches in parallel and the hub would apply them out of order. It holds for
    * the tick **and** for the wake-up — it is precisely when the two cross that it
    * counts.
+   *
+   * A pass refused by the guard is not lost: it runs once the drain in flight
+   * has finished. One replay, however many asks piled up — they all want the same
+   * thing, that the queue be empty — and never two drains at once.
    */
   private pass(): void {
-    if (this.draining) return
+    if (this.draining) {
+      this.wakeAgain = true
+      return
+    }
     this.draining = true
     void this.drainOnce().finally(() => {
       this.draining = false
+      if (!this.wakeAgain || this.stopped) return
+      this.wakeAgain = false
+      this.pass()
     })
   }
 
@@ -199,6 +218,7 @@ export class OutboxPump {
 
   stop(): void {
     this.stopped = true
+    this.wakeAgain = false
     if (this.timer != null) clearInterval(this.timer)
     this.timer = null
   }

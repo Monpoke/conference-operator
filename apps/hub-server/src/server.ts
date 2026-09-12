@@ -20,6 +20,8 @@ import { QuestionService, WallService } from './services/wall.js'
 import { RateLimiter } from './services/rate-limit.js'
 import { ControlService } from './services/control.js'
 import { RoomChanges } from './services/changes.js'
+import { SocketTickets } from './services/socket-tickets.js'
+import { CONTROL_SESSION_HEADER } from '@conference-operator/contract'
 import { SessionStateService, SettingsService } from './services/sessions.js'
 import { readFileSync } from 'node:fs'
 import { s3Keys, VodService } from './services/vod.js'
@@ -107,6 +109,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     sessions: new SessionStateService(orm, settings, () => clock.now(), touch),
     regie: new ControlService(orm, () => clock.now(), touch),
     changes,
+    tickets: new SocketTickets(),
     push,
     // Filled in right after the server is created: the service logs, and its log
     // is Fastify's.
@@ -616,13 +619,19 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   const wsHandler = new WebSocketRPCHandler(router)
   const wss = new WebSocketServer({ noServer: true })
   const liveSockets = new Set<NodeWebSocket>()
-  wss.on('connection', (socket: NodeWebSocket, headers: Headers) => {
-    liveSockets.add(socket)
-    socket.on('close', () => liveSockets.delete(socket))
-    wsHandler.upgrade(socket as unknown as Parameters<typeof wsHandler.upgrade>[0], {
-      context: contextFrom(auth, services, headers),
-    })
-  })
+  wss.on(
+    'connection',
+    (socket: NodeWebSocket, headers: Headers, ticketOperator?: HubContext['ticketOperator']) => {
+      liveSockets.add(socket)
+      socket.on('close', () => liveSockets.delete(socket))
+      wsHandler.upgrade(socket as unknown as Parameters<typeof wsHandler.upgrade>[0], {
+        context: {
+          ...contextFrom(auth, services, headers),
+          ...(ticketOperator != null ? { ticketOperator } : {}),
+        },
+      })
+    },
+  )
 
   app.server.on('upgrade', (request, socket, head) => {
     if (!request.url?.startsWith('/ws')) {
@@ -636,7 +645,33 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       return
     }
     const headers = headersOf(request.headers)
-    wss.handleUpgrade(request, socket, head, (client) => wss.emit('connection', client, headers))
+
+    /*
+     * A mobile control app: `/ws?ticket=…`.
+     *
+     * Redeemed **before** the handshake, and refused as a plain 401: a socket
+     * accepted on a dead ticket would only fail at its first call, where the page
+     * can no longer tell a refusal from a network hiccup. Without a ticket nothing
+     * changes — that is the rooms' path, authenticated by their own headers.
+     */
+    const ticket = new URL(request.url, 'http://hub').searchParams.get('ticket')
+    let ticketOperator: HubContext['ticketOperator']
+    if (ticket != null) {
+      const grant = services.tickets.redeem(ticket)
+      if (grant == null) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n')
+        socket.destroy()
+        return
+      }
+      // The socket speaks as the ticket's operator and tab, and as nothing else.
+      headers.delete('authorization')
+      headers.set(CONTROL_SESSION_HEADER, grant.regieSession)
+      ticketOperator = grant.operator
+    }
+
+    wss.handleUpgrade(request, socket, head, (client) =>
+      wss.emit('connection', client, headers, ticketOperator),
+    )
   })
 
   /**

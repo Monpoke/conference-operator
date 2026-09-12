@@ -1,5 +1,6 @@
 import { implement, withEventMeta } from '@orpc/server'
 import { ORPCError } from '@orpc/server'
+import { CONTROL_WATCH_FLOOR_MS } from '@conference-operator/contract'
 import {
   DEFAULT_VOD_POLICY,
   PROTOCOL_VERSION,
@@ -1314,20 +1315,66 @@ export const router = os.router({
      * at a room held by somebody else without taking it from them.
      */
     view: os.regie.view.use(operatorOnly).handler(({ input, context }) => {
-      const lock = context.services.regie.lock(input.roomId)
-      /*
-       * Only the holder renews, and "the holder" is a session.
-       *
-       * A second tab of the same operator merely reads: the opposite would keep
-       * alive indefinitely a lock the page that took it has stopped holding.
-       */
-      if (lock != null && lock.holderId === context.headers.get(CONTROL_SESSION_HEADER)) {
-        context.services.regie.hold(input.roomId, lock.holder, lock.holderId, false)
-      }
+      renewIfHolder(context, input.roomId)
       return onRoom(() =>
         controlView(context.services, input.roomId, context.services.clock.now()),
       )
     }),
+
+    ticket: os.regie.ticket.use(operatorOnly).handler(({ context }) =>
+      context.services.tickets.issue({
+        operator: context.operator,
+        // Required here, as on every lock gesture: a stream opened without a tab
+        // could never hold a room, and would say so nowhere.
+        regieSession: controlSessionId(context),
+      }),
+    ),
+
+    /**
+     * The room's state, pushed — and the holder's heartbeat while the stream lives.
+     *
+     * Subscribed to the changes **before** the first read: a report landing between
+     * the two would otherwise wait for the floor. Every emission recomposes from
+     * what is stored, exactly like `view`: the signal carries no state of its own.
+     */
+    watch: os.regie.watch
+      .use(operatorOnly)
+      .handler(async function* ({ input, context, signal }) {
+        const read = () =>
+          onRoom(() => controlView(context.services, input.roomId, context.services.clock.now()))
+        // Refused before subscribing: an unknown room is a 404, not a silent stream.
+        read()
+
+        /*
+         * Our own abort, forwarded from the connection's.
+         *
+         * The client may close its iterator without the connection going away; the
+         * subscription and the floor's timer must end with the stream all the same,
+         * not with the socket an hour later.
+         */
+        const stop = new AbortController()
+        const forward = () => stop.abort()
+        signal?.addEventListener('abort', forward, { once: true })
+        const changes = context.services.changes.watch(input.roomId, stop.signal)
+
+        try {
+          let woken = changes.next()
+          while (!stop.signal.aborted) {
+            renewIfHolder(context, input.roomId)
+            yield read()
+            const outcome = await Promise.race([
+              woken.then((result) => (result.done === true ? 'done' : 'change')),
+              floor(CONTROL_WATCH_FLOOR_MS, stop.signal),
+            ])
+            if (outcome === 'done') return
+            // A floor tick leaves the pending wake-up where it is, for the next turn.
+            if (outcome === 'change') woken = changes.next()
+          }
+        } finally {
+          signal?.removeEventListener('abort', forward)
+          stop.abort()
+        }
+      }),
 
     command: os.regie.command.use(operatorOnly).handler(({ input, context }) => {
       requireLock(context, input.roomId)
@@ -1632,6 +1679,34 @@ function requireLock(context: HubContext, roomId: string): void {
       message: `${lock.holder} tient la régie de cette salle`,
     })
   }
+}
+
+/**
+ * Renews the lock if the calling tab holds it, and only then.
+ *
+ * Only the holder renews, and "the holder" is a session. A second tab of the same
+ * operator merely reads: the opposite would keep alive indefinitely a lock the page
+ * that took it has stopped holding. Shared by the poll and the stream — two
+ * heartbeats that disagreed on who may renew would be a lock nobody can reason about.
+ */
+function renewIfHolder(context: HubContext, roomId: string): void {
+  const lock = context.services.regie.lock(roomId)
+  if (lock != null && lock.holderId === context.headers.get(CONTROL_SESSION_HEADER)) {
+    context.services.regie.hold(roomId, lock.holder, lock.holderId, false)
+  }
+}
+
+/** Resolves after `ms`, or at once when the stream ends — and leaves no timer behind. */
+function floor(ms: number, signal: AbortSignal): Promise<'floor'> {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer)
+      signal.removeEventListener('abort', done)
+      resolve('floor')
+    }
+    const timer = setTimeout(done, ms)
+    signal.addEventListener('abort', done, { once: true })
+  })
 }
 
 /**

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { CONTROL_LOCK_TTL_MS, CONTROL_COMMAND_TTL } from '@conference-operator/contract'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createHub, type Hub } from '../src/server.js'
 import { provisionOperator } from '../src/operators.js'
 import { controlCommand, controlView } from '../src/services/control.js'
@@ -71,6 +71,46 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await hub.close()
+})
+
+describe('the change signal', () => {
+  it('wakes the watchers on a take, a takeover and a release — not on a renewal', () => {
+    const touch = vi.spyOn(hub.services.changes, 'touch')
+
+    hub.services.regie.hold(TRACK_1, OPERATOR.email, PHONE, false)
+    expect(touch).toHaveBeenCalledTimes(1)
+
+    // The heartbeat: same tab, nothing moved. The watch stream renews its holder;
+    // signalling the renewal would wake that same stream, in a loop.
+    hub.services.regie.hold(TRACK_1, OPERATOR.email, PHONE, false)
+    expect(touch).toHaveBeenCalledTimes(1)
+
+    hub.services.regie.hold(TRACK_1, OTHER.email, TABLET, true)
+    expect(touch).toHaveBeenCalledTimes(2)
+
+    hub.services.regie.release(TRACK_1, TABLET)
+    expect(touch).toHaveBeenCalledTimes(3)
+    expect(touch.mock.calls.every(([roomId]) => roomId === TRACK_1)).toBe(true)
+  })
+
+  it('wakes the room whose talk changes state', () => {
+    const touch = vi.spyOn(hub.services.changes, 'touch')
+    const view = controlView(hub.services, TRACK_1, hub.services.clock.now())
+    const target = view.targetSession
+    expect(target).not.toBeNull()
+
+    hub.services.sessions.start(target!.id, TRACK_1, OPERATOR.email)
+    expect(touch).toHaveBeenLastCalledWith(TRACK_1)
+
+    touch.mockClear()
+    hub.services.sessions.reset(target!.id)
+    expect(touch).toHaveBeenCalledWith(TRACK_1)
+
+    // Nothing left to reset: nothing changed, nobody to wake.
+    touch.mockClear()
+    hub.services.sessions.reset(target!.id)
+    expect(touch).not.toHaveBeenCalled()
+  })
 })
 
 describe('the lock', () => {

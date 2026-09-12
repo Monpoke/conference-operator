@@ -19,6 +19,7 @@ import { DeviceService, RoomService } from './services/rooms.js'
 import { QuestionService, WallService } from './services/wall.js'
 import { RateLimiter } from './services/rate-limit.js'
 import { ControlService } from './services/control.js'
+import { RoomChanges } from './services/changes.js'
 import { SessionStateService, SettingsService } from './services/sessions.js'
 import { readFileSync } from 'node:fs'
 import { s3Keys, VodService } from './services/vod.js'
@@ -86,6 +87,8 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
    */
   const assets = new AssetStore(orm, join(dirname(config.databasePath), 'assets'))
   const clock = mutableClock(config.simulatedTime ?? null)
+  const changes = new RoomChanges()
+  const touch = (roomId: string | null) => changes.touch(roomId)
 
   const services: Services = {
     programs,
@@ -93,7 +96,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     rooms: new RoomService(orm),
     devices,
     commands: new CommandService(orm, () => clock.now()),
-    ingest: new IngestService(orm),
+    ingest: new IngestService(orm, touch),
     wall: new WallService(orm),
     questions: new QuestionService(orm),
     // Five posts in a row then one every ten seconds: enough to post normally,
@@ -101,8 +104,9 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     limiter: new RateLimiter({ capacity: 5, refillPerSecond: 0.1 }),
     settings,
     identity: new EventIdentityService(settings, programs),
-    sessions: new SessionStateService(orm, settings, () => clock.now()),
-    regie: new ControlService(orm, () => clock.now()),
+    sessions: new SessionStateService(orm, settings, () => clock.now(), touch),
+    regie: new ControlService(orm, () => clock.now(), touch),
+    changes,
     push,
     // Filled in right after the server is created: the service logs, and its log
     // is Fastify's.

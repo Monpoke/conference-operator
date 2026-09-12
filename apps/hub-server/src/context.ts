@@ -10,6 +10,7 @@ import type { RateLimiter } from './services/rate-limit.js'
 import type { PushService } from './services/push.js'
 import type { VodService } from './services/vod.js'
 import type { ControlService } from './services/control.js'
+import type { RoomChanges } from './services/changes.js'
 import type { SessionStateService, SettingsService } from './services/sessions.js'
 import type { EventIdentityService } from './services/event-identity.js'
 import type { MutableClock } from './services/clock.js'
@@ -34,6 +35,14 @@ export interface Services {
    * gestures intact.
    */
   regie: ControlService
+  /**
+   * "This room has changed", for the mobile control apps watching it.
+   *
+   * What lets `regie.watch` push instead of being polled. Fed by the services
+   * that write a room's state — ingest, lifecycle, lock — rather than by each
+   * router call site, which one would forget the day a procedure is added.
+   */
+  changes: RoomChanges
   settings: SettingsService
   /**
    * Who the event is — full name and short name.

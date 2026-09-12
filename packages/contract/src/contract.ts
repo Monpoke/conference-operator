@@ -983,14 +983,32 @@ export const contract = {
     /** Releases the room. No effect if the caller was not holding it. */
     release: oc.input(z.object({ roomId: roomIdSchema })).output(z.object({ ok: z.boolean() })),
     /**
-     * A room's state, **and the lock's heartbeat**.
+     * A room's state, **and the lock's heartbeat**, polled.
      *
-     * Both in the same call, by design. A one-second poll already says "I am
-     * here"; making it a second gesture is one more heartbeat you can forget to
-     * stop — and a lock that outlives the page holding it. A caller that does not
-     * hold the room merely reads.
+     * The fallback of `regie.watch`, for the network a WebSocket does not cross.
+     * Both in the same call, as in the stream: a separate heartbeat would be one
+     * more gesture you can forget to stop — and a lock that outlives the page
+     * holding it. A caller that does not hold the room merely reads.
      */
     view: oc.input(z.object({ roomId: roomIdSchema })).output(controlViewSchema),
+    /**
+     * A one-shot ticket to open the stream.
+     *
+     * A browser cannot set a header on a WebSocket, and both the operator's token
+     * and the tab's session travel in headers. The ticket carries them across the
+     * upgrade — `/ws?ticket=…` — once, for thirty seconds, without the token ever
+     * appearing in an address a proxy would log.
+     */
+    ticket: oc.output(z.object({ ticket: z.string().min(1), expiresInMs: z.number().int() })),
+    /**
+     * A room's state, pushed: at opening, on every change, and at least every
+     * `CONTROL_WATCH_FLOOR_MS`.
+     *
+     * Each emission renews the lock of the tab that holds it, as `view` does:
+     * the stream alive *is* the heartbeat. Closing it releases nothing — the lock
+     * falls on its own, as when a polling page stops polling.
+     */
+    watch: oc.input(z.object({ roomId: roomIdSchema })).output(eventIterator(controlViewSchema)),
     /**
      * A control gesture. Reserved for the lock holder.
      *

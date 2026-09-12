@@ -37,6 +37,16 @@ import { sessionStatusSchema } from './room-state.js'
 export const CONTROL_LOCK_TTL_MS = 30_000
 
 /**
+ * The longest a mobile control app's stream stays silent.
+ *
+ * `regie.watch` pushes on every change, and at least this often otherwise: the
+ * time moves the countdown and the target, and a room that goes quiet only turns
+ * offline by its silence — neither emits anything. It is also the lock's heartbeat
+ * while the stream lives, hence well under `CONTROL_LOCK_TTL_MS`.
+ */
+export const CONTROL_WATCH_FLOOR_MS = 10_000
+
+/**
  * Header a mobile control tab identifies itself with.
  *
  * The lock holds a **session**, not an account. Two tabs belonging to the same

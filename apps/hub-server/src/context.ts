@@ -11,6 +11,7 @@ import type { PushService } from './services/push.js'
 import type { VodService } from './services/vod.js'
 import type { ControlService } from './services/control.js'
 import type { RoomChanges } from './services/changes.js'
+import type { SocketTickets } from './services/socket-tickets.js'
 import type { SessionStateService, SettingsService } from './services/sessions.js'
 import type { EventIdentityService } from './services/event-identity.js'
 import type { MutableClock } from './services/clock.js'
@@ -43,6 +44,14 @@ export interface Services {
    * router call site, which one would forget the day a procedure is added.
    */
   changes: RoomChanges
+  /**
+   * One-shot tickets that open a mobile control app's WebSocket.
+   *
+   * A browser cannot set a header on a WebSocket, and the operator's bearer token
+   * and tab session both travel in headers. The ticket carries them across the
+   * upgrade without ever putting the token in an address a proxy would log.
+   */
+  tickets: SocketTickets
   settings: SettingsService
   /**
    * Who the event is — full name and short name.
@@ -80,6 +89,14 @@ export interface Services {
  * device endpoints need it to approve on behalf of the signed-in operator.
  */
 export interface HubContext {
+  /**
+   * The operator a socket ticket vouched for at the upgrade, if any.
+   *
+   * Frozen for the connection's lifetime, like everything a WebSocket's context
+   * holds: an account revoked during the day is cut off at its next reconnection,
+   * which needs a fresh ticket — and so a live session.
+   */
+  ticketOperator?: { id: string; email: string }
   auth: Auth
   services: Services
   headers: Headers
@@ -151,6 +168,11 @@ export async function resolveOperator(context: HubContext): Promise<OperatorCont
     throw new ORPCError('FORBIDDEN', {
       message: "Cette opération est réservée à la console : une machine de salle n'y a pas accès",
     })
+  }
+
+  // Already vouched for: the ticket was issued to a live session a moment ago.
+  if (context.ticketOperator != null) {
+    return { ...context, operator: context.ticketOperator }
   }
 
   const session = await context.auth.api.getSession({ headers: context.headers })

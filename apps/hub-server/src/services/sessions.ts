@@ -111,6 +111,8 @@ export class SessionStateService {
     private readonly db: HubDatabase,
     private readonly settings: SettingsService,
     private readonly now: () => number = Date.now,
+    /** A talk changed state: whoever watches its room recomposes its view. */
+    private readonly onChange: (roomId: string | null) => void = () => {},
   ) {}
 
   /**
@@ -201,7 +203,11 @@ export class SessionStateService {
 
   /** Brings a talk back to "upcoming" — to correct a slip. */
   reset(sessionId: string): void {
+    // Read before deleting: afterwards, nothing says which room to wake.
+    const existing = this.get(sessionId)
+    if (existing == null) return
     this.db.delete(sessionState).where(eq(sessionState.sessionId, sessionId)).run()
+    this.onChange(existing.roomId)
   }
 
   /**
@@ -246,6 +252,7 @@ export class SessionStateService {
       .onConflictDoUpdate({ target: sessionState.sessionId, set: values })
       .run()
 
+    this.onChange(roomId)
     return sessionStateSchema.parse(values)
   }
 

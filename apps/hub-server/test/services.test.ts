@@ -195,6 +195,31 @@ describe('IngestService', () => {
     expect(replay.duplicates).toHaveLength(2)
   })
 
+  it('wakes whoever watches the room once the batch is applied', () => {
+    /*
+     * The mobile control app's return path: without this signal the room's report
+     * reaches the hub and stays there until the phone's next poll.
+     */
+    const rooms = new RoomService(db)
+    seedRoom(rooms)
+    const touched: (string | null)[] = []
+    const ingest = new IngestService(db, (roomId) => touched.push(roomId))
+
+    ingest.push(TRACK_1, [
+      envelope('01CCCCCCCCCCCCCCCCCCCCCCCC', 1, {
+        type: 'scene.changed',
+        obs: 'A',
+        role: 'LIVE',
+        sceneName: 'Capture',
+      }),
+    ])
+    expect(touched).toEqual([TRACK_1])
+
+    // A batch rejected whole has written nothing: nobody to wake.
+    ingest.push(TRACK_1, [{ not: 'an envelope' }])
+    expect(touched).toEqual([TRACK_1])
+  })
+
   it('takes over to the hub an OpenFeedback project entered on a control app', () => {
     // The field used to be editable in each room's ⚙. Removing it without taking
     // anything over would have switched off the links of the only room that had

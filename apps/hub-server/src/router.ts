@@ -94,6 +94,8 @@ export const router = os.router({
         // The rooms follow from the tracks: creating them here saves entering
         // them again, and makes the pairing list usable immediately.
         context.services.rooms.ensureFromTracks(snapshot.program.rooms)
+        // Every mobile control app's timeline and target follow from the program.
+        context.services.changes.touch(null)
         // Tell the rooms rather than wait for their next sync: a program change
         // must reach the screen in seconds.
         //
@@ -131,6 +133,7 @@ export const router = os.router({
 
     activate: os.program.activate.use(operatorOnly).handler(({ input, context }) => {
       context.services.programs.activate(input.contentHash)
+      context.services.changes.touch(null)
       // Read back after the switch, and for the same reason as at import time:
       // it is the served program's fingerprint the rooms will compare to theirs.
       context.services.commands.publish(
@@ -424,6 +427,8 @@ export const router = os.router({
         },
       }
       context.services.rooms.upsert(next)
+      // The start-up guards and the mapped scene roles live in this configuration.
+      context.services.changes.touch(next.id)
       return next
     }),
     /**
@@ -645,6 +650,8 @@ export const router = os.router({
       }
 
       context.services.rooms.setOverride(input.sessionId, input.action)
+      // A slot turned into a break, or back: it moves the target of "Commencer".
+      context.services.changes.touch(null)
       // Read back after the write: it is the fingerprint of the program as it is
       // now served, and it is what we announce to the rooms.
       const contentHash = context.services.programs.active()?.contentHash ?? snapshot.contentHash
@@ -778,6 +785,9 @@ export const router = os.router({
       } catch (cause) {
         throw new ORPCError('BAD_REQUEST', { message: (cause as Error).message })
       }
+      // Every countdown is computed on this clock: waiting for the floor would show
+      // the old time for up to ten seconds after a jump.
+      context.services.changes.touch(null)
 
       const serverTime = context.services.clock.nowIso()
       /**

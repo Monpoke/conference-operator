@@ -35,7 +35,11 @@ export interface RawCapture {
 }
 
 export class IngestService {
-  constructor(private readonly db: HubDatabase) {}
+  constructor(
+    private readonly db: HubDatabase,
+    /** A batch was applied: whoever watches this room recomposes its view. */
+    private readonly onChange: (roomId: string | null) => void = () => {},
+  ) {}
 
   /**
    * Applies a batch reported by a room.
@@ -96,6 +100,9 @@ export class IngestService {
       applyToRoomState(tx, roomId, latest)
     })
 
+    // After the commit, never inside: a watcher woken mid-transaction would read
+    // the state from before.
+    this.onChange(roomId)
     return outcome
   }
 

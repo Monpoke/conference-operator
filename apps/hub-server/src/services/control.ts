@@ -55,6 +55,13 @@ export class ControlService {
   constructor(
     private readonly db: HubDatabase,
     private readonly now: () => number = Date.now,
+    /**
+     * The holder changed: whoever watches the room recomposes its view.
+     *
+     * **Not on a renewal.** The watch stream is what renews its holder's lock;
+     * signalling that would wake the stream that has just renewed, in a loop.
+     */
+    private readonly onChange: (roomId: string) => void = () => {},
   ) {}
 
   /**
@@ -109,6 +116,7 @@ export class ControlService {
       .onConflictDoUpdate({ target: regieLock.roomId, set: values })
       .run()
 
+    if (current?.holderId !== holderId) this.onChange(roomId)
     return controlLockSchema.parse({
       ...values,
       expiresAt: new Date(this.now() + CONTROL_LOCK_TTL_MS).toISOString(),
@@ -129,6 +137,7 @@ export class ControlService {
     const current = this.lock(roomId)
     if (current == null || current.holderId !== holderId) return false
     this.db.delete(regieLock).where(eq(regieLock.roomId, roomId)).run()
+    this.onChange(roomId)
     return true
   }
 
@@ -151,6 +160,7 @@ export class ControlService {
 
     for (const roomId of expired) {
       this.db.delete(regieLock).where(eq(regieLock.roomId, roomId)).run()
+      this.onChange(roomId)
     }
     return expired
   }

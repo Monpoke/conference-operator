@@ -12,6 +12,7 @@ export {
   type HubClientOptions,
 } from './client.js'
 export { anonymousTokenStore, browserTokenStore, type TokenStore } from './token.js'
+export { openHubSocket, watchControlRoom, type HubSocket } from './socket.js'
 export {
   createHubAuth,
   type HubAuth,

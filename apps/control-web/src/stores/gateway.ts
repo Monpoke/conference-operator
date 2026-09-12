@@ -1,4 +1,5 @@
 import { controlPath, controlRoomIdFromPath, type ControlLock } from '@conference-operator/contract'
+import { watchControlRoom } from '@conference-operator/hub-client'
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
 import type { BootScope } from '../boot.js'
@@ -8,6 +9,7 @@ import {
   type ActionResult,
   type StateSink,
   type ControlGateway,
+  type RemoteGatewayOptions,
 } from '../lib/gateway.js'
 import { useSessionStore } from './session.js'
 
@@ -79,6 +81,14 @@ export const useGatewayStore = defineStore('gateway', () => {
     openStream?: Parameters<typeof localGateway>[0]
     now?: () => number
     wait?: (ms: number) => Promise<void>
+    /**
+     * The remote stream, replaced — or `null` to poll only.
+     *
+     * By default the hub's own `regie.watch`, over a ticketed WebSocket. A test
+     * that exercises the poll says so rather than letting a real socket fail
+     * underneath it.
+     */
+    watch?: RemoteGatewayOptions['watch'] | null
   }
 
   /** Builds the current scope's gateway, without opening it. */
@@ -87,9 +97,14 @@ export const useGatewayStore = defineStore('gateway', () => {
     const room = roomId.value
     // Nothing to drive with no room: the choice screen commands nobody.
     if (room == null) return null
+    const session = useSessionStore()
     return remoteGateway({
-      client: useSessionStore().client,
+      client: session.client,
       roomId: room,
+      watch:
+        options.watch === undefined
+          ? (signal) => watchControlRoom(session.client, room, signal)
+          : (options.watch ?? undefined),
       onView: (view) => {
         currentLock.value = view.lock
       },

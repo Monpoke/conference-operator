@@ -1,7 +1,8 @@
 import type { ControlCommand, ControlView } from '@conference-operator/contract'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   OBSERVATION_MS,
+  POLL_MS,
   payloadFromView,
   remoteGateway,
   translate,
@@ -201,6 +202,167 @@ describe('poster un geste', () => {
     expect(result.message).toContain("n'a pas démarré")
     // Bounded: a room that is cut off must not leave the page waiting forever.
     expect(clock - start).toBeGreaterThanOrEqual(OBSERVATION_MS)
+  })
+})
+
+/**
+ * A stream the test pushes into, and that can be made to fail or fall silent.
+ *
+ * Each opening is counted: reopening after a failure is precisely what is checked.
+ */
+function fakeStream() {
+  const queue: ControlView[] = []
+  let wake: (() => void) | null = null
+  let failNext = 0
+  const state = { opened: 0 }
+
+  return {
+    state,
+    push(view: ControlView) {
+      queue.push(view)
+      wake?.()
+    },
+    failNextOpenings(count: number) {
+      failNext = count
+    },
+    watch: async function* (signal: AbortSignal): AsyncGenerator<ControlView> {
+      state.opened += 1
+      if (failNext > 0) {
+        failNext -= 1
+        throw new Error('socket refusé')
+      }
+      while (!signal.aborted) {
+        if (queue.length === 0) {
+          await new Promise<void>((resolve) => {
+            wake = resolve
+            signal.addEventListener('abort', () => resolve(), { once: true })
+          })
+          wake = null
+          continue
+        }
+        yield queue.shift()!
+      }
+    },
+  }
+}
+
+/** A client whose polls are counted: "no poll while the stream lives" is a count. */
+function countingClient(polled: ControlView) {
+  const counts = { views: 0, commands: [] as ControlCommand[] }
+  return {
+    counts,
+    client: {
+      rpc: {
+        regie: {
+          view: async () => {
+            counts.views += 1
+            return polled
+          },
+          command: async ({ action }: { action: ControlCommand }) => {
+            counts.commands.push(action)
+            return { ok: true, applied: 'queued' as const }
+          },
+        },
+      },
+    } as never,
+  }
+}
+
+describe('the pushed stream', () => {
+  let gateway: ReturnType<typeof remoteGateway> | null = null
+
+  function recordingSink() {
+    const payloads: Parameters<StateSink['onPayload']>[0][] = []
+    const sink: StateSink = { onPayload: (payload) => payloads.push(payload), onOutage: () => {} }
+    return { sink, payloads, last: () => payloads.at(-1) as ReturnType<typeof payloadFromView> | undefined }
+  }
+
+  beforeEach(() => {
+    gateway?.stop()
+    gateway = null
+  })
+
+  it('paints a pushed view, and stops polling once the stream lives', async () => {
+    const stream = fakeStream()
+    const { client, counts } = countingClient(view({ sceneRole: 'HOLD' }))
+    gateway = remoteGateway({ client, roomId: 'track-1', watch: stream.watch })
+    const { sink, last } = recordingSink()
+
+    gateway.start(sink)
+    stream.push(view({ sceneRole: 'LIVE' }))
+    await vi.waitFor(() => expect(last()?.state.sceneRole).toBe('LIVE'))
+
+    // The opening poll may have left; after the stream's first view, none follows.
+    const polls = counts.views
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS + 200))
+    expect(counts.views).toBe(polls)
+    gateway.stop()
+  })
+
+  it('polls while the stream is refused, and lets go when it comes back', async () => {
+    /*
+     * A venue proxy that refuses WebSockets gives a slower page, never a frozen
+     * one — and a socket that returns takes the page back, rather than leaving
+     * it on a poll it no longer needs.
+     */
+    const stream = fakeStream()
+    stream.failNextOpenings(1)
+    const { client, counts } = countingClient(view({ sceneRole: 'HOLD' }))
+    gateway = remoteGateway({ client, roomId: 'track-1', watch: stream.watch, retryMs: [20] })
+    const { sink, last } = recordingSink()
+
+    gateway.start(sink)
+    await vi.waitFor(() => expect(last()?.state.sceneRole).toBe('HOLD'))
+    await vi.waitFor(() => expect(stream.state.opened).toBe(2))
+
+    stream.push(view({ sceneRole: 'LIVE' }))
+    await vi.waitFor(() => expect(last()?.state.sceneRole).toBe('LIVE'))
+    const polls = counts.views
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS + 200))
+    expect(counts.views).toBe(polls)
+    gateway.stop()
+  })
+
+  it('presumes a silent stream dead, and reopens it', async () => {
+    // A socket left half-open by a phone changing cell raises no error at all.
+    const stream = fakeStream()
+    const { client } = countingClient(view())
+    gateway = remoteGateway({
+      client,
+      roomId: 'track-1',
+      watch: stream.watch,
+      silenceMs: 30,
+      retryMs: [10],
+    })
+
+    gateway.start(silentStream)
+    await vi.waitFor(() => expect(stream.state.opened).toBeGreaterThanOrEqual(2))
+    gateway.stop()
+  })
+
+  it('confirms the take on the pushed view, without waiting for a poll', async () => {
+    /*
+     * The wait never ends: if the confirmation depended on the next poll, this
+     * gesture would hang. It is the room's report, pushed, that settles it.
+     */
+    const stream = fakeStream()
+    const { client, counts } = countingClient(view({ recording: false }))
+    gateway = remoteGateway({
+      client,
+      roomId: 'track-1',
+      watch: stream.watch,
+      wait: () => new Promise(() => {}),
+    })
+    gateway.start(silentStream)
+    stream.push(view({ recording: false }))
+    await vi.waitFor(() => expect(stream.state.opened).toBe(1))
+
+    const confirmed = gateway.act({ action: 'recording.start' })
+    await vi.waitFor(() => expect(counts.commands).toHaveLength(1))
+    stream.push(view({ recording: true }))
+
+    expect(await confirmed).toEqual({ ok: true })
+    gateway.stop()
   })
 })
 

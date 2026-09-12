@@ -6,7 +6,7 @@ import type {
   ControlView,
   SceneRole,
 } from '@conference-operator/contract'
-import { NO_EDITING_MARKS } from '@conference-operator/contract'
+import { CONTROL_WATCH_FLOOR_MS, NO_EDITING_MARKS } from '@conference-operator/contract'
 import type { HubClient } from '@conference-operator/hub-client'
 
 /**
@@ -131,7 +131,12 @@ export function localGateway(
 
 /* ------------------------------------------------------------------ remote */
 
-/** The polling cadence. It is also the lock's heartbeat: a single round trip. */
+/**
+ * The polling cadence, when the stream does not get through.
+ *
+ * The poll then also carries the lock's heartbeat: a single round trip says both
+ * "I still hold the room" and "how far along is it".
+ */
 export const POLL_MS = 1_000
 
 /**
@@ -144,72 +149,266 @@ export const POLL_MS = 1_000
  */
 export const OBSERVATION_MS = 5_000
 
+/**
+ * How long the stream waits before reopening, attempt after attempt.
+ *
+ * Quick at first — a phone crossing a building loses the network for a moment —
+ * then capped: a venue proxy that refuses WebSockets leaves the page on polling,
+ * which works, and retrying costs one refused handshake every thirty seconds.
+ */
+export const WATCH_RETRY_MS: readonly number[] = [1_000, 2_000, 5_000, 10_000, 30_000]
+
+/**
+ * Silence past which a stream is presumed dead.
+ *
+ * The hub emits at least every `CONTROL_WATCH_FLOOR_MS`. A socket left half-open
+ * by a phone changing cell raises no error at all: without this watchdog the page
+ * would sit on a frozen view, believing it is live.
+ */
+export const WATCH_SILENCE_MS = CONTROL_WATCH_FLOOR_MS * 2 + 5_000
+
 export interface RemoteGatewayOptions {
   client: HubClient
   /** The room being driven. */
   roomId: string
   /**
-   * The whole view, on every poll.
+   * The whole view, on every view received — pushed or polled.
    *
    * The synthesised `DisplayPayload` does not carry everything: the **lock** has
    * no place in a room's state — `remoteHolder` tells a room that it is being
    * driven remotely, not the phone that is driving it. Yet that is exactly the
    * field that must react fast: when another tab takes the room over, the one
-   * losing it must see so within the second, not at the next listing.
+   * losing it must see so at once, not at the next listing.
    */
   onView?: (view: ControlView) => void
+  /**
+   * The pushed views: opens one stream, yields until it ends or fails.
+   *
+   * The gateway reopens it, and polls in the meantime. Absent, the gateway only
+   * polls — which is what the tests of the poll rely on.
+   */
+  watch?: (signal: AbortSignal) => AsyncIterable<ControlView>
   /** Injectable, to test with no real clock and no real timer. */
   now?: () => number
   wait?: (ms: number) => Promise<void>
+  /** Injectable, so a test does not wait thirty seconds for a retry. */
+  retryMs?: readonly number[]
+  /** Injectable, so a test does not wait twenty-five seconds for a silent stream. */
+  silenceMs?: number
 }
 
 /**
- * The hub's gateway: polling downstream, `regie.command` upstream.
+ * The hub's gateway: a pushed stream downstream, `regie.command` upstream.
  *
- * The poll **also carries the lock's heartbeat** — `regie.view` renews its
- * holder's grip. A single round trip a second says both "I still hold the room"
- * and "how far along is it", and there is no separate heartbeat one could forget
- * to stop.
+ * **The stream first, the poll as a fallback.** `regie.watch` pushes a view as soon
+ * as the room reports, and renews the holder's lock on every emission: the stream
+ * alive *is* the heartbeat. Until its first view — and whenever it fails — the
+ * gateway polls `regie.view`, which carries the heartbeat in its turn. A proxy
+ * that refuses WebSockets gives a slower page, never a frozen one.
+ *
+ * Both paths end in `apply`: the panels cannot tell where a view came from, and
+ * must not have to.
  */
 export function remoteGateway(options: RemoteGatewayOptions): ControlGateway {
   const now = options.now ?? (() => Date.now())
   const wait =
     options.wait ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
+  const retryMs = options.retryMs ?? WATCH_RETRY_MS
+  const silenceMs = options.silenceMs ?? WATCH_SILENCE_MS
 
-  let timer: ReturnType<typeof setInterval> | null = null
+  let sink: StateSink | null = null
+  let running = false
   let latest: ControlView | null = null
-  let inFlight = false
+  /** Whoever waits for the next view, from either path. */
+  const waiters = new Set<(view: ControlView) => void>()
 
-  async function read(sink: StateSink | null): Promise<ControlView | null> {
+  function apply(view: ControlView): void {
+    latest = view
+    options.onView?.(view)
+    sink?.onOutage(false)
+    sink?.onPayload(payloadFromView(view, now()), true)
+    for (const waiter of [...waiters]) waiter(view)
+  }
+
+  /* ---------------------------------------------------------------- poll */
+
+  let inFlight: Promise<ControlView | null> | null = null
+
+  function read(): Promise<ControlView | null> {
     /*
-     * A single poll in flight.
+     * A single poll in flight, **shared** by whoever asks.
      *
      * On a phone network a response can take more than a second: without this
      * guard the calls pile up and the responses arrive out of order — a state
-     * from three seconds ago would then overwrite a fresh one.
+     * from three seconds ago would then overwrite a fresh one. A caller arriving
+     * during the call waits for its answer rather than getting the view from
+     * before it.
      */
-    if (inFlight) return latest
-    inFlight = true
-    try {
-      const view = await options.client.rpc.regie.view({ roomId: options.roomId })
-      latest = view
-      options.onView?.(view)
-      sink?.onOutage(false)
-      sink?.onPayload(payloadFromView(view, now()), true)
-      return view
-    } catch {
-      /*
-       * An outage, not an error.
-       *
-       * The phone loses the network crossing a building; saying so in red on
-       * every hiccup would make the warning unreadable. It is the store's grace
-       * period that decides when the screen is "frozen".
-       */
-      sink?.onOutage(true)
-      return null
-    } finally {
-      inFlight = false
+    if (inFlight != null) return inFlight
+    const pending = (async () => {
+      try {
+        const view = await options.client.rpc.regie.view({ roomId: options.roomId })
+        apply(view)
+        return view
+      } catch {
+        /*
+         * An outage, not an error.
+         *
+         * The phone loses the network crossing a building; saying so in red on
+         * every hiccup would make the warning unreadable. It is the store's grace
+         * period that decides when the screen is "frozen".
+         */
+        sink?.onOutage(true)
+        return null
+      }
+    })()
+    inFlight = pending
+    void pending.finally(() => {
+      if (inFlight === pending) inFlight = null
+    })
+    return pending
+  }
+
+  /**
+   * Bumped on every start and stop of the poll: a turn resuming from an old loop
+   * sees it has been superseded, rather than scheduling a second loop beside the
+   * new one.
+   */
+  let pollGeneration = 0
+  let polling = false
+  let pollTimer: ReturnType<typeof setTimeout> | null = null
+
+  function startPolling(): void {
+    if (polling || !running) return
+    polling = true
+    const generation = ++pollGeneration
+
+    /*
+     * Scheduled from the **end** of each answer, not on a fixed interval.
+     *
+     * With `setInterval`, an answer slower than a second made the next tick find
+     * the call still in flight and skip it: the real cadence became two, three
+     * seconds — worst exactly when the network already was.
+     */
+    const turn = async (): Promise<void> => {
+      await read()
+      if (!polling || generation !== pollGeneration) return
+      pollTimer = setTimeout(() => void turn(), POLL_MS)
     }
+    void turn()
+  }
+
+  function stopPolling(): void {
+    polling = false
+    pollGeneration += 1
+    if (pollTimer != null) clearTimeout(pollTimer)
+    pollTimer = null
+  }
+
+  /* -------------------------------------------------------------- stream */
+
+  let streamAbort: AbortController | null = null
+  let retryTimer: ReturnType<typeof setTimeout> | null = null
+  let retryWake: (() => void) | null = null
+
+  function pause(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      retryWake = resolve
+      retryTimer = setTimeout(resolve, ms)
+    })
+  }
+
+  /** One stream, from opening to its end. Throws when it fails or goes silent. */
+  async function follow(watch: NonNullable<RemoteGatewayOptions['watch']>): Promise<void> {
+    const controller = new AbortController()
+    streamAbort = controller
+    const silenced = new Promise<never>((_, reject) => {
+      controller.signal.addEventListener('abort', () => reject(new Error('flux interrompu')), {
+        once: true,
+      })
+    })
+    silenced.catch(() => {})
+
+    let silence: ReturnType<typeof setTimeout> | null = null
+    const arm = () => {
+      if (silence != null) clearTimeout(silence)
+      silence = setTimeout(() => controller.abort(), silenceMs)
+    }
+
+    const iterator = watch(controller.signal)[Symbol.asyncIterator]()
+    try {
+      arm()
+      for (;;) {
+        // Raced against the abort: a stream that ignores its signal must not hold
+        // the gateway on a silent socket.
+        const result = await Promise.race([iterator.next(), silenced])
+        if (result.done === true) return
+        arm()
+        stopPolling()
+        apply(result.value)
+      }
+    } finally {
+      if (silence != null) clearTimeout(silence)
+      controller.abort()
+      if (streamAbort === controller) streamAbort = null
+      void Promise.resolve(iterator.return?.()).catch(() => {})
+    }
+  }
+
+  async function consume(): Promise<void> {
+    const watch = options.watch
+    if (watch == null) return
+    let attempt = 0
+
+    while (running) {
+      let received = false
+      try {
+        await follow((signal) => {
+          const stream = watch(signal)
+          return {
+            async *[Symbol.asyncIterator]() {
+              for await (const view of stream) {
+                received = true
+                yield view
+              }
+            },
+          }
+        })
+      } catch {
+        // Failed or silent: handled below, as an ended stream.
+      }
+      if (!running) return
+
+      /*
+       * Back to polling until the stream returns.
+       *
+       * `onOutage` is **not** raised here: the poll says whether the hub answers,
+       * and a WebSocket refused by a proxy is not a hub that has gone away.
+       */
+      startPolling()
+      if (received) attempt = 0
+      await pause(retryMs[Math.min(attempt, retryMs.length - 1)]!)
+      attempt += 1
+    }
+  }
+
+  /* --------------------------------------------------------- observation */
+
+  /** The next view applied, from either path — or `null` once `ms` has passed. */
+  function nextView(ms: number): Promise<ControlView | null> {
+    return new Promise((resolve) => {
+      const waiter = (view: ControlView) => {
+        waiters.delete(waiter)
+        resolve(view)
+      }
+      waiters.add(waiter)
+      void wait(ms).then(() => {
+        if (!waiters.delete(waiter)) return
+        // Nothing arrived: ask. A stream that died silently must not turn a
+        // recording that did start into a declared failure.
+        void read().then(resolve)
+      })
+    })
   }
 
   /**
@@ -220,6 +419,9 @@ export function remoteGateway(options: RemoteGatewayOptions): ControlGateway {
    * step depends on — the recording before "Commencer" — must therefore be
    * confirmed by **observation**, otherwise the rule "if the recording does not
    * start, do not begin" disappears with nothing to say so.
+   *
+   * Woken by the next view rather than after a fixed second: pushed, it arrives as
+   * soon as the room has reported, and the gesture is confirmed at that moment.
    */
   async function observe(
     predicate: (view: ControlView) => boolean,
@@ -227,28 +429,35 @@ export function remoteGateway(options: RemoteGatewayOptions): ControlGateway {
   ): Promise<ActionResult> {
     const deadline = now() + OBSERVATION_MS
     for (;;) {
-      await wait(POLL_MS)
-      const view = await read(null)
+      const view = await nextView(POLL_MS)
       if (view != null && predicate(view)) return { ok: true }
       if (now() >= deadline) return { ok: false, message: failure }
     }
   }
 
   return {
-    start(sink) {
-      if (timer != null) return
-      void read(sink)
-      timer = setInterval(() => void read(sink), POLL_MS)
+    start(subscription) {
+      if (running) return
+      running = true
+      sink = subscription
+      // Both at once: the poll paints something within a round trip, the stream
+      // takes over at its first view — the ticket and the socket cost two more.
+      startPolling()
+      void consume()
     },
 
     stop() {
-      if (timer != null) clearInterval(timer)
-      timer = null
+      running = false
+      sink = null
+      stopPolling()
+      streamAbort?.abort()
+      if (retryTimer != null) clearTimeout(retryTimer)
+      retryWake?.()
     },
 
     async act(gesture) {
       /*
-       * A gesture made before the first response has to know its target.
+       * A gesture made before the first view has to know its target.
        *
        * The lifecycle travels with the identifier of the slot aimed at, which
        * only the view supplies. A button pressed within a second of opening — a
@@ -256,7 +465,7 @@ export function remoteGateway(options: RemoteGatewayOptions): ControlGateway {
        * with no target, and got refused as an out-of-scope gesture. One more
        * round trip, and only there.
        */
-      if (latest == null) await read(null)
+      if (latest == null) await read()
 
       const translated = translate(gesture, latest)
       if (translated == null) {
@@ -290,7 +499,7 @@ export function remoteGateway(options: RemoteGatewayOptions): ControlGateway {
        * The other gestures block nothing behind them.
        *
        * The lifecycle is written on the hub: that is settled by the time it
-       * returns. A scene switch is read on the button at the next poll, as in the
+       * returns. A scene switch is read on the button at the next view, as in the
        * room's own control app — and nobody chains anything onto it.
        */
       return { ok: true }

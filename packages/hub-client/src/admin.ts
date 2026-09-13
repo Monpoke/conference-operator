@@ -22,7 +22,11 @@ export type AdminResult<T = void> = { ok: true; value: T } | { ok: false; messag
 
 export interface HubAdmin {
   listUsers(): Promise<AdminResult<HubUser[]>>
-  createUser(input: { email: string; name: string; password: string; roles: string[] }): Promise<AdminResult>
+  /**
+   * Without a password, the account has no credential: it opens through Google
+   * only, and finds its groups already set at the first sign-in.
+   */
+  createUser(input: { email: string; name: string; password?: string; roles: string[] }): Promise<AdminResult>
   setRoles(userId: string, roles: string[]): Promise<AdminResult>
   setPassword(userId: string, password: string): Promise<AdminResult>
   ban(userId: string): Promise<AdminResult>
@@ -70,7 +74,12 @@ export function createHubAdmin(options: { token: TokenStore; fetch?: typeof glob
       return result.ok ? { ok: true, value: result.value.users } : result
     },
     createUser: ({ email, name, password, roles }) =>
-      post('create-user', { email, name, password, role: roles }),
+      post('create-user', {
+        email,
+        name,
+        role: roles,
+        ...(password == null || password === '' ? {} : { password }),
+      }),
     setRoles: (userId, roles) => post('set-role', { userId, role: roles }),
     setPassword: (userId, password) => post('set-user-password', { userId, newPassword: password }),
     ban: (userId) => post('ban-user', { userId }),

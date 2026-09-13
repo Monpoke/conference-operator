@@ -109,6 +109,21 @@ describe('operator groups', () => {
     expect(await listAs(admin)).toBe(200)
   })
 
+  it('let an admin prepare a Google-only account, groups included', async () => {
+    const admin = await signedIn(['admin'])
+    const email = 'google-seul@cloudnord.fr'
+
+    // No password: the account has no credential and opens through Google only.
+    expect(
+      await authPost('admin/create-user', { email, name: 'Google seul', role: ['regieMobile'] }, admin),
+    ).toBe(200)
+
+    const ctx = await hub.auth.$context
+    const found = await ctx.internalAdapter.findUserByEmail(email)
+    expect((found!.user as { role?: string }).role).toBe('regieMobile')
+    expect(await ctx.internalAdapter.findCredentialAccount(found!.user.id)).toBeNull()
+  })
+
   it('shut a banned account out', async () => {
     const admin = await signedIn(['admin'])
     const target = await signedIn(['regieMobile'])

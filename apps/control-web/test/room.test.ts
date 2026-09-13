@@ -16,7 +16,7 @@ import { payload } from './fixtures.js'
 /** A stream opened, cut and reopened by hand. */
 function fakeStream(): StateStream & {
   emit: (data: unknown) => void
-  emitDelta: (data: unknown) => void
+  emitPatch: (set: unknown, merge?: unknown) => void
   fail: () => void
   reopen: () => void
   closed: boolean
@@ -36,8 +36,8 @@ function fakeStream(): StateStream & {
     emit(data: unknown) {
       stream.onmessage?.({ data: JSON.stringify(data) } as MessageEvent)
     },
-    emitDelta(data: unknown) {
-      listeners.get('delta')?.({ data: JSON.stringify(data) } as MessageEvent)
+    emitPatch(set: unknown, merge: unknown = {}) {
+      listeners.get('patch')?.({ data: JSON.stringify({ set, merge }) } as MessageEvent)
     },
     fail() {
       stream.onerror?.(new Event('error'))
@@ -69,10 +69,23 @@ describe('room state', () => {
     room.connect(() => stream)
 
     stream.emit(payload({ roomName: 'Track #1' }))
-    stream.emitDelta({ roomName: 'Track #7' })
+    stream.emitPatch({ roomName: 'Track #7' })
 
     expect(room.payload?.roomName).toBe('Track #7')
     // The delta carried only the name: the rest must have survived.
+    expect(room.payload?.state.roomId).toBe('track-1')
+  })
+
+  it('lays the sub-fields of a patch over the state it already holds', () => {
+    const room = useRoomStore()
+    const stream = fakeStream()
+    room.connect(() => stream)
+
+    stream.emit(payload({ roomName: 'Track #1' }))
+    stream.emitPatch({}, { state: { outboxDepth: 3 } })
+
+    expect(room.payload?.state.outboxDepth).toBe(3)
+    // Only the depth travelled: the rest of the state must still be there.
     expect(room.payload?.state.roomId).toBe('track-1')
   })
 
@@ -81,7 +94,7 @@ describe('room state', () => {
     const stream = fakeStream()
     room.connect(() => stream)
 
-    stream.emitDelta({ roomName: 'Track #7' })
+    stream.emitPatch({ roomName: 'Track #7' })
 
     // A delta on its own describes a room whose rest is unknown. Painting it
     // half-way would be worse than waiting for the snapshot, which follows every

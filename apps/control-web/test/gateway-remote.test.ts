@@ -80,7 +80,7 @@ function fakeClient(views: ControlView[]) {
   }
 }
 
-const silentStream: StateSink = { onPayload: () => {}, onOutage: () => {} }
+const silentStream: StateSink = { onPayload: () => {}, onPatch: () => {}, onOutage: () => {} }
 
 describe('translating a control gesture', () => {
   it('carries the lifecycle target, taken from the view', () => {
@@ -273,7 +273,7 @@ describe('the pushed stream', () => {
 
   function recordingSink() {
     const payloads: Parameters<StateSink['onPayload']>[0][] = []
-    const sink: StateSink = { onPayload: (payload) => payloads.push(payload), onOutage: () => {} }
+    const sink: StateSink = { onPayload: (payload) => payloads.push(payload), onPatch: () => {}, onOutage: () => {} }
     return { sink, payloads, last: () => payloads.at(-1) as ReturnType<typeof payloadFromView> | undefined }
   }
 

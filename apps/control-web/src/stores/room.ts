@@ -1,4 +1,4 @@
-import type { DisplayPayload } from '@conference-operator/contract'
+import { applyStreamPatch, type DisplayPayload } from '@conference-operator/contract'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import type { StateStream } from '../lib/gateway.js'
@@ -74,19 +74,18 @@ export const useRoomStore = defineStore('room', () => {
     if (openStream != null) gateway.configure({ openStream })
     gateway.open(
       {
-        onPayload: (received, complete) => {
-          if (complete) {
-            payload.value = received as DisplayPayload
-            return
-          }
+        onPayload: (received) => {
+          payload.value = received
+        },
+        onPatch: (patch) => {
           /*
-           * A delta on its own describes a room whose rest is unknown.
+           * A patch on its own describes a room whose rest is unknown.
            *
            * Painting it half-way would be worse than waiting for the snapshot,
            * which follows every reconnection anyway.
            */
           if (payload.value == null) return
-          payload.value = { ...payload.value, ...(received as Partial<DisplayPayload>) }
+          payload.value = applyStreamPatch(payload.value, patch)
         },
         onOutage: (cut) => {
           if (cut) cutSince.value ??= clock.real

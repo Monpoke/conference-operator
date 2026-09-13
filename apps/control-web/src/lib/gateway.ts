@@ -5,6 +5,7 @@ import type {
   ControlCommand,
   ControlView,
   SceneRole,
+  StreamPatch,
 } from '@conference-operator/contract'
 import { CONTROL_WATCH_FLOOR_MS, NO_EDITING_MARKS, PROTOCOL_VERSION } from '@conference-operator/contract'
 import type { HubClient } from '@conference-operator/hub-client'
@@ -47,8 +48,10 @@ export interface ActionResult {
 
 /** What the gateway pushes towards the state store. */
 export interface StateSink {
-  /** A complete snapshot, or a partial merge over the previous one. */
-  onPayload: (payload: DisplayPayload | Partial<DisplayPayload>, complete: boolean) => void
+  /** A complete snapshot: replaces everything. */
+  onPayload: (payload: DisplayPayload) => void
+  /** Only what moved, down to the sub-fields of `state` and `diagnostics`. */
+  onPatch: (patch: StreamPatch) => void
   /** The stream is cut, or alive again. */
   onOutage: (cut: boolean) => void
 }
@@ -84,7 +87,7 @@ export function localGateway(
   return {
     start(sink) {
       if (stream != null) return
-      stream = open('/display/state?vue=regie')
+      stream = open('/display/state?vue=regie&partiel=1')
 
       stream.onopen = () => sink.onOutage(false)
       stream.onerror = () => sink.onOutage(true)
@@ -93,13 +96,14 @@ export function localGateway(
       // after every reconnection, which repairs the page with no resume logic.
       stream.onmessage = (event) => {
         sink.onOutage(false)
-        sink.onPayload(JSON.parse(event.data) as DisplayPayload, true)
+        sink.onPayload(JSON.parse(event.data) as DisplayPayload)
       }
 
-      // Delta: only the fields that changed.
-      stream.addEventListener('delta', (event) => {
+      // Patch: only what changed. An `outboxDepth` that moves no longer brings
+      // back the running talk, its abstract and the whole configuration.
+      stream.addEventListener('patch', (event) => {
         sink.onOutage(false)
-        sink.onPayload(JSON.parse(event.data) as Partial<DisplayPayload>, false)
+        sink.onPatch(JSON.parse(event.data) as StreamPatch)
       })
     },
 
@@ -226,7 +230,7 @@ export function remoteGateway(options: RemoteGatewayOptions): ControlGateway {
     latest = view
     options.onView?.(view)
     sink?.onOutage(false)
-    sink?.onPayload(payloadFromView(view, now()), true)
+    sink?.onPayload(payloadFromView(view, now()))
     for (const waiter of [...waiters]) waiter(view)
   }
 

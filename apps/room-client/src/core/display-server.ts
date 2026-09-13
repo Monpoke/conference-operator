@@ -4,6 +4,7 @@ import fastifyStatic from '@fastify/static'
 import { join } from 'node:path'
 import {
   FIELDS_BY_VIEW,
+  MERGED_FIELDS,
   DEFAULT_EVENT_IDENTITY,
   type DisplayPayload,
   type DisplayView,
@@ -47,8 +48,23 @@ export { FIELDS_BY_VIEW, type DisplayPayload, type DisplayView }
  */
 interface StreamSubscriber {
   view: DisplayView | null
+  /**
+   * Asked with `partiel=1`: receives `patch` messages, where `state` and
+   * `diagnostics` travel sub-field by sub-field. Without it, the historical
+   * `delta` — a page opened before an update keeps its own JavaScript, and must
+   * keep understanding the stream after the reconnection.
+   */
+  partial: boolean
   last: Record<string, string>
+  /** The last sub-fields sent, per merged field. */
+  lastParts: Record<string, Record<string, string>>
   write: (event: string | null, body: string) => void
+}
+
+/** The state serialized once: whole fields, and the merged fields' sub-fields. */
+interface SerializedState {
+  fields: Record<string, string>
+  parts: Record<string, Record<string, string>>
 }
 
 export interface DisplayServerOptions {
@@ -325,11 +341,25 @@ export class DisplayServer {
    * moves, without serializing twice: the strings produced here are the ones that
    * go out on the wire.
    */
-  private serializedFields(): Record<string, string> {
+  private serializedFields(): SerializedState {
     const payload = this.payload() as unknown as Record<string, unknown>
-    const output: Record<string, string> = {}
-    for (const [key, value] of Object.entries(payload)) output[key] = JSON.stringify(value ?? null)
-    return output
+    const fields: Record<string, string> = {}
+    const parts: Record<string, Record<string, string>> = {}
+    for (const [key, value] of Object.entries(payload)) {
+      if ((MERGED_FIELDS as readonly string[]).includes(key) && value != null && typeof value === 'object') {
+        // Cut one level lower, and the whole field rebuilt from its pieces: still
+        // a single serialization, and the same string as `JSON.stringify`.
+        const part: Record<string, string> = {}
+        for (const [sub, subValue] of Object.entries(value)) {
+          if (subValue !== undefined) part[sub] = JSON.stringify(subValue)
+        }
+        parts[key] = part
+        fields[key] = DisplayServer.assemble(part, Object.keys(part))
+      } else {
+        fields[key] = JSON.stringify(value ?? null)
+      }
+    }
+    return { fields, parts }
   }
 
   /** Assembles a JSON object from already serialized fields. */
@@ -366,13 +396,37 @@ export class DisplayServer {
   }
 
   private broadcast(): void {
-    const fields = this.serializedFields()
+    const { fields, parts } = this.serializedFields()
     for (const subscriber of this.clients) {
       const keys = DisplayServer.viewKeys(fields, subscriber.view)
       const changed = keys.filter((key) => subscriber.last[key] !== fields[key])
       if (changed.length === 0) continue
       for (const key of changed) subscriber.last[key] = fields[key] ?? 'null'
-      subscriber.write('delta', DisplayServer.assemble(fields, changed))
+
+      if (!subscriber.partial) {
+        subscriber.write('delta', DisplayServer.assemble(fields, changed))
+        continue
+      }
+
+      const set: string[] = []
+      const merge: string[] = []
+      for (const key of changed) {
+        const now = parts[key]
+        const before = subscriber.lastParts[key]
+        if (now != null && before != null) {
+          // A sub-field that disappeared goes out as `null`: the merge cannot delete.
+          const moved = [...new Set([...Object.keys(before), ...Object.keys(now)])].filter(
+            (sub) => before[sub] !== now[sub],
+          )
+          merge.push(`${JSON.stringify(key)}:${DisplayServer.assemble(now, moved)}`)
+        } else {
+          // From or to `null`: nothing to merge over, the field goes out whole.
+          set.push(key)
+        }
+        if (now != null) subscriber.lastParts[key] = now
+        else delete subscriber.lastParts[key]
+      }
+      subscriber.write('patch', `{"set":${DisplayServer.assemble(fields, set)},"merge":{${merge.join(',')}}}`)
     }
   }
 
@@ -673,14 +727,15 @@ export class DisplayServer {
      * stay frozen and that has no build step — that is exactly the property we
      * want. The stream is one-way anyway.
      */
-    this.app.get<{ Querystring: { vue?: string } }>('/display/state', (request, reply) => {
+    this.app.get<{ Querystring: { vue?: string; partiel?: string } }>('/display/state', (request, reply) => {
       reply.raw.writeHead(200, {
         'content-type': 'text/event-stream',
         'cache-control': 'no-cache, no-transform',
         connection: 'keep-alive',
       })
 
-      const requested = (request.query as { vue?: string } | undefined)?.vue
+      const query = request.query as { vue?: string; partiel?: string } | undefined
+      const requested = query?.vue
       const view: DisplayView | null =
         requested === 'projecteur' || requested === 'overlay' || requested === 'bandeau' || requested === 'regie'
           ? requested
@@ -692,10 +747,13 @@ export class DisplayServer {
 
       // A complete snapshot on opening: it is also what repairs the page after an
       // `EventSource` reconnection, with no resume logic to write.
-      const fields = this.serializedFields()
+      const { fields, parts } = this.serializedFields()
       const keys = DisplayServer.viewKeys(fields, view)
-      const subscriber: StreamSubscriber = { view, last: {}, write }
-      for (const key of keys) subscriber.last[key] = fields[key] ?? 'null'
+      const subscriber: StreamSubscriber = { view, partial: query?.partiel === '1', last: {}, lastParts: {}, write }
+      for (const key of keys) {
+        subscriber.last[key] = fields[key] ?? 'null'
+        if (parts[key] != null) subscriber.lastParts[key] = parts[key]
+      }
       write(null, DisplayServer.assemble(fields, keys))
       this.clients.add(subscriber)
 

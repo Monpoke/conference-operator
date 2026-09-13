@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { applyStreamPatch, type StreamPatch } from '@conference-operator/contract'
 import { normalizeProgram, type Program } from '@conference-operator/program'
 import { AssetCache } from '../src/core/assets.js'
 import { DisplayServer, type DisplayPayload } from '../src/core/display-server.js'
@@ -86,9 +87,14 @@ async function readSse(
       const lines = block.split('\n')
       const data = lines.find((line) => line.startsWith('data: '))
       if (data == null) continue
-      const delta = lines.some((line) => line === 'event: delta')
+      const patch = lines.some((line) => line === 'event: patch')
+      const delta = patch || lines.some((line) => line === 'event: delta')
       const raw = JSON.parse(data.slice(6)) as Record<string, unknown>
-      current = delta ? { ...current, ...raw } : raw
+      current = patch
+        ? applyStreamPatch(current, raw as unknown as StreamPatch)
+        : delta
+          ? { ...current, ...raw }
+          : raw
       messages.push({ merged: current as unknown as DisplayPayload, raw, delta })
     }
     if (!triggered && trigger != null) {
@@ -144,7 +150,7 @@ describe('local display server', () => {
       .map((found) => found[1]!)
       .filter((url) => /^(?:https?:)?\/\//.test(url))
     expect(external).toEqual(['https://platform.x.com/widgets.js'])
-    expect(html).toContain("new EventSource('/display/state?vue=projecteur')")
+    expect(html).toContain("new EventSource('/display/state?vue=projecteur&partiel=1')")
   })
 
   it('exposes the program filtered down to the room', async () => {
@@ -197,6 +203,30 @@ describe('local display server', () => {
     const messages = await readSse(`${origin}/display/state`, 1)
     expect(Object.keys(messages[0]!.raw)).toContain('sessions')
     expect(Object.keys(messages[0]!.raw)).toContain('diagnostics')
+  })
+
+  it('sends a partial subscriber only the state sub-fields that moved', async () => {
+    const messages = await readSse(`${origin}/display/state?vue=projecteur&partiel=1`, 2, () => {
+      void runtime.setDisplayMode('programme')
+    })
+
+    expect(messages[1]?.merged.state.mode).toBe('programme')
+    // The rest of the state survives the merge…
+    expect(messages[1]?.merged.state.currentSession?.title).toContain('HoneySwamp')
+    // …without having travelled again: the running talk, abstract and bios, stays put.
+    const raw = messages[1]!.raw as unknown as StreamPatch
+    expect(raw.set).toEqual({})
+    expect(Object.keys(raw.merge)).toEqual(['state'])
+    expect(raw.merge.state).toHaveProperty('mode', 'programme')
+    expect(raw.merge.state).not.toHaveProperty('currentSession')
+  })
+
+  it('keeps sending whole fields to a page that did not ask for patches', async () => {
+    // A page opened before an update keeps its JavaScript across the reconnection.
+    const messages = await readSse(`${origin}/display/state?vue=projecteur`, 2, () => {
+      void runtime.setDisplayMode('programme')
+    })
+    expect(messages[1]!.raw).toHaveProperty('state.currentSession')
   })
 
   it('serves the assets from the local cache', async () => {

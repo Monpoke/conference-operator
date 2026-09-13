@@ -110,7 +110,9 @@ function stubStream(): void {
   globalThis.EventSource = class {
     private listeners: Record<string, (event: { data: string }) => void> = {}
     constructor() {
-      stream = { deltas: (payload) => this.listeners.delta?.({ data: JSON.stringify(payload) }) }
+      stream = {
+        deltas: (payload) => this.listeners.patch?.({ data: JSON.stringify({ set: payload, merge: {} }) }),
+      }
     }
     addEventListener(name: string, fn: (event: { data: string }) => void): void {
       this.listeners[name] = fn

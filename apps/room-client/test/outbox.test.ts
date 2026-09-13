@@ -131,7 +131,7 @@ describe('expiry', () => {
     clockMs += 49 * 60 * 60 * 1000
     expect(outbox.evictExpired().dropped).toBe(1)
 
-    // Losing a talk marker in silence would make the editing inexplicable.
+    // Losing a required event in silence would leave a rush the console cannot place.
     const error = store.recentLogs().find((l) => l.level === 'error')
     expect(error?.message).toContain('obligatoire expiré')
     expect(error?.contextJson).toContain('talk.marker')

@@ -1450,26 +1450,15 @@ export class RoomApp implements ControlTarget {
   /** Places a chapter, or one of the two editing markers. See `RecordingSession.mark`. */
   mark(label: string, role: MarkerRole | null = null): void {
     if (this.recording == null || !this.recording.active) throw new Error('Aucun enregistrement en cours')
-    const marker = this.recording.mark(label, role)
     /*
-     * The role does not go up to the hub, and does not have to.
+     * Nothing goes up to the hub.
      *
      * What the editing reads is the sidecar: written on the room's disk, uploaded
-     * with the rush, it carries `role`. The event, for its part, feeds the log
-     * somebody reads back — and "Marqueur « Début »" already reads there. A second
-     * field for the same thing would make two truths to keep in agreement, one of
-     * which nobody reads.
-     *
-     * A marker placed again therefore emits a second event, without the first
-     * disappearing. That is right: the log tells the gestures, and placing the start
-     * again *is* a gesture.
+     * with the rush, it carries the label, the offset and the role. The markers
+     * used to be sent up as well, as `required` events replayed for 48 hours —
+     * and the hub stored them without ever reading them back.
      */
-    this.emit({
-      type: 'talk.marker',
-      sessionId: this.runtime.state().currentSession?.id ?? null,
-      label,
-      offsetMs: marker.offsetMs,
-    })
+    this.recording.mark(label, role)
   }
 
   /**

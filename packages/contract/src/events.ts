@@ -40,6 +40,15 @@ export const roomEventPayloadSchema = z.discriminatedUnion('type', [
     durationMs: z.number().int().nonnegative(),
     sidecarWritten: z.boolean(),
   }),
+  /**
+   * No longer emitted, still accepted.
+   *
+   * The markers live in the sidecar, which is what the editing reads; the hub never
+   * read these. A room installed before this version may still hold some in its
+   * queue: refusing them would print "événement rejeté par le hub" in its control
+   * app's log, in the middle of a talk, for nothing. The hub stores and ignores
+   * them. To be removed once every room runs a version that no longer sends them.
+   */
   z.object({
     type: z.literal('talk.marker'),
     sessionId: sessionIdSchema.nullable(),

@@ -615,6 +615,43 @@ Sans push disponible, le bouton reste, avec les notifications de page seules —
 un avertissement qui ne traverse pas le verrouillage vaut mieux que pas
 d'avertissement — et la console dit laquelle des deux portées elle a obtenue.
 
+### Les mêmes avis, vers une équipe
+
+Le Web Push atteint le téléphone de qui s'est abonné ; un canal atteint toute
+l'équipe qui tient la journée, y compris ceux qui n'ont jamais ouvert la console.
+Les **intégrations** (Réglages › Intégrations) envoient les avis de la veille de
+supervision vers :
+
+- **Slack** ou **Mattermost**, par un *incoming webhook* : titre, corps, 🔴 pour
+  l'essentiel, ℹ️ pour le reste, et un lien vers la vue de la console construit
+  sur `PUBLIC_URL` ;
+- un **webhook générique** : un `POST` JSON
+  `{ type: 'supervision.notice', id, sentAt, event, notice }`, avec les en-têtes
+  `X-Hub-Event` et `X-Hub-Delivery`.
+
+Ce sont **les mêmes avis et les mêmes niveaux** que le push — deux familles,
+`rien` / `essentiel` / `tout` —, réglés par intégration : le canal technique veut
+tout, celui de l'organisation l'essentiel. Une intégration n'est qu'un
+destinataire de plus, pas un second jeu de règles. La veille tourne dès qu'il y
+a un abonné push **ou** une intégration active.
+
+**Signature.** Avec un secret, chaque envoi du webhook générique porte
+`X-Hub-Signature-256: sha256=<hex>`, le HMAC-SHA256 du **corps brut** avec ce
+secret. Le récepteur le recalcule sur les octets reçus, avant tout parsing, et
+compare en temps constant.
+
+**Échecs.** Une erreur réseau, un 429 ou un 5xx sont réessayés trois fois (1 s,
+5 s, 30 s), **en mémoire** : un hub qui redémarre pendant ce temps perd l'avis,
+que la passe suivante aura de toute façon dépassé. Un autre 4xx — webhook
+révoqué, canal supprimé — n'est pas réessayé. Le dernier envoi réussi et le
+dernier échec, avec sa raison, sont gardés et affichés ; le bouton « Tester »
+envoie un avis d'essai, une seule fois, et dit ce que l'autre bout a répondu.
+
+L'adresse d'un webhook **est** un secret : qui la lit peut poster dans le canal.
+Elle est gardée en clair en base, comme la clé VAPID, mais l'API ne la rend
+jamais entière. Comme le push, les intégrations exigent que **le hub** joigne
+Internet.
+
 ## Piloter depuis un téléphone
 
 La supervision ci-dessus **regarde** une salle. La régie mobile la **pilote** :

@@ -49,6 +49,7 @@ import {
 } from './pages/control-shell.js'
 import { renderServiceWorker } from './pages/service-worker.js'
 import { PushService } from './services/push.js'
+import { IntegrationService } from './services/integrations.js'
 import { roomStatuses, SupervisionWatch } from './supervision.js'
 
 export interface Hub {
@@ -111,6 +112,11 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     changes,
     tickets: new SocketTickets(),
     push,
+    integrations: new IntegrationService(orm, {
+      publicUrl: config.publicUrl,
+      // Read at send time, not frozen here: the name gets corrected during the day.
+      eventName: () => services.identity.get().name,
+    }),
     // Filled in right after the server is created: the service logs, and its log
     // is Fastify's.
     vod: null,
@@ -725,7 +731,11 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       app.log.info({ roomId }, 'verrou de régie mobile expiré')
     }
 
-    if (services.push.publicKey() == null || services.push.count() === 0) return
+    // Either recipient is enough to watch: a hub with nobody subscribed but a
+    // Slack channel plugged in still has someone to tell.
+    const pushing = services.push.publicKey() != null && services.push.count() > 0
+    const integrating = services.integrations.activeCount() > 0
+    if (!pushing && !integrating) return
     const snapshot = services.programs.active()
     const statuses = roomStatuses(services, clock.now())
     const notices = watch.pass(
@@ -744,12 +754,24 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
         snapshot?.program.sessions.find((session) => session.id === sessionId)?.title ?? null,
     )
     for (const notification of notices) {
-      void services.push
-        .send(notification)
-        .then((reached) => {
-          if (reached > 0) app.log.info({ notice: notification.title, reached }, 'avis poussé')
-        })
-        .catch((cause) => app.log.warn({ cause }, "avis non poussé"))
+      if (pushing) {
+        void services.push
+          .send(notification)
+          .then((reached) => {
+            if (reached > 0) app.log.info({ notice: notification.title, reached }, 'avis poussé')
+          })
+          .catch((cause) => app.log.warn({ cause }, "avis non poussé"))
+      }
+      if (integrating) {
+        void services.integrations
+          .send(notification)
+          .then((reached) => {
+            if (reached > 0) {
+              app.log.info({ notice: notification.title, reached }, 'avis relayé aux intégrations')
+            }
+          })
+          .catch((cause) => app.log.warn({ cause }, 'avis non relayé aux intégrations'))
+      }
     }
   }, 15_000)
   supervisionTimer.unref?.()

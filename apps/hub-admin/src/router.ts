@@ -13,6 +13,7 @@ import { useOperationsStore } from './stores/operations.js'
 import { useMessagesStore } from './stores/messages.js'
 import { usePairingStore } from './stores/pairing.js'
 import { useSettingsStore } from './stores/settings.js'
+import { useIntegrationsStore } from './stores/integrations.js'
 import { useVodStore } from './stores/vod.js'
 import { useModerationStore } from './stores/moderation.js'
 
@@ -87,7 +88,15 @@ const routes: RouteRecordRaw[] = [
     path: viewPath('reglages'),
     name: 'reglages',
     component: SettingsView,
-    meta: { view: 'reglages', refresh: () => useSettingsStore().load(), intervalMs: 10_000 },
+    meta: {
+      view: 'reglages',
+      // Two stores, one round: the integrations' last status is what an operator
+      // comes back to this page to read.
+      refresh: async () => {
+        await Promise.all([useSettingsStore().load(), useIntegrationsStore().load()])
+      },
+      intervalMs: 10_000,
+    },
   },
   {
     path: viewPath('acces'),

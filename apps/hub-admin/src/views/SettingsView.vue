@@ -1,8 +1,15 @@
 <script setup lang="ts">
-import { Button, ConfirmDialog, Empty, Hint, Panel, useToast } from '@conference-operator/components'
+import { Badge, Button, ConfirmDialog, Empty, Hint, Panel, useToast } from '@conference-operator/components'
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
+import IntegrationDialog from '../components/IntegrationDialog.vue'
 import { useSeededField } from '../composables/seededField.js'
+import {
+  KIND_LABELS,
+  deliveryStatus,
+  useIntegrationsStore,
+  type Integration,
+} from '../stores/integrations.js'
 import {
   STORAGE_STEPS,
   orNull,
@@ -257,6 +264,64 @@ async function confirmResync(): Promise<void> {
     /* already reported */
   }
 }
+
+// — Integrations —
+const integrationsStore = useIntegrationsStore()
+const { integrations } = storeToRefs(integrationsStore)
+const integrationDialog = ref(false)
+const editedIntegration = ref<Integration | null>(null)
+const integrationToRemove = ref<Integration | null>(null)
+const removeConfirmation = ref(false)
+const testing = ref<string | null>(null)
+
+function openIntegration(item: Integration | null): void {
+  editedIntegration.value = item
+  integrationDialog.value = true
+}
+
+async function toggleIntegration(item: Integration): Promise<void> {
+  try {
+    await integrationsStore.update({ id: item.id, enabled: !item.enabled })
+    toast.say(item.enabled ? `« ${item.name} » désactivée` : `« ${item.name} » activée`)
+  } catch {
+    /* already reported */
+  }
+}
+
+/**
+ * The other end's answer, word for word.
+ *
+ * "Échec" alone sends the operator to the logs; `invalid_token` or
+ * `channel_not_found` tells them which setting to fix in Slack.
+ */
+async function testIntegration(item: Integration): Promise<void> {
+  testing.value = item.id
+  try {
+    const result = await integrationsStore.test(item.id)
+    if (result.ok) toast.say(`« ${item.name} » a reçu l'avis de test`)
+    else toast.fail(`« ${item.name} » : ${result.error ?? 'échec'}`)
+  } catch {
+    /* already reported */
+  } finally {
+    testing.value = null
+  }
+}
+
+function askRemoveIntegration(item: Integration): void {
+  integrationToRemove.value = item
+  removeConfirmation.value = true
+}
+
+async function confirmRemoveIntegration(): Promise<void> {
+  const item = integrationToRemove.value
+  if (item == null) return
+  try {
+    await integrationsStore.remove(item.id)
+    toast.say(`« ${item.name} » supprimée`)
+  } catch {
+    /* already reported */
+  }
+}
 </script>
 
 <template>
@@ -445,6 +510,59 @@ async function confirmResync(): Promise<void> {
       </div>
     </Panel>
 
+    <Panel title="Intégrations">
+      <div id="integrations">
+        <Empty v-if="integrations.length === 0">
+          Aucune intégration. Les avis ne partent que vers les consoles abonnées.
+        </Empty>
+        <div
+          v-for="item in integrations"
+          :key="item.id"
+          class="mb-2 border-b border-edge pb-2 last:mb-0 last:border-b-0"
+        >
+          <div class="flex items-center gap-2">
+            <Badge :variant="item.enabled ? 'running' : 'neutral'">{{ KIND_LABELS[item.kind] }}</Badge>
+            <strong class="min-w-0 flex-1 truncate text-sm text-text">{{ item.name }}</strong>
+            <label class="flex items-center gap-1 text-xs text-dim">
+              <input
+                :id="`integration-enabled-${item.id}`"
+                type="checkbox"
+                :checked="item.enabled"
+                @change="toggleIntegration(item)"
+              />
+              Active
+            </label>
+          </div>
+          <p class="mt-0.5 truncate text-xs text-dim" :title="item.url">
+            {{ item.url }} · technique : {{ item.levels.technique }} · exploitation :
+            {{ item.levels.exploitation }}
+          </p>
+          <p
+            v-if="deliveryStatus(item) != null"
+            class="mt-0.5 text-xs"
+            :class="deliveryStatus(item)!.ok ? 'text-dim' : 'text-alert'"
+          >
+            {{ deliveryStatus(item)!.text }}
+          </p>
+          <div class="mt-1.5 flex gap-1.5">
+            <Button size="small" :disabled="testing === item.id" @click="testIntegration(item)">
+              {{ testing === item.id ? 'Envoi…' : 'Tester' }}
+            </Button>
+            <Button size="small" @click="openIntegration(item)">Modifier</Button>
+            <Button variant="danger" size="small" @click="askRemoveIntegration(item)">Supprimer</Button>
+          </div>
+        </div>
+      </div>
+      <div class="mt-2 flex gap-1.5">
+        <Button id="btn-integration-add" size="small" @click="openIntegration(null)">
+          Ajouter une intégration
+        </Button>
+      </div>
+      <Hint class="mt-2">
+        Slack, Mattermost ou webhook JSON : les mêmes avis que les notifications, filtrés par famille.
+      </Hint>
+    </Panel>
+
     <Panel title="Clôture automatique">
       <div class="flex items-center gap-3 border-b border-edge pb-3">
         <div class="flex-1">
@@ -623,6 +741,17 @@ async function confirmResync(): Promise<void> {
         Demander une resynchronisation complète à
         <strong>{{ resyncRoomName ?? 'toutes les salles' }}</strong>.
       </span>
+    </ConfirmDialog>
+
+    <IntegrationDialog v-model:open="integrationDialog" :integration="editedIntegration" />
+
+    <ConfirmDialog
+      v-model:open="removeConfirmation"
+      title="Supprimer l'intégration"
+      confirm-label="Supprimer"
+      @confirm="confirmRemoveIntegration"
+    >
+      Plus aucun avis ne partira vers <strong>{{ integrationToRemove?.name }}</strong>.
     </ConfirmDialog>
   </div>
 </template>

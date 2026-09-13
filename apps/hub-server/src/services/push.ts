@@ -47,8 +47,13 @@ export interface PushPayload {
 
 export type NotifFamily = 'technique' | 'exploitation'
 
-/** A subscription receives a notice if its level reaches at least as far. */
-const REACH: Record<string, number> = { rien: 0, essentiel: 1, tout: 2 }
+/**
+ * A subscription receives a notice if its level reaches at least as far.
+ *
+ * Shared with the integrations: a channel set to "essentiel" hears exactly what a
+ * phone set to "essentiel" hears.
+ */
+export const REACH: Record<string, number> = { rien: 0, essentiel: 1, tout: 2 }
 
 export class PushService {
   private readonly keys: VapidKeys | null

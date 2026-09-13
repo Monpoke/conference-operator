@@ -8,6 +8,7 @@ import type { DeviceService, RoomService } from './services/rooms.js'
 import type { QuestionService, WallService } from './services/wall.js'
 import type { RateLimiter } from './services/rate-limit.js'
 import type { PushService } from './services/push.js'
+import type { IntegrationService } from './services/integrations.js'
 import type { VodService } from './services/vod.js'
 import type { ControlService } from './services/control.js'
 import type { RoomChanges } from './services/changes.js'
@@ -76,6 +77,8 @@ export interface Services {
    */
   vod: VodService | null
   push: PushService
+  /** The same notices as `push`, sent to Slack, Mattermost or a webhook. */
+  integrations: IntegrationService
   clock: MutableClock
   /**
    * Execution mode, announced to the rooms at every synchronization.

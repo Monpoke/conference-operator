@@ -37,6 +37,12 @@ import {
   vodPolicySchema,
   uploadViewSchema,
 } from './vod.js'
+import {
+  integrationCreateSchema,
+  integrationTestResultSchema,
+  integrationUpdateSchema,
+  integrationViewSchema,
+} from './integrations.js'
 
 /**
  * The system's single contract, mounted on three transports:
@@ -713,6 +719,22 @@ export const contract = {
       )
       .output(z.object({ ok: z.boolean() })),
     unsubscribe: oc.input(z.object({ endpoint: z.url() })).output(z.object({ ok: z.boolean() })),
+  },
+
+  /**
+   * The same notices, sent to a team: Slack, Mattermost, generic webhook.
+   *
+   * Web Push reaches the phone of whoever subscribed; a channel reaches everyone
+   * holding the day, including those who never opened the console. Operators
+   * only: an integration's address posts in a channel.
+   */
+  integrations: {
+    list: oc.output(z.array(integrationViewSchema)),
+    create: oc.input(integrationCreateSchema).output(integrationViewSchema),
+    update: oc.input(integrationUpdateSchema).output(integrationViewSchema),
+    remove: oc.input(z.object({ id: z.string() })).output(z.object({ ok: z.boolean() })),
+    /** Sends a test notice, once, and says what the other end answered. */
+    test: oc.input(z.object({ id: z.string() })).output(integrationTestResultSchema),
   },
 
   /**

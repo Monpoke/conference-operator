@@ -1053,6 +1053,35 @@ export const router = os.router({
   },
 
   /**
+   * Slack, Mattermost, webhook: operators only — an address posts in a channel.
+   */
+  integrations: {
+    list: os.integrations.list
+      .use(operatorOnly)
+      .handler(({ context }) => context.services.integrations.list()),
+
+    create: os.integrations.create
+      .use(operatorOnly)
+      .handler(({ input, context }) => context.services.integrations.create(input)),
+
+    update: os.integrations.update.use(operatorOnly).handler(({ input, context }) => {
+      const updated = context.services.integrations.update(input)
+      if (updated == null) throw new ORPCError('NOT_FOUND', { message: 'Intégration introuvable' })
+      return updated
+    }),
+
+    remove: os.integrations.remove
+      .use(operatorOnly)
+      .handler(({ input, context }) => ({ ok: context.services.integrations.remove(input.id) })),
+
+    test: os.integrations.test.use(operatorOnly).handler(async ({ input, context }) => {
+      const outcome = await context.services.integrations.test(input.id)
+      if (outcome == null) throw new ORPCError('NOT_FOUND', { message: 'Intégration introuvable' })
+      return outcome
+    }),
+  },
+
+  /**
    * Shipping the rushes back to the hub's storage.
    *
    * The five room procedures are bounded by `roomOnly`: the `roomId` comes from the

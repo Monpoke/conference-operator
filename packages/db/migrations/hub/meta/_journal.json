@@ -92,6 +92,13 @@
       "when": 1789281397035,
       "tag": "0012_mean_mordo",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1789292892413,
+      "tag": "0013_sticky_green_goblin",
+      "breakpoints": true
     }
   ]
 }

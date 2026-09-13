@@ -23,6 +23,8 @@ export interface ConsoleShellOptions {
   mode?: ExecutionMode
   event?: EventIdentity
   google?: { domain: string } | null
+  /** The hub's version, revealed on demand in the header. */
+  version?: string
   /** Assets to load. Resolved by `resolveConsoleBundle()`, or pointed at Vite in dev. */
   assets: ConsoleAssets
 }
@@ -101,6 +103,7 @@ export function renderConsoleShell(options: ConsoleShellOptions): string {
     mode: options.mode ?? 'production',
     event: identity,
     google: options.google == null ? null : { domain: options.google.domain },
+    version: options.version ?? null,
   }).replace(/</g, '\\u003c')
 
   const styles = options.assets.styles

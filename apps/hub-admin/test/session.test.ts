@@ -18,6 +18,7 @@ const BOOT = {
   mode: 'production' as const,
   event: { name: 'Cloud Nord 2026', shortName: 'Cloud Nord' },
   google: { domain: 'cloudnord.fr' },
+  version: '1.4.0',
 }
 
 interface Call {

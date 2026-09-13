@@ -32,6 +32,7 @@ export const useGatewayStore = defineStore('gateway', () => {
     roomId: null,
     salles: [],
     google: null,
+    version: null,
   })
 
   /**

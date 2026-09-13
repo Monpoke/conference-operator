@@ -173,6 +173,11 @@ ENV NODE_ENV=production \
 COPY --from=builder --chown=node:node /repo /repo
 RUN mkdir -p /data && chown node:node /data
 
+# The version the console and the mobile control app reveal on a click on their
+# title. Declared after the copies: a new number must not invalidate them.
+ARG VERSION=0.0.0-dev
+ENV APP_VERSION=${VERSION}
+
 USER node
 VOLUME ["/data"]
 EXPOSE 8787

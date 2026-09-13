@@ -22,6 +22,13 @@ const configSchema = z.object({
    * case — an event hub started with nothing specified must simulate nothing.
    */
   mode: z.enum(['production', 'dev']).default('production'),
+  /**
+   * The hub's version, as the image was tagged.
+   *
+   * Set by the Dockerfile from its `VERSION` build argument; from the sources
+   * nobody sets it, and the console says so rather than inventing a number.
+   */
+  version: z.string().min(1).default('0.0.0-dev'),
   /** `0` asks the system for a free port — useful in test and in development. */
   port: z.coerce.number().int().min(0).max(65535).default(8787),
   host: z.string().default('0.0.0.0'),
@@ -372,6 +379,7 @@ export function durationMs(duration: string): number {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const parsed = configSchema.safeParse({
     mode: env.MODE,
+    version: env.APP_VERSION || undefined,
     port: env.PORT,
     host: env.HOST,
     databasePath: env.DATABASE_PATH,

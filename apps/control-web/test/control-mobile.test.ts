@@ -130,7 +130,7 @@ function mountRemote(
   permissions: string[] = REGIE_MOBILE,
 ) {
   const gateway = useGatewayStore()
-  gateway.start({ portee: 'distante', roomId: null, salles: [], google: null })
+  gateway.start({ portee: 'distante', roomId: null, salles: [], google: null, version: null })
   const session = useSessionStore()
   const hub = fakeHub(rooms, viewOverrides, permissions)
   session.client = hub.client
@@ -195,6 +195,7 @@ describe('the three screens', () => {
       // round trip would read as a hub with no program.
       salles: [{ id: 'track-1', name: 'Track #1' }],
       google: null,
+      version: null,
     })
     const session = useSessionStore()
     session.client = fakeHub([]).client

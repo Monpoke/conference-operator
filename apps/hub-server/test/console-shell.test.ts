@@ -47,10 +47,18 @@ describe('console shell', () => {
   })
 
   it('embeds enough to display before the first call', () => {
-    const html = shell({ mode: 'dev', google: { domain: 'cloudnord.fr' } })
+    const html = shell({ mode: 'dev', google: { domain: 'cloudnord.fr' }, version: '1.4.0' })
     const boot = JSON.parse(
       /<script id="console-boot" type="application\/json">(.*?)<\/script>/s.exec(html)![1]!,
-    ) as { mode: string; event: { name: string }; google: { domain: string } | null }
+    ) as {
+      mode: string
+      event: { name: string }
+      google: { domain: string } | null
+      version: string | null
+    }
+
+    // The version, revealed on a click on the title.
+    expect(boot.version).toBe('1.4.0')
 
     // The event's name: the first word read, and waiting for it from a round trip
     // would make it appear after the rest.

@@ -673,7 +673,7 @@ describe('unpairing a machine', () => {
     // The boot scope only: `start` would also open a session against a hub that
     // does not exist here, and its refusal would land in whichever test runs next.
     vi.spyOn(useSessionStore(), 'start').mockImplementation(() => {})
-    useGatewayStore().start({ portee: 'distante', roomId: 'track-1', salles: [], google: null })
+    useGatewayStore().start({ portee: 'distante', roomId: 'track-1', salles: [], google: null, version: null })
     room()
     useConfigStore().show()
 

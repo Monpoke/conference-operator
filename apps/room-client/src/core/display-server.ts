@@ -104,6 +104,8 @@ export interface DisplayServerOptions {
   socialLinks?: () => DisplayPayload['socialLinks']
   /** The event's identity, read back from the local cache on every send. */
   event?: () => DisplayPayload['eventIdentity']
+  /** The machine's version, handed to the control app. */
+  version?: string | null
   /**
    * Reports that a control app is (or is not) watching the audio levels.
    *
@@ -509,6 +511,7 @@ export class DisplayServer {
         renderControlShell({
           initialPayload: this.payload(),
           eventName: this.options.event?.().name ?? null,
+          version: this.options.version ?? null,
           assets: vite != null ? developmentAssets() : productionAssets(bundle!.manifest),
         }),
       )

@@ -91,6 +91,7 @@ export const useSessionStore = defineStore('session', () => {
   const dev = computed(() => mode.value === 'dev')
   const eventName = computed(() => boot.value?.event.name ?? '')
   const google = computed(() => boot.value?.google ?? null)
+  const version = computed(() => boot.value?.version ?? null)
 
   function start(payload: Boot): void {
     boot.value = payload
@@ -214,6 +215,7 @@ export const useSessionStore = defineStore('session', () => {
     dev,
     eventName,
     google,
+    version,
     start,
     resume,
     signIn,

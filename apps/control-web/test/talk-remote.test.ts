@@ -68,7 +68,7 @@ function remoteRoom(views: ControlView[]): void {
   const left = [...views]
 
   const gateway = useGatewayStore()
-  gateway.start({ portee: 'distante', roomId: 'track-1', salles: [], google: null })
+  gateway.start({ portee: 'distante', roomId: 'track-1', salles: [], google: null, version: null })
 
   const session = useSessionStore()
   session.client = {

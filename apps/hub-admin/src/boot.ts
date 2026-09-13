@@ -15,6 +15,8 @@ export interface Boot {
   mode: ExecutionMode
   event: EventIdentity
   google: { domain: string } | null
+  /** The hub's version. Not shown until asked for: a click on the title. */
+  version: string | null
 }
 
 /** Where the shell puts it. Kept in one place because two of them read it. */

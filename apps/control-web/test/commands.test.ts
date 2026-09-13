@@ -199,7 +199,7 @@ describe('projection, from a phone', () => {
     vi.stubGlobal('fetch', async () => new Response('{}', { status: 401 }))
 
     const gateway = useGatewayStore()
-    gateway.start({ portee: 'distante', roomId: 'track-1', salles: [], google: null })
+    gateway.start({ portee: 'distante', roomId: 'track-1', salles: [], google: null, version: null })
     useSessionStore().client = {
       rpc: {
         regie: {

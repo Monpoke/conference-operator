@@ -22,7 +22,15 @@ import { useSessionStore } from './stores/session.js'
  */
 const session = useSessionStore()
 const notifications = useNotificationsStore()
-const { signedIn, eventName, mode, identity, permissions } = storeToRefs(session)
+const { signedIn, eventName, mode, identity, permissions, version } = storeToRefs(session)
+
+/**
+ * The hub's version, behind a click on the title.
+ *
+ * Useful when reporting a problem, useless the rest of the day: it has no place
+ * in a header read at a glance.
+ */
+const versionShown = ref(false)
 const { supported, on } = storeToRefs(notifications)
 const route = useRoute()
 const router = useRouter()
@@ -118,9 +126,17 @@ function refresh(): void {
 
   <div v-else id="console" class="mx-auto min-h-dvh max-w-[1180px] p-3 sm:p-5">
     <header class="flex flex-wrap items-center gap-3 pb-3">
-      <h1 id="console-title" class="text-[17px] font-semibold sm:text-[19px]">
+      <h1
+        id="console-title"
+        class="cursor-default text-[17px] font-semibold select-none sm:text-[19px]"
+        :title="version == null ? undefined : `Version ${version}`"
+        @click="versionShown = !versionShown"
+      >
         {{ eventName }} — console hub
       </h1>
+      <span v-if="versionShown && version != null" id="version" class="text-[12px] text-dim">
+        v{{ version }}
+      </span>
       <Badge v-if="mode !== 'production'" id="badge-mode" variant="warning">{{ mode }}</Badge>
       <!--
         Qui est connecté, quand le hub le dit. Le retour de Google ne laisse

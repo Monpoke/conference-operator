@@ -1864,11 +1864,6 @@ export class RoomApp implements ControlTarget {
     this.runtime.notify({ level: 'info', text: `Envoyé à la console : ${text}` })
   }
 
-  /** Sets or removes the live scenes' banner, from the control app. */
-  setLiveMessage(text: string | null, level: 'info' | 'warning' | 'urgent'): void {
-    this.runtime.setLiveMessage(text, level)
-  }
-
   /**
    * Puts an audience question on air, or takes it off.
    *
@@ -1917,13 +1912,6 @@ export class RoomApp implements ControlTarget {
   /** Dismisses a notice read in the control app. */
   dismissNotification(id: string): void {
     this.runtime.dismissNotification(id)
-  }
-
-  /** A resynchronization asked for from the control app. */
-  async resync(): Promise<void> {
-    if (this.link == null) throw new Error("Hub non connecté : rien à synchroniser")
-    const result = await this.link.sync()
-    if (!result.ok) throw new Error('Le hub est injoignable')
   }
 
   /**

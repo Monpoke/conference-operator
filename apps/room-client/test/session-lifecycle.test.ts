@@ -112,6 +112,20 @@ const act = async (payload: unknown) => {
   })
   return { status: response.status, body: (await response.json()) as { ok: boolean; message?: string } }
 }
+/**
+ * An ordinary sync, now.
+ *
+ * Through the link itself: the control app has no resync button — the full resync
+ * is asked for from the console — and the tests that need a sync on demand must not
+ * lean on a gesture nobody can make.
+ */
+async function syncNow(): Promise<void> {
+  const link = (room as unknown as { link: { sync(): Promise<{ ok: boolean }> } | null }).link
+  if (link == null) throw new Error('Hub non connecté : rien à synchroniser')
+  const result = await link.sync()
+  if (!result.ok) throw new Error('Le hub est injoignable')
+}
+
 const view = async () => (await (await fetch(`${control}/display/data`)).json()) as DisplayPayload
 
 /**
@@ -297,7 +311,7 @@ describe("simulated time", () => {
     room.runtime.setClockOffset(Date.parse('2026-11-30T10:20:00.000Z') - Date.now(), true)
     expect(room.runtime.state().currentSession).toBeNull()
 
-    await room.resync()
+    await syncNow()
 
     expect(room.runtime.state().currentSession?.title).toContain('HoneySwamp')
     // And the pages see the same instant: all they have is their own `Date.now()`.
@@ -374,7 +388,7 @@ describe('full resynchronisation', () => {
     const written = vi.spyOn(store, 'saveProgram')
 
     // The ordinary sync writes nothing: the fingerprint has not moved.
-    await room.resync()
+    await syncNow()
     expect(written).not.toHaveBeenCalled()
 
     const admin = await operatorClient()
@@ -559,7 +573,7 @@ describe("credentials refused by the hub", () => {
     expect(room.pairingState().status).toBe('paired')
 
     hub.services.devices.revoke(CLIENT_ID)
-    const result = await room.resync().then(
+    const result = await syncNow().then(
       () => 'ok',
       (cause: Error) => cause.message,
     )

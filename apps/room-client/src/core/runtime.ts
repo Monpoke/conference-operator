@@ -283,17 +283,6 @@ export class RoomRuntime extends EventEmitter {
   }
 
   /**
-   * A banner set from the control app.
-   *
-   * With no lifetime: the control app has a button to remove it, and a banner that
-   * disappears by itself while one is looking elsewhere comes back without anyone
-   * knowing why it had gone.
-   */
-  setLiveMessage(text: string | null, level: 'info' | 'warning' | 'urgent' = 'info'): void {
-    this.patch({ liveMessage: text == null ? null : { text, level, expiresAtMs: null } })
-  }
-
-  /**
    * A question put on air from the control app.
    *
    * With no lifetime, like the banner: the control app has a button to remove it.

@@ -6,6 +6,7 @@ import { useHostStore } from '../stores/host.js'
 import CpuIndicator from './CpuIndicator.vue'
 import HubIndicator from './HubIndicator.vue'
 import ModeBadge from './ModeBadge.vue'
+import ProtocolBadge from './ProtocolBadge.vue'
 import RoomClock from './RoomClock.vue'
 import ScreensMenu from './ScreensMenu.vue'
 
@@ -46,6 +47,7 @@ const queueDepth = computed(
     </div>
 
     <ModeBadge :mode="payload.diagnostics?.mode ?? null" />
+    <ProtocolBadge :protocol="payload.diagnostics?.protocol ?? null" />
 
     <HubIndicator
       :connectivity="payload.state.connectivity"

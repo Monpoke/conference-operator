@@ -104,6 +104,7 @@ export function diagnostics(): NonNullable<DisplayPayload['diagnostics']> {
     questionsSession: null,
     config: null,
     mode: { room: 'production', hub: 'production' },
+    protocol: { room: 1, hub: 1 },
     relaySourceRoomId: null,
     rooms: [],
     roomsRefreshedAt: null,

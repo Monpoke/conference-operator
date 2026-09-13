@@ -266,6 +266,12 @@ export interface ControlDiagnostics {
    * simulates everything.
    */
   mode: { room: ExecutionMode; hub: ExecutionMode | null }
+  /**
+   * The contract version on each side. `hub` is `null` until the first sync.
+   *
+   * Only their disagreement is shown: a room older or newer than its hub.
+   */
+  protocol: { room: number; hub: number | null }
   /** Relayed room, `null` if relaying is not configured for this room. */
   relaySourceRoomId: string | null
   /**

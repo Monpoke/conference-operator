@@ -6,7 +6,7 @@ import type {
   ControlView,
   SceneRole,
 } from '@conference-operator/contract'
-import { CONTROL_WATCH_FLOOR_MS, NO_EDITING_MARKS } from '@conference-operator/contract'
+import { CONTROL_WATCH_FLOOR_MS, NO_EDITING_MARKS, PROTOCOL_VERSION } from '@conference-operator/contract'
 import type { HubClient } from '@conference-operator/hub-client'
 
 /**
@@ -668,6 +668,8 @@ export function payloadFromView(view: ControlView, nowMs: number): DisplayPayloa
       questionsSession: null,
       config,
       mode: { room: 'production', hub: null },
+      // The phone is served by the hub itself: they cannot disagree.
+      protocol: { room: PROTOCOL_VERSION, hub: null },
       relaySourceRoomId: view.relaySourceRoomId,
       rooms: [],
       roomsRefreshedAt: null,

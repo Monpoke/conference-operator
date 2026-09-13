@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import CpuIndicator from '../src/components/CpuIndicator.vue'
 import HubIndicator from '../src/components/HubIndicator.vue'
 import ModeBadge from '../src/components/ModeBadge.vue'
+import ProtocolBadge from '../src/components/ProtocolBadge.vue'
 import ControlHeader from '../src/components/ControlHeader.vue'
 import RoomClock from '../src/components/RoomClock.vue'
 import { clockDrift } from '../src/lib/clock-drift.js'
@@ -232,6 +233,26 @@ describe('run mode', () => {
     // Hub not reached yet: nothing to compare, and a premature alert would teach
     // people to ignore the badge.
     const wrapper = mount(ModeBadge, { props: { mode: { room: 'production', hub: null } } })
+    expect(wrapper.text()).toBe('')
+  })
+})
+
+describe('protocol version', () => {
+  it('stays quiet while the room and the hub speak the same contract', () => {
+    const wrapper = mount(ProtocolBadge, { props: { protocol: { room: 1, hub: 1 } } })
+    expect(wrapper.text()).toBe('')
+  })
+
+  it('cries out when they do not, and names both versions', () => {
+    // An event refused here, a field missing there: without the versions side by
+    // side, a gap reads as anything but a gap.
+    const wrapper = mount(ProtocolBadge, { props: { protocol: { room: 1, hub: 2 } } })
+    expect(wrapper.text()).toBe('protocole hub v2 · salle v1')
+    expect(wrapper.html()).toContain('text-alert')
+  })
+
+  it('waits for the first sync before concluding', () => {
+    const wrapper = mount(ProtocolBadge, { props: { protocol: { room: 1, hub: null } } })
     expect(wrapper.text()).toBe('')
   })
 })

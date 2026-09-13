@@ -560,6 +560,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
           mode: config.mode,
           event: services.identity.get(),
           google: config.googleClientId == null ? null : { domain: config.googleHostedDomain! },
+          version: config.version,
           assets: dev ? developmentAssets() : productionAssets(bundle!.manifest),
         }),
       )
@@ -606,6 +607,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
         roomId,
         rooms: services.rooms.list().map((room) => ({ id: room.id, name: room.name })),
         google: config.googleClientId == null ? null : { domain: config.googleHostedDomain! },
+        version: config.version,
         assets: dev
           ? developmentControlAssets()
           : productionControlAssets(controlBundle!.manifest),

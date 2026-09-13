@@ -143,6 +143,13 @@ export interface RoomAppOptions {
    * serves the built bundle, and nothing else is possible.
    */
   regieViteOrigin?: string | null
+  /**
+   * The installed application's version.
+   *
+   * Decided by the entry point, which asks Electron — the one that knows what
+   * `electron-builder` stamped into the package.
+   */
+  version?: string | null
 }
 
 /**
@@ -309,6 +316,7 @@ export class RoomApp implements ControlTarget {
       // last known ones rather than an empty page.
       socialLinks: () => this.store.settings().socialLinks,
       event: () => this.store.settings().event,
+      version: options.version ?? null,
       onLevelsRequested: (active) => {
         this.levelsRequested = active
         // With no OBS-B connected, we only keep the intent: the subscription will be

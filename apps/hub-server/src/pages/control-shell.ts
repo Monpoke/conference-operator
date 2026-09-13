@@ -42,6 +42,8 @@ export interface ControlShellOptions {
    * serve it — offering a sign-in that fails costs more than a form.
    */
   google?: { domain: string } | null
+  /** The hub's version, revealed on demand in the header. */
+  version?: string
   assets: ControlAssets
 }
 
@@ -111,6 +113,7 @@ export function renderMobileControlShell(options: ControlShellOptions): string {
     roomId: options.roomId ?? null,
     salles: options.rooms ?? [],
     google: options.google == null ? null : { domain: options.google.domain },
+    version: options.version ?? null,
   }).replace(/</g, '\\u003c')
 
   const styles = options.assets.styles

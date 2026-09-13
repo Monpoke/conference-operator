@@ -47,9 +47,14 @@ export interface BootScope {
   salles: { id: string; name: string }[]
   /** The Google domain, or `null`: the button only appears if the hub serves it. */
   google: { domain: string } | null
+  /**
+   * The serving application's version: the room machine's locally, the hub's
+   * remotely. `null` when nobody said — `vite dev`, `dev:headless`.
+   */
+  version: string | null
 }
 
-const LOCALE: BootScope = { portee: 'locale', roomId: null, salles: [], google: null }
+const LOCALE: BootScope = { portee: 'locale', roomId: null, salles: [], google: null, version: null }
 
 export function readScope(document: Document): BootScope {
   const content = document.getElementById(SCOPE_ELEMENT_ID)?.textContent

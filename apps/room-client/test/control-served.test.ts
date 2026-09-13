@@ -283,6 +283,23 @@ describe('the page\'s self-sufficiency', () => {
     expect(html).toContain('<title>Régie — Cloud Nord 2027</title>')
   })
 
+  it('hands the machine\'s version to the control app, and states no scope for it', () => {
+    const html = renderControlShell({
+      initialPayload: {} as never,
+      assets: { scripts: [], styles: [] },
+      version: '1.4.0',
+    })
+    const scope = JSON.parse(
+      /<script id="regie-portee" type="application\/json">(.*?)<\/script>/s.exec(html)![1]!,
+    ) as { portee: string; version: string }
+
+    expect(scope).toEqual({ portee: 'locale', version: '1.4.0' })
+    // Without a version, nothing: absence already means "locale".
+    expect(
+      renderControlShell({ initialPayload: {} as never, assets: { scripts: [], styles: [] } }),
+    ).not.toContain('regie-portee')
+  })
+
   it('escapes anything that could close the state script tag', () => {
     const html = renderControlShell({
       initialPayload: { roomName: '</script><script>alert(1)</script>' } as never,

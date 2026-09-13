@@ -25,6 +25,8 @@ export interface ControlShellOptions {
   assets: ControlAssets
   /** The event's name, to title the window. */
   eventName?: string | null
+  /** The machine's version, revealed on demand in the header. */
+  version?: string | null
 }
 
 export interface ControlAssets {
@@ -103,6 +105,17 @@ export function developmentAssets(base = '/regie/'): ControlAssets {
 export function renderControlShell(options: ControlShellOptions): string {
   const title = options.eventName == null ? 'Régie de salle' : `Régie — ${options.eventName}`
   const state = JSON.stringify(options.initialPayload).replace(/</g, '\\u003c')
+  /*
+   * The scope script, locally, only to carry the version: `portee` is what its
+   * absence already means, and a machine that knows no version says nothing.
+   */
+  const scope =
+    options.version == null
+      ? ''
+      : `<script id="regie-portee" type="application/json">${JSON.stringify({
+          portee: 'locale',
+          version: options.version,
+        }).replace(/</g, '\\u003c')}</script>\n`
 
   const styles = options.assets.styles
     .map((href) => `<link rel="stylesheet" href="${escapeHtml(href)}">`)
@@ -123,7 +136,7 @@ ${styles}
 <body>
 <div id="regie-root"></div>
 <script id="etat-initial" type="application/json">${state}</script>
-${scripts}
+${scope}${scripts}
 </body>
 </html>
 `

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { DisplayPayload } from '@conference-operator/contract'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { Button, Key } from '@conference-operator/components'
+import { useGatewayStore } from '../stores/gateway.js'
 import { useHostStore } from '../stores/host.js'
 import CpuIndicator from './CpuIndicator.vue'
 import HubIndicator from './HubIndicator.vue'
@@ -30,6 +31,17 @@ const props = defineProps<{
 const emit = defineEmits<{ open: [tab: 'program' | 'rooms']; config: [] }>()
 
 const host = useHostStore()
+const gateway = useGatewayStore()
+
+/**
+ * The version, behind a click on the room's name.
+ *
+ * Asked for when reporting a problem, never during a talk: this line is read at
+ * a glance, and a number that never changes would only take room from the ones
+ * that do.
+ */
+const version = computed(() => gateway.boot.version)
+const versionShown = ref(false)
 
 /*
  * The queue depth is the indicator to watch during an outage: it is read in the
@@ -42,9 +54,21 @@ const queueDepth = computed(
 
 <template>
   <header class="flex items-center gap-3 border-b border-edge bg-surface px-3 py-2">
-    <div class="truncate text-[15px] font-semibold" data-role="room">
+    <div
+      class="cursor-default truncate text-[15px] font-semibold select-none"
+      data-role="room"
+      :title="version == null ? undefined : `Version ${version}`"
+      @click="versionShown = !versionShown"
+    >
       {{ payload.roomName ?? payload.state.roomId ?? 'Salle non appairée' }}
     </div>
+    <span
+      v-if="versionShown && version != null"
+      class="shrink-0 text-[11px] text-dim"
+      data-role="version"
+    >
+      v{{ version }}
+    </span>
 
     <ModeBadge :mode="payload.diagnostics?.mode ?? null" />
     <ProtocolBadge :protocol="payload.diagnostics?.protocol ?? null" />

@@ -97,6 +97,7 @@ async function main(): Promise<void> {
     roomId: process.env.ROOM_ID,
     displayPort: displayPort(),
     regieViteOrigin: process.env.REGIE_VITE_ORIGIN ?? null,
+    version: app.getVersion(),
     obsTransportFactory: MODE.obsSimulated
       ? (instance, scenes) =>
           createMockObsTransport({

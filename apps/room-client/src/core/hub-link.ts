@@ -35,6 +35,14 @@ export interface HubLinkOptions {
    */
   onHubMode?: (mode: ExecutionMode) => void
   /**
+   * The protocol version the hub announces on every synchronization.
+   *
+   * Compared by the room to its own, like the mode: a room and a hub that no
+   * longer speak the same contract fail in ways that look like anything but a
+   * version gap — an event refused here, a field missing there.
+   */
+  onHubProtocol?: (version: number) => void
+  /**
    * A downward command has just been applied.
    *
    * Used to send up straight away what changed. A mobile control app never paints
@@ -198,6 +206,7 @@ export class HubLink {
       // also says whether its time is simulated — the control app must report it.
       runtime.setServerTime(result.serverTime, result.simulatedClock)
       this.options.onHubMode?.(result.mode)
+      this.options.onHubProtocol?.(result.protocolVersion)
 
       store.saveSettings({
         roomId: result.room.id,

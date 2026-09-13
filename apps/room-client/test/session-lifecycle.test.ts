@@ -1,3 +1,4 @@
+import { PROTOCOL_VERSION } from '@conference-operator/contract'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -562,6 +563,33 @@ describe("the other rooms' state", () => {
 
     const after = (await view()).diagnostics?.roomsRefreshedAt
     expect(Date.parse(after!)).toBeGreaterThan(Date.parse(before!))
+  }, 40_000)
+})
+
+describe('protocol version', () => {
+  it('stays quiet while the hub speaks the same contract', async () => {
+    await syncNow()
+    expect(room.diagnostics().protocol).toEqual({ room: PROTOCOL_VERSION, hub: PROTOCOL_VERSION })
+    expect(room.runtime.state().notifications.some((n) => n.text.includes('protocole'))).toBe(false)
+  }, 40_000)
+
+  it('says so once when the hub announces another version', async () => {
+    /*
+     * The hub cannot announce another version from this build: the test plays the
+     * sync's announcement directly, which is exactly what the room reacts to.
+     */
+    const announce = (room as unknown as {
+      link: { options: { onHubProtocol: (version: number) => void } }
+    }).link.options.onHubProtocol
+
+    announce(PROTOCOL_VERSION + 1)
+    announce(PROTOCOL_VERSION + 1)
+
+    expect(room.diagnostics().protocol).toEqual({ room: PROTOCOL_VERSION, hub: PROTOCOL_VERSION + 1 })
+    // Once per change: the badge carries the gap for as long as it lasts.
+    const notices = room.runtime.state().notifications.filter((n) => n.text.includes('protocole'))
+    expect(notices).toHaveLength(1)
+    expect(notices[0]!.level).toBe('warning')
   }, 40_000)
 })
 

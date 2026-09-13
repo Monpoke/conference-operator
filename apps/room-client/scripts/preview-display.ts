@@ -97,6 +97,7 @@ const base: DisplayPayload = {
     // The preview is a development artifact end to end: it says so, which also makes
     // the badge reviewable before the day itself.
     mode: { room: 'dev' as const, hub: 'dev' as const },
+    protocol: { room: 1, hub: 1 },
     /** The room's settings: with no passwords, as the control app receives them. */
     config: {
       obs: {

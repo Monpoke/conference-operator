@@ -1,3 +1,4 @@
+import { PROTOCOL_VERSION } from '@conference-operator/contract'
 import { join } from 'node:path'
 import { AssetCache } from './assets.js'
 import { DisplayServer } from './display-server.js'
@@ -196,6 +197,8 @@ export class RoomApp implements ControlTarget {
   private roomsTimer: NodeJS.Timeout | null = null
   /** The mode the hub announced at the last sync. `null` until it has answered. */
   private hubMode: ExecutionMode | null = null
+  /** The contract version the hub announced at its last sync; `null` before the first. */
+  private hubProtocol: number | null = null
   /** The fingerprint of the settings each instance was wired with. */
   private obsApplied: Record<ObsInstance, string | null> = { A: null, B: null }
   /** A resume loop is already running for this instance. */
@@ -724,6 +727,24 @@ export class RoomApp implements ControlTarget {
             hub: mode,
           })
         }
+      },
+      /*
+       * Said once per change, not on every sync: the badge stays in the header for
+       * as long as the gap lasts, and a notice repeated every minute would bury
+       * the ones that matter.
+       */
+      onHubProtocol: (version) => {
+        if (version === this.hubProtocol) return
+        this.hubProtocol = version
+        if (version === PROTOCOL_VERSION) return
+        this.options.onLog?.('error', 'PROTOCOLES DIVERGENTS entre la salle et le hub', {
+          room: PROTOCOL_VERSION,
+          hub: version,
+        })
+        this.runtime.notify({
+          level: 'warning',
+          text: `Hub en protocole v${version}, cette salle en v${PROTOCOL_VERSION} : mettez à jour le plus ancien`,
+        })
       },
       onAuthRejected: (reason) => {
         // Restarted outside the call stack: we are inside the error handler of the
@@ -1972,6 +1993,7 @@ export class RoomApp implements ControlTarget {
       questionsRefreshedAt: this.questionsAt,
       questionsSession: this.questionsSession,
       mode: { room: this.options.mode ?? 'production', hub: this.hubMode },
+      protocol: { room: PROTOCOL_VERSION, hub: this.hubProtocol },
       rooms: this.roomStatuses,
       roomsRefreshedAt: this.roomStatusesAt,
       recording: {

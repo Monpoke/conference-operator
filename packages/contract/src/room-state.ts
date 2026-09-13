@@ -448,6 +448,15 @@ export const syncResultSchema = z.object({
 })
 
 /** Hub view of a room, fed by the heartbeats — the supervision screen. */
+/** What one OBS instance last reported to the hub. */
+export const obsLinkSchema = z.object({
+  /** `null` until the room has said — an older room, or an OBS that never answered. */
+  connected: z.boolean().nullable(),
+  /** Scene roles the room's configuration names and OBS does not have. */
+  missingRoles: z.array(sceneRoleSchema),
+})
+export type ObsLink = z.infer<typeof obsLinkSchema>
+
 export const roomStatusSchema = z.object({
   roomId: roomIdSchema,
   name: z.string(),
@@ -467,6 +476,29 @@ export const roomStatusSchema = z.object({
   displayMode: displayModeSchema.nullable().default(null),
   outboxDepth: z.number().int().nonnegative(),
   programContentHash: z.string().nullable(),
+  /**
+   * Each OBS instance, as the room last reported it.
+   *
+   * What the supervision could not see before: a room whose OBS-A had no "LIVE"
+   * scene logged it on its own machine, and the console never knew. Defaulted to
+   * "never said" for a hub answering an older console, and the other way round.
+   */
+  obs: z
+    .object({ A: obsLinkSchema, B: obsLinkSchema })
+    .default({ A: { connected: null, missingRoles: [] }, B: { connected: null, missingRoles: [] } }),
+  /**
+   * The stream's health while it runs — `null` otherwise, or before the first
+   * measure. `at` is when the hub received it.
+   */
+  streamHealth: z
+    .object({
+      bitrateKbps: z.number().nonnegative(),
+      skippedRatio: z.number().min(0).max(1),
+      congestion: z.number().min(0).max(1),
+      at: isoDateTimeSchema,
+    })
+    .nullable()
+    .default(null),
   /**
    * What is playing right now, according to the program and the hub's clock.
    *

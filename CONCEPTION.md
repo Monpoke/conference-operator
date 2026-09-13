@@ -515,6 +515,19 @@ se joue en ce moment** — le titre, calculé sur le programme, donc juste même
 quand la salle est coupée —, l'enregistrement, la diffusion, la scène, la file
 en attente, et un lien vers le mur public de la salle.
 
+**Ce qui cloche côté OBS se lit sur la carte**, et plus seulement sur la machine
+de la salle : « OBS-A coupé » en rouge, « scène LIVE introuvable » en orange
+quand la configuration nomme une scène qu'OBS n'a pas. Pendant un direct, le
+**débit** s'y ajoute, mesuré par la salle entre deux battements (10 s), et vire à
+l'orange avec la congestion ou les images perdues. Une salle muette n'affiche
+rien de tout cela : ce qu'elle a dit en dernier est précisément ce qui ne vaut
+plus.
+
+Le débit est un **taux**, calculé sur deux relevés : OBS rend des compteurs
+cumulés depuis le début du direct, et les lire tels quels donnait le total envoyé
+jusque-là. Avant ce calcul, la mesure n'était de toute façon jamais appelée — la
+salle remontait bien la connexion d'OBS, que le hub stockait sans la relire.
+
 La grille se replie d'elle-même : trois cartes de front sur un écran de bureau,
 une seule sur un téléphone. L'en-tête et les onglets passent à la ligne plutôt
 que de déborder.

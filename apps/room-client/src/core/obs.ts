@@ -404,16 +404,29 @@ export class ObsController {
     await this.options.transport.call('StopStream')
   }
 
-  /** The stream's health: bitrate and dropped frames, for the telemetry. */
-  async streamStatus(): Promise<{ bitrateKbps: number; skippedFrames: number; congestion: number }> {
+  /**
+   * OBS's stream counters, as it reports them: **cumulative** since the stream
+   * started.
+   *
+   * A rate only comes from two samples — see `streamHealthBetween`. Turning
+   * `outputBytes` into a "bitrate" here gave the total sent so far.
+   */
+  async streamStatus(): Promise<{
+    outputBytes: number
+    skippedFrames: number
+    totalFrames: number
+    congestion: number
+  }> {
     const status = (await this.options.transport.call('GetStreamStatus')) as {
       outputBytes?: number
       outputSkippedFrames?: number
+      outputTotalFrames?: number
       outputCongestion?: number
     }
     return {
-      bitrateKbps: Math.round(((status.outputBytes ?? 0) * 8) / 1000),
+      outputBytes: status.outputBytes ?? 0,
       skippedFrames: status.outputSkippedFrames ?? 0,
+      totalFrames: status.outputTotalFrames ?? 0,
       congestion: Math.min(1, Math.max(0, status.outputCongestion ?? 0)),
     }
   }

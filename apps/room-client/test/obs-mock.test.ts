@@ -279,9 +279,13 @@ describe('simulated OBS', () => {
     const obs = new ObsController({ instance: 'B', url: 'mock', sceneRoles: {}, transport })
     await obs.connect()
 
-    expect((await obs.streamStatus()).bitrateKbps).toBe(0)
+    expect((await obs.streamStatus()).outputBytes).toBe(0)
     await obs.startStream()
-    expect((await obs.streamStatus()).bitrateKbps).toBeGreaterThan(0)
+    const first = await obs.streamStatus()
+    const second = await obs.streamStatus()
+    // Cumulative, like the real OBS: a rate only comes from two samples.
+    expect(second.outputBytes).toBeGreaterThan(first.outputBytes)
+    expect(second.totalFrames).toBeGreaterThan(first.totalFrames)
   })
 
   it('refuses two simultaneous recordings', async () => {

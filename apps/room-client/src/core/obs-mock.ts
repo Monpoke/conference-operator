@@ -52,6 +52,13 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
   let currentScene = scenes[1] ?? scenes[0]!
   let recording = false
   let streaming = false
+  /**
+   * The stream's counters, cumulative since it started — as the real OBS reports
+   * them. Each reading advances them by a plausible ten seconds of 4.5 Mb/s at
+   * 30 fps, so that two samples give a rate.
+   */
+  let streamBytes = 0
+  let streamFrames = 0
   let format = 'enregistrement'
   /** The VU meter's emission, active only while we are subscribed to it. */
   let meter: ReturnType<typeof setInterval> | null = null
@@ -204,6 +211,8 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
 
         case 'StartStream':
           streaming = true
+          streamBytes = 0
+          streamFrames = 0
           log('diffusion démarrée')
           emit('StreamStateChanged', {
             outputActive: true,
@@ -230,10 +239,15 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
           return { outputActive: recording }
 
         case 'GetStreamStatus':
+          if (streaming) {
+            streamBytes += 5_625_000
+            streamFrames += 300
+          }
           return {
             outputActive: streaming,
-            outputBytes: streaming ? 750_000 : 0,
+            outputBytes: streamBytes,
             outputSkippedFrames: 0,
+            outputTotalFrames: streamFrames,
             outputCongestion: 0,
           }
 

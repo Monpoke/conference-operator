@@ -107,10 +107,19 @@ export const roomEventPayloadSchema = z.discriminatedUnion('type', [
      */
     displayMode: displayModeSchema.nullable().default(null),
   }),
+  /**
+   * The stream's health, measured by the room between two samples.
+   *
+   * Rates, not OBS's raw counters: those are cumulative since the stream started,
+   * and a "bitrate" read straight from `outputBytes` was the total sent so far.
+   * No room ever sent the old shape — nothing called the measure — so it changes
+   * without a compatibility concern.
+   */
   z.object({
     type: z.literal('stream.telemetry'),
     bitrateKbps: z.number().nonnegative(),
-    skippedFrames: z.number().int().nonnegative(),
+    /** Share of the frames OBS skipped since the previous sample, 0–1. */
+    skippedRatio: z.number().min(0).max(1),
     congestion: z.number().min(0).max(1),
   }),
 ])

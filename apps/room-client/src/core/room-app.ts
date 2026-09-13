@@ -1,3 +1,4 @@
+import { streamHealthBetween, type StreamSample } from './stream-health.js'
 import { PROTOCOL_VERSION } from '@conference-operator/contract'
 import { join } from 'node:path'
 import { AssetCache } from './assets.js'
@@ -923,7 +924,12 @@ export class RoomApp implements ControlTarget {
 
     // A regular heartbeat, collapsed: an hour offline leaves a single occurrence in
     // the queue, not 720.
-    this.heartbeat = setInterval(() => this.beat(), 10_000)
+    this.heartbeat = setInterval(() => {
+      this.beat()
+      // The stream's health rides the same rhythm: the console's bitrate is
+      // measured over this interval.
+      void this.reportStreamHealth()
+    }, 10_000)
     this.heartbeat.unref?.()
   }
 
@@ -1429,17 +1435,29 @@ export class RoomApp implements ControlTarget {
     await this.obsB.stopStream()
   }
 
+  /** The previous stream sample: OBS's counters are cumulative, a rate needs two. */
+  private streamSample: StreamSample | null = null
+
   /**
-   * Reads the stream's health.
+   * Measures the stream's health and sends it up — on every heartbeat, while it runs.
    *
-   * Sent up as `best-effort`: it is monitoring information, not a fact to keep —
-   * losing it during an outage has no consequence.
+   * Sent up as `best-effort` and collapsed: it is monitoring information, not a fact
+   * to keep, and losing it during an outage has no consequence. Nothing called it
+   * before: the stream's health never left the room, and the console had nothing to
+   * show.
    */
   async reportStreamHealth(): Promise<void> {
-    if (this.obsB == null || !this.runtime.state().streaming) return
+    if (this.obsB == null || !this.runtime.state().streaming) {
+      // A stream that stops ends the measure: the next one starts from scratch.
+      this.streamSample = null
+      return
+    }
     try {
       const status = await this.obsB.streamStatus()
-      this.emit({ type: 'stream.telemetry', ...status }, 'stream.telemetry')
+      const sample: StreamSample = { atMs: Date.now(), ...status }
+      const health = streamHealthBetween(this.streamSample, sample)
+      this.streamSample = sample
+      if (health != null) this.emit({ type: 'stream.telemetry', ...health }, 'stream.telemetry')
     } catch (cause) {
       this.options.onLog?.('warn', 'télémétrie de diffusion indisponible', {
         message: (cause as Error).message,

@@ -255,8 +255,9 @@ export class IngestService {
   /**
    * Events reported by a room, in the order they were emitted.
    *
-   * Feeds the admin console's diagnostics panel — and, later, the reconstruction
-   * of a talk's timecodes for editing.
+   * What the delivery tests read: order kept, nothing duplicated, nothing lost
+   * across a cut. No console reads it — the supervision view is `room_state`,
+   * which `applyToRoomState` feeds.
    */
   eventsFor(roomId: string) {
     return this.db
@@ -353,7 +354,25 @@ function projectionFor(payload: RoomEventPayload): Record<string, unknown> {
     case 'stream.started':
       return { streaming: true }
     case 'stream.stopped':
-      return { streaming: false }
+      // A health measured on a stream that has stopped describes nothing any more.
+      return {
+        streaming: false,
+        streamBitrateKbps: null,
+        streamSkippedRatio: null,
+        streamCongestion: null,
+        streamHealthAt: null,
+      }
+    case 'obs.connection':
+      return payload.obs === 'A'
+        ? { obsAConnected: payload.connected, obsAMissingRoles: JSON.stringify(payload.unresolvedRoles) }
+        : { obsBConnected: payload.connected, obsBMissingRoles: JSON.stringify(payload.unresolvedRoles) }
+    case 'stream.telemetry':
+      return {
+        streamBitrateKbps: Math.round(payload.bitrateKbps),
+        streamSkippedRatio: payload.skippedRatio,
+        streamCongestion: payload.congestion,
+        streamHealthAt: new Date().toISOString(),
+      }
     default:
       return {}
   }

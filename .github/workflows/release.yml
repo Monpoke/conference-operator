@@ -243,6 +243,9 @@ jobs:
   #
   # Nothing to install beyond the usual: electron-builder fetches appimagetool
   # itself, and FUSE is only needed to *run* an AppImage, never to build one.
+  # `toolsets.appimage` makes it fetch the static toolset rather than the 2019
+  # one, so this job needs the network for more than the registry — and the
+  # AppImage it produces starts on a machine that has only FUSE 3.
   installer-linux:
     needs: verify
     runs-on: ubuntu-latest
@@ -407,10 +410,11 @@ jobs:
           \`\`\`
 
           Sous Linux, l'AppImage se copie et se lance telle quelle
-          (\`chmod +x\`). Si la machine n'a pas FUSE 2 — Ubuntu ne l'installe
-          plus par défaut depuis la 22.04 — au choix
-          \`--appimage-extract-and-run\`, ou l'archive \`tar.gz\` qui n'en
-          demande pas : on l'extrait et on lance \`room-control\`.
+          (\`chmod +x\`), sans rien à installer d'abord : elle embarque son
+          propre lanceur FUSE 3, et ne réclame donc plus le \`libfuse2\` qu'Ubuntu
+          n'installe plus par défaut depuis la 22.04. L'archive \`tar.gz\` reste
+          là pour une machine sans \`/dev/fuse\` : on l'extrait et on lance
+          \`room-control\`.
 
           Et, avec le réseau et la \`gh\` CLI, de quel dépôt et de quel commit
           ils sortent — ce que l'empreinte seule ne dit pas :

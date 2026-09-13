@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { Badge, Button, Toaster } from '@conference-operator/components'
 import { storeToRefs } from 'pinia'
-import { onScopeDispose, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { VIEW_PERMISSIONS, consoleViews, viewPath } from '@conference-operator/contract'
+import { computed, onScopeDispose, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import AlertStack from './components/AlertStack.vue'
 import ConsoleNav from './components/ConsoleNav.vue'
 import NotificationsDialog from './components/NotificationsDialog.vue'
@@ -21,9 +22,35 @@ import { useSessionStore } from './stores/session.js'
  */
 const session = useSessionStore()
 const notifications = useNotificationsStore()
-const { signedIn, eventName, mode, identity } = storeToRefs(session)
+const { signedIn, eventName, mode, identity, permissions } = storeToRefs(session)
 const { supported, on } = storeToRefs(notifications)
 const route = useRoute()
+const router = useRouter()
+
+/** A view without a declared right is not a console view: nothing to guard. */
+function opens(view: string | undefined): boolean {
+  if (view == null) return true
+  const required = VIEW_PERMISSIONS[view]
+  return required != null && session.can(required)
+}
+
+const firstOpen = computed(() => consoleViews(session.dev).find((view) => opens(view)) ?? null)
+const current = computed(() => permissions.value != null && opens(route.meta.view))
+
+/**
+ * Leave a view the operator's groups do not open.
+ *
+ * Towards the first one they do — a bookmark on Réglages opened by a moderator
+ * lands on Modération rather than on a page of refusals.
+ */
+watch(
+  [() => route.fullPath, permissions],
+  () => {
+    if (permissions.value == null || opens(route.meta.view)) return
+    if (firstOpen.value != null) void router.replace(viewPath(firstOpen.value))
+  },
+  { immediate: true },
+)
 
 const notifSettingsOpen = ref(false)
 const timer = ref<ReturnType<typeof setTimeout> | null>(null)
@@ -42,7 +69,9 @@ function stop(): void {
  */
 async function tick(): Promise<void> {
   const { refresh, intervalMs } = route.meta
-  if (refresh == null || !signedIn.value) return
+  // Not before the hub has said what the operator may open: polling a view
+  // about to be left would only raise refusals.
+  if (refresh == null || !signedIn.value || !current.value) return
   if (document.visibilityState === 'visible') {
     try {
       await refresh()
@@ -55,7 +84,7 @@ async function tick(): Promise<void> {
 }
 
 watch(
-  [() => route.fullPath, signedIn],
+  [() => route.fullPath, signedIn, current],
   () => {
     stop()
     void tick()
@@ -128,7 +157,14 @@ function refresh(): void {
     <ConsoleNav />
 
     <main class="pt-4">
-      <RouterView />
+      <RouterView v-if="current" />
+      <p
+        v-else-if="permissions != null && firstOpen == null"
+        id="no-access"
+        class="text-[14px] text-dim"
+      >
+        Ce compte n'a encore accès à aucune vue. Demandez à un admin de lui attribuer un groupe.
+      </p>
     </main>
 
     <NotificationsDialog v-model:open="notifSettingsOpen" />

@@ -528,6 +528,22 @@ export const contract = {
   },
 
   /** Settings that can be changed during the event. */
+  access: {
+    /**
+     * The signed-in operator's roles and what they add up to.
+     *
+     * Flattened here so the pages never reimplement the role table: they hide
+     * what `permissions` does not list, and the hub refuses it anyway.
+     */
+    me: oc.output(
+      z.object({
+        email: z.string(),
+        roles: z.array(z.string()),
+        permissions: z.array(z.string()),
+      }),
+    ),
+  },
+
   settings: {
     get: oc.output(hubSettingsSchema),
     update: oc.input(hubSettingsSchema.partial()).output(hubSettingsSchema),

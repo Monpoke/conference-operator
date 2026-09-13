@@ -7,6 +7,7 @@ import PairingView from './views/PairingView.vue'
 import SettingsView from './views/SettingsView.vue'
 import VodView from './views/VodView.vue'
 import ModerationView from './views/ModerationView.vue'
+import AccessView from './views/AccessView.vue'
 import { useConferencesStore } from './stores/conferences.js'
 import { useOperationsStore } from './stores/operations.js'
 import { useMessagesStore } from './stores/messages.js'
@@ -87,6 +88,14 @@ const routes: RouteRecordRaw[] = [
     name: 'reglages',
     component: SettingsView,
     meta: { view: 'reglages', refresh: () => useSettingsStore().load(), intervalMs: 10_000 },
+  },
+  {
+    path: viewPath('acces'),
+    name: 'acces',
+    component: AccessView,
+    // The view loads its accounts itself: nothing to poll, a checkbox being
+    // ticked must not be redrawn under the pointer.
+    meta: { view: 'acces' },
   },
   {
     path: viewPath('exploitation'),

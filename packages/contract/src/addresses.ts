@@ -12,6 +12,8 @@
  * with no tab selected. A test pins that.
  */
 
+import type { Permission } from './access.js'
+
 /**
  * Views, in tab order.
  *
@@ -21,8 +23,27 @@
  * to its module, which the router must import lazily rather than statically.
  */
 export function consoleViews(dev: boolean): string[] {
-  const views = ['exploitation', 'appairage', 'conferences', 'moderation', 'messages', 'vod', 'reglages']
+  const views = ['exploitation', 'appairage', 'conferences', 'moderation', 'messages', 'vod', 'reglages', 'acces']
   return dev ? [...views, 'developpement'] : views
+}
+
+/**
+ * What opening a view takes.
+ *
+ * The console hides a tab its operator cannot open, and leaves a view they
+ * lose the right to. The hub refuses the calls anyway: this only spares them
+ * a page of errors.
+ */
+export const VIEW_PERMISSIONS: Record<string, Permission> = {
+  exploitation: 'room:read',
+  appairage: 'device:read',
+  conferences: 'program:read',
+  moderation: 'wall:moderate',
+  messages: 'message:read',
+  vod: 'vod:read',
+  reglages: 'settings:read',
+  acces: 'user:list',
+  developpement: 'clock:set',
 }
 
 /**

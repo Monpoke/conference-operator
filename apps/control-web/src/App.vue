@@ -20,6 +20,7 @@ import SignInScreen from './components/SignInScreen.vue'
 import LockBanner from './components/LockBanner.vue'
 import LockVeil from './components/LockVeil.vue'
 import VodDialog from './components/VodDialog.vue'
+import { useAccessStore } from './stores/access.js'
 import { useActionsStore } from './stores/actions.js'
 import { useAudioStore } from './stores/audio.js'
 import { useClockStore } from './stores/clock.js'
@@ -63,6 +64,16 @@ const consult = useConsultStore()
 const config = useConfigStore()
 const programs = useProgramsStore()
 const vod = useVodStore()
+
+/**
+ * The operator's groups, remotely only.
+ *
+ * Locally the room machine has every right over its own room: the store is not
+ * even instantiated there, so it never calls a hub it cannot reach.
+ */
+const access = gateway.remote ? useAccessStore() : null
+const remoteView = computed(() => access == null || access.can('regie:view'))
+const remoteCommand = computed(() => access == null || access.can('regie:command'))
 
 const capture = useTemplateRef<InstanceType<typeof CapturePanel>>('capture')
 
@@ -231,10 +242,37 @@ useKeyboardLayer(
   -->
   <template v-if="gateway.remote">
     <SignInScreen v-if="!session.signedIn" />
+    <div
+      v-else-if="access?.permissions == null"
+      class="flex flex-1 items-center justify-center p-6 text-sm text-dim"
+    >
+      Lecture des droits…
+    </div>
+    <!--
+      Refusé avant de choisir une salle : chaque appel partirait pour revenir
+      en erreur, et une page pleine de refus se lit comme une panne.
+    -->
+    <div
+      v-else-if="!remoteView"
+      id="access-denied"
+      class="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-sm text-dim"
+    >
+      <strong class="text-text">Accès refusé</strong>
+      Ce compte n'a pas le droit d'ouvrir la régie. Demandez à un admin de lui attribuer le groupe
+      Régie mobile.
+      <button class="mt-2 underline" @click="session.signOut()">Changer de compte</button>
+    </div>
     <RoomSelect v-else-if="gateway.roomChoice" />
 
     <template v-else>
-      <LockBanner :now-ms="room.now" />
+      <div
+        v-if="!remoteCommand"
+        id="readonly-banner"
+        class="bg-surface2 px-3 py-1.5 text-center text-xs text-dim"
+      >
+        Lecture seule : ce compte peut regarder la salle, pas la piloter.
+      </div>
+      <LockBanner v-if="remoteCommand" :now-ms="room.now" />
 
       <!--
         The lock veil over the top, and not in its place.

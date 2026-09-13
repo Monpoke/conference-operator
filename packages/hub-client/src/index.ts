@@ -19,3 +19,4 @@ export {
   type HubAuthOptions,
   type SignInResult,
 } from './auth.js'
+export { createHubAdmin, type AdminResult, type HubAdmin, type HubUser } from './admin.js'

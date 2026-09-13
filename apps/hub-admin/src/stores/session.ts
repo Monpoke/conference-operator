@@ -1,7 +1,8 @@
 import { createHubAuth, createHubClient, type HubClient } from '@conference-operator/hub-client'
 import { useToast } from '@conference-operator/components'
 import { defineStore } from 'pinia'
-import { computed, ref, shallowRef } from 'vue'
+import type { Permission } from '@conference-operator/contract'
+import { computed, ref, shallowRef, watch } from 'vue'
 import type { Boot } from '../boot.js'
 
 /** Where the operator's token lives — the key the console has always used. */
@@ -52,6 +53,39 @@ export const useSessionStore = defineStore('session', () => {
    * lets a Google session reopen on reload.
    */
   const hubAuth = createHubAuth({ token: client.value.token })
+
+  /**
+   * What this operator may do, as the hub says — `null` until it has answered.
+   *
+   * Asked once per sign-in. A group changed meanwhile shows at the next
+   * reload; the hub applies it at once either way.
+   */
+  const permissions = ref<ReadonlySet<string> | null>(null)
+  const roles = ref<string[]>([])
+
+  async function loadAccess(): Promise<void> {
+    try {
+      const me = await client.value.rpc.access.me()
+      permissions.value = new Set(me.permissions)
+      roles.value = me.roles
+      identity.value ??= me.email
+    } catch {
+      // Already reported by the client's hooks; an expired session signs out.
+    }
+  }
+
+  watch(signedIn, (now) => {
+    if (now) {
+      void loadAccess()
+      return
+    }
+    permissions.value = null
+    roles.value = []
+  })
+
+  function can(permission: Permission): boolean {
+    return permissions.value?.has(permission) === true
+  }
 
   const mode = computed(() => boot.value?.mode ?? 'production')
   const dev = computed(() => mode.value === 'dev')
@@ -172,6 +206,10 @@ export const useSessionStore = defineStore('session', () => {
     error,
     identity,
     client,
+    permissions,
+    roles,
+    can,
+    loadAccess,
     mode,
     dev,
     eventName,

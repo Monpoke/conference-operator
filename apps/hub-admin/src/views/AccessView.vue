@@ -2,7 +2,7 @@
 import { ACCESS_ROLE_NAMES, ROLE_LABELS, parseRoles, type AccessRole } from '@conference-operator/contract'
 import { Badge, Button, Empty, Field, Hint, Panel, useToast } from '@conference-operator/components'
 import { createHubAdmin, type AdminResult, type HubUser } from '@conference-operator/hub-client'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useSessionStore } from '../stores/session.js'
 
 /**
@@ -95,9 +95,27 @@ function toggleNew(role: AccessRole): void {
     : [...newRoles.value, role]
 }
 
+/**
+ * A password only where it is the way in.
+ *
+ * With Google configured, an account of the domain needs none: created without,
+ * it opens through Google and finds its groups already ticked. Given one, it
+ * becomes the fallback for a day Google is out of reach. Without Google, the
+ * password is the only door, so it stays required.
+ */
+const passwordRequired = computed(() => session.google == null)
+
 async function create(): Promise<void> {
-  if (email.value.trim() === '' || name.value.trim() === '' || password.value.length < 8) {
-    toast.fail('Adresse, nom et mot de passe (8 caractères minimum) sont requis.')
+  if (email.value.trim() === '' || name.value.trim() === '') {
+    toast.fail('Adresse et nom sont requis.')
+    return
+  }
+  if (password.value === '' && passwordRequired.value) {
+    toast.fail('Mot de passe requis : ce hub n\'a pas de connexion Google.')
+    return
+  }
+  if (password.value !== '' && password.value.length < 8) {
+    toast.fail('Le mot de passe doit faire au moins 8 caractères.')
     return
   }
   if (newRoles.value.length === 0) {
@@ -169,7 +187,12 @@ async function create(): Promise<void> {
       <Field
         id="new-user-password"
         v-model="password"
-        label="Mot de passe provisoire"
+        :label="passwordRequired ? 'Mot de passe provisoire' : 'Mot de passe de secours (facultatif)'"
+        :hint="
+          passwordRequired
+            ? undefined
+            : `Vide : connexion Google uniquement. Rempli : permet d'entrer si Google est injoignable.`
+        "
         type="password"
         autocomplete="new-password"
       />
@@ -181,8 +204,12 @@ async function create(): Promise<void> {
       </div>
       <Button id="btn-create-user" variant="primary" class="w-full" @click="create">Créer</Button>
       <Hint>
-        Les comptes Google du domaine arrivent seuls, en Lecture seule. Un changement de groupe
-        s'applique au hub tout de suite, et à la console de la personne à son prochain rechargement.
+        <template v-if="!passwordRequired">
+          Les comptes Google du domaine arrivent seuls, en Lecture seule. Les créer ici d'avance leur
+          donne leurs groupes dès la première connexion.
+        </template>
+        Un changement de groupe s'applique au hub tout de suite, et à la console de la personne à son
+        prochain rechargement.
       </Hint>
     </Panel>
   </div>

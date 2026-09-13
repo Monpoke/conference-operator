@@ -7,6 +7,7 @@ import {
 } from '@conference-operator/contract'
 import { ingestEvent, roomState } from '@conference-operator/db/hub'
 import type { HubDatabase, HubTransaction } from '../db.js'
+import { SILENCE_MS } from './rooms.js'
 
 export interface IngestOutcome {
   acked: string[]
@@ -72,6 +73,7 @@ export class IngestService {
 
     if (valid.length === 0) return outcome
 
+    const before = this.projected(roomId)
     this.db.transaction((tx) => {
       for (const envelope of valid) {
         const inserted = tx
@@ -111,8 +113,33 @@ export class IngestService {
 
     // After the commit, never inside: a watcher woken mid-transaction would read
     // the state from before.
-    this.onChange(roomId)
+    if (this.moved(before, this.projected(roomId))) this.onChange(roomId)
     return outcome
+  }
+
+  /** The room's projected state, as the watchers would read it. */
+  private projected(roomId: string): typeof roomState.$inferSelect | null {
+    return this.db.select().from(roomState).where(eq(roomState.roomId, roomId)).get() ?? null
+  }
+
+  /**
+   * Did the batch change anything a watcher could see?
+   *
+   * A room reports every couple of seconds, most often to repeat itself: waking
+   * every open phone to recompose an identical view was the bulk of the stream's
+   * traffic. The receipt time and the sequence always move and say nothing by
+   * themselves — except when the room was silent long enough to be shown offline:
+   * its return *is* the news.
+   */
+  private moved(
+    before: typeof roomState.$inferSelect | null,
+    after: typeof roomState.$inferSelect | null,
+  ): boolean {
+    if (before == null || after == null) return true
+    if (before.lastSeenAt == null || Date.parse(before.lastSeenAt) < Date.now() - SILENCE_MS) return true
+    const { lastSeenAt: _before, lastSeq: _beforeSeq, ...was } = before
+    const { lastSeenAt: _after, lastSeq: _afterSeq, ...is } = after
+    return JSON.stringify(was) !== JSON.stringify(is)
   }
 
   /**

@@ -27,7 +27,7 @@ import type { HubDatabase } from '../db.js'
  * real clock, like the heartbeats themselves: a simulated time would declare
  * everyone dead.
  */
-const SILENCE_MS = 35_000
+export const SILENCE_MS = 35_000
 
 /**
  * The scene roles stored as JSON, kept only if they are roles.

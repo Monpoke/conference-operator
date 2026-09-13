@@ -139,7 +139,7 @@ describe('ingestion idempotency (hub)', () => {
         roomId: 'ghost-room',
         id: '01JB2ZK5T7QW9V0YHRXM3N4P6C',
         seq: 1,
-        type: 'incident',
+        type: 'room.message',
         delivery: 'required',
         occurredAt: '2026-10-30T09:00:00.000Z',
         monotonicMs: 1,

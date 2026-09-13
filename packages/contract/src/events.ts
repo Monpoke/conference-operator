@@ -76,11 +76,6 @@ export const roomEventPayloadSchema = z.discriminatedUnion('type', [
     text: z.string().min(1).max(500),
     level: z.enum(['info', 'warning', 'urgent']),
   }),
-  z.object({
-    type: z.literal('incident'),
-    level: z.enum(['warn', 'error']),
-    message: z.string(),
-  }),
   // ── best-effort from here on ──
   z.object({
     type: z.literal('room.heartbeat'),
@@ -147,7 +142,6 @@ export const DELIVERY_BY_EVENT: Record<RoomEventType, z.infer<typeof deliverySch
   'stream.stopped': 'required',
   'obs.connection': 'required',
   'room.message': 'required',
-  incident: 'required',
   'room.heartbeat': 'best-effort',
   'stream.telemetry': 'best-effort',
 }

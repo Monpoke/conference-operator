@@ -47,7 +47,7 @@ describe('outbox envelope', () => {
   })
 
   it('refuses an id that is not a ULID', () => {
-    expect(() => envelopeSchema.parse(envelopeOf({ type: 'incident', level: 'warn', message: 'x' }, { id: 'not-a-ulid' })))
+    expect(() => envelopeSchema.parse(envelopeOf({ type: 'room.message', text: 'x', level: 'info' }, { id: 'not-a-ulid' })))
       .toThrow()
   })
 

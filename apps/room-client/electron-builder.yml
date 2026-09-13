@@ -118,16 +118,44 @@ win:
 # rather than one, and not for symmetry:
 #
 #  - **AppImage** is the one-file equivalent of the installer — copy it, `chmod
-#    +x`, run. It needs FUSE 2, which Ubuntu has not shipped by default since
-#    22.04; `--appimage-extract-and-run` gets around it, but that is a thing to
-#    know on the morning of an event rather than discover.
-#  - **tar.gz** knows nothing of FUSE. Extract, run `room-control`. It is the
-#    format that cannot fail, and the reason the AppImage is allowed to be the
-#    convenient one.
+#    +x`, run. It needs nothing installed: `toolsets.appimage` below picks the
+#    static launcher, which carries its own FUSE 3 rather than asking the machine
+#    for the FUSE 2 Ubuntu has not shipped by default since 22.04.
+#  - **tar.gz** mounts nothing at all. Extract, run `room-control`. It stays the
+#    format that cannot fail — a machine with no `/dev/fuse` at all, a container,
+#    a filesystem mounted `nosuid` where no FUSE launcher will help.
 #
 # No `deb`: it installs system-wide, asks for root, and ties the package to one
 # family of distributions — three things a machine prepared before the event does
 # not need.
+# Which AppImage toolchain packages the Linux build — and the reason a room on a
+# current distribution can start the result at all.
+#
+# Unset, or `0.0.0`, electron-builder takes the `appimage-12.0.1` package it has
+# carried for years. The launcher in it is dated June 2019 and `dlopen`s
+# `libfuse.so.2` by name. FUSE 3 is not a drop-in for FUSE 2 — different soname,
+# different ABI, the two libraries coexist rather than replace one another — so on
+# a machine that ships only FUSE 3, which Ubuntu has done by default since 22.04,
+# the package stops before Electron is ever reached:
+#
+#     dlopen(): error loading libfuse.so.2
+#     AppImages require FUSE to run.
+#
+# `1.0.3` selects the toolset built around the AppImage project's **static**
+# runtime: libfuse3 is linked into the launcher, it talks to `/dev/fuse` directly,
+# and the machine is asked for nothing. No more `apt install libfuse2` on the
+# morning of an event, and no more `--appimage-extract-and-run` to remember.
+#
+# It also changes the compression of the squashfs, and not by choice: that runtime
+# reads zlib and zstd, **not xz**. electron-builder handles it — with `compression:
+# maximum` above it uses zstd here rather than the xz it uses for NSIS — but it is
+# why swapping the launcher under an already-built AppImage does not work. The
+# package mounts nothing and says so: "Squashfs image uses xz compression, this
+# version supports only zlib, zstd". The toolset has to be chosen before packaging,
+# which is what this line does.
+toolsets:
+  appimage: 1.0.3
+
 linux:
   target:
     - target: AppImage

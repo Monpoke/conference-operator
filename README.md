@@ -59,10 +59,10 @@ sha256sum -c SHA256SUMS-linux.txt     # room-control-<version>.AppImage et .tar.
 ```
 
 Sous Windows, l'installeur NSIS s'installe pour l'utilisateur courant. Sous
-Linux, l'AppImage se copie et se lance telle quelle (`chmod +x`) ; si la machine
-n'a pas FUSE 2 — Ubuntu ne l'installe plus par défaut depuis la 22.04 — prendre
-l'archive `tar.gz`, qui n'en demande pas : on l'extrait et on lance
-`room-control`.
+Linux, l'AppImage se copie et se lance telle quelle (`chmod +x`), sans rien à
+installer d'abord : elle embarque son propre lanceur FUSE 3. L'archive `tar.gz`
+reste là pour une machine qui n'a pas `/dev/fuse` du tout — on l'extrait et on
+lance `room-control`.
 
 Au premier lancement, la machine demande l'adresse du hub, puis affiche son code
 d'appairage. **Faire les postes avant le jour J**, pas devant une salle qui

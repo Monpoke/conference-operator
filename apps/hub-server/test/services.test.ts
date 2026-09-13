@@ -195,6 +195,31 @@ describe('IngestService', () => {
     expect(replay.duplicates).toHaveLength(2)
   })
 
+  it('projects every event of a batch, not only the last one', () => {
+    /*
+     * The case that went unseen: the recording starts, the scene switches, and
+     * both leave in the same batch. Projecting the last event alone lost the
+     * recording — a room mid-capture shown as not recording.
+     */
+    const rooms = new RoomService(db)
+    seedRoom(rooms)
+    const ingest = new IngestService(db)
+
+    ingest.push(TRACK_1, [
+      envelope('01EEEEEEEEEEEEEEEEEEEEEEEE', 1, { type: 'recording.started', obs: 'B', sessionId: 'ses-1' }),
+      envelope('01FFFFFFFFFFFFFFFFFFFFFFFF', 2, {
+        type: 'scene.changed',
+        obs: 'A',
+        role: 'LIVE',
+        sceneName: 'Capture',
+      }),
+    ])
+
+    const status = rooms.statuses().find((room) => room.roomId === TRACK_1)
+    expect(status?.recording).toBe(true)
+    expect(status?.sceneRole).toBe('LIVE')
+  })
+
   it('wakes whoever watches the room once the batch is applied', () => {
     /*
      * The mobile control app's return path: without this signal the room's report

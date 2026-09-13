@@ -94,10 +94,19 @@ export class IngestService {
         else outcome.acked.push(envelope.id)
       }
 
-      // The room state reflects the last event of the batch, duplicates included:
-      // a replay must not make the supervision view regress.
-      const latest = valid.reduce((a, b) => (b.seq > a.seq ? b : a))
-      applyToRoomState(tx, roomId, latest)
+      /*
+       * Every event of the batch, in emission order, duplicates included.
+       *
+       * Only the last one used to be projected: a `recording.started` followed in
+       * the same batch by a `scene.changed` never reached the supervision view,
+       * and the console showed a room mid-capture as not recording. Folding them
+       * all in order ends on the same state a replay would: the pump re-sends an
+       * unacknowledged batch before any later one, so a replay cannot overwrite
+       * something newer.
+       */
+      for (const envelope of [...valid].sort((a, b) => a.seq - b.seq)) {
+        applyToRoomState(tx, roomId, envelope)
+      }
     })
 
     // After the commit, never inside: a watcher woken mid-transaction would read

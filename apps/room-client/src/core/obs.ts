@@ -193,8 +193,13 @@ export class ObsController {
     })
 
     transport.on('ConnectionClosed', () => {
+      // The library also fires it on every failed connection attempt: with OBS off,
+      // the resume loop would announce a "disconnection" every three seconds — a
+      // required event, queued, sent up and republished to the control app each time.
+      // Only a connection that was actually up can be lost.
+      const wasConnected = this.state.connected
       this.patch({ connected: false, currentSceneName: null, currentRole: null })
-      this.options.onEvent?.({ type: 'disconnected' })
+      if (wasConnected) this.options.onEvent?.({ type: 'disconnected' })
     })
   }
 

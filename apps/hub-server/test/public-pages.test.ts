@@ -379,17 +379,24 @@ describe('the hub\'s simulated time', () => {
     const address = simulated.app.server.address()
     const base = `http://127.0.0.1:${typeof address === 'object' && address != null ? address.port : 0}`
 
-    const response = await fetch(`${base}/rpc/meta/hello`, {
+    await provisionOperator(simulated.auth, OPERATOR)
+    const signIn = await fetch(`${base}/api/auth/sign-in/email`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ json: { protocolVersion: 1 } }),
+      body: JSON.stringify({ email: OPERATOR.email, password: OPERATOR.password }),
     })
-    const body = (await response.json()) as { json: { serverTime: string; simulatedClock: boolean } }
+    const { token } = (await signIn.json()) as { token: string }
+    const response = await fetch(`${base}/rpc/clock/get`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({}),
+    })
+    const body = (await response.json()) as { json: { serverTime: string; simulated: boolean } }
 
-    // The rooms align their clock on this value: simulating it here moves the
-    // whole system, with nothing to set on their side.
+    // The time every room aligns on at its sync, and the console reads here:
+    // simulating it on the hub moves the whole system, with nothing to set elsewhere.
     expect(body.json.serverTime.startsWith('2026-10-30T10:2')).toBe(true)
-    expect(body.json.simulatedClock).toBe(true)
+    expect(body.json.simulated).toBe(true)
 
     await simulated.close()
   })
@@ -434,13 +441,8 @@ describe('the hub\'s simulated time', () => {
   })
 
   it('stays on the real time with no configuration', async () => {
-    const response = await fetch(`${origin}/rpc/meta/hello`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ json: { protocolVersion: 1 } }),
-    })
-    const body = (await response.json()) as { json: { simulatedClock: boolean } }
-    expect(body.json.simulatedClock).toBe(false)
+    const { body } = await rpc('clock/get', undefined, await operatorToken())
+    expect((body.json as unknown as { simulated: boolean }).simulated).toBe(false)
   })
 })
 

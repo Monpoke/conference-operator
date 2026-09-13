@@ -7,7 +7,6 @@ import {
   isoDateTimeSchema,
   roomIdSchema,
   sessionIdSchema,
-  PROTOCOL_VERSION,
 } from './primitives.js'
 import { eventIdentitySchema } from './event-identity.js'
 import {
@@ -146,21 +145,6 @@ const planningSessionSchema = sessionPreviewSchema.extend({
 })
 
 export const contract = {
-  meta: {
-    /** Application liveness ping — also the base for the clock offset. */
-    hello: oc
-      .input(z.object({ protocolVersion: z.number().int() }))
-      .output(
-        z.object({
-          protocolVersion: z.literal(PROTOCOL_VERSION),
-          serverTime: isoDateTimeSchema,
-          /** Simulated time: to be flagged, otherwise the gap with reality confuses. */
-          simulatedClock: z.boolean().default(false),
-          compatible: z.boolean(),
-        }),
-      ),
-  },
-
   program: {
     /** Imports the upstream export and creates a versioned snapshot. Admin. */
     import: oc

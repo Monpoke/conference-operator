@@ -132,7 +132,6 @@ describe('contract surface', () => {
       'event',
       'ingest',
       'messages',
-      'meta',
       // A surface of its own, and not one more mode on the room screen: the
       // banner overlays the video where a screen message replaces everything.
       'overlay',

@@ -40,14 +40,11 @@ export const room = sqliteTable(
   {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
-    /** `event.tracks[].id` from the upstream export. */
-    trackId: text('track_id').notNull(),
     configJson: text('config_json').notNull(),
     /** RTMP key encrypted at rest; leaves the hub only towards its own room. */
     streamKeyEnc: text('stream_key_enc'),
     createdAt: text('created_at').notNull().default(now),
   },
-  (table) => [index('room_track_idx').on(table.trackId)],
 )
 
 /** Last known state of a room, fed by the heartbeats. */

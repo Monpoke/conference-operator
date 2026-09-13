@@ -82,7 +82,6 @@ describe('ingestion idempotency (hub)', () => {
     orm.insert(room).values({
       id: 'track-1',
       name: 'Track 1',
-      trackId: 'track-1',
       configJson: '{}',
     }).run()
 
@@ -114,7 +113,7 @@ describe('ingestion idempotency (hub)', () => {
     const orm = drizzle(db, { schema: hubSchema })
     for (const id of ['track-1', 'track-2']) {
       orm.insert(room).values({
-        id, name: id, trackId: id, configJson: '{}',
+        id, name: id, configJson: '{}',
       }).run()
     }
     const base = {

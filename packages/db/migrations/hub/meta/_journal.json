@@ -78,6 +78,13 @@
       "when": 1789280312397,
       "tag": "0010_overjoyed_speed",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1789280764674,
+      "tag": "0011_messy_firestar",
+      "breakpoints": true
     }
   ]
 }

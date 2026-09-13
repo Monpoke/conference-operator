@@ -33,8 +33,15 @@ export const obsEndpointSchema = z.object({
 export const roomConfigSchema = z.object({
   id: roomIdSchema,
   name: z.string(),
-  /** `event.tracks[].id` from the upstream export: it is the room ↔ program link. */
-  trackId: z.string(),
+  /**
+   * Read by nobody, and kept for the rooms already installed.
+   *
+   * A room's id **is** the track's id, so this field only ever repeated it. The
+   * hub still serves it, copied from `id`: a room installed before this version
+   * reads its configuration with `trackId` required, and would stop reading it.
+   * To be removed once every room runs a version where it is optional.
+   */
+  trackId: z.string().optional(),
   obs: z.object({ A: obsEndpointSchema, B: obsEndpointSchema }),
   sceneRoles: sceneRoleMapSchema,
   /** Port of the local HTTP server that serves the display pages and the asset cache. */
@@ -125,7 +132,7 @@ export type RoomConfig = z.infer<typeof roomConfigSchema>
  * Deliberately narrower than `roomConfigSchema`, and the rest does not slip in by
  * accident: zod discards unknown keys. Three exclusions, each for its own reason.
  *
- * - `id`, `name`, `trackId`: the room's identity comes from the upstream program.
+ * - `id`, `name`: the room's identity comes from the upstream program.
  *   Letting it be rewritten from a machine would cut the room ↔ track link, and
  *   with it the whole displayed program.
  * - `stream`: a stream key comes down from the hub to its room, never the other

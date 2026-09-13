@@ -27,6 +27,17 @@ import type { HubDatabase } from '../db.js'
  */
 const SILENCE_MS = 35_000
 
+/**
+ * A stored configuration, as the hub serves it.
+ *
+ * `trackId` filled from `id` — see `roomConfigSchema.trackId`: nothing reads it
+ * any more, but a room installed before it became optional still requires it.
+ */
+function served(configJson: string): RoomConfig {
+  const config = roomConfigSchema.parse(JSON.parse(configJson))
+  return { ...config, trackId: config.trackId ?? config.id }
+}
+
 export class RoomService {
   constructor(private readonly db: HubDatabase) {}
 
@@ -36,7 +47,6 @@ export class RoomService {
     const values = {
       id: config.id,
       name: config.name,
-      trackId: config.trackId,
       configJson: JSON.stringify(config),
     }
     this.db
@@ -62,7 +72,6 @@ export class RoomService {
       this.upsert({
         id: track.id,
         name: track.name,
-        trackId: track.id,
         // Default OBS ports, to be adjusted per room if the two instances do not
         // run on the same machine.
         obs: {
@@ -96,12 +105,12 @@ export class RoomService {
       .from(room)
       .orderBy(asc(room.name))
       .all()
-      .map((row) => roomConfigSchema.parse(JSON.parse(row.configJson)))
+      .map((row) => served(row.configJson))
   }
 
   get(roomId: string): RoomConfig | null {
     const row = this.db.select().from(room).where(eq(room.id, roomId)).get()
-    return row == null ? null : roomConfigSchema.parse(JSON.parse(row.configJson))
+    return row == null ? null : served(row.configJson)
   }
 
   /**

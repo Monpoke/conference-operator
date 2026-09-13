@@ -31,6 +31,42 @@
 @import "./shadcn.css";
 
 /*
+ * The pointer of an application, not of a document.
+ *
+ * The console and the control app are tools one operates: over a label, a title
+ * or a figure, the browser's text cursor made every card look like an editable
+ * field, and one hesitated over what could be clicked. The arrow by default, the
+ * text cursor where one types, the hand where a click does something.
+ *
+ * In `base`, so every `cursor-*` utility set on a component still wins. Only
+ * here, and not in `base.css`: the projected pages and the public wall share that
+ * one, and the frozen sheet would move with it.
+ */
+@layer base {
+  body {
+    cursor: default;
+  }
+
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="button"], [type="submit"], [type="reset"]),
+  textarea,
+  [contenteditable="true"] {
+    cursor: text;
+  }
+
+  button:not(:disabled),
+  a[href],
+  select:not(:disabled),
+  summary,
+  label[for],
+  [role="button"],
+  [role="tab"],
+  [role="menuitem"],
+  [role="option"] {
+    cursor: pointer;
+  }
+}
+
+/*
  * Scanned sources: the shared components, then the two applications.
  *
  * These paths must **never** be copied into `theme.css` — the frozen sheet would

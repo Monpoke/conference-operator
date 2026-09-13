@@ -400,6 +400,37 @@ export const pushSubscription = sqliteTable('push_subscription', {
 })
 
 /**
+ * Outgoing integrations: Slack, Mattermost, generic webhook.
+ *
+ * The same notices as Web Push, sent to a team rather than a browser. The levels
+ * live here for the same reason as on `push_subscription`: filtering happens at
+ * send time, per recipient — the technical channel wants everything, the
+ * organisers' channel only the essentials.
+ *
+ * `url` and `secret` are credentials, kept in clear like the VAPID key: the API
+ * never returns them whole.
+ */
+export const integration = sqliteTable('integration', {
+  id: text('id').primaryKey(),
+  /** `slack`, `mattermost` or `webhook`. */
+  kind: text('kind').notNull(),
+  name: text('name').notNull(),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  url: text('url').notNull(),
+  /** HMAC key of the generic webhook; `null` elsewhere. */
+  secret: text('secret'),
+  niveauTechnique: text('niveau_technique').notNull().default('essentiel'),
+  niveauExploitation: text('niveau_exploitation').notNull().default('essentiel'),
+  createdAt: text('created_at').notNull().default(now),
+  updatedAt: text('updated_at').notNull().default(now),
+  /** Last accepted delivery. */
+  lastSentAt: text('last_sent_at'),
+  /** Last delivery given up, retries exhausted — with why. */
+  lastErrorAt: text('last_error_at'),
+  lastError: text('last_error'),
+})
+
+/**
  * Uploads of the rushes to the S3 storage.
  *
  * The hub keeps the register because it holds the keys: it is the one that opens

@@ -133,6 +133,8 @@ describe('contract surface', () => {
       // everywhere, and what it would derive with no setting.
       'event',
       'ingest',
+      // The same notices, sent to a team: Slack, Mattermost, generic webhook.
+      'integrations',
       'messages',
       // A surface of its own, and not one more mode on the room screen: the
       // banner overlays the video where a screen message replaces everything.

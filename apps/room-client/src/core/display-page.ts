@@ -2,6 +2,7 @@ import { MACHINE_JS } from '@conference-operator/room-state'
 import { TAILWIND_CSS } from '@conference-operator/ui'
 
 import { OBS_ON_AIR_CSS, OBS_ON_AIR_JS } from './obs-browser.js'
+import { STREAM_PATCH_JS } from './stream-patch.js'
 
 /**
  * The page projected in the room.
@@ -1241,13 +1242,14 @@ ${initialState}
 
   // EventSource reconnects by itself: the screen cannot stay frozen after a
   // restart of the local application, with no line of resume code.
+${STREAM_PATCH_JS}
   if (typeof EventSource !== 'undefined' && !window.__PREVIEW__) {
-    const stream = new EventSource('/display/state?vue=projecteur')
+    const stream = new EventSource('/display/state?vue=projecteur&partiel=1')
     stream.onmessage = (event) => {
       currentState = JSON.parse(event.data); render(currentState); tick()
     }
-    stream.addEventListener("delta", (event) => {
-      currentState = Object.assign({}, currentState, JSON.parse(event.data))
+    stream.addEventListener("patch", (event) => {
+      currentState = applyStreamPatch(currentState, JSON.parse(event.data))
       render(currentState); tick()
     })
   }

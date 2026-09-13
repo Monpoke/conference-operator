@@ -483,6 +483,36 @@ export const FIELDS_BY_VIEW: Record<DisplayView, readonly (keyof DisplayPayload)
   ],
 }
 
+/**
+ * The fields a partial stream sends sub-field by sub-field.
+ *
+ * The two that move all the time and weigh the most: the state carries the
+ * running talk with its abstract and its speakers' bios, the diagnostics the
+ * configuration and the log. Resending all of it for an `outboxDepth` going from
+ * 0 to 1 was most of the control app's traffic.
+ */
+export const MERGED_FIELDS = ['state', 'diagnostics'] as const satisfies readonly (keyof DisplayPayload)[]
+
+/**
+ * A `patch` message from the state stream (`/display/state?partiel=1`).
+ *
+ * `set` replaces whole fields; `merge` only carries, for `state` and
+ * `diagnostics`, the sub-fields that changed — to lay over the previous value.
+ */
+export interface StreamPatch {
+  set: Partial<DisplayPayload>
+  merge: { state?: Partial<DisplayState>; diagnostics?: Partial<ControlDiagnostics> }
+}
+
+/** Lays a `patch` over the state already held. Mirrored inline in the served pages. */
+export function applyStreamPatch<T extends Partial<DisplayPayload>>(current: T, patch: StreamPatch): T {
+  const next: Record<string, unknown> = { ...current, ...patch.set }
+  for (const [key, part] of Object.entries(patch.merge)) {
+    next[key] = { ...((current as Record<string, unknown>)[key] as object | null), ...part }
+  }
+  return next as T
+}
+
 /*
  * The rushes as the control app sees them.
  *

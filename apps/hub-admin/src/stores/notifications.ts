@@ -6,7 +6,7 @@ import { useSessionStore } from './session.js'
  * Being told about what calls for a gesture.
  *
  * Two families, and they are not set together: **technique** speaks of the
- * machines — a room that no longer answers, a machine to pair — and
+ * machines — a room that no longer answers, an OBS that drops, a machine to pair — and
  * **exploitation** of the day's run — a slot overrunning, a talk that has not
  * started. Somebody may want to know everything about one and nothing about the
  * other.
@@ -69,7 +69,15 @@ export function passes(levels: Levels, family: Family, scope: Scope): boolean {
 export interface RoomSeen {
   conference: string
   connectivity: string
+  /** Each OBS instance: connected or not, `null` = never said. */
+  obs?: { A: boolean | null; B: boolean | null }
 }
+
+/** What a cut instance takes away — the same words the hub pushes. */
+const OBS_CUT_BODY = {
+  A: 'La régie ne bascule plus les scènes projetées.',
+  B: "La régie ne pilote plus l'enregistrement ni la diffusion.",
+} as const
 
 /**
  * What has changed since the previous round, and deserves saying.
@@ -82,7 +90,14 @@ export interface RoomSeen {
  */
 export function roomAlerts(
   before: Map<string, RoomSeen>,
-  rooms: { roomId: string; name: string; conference: string; connectivity: string; currentSession?: { title?: string } | null }[],
+  rooms: {
+    roomId: string
+    name: string
+    conference: string
+    connectivity: string
+    currentSession?: { title?: string } | null
+    obs?: { A: { connected: boolean | null }; B: { connected: boolean | null } } | null
+  }[],
 ): { alert: Alert; family: Family }[] {
   // Empty on the first load: announcing six rooms' initial state when the console
   // opens would drown out what actually changes.
@@ -104,6 +119,26 @@ export function roomAlerts(
     } else if (room.connectivity === 'ONLINE' && seen.connectivity !== 'ONLINE') {
       // A relief, not a decision: reserved for whoever wants to follow everything.
       push(machine, `${room.name} est revenue`, 'La machine de salle répond de nouveau.', 'technique', 'tout')
+    }
+
+    /*
+     * An OBS that drops, or comes back — the hub's rule, word for word.
+     *
+     * Only on a room that answered on both rounds: a room going quiet has its own
+     * alert. Only from a known state: an OBS never reached is a state, not a cut.
+     * One key per instance, so that B never erases A.
+     */
+    if (room.connectivity === 'ONLINE' && seen.connectivity === 'ONLINE') {
+      for (const instance of ['A', 'B'] as const) {
+        const now = room.obs?.[instance].connected ?? null
+        const was = seen.obs?.[instance] ?? null
+        const key = `obs-${room.roomId}-${instance}`
+        if (now === false && was === true) {
+          push(key, `${room.name} · OBS-${instance} coupé`, OBS_CUT_BODY[instance], 'technique', 'essentiel')
+        } else if (now === true && was === false) {
+          push(key, `${room.name} · OBS-${instance} revenu`, "L'instance répond de nouveau à la régie.", 'technique', 'tout')
+        }
+      }
     }
 
     if (room.conference === seen.conference) continue
@@ -169,7 +204,11 @@ export const useNotificationsStore = defineStore('notifications', () => {
   function observeRooms(rooms: Parameters<typeof roomAlerts>[1]): void {
     for (const { alert, family } of roomAlerts(seenRooms, rooms)) raise(alert, family)
     for (const room of rooms) {
-      seenRooms.set(room.roomId, { conference: room.conference, connectivity: room.connectivity })
+      seenRooms.set(room.roomId, {
+        conference: room.conference,
+        connectivity: room.connectivity,
+        obs: { A: room.obs?.A.connected ?? null, B: room.obs?.B.connected ?? null },
+      })
     }
   }
 

@@ -66,8 +66,8 @@ async function apply(): Promise<void> {
       label="Technique — les machines"
       :options="[
         { value: 'rien', label: 'Rien' },
-        { value: 'essentiel', label: 'Une salle ne répond plus, une machine à appairer' },
-        { value: 'tout', label: 'Tout, retours de salle compris' },
+        { value: 'essentiel', label: 'Une salle ne répond plus, un OBS coupé, une machine à appairer' },
+        { value: 'tout', label: 'Tout, retours de salle et d’OBS compris' },
       ]"
     />
     <Select

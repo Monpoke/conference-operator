@@ -36,6 +36,12 @@ const ROOM = (patch: Partial<RoomStatus> = {}): RoomStatus =>
     ...patch,
   }) as RoomStatus
 
+/** Both OBS instances, as the room reported them. `null` = never said. */
+const OBS = (A: boolean | null, B: boolean | null): RoomStatus['obs'] => ({
+  A: { connected: A, missingRoles: [] },
+  B: { connected: B, missingRoles: [] },
+})
+
 describe('supervision watch', () => {
   it('says nothing on the first pass', () => {
     const watch = new SupervisionWatch()
@@ -54,6 +60,46 @@ describe('supervision watch', () => {
 
     const back = watch.pass([ROOM()])
     expect(back.map((notice) => notice.title)).toEqual(['Track #1 est revenue'])
+  })
+
+  it('reports an OBS that drops on a room that answers, then its return', () => {
+    const watch = new SupervisionWatch()
+    watch.pass([ROOM({ obs: OBS(true, true) })])
+
+    const cut = watch.pass([ROOM({ obs: OBS(false, true) })])
+    expect(cut).toHaveLength(1)
+    expect(cut[0]).toMatchObject({
+      title: 'Track #1 · OBS-A coupé',
+      tag: 'obs-track-1-A',
+      family: 'technique',
+      level: 'essentiel',
+    })
+
+    // Said once: a round with nothing new stays silent.
+    expect(watch.pass([ROOM({ obs: OBS(false, true) })])).toEqual([])
+
+    // B has its own tag: its notice must not erase A's, still unread.
+    expect(watch.pass([ROOM({ obs: OBS(false, false) })]).map((notice) => notice.tag)).toEqual([
+      'obs-track-1-B',
+    ])
+
+    const back = watch.pass([ROOM({ obs: OBS(true, false) })])
+    expect(back[0]).toMatchObject({ title: 'Track #1 · OBS-A revenu', level: 'tout' })
+  })
+
+  it('says nothing about OBS on a room that goes quiet, nor about an OBS never reached', () => {
+    const watch = new SupervisionWatch()
+    watch.pass([ROOM({ obs: OBS(true, null) })])
+
+    // The room goes quiet: its own notice, and nothing about what it said of OBS.
+    expect(
+      watch.pass([ROOM({ connectivity: 'OFFLINE', obs: OBS(false, null) })]).map((notice) => notice.tag),
+    ).toEqual(['salle-track-1'])
+
+    // Never reached, then reported down: a state, not a cut.
+    const fresh = new SupervisionWatch()
+    fresh.pass([ROOM({ obs: OBS(true, null) })])
+    expect(fresh.pass([ROOM({ obs: OBS(true, false) })])).toEqual([])
   })
 
   it('reports an overrun only once', () => {

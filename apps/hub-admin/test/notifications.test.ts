@@ -112,6 +112,32 @@ describe('what changes in a room', () => {
     ])
   })
 
+  it('announces an OBS that drops as an essential, and its return to whoever wants everything', () => {
+    const before = new Map([['track-1', { conference: 'en-cours', connectivity: 'ONLINE', obs: { A: true, B: true } }]])
+    const cut = roomAlerts(before, [{ ...ROOM, obs: { A: { connected: false }, B: { connected: true } } }])
+    expect(cut).toEqual([
+      {
+        alert: expect.objectContaining({ key: 'obs-track-1-A', title: 'Track #1 · OBS-A coupé', scope: 'essentiel' }),
+        family: 'technique',
+      },
+    ])
+
+    const back = roomAlerts(
+      new Map([['track-1', { conference: 'en-cours', connectivity: 'ONLINE', obs: { A: false, B: true } }]]),
+      [{ ...ROOM, obs: { A: { connected: true }, B: { connected: true } } }],
+    )
+    expect(back[0]).toMatchObject({ alert: { key: 'obs-track-1-A', scope: 'tout' }, family: 'technique' })
+  })
+
+  it('says nothing about OBS on a room that does not answer, nor about an OBS never reached', () => {
+    const online = new Map([['track-1', { conference: 'en-cours', connectivity: 'ONLINE', obs: { A: true, B: null } }]])
+    const quiet = roomAlerts(online, [{ ...ROOM, connectivity: 'OFFLINE', obs: { A: { connected: false }, B: { connected: null } } }])
+    expect(quiet.map((entry) => entry.alert.key)).toEqual(['salle-track-1'])
+
+    const neverReached = roomAlerts(online, [{ ...ROOM, obs: { A: { connected: true }, B: { connected: false } } }])
+    expect(neverReached).toEqual([])
+  })
+
   it('stays silent when nothing has changed', () => {
     expect(roomAlerts(views(), [ROOM])).toEqual([])
   })

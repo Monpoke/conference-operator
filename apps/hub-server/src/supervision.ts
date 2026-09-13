@@ -70,10 +70,21 @@ export function roomStatuses(services: Services, at: number): RoomStatus[] {
 interface RoomView {
   connectivity: string
   conference: string
+  /** Each OBS instance: connected or not, `null` = never said. */
+  obs: { A: boolean | null; B: boolean | null }
 }
 
 /** A talk's title, for a readable notice. `null` outside the program. */
 export type SessionTitleOf = (sessionId: string) => string | null
+
+/**
+ * What a cut instance takes away, said plainly: OBS-A projects, OBS-B records and
+ * streams. "OBS-B coupé" alone would send someone to look up which one that is.
+ */
+const OBS_CUT_BODY = {
+  A: 'La régie ne bascule plus les scènes projetées.',
+  B: "La régie ne pilote plus l'enregistrement ni la diffusion.",
+} as const
 
 export class SupervisionWatch {
   private readonly views = new Map<string, RoomView>()
@@ -119,6 +130,7 @@ export class SupervisionWatch {
       this.views.set(room.roomId, {
         connectivity: room.connectivity,
         conference: room.conference,
+        obs: { A: room.obs?.A.connected ?? null, B: room.obs?.B.connected ?? null },
       })
       if (!first && before != null) {
         notices.push(...this.roomNotices(room, before))
@@ -188,7 +200,51 @@ export class SupervisionWatch {
         },
       ]
     }
-    return []
+    return this.obsNotices(room, before)
+  }
+
+  /**
+   * An OBS instance that drops, or comes back — on a room that answers.
+   *
+   * Only on a room online on both rounds: a room that goes quiet already has its
+   * own notice, and what it said about OBS before going quiet is exactly what can
+   * no longer be trusted.
+   *
+   * Only a **change** from a known state: an OBS the room never reached is a state,
+   * like a hub started on a room already down. The cut that matters is the one in
+   * the middle of the day — a machine that was driving and stops.
+   *
+   * One tag per instance: "OBS-B coupé" must never erase an unread "OBS-A coupé".
+   */
+  private obsNotices(room: RoomStatus, before: RoomView): PushPayload[] {
+    if (room.connectivity !== 'ONLINE' || before.connectivity !== 'ONLINE') return []
+    const notices: PushPayload[] = []
+    for (const instance of ['A', 'B'] as const) {
+      const now = room.obs?.[instance].connected ?? null
+      const was = before.obs[instance]
+      const tag = `obs-${room.roomId}-${instance}`
+      if (now === false && was === true) {
+        notices.push({
+          title: `${room.name} · OBS-${instance} coupé`,
+          body: OBS_CUT_BODY[instance],
+          tag,
+          view: 'exploitation',
+          family: 'technique',
+          level: 'essentiel',
+        })
+      } else if (now === true && was === false) {
+        // A relief, like a room coming back: for whoever wants to follow everything.
+        notices.push({
+          title: `${room.name} · OBS-${instance} revenu`,
+          body: "L'instance répond de nouveau à la régie.",
+          tag,
+          view: 'exploitation',
+          family: 'technique',
+          level: 'tout',
+        })
+      }
+    }
+    return notices
   }
 
   /** What becomes of the day: what starts, ends, drags or overruns. */

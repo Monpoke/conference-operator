@@ -544,7 +544,7 @@ rythme.
 
 | | **Rien** | **Essentiel** (défaut) | **Tout** |
 |---|---|---|---|
-| **Technique** — les machines | — | salle qui ne répond plus · machine en attente d'appairage | + salle revenue |
+| **Technique** — les machines | — | salle qui ne répond plus · OBS coupé · machine en attente d'appairage | + salle revenue · OBS revenu |
 | **Exploitation** — le déroulé | — | dépassement · retard au démarrage | + conférence commencée · terminée · fin dans 5 min |
 
 La ligne de partage : « essentiel » ne contient que **les écarts au script**,

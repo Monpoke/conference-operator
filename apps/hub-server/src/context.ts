@@ -15,7 +15,13 @@ import type { SocketTickets } from './services/socket-tickets.js'
 import type { SessionStateService, SettingsService } from './services/sessions.js'
 import type { EventIdentityService } from './services/event-identity.js'
 import type { MutableClock } from './services/clock.js'
-import type { ExecutionMode } from '@conference-operator/contract'
+import {
+  parseRoles,
+  rolesAllow,
+  type AccessRole,
+  type ExecutionMode,
+  type Permission,
+} from '@conference-operator/contract'
 
 export interface Services {
   programs: ProgramService
@@ -93,10 +99,11 @@ export interface HubContext {
    * The operator a socket ticket vouched for at the upgrade, if any.
    *
    * Frozen for the connection's lifetime, like everything a WebSocket's context
-   * holds: an account revoked during the day is cut off at its next reconnection,
-   * which needs a fresh ticket — and so a live session.
+   * holds — roles included: an account revoked or demoted during the day is
+   * cut off at its next reconnection, which needs a fresh ticket — and so a
+   * live session.
    */
-  ticketOperator?: { id: string; email: string }
+  ticketOperator?: Operator
   auth: Auth
   services: Services
   headers: Headers
@@ -116,8 +123,15 @@ export function publicIdentity(context: HubContext, deviceId?: string | null): s
   return `${ip}|${deviceId ?? 'no-device'}`
 }
 
+/** A signed-in operator, with the roles Better Auth stores on the account. */
+export interface Operator {
+  id: string
+  email: string
+  roles: AccessRole[]
+}
+
 export interface OperatorContext extends HubContext {
-  operator: { id: string; email: string }
+  operator: Operator
 }
 
 /**
@@ -143,7 +157,7 @@ export const CLIENT_ID_HEADER = 'x-room-client-id'
  * tell the cases apart — a non-null `roomId` *is* the mark of a room.
  */
 export interface ActorContext extends HubContext {
-  operator: { id: string; email: string } | null
+  operator: Operator | null
   roomId: string | null
   clientId: string | null
 }
@@ -179,9 +193,27 @@ export async function resolveOperator(context: HubContext): Promise<OperatorCont
   if (session == null) {
     throw new ORPCError('UNAUTHORIZED', { message: 'Session opérateur requise' })
   }
+  const user = session.user as typeof session.user & { role?: string | null; banned?: boolean | null }
+  // Better Auth revokes a banned account's sessions; this covers a session read
+  // from its cache in between.
+  if (user.banned === true) {
+    throw new ORPCError('FORBIDDEN', { message: 'Compte désactivé' })
+  }
   return {
     ...context,
-    operator: { id: session.user.id, email: session.user.email },
+    operator: { id: user.id, email: user.email, roles: parseRoles(user.role) },
+  }
+}
+
+/**
+ * Refuses an operator whose roles do not grant the permission.
+ *
+ * The message names the permission: "forbidden" alone sends people looking for
+ * a broken session, when what is missing is a group an admin can add.
+ */
+export function requirePermission(operator: Operator, permission: Permission): void {
+  if (!rolesAllow(operator.roles, permission)) {
+    throw new ORPCError('FORBIDDEN', { message: `Droit requis : ${permission}` })
   }
 }
 

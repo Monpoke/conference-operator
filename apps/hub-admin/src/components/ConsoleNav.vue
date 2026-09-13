@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { consoleViews, viewPath } from '@conference-operator/contract'
+import { VIEW_PERMISSIONS, consoleViews, viewPath } from '@conference-operator/contract'
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useSessionStore } from '../stores/session.js'
@@ -14,15 +14,20 @@ import { useSessionStore } from '../stores/session.js'
 const session = useSessionStore()
 const route = useRoute()
 
+// Only the tabs the operator's groups open: a tab that answers with errors
+// reads as a broken console, not as a missing right.
 const views = computed(() =>
-  consoleViews(session.dev).map((view) => ({
-    view,
-    path: viewPath(view),
-    label: LABELS[view] ?? view,
-  })),
+  consoleViews(session.dev)
+    .filter((view) => VIEW_PERMISSIONS[view] != null && session.can(VIEW_PERMISSIONS[view]))
+    .map((view) => ({
+      view,
+      path: viewPath(view),
+      label: LABELS[view] ?? view,
+    })),
 )
 
 const LABELS: Record<string, string> = {
+  acces: 'Accès',
   exploitation: 'Exploitation',
   appairage: 'Appairage',
   conferences: 'Conférences',

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { SOCKET_TICKET_TTL_MS, SocketTickets } from '../src/services/socket-tickets.js'
 
 const GRANT = {
-  operator: { id: 'user-1', email: 'regie@cloudnord.fr' },
+  operator: { id: 'user-1', email: 'regie@cloudnord.fr', roles: ['regieMobile' as const] },
   regieSession: 'session-phone',
 }
 

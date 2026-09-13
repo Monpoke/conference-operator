@@ -125,6 +125,8 @@ describe('room configuration', () => {
 describe('contract surface', () => {
   it('exposes the procedures each application expects', () => {
     expect(Object.keys(contract).sort()).toEqual([
+      // What the signed-in operator's groups let them do, flattened for the pages.
+      'access',
       'clock',
       'devices',
       // The event's identity, read-only: what the hub decided for the name shown

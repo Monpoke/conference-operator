@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import type { AccessRole } from '@conference-operator/contract'
 
 /**
  * How long a ticket waits to be redeemed.
@@ -11,7 +12,8 @@ export const SOCKET_TICKET_TTL_MS = 30_000
 
 /** What a ticket vouches for across the upgrade. */
 export interface SocketTicketGrant {
-  operator: { id: string; email: string }
+  /** Roles included: the socket's procedures check them like any other call. */
+  operator: { id: string; email: string; roles: AccessRole[] }
   regieSession: string
 }
 

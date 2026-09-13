@@ -2,8 +2,11 @@ import { betterAuth } from 'better-auth'
 import type { BetterAuthOptions } from 'better-auth'
 import { getMigrations } from 'better-auth/db/migration'
 import { bearer } from 'better-auth/plugins'
+import { admin } from 'better-auth/plugins/admin'
 import { deviceAuthorization } from 'better-auth/plugins/device-authorization'
+import { DEFAULT_ROLE } from '@conference-operator/contract'
 import type { SqliteDatabase } from '@conference-operator/db'
+import { accessControl, accessRoles } from './access.js'
 
 /**
  * Better Auth style duration ("5s", "30m"). The package's `TimeString` type is
@@ -74,6 +77,20 @@ export function createAuthOptions({
     plugins: [
       // Bearer tokens: the room client has no cookie jar.
       bearer(),
+      /**
+       * Groups: several roles per account, defined in code
+       * (`@conference-operator/contract`, `ACCESS_ROLES`), assigned from the
+       * console's Accès view or the `operator` command.
+       *
+       * A new account — Google's included — only reads until an admin raises
+       * it: the domain says who is on the team, not what they may touch.
+       */
+      admin({
+        ac: accessControl,
+        roles: accessRoles,
+        defaultRole: DEFAULT_ROLE,
+        adminRoles: ['admin'],
+      }),
       deviceAuthorization({
         /**
          * Short of the RFC's value, long enough to cross a room between reading
@@ -157,6 +174,14 @@ export function createAuth(options: AuthOptions) {
 export async function migrateAuth(options: AuthOptions): Promise<void> {
   const { runMigrations } = await getMigrations(options)
   await runMigrations()
+  /**
+   * Accounts from before the groups keep what they had: everything.
+   *
+   * Safe to run at every start: the admin plugin writes `defaultRole` on every
+   * account it creates, and refuses an empty role afterwards — a `NULL` role can
+   * only be an account older than the column.
+   */
+  options.database.prepare(`UPDATE "user" SET role = 'admin' WHERE role IS NULL`).run()
 }
 
 export type Auth = ReturnType<typeof createAuth>

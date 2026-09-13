@@ -1,4 +1,5 @@
 import { createLocalAccountIssuer } from '@better-auth/core/db'
+import type { AccessRole } from '@conference-operator/contract'
 import type { Auth } from './auth.js'
 
 export interface ProvisionResult {
@@ -20,7 +21,24 @@ export interface ProvisionResult {
  */
 export async function provisionOperator(
   auth: Auth,
-  { email, name, password }: { email: string; name: string; password: string },
+  {
+    email,
+    name,
+    password,
+    roles,
+  }: {
+    email: string
+    name: string
+    password: string
+    /**
+     * The account's groups.
+     *
+     * Omitted, a **new** account is made admin — this command is how the first
+     * admin exists at all — and an existing one keeps its groups: resetting a
+     * password must not quietly promote anybody.
+     */
+    roles?: AccessRole[]
+  },
 ): Promise<ProvisionResult> {
   const ctx = await auth.$context
   const hash = await ctx.password.hash(password)
@@ -28,6 +46,7 @@ export async function provisionOperator(
   const existing = await ctx.internalAdapter.findUserByEmail(email)
   if (existing?.user != null) {
     const id = existing.user.id
+    if (roles != null) await ctx.internalAdapter.updateUser(id, { role: roles.join(',') })
     const account = await ctx.internalAdapter.findCredentialAccount(id)
     if (account == null) {
       // Account created through another path (OAuth, import): it lacks the
@@ -60,5 +79,6 @@ export async function provisionOperator(
     accountId: user.id,
     password: hash,
   })
+  await ctx.internalAdapter.updateUser(user.id, { role: (roles ?? ['admin']).join(',') })
   return { id: user.id, created: true }
 }

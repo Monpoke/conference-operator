@@ -146,9 +146,10 @@ describe('retour de Google', () => {
     await flushPromises()
 
     // One more round trip in front of every load, for a piece of information the
-    // first protected call will give anyway.
+    // first protected call will give anyway. That first call is `access.me`, which
+    // the console needs for its tabs — not a session probe.
     expect(session.signedIn).toBe(true)
-    expect(calls).toEqual([])
+    expect(calls.filter((call) => call.url.includes('/api/auth/'))).toEqual([])
   })
 })
 

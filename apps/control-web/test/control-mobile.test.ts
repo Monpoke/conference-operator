@@ -6,6 +6,7 @@ import App from '../src/App.vue'
 import RoomSelect from '../src/components/RoomSelect.vue'
 import LockBanner from '../src/components/LockBanner.vue'
 import { payloadFromView } from '../src/lib/gateway.js'
+import { useAccessStore } from '../src/stores/access.js'
 import { useGatewayStore } from '../src/stores/gateway.js'
 import { useRoomStore } from '../src/stores/room.js'
 import { useSessionStore } from '../src/stores/session.js'
@@ -79,7 +80,14 @@ function vue(overrides: Partial<ControlView> = {}): ControlView {
 }
 
 /** The hub, reduced to what these screens ask of it. */
-function fakeHub(rooms: ControlRoom[], viewOverrides: Partial<ControlView> = {}) {
+/** A mobile control operator: may look at a room and drive it. */
+const REGIE_MOBILE = ['regie:command', 'regie:view']
+
+function fakeHub(
+  rooms: ControlRoom[],
+  viewOverrides: Partial<ControlView> = {},
+  permissions: string[] = REGIE_MOBILE,
+) {
   const calls: string[] = []
   /** What the room would receive. Kept apart from `calls`: a gesture, not a poll. */
   const commands: ControlCommand[] = []
@@ -88,6 +96,9 @@ function fakeHub(rooms: ControlRoom[], viewOverrides: Partial<ControlView> = {})
     commands,
     client: {
       rpc: {
+        access: {
+          me: async () => ({ email: 'regie@cloudnord.fr', roles: [], permissions }),
+        },
         regie: {
           locks: async () => {
             calls.push('locks')
@@ -116,14 +127,19 @@ function mountRemote(
   rooms: ControlRoom[],
   signedIn = true,
   viewOverrides: Partial<ControlView> = {},
+  permissions: string[] = REGIE_MOBILE,
 ) {
   const gateway = useGatewayStore()
   gateway.start({ portee: 'distante', roomId: null, salles: [], google: null })
   const session = useSessionStore()
-  const hub = fakeHub(rooms, viewOverrides)
+  const hub = fakeHub(rooms, viewOverrides, permissions)
   session.client = hub.client
   session.signedIn = signedIn
   session.identity = 'regie@cloudnord.fr'
+  // Already answered, like the session: these screens are read at mount, before
+  // any round trip could settle. The fake hub answers the same, so a load that
+  // lands afterwards changes nothing.
+  if (signedIn) useAccessStore().permissions = new Set(permissions)
   return hub
 }
 
@@ -156,6 +172,18 @@ describe('the three screens', () => {
     // their lock are not.
     expect(wrapper.find('#sign-in').exists()).toBe(true)
     expect(wrapper.find('[data-room="track-1"]').exists()).toBe(false)
+  })
+
+  it('refuses an account whose groups do not open the régie', async () => {
+    // A moderator: signed in, but nothing of the régie.
+    const hub = mountRemote([room()], true, {}, ['wall:moderate'])
+    const wrapper = mount(App)
+    await flushPromises()
+
+    // Before the room choice: every call from there on would come back refused.
+    expect(wrapper.find('#access-denied').exists()).toBe(true)
+    expect(wrapper.find('[data-room="track-1"]').exists()).toBe(false)
+    expect(hub.calls).not.toContain('locks')
   })
 
   it('offers the rooms before the hub has answered', async () => {

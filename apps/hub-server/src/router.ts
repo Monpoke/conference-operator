@@ -7,6 +7,8 @@ import {
   CONTROL_SESSION_HEADER,
   contract,
   isCommandExpired,
+  permissionsOf,
+  type Permission,
   type CaptureView,
   type Command,
 } from '@conference-operator/contract'
@@ -38,6 +40,7 @@ import {
   resolveClaim,
   resolveOperator,
   resolveRoom,
+  requirePermission,
   type ActorContext,
   type HubContext,
 } from './context.js'
@@ -59,15 +62,35 @@ const roomOnly = os.middleware(async ({ context, next }) =>
 )
 
 /**
+ * Operator holding a permission.
+ *
+ * Checked against the roles the session carries, with no database trip. Every
+ * operator procedure goes through here; `operatorOnly` alone is left to what
+ * any signed-in account may ask: its own rights.
+ */
+const operatorCan = (permission: Permission) =>
+  os.middleware(async ({ context, next }) => {
+    const resolved = await resolveOperator(context)
+    requirePermission(resolved.operator, permission)
+    return next({ context: resolved })
+  })
+
+/**
  * Console **or** room machine.
  *
  * For the procedures both legitimately need — the state of the rooms, the talk
  * lifecycle. The context then carries `roomId` when the caller is a room, which
  * lets what it touches be bounded.
+ *
+ * The permission binds operators only: a paired machine keeps its full rights
+ * over its own room, and the handlers bound it to that room.
  */
-const roomOrOperator = os.middleware(async ({ context, next }) =>
-  next({ context: await resolveActor(context) }),
-)
+const roomOrOperatorCan = (permission: Permission) =>
+  os.middleware(async ({ context, next }) => {
+    const actor = await resolveActor(context)
+    if (actor.operator != null) requirePermission(actor.operator, permission)
+    return next({ context: actor })
+  })
 
 /**
  * The hub's time, as it will be propagated to the rooms.
@@ -80,7 +103,7 @@ const nowIso = (context: HubContext) => context.services.clock.nowIso()
 export const router = os.router({
   program: {
     import: os.program.import
-      .use(operatorOnly)
+      .use(operatorCan('program:manage'))
       .handler(async ({ input, context }) => {
         const snapshot = await context.services.programs.importFrom(input.sourceUrl)
         // The rooms follow from the tracks: creating them here saves entering
@@ -116,14 +139,14 @@ export const router = os.router({
         return snapshot
       }),
     snapshots: os.program.snapshots
-      .use(operatorOnly)
+      .use(operatorCan('program:read'))
       .handler(({ context }) => context.services.programs.list()),
-    images: os.program.images.use(operatorOnly).handler(({ context }) => {
+    images: os.program.images.use(operatorCan('program:read')).handler(({ context }) => {
       const failed = context.services.assets.failures()
       return { held: context.services.assets.held(), failed }
     }),
 
-    activate: os.program.activate.use(operatorOnly).handler(({ input, context }) => {
+    activate: os.program.activate.use(operatorCan('program:manage')).handler(({ input, context }) => {
       context.services.programs.activate(input.contentHash)
       context.services.changes.touch(null)
       // Read back after the switch, and for the same reason as at import time:
@@ -158,7 +181,7 @@ export const router = os.router({
      * Decided by the number of rooms: on an event where two breaks overlap, the
      * one that concerns the most people is the one we show.
      */
-    globalBreak: os.program.globalBreak.use(operatorOnly).handler(({ context }) => {
+    globalBreak: os.program.globalBreak.use(operatorCan('program:read')).handler(({ context }) => {
       const snapshot = context.services.programs.active()
       const at = context.services.clock.now()
       if (snapshot == null) return null
@@ -210,7 +233,7 @@ export const router = os.router({
      * gets run again.
      */
     controleOpenFeedback: os.program.controleOpenFeedback
-      .use(operatorOnly)
+      .use(operatorCan('program:manage'))
       .handler(async ({ context }) => {
         const project = filled(context.services.settings.get().openFeedbackProjectId)
         if (project == null) {
@@ -242,7 +265,7 @@ export const router = os.router({
         }
       }),
 
-    planning: os.program.planning.use(operatorOnly).handler(({ context }) => {
+    planning: os.program.planning.use(operatorCan('program:read')).handler(({ context }) => {
       const snapshot = context.services.programs.active()
       // No error: a hub that has just been installed has no program yet, and the
       // console must be able to say so rather than break.
@@ -355,7 +378,7 @@ export const router = os.router({
       context.services.rooms.list().map((room) => ({ id: room.id, name: room.name })),
     ),
 
-    list: os.rooms.list.use(operatorOnly).handler(({ context }) => context.services.rooms.list()),
+    list: os.rooms.list.use(operatorCan('room:read')).handler(({ context }) => context.services.rooms.list()),
 
     /**
      * Public, like `rooms.public`: the wall is open to whoever scans the QR code, and
@@ -426,7 +449,7 @@ export const router = os.router({
     /**
      * Read-only: the control app shows the state of the other rooms.
      */
-    statuses: os.rooms.statuses.use(roomOrOperator).handler(({ context }) =>
+    statuses: os.rooms.statuses.use(roomOrOperatorCan('room:read')).handler(({ context }) =>
       // Enriched outside the service: this is where the program and the clock
       // are at hand, and the watch that pushes the notifications reads the same
       // function — two implementations would end up diverging.
@@ -444,7 +467,7 @@ export const router = os.router({
      * expire like a "lunch break". Deduplication by `seq` stops it being applied twice
      * on catch-up.
      */
-    resync: os.rooms.resync.use(operatorOnly).handler(({ input, context }) => {
+    resync: os.rooms.resync.use(operatorCan('room:manage')).handler(({ input, context }) => {
       if (input.roomId != null && context.services.rooms.get(input.roomId) == null) {
         throw new ORPCError('NOT_FOUND', { message: `Salle inconnue : ${input.roomId}` })
       }
@@ -537,7 +560,7 @@ export const router = os.router({
    * VOD of every targeted room.
    */
   overlay: {
-    show: os.overlay.show.use(operatorOnly).handler(({ input, context }) => {
+    show: os.overlay.show.use(operatorCan('overlay:show')).handler(({ input, context }) => {
       context.services.commands.publish(
         input.roomId,
         { type: 'overlay.set', message: input.message },
@@ -546,12 +569,12 @@ export const router = os.router({
       return { ok: true }
     }),
 
-    hide: os.overlay.hide.use(operatorOnly).handler(({ input, context }) => {
+    hide: os.overlay.hide.use(operatorCan('overlay:show')).handler(({ input, context }) => {
       context.services.commands.publish(input.roomId, { type: 'overlay.set', message: null }, null)
       return { ok: true }
     }),
 
-    history: os.overlay.history.use(operatorOnly).handler(({ input, context }) => {
+    history: os.overlay.history.use(operatorCan('overlay:read')).handler(({ input, context }) => {
       const past = context.services.commands.pastBanners(input.roomId, input.limit)
       // The most recent one says what is on air: a removal is not history, but
       // it switches off the banner it removed.
@@ -573,14 +596,14 @@ export const router = os.router({
   },
 
   sessions: {
-    states: os.sessions.states.use(roomOrOperator).handler(({ input, context }) => {
+    states: os.sessions.states.use(roomOrOperatorCan('talk:read')).handler(({ input, context }) => {
       const room = context.roomId
       // A room only sees its own talks, whatever it asks for.
       const snapshot = context.services.programs.active()
       return context.services.sessions.views(room ?? input.roomId, snapshot?.program ?? null)
     }),
 
-    start: os.sessions.start.use(roomOrOperator).handler(({ input, context }) => {
+    start: os.sessions.start.use(roomOrOperatorCan('talk:run')).handler(({ input, context }) => {
       const { session, roomId } = resolveSession(context, input.sessionId)
       requireSameRoom(context, roomId)
       const state = onTransition(() =>
@@ -590,7 +613,7 @@ export const router = os.router({
       return state
     }),
 
-    end: os.sessions.end.use(roomOrOperator).handler(({ input, context }) => {
+    end: os.sessions.end.use(roomOrOperatorCan('talk:run')).handler(({ input, context }) => {
       const { session, roomId } = resolveSession(context, input.sessionId)
       requireSameRoom(context, roomId)
       const state = onTransition(() =>
@@ -613,7 +636,7 @@ export const router = os.router({
      * corrected program back down — the fingerprint has changed, so the rooms will not
      * stay on their cache.
      */
-    override: os.sessions.override.use(operatorOnly).handler(({ input, context }) => {
+    override: os.sessions.override.use(operatorCan('talk:override')).handler(({ input, context }) => {
       const snapshot = context.services.programs.active()
       if (snapshot == null) {
         throw new ORPCError('NOT_FOUND', { message: 'Aucun programme actif sur ce hub' })
@@ -664,7 +687,7 @@ export const router = os.router({
      * a QR code left on the old identifier is precisely the accident this procedure
      * exists to prevent.
      */
-    feedbackId: os.sessions.feedbackId.use(operatorOnly).handler(({ input, context }) => {
+    feedbackId: os.sessions.feedbackId.use(operatorCan('talk:override')).handler(({ input, context }) => {
       const snapshot = context.services.programs.active()
       if (snapshot == null) {
         throw new ORPCError('NOT_FOUND', { message: 'Aucun programme actif sur ce hub' })
@@ -708,7 +731,7 @@ export const router = os.router({
       }
     }),
 
-    reset: os.sessions.reset.use(roomOrOperator).handler(({ input, context }) => {
+    reset: os.sessions.reset.use(roomOrOperatorCan('talk:run')).handler(({ input, context }) => {
       const { session, roomId } = resolveSession(context, input.sessionId)
       requireSameRoom(context, roomId)
       context.services.sessions.reset(session.id)
@@ -725,7 +748,7 @@ export const router = os.router({
   },
 
   messages: {
-    send: os.messages.send.use(operatorOnly).handler(({ input, context }) => {
+    send: os.messages.send.use(operatorCan('message:send')).handler(({ input, context }) => {
       if (input.roomId != null && context.services.rooms.get(input.roomId) == null) {
         throw new ORPCError('NOT_FOUND', { message: `Salle inconnue : ${input.roomId}` })
       }
@@ -743,7 +766,7 @@ export const router = os.router({
       return { ok: true }
     }),
 
-    fromRooms: os.messages.fromRooms.use(operatorOnly).handler(({ input, context }) => {
+    fromRooms: os.messages.fromRooms.use(operatorCan('message:read')).handler(({ input, context }) => {
       const rooms = new Map(context.services.rooms.list().map((room) => [room.id, room.name] as const))
       return context.services.ingest.messagesFromRooms(input.limit).map((message) => ({
         ...message,
@@ -753,7 +776,7 @@ export const router = os.router({
   },
 
   clock: {
-    get: os.clock.get.use(operatorOnly).handler(({ context }) => ({
+    get: os.clock.get.use(operatorCan('clock:read')).handler(({ context }) => ({
       serverTime: context.services.clock.nowIso(),
       simulated: context.services.clock.simulated,
       // The mode is authoritative: moving a production hub's clock would skew the
@@ -761,7 +784,7 @@ export const router = os.router({
       controllable: context.services.mode === 'dev',
     })),
 
-    set: os.clock.set.use(operatorOnly).handler(({ input, context }) => {
+    set: os.clock.set.use(operatorCan('clock:set')).handler(({ input, context }) => {
       if (context.services.mode !== 'dev') {
         throw new ORPCError('FORBIDDEN', {
           message:
@@ -797,16 +820,25 @@ export const router = os.router({
     }),
   },
   event: {
-    identity: os.event.identity.use(operatorOnly).handler(({ context }) => ({
+    identity: os.event.identity.use(operatorCan('program:read')).handler(({ context }) => ({
       resolved: context.services.identity.get(),
       derived: context.services.identity.derived(),
     })),
   },
 
+  access: {
+    /** Open to any signed-in operator: it only says what they may do. */
+    me: os.access.me.use(operatorOnly).handler(({ context }) => ({
+      email: context.operator.email,
+      roles: context.operator.roles,
+      permissions: permissionsOf(context.operator.roles),
+    })),
+  },
+
   settings: {
-    get: os.settings.get.use(operatorOnly).handler(({ context }) => context.services.settings.get()),
+    get: os.settings.get.use(operatorCan('settings:read')).handler(({ context }) => context.services.settings.get()),
     update: os.settings.update
-      .use(operatorOnly)
+      .use(operatorCan('settings:update'))
       .handler(({ input, context }) => context.services.settings.update(input)),
   },
 
@@ -819,7 +851,7 @@ export const router = os.router({
 
   devices: {
     pending: os.devices.pending
-      .use(operatorOnly)
+      .use(operatorCan('device:read'))
       .handler(({ context }) => context.services.devices.pending()),
 
     /**
@@ -829,7 +861,7 @@ export const router = os.router({
      * to its room if the approval succeeded. The other way round would leave an orphan
      * binding after an expired code.
      */
-    approve: os.devices.approve.use(operatorOnly).handler(async ({ input, context }) => {
+    approve: os.devices.approve.use(operatorCan('device:manage')).handler(async ({ input, context }) => {
       if (context.services.rooms.get(input.roomId) == null) {
         throw new ORPCError('NOT_FOUND', { message: `Salle inconnue : ${input.roomId}` })
       }
@@ -870,7 +902,7 @@ export const router = os.router({
       return { ok: true }
     }),
 
-    deny: os.devices.deny.use(operatorOnly).handler(async ({ input, context }) => {
+    deny: os.devices.deny.use(operatorCan('device:manage')).handler(async ({ input, context }) => {
       const verification = await context.auth.api.deviceVerify({
         query: { user_code: input.userCode },
         headers: context.headers,
@@ -897,7 +929,7 @@ export const router = os.router({
      * be able to approve that code — `approve` says so in plain words rather than let
      * the plugin's English refusal through.
      */
-    lookup: os.devices.lookup.use(operatorOnly).handler(async ({ input, context }) => {
+    lookup: os.devices.lookup.use(operatorCan('device:manage')).handler(async ({ input, context }) => {
       let verification: Awaited<ReturnType<typeof context.auth.api.deviceVerify>>
       try {
         verification = await context.auth.api.deviceVerify({
@@ -926,7 +958,7 @@ export const router = os.router({
       }
     }),
 
-    list: os.devices.list.use(operatorOnly).handler(({ context }) =>
+    list: os.devices.list.use(operatorCan('device:read')).handler(({ context }) =>
       context.services.devices.list().map((device) => ({
         clientId: device.clientId,
         roomId: device.roomId,
@@ -955,7 +987,7 @@ export const router = os.router({
       return { token, roomId }
     }),
 
-    revoke: os.devices.revoke.use(operatorOnly).handler(({ input, context }) => {
+    revoke: os.devices.revoke.use(operatorCan('device:manage')).handler(({ input, context }) => {
       context.services.devices.revoke(input.clientId)
       return { ok: true }
     }),
@@ -1003,10 +1035,10 @@ export const router = os.router({
     }),
 
     pending: os.wall.pending
-      .use(operatorOnly)
+      .use(operatorCan('wall:moderate'))
       .handler(({ input, context }) => context.services.wall.pending(input.source)),
 
-    moderate: os.wall.moderate.use(operatorOnly).handler(({ input, context }) => {
+    moderate: os.wall.moderate.use(operatorCan('wall:moderate')).handler(({ input, context }) => {
       const moderated = context.services.wall.moderate(
         input.id,
         input.decision,
@@ -1031,10 +1063,10 @@ export const router = os.router({
      * Open to any operator: the public key is not a secret.
      */
     publicKey: os.push.publicKey
-      .use(operatorOnly)
+      .use(operatorCan('push:subscribe'))
       .handler(({ context }) => ({ publicKey: context.services.push.publicKey() })),
 
-    subscribe: os.push.subscribe.use(operatorOnly).handler(({ input, context }) => {
+    subscribe: os.push.subscribe.use(operatorCan('push:subscribe')).handler(({ input, context }) => {
       context.services.push.subscribe({
         endpoint: input.endpoint,
         p256dh: input.keys.p256dh,
@@ -1046,7 +1078,7 @@ export const router = os.router({
       return { ok: true }
     }),
 
-    unsubscribe: os.push.unsubscribe.use(operatorOnly).handler(({ input, context }) => {
+    unsubscribe: os.push.unsubscribe.use(operatorCan('push:subscribe')).handler(({ input, context }) => {
       context.services.push.unsubscribe(input.endpoint)
       return { ok: true }
     }),
@@ -1097,7 +1129,7 @@ export const router = os.router({
      * passes no `roomId` and sees them all. Letting a room query another would serve no
      * purpose and would give a room token a view of the whole event.
      */
-    uploads: os.vod.uploads.use(roomOrOperator).handler(({ input, context }) => {
+    uploads: os.vod.uploads.use(roomOrOperatorCan('vod:read')).handler(({ input, context }) => {
       const vod = requireStorage(context)
       const rooms = new Map(context.services.rooms.list().map((room) => [room.id, room.name]))
       const target = context.operator != null ? input.roomId : context.roomId
@@ -1113,7 +1145,7 @@ export const router = os.router({
      * procedure for want of storage would deprive a hub with no S3 of the one answer
      * that matters on the evening of the strike — "is the rush on the machine?".
      */
-    conference: os.vod.conference.use(operatorOnly).handler(({ input, context }) => {
+    conference: os.vod.conference.use(operatorCan('vod:read')).handler(({ input, context }) => {
       const { session, roomId } = resolveSession(context, input.sessionId)
       const rooms = new Map(context.services.rooms.list().map((room) => [room.id, room.name]))
       const vod = context.services.vod
@@ -1154,7 +1186,7 @@ export const router = os.router({
      * Translating the failure into a 502 would lose the step we stopped at — reach,
      * authenticate, sign, clean up —, which is exactly what this button exists to say.
      */
-    check: os.vod.check.use(operatorOnly).handler(({ context }) => {
+    check: os.vod.check.use(operatorCan('vod:read')).handler(({ context }) => {
       const vod = context.services.vod
       if (vod == null) {
         return {
@@ -1182,7 +1214,7 @@ export const router = os.router({
      * The confirmation is in the contract (`z.literal('RAZ')`): it is therefore checked
      * by the hub, and not only by the dialog.
      */
-    reset: os.vod.reset.use(operatorOnly).handler(({ context }) => {
+    reset: os.vod.reset.use(operatorCan('vod:manage')).handler(({ context }) => {
       if (context.services.mode !== 'dev') {
         throw new ORPCError('FORBIDDEN', {
           message:
@@ -1215,7 +1247,7 @@ export const router = os.router({
      * precisely its reason to exist. The console must be able to say "not configured",
      * and name the missing variables — they cannot be guessed from a browser.
      */
-    status: os.vod.status.use(operatorOnly).handler(({ context }) => {
+    status: os.vod.status.use(operatorCan('vod:read')).handler(({ context }) => {
       const vod = context.services.vod
       if (vod == null) {
         return {
@@ -1237,7 +1269,7 @@ export const router = os.router({
      * the request up on reconnection. With no TTL: "ship your rushes back" does not
      * expire.
      */
-    request: os.vod.request.use(operatorOnly).handler(({ input, context }) => {
+    request: os.vod.request.use(operatorCan('vod:manage')).handler(({ input, context }) => {
       requireStorage(context)
       if (context.services.rooms.get(input.roomId) == null) {
         throw new ORPCError('NOT_FOUND', { message: `Salle inconnue : ${input.roomId}` })
@@ -1261,10 +1293,10 @@ export const router = os.router({
    */
   regie: {
     locks: os.regie.locks
-      .use(operatorOnly)
+      .use(operatorCan('regie:view'))
       .handler(({ context }) => controlRooms(context.services, context.services.clock.now())),
 
-    hold: os.regie.hold.use(operatorOnly).handler(({ input, context }) => {
+    hold: os.regie.hold.use(operatorCan('regie:command')).handler(({ input, context }) => {
       const before = context.services.regie.lock(input.roomId)
       const lock = onLock(() =>
         context.services.regie.hold(
@@ -1288,7 +1320,7 @@ export const router = os.router({
       return lock
     }),
 
-    release: os.regie.release.use(operatorOnly).handler(({ input, context }) => {
+    release: os.regie.release.use(operatorCan('regie:command')).handler(({ input, context }) => {
       const released = context.services.regie.release(input.roomId, controlSessionId(context))
       if (released) broadcastLock(context, input.roomId, null)
       return { ok: released }
@@ -1304,14 +1336,14 @@ export const router = os.router({
      * A caller that does not hold the room merely reads — which is what allows looking
      * at a room held by somebody else without taking it from them.
      */
-    view: os.regie.view.use(operatorOnly).handler(({ input, context }) => {
+    view: os.regie.view.use(operatorCan('regie:view')).handler(({ input, context }) => {
       renewIfHolder(context, input.roomId)
       return onRoom(() =>
         controlView(context.services, input.roomId, context.services.clock.now()),
       )
     }),
 
-    ticket: os.regie.ticket.use(operatorOnly).handler(({ context }) =>
+    ticket: os.regie.ticket.use(operatorCan('regie:view')).handler(({ context }) =>
       context.services.tickets.issue({
         operator: context.operator,
         // Required here, as on every lock gesture: a stream opened without a tab
@@ -1328,7 +1360,7 @@ export const router = os.router({
      * what is stored, exactly like `view`: the signal carries no state of its own.
      */
     watch: os.regie.watch
-      .use(operatorOnly)
+      .use(operatorCan('regie:view'))
       .handler(async function* ({ input, context, signal }) {
         const read = () =>
           onRoom(() => controlView(context.services, input.roomId, context.services.clock.now()))
@@ -1366,7 +1398,7 @@ export const router = os.router({
         }
       }),
 
-    command: os.regie.command.use(operatorOnly).handler(({ input, context }) => {
+    command: os.regie.command.use(operatorCan('regie:command')).handler(({ input, context }) => {
       requireLock(context, input.roomId)
 
       const result = onTransition(() =>

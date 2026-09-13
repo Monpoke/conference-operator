@@ -207,8 +207,8 @@ export class Outbox {
    * Purges the expired events.
    *
    * The `best-effort` ones disappear quickly and without regret. The `required`
-   * ones only leave after 48 h, and leave a trace in the log: losing a talk marker
-   * silently would make the editing inexplicable.
+   * ones only leave after 48 h, and leave a trace in the log: losing a recording's
+   * start or stop silently would leave a rush the console cannot place.
    */
   evictExpired(): { dropped: number } {
     const nowIso = new Date(this.now()).toISOString()

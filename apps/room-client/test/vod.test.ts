@@ -214,7 +214,7 @@ describe('VOD chain', () => {
     expect(files.filter((f) => f.endsWith('.json'))).toHaveLength(1)
   }, 40_000)
 
-  it('reports the recording cycle to the hub, in order', async () => {
+  it('reports the recording cycle to the hub, in order — and keeps the markers', async () => {
     room = await bootRoom(fakeObsPair(recDir))
 
     await room.startRecording()
@@ -224,13 +224,14 @@ describe('VOD chain', () => {
 
     const types = hub.services.ingest.eventsFor(TRACK_1).map((e) => e.type)
     const started = types.indexOf('recording.started')
-    const marker = types.indexOf('talk.marker')
     const stopped = types.indexOf('recording.stopped')
 
     expect(started).toBeGreaterThanOrEqual(0)
-    // The order is what makes the timecodes usable at editing time.
-    expect(marker).toBeGreaterThan(started)
-    expect(stopped).toBeGreaterThan(marker)
+    // The order is what lets the console place the rush in its slot.
+    expect(stopped).toBeGreaterThan(started)
+    // The markers stay in the sidecar, which is what the editing reads: sending
+    // them up only filled a table nobody read back.
+    expect(types).not.toContain('talk.marker')
   }, 40_000)
 
   it('refuses a marker outside a recording rather than ignoring it', async () => {

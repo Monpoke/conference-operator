@@ -220,16 +220,22 @@ export class Outbox {
 
     if (expired.length === 0) return { dropped: 0 }
 
+    const lost = expired.filter((row) => row.delivery === 'required')
+
     this.db.transaction((tx) => {
       for (const row of expired) {
         tx.delete(outbox).where(eq(outbox.id, row.id)).run()
-        if (row.delivery === 'required') {
-          this.store.log('error', 'événement obligatoire expiré sans avoir été remonté', {
-            id: row.id,
-            type: row.type,
-            attempts: row.attempts,
-          }, tx)
-        }
+      }
+      // A single entry per purge: the diagnostic panel only shows the last few
+      // lines, one per event would bury everything else.
+      if (lost.length > 0) {
+        const message =
+          lost.length === 1
+            ? 'événement obligatoire expiré sans avoir été remonté'
+            : `${lost.length} événements obligatoires expirés sans avoir été remontés`
+        this.store.log('error', message, {
+          events: lost.map((row) => ({ id: row.id, type: row.type, attempts: row.attempts })),
+        }, tx)
       }
     })
     return { dropped: expired.length }

@@ -136,6 +136,20 @@ describe('expiry', () => {
     expect(error?.message).toContain('obligatoire expiré')
     expect(error?.contextJson).toContain('talk.marker')
   })
+
+  it('logs a single line when several required events expire together', () => {
+    outbox.enqueue(marker('a'))
+    outbox.enqueue(marker('b'))
+    outbox.enqueue(marker('c'))
+
+    clockMs += 49 * 60 * 60 * 1000
+    expect(outbox.evictExpired().dropped).toBe(3)
+
+    // The diagnostic panel shows only the last lines: one per event would flood it.
+    const errors = store.recentLogs().filter((l) => l.level === 'error')
+    expect(errors).toHaveLength(1)
+    expect(errors[0]?.message).toContain('3 événements obligatoires expirés')
+  })
 })
 
 describe('queue saturation', () => {

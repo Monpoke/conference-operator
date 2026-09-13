@@ -78,15 +78,6 @@ const roomOrOperator = os.middleware(async ({ context, next }) =>
 const nowIso = (context: HubContext) => context.services.clock.nowIso()
 
 export const router = os.router({
-  meta: {
-    hello: os.meta.hello.handler(({ input, context }) => ({
-      protocolVersion: PROTOCOL_VERSION,
-      serverTime: nowIso(context),
-      simulatedClock: context.services.clock.simulated,
-      compatible: input.protocolVersion === PROTOCOL_VERSION,
-    })),
-  },
-
   program: {
     import: os.program.import
       .use(operatorOnly)

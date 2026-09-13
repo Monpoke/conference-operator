@@ -77,7 +77,7 @@ describe('createHubClient', () => {
     const client = createHubClient({ origin: 'http://hub.test', tokenKey: 'hub-admin', fetch: spy.fetch })
     client.token.write('test-token')
 
-    await client.rpc.meta.hello({ protocolVersion: 1 })
+    await client.rpc.rooms.public()
 
     expect(headersOf(spy.calls[0])['authorization']).toBe('Bearer test-token')
   })
@@ -86,7 +86,7 @@ describe('createHubClient', () => {
     const spy = capture()
     const client = createHubClient({ origin: 'http://hub.test', tokenKey: null, fetch: spy.fetch })
 
-    await client.rpc.meta.hello({ protocolVersion: 1 })
+    await client.rpc.rooms.public()
 
     // Absent, not empty: `Bearer ` with nothing after it is a header the hub
     // has to decide about, and there is nothing to decide.
@@ -102,7 +102,7 @@ describe('createHubClient', () => {
       fetch: spy.fetch,
     })
 
-    await client.rpc.meta.hello({ protocolVersion: 1 })
+    await client.rpc.rooms.public()
 
     expect(headersOf(spy.calls[0])['x-room-client-id']).toBe('room-1')
   })
@@ -119,7 +119,7 @@ describe('createHubClient', () => {
     })
     client.token.write('stale-token')
 
-    await expect(client.rpc.meta.hello({ protocolVersion: 1 })).rejects.toThrow()
+    await expect(client.rpc.rooms.public()).rejects.toThrow()
 
     expect(onExpired).toHaveBeenCalledOnce()
     // Cleared before the caller is told: a token the hub has stopped honouring
@@ -143,7 +143,7 @@ describe('createHubClient', () => {
     })
     client.token.write('valid-token')
 
-    await expect(client.rpc.meta.hello({ protocolVersion: 1 })).rejects.toThrow()
+    await expect(client.rpc.rooms.public()).rejects.toThrow()
 
     expect(onError).toHaveBeenCalledOnce()
     expect(onExpired).not.toHaveBeenCalled()

@@ -484,7 +484,6 @@ export const router = os.router({
           ...room,
           openFeedbackProjectId: filled(settings.openFeedbackProjectId),
         },
-        overrides: context.services.rooms.overrides(),
         serverTime: nowIso(context),
         simulatedClock: context.services.clock.simulated,
         mode: context.services.mode,

@@ -164,18 +164,6 @@ export class RoomService {
     return { adopted, cleanedRooms: carrying.map((item) => item.id) }
   }
 
-  overrides(sessionIds?: string[]) {
-    const rows = this.db.select().from(sessionOverride).all()
-    return rows
-      .filter((row) => sessionIds == null || sessionIds.includes(row.sessionId))
-      .map((row) => ({
-        sessionId: row.sessionId,
-        status: row.status as 'talk' | 'break' | 'delayed' | 'cancelled' | 'moved',
-        delayMinutes: row.delayMinutes,
-        note: row.note,
-      }))
-  }
-
   /**
    * The OpenFeedback identifiers corrected by hand, per slot.
    *
@@ -227,8 +215,6 @@ export class RoomService {
     const values = {
       sessionId,
       status,
-      delayMinutes: null,
-      note: null,
       updatedAt: new Date().toISOString(),
     }
     this.db

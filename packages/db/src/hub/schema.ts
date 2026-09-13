@@ -192,9 +192,14 @@ export const questionVote = sqliteTable(
 /** Decisions taken on the day (delay, cancellation, room change) with no reimport. */
 export const sessionOverride = sqliteTable('session_override', {
   sessionId: text('session_id').primaryKey(),
+  /**
+   * `talk` or `break`: the only decisions the served program applies.
+   *
+   * Delays, cancellations and moves were declared here once, with a delay and a
+   * note, and applied nowhere. A decision stored but never served is one the
+   * console would show as taken, while every room carried on without it.
+   */
   status: text('status').notNull(),
-  delayMinutes: integer('delay_minutes'),
-  note: text('note'),
   updatedAt: text('updated_at').notNull().default(now),
 })
 

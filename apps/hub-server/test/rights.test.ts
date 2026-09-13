@@ -123,7 +123,7 @@ describe('what a room can do', () => {
           occurredAt: '2026-10-30T09:00:00.000+00:00',
           monotonicMs: 1,
           delivery: 'required',
-          payload: { type: 'incident', level: 'warn', message: 'test' },
+          payload: { type: 'room.message', text: 'test', level: 'info' },
         },
       ],
     })

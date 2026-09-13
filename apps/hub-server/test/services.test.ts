@@ -407,7 +407,7 @@ describe('IngestService', () => {
 
     const outcome = ingest.push(TRACK_1, [
       { id: 'not-a-ulid', roomId: TRACK_1, seq: 1, payload: { type: 'inconnu' } },
-      envelope('01CCCCCCCCCCCCCCCCCCCCCCCC', 2, { type: 'incident', level: 'warn', message: 'ok' }),
+      envelope('01CCCCCCCCCCCCCCCCCCCCCCCC', 2, { type: 'room.message', text: 'ok', level: 'info' }),
     ])
 
     expect(outcome.rejected).toEqual([{ id: 'not-a-ulid', reason: 'invalid-schema' }])
@@ -418,7 +418,7 @@ describe('IngestService', () => {
     const rooms = new RoomService(db)
     seedRoom(rooms)
     const outcome = new IngestService(db).push(TRACK_1, [
-      envelope('01DDDDDDDDDDDDDDDDDDDDDDDD', 1, { type: 'incident', level: 'warn', message: 'x' }, 'track-2'),
+      envelope('01DDDDDDDDDDDDDDDDDDDDDDDD', 1, { type: 'room.message', text: 'x', level: 'info' }, 'track-2'),
     ])
     expect(outcome.rejected).toEqual([{ id: '01DDDDDDDDDDDDDDDDDDDDDDDD', reason: 'unknown-room' }])
   })

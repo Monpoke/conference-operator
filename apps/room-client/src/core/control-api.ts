@@ -73,7 +73,6 @@ export const controlActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('vod.upload.cancel'), file: z.string().min(1).max(400) }),
   z.object({ action: z.literal('stream.start') }),
   z.object({ action: z.literal('stream.stop') }),
-  z.object({ action: z.literal('hub.sync') }),
   /** The running talk's lifecycle. */
   z.object({ action: z.literal('session.start') }),
   z.object({ action: z.literal('session.end') }),
@@ -90,21 +89,9 @@ export const controlActionSchema = z.discriminatedUnion('action', [
    */
   z.object({ action: z.literal('pairing.forget') }),
   /**
-   * The live scenes' banner, set from the control app.
-   *
-   * The room drives its own surfaces — that is already the case for its screen —
-   * and the hub keeps its own: both write the same state. A null `text` removes
-   * the banner.
-   */
-  z.object({
-    action: z.literal('overlay.set'),
-    text: z.string().min(1).max(240).nullable(),
-    level: z.enum(['info', 'warning', 'urgent']).default('info'),
-  }),
-  /**
    * An audience question put on air.
    *
-   * A channel distinct from `overlay.set`, and not one more banner: the question
+   * A channel distinct from the console's banner, and not one more of it: the question
    * goes into the capture overlay — and therefore into the VOD — the banner does
    * not. Confusing them meant being unable to show either without the other. A
    * null `text` removes it.
@@ -179,7 +166,6 @@ export interface ControlTarget {
   readRecordingFile(file: string, plage: string | null): Promise<FileStream | null>
   startStreaming(): Promise<void>
   stopStreaming(): Promise<void>
-  resync(): Promise<void>
   startSession(): Promise<void>
   endSession(): Promise<void>
   resetSession(): Promise<void>
@@ -187,7 +173,6 @@ export interface ControlTarget {
   unpair(): Promise<void>
   dismissNotification(id: string): void
   sendMessage(text: string, level: 'info' | 'warning' | 'urgent'): void
-  setLiveMessage(text: string | null, level: 'info' | 'warning' | 'urgent'): void
   setAiredQuestion(text: string | null, author: string | null): void
   refreshQuestions(): Promise<void>
   configureRoom(patch: RoomConfigPatch): Promise<void>
@@ -297,9 +282,6 @@ export async function runControlAction(
       case 'stream.stop':
         await target.stopStreaming()
         return { ok: true, message: 'Diffusion arrêtée' }
-      case 'hub.sync':
-        await target.resync()
-        return { ok: true, message: 'Synchronisation demandée' }
       case 'session.start':
         await target.startSession()
         return { ok: true, message: 'Conférence démarrée' }
@@ -333,9 +315,6 @@ export async function runControlAction(
       case 'obs.refreshScenes':
         await target.refreshObsScenes()
         return { ok: true, message: 'Scènes relues dans OBS' }
-      case 'overlay.set':
-        target.setLiveMessage(action.text, action.level)
-        return { ok: true, message: action.text == null ? 'Bandeau retiré' : 'Bandeau affiché' }
       case 'question.set':
         target.setAiredQuestion(action.text, action.author)
         return { ok: true, message: action.text == null ? 'Question retirée' : 'Question à l\u2019antenne' }

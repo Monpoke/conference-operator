@@ -44,6 +44,48 @@ function onBreak(room: RoomStatus): boolean {
   return room.breakBadge?.state === 'en-cours'
 }
 
+/**
+ * What goes wrong with OBS, in words — and only on a room that answers.
+ *
+ * A silent room says nothing about its OBS: what it reported last is exactly
+ * what can no longer be trusted, and "salle muette" already says so.
+ */
+function obsIssues(room: RoomStatus): { text: string; variant: 'alert' | 'warning' }[] {
+  if (room.connectivity !== 'ONLINE' || room.obs == null) return []
+  const issues: { text: string; variant: 'alert' | 'warning' }[] = []
+  for (const instance of ['A', 'B'] as const) {
+    const link = room.obs[instance]
+    if (link.connected === false) issues.push({ text: `OBS-${instance} coupé`, variant: 'alert' })
+    else if (link.missingRoles.length > 0) {
+      const roles = link.missingRoles.join(', ')
+      issues.push({
+        text: link.missingRoles.length === 1 ? `scène ${roles} introuvable` : `scènes ${roles} introuvables`,
+        variant: 'warning',
+      })
+    }
+  }
+  return issues
+}
+
+/** Congestion or skipped frames past these, the stream is visibly suffering. */
+const CONGESTION_ALERT = 0.2
+const SKIPPED_ALERT = 0.01
+
+/** The stream's health while it runs: the bitrate, and why it worries if it does. */
+function streamHealth(room: RoomStatus): { text: string; variant: 'neutral' | 'warning' } | null {
+  const health = room.streamHealth
+  if (!room.streaming || room.connectivity !== 'ONLINE' || health == null) return null
+  const rate = health.bitrateKbps >= 1000
+    ? `${(health.bitrateKbps / 1000).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} Mb/s`
+    : `${Math.round(health.bitrateKbps)} kb/s`
+  const worries: string[] = []
+  if (health.congestion >= CONGESTION_ALERT) worries.push(`congestion ${Math.round(health.congestion * 100)} %`)
+  if (health.skippedRatio >= SKIPPED_ALERT) worries.push(`${Math.round(health.skippedRatio * 100)} % d'images perdues`)
+  return worries.length === 0
+    ? { text: rate, variant: 'neutral' }
+    : { text: [rate, ...worries].join(' · '), variant: 'warning' }
+}
+
 function remaining(room: RoomStatus): ReturnType<typeof slotRemaining> {
   return onBreak(room) ? null : slotRemaining(room.currentSession?.remainingMs)
 }
@@ -144,7 +186,7 @@ const globalDetail = computed(() => {
           </div>
 
           <div
-            v-if="room.recording || room.streaming || room.sceneRole != null || room.outboxDepth > 0"
+            v-if="room.recording || room.streaming || room.sceneRole != null || room.outboxDepth > 0 || obsIssues(room).length > 0"
             class="mt-2 flex flex-wrap gap-1.5"
           >
             <Badge v-if="room.recording" class="px-1.5 py-0.5 text-[11px] tracking-normal" variant="alert">
@@ -155,6 +197,21 @@ const globalDetail = computed(() => {
             </Badge>
             <Badge v-if="room.sceneRole != null" class="px-1.5 py-0.5 text-[11px] tracking-normal">
               {{ room.sceneRole }}
+            </Badge>
+            <Badge
+              v-for="issue in obsIssues(room)"
+              :key="issue.text"
+              class="px-1.5 py-0.5 text-[11px] tracking-normal"
+              :variant="issue.variant"
+            >
+              {{ issue.text }}
+            </Badge>
+            <Badge
+              v-if="streamHealth(room) != null"
+              class="px-1.5 py-0.5 text-[11px] tracking-normal normal-case"
+              :variant="streamHealth(room)!.variant"
+            >
+              {{ streamHealth(room)!.text }}
             </Badge>
             <Badge
               v-if="room.outboxDepth > 0"

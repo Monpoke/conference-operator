@@ -6,6 +6,8 @@ import {
   type RoomConfig,
   type RoomConfigInput,
   type RoomStatus,
+  sceneRoleSchema,
+  type SceneRole,
 } from '@conference-operator/contract'
 import {
   deviceRequest,
@@ -26,6 +28,23 @@ import type { HubDatabase } from '../db.js'
  * everyone dead.
  */
 const SILENCE_MS = 35_000
+
+/**
+ * The scene roles stored as JSON, kept only if they are roles.
+ *
+ * A malformed column must not take the whole supervision view down with it: the
+ * status is parsed against the contract, and one bad entry would fail every room.
+ */
+function rolesOf(json: string | null | undefined): SceneRole[] {
+  if (json == null) return []
+  try {
+    const value: unknown = JSON.parse(json)
+    if (!Array.isArray(value)) return []
+    return value.filter((role): role is SceneRole => sceneRoleSchema.safeParse(role).success)
+  } catch {
+    return []
+  }
+}
 
 /**
  * A stored configuration, as the hub serves it.
@@ -264,6 +283,19 @@ export class RoomService {
           streaming: state?.streaming ?? false,
           outboxDepth: state?.outboxDepth ?? 0,
           programContentHash: state?.programContentHash ?? null,
+          obs: {
+            A: { connected: state?.obsAConnected ?? null, missingRoles: rolesOf(state?.obsAMissingRoles) },
+            B: { connected: state?.obsBConnected ?? null, missingRoles: rolesOf(state?.obsBMissingRoles) },
+          },
+          streamHealth:
+            state?.streamHealthAt == null
+              ? null
+              : {
+                  bitrateKbps: state.streamBitrateKbps ?? 0,
+                  skippedRatio: state.streamSkippedRatio ?? 0,
+                  congestion: state.streamCongestion ?? 0,
+                  at: state.streamHealthAt,
+                },
         }),
       )
   }

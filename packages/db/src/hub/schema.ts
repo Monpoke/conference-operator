@@ -3,6 +3,7 @@ import {
   index,
   integer,
   primaryKey,
+  real,
   sqliteTable,
   text,
   uniqueIndex,
@@ -64,6 +65,19 @@ export const roomState = sqliteTable('room_state', {
   programContentHash: text('program_content_hash'),
   /** Highest event `seq` applied, to detect gaps. */
   lastSeq: integer('last_seq').notNull().default(0),
+  /**
+   * Each OBS instance's last report: connected or not (`null` = never said), and
+   * the configured scene roles OBS does not have, as a JSON array.
+   */
+  obsAConnected: integer('obs_a_connected', { mode: 'boolean' }),
+  obsBConnected: integer('obs_b_connected', { mode: 'boolean' }),
+  obsAMissingRoles: text('obs_a_missing_roles').notNull().default('[]'),
+  obsBMissingRoles: text('obs_b_missing_roles').notNull().default('[]'),
+  /** The stream's last measured health; all null when it is not running. */
+  streamBitrateKbps: integer('stream_bitrate_kbps'),
+  streamSkippedRatio: real('stream_skipped_ratio'),
+  streamCongestion: real('stream_congestion'),
+  streamHealthAt: text('stream_health_at'),
 })
 
 /**

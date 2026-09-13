@@ -98,6 +98,52 @@ describe('vue exploitation', () => {
     expect(card.text()).not.toContain('restantes')
   })
 
+  it('says which OBS is cut, and which scene cannot be found', async () => {
+    /*
+     * Reported by the room all along, and read by nobody: a room whose OBS-A had
+     * no "LIVE" scene logged it on its own machine, and the console never knew.
+     */
+    const wrapper = await mountView([
+      {
+        ...ROOM,
+        obs: {
+          A: { connected: true, missingRoles: ['LIVE'] },
+          B: { connected: false, missingRoles: [] },
+        },
+      },
+    ])
+
+    const card = wrapper.get('[data-room="track-1"]')
+    expect(card.text()).toContain('scène LIVE introuvable')
+    expect(card.text()).toContain('OBS-B coupé')
+    expect(card.html()).toContain('text-alert')
+  })
+
+  it('says nothing about the OBS of a room that no longer answers', async () => {
+    // What a silent room last said is exactly what can no longer be trusted.
+    const wrapper = await mountView([
+      { ...ROOM, connectivity: 'OFFLINE', obs: { A: { connected: false, missingRoles: [] }, B: { connected: true, missingRoles: [] } } },
+    ])
+    expect(wrapper.get('[data-room="track-1"]').text()).not.toContain('OBS-A coupé')
+  })
+
+  it('shows the stream bitrate, and why it worries when it does', async () => {
+    const healthy = await mountView([
+      { ...ROOM, streaming: true, streamHealth: { bitrateKbps: 4500, skippedRatio: 0, congestion: 0.02, at: '2026-10-30T09:59:00Z' } },
+    ])
+    expect(healthy.get('[data-room="track-1"]').text()).toContain('4,5 Mb/s')
+    expect(healthy.get('[data-room="track-1"]').text()).not.toContain('congestion')
+    healthy.unmount()
+
+    const suffering = await mountView([
+      { ...ROOM, streaming: true, streamHealth: { bitrateKbps: 900, skippedRatio: 0.04, congestion: 0.35, at: '2026-10-30T09:59:00Z' } },
+    ])
+    const text = suffering.get('[data-room="track-1"]').text()
+    expect(text).toContain('900 kb/s')
+    expect(text).toContain('congestion 35 %')
+    expect(text).toContain("4 % d'images perdues")
+  })
+
   it('shows what matters for a decision: REC, LIVE, and the queue', async () => {
     const wrapper = await mountView([
       { ...ROOM, recording: true, streaming: true, outboxDepth: 3, sceneRole: 'LIVE' },

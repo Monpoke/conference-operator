@@ -220,6 +220,39 @@ describe('IngestService', () => {
     expect(status?.sceneRole).toBe('LIVE')
   })
 
+  it("projects OBS's connection and the stream's health for the console", () => {
+    /*
+     * Both were reported by the rooms and stored, and read by nobody: a room whose
+     * OBS-A had no LIVE scene, or whose stream was choking, looked healthy.
+     */
+    const rooms = new RoomService(db)
+    seedRoom(rooms)
+    const ingest = new IngestService(db)
+    const status = () => rooms.statuses().find((room) => room.roomId === TRACK_1)!
+
+    expect(status().obs.A.connected).toBeNull()
+    expect(status().streamHealth).toBeNull()
+
+    ingest.push(TRACK_1, [
+      envelope('01GGGGGGGGGGGGGGGGGGGGGGGG', 1, { type: 'obs.connection', obs: 'A', connected: true, unresolvedRoles: ['LIVE'] }),
+      envelope('01HHHHHHHHHHHHHHHHHHHHHHHH', 2, { type: 'obs.connection', obs: 'B', connected: false, unresolvedRoles: [] }),
+      envelope('01JJJJJJJJJJJJJJJJJJJJJJJJ', 3, { type: 'stream.started', obs: 'B', sessionId: null }),
+      envelope('01KKKKKKKKKKKKKKKKKKKKKKKK', 4, { type: 'stream.telemetry', bitrateKbps: 4500, skippedRatio: 0.01, congestion: 0.1 }),
+    ])
+
+    expect(status().obs).toEqual({
+      A: { connected: true, missingRoles: ['LIVE'] },
+      B: { connected: false, missingRoles: [] },
+    })
+    expect(status().streamHealth).toMatchObject({ bitrateKbps: 4500, skippedRatio: 0.01, congestion: 0.1 })
+
+    // A stopped stream has no health to show any more.
+    ingest.push(TRACK_1, [
+      envelope('01MMMMMMMMMMMMMMMMMMMMMMMM', 5, { type: 'stream.stopped', obs: 'B', reason: 'operator' }),
+    ])
+    expect(status().streamHealth).toBeNull()
+  })
+
   it('wakes whoever watches the room once the batch is applied', () => {
     /*
      * The mobile control app's return path: without this signal the room's report

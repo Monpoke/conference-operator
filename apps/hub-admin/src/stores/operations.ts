@@ -22,6 +22,23 @@ export interface RoomStatus {
   lastSeenAt: string
   currentSession?: { title?: string; remainingMs?: number | null } | null
   breakBadge?: { state: string } | null
+  /** What each OBS instance last reported. `connected: null` = never said. */
+  obs?: { A: ObsLink; B: ObsLink }
+  /** The stream's health, measured between two samples while it runs. */
+  streamHealth?: StreamHealth | null
+}
+
+export interface ObsLink {
+  connected: boolean | null
+  missingRoles: string[]
+}
+
+export interface StreamHealth {
+  bitrateKbps: number
+  /** Share of the frames OBS skipped since the previous sample, 0–1. */
+  skippedRatio: number
+  congestion: number
+  at: string
 }
 
 /** The shared slot, when there is one. */

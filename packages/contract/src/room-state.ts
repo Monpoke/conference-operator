@@ -388,28 +388,6 @@ export const sessionStateViewSchema = sessionStateSchema.extend({
 })
 export type SessionStateView = z.infer<typeof sessionStateViewSchema>
 
-/**
- * A decision taken on a slot on the day, without a reimport.
- *
- * `break` and `talk` correct what the export does not say. The normalizer has a
- * single signal to decide on — a slot **with no speaker** is a break — and it
- * gets it wrong both ways: a plenary announced with a name passes for a room
- * talk, a keynote whose speaker is not announced yet passes for lunch.
- *
- * The hub then serves the program with the corrected `kind`, and everything that
- * follows goes with it — on-air titling, target of "Start", status dot colour,
- * feedback QR code. An override that says what the export already says has no
- * effect: see `ProgramService.active`.
- *
- * The other three are declared but not applied yet.
- */
-export const sessionOverrideSchema = z.object({
-  sessionId: sessionIdSchema,
-  status: z.enum(['talk', 'break', 'delayed', 'cancelled', 'moved']),
-  delayMinutes: z.number().int().nullable(),
-  note: z.string().nullable(),
-})
-
 export const syncResultSchema = z.object({
   protocolVersion: z.number().int(),
   /** Snapshot hash: the client only re-downloads if it changed. */
@@ -417,7 +395,6 @@ export const syncResultSchema = z.object({
   /** Absent when the client is already up to date (`since` == `contentHash`). */
   program: programSchema.nullable(),
   room: roomConfigSchema,
-  overrides: z.array(sessionOverrideSchema),
   /** Base of the clock offset: the VOD timecodes depend on it. */
   serverTime: isoDateTimeSchema,
   /**

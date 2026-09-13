@@ -104,11 +104,17 @@ function socketClient(ticket: string | null): Client {
 
 type ViewStream = Awaited<ReturnType<Client['regie']['watch']>>
 
-/** The next pushed view — a stream that ends instead is a failure, not an `undefined`. */
+/**
+ * The next pushed view — a stream that ends instead is a failure, not an `undefined`.
+ *
+ * Signs of life (`{ unchanged: true }`) are skipped: they carry no view.
+ */
 async function nextView(stream: ViewStream): Promise<ControlView> {
-  const result = await stream.next()
-  if (result.done === true) throw new Error('le flux de régie s’est terminé')
-  return result.value
+  for (;;) {
+    const result = await stream.next()
+    if (result.done === true) throw new Error('le flux de régie s’est terminé')
+    if (!('unchanged' in result.value)) return result.value
+  }
 }
 
 /** The handshake's outcome alone: 101 when the socket opens, the refusal's status otherwise. */
@@ -204,4 +210,53 @@ describe('regie.watch', () => {
     expect(renewed.heldSince).toBe(taken.heldSince)
     await phoneStream.return?.()
   })
+
+  it('does not resend a view that has not moved, and still pushes the next change', async () => {
+    const phone = await httpClient(PHONE)
+    const { ticket } = await phone.regie.ticket()
+    const stream = await socketClient(ticket).regie.watch({ roomId: TRACK_1 })
+    await nextView(stream)
+
+    hub.services.ingest.push(TRACK_1, [scene(1, 'LIVE')])
+    expect((await nextView(stream) as ControlView).sceneRole).toBe('LIVE')
+
+    // The same scene, reported again: nothing a phone could see has moved.
+    hub.services.ingest.push(TRACK_1, [scene(2, 'LIVE')])
+    await sleep(150)
+    // Then a real change. Had the repeat been sent, it would come out first.
+    hub.services.ingest.push(TRACK_1, [scene(3, 'HOLD')])
+
+    expect((await nextView(stream) as ControlView).sceneRole).toBe('HOLD')
+    await stream.return?.()
+  })
 })
+
+describe('reports that change nothing', () => {
+  it('wake nobody up', async () => {
+    hub.services.ingest.push(TRACK_1, [scene(1, 'LIVE')])
+
+    const stop = new AbortController()
+    const changes = hub.services.changes.watch(TRACK_1, stop.signal)
+    const woken = changes.next().then(() => 'woken' as const)
+
+    hub.services.ingest.push(TRACK_1, [scene(2, 'LIVE')])
+    expect(await Promise.race([woken, sleep(200).then(() => 'quiet' as const)])).toBe('quiet')
+
+    hub.services.ingest.push(TRACK_1, [scene(3, 'HOLD')])
+    expect(await Promise.race([woken, sleep(200).then(() => 'quiet' as const)])).toBe('woken')
+    stop.abort()
+  })
+})
+
+/** A scene switch as the room's pump reports it. */
+function scene(seq: number, role: 'LIVE' | 'HOLD') {
+  return {
+    id: `01CCCCCCCCCCCCCCCCCCCCCCC${seq}`,
+    roomId: TRACK_1,
+    seq,
+    occurredAt: new Date().toISOString(),
+    monotonicMs: seq * 1_000,
+    delivery: 'required',
+    payload: { type: 'scene.changed', obs: 'A', role, sceneName: 'Capture' },
+  }
+}

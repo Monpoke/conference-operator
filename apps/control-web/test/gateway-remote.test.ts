@@ -211,21 +211,22 @@ describe('poster un geste', () => {
  * Each opening is counted: reopening after a failure is precisely what is checked.
  */
 function fakeStream() {
-  const queue: ControlView[] = []
+  const queue: (ControlView | null)[] = []
   let wake: (() => void) | null = null
   let failNext = 0
   const state = { opened: 0 }
 
   return {
     state,
-    push(view: ControlView) {
+    /** A view, or `null` for the hub's "nothing new". */
+    push(view: ControlView | null) {
       queue.push(view)
       wake?.()
     },
     failNextOpenings(count: number) {
       failNext = count
     },
-    watch: async function* (signal: AbortSignal): AsyncGenerator<ControlView> {
+    watch: async function* (signal: AbortSignal): AsyncGenerator<ControlView | null> {
       state.opened += 1
       if (failNext > 0) {
         failNext -= 1
@@ -337,6 +338,39 @@ describe('the pushed stream', () => {
 
     gateway.start(silentStream)
     await vi.waitFor(() => expect(stream.state.opened).toBeGreaterThanOrEqual(2))
+    gateway.stop()
+  })
+
+  it('keeps a quiet stream alive on "nothing new", without repainting', async () => {
+    /*
+     * The hub no longer re-sends an identical view on its floor: it sends a sign
+     * of life. That sign must hold off the silence watchdog, and paint nothing.
+     */
+    const stream = fakeStream()
+    const { client } = countingClient(view())
+    gateway = remoteGateway({
+      client,
+      roomId: 'track-1',
+      watch: stream.watch,
+      silenceMs: 150,
+      retryMs: [10],
+    })
+    const { sink, payloads, last } = recordingSink()
+
+    gateway.start(sink)
+    stream.push(view({ sceneRole: 'LIVE' }))
+    await vi.waitFor(() => expect(last()?.state.sceneRole).toBe('LIVE'))
+    const painted = payloads.length
+
+    // Spaced well under the silence, even counting `waitFor`'s own 50 ms step.
+    for (let beat = 0; beat < 10; beat += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      stream.push(null)
+    }
+
+    // Three hundred milliseconds of signs of life, twice the silence: still open.
+    expect(stream.state.opened).toBe(1)
+    expect(payloads.length).toBe(painted)
     gateway.stop()
   })
 

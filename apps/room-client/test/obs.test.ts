@@ -244,6 +244,24 @@ describe('driving OBS by roles', () => {
     // projection is still being driven.
     expect(state.currentSceneName).toBeNull()
   })
+
+  it('announces no disconnection for a failed connection attempt', () => {
+    const obs = fakeObs(['Capture HDMI', 'Habillage web'])
+    const events: unknown[] = []
+    new ObsController({
+      instance: 'A',
+      url: 'ws://127.0.0.1:4455',
+      sceneRoles: ROLES,
+      transport: obs.transport,
+      onEvent: (event) => events.push(event),
+    })
+
+    // OBS off: the resume loop fails every three seconds, and the library closes
+    // each time. A required event per attempt would flood the queue.
+    obs.emit('ConnectionClosed', {})
+    obs.emit('ConnectionClosed', {})
+    expect(events.filter((event) => (event as { type: string }).type === 'disconnected')).toHaveLength(0)
+  })
 })
 
 describe('state observed on connection', () => {

@@ -1919,6 +1919,11 @@ export class RoomApp implements ControlTarget {
     this.runtime.dismissNotification(id)
   }
 
+  /** Empties the log read in the control app's Diagnostic panel. */
+  clearLog(): void {
+    this.store.clearLogs()
+  }
+
   /** A resynchronization asked for from the control app. */
   async resync(): Promise<void> {
     if (this.link == null) throw new Error("Hub non connecté : rien à synchroniser")

@@ -273,6 +273,14 @@ describe('control window', () => {
     expect(diagnostics?.outboxDepth).toBeGreaterThanOrEqual(0)
     expect(Array.isArray(diagnostics?.log)).toBe(true)
   }, 40_000)
+
+  it('empties the log on request', async () => {
+    room.store.log('warn', 'incident déjà compris')
+    expect((await state()).diagnostics?.log.length).toBeGreaterThan(0)
+
+    expect((await act({ action: 'log.clear' })).body).toEqual({ ok: true, message: 'Journal effacé' })
+    expect((await state()).diagnostics?.log).toEqual([])
+  }, 40_000)
 })
 
 describe('configuring the room from the control app', () => {

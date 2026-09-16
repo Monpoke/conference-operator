@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { DisplayPayload } from '@conference-operator/contract'
-import { Panel } from '@conference-operator/components'
+import { Button, Panel } from '@conference-operator/components'
 import { computed } from 'vue'
+import { useActionsStore } from '../stores/actions.js'
 import SimulatedBadge from './SimulatedBadge.vue'
 
 /**
@@ -12,6 +13,9 @@ import SimulatedBadge from './SimulatedBadge.vue'
  * read as two disconnected OBS instances.
  */
 const props = defineProps<{ payload: DisplayPayload }>()
+const actions = useActionsStore()
+
+const log = computed(() => props.payload.diagnostics?.log ?? [])
 
 const instances = computed(() =>
   (['A', 'B'] as const).map((key) => {
@@ -31,9 +35,20 @@ const instances = computed(() =>
 
 <template>
   <Panel class="min-h-0 flex-1">
-    <h2 class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
-      Diagnostic
-    </h2>
+    <div class="mb-2.5 flex items-center gap-2">
+      <h2 class="flex-1 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+        Diagnostic
+      </h2>
+      <!-- The effect is the answer: the lines disappear, a toast would add nothing. -->
+      <Button
+        v-if="log.length > 0"
+        size="small"
+        data-action="log.clear"
+        @click="actions.act({ action: 'log.clear' }, { silent: true })"
+      >
+        Effacer le journal
+      </Button>
+    </div>
 
     <div v-if="payload.diagnostics == null" class="flex items-center gap-2 text-xs">
       Régie en lecture seule
@@ -62,7 +77,7 @@ const instances = computed(() =>
       data-role="log"
     >
       <div
-        v-for="(entry, index) in payload.diagnostics?.log ?? []"
+        v-for="(entry, index) in log"
         :key="index"
         :class="entry.level === 'warn' || entry.level === 'error' ? 'text-warn' : ''"
       >

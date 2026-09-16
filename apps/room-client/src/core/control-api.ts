@@ -116,6 +116,8 @@ export const controlActionSchema = z.discriminatedUnion('action', [
   }),
   /** Reads back the questions asked in this room. */
   z.object({ action: z.literal('questions.refresh') }),
+  /** Empties the machine's log, shown in the Diagnostic panel. */
+  z.object({ action: z.literal('log.clear') }),
   /** Dismisses a notice that has been read. */
   z.object({ action: z.literal('notification.dismiss'), id: z.string().min(1) }),
   /**
@@ -186,6 +188,7 @@ export interface ControlTarget {
   chooseRoom(roomId: string): Promise<void>
   unpair(): Promise<void>
   dismissNotification(id: string): void
+  clearLog(): void
   sendMessage(text: string, level: 'info' | 'warning' | 'urgent'): void
   setLiveMessage(text: string | null, level: 'info' | 'warning' | 'urgent'): void
   setAiredQuestion(text: string | null, author: string | null): void
@@ -315,6 +318,9 @@ export async function runControlAction(
       case 'pairing.forget':
         await target.unpair()
         return { ok: true, message: 'Poste déconnecté — un nouveau code va apparaître' }
+      case 'log.clear':
+        target.clearLog()
+        return { ok: true, message: 'Journal effacé' }
       case 'notification.dismiss':
         target.dismissNotification(action.id)
         return { ok: true }

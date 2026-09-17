@@ -26,6 +26,7 @@ import {
   controlLockSchema,
   controlRoomSchema,
   controlViewSchema,
+  controlWatchEventSchema,
 } from './control.js'
 import { commentSchema, commentSourceSchema, questionSchema } from './wall.js'
 import {
@@ -1023,14 +1024,15 @@ export const contract = {
      */
     ticket: oc.output(z.object({ ticket: z.string().min(1), expiresInMs: z.number().int() })),
     /**
-     * A room's state, pushed: at opening, on every change, and at least every
-     * `CONTROL_WATCH_FLOOR_MS`.
+     * A room's state, pushed: at opening, then whenever it differs from the last
+     * view sent, and at least every `CONTROL_WATCH_FLOOR_MS` — as `{ unchanged:
+     * true }` when nothing moved.
      *
-     * Each emission renews the lock of the tab that holds it, as `view` does:
-     * the stream alive *is* the heartbeat. Closing it releases nothing — the lock
+     * Every turn renews the lock of the tab that holds it, as `view` does: the
+     * stream alive *is* the heartbeat. Closing it releases nothing — the lock
      * falls on its own, as when a polling page stops polling.
      */
-    watch: oc.input(z.object({ roomId: roomIdSchema })).output(eventIterator(controlViewSchema)),
+    watch: oc.input(z.object({ roomId: roomIdSchema })).output(eventIterator(controlWatchEventSchema)),
     /**
      * A control gesture. Reserved for the lock holder.
      *

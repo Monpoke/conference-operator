@@ -47,18 +47,21 @@ export function openHubSocket(options: { ticket: string; origin?: string }): Hub
  * Ticket, socket, stream — and the socket closed however the stream ends. Ends or
  * throws when the connection does; reopening is the caller's decision, and so is
  * what to show in the meantime.
+ *
+ * Yields `null` for the hub's "nothing new": the stream is alive, the last view
+ * still holds. The hub only sends a view when it differs from the previous one.
  */
 export async function* watchControlRoom(
   client: HubClient,
   roomId: string,
   signal: AbortSignal,
   origin?: string,
-): AsyncGenerator<ControlView> {
+): AsyncGenerator<ControlView | null> {
   const { ticket } = await client.rpc.regie.ticket()
   const socket = openHubSocket({ ticket, origin })
   try {
     const stream = await socket.rpc.regie.watch({ roomId }, { signal })
-    for await (const view of stream) yield view
+    for await (const event of stream) yield 'unchanged' in event ? null : event
   } finally {
     socket.close()
   }

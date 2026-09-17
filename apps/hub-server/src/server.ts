@@ -9,6 +9,7 @@ import { RPCHandler as WebSocketRPCHandler } from '@orpc/server/websocket'
 import { createAuth, createAuthOptions, migrateAuth, type Auth } from './auth.js'
 import { configSchema, durationMs, type ConfigInput } from './config.js'
 import { openHubDatabase } from './db.js'
+import { createSecretBox } from './secrets.js'
 import { router } from './router.js'
 import type { HubContext, Services } from './context.js'
 import { AssetStore } from './services/assets.js'
@@ -96,7 +97,10 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   const services: Services = {
     programs,
     assets,
-    rooms: new RoomService(orm),
+    // Keyed off the hub's own secret: the stream keys are encrypted at rest
+    // with material the deployment already has to hold and already has to
+    // keep — one more secret to provision would be one more to lose.
+    rooms: new RoomService(orm, createSecretBox(config.authSecret)),
     devices,
     commands: new CommandService(orm, () => clock.now()),
     ingest: new IngestService(orm, touch),

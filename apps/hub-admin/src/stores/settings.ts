@@ -61,11 +61,25 @@ export interface StorageCheck {
   etapes: { nom: string; ok: boolean; detail?: string | null }[]
 }
 
+/**
+ * A room's streaming destination, as the console is allowed to see it.
+ *
+ * No key, ever — `hasKey` is the whole of what comes back. See
+ * `roomStreamSchema` in the contract for why.
+ */
+export interface RoomStream {
+  roomId: string
+  name: string
+  rtmpUrl: string
+  hasKey: boolean
+}
+
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<Settings | null>(null)
   const derived = ref<DerivedIdentity>({ name: '', shortName: '' })
   const snapshots = ref<Snapshot[]>([])
   const rooms = ref<{ id: string; name: string }[]>([])
+  const streams = ref<RoomStream[]>([])
   const storage = ref<StorageStatus | null>(null)
   /**
    * The programme's images, as the hub holds them.
@@ -82,15 +96,23 @@ export const useSettingsStore = defineStore('settings', () => {
   const session = useSessionStore()
 
   async function load(): Promise<void> {
-    const [settingsData, identityData, snapshotsData, roomsData, storageData, imagesData] =
-      await Promise.all([
-        session.client.rpc.settings.get(),
-        session.client.rpc.event.identity(),
-        session.client.rpc.program.snapshots(),
-        session.client.rpc.rooms.list(),
-        session.client.rpc.vod.status(),
-        session.client.rpc.program.images(),
-      ])
+    const [
+      settingsData,
+      identityData,
+      snapshotsData,
+      roomsData,
+      storageData,
+      imagesData,
+      streamsData,
+    ] = await Promise.all([
+      session.client.rpc.settings.get(),
+      session.client.rpc.event.identity(),
+      session.client.rpc.program.snapshots(),
+      session.client.rpc.rooms.list(),
+      session.client.rpc.vod.status(),
+      session.client.rpc.program.images(),
+      session.client.rpc.rooms.streams(),
+    ])
     settings.value = settingsData as Settings
     const identity = identityData as { derived?: DerivedIdentity }
     if (identity.derived != null) derived.value = identity.derived
@@ -98,6 +120,7 @@ export const useSettingsStore = defineStore('settings', () => {
     rooms.value = roomsData as { id: string; name: string }[]
     storage.value = storageData as StorageStatus
     images.value = imagesData as typeof images.value
+    streams.value = streamsData as RoomStream[]
   }
 
   /**
@@ -136,6 +159,26 @@ export const useSettingsStore = defineStore('settings', () => {
     return (await session.client.rpc.rooms.resync({ roomId })) as { rooms: number }
   }
 
+  /**
+   * Sets a room's destination, then lays down what the hub answered.
+   *
+   * `streamKey` left out means "unchanged" all the way down to the column — see
+   * `roomStreamPatchSchema`. The page must therefore send it only when the
+   * operator actually typed one, which is what lets a server address be
+   * corrected without the key being retyped from the sheet it came on.
+   */
+  async function setStream(patch: {
+    roomId: string
+    rtmpUrl: string
+    streamKey?: string | null
+  }): Promise<RoomStream> {
+    const updated = (await session.client.rpc.rooms.setStream(patch)) as RoomStream
+    streams.value = streams.value.map((item) =>
+      item.roomId === updated.roomId ? updated : item,
+    )
+    return updated
+  }
+
   async function checkStorage(): Promise<StorageCheck> {
     return (await session.client.rpc.vod.check()) as StorageCheck
   }
@@ -145,6 +188,7 @@ export const useSettingsStore = defineStore('settings', () => {
     derived,
     snapshots,
     rooms,
+    streams,
     storage,
     images,
     load,
@@ -152,6 +196,7 @@ export const useSettingsStore = defineStore('settings', () => {
     activate,
     reimport,
     resync,
+    setStream,
     checkStorage,
   }
 })

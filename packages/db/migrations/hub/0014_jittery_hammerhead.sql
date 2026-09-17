@@ -1,0 +1,1 @@
+ALTER TABLE `room` ADD `stream_rtmp_url` text;

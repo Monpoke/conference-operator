@@ -209,6 +209,18 @@ export interface VisibleConfig {
   /** Scene taken automatically on "Start". `null` = no switch. */
   sceneOnStart: string | null
   /**
+   * Where this room streams — **the server only, never the key**.
+   *
+   * `null` when the hub has given this room no destination, and the control app
+   * then offers no "Diffuser". Which is the whole point of carrying it here: the
+   * setting lives on the hub, in the console, and without this field the room
+   * learns it is missing by pressing the button, in front of the audience, with
+   * OBS answering in its own words. The address is shown so that a stream going
+   * to the wrong place can be diagnosed from the room rather than by opening the
+   * console; the key stays on the hub, as it does everywhere else.
+   */
+  stream: { rtmpUrl: string } | null
+  /**
    * The machine can open a native folder picker.
    *
    * True under Electron, false everywhere else — `dev:headless`, or the control

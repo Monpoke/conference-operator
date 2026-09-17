@@ -22,6 +22,7 @@ import { obsState, payload } from './fixtures.js'
  */
 
 const CONFIG: VisibleConfig = {
+  stream: null,
   // An installed machine: it is the one that can open a picker.
   canBrowse: true,
   obs: {

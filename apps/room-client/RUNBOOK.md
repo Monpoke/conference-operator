@@ -50,7 +50,16 @@ l'opérateur a l'application ouverte et rien d'autre.
    projection ne touche pas à la captation, et le bouton se bloque sur une
    instance qui enregistre. Le hub doit être joignable pour enregistrer un
    réglage.
-6. Dans OBS-A, vérifier que la scène `HOLD` contient bien une Browser Source sur
+6. **Si cette salle diffuse**, vérifier que le bouton **Diffuser** du panneau
+   « Captation » n'est pas grisé. Grisé veut dire que le hub n'a pas de
+   destination pour cette salle — rien à faire ici : cela se saisit sur la
+   console, onglet **Réglages**, panneau **Diffusion**, un serveur et une clé
+   par salle. La clé ne se tape jamais sur le poste de la salle.
+
+   Le survol du bouton donne l'adresse vers laquelle cette salle pousse : c'est
+   de quoi distinguer, sans ouvrir la console, une salle mal réglée d'une salle
+   réglée vers le mauvais serveur.
+7. Dans OBS-A, vérifier que la scène `HOLD` contient bien une Browser Source sur
    `http://127.0.0.1:7788/display/projector`, la scène `LIVE` une source
    transparente sur `http://127.0.0.1:7788/display/overlay-live`, et OBS-B une
    source transparente sur `http://127.0.0.1:7788/display/overlay`.

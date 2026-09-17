@@ -312,6 +312,7 @@ useKeyboardLayer(
             :obs="null"
             :real-ms="clock.real"
             :room-ms="room.now"
+            :stream="payload.diagnostics?.config == null ? undefined : payload.diagnostics.config.stream"
             :remote="true"
           />
         </main>
@@ -370,6 +371,7 @@ useKeyboardLayer(
           :obs="payload.diagnostics?.obs.B ?? null"
           :real-ms="clock.real"
           :room-ms="room.now"
+          :stream="payload.diagnostics?.config == null ? undefined : payload.diagnostics.config.stream"
           @vod="vod.show()"
         />
         <LevelMeters />

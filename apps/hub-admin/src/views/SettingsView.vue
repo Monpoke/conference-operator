@@ -14,6 +14,7 @@ import {
   STORAGE_STEPS,
   orNull,
   useSettingsStore,
+  type RoomStream,
   type SocialLink,
   type StorageCheck,
 } from '../stores/settings.js'
@@ -27,7 +28,7 @@ import {
  * panel.
  */
 const store = useSettingsStore()
-const { settings, derived, snapshots, rooms, storage, images } = storeToRefs(store)
+const { settings, derived, snapshots, rooms, streams, storage, images } = storeToRefs(store)
 const toast = useToast()
 
 // — The event —
@@ -304,6 +305,132 @@ async function testIntegration(item: Integration): Promise<void> {
     /* already reported */
   } finally {
     testing.value = null
+  }
+}
+
+// — Diffusion —
+
+/**
+ * One draft per room, and the refresh does not touch the ones being typed in.
+ *
+ * The page reloads every ten seconds. `useSeededField` solves this for the
+ * single fields above, but it seeds from **one** source and there are as many
+ * here as there are rooms, so the same rule is applied by hand: a line the
+ * operator has touched is left alone until it is saved, and `load()` bringing
+ * back the old address mid-sentence is exactly the defect that composable
+ * exists to prevent.
+ */
+interface StreamDraft {
+  rtmpUrl: string
+  /** Always starts empty: the console never receives the key. */
+  streamKey: string
+  touched: boolean
+  saving: boolean
+}
+
+const streamDrafts = ref<Record<string, StreamDraft>>({})
+
+watch(
+  streams,
+  (list) => {
+    const next: Record<string, StreamDraft> = {}
+    for (const item of list) {
+      const current = streamDrafts.value[item.roomId]
+      next[item.roomId] =
+        current?.touched === true
+          ? current
+          : { rtmpUrl: item.rtmpUrl, streamKey: '', touched: false, saving: false }
+    }
+    streamDrafts.value = next
+  },
+  { immediate: true, deep: true },
+)
+
+function draftOf(roomId: string): StreamDraft {
+  return (
+    streamDrafts.value[roomId] ?? { rtmpUrl: '', streamKey: '', touched: false, saving: false }
+  )
+}
+
+/**
+ * What a line has to say about itself, in one sentence.
+ *
+ * The incomplete case is the one worth naming: a server with no key looks set up
+ * — there is text in the field — and it is the state in which a room silently
+ * offers no "Diffuser". Saying so here is cheaper than finding out at 9 a.m.
+ */
+function streamState(item: RoomStream): { text: string; ok: boolean } {
+  if (item.rtmpUrl === '' && !item.hasKey) {
+    return { text: 'Aucune diffusion : cette salle ne propose pas « Diffuser »', ok: false }
+  }
+  if (item.rtmpUrl === '') {
+    return { text: 'Clé enregistrée, mais aucun serveur : réglage incomplet', ok: false }
+  }
+  if (!item.hasKey) {
+    return { text: 'Serveur renseigné, mais aucune clé : réglage incomplet', ok: false }
+  }
+  return { text: 'Diffusion prête', ok: true }
+}
+
+async function saveStream(item: RoomStream): Promise<void> {
+  const draft = draftOf(item.roomId)
+  draft.saving = true
+  try {
+    const typed = draft.streamKey.trim()
+    const updated = await store.setStream({
+      roomId: item.roomId,
+      rtmpUrl: draft.rtmpUrl.trim(),
+      // Left out when nothing was typed: absent means unchanged all the way down
+      // to the column, and sending an empty string instead would wipe the key
+      // every time somebody fixed a typo in the address.
+      ...(typed === '' ? {} : { streamKey: typed }),
+    })
+    streamDrafts.value[item.roomId] = {
+      rtmpUrl: updated.rtmpUrl,
+      streamKey: '',
+      touched: false,
+      saving: false,
+    }
+    toast.say(
+      updated.rtmpUrl !== '' && updated.hasKey
+        ? `Diffusion enregistrée pour « ${updated.name} »`
+        : `Diffusion incomplète pour « ${updated.name} » : la salle ne diffusera pas`,
+    )
+  } catch {
+    draft.saving = false
+    /* already reported */
+  }
+}
+
+const streamToClear = ref<RoomStream | null>(null)
+const clearStreamConfirmation = ref(false)
+
+function askClearStream(item: RoomStream): void {
+  streamToClear.value = item
+  clearStreamConfirmation.value = true
+}
+
+/**
+ * Erasing is its own gesture, behind its own confirmation.
+ *
+ * Because it cannot be undone from here: the console has never held the key, so
+ * a mistaken click is repaired by going and fetching it from wherever it was
+ * issued, which on the day is a person and a web console somewhere else.
+ */
+async function confirmClearStream(): Promise<void> {
+  const item = streamToClear.value
+  if (item == null) return
+  try {
+    await store.setStream({ roomId: item.roomId, rtmpUrl: '', streamKey: null })
+    streamDrafts.value[item.roomId] = {
+      rtmpUrl: '',
+      streamKey: '',
+      touched: false,
+      saving: false,
+    }
+    toast.say(`Diffusion effacée pour « ${item.name} »`)
+  } catch {
+    /* already reported */
   }
 }
 
@@ -714,6 +841,83 @@ async function confirmRemoveIntegration(): Promise<void> {
       </div>
     </Panel>
 
+    <Panel title="Diffusion">
+      <Hint id="stream-state" class="mt-0 mb-3">
+        Où chaque salle pousse son flux. Le hub garde la clé chiffrée et ne la redonne qu'à
+        <strong>sa</strong> salle ; elle ne réapparaît jamais ici, même pour vous. Une salle
+        n'obtient « Diffuser » que si le serveur <em>et</em> la clé sont renseignés.
+      </Hint>
+
+      <Empty v-if="streams.length === 0">Aucune salle déclarée.</Empty>
+
+      <div v-for="item in streams" :key="item.roomId" class="border-t border-edge py-3 first:border-t-0 first:pt-0">
+        <div class="mb-1.5 flex items-baseline justify-between gap-3">
+          <strong class="text-sm">{{ item.name }}</strong>
+          <span class="text-xs" :class="streamState(item).ok ? 'text-dim' : 'text-alert'">
+            {{ streamState(item).text }}
+          </span>
+        </div>
+
+        <label class="mb-[5px] block text-xs text-dim" :for="`stream-url-${item.roomId}`">
+          Serveur
+        </label>
+        <input
+          :id="`stream-url-${item.roomId}`"
+          :value="draftOf(item.roomId).rtmpUrl"
+          type="text"
+          maxlength="500"
+          placeholder="rtmp://live.exemple.fr/app"
+          class="mb-[11px] w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text"
+          @input="
+            streamDrafts[item.roomId] = {
+              ...draftOf(item.roomId),
+              rtmpUrl: ($event.target as HTMLInputElement).value,
+              touched: true,
+            }
+          "
+        />
+
+        <label class="mb-[5px] block text-xs text-dim" :for="`stream-key-${item.roomId}`">
+          Clé
+        </label>
+        <input
+          :id="`stream-key-${item.roomId}`"
+          :value="draftOf(item.roomId).streamKey"
+          type="password"
+          autocomplete="off"
+          maxlength="500"
+          :placeholder="item.hasKey ? '•••••••• — laisser vide pour conserver' : 'Aucune clé enregistrée'"
+          class="mb-[11px] w-full rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text"
+          @input="
+            streamDrafts[item.roomId] = {
+              ...draftOf(item.roomId),
+              streamKey: ($event.target as HTMLInputElement).value,
+              touched: true,
+            }
+          "
+        />
+
+        <div class="flex gap-1.5">
+          <Button
+            :id="`btn-stream-save-${item.roomId}`"
+            variant="primary"
+            class="flex-1"
+            :disabled="draftOf(item.roomId).saving"
+            @click="saveStream(item)"
+          >
+            Enregistrer
+          </Button>
+          <Button
+            :id="`btn-stream-clear-${item.roomId}`"
+            :disabled="item.rtmpUrl === '' && !item.hasKey"
+            @click="askClearStream(item)"
+          >
+            Effacer
+          </Button>
+        </div>
+      </div>
+    </Panel>
+
     <Panel title="Resynchronisation des salles">
       <label class="mb-[5px] block text-xs text-dim" for="resync-room">
         Salle à resynchroniser
@@ -740,6 +944,18 @@ async function confirmRemoveIntegration(): Promise<void> {
       <span id="resync-text">
         Demander une resynchronisation complète à
         <strong>{{ resyncRoomName ?? 'toutes les salles' }}</strong>.
+      </span>
+    </ConfirmDialog>
+
+    <ConfirmDialog
+      v-model:open="clearStreamConfirmation"
+      title="Effacer la diffusion"
+      confirm-label="Effacer"
+      @confirm="confirmClearStream"
+    >
+      <span id="clear-stream-text">
+        <strong>{{ streamToClear?.name }}</strong> ne pourra plus diffuser, et la clé est perdue
+        pour le hub : il faudra la reprendre là où elle a été émise.
       </span>
     </ConfirmDialog>
 

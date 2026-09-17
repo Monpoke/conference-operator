@@ -404,4 +404,20 @@ describe('diagnostics', () => {
     // the machine simply drives nothing.
     expect(wrapper.text()).toContain('Régie en lecture seule')
   })
+
+  it('asks the machine to empty the log', async () => {
+    const view = payload()
+    view.diagnostics!.log = [{ level: 'warn', message: 'OBS-A injoignable', createdAt: '2026-10-30T08:00:00.000Z' }]
+    const wrapper = mount(DiagnosticsPanel, { props: { payload: view } })
+
+    await wrapper.get('[data-action="log.clear"]').trigger('click')
+    await flushPromises()
+
+    expect(calls[0]?.body).toEqual({ action: 'log.clear' })
+  })
+
+  it('offers nothing to clear when the log is empty', () => {
+    const wrapper = mount(DiagnosticsPanel, { props: { payload: payload() } })
+    expect(wrapper.find('[data-action="log.clear"]').exists()).toBe(false)
+  })
 })

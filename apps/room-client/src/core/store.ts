@@ -330,6 +330,17 @@ export class LocalStore {
       .all()
   }
 
+  /**
+   * Empties the log, from the control app.
+   *
+   * The Diagnostic panel only shows the last few lines: once an incident is
+   * understood, its lines stand between the operator and the next one. Returns
+   * the number of lines erased.
+   */
+  clearLogs(): number {
+    return this.orm.delete(journal).run().changes
+  }
+
   close(): void {
     // `better-sqlite3` exposes the connection under `$client` through Drizzle.
     ;(this.orm as unknown as { $client: { close: () => void } }).$client.close()

@@ -54,6 +54,11 @@ const base: DisplayPayload = {
     serverTimeOffsetMs: AT - Date.now(),
     recording: true,
     streaming: false,
+    audioInputs: [
+      { name: 'Micro cravate', muted: { A: false, B: false } },
+      { name: 'Micro main', muted: { A: true, B: true } },
+      { name: 'Ambiance salle', muted: { A: null, B: false } },
+    ],
     comments: [],
     sessionStates: current == null ? {} : { [current.id]: 'running' as const },
     notifications: [
@@ -119,6 +124,7 @@ const base: DisplayPayload = {
       promptRecordingOnStop: true,
       sceneOnStart: 'LIVE',
       // The preview shows the installed machine, the one that can open a picker.
+      canStream: true,
       canBrowse: true,
     },
     outboxDepth: 3,

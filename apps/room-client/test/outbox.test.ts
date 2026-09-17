@@ -21,6 +21,7 @@ const heartbeat = (outboxDepth = 0): RoomEventPayload => ({
   sceneRole: 'HOLD',
   recording: false,
   streaming: false,
+  audioInputs: [],
   displayMode: 'loop',
   outboxDepth,
   programContentHash: 'hash-1',

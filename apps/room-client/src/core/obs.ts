@@ -35,6 +35,41 @@ export interface ObsTransport {
   off?(event: string, handler: (payload: never) => void): void
 }
 
+/**
+ * What the capture needs of an OBS, whatever is behind it.
+ *
+ * Two implementations: `ObsController`, a second OBS instance of its own, and
+ * `CanvasObsController`, the vertical canvas inside the projection's OBS. `RoomApp`
+ * drives the capture through this interface alone, so that a room with one OBS and
+ * a room with two follow the same path — the recording, the sidecars and the stream
+ * are the part where a divergence costs a VOD.
+ */
+export interface ObsCapture {
+  /** The capture shares the projection's OBS process: a gesture applies once, not twice. */
+  readonly sharesHost?: boolean
+  snapshot(): ObsState
+  connect(): Promise<ObsState>
+  disconnect(): Promise<void>
+  refreshScenes(): Promise<ObsState>
+  setVolumeMeters(active: boolean): Promise<void>
+  audioInputs(): AudioSource[]
+  hasAudioInput(inputName: string): boolean
+  setInputMute(inputName: string, muted: boolean): Promise<void>
+  startRecording(): Promise<void>
+  stopRecording(): Promise<void>
+  setProfileParameter(category: string, name: string, value: string): Promise<void>
+  recordDirectory(): Promise<string | null>
+  configureStream(rtmpUrl: string, streamKey: string): Promise<void>
+  startStream(): Promise<void>
+  stopStream(): Promise<void>
+  streamStatus(): Promise<{
+    outputBytes: number
+    skippedFrames: number
+    totalFrames: number
+    congestion: number
+  }>
+}
+
 export interface ObsControllerOptions {
   instance: ObsInstance
   url: string
@@ -66,9 +101,29 @@ export type ObsControllerEvent =
     }
   | { type: 'disconnected' }
   | { type: 'scene'; sceneName: string; role: SceneRole | null }
-  | { type: 'recording'; active: boolean; outputPath: string | null }
+  | {
+      type: 'recording'
+      active: boolean
+      outputPath: string | null
+      /**
+       * What OBS says about a take that ended badly — `null` when all went well.
+       *
+       * Only the canvas fills it in, because only the plugin reports it: a full
+       * disk or an encoder that gave up otherwise stayed in OBS's own log, on the
+       * machine, while the control app closed the take without a word.
+       */
+      error?: string | null
+    }
   | { type: 'streaming'; active: boolean }
   | { type: 'audio'; inputs: InputLevel[] }
+  /** The audio sources and their mute state, whenever either changes. */
+  | { type: 'audio-inputs'; inputs: AudioSource[] }
+
+/** An OBS source that carries audio, and whether it is muted. */
+export interface AudioSource {
+  name: string
+  muted: boolean
+}
 
 export { DB_FLOOR, type InputLevel }
 
@@ -117,10 +172,12 @@ function isSettledTransition(outputState: string | undefined): boolean {
  * roles that cannot be found are reported from the connection on, so that the
  * problem shows at the rehearsal and not in the middle of a talk.
  */
-export class ObsController {
+export class ObsController implements ObsCapture {
   private state: ObsState
   /** The VU meter survives a reconnection: the subscription is reapplied. */
   private levelsActive = false
+  /** The audio sources, as last read from OBS. Empty while disconnected. */
+  private audioSources: AudioSource[] = []
 
   constructor(private readonly options: ObsControllerOptions) {
     this.state = {
@@ -192,7 +249,27 @@ export class ObsController {
       this.options.onEvent?.({ type: 'streaming', active: event.outputActive })
     })
 
+    transport.on('InputMuteStateChanged', (payload: never) => {
+      const { inputName, inputMuted } = payload as unknown as { inputName: string; inputMuted: boolean }
+      if (!this.hasAudioInput(inputName)) return
+      // Authoritative, like the scene: a mute made in OBS itself shows too.
+      this.publishAudioSources(
+        this.audioSources.map((source) =>
+          source.name === inputName ? { name: inputName, muted: inputMuted } : source,
+        ),
+      )
+    })
+
+    // A source added, removed or renamed in OBS: read the list again rather than
+    // guess whether the new one carries audio.
+    for (const event of ['InputCreated', 'InputRemoved', 'InputNameChanged']) {
+      transport.on(event, () => {
+        void this.refreshAudioInputs().catch(() => {})
+      })
+    }
+
     transport.on('ConnectionClosed', () => {
+      this.audioSources = []
       // The library also fires it on every failed connection attempt: with OBS off,
       // the resume loop would announce a "disconnection" every three seconds — a
       // required event, queued, sent up and republished to the control app each time.
@@ -299,7 +376,58 @@ export class ObsController {
       recording,
       streaming,
     })
+    // Tolerant, like the output status: a source list OBS refuses to give must not
+    // prevent driving the scenes.
+    await this.refreshAudioInputs().catch(() => {})
     return this.snapshot()
+  }
+
+  /**
+   * Reads back the sources that carry audio, and their mute state.
+   *
+   * OBS lists every input, video ones included, and has no flag for "carries
+   * audio": asking each for its mute state is what tells them apart — OBS refuses
+   * the question for a source with no audio.
+   */
+  async refreshAudioInputs(): Promise<void> {
+    const { inputs } = (await this.options.transport.call('GetInputList')) as {
+      inputs?: { inputName: string }[]
+    }
+    const found: AudioSource[] = []
+    for (const { inputName } of inputs ?? []) {
+      try {
+        const { inputMuted } = (await this.options.transport.call('GetInputMute', { inputName })) as {
+          inputMuted?: boolean
+        }
+        if (typeof inputMuted === 'boolean') found.push({ name: inputName, muted: inputMuted })
+      } catch {
+        /* no audio on this source: nothing to mute */
+      }
+    }
+    this.publishAudioSources(found)
+  }
+
+  /** The audio sources, as last read from OBS. */
+  audioInputs(): AudioSource[] {
+    return this.audioSources.map((source) => ({ ...source }))
+  }
+
+  hasAudioInput(inputName: string): boolean {
+    return this.audioSources.some((source) => source.name === inputName)
+  }
+
+  /** Mutes or restores a source. The state follows OBS's event, never the request. */
+  async setInputMute(inputName: string, muted: boolean): Promise<void> {
+    if (!this.hasAudioInput(inputName)) {
+      throw new Error(`La source audio « ${inputName} » n'existe pas dans OBS-${this.options.instance}`)
+    }
+    await this.options.transport.call('SetInputMute', { inputName, inputMuted: muted })
+  }
+
+  private publishAudioSources(sources: AudioSource[]): void {
+    if (JSON.stringify(sources) === JSON.stringify(this.audioSources)) return
+    this.audioSources = sources
+    this.options.onEvent?.({ type: 'audio-inputs', inputs: this.audioInputs() })
   }
 
   /**

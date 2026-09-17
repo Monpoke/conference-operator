@@ -58,6 +58,17 @@ import {
  * field, and this repository does not change the protocol version lightly.
  */
 
+/** A message a room wrote to the console. */
+const roomMessageSchema = z.object({
+  id: z.string(),
+  roomId: roomIdSchema,
+  roomName: z.string().nullable(),
+  text: z.string(),
+  level: z.enum(['info', 'warning', 'urgent']),
+  occurredAt: isoDateTimeSchema,
+  receivedAt: isoDateTimeSchema,
+})
+
 /** What a public surface needs to know about a talk. */
 const sessionPreviewSchema = z.object({
   id: sessionIdSchema,
@@ -477,19 +488,17 @@ export const contract = {
     /** Messages reported by the rooms, most recent first. */
     fromRooms: oc
       .input(z.object({ limit: z.number().int().min(1).max(200).default(50) }))
-      .output(
-        z.array(
-          z.object({
-            id: z.string(),
-            roomId: roomIdSchema,
-            roomName: z.string().nullable(),
-            text: z.string(),
-            level: z.enum(['info', 'warning', 'urgent']),
-            occurredAt: isoDateTimeSchema,
-            receivedAt: isoDateTimeSchema,
-          }),
-        ),
-      ),
+      .output(z.array(roomMessageSchema)),
+
+    /**
+     * The same list, pushed: at opening, then each time a room writes.
+     *
+     * The whole list rather than the new message alone: a console that missed a
+     * push during a reconnection catches up on the next one without asking.
+     */
+    watch: oc
+      .input(z.object({ limit: z.number().int().min(1).max(200).default(50) }))
+      .output(eventIterator(z.array(roomMessageSchema))),
   },
 
   /**

@@ -693,3 +693,59 @@ describe('mobile control app commands', () => {
     expect(runtime.state().remoteHolder).toBeNull()
   })
 })
+
+describe('audio sources', () => {
+  it('merges both OBS instances by name', () => {
+    const runtime = makeRuntime()
+
+    expect(
+      runtime.observeAudioInputs('A', [
+        { name: 'Micro cravate', muted: false },
+        { name: 'Ambiance salle', muted: false },
+      ]),
+    ).toBe(true)
+    runtime.observeAudioInputs('B', [{ name: 'Micro cravate', muted: true }])
+
+    // The same microphone on both sides, and the disagreement stays visible.
+    expect(runtime.state().audioInputs).toEqual([
+      { name: 'Micro cravate', muted: { A: false, B: true } },
+      { name: 'Ambiance salle', muted: { A: false, B: null } },
+    ])
+  })
+
+  it("keeps the other instance's sources when one disconnects", () => {
+    const runtime = makeRuntime()
+    runtime.observeAudioInputs('A', [{ name: 'Micro cravate', muted: false }])
+    runtime.observeAudioInputs('B', [{ name: 'Micro cravate', muted: true }])
+
+    runtime.observeAudioInputs('A', [])
+
+    expect(runtime.state().audioInputs).toEqual([{ name: 'Micro cravate', muted: { A: null, B: true } }])
+  })
+
+  it('reports no change when nothing moved', () => {
+    const runtime = makeRuntime()
+    runtime.observeAudioInputs('A', [{ name: 'Micro cravate', muted: false }])
+
+    // The caller sends a heartbeat on a change: repeating the same list must not.
+    expect(runtime.observeAudioInputs('A', [{ name: 'Micro cravate', muted: false }])).toBe(false)
+  })
+
+  it('mutes from the mobile control app, naming who asked', async () => {
+    clockMs = Date.parse(ISSUED_AT)
+    const asked: [string, boolean][] = []
+    const runtime = makeRuntime({
+      setAudioMute: (input: string, muted: boolean) => asked.push([input, muted]),
+    })
+
+    await runtime.applyCommand(
+      command({ type: 'audio.mute', input: 'Micro cravate', muted: true, requestedBy: 'regie@cloudnord.fr' }, 30),
+    )
+
+    expect(asked).toEqual([['Micro cravate', true]])
+    // A microphone cut with nobody at the keyboard reads as a sound failure.
+    const last = runtime.state().notifications.at(-1)
+    expect(last?.text).toContain('Micro cravate coupé')
+    expect(last?.text).toContain('regie@cloudnord.fr')
+  })
+})

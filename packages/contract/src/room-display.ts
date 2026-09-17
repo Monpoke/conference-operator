@@ -9,6 +9,7 @@ import type {
 } from './primitives.js'
 import type { SceneRoleMap, SessionStatus } from './room-state.js'
 import type { Comment } from './wall.js'
+import type { AudioInput } from './primitives.js'
 
 /**
  * What a room says about itself, and what its pages read from it.
@@ -93,6 +94,14 @@ export interface DisplayState {
   recording: boolean
   streaming: boolean
   /**
+   * OBS audio sources, merged across both instances by name.
+   *
+   * In the state rather than in the diagnostics: the mobile control app reads it
+   * from the hub, which only knows what the heartbeat carries. Observed, never
+   * assumed — a mute asked for shows once OBS has confirmed it.
+   */
+  audioInputs: AudioInput[]
+  /**
    * Latest approved messages. Bounded: a wall that scrolls endlessly becomes
    * unreadable from ten metres, and the client's memory does not have to keep
    * everything.
@@ -174,6 +183,14 @@ export interface ObsState {
    */
   simulated: boolean
   /**
+   * The capture runs in the projection's OBS, in the plugin's vertical canvas.
+   *
+   * Said rather than deduced from an empty address: what the control app shows is
+   * not "OBS-B is down" but "there is no OBS-B, and there does not need to be".
+   * Absent — and therefore false — on a room with two instances.
+   */
+  canvas?: boolean
+  /**
    * Scenes actually declared in this instance.
    *
    * Used by the control app's configuration form: picking a scene name from a
@@ -208,6 +225,13 @@ export interface VisibleConfig {
   promptRecordingOnStop: boolean
   /** Scene taken automatically on "Start". `null` = no switch. */
   sceneOnStart: string | null
+  /**
+   * The hub gave this room a stream key.
+   *
+   * Without one, "Diffuser" can only come back as a refusal: the button is not
+   * offered at all rather than lit up for a certain failure.
+   */
+  canStream: boolean
   /**
    * The machine can open a native folder picker.
    *

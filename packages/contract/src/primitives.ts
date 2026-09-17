@@ -91,3 +91,20 @@ export type Connectivity = z.infer<typeof connectivitySchema>
  */
 export const deliverySchema = z.enum(['required', 'best-effort'])
 export type Delivery = z.infer<typeof deliverySchema>
+
+/**
+ * An OBS audio source, and whether it is muted on each instance.
+ *
+ * The rooms feed the same microphones into OBS-A and OBS-B, under the same name:
+ * the source is the unit the operator thinks in, and a mute applies to both. The
+ * state stays per instance all the same — cut in one OBS and not the other is
+ * exactly what has to show, since it is heard in the room and not in the VOD, or
+ * the other way round.
+ *
+ * `null` = the instance does not have this source, or is not connected.
+ */
+export const audioInputSchema = z.object({
+  name: z.string().min(1).max(200),
+  muted: z.object({ A: z.boolean().nullable(), B: z.boolean().nullable() }),
+})
+export type AudioInput = z.infer<typeof audioInputSchema>

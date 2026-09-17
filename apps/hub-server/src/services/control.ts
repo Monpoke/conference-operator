@@ -239,6 +239,8 @@ export function controlView(services: Services, roomId: string, at: number): Con
     sceneRole: status?.sceneRole ?? null,
     recording: status?.recording ?? false,
     streaming: status?.streaming ?? false,
+    // Whether there is one, never which: see `canStream` in the contract.
+    canStream: services.rooms.streamOf(roomId) != null,
     /*
      * `null` as long as the room has not said, and not "Loop" by default: the
      * screen grid would light a button on a guess, in a page whose whole rule is

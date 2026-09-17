@@ -15,6 +15,8 @@ import {
   notifLevelsSchema,
   roomConfigPatchSchema,
   roomConfigSchema,
+  roomStreamPatchSchema,
+  roomStreamSchema,
   roomStatusSchema,
   sessionStateSchema,
   sessionStateViewSchema,
@@ -310,6 +312,24 @@ export const contract = {
           next: sessionPreviewSchema.nullable(),
         }),
       ),
+    /**
+     * Every room's streaming destination. Admin.
+     *
+     * The whole list in one call rather than a room at a time: the setting is
+     * only ever looked at to compare — one room streams, the one next door does
+     * not, and the answer is in the two lines side by side. Fetching them one by
+     * one would give a page that cannot show that.
+     */
+    streams: oc.output(z.array(roomStreamSchema)),
+    /**
+     * Sets a room's streaming destination. Admin.
+     *
+     * The console's gesture, and the only one there is: a room cannot give
+     * itself a key — see `roomConfigPatchSchema` — and nothing in the program
+     * export carries one. It is entered here, once per room, and comes back down
+     * with the configuration at every `sync`.
+     */
+    setStream: oc.input(roomStreamPatchSchema).output(roomStreamSchema),
     /** Room supervision in the admin console. */
     statuses: oc.output(z.array(roomStatusSchema)),
     /**

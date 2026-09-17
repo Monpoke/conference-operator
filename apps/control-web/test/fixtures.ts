@@ -86,6 +86,9 @@ export function config(overrides: Partial<VisibleConfig> = {}): VisibleConfig {
     fileSlug: null,
     relaySourceRoomId: null,
     openFeedbackProjectId: null,
+    // A destination by default: a *complete* configuration is one where the room
+    // can stream, and the tests that exercise its absence say so by overriding.
+    stream: { rtmpUrl: 'rtmp://live.exemple.fr/app' },
     promptRecordingOnStart: true,
     promptRecordingOnStop: true,
     // An installed machine can open a picker; the control app opened in a browser

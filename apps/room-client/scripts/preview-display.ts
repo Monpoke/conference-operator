@@ -115,6 +115,10 @@ const base: DisplayPayload = {
       fileSlug: 'track1',
       relaySourceRoomId: 'track-2-mf-1092',
       openFeedbackProjectId: 'cloud-nord-2026',
+      // A room the hub has given a destination: the preview must show the panel
+      // in the state that has a working « Diffuser », since that is the one it
+      // is looked at to check.
+      stream: { rtmpUrl: 'rtmp://live.exemple.fr/app' },
       promptRecordingOnStart: true,
       promptRecordingOnStop: true,
       sceneOnStart: 'LIVE',

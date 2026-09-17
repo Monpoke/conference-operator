@@ -607,9 +607,42 @@ export class RoomRuntime extends EventEmitter {
         })
         break
       }
+      case 'stream.configure': {
+        /*
+         * The destination set in the console, arriving without waiting for a sync.
+         *
+         * Written to the room's configuration and nowhere else: OBS-B is
+         * configured at the moment "Diffuser" is pressed — see
+         * `RoomApp.startStreaming` — never in advance. That is not laziness. A
+         * running stream cannot change server or key without being cut, so
+         * pushing this into OBS here would either do nothing or interrupt the
+         * talk on air to apply a setting meant for the next one. The next start
+         * picks it up, which is the only moment it can be applied at all.
+         */
+        const settings = this.store.settings()
+        if (settings.config == null) {
+          // Not yet synchronized: there is no configuration to patch. The sync
+          // that follows carries the same value down, so nothing is lost.
+          this.store.markApplied(command.seq, payload.type)
+          return { applied: false, reason: 'unsupported' }
+        }
+
+        this.store.saveSettings({
+          config: {
+            ...settings.config,
+            stream: { rtmpUrl: payload.rtmpUrl, streamKey: payload.streamKey },
+          },
+        })
+        this.notify({
+          level: 'info',
+          // The server, never the key: this text goes to the control app's
+          // notification stack, which is on screen in the room.
+          text: `Diffusion configurée par le hub (${payload.rtmpUrl})`,
+        })
+        break
+      }
       case 'session.override':
       case 'wall.approved':
-      case 'stream.configure':
         // Wired up in later batches; we trace the application so as not to receive
         // them in a loop on every reconnection.
         this.store.markApplied(command.seq, payload.type)

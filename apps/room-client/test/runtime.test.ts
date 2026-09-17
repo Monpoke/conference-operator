@@ -693,3 +693,115 @@ describe('mobile control app commands', () => {
     expect(runtime.state().remoteHolder).toBeNull()
   })
 })
+
+describe('la diffusion réglée depuis le hub', () => {
+  /** A configuration as a `sync` lays it down, with no destination yet. */
+  const seedConfig = (stream: { rtmpUrl: string; streamKey: string } | null = null) => {
+    store.saveSettings({
+      roomId: TRACK_1,
+      config: {
+        id: TRACK_1,
+        name: 'Track #1',
+        obs: {
+          A: { url: 'ws://127.0.0.1:4455', password: null },
+          B: { url: 'ws://127.0.0.1:4456', password: null },
+        },
+        sceneRoles: { A: { LIVE: 'Capture' }, B: { TALK: 'Talk' } },
+        displayPort: 7788,
+        recordingRoot: null,
+        fileSlug: null,
+        stream,
+        relaySourceRoomId: null,
+        openFeedbackProjectId: null,
+        promptRecordingOnStart: true,
+        promptRecordingOnStop: true,
+        sceneOnStart: 'LIVE',
+      },
+    })
+  }
+
+  it('writes the destination into the room\'s configuration', async () => {
+    // Which is all "Diffuser" reads: OBS-B is configured at the moment it is
+    // pressed, never in advance — see `RoomApp.startStreaming`.
+    seedConfig()
+    const runtime = makeRuntime()
+
+    const outcome = await runtime.applyCommand(
+      command({
+        type: 'stream.configure',
+        rtmpUrl: 'rtmp://live.exemple.fr/app',
+        streamKey: 'cle-de-track-1',
+      }),
+    )
+
+    expect(outcome).toEqual({ applied: true })
+    expect(store.settings().config?.stream).toEqual({
+      rtmpUrl: 'rtmp://live.exemple.fr/app',
+      streamKey: 'cle-de-track-1',
+    })
+  })
+
+  it('replaces a destination already in place', async () => {
+    // The gesture this serves: a wrong key corrected while the room is on air.
+    seedConfig({ rtmpUrl: 'rtmp://ancien/app', streamKey: 'ancienne-cle' })
+    const runtime = makeRuntime()
+
+    await runtime.applyCommand(
+      command({ type: 'stream.configure', rtmpUrl: 'rtmp://nouveau/app', streamKey: 'nouvelle' }),
+    )
+
+    expect(store.settings().config?.stream).toEqual({
+      rtmpUrl: 'rtmp://nouveau/app',
+      streamKey: 'nouvelle',
+    })
+  })
+
+  it('touches nothing else in the configuration', async () => {
+    // The command carries a destination, not a configuration: a merge that
+    // rewrote the OBS addresses would undo what was entered in front of the
+    // machines, from a console at the other end of the building.
+    seedConfig()
+    const runtime = makeRuntime()
+
+    await runtime.applyCommand(
+      command({ type: 'stream.configure', rtmpUrl: 'rtmp://live/app', streamKey: 'cle' }),
+    )
+
+    expect(store.settings().config).toMatchObject({
+      displayPort: 7788,
+      sceneOnStart: 'LIVE',
+      obs: { B: { url: 'ws://127.0.0.1:4456' } },
+    })
+  })
+
+  it('does not invent a configuration for a room that has never synchronized', async () => {
+    // There is nothing to patch, and the `sync` that follows carries the same
+    // value down anyway — nothing is lost by declining here.
+    const runtime = makeRuntime()
+
+    const outcome = await runtime.applyCommand(
+      command({ type: 'stream.configure', rtmpUrl: 'rtmp://live/app', streamKey: 'cle' }),
+    )
+
+    expect(outcome).toEqual({ applied: false, reason: 'unsupported' })
+    expect(store.settings().config).toBeNull()
+  })
+
+  it('does not replay on reconnection', async () => {
+    // Traced as applied, like every other command: a backlog replayed on every
+    // reconnection would re-notify the room at each one.
+    seedConfig()
+    const runtime = makeRuntime()
+    const issued = command({
+      type: 'stream.configure',
+      rtmpUrl: 'rtmp://live/app',
+      streamKey: 'cle',
+    })
+
+    expect(await runtime.applyCommand(issued)).toEqual({ applied: true })
+    expect(await runtime.applyCommand(issued)).toEqual({
+      applied: false,
+      reason: 'already-applied',
+    })
+  })
+})

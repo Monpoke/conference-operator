@@ -193,7 +193,11 @@ describe('contract surface', () => {
       // A console gesture: putting a room straight without restarting it, and so
       // without cutting its capture.
       'resync',
+      // The console sets where a room streams, and reads back every room's
+      // destination — never the keys.
+      'setStream',
       'statuses',
+      'streams',
       'sync',
     ])
     // Pairing goes through Better Auth; the contract only carries the business

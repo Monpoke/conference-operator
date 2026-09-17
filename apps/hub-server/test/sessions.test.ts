@@ -6,6 +6,7 @@ import { DEFAULT_VOD_POLICY } from '@conference-operator/contract'
 import { openHubDatabase, type HubDatabase } from '../src/db.js'
 import { SessionStateService, SettingsService } from '../src/services/sessions.js'
 import { RoomService } from '../src/services/rooms.js'
+import { testSecrets } from './helpers/secrets.js'
 
 const program: Program = normalizeProgram(
   JSON.parse(
@@ -28,7 +29,7 @@ let clock: number
 
 beforeEach(() => {
   db = openHubDatabase(':memory:').orm
-  const rooms = new RoomService(db)
+  const rooms = new RoomService(db, testSecrets)
   // Both rooms exist: a session's state references its room, and a foreign key
   // forbids writing an orphan state.
   for (const id of [TRACK_1, 'track-2-mf-1092']) {

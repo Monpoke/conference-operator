@@ -30,6 +30,37 @@ export const obsEndpointSchema = z.object({
   password: z.string().nullable(),
 })
 
+/**
+ * A streaming destination: where OBS-B pushes, and with what key.
+ *
+ * Both halves travel together and are only ever useful together, which is why
+ * they are one object rather than two fields — there is no state of the world
+ * where one of them alone means anything.
+ */
+export const streamTargetSchema = z.object({
+  rtmpUrl: z.string(),
+  streamKey: z.string(),
+})
+export type StreamTarget = z.infer<typeof streamTargetSchema>
+
+/**
+ * What an operator may type as a streaming server.
+ *
+ * Checked at the door rather than in the room: an address typed with a typo
+ * reaches OBS-B, which refuses it in its own words, at the moment the talk
+ * starts, on the machine nobody is watching. Here the console says so while the
+ * cursor is still in the field. Empty is accepted — that is how a destination is
+ * removed — and the three schemes are those OBS knows how to push to.
+ */
+export const streamServerSchema = z
+  .string()
+  .trim()
+  .max(500)
+  .refine(
+    (value) => value === '' || /^(rtmps?|srt):\/\/.+/.test(value),
+    "Adresse attendue en rtmp://, rtmps:// ou srt://",
+  )
+
 export const roomConfigSchema = z.object({
   id: roomIdSchema,
   name: z.string(),
@@ -54,11 +85,15 @@ export const roomConfigSchema = z.object({
    * but filling it in makes the rushes far easier to sort.
    */
   fileSlug: z.string().max(24).nullable().default(null),
-  /** RTMP stream key, pushed by the hub at sync time. */
-  stream: z
-    .object({ rtmpUrl: z.string(), streamKey: z.string() })
-    .nullable()
-    .default(null),
+  /**
+   * Where this room streams, pushed by the hub at sync time.
+   *
+   * `null` means the hub has nothing to give, and the room then offers no
+   * "Diffuser": half a setting — a server with no key, a key with no server —
+   * arrives here as `null` too, because a stream that fails at the moment it is
+   * started is worse than a button that was never lit.
+   */
+  stream: streamTargetSchema.nullable().default(null),
   /**
    * Room whose stream this room may relay (overflow, studio).
    *
@@ -173,6 +208,40 @@ export const roomConfigPatchSchema = z
   })
   .partial()
 export type RoomConfigPatch = z.infer<typeof roomConfigPatchSchema>
+
+/**
+ * A room's streaming settings, **as the console is allowed to see them**.
+ *
+ * The key never comes back, not even to the operator who typed it: a console
+ * left open on a desk, a screen share during a rehearsal, a screenshot pasted
+ * into a ticket — the ways a key that is displayed leaks are all mundane, and
+ * there is nothing to gain from showing it, since the only question asked of the
+ * page is "is there one?". `hasKey` answers that and nothing more.
+ */
+export const roomStreamSchema = z.object({
+  roomId: roomIdSchema,
+  name: z.string(),
+  rtmpUrl: z.string(),
+  hasKey: z.boolean(),
+})
+export type RoomStream = z.infer<typeof roomStreamSchema>
+
+/**
+ * Setting a room's streaming destination, from the console.
+ *
+ * `streamKey` follows the rule the OBS passwords already follow, for the same
+ * reason: **absent means unchanged**. The console does not hold the key — see
+ * `roomStreamSchema` — so it cannot send it back to preserve it, and without
+ * this distinction, correcting a typo in the server address would silently wipe
+ * the key along the way. `null` is the explicit erasure, and it is a separate
+ * gesture with its own button.
+ */
+export const roomStreamPatchSchema = z.object({
+  roomId: roomIdSchema,
+  rtmpUrl: streamServerSchema,
+  streamKey: z.string().trim().max(500).nullable().optional(),
+})
+export type RoomStreamPatch = z.infer<typeof roomStreamPatchSchema>
 
 /**
  * Shape *before* validation: fields with a default are optional there.

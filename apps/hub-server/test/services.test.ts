@@ -8,6 +8,7 @@ import { CommandService } from '../src/services/commands.js'
 import { IngestService } from '../src/services/ingest.js'
 import { DeviceService, RoomService } from '../src/services/rooms.js'
 import { SettingsService } from '../src/services/sessions.js'
+import { testSecrets } from './helpers/secrets.js'
 
 const rawProgram = readFileSync(
   fileURLToPath(new URL('../../../packages/program/test/fixtures/cloudnord-2026.json', import.meta.url)),
@@ -89,7 +90,7 @@ describe('ProgramService', () => {
 
 describe('CommandService', () => {
   it('assigns increasing `seq`s and replays the backlog', () => {
-    const rooms = new RoomService(db)
+    const rooms = new RoomService(db, testSecrets)
     seedRoom(rooms)
     const commands = new CommandService(db)
 
@@ -102,7 +103,7 @@ describe('CommandService', () => {
   })
 
   it('mixes global broadcasts and room commands without breaking the order', () => {
-    const rooms = new RoomService(db)
+    const rooms = new RoomService(db, testSecrets)
     seedRoom(rooms)
     seedRoom(rooms, 'track-2')
     const commands = new CommandService(db)
@@ -125,7 +126,7 @@ describe('CommandService', () => {
   })
 
   it('chains catch-up then real time in the same stream', async () => {
-    const rooms = new RoomService(db)
+    const rooms = new RoomService(db, testSecrets)
     seedRoom(rooms)
     const commands = new CommandService(db)
     const before = commands.publish(TRACK_1, { type: 'scene.force', role: 'HOLD' }, null)
@@ -148,7 +149,7 @@ describe('CommandService', () => {
   })
 
   it('resumes after `sinceSeq` without handing back what is already applied', async () => {
-    const rooms = new RoomService(db)
+    const rooms = new RoomService(db, testSecrets)
     seedRoom(rooms)
     const commands = new CommandService(db)
     const applied = commands.publish(TRACK_1, { type: 'scene.force', role: 'HOLD' }, null)
@@ -166,7 +167,7 @@ describe('CommandService', () => {
 
 describe('IngestService', () => {
   it('absorbs a replayed batch without duplicating', () => {
-    const rooms = new RoomService(db)
+    const rooms = new RoomService(db, testSecrets)
     seedRoom(rooms)
     const ingest = new IngestService(db)
 
@@ -201,7 +202,7 @@ describe('IngestService', () => {
      * both leave in the same batch. Projecting the last event alone lost the
      * recording — a room mid-capture shown as not recording.
      */
-    const rooms = new RoomService(db)
+    const rooms = new RoomService(db, testSecrets)
     seedRoom(rooms)
     const ingest = new IngestService(db)
 
@@ -225,7 +226,7 @@ describe('IngestService', () => {
      * Both were reported by the rooms and stored, and read by nobody: a room whose
      * OBS-A had no LIVE scene, or whose stream was choking, looked healthy.
      */
-    const rooms = new RoomService(db)
+    const rooms = new RoomService(db, testSecrets)
     seedRoom(rooms)
     const ingest = new IngestService(db)
     const status = () => rooms.statuses().find((room) => room.roomId === TRACK_1)!
@@ -258,7 +259,7 @@ describe('IngestService', () => {
      * The mobile control app's return path: without this signal the room's report
      * reaches the hub and stays there until the phone's next poll.
      */
-    const rooms = new RoomService(db)
+    const rooms = new RoomService(db, testSecrets)
     seedRoom(rooms)
     const touched: (string | null)[] = []
     const ingest = new IngestService(db, (roomId) => touched.push(roomId))
@@ -283,7 +284,7 @@ describe('IngestService', () => {
     // anything over would have switched off the links of the only room that had
     // any — which is exactly the state of the development hub: empty event
     // setting, room 1 filled in, two rooms silent.
-    const rooms = new RoomService(db)
+    const rooms = new RoomService(db, testSecrets)
     seedRoom(rooms)
     const settings = new SettingsService(db)
     const room = rooms.get(TRACK_1)!
@@ -299,7 +300,7 @@ describe('IngestService', () => {
   })
 
   it('takes nothing over when the hub already has its project', () => {
-    const rooms = new RoomService(db)
+    const rooms = new RoomService(db, testSecrets)
     seedRoom(rooms)
     const settings = new SettingsService(db)
     settings.update({ openFeedbackProjectId: 'cloud-nord-2026' })
@@ -318,7 +319,7 @@ describe('IngestService', () => {
   it('rewrites nothing on the next start', () => {
     // Idempotence: the takeover runs at every start, and a hub installed six
     // months ago must not go over its rooms every time.
-    const rooms = new RoomService(db)
+    const rooms = new RoomService(db, testSecrets)
     seedRoom(rooms)
     const settings = new SettingsService(db)
     const room = rooms.get(TRACK_1)!
@@ -331,7 +332,7 @@ describe('IngestService', () => {
   })
 
   it('recomposes the takes from the two ends the room reported', () => {
-    const rooms = new RoomService(db)
+    const rooms = new RoomService(db, testSecrets)
     seedRoom(rooms)
     const ingest = new IngestService(db)
 
@@ -377,7 +378,7 @@ describe('IngestService', () => {
   })
 
   it('does not attribute one OBS instance\'s file to the other', () => {
-    const rooms = new RoomService(db)
+    const rooms = new RoomService(db, testSecrets)
     seedRoom(rooms)
     const ingest = new IngestService(db)
 
@@ -413,7 +414,7 @@ describe('IngestService', () => {
     // stacked above the only row that said something. A `started` with no
     // `stopped`, then another `started`: the hub will never hear the first one's
     // stop, and presenting it as active is false.
-    const rooms = new RoomService(db)
+    const rooms = new RoomService(db, testSecrets)
     seedRoom(rooms)
     const ingest = new IngestService(db)
 
@@ -435,7 +436,7 @@ describe('IngestService', () => {
     // The reset erases the bucket and the rooms' disks. Without this gesture, the
     // hub kept the memory of takes whose files no longer exist, and the VOD folder
     // kept listing them — the reset looked like it had no effect.
-    const rooms = new RoomService(db)
+    const rooms = new RoomService(db, testSecrets)
     seedRoom(rooms)
     const ingest = new IngestService(db)
 
@@ -459,7 +460,7 @@ describe('IngestService', () => {
   })
 
   it('discards a malformed event without blocking the others', () => {
-    const rooms = new RoomService(db)
+    const rooms = new RoomService(db, testSecrets)
     seedRoom(rooms)
     const ingest = new IngestService(db)
 
@@ -473,7 +474,7 @@ describe('IngestService', () => {
   })
 
   it('refuses an event stamped for another room', () => {
-    const rooms = new RoomService(db)
+    const rooms = new RoomService(db, testSecrets)
     seedRoom(rooms)
     const outcome = new IngestService(db).push(TRACK_1, [
       envelope('01DDDDDDDDDDDDDDDDDDDDDDDD', 1, { type: 'room.message', text: 'x', level: 'info' }, 'track-2'),
@@ -482,7 +483,7 @@ describe('IngestService', () => {
   })
 
   it('projects the events onto the supervision view', () => {
-    const rooms = new RoomService(db)
+    const rooms = new RoomService(db, testSecrets)
     seedRoom(rooms)
     const ingest = new IngestService(db)
 
@@ -513,7 +514,7 @@ const PAIRING_TTL = 10 * 60_000
 
 describe('DeviceService', () => {
   it('binds a machine to a room and revokes it without touching the account', () => {
-    const rooms = new RoomService(db)
+    const rooms = new RoomService(db, testSecrets)
     seedRoom(rooms)
     const devices = new DeviceService(db, PAIRING_TTL)
 

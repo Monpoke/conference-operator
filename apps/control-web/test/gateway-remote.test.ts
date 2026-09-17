@@ -40,6 +40,7 @@ function view(overrides: Partial<ControlView> = {}): ControlView {
     sceneRole: 'HOLD',
     recording: false,
     streaming: false,
+    canStream: true,
     displayMode: 'loop',
     sceneRoles: ['LIVE', 'HOLD'],
     relaySourceRoomId: null,

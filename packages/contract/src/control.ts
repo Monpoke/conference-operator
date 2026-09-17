@@ -183,6 +183,21 @@ export const controlViewSchema = z.object({
 export type ControlView = z.infer<typeof controlViewSchema>
 
 /**
+ * "Still here, nothing new" — what `regie.watch` sends on a floor tick when the
+ * view has not moved.
+ *
+ * The page needs a sign of life to tell a quiet room from a half-open socket,
+ * and a browser does not see WebSocket pings. Re-sending the whole view for
+ * that — the day's slots included — cost a full payload every ten seconds per
+ * open phone.
+ */
+export const controlWatchUnchangedSchema = z.object({ unchanged: z.literal(true) })
+
+/** What `regie.watch` emits: a view that differs from the last one, or a sign of life. */
+export const controlWatchEventSchema = z.union([controlViewSchema, controlWatchUnchangedSchema])
+export type ControlWatchEvent = z.infer<typeof controlWatchEventSchema>
+
+/**
  * The gestures a mobile control app can make.
  *
  * The lifecycle goes through here and not directly through `sessions.*`, even

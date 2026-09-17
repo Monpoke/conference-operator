@@ -188,10 +188,11 @@ export interface RemoteGatewayOptions {
   /**
    * The pushed views: opens one stream, yields until it ends or fails.
    *
-   * The gateway reopens it, and polls in the meantime. Absent, the gateway only
-   * polls — which is what the tests of the poll rely on.
+   * `null` is the hub's "nothing new": proof the stream lives, with nothing to
+   * repaint. The gateway reopens it, and polls in the meantime. Absent, the
+   * gateway only polls — which is what the tests of the poll rely on.
    */
-  watch?: (signal: AbortSignal) => AsyncIterable<ControlView>
+  watch?: (signal: AbortSignal) => AsyncIterable<ControlView | null>
   /** Injectable, to test with no real clock and no real timer. */
   now?: () => number
   wait?: (ms: number) => Promise<void>
@@ -348,6 +349,8 @@ export function remoteGateway(options: RemoteGatewayOptions): ControlGateway {
         const result = await Promise.race([iterator.next(), silenced])
         if (result.done === true) return
         arm()
+        // Alive, and the last view still holds: nothing to repaint.
+        if (result.value == null) continue
         stopPolling()
         apply(result.value)
       }

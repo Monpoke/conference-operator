@@ -1410,9 +1410,28 @@ export const router = os.router({
 
         try {
           let woken = changes.next()
+          /** The last view sent, as `viewSignature` spells it. */
+          let sent: string | null = null
+          let reason: 'open' | 'change' | 'floor' = 'open'
           while (!stop.signal.aborted) {
             renewIfHolder(context, input.roomId)
-            yield read()
+            const view = read()
+            const signature = viewSignature(view)
+            /*
+             * Only what moved goes out.
+             *
+             * A wake-up that changes nothing visible sends nothing; a floor tick
+             * that changes nothing sends a sign of life, so the page can tell a
+             * quiet room from a dead socket. The time-driven fields — target,
+             * conference, offline by silence — are recomputed on every turn, so
+             * a floor tick that moves them still sends the view.
+             */
+            if (signature !== sent) {
+              sent = signature
+              yield view
+            } else if (reason === 'floor') {
+              yield { unchanged: true as const }
+            }
             const outcome = await Promise.race([
               woken.then((result) => (result.done === true ? 'done' : 'change')),
               floor(CONTROL_WATCH_FLOOR_MS, stop.signal),
@@ -1420,6 +1439,7 @@ export const router = os.router({
             if (outcome === 'done') return
             // A floor tick leaves the pending wake-up where it is, for the next turn.
             if (outcome === 'change') woken = changes.next()
+            reason = outcome
           }
         } finally {
           signal?.removeEventListener('abort', forward)
@@ -1746,6 +1766,25 @@ function renewIfHolder(context: HubContext, roomId: string): void {
     context.services.regie.hold(roomId, lock.holder, lock.holderId, false)
   }
 }
+
+/**
+ * What a view shows, stripped of what moves on its own.
+ *
+ * `serverTime` changes on every read, `lastSeenAt` on every report, and the
+ * lock's `lastSeenAt` / `expiresAt` on every renewal — the holder's own stream
+ * renews it each turn. The page reads none of them to paint: it keeps its clock
+ * from the last `serverTime`, and connectivity says whether the room answers.
+ */
+function viewSignature(view: WatchedView): string {
+  return JSON.stringify({
+    ...view,
+    serverTime: null,
+    lastSeenAt: null,
+    lock: view.lock == null ? null : { ...view.lock, lastSeenAt: null, expiresAt: null },
+  })
+}
+
+type WatchedView = ReturnType<typeof controlView>
 
 /** Resolves after `ms`, or at once when the stream ends — and leaves no timer behind. */
 function floor(ms: number, signal: AbortSignal): Promise<'floor'> {

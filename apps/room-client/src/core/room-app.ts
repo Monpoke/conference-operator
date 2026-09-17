@@ -1950,6 +1950,11 @@ export class RoomApp implements ControlTarget {
     this.runtime.dismissNotification(id)
   }
 
+  /** Empties the log read in the control app's Diagnostic panel. */
+  clearLog(): void {
+    this.store.clearLogs()
+  }
+
   /**
    * Records a room setting, then puts the room back in agreement with it.
    *

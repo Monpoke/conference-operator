@@ -6,6 +6,9 @@ import {
   type RoomConfig,
   type RoomConfigInput,
   type RoomStatus,
+  type RoomStream,
+  type RoomStreamPatch,
+  type StreamTarget,
   sceneRoleSchema,
   type SceneRole,
 } from '@conference-operator/contract'
@@ -17,6 +20,7 @@ import {
   sessionFeedback,
   sessionOverride,
 } from '@conference-operator/db/hub'
+import type { SecretBox } from '../secrets.js'
 import type { HubDatabase } from '../db.js'
 
 /**
@@ -54,11 +58,18 @@ function rolesOf(json: string | null | undefined): SceneRole[] {
  */
 function served(configJson: string): RoomConfig {
   const config = roomConfigSchema.parse(JSON.parse(configJson))
-  return { ...config, trackId: config.trackId ?? config.id }
+  // `stream` is deliberately blanked, not read: it lives in its own columns —
+  // the key encrypted — and `configJson` must never become a second, plaintext
+  // copy of it. `RoomService.streamOf` is the one way back to the real value,
+  // and the `sync` handler is the one caller.
+  return { ...config, trackId: config.trackId ?? config.id, stream: null }
 }
 
 export class RoomService {
-  constructor(private readonly db: HubDatabase) {}
+  constructor(
+    private readonly db: HubDatabase,
+    private readonly secrets: SecretBox,
+  ) {}
 
   upsert(input: RoomConfigInput): void {
     // Normalized on write: what is stored already carries every default.
@@ -66,7 +77,11 @@ export class RoomService {
     const values = {
       id: config.id,
       name: config.name,
-      configJson: JSON.stringify(config),
+      // Stripped on the way in, as `served` strips it on the way out. An
+      // `upsert` built from a config that has been round-tripped through `sync`
+      // would otherwise carry a stream key in clear into `config_json` — the one
+      // place this whole column pair exists to keep it out of.
+      configJson: JSON.stringify({ ...config, stream: null }),
     }
     this.db
       .insert(room)
@@ -130,6 +145,80 @@ export class RoomService {
   get(roomId: string): RoomConfig | null {
     const row = this.db.select().from(room).where(eq(room.id, roomId)).get()
     return row == null ? null : served(row.configJson)
+  }
+
+  /**
+   * Where a room streams, key in clear. **For that room and no other.**
+   *
+   * Kept apart from `get` on purpose: everything else about a room is shown in
+   * the console, logged, and passed between services, and a stream key that rode
+   * along inside `RoomConfig` would end up in all three without anyone having
+   * decided it should. Here the only caller is the `sync` handler, which is
+   * bounded to the calling room by `roomOnly` — so reviewing "who can read a
+   * key" is reading the callers of this one method.
+   *
+   * `null` unless **both** halves are there. A room handed a server with no key
+   * lights up "Diffuser" and fails on the click, in front of the room, with the
+   * talk starting; one handed `null` never offers the button at all. Half a
+   * setting is not a usable setting, and that is decided here, once, rather than
+   * discovered in OBS.
+   */
+  streamOf(roomId: string): StreamTarget | null {
+    const row = this.db.select().from(room).where(eq(room.id, roomId)).get()
+    if (row == null) return null
+
+    const rtmpUrl = (row.streamRtmpUrl ?? '').trim()
+    // A key that will not decrypt reads as absent — see `createSecretBox`.
+    const streamKey = row.streamKeyEnc == null ? null : this.secrets.open(row.streamKeyEnc)
+    if (rtmpUrl === '' || streamKey == null || streamKey === '') return null
+    return { rtmpUrl, streamKey }
+  }
+
+  /** Every room's destination, **without the keys**: what the console may see. */
+  streams(): RoomStream[] {
+    return this.db
+      .select()
+      .from(room)
+      .orderBy(asc(room.name))
+      .all()
+      .map((row) => ({
+        roomId: row.id,
+        name: row.name,
+        rtmpUrl: row.streamRtmpUrl ?? '',
+        // Decrypted, not merely present: a row sealed with a secret that has
+        // since been rotated is not a key the room can use, and announcing one
+        // here would leave an operator hunting a stream that never starts.
+        hasKey: row.streamKeyEnc != null && this.secrets.open(row.streamKeyEnc) != null,
+      }))
+  }
+
+  /**
+   * Sets a room's destination. Returns what the console may see of the result.
+   *
+   * `streamKey` absent = unchanged, `null` or empty = erased — see
+   * `roomStreamPatchSchema`. The column is touched only when the patch says
+   * something about it, which is what lets the server address be corrected
+   * without the key having to be retyped from the sheet it came on.
+   */
+  setStream(patch: RoomStreamPatch): RoomStream | null {
+    const row = this.db.select().from(room).where(eq(room.id, patch.roomId)).get()
+    if (row == null) return null
+
+    const rtmpUrl = patch.rtmpUrl.trim()
+    const streamKeyEnc =
+      patch.streamKey === undefined
+        ? row.streamKeyEnc
+        : patch.streamKey == null || patch.streamKey === ''
+          ? null
+          : this.secrets.seal(patch.streamKey)
+
+    this.db
+      .update(room)
+      .set({ streamRtmpUrl: rtmpUrl === '' ? null : rtmpUrl, streamKeyEnc })
+      .where(eq(room.id, patch.roomId))
+      .run()
+
+    return { roomId: row.id, name: row.name, rtmpUrl, hasKey: streamKeyEnc != null }
   }
 
   /**

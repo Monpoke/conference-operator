@@ -447,6 +447,49 @@ export const router = os.router({
       return next
     }),
     /**
+     * Every room's streaming destination — **without the keys**.
+     *
+     * `room:read`, like `rooms.list`: knowing that a room has a destination set,
+     * and which server it points at, is supervision. Changing it is not, and
+     * goes through `setStream` below.
+     */
+    streams: os.rooms.streams.use(operatorCan('room:read')).handler(({ context }) =>
+      context.services.rooms.streams(),
+    ),
+
+    /**
+     * Sets a room's streaming destination, from the console.
+     *
+     * Then tells the room, rather than letting it find out. A `sync` carries the
+     * setting down on its own, but only at the next heartbeat, and the gesture
+     * this serves is someone fixing a wrong key while the room is on air — those
+     * ten seconds are the difference between a correction and a wait with
+     * nothing to say whether it took. `stream.configure` is the downstream
+     * command for exactly that, and a room offline at this instant picks it up
+     * on reconnection, like every other command.
+     *
+     * Nothing is published when the setting is incomplete: there is nothing to
+     * configure with half a destination, and an OBS pointed at an empty server
+     * would lose the one it already had.
+     */
+    setStream: os.rooms.setStream.use(operatorCan('room:manage')).handler(({ input, context }) => {
+      const updated = context.services.rooms.setStream(input)
+      if (updated == null) {
+        throw new ORPCError('NOT_FOUND', { message: `Salle inconnue : ${input.roomId}` })
+      }
+
+      const target = context.services.rooms.streamOf(input.roomId)
+      if (target != null) {
+        context.services.commands.publish(
+          input.roomId,
+          { type: 'stream.configure', rtmpUrl: target.rtmpUrl, streamKey: target.streamKey },
+          null,
+        )
+      }
+      return updated
+    }),
+
+    /**
      * Read-only: the control app shows the state of the other rooms.
      */
     statuses: os.rooms.statuses.use(roomOrOperatorCan('room:read')).handler(({ context }) =>
@@ -506,6 +549,10 @@ export const router = os.router({
         room: {
           ...room,
           openFeedbackProjectId: filled(settings.openFeedbackProjectId),
+          // The one place a stream key leaves the hub. `roomOnly` has already
+          // bounded `context.roomId` to the caller, so a room reads its own and
+          // there is no shape of this call that reads another's.
+          stream: context.services.rooms.streamOf(context.roomId),
         },
         serverTime: nowIso(context),
         simulatedClock: context.services.clock.simulated,

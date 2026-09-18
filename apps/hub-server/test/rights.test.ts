@@ -96,6 +96,137 @@ describe('exchanging the room token', () => {
   })
 })
 
+describe('diffusion, de la console à la salle', () => {
+  const asOperator = (path: string, input: unknown) => rpc(path, input, operatorToken)
+  const asRoom = (path: string, input: unknown) => rpc(path, input, roomToken)
+
+  /** What the room receives of its own configuration at `sync`. */
+  const syncedStream = async () => {
+    const result = await asRoom('rooms/sync', { since: null })
+    return (result.body.json as unknown as {
+      room: { stream: { rtmpUrl: string; streamKey: string } | null }
+    }).room.stream
+  }
+
+  it('sends the console setting all the way down to the room', async () => {
+    // The whole point of the feature, in one pass: nothing is set, the operator
+    // sets it, the room gets it — key included, since it is its own.
+    expect(await syncedStream()).toBeNull()
+
+    const saved = await asOperator('rooms/setStream', {
+      roomId: TRACK_1,
+      rtmpUrl: 'rtmp://live.exemple.fr/app',
+      streamKey: 'cle-de-track-1',
+    })
+    expect(saved.status).toBe(200)
+
+    expect(await syncedStream()).toEqual({
+      rtmpUrl: 'rtmp://live.exemple.fr/app',
+      streamKey: 'cle-de-track-1',
+    })
+  })
+
+  it('tells the room without waiting for its next heartbeat', async () => {
+    // A key corrected while the room is on air must not wait ten seconds with
+    // nothing to say whether it took. The downstream command carries it, and a
+    // room that is offline right now picks it up on reconnection.
+    await asOperator('rooms/setStream', {
+      roomId: TRACK_1,
+      rtmpUrl: 'rtmp://live.exemple.fr/app',
+      streamKey: 'cle-de-track-1',
+    })
+
+    const backlog = hub.services.commands.backlog(TRACK_1, 0)
+    expect(backlog.map((command) => command.payload.type)).toContain('stream.configure')
+    expect(backlog.at(-1)?.payload).toMatchObject({
+      type: 'stream.configure',
+      rtmpUrl: 'rtmp://live.exemple.fr/app',
+      streamKey: 'cle-de-track-1',
+    })
+  })
+
+  it('publishes nothing while the setting is incomplete', async () => {
+    // There is nothing to configure with half a destination, and an OBS pointed
+    // at an empty server would lose the one it already had.
+    await asOperator('rooms/setStream', { roomId: TRACK_1, rtmpUrl: 'rtmp://live/app' })
+
+    const types = hub.services.commands.backlog(TRACK_1, 0).map((command) => command.payload.type)
+    expect(types).not.toContain('stream.configure')
+    expect(await syncedStream()).toBeNull()
+  })
+
+  it('never shows the key back to the console', async () => {
+    await asOperator('rooms/setStream', {
+      roomId: TRACK_1,
+      rtmpUrl: 'rtmp://live.exemple.fr/app',
+      streamKey: 'cle-de-track-1',
+    })
+
+    const listed = await asOperator('rooms/streams', {})
+    const body = JSON.stringify(listed.body)
+    expect(body).not.toContain('cle-de-track-1')
+    expect(listed.body.json as unknown as unknown[]).toContainEqual(
+      expect.objectContaining({
+        roomId: TRACK_1,
+        rtmpUrl: 'rtmp://live.exemple.fr/app',
+        hasKey: true,
+      }),
+    )
+
+    // Nor through the full configuration, which is the same page's other call.
+    const rooms = await asOperator('rooms/list', {})
+    expect(JSON.stringify(rooms.body)).not.toContain('cle-de-track-1')
+  })
+
+  it('gives a room its own key and no other', async () => {
+    // `roomOnly` binds the target to the token: there is no shape of `sync` that
+    // reads a neighbour's key, and this is what says so.
+    await asOperator('rooms/setStream', {
+      roomId: TRACK_2,
+      rtmpUrl: 'rtmp://live.exemple.fr/deux',
+      streamKey: 'cle-de-track-2',
+    })
+
+    const result = await asRoom('rooms/sync', { since: null })
+    expect(JSON.stringify(result.body)).not.toContain('cle-de-track-2')
+    expect(await syncedStream()).toBeNull()
+  })
+
+  it('refuses an address that is not a streaming address', async () => {
+    // Checked at the door: a typo that gets through is only discovered by OBS,
+    // in the room, at the moment the talk starts.
+    const result = await asOperator('rooms/setStream', {
+      roomId: TRACK_1,
+      rtmpUrl: 'https://live.exemple.fr/app',
+      streamKey: 'cle',
+    })
+
+    expect(result.status).toBe(400)
+    expect(await syncedStream()).toBeNull()
+  })
+
+  it('is not open to a room, in either direction', async () => {
+    // A room neither reads the list nor gives itself a key: the setting comes
+    // down from the hub, and never the other way.
+    expect((await asRoom('rooms/streams', {})).status).toBe(403)
+    expect(
+      (await asRoom('rooms/setStream', {
+        roomId: TRACK_1,
+        rtmpUrl: 'rtmp://ailleurs/live',
+        streamKey: 'volee',
+      })).status,
+    ).toBe(403)
+  })
+
+  it('does not set a room that does not exist', async () => {
+    const result = await asOperator('rooms/setStream', {
+      roomId: 'salle-inconnue',
+      rtmpUrl: 'rtmp://live/app',
+    })
+    expect(result.status).toBe(404)
+  })
+})
+
 describe('what a room can do', () => {
   const asRoom = (path: string, input: unknown) => rpc(path, input, roomToken)
 

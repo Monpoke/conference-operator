@@ -2044,6 +2044,10 @@ export class RoomApp implements ControlTarget {
       promptRecordingOnStart: config.promptRecordingOnStart,
       promptRecordingOnStop: config.promptRecordingOnStop,
       sceneOnStart: config.sceneOnStart,
+      // The key dropped on the way out, like the OBS passwords just above: the
+      // hub sent it so that OBS-B can be configured, not so that it can be
+      // displayed.
+      stream: config.stream == null ? null : { rtmpUrl: config.stream.rtmpUrl },
       canBrowse: this.options.chooseFolder != null,
     }
   }

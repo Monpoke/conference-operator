@@ -3,6 +3,7 @@ import { openHubDatabase, type HubDatabase } from '../src/db.js'
 import { QuestionService, WallService } from '../src/services/wall.js'
 import { RateLimiter } from '../src/services/rate-limit.js'
 import { RoomService } from '../src/services/rooms.js'
+import { testSecrets } from './helpers/secrets.js'
 
 const TRACK_1 = 'track-1-teilhard-de-chardin'
 
@@ -12,7 +13,7 @@ let questions: QuestionService
 
 beforeEach(() => {
   db = openHubDatabase(':memory:').orm
-  new RoomService(db).upsert({
+  new RoomService(db, testSecrets).upsert({
     id: TRACK_1,
     name: 'Track #1',
     trackId: TRACK_1,

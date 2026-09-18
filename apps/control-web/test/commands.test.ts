@@ -260,9 +260,12 @@ describe('captation', () => {
   function mountPanel(
     recording: ControlDiagnostics['recording'] | null,
     streaming = false,
+    // A room the hub has given a destination, unless a test says otherwise:
+    // that is the ordinary state, and the absence is what deserves the override.
+    stream: { rtmpUrl: string } | null | undefined = { rtmpUrl: 'rtmp://live/app' },
   ): ReturnType<typeof mount> {
     return mount(CapturePanel, {
-      props: { recording, streaming, obs: null, realMs: 61_000, roomMs: 61_000 },
+      props: { recording, streaming, obs: null, realMs: 61_000, roomMs: 61_000, stream },
     })
   }
 
@@ -373,5 +376,47 @@ describe('captation', () => {
       { action: 'stream.stop' },
       { action: 'stream.start' },
     ])
+  })
+
+  it('does not offer to stream a room the hub gave no destination', async () => {
+    /*
+     * The setting lives on the hub, in the console. Without this, the room finds
+     * out it is missing by pressing the button — in front of the audience, with
+     * the talk starting, and OBS answering in its own words to a machine nobody
+     * is watching. The refusal is in the handler too, not only on the attribute:
+     * the button is also reachable from the page's keyboard shortcuts.
+     */
+    const calls = stubFetch()
+    const wrapper = mountPanel(null, false, null)
+
+    expect(wrapper.get('#btn-stream').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('#btn-stream').attributes('title')).toContain('hub')
+
+    await wrapper.get('#btn-stream').trigger('click')
+    await flushPromises()
+    expect(calls).toEqual([])
+  })
+
+  it('still allows a running stream to be cut once the destination is gone', async () => {
+    // A button that greyed out while on air would leave the room with no way to
+    // stop what is going out.
+    const calls = stubFetch()
+
+    await mountPanel(null, true, null).get('#btn-stream').trigger('click')
+    await flushPromises()
+
+    expect(calls.map((call) => call.body)).toEqual([{ action: 'stream.stop' }])
+  })
+
+  it('does not grey the button out on a configuration it has not received', async () => {
+    // `undefined` is "not known", not "none": the remote page does not carry the
+    // room's configuration, and refusing on an absence would refuse a stream that
+    // is perfectly well set up.
+    const calls = stubFetch()
+
+    await mountPanel(null, false, undefined).get('#btn-stream').trigger('click')
+    await flushPromises()
+
+    expect(calls.map((call) => call.body)).toEqual([{ action: 'stream.start' }])
   })
 })

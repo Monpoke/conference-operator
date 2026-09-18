@@ -42,6 +42,12 @@ export const room = sqliteTable(
     id: text('id').primaryKey(),
     name: text('name').notNull(),
     configJson: text('config_json').notNull(),
+    /**
+     * Streaming server (`rtmp://…/live`), in clear: it is not a secret, it is
+     * read back in the console to be checked, and an operator who cannot see the
+     * address they typed cannot tell a wrong host from a wrong key.
+     */
+    streamRtmpUrl: text('stream_rtmp_url'),
     /** RTMP key encrypted at rest; leaves the hub only towards its own room. */
     streamKeyEnc: text('stream_key_enc'),
     createdAt: text('created_at').notNull().default(now),

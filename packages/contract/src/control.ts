@@ -154,6 +154,17 @@ export const controlViewSchema = z.object({
   sceneRole: sceneRoleSchema.nullable(),
   recording: z.boolean(),
   streaming: z.boolean(),
+  /**
+   * The hub holds a full destination for this room.
+   *
+   * Without it there is no "Diffuser" on the phone either. The remote page had
+   * no way to know: the stream key travels only towards its own room, so a
+   * mobile control app offered the button to every room and discovered the
+   * missing setting through a command that left, was applied, and failed inside
+   * OBS with nothing coming back up. A boolean is the whole of what the phone
+   * needs, and the whole of what it may be told.
+   */
+  canStream: z.boolean(),
 
   /**
    * What the room is displaying, or `null` if it has not said yet.

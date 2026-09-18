@@ -10,9 +10,9 @@ namespace: conference-operator
 resources:
   - namespace.yaml
   - configmap.yaml
-  - pvc.yaml
-  - deployment.yaml
+  - statefulset.yaml
   - service.yaml
+  - service-headless.yaml
   - ingress.yaml
 
 # The version deployed, in one place. `newTag` is what a release changes:

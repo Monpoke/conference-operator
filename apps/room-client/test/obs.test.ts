@@ -338,17 +338,48 @@ describe('state observed on connection', () => {
 })
 
 describe('audio sources', () => {
+  /** How OBS routes a source, beyond the mute state the panel shows. */
+  interface Routing {
+    /** The sources in the scene. Defaults to every source declared. */
+    inScene?: string[]
+    /** The global devices, as `GetSpecialInputs` names them. */
+    specials?: string[]
+    /** Per source, its audio tracks; absent means the six of a normal source. */
+    tracks?: Record<string, Record<string, boolean>>
+    /** Per source, its settings — `device_id: 'disabled'` is the one that counts. */
+    settings?: Record<string, Record<string, unknown>>
+    /** Requests this OBS refuses, as an obs-websocket too old would. */
+    refuses?: string[]
+  }
+
   /** An OBS with inputs: `null` = a source with no audio, which OBS refuses to answer about. */
-  function audioObs(sources: Record<string, boolean | null>) {
+  function audioObs(sources: Record<string, boolean | null>, routing: Routing = {}) {
     const handlers = new Map<string, ((payload: unknown) => void)[]>()
     const calls: { request: string; args?: Record<string, unknown> }[] = []
+    const inScene = routing.inScene ?? Object.keys(sources)
     const transport: ObsTransport = {
       connect: vi.fn(async () => {}),
       disconnect: vi.fn(async () => {}),
       call: (async (request: string, args?: Record<string, unknown>) => {
         calls.push({ request, args })
+        if (routing.refuses?.includes(request) === true) throw new Error('NotSupported')
         if (request === 'GetSceneList') {
           return { currentProgramSceneName: 'Scene', scenes: [{ sceneName: 'Scene' }] }
+        }
+        if (request === 'GetSceneItemList') {
+          return { sceneItems: inScene.map((sourceName) => ({ sourceName, isGroup: false })) }
+        }
+        if (request === 'GetSpecialInputs') {
+          // OBS always answers the six slots, `null` for those left on "Disabled".
+          const [desktop1, mic1] = routing.specials ?? []
+          return { desktop1: desktop1 ?? null, desktop2: null, mic1: mic1 ?? null }
+        }
+        if (request === 'GetInputAudioTracks') {
+          const tracks = routing.tracks?.[args!.inputName as string]
+          return { inputAudioTracks: tracks ?? { '1': true, '2': false } }
+        }
+        if (request === 'GetInputSettings') {
+          return { inputSettings: routing.settings?.[args!.inputName as string] ?? {} }
         }
         if (request === 'GetInputList') {
           return { inputs: Object.keys(sources).map((inputName) => ({ inputName })) }
@@ -435,5 +466,85 @@ describe('audio sources', () => {
 
     expect(obs.controller.audioInputs()).toEqual([])
     expect(obs.controller.hasAudioInput('Micro cravate')).toBe(false)
+  })
+
+  it('leaves out a source that is in no scene', async () => {
+    // A source taken out of every scene is heard nowhere: a mute button for it
+    // promises something it cannot do, and it hides the microphones in the list.
+    const obs = audioObs(SOURCES, { inScene: ['Micro cravate'] })
+    await obs.controller.connect()
+
+    expect(obs.controller.audioInputs()).toEqual([{ name: 'Micro cravate', muted: false }])
+    expect(obs.controller.hasAudioInput('Micro main')).toBe(false)
+  })
+
+  it('keeps the global devices, which belong to no scene', async () => {
+    const obs = audioObs(SOURCES, { inScene: [], specials: ['Micro main'] })
+    await obs.controller.connect()
+
+    expect(obs.controller.audioInputs()).toEqual([{ name: 'Micro main', muted: true }])
+  })
+
+  it('leaves out a source whose every audio track is unticked', async () => {
+    const obs = audioObs(SOURCES, {
+      tracks: { 'Micro main': { '1': false, '2': false } },
+    })
+    await obs.controller.connect()
+
+    expect(obs.controller.audioInputs()).toEqual([{ name: 'Micro cravate', muted: false }])
+  })
+
+  it('leaves out a capture device left on "Disabled"', async () => {
+    const obs = audioObs(SOURCES, {
+      settings: { 'Micro main': { device_id: 'disabled' } },
+    })
+    await obs.controller.connect()
+
+    expect(obs.controller.audioInputs()).toEqual([{ name: 'Micro cravate', muted: false }])
+  })
+
+  it('hides nothing when OBS refuses the routing questions', async () => {
+    // An obs-websocket too old to know these requests must not empty the panel:
+    // an unanswered question is not a reason to take a microphone away.
+    const obs = audioObs(SOURCES, { refuses: ['GetSpecialInputs', 'GetInputAudioTracks'] })
+    await obs.controller.connect()
+
+    expect(obs.controller.audioInputs()).toEqual([
+      { name: 'Micro cravate', muted: false },
+      { name: 'Micro main', muted: true },
+    ])
+  })
+
+  it('re-reads the sources when a scene gains or loses an item', async () => {
+    const obs = audioObs(SOURCES)
+    await obs.controller.connect()
+    const before = obs.calls.filter((call) => call.request === 'GetInputList').length
+
+    obs.emit('SceneItemRemoved', { sceneName: 'Scene', sourceName: 'Micro main' })
+    await vi.waitFor(() =>
+      expect(obs.calls.filter((call) => call.request === 'GetInputList').length).toBeGreaterThan(
+        before,
+      ),
+    )
+  })
+
+  it('only meters the sources it kept', async () => {
+    // The VU meters sit right next to the panel: OBS meters every source that
+    // carries audio, and the ones just filtered out came back through that door.
+    const obs = audioObs(SOURCES, { inScene: ['Micro cravate'] })
+    await obs.controller.connect()
+
+    obs.emit('InputVolumeMeters', {
+      inputs: [
+        { inputName: 'Micro cravate', inputLevelsMul: [[0.5, 0.6]] },
+        { inputName: 'Micro main', inputLevelsMul: [[0.5, 0.6]] },
+      ],
+    })
+
+    const levels = obs.events.filter(
+      (event): event is { type: 'audio'; inputs: { name: string }[] } => event.type === 'audio',
+    )
+    expect(levels).toHaveLength(1)
+    expect(levels[0]!.inputs.map((input) => input.name)).toEqual(['Micro cravate'])
   })
 })

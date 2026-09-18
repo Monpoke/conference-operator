@@ -51,7 +51,12 @@ export function openHubDatabase(path: string): OpenHubDbResult {
 function explainMigrationFailure(cause: unknown, path: string): Error {
   const message = String((cause as { cause?: { message?: string } })?.cause?.message ?? '')
 
-  if (/already exists/i.test(message)) {
+  // `duplicate column name` is the same accident seen on an `ALTER TABLE … ADD`
+  // rather than a `CREATE TABLE`, and it has a second cause worth naming: two
+  // branches that each generated a migration for the same column. The database
+  // then carries the column under one branch's timestamp, and the other's
+  // migration replays — nothing is wrong with the file, the numbering diverged.
+  if (/already exists|duplicate column name/i.test(message)) {
     return new Error(
       [
         `Migration impossible : la base ${path} ne reconnaît pas les migrations du dépôt.`,
@@ -63,6 +68,12 @@ function explainMigrationFailure(cause: unknown, path: string): Error {
         '',
         "Si le schéma a réellement évolué, la migration doit s'ajouter, jamais remplacer :",
         '    pnpm --filter @conference-operator/db generate:hub && pnpm --filter @conference-operator/db seal',
+        '',
+        "L'autre cause, sur une base qu'on ne vient pas de créer : deux branches ont chacune",
+        'généré une migration pour la même colonne. La base porte celle qui a tourné en',
+        "premier, l'autre se rejoue. Les fichiers sont bons, c'est la numérotation qui a",
+        "divergé — comparer les journaux des deux branches avant de toucher à quoi que ce soit :",
+        '    packages/db/migrations/hub/meta/_journal.json',
         '',
         'En dernier recours seulement, et seulement si cette base est jetable :',
         `    rm -rf ${dirname(path)}`,

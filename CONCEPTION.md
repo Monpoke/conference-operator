@@ -1167,6 +1167,51 @@ VOD » du ⚙ ne déplace rien ; il dit seulement où la régie va *relire* ce q
 
 C'est aussi OBS-B qui alimente les vumètres de la régie.
 
+### La diffusion se règle sur le hub, salle par salle
+
+Console → **Réglages** → panneau **Diffusion** : une ligne par salle, un serveur
+et une clé. C'est le seul endroit où cela se saisit, et c'est délibéré — une clé
+de diffusion tapée sur la machine de la salle est une clé tapée vingt-sept fois,
+dont on ne sait plus, le matin, laquelle est la bonne. Le ⚙ de la régie ne
+propose pas le champ et le correctif `rooms.configure` ne l'accepte pas : la clé
+descend du hub vers sa salle, jamais l'inverse.
+
+**La clé ne remonte jamais.** La console reçoit « il y en a une », rien de plus :
+un écran resté ouvert sur un bureau, un partage d'écran pendant une répétition,
+une capture collée dans un ticket — les façons dont une clé affichée fuit sont
+toutes banales, et la page n'a aucune question à poser à laquelle la clé
+répondrait. Conséquence directe : **un champ clé laissé vide veut dire
+« inchangée »**. Corriger une faute de frappe dans l'adresse ne l'efface donc
+pas — l'effacer est un autre geste, avec sa confirmation, parce qu'il est
+irréversible depuis la console.
+
+**En base**, l'adresse est en clair et la clé chiffrée (AES-256-GCM, clé dérivée
+de `BETTER_AUTH_SECRET`). Ce que cela achète est étroit et mérite d'être dit :
+une copie de `hub.db` — une sauvegarde qui circule, un instantané de volume, le
+disque d'une machine réformée — ne livre pas les clés de diffusion de toutes les
+salles. Cela n'achète rien contre qui détient déjà le secret du hub. Corollaire
+qu'il vaut mieux connaître avant le jour J : **une rotation de
+`BETTER_AUTH_SECRET` rend les clés illisibles**. Le hub ne refuse pas de
+démarrer pour autant — il lit « pas de clé », la console affiche le champ vide,
+on ressaisit. Un hub qui tomberait là-dessus emporterait l'événement pour une
+clé RTMP.
+
+**Un réglage à moitié n'en est pas un.** Un serveur sans clé, une clé sans
+serveur : la salle reçoit `null` et n'offre pas « Diffuser ». Un bouton qui
+échoue au clic, devant la salle, au moment où le talk commence, est pire qu'un
+bouton qui n'a jamais été proposé — et le panneau le dit en toutes lettres sur
+la ligne concernée plutôt que de la laisser passer pour configurée.
+
+**Le changement n'attend pas le battement suivant.** Il descend au `sync` comme
+le reste, mais une commande `stream.configure` part aussi tout de suite : le
+geste que cela sert, c'est quelqu'un qui corrige une mauvaise clé pendant que la
+salle est à l'antenne, et dix secondes sans savoir si la correction a pris sont
+dix secondes de trop. Une salle déconnectée à cet instant la rattrape à la
+reconnexion, comme toute commande. La salle l'écrit dans sa configuration et
+s'arrête là : OBS-B est configuré au moment où l'on presse « Diffuser », jamais
+d'avance — un direct en cours ne change ni de serveur ni de clé sans être coupé,
+et la prochaine mise en route est le seul moment où le réglage peut s'appliquer.
+
 ### Vérifier les rushes pendant qu'il est encore temps
 
 Le chronomètre de la régie dit qu'on enregistrait. Il ne dit pas qu'OBS

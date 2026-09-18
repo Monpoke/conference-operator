@@ -99,6 +99,13 @@
       "when": 1789292892413,
       "tag": "0013_sticky_green_goblin",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1789683595616,
+      "tag": "0014_jittery_hammerhead",
+      "breakpoints": true
     }
   ]
 }

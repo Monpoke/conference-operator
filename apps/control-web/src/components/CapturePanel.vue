@@ -23,6 +23,14 @@ const props = defineProps<{
    * require the room's disk, which no phone reaches.
    */
   remote?: boolean
+  /**
+   * The destination the hub gave this room, server only. `null` = none.
+   *
+   * `undefined` where the panel is served by the hub: the remote view does not
+   * carry the room's configuration, and greying the button out on a value it
+   * does not have would refuse a stream that is perfectly well set up.
+   */
+  stream?: { rtmpUrl: string } | null
 }>()
 
 const emit = defineEmits<{ vod: [] }>()
@@ -36,7 +44,23 @@ function toggleRecording(): void {
   void actions.act({ action: active.value ? 'recording.stop' : 'recording.start' })
 }
 
+/**
+ * "Diffuser" only means something once the hub has said where to.
+ *
+ * Stopping, on the other hand, is always offered: a stream running with a
+ * destination that has since been removed must remain interruptible, and a
+ * button that greys out while on air would leave the room with no way to cut.
+ */
+const noTarget = computed(() => props.stream === null && !props.streaming)
+
+const streamTitle = computed(() =>
+  noTarget.value
+    ? 'Aucune destination de diffusion pour cette salle : à renseigner sur le hub, dans Réglages › Diffusion'
+    : (props.stream?.rtmpUrl ?? ''),
+)
+
 function toggleStream(): void {
+  if (noTarget.value) return
   void actions.act({ action: props.streaming ? 'stream.stop' : 'stream.start' })
 }
 
@@ -140,7 +164,13 @@ defineExpose({ toggleRecording, mark, anchor })
       >
         {{ active ? 'Arrêter' : 'Enregistrer' }}<Key v-if="remote !== true">R</Key>
       </Button>
-      <Button id="btn-stream" :active="streaming" @click="toggleStream()">
+      <Button
+        id="btn-stream"
+        :active="streaming"
+        :disabled="noTarget"
+        :title="streamTitle"
+        @click="toggleStream()"
+      >
         {{ streaming ? 'Arrêter la diffusion' : 'Diffuser' }}
       </Button>
     </div>

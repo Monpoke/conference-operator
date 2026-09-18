@@ -53,6 +53,7 @@ function stub(options: {
   resyncRooms?: number
   snapshots?: unknown[]
   images?: { held: number; failed: { url: string; reason: string; at: string }[] }
+  streams?: { roomId: string; name: string; rtmpUrl: string; hasKey: boolean }[]
 }): { calls: Call[]; client: unknown; settings: Record<string, unknown> } {
   const calls: Call[] = []
   // Mutated by the tests that simulate a change from elsewhere — another operator,
@@ -97,6 +98,28 @@ function stub(options: {
         rooms: {
           list: note('rooms/list', [{ id: 'track-1', name: 'Track #1' }]),
           resync: note('rooms/resync', { rooms: options.resyncRooms ?? 2 }),
+          streams: note(
+            'rooms/streams',
+            options.streams ?? [
+              { roomId: 'track-1', name: 'Track #1', rtmpUrl: '', hasKey: false },
+            ],
+          ),
+          // Answers like the hub: what was asked for, laid back down. The key
+          // never comes back — only whether there is now one.
+          setStream: async (input: unknown) => {
+            calls.push({ path: 'rooms/setStream', input })
+            const patch = input as { roomId: string; rtmpUrl: string; streamKey?: string | null }
+            const before = (options.streams ?? []).find((item) => item.roomId === patch.roomId)
+            return {
+              roomId: patch.roomId,
+              name: before?.name ?? 'Track #1',
+              rtmpUrl: patch.rtmpUrl,
+              hasKey:
+                patch.streamKey === undefined
+                  ? (before?.hasKey ?? false)
+                  : patch.streamKey != null && patch.streamKey !== '',
+            }
+          },
         },
         vod: {
           status: note('vod/status', options.storage === null ? { configure: false, politique: STORAGE.politique } : { ...STORAGE, ...(options.storage ?? {}) }),
@@ -281,5 +304,110 @@ describe('settings view', () => {
     // A hub with no paired room at all accepts the request with nothing leaving:
     // "requested" would then be exact and misleading.
     expect(calls).toContainEqual({ path: 'rooms/resync', input: { roomId: null } })
+  })
+})
+
+describe('panneau Diffusion', () => {
+  const SET = { roomId: 'track-1', name: 'Track #1', rtmpUrl: 'rtmp://live/app', hasKey: true }
+  const UNSET = { roomId: 'track-1', name: 'Track #1', rtmpUrl: '', hasKey: false }
+
+  const lastSetStream = (calls: Call[]) =>
+    calls.filter((call) => call.path === 'rooms/setStream').at(-1)?.input as
+      | { roomId: string; rtmpUrl: string; streamKey?: string | null }
+      | undefined
+
+  /** The dialog is teleported to the body, like the resync one above. */
+  const confirmDialog = (anchorId: string): void => {
+    const dialog = document.querySelector(`#${anchorId}`)!.closest('[role="alertdialog"]')!
+    ;(dialog.querySelectorAll('button')[1] as HTMLButtonElement).click()
+  }
+
+  it('says which rooms can actually stream, and which only look set up', async () => {
+    // The incomplete case is the one worth naming: there is text in the field, so
+    // the line reads as configured, and the room silently offers no « Diffuser ».
+    const { wrapper } = await mountView({
+      streams: [
+        SET,
+        { roomId: 'track-2', name: 'Track #2', rtmpUrl: 'rtmp://live/deux', hasKey: false },
+        { roomId: 'track-3', name: 'Track #3', rtmpUrl: '', hasKey: false },
+      ],
+    })
+
+    const text = wrapper.text()
+    expect(text).toContain('Diffusion prête')
+    expect(text).toContain('aucune clé')
+    expect(text).toContain('Aucune diffusion')
+  })
+
+  it('leaves the key out of the call when nothing was typed', async () => {
+    /*
+     * The heart of the panel. The console never receives the key, so it cannot
+     * send it back to preserve it: the field left empty must mean "unchanged" all
+     * the way down to the column. Sending an empty string instead would wipe the
+     * key every time somebody corrected a typo in the address — and nothing on
+     * the page would say so.
+     */
+    const { wrapper, calls } = await mountView({ streams: [SET] })
+
+    await wrapper.get('#stream-url-track-1').setValue('rtmp://nouveau/app')
+    await wrapper.get('#btn-stream-save-track-1').trigger('click')
+    await flushPromises()
+
+    expect(lastSetStream(calls)).toEqual({ roomId: 'track-1', rtmpUrl: 'rtmp://nouveau/app' })
+  })
+
+  it('sends the key when one has been typed', async () => {
+    const { wrapper, calls } = await mountView({ streams: [UNSET] })
+
+    await wrapper.get('#stream-url-track-1').setValue('rtmp://live/app')
+    await wrapper.get('#stream-key-track-1').setValue('cle-de-track-1')
+    await wrapper.get('#btn-stream-save-track-1').trigger('click')
+    await flushPromises()
+
+    expect(lastSetStream(calls)).toEqual({
+      roomId: 'track-1',
+      rtmpUrl: 'rtmp://live/app',
+      streamKey: 'cle-de-track-1',
+    })
+  })
+
+  it('does not rewrite a line while somebody is typing in it', async () => {
+    // The same rule as the fields above, applied per room: the page reloads every
+    // ten seconds, and the old address arriving mid-sentence is the defect.
+    const { wrapper } = await mountView({ streams: [SET] })
+
+    await wrapper.get('#stream-url-track-1').setValue('rtmp://en-cours-de-frappe/app')
+    await useSettingsStore().load()
+    await flushPromises()
+
+    expect((wrapper.get('#stream-url-track-1').element as HTMLInputElement).value).toBe(
+      'rtmp://en-cours-de-frappe/app',
+    )
+  })
+
+  it('never shows the key back, not even as a placeholder', async () => {
+    const { wrapper } = await mountView({ streams: [SET] })
+
+    const key = wrapper.get('#stream-key-track-1').element as HTMLInputElement
+    expect(key.value).toBe('')
+    expect(key.type).toBe('password')
+    // It says there is one — that is the whole of what the console may know.
+    expect(key.placeholder).toContain('conserver')
+  })
+
+  it('asks before erasing, and says the key is gone for good', async () => {
+    // It cannot be undone from here: the console has never held the key, so the
+    // repair is going and fetching it from wherever it was issued.
+    const { wrapper, calls } = await mountView({ streams: [SET] })
+
+    await wrapper.get('#btn-stream-clear-track-1').trigger('click')
+    await flushPromises()
+    expect(document.querySelector('#clear-stream-text')?.textContent).toContain('Track #1')
+    expect(lastSetStream(calls)).toBeUndefined()
+
+    confirmDialog('clear-stream-text')
+    await flushPromises()
+
+    expect(lastSetStream(calls)).toEqual({ roomId: 'track-1', rtmpUrl: '', streamKey: null })
   })
 })

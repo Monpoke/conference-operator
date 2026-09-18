@@ -600,6 +600,13 @@ export function payloadFromView(view: ControlView, nowMs: number): DisplayPayloa
     promptRecordingOnStop: view.promptRecordingOnStop,
     sceneOnStart: view.sceneOnStart,
     /*
+     * The server address is empty, like the OBS URLs above, and for the same
+     * reason: the hub does not serve it to a phone and inventing one would be
+     * worse than showing none. Only its presence matters here — it is what
+     * decides whether "Diffuser" is offered.
+     */
+    stream: view.canStream ? { rtmpUrl: '' } : null,
+    /*
      * A phone does not open the folder picker of a machine it cannot see — and
      * the ⚙ is not mounted remotely anyway.
      */

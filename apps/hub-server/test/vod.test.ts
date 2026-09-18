@@ -18,6 +18,7 @@ const CLIENT_ID = '01JB2ZK5T7QW9V0YHRXM3N4P6C'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { testSecrets } from './helpers/secrets.js'
 
 /**
  * The upload registry, and its housekeeping.
@@ -50,7 +51,7 @@ beforeEach(() => {
   databasePath = join(directory, 'hub.db')
   db = openHubDatabase(':memory:').orm
   settings = new SettingsService(db)
-  const rooms = new RoomService(db)
+  const rooms = new RoomService(db, testSecrets)
   rooms.upsert({
     id: TRACK_1,
     name: 'Track #1',

@@ -1,21 +1,28 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: hub
 spec:
+  # The governing headless service, which a StatefulSet requires. It is what
+  # gives the pod its stable name `hub-0.hub-headless`; the ingress keeps going
+  # through the ordinary `hub` service.
+  serviceName: hub-headless
   # One, and it is not a starting point to scale from.
   #
   # The hub keeps its state in a SQLite file on the volume below, and fans its
   # WebSockets out in-process — that is a deliberate decision of this repository,
   # which removes Redis and lets the tests run without a container. Two replicas
-  # would fight over the same file and would each know only their own rooms.
+  # would each get their own volume and their own database, and would know only
+  # their own rooms: not a cluster, two hubs.
   replicas: 1
-  strategy:
-    # `Recreate`, not the default rolling update: a rollout that starts the new
-    # pod before the old one has let go would put two writers on one SQLite file.
-    # It costs a few seconds of interruption on every deploy, which is a thing to
-    # do outside an event rather than a thing to make lock-free.
-    type: Recreate
+  updateStrategy:
+    # A StatefulSet's rolling update terminates a pod before starting its
+    # replacement at the same ordinal — it never overlaps them. That is the same
+    # guarantee `strategy: Recreate` bought on the Deployment, and the reason it
+    # was needed: a rollout that starts the new pod before the old one has let go
+    # would put two writers on one SQLite file. It still costs a few seconds of
+    # interruption on every deploy, which is a thing to do outside an event.
+    type: RollingUpdate
   selector:
     matchLabels:
       app.kubernetes.io/name: hub
@@ -92,7 +99,27 @@ spec:
               memory: 256Mi
             limits:
               memory: 768Mi
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: hub-data
+  volumeClaimTemplates:
+    # The hub's database, and the programme's images beside it. The claim is
+    # named `data-hub-0` once created, and **it outlives the StatefulSet**:
+    # deleting the StatefulSet leaves it, and re-applying picks it back up.
+    # Removing it is a separate, deliberate `kubectl delete pvc`.
+    #
+    # One gibibyte is generous: a SQLite file holding the programme, the
+    # operators, the pairings and the moderation of a day, plus the images the
+    # rooms come to fetch — a couple of megabytes for an event, since they are
+    # logos and portraits. The rushes never pass through: they go from the rooms
+    # to S3.
+    #
+    # `ReadWriteOnce` is not a limitation to work around: SQLite tolerates
+    # exactly one writer, which is also why this stays at one replica.
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+        # Left to the cluster's default. A named class goes here.
+        # storageClassName: ""

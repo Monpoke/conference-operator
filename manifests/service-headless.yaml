@@ -1,0 +1,16 @@
+# The governing service of the StatefulSet, which requires one — it is what
+# names the pod `hub-0.hub-headless.<namespace>.svc`. Nothing in this repository
+# calls that name: the ingress goes through the `hub` service next to it. It
+# exists because a StatefulSet does not start without it.
+apiVersion: v1
+kind: Service
+metadata:
+  name: hub-headless
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: hub
+  ports:
+    - name: http
+      port: 8787
+      targetPort: http

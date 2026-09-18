@@ -7,7 +7,7 @@
 #   REGISTRY=… VERSION=1.2.0 pnpm build:local
 #   REGISTRY=… PUSH=1 pnpm build:local          — also pushes the image
 #   REGISTRY=… TARGETS="linux image" pnpm build:local
-#   REGISTRY=… pnpm build:local k8s             — image, pushed, deployment patched
+#   REGISTRY=… pnpm build:local k8s             — image, pushed, StatefulSet patched
 #
 # The registry is read from the environment and nowhere else: nothing is written
 # to a file, so a local build cannot leave a private registry name behind in the
@@ -19,7 +19,7 @@
 # through wine, which the release workflow avoids by running on Windows.
 #
 # `k8s` is the argument for the loop one actually runs between two builds: build
-# the image, push it, and point the running deployment at *that* build. It pins
+# the image, push it, and point the running StatefulSet at *that* build. It pins
 # the digest rather than the tag — see the comment above `kubectl set image`.
 set -euo pipefail
 
@@ -61,9 +61,11 @@ TARGETS="${TARGETS:-linux windows image}"
 IMAGE="${REGISTRY}/hub:${VERSION}"
 
 KUBE_NAMESPACE="${KUBE_NAMESPACE:-conference-operator}"
-KUBE_DEPLOYMENT="${KUBE_DEPLOYMENT:-hub}"
+# `kind/name`, as `kubectl set image` and `rollout status` both take it. The hub
+# is a StatefulSet — it carries a SQLite file, see `manifests/statefulset.yaml`.
+KUBE_WORKLOAD="${KUBE_WORKLOAD:-statefulset/hub}"
 # The container's name inside the pod, which `set image` addresses — it is `hub`
-# in `manifests/deployment.yaml`.
+# in `manifests/statefulset.yaml`.
 KUBE_CONTAINER="${KUBE_CONTAINER:-hub}"
 # Empty means the current context. Named, it is passed to every `kubectl` call:
 # a deploy that lands on yesterday's cluster is the mistake this variable exists
@@ -78,7 +80,7 @@ echo "Version   $VERSION"
 echo "Cibles    $TARGETS"
 echo "Image     $IMAGE"
 if (( K8S )); then
-  echo "Cluster   ${KUBE_CONTEXT:-contexte courant} · $KUBE_NAMESPACE/$KUBE_DEPLOYMENT"
+  echo "Cluster   ${KUBE_CONTEXT:-contexte courant} · $KUBE_WORKLOAD (namespace $KUBE_NAMESPACE)"
 fi
 echo
 
@@ -92,13 +94,13 @@ if (( K8S )); then
     exit 2
   fi
   if ! command -v kubectl > /dev/null; then
-    echo "kubectl introuvable : il est nécessaire pour patcher le déploiement." >&2
+    echo "kubectl introuvable : il est nécessaire pour patcher la charge de travail." >&2
     exit 1
   fi
   # `--request-timeout`: without it, an unreachable API server keeps kubectl
   # waiting, and the check meant to fail fast is the one thing that hangs.
-  if ! "${kube[@]}" --request-timeout=10s get deployment "$KUBE_DEPLOYMENT" > /dev/null 2>&1; then
-    echo "Déploiement $KUBE_NAMESPACE/$KUBE_DEPLOYMENT introuvable (ou cluster injoignable)." >&2
+  if ! "${kube[@]}" --request-timeout=10s get "$KUBE_WORKLOAD" > /dev/null 2>&1; then
+    echo "$KUBE_WORKLOAD introuvable dans le namespace $KUBE_NAMESPACE (ou cluster injoignable)." >&2
     exit 1
   fi
 fi
@@ -151,22 +153,23 @@ PINNED=""
 
 if (( K8S )); then
   if [[ -z "$DIGEST" ]]; then
-    echo "Digest introuvable après le push : le déploiement n'a pas été touché." >&2
+    echo "Digest introuvable après le push : rien n'a été touché sur le cluster." >&2
     exit 1
   fi
   PINNED="${REGISTRY}/hub@${DIGEST}"
 
   # The digest, not the tag. Between two local builds the tag does not move —
-  # `git describe` gives the same string until the next commit — so a deployment
+  # `git describe` gives the same string until the next commit — so a workload
   # already carrying it would be left untouched: same image field, no new
-  # ReplicaSet, nothing rolled out. The digest changes at every build, which is
+  # revision, nothing rolled out. The digest changes at every build, which is
   # what makes the patch mean « run this one ». It also settles the question of
   # `imagePullPolicy: IfNotPresent` keeping an older image behind a reused tag.
-  "${kube[@]}" set image "deployment/$KUBE_DEPLOYMENT" "$KUBE_CONTAINER=$PINNED"
-  # `Recreate`: the old pod goes away before the new one starts, so a rollout is
-  # a few seconds of interruption — and waiting for it here is what keeps a green
-  # command from covering a pod stuck on its migrations.
-  "${kube[@]}" rollout status "deployment/$KUBE_DEPLOYMENT" --timeout=5m
+  "${kube[@]}" set image "$KUBE_WORKLOAD" "$KUBE_CONTAINER=$PINNED"
+  # A StatefulSet's rolling update terminates `hub-0` before starting its
+  # replacement — never two writers on the SQLite file, and a few seconds of
+  # interruption. Waiting here is what keeps a green command from covering a pod
+  # stuck on its migrations.
+  "${kube[@]}" rollout status "$KUBE_WORKLOAD" --timeout=5m
 fi
 
 echo
@@ -179,5 +182,5 @@ if wants image; then
 fi
 if (( K8S )); then
   echo "Déployé : $PINNED"
-  echo "          → $KUBE_NAMESPACE/$KUBE_DEPLOYMENT${KUBE_CONTEXT:+ (contexte $KUBE_CONTEXT)}"
+  echo "          → $KUBE_WORKLOAD, namespace $KUBE_NAMESPACE${KUBE_CONTEXT:+, contexte $KUBE_CONTEXT}"
 fi

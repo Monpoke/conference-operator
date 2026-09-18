@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { VisibleConfig, ObsInstance, ObsState } from '@conference-operator/contract'
 import { Button, Panel } from '@conference-operator/components'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { ROLES, type ConfigDraft } from '../stores/config.js'
 import SimulatedBadge from './SimulatedBadge.vue'
 
@@ -15,7 +15,50 @@ const props = defineProps<{
 
 const emit = defineEmits<{ connect: [] }>()
 
+/**
+ * Where the capture lives, chosen rather than deduced from a field left empty.
+ *
+ * The truth stays the address — empty means "no OBS-B, the capture rides in the
+ * vertical canvas of OBS-A, which the plugin provides" — and this switch is the
+ * gesture that writes it. A flag of its own could contradict the address; a
+ * toggle over the address cannot.
+ *
+ * Only for the capture: the projection has no canvas to fall back on, and an
+ * OBS-A without an address is a missing setting, not a second setup.
+ */
+const mode = computed<'obs-b' | 'canvas'>(() =>
+  props.instance === 'B' && props.draft.obs.B.url.trim() === '' ? 'canvas' : 'obs-b',
+)
+
+/**
+ * The address typed before switching to the plugin, kept aside.
+ *
+ * Switching modes is how one compares two setups; the round trip must not cost
+ * the address of an OBS-B that is still plugged in. Restored as typed, nothing
+ * more — it is a draft, it only lives as long as the panel is open.
+ */
+const parked = ref('')
+
+function choose(next: 'obs-b' | 'canvas'): void {
+  if (next === mode.value) return
+  const endpoint = props.draft.obs[props.instance]
+  if (next === 'canvas') {
+    parked.value = endpoint.url
+    endpoint.url = ''
+  } else {
+    endpoint.url = parked.value
+  }
+}
+
 const connected = computed(() => props.obs?.connected === true)
+/**
+ * The capture lives in OBS-A's vertical canvas: the room runs on a single OBS.
+ *
+ * Said by the machine and not deduced from the empty field: what is on screen is
+ * the state of the capture that exists, not the absence of one that is being
+ * typed — the field is empty as well while an address is being erased.
+ */
+const canvas = computed(() => props.obs?.canvas === true)
 const missing = computed(() => (connected.value ? (props.obs?.unresolvedRoles ?? []) : []))
 /*
  * The gap between what is saved and what is plugged in.
@@ -27,12 +70,13 @@ const missing = computed(() => (connected.value ? (props.obs?.unresolvedRoles ??
 const pending = computed(() => props.config.obs[props.instance].pending)
 
 const status = computed(() => {
+  const where = canvas.value ? "canvas vertical d'OBS-A · " : ''
   const head = !connected.value
     ? 'déconnecté'
     : missing.value.length > 0
       ? `connecté · rôles absents : ${missing.value.join(', ')}`
       : `connecté · ${props.obs?.currentSceneName ?? 'scène inconnue'}`
-  return head + (pending.value ? ' · réglages non appliqués' : '')
+  return where + head + (pending.value ? ' · réglages non appliqués' : '')
 })
 
 const tone = computed(() =>
@@ -68,6 +112,11 @@ function options(current: string): { value: string; label: string }[] {
   return list
 }
 
+const MODES: { value: 'obs-b' | 'canvas'; label: string }[] = [
+  { value: 'obs-b', label: 'OBS-B dédié' },
+  { value: 'canvas', label: "Canvas vertical d'OBS-A" },
+]
+
 const FIELD =
   'w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text focus:border-brand focus:outline-none'
 </script>
@@ -95,7 +144,40 @@ const FIELD =
       </Button>
     </div>
 
-    <div class="grid grid-cols-2 gap-2">
+    <!--
+      Le choix avant les champs qu'il commande.
+
+      Deux façons de capter, et une seule à la fois : lues côte à côte, elles
+      disent ce que la salle exige — un second OBS, ou le plugin dans celui de la
+      projection. Le panneau n'affiche ensuite que les champs du mode retenu.
+    -->
+    <div v-if="instance === 'B'" class="mb-2" role="radiogroup" aria-label="Où vit la captation">
+      <div class="inline-flex rounded-lg border border-edge p-0.5">
+        <button
+          v-for="choice in MODES"
+          :key="choice.value"
+          type="button"
+          role="radio"
+          :aria-checked="mode === choice.value"
+          :data-mode="choice.value"
+          :data-active="mode === choice.value ? 'true' : undefined"
+          class="rounded-md px-2.5 py-1 text-xs"
+          :class="mode === choice.value ? 'bg-brand text-canvas' : 'text-dim hover:text-text'"
+          @click="choose(choice.value)"
+        >
+          {{ choice.label }}
+        </button>
+      </div>
+      <p class="mt-1 text-[11px] text-dim">
+        {{
+          mode === 'canvas'
+            ? "Un seul OBS dans la salle : la captation passe par le canvas vertical d'OBS-A, que le plugin fournit. Sans le plugin, rien n'enregistre."
+            : 'Un second OBS, sur cette machine ou sur une autre, dédié à la captation.'
+        }}
+      </p>
+    </div>
+
+    <div v-if="mode === 'obs-b'" class="grid grid-cols-2 gap-2">
       <div>
         <label class="mb-0.5 block text-xs text-dim" :for="`cfg-url-${instance}`">
           Adresse WebSocket

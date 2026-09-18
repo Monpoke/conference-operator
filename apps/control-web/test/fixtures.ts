@@ -133,6 +133,7 @@ export function state(): DisplayPayload['state'] {
     serverTimeOffsetMs: 0,
     recording: false,
     streaming: false,
+    audioInputs: [],
     comments: [],
     sessionStates: {},
     notifications: [],

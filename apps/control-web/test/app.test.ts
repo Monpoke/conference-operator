@@ -7,7 +7,7 @@ import App from '../src/App.vue'
 import { useTalkStore } from '../src/stores/talk.js'
 import { useConsultStore } from '../src/stores/consult.js'
 import { useRoomStore } from '../src/stores/room.js'
-import { payload } from './fixtures.js'
+import { obsState, payload } from './fixtures.js'
 
 /**
  * The whole page, and the shortcuts that cross it.
@@ -61,9 +61,15 @@ beforeEach(() => {
 
 async function mountApp(
   recording: ControlDiagnostics['recording'] | null = null,
+  obsConnected = true,
 ): Promise<ReturnType<typeof mount>> {
   const view = payload()
   view.diagnostics!.recording = recording ?? { active: false, markers: 0, startedAtMs: null, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS }
+  // Both instances plugged in: the OBS commands are greyed out otherwise.
+  view.diagnostics!.obs = {
+    A: obsState({ connected: obsConnected }),
+    B: obsState({ instance: 'B', connected: obsConnected }),
+  }
   useRoomStore().seed(view)
   const wrapper = mount(App, { attachTo: document.body })
   mounted.push(wrapper)
@@ -156,6 +162,24 @@ describe('the page\'s shortcuts', () => {
     // The machine would refuse the command: sending it anyway would flash a
     // failure for a gesture the page knew to be impossible.
     expect(calls.filter((call) => call.url === '/control/action')).toEqual([])
+  })
+
+  it('sends nothing towards an OBS that is not connected', async () => {
+    const wrapper = await mountApp(
+      { active: true, markers: 0, startedAtMs: 0, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS },
+      false,
+    )
+
+    press('l')
+    press('h')
+    press('r')
+    press('m')
+    press('d')
+    await flushPromises()
+
+    // The keys follow the greyed-out buttons, and the page says why.
+    expect(calls.filter((call) => call.url === '/control/action')).toEqual([])
+    expect(wrapper.findAll('[data-role="obs-offline"]')).toHaveLength(2)
   })
 
   it('hands the keypress back to the field waiting for it', async () => {

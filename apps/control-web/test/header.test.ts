@@ -1,7 +1,7 @@
 import type { HostLoad } from '@conference-operator/contract'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import CpuIndicator from '../src/components/CpuIndicator.vue'
 import HubIndicator from '../src/components/HubIndicator.vue'
 import ModeBadge from '../src/components/ModeBadge.vue'
@@ -361,5 +361,73 @@ describe('driven remotely', () => {
     // The lock banner already says who holds the room; repeating it here would put
     // the same information twice on a screen with space for one.
     expect(wrapper.find('[data-role="remote-holder"]').exists()).toBe(false)
+  })
+})
+
+describe('full screen', () => {
+  let fullscreenElement: Element | null
+
+  /** jsdom has no full screen: the page's API is stubbed, the way a browser answers. */
+  function supportFullscreen(enabled: boolean) {
+    fullscreenElement = null
+    Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, get: () => enabled })
+    Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => fullscreenElement })
+    const request = vi.fn(async () => {
+      fullscreenElement = document.documentElement
+      document.dispatchEvent(new Event('fullscreenchange'))
+    })
+    const exit = vi.fn(async () => {
+      fullscreenElement = null
+      document.dispatchEvent(new Event('fullscreenchange'))
+    })
+    document.documentElement.requestFullscreen = request
+    document.exitFullscreen = exit
+    return { request, exit }
+  }
+
+  afterEach(() => {
+    delete (document as { fullscreenEnabled?: boolean }).fullscreenEnabled
+    delete (document as { fullscreenElement?: Element | null }).fullscreenElement
+  })
+
+  it('enters full screen, then leaves it, from the same button', async () => {
+    const { request, exit } = supportFullscreen(true)
+    const wrapper = mount(ControlHeader, { props: { payload: payload(), nowMs: 0, streamDead: false } })
+
+    await wrapper.get('[data-role="fullscreen"]').trigger('click')
+    expect(request).toHaveBeenCalledOnce()
+    expect(wrapper.get('[data-role="fullscreen"]').attributes('aria-label')).toBe('Quitter le plein écran')
+
+    await wrapper.get('[data-role="fullscreen"]').trigger('click')
+    expect(exit).toHaveBeenCalledOnce()
+    expect(wrapper.get('[data-role="fullscreen"]').attributes('aria-label')).toBe('Plein écran')
+  })
+
+  it('follows a full screen left with Escape, without the button', async () => {
+    supportFullscreen(true)
+    const wrapper = mount(ControlHeader, { props: { payload: payload(), nowMs: 0, streamDead: false } })
+    await wrapper.get('[data-role="fullscreen"]').trigger('click')
+
+    // Escape goes through the browser, not through the page.
+    fullscreenElement = null
+    document.dispatchEvent(new Event('fullscreenchange'))
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('[data-role="fullscreen"]').attributes('aria-pressed')).toBe('false')
+  })
+
+  it('is offered on the phone too', () => {
+    supportFullscreen(true)
+    const wrapper = mount(ControlHeader, {
+      props: { payload: payload(), nowMs: 0, streamDead: false, remote: true },
+    })
+    expect(wrapper.find('[data-role="fullscreen"]').exists()).toBe(true)
+  })
+
+  it('does not show where the browser has no full screen', () => {
+    // The iPhone's Safari: a button that does nothing is worse than no button.
+    supportFullscreen(false)
+    const wrapper = mount(ControlHeader, { props: { payload: payload(), nowMs: 0, streamDead: false } })
+    expect(wrapper.find('[data-role="fullscreen"]').exists()).toBe(false)
   })
 })

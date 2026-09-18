@@ -106,7 +106,7 @@ const globalDetail = computed(() => {
 <template>
   <div
     id="operations-view"
-    class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5"
+    class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] gap-3.5"
   >
     <Panel v-if="globalBreak != null" id="global-panel" class="col-span-full" title="Global">
       <div class="flex items-center gap-2">

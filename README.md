@@ -243,13 +243,19 @@ ou un script de provisionnement.
 
 | Variable | Rôle | Défaut |
 |---|---|---|
-| `MODE` | `dev` simule OBS (scènes, enregistrement, diffusion) et écrit un vrai fichier à l'arrêt | `production` |
+| `MODE` | `dev` simule OBS (scènes, enregistrement, diffusion, canvas vertical) et écrit un vrai fichier à l'arrêt | `production` |
 | `HEURE_SIMULEE` | Heure locale, pour développer **sans hub**. Dès qu'un hub répond, son heure remplace la valeur | — |
 | `OBS_REEL` | Parle à de vraies instances OBS plutôt qu'au simulateur | — |
 | `REGIE_VITE_ORIGIN` | Sert la régie depuis Vite au lieu du bundle compilé | — |
 
 `OBS_MOCK` n'existe plus : la simulation d'OBS suit `MODE`. Comme
 `CLOCK_CONTROL`, la laisser traîner ne fait rien, et la salle le dit.
+
+Une salle peut tourner sur **un seul OBS** : dans le ⚙ de la régie, le bloc
+« OBS-B — captation » propose « OBS-B dédié » ou « Canvas vertical d'OBS-A ». Le
+second efface l'adresse d'OBS-B — c'est elle qui reste la vérité — et la captation
+passe par le canvas vertical du plugin, dans l'OBS qui projette. Le simulateur le joue aussi. Voir « Une salle à un seul OBS » dans
+[CONCEPTION.md](CONCEPTION.md).
 
 ## Vérifier
 

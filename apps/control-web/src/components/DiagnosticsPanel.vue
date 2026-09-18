@@ -24,6 +24,10 @@ const instances = computed(() =>
       key,
       connected: obs?.connected === true,
       simulated: obs?.simulated === true,
+      // The capture in OBS-A's canvas: a single OBS in the room. Saying it here
+      // spares the reading of "OBS B — déconnecté" as a second machine to go and
+      // restart, when there is no second machine.
+      canvas: obs?.canvas === true,
       scene: obs?.currentSceneName ?? 'scène inconnue',
       // A role that is configured but absent from OBS is visible nowhere else: the
       // switch will fail in the middle of a talk, with no other warning sign.
@@ -62,7 +66,7 @@ const instances = computed(() =>
       >
         <span class="status-dot" :class="instance.connected ? '' : 'offline'"></span>
         <span class="truncate">
-          OBS {{ instance.key }} —
+          OBS {{ instance.key }}{{ instance.canvas ? ' (canvas d’OBS A)' : '' }} —
           {{ instance.connected ? instance.scene : 'déconnecté' }}
         </span>
         <SimulatedBadge :when="instance.simulated" />

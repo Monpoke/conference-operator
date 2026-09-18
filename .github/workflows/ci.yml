@@ -34,9 +34,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # pnpm's version is pinned by the package.json's `packageManager` field:
-      # corepack reads it, and nobody has to repeat it here.
-      - run: corepack enable
+      # Not through corepack: pnpm 12 no longer ships the `bin/pnpm.cjs` corepack
+      # launches, and even corepack 0.36 fails on it. Keep in step with the
+      # package.json's `packageManager` field and the Dockerfile.
+      - run: npm install -g pnpm@12.4.1
 
       - uses: actions/setup-node@v4
         with:
@@ -81,7 +82,7 @@ jobs:
           # the pull request's base.
           fetch-depth: 0
 
-      - run: corepack enable
+      - run: npm install -g pnpm@12.4.1
 
       - uses: actions/setup-node@v4
         with:

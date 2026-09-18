@@ -140,7 +140,7 @@ async function create(): Promise<void> {
 </script>
 
 <template>
-  <div id="access-view" class="grid items-start gap-3.5 lg:grid-cols-[1fr_320px]">
+  <div id="access-view" class="grid gap-3.5 lg:grid-cols-[1fr_320px]">
     <Panel title="Comptes">
       <Empty v-if="!loading && users.length === 0">Aucun compte.</Empty>
       <article

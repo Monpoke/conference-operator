@@ -291,6 +291,76 @@ describe('OBS block', () => {
   })
 })
 
+describe('capture mode', () => {
+  function capture(url = 'ws://127.0.0.1:4456') {
+    room({ obs: { ...CONFIG.obs, B: { ...CONFIG.obs.B, url } } })
+    const store = useConfigStore()
+    store.show()
+    return {
+      store,
+      wrapper: mount(ObsConfigBlock, {
+        props: {
+          instance: 'B',
+          title: 'OBS-B — captation',
+          draft: store.draft!,
+          config: store.config!,
+          obs: obsState({ connected: false, scenes: [] }),
+        },
+      }),
+    }
+  }
+
+  it('writes the plugin setup by emptying the address', async () => {
+    const { store, wrapper } = capture()
+
+    await wrapper.get('[data-mode="canvas"]').trigger('click')
+
+    // The truth stays the address: empty means "no OBS-B, the capture rides in
+    // OBS-A's vertical canvas". The switch is the gesture that writes it.
+    expect(store.draft!.obs.B.url).toBe('')
+    expect(wrapper.find('#cfg-url-B').exists()).toBe(false)
+  })
+
+  it('gives back the address when the second OBS is chosen again', async () => {
+    const { store, wrapper } = capture()
+
+    await wrapper.get('[data-mode="canvas"]').trigger('click')
+    await wrapper.get('[data-mode="obs-b"]').trigger('click')
+
+    // Switching modes is how one compares two setups; the round trip must not cost
+    // the address of an OBS-B that is still plugged in.
+    expect(store.draft!.obs.B.url).toBe('ws://127.0.0.1:4456')
+    expect(wrapper.find('#cfg-url-B').exists()).toBe(true)
+  })
+
+  it('opens on the plugin when that is what is saved', () => {
+    const { wrapper } = capture('')
+
+    expect(wrapper.get('[data-mode="canvas"]').attributes('data-active')).toBe('true')
+  })
+
+  it('offers no such choice to the projection', () => {
+    room()
+    const store = useConfigStore()
+    store.show()
+    store.draft!.obs.A.url = ''
+    const wrapper = mount(ObsConfigBlock, {
+      props: {
+        instance: 'A',
+        title: 'OBS-A — projection',
+        draft: store.draft!,
+        config: store.config!,
+        obs: obsState({ connected: false, scenes: [] }),
+      },
+    })
+
+    // An OBS-A without an address is a missing setting, not a second setup: the
+    // field must stay, precisely to be filled in.
+    expect(wrapper.find('[data-mode="canvas"]').exists()).toBe(false)
+    expect(wrapper.find('#cfg-url-A').exists()).toBe(true)
+  })
+})
+
 describe('screens menu', () => {
   it('adds the public wall only when the room knows its address', async () => {
     const withoutWall = mount(ScreensMenu, { props: { payload: payload() } })

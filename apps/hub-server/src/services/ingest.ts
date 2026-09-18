@@ -40,6 +40,8 @@ export class IngestService {
     private readonly db: HubDatabase,
     /** A batch was applied: whoever watches this room recomposes its view. */
     private readonly onChange: (roomId: string | null) => void = () => {},
+    /** A new `room.message` was stored — a replayed one does not count. */
+    private readonly onRoomMessage: () => void = () => {},
   ) {}
 
   /**
@@ -74,6 +76,7 @@ export class IngestService {
     if (valid.length === 0) return outcome
 
     const before = this.projected(roomId)
+    let newMessage = false
     this.db.transaction((tx) => {
       for (const envelope of valid) {
         const inserted = tx
@@ -93,7 +96,10 @@ export class IngestService {
           .all()
 
         if (inserted.length === 0) outcome.duplicates.push(envelope.id)
-        else outcome.acked.push(envelope.id)
+        else {
+          outcome.acked.push(envelope.id)
+          if (envelope.payload.type === 'room.message') newMessage = true
+        }
       }
 
       /*
@@ -114,6 +120,7 @@ export class IngestService {
     // After the commit, never inside: a watcher woken mid-transaction would read
     // the state from before.
     if (this.moved(before, this.projected(roomId))) this.onChange(roomId)
+    if (newMessage) this.onRoomMessage()
     return outcome
   }
 
@@ -371,6 +378,7 @@ function projectionFor(payload: RoomEventPayload): Record<string, unknown> {
         outboxDepth: payload.outboxDepth,
         programContentHash: payload.programContentHash,
         displayMode: payload.displayMode,
+        audioInputs: JSON.stringify(payload.audioInputs),
       }
     case 'scene.changed':
       return payload.role != null ? { sceneRole: payload.role } : {}

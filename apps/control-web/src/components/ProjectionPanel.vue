@@ -23,6 +23,14 @@ const props = defineProps<{
    * soon as a source is configured — because the same machine carries it.
    */
   roles?: string[]
+  /**
+   * OBS-A is not connected.
+   *
+   * A scene switch would only come back as a red refusal: better to say so before
+   * the click than after. Left unset remotely — the phone does not see OBS, and
+   * the room answers for it.
+   */
+  offline?: boolean
 }>()
 
 /*
@@ -46,7 +54,12 @@ const commands = computed<Command[]>(() => {
     <h2 class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
       Projection — OBS&nbsp;A<SimulatedBadge :when="obs?.simulated === true" />
     </h2>
+    <p v-if="offline" class="mb-2 text-xs text-warn" data-role="obs-offline">
+      OBS&nbsp;A n'est pas connecté : les changements de scène sont indisponibles. Ils
+      reviendront dès la reconnexion.
+    </p>
     <CommandGrid
+      :disabled="offline"
       :commands="commands"
       :current="sceneRole"
       :build="(value) => ({ action: 'scene.set', role: value })"

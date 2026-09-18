@@ -8,6 +8,7 @@ import ConfigDialog from './components/ConfigDialog.vue'
 import ConsultDialog from './components/ConsultDialog.vue'
 import DiagnosticsPanel from './components/DiagnosticsPanel.vue'
 import LevelMeters from './components/LevelMeters.vue'
+import AudioInputsPanel from './components/AudioInputsPanel.vue'
 import MessagePanel from './components/MessagePanel.vue'
 import NotificationStack from './components/NotificationStack.vue'
 import PairingVeil from './components/PairingVeil.vue'
@@ -112,6 +113,17 @@ onBeforeUnmount(() => {
 const payload = computed(() => room.payload)
 
 /**
+ * An OBS instance the room is not connected to.
+ *
+ * Its commands are greyed out with a word saying why, rather than left clickable
+ * for a red refusal. Local view only: the phone does not see OBS.
+ */
+const obsOffline = computed(() => ({
+  A: payload.value?.diagnostics?.obs.A?.connected !== true,
+  B: payload.value?.diagnostics?.obs.B?.connected !== true,
+}))
+
+/**
  * The title follows the event, not the shell.
  *
  * The shell sets one at render time, which avoids the flash — but it is frozen at
@@ -202,8 +214,9 @@ watch(
  */
 useKeyboardLayer(
   () => ({
-    l: () => void actions.act({ action: 'scene.set', role: 'LIVE' }),
-    h: () => void actions.act({ action: 'scene.set', role: 'HOLD' }),
+    // Like the greyed-out buttons: no switch towards an OBS-A that is not there.
+    l: () => void (obsOffline.value.A || actions.act({ action: 'scene.set', role: 'LIVE' })),
+    h: () => void (obsOffline.value.A || actions.act({ action: 'scene.set', role: 'HOLD' })),
     r: () => capture.value?.toggleRecording(),
     m: () => capture.value?.mark(),
     /*
@@ -315,6 +328,11 @@ useKeyboardLayer(
             :stream="payload.diagnostics?.config == null ? undefined : payload.diagnostics.config.stream"
             :remote="true"
           />
+          <!--
+            No `offline` here: the phone does not see OBS. A disconnected instance
+            empties its sources on the next heartbeat, and the list says so.
+          -->
+          <AudioInputsPanel :inputs="payload.state.audioInputs ?? []" />
         </main>
       </template>
 
@@ -359,6 +377,7 @@ useKeyboardLayer(
           :scene-role="payload.state.sceneRole"
           :relay-source-room-id="payload.diagnostics?.relaySourceRoomId ?? null"
           :obs="payload.diagnostics?.obs.A ?? null"
+          :offline="obsOffline.A"
         />
         <MessagePanel />
       </div>
@@ -369,10 +388,15 @@ useKeyboardLayer(
           :recording="payload.diagnostics?.recording ?? null"
           :streaming="payload.state.streaming === true"
           :obs="payload.diagnostics?.obs.B ?? null"
+          :offline="obsOffline.B"
           :real-ms="clock.real"
           :room-ms="room.now"
           :stream="payload.diagnostics?.config == null ? undefined : payload.diagnostics.config.stream"
           @vod="vod.show()"
+        />
+        <AudioInputsPanel
+          :inputs="payload.state.audioInputs ?? []"
+          :offline="obsOffline.A && obsOffline.B"
         />
         <LevelMeters />
       </div>

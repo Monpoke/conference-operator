@@ -28,6 +28,16 @@ export interface MockObsOptions {
    * from, including on a room no configuration has touched yet.
    */
   scenes?: string[]
+  /**
+   * The room runs on a single OBS: this instance also simulates the plugin's
+   * vertical canvas, with these scenes.
+   *
+   * Absent — the two-instance setup — and the instance answers no vendor request,
+   * exactly like an OBS without the plugin. Which is what makes the "single OBS
+   * without the plugin" case observable in development, where it is a message to
+   * read rather than a capture that silently records nothing.
+   */
+  canvasScenes?: string[]
   /** The folder to drop the fake recordings into. */
   recordingDir: string
   onLog?: (message: string) => void
@@ -48,6 +58,23 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
     ...new Set([...DEFAULT_SCENES[options.instance], ...(options.scenes ?? [])]),
   ]
   const handlers = new Map<string, ((payload: unknown) => void)[]>()
+
+  /**
+   * The simulated canvas: the capture's scenes, its recording and its stream.
+   *
+   * Separate counters from the main program's on purpose — that separation **is**
+   * the plugin, and sharing them here would hide in development the very mistake
+   * one would pay for in a room: a capture that follows the projection.
+   */
+  const canvasScenes =
+    options.canvasScenes == null
+      ? null
+      : [...new Set([...DEFAULT_SCENES.B, ...options.canvasScenes])]
+  let canvasScene = canvasScenes?.[0] ?? null
+  let canvasRecording = false
+  let canvasStreaming = false
+  let canvasBytes = 0
+  let canvasFrames = 0
 
   let currentScene = scenes[1] ?? scenes[0]!
   let recording = false
@@ -89,6 +116,8 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
     { name: 'Ambiance salle', base: -38, amplitude: 6, channels: 2 },
     { name: 'Retour régie', base: -60, amplitude: 0, channels: 2 },
   ]
+  /** The same sources on A and B, as in the rooms: the microphones feed both. */
+  const muted = new Map(AUDIO_INPUTS.map((input) => [input.name, false]))
 
   let phase = 0
   const measure = (): { inputs: { inputName: string; inputLevelsMul: number[][] }[] } => {
@@ -123,6 +152,116 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
   /** Is the VU meter asked for by this subscription mask? */
   const wantsLevels = (subscriptions?: number): boolean =>
     subscriptions != null && (subscriptions & (1 << 16)) !== 0
+
+  /** The plugin's vendor events, shaped like obs-websocket's. */
+  const canvasEvent = (eventType: string, eventData: Record<string, unknown> = {}): void =>
+    emit('VendorEvent', { vendorName: 'aitum-vertical-canvas', eventType, eventData })
+
+  /** One vendor request, answered like the plugin does — `success` included. */
+  const canvas = (requestType: string, data: Record<string, unknown>): Record<string, unknown> => {
+    switch (requestType) {
+      case 'version':
+        return { success: true, version: '0.0.0-simulé' }
+
+      case 'status':
+        return {
+          success: true,
+          recording: canvasRecording,
+          streaming: canvasStreaming,
+          backtrack: false,
+          virtual_camera: false,
+        }
+
+      case 'get_scenes':
+        return { success: true, scenes: (canvasScenes ?? []).map((name) => ({ name })) }
+
+      case 'current_scene':
+        return { success: true, scene: canvasScene ?? '' }
+
+      case 'switch_scene': {
+        const target = String(data.scene)
+        if (!(canvasScenes ?? []).includes(target)) return { success: false, error: `Scène inconnue : ${target}` }
+        const old = canvasScene
+        canvasScene = target
+        canvasEvent('switch_scene', { old_scene: old ?? '', new_scene: target })
+        return { success: true }
+      }
+
+      case 'get_settings':
+        return {
+          success: true,
+          current_scene: canvasScene ?? '',
+          record: { path: options.recordingDir, extension: 'mkv', filename_formatting: format },
+          stream: { outputs: [{ name: 'Direct', server: '', has_key: false, enabled: true }] },
+        }
+
+      case 'set_settings':
+        log('paramètres du canvas appliqués')
+        return { success: true }
+
+      case 'start_recording': {
+        if (canvasRecording) return { success: false, error: 'Enregistrement déjà en cours' }
+        canvasRecording = true
+        log('canvas : enregistrement démarré')
+        canvasEvent('recording_starting')
+        canvasEvent('recording_started', { path: '' })
+        return { success: true }
+      }
+
+      case 'stop_recording': {
+        if (!canvasRecording) return { success: false, error: 'Aucun enregistrement en cours' }
+        canvasRecording = false
+        const path = freePath(options.recordingDir, format)
+        // A real file, like the main program's: the renaming and the sidecar
+        // follow, and that is precisely the chain one wants to see run.
+        writeFileSync(path, `enregistrement simulé (canvas) — ${new Date().toISOString()}\n`)
+        log(`canvas : enregistrement arrêté → ${path}`)
+        canvasEvent('recording_stopping')
+        canvasEvent('recording_stopped', { path, code: 0, last_error: '' })
+        return { success: true }
+      }
+
+      case 'start_streaming':
+        canvasStreaming = true
+        canvasBytes = 0
+        canvasFrames = 0
+        log('canvas : diffusion démarrée')
+        canvasEvent('streaming_started', { name: 'Direct' })
+        return { success: true }
+
+      case 'stop_streaming':
+        canvasStreaming = false
+        log('canvas : diffusion arrêtée')
+        canvasEvent('streaming_stopped', { name: 'Direct', code: 0, last_error: '' })
+        return { success: true }
+
+      case 'record_status':
+        return { success: true, active: canvasRecording, paused: false, path: '', duration_ms: 0, bytes: 0 }
+
+      case 'stream_status':
+        if (canvasStreaming) {
+          canvasBytes += 5_625_000
+          canvasFrames += 300
+        }
+        return {
+          success: true,
+          outputs: [
+            {
+              name: 'Direct',
+              enabled: true,
+              active: canvasStreaming,
+              bytes: canvasBytes,
+              total_frames: canvasFrames,
+              dropped_frames: 0,
+              congestion: 0,
+            },
+          ],
+        }
+
+      default:
+        return { success: false, error: `Requête inconnue : ${requestType}` }
+    }
+  }
 
   return {
     /**
@@ -229,6 +368,33 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
           })
           return {}
 
+        case 'GetInputList':
+          // A video source too: OBS lists everything, and only the audio ones
+          // answer about their mute.
+          return {
+            inputs: [
+              ...AUDIO_INPUTS.map((input) => ({ inputName: input.name })),
+              { inputName: 'Navigateur habillage' },
+            ],
+          }
+
+        case 'GetInputMute': {
+          const name = String(args?.inputName)
+          const state = muted.get(name)
+          if (state == null) throw new Error(`La source « ${name} » n'a pas de piste audio`)
+          return { inputMuted: state }
+        }
+
+        case 'SetInputMute': {
+          const name = String(args?.inputName)
+          if (!muted.has(name)) throw new Error(`Source audio inconnue : ${name}`)
+          const next = args?.inputMuted === true
+          muted.set(name, next)
+          log(`${name} → ${next ? 'coupé' : 'rétabli'}`)
+          emit('InputMuteStateChanged', { inputName: name, inputMuted: next })
+          return {}
+        }
+
         case 'GetRecordDirectory':
           // The control app uses it to list the rushes when the room has not filled
           // in its root: the simulated machine must answer like the real one.
@@ -250,6 +416,18 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
             outputTotalFrames: streamFrames,
             outputCongestion: 0,
           }
+
+        case 'CallVendorRequest': {
+          if (canvasScenes == null || args?.vendorName !== 'aitum-vertical-canvas') {
+            // What a real obs-websocket answers for a vendor nobody registered.
+            throw new Error(`Vendor inconnu : ${String(args?.vendorName)}`)
+          }
+          return {
+            vendorName: args.vendorName,
+            requestType: args.requestType,
+            responseData: canvas(String(args.requestType), (args.requestData ?? {}) as Record<string, unknown>),
+          }
+        }
 
         default:
           return {}

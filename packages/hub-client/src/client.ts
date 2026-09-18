@@ -131,7 +131,11 @@ export function createHubClient(options: HubClientOptions = {}): HubClient {
           } catch (error) {
             // An expired session is not an error to raise a toast about: it has
             // its own screen, and `onExpired` has already put it up.
-            if (!isSessionExpired(error)) options.onError?.(error)
+            // Nor is a call its caller walked away from — a stream closed on
+            // leaving the page.
+            if (!isSessionExpired(error) && interceptorOptions.signal?.aborted !== true) {
+              options.onError?.(error)
+            }
             throw error
           }
         },

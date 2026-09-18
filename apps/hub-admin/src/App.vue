@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Badge, Button, Toaster } from '@conference-operator/components'
 import { storeToRefs } from 'pinia'
-import { VIEW_PERMISSIONS, consoleViews, viewPath } from '@conference-operator/contract'
+import { CONTROL_PATH, VIEW_PERMISSIONS, consoleViews, viewPath } from '@conference-operator/contract'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AlertStack from './components/AlertStack.vue'
@@ -147,6 +147,19 @@ function refresh(): void {
         {{ identity }}
       </div>
       <div class="ml-auto flex gap-1.5">
+        <!--
+          Un lien et non un bouton : la régie mobile est une autre application,
+          servie par le même hub. Masqué pour qui n'a pas le droit de l'ouvrir,
+          elle ne lui montrerait qu'un refus.
+        -->
+        <a
+          v-if="session.can('regie:view')"
+          id="btn-regie"
+          :href="CONTROL_PATH"
+          class="rounded-lg border border-edge bg-surface2 px-3 py-2 text-[13px] font-semibold text-text transition-colors hover:border-brand hover:bg-edge"
+        >
+          Régie mobile
+        </a>
         <!--
           Le bouton n'apparaît que si le navigateur sait notifier. Le point
           signale que cet appareil-ci est réglé — une permission accordée

@@ -143,12 +143,26 @@ export const useConfigStore = defineStore('config', () => {
       const what = instance === 'A' ? 'projection' : 'captation'
       const state = diagnostics?.obs[instance] ?? null
 
-      // The address comes before the connection: "not connected" on an instance
-      // whose address is empty would send people looking at the network.
-      if (current.obs[instance].url.trim() === '') {
+      /*
+       * An empty address is a missing setting — except for the capture.
+       *
+       * There it **is** the setting: no OBS-B, the capture runs in the vertical
+       * canvas of OBS-A, which the plugin provides. What remains to be reported is
+       * the same thing as everywhere else, that it is not connected — and the room
+       * is told where to look, because on a single OBS there is nothing to plug in.
+       */
+      const canvas = instance === 'B' && current.obs.B.url.trim() === ''
+      if (current.obs[instance].url.trim() === '' && !canvas) {
         list.push({
           code: `obs-${instance}-url`,
           text: `Adresse d'OBS-${instance} (${what}) non renseignée.`,
+        })
+      } else if (canvas && state?.connected !== true) {
+        list.push({
+          code: 'obs-B',
+          text:
+            "La captation doit passer par le canvas vertical d'OBS-A (un seul OBS), " +
+            "et il ne répond pas : plugin absent, ou OBS-A déconnecté.",
         })
       } else if (state?.connected !== true) {
         list.push({
@@ -182,7 +196,7 @@ export const useConfigStore = defineStore('config', () => {
       list.push({
         code: 'vod',
         text:
-          'Dossier des VOD non renseigné : la régie le demande alors à OBS-B, et ' +
+          'Dossier des VOD non renseigné : la régie le demande alors à OBS, et ' +
           "n'a plus rien à relire dès qu'il est éteint.",
       })
     }

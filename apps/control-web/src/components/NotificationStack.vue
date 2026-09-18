@@ -23,6 +23,15 @@ const TINTS: Record<string, string> = {
   warning: 'bg-warn text-[#05070d]',
 }
 
+/**
+ * At most this many cards at once.
+ *
+ * A burst — a reconnection, several talks ending together — used to raise a
+ * wall of amber over the commands. Only the newest ones show; the others wait
+ * behind a counter and move up as cards are swept aside or expire.
+ */
+const MAX_VISIBLE = 3
+
 const props = defineProps<{ payload: DisplayPayload; nowMs: number }>()
 
 const actions = useActionsStore()
@@ -42,6 +51,11 @@ const notices = computed(() =>
       Date.parse(notice.at) > props.nowMs - NOTIFICATION_TTL_MS,
   ),
 )
+
+/** The newest ones: the runtime appends, so they are at the end. */
+const visible = computed(() => notices.value.slice(-MAX_VISIBLE))
+
+const hidden = computed(() => notices.value.length - visible.value.length)
 
 async function dismiss(id: string): Promise<void> {
   dismissed.value = [...dismissed.value, id]
@@ -76,8 +90,15 @@ async function dismiss(id: string): Promise<void> {
       focus, announces itself as actionable, and answers Enter. The cross stays,
       decorative — it is what says the card can be closed.
     -->
+    <span
+      v-if="hidden > 0"
+      class="rounded-full bg-black/60 px-2.5 py-0.5 text-xs text-white/80 tabular-nums"
+      data-role="notifications-hidden"
+    >
+      +{{ hidden }} {{ hidden > 1 ? 'autres avis' : 'autre avis' }}
+    </span>
     <button
-      v-for="notice in notices"
+      v-for="notice in visible"
       :key="notice.id"
       type="button"
       class="pointer-events-auto flex w-auto shrink-0 cursor-pointer items-center gap-2.5 rounded-lg border-0 px-3.5 py-2 text-left text-[13px] font-medium shadow-[0_10px_30px_rgba(0,0,0,.45)]"

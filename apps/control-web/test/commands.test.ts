@@ -4,6 +4,7 @@ import { useToast } from '@conference-operator/components'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import AudioInputsPanel from '../src/components/AudioInputsPanel.vue'
 import CapturePanel from '../src/components/CapturePanel.vue'
 import MessagePanel from '../src/components/MessagePanel.vue'
 import ProjectionPanel from '../src/components/ProjectionPanel.vue'
@@ -168,6 +169,29 @@ describe('projection', () => {
     expect(useToast().notices.value).toHaveLength(1)
   })
 
+  it('greys out the scenes, and says why, when OBS-A is not connected', async () => {
+    const calls = stubFetch()
+    const wrapper = mount(ProjectionPanel, {
+      props: { sceneRole: 'HOLD', relaySourceRoomId: null, obs: null, offline: true },
+    })
+
+    // Better to say it before the click than to answer with a red refusal after.
+    expect(wrapper.get('[data-role="obs-offline"]').text()).toContain("OBS\u00a0A n'est pas connecté")
+    expect(wrapper.get('[data-command="LIVE"]').attributes('disabled')).toBeDefined()
+
+    await wrapper.get('[data-command="LIVE"]').trigger('click')
+    await flushPromises()
+    expect(calls).toEqual([])
+  })
+
+  it('leaves the scenes alone when OBS-A is connected', () => {
+    const wrapper = mount(ProjectionPanel, {
+      props: { sceneRole: 'HOLD', relaySourceRoomId: null, obs: null },
+    })
+    expect(wrapper.find('[data-role="obs-offline"]').exists()).toBe(false)
+    expect(wrapper.get('[data-command="LIVE"]').attributes('disabled')).toBeUndefined()
+  })
+
   it('reminds that a simulated instance captures nothing', () => {
     const wrapper = mount(ProjectionPanel, {
       props: {
@@ -221,6 +245,54 @@ describe('projection, from a phone', () => {
       { type: 'scene.set', role: 'HOLD' },
     ])
     expect(useToast().notices.value).toHaveLength(1)
+  })
+})
+
+describe('audio sources', () => {
+  const INPUTS = [
+    { name: 'Micro cravate', muted: { A: false, B: false } },
+    { name: 'Micro main', muted: { A: true, B: true } },
+    { name: 'Ambiance salle', muted: { A: false, B: true } },
+  ]
+
+  it('offers to cut what is live, and to restore what is cut', async () => {
+    const calls = stubFetch()
+    const wrapper = mount(AudioInputsPanel, { props: { inputs: INPUTS } })
+
+    expect(wrapper.get('[data-input="Micro main"]').text()).toContain('Coupé')
+    await wrapper.get('[data-input="Micro cravate"] button').trigger('click')
+    await wrapper.get('[data-input="Micro main"] button').trigger('click')
+    await flushPromises()
+
+    // A state and not a toggle: the button says what it asks for.
+    expect(calls.map((call) => call.body)).toEqual([
+      { action: 'audio.mute', input: 'Micro cravate', muted: true },
+      { action: 'audio.mute', input: 'Micro main', muted: false },
+    ])
+  })
+
+  it('shows a source cut on one instance only, and cuts it everywhere', async () => {
+    const calls = stubFetch()
+    const wrapper = mount(AudioInputsPanel, { props: { inputs: INPUTS } })
+
+    // Heard in the room and not in the VOD: exactly what has to be seen.
+    expect(wrapper.get('[data-input="Ambiance salle"]').text()).toContain('OBS B seulement')
+
+    await wrapper.get('[data-input="Ambiance salle"] button').trigger('click')
+    await flushPromises()
+    expect(calls[0]?.body).toEqual({ action: 'audio.mute', input: 'Ambiance salle', muted: true })
+  })
+
+  it('greys out the buttons, and says why, when no OBS is connected', async () => {
+    const calls = stubFetch()
+    const wrapper = mount(AudioInputsPanel, { props: { inputs: INPUTS, offline: true } })
+
+    expect(wrapper.find('[data-role="audio-offline"]').exists()).toBe(true)
+    expect(wrapper.get('[data-input="Micro main"] button').attributes('disabled')).toBeDefined()
+
+    await wrapper.get('[data-input="Micro main"] button').trigger('click')
+    await flushPromises()
+    expect(calls).toEqual([])
   })
 })
 
@@ -285,6 +357,26 @@ describe('captation', () => {
       { action: 'recording.stop' },
       { action: 'recording.start' },
     ])
+  })
+
+  it('greys out every command, and says why, when OBS-B is not connected', async () => {
+    const calls = stubFetch()
+    const wrapper = mount(CapturePanel, {
+      props: { recording: REC, streaming: false, canStream: true, obs: null, realMs: 61_000, roomMs: 61_000, offline: true },
+    })
+
+    expect(wrapper.get('[data-role="obs-offline"]').text()).toContain("OBS\u00a0B n'est pas connecté")
+    for (const id of ['#btn-rec', '#btn-stream', '#btn-marker', '#btn-anchor-start', '#btn-anchor-end']) {
+      expect(wrapper.get(id).attributes('disabled')).toBeDefined()
+    }
+
+    // The shortcuts reach these functions without the button: they refuse too.
+    const exposed = wrapper.vm as unknown as { toggleRecording(): void; mark(): void; anchor(role: 'debut'): void }
+    exposed.toggleRecording()
+    exposed.mark()
+    exposed.anchor('debut')
+    await flushPromises()
+    expect(calls).toEqual([])
   })
 
   it('does not allow a marker to be laid outside a recording', () => {

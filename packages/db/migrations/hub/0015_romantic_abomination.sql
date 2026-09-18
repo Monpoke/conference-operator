@@ -1,0 +1,1 @@
+ALTER TABLE `room_state` ADD `audio_inputs` text DEFAULT '[]' NOT NULL;

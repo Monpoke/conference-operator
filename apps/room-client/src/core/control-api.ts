@@ -73,6 +73,13 @@ export const controlActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('vod.upload.cancel'), file: z.string().min(1).max(400) }),
   z.object({ action: z.literal('stream.start') }),
   z.object({ action: z.literal('stream.stop') }),
+  /**
+   * An audio source, muted or restored on both OBS instances.
+   *
+   * A state and not a toggle: two clicks crossing a slow answer must not leave the
+   * microphone the other way round from what was last asked for.
+   */
+  z.object({ action: z.literal('audio.mute'), input: z.string().min(1).max(200), muted: z.boolean() }),
   /** The running talk's lifecycle. */
   z.object({ action: z.literal('session.start') }),
   z.object({ action: z.literal('session.end') }),
@@ -168,6 +175,7 @@ export interface ControlTarget {
   readRecordingFile(file: string, plage: string | null): Promise<FileStream | null>
   startStreaming(): Promise<void>
   stopStreaming(): Promise<void>
+  setAudioMute(input: string, muted: boolean): Promise<void>
   startSession(): Promise<void>
   endSession(): Promise<void>
   resetSession(): Promise<void>
@@ -285,6 +293,9 @@ export async function runControlAction(
       case 'stream.stop':
         await target.stopStreaming()
         return { ok: true, message: 'Diffusion arrêtée' }
+      case 'audio.mute':
+        await target.setAudioMute(action.input, action.muted)
+        return { ok: true, message: `${action.input} ${action.muted ? 'coupé' : 'rétabli'}` }
       case 'session.start':
         await target.startSession()
         return { ok: true, message: 'Conférence démarrée' }

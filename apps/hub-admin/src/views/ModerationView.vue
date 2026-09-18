@@ -34,7 +34,7 @@ async function decide(id: string, decision: 'approve' | 'reject'): Promise<void>
 <template>
   <div
     id="moderation-view"
-    class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5"
+    class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] gap-3.5"
   >
     <Panel class="col-span-full" title="Modération du mur">
       <Hint class="mt-0 mb-3.5">

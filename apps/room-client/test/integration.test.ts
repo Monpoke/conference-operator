@@ -368,6 +368,7 @@ describe('mobile control app, from the phone to the room', () => {
         sceneRole: runtime.state().sceneRole,
         recording: runtime.state().recording,
         streaming: runtime.state().streaming,
+        audioInputs: runtime.state().audioInputs,
         outboxDepth: 0,
         programContentHash: runtime.state().contentHash,
         displayMode: runtime.state().mode,

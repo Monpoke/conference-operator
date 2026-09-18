@@ -23,7 +23,7 @@ import type { Permission } from './access.js'
  * to its module, which the router must import lazily rather than statically.
  */
 export function consoleViews(dev: boolean): string[] {
-  const views = ['exploitation', 'appairage', 'conferences', 'moderation', 'messages', 'vod', 'reglages', 'acces']
+  const views = ['exploitation', 'conferences', 'moderation', 'messages', 'vod', 'appairage', 'reglages', 'acces']
   return dev ? [...views, 'developpement'] : views
 }
 

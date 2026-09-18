@@ -103,7 +103,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     rooms: new RoomService(orm, createSecretBox(config.authSecret)),
     devices,
     commands: new CommandService(orm, () => clock.now()),
-    ingest: new IngestService(orm, touch),
+    ingest: new IngestService(orm, touch, () => changes.messageArrived()),
     wall: new WallService(orm),
     questions: new QuestionService(orm),
     // Five posts in a row then one every ten seconds: enough to post normally,

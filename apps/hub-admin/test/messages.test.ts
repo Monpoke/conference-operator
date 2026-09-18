@@ -23,6 +23,23 @@ interface Call {
 
 const ROOMS = [{ id: 'track-1', name: 'Track #1' }]
 
+/** Pushes a list down the fake stream, as the hub does when a room writes. */
+let push: (list: unknown[]) => void = () => {}
+
+/** A stream that stays open until the page leaves, and yields what `push` sends. */
+function watchStub(calls: Call[]) {
+  return async (input: unknown, options?: { signal?: AbortSignal }) => {
+    calls.push({ path: 'messages/watch', input })
+    return (async function* () {
+      while (options?.signal?.aborted !== true) {
+        yield await new Promise<unknown[]>((resolve) => {
+          push = resolve
+        })
+      }
+    })()
+  }
+}
+
 function stub(): { calls: Call[]; client: unknown } {
   const calls: Call[] = []
   const note =
@@ -40,6 +57,7 @@ function stub(): { calls: Call[]; client: unknown } {
         messages: {
           fromRooms: note('messages/fromRooms', []),
           send: note('messages/send', { ok: true }),
+          watch: watchStub(calls),
         },
         overlay: {
           history: note('overlay/history', []),
@@ -155,5 +173,56 @@ describe('messages view', () => {
       input: { roomId: null, message: { text: 'Le son revient', level: 'info' }, ttlSeconds: null },
     })
     expect(calls.filter((call) => call.path === 'overlay/history').length).toBeGreaterThan(1)
+  })
+
+  it('asks before projecting a message in front of the audience', async () => {
+    const { calls, wrapper } = await mountView()
+
+    await wrapper.get('#msg-room').setValue('track-1')
+    await wrapper.get('#msg-audience').setValue('audience')
+    await wrapper.get('#msg-text').setValue('Évacuation par la sortie B')
+    await wrapper.get('#btn-send-message').trigger('click')
+    await flushPromises()
+
+    // Nothing has left: the dialog says where it is going.
+    expect(calls.filter((call) => call.path === 'messages/send')).toHaveLength(0)
+    expect(document.querySelector('#msg-confirm-text')?.textContent).toContain('Track #1')
+
+    const confirm = [...document.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('Projeter'),
+    )
+    confirm!.click()
+    await flushPromises()
+
+    const sent = calls.find((call) => call.path === 'messages/send')
+    expect((sent?.input as { target: unknown }).target).toBe('audience')
+    wrapper.unmount()
+  })
+
+  it('shows a room message as soon as the hub pushes it', async () => {
+    const { wrapper } = await mountView()
+
+    push([
+      {
+        id: 'm1',
+        roomId: 'track-1',
+        roomName: 'Track #1',
+        text: 'Micro HS',
+        level: 'urgent',
+        receivedAt: new Date().toISOString(),
+      },
+    ])
+    await flushPromises()
+
+    expect(wrapper.get('#messages-received').text()).toContain('Micro HS')
+    expect(wrapper.get('#messages-live').text()).toContain('En direct')
+    wrapper.unmount()
+  })
+
+  it('names the targeted room on the banner', async () => {
+    const { wrapper } = await mountView()
+
+    await wrapper.get('#msg-room').setValue('track-1')
+    expect(wrapper.get('#banner-target').text()).toContain('Track #1')
   })
 })

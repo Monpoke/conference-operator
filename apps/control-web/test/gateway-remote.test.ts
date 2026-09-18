@@ -40,13 +40,14 @@ function view(overrides: Partial<ControlView> = {}): ControlView {
     sceneRole: 'HOLD',
     recording: false,
     streaming: false,
-    canStream: true,
+    audioInputs: [],
     displayMode: 'loop',
     sceneRoles: ['LIVE', 'HOLD'],
     relaySourceRoomId: null,
     promptRecordingOnStart: true,
     promptRecordingOnStop: true,
     sceneOnStart: 'LIVE',
+    canStream: true,
     lock: null,
     ...overrides,
   }
@@ -456,5 +457,22 @@ describe('the view rendered in the shape the panels read', () => {
     // No pairing: that is a room-machine matter, and a pairing veil on a phone
     // would have no code to display.
     expect(rendered.pairing).toBeNull()
+  })
+})
+
+describe('audio sources, from a phone', () => {
+  it('carries the mute as a state, not a toggle', () => {
+    // A toggle replayed on reconnection would give the microphone back to a
+    // speaker who had just been cut.
+    expect(translate({ action: 'audio.mute', input: 'Micro cravate', muted: true }, view())).toEqual({
+      type: 'audio.mute',
+      input: 'Micro cravate',
+      muted: true,
+    })
+  })
+
+  it('shows the sources the hub knows, as the room reported them', () => {
+    const inputs = [{ name: 'Micro cravate', muted: { A: true, B: false } }]
+    expect(payloadFromView(view({ audioInputs: inputs }), AT).state.audioInputs).toEqual(inputs)
   })
 })

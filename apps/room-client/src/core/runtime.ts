@@ -73,6 +73,8 @@ export interface RuntimeEffects {
   setRecording?: (on: boolean) => void
   /** OBS-B's stream. The same shape and the same reasons as `setRecording`. */
   setStreaming?: (on: boolean) => void
+  /** An audio source, muted or restored on both OBS instances. */
+  setAudioMute?: (input: string, muted: boolean) => void
   /**
    * Asks the hub for the other rooms' state again, without waiting for the polling
    * turn.
@@ -131,6 +133,7 @@ export class RoomRuntime extends EventEmitter {
       serverTimeOffsetMs: settings.clockOffsetMs,
       recording: false,
       streaming: false,
+      audioInputs: [],
       comments: [],
       sessionStates: {},
       notifications: [],
@@ -256,6 +259,31 @@ export class RoomRuntime extends EventEmitter {
     if (next.recording !== this.display.recording || next.streaming !== this.display.streaming) {
       this.patch({ recording: next.recording, streaming: next.streaming })
     }
+  }
+
+  /**
+   * Reflects one OBS instance's audio sources. Always from OBS, never assumed.
+   *
+   * Merged by name with the other instance's: the rooms feed the same microphones
+   * into both. An empty list is a disconnection — this instance's column goes back
+   * to `null`, the other's stays. Returns whether anything changed, so the caller
+   * only sends a heartbeat then.
+   */
+  observeAudioInputs(instance: 'A' | 'B', inputs: { name: string; muted: boolean }[]): boolean {
+    type Entry = { name: string; muted: { A: boolean | null; B: boolean | null } }
+    const merged = new Map<string, Entry>()
+    for (const entry of this.display.audioInputs) {
+      const muted = { ...entry.muted, [instance]: null }
+      if (muted.A != null || muted.B != null) merged.set(entry.name, { name: entry.name, muted })
+    }
+    for (const input of inputs) {
+      const previous = merged.get(input.name)?.muted ?? { A: null, B: null }
+      merged.set(input.name, { name: input.name, muted: { ...previous, [instance]: input.muted } })
+    }
+    const next = [...merged.values()]
+    if (JSON.stringify(next) === JSON.stringify(this.display.audioInputs)) return false
+    this.patch({ audioInputs: next })
+    return true
   }
 
   /**
@@ -538,6 +566,15 @@ export class RoomRuntime extends EventEmitter {
           text: `${payload.on ? 'Diffusion démarrée' : 'Diffusion arrêtée'} ${requestedByLabel(payload.requestedBy)}`,
         })
         this.effects.setStreaming?.(payload.on)
+        break
+      case 'audio.mute':
+        // Named, like the capture: a microphone cut with nobody at the keyboard
+        // reads as a sound failure.
+        this.notify({
+          level: 'info',
+          text: `${payload.input} ${payload.muted ? 'coupé' : 'rétabli'} ${requestedByLabel(payload.requestedBy)}`,
+        })
+        this.effects.setAudioMute?.(payload.input, payload.muted)
         break
       case 'regie.hold':
         /**

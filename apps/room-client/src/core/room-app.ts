@@ -14,7 +14,8 @@ import { DEFAULT_TIMEZONE } from '@conference-operator/program'
 import { RoomRuntime } from './runtime.js'
 import { LocalStore } from './store.js'
 import { createObsTransport, keepObsConnected } from './obs-transport.js'
-import type { ObsTransport } from './obs.js'
+import { CanvasObsController } from './obs-canvas.js'
+import type { AudioSource, ObsCapture, ObsControllerEvent, ObsTransport } from './obs.js'
 import type { ObsInstance } from '@conference-operator/contract'
 import { ConnectivityTracker, probeConnectivity } from './connectivity.js'
 import { RecordingSession, slugify, type MarkerRole, type StopResult } from './recording.js'
@@ -62,6 +63,18 @@ function obsFingerprint(config: RoomConfigCache, instance: ObsInstance): string 
   ])
 }
 
+/**
+ * The room runs on a single OBS: the capture rides in its vertical canvas.
+ *
+ * Read off the configuration rather than off a flag of its own: "no address for
+ * OBS-B" **is** the statement, and a second field saying the same thing could
+ * contradict it. Leaving the address empty used to give a capture that could never
+ * connect; it now gives the setup the plugin makes possible.
+ */
+function singleObs(config: RoomConfigCache): boolean {
+  return config.obs.B.url.trim() === ''
+}
+
 /** Where this machine's pairing stands. */
 export interface PairingState {
   status: 'idle' | 'waiting' | 'paired' | 'failed' | 'expired'
@@ -96,7 +109,18 @@ export interface RoomAppOptions {
    * precisely the gap that has to show. The simulator, for its part, uses them to
    * exist with the scenes one expects of it.
    */
-  obsTransportFactory?: (instance: ObsInstance, scenes: string[]) => ObsTransport
+  obsTransportFactory?: (
+    instance: ObsInstance,
+    scenes: string[],
+    /**
+     * The capture's scenes, when it lives in this instance's vertical canvas.
+     *
+     * Only the simulator reads it — a real OBS gets its canvas from the plugin —
+     * but without it a room with a single OBS could not be run in development at
+     * all: the simulated plugin would carry no scene the room configured.
+     */
+    canvasScenes?: string[],
+  ) => ObsTransport
   onLog?: (level: 'info' | 'warn' | 'error', message: string, context?: unknown) => void
   /** Displays the pairing code on the control screen. */
   onPairingCode?: (code: DeviceCodeResponse) => void
@@ -169,7 +193,15 @@ export class RoomApp implements ControlTarget {
   readonly display: DisplayServer
   private link: HubLink | null = null
   private obsA: ObsController | null = null
-  private obsB: ObsController | null = null
+  /**
+   * The projection's transport, kept because the capture may live inside it.
+   *
+   * The controller does not expose it, and the canvas has no socket of its own:
+   * without this reference, a room with a single OBS would have nothing to send
+   * its vendor requests on.
+   */
+  private obsATransport: ObsTransport | null = null
+  private obsB: ObsCapture | null = null
   private recording: RecordingSession | null = null
   /**
    * The output path's resolver, armed for the length of a recording stop. OBS only
@@ -294,6 +326,15 @@ export class RoomApp implements ControlTarget {
             })
           })
         },
+        setAudioMute: (input, muted) => {
+          void this.setAudioMute(input, muted).catch((cause: Error) => {
+            this.options.onLog?.('warn', 'source audio : commande distante refusée', {
+              input,
+              muted,
+              message: cause.message,
+            })
+          })
+        },
       },
       options.now,
     )
@@ -370,6 +411,16 @@ export class RoomApp implements ControlTarget {
    * background. That is what lets a control action succeed instantly even offline.
    */
   emit(payload: RoomEventPayload, dedupKey?: string): void {
+    /*
+     * Nothing more once the machine is closing.
+     *
+     * OBS's events outlive the request that caused them — a scene change, a
+     * disconnection — and one arriving after `close()` found a closed local base:
+     * the queue it wanted to write to no longer exists, and the process went down
+     * on the way out over an event nobody was going to read.
+     */
+    if (this.abort.signal.aborted) return
+
     const outbox = this.ensureOutbox()
     if (outbox == null) {
       // Before the very first pairing, the room is not known yet and the event
@@ -975,6 +1026,7 @@ export class RoomApp implements ControlTarget {
          */
         recording: state.recording,
         streaming: state.streaming,
+        audioInputs: state.audioInputs,
         outboxDepth: this.outboxDepth(),
         programContentHash: state.contentHash,
         displayMode: state.mode,
@@ -1159,6 +1211,15 @@ export class RoomApp implements ControlTarget {
       await this.obsA?.disconnect().catch(() => {})
       this.obsA = null
       await this.connectProjection(config, true)
+      /*
+       * The capture follows the projection it lives in.
+       *
+       * A single OBS means one socket: reconnecting the projection rebuilt it and
+       * left the canvas talking into the old one. Reconnected, not rebuilt — the
+       * recording session survives, so a reconnection made during a talk does not
+       * cost the take.
+       */
+      if (singleObs(config) && this.obsB != null) await this.wire('B', true)
     } else {
       await this.obsB?.disconnect().catch(() => {})
       this.obsB = null
@@ -1217,7 +1278,9 @@ export class RoomApp implements ControlTarget {
     const transport = (this.options.obsTransportFactory ?? createObsTransport)(
       'A',
       sceneNames(config.sceneRoles.A),
+      singleObs(config) ? sceneNames(config.sceneRoles.B) : undefined,
     )
+    this.obsATransport = transport
     this.obsA = new ObsController({
       instance: 'A',
       url: config.obs.A.url,
@@ -1247,7 +1310,22 @@ export class RoomApp implements ControlTarget {
               })
             }
             break
+          case 'audio':
+            /*
+             * The levels of a single OBS arrive here.
+             *
+             * With two instances the VU meter is OBS-B's, and OBS-A never
+             * subscribes to it. With one, the inputs belong to the process that
+             * projects: not passing them on left the control app's VU meter flat
+             * on a room that was perfectly audible.
+             */
+            if (this.obsB?.sharesHost === true) this.levels.push(event.inputs)
+            break
+          case 'audio-inputs':
+            this.observeAudioInputs('A', event.inputs)
+            break
           case 'disconnected':
+            this.observeAudioInputs('A', [])
             this.emit({ type: 'obs.connection', obs: 'A', connected: false, unresolvedRoles: [] })
             break
           default:
@@ -1263,93 +1341,15 @@ export class RoomApp implements ControlTarget {
   /**
    * OBS-B: the capture. Distinct from the projection because it has neither the
    * same scenes nor the same consequences — a mistake here costs a VOD.
+   *
+   * Two setups behind the same object: a second OBS instance, or the vertical
+   * canvas of the first one when the room runs on a single OBS. Everything
+   * downstream — the recording session, the sidecars, the stream, what goes up to
+   * the hub — stays the same code, and that is the whole point: a room with one
+   * OBS must not get a second, less travelled capture path.
    */
   private async connectCapture(config: RoomConfigCache, manual = false): Promise<void> {
-    const transport = (this.options.obsTransportFactory ?? createObsTransport)(
-      'B',
-      sceneNames(config.sceneRoles.B),
-    )
-    this.obsB = new ObsController({
-      instance: 'B',
-      url: config.obs.B.url,
-      password: config.obs.B.password,
-      sceneRoles: config.sceneRoles.B,
-      transport,
-      onEvent: (event) => {
-        switch (event.type) {
-          case 'audio':
-            this.levels.push(event.inputs)
-            break
-          case 'recording':
-            this.runtime.observeCapture({ recording: event.active })
-            /*
-             * The heartbeat, not only the drain.
-             *
-             * A capture launched from OBS itself emits no `recording.started`: it
-             * only comes up through the heartbeat. Without this reminder, the queue we
-             * wake here holds nothing to say.
-             */
-            this.beat()
-            this.wakeUplink()
-            // The path only arrives at the stop: it unblocks the sidecar's writing.
-            if (!event.active) {
-              if (this.pendingOutputPath != null) {
-                this.pendingOutputPath(event.outputPath)
-                this.pendingOutputPath = null
-              } else {
-                // Nobody is waiting for this path in the control app: the stop comes
-                // from OBS.
-                void this.closeStopFromObs(event.outputPath)
-              }
-            }
-            break
-          case 'streaming':
-            this.runtime.observeCapture({ streaming: event.active })
-            this.beat()
-            this.wakeUplink()
-            this.emit(
-              event.active
-                ? { type: 'stream.started', obs: 'B', sessionId: this.runtime.state().currentSession?.id ?? null }
-                : { type: 'stream.stopped', obs: 'B', reason: 'operator' },
-            )
-            break
-          case 'connected':
-            /**
-             * Adopt the recording and the stream in progress.
-             *
-             * The case that matters: the application restarts during a talk and OBS
-             * is already recording. Starting again from "nothing running" would
-             * suggest a lost take.
-             */
-            this.runtime.observeCapture({
-              recording: event.recording,
-              streaming: event.streaming,
-            })
-            // Adopted here, so said here: the console and the mobile control app
-            // otherwise started from "nothing running" for ten seconds.
-            this.beat()
-            this.emit({
-              type: 'obs.connection',
-              obs: 'B',
-              connected: true,
-              unresolvedRoles: event.unresolvedRoles,
-            })
-            // Reapplies the VU meter subscription: a control app opened before OBS,
-            // or during a reconnection, must find its levels back by itself.
-            if (this.levelsRequested) void this.obsB?.setVolumeMeters(true).catch(() => {})
-            break
-          case 'disconnected':
-            // The VU meter falls back to zero rather than freezing the last
-            // measurement: a silent control app must not show a signal.
-            this.levels.reset()
-            this.display.publishLevels([])
-            this.emit({ type: 'obs.connection', obs: 'B', connected: false, unresolvedRoles: [] })
-            break
-          default:
-            break
-        }
-      },
-    })
+    this.obsB = singleObs(config) ? this.canvasCapture(config) : this.secondInstance(config)
 
     this.recording = new RecordingSession({
       setFilenameFormat: async (format) => {
@@ -1374,6 +1374,134 @@ export class RoomApp implements ControlTarget {
 
     this.obsApplied.B = obsFingerprint(config, 'B')
     await this.wire('B', manual)
+  }
+
+  /** The capture on its own instance: two OBS on the machine. */
+  private secondInstance(config: RoomConfigCache): ObsCapture {
+    const transport = (this.options.obsTransportFactory ?? createObsTransport)(
+      'B',
+      sceneNames(config.sceneRoles.B),
+    )
+    return new ObsController({
+      instance: 'B',
+      url: config.obs.B.url,
+      password: config.obs.B.password,
+      sceneRoles: config.sceneRoles.B,
+      transport,
+      onEvent: (event) => this.captureEvent(event),
+    })
+  }
+
+  /**
+   * The capture in the projection's vertical canvas: a single OBS in the room.
+   *
+   * The projection is read through functions and not held: reconnecting OBS-A
+   * rebuilds its controller, and a capture holding the old one would then talk
+   * into a closed socket — or, worse, be rebuilt in turn and lose the take in
+   * progress.
+   */
+  private canvasCapture(config: RoomConfigCache): ObsCapture {
+    return new CanvasObsController({
+      transport: () => this.obsATransport,
+      host: () => this.obsA,
+      sceneRoles: config.sceneRoles.B,
+      onEvent: (event) => this.captureEvent(event),
+      onLog: this.options.onLog,
+    })
+  }
+
+  /** What the capture reports, whichever of the two setups produced it. */
+  private captureEvent(event: ObsControllerEvent): void {
+    /*
+     * Nothing more once the machine is closing.
+     *
+     * OBS's events are asynchronous and outlive the request that caused them: one
+     * arriving after `close()` found a closed local base and brought the process
+     * down on the way out, over a state nobody was going to read.
+     */
+    if (this.abort.signal.aborted) return
+
+    switch (event.type) {
+      case 'audio':
+        this.levels.push(event.inputs)
+        break
+      case 'recording':
+        this.runtime.observeCapture({ recording: event.active })
+        // OBS ended the take on an error — a full disk, an encoder that gave up.
+        // It goes into the room's log, which the Diagnostic panel reads back.
+        if (event.error != null) {
+          this.options.onLog?.('error', 'OBS a arrêté la capture sur une erreur', { message: event.error })
+        }
+        /*
+         * The heartbeat, not only the drain.
+         *
+         * A capture launched from OBS itself emits no `recording.started`: it
+         * only comes up through the heartbeat. Without this reminder, the queue we
+         * wake here holds nothing to say.
+         */
+        this.beat()
+        this.wakeUplink()
+        // The path only arrives at the stop: it unblocks the sidecar's writing.
+        if (!event.active) {
+          if (this.pendingOutputPath != null) {
+            this.pendingOutputPath(event.outputPath)
+            this.pendingOutputPath = null
+          } else {
+            // Nobody is waiting for this path in the control app: the stop comes
+            // from OBS.
+            void this.closeStopFromObs(event.outputPath)
+          }
+        }
+        break
+      case 'streaming':
+        this.runtime.observeCapture({ streaming: event.active })
+        this.beat()
+        this.wakeUplink()
+        this.emit(
+          event.active
+            ? { type: 'stream.started', obs: 'B', sessionId: this.runtime.state().currentSession?.id ?? null }
+            : { type: 'stream.stopped', obs: 'B', reason: 'operator' },
+        )
+        break
+      case 'connected':
+        /**
+         * Adopt the recording and the stream in progress.
+         *
+         * The case that matters: the application restarts during a talk and OBS
+         * is already recording. Starting again from "nothing running" would
+         * suggest a lost take.
+         */
+        this.runtime.observeCapture({
+          recording: event.recording,
+          streaming: event.streaming,
+        })
+        // Adopted here, so said here: the console and the mobile control app
+        // otherwise started from "nothing running" for ten seconds.
+        this.beat()
+        this.emit({
+          type: 'obs.connection',
+          obs: 'B',
+          connected: true,
+          unresolvedRoles: event.unresolvedRoles,
+        })
+        // Reapplies the VU meter subscription: a control app opened before OBS,
+        // or during a reconnection, must find its levels back by itself.
+        if (this.levelsRequested) void this.obsB?.setVolumeMeters(true).catch(() => {})
+        break
+      case 'audio-inputs':
+        this.observeAudioInputs('B', event.inputs)
+        break
+      case 'disconnected':
+        this.observeAudioInputs('B', [])
+        // The VU meter falls back to zero rather than freezing the last
+        // measurement: a silent control app must not show a signal.
+        this.levels.reset()
+        this.display.publishLevels([])
+        this.emit({ type: 'obs.connection', obs: 'B', connected: false, unresolvedRoles: [] })
+        break
+      default:
+        break
+    }
   }
 
   /** Starts recording the running talk. */
@@ -1441,6 +1569,33 @@ export class RoomApp implements ControlTarget {
   async stopStreaming(): Promise<void> {
     if (this.obsB == null) throw new Error('OBS-B non connecté')
     await this.obsB.stopStream()
+  }
+
+  /**
+   * Mutes or restores an audio source on every OBS instance that has it.
+   *
+   * Both, because the rooms feed the same microphones into A and B: cutting one
+   * only would leave the speaker heard in the room and not in the VOD, or the
+   * other way round. An instance that is not connected, or lacks the source, is
+   * skipped; the gesture fails if nobody could apply it, or if one refused.
+   */
+  async setAudioMute(input: string, muted: boolean): Promise<void> {
+    const targets = [this.obsA, this.obsB?.sharesHost === true ? null : this.obsB].filter(
+      (obs): obs is ObsCapture => obs != null && obs.hasAudioInput(input),
+    )
+    if (targets.length === 0) throw new Error(`Aucun OBS connecté ne propose la source « ${input} »`)
+    const results = await Promise.allSettled(targets.map((obs) => obs.setInputMute(input, muted)))
+    const refused = results.find((result): result is PromiseRejectedResult => result.status === 'rejected')
+    if (refused != null) throw refused.reason as Error
+  }
+
+  /** One instance's audio sources into the state, and up to the hub when they moved. */
+  private observeAudioInputs(instance: ObsInstance, inputs: AudioSource[]): void {
+    if (!this.runtime.observeAudioInputs(instance, inputs)) return
+    // The mobile control app only reads the heartbeat: a mute made in OBS itself
+    // would otherwise wait ten seconds to show.
+    this.beat()
+    this.wakeUplink()
   }
 
   /** The previous stream sample: OBS's counters are cumulative, a rate needs two. */
@@ -1897,6 +2052,8 @@ export class RoomApp implements ControlTarget {
    */
   sendMessage(text: string, level: 'info' | 'warning' | 'urgent'): void {
     this.emit({ type: 'room.message', text, level })
+    // Now rather than at the pump's next tick: the console shows it live.
+    this.wakeUplink()
     this.runtime.notify({ level: 'info', text: `Envoyé à la console : ${text}` })
   }
 

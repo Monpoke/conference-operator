@@ -73,6 +73,19 @@ export const commandPayloadSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     /**
+     * An audio source muted or restored, on both OBS instances.
+     *
+     * A state and not a toggle, like the capture: a toggle replayed on
+     * reconnection would give the microphone back to a speaker who had just been
+     * cut.
+     */
+    type: z.literal('audio.mute'),
+    input: z.string().min(1).max(200),
+    muted: z.boolean(),
+    requestedBy: z.string().nullable().default(null),
+  }),
+  z.object({
+    /**
      * Who holds this room's mobile control app, or `null` if nobody.
      *
      * Broadcast on every **change** of holder, never on the heartbeat: one
@@ -267,6 +280,9 @@ export const CONTROL_COMMAND_TTL = {
   'display.set': 30,
   'recording.set': 90,
   'stream.set': 90,
+  // As short as a scene: a microphone that opens ten minutes after it was asked
+  // for catches whoever is speaking at that moment.
+  'audio.mute': 30,
 } as const
 
 /** Is a command still applicable? Used when catching up. */

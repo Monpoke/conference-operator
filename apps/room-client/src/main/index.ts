@@ -99,9 +99,12 @@ async function main(): Promise<void> {
     regieViteOrigin: process.env.REGIE_VITE_ORIGIN ?? null,
     version: app.getVersion(),
     obsTransportFactory: MODE.obsSimulated
-      ? (instance, scenes) =>
+      ? (instance, scenes, canvasScenes) =>
           createMockObsTransport({
             instance,
+            // Set only on a room with a single OBS: the simulator then also plays
+            // the plugin, and the whole capture chain can be run without one.
+            canvasScenes,
             // See `dev-headless.ts`: the simulator carries the room's scenes,
             // without which it complains about names only it does not know.
             scenes,

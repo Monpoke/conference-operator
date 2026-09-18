@@ -89,7 +89,7 @@ async function confirmReset(): Promise<void> {
 <template>
   <div
     id="development-view"
-    class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5"
+    class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] gap-3.5"
   >
     <Panel title="Heure du hub">
       <div class="flex items-center gap-3 border-b border-edge pb-3">

@@ -1,4 +1,4 @@
-import type { Connectivity, DisplayMode, Envelope, RoomEventPayload, SceneRole } from '@conference-operator/contract'
+import type { AudioInput, Connectivity, DisplayMode, Envelope, RoomEventPayload, SceneRole } from '@conference-operator/contract'
 import { heartbeatDedupKey, type Outbox } from './outbox.js'
 
 // Re-exported here: it is the pump that uses it when emitting.
@@ -231,6 +231,8 @@ export interface HeartbeatInput {
   sceneRole: SceneRole | null
   recording: boolean
   streaming: boolean
+  /** The audio sources: the mobile control app only sees them through here. */
+  audioInputs: AudioInput[]
   outboxDepth: number
   programContentHash: string | null
   /** What the room screen displays: it only comes up through the heartbeat. */

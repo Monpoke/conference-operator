@@ -16,8 +16,9 @@ Deux applications :
 
 - **hub** (cloud) — importe le programme, diffuse salles et commandes, collecte les
   interactions sociales et la télémétrie ;
-- **room-client** (Electron, un par salle) — pilote deux instances OBS, sert l'écran
-  de salle, et **fonctionne seul** : réseau coupé, la régie continue et rien n'est perdu.
+- **room-client** (Electron, un par salle) — pilote une ou deux instances OBS, sert
+  l'écran de salle, et **fonctionne seul** : réseau coupé, la régie continue et rien
+  n'est perdu.
 
 La structure du dépôt est décrite plus bas, et les choix qui ne se devinent pas
 à la lecture du code sont réunis dans « Décisions structurantes ». Pour
@@ -1104,6 +1105,10 @@ Deux instances par salle, et le partage est net : **OBS-A projette dans la
 salle, OBS-B enregistre et diffuse**. L'application ne crée jamais ni scène ni
 source — elle bascule les scènes d'OBS-A, lit et enregistre sur OBS-B.
 
+Une salle peut n'en avoir **qu'une** : voir « Une salle à un seul OBS » plus bas.
+Le partage des rôles, lui, ne bouge pas — c'est le nombre de processus qui change,
+pas la répartition.
+
 Les adresses qui suivent ne se retapent pas : chaque ligne du menu **Écrans** de
 la régie porte un bouton **Copier**, qui met l'adresse entière dans le
 presse-papiers — prête à coller dans le champ d'une Browser Source, qui ne
@@ -1211,6 +1216,70 @@ reconnexion, comme toute commande. La salle l'écrit dans sa configuration et
 s'arrête là : OBS-B est configuré au moment où l'on presse « Diffuser », jamais
 d'avance — un direct en cours ne change ni de serveur ni de clé sans être coupé,
 et la prochaine mise en route est le seul moment où le réglage peut s'appliquer.
+### Une salle à un seul OBS
+
+Deux OBS, c'est deux processus à lancer, à configurer et à surveiller, sur une
+machine qui encode déjà. La raison en était technique et non négociable : **un OBS n'a
+qu'un programme**. Ce qui part au vidéoprojecteur est ce qui est enregistré,
+habillage compris — donc soit la salle voit le titrage de la VOD, soit la VOD
+n'est pas habillée.
+
+Le plugin **Canvas vertical** lève exactement cela : il ajoute à OBS un second
+canevas, avec ses scènes, son enregistrement et sa diffusion, indépendants du
+programme. La séparation qui justifiait la seconde instance existe alors **dans**
+la première, et une salle peut n'avoir qu'un OBS.
+
+**Ça se choisit dans le ⚙ de la régie**, sur le bloc « OBS-B — captation » : un
+interrupteur à deux positions, « OBS-B dédié » ou « Canvas vertical d'OBS-A », et
+les champs du montage retenu en dessous — l'adresse et le mot de passe d'un second
+OBS, ou rien à saisir pour le plugin. Il n'y a pas pour autant de second réglage
+enregistré : choisir le canvas **efface l'adresse d'OBS-B**, et l'adresse absente
+reste la déclaration. Un drapeau à part pourrait la contredire ; un interrupteur
+qui l'écrit ne le peut pas. L'adresse tapée avant de basculer est gardée de côté
+tant que le panneau est ouvert, pour que comparer les deux montages ne coûte pas de
+la retaper. Le client de
+salle ouvre alors une seule connexion et fait passer par le canvas ce qu'il
+demandait à OBS-B — l'enregistrement, la diffusion, les vumètres, les sources
+audio. Le reste ne change pas d'un pouce : mêmes rôles de scènes à vérifier, même
+session d'enregistrement, même renommage, même sidecar, même remontée vers le hub.
+C'est voulu : une salle à un seul OBS ne doit pas être un second chemin de
+captation, moins emprunté que l'autre.
+
+**Sans le plugin, la salle le dit** au lieu d'enregistrer dans le vide : « le
+plugin Canvas vertical n'est pas installé dans OBS… installer le plugin, ou
+renseigner l'adresse d'un second OBS », dans le journal et dans la liste de ce qui
+manque, en haut du ⚙.
+
+Trois détails qui suivent de ce montage :
+
+- **Le format de nom de fichier n'est plus dicté à OBS.** Le canvas nomme ses
+  propres fichiers, et la régie renomme la prise à l'arrêt d'après le chemin
+  annoncé par le plugin. Ce chemin était déjà la source dans les deux montages —
+  c'est lui qui dit ce qui a *réellement* été écrit, « (2) » de collision compris.
+- **L'adresse RTMP et sa clé sont poussées ensemble**, dans la première sortie du
+  canvas et d'un seul bloc : le plugin vérifie tout avant d'écrire quoi que ce
+  soit, donc une valeur refusée laisse la diffusion telle qu'elle était plutôt
+  qu'à moitié appliquée — un serveur sans sa clé, c'est un direct qui démarre et
+  se fait rejeter. La clé ne ressort jamais du plugin ; il dit seulement s'il en a
+  une. La **sortie**, en revanche, doit exister : le hub pousse une destination,
+  il ne peut pas en créer une. Sur un canvas qui n'en a aucune, la salle le dit
+  — « aucune destination de diffusion : en ajouter une dans le panneau du plugin »
+  — plutôt que de laisser tomber au moment du « Diffuser » le refus anglais du
+  plugin, qui parle d'un index.
+- **Une prise mal finie remonte enfin.** Le plugin donne le code de sortie d'OBS
+  et son message : disque plein, encodeur qui lâche. Cela ne se lisait que dans le
+  journal d'OBS, sur la machine ; c'est maintenant dans le journal de la salle, à
+  côté du chronomètre qui prétendait que tout allait bien.
+
+Ce que cela ne change pas : la console continue de parler d'« OBS-B » pour la
+captation d'une salle, canvas ou seconde instance. Ce qu'elle surveille — captation
+coupée, rôle introuvable — a le même sens dans les deux cas, et la régie, elle, dit
+où ça vit.
+
+Reste la limite, qui n'est pas logicielle : **une seule machine encode alors deux
+programmes**. Deux instances sur deux machines restent le montage le plus sûr pour
+une grande salle ; le canvas est ce qui rend une petite salle, ou une salle de
+secours, tenable avec un seul poste.
 
 ### Vérifier les rushes pendant qu'il est encore temps
 

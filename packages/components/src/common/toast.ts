@@ -43,6 +43,19 @@ export interface NoticeOptions {
 /** How long a notice stays. One duration, since none of the three differed on purpose. */
 export const NOTICE_MS = 3_500
 
+/**
+ * How many notices coexist at most. Older ones leave to make room.
+ *
+ * The key handles the gesture one repeats *knowingly*; this handles everything
+ * else. A dozen clicks on the room's screen modes, a reconnection answering for
+ * every command that was in flight, and the bottom of the page becomes a wall
+ * of cards over the controls — in a dark room, during a talk. Past the third,
+ * a notice no longer informs: it hides the room.
+ *
+ * The oldest go, not the newest. What just happened is what one is looking for.
+ */
+export const MAX_NOTICES = 3
+
 let nextId = 0
 
 const queue: Ref<Notice[]> = ref([])
@@ -63,7 +76,9 @@ function push(text: string, failed: boolean, options: NoticeOptions = {}): void 
   // The replaced notice keeps its timer, which will find nothing to remove: the
   // removal filters on the id, and that id has already left the queue.
   const kept = key == null ? queue.value : queue.value.filter((notice) => notice.key !== key)
-  queue.value = [...kept, { id, text, failed, key }]
+  // The dropped notices keep their timers, which will find nothing to remove —
+  // the same harmless race as a replaced one.
+  queue.value = [...kept, { id, text, failed, key }].slice(-MAX_NOTICES)
   setTimeout(() => {
     dismiss(id)
   }, NOTICE_MS)

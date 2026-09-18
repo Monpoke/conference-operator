@@ -69,9 +69,12 @@ const room = new RoomApp({
   writeToken: (token) => writeFileSync(tokenPath, token),
   obsTransportFactory: !mode.obsSimulated
     ? undefined
-    : (instance, scenes) =>
+    : (instance, scenes, canvasScenes) =>
         createMockObsTransport({
           instance,
+          // Set only on a room with a single OBS: the simulator then also plays the
+          // plugin, and the whole capture chain can be run without one.
+          canvasScenes,
           // The scenes the room configured: a simulated OBS that did not have them
           // would make every slightly personal name come out as "role not found",
           // red, on an instance that does not exist.

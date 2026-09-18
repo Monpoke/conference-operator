@@ -31,6 +31,13 @@ const props = defineProps<{
    * does not have would refuse a stream that is perfectly well set up.
    */
   stream?: { rtmpUrl: string } | null
+  /**
+   * OBS-B is not connected.
+   *
+   * Every command here would come back as a refusal. Unset remotely: the phone
+   * does not see OBS.
+   */
+  offline?: boolean
 }>()
 
 const emit = defineEmits<{ vod: [] }>()
@@ -41,6 +48,8 @@ const label = ref('')
 const active = computed(() => props.recording?.active === true)
 
 function toggleRecording(): void {
+  // The `r` shortcut does not go through the disabled button.
+  if (props.offline) return
   void actions.act({ action: active.value ? 'recording.stop' : 'recording.start' })
 }
 
@@ -60,7 +69,7 @@ const streamTitle = computed(() =>
 )
 
 function toggleStream(): void {
-  if (noTarget.value) return
+  if (noTarget.value || props.offline) return
   void actions.act({ action: props.streaming ? 'stream.stop' : 'stream.start' })
 }
 
@@ -73,7 +82,7 @@ function mark(): void {
    * button ignores the click. Called directly, it posted a command the machine
    * refuses — a flashing failure for a gesture the page knew to be impossible.
    */
-  if (!active.value) return
+  if (!active.value || props.offline) return
   // A marker with no label is still a marker: at editing time, knowing *where* is
   // already better than nothing, and demanding a word would miss the moment.
   void actions.act({ action: 'recording.mark', label: label.value.trim() || 'Chapitre' })
@@ -109,7 +118,7 @@ function anchorLabel(name: string, ms: number | null): string {
 function anchor(role: MarkerRole): void {
   // The same guard as `mark()`, and for the same reason: `d` and `f` reach this
   // function without going through the button, which an attribute disables in vain.
-  if (!active.value) return
+  if (!active.value || props.offline) return
   void actions.act({ action: 'recording.mark', label: role === 'debut' ? 'Début' : 'Fin', role })
 }
 
@@ -155,11 +164,17 @@ defineExpose({ toggleRecording, mark, anchor })
       {{ active ? 'Enregistrement en cours' : 'Aucun enregistrement' }}
     </div>
 
+    <p v-if="offline" class="mb-2 text-xs text-warn" data-role="obs-offline">
+      OBS&nbsp;B n'est pas connecté : enregistrement, diffusion et repères sont
+      indisponibles. Ils reviendront dès la reconnexion.
+    </p>
+
     <div class="grid grid-cols-2 gap-1.5">
       <Button
         id="btn-rec"
         variant="danger"
         :active="active"
+        :disabled="offline"
         @click="toggleRecording()"
       >
         {{ active ? 'Arrêter' : 'Enregistrer' }}<Key v-if="remote !== true">R</Key>
@@ -167,7 +182,7 @@ defineExpose({ toggleRecording, mark, anchor })
       <Button
         id="btn-stream"
         :active="streaming"
-        :disabled="noTarget"
+        :disabled="noTarget || offline"
         :title="streamTitle"
         @click="toggleStream()"
       >
@@ -189,7 +204,7 @@ defineExpose({ toggleRecording, mark, anchor })
         id="btn-anchor-start"
         size="small"
         :active="editing.startMs != null"
-        :disabled="!active"
+        :disabled="!active || offline"
         title="Là où commence ce qu'on publie : le montage coupe tout ce qui précède. Reposer remplace le repère précédent."
         data-role="anchor-start"
         @click="anchor('debut')"
@@ -200,7 +215,7 @@ defineExpose({ toggleRecording, mark, anchor })
         id="btn-anchor-end"
         size="small"
         :active="editing.endMs != null"
-        :disabled="!active"
+        :disabled="!active || offline"
         title="Là où finit ce qu'on publie : le montage coupe tout ce qui suit. Reposer remplace le repère précédent."
         data-role="anchor-end"
         @click="anchor('fin')"
@@ -217,10 +232,10 @@ defineExpose({ toggleRecording, mark, anchor })
         maxlength="80"
         placeholder="Libellé du marqueur"
         class="flex-1 rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text focus:border-brand focus:outline-none"
-        :disabled="!active"
+        :disabled="!active || offline"
         @keydown.enter="active && mark()"
       />
-      <Button id="btn-marker" class="shrink-0" size="small" :disabled="!active" @click="mark()">
+      <Button id="btn-marker" class="shrink-0" size="small" :disabled="!active || offline" @click="mark()">
         Marquer<Key>M</Key>
       </Button>
     </div>

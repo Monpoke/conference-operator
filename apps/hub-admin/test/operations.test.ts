@@ -20,6 +20,7 @@ const ROOM = {
   connectivity: 'ONLINE',
   recording: false,
   streaming: false,
+  audioInputs: [],
   sceneRole: null,
   outboxDepth: 0,
   lastSeenAt: '2026-10-30T09:59:00Z',

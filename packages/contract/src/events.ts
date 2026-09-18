@@ -9,6 +9,7 @@ import {
   sessionIdSchema,
   ulidSchema,
   connectivitySchema,
+  audioInputSchema,
 } from './primitives.js'
 
 /**
@@ -106,6 +107,13 @@ export const roomEventPayloadSchema = z.discriminatedUnion('type', [
      * and its screen simply reads "unknown" rather than failing its whole batch.
      */
     displayMode: displayModeSchema.nullable().default(null),
+    /**
+     * The audio sources and their mute state, for the mobile control app.
+     *
+     * Optional on input for the same reason as `displayMode`: an older room keeps
+     * beating, and simply shows no source to mute.
+     */
+    audioInputs: z.array(audioInputSchema).max(64).default([]),
   }),
   /**
    * The stream's health, measured by the room between two samples.

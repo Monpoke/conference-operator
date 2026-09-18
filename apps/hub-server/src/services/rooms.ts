@@ -9,6 +9,7 @@ import {
   type RoomStream,
   type RoomStreamPatch,
   type StreamTarget,
+  audioInputSchema,
   sceneRoleSchema,
   type SceneRole,
 } from '@conference-operator/contract'
@@ -45,6 +46,17 @@ function rolesOf(json: string | null | undefined): SceneRole[] {
     const value: unknown = JSON.parse(json)
     if (!Array.isArray(value)) return []
     return value.filter((role): role is SceneRole => sceneRoleSchema.safeParse(role).success)
+  } catch {
+    return []
+  }
+}
+
+/** The audio sources stored as JSON. A malformed column reads as "none", never as a crash. */
+function audioInputsOf(json: string | null | undefined) {
+  if (json == null) return []
+  try {
+    const parsed = audioInputSchema.array().safeParse(JSON.parse(json))
+    return parsed.success ? parsed.data : []
   } catch {
     return []
   }
@@ -370,6 +382,7 @@ export class RoomService {
           currentSessionId: state?.currentSessionId ?? null,
           recording: state?.recording ?? false,
           streaming: state?.streaming ?? false,
+          audioInputs: audioInputsOf(state?.audioInputs),
           outboxDepth: state?.outboxDepth ?? 0,
           programContentHash: state?.programContentHash ?? null,
           obs: {

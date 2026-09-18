@@ -8,6 +8,7 @@ import {
   roomIdSchema,
   sceneRoleSchema,
   sessionIdSchema,
+  audioInputSchema,
 } from './primitives.js'
 import { eventIdentitySchema } from './event-identity.js'
 import { sessionStatusSchema } from './room-state.js'
@@ -165,6 +166,8 @@ export const controlViewSchema = z.object({
    * needs, and the whole of what it may be told.
    */
   canStream: z.boolean(),
+  /** The audio sources and their mute state, as the last heartbeat carried them. */
+  audioInputs: z.array(audioInputSchema).default([]),
 
   /**
    * What the room is displaying, or `null` if it has not said yet.
@@ -236,6 +239,8 @@ export const controlCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('display.set'), mode: displayModeSchema }),
   z.object({ type: z.literal('recording.set'), on: z.boolean() }),
   z.object({ type: z.literal('stream.set'), on: z.boolean() }),
+  /** An audio source, muted or restored on both OBS instances. */
+  z.object({ type: z.literal('audio.mute'), input: z.string().min(1).max(200), muted: z.boolean() }),
 ])
 export type ControlCommand = z.infer<typeof controlCommandSchema>
 

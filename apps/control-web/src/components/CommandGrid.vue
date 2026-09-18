@@ -22,6 +22,8 @@ const props = defineProps<{
   current: string | null
   /** What gets posted for a given value. */
   build: (value: string) => Record<string, unknown>
+  /** Nothing can act behind these buttons: an instance that is not connected. */
+  disabled?: boolean
 }>()
 
 const actions = useActionsStore()
@@ -35,6 +37,7 @@ const actions = useActionsStore()
       class="leading-tight whitespace-normal"
       :active="command.value === props.current"
       :data-command="command.value"
+      :disabled="props.disabled"
       @click="actions.act(props.build(command.value))"
     >
       {{ command.label }}

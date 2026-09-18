@@ -241,6 +241,7 @@ export function controlView(services: Services, roomId: string, at: number): Con
     streaming: status?.streaming ?? false,
     // Whether there is one, never which: see `canStream` in the contract.
     canStream: services.rooms.streamOf(roomId) != null,
+    audioInputs: status?.audioInputs ?? [],
     /*
      * `null` as long as the room has not said, and not "Loop" by default: the
      * screen grid would light a button on a guess, in a page whose whole rule is
@@ -309,6 +310,14 @@ export function controlCommand(
     case 'stream.set':
       publish(services, roomId, { type: 'stream.set', on: action.on, requestedBy: author })
       return { applied: 'queued' }
+    case 'audio.mute':
+      publish(services, roomId, {
+        type: 'audio.mute',
+        input: action.input,
+        muted: action.muted,
+        requestedBy: author,
+      })
+      return { applied: 'queued' }
   }
 }
 
@@ -324,7 +333,7 @@ function publish(
   roomId: string,
   payload: Extract<
     CommandPayloadInput,
-    { type: 'scene.force' | 'display.set' | 'recording.set' | 'stream.set' }
+    { type: 'scene.force' | 'display.set' | 'recording.set' | 'stream.set' | 'audio.mute' }
   >,
 ): void {
   services.commands.publish(roomId, payload, CONTROL_COMMAND_TTL[payload.type])

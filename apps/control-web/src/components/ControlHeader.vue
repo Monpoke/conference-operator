@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DisplayPayload } from '@conference-operator/contract'
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Button, Key } from '@conference-operator/components'
 import { useGatewayStore } from '../stores/gateway.js'
 import { useHostStore } from '../stores/host.js'
@@ -50,6 +50,41 @@ const versionShown = ref(false)
 const queueDepth = computed(
   () => props.payload.diagnostics?.outboxDepth ?? props.payload.state.outboxDepth ?? 0,
 )
+
+/**
+ * Full screen, from the page.
+ *
+ * The browser's own API rather than Electron's: the control app is served over
+ * HTTP with no preload, and the same button then works in the room's window, in
+ * a browser and on a phone. Hidden where the browser offers none — the iPhone's
+ * Safari — rather than shown to do nothing.
+ *
+ * The state is read back from `fullscreenchange`, never assumed from the click:
+ * Escape leaves full screen without going through here.
+ */
+const fullscreenSupported = typeof document !== 'undefined' && document.fullscreenEnabled === true
+const fullscreen = ref(false)
+
+function syncFullscreen(): void {
+  fullscreen.value = document.fullscreenElement != null
+}
+
+async function toggleFullscreen(): Promise<void> {
+  try {
+    if (document.fullscreenElement != null) await document.exitFullscreen()
+    else await document.documentElement.requestFullscreen()
+  } catch {
+    // Refused by the browser (no user gesture, a policy): the button stays as it
+    // was, which is what the state says.
+  }
+}
+
+onMounted(() => {
+  if (!fullscreenSupported) return
+  syncFullscreen()
+  document.addEventListener('fullscreenchange', syncFullscreen)
+})
+onBeforeUnmount(() => document.removeEventListener('fullscreenchange', syncFullscreen))
 </script>
 
 <template>
@@ -127,6 +162,20 @@ const queueDepth = computed(
       :time-zone="payload.timezone"
       :simulated="payload.state.simulatedClock"
     />
+
+    <!-- On the phone too: a page that has the whole screen is read from further away. -->
+    <Button
+      v-if="fullscreenSupported"
+      size="small"
+      class="shrink-0"
+      data-role="fullscreen"
+      :aria-pressed="fullscreen"
+      :title="fullscreen ? 'Quitter le plein écran' : 'Plein écran'"
+      :aria-label="fullscreen ? 'Quitter le plein écran' : 'Plein écran'"
+      @click="toggleFullscreen()"
+    >
+      {{ fullscreen ? '🗗' : '⛶' }}
+    </Button>
 
     <div v-if="remote !== true" class="flex shrink-0 items-center gap-1.5">
       <Button id="btn-program" size="small" @click="emit('open', 'program')">

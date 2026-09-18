@@ -454,7 +454,7 @@ async function confirmRemoveIntegration(): Promise<void> {
 <template>
   <div
     id="settings-view"
-    class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5"
+    class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] gap-3.5"
   >
     <Panel title="L'événement">
       <label class="mb-[5px] block text-xs text-dim" for="event-name">Nom affiché</label>

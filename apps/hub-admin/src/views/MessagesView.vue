@@ -1,9 +1,19 @@
 <script setup lang="ts">
 import { BANNER_TEMPLATES, type Banner } from '@conference-operator/contract'
-import { Badge, Button, Empty, Field, Hint, Panel, Select, useToast } from '@conference-operator/components'
+import {
+  Badge,
+  Button,
+  ConfirmDialog,
+  Empty,
+  Field,
+  Hint,
+  Panel,
+  Select,
+  useToast,
+} from '@conference-operator/components'
 import { timeAgo } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useMessagesStore } from '../stores/messages.js'
 
 /**
@@ -13,9 +23,13 @@ import { useMessagesStore } from '../stores/messages.js'
  * the whole room or speaks to the operator, and a **live banner**, which is
  * composited over the video without interrupting anything — that is the whole
  * difference, and it justifies the two not looking alike.
+ *
+ * Both leave for the room chosen at the top of the page, and each says so again
+ * in its own panel: the selector used to sit inside the message form, and the
+ * banner went to "the rooms chosen above" without naming them.
  */
 const store = useMessagesStore()
-const { rooms, received, banners, target } = storeToRefs(store)
+const { rooms, received, banners, target, live } = storeToRefs(store)
 const toast = useToast()
 
 const LEVELS = [
@@ -28,6 +42,13 @@ const recipients = computed(() => [
   { value: '', label: 'Toutes les salles' },
   ...rooms.value.map((room) => ({ value: room.id, label: room.name })),
 ])
+
+function roomName(roomId: string | null): string {
+  if (roomId == null) return 'Toutes les salles'
+  return rooms.value.find((room) => room.id === roomId)?.name ?? roomId
+}
+
+const targetName = computed(() => roomName(target.value === '' ? null : target.value))
 
 const text = ref('')
 const level = ref<'info' | 'warning' | 'urgent'>('info')
@@ -44,17 +65,34 @@ const minutesInput = ref('')
  */
 const toAudience = computed(() => audience.value === 'audience')
 
+/** Asked before anything goes up on a room's projector — never after. */
+const confirmOpen = ref(false)
+const screens = computed(() =>
+  target.value === '' ? 'les écrans de toutes les salles' : `l'écran de ${targetName.value}`,
+)
+
 const bannerText = ref('')
 const bannerLevel = ref<'info' | 'warning' | 'urgent'>('info')
 
 /** Changing room changes the history being consulted. */
 watch(target, () => void store.load())
 
-async function send(): Promise<void> {
+onMounted(() => void store.follow())
+onBeforeUnmount(() => store.unfollow())
+
+function send(): void {
   if (text.value.trim().length === 0) {
     toast.fail('Renseignez un message')
     return
   }
+  if (toAudience.value) {
+    confirmOpen.value = true
+    return
+  }
+  void deliver()
+}
+
+async function deliver(): Promise<void> {
   const minutes = Number(minutesInput.value)
   try {
     await store.send({
@@ -105,68 +143,70 @@ async function hideBanner(): Promise<void> {
 </script>
 
 <template>
-  <div
-    id="messages-view"
-    class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5"
-  >
-    <Panel title="Envoyer un message">
-      <Select id="msg-room" v-model="target" label="Destinataire" :options="recipients" />
-      <Field id="msg-text" v-model="text" label="Message" placeholder="Texte du message" />
-      <Select
-        id="msg-audience"
-        v-model="audience"
-        label="Qui le voit"
-        :options="[
-          { value: 'operator', label: `L'opérateur de la salle (bandeau de régie)` },
-          { value: 'audience', label: 'Le public (écran de la salle)' },
-        ]"
-      />
-      <Select id="msg-level" v-model="level" label="Niveau" :options="LEVELS" />
-      <!--
-        `inputmode` et non `type="number"` : Vue applique un cast numérique
-        implicite aux `input[type=number]`, et rendait donc un `number` au
-        `defineModel<string>` de `Field` — un avertissement à chaque frappe, et
-        un modèle qui ment sur son type. Le champ reste numérique là où ça
-        compte, le clavier du téléphone, et il peut être réellement vide : c'est
-        cette valeur-là qui signifie « jusqu'à remplacement ».
-      -->
-      <Field
-        id="msg-minutes"
-        v-model="minutesInput"
-        inputmode="numeric"
-        label="Durée d'affichage (minutes, vide = jusqu'à remplacement)"
-        placeholder="10"
-      />
-      <Button id="btn-send-message" variant="primary" class="w-full" @click="send">
-        Envoyer
-      </Button>
-
-      <Hint id="msg-warning">
-        <template v-if="toAudience">
-          <strong class="text-warn">Ce message sera projeté devant le public</strong>
-          et remplacera ce qui est à l'écran.
-        </template>
-        <template v-else>
-          Ce message n'apparaîtra que dans le bandeau de la régie, pas sur l'écran de la salle.
-        </template>
-      </Hint>
+  <div id="messages-view" class="flex flex-col gap-3.5">
+    <Panel>
+      <div class="flex flex-wrap items-end gap-x-4 gap-y-1">
+        <div class="w-full max-w-sm">
+          <Select id="msg-room" v-model="target" label="Salle ciblée" :options="recipients" />
+        </div>
+        <Hint class="flex-1">
+          Le message et le bandeau live partent tous deux vers cette salle.
+        </Hint>
+      </div>
     </Panel>
 
-    <Panel title="Reçus des salles">
-      <div id="messages-received">
-        <Empty v-if="received.length === 0">Aucun message des salles.</Empty>
-        <article
-          v-for="message in received"
-          :key="message.id"
-          class="mb-2.5 rounded-[9px] border border-edge p-3"
-        >
-          <div class="mb-1.5 flex items-center gap-2 text-xs text-dim">
-            <Badge class="px-1.5 py-0.5 text-[10px] tracking-[.08em]">{{ message.level }}</Badge>
-            <span>{{ message.roomName ?? message.roomId }}</span>
-            <span>{{ timeAgo(message.receivedAt) }}</span>
-          </div>
-          <p class="text-sm leading-snug break-words">{{ message.text }}</p>
-        </article>
+    <Panel>
+      <div class="mb-2.5 flex flex-wrap items-center gap-2">
+        <h2 class="mb-0 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+          Envoyer un message
+        </h2>
+        <Badge id="msg-target" class="px-1.5 py-0.5 text-[11px] tracking-normal">
+          → {{ targetName }}
+        </Badge>
+      </div>
+
+      <Field id="msg-text" v-model="text" label="Message" placeholder="Texte du message" />
+      <div class="grid gap-x-3 sm:grid-cols-[2fr_1fr_1fr]">
+        <Select
+          id="msg-audience"
+          v-model="audience"
+          label="Qui le voit"
+          :options="[
+            { value: 'operator', label: `L'opérateur de la salle (bandeau de régie)` },
+            { value: 'audience', label: 'Le public (écran de la salle)' },
+          ]"
+        />
+        <Select id="msg-level" v-model="level" label="Niveau" :options="LEVELS" />
+        <!--
+          `inputmode` et non `type="number"` : Vue applique un cast numérique
+          implicite aux `input[type=number]`, et rendait donc un `number` au
+          `defineModel<string>` de `Field` — un avertissement à chaque frappe, et
+          un modèle qui ment sur son type. Le champ reste numérique là où ça
+          compte, le clavier du téléphone, et il peut être réellement vide : c'est
+          cette valeur-là qui signifie « jusqu'à remplacement ».
+        -->
+        <Field
+          id="msg-minutes"
+          v-model="minutesInput"
+          inputmode="numeric"
+          label="Durée (min, vide = jusqu'à remplacement)"
+          placeholder="10"
+        />
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3">
+        <Hint id="msg-warning" class="flex-1">
+          <template v-if="toAudience">
+            <strong class="text-warn">Ce message sera projeté devant le public</strong>
+            et remplacera ce qui est à l'écran.
+          </template>
+          <template v-else>
+            Ce message n'apparaîtra que dans le bandeau de la régie, pas sur l'écran de la salle.
+          </template>
+        </Hint>
+        <Button id="btn-send-message" variant="primary" class="shrink-0" @click="send">
+          Envoyer
+        </Button>
       </div>
     </Panel>
 
@@ -174,12 +214,15 @@ async function hideBanner(): Promise<void> {
       Bandeau live : superposé à la vidéo, il n'interrompt rien — c'est toute
       la différence avec un message d'écran, qui prend la salle entière.
     -->
-    <Panel class="col-span-full">
-      <div class="mb-2.5 flex items-center gap-3">
-        <h2 class="mb-0 flex-1 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+    <Panel>
+      <div class="mb-2.5 flex flex-wrap items-center gap-2">
+        <h2 class="mb-0 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
           Bandeau live
         </h2>
-        <Button id="btn-banner-hide" size="small" @click="hideBanner">
+        <Badge id="banner-target" class="px-1.5 py-0.5 text-[11px] tracking-normal">
+          → {{ targetName }}
+        </Badge>
+        <Button id="btn-banner-hide" size="small" class="ml-auto" @click="hideBanner">
           Masquer le bandeau
         </Button>
       </div>
@@ -195,13 +238,13 @@ async function hideBanner(): Promise<void> {
         </Button>
       </div>
 
-      <div class="mb-[11px] flex gap-1.5">
+      <div class="mb-[11px] flex flex-wrap gap-1.5">
         <input
           id="banner-text"
           v-model="bannerText"
           maxlength="240"
           placeholder="Texte du bandeau"
-          class="flex-1 rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text focus:border-brand focus:outline-none"
+          class="min-w-0 flex-1 basis-60 rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text focus:border-brand focus:outline-none"
         />
         <select
           id="banner-level"
@@ -218,7 +261,7 @@ async function hideBanner(): Promise<void> {
       </div>
 
       <Hint>
-        Part dans les salles choisies plus haut, et se superpose aux scènes live —
+        Part dans <strong>{{ targetName }}</strong> et se superpose aux scènes live —
         le talk continue dessous. Un modèle remplit le champ : le texte reste
         modifiable avant envoi.
       </Hint>
@@ -237,7 +280,7 @@ async function hideBanner(): Promise<void> {
             <strong class="mb-[3px] block text-sm">{{ past.message.text }}</strong>
             <span class="text-xs text-dim">
               {{ past.message.level }} · {{ timeAgo(past.issuedAt) }} ·
-              {{ past.roomId ?? 'toutes salles' }}
+              {{ roomName(past.roomId) }}
             </span>
           </div>
           <Badge v-if="past.visible" variant="running">en cours</Badge>
@@ -250,5 +293,46 @@ async function hideBanner(): Promise<void> {
         </div>
       </div>
     </Panel>
+
+    <Panel>
+      <div class="mb-2.5 flex items-center gap-2">
+        <h2 class="mb-0 flex-1 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+          Reçus des salles
+        </h2>
+        <span id="messages-live" class="flex items-center gap-1.5 text-xs text-dim">
+          <span class="size-2 rounded-full" :class="live ? 'bg-ok' : 'bg-warn'" />
+          {{ live ? 'En direct' : 'Reconnexion…' }}
+        </span>
+      </div>
+      <div id="messages-received">
+        <Empty v-if="received.length === 0">Aucun message des salles.</Empty>
+        <article
+          v-for="message in received"
+          :key="message.id"
+          class="mb-2.5 rounded-[9px] border border-edge p-3 last:mb-0"
+        >
+          <div class="mb-1.5 flex items-center gap-2 text-xs text-dim">
+            <Badge class="px-1.5 py-0.5 text-[10px] tracking-[.08em]">{{ message.level }}</Badge>
+            <span>{{ message.roomName ?? message.roomId }}</span>
+            <span>{{ timeAgo(message.receivedAt) }}</span>
+          </div>
+          <p class="text-sm leading-snug break-words">{{ message.text }}</p>
+        </article>
+      </div>
+    </Panel>
+
+    <ConfirmDialog
+      v-model:open="confirmOpen"
+      title="Projeter devant le public ?"
+      tone="warn"
+      confirm-label="Projeter"
+      @confirm="deliver"
+    >
+      <p id="msg-confirm-text">
+        Ce message va s'afficher sur <strong>{{ screens }}</strong> et remplacer ce qui y est
+        projeté :
+      </p>
+      <p class="mt-2 rounded-lg border border-edge bg-canvas p-3 break-words">{{ text }}</p>
+    </ConfirmDialog>
   </div>
 </template>

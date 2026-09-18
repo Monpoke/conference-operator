@@ -71,4 +71,17 @@ describe('RoomChanges', () => {
     abort.abort()
     expect(await waiting).toBe('done')
   })
+
+  it('wakes the message watchers on a message, not on a room change', async () => {
+    // Every heartbeat touches its room: the console must not re-read on each.
+    const changes = new RoomChanges(10)
+    const next = listen(changes.watchMessages())
+
+    changes.touch(TRACK_1)
+    changes.touch(null)
+    expect(await next(60)).toBe('quiet')
+
+    changes.messageArrived()
+    expect(await next(200)).toBe('woke')
+  })
 })

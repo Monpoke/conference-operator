@@ -10,6 +10,7 @@ import {
   roomIdSchema,
   sceneRoleSchema,
   sessionIdSchema,
+  audioInputSchema,
 } from './primitives.js'
 import { DEFAULT_VOD_POLICY, vodPolicySchema, vodSyncSchema } from './vod.js'
 
@@ -535,6 +536,8 @@ export const roomStatusSchema = z.object({
   currentSessionId: sessionIdSchema.nullable(),
   recording: z.boolean(),
   streaming: z.boolean(),
+  /** The audio sources and their mute state, as the last heartbeat carried them. */
+  audioInputs: z.array(audioInputSchema).default([]),
   /**
    * The room's screen, as it reported it. `null` = never said.
    *

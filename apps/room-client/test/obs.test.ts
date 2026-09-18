@@ -336,3 +336,104 @@ describe('state observed on connection', () => {
     await expect(controller.connect()).resolves.toMatchObject({ connected: true })
   })
 })
+
+describe('audio sources', () => {
+  /** An OBS with inputs: `null` = a source with no audio, which OBS refuses to answer about. */
+  function audioObs(sources: Record<string, boolean | null>) {
+    const handlers = new Map<string, ((payload: unknown) => void)[]>()
+    const calls: { request: string; args?: Record<string, unknown> }[] = []
+    const transport: ObsTransport = {
+      connect: vi.fn(async () => {}),
+      disconnect: vi.fn(async () => {}),
+      call: (async (request: string, args?: Record<string, unknown>) => {
+        calls.push({ request, args })
+        if (request === 'GetSceneList') {
+          return { currentProgramSceneName: 'Scene', scenes: [{ sceneName: 'Scene' }] }
+        }
+        if (request === 'GetInputList') {
+          return { inputs: Object.keys(sources).map((inputName) => ({ inputName })) }
+        }
+        if (request === 'GetInputMute') {
+          const muted = sources[args!.inputName as string]
+          if (muted == null) throw new Error('InvalidResourceState')
+          return { inputMuted: muted }
+        }
+        return {}
+      }) as ObsTransport['call'],
+      on: (event, handler) => {
+        const list = handlers.get(event) ?? []
+        list.push(handler as (payload: unknown) => void)
+        handlers.set(event, list)
+      },
+    }
+    const emit = (event: string, payload: unknown): void => {
+      for (const handler of handlers.get(event) ?? []) handler(payload)
+    }
+    const events: { type: string }[] = []
+    const controller = new ObsController({
+      instance: 'B',
+      url: 'ws://127.0.0.1:4456',
+      sceneRoles: {},
+      transport,
+      onEvent: (event) => events.push(event),
+    })
+    return { controller, calls, emit, events }
+  }
+
+  const SOURCES = { 'Micro cravate': false, 'Micro main': true, 'Navigateur habillage': null }
+
+  it('lists only the sources that carry audio, with their mute state', async () => {
+    const obs = audioObs(SOURCES)
+    await obs.controller.connect()
+
+    // The browser source has no audio: offering to mute it would be a button that
+    // fails.
+    expect(obs.controller.audioInputs()).toEqual([
+      { name: 'Micro cravate', muted: false },
+      { name: 'Micro main', muted: true },
+    ])
+    expect(obs.events.filter((event) => event.type === 'audio-inputs')).toHaveLength(1)
+  })
+
+  it('follows a mute made in OBS itself', async () => {
+    const obs = audioObs(SOURCES)
+    await obs.controller.connect()
+
+    obs.emit('InputMuteStateChanged', { inputName: 'Micro cravate', inputMuted: true })
+
+    expect(obs.controller.audioInputs()[0]).toEqual({ name: 'Micro cravate', muted: true })
+  })
+
+  it('asks OBS, and does not anticipate its answer', async () => {
+    const obs = audioObs(SOURCES)
+    await obs.controller.connect()
+
+    await obs.controller.setInputMute('Micro cravate', true)
+
+    expect(obs.calls.at(-1)).toEqual({
+      request: 'SetInputMute',
+      args: { inputName: 'Micro cravate', inputMuted: true },
+    })
+    // `InputMuteStateChanged` is authoritative, as for the scenes.
+    expect(obs.controller.audioInputs()[0]?.muted).toBe(false)
+  })
+
+  it('refuses a source OBS does not have, naming it', async () => {
+    const obs = audioObs(SOURCES)
+    await obs.controller.connect()
+
+    await expect(obs.controller.setInputMute('Navigateur habillage', true)).rejects.toThrow(
+      'Navigateur habillage',
+    )
+  })
+
+  it('forgets the sources when the connection closes', async () => {
+    const obs = audioObs(SOURCES)
+    await obs.controller.connect()
+
+    obs.emit('ConnectionClosed', {})
+
+    expect(obs.controller.audioInputs()).toEqual([])
+    expect(obs.controller.hasAudioInput('Micro cravate')).toBe(false)
+  })
+})

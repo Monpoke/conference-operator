@@ -27,11 +27,17 @@
 # install the room client and download Electron — a hundred and fifty megabytes
 # for a binary that will never run here.
 
-# An interchangeable base: `--build-arg NODE_VERSION=24-alpine` removes another
-# 66 MB. glibc stays the default — an event hub makes outbound calls (programme
-# import, S3, Web Push), and `better-sqlite3`'s musl binary is not the one the
-# team develops against. The choice is open, not imposed.
-ARG NODE_VERSION=24-bookworm-slim
+# Two bases, on purpose. The build stages need pnpm and a shell; the final image
+# needs neither, only `node`. It runs on distroless rather than `node:*-slim`: a
+# Trivy scan of the slim image reported 4 critical and dozens of high CVEs, all
+# in packages the hub never touches (perl, util-linux, ncurses, and npm's own
+# `tar`/`undici`), most of them with no Debian fix to wait for. Distroless ships
+# glibc, zlib, CA certificates and node — nothing to exploit that isn't needed.
+#
+# Both on Debian 13, so that the glibc the `better-sqlite3` binary is picked
+# against in the build stage is the one it loads at run time.
+ARG BUILD_IMAGE=node:24-trixie-slim
+ARG RUNTIME_IMAGE=gcr.io/distroless/nodejs24-debian13
 
 # --- Console --------------------------------------------------------------
 # The only stage in this file that compiles anything, and it does not survive.
@@ -42,8 +48,10 @@ ARG NODE_VERSION=24-bookworm-slim
 # rewritten on every interface tweak turns every review into an unreadable diff —
 # and keeps the final image free of Vue, Vite and their tooling: nothing from this
 # stage enters it except the `dist` folder.
-FROM node:${NODE_VERSION} AS spa
-RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
+FROM ${BUILD_IMAGE} AS spa
+# Not through corepack: pnpm 12 no longer ships the `bin/pnpm.cjs` corepack
+# launches, and even corepack 0.36 fails on it.
+RUN npm install -g pnpm@12.4.1
 WORKDIR /repo
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -83,12 +91,14 @@ RUN pnpm --filter @conference-operator/control-web build
 
 # --- Build ----------------------------------------------------------------
 # Everything below is thrown away: only `/repo` is carried into the final image.
-FROM node:${NODE_VERSION} AS builder
+FROM ${BUILD_IMAGE} AS builder
 
 ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH \
     CI=true
-RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
+# Not through corepack: pnpm 12 no longer ships the `bin/pnpm.cjs` corepack
+# launches, and even corepack 0.36 fails on it.
+RUN npm install -g pnpm@12.4.1
 WORKDIR /repo
 
 # Manifests first: that is what makes the install layer reusable between two
@@ -155,37 +165,51 @@ RUN find node_modules/.pnpm -path '*/better-sqlite3/prebuilds/*.node' \
       ! -name 'linux-x64.node' ! -name 'linuxmusl-x64.node' -delete
 
 
+# The data directory, created here because the final image has no shell to run
+# `mkdir` with. Owned by 1000, the uid the `node` user had in the previous base:
+# existing `hub-data` volumes belong to it, and `manifests/deployment.yaml` runs
+# the pod as 1000.
+RUN mkdir /data && chown 1000:1000 /data
+
+
 # --- Final image ----------------------------------------------------------
-# No pnpm, no corepack, no compiler: the hub starts with `node`, and nothing else
-# has any reason to be there.
-FROM node:${NODE_VERSION} AS runtime
+# No pnpm, no corepack, no compiler, no shell: the hub starts with `node`, and
+# nothing else has any reason to be there.
+FROM ${RUNTIME_IMAGE} AS runtime
 
 # The hub writes its SQLite database and, beside it, the programme's images — the
 # rooms fetch them from here rather than from the upstream export. The default path leaves the
 # code's tree: a volume mounted on `/data` survives the image being replaced,
 # which a `./data` relative to the repository would not guarantee.
+#
+# `/nodejs/bin` on the PATH: distroless does not put it there, and the README's
+# `docker exec -it hub node … operator.ts` relies on finding `node` by name.
 ENV NODE_ENV=production \
     MODE=production \
     HOST=0.0.0.0 \
     PORT=8787 \
-    DATABASE_PATH=/data/hub.db
+    DATABASE_PATH=/data/hub.db \
+    PATH=/nodejs/bin:/usr/local/bin:/usr/bin:/bin
 
-COPY --from=builder --chown=node:node /repo /repo
-RUN mkdir -p /data && chown node:node /data
+COPY --from=builder --chown=1000:1000 /repo /repo
+COPY --from=builder --chown=1000:1000 /data /data
 
 # The version the console and the mobile control app reveal on a click on their
 # title. Declared after the copies: a new number must not invalidate them.
 ARG VERSION=0.0.0-dev
 ENV APP_VERSION=${VERSION}
 
-USER node
+# Numeric, since distroless has no `node` user in `/etc/passwd`. 1000 rather than
+# distroless's own `nonroot` (65532): see the `/data` step above.
+USER 1000:1000
 VOLUME ["/data"]
 EXPOSE 8787
 
 # `/health` touches neither the database nor the programme: it answers as long as
-# Fastify is listening, which is exactly the question asked here.
+# Fastify is listening, which is exactly the question asked here. Exec form and a
+# full path: there is no shell to run a string form through.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||8787)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD ["/nodejs/bin/node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||8787)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
 
 WORKDIR /repo/apps/hub-server
 
@@ -194,4 +218,8 @@ WORKDIR /repo/apps/hub-server
 # the README describes this for development, and it is worse in a container. So
 # `node` as PID 1 receives SIGTERM directly, and the hub's graceful shutdown
 # (draining, WebSockets, closing the database) proceeds as intended.
-CMD ["node", "--import", "tsx", "src/main.ts"]
+#
+# Distroless's entrypoint is already `/nodejs/bin/node`; it is spelled out anyway
+# so that the command does not silently change meaning if the base does.
+ENTRYPOINT ["/nodejs/bin/node"]
+CMD ["--import", "tsx", "src/main.ts"]

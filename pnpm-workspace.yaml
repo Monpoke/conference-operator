@@ -2,34 +2,44 @@ packages:
   - "apps/*"
   - "packages/*"
 
-# Dependencies allowed to run their install scripts. `esbuild` and `electron`
-# download a binary there; without it, neither has anything to run.
-onlyBuiltDependencies:
-  - esbuild
-  - electron
+# Which dependencies may run their install scripts.
+#
+# pnpm 12 replaced `onlyBuiltDependencies` and `ignoredBuiltDependencies` with
+# this one map, and fails the install on any script left undecided. The choices
+# are the same as before the upgrade.
+allowBuilds:
+  # `esbuild` and `electron` download a binary there; without it, neither has
+  # anything to run.
+  esbuild: true
+  electron: true
 
-# `better-sqlite3` is the one that is deliberately *not* allowed.
-#
-# It is a Node-API module and ships one prebuilt binary per platform in its npm
-# package; `lib/binding.js` loads `prebuilds/<platform>-<arch>.node` and only
-# falls back to `build/Release` when there is none. Its `binding.gyp` even runs
-# that same script to decide, so the build compiles nothing — it produces a
-# stamp file and stops.
-#
-# What it does do is run node-gyp's *configure* first, which needs a full
-# compilation toolchain to establish that it has nothing to compile. On Linux
-# that is a few wasted seconds. On the Windows runner that packages the
-# installer it is a failed release: node-gyp 11 does not recognise the Visual
-# Studio 18 shipped by `windows-latest`, and stops on "could not find a version
-# of Visual Studio 2017 or newer to use".
-#
-# The `Dockerfile` already installs with `--ignore-scripts` for this exact
-# reason, and `electron-builder.yml` packages `prebuilds/win32-x64.node` as is
-# with `npmRebuild: false`. This line makes the three agree.
-# `electron-winstaller` comes in behind `electron-builder-squirrel-windows`,
-# itself only there to satisfy `app-builder-lib`'s peer. Its script downloads the
-# Squirrel toolchain, for a target this project does not build — the Windows
-# package is NSIS.
-ignoredBuiltDependencies:
-  - better-sqlite3
-  - electron-winstaller
+  # `better-sqlite3` is the one that is deliberately *not* allowed.
+  #
+  # It is a Node-API module and ships one prebuilt binary per platform in its npm
+  # package; `lib/binding.js` loads `prebuilds/<platform>-<arch>.node` and only
+  # falls back to `build/Release` when there is none. Its `binding.gyp` even runs
+  # that same script to decide, so the build compiles nothing — it produces a
+  # stamp file and stops.
+  #
+  # What it does do is run node-gyp's *configure* first, which needs a full
+  # compilation toolchain to establish that it has nothing to compile. On Linux
+  # that is a few wasted seconds. On the Windows runner that packages the
+  # installer it is a failed release: node-gyp 11 does not recognise the Visual
+  # Studio 18 shipped by `windows-latest`, and stops on "could not find a version
+  # of Visual Studio 2017 or newer to use".
+  #
+  # The `Dockerfile` already installs with `--ignore-scripts` for this exact
+  # reason, and `electron-builder.yml` packages `prebuilds/win32-x64.node` as is
+  # with `npmRebuild: false`. This line makes the three agree.
+  better-sqlite3: false
+
+  # `electron-winstaller` comes in behind `electron-builder-squirrel-windows`,
+  # itself only there to satisfy `app-builder-lib`'s peer. Its script downloads the
+  # Squirrel toolchain, for a target this project does not build — the Windows
+  # package is NSIS.
+  electron-winstaller: false
+
+  # Never allowed before the upgrade either: `@parcel/watcher` falls back to its
+  # prebuilt binary, `vue-demi` only switches between Vue 2 and 3 entry points.
+  '@parcel/watcher': false
+  vue-demi: false

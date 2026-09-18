@@ -156,7 +156,7 @@ onMounted(async () => {
 <template>
   <div
     id="pairing-view"
-    class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5"
+    class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] gap-3.5"
   >
     <Panel title="Machines en attente d'appairage">
       <div id="pairings">

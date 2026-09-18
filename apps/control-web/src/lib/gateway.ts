@@ -553,6 +553,8 @@ export function translate(
       return { type: 'stream.set', on: true }
     case 'stream.stop':
       return { type: 'stream.set', on: false }
+    case 'audio.mute':
+      return { type: 'audio.mute', input: String(gesture.input), muted: gesture.muted === true }
     default:
       return null
   }
@@ -656,6 +658,7 @@ export function payloadFromView(view: ControlView, nowMs: number): DisplayPayloa
       serverTimeOffsetMs: Date.parse(view.serverTime) - nowMs,
       recording: view.recording,
       streaming: view.streaming,
+      audioInputs: view.audioInputs,
       comments: [],
       sessionStates: view.sessionStates,
       notifications: [],

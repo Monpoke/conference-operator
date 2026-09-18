@@ -330,6 +330,30 @@ describe('notices', () => {
     expect(wrapper.get('[data-notification="n-2"]').classes()).toContain('text-[#05070d]')
   })
 
+  it('shows at most three cards at once, the newest, and counts the others', async () => {
+    const view = payload()
+    view.state.notifications = [1, 2, 3, 4, 5].map((n) => ({
+      id: `n-${n}`,
+      level: 'info' as const,
+      text: `avis ${n}`,
+      at: new Date(START_MS + n).toISOString(),
+    }))
+    const wrapper = mount(NotificationStack, { props: { payload: view, nowMs: START_MS + 1000 } })
+
+    // A burst must not raise a wall of amber over the commands.
+    expect(wrapper.findAll('[data-notification]').map((card) => card.attributes('data-notification'))).toEqual([
+      'n-3',
+      'n-4',
+      'n-5',
+    ])
+    expect(wrapper.get('[data-role="notifications-hidden"]').text()).toBe('+2 autres avis')
+
+    // Sweeping one aside lets the next one up.
+    await wrapper.get('[data-notification="n-5"]').trigger('click')
+    expect(wrapper.find('[data-notification="n-2"]').exists()).toBe(true)
+    expect(wrapper.get('[data-role="notifications-hidden"]').text()).toBe('+1 autre avis')
+  })
+
   it('is dismissed by a click anywhere, not only on the cross', async () => {
     const wrapper = withNotice(START_MS, START_MS + 5_000)
 

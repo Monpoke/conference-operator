@@ -15,7 +15,7 @@ const { uploads, rooms, room } = storeToRefs(store)
 const toast = useToast()
 
 const roomOptions = computed(() => [
-  { value: '', label: 'Toutes les roomOptions' },
+  { value: '', label: 'Toutes les salles' },
   ...rooms.value.map((room) => ({ value: room.id, label: room.name })),
 ])
 
@@ -53,7 +53,7 @@ function requestAll(): void {
 <template>
   <div
     id="vod-view"
-    class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] items-start gap-3.5"
+    class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] gap-3.5"
   >
     <Panel title="Téléversements">
       <div class="mb-2 flex flex-wrap gap-1.5">

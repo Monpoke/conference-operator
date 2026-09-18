@@ -144,7 +144,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - run: corepack enable
+      # pnpm 12 cannot go through corepack: see ci.yml.
+      - run: npm install -g pnpm@12.4.1
 
       - uses: actions/setup-node@v4
         with:
@@ -259,7 +260,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - run: corepack enable
+      # pnpm 12 cannot go through corepack: see ci.yml.
+      - run: npm install -g pnpm@12.4.1
 
       - uses: actions/setup-node@v4
         with:

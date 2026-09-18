@@ -224,6 +224,32 @@ export function renderProjectorPage(options: ProjectorPageOptions = {}): string 
   }
 
   /*
+   * Walking the whole day, on a screen left on "programme".
+   *
+   * That mode is not a page one leaves after fifteen seconds: it is the screen a
+   * room puts up and forgets, during a break or before the doors open. Centred on
+   * the running slot and stopping there, it never showed the afternoon to a room
+   * that came to read it. So it goes down to the end of the day, comes back up to
+   * the top, and returns to the running slot — then starts again, for as long as
+   * the mode lasts.
+   *
+   * The plateaus are what makes it readable: a list that slides continuously is
+   * looked at, not read.
+   */
+  .crawling {
+    animation-name: crawl;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+    animation-fill-mode: both;
+  }
+  @keyframes crawl {
+    0%, 12% { transform: translateY(var(--from)); }
+    45%, 57% { transform: translateY(var(--end)); }
+    90%, 96% { transform: translateY(0); }
+    100% { transform: translateY(var(--from)); }
+  }
+
+  /*
    * The progress marker.
    *
    * The active dot fills over the page's duration: it is the only thing on screen
@@ -914,6 +940,16 @@ ${initialState}
    * logos is looked at. They are deliberately long — a screen that changes every
    * three seconds draws the eye during a break where people are talking.
    */
+  /**
+   * The reading pace of the "programme" screen.
+   *
+   * One screenful takes nine seconds to go by, and the four stops — the running
+   * slot, the end of the day, the top, and the running slot again — add up to
+   * roughly the time it takes to read one.
+   */
+  const CRAWL_MS_PER_SCREEN = 9_000
+  const CRAWL_PLATEAUS_MS = 16_000
+
   const LOOP_PAGES = [
     { duration: 12_000, available: (d) => (d.sponsorTiers ?? []).some((t) => t.sponsors.length > 0), render: renderSponsors },
     { duration: 15_000, available: (d) => (d.sessions ?? []).length > 0, render: renderProgram },
@@ -1080,6 +1116,47 @@ ${initialState}
   }
 
   /**
+   * Walks the whole program, over and over, for a screen left on "programme".
+   *
+   * Returns false when there is nothing to walk — a day shorter than the screen,
+   * or no layout at all (outside a real browser every measurement is zero). The
+   * caller then falls back on simply centring the running slot, which is all that
+   * can be done there.
+   *
+   * The duration follows the distance rather than being fixed: a three-screen day
+   * and a seven-screen one must be read at the same speed, otherwise one of the
+   * two is unreadable.
+   */
+  function setCrawl(layer) {
+    const frame = layer?.querySelector('.scroller')
+    const list = frame?.firstElementChild
+    if (!frame || !list) return false
+    // Already walking: leaving it alone is what keeps a state received mid-course
+    // from restarting the day from the top.
+    if (list.classList.contains('crawling')) return true
+
+    const height = frame.clientHeight
+    const travel = list.scrollHeight - height
+    if (!(travel > 0)) return false
+
+    const anchor = layer.querySelector('.anchor')
+    const aim = anchor ? anchor.offsetTop - (height - anchor.offsetHeight) / 2 : 0
+    const from = Math.max(0, Math.min(aim, travel))
+
+    // The translation is the only thing that positions the list: a scrollTop left
+    // by a previous centring would add itself to it.
+    frame.scrollTop = 0
+    list.style.setProperty('--from', -from + 'px')
+    list.style.setProperty('--end', -travel + 'px')
+    // Down to the end of the day, then back up to the top: twice the travel,
+    // whatever the slot we start from.
+    const screens = (2 * travel) / height
+    list.style.animationDuration = Math.round(CRAWL_PLATEAUS_MS + screens * CRAWL_MS_PER_SCREEN) + 'ms'
+    list.classList.add('crawling')
+    return true
+  }
+
+  /**
    * The event's short name, pushed by the hub and cached by the room.
    *
    * Not the program's name (data.event.name): the hub can contradict it by
@@ -1175,8 +1252,9 @@ ${initialState}
      *
      * In the loop, the same question has a better answer: the list starts from the
      * running slot and slides towards what follows during the page's fifteen
-     * seconds. The control app's "programme" mode, on the other hand, is a screen
-     * one sets and leaves: it is content to be in the right place.
+     * seconds. The control app's "programme" mode is a screen one sets and leaves,
+     * so it walks the whole day on a loop instead — and falls back on centring
+     * when there is nothing to walk.
      *
      * Always on the live layer, never on the one fading away.
      */
@@ -1201,7 +1279,7 @@ ${initialState}
     if (data.state.mode === 'loop') {
       setGauge(alive)
       setScroll(alive)
-    } else {
+    } else if (data.state.mode !== 'programme' || !setCrawl(alive)) {
       alive?.querySelector('.anchor')?.scrollIntoView({ block: 'center' })
     }
   }

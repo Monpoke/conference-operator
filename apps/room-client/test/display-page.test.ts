@@ -289,6 +289,78 @@ describe('projected program', () => {
     expect(centred).toBeNull()
   })
 
+  /**
+   * The program a room puts up and leaves.
+   *
+   * Centred on the running slot and stopping there, the screen never showed the
+   * afternoon to a room that came to read it. happy-dom computes no layout, so
+   * the measurements are supplied by hand: what we observe is what the page
+   * decides once it has them.
+   */
+  describe('when the day is longer than the screen', () => {
+    const SCREEN = 800
+    const LIST = 2_400
+    const restore: (() => void)[] = []
+
+    beforeEach(() => {
+      // The page only measures when it renders, and a state pushed on the stream
+      // is the cheapest way to make it go through it again — with the layout in
+      // place this time.
+      stubStream()
+      mountScreen()
+      const frame = content().querySelector('.scroller') as HTMLElement
+      const list = frame.firstElementChild as HTMLElement
+      const anchor = content().querySelector('.anchor') as HTMLElement
+      for (const [node, props] of [
+        [frame, { clientHeight: SCREEN }],
+        [list, { scrollHeight: LIST }],
+        [anchor, { offsetTop: 1_000, offsetHeight: 100 }],
+      ] as [HTMLElement, Record<string, number>][]) {
+        for (const [name, value] of Object.entries(props)) {
+          const previous = Object.getOwnPropertyDescriptor(node, name)
+          Object.defineProperty(node, name, { value, configurable: true })
+          restore.push(() => {
+            if (previous) Object.defineProperty(node, name, previous)
+            else delete (node as unknown as Record<string, unknown>)[name]
+          })
+        }
+      }
+      centred = null
+      stream!.deltas({})
+    })
+
+    afterEach(() => {
+      for (const undo of restore.splice(0)) undo()
+      globalThis.EventSource = REAL_EVENTSOURCE
+    })
+
+    it('walks the day from the running slot to the end and back to the top', () => {
+      const list = content().querySelector('.scroller')!.firstElementChild as HTMLElement
+
+      expect(list.classList.contains('crawling')).toBe(true)
+      // Centred on the running slot: 1000 - (800 - 100) / 2.
+      expect(list.style.getPropertyValue('--from')).toBe('-650px')
+      expect(list.style.getPropertyValue('--end')).toBe('-1600px')
+      expect(Number.parseInt(list.style.animationDuration, 10)).toBeGreaterThan(16_000)
+    })
+
+    it('leaves the walk alone when a state arrives mid-course', () => {
+      const list = content().querySelector('.scroller')!.firstElementChild as HTMLElement
+      list.style.setProperty('--from', '-123px')
+
+      stream!.deltas({})
+
+      // Restarting the animation would take the room back to the running slot, in
+      // the middle of the afternoon it was reading.
+      expect(list.style.getPropertyValue('--from')).toBe('-123px')
+    })
+
+    it('positions with the translation alone', () => {
+      // A scrollTop left by a previous centring would add itself to it.
+      expect(centred).toBeNull()
+    })
+  })
+
   it('does not look for an anchor in the other modes', () => {
     mountScreen({
       ...STATE,

@@ -219,15 +219,20 @@ export class ObsController implements ObsCapture {
       }
       this.options.onEvent?.({
         type: 'audio',
-        inputs: inputs.map((input) => ({
-          name: input.inputName,
-          // OBS gives [magnitude, peak, input peak] per channel; the first two are
-          // enough to draw a bar and its peak.
-          channels: (input.inputLevelsMul ?? []).map((channel) => ({
-            magnitude: multiplierToDb(channel[0] ?? 0),
-            peak: multiplierToDb(channel[1] ?? channel[0] ?? 0),
+        // The same filter as the source list: OBS meters everything that carries
+        // audio, routed or not. Without this, the sources hidden from the mixer
+        // panel came back as VU meters right next to it.
+        inputs: inputs
+          .filter((input) => this.hasAudioInput(input.inputName))
+          .map((input) => ({
+            name: input.inputName,
+            // OBS gives [magnitude, peak, input peak] per channel; the first two
+            // are enough to draw a bar and its peak.
+            channels: (input.inputLevelsMul ?? []).map((channel) => ({
+              magnitude: multiplierToDb(channel[0] ?? 0),
+              peak: multiplierToDb(channel[1] ?? channel[0] ?? 0),
+            })),
           })),
-        })),
       })
     })
 
@@ -261,10 +266,22 @@ export class ObsController implements ObsCapture {
     })
 
     // A source added, removed or renamed in OBS: read the list again rather than
-    // guess whether the new one carries audio.
-    for (const event of ['InputCreated', 'InputRemoved', 'InputNameChanged']) {
+    // guess whether the new one carries audio. The scene events matter as much
+    // since the list only keeps what is routed: a microphone dropped into a scene
+    // must appear in the control app, and one taken out of the last scene must
+    // leave it.
+    for (const event of [
+      'InputCreated',
+      'InputRemoved',
+      'InputNameChanged',
+      'InputAudioTracksChanged',
+      'SceneItemCreated',
+      'SceneItemRemoved',
+      'SceneCreated',
+      'SceneRemoved',
+    ]) {
       transport.on(event, () => {
-        void this.refreshAudioInputs().catch(() => {})
+        this.scheduleAudioRefresh()
       })
     }
 
@@ -388,23 +405,138 @@ export class ObsController implements ObsCapture {
    * OBS lists every input, video ones included, and has no flag for "carries
    * audio": asking each for its mute state is what tells them apart — OBS refuses
    * the question for a source with no audio.
+   *
+   * Carrying audio is not enough to be worth a button: the control app was
+   * offering sources that go nowhere — an input left in no scene, a global device
+   * set to "Disabled", a source whose every audio track is unticked. Cutting them
+   * changes nothing that is heard, and they drown the two microphones that do
+   * matter. Only what is routed is kept, see {@link routedInputs} and
+   * {@link carriesSound}.
    */
   async refreshAudioInputs(): Promise<void> {
     const { inputs } = (await this.options.transport.call('GetInputList')) as {
       inputs?: { inputName: string }[]
     }
+    const routed = await this.routedInputs()
     const found: AudioSource[] = []
     for (const { inputName } of inputs ?? []) {
       try {
         const { inputMuted } = (await this.options.transport.call('GetInputMute', { inputName })) as {
           inputMuted?: boolean
         }
-        if (typeof inputMuted === 'boolean') found.push({ name: inputName, muted: inputMuted })
+        if (typeof inputMuted !== 'boolean') continue
+        if (routed != null && !routed.has(inputName)) continue
+        if (!(await this.carriesSound(inputName))) continue
+        found.push({ name: inputName, muted: inputMuted })
       } catch {
         /* no audio on this source: nothing to mute */
       }
     }
     this.publishAudioSources(found)
+  }
+
+  /**
+   * The sources OBS actually plays: those in a scene, plus the global devices.
+   *
+   * The global devices (Desktop Audio, Mic/Aux) belong to no scene and are heard
+   * all the same — `GetSpecialInputs` is what names them, and it answers `null`
+   * for a slot left on "Disabled", which is exactly the filter asked for.
+   *
+   * Returns `null` when OBS refuses one of the questions: an unanswered question
+   * must never hide a microphone. Unknown means shown.
+   */
+  private async routedInputs(): Promise<Set<string> | null> {
+    const { transport } = this.options
+    try {
+      const routed = new Set<string>()
+      const specials = (await transport.call('GetSpecialInputs')) as Record<string, string | null>
+      for (const name of Object.values(specials ?? {})) {
+        if (typeof name === 'string' && name !== '') routed.add(name)
+      }
+      const { scenes } = await transport.call('GetSceneList')
+      for (const { sceneName } of scenes) {
+        for (const item of await this.sceneItems('GetSceneItemList', sceneName)) {
+          routed.add(item.sourceName)
+          // A source inside a group is in the scene like any other; the group's own
+          // item only names the group.
+          if (item.isGroup !== true) continue
+          for (const child of await this.sceneItems('GetGroupSceneItemList', item.sourceName)) {
+            routed.add(child.sourceName)
+          }
+        }
+      }
+      return routed
+    } catch {
+      return null
+    }
+  }
+
+  private async sceneItems(
+    request: 'GetSceneItemList' | 'GetGroupSceneItemList',
+    sceneName: string,
+  ): Promise<{ sourceName: string; isGroup?: boolean | null }[]> {
+    const { sceneItems } = (await this.options.transport.call(request, { sceneName })) as {
+      sceneItems?: { sourceName: string; isGroup?: boolean | null }[]
+    }
+    return sceneItems ?? []
+  }
+
+  /**
+   * Does this source send its sound anywhere?
+   *
+   * Two ways of being silent that no mute state shows: every audio track unticked
+   * — the source sits in the mixer but is routed to no output — and a capture
+   * device left on "Disabled". Here too, a question OBS refuses leaves the source
+   * in place: an old obs-websocket that knows neither request must not empty the
+   * panel.
+   */
+  private async carriesSound(inputName: string): Promise<boolean> {
+    const { transport } = this.options
+    try {
+      const { inputAudioTracks } = (await transport.call('GetInputAudioTracks', { inputName })) as {
+        inputAudioTracks?: Record<string, boolean>
+      }
+      const tracks = Object.values(inputAudioTracks ?? {})
+      if (tracks.length > 0 && !tracks.some(Boolean)) return false
+    } catch {
+      /* obs-websocket too old, or a source with no track: keep it */
+    }
+    try {
+      const { inputSettings } = (await transport.call('GetInputSettings', { inputName })) as {
+        inputSettings?: Record<string, unknown>
+      }
+      if (inputSettings?.device_id === 'disabled') return false
+    } catch {
+      /* same: an unanswered question hides nothing */
+    }
+    return true
+  }
+
+  /** A re-read under way, and whether a further one is already owed. */
+  private audioRefresh: Promise<void> | null = null
+  private audioRefreshQueued = false
+
+  /**
+   * Re-reads the sources, coalescing the bursts.
+   *
+   * Loading a scene collection emits one event per item: reading every scene back
+   * for each of them would send OBS hundreds of questions for a single answer. A
+   * re-read already under way is left to finish, and at most one more is queued
+   * behind it — the last one is the one that tells the truth.
+   */
+  private scheduleAudioRefresh(): void {
+    if (this.audioRefresh != null) {
+      this.audioRefreshQueued = true
+      return
+    }
+    this.audioRefresh = this.refreshAudioInputs()
+      .catch(() => {})
+      .finally(() => {
+        this.audioRefresh = null
+        if (!this.audioRefreshQueued) return
+        this.audioRefreshQueued = false
+        this.scheduleAudioRefresh()
+      })
   }
 
   /** The audio sources, as last read from OBS. */

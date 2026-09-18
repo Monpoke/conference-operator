@@ -50,6 +50,21 @@ export interface ActOptions {
 const SCENE = 'scene.set'
 
 /**
+ * The gestures one repeats, and which therefore speak with a key.
+ *
+ * Switching the shot is one; so is the room's screen — one hunts for the right
+ * page just as one hunts for the right shot, and eight clicks on the mode grid
+ * used to leave eight "Fait" stacked at the bottom of the screen. Each of these
+ * gestures states one fact, several times over: only the last statement is
+ * worth reading, and the earlier ones stand between the operator and the room.
+ *
+ * The key is the action's own name, so two different gestures never take each
+ * other's place. Failures are keyed too — a switch refused three times is one
+ * refusal restated, not three incidents.
+ */
+const REPEATED = new Set([SCENE, 'display.set'])
+
+/**
  * The control commands, and the rule that governs them all.
  *
  * **No action writes into the room's state.** Pressing "LIVE" posts the command
@@ -86,8 +101,11 @@ export const useActionsStore = defineStore('actions', () => {
        */
       const result = await gateway.act(gesture)
       const message = result.message ?? (result.ok ? 'Fait' : 'Échec')
-      const scene = gesture.action === SCENE
-      const notice = { key: options.key ?? (scene ? SCENE : undefined) }
+      const action = typeof gesture.action === 'string' ? gesture.action : undefined
+      const scene = action === SCENE
+      const notice = {
+        key: options.key ?? (action != null && REPEATED.has(action) ? action : undefined),
+      }
       const quiet = options.silent === true || (scene && !gateway.remote)
       if (!result.ok) toast.fail(message, notice)
       else if (!quiet) toast.say(message, notice)

@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import Toaster from '../src/common/Toaster.vue'
-import { NOTICE_MS, useToast } from '../src/common/toast.js'
+import { MAX_NOTICES, NOTICE_MS, useToast } from '../src/common/toast.js'
 
 /**
  * The queue is the behaviour change worth pinning.
@@ -94,6 +94,45 @@ describe('notices that repeat', () => {
      */
     vi.advanceTimersByTime(2)
     expect(toast.notices.value.map((notice) => notice.text)).toEqual(['Scène : HOLD'])
+  })
+})
+
+/**
+ * The ceiling, for everything the key does not cover.
+ *
+ * A caller can only key what it knows to be one repeated gesture. A burst it
+ * did not foresee — a reconnection answering every command that was in flight —
+ * walls the bottom of the screen all the same, and the operator is watching the
+ * room, not the page.
+ */
+describe('notices that pile up', () => {
+  it('keeps no more than the ceiling, and keeps the newest', () => {
+    const toast = useToast()
+    for (const text of ['premier', 'deuxième', 'troisième', 'quatrième', 'cinquième'])
+      toast.say(text)
+
+    expect(toast.notices.value.map((notice) => notice.text)).toEqual([
+      'troisième',
+      'quatrième',
+      'cinquième',
+    ])
+    expect(toast.notices.value).toHaveLength(MAX_NOTICES)
+  })
+
+  it('says nothing when the timer of a dropped notice comes due', () => {
+    const toast = useToast()
+    toast.say('premier')
+    vi.advanceTimersByTime(NOTICE_MS - 1)
+    for (const text of ['deuxième', 'troisième', 'quatrième']) toast.say(text)
+
+    // The first left by the ceiling, not by its clock; its timer must find
+    // nothing to take away rather than remove whoever now sits in its place.
+    vi.advanceTimersByTime(2)
+    expect(toast.notices.value.map((notice) => notice.text)).toEqual([
+      'deuxième',
+      'troisième',
+      'quatrième',
+    ])
   })
 })
 

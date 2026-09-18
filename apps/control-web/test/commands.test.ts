@@ -105,6 +105,23 @@ describe('room screen', () => {
     expect(wrapper.get('[data-command="loop"]').classes()).toContain('bg-brand')
     expect(wrapper.get('[data-command="sponsors"]').classes()).not.toContain('bg-brand')
   })
+
+  it('leaves one notice when the modes follow one another', async () => {
+    stubFetch()
+    const wrapper = mount(ScreenPanel, { props: { mode: 'loop' } })
+
+    for (const mode of ['sponsors', 'programme', 'countdown', 'feedback']) {
+      await wrapper.get(`[data-command="${mode}"]`).trigger('click')
+      await flushPromises()
+    }
+
+    /*
+     * Looking for the right page is the same gesture as looking for the right
+     * shot: one fact stated four times. Stacking it walled the bottom of the
+     * screen with "Fait" while the operator was watching the room.
+     */
+    expect(useToast().notices.value).toHaveLength(1)
+  })
 })
 
 describe('projection', () => {

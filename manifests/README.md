@@ -32,6 +32,43 @@ qui pose le numéro au bon endroit :
 cd manifests && kustomize edit set image ghcr.io/monpoke/conference-operator/hub:1.2.0
 ```
 
+## Pousser une image construite localement
+
+Entre deux versions, pour faire tourner ce qu'on vient de construire sans passer
+par un tag ni par git :
+
+```bash
+REGISTRY=registry.exemple.fr/cloudnord pnpm build:local k8s
+```
+
+Ça construit l'image, la pousse, puis épingle le **digest** poussé sur le
+déploiement et attend la fin du redémarrage. Le cluster visé se règle par
+`KUBE_CONTEXT`, `KUBE_NAMESPACE` (`conference-operator`) et `KUBE_DEPLOYMENT`
+(`hub`).
+
+À la main, c'est la ligne que le script exécute :
+
+```bash
+kubectl -n conference-operator set image deployment/hub \
+  hub=registry.exemple.fr/cloudnord/hub@sha256:<digest>
+kubectl -n conference-operator rollout status deployment/hub
+```
+
+Le digest, pas le tag : entre deux constructions locales le tag ne bouge pas, et
+patcher un déploiement avec la valeur qu'il porte déjà ne redémarre rien —
+Kubernetes ne voit aucun changement. Le digest, lui, change à chaque
+construction ; il règle du même coup l'`imagePullPolicy: IfNotPresent`, qui
+garderait sinon l'ancienne image derrière un tag réutilisé. Il se lit après le
+push :
+
+```bash
+docker buildx imagetools inspect registry.exemple.fr/cloudnord/hub:<version> \
+  --format '{{.Manifest.Digest}}'
+```
+
+Ce chemin-là modifie le déploiement dans le cluster, pas les manifestes : un
+`kubectl apply -k manifests/` ensuite le ramène à l'image du `newTag`.
+
 ## Ce qu'il faut régler avant
 
 | Où | Quoi |

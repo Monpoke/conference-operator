@@ -7,9 +7,11 @@ import type {
   VodProbe,
   Sidecar,
   VodVerdict,
+  VodConsent,
+  VodConsentRecord,
 } from '@conference-operator/contract'
 
-export type { VodCheck, VodEntry, VodProbe, VodVerdict }
+export type { VodCheck, VodEntry, VodProbe, VodVerdict, VodConsent, VodConsentRecord }
 
 /** The containers OBS knows how to write. The rest of the folder is not our business. */
 const EXTENSIONS = new Set(['.mkv', '.mp4', '.mov', '.flv', '.ts', '.m4v', '.webm', '.mpegts'])
@@ -26,6 +28,26 @@ const EXTENSIONS = new Set(['.mkv', '.mp4', '.mov', '.flv', '.ts', '.m4v', '.web
  * they do not get renamed.
  */
 const CHECKS_FILE = '.controles-vod.json'
+
+/**
+ * The YouTube consents, in their own file and keyed by talk.
+ *
+ * Not in the verdicts file, although both are the operator's word on the day:
+ * those are indexed by file name and expire with it — a take replayed under the
+ * same name voids its verdict, which is exactly what we want of a technical
+ * reading of a container. A consent survives that: the speaker's answer does not
+ * become void because the take was redone, and re-asking for it after a false
+ * start is precisely the gesture we want to spare.
+ *
+ * Keyed by `sessionId` for the same reason. The file is the room's copy: the
+ * decision's place of record is the hub, which receives it as an event. This one
+ * is what lets a room that has not synced for an hour still show what was
+ * answered, and lets the list be reopened after a restart.
+ *
+ * `accorde`, `refuse` and the field names are contract values: they do not get
+ * renamed.
+ */
+const CONSENTS_FILE = '.consentements-vod.json'
 
 /** The file has just been touched: we do not judge a take in progress. */
 const WRITE_WINDOW_MS = 30_000
@@ -86,6 +108,7 @@ export interface VodIndexDeps {
 export async function listRecordings(deps: VodIndexDeps): Promise<VodEntry[]> {
   const root = resolve(deps.root)
   const checks = await readChecks(deps, root)
+  const consents = await readConsents(deps, root)
   const entries: VodEntry[] = []
 
   const scan = async (directory: string, depth: number): Promise<void> => {
@@ -112,13 +135,19 @@ export async function listRecordings(deps: VodIndexDeps): Promise<VodEntry[]> {
       if (stat == null) continue
 
       const key = normalize(relative(root, path))
+      const sidecar = await readSidecar(deps, path)
       entries.push({
         file: key,
         sizeBytes: stat.size,
         modifiedAtMs: stat.mtimeMs,
         beingWritten: beingWritten(deps, stat),
-        sidecar: await readSidecar(deps, path),
+        sidecar,
         check: checkStillValid(checks[key], stat),
+        // Read through the sidecar, which is what names the talk: the consent is
+        // filed under the slot, never under the file, so that a second take of the
+        // same talk inherits the answer already given instead of asking for it
+        // again in front of a speaker who has left.
+        consent: sidecar?.sessionId == null ? null : (consents[sidecar.sessionId] ?? null),
       })
     }
   }
@@ -284,6 +313,61 @@ export async function setVerdict(
   }
   await remember(deps, root, file, check)
   return check
+}
+
+/**
+ * Records a talk's YouTube consent. `null` puts it back to unanswered.
+ *
+ * Returns what was written, so that the caller has the very record it must send
+ * up to the hub — and above all its instant. Recomputing the date on the way out
+ * would date the answer from when the event was built, and the two drift apart
+ * exactly when it matters: an outage between the gesture and the sending.
+ *
+ * The disk is written first and the failure is not fatal. The hub is the place of
+ * record, and an operator who has just clicked must not be told the answer is
+ * lost because a folder is read-only.
+ */
+export async function setConsent(
+  deps: VodIndexDeps,
+  sessionId: string,
+  statut: VodConsent | null,
+): Promise<VodConsentRecord | null> {
+  const root = resolve(deps.root)
+  const record: VodConsentRecord | null =
+    statut == null ? null : { statut, decideA: new Date(deps.now()).toISOString() }
+
+  const consents = await readConsents(deps, root)
+  if (record == null) delete consents[sessionId]
+  else consents[sessionId] = record
+
+  try {
+    await deps.fs.writeFile(
+      join(root, CONSENTS_FILE),
+      JSON.stringify({ version: 1, entries: consents }, null, 2),
+    )
+  } catch (cause) {
+    deps.onLog?.('warn', 'consentements YouTube non écrits sur le disque', {
+      message: (cause as Error).message,
+    })
+  }
+  return record
+}
+
+async function readConsents(
+  deps: VodIndexDeps,
+  root: string,
+): Promise<Record<string, VodConsentRecord>> {
+  const raw = await deps.fs.readFile(join(root, CONSENTS_FILE)).catch(() => null)
+  if (raw == null) return {}
+  try {
+    const body = JSON.parse(raw) as { entries?: Record<string, VodConsentRecord> }
+    return body.entries ?? {}
+  } catch {
+    // An unreadable file reads as "nobody answered", never as a refusal: the
+    // console then still shows the question as open, which is the state that gets
+    // acted upon.
+    return {}
+  }
 }
 
 /** Writes the verdict into the index. `null` removes it. */

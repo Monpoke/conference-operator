@@ -259,6 +259,27 @@ export const useVodStore = defineStore('vod', () => {
   }
 
   /**
+   * The talk's answer about a YouTube broadcast, set from one of its rows.
+   *
+   * Keyed by file here and by talk on the way out: the operator points at the rush
+   * they have in front of them, the room files the answer under the slot. A row
+   * whose sidecar names no talk cannot be marked at all — the button is absent,
+   * and this guard is the second lock, for the case where the listing has moved on
+   * underneath.
+   *
+   * The same button sets and takes back, as for the verdicts and for the same
+   * reason: a slip must have a way back, and here it is a slip that reads later as
+   * a speaker's answer.
+   */
+  async function consent(file: string, statut: 'accorde' | 'refuse'): Promise<void> {
+    const sessionId = entryOf(file)?.sidecar?.sessionId
+    if (sessionId == null) return
+    const already = entryOf(file)?.consent?.statut === statut
+    await actions.act({ action: 'vod.consent', sessionId, statut: already ? null : statut })
+    await loadListing()
+  }
+
+  /**
    * Checking the whole folder, one file after another.
    *
    * In series, not in parallel: ffprobe really reads the files, and launching six
@@ -371,6 +392,7 @@ export const useVodStore = defineStore('vod', () => {
     togglePreview,
     inspect,
     verdict,
+    consent,
     checkAll,
     upload,
     cancelUpload,

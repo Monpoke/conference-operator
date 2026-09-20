@@ -249,6 +249,43 @@ export const sessionFeedback = sqliteTable('session_feedback', {
 })
 
 /**
+ * A talk's YouTube broadcast consent, as reported by its room.
+ *
+ * A table and not a projection of the ingestion log, unlike the takes. The takes
+ * are a reading of a disk that still exists and can be read again; a consent is
+ * an answer given once, in front of a speaker who has left, and nothing
+ * reconstructs it. The log is purged and reset in development — losing a consent
+ * there would teach nothing except, one day, on an event hub.
+ *
+ * A separate table rather than a column of `session_override`, for the reason
+ * `session_feedback` is one: that table carries a decision about the slot's
+ * *kind*, with a mandatory `status`, and recording a speaker's answer is not
+ * deciding that a talk is a break. Like it, it survives a reimport — the consent
+ * belongs to the hub, not to the program, and the reimported program has never
+ * heard of it.
+ *
+ * The absence of a row is **not** a refusal: it is a question still to ask. That
+ * is why a withdrawal deletes the row rather than writing a third value — the two
+ * states are the same one, and one way of spelling it is enough.
+ */
+export const sessionConsent = sqliteTable('session_consent', {
+  sessionId: text('session_id').primaryKey(),
+  /** `accorde` or `refuse`, the contract's values. */
+  statut: text('statut').notNull(),
+  /**
+   * When the speaker answered, on the room's clock.
+   *
+   * Kept as reported and not as received: it is what dates the answer, and it is
+   * also what arbitrates two reports of the same talk — a room replaying its queue
+   * must not overwrite a more recent answer with an older one.
+   */
+  decideA: text('decide_a').notNull(),
+  /** The room that asked. Diagnosis only: the consent belongs to the talk. */
+  roomId: text('room_id'),
+  updatedAt: text('updated_at').notNull().default(now),
+})
+
+/**
  * Machine → room binding.
  *
  * Better Auth (device authorization) authenticates **the operator** who put the
@@ -545,6 +582,7 @@ export const hubSchema = {
   questionVote,
   sessionOverride,
   sessionFeedback,
+  sessionConsent,
   roomDevice,
   deviceRequest,
   sessionState,

@@ -13,7 +13,15 @@ import type {
 } from '@conference-operator/contract'
 import type { ObsState } from './obs.js'
 import type { StopResult } from './recording.js'
-import type { VodCheck, VodEntry, Excerpt, FileStream, VodVerdict } from './vod-index.js'
+import type {
+  VodCheck,
+  VodEntry,
+  Excerpt,
+  FileStream,
+  VodVerdict,
+  VodConsent,
+  VodConsentRecord,
+} from './vod-index.js'
 import type { UploadsView } from './upload.js'
 
 /**
@@ -59,6 +67,22 @@ export const controlActionSchema = z.discriminatedUnion('action', [
     action: z.literal('vod.verdict'),
     file: z.string().min(1).max(400),
     status: z.enum(['ok', 'suspect', 'illisible']).nullable(),
+  }),
+  /**
+   * The speaker's answer about a YouTube broadcast, for one talk.
+   *
+   * Keyed by `sessionId` and not by file, although it is pressed from a row of
+   * the recordings list: it is the talk that gets broadcast. A file whose sidecar
+   * names no slot offers no button — see `VodEntry.consent`.
+   *
+   * `null` puts the talk back to unanswered, which is not "refused": the button
+   * pressed again takes back a slip, and only an unanswered talk shows in the
+   * console as a question still to ask.
+   */
+  z.object({
+    action: z.literal('vod.consent'),
+    sessionId: z.string().min(1).max(200),
+    statut: z.enum(['accorde', 'refuse']).nullable(),
   }),
   /**
    * Shipping a rush back to the hub's storage.
@@ -164,6 +188,8 @@ export interface ControlTarget {
   listRecordings(): Promise<VodList>
   inspectRecording(file: string): Promise<VodCheck>
   setRecordingVerdict(file: string, status: VodVerdict | null): Promise<VodCheck | null>
+  /** The talk's YouTube consent, kept on the disk and reported to the hub. */
+  setYoutubeConsent(sessionId: string, statut: VodConsent | null): Promise<VodConsentRecord | null>
   /** The uploads in progress and the reason for waiting, for the rushes modal. */
   vodUploads(): UploadsView
   /** Queues a rush. A null `file` = everything left. Returns the number targeted. */
@@ -270,6 +296,27 @@ export async function runControlAction(
           ok: true,
           message: action.status == null ? 'Contrôle effacé' : `${action.file} — ${action.status}`,
           detail: check,
+        }
+      }
+      case 'vod.consent': {
+        const record = await target.setYoutubeConsent(action.sessionId, action.statut)
+        /*
+         * Three messages for three states, and the third is not "cleared".
+         *
+         * "Consentement effacé" would read as a failed gesture on a button one has
+         * just pressed on purpose to take back a mistake. What one wants confirmed
+         * is the state the talk is left in — and that state is a question still to
+         * be asked, not an absence.
+         */
+        return {
+          ok: true,
+          message:
+            action.statut == null
+              ? 'Diffusion YouTube : à redemander'
+              : action.statut === 'accorde'
+                ? 'Diffusion YouTube autorisée'
+                : 'Diffusion YouTube refusée',
+          detail: record,
         }
       }
       case 'vod.upload': {

@@ -1368,6 +1368,46 @@ verdicts vivent dans `.controles-vod.json`, à la racine des enregistrements —
 pas dans les sidecars, qui décrivent la conférence et non la relecture qu'on en
 a faite.
 
+### Le consentement YouTube
+
+Un rush relu et exploitable ne dit pas encore qu'on a le droit de le publier.
+Chaque ligne de la modale porte donc une seconde décision, **Diffusion YouTube**,
+avec deux boutons — « Accordée », « Refusée » — et le même geste de reprise que
+les verdicts.
+
+Trois états, pas un booléen, et c'est le troisième qui compte : l'absence de
+réponse s'affiche en ambre, « à demander ». C'est le seul état encore réparable —
+par un coup de fil — et le seul qui, silencieux, se fait lire comme un oui le jour
+du montage. Un consentement qui n'apparaîtrait qu'une fois donné ne serait jamais
+demandé.
+
+La réponse est classée **par conférence** (`sessionId`), jamais par fichier : c'est
+le talk qu'on diffuse, et les deux prises d'un faux départ portent la même
+réponse. Une seconde prise hérite donc de ce qui a déjà été répondu, au lieu de
+redemander à un conférencier parti. Un rush lancé hors créneau, dont le sidecar ne
+nomme aucune conférence, n'offre pas les boutons : un consentement appartient à
+quelqu'un.
+
+La régie en garde une copie dans `.consentements-vod.json`, à la racine des
+enregistrements — séparé des verdicts, qui sont indexés par nom de fichier et
+périment avec lui : une réponse ne devient pas caduque parce qu'on a refait la
+prise. Mais **le lieu de référence est le hub** : la décision y monte par l'outbox
+comme événement `vod.consent`, donc `required` — elle s'obtient devant le
+conférencier, sur une machine dont le réseau est celui de l'événement, et c'est la
+seule information ici qu'aucun disque ne permet de reconstituer après coup.
+
+Le hub la range dans `session_consent`, une table et non une projection du journal
+d'ingestion : une prise se relit sur un disque qui existe encore, une réponse
+donnée une fois ne se relit nulle part. La dernière réponse gagne, **à l'heure de
+la régie et non à l'arrivée** — une file rejouée après une coupure ne doit pas
+écraser à midi le refus d'un conférencier avec le « accordé » de dix heures. Une
+reprise supprime la ligne : « pas encore demandé » n'a qu'une seule écriture.
+
+La console la lit en tête de la modale d'une conférence, au-dessus de « Sur la
+régie » et de « Chez le stockage » : elle répond à la question qu'on se pose en
+premier des semaines plus tard — non pas « l'a-t-on ? », ni « est-ce parti ? »,
+mais « a-t-on le droit ? ».
+
 **Le dossier lu est réglable** dans le ⚙ de la régie, champ « Dossier des VOD » —
 laissé vide, la régie demande à OBS-B où il écrit. Le réglage part au hub comme
 les autres : c'est lui qui détient la configuration de la salle.
@@ -1608,7 +1648,8 @@ Deux limites délibérées, qui sont des refus et non des oublis :
 - **un préfixe est exigé.** Sans lui, « vider le préfixe » et « vider le bucket »
   sont le même geste, et un bucket qui sert aussi à autre chose y passerait ;
 - **côté salle, seul ce que l'application connaît est effacé** — les conteneurs
-  vidéo qu'elle liste, leurs sidecars, `.controles-vod.json`. La racine des
+  vidéo qu'elle liste, leurs sidecars, `.controles-vod.json`,
+  `.consentements-vod.json`. La racine des
   captations est un dossier saisi dans un formulaire : parfois un disque
   partagé, parfois pas celui qu'on croit.
 

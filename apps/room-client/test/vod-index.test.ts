@@ -13,6 +13,7 @@ import {
   openExcerpt,
   openFile,
   setVerdict,
+  setConsent,
   type VodProbe,
   type VodIndexDeps,
 } from '../src/core/vod-index.js'
@@ -315,6 +316,106 @@ describe('the operator\'s verdict', () => {
 
     expect(entries.find((entry) => entry.file === 'a.mkv')?.check?.status).toBe('ok')
     expect(entries.find((entry) => entry.file === 'b.mkv')?.check?.status).toBe('illisible')
+  })
+})
+
+/**
+ * The YouTube consent.
+ *
+ * What these tests protect is a legal answer given once, in front of a speaker
+ * who then leaves. Unlike a verdict it cannot be re-derived from the disk: if it
+ * is lost, or attributed to the wrong take, nobody finds out before the video is
+ * published — or before it is held back for nothing.
+ */
+describe('the YouTube consent', () => {
+  it('is filed under the talk, and shows on its rush', async () => {
+    video('take.mkv')
+    sidecar('take.json')
+
+    const record = await setConsent(deps(), 'ses-1', 'accorde')
+    const entry = (await listRecordings(deps()))[0]!
+
+    expect(record?.statut).toBe('accorde')
+    expect(entry.consent?.statut).toBe('accorde')
+    // Dated on the room's corrected clock — an hour ahead of the machine's here —
+    // like the verdicts: the two get read side by side.
+    expect(Date.parse(entry.consent!.decideA)).toBeGreaterThan(Date.now() + 3_500_000)
+    // And written once, at the decision: re-reading must not re-date it.
+    expect(entry.consent!.decideA).toBe(record!.decideA)
+  })
+
+  /**
+   * The second take of the same talk inherits the answer.
+   *
+   * This is the whole reason the consents are keyed by `sessionId` and kept out of
+   * the verdicts file: a false start gets replayed, and asking the speaker again
+   * — after they have left the room — is precisely what cannot be done.
+   */
+  it('carries over to another take of the same talk', async () => {
+    video('prise-1.mkv')
+    sidecar('prise-1.json')
+    video('prise-2.mkv')
+    sidecar('prise-2.json')
+
+    await setConsent(deps(), 'ses-1', 'refuse')
+    const entries = await listRecordings(deps())
+
+    expect(entries.map((entry) => entry.consent?.statut)).toEqual(['refuse', 'refuse'])
+  })
+
+  /** A rush the sidecar attaches to no talk identifies no speaker to consent. */
+  it('stays absent on a rush with no talk', async () => {
+    video('hors-creneau.mkv')
+    sidecar('hors-creneau.json', { sessionId: null })
+
+    await setConsent(deps(), 'ses-1', 'accorde')
+
+    expect((await listRecordings(deps()))[0]!.consent).toBeNull()
+  })
+
+  it('can be taken back, and the talk goes back to unanswered', async () => {
+    video('take.mkv')
+    sidecar('take.json')
+    await setConsent(deps(), 'ses-1', 'accorde')
+
+    expect(await setConsent(deps(), 'ses-1', null)).toBeNull()
+    expect((await listRecordings(deps()))[0]!.consent).toBeNull()
+  })
+
+  it('does not lose the other talks’ answers while saving its own', async () => {
+    video('a.mkv')
+    sidecar('a.json', { sessionId: 'ses-a' })
+    video('b.mkv')
+    sidecar('b.json', { sessionId: 'ses-b' })
+
+    await setConsent(deps(), 'ses-a', 'accorde')
+    await setConsent(deps(), 'ses-b', 'refuse')
+    const entries = await listRecordings(deps())
+
+    expect(entries.find((entry) => entry.file === 'a.mkv')?.consent?.statut).toBe('accorde')
+    expect(entries.find((entry) => entry.file === 'b.mkv')?.consent?.statut).toBe('refuse')
+  })
+
+  /**
+   * A consent outlives the take it was given for.
+   *
+   * The opposite of a verdict, deliberately: a verdict is a reading of one
+   * container and expires with it, an answer does not become void because the
+   * recording was redone. Retaking the file must not put the question back.
+   */
+  it('survives the take being rewritten, where a verdict would not', async () => {
+    video('take.mkv')
+    sidecar('take.json')
+    await setVerdict(deps(), 'take.mkv', 'ok')
+    await setConsent(deps(), 'ses-1', 'accorde')
+
+    // The same talk replayed: same name, another file.
+    video('take.mkv', 1_800_000_000)
+    sidecar('take.json')
+    const entry = (await listRecordings(deps()))[0]!
+
+    expect(entry.check).toBeNull()
+    expect(entry.consent?.statut).toBe('accorde')
   })
 })
 

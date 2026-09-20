@@ -4,8 +4,10 @@ import {
   type Envelope,
   type ObsInstance,
   type RoomEventPayload,
+  type VodConsent,
+  type VodConsentRecord,
 } from '@conference-operator/contract'
-import { ingestEvent, roomState } from '@conference-operator/db/hub'
+import { ingestEvent, roomState, sessionConsent } from '@conference-operator/db/hub'
 import type { HubDatabase, HubTransaction } from '../db.js'
 import { SILENCE_MS } from './rooms.js'
 
@@ -114,6 +116,7 @@ export class IngestService {
        */
       for (const envelope of [...valid].sort((a, b) => a.seq - b.seq)) {
         applyToRoomState(tx, roomId, envelope)
+        applyConsent(tx, roomId, envelope)
       }
     })
 
@@ -169,6 +172,22 @@ export class IngestService {
    * over an event day, where heartbeats are counted in tens of thousands, and one
    * more projection would be one more thing to keep correct.
    */
+  /**
+   * A talk's YouTube consent, `null` while nobody has answered.
+   *
+   * By `sessionId` alone and not by room: the consent belongs to the talk. A slot
+   * moved to another room after the fact keeps the answer its speaker gave, which
+   * is the only reading that stays true.
+   */
+  consent(sessionId: string): VodConsentRecord | null {
+    const row = this.db
+      .select({ statut: sessionConsent.statut, decideA: sessionConsent.decideA })
+      .from(sessionConsent)
+      .where(eq(sessionConsent.sessionId, sessionId))
+      .get()
+    return row == null ? null : { statut: row.statut as VodConsent, decideA: row.decideA }
+  }
+
   captations(roomId: string): RawCapture[] {
     const rows = this.db
       .select({
@@ -341,6 +360,56 @@ export class IngestService {
         }
       })
   }
+}
+
+/**
+ * Files a YouTube consent, if that is what the event carries.
+ *
+ * Stored rather than projected, unlike everything else here: a take is a reading
+ * of a disk that can be read again, a consent is an answer given once in front of
+ * somebody who has left. See `session_consent`.
+ *
+ * **Last answer wins, on the room's clock and not on arrival.** A room replays
+ * its queue after an outage, and a replayed "accordé" from ten this morning must
+ * not overwrite the "refusé" the speaker gave at noon. Comparing `decide_a`
+ * settles it whatever order the batches land in — which is exactly the ordering an
+ * outbox does not guarantee.
+ *
+ * A withdrawal deletes the row instead of writing a third value: the absence of a
+ * row already says "still to be asked", and two ways of spelling one state is one
+ * too many. It is guarded by the same date so that it cannot be replayed over a
+ * later answer either.
+ */
+function applyConsent(tx: HubTransaction, roomId: string, envelope: Envelope): void {
+  const payload = envelope.payload
+  if (payload.type !== 'vod.consent') return
+
+  const known = tx
+    .select({ decideA: sessionConsent.decideA })
+    .from(sessionConsent)
+    .where(eq(sessionConsent.sessionId, payload.sessionId))
+    .get()
+  if (known != null && Date.parse(known.decideA) > Date.parse(payload.decideA)) return
+
+  if (payload.consentement == null) {
+    tx.delete(sessionConsent).where(eq(sessionConsent.sessionId, payload.sessionId)).run()
+    return
+  }
+
+  const updatedAt = new Date().toISOString()
+  tx.insert(sessionConsent)
+    .values({
+      sessionId: payload.sessionId,
+      statut: payload.consentement,
+      decideA: payload.decideA,
+      roomId,
+      updatedAt,
+    })
+    .onConflictDoUpdate({
+      target: sessionConsent.sessionId,
+      set: { statut: payload.consentement, decideA: payload.decideA, roomId, updatedAt },
+    })
+    .run()
 }
 
 /** Projects an event onto the room's supervision view. */

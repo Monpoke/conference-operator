@@ -11,6 +11,7 @@ import {
   connectivitySchema,
   audioInputSchema,
 } from './primitives.js'
+import { vodConsentSchema } from './vod.js'
 
 /**
  * Upstream events (room outbox → hub).
@@ -40,6 +41,28 @@ export const roomEventPayloadSchema = z.discriminatedUnion('type', [
     outputPath: z.string().nullable(),
     durationMs: z.number().int().nonnegative(),
     sidecarWritten: z.boolean(),
+  }),
+  /**
+   * The YouTube consent decided in the room, for one talk.
+   *
+   * It goes up as an **event** and not as a procedure call, for the reason the
+   * outbox exists: the answer is obtained in front of the speaker, at the end of
+   * their talk, on a machine whose network is the event's. A call would fail there
+   * and the answer would be lost — and it is the one thing here that cannot be
+   * reconstructed afterwards from the disk, since only the person who asked heard
+   * it. `required`, therefore: it arrives, late if need be.
+   *
+   * A null `consentement` withdraws the decision and puts the talk back to
+   * "unanswered". It is a real gesture and not a technicality: an operator who
+   * marks the wrong row must be able to take it back, rather than leave standing a
+   * consent nobody gave.
+   */
+  z.object({
+    type: z.literal('vod.consent'),
+    sessionId: sessionIdSchema,
+    consentement: vodConsentSchema.nullable(),
+    /** On the room's corrected clock: it dates the answer, not its arrival. */
+    decideA: isoDateTimeSchema,
   }),
   /**
    * No longer emitted, still accepted.
@@ -164,6 +187,7 @@ export const DELIVERY_BY_EVENT: Record<RoomEventType, z.infer<typeof deliverySch
   'recording.started': 'required',
   'recording.stopped': 'required',
   'talk.marker': 'required',
+  'vod.consent': 'required',
   'stream.started': 'required',
   'stream.stopped': 'required',
   'obs.connection': 'required',

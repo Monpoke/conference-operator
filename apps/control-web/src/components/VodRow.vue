@@ -138,6 +138,20 @@ const UPLOAD_COLUMN = 'flex w-[6.75rem] shrink-0 items-center justify-end gap-1'
 function posed(status: string): boolean {
   return check.value?.by === 'operateur' && check.value.status === status
 }
+
+/**
+ * The talk this rush belongs to, as its sidecar names it.
+ *
+ * The consent is filed under it, never under the file name: two takes of the same
+ * talk share one answer. `null` on a recording launched outside the lifecycle —
+ * there is then no speaker to consent, and the buttons are not offered.
+ */
+const sessionId = computed(() => sidecar.value?.sessionId ?? null)
+
+/** "Active" on the answer already recorded: the same button takes it back. */
+function consentIs(statut: string): boolean {
+  return props.entry.consent?.statut === statut
+}
 </script>
 
 <template>
@@ -168,6 +182,66 @@ function posed(status: string): boolean {
         <span v-if="speakers !== ''" class="text-dim"> — {{ speakers }}</span>
       </div>
       <div class="mt-0.5 text-[11px] text-dim">{{ details }}</div>
+
+      <!--
+        The speaker's answer about the broadcast, on its own line.
+
+        Not folded into the icon column opposite, although it is two more buttons:
+        that column answers "is this footage safe?", and this answers "may we
+        publish it?" — two questions asked by two different people, and a ✕ that
+        means "unusable" next to a ✕ that means "refused" is a mistake one makes
+        once, in the evening, on a list of fifteen rows.
+
+        Written out rather than iconised for the same reason. "Accordée" and
+        "Refusée" are read the right way round the first time; a ✓ on a legal
+        answer is read as a technical verdict.
+
+        And it is shown on **every** row, including the unanswered ones: an amber
+        "à demander" is the only thing that will make anyone ask before the speaker
+        leaves the room. A consent that appeared only once given would never be
+        given.
+      -->
+      <div class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+        <span class="text-dim">Diffusion YouTube</span>
+
+        <template v-if="sessionId != null">
+          <Button
+            size="small"
+            class="px-1.5"
+            title="Le conférencier autorise la publication de son talk"
+            :active="consentIs('accorde')"
+            :data-vod-consent-ok="entry.file"
+            @click="vod.consent(entry.file, 'accorde')"
+          >
+            Accordée
+          </Button>
+          <Button
+            size="small"
+            class="px-1.5"
+            title="Le conférencier refuse la publication de son talk"
+            :active="consentIs('refuse')"
+            :data-vod-consent-ko="entry.file"
+            @click="vod.consent(entry.file, 'refuse')"
+          >
+            Refusée
+          </Button>
+          <span v-if="entry.consent == null" class="text-warn" data-role="vod-consent-state">
+            à demander
+          </span>
+          <span v-else class="text-dim" data-role="vod-consent-state">
+            {{ time(entry.consent.decideA, timeZone) }}
+          </span>
+        </template>
+
+        <!--
+          No slot, no consent: the answer belongs to a speaker, and an untethered
+          rush names none. Saying which gesture repairs it — the take was launched
+          by hand — beats a greyed-out button with no reason.
+        -->
+        <span v-else class="text-dim" data-role="vod-consent-state">
+          — prise hors créneau : aucun conférencier identifié
+        </span>
+      </div>
 
       <!-- A red badge with no reason serves nobody. -->
       <div

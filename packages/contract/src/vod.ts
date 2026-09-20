@@ -30,6 +30,39 @@ export const vodKindSchema = z.enum(['rush', 'sidecar'])
 export type VodKind = z.infer<typeof vodKindSchema>
 
 /**
+ * The speaker's consent to a YouTube broadcast.
+ *
+ * A **talk's** property, not a file's: a speaker agrees — or does not — to their
+ * talk being published, and the two takes of a false start carry the same answer.
+ * So it is keyed by `sessionId` everywhere, on the room's disk as on the hub.
+ *
+ * Three states and not a boolean, because the third one is the one that gets
+ * acted upon: `null` is "nobody asked yet", and it is not "refused". A talk
+ * published on the strength of an unanswered question and one held back on the
+ * strength of a refusal are two different mistakes, and only a missing value lets
+ * the console list what is left to ask before the event is packed up.
+ *
+ * `accorde` and `refuse` are contract values: they are written into the room's
+ * consents file and stored on the hub, so they do not get renamed.
+ */
+export const vodConsentSchema = z.enum(['accorde', 'refuse'])
+export type VodConsent = z.infer<typeof vodConsentSchema>
+
+/**
+ * A consent as it is recorded, with the moment it was given.
+ *
+ * The date is not bookkeeping: a consent is the only thing here that may have to
+ * be produced later, and "granted" with no instant proves nothing. It is on the
+ * room's corrected clock, the same one the takes are dated with, so that the two
+ * can be read side by side.
+ */
+export const vodConsentRecordSchema = z.object({
+  statut: vodConsentSchema,
+  decideA: isoDateTimeSchema,
+})
+export type VodConsentRecord = z.infer<typeof vodConsentRecordSchema>
+
+/**
  * Where an upload stands.
  *
  * `abandonne` and `echoue` say two different things: the first was interrupted —
@@ -266,6 +299,14 @@ export const vodFolderSchema = z.object({
   stockageConfigure: z.boolean(),
   captations: z.array(captureViewSchema),
   televersements: z.array(uploadViewSchema),
+  /**
+   * The YouTube consent reported by the room. `null` = never answered.
+   *
+   * Placed here and not on each take: it is the talk that is broadcast, not the
+   * file. A folder showing two takes shows one consent, which is also what spares
+   * the console from having to reconcile two takes that would disagree.
+   */
+  consentementYoutube: vodConsentRecordSchema.nullable().default(null),
 })
 export type VodFolder = z.infer<typeof vodFolderSchema>
 

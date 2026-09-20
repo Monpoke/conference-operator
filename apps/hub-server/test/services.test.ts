@@ -507,6 +507,83 @@ describe('IngestService', () => {
       programContentHash: 'abc123',
     })
   })
+
+  /**
+   * The YouTube consent.
+   *
+   * Stored and not projected, unlike everything else the rooms report: a take can
+   * be read off the disk again, an answer given in front of a speaker cannot. What
+   * these tests hold is that it arrives, that a replayed queue cannot undo a later
+   * answer, and that "never asked" stays distinguishable from "refused" — the
+   * three ways a video gets published when it should not have been, or held back
+   * when it could have gone out.
+   */
+  it('records a talk’s consent, and lets it be taken back', () => {
+    const rooms = new RoomService(db, testSecrets)
+    seedRoom(rooms)
+    const ingest = new IngestService(db)
+
+    expect(ingest.consent('ses-1')).toBeNull()
+
+    ingest.push(TRACK_1, [
+      envelope('01NNNNNNNNNNNNNNNNNNNNNNNN', 1, {
+        type: 'vod.consent',
+        sessionId: 'ses-1',
+        consentement: 'accorde',
+        decideA: '2026-10-30T09:45:00.000Z',
+      }),
+    ])
+
+    expect(ingest.consent('ses-1')).toEqual({
+      statut: 'accorde',
+      decideA: '2026-10-30T09:45:00.000Z',
+    })
+
+    // A withdrawal removes the row: "never asked" is the state we want back, and
+    // it has one spelling only — the absence of an answer.
+    ingest.push(TRACK_1, [
+      envelope('01PPPPPPPPPPPPPPPPPPPPPPPP', 2, {
+        type: 'vod.consent',
+        sessionId: 'ses-1',
+        consentement: null,
+        decideA: '2026-10-30T09:50:00.000Z',
+      }),
+    ])
+
+    expect(ingest.consent('ses-1')).toBeNull()
+  })
+
+  it('does not let a replayed queue undo a later answer', () => {
+    /*
+     * The accident this guards against: the room loses the network at ten, the
+     * speaker changes their mind at noon, and the outbox drains the morning's
+     * batch afterwards. Applying the events as they land would republish a talk
+     * whose author had just refused.
+     */
+    const rooms = new RoomService(db, testSecrets)
+    seedRoom(rooms)
+    const ingest = new IngestService(db)
+
+    ingest.push(TRACK_1, [
+      envelope('01QQQQQQQQQQQQQQQQQQQQQQQQ', 2, {
+        type: 'vod.consent',
+        sessionId: 'ses-1',
+        consentement: 'refuse',
+        decideA: '2026-10-30T12:00:00.000Z',
+      }),
+    ])
+
+    ingest.push(TRACK_1, [
+      envelope('01RRRRRRRRRRRRRRRRRRRRRRRR', 1, {
+        type: 'vod.consent',
+        sessionId: 'ses-1',
+        consentement: 'accorde',
+        decideA: '2026-10-30T10:00:00.000Z',
+      }),
+    ])
+
+    expect(ingest.consent('ses-1')?.statut).toBe('refuse')
+  })
 })
 
 /** Ten minutes, the default value of `DEVICE_CODE_TTL`. */

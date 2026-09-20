@@ -29,11 +29,14 @@ import {
   openExcerpt,
   openFile,
   setVerdict,
+  setConsent,
   pathUnder,
   type VodCheck,
   type Excerpt,
   type FileStream,
   type VodVerdict,
+  type VodConsent,
+  type VodConsentRecord,
   type VodIndexDeps,
 } from './vod-index.js'
 import { Outbox } from './outbox.js'
@@ -1895,6 +1898,11 @@ export class RoomApp implements ControlTarget {
       entry.file.replace(/\.[^./]+$/, '.json'),
     ])
     names.push('.controles-vod.json')
+    // The consents go with them, and only here: this is the room's copy, of a
+    // decision whose place of record is the hub. A development room wiped between
+    // two rehearsals must not go on showing answers about talks it no longer
+    // holds — and the hub, which is what an editor consults, keeps its own.
+    names.push('.consentements-vod.json')
 
     let erased = 0
     for (const name of names) {
@@ -1981,6 +1989,41 @@ export class RoomApp implements ControlTarget {
     const root = await this.capturesRoot()
     if (root == null) throw new Error('Aucun dossier d\u2019enregistrement connu')
     return await setVerdict(this.vodDeps(root), file, status)
+  }
+
+  /**
+   * The talk's YouTube consent: written to the disk, then reported to the hub.
+   *
+   * In that order, and both. The disk is what lets the list show the answer again
+   * after a restart, and lets a second take of the same talk inherit it; the hub
+   * is the place of record, the only one an editor will consult weeks later, on
+   * another machine. Neither replaces the other.
+   *
+   * `emit` never waits and never throws: it queues. The gesture therefore succeeds
+   * on a room cut off from the network, and the answer goes up at the next drain —
+   * which is the whole reason this travels as an event.
+   */
+  async setYoutubeConsent(
+    sessionId: string,
+    statut: VodConsent | null,
+  ): Promise<VodConsentRecord | null> {
+    const root = await this.capturesRoot()
+    if (root == null) throw new Error('Aucun dossier d’enregistrement connu')
+    const record = await setConsent(this.vodDeps(root), sessionId, statut)
+
+    this.emit({
+      type: 'vod.consent',
+      sessionId,
+      consentement: statut,
+      // The record's date when there is one: it was stamped at the write, and
+      // recomputing it here would date the answer from the sending.
+      decideA: record?.decideA ?? new Date(this.runtime.correctedNow()).toISOString(),
+    })
+
+    // In the room's log too: a consent is the one thing here that may have to be
+    // produced later, and the log is what survives the folder being wiped.
+    this.options.onLog?.('info', `consentement YouTube ${statut ?? 'à redemander'}`, { sessionId })
+    return record
   }
 
   /** The send backlog displayed in the control app — heartbeat aside, which renews itself. */

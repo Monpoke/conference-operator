@@ -152,7 +152,8 @@ leur langue, et une valeur figée ne se renomme pas « au passage » :
   `HEURE_SIMULEE`, `HUB_ORIGIN`, `ROOM_ID`, `REGIE_VITE_ORIGIN`, `DATA_DIR`,
   `DISPLAY_PORT` ;
 - **les fichiers écrits sur disque par une salle** : `salle.db`, `client-id`,
-  `jeton`, `hub`, `assets`, `enregistrements`, `.controles-vod.json` ;
+  `jeton`, `hub`, `assets`, `enregistrements`, `.controles-vod.json`,
+  `.consentements-vod.json` ;
 - **les canaux IPC d'Electron** : `hub:tester`, `hub:valider`.
 
 Le code qui les manipule, lui, est en anglais : `const upload = row.televersement`

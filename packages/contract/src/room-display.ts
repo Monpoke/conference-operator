@@ -9,6 +9,7 @@ import type {
 } from './primitives.js'
 import type { SceneRoleMap, SessionStatus } from './room-state.js'
 import type { Comment } from './wall.js'
+import type { VodConsentRecord } from './vod.js'
 import type { AudioInput } from './primitives.js'
 
 /**
@@ -695,6 +696,19 @@ export interface VodEntry {
   beingWritten: boolean
   sidecar: Sidecar | null
   check: VodCheck | null
+  /**
+   * The talk's YouTube consent, `null` while nobody has answered.
+   *
+   * Carried by the row although it belongs to the talk: this list is the only
+   * screen on which the question gets asked, and the operator reaches it by the
+   * file they have in front of them, never by a slot identifier. Two takes of the
+   * same talk therefore show the same value, and marking either marks the talk.
+   *
+   * Always `null` on a rush whose sidecar names no talk: there is nothing to
+   * consent for — the consent is the speaker's, and an untethered file identifies
+   * no speaker.
+   */
+  consent: VodConsentRecord | null
 }
 
 

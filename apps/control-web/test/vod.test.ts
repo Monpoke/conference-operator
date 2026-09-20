@@ -37,6 +37,7 @@ const RUSH: VodEntry = {
     videoFile: null,
   },
   check: null,
+  consent: null,
 }
 
 const TOOLS = { ffmpeg: true, ffprobe: true }
@@ -699,5 +700,75 @@ describe('one footage row', () => {
 
     expect(wrapper.text()).toContain('Illisible')
     expect(wrapper.text()).toContain('conteneur illisible')
+  })
+})
+
+/**
+ * The YouTube consent.
+ *
+ * The only screen on which the question is ever asked — the console cannot ask a
+ * speaker anything, and the speaker has left by the time anybody opens it. What
+ * these tests hold: that an unanswered talk says so out loud, that the answer
+ * goes up under the talk and not under the file, and that a slip can be taken
+ * back.
+ */
+describe('the YouTube consent', () => {
+  it('asks out loud on a talk nobody has answered for', async () => {
+    await openVod()
+    const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
+
+    // Silence would be read as "granted" by whoever publishes, weeks later.
+    expect(wrapper.get('[data-role="vod-consent-state"]').text()).toBe('à demander')
+    expect(wrapper.get('[data-role="vod-consent-state"]').classes()).toContain('text-warn')
+  })
+
+  it('reports the answer under the talk, never under the file', async () => {
+    await openVod()
+    const wrapper = mount(VodRow, { props: { entry: RUSH, timeZone: 'Europe/Paris' } })
+
+    await wrapper.get('[data-vod-consent-ok]').trigger('click')
+    await flushPromises()
+
+    // `sessionId`, because two takes of the same talk carry one answer.
+    expect(calls.map((call) => call.body)).toContainEqual(
+      expect.objectContaining({ action: 'vod.consent', sessionId: 'talk-1', statut: 'accorde' }),
+    )
+  })
+
+  it('takes back a slip with the same button', async () => {
+    const answered = {
+      ...RUSH,
+      consent: { statut: 'refuse' as const, decideA: '2026-10-30T09:45:00.000Z' },
+    }
+    // In the listing and not only in the props: it is the folder read back that
+    // says what has already been answered, and it is on that the button decides
+    // whether it is setting or taking back.
+    listing = { root: '/rushes', entries: [answered], tools: TOOLS }
+    await openVod()
+    const wrapper = mount(VodRow, { props: { entry: answered, timeZone: 'Europe/Paris' } })
+
+    await wrapper.get('[data-vod-consent-ko]').trigger('click')
+    await flushPromises()
+
+    // Back to unanswered, which is not "refused": only the first can still be
+    // repaired, and only it shows as a question left to ask.
+    expect(calls.map((call) => call.body)).toContainEqual(
+      expect.objectContaining({ action: 'vod.consent', statut: null }),
+    )
+  })
+
+  it('offers nothing on a rush attached to no talk', async () => {
+    await openVod()
+    const wrapper = mount(VodRow, {
+      props: {
+        entry: { ...RUSH, sidecar: { ...RUSH.sidecar!, sessionId: null } },
+        timeZone: 'Europe/Paris',
+      },
+    })
+
+    // A consent belongs to a speaker, and a take launched outside the lifecycle
+    // names none. Saying which beats a greyed-out button with no reason.
+    expect(wrapper.find('[data-vod-consent-ok]').exists()).toBe(false)
+    expect(wrapper.get('[data-role="vod-consent-state"]').text()).toContain('hors créneau')
   })
 })

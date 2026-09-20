@@ -1262,6 +1262,15 @@ export const router = os.router({
         captations,
         televersements:
           vod == null ? [] : vod.forSession(input.sessionId, (id) => rooms.get(id) ?? null),
+        /*
+         * Read by the talk, never by the room.
+         *
+         * The two halves above are a room's doing — a disk, a bucket — and are
+         * empty when the slot is attached to none. The consent is the speaker's:
+         * it stands even for a slot whose room the export never named, and that is
+         * precisely the folder on which one wants to read "never asked".
+         */
+        consentementYoutube: context.services.ingest.consent(input.sessionId),
       }
     }),
 

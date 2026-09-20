@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Button, Dialog, Hint, useToast } from '@conference-operator/components'
 import { time } from '@conference-operator/format'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { UPLOAD_STATES, progress, type Upload } from '../stores/vod.js'
 import { useConferencesStore, type PlannedSession } from '../stores/conferences.js'
 
@@ -30,6 +30,8 @@ interface Folder {
   captations: Capture[]
   televersements: (Upload & { kind: string; objectKey: string })[]
   stockageConfigure: boolean
+  /** What the room reported about the broadcast. `null` = never answered. */
+  consentementYoutube?: { statut: string; decideA: string } | null
 }
 
 const open = defineModel<boolean>('open', { required: true })
@@ -110,6 +112,29 @@ async function bringHome(roomId: string, file: string | null): Promise<void> {
   }
 }
 
+/**
+ * The consent, spelled out rather than shown as a badge.
+ *
+ * Three states, and the third one carries an instruction. "Pas encore demandé" on
+ * its own would be read as a display gap; saying where the answer is obtained —
+ * in the room, from the recordings list — is what turns the line into something
+ * one can act on from the console, which is precisely where nobody can ask the
+ * speaker anything.
+ */
+const consent = computed<{ text: string; tone: string }>(() => {
+  const given = folder.value?.consentementYoutube
+  if (given == null) {
+    return {
+      text: 'Pas encore demandé — la réponse se saisit en régie, dans « Enregistrements ».',
+      tone: 'text-warn',
+    }
+  }
+  const when = time(given.decideA, props.timezone)
+  return given.statut === 'accorde'
+    ? { text: `Accordée par le conférencier, à ${when}.`, tone: 'text-ok' }
+    : { text: `Refusée par le conférencier, à ${when}. Ne pas publier.`, tone: 'text-alert' }
+})
+
 function uploadState(row: Upload): { label: string; tone: string } {
   return UPLOAD_STATES[row.state] ?? { label: row.state, tone: '' }
 }
@@ -127,6 +152,26 @@ function uploadState(row: Upload): { label: string; tone: string } {
       <p v-else-if="error !== ''" class="text-alert">{{ error }}</p>
 
       <template v-else-if="folder != null">
+        <!--
+          Above the two halves, and not beside the takes.
+
+          It answers a third question, and the one that is asked first when this
+          modal is opened weeks later: not "do we have it?" nor "has it left?" but
+          "may we publish it?". A refusal read after the cut has been made is a
+          refusal read too late.
+
+          The unanswered case is the one shown in amber. It is the only state that
+          can still be repaired — by a telephone call — and the only one that gets
+          silently treated as a yes if nobody sees it.
+        -->
+        <h3 class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+          Diffusion YouTube
+        </h3>
+
+        <p :class="consent.tone" class="mb-3.5 text-sm" data-role="vod-consent">
+          {{ consent.text }}
+        </p>
+
         <h3 class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
           Sur la régie
         </h3>

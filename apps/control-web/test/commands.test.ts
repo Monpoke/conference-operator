@@ -122,6 +122,27 @@ describe('room screen', () => {
      */
     expect(useToast().notices.value).toHaveLength(1)
   })
+
+  it('drops the screens the hub has withdrawn', () => {
+    // Filtered out rather than greyed out: a disabled button asks "why?" in front
+    // of a room, and the answer is on another machine.
+    const wrapper = mount(ScreenPanel, { props: { mode: 'loop', disabled: ['sponsors', 'wallsio'] } })
+
+    expect(wrapper.find('[data-command="sponsors"]').exists()).toBe(false)
+    expect(wrapper.find('[data-command="wallsio"]').exists()).toBe(false)
+    expect(wrapper.find('[data-command="agenda"]').exists()).toBe(true)
+  })
+
+  it('keeps the screen in force, even withdrawn', () => {
+    /*
+     * A screen can be withdrawn on the hub while a room is showing it. Removing
+     * the button then takes away the one thing that says what the room is on —
+     * and the only way to leave it.
+     */
+    const wrapper = mount(ScreenPanel, { props: { mode: 'sponsors', disabled: ['sponsors'] } })
+
+    expect(wrapper.get('[data-command="sponsors"]').classes()).toContain('bg-brand')
+  })
 })
 
 describe('projection', () => {

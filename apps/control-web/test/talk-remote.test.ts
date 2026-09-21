@@ -46,6 +46,7 @@ function view(overrides: Partial<ControlView> = {}): ControlView {
     streaming: false,
     audioInputs: [],
     displayMode: 'loop',
+    screensDisabled: [],
     sceneRoles: ['LIVE', 'HOLD'],
     relaySourceRoomId: null,
     promptRecordingOnStart: true,

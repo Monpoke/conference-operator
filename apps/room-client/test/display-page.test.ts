@@ -739,6 +739,10 @@ describe('waiting loop', () => {
 
   const SPONSORS = [{ id: 't1', name: 'Gold', order: 1, sponsors: [{ id: 's1', name: 'Clever Cloud', website: null, logoUrl: null }] }]
 
+  // Two parameters on purpose: the `&` between them goes through the html
+  // escaping, and an address that came back cut in half would frame nothing.
+  const WALLS_IO = 'https://my.walls.io/cloud-nord?token=b58a8dc&lang=fr'
+
   const inLoop = (patch: Record<string, unknown> = {}) =>
     ({
       ...STATE,
@@ -844,6 +848,40 @@ describe('waiting loop', () => {
     advance(13 + 16 + 13 + 11)
 
     expect(alive().textContent).toContain('Nos partenaires')
+  })
+
+  it('shows the social wall when the hub has given an address', () => {
+    // Last page of the loop, and the only one whose content is drawn by somebody
+    // else: what is checked here is that the frame is aimed at the configured
+    // address — the wall itself lives at walls.io.
+    mountScreen(inLoop({ wallsIoUrl: WALLS_IO }))
+    advance(13 + 16 + 13 + 11)
+
+    const frame = alive().querySelector('iframe')
+    expect(frame?.getAttribute('src')).toBe(WALLS_IO)
+  })
+
+  it('does not open the social page with no address configured', () => {
+    // The loop's rule, applied to a screen that would have failed loudly: with no
+    // address, framing a 404 in front of the room is worse than not stopping.
+    mountScreen(inLoop())
+    advance(13 + 16 + 13 + 11)
+
+    expect(alive().querySelector('iframe')).toBeNull()
+    // And it came back to the sponsors rather than waiting on an empty page.
+    expect(alive().textContent).toContain('Nos partenaires')
+  })
+
+  it('skips a screen the hub has withdrawn', () => {
+    /*
+     * The setting is about what is *offered*, and the loop offers: withdrawing
+     * the sponsors on the hub and still seeing them come round every twelve
+     * seconds in front of the room would make the setting look broken.
+     */
+    mountScreen(inLoop({ screensDisabled: ['sponsors'] }))
+
+    expect(alive().textContent).not.toContain('Clever Cloud')
+    expect(alive().querySelector('.agenda')).not.toBeNull()
   })
 
   it('skips the pages with nothing to show', () => {
@@ -1033,5 +1071,29 @@ describe('past slots, in the projected program', () => {
     mountScreen({ ...STATE, sessions: open } as unknown as DisplayPayload)
 
     expect(greyed('Atelier libre')).toBe(false)
+  })
+})
+
+describe('social wall', () => {
+  const onWall = (patch: Record<string, unknown> = {}) =>
+    ({ ...STATE, state: { ...STATE.state, mode: 'wallsio' }, ...patch }) as unknown as DisplayPayload
+
+  it('frames the address the hub configured', () => {
+    mountScreen(onWall({ wallsIoUrl: 'https://my.walls.io/cloud-nord?token=b58a8dc&lang=fr' }))
+
+    const frame = content().querySelector('iframe')
+    expect(frame?.getAttribute('src')).toBe('https://my.walls.io/cloud-nord?token=b58a8dc&lang=fr')
+  })
+
+  it('says so rather than framing nothing', () => {
+    /*
+     * The screen can be called up from the console before anybody has filled the
+     * address in on the hub. An empty frame would read as a wall that is down; the
+     * sentence says where to go and fix it.
+     */
+    mountScreen(onWall())
+
+    expect(content().querySelector('iframe')).toBeNull()
+    expect(content().textContent).toContain('Aucun mur configuré')
   })
 })

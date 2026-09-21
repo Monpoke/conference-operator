@@ -212,6 +212,10 @@ export class HubLink {
         roomId: result.room.id,
         config: result.room,
         socialLinks: result.socialLinks,
+        // The offered screens, cached in the same breath: the control app reads
+        // them to build its menu, the loop to skip what was withdrawn, and both
+        // have to work with the hub unreachable.
+        screens: { wallsIoUrl: result.wallsIoUrl, disabled: result.screensDisabled },
         // The event's name comes down with the rest and stays cached: the pages
         // must title themselves correctly at the next start, an unreachable hub
         // included.

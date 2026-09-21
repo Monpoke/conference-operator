@@ -157,6 +157,8 @@ export function payload(overrides: Partial<DisplayPayload> = {}): DisplayPayload
     wall: null,
     otherRooms: [],
     socialLinks: [],
+    wallsIoUrl: null,
+    screensDisabled: [],
     eventIdentity: { name: 'Cloud Nord 2026', shortName: 'Cloud Nord' },
     feedback: null,
     pairing: null,

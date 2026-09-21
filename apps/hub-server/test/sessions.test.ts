@@ -212,6 +212,10 @@ describe('hub settings', () => {
       // No account declared: the rooms' waiting loop skips its social page rather
       // than displaying an empty frame.
       socialLinks: [],
+      // No social wall, and no screen withdrawn: an edition that has set nothing
+      // is offered every screen but the one needing an address nobody gave.
+      wallsIoUrl: null,
+      screensDisabled: [],
       // Nothing about the event is set at the start: the hub derives its name from
       // the imported program, and that is what makes the product agnostic. These
       // fields only serve to contradict the upstream export.
@@ -233,6 +237,8 @@ describe('hub settings', () => {
       autoEndGraceMinutes: 15,
       programSourceUrl: null,
       socialLinks: [],
+      wallsIoUrl: null,
+      screensDisabled: [],
       eventName: null,
       eventShortName: null,
       openFeedbackProjectId: null,

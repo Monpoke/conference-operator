@@ -36,6 +36,7 @@ const RUSH: VodEntry = {
     markers: [{ label: 'Questions', offsetMs: 2_400_000, at: '2026-10-30T09:40:00.000Z' }],
     videoFile: null,
   },
+  sidecarFile: 'track-1/2026-10-30-09h00.json',
   check: null,
   consent: null,
 }

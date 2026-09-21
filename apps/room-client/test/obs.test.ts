@@ -156,6 +156,31 @@ describe('driving OBS by roles', () => {
     })
   })
 
+  it('passes on the new file when OBS splits the recording', async () => {
+    /*
+     * OBS set to split announces the container it **continues into** — and it is
+     * the only moment a piece of the take is ever named. The capture has not
+     * changed state, so it must not look like one: a distinct event, which the
+     * take collects without the control app blinking.
+     */
+    const obs = fakeObs(['Talk'])
+    const events: unknown[] = []
+    const controller = new ObsController({
+      instance: 'B',
+      url: 'ws://127.0.0.1:4456',
+      sceneRoles: { TALK: 'Talk' },
+      transport: obs.transport,
+      onEvent: (event) => events.push(event),
+    })
+    await controller.connect()
+
+    obs.emit('RecordStateChanged', { outputActive: true, outputPath: '/rec/talk.mkv' })
+    obs.emit('RecordFileChanged', { newOutputPath: '/rec/talk (2).mkv' })
+
+    expect(controller.snapshot().recording).toBe(true)
+    expect(events.at(-1)).toEqual({ type: 'record-file', path: '/rec/talk (2).mkv' })
+  })
+
   it('waits for `STOPPED` to deliver the path, and ignores `STOPPING`', async () => {
     const obs = fakeObs(['Talk'])
     const events: unknown[] = []

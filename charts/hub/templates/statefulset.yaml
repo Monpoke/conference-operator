@@ -1,0 +1,131 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "hub.name" . }}
+  labels:
+    {{- include "hub.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "hub.name" . }}-headless
+  # Une, et ce n'est pas un point de départ — voir la fin de `values.yaml`.
+  replicas: 1
+  updateStrategy:
+    # Le RollingUpdate d'un StatefulSet termine `hub-0` avant de démarrer son
+    # remplaçant au même ordinal : jamais deux écrivains sur le fichier SQLite.
+    # Ça coûte quelques secondes d'interruption à chaque déploiement.
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      {{- include "hub.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "hub.selectorLabels" . | nindent 8 }}
+      annotations:
+        # Sans ça, un `helm upgrade` qui ne change *que* la ConfigMap ou le Secret
+        # laisse tourner un pod avec l'ancienne configuration : Kubernetes ne voit
+        # aucune modification du pod template, donc ne redémarre rien, et la
+        # commande rend la main verte sur un hub qui n'a pas bougé.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if .Values.secret.create }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      # L'arrêt propre draine les requêtes, coupe les WebSockets et ferme la base,
+      # en renonçant de lui-même au bout de cinq secondes. Vingt laisse de la marge
+      # sans faire traîner un pod coincé.
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        runAsNonRoot: true
+        # `node`, l'utilisateur sous lequel l'image tourne déjà. Répété ici pour que
+        # le cluster l'impose plutôt que de faire confiance à l'image.
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: {{ include "hub.name" . }}
+          image: {{ include "hub.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8787
+          envFrom:
+            - configMapRef:
+                name: {{ include "hub.name" . }}
+            - secretRef:
+                name: {{ include "hub.secretName" . }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          # `/health` ne touche ni la base ni le programme : il répond tant que
+          # Fastify écoute, ce qui est la question qu'une sonde pose.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            # Le premier démarrage importe le programme et joue les migrations.
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 20
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  volumeClaimTemplates:
+    # La base du hub, et les images du programme à côté. La revendication s'appelle
+    # `data-hub-0` une fois créée et **survit au chart** : `helm uninstall` la
+    # laisse, une réinstallation la reprend.
+    #
+    # `ReadWriteOnce` n'est pas une limite à contourner : SQLite tolère exactement
+    # un écrivain, ce qui est aussi pourquoi on reste à une réplique.
+    #
+    # Le `volumeClaimTemplates` d'un StatefulSet n'est pas modifiable après coup :
+    # changer `persistence.size` ici ne fait rien sur une installation qui tourne,
+    # et Kubernetes refuse la mise à jour. Agrandir se fait sur la revendication
+    # elle-même (`kubectl patch pvc data-hub-0 …`), puis en reportant le chiffre ici
+    # pour que la prochaine installation naisse à la bonne taille.
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size | quote }}
+        {{- with .Values.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}

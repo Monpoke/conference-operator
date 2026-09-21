@@ -495,3 +495,109 @@ describe('sidecar', () => {
     expect(sidecar.speakers).toEqual([])
   })
 })
+
+describe('a take OBS splits into several files', () => {
+  /**
+   * The setting is in OBS's output panel — split every so many minutes or
+   * gigabytes — and it is a reasonable one to switch on: it is the protection
+   * against a single unreadable four-hour container. What it produces is one talk
+   * spread over several files, named by OBS alone.
+   */
+  const expected = buildFilenameFormat(START)
+
+  it('numbers the pieces and writes one sidecar for the whole take', async () => {
+    const { fs, files } = fakeFs(['/rec/brut.mkv'])
+    const { session } = makeSession(fs, { recordingRoot: async () => '/rec' })
+
+    await session.start(START)
+    session.noteSegment('/rec/brut.mkv')
+    clockMs += 900_000
+    files.set('/rec/brut (2).mkv', '')
+    session.noteSegment('/rec/brut (2).mkv')
+    clockMs += 900_000
+    files.set('/rec/brut (3).mkv', '')
+    session.noteSegment('/rec/brut (3).mkv')
+    clockMs += 600_000
+
+    const result = await session.stop(async () => '/rec/brut (3).mkv')
+
+    // Numbered, because `brut (3)` says neither where it falls nor how many
+    // pieces the take has — and that is read on the day, in front of the folder.
+    expect(result.videoPaths).toEqual([
+      `/rec/${expected}_01.mkv`,
+      `/rec/${expected}_02.mkv`,
+      `/rec/${expected}_03.mkv`,
+    ])
+
+    // One sidecar, next to the first piece: the markers are counted from the
+    // take's start, so they only mean something from there.
+    expect(result.sidecarPath).toBe(`/rec/${expected}_01.json`)
+    const written = JSON.parse(files.get(result.sidecarPath!)!) as Sidecar
+    expect(written.videoFile).toBe(`${expected}_01.mkv`)
+    expect(written.durationMs).toBe(2_400_000)
+    expect(written.segments).toEqual([
+      { file: `${expected}_01.mkv`, offsetMs: 0, durationMs: 900_000 },
+      { file: `${expected}_02.mkv`, offsetMs: 900_000, durationMs: 900_000 },
+      { file: `${expected}_03.mkv`, offsetMs: 1_800_000, durationMs: 600_000 },
+    ])
+  })
+
+  it('adopts the file announced before the session became active', async () => {
+    /*
+     * A real OBS answers `StartRecord` and emits its event in the same breath,
+     * sometimes in that order. That event carries the take's **first** container,
+     * which nothing ever names again: dropping it because the session was not
+     * active yet would make the take begin at its second file.
+     */
+    const { fs, files } = fakeFs()
+    const { session } = makeSession(fs, {
+      recordingRoot: async () => '/rec',
+      startRecord: async () => {
+        files.set('/rec/brut.mkv', '')
+        session.noteSegment('/rec/brut.mkv')
+      },
+    })
+
+    await session.start(START)
+    clockMs += 600_000
+    files.set('/rec/brut (2).mkv', '')
+    session.noteSegment('/rec/brut (2).mkv')
+    clockMs += 600_000
+
+    const result = await session.stop(async () => '/rec/brut (2).mkv')
+    expect(result.videoPaths).toEqual([`/rec/${expected}_01.mkv`, `/rec/${expected}_02.mkv`])
+  })
+
+  it('keeps a piece it cannot find off the sidecar', async () => {
+    // A sidecar naming a file that is not there would send editing looking for a
+    // piece of talk that never existed under that name.
+    const { fs, files } = fakeFs(['/rec/brut.mkv'])
+    const { session } = makeSession(fs, { recordingRoot: async () => '/rec' })
+
+    await session.start(START)
+    session.noteSegment('/rec/brut.mkv')
+    clockMs += 600_000
+    session.noteSegment('//wsl.localhost/ailleurs/brut (2).mkv')
+    clockMs += 600_000
+
+    const result = await session.stop(async () => '//wsl.localhost/ailleurs/brut (2).mkv')
+    expect(result.videoPaths).toEqual([`/rec/${expected}.mkv`])
+    const written = JSON.parse(files.get(result.sidecarPath!)!) as Sidecar
+    expect(written.segments).toBeUndefined()
+  })
+
+  it('leaves a take in one piece exactly as it was', async () => {
+    // The ordinary case must not gain a `_01`, nor a `segments` saying what
+    // `videoFile` already says.
+    const { fs, files } = fakeFs(['/rec/brut.mkv'])
+    const { session } = makeSession(fs, { recordingRoot: async () => '/rec' })
+
+    await session.start(START)
+    session.noteSegment('/rec/brut.mkv')
+    clockMs += 600_000
+
+    const result = await session.stop(async () => '/rec/brut.mkv')
+    expect(result.videoPaths).toEqual([`/rec/${expected}.mkv`])
+    expect(JSON.parse(files.get(result.sidecarPath!)!).segments).toBeUndefined()
+  })
+})

@@ -1,0 +1,35 @@
+{{- include "hub.validate" . -}}
+# Ce qui n'est pas un secret. `MODE=production`, l'adresse d'écoute et
+# `DATABASE_PATH=/data/hub.db` sont déjà posés par l'image : ils ne sont pas
+# répétés ici, pour qu'il y ait un seul endroit où les lire.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hub.name" . }}
+  labels:
+    {{- include "hub.labels" . | nindent 4 }}
+data:
+  PUBLIC_URL: {{ .Values.config.publicUrl | quote }}
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  DEVICE_CODE_TTL: {{ .Values.config.deviceCodeTtl | quote }}
+  DEVICE_POLL_INTERVAL: {{ .Values.config.devicePollInterval | quote }}
+  {{- with .Values.config.programSourceUrl }}
+  PROGRAM_SOURCE_URL: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.config.s3 }}
+  {{- with .endpoint }}
+  S3_ENDPOINT: {{ . | quote }}
+  {{- end }}
+  {{- with .bucket }}
+  S3_BUCKET: {{ . | quote }}
+  {{- end }}
+  {{- with .prefix }}
+  S3_PREFIX: {{ . | quote }}
+  {{- end }}
+  {{- with .region }}
+  S3_REGION: {{ . | quote }}
+  {{- end }}
+  {{- end }}
+  {{- range $key, $value := .Values.config.extra }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}

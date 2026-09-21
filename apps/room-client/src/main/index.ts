@@ -1,9 +1,10 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, dialog, safeStorage, screen } from 'electron'
+import { app, BrowserWindow, dialog, safeStorage, screen, shell } from 'electron'
 import { RoomApp } from '../core/room-app.js'
 import { formatLogLine } from '../core/console-log.js'
 import { createMockObsTransport } from '../core/obs-mock.js'
 import { modeOffset, readMode } from '../core/mode.js'
+import { decideOpening } from '../core/window-opening.js'
 import { loadOrCreateClientId } from './identity.js'
 import { createSecretVault } from './secrets.js'
 import { resolveHubAddress } from './hub-address.js'
@@ -147,7 +148,7 @@ async function main(): Promise<void> {
   // The screen first: the room must project even if the hub never answers.
   const displayUrl = await room.startDisplay()
   const control = openControlWindow(`${displayUrl}/regie`)
-  wireScreenOpenings(control)
+  wireScreenOpenings(control, displayUrl)
   // The second launch the lock above turned away: bring forward the window the
   // operator was looking for rather than leaving their double-click unanswered.
   app.on('second-instance', () => {
@@ -275,21 +276,28 @@ function openControlWindow(url: string): BrowserWindow {
  *
  * The menu's other screens — overlays, live banner, public wall — open normally:
  * they go into OBS or onto a phone, not onto a projector.
+ *
+ * What does not belong to the machine leaves it: the pairing veil shows the hub's
+ * address, and clicking it used to open a bare Electron window — no address bar,
+ * no history, and above all not the browser where the operator is already signed
+ * in to the console. `openExternal` hands it to the system, which opens the
+ * default browser.
  */
-function wireScreenOpenings(control: BrowserWindow): void {
+function wireScreenOpenings(control: BrowserWindow, localOrigin: string): void {
   control.webContents.setWindowOpenHandler(({ url }) => {
-    if (pathOf(url) !== '/display/projector') return { action: 'allow' }
-    openProjectorWindow(url)
-    return { action: 'deny' }
+    switch (decideOpening(url, localOrigin)) {
+      case 'projector':
+        openProjectorWindow(url)
+        return { action: 'deny' }
+      case 'browser':
+        void shell.openExternal(url)
+        return { action: 'deny' }
+      case 'refuse':
+        return { action: 'deny' }
+      case 'window':
+        return { action: 'allow' }
+    }
   })
-}
-
-function pathOf(url: string): string | null {
-  try {
-    return new URL(url).pathname
-  } catch {
-    return null
-  }
 }
 
 /**

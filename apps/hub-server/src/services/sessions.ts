@@ -4,7 +4,7 @@ import {
   sessionStateSchema,
   sessionStateViewSchema,
   type HubSettings,
-  type HubSettingsInput,
+  type HubSettingsPatch,
   type SessionState,
   type SessionStateView,
   type SessionStatus,
@@ -42,7 +42,7 @@ export class SettingsService {
     return parsed.success ? parsed.data : hubSettingsSchema.parse({})
   }
 
-  update(patch: Partial<HubSettingsInput>): HubSettings {
+  update(patch: HubSettingsPatch): HubSettings {
     const current = this.get()
     /**
      * The VOD policy merges field by field, not as a block.
@@ -54,13 +54,20 @@ export class SettingsService {
      * during the event set `actif` back to false and the part size back to eight
      * megabytes along the way, with nothing to say so. A setting that undoes
      * itself is worse than a missing setting.
+     *
+     * The same rule holds for the fields around it, and it is `hubSettingsPatchSchema`
+     * that carries it: what the patch does not name is not touched here.
      */
     const vodPolitique =
       patch.vodPolitique == null
         ? current.vodPolitique
         : { ...current.vodPolitique, ...patch.vodPolitique }
 
-    const next = hubSettingsSchema.parse({ ...current, ...patch, vodPolitique })
+    // A key present but `undefined` — what an in-process caller writes without
+    // thinking about it — would spread over the current value and come back out of
+    // `parse` as the field's default. Absent and undefined mean the same thing here.
+    const named = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined))
+    const next = hubSettingsSchema.parse({ ...current, ...named, vodPolitique })
     const values = {
       key: SETTINGS_KEY,
       valueJson: JSON.stringify(next),

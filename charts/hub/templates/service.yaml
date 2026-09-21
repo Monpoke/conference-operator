@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hub.name" . }}
+  labels:
+    {{- include "hub.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "hub.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+---
+# Le service gouvernant du StatefulSet, qui en exige un — c'est lui qui nomme le
+# pod `hub-0.hub-headless.<namespace>.svc`. Rien dans ce dépôt n'appelle ce nom :
+# l'ingress passe par le service ordinaire à côté. Il existe parce qu'un
+# StatefulSet ne démarre pas sans.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hub.name" . }}-headless
+  labels:
+    {{- include "hub.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "hub.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http

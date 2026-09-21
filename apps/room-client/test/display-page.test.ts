@@ -144,6 +144,56 @@ function restoreTimers(): void {
 }
 
 /**
+ * The heights a real video projector would give.
+ *
+ * happy-dom lays nothing out: every measurement comes back at zero, and the page
+ * — which is written for that — leaves the list where it is. Supplying the two
+ * heights it reads is the only way to observe what it does with a day longer than
+ * the screen.
+ */
+const LAYOUT: { target: object; name: string; descriptor: PropertyDescriptor }[] = []
+
+/**
+ * The prototype that really carries the measurement.
+ *
+ * `clientHeight` and `scrollHeight` do not live on the same one, and redefining
+ * the wrong one changes nothing: the real accessor, further down the chain, keeps
+ * answering zero.
+ */
+function owner(name: string): object {
+  let target: object | null = HTMLElement.prototype
+  while (target && !Object.getOwnPropertyDescriptor(target, name)) target = Object.getPrototypeOf(target)
+  return target ?? HTMLElement.prototype
+}
+
+function measure(name: string, height: (element: Element) => number): void {
+  const target = owner(name)
+  LAYOUT.push({
+    target,
+    name,
+    descriptor: Object.getOwnPropertyDescriptor(target, name) ?? { value: 0, configurable: true },
+  })
+  Object.defineProperty(target, name, {
+    configurable: true,
+    get(this: Element) {
+      return height(this)
+    },
+  })
+}
+
+function stubLayout({ frame, list }: { frame: number; list: number }): void {
+  measure('clientHeight', (element) => (element.classList.contains('scroller') ? frame : 0))
+  measure('scrollHeight', (element) =>
+    element.parentElement?.classList.contains('scroller') ? list : 0)
+}
+
+function restoreLayout(): void {
+  for (const { target, name, descriptor } of LAYOUT.splice(0)) {
+    Object.defineProperty(target, name, descriptor)
+  }
+}
+
+/**
  * The timers the page actually started, to be switched off after the test.
  *
  * The projected page sets its own `setInterval`s — the waiting loop, among
@@ -291,6 +341,37 @@ describe('projected program', () => {
     expect(centred).toBeNull()
   })
 
+  it('walks the whole day rather than stopping at the running slot', () => {
+    /*
+     * The defect this covers: the screen placed the running talk at the centre
+     * and stopped there, so a day longer than the screen was cut off — the room
+     * read a program that ended in the middle of the afternoon.
+     *
+     * happy-dom lays nothing out: the heights are supplied, which is exactly what
+     * a real projector would supply. What is checked is the journey the page
+     * describes from them — the only thing it decides by itself.
+     */
+    stubLayout({ frame: 400, list: 1_200 })
+    try {
+      mountScreen()
+      const list = content().querySelector('.scroller')!.firstElementChild as HTMLElement
+
+      expect(list.classList.contains('cycling')).toBe(true)
+      // The end of the day is one of the stops, the start of it is the other.
+      expect(list.style.getPropertyValue('--end')).toBe('-800px')
+      expect(Number.parseInt(list.style.animationDuration, 10)).toBeGreaterThan(0)
+    } finally {
+      restoreLayout()
+    }
+  })
+
+  it('stays still when the day fits on the screen', () => {
+    // Nothing to travel: a list that moved anyway would be movement for its own
+    // sake in front of the room.
+    expect(content().querySelector('.scroller')!.firstElementChild!.classList.contains('cycling'))
+      .toBe(false)
+  })
+
   it('does not look for an anchor in the other modes', () => {
     mountScreen({
       ...STATE,
@@ -298,6 +379,63 @@ describe('projected program', () => {
     } as unknown as DisplayPayload)
 
     expect(centred).toBeNull()
+  })
+})
+
+/**
+ * The agenda: the same day, in two columns.
+ *
+ * A second layout for the program, kept alongside the first rather than
+ * replacing it — the two are compared on the room's own video projector. It must
+ * therefore show exactly the same day, with the same rules, and differ only in
+ * form.
+ */
+describe('agenda screen', () => {
+  const inAgenda = (patch: Record<string, unknown> = {}) =>
+    ({
+      ...STATE,
+      state: { ...STATE.state, mode: 'agenda', ...(patch.state as object ?? {}) },
+      ...patch,
+    }) as unknown as DisplayPayload
+
+  beforeEach(() => {
+    mountScreen(inAgenda())
+  })
+
+  it('shows the whole day, hour and speakers included', () => {
+    // The whole point of the layout: nothing waits for a scroll to be read.
+    expect(content().querySelectorAll('article').length).toBe(SESSIONS.length)
+    expect(content().textContent).toContain('Accueil')
+    expect(content().textContent).toContain('Houston')
+    expect(content().textContent).toContain('Agenda')
+    expect(content().textContent).toContain('Track #1')
+  })
+
+  it('flows in columns rather than scrolling', () => {
+    expect(content().querySelector('.agenda-flow')).toBeTruthy()
+    expect(content().querySelector('.scroller')).toBeNull()
+  })
+
+  it('marks the running talk and greys out what is past', () => {
+    // The same three states as the scrolled program: comparing the two screens
+    // must compare the layouts, and nothing else.
+    const running = content().querySelector('.agenda-running')!
+    expect(running.textContent).toContain('HoneySwamp')
+
+    /*
+     * Through a filter, not through opacity: the entrance animation ends on
+     * `opacity: 1` and keeps it, which erased every utility placed on the same
+     * element — the room saw the whole day at the same weight.
+     */
+    const articles = [...content().querySelectorAll('article')]
+    expect(articles[1]!.className).toContain('past')
+    expect(articles.at(-1)!.className).not.toContain('past')
+  })
+
+  it('says so rather than showing an empty frame', () => {
+    mountScreen(inAgenda({ sessions: [] }))
+
+    expect(content().textContent).toContain('Programme indisponible')
   })
 })
 
@@ -662,6 +800,31 @@ describe('waiting loop', () => {
     expect(alive().textContent).not.toContain('#CloudNord')
   })
 
+  it('shows the rest of the day on the program\'s next pass', () => {
+    /*
+     * Each pass used to replay the same screenful, taken from the running slot:
+     * whatever happened, the end of the afternoon was never displayed. A pass now
+     * takes over where the previous one stopped, and goes back to the morning
+     * once the end has been read.
+     */
+    stubLayout({ frame: 400, list: 1_200 })
+    try {
+      mountScreen(inLoop())
+      const stops: string[] = []
+      // Three passes of the program, one full turn of the loop apart.
+      for (let pass = 0; pass < 3; pass += 1) {
+        advance(pass === 0 ? 13 : 52)
+        stops.push((alive().querySelector('.scrolling') as HTMLElement).style.getPropertyValue('--to'))
+      }
+
+      // The end of the day is reached, and the next pass starts again from it.
+      expect(stops[1]).not.toBe(stops[0])
+      expect(stops).toContain('-800px')
+    } finally {
+      restoreLayout()
+    }
+  })
+
   it('comes back to the beginning after the last screen', () => {
     mountScreen(inLoop())
     advance(13 + 16 + 13 + 11)
@@ -817,7 +980,13 @@ describe('past slots, in the projected program', () => {
   const row = (title: string) =>
     [...content().querySelectorAll('article')].find((a) => a.textContent?.includes(title))!
 
-  const greyed = (title: string) => row(title).className.includes('opacity-35')
+  /*
+   * Through a filter, not through opacity: the entrance animation ends on
+   * `opacity: 1` and keeps it — `both` — so a utility placed on the same element
+   * was erased as soon as the row settled, and the room saw the whole day at the
+   * same weight.
+   */
+  const greyed = (title: string) => row(title).className.includes('past')
 
   it('greys out what is finished, not what is running', () => {
     // The clock is at 10:20: HoneySwamp (10:00–10:45) is being given.

@@ -55,6 +55,15 @@ export type ObsInstance = z.infer<typeof obsInstanceSchema>
 export const displayModeSchema = z.enum([
   'sponsors',
   'programme',
+  /**
+   * The same day, in two columns.
+   *
+   * A second layout for the program, kept alongside the first rather than
+   * replacing it: the two are compared in the room, on the real video projector,
+   * and it is there that one is chosen. `programme` scrolls a single column,
+   * `agenda` fits the whole day on one still screen.
+   */
+  'agenda',
   /** OpenFeedback QR code for the running talk: "rate this talk". */
   'feedback',
   /**

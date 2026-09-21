@@ -193,10 +193,14 @@ export class CanvasObsController implements ObsCapture {
         break
       }
 
-      // Split recording: the file we will rename is the last one written, not the
-      // first one announced.
+      // Split recording: the take carries on in another container, and that
+      // container has to reach the sidecar — it is a piece of the take, not a
+      // line in a log.
       case 'recording_file_changed':
-        if (path != null) this.options.onLog?.('info', 'la capture continue dans un nouveau fichier', { path })
+        if (path != null) {
+          this.options.onLog?.('info', 'la capture continue dans un nouveau fichier', { path })
+          this.options.onEvent?.({ type: 'record-file', path })
+        }
         break
 
       case 'streaming_started':

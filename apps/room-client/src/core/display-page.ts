@@ -167,6 +167,18 @@ export function renderProjectorPage(options: ProjectorPageOptions = {}): string 
   }
 
   /*
+   * What is past, and what is not a talk.
+   *
+   * Through a filter, and not through opacity: the entrance animation ends on
+   * \`opacity: 1\` and keeps it — \`both\` — so every utility placed on the same
+   * element was erased the moment the row settled. The room saw the whole day at
+   * the same weight, and the greying out that says "that one is over" only
+   * existed in the code.
+   */
+  .past { filter: opacity(.38); }
+  .muted { filter: opacity(.62); }
+
+  /*
    * Cards: they settle instead of sliding.
    *
    * A framed card arriving by sliding reads as a list row; the same one with a
@@ -222,6 +234,95 @@ export function renderProjectorPage(options: ProjectorPageOptions = {}): string 
   @keyframes scroll {
     0%, 14% { transform: translateY(var(--from)); }
     86%, 100% { transform: translateY(var(--to)); }
+  }
+
+  /*
+   * The same program, on the screen one sets and leaves.
+   *
+   * The \`programme\` mode does not turn: it used to bring the running slot to the
+   * centre and stop there, so a day longer than the screen was cut off in the
+   * middle of the afternoon — the room read a program that ended at 15:15. It now
+   * makes the full round: the running slot, the end of the day, the start, and
+   * back to the running slot. The plateaus are what makes it readable; the
+   * duration is set from the script, proportionally to the height actually left
+   * to travel.
+   */
+  .cycling {
+    animation-name: program-cycle;
+    animation-timing-function: cubic-bezier(.4, 0, .2, 1);
+    animation-iteration-count: infinite;
+    animation-fill-mode: both;
+  }
+  @keyframes program-cycle {
+    0%, 14% { transform: translateY(var(--from)); }
+    38%, 52% { transform: translateY(var(--end)); }
+    76%, 90% { transform: translateY(0); }
+    100% { transform: translateY(var(--from)); }
+  }
+
+  /*
+   * The agenda: the whole day, in two columns, without scrolling.
+   *
+   * A column flow and not a grid: the day fills the first column to the bottom
+   * then continues in the second, which is what one reads on a printed program.
+   * \`column-fill: auto\` is the whole point — balanced columns would leave the
+   * first one half empty on a short day and break the reading order nobody
+   * expects to have to guess.
+   *
+   * Everything is multiplied by --agenda-scale, which the script lowers until the
+   * day fits: between a 1024x768 projector and a 4K one, and between a day of
+   * eight slots and one of twenty-seven, no fixed size holds.
+   */
+  .agenda-flow {
+    columns: 2;
+    column-gap: 4vmin;
+    column-fill: auto;
+    height: 100%;
+  }
+  .agenda-flow > * { break-inside: avoid; }
+  .agenda-card {
+    /* The card is light, its ink is the brand's: the reference layout reads as
+       paper laid on the event's colour, not as one more dark frame. */
+    background: #f4f5fb;
+    color: color-mix(in srgb, var(--color) 62%, #10102a);
+  }
+  .agenda-running { box-shadow: 0 0 0 calc(.5vmin * var(--agenda-scale)) var(--secondary); }
+
+  /*
+   * The type scale, written here rather than in utilities.
+   *
+   * Each size is a base multiplied by --agenda-scale, and a utility cannot carry
+   * a multiplication whose factor is read from the element. Five classes, one
+   * variable: shrinking the day is then a single assignment.
+   */
+  .agenda { --agenda-scale: 1; }
+  .agenda-title { font-size: calc(7vmin * var(--agenda-scale)); }
+  .agenda-room {
+    font-size: calc(3.8vmin * var(--agenda-scale));
+    border-top: 1px solid rgb(255 255 255 / .25);
+    margin-top: calc(1.6vmin * var(--agenda-scale));
+    padding-top: calc(1.6vmin * var(--agenda-scale));
+  }
+  .agenda-hour { font-size: calc(3.4vmin * var(--agenda-scale)); }
+  .agenda-slot { font-size: calc(2.6vmin * var(--agenda-scale)); }
+  .agenda-people {
+    font-size: calc(2.3vmin * var(--agenda-scale));
+    margin-top: calc(.5vmin * var(--agenda-scale));
+  }
+  /*
+   * The spacing scales too, and that is the whole point.
+   *
+   * Shrinking the type alone changed almost nothing: on a full day, the margins
+   * and the paddings carry more height than the letters do. A fixed gutter
+   * between two reduced cards is also what makes a reduced screen look badly
+   * proportioned rather than smaller.
+   */
+  .agenda-head { margin-bottom: calc(4vmin * var(--agenda-scale)); }
+  .agenda-item { margin-bottom: calc(2.2vmin * var(--agenda-scale)); }
+  .agenda-card {
+    margin-top: calc(.9vmin * var(--agenda-scale));
+    padding: calc(1.4vmin * var(--agenda-scale)) calc(2vmin * var(--agenda-scale));
+    border-radius: calc(1vmin * var(--agenda-scale));
   }
 
   /*
@@ -687,8 +788,8 @@ ${initialState}
         // Only one highlight possible: running, otherwise past, otherwise upcoming.
         const state = session.id === running
           ? "running bg-[color-mix(in_srgb,var(--color)_26%,transparent)] shadow-[inset_.5vmin_0_0_var(--color)]"
-          : end != null && end < now ? "opacity-35" : ""
-        const isBreak = session.kind === 'break' ? "opacity-55" : ""
+          : end != null && end < now ? "past" : ""
+        const isBreak = session.kind === 'break' ? "muted" : ""
         const timeTint = session.id === running ? "text-text" : "text-dim"
         const speakers = session.speakers.map((s) =>
           s.company ? \`\${s.name} — \${s.company}\` : s.name).join(' · ')
@@ -701,6 +802,55 @@ ${initialState}
           </div>
         </article>\`
       }).join('') + '</div></div>'
+  }
+
+  /**
+   * The same day, in two columns — the layout under comparison.
+   *
+   * It answers what the scrolled program cannot: showing **everything at once**.
+   * An attendee looks up for three seconds between two doors; a list that slides
+   * forces them to wait for their slot to come round. Here the whole day is
+   * there, and the eye goes to its own hour.
+   *
+   * It keeps the existing screen's data and its rules — the effective end greys
+   * out what is past, the running slot is the one highlighted — and changes only
+   * the form: time above the card rather than beside it, a light card, two
+   * columns. That is precisely what makes the two comparable in the room.
+   *
+   * No scroll, ever: what does not fit is not hidden, it is reduced. fitAgenda()
+   * lowers --agenda-scale after insertion, once the real height is known.
+   */
+  function renderAgenda(data) {
+    if (data.sessions.length === 0) return '<div class="' + SECTION_TITLE + '">Programme indisponible</div>'
+    const now = Date.now() + (data.state.serverTimeOffsetMs || 0)
+    const running = data.state.currentSession?.id
+    const anchor = running ?? data.state.nextSession?.id
+
+    const title = '<div class="agenda-head">' +
+      '<div class="agenda-title leading-none font-bold text-[var(--gold)] uppercase">Agenda</div>' +
+      '<div class="agenda-room leading-none font-bold tracking-[.06em] uppercase">' +
+      escape(data.roomName ?? data.state.roomId ?? '') + '</div></div>'
+
+    const slots = data.sessions.map((session, index) => {
+      const end = RoomState.effectiveEndAt(data.sessions, index)
+      // The same three states as the scrolled program, so that comparing the two
+      // screens compares the layouts and nothing else.
+      const past = session.id !== running && end != null && end < now
+      const speakers = session.speakers.map((s) =>
+        s.company ? \`\${s.name} — \${s.company}\` : s.name).join(', ')
+      const anchorClass = session.id === anchor ? 'anchor ' : ''
+      const dim = past ? 'past' : session.kind === 'break' ? 'muted' : ''
+      const card = session.id === running ? 'agenda-card agenda-running' : 'agenda-card'
+      return \`<article style="--i:\${index}" class="\${anchorClass}agenda-item \${dim}">
+        <div class="agenda-hour leading-none font-bold tabular-nums text-[var(--gold)]">\${time(session.startsAt, data.timezone)}</div>
+        <div class="\${card}">
+          <div class="agenda-slot leading-[1.2] font-bold uppercase">\${escape(session.title)}</div>
+          \${speakers ? \`<div class="agenda-people leading-[1.2] italic">\${escape(speakers)}</div>\` : ''}
+        </div>
+      </article>\`
+    }).join('')
+
+    return '<div class="agenda cascade agenda-flow min-h-0 flex-1" style="--step:25ms">' + title + slots + '</div>'
   }
 
   /**
@@ -1059,6 +1209,18 @@ ${initialState}
    * measurements are zero, the class is not applied, and the list simply stays
    * where it is.
    */
+  /**
+   * Where the program resumes on the loop's next pass.
+   *
+   * \`null\` means "from the running slot": that is where the first pass starts,
+   * and where every return to the loop starts again. Afterwards each pass takes
+   * over where the previous one stopped, and goes back to the top of the day once
+   * the end has been shown. Without this, the fifteen seconds always replayed the
+   * same screenful and the end of the afternoon was never displayed — the room
+   * read a program that stopped in the middle.
+   */
+  let programResumeAt = null
+
   function setScroll(layer) {
     const frame = layer?.querySelector('.scroller')
     const list = frame?.firstElementChild
@@ -1070,14 +1232,94 @@ ${initialState}
 
     const anchor = layer.querySelector('.anchor')
     const aim = anchor ? anchor.offsetTop - (height - anchor.offsetHeight) / 2 : 0
-    const from = Math.max(0, Math.min(aim, travel))
+    const start = programResumeAt ?? aim
+    const from = Math.max(0, Math.min(start, travel))
     // About one screen further down, without ever going past the end of the day.
     const to = Math.min(from + height * 0.85, travel)
+    // The end of the day has been read: the next pass starts again from the
+    // morning, which is also the moment the room is looking for it.
+    programResumeAt = to >= travel ? 0 : to
 
     list.style.setProperty('--from', -from + 'px')
     list.style.setProperty('--to', -to + 'px')
     list.style.animationDuration = loopDuration + 'ms'
     list.classList.add('scrolling')
+  }
+
+  /**
+   * The program on the screen one sets and leaves.
+   *
+   * The \`programme\` mode does not turn, and the day is longer than the screen:
+   * placing the running slot at the centre and stopping there cut off everything
+   * that followed. The list therefore makes the full round on its own — running
+   * slot, end of the day, start, running slot — at a speed that stays the same
+   * whatever the day's length: about eleven seconds per screenful travelled,
+   * plateaus aside.
+   *
+   * The centring stays: it is what the first frame shows, before any animation,
+   * and it is all that is left where nothing is measurable — outside a browser,
+   * or on a day that fits.
+   */
+  function setProgramCycle(layer) {
+    const frame = layer?.querySelector('.scroller')
+    const list = frame?.firstElementChild
+    if (!frame || !list || list.classList.contains('cycling')) return
+
+    const height = frame.clientHeight
+    const travel = list.scrollHeight - height
+    if (!(travel > 0)) return
+
+    const anchor = layer.querySelector('.anchor')
+    const aim = anchor ? anchor.offsetTop - (height - anchor.offsetHeight) / 2 : 0
+    const from = Math.max(0, Math.min(aim, travel))
+    /*
+     * The frame scrolled by the centring, then the list translated by the
+     * animation: the two offsets would add up. The translation takes over
+     * everything, so the scroll goes back to zero.
+     */
+    frame.scrollTop = 0
+
+    list.style.setProperty('--from', -from + 'px')
+    list.style.setProperty('--end', -travel + 'px')
+    // The round trip covers the travel twice; the plateaus take a fifth of it.
+    list.style.animationDuration = Math.round(travel / height * 22_000 + 12_000) + 'ms'
+    list.classList.add('cycling')
+  }
+
+  /**
+   * Shrinks the agenda until the day fits.
+   *
+   * The screen goes from a 1024x768 projector to a 4K one, and a day from eight
+   * slots to twenty-seven: no fixed size holds both ends. We therefore measure,
+   * and reduce — down to a floor below which it would no longer be read from the
+   * back of the room, where the overflow is preferred to unreadable type.
+   *
+   * Outside a real browser every height is zero, the loop exits at once and the
+   * page keeps its nominal scale.
+   */
+  function fitAgenda(layer) {
+    const flow = layer?.querySelector('.agenda')
+    const last = flow?.lastElementChild
+    if (!flow || !last) return
+
+    /*
+     * Two columns: what does not fit spills into a *third* one, off the frame. It
+     * is therefore the last slot's position that says whether the day fits, and
+     * the width that is measured, not the height.
+     *
+     * Its **layout** position, read through offsetLeft: the entrance animation
+     * translates the slots as they settle, and a measurement taken through
+     * scrollWidth or a bounding rect counted that movement as an overflow — the
+     * agenda then shrank to its floor for a day that fitted comfortably.
+     */
+    const spills = () => last.offsetLeft - flow.offsetLeft + last.offsetWidth > flow.clientWidth + 1
+
+    let scale = 1
+    flow.style.setProperty('--agenda-scale', scale)
+    while (scale > 0.5 && spills()) {
+      scale = Math.round((scale - 0.03) * 100) / 100
+      flow.style.setProperty('--agenda-scale', scale)
+    }
   }
 
   /**
@@ -1125,6 +1367,7 @@ ${initialState}
     const modes = {
       sponsors: renderSponsors,
       programme: renderProgram,
+      agenda: renderAgenda,
       countdown: renderCountdown,
       message: renderMessage,
       feedback: renderFeedback,
@@ -1139,7 +1382,7 @@ ${initialState}
      * Leaving on a message then coming back must resume at the sponsors, not land
      * in the middle of the program with two seconds before the next switch.
      */
-    if (data.state.mode !== 'loop') { loopIndex = 0; loopUntil = 0 }
+    if (data.state.mode !== 'loop') { loopIndex = 0; loopUntil = 0; programResumeAt = null }
     /**
      * Redrawn only when the render changes.
      *
@@ -1202,8 +1445,14 @@ ${initialState}
     if (data.state.mode === 'loop') {
       setGauge(alive)
       setScroll(alive)
-    } else {
+    } else if (data.state.mode === 'programme') {
+      // The centring is what the first frame shows; the cycle then walks the
+      // whole day, and does nothing where nothing is measurable.
       alive?.querySelector('.anchor')?.scrollIntoView({ block: 'center' })
+      setProgramCycle(alive)
+    } else if (data.state.mode === 'agenda') {
+      // Nothing to centre: the day is there whole, only its size is negotiated.
+      fitAgenda(alive)
     }
   }
 

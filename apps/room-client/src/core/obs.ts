@@ -114,6 +114,15 @@ export type ObsControllerEvent =
        */
       error?: string | null
     }
+  /**
+   * The take carries on in another file: OBS has just split the recording.
+   *
+   * Distinct from `recording`, because nothing has changed state — the capture is
+   * running, and only the container it lands in moved. It is the only moment the
+   * segment that was just closed can be learned: the stop announces the last file
+   * and nothing else.
+   */
+  | { type: 'record-file'; path: string }
   | { type: 'streaming'; active: boolean }
   | { type: 'audio'; inputs: InputLevel[] }
   /** The audio sources and their mute state, whenever either changes. */
@@ -245,6 +254,20 @@ export class ObsController implements ObsCapture {
         active: event.outputActive,
         outputPath: event.outputPath ?? null,
       })
+    })
+
+    /**
+     * Automatic file splitting, set up in OBS's output settings.
+     *
+     * OBS announces the file it **continues into**, not the one it has just
+     * closed — so the first segment is never the subject of this event. It is the
+     * one `RecordStateChanged` gives at the start, and that is why the start's
+     * path is kept too.
+     */
+    transport.on('RecordFileChanged', (payload: never) => {
+      const { newOutputPath } = payload as unknown as { newOutputPath?: string }
+      if (typeof newOutputPath !== 'string' || newOutputPath === '') return
+      this.options.onEvent?.({ type: 'record-file', path: newOutputPath })
     })
 
     transport.on('StreamStateChanged', (payload: never) => {

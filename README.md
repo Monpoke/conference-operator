@@ -202,6 +202,7 @@ survivre à une base recréée.
 |---|---|---|
 | `S3_ENDPOINT` / `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | Stockage compatible S3. Les salles ne reçoivent jamais ces clés : le hub signe des adresses à durée de vie courte | — |
 | `S3_BUCKET` | Bucket. **Amorce seulement** — ensuite l'onglet VOD de la console fait foi | — |
+| `S3_PREFIX` | Préfixe dans le bucket, pour loger plusieurs éditions sans les mélanger. **Amorce seulement**, même règle ; les barres obliques de tête et de queue sont retirées | — |
 | `S3_REGION` | Entre dans la signature, même quand le fournisseur l'ignore | `us-east-1` |
 | `S3_FORCE_PATH_STYLE` | Adressage `endpoint/bucket/clé`, le seul qui marche sur une IP | `true` |
 | `S3_CA_CERT` | PEM d'une CA interne. Node n'utilise pas le magasin du système. Descendu aux salles au sync : rien à poser sur les machines | — |

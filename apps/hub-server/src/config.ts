@@ -169,6 +169,21 @@ const configSchema = z.object({
    */
   s3Bucket: z.string().min(1).optional(),
   /**
+   * Prefix the rushes land under — **a seed only**, exactly like `s3Bucket`.
+   *
+   * The same rule and the same reason: the console's setting is authoritative,
+   * and a prefix corrected during the event must survive the restart that
+   * follows. It exists for the deployments where nobody opens the console — a
+   * hub raised by a script, a machine provisioned in advance — where fitting
+   * several editions into one bucket otherwise means going and typing the
+   * edition's name by hand before the first upload.
+   *
+   * Written without a leading or trailing slash; the reading side strips them
+   * anyway, so a value copied from a storage browser does not have to be cleaned
+   * up first.
+   */
+  s3Prefix: z.string().min(1).optional(),
+  /**
    * Path to a PEM certificate-authority file, for internal storage.
    *
    * Node does not use the system certificate store: it ships its own list of
@@ -400,6 +415,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     s3Endpoint: env.S3_ENDPOINT,
     s3Region: env.S3_REGION,
     s3Bucket: env.S3_BUCKET,
+    s3Prefix: env.S3_PREFIX,
     s3CaCert: env.S3_CA_CERT,
     s3AccessKeyId: env.S3_ACCESS_KEY_ID,
     s3SecretAccessKey: env.S3_SECRET_ACCESS_KEY,

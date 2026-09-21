@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { normalizeProgram, sessionsForRoom, type Program } from '@conference-operator/program'
-import { DEFAULT_VOD_POLICY } from '@conference-operator/contract'
+import { DEFAULT_VOD_POLICY, hubSettingsPatchSchema } from '@conference-operator/contract'
 import { openHubDatabase, type HubDatabase } from '../src/db.js'
 import { SessionStateService, SettingsService } from '../src/services/sessions.js'
 import { RoomService } from '../src/services/rooms.js'
@@ -246,6 +246,26 @@ describe('hub settings', () => {
   it('refuses an out-of-bounds value', () => {
     expect(() => settings.update({ autoEndGraceMinutes: -1 })).toThrow()
     expect(() => settings.update({ autoEndGraceMinutes: 999 })).toThrow()
+  })
+
+  it('leaves the settings a panel does not carry alone', () => {
+    settings.update({
+      programSourceUrl: 'https://cloudnord.fr/program.json',
+      vodBucket: 'rushes-2026',
+      vodPrefix: 'cn26',
+      vodPolitique: { actif: true },
+    })
+    // The event panel sends its three fields. Validated by a schema that still
+    // applied the defaults of the others, this save came back with a null program
+    // URL and a blank storage configuration — in the middle of an event.
+    const after = settings.update(
+      hubSettingsPatchSchema.parse({ openFeedbackProjectId: 'cloud-nord-2026' }),
+    )
+    expect(after.openFeedbackProjectId).toBe('cloud-nord-2026')
+    expect(after.programSourceUrl).toBe('https://cloudnord.fr/program.json')
+    expect(after.vodBucket).toBe('rushes-2026')
+    expect(after.vodPrefix).toBe('cn26')
+    expect(after.vodPolitique.actif).toBe(true)
   })
 
   it('keeps the rest of the VOD policy when only one setting changes', () => {

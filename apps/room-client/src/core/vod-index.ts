@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs'
-import { extname, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path'
 import type { Readable } from 'node:stream'
 import type {
   VodCheck,
@@ -110,6 +110,14 @@ export async function listRecordings(deps: VodIndexDeps): Promise<VodEntry[]> {
   const checks = await readChecks(deps, root)
   const consents = await readConsents(deps, root)
   const entries: VodEntry[] = []
+  /**
+   * The segments of split takes, indexed by the file they describe.
+   *
+   * Filled as the sidecars are read — one per take, next to its first segment —
+   * and consumed once the scan is over: a sidecar can only be met after the
+   * segment it names, or before it, depending on the order the folder is read in.
+   */
+  const bySegment = new Map<string, { sidecar: Sidecar; sidecarFile: string }>()
 
   const scan = async (directory: string, depth: number): Promise<void> => {
     let contents: { name: string; isDirectory: boolean }[]
@@ -136,12 +144,22 @@ export async function listRecordings(deps: VodIndexDeps): Promise<VodEntry[]> {
 
       const key = normalize(relative(root, path))
       const sidecar = await readSidecar(deps, path)
+      const sidecarFile = sidecar == null ? null : normalize(relative(root, sidecarPathOf(path)))
+      if (sidecar?.segments != null && sidecarFile != null) {
+        for (const segment of sidecar.segments) {
+          bySegment.set(normalize(relative(root, join(directory, segment.file))), {
+            sidecar,
+            sidecarFile,
+          })
+        }
+      }
       entries.push({
         file: key,
         sizeBytes: stat.size,
         modifiedAtMs: stat.mtimeMs,
         beingWritten: beingWritten(deps, stat),
         sidecar,
+        sidecarFile,
         check: checkStillValid(checks[key], stat),
         // Read through the sidecar, which is what names the talk: the consent is
         // filed under the slot, never under the file, so that a second take of the
@@ -153,6 +171,23 @@ export async function listRecordings(deps: VodIndexDeps): Promise<VodEntry[]> {
   }
 
   await scan(root, 1)
+
+  /*
+   * The take's sidecar onto its other segments.
+   *
+   * Only the first segment carries the `.json` next to it — there is one sidecar
+   * per take, not per file — and without this pass the others would show up in
+   * the control app as anonymous rushes, and leave for the storage without the
+   * title, the speakers or the markers of a talk whose sidecar is one file away.
+   */
+  for (const entry of entries) {
+    if (entry.sidecar != null) continue
+    const take = bySegment.get(entry.file)
+    if (take == null) continue
+    entry.sidecar = take.sidecar
+    entry.sidecarFile = take.sidecarFile
+  }
+
   entries.sort((a, b) => b.modifiedAtMs - a.modifiedAtMs)
   return entries
 }
@@ -217,7 +252,7 @@ export async function inspectRecording(
     if (to === 'illisible' || status === 'ok') status = to
   }
 
-  const sidecar = await readSidecar(deps, path)
+  const sidecar = await takeSidecar(deps, path)
   if (sidecar == null) {
     downgrade('suspect', 'sidecar absent : titre, intervenants et marqueurs manquent au montage')
   }
@@ -239,9 +274,16 @@ export async function inspectRecording(
     }
   }
 
-  // What the control app's stopwatch said, against what the file contains. The
-  // gap is the symptom of an abrupt stop, and it shows nowhere else.
-  const expected = sidecar?.durationMs ?? null
+  /*
+   * What the control app's stopwatch said, against what the file contains. The
+   * gap is the symptom of an abrupt stop, and it shows nowhere else.
+   *
+   * On a split take, that is the **segment's** stopwatch and not the take's:
+   * comparing a fifteen-minute piece to the fifty minutes of the talk it belongs
+   * to declared "missing ending" on every file of every take of the day, which is
+   * the surest way to make a warning stop being read.
+   */
+  const expected = expectedDurationOf(sidecar, path)
   const actual = probe?.durationMs ?? null
   if (expected != null && actual != null && expected > 60_000 && actual < expected * 0.9) {
     downgrade(
@@ -451,8 +493,63 @@ function checkStillValid(
   return check
 }
 
+/**
+ * How long this file alone is meant to last, according to the sidecar.
+ *
+ * The take's duration when it is in one piece; the segment's when it is not. A
+ * segment the sidecar does not name falls back on the take: it is a file we know
+ * nothing about, and the looser comparison is the honest one.
+ */
+function expectedDurationOf(sidecar: Sidecar | null, videoPath: string): number | null {
+  if (sidecar == null) return null
+  const segment = sidecar.segments?.find((piece) => piece.file === basename(videoPath))
+  return segment?.durationMs ?? sidecar.durationMs
+}
+
+/**
+ * The sidecar describing this file — its own, or the take's.
+ *
+ * Split, only the first segment carries the `.json`: the others are found by
+ * reading the take sidecars of the same folder and asking which one names them.
+ * That costs a handful of reads of a few kilobytes, against an ffprobe on a
+ * multi-gigabyte container in the same breath — and it is what tells a segment of
+ * a healthy take apart from the orphan rush this whole check exists to catch.
+ */
+async function takeSidecar(deps: VodIndexDeps, videoPath: string): Promise<Sidecar | null> {
+  const own = await readSidecar(deps, videoPath)
+  if (own != null) return own
+
+  const directory = dirname(videoPath)
+  const name = basename(videoPath)
+  let contents: { name: string; isDirectory: boolean }[]
+  try {
+    contents = await deps.fs.readdir(directory)
+  } catch {
+    return null
+  }
+
+  for (const entry of contents) {
+    if (entry.isDirectory || extname(entry.name).toLowerCase() !== '.json') continue
+    const raw = await deps.fs.readFile(join(directory, entry.name)).catch(() => null)
+    if (raw == null) continue
+    let sidecar: Sidecar
+    try {
+      sidecar = JSON.parse(raw) as Sidecar
+    } catch {
+      continue
+    }
+    if (sidecar.segments?.some((segment) => segment.file === name) === true) return sidecar
+  }
+  return null
+}
+
+/** The sidecar a take's first file would carry: same path, `.json` instead. */
+function sidecarPathOf(videoPath: string): string {
+  return videoPath.slice(0, videoPath.length - extname(videoPath).length) + '.json'
+}
+
 async function readSidecar(deps: VodIndexDeps, videoPath: string): Promise<Sidecar | null> {
-  const path = videoPath.slice(0, videoPath.length - extname(videoPath).length) + '.json'
+  const path = sidecarPathOf(videoPath)
   const raw = await deps.fs.readFile(path).catch(() => null)
   if (raw == null) return null
   try {

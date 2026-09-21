@@ -1,9 +1,15 @@
 import { basename, dirname, extname, join } from 'node:path'
 import type { Session } from '@conference-operator/program'
 
-import type { Marker, MarkerRole, EditingMarks, Sidecar } from '@conference-operator/contract'
+import type {
+  Marker,
+  MarkerRole,
+  EditingMarks,
+  Sidecar,
+  SidecarSegment,
+} from '@conference-operator/contract'
 
-export type { Marker, MarkerRole, EditingMarks, Sidecar }
+export type { Marker, MarkerRole, EditingMarks, Sidecar, SidecarSegment }
 
 export interface RecordingFs {
   rename(from: string, to: string): Promise<void>
@@ -68,7 +74,17 @@ export interface StartInput {
 
 export interface StopResult {
   sidecarPath: string | null
+  /**
+   * The take's first file — the one the sidecar sits next to.
+   *
+   * `null` when nothing could be located, and then no sidecar was written.
+   */
   videoPath: string | null
+  /**
+   * Every file the take was written into, in order. One entry in the ordinary
+   * case, several when OBS was set to split.
+   */
+  videoPaths: string[]
   sidecar: Sidecar
 }
 
@@ -101,6 +117,28 @@ export class RecordingSession {
   private startedAtIso: string | null = null
   private markers: Marker[] = []
   private input: StartInput | null = null
+  /**
+   * The files the take has been written into so far, in order.
+   *
+   * Fed by OBS as it goes — the start announces the first container, each split
+   * announces the next. It is the only place they are known: the stop only ever
+   * gives the last one, and the segments closed along the way would leave no
+   * trace at all.
+   */
+  private segments: { path: string; offsetMs: number }[] = []
+  /**
+   * The file OBS announced between our `StartRecord` and the take becoming
+   * active.
+   *
+   * A real OBS emits `RecordStateChanged` on the heels of the request, sometimes
+   * before it has answered it — and that event carries the take's **first**
+   * container, the one no later event ever names again. Refusing it because the
+   * session was not active yet made every split take begin at its second file.
+   *
+   * Cleared at each start, before the request: what it holds can then only
+   * concern the take being opened, never the previous one.
+   */
+  private announcedAtStart: string | null = null
 
   constructor(private readonly deps: RecordingDeps) {}
 
@@ -158,13 +196,45 @@ export class RecordingSession {
       })
     }
 
+    this.announcedAtStart = null
     await this.deps.startRecord()
     this.startedAtMs = this.deps.now()
     const correctedStart = this.deps.correctedNow()
     this.startedAtCorrectedMs = correctedStart
     this.startedAtIso = new Date(correctedStart).toISOString()
     this.markers = []
+    this.segments = this.announcedAtStart == null ? [] : [{ path: this.announcedAtStart, offsetMs: 0 }]
+    this.announcedAtStart = null
     this.input = input
+  }
+
+  /**
+   * OBS says the take is now being written into `path`.
+   *
+   * Called for the container announced at the start as well as for each split,
+   * and that is why it takes the offset from the take's own stopwatch: a segment
+   * is defined by where it begins in the talk, not by the order the events
+   * happened to arrive in.
+   *
+   * Idempotent on the same path: a real OBS announces the start's file twice —
+   * once on `RecordStateChanged`, once at the connection of an application that
+   * adopts a capture already running — and counting it twice would invent a
+   * zero-length segment right in the middle of the take.
+   */
+  noteSegment(path: string): void {
+    if (path === '') return
+    if (!this.active) {
+      this.announcedAtStart = path
+      return
+    }
+    if (this.segments.some((segment) => segment.path === path)) return
+    this.segments.push({ path, offsetMs: this.elapsedMs() })
+    if (this.segments.length > 1) {
+      this.deps.onLog?.('info', 'la captation continue dans un nouveau fichier', {
+        path,
+        segment: this.segments.length,
+      })
+    }
   }
 
   /**
@@ -267,29 +337,14 @@ export class RecordingSession {
     const input = this.input
     const session = input.session
 
-    let videoPath = await this.resolveMaster(outputPath, input)
-    if (videoPath != null && videoPath !== outputPath) {
-      this.deps.onLog?.('info', 'master retrouvé sous la racine des captations', {
-        announced: outputPath,
-        kept: videoPath,
-      })
-    }
+    // The file being written at the moment of the stop closes the list. On a take
+    // OBS never split it is also the only one, and on a room whose OBS announces
+    // nothing at the start it is all we have.
+    if (outputPath != null) this.noteSegment(outputPath)
 
-    if (videoPath != null) {
-      const expected = buildFilenameFormat(input) + extname(videoPath)
-      const target = join(dirname(videoPath), expected)
-      if (basename(videoPath) !== expected && !(await this.deps.fs.exists(target))) {
-        try {
-          await this.deps.fs.rename(videoPath, target)
-          videoPath = target
-        } catch (cause) {
-          this.deps.onLog?.('warn', 'renommage impossible, chemin OBS conservé', {
-            from: videoPath,
-            message: (cause as Error).message,
-          })
-        }
-      }
-    }
+    const located = await this.locateSegments(input, durationMs)
+    const renamed = await this.rename(located, input)
+    const videoPath = renamed[0]?.path ?? null
 
     const sidecar: Sidecar = {
       sessionId: session?.id ?? null,
@@ -306,6 +361,23 @@ export class RecordingSession {
       durationMs,
       markers: this.markers,
       videoFile: videoPath == null ? null : basename(videoPath),
+      /*
+       * Only listed when the take really was split.
+       *
+       * A single-file take is the ordinary case, and its `segments: [the file]`
+       * would say nothing `videoFile` does not already say — while forcing every
+       * reader of the sidecars already on the rooms' disks to handle two shapes
+       * for the same thing.
+       */
+      ...(renamed.length > 1
+        ? {
+            segments: renamed.map((segment) => ({
+              file: basename(segment.path),
+              offsetMs: segment.offsetMs,
+              durationMs: segment.durationMs,
+            })),
+          }
+        : {}),
     }
 
     let sidecarPath: string | null = null
@@ -328,11 +400,105 @@ export class RecordingSession {
     this.startedAtCorrectedMs = null
     this.startedAtIso = null
     this.input = null
-    return { sidecarPath, videoPath, sidecar }
+    this.segments = []
+    return { sidecarPath, videoPath, videoPaths: renamed.map((segment) => segment.path), sidecar }
   }
 
   /**
-   * The master, as **we** can open it.
+   * The take's files, as **we** can open them, with their place in the take.
+   *
+   * A segment's duration is read from the next one's start, and the last one's
+   * from the take's total: OBS says when it changes file, never how long the one
+   * it just closed lasted. The figures are therefore those of the control room's
+   * stopwatch, which is exactly what the check downstream wants to compare the
+   * containers against.
+   *
+   * A segment we cannot locate is dropped rather than guessed at: a sidecar
+   * naming a file that is not there would send editing looking for a piece of
+   * talk that never existed under that name.
+   */
+  private async locateSegments(
+    input: StartInput,
+    totalMs: number,
+  ): Promise<Segment[]> {
+    const announced = this.segments
+    const located: Segment[] = []
+
+    for (const [index, segment] of announced.entries()) {
+      const path = await this.locate(segment.path)
+      if (path == null) {
+        this.deps.onLog?.('warn', 'fichier annoncé par OBS introuvable sur le disque', {
+          announced: segment.path,
+        })
+        continue
+      }
+      if (path !== segment.path) {
+        this.deps.onLog?.('info', 'master retrouvé sous la racine des captations', {
+          announced: segment.path,
+          kept: path,
+        })
+      }
+      located.push({
+        path,
+        offsetMs: segment.offsetMs,
+        durationMs: Math.max(0, (announced[index + 1]?.offsetMs ?? totalMs) - segment.offsetMs),
+      })
+    }
+
+    if (located.length > 0) return located
+
+    // Nothing announced, or nothing announced that we can see: the name we
+    // dictated to OBS is the last thing left to go on.
+    const fallback = await this.fromExpectedName(input)
+    if (fallback == null) return []
+    this.deps.onLog?.('info', 'master retrouvé sous la racine des captations', {
+      announced: announced[announced.length - 1]?.path ?? null,
+      kept: fallback,
+    })
+    return [{ path: fallback, offsetMs: 0, durationMs: totalMs }]
+  }
+
+  /**
+   * Brings the files back to the name we asked OBS for.
+   *
+   * Split, they are numbered — `…_01.mkv`, `…_02.mkv` — and that is the whole
+   * point: OBS names the segments of a take by appending the `(2)` it uses
+   * against collisions, which sorts badly and does not say whether the take has
+   * two pieces or four. Picking up three SD cards at the end of the day, the
+   * order of the pieces has to be readable without opening anything.
+   *
+   * A target that already exists is left alone: it is somebody else's file — most
+   * often a first take of the same talk — and overwriting it would trade a badly
+   * named recording for a lost one.
+   */
+  private async rename(segments: Segment[], input: StartInput): Promise<Segment[]> {
+    const base = buildFilenameFormat(input)
+    const renamed: Segment[] = []
+
+    for (const [index, segment] of segments.entries()) {
+      const suffix = segments.length > 1 ? `_${String(index + 1).padStart(2, '0')}` : ''
+      const expected = base + suffix + extname(segment.path)
+      const target = join(dirname(segment.path), expected)
+      if (basename(segment.path) === expected || (await this.deps.fs.exists(target))) {
+        renamed.push(segment)
+        continue
+      }
+      try {
+        await this.deps.fs.rename(segment.path, target)
+        renamed.push({ ...segment, path: target })
+      } catch (cause) {
+        this.deps.onLog?.('warn', 'renommage impossible, chemin OBS conservé', {
+          from: segment.path,
+          message: (cause as Error).message,
+        })
+        renamed.push(segment)
+      }
+    }
+    return renamed
+  }
+
+  /**
+   * A file OBS announced, as **we** can open it.
    *
    * OBS announces a path in the namespace of the machine running it, and that is
    * not always ours. The case was seen in the open: OBS under Windows recording
@@ -343,7 +509,7 @@ export class RecordingSession {
    * title, speakers and markers. The same happens with a network folder mounted
    * differently on the two machines.
    *
-   * Three sources, in this order, and the order carries the meaning:
+   * Two sources, in this order, and the order carries the meaning:
    *
    * 1. **The announced path, if it designates a file we can see.** It is by far
    *    the most common case — OBS and the room on the same machine — and it is the
@@ -351,27 +517,33 @@ export class RecordingSession {
    * 2. **The announced name, under the capture root.** OBS stays the source of the
    *    *name* — including the "(2)" it adds on a collision — but the *folder*
    *    comes from the room's setting, which is a path on our side.
-   * 3. **The name we dictated to OBS**, if nothing was announced at all.
    *
    * Cautious end to end: failing to find a container, we give up rather than
    * scatter an orphan sidecar into the captures folder.
    */
-  private async resolveMaster(announced: string | null, input: StartInput): Promise<string | null> {
-    if (announced != null && (await this.deps.fs.exists(announced))) return announced
+  private async locate(announced: string): Promise<string | null> {
+    if (await this.deps.fs.exists(announced)) return announced
 
-    let root: string | null = null
-    try {
-      root = (await this.deps.recordingRoot?.()) ?? null
-    } catch {
-      root = null
-    }
+    const root = await this.root()
     if (root == null) return null
 
-    if (announced != null) {
-      const name = fileNameOf(announced)
-      const candidate = join(root, name)
-      if (name !== '' && (await this.deps.fs.exists(candidate))) return candidate
-    }
+    const name = fileNameOf(announced)
+    if (name === '') return null
+    const candidate = join(root, name)
+    return (await this.deps.fs.exists(candidate)) ? candidate : null
+  }
+
+  /**
+   * The take found by the name we dictated to OBS, when it announced nothing.
+   *
+   * The last resort, and it only knows how to find a take in one piece: a split
+   * one has files we never heard of, under names OBS chose alone. Better one
+   * segment with its sidecar than a sidecar claiming a whole take it cannot
+   * enumerate.
+   */
+  private async fromExpectedName(input: StartInput): Promise<string | null> {
+    const root = await this.root()
+    if (root == null) return null
 
     const expected = buildFilenameFormat(input)
     for (const extension of MASTER_EXTENSIONS) {
@@ -380,6 +552,21 @@ export class RecordingSession {
     }
     return null
   }
+
+  private async root(): Promise<string | null> {
+    try {
+      return (await this.deps.recordingRoot?.()) ?? null
+    } catch {
+      return null
+    }
+  }
+}
+
+/** A located file of the take, and where it falls in it. */
+interface Segment {
+  path: string
+  offsetMs: number
+  durationMs: number
 }
 
 /**

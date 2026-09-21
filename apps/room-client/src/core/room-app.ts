@@ -2234,6 +2234,11 @@ export class RoomApp implements ControlTarget {
         createdAt: entry.createdAt,
       })),
       relaySourceRoomId: this.store.settings().config?.relaySourceRoomId ?? null,
+      /*
+       * Read from the server rather than held here: the port is only settled at
+       * `listen()`, and it is the server that had to look for a free one.
+       */
+      portFallback: this.display.portFallback(),
       config: this.configVisible(),
       questions: this.questions,
       questionsRefreshedAt: this.questionsAt,

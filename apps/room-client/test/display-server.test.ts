@@ -457,3 +457,62 @@ describe('machine load', () => {
     }
   })
 })
+
+describe('a port already taken', () => {
+  /**
+   * The room no longer stops dead on an occupied port.
+   *
+   * It used to fail at startup, on a modal dialog, at the moment of the day one
+   * has the least patience for it. It now steps to the next free port — and says
+   * so, because the trade is not free: OBS's Browser Sources carry the old port
+   * in hard.
+   */
+  let squatter: DisplayServer
+  let moved: DisplayServer
+
+  afterEach(async () => {
+    await moved?.close()
+    await squatter?.close()
+  })
+
+  const spare = (port: number) =>
+    new DisplayServer({
+      runtime,
+      assets,
+      program: () => store.activeProgram(),
+      roomName: () => 'Track #1 — Teilhard de Chardin',
+      port,
+    })
+
+  it('steps to the next port and reports it', async () => {
+    // Something is sitting on the wanted port: another application, a dev server
+    // left over from the day before, a process that has not finished dying.
+    squatter = spare(0)
+    const taken = Number(new URL(await squatter.listen()).port)
+
+    moved = spare(taken)
+    const origin = await moved.listen()
+
+    expect(Number(new URL(origin).port)).toBe(taken + 1)
+    expect(moved.portFallback()).toEqual({ wanted: taken, actual: taken + 1 })
+  })
+
+  it('says nothing when it got the port it asked for', async () => {
+    // The badge must stay silent on an ordinary room, or it becomes furniture
+    // nobody reads any more.
+    expect(server.portFallback()).toBeNull()
+  })
+
+  it('does not call an assigned port a fallback', async () => {
+    /*
+     * Port 0 means "any free port": the port it lands on **is** the port it asked
+     * for. Headless rooms and this file's own fixtures run on it, and counting it
+     * as a move would have every one of them raise an alarm about a port nobody
+     * ever wanted.
+     */
+    moved = spare(0)
+    await moved.listen()
+
+    expect(moved.portFallback()).toBeNull()
+  })
+})

@@ -102,6 +102,7 @@ export function config(overrides: Partial<VisibleConfig> = {}): VisibleConfig {
 export function diagnostics(): NonNullable<DisplayPayload['diagnostics']> {
   return {
     obs: { A: null, B: null },
+    portFallback: null,
     questions: [],
     questionsRefreshedAt: null,
     questionsSession: null,

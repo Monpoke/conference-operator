@@ -189,19 +189,34 @@ Deux causes se rencontrent en salle :
 - **« Une régie est déjà lancée sur ce poste »** : un premier lancement tourne
   déjà, parfois sans fenêtre visible. Sa fenêtre revient au premier plan toute
   seule ; sinon, la fermer depuis le gestionnaire des tâches et relancer.
-- **« address already in use ... 7788 »** : autre chose occupe le port du
-  serveur local. Lancer l'application avec un autre port règle la journée sans
-  toucher à la machine :
+- **Badge « port 7789 · 7788 occupé » en tête de la régie** : autre chose
+  occupait le port du serveur local au démarrage. La salle **ne s'arrête plus**
+  pour autant — elle prend le port libre suivant et démarre normalement. Le
+  badge reste affiché toute la journée, et c'est voulu : la salle marche,
+  projette et enregistre, mais les **Browser Sources d'OBS** portent l'ancien
+  port en dur et regardent ailleurs. Rien d'autre à l'écran ne l'expliquerait.
+
+  Deux façons de régler, au choix :
+
+  - recoller l'adresse des Browser Sources depuis le bouton **Copier** du menu
+    « Écrans », qui donne l'adresse au port du jour — les écrans eux-mêmes
+    s'ouvrent depuis ce menu, rien à retaper ;
+  - libérer le port voulu et relancer la salle, si l'on tient à retrouver les
+    réglages d'OBS d'origine.
+
+  Pour fixer un autre port une fois pour toutes, poser en variable
+  d'environnement du raccourci :
 
   ```
   DISPLAY_PORT=7799
   ```
 
-  à poser en variable d'environnement du raccourci. Les écrans, eux, s'ouvrent
-  depuis le menu « Écrans » : rien à retaper. Restent les **Browser Sources
-  d'OBS**, qui portent l'ancien port en dur et ne chargeront plus — leur champ
-  se recolle depuis le bouton **Copier** du même menu, qui donne l'adresse au
-  port du jour.
+  Un port choisi ainsi n'allume pas le badge : c'est celui qu'on a demandé.
+
+- **« n'a trouvé aucun port libre »** : dix ports de suite occupés à partir de
+  celui voulu. Ce n'est plus un port pris mais une machine où quelque chose se
+  met systématiquement en travers ; là, le démarrage s'arrête et nomme les ports
+  essayés.
 
 ---
 

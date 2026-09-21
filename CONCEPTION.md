@@ -1115,6 +1115,41 @@ l'adresse de qui l'a demandée : une salle qui se remet à télécharger son
 programme au milieu de la journée sans que personne ne l'ait demandé sur place
 se lirait sinon comme un incident.
 
+### Un port occupé ne doit plus coûter la journée
+
+**La salle se replie sur le port libre suivant au lieu de s'arrêter.** Le port du
+serveur local peut être pris par ce qui n'est pas notre affaire — un serveur de
+développement de la veille, une autre application, un processus qui n'a pas fini
+de mourir. La salle s'arrêtait là, sur une boîte de dialogue modale, au moment de
+la journée où l'on a le moins de patience pour ça. Elle prend maintenant 7789, et
+démarre.
+
+**Le troc n'est pas gratuit, et c'est pourquoi le fait est porté jusqu'à
+l'écran.** Les Browser Sources d'OBS portent le port en dur : une salle qui a
+bougé projette pour personne, tout en ayant l'air parfaitement saine. C'est
+exactement la panne qu'aucun autre indicateur ne trahit — trois heures plus tard,
+rien à l'écran n'explique une projection noire depuis le matin. Un badge en tête
+de la régie nomme les deux ports, et son infobulle nomme le geste : recoller
+l'adresse des sources depuis le bouton *Copier* du menu « Écrans », ou libérer le
+port voulu et relancer.
+
+Il est **dans l'en-tête et non dans la pile d'avis**, à côté des badges de mode et
+de protocole, et pour la même raison : un avis dure trente secondes — juste pour
+un fait qu'on attrape au vol, faux pour une condition qui tient toute la journée.
+Comme eux, il ne s'affiche que sur désaccord ; montré en permanence, il
+deviendrait du mobilier que plus personne ne lit.
+
+**Le port 0 n'est pas un repli**, et ce n'est pas un détail : il veut dire
+« n'importe quel port libre », donc le port obtenu *est* celui demandé. Les
+salles headless et les tests tournent dessus, et les compter comme déplacées
+aurait fait lever à chacune une alarme sur un port que personne n'avait voulu. Un
+`DISPLAY_PORT` explicite non plus : c'est celui qu'on a demandé.
+
+La recherche s'arrête à dix ports. Au-delà, ce n'est plus un port pris mais une
+machine où quelque chose se met systématiquement en travers, et monter jusqu'à
+7888 ne ferait que rendre la salle introuvable : le démarrage échoue alors comme
+avant, en nommant les ports essayés.
+
 ## Empaqueter le client de salle
 
 ```bash

@@ -145,6 +145,13 @@ export class DisplayServer {
    * Regenerating it on every state send would cost one render per second for an
    * image that never changes.
    */
+  /**
+   * Set when the wanted port was taken and the next free one was used.
+   *
+   * Kept on the server because it is the only thing that knows: the port is
+   * settled at `listen()`, long after the state and its runtime were built.
+   */
+  private portFallbackState: { wanted: number; actual: number } | null = null
   private wallCache: { url: string; qrSvg: string } | null = null
   private wallCacheKey: string | null = null
   /** The same reason for the OpenFeedback QR code, which changes with every talk. */
@@ -830,12 +837,75 @@ export class DisplayServer {
     })
   }
 
+  /**
+   * How far we go looking for a free port. Ten is already a lot.
+   *
+   * Past that, it is not "a port taken" any more but a machine with something
+   * systematically in the way, and walking up to 7888 would only make the room
+   * harder to find. The startup then fails as it used to, naming the ports tried.
+   */
+  private static readonly PORT_ATTEMPTS = 10
+
+  /**
+   * Opens the local server, **falling back rather than giving up**.
+   *
+   * The wanted port can be taken by something that is none of our business — a
+   * dev server left over from the day before, another application, a room process
+   * that has not finished dying. The room used to stop dead there, on a modal
+   * dialog, at the moment of the day when one has the least patience for it.
+   *
+   * It now takes the next free port and says so. The trade is not free and it is
+   * the reason `portFallback` exists: OBS's Browser Sources carry the old port in
+   * hard, so a room that has moved serves a projection **nobody is watching** —
+   * and that reads exactly like a room that works. The fact is therefore not
+   * merely logged, it is carried in the state up to a badge the control app
+   * cannot show without saying what to do about it.
+   *
+   * Only "address taken" is caught. A refused binding — a host that is not ours,
+   * a port under 1024 without the rights — is a settings mistake, and retrying it
+   * on the next port would turn a clear failure into ten obscure ones.
+   */
   async listen(): Promise<string> {
     const host = this.options.host ?? '127.0.0.1'
-    await this.app.listen({ host, port: this.options.port ?? 7788 })
-    const address = this.app.server.address()
-    const port = typeof address === 'object' && address != null ? address.port : 0
-    return `http://${host}:${port}`
+    const wanted = this.options.port ?? 7788
+    const tried: number[] = []
+
+    // Port 0 has nowhere to walk to: the system hands out a free one or there is
+    // none, and `0 + 1` would aim at a privileged port for no reason.
+    const attempts = wanted === 0 ? 1 : DisplayServer.PORT_ATTEMPTS
+
+    for (let step = 0; step < attempts; step += 1) {
+      const port = wanted + step
+      tried.push(port)
+      try {
+        await this.app.listen({ host, port })
+      } catch (cause) {
+        if ((cause as { code?: string }).code !== 'EADDRINUSE') throw cause
+        continue
+      }
+      const address = this.app.server.address()
+      const bound = typeof address === 'object' && address != null ? address.port : port
+      /*
+       * Recorded only when it really moved: a room on its usual port must carry
+       * nothing at all, or the badge would be permanent furniture.
+       *
+       * Port 0 is excluded, and it is not a detail — it means "any free port", so
+       * the port it lands on is the port it asked for. Tests and headless rooms
+       * run on it, and counting it as a fallback would have every one of them
+       * raise an alarm about a port nobody wanted.
+       */
+      if (wanted !== 0 && bound !== wanted) this.portFallbackState = { wanted, actual: bound }
+      return `http://${host}:${bound}`
+    }
+
+    throw new Error(
+      `Le serveur local n'a trouvé aucun port libre : ${tried.join(', ')} sont tous occupés.`,
+    )
+  }
+
+  /** The port the room wanted and the one it got, or `null` if it got its own. */
+  portFallback(): { wanted: number; actual: number } | null {
+    return this.portFallbackState
   }
 
   async close(): Promise<void> {

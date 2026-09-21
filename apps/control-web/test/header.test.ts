@@ -6,6 +6,7 @@ import CpuIndicator from '../src/components/CpuIndicator.vue'
 import HubIndicator from '../src/components/HubIndicator.vue'
 import ModeBadge from '../src/components/ModeBadge.vue'
 import ProtocolBadge from '../src/components/ProtocolBadge.vue'
+import PortBadge from '../src/components/PortBadge.vue'
 import ControlHeader from '../src/components/ControlHeader.vue'
 import RoomClock from '../src/components/RoomClock.vue'
 import { clockDrift } from '../src/lib/clock-drift.js'
@@ -234,6 +235,32 @@ describe('run mode', () => {
     // people to ignore the badge.
     const wrapper = mount(ModeBadge, { props: { mode: { room: 'production', hub: null } } })
     expect(wrapper.text()).toBe('')
+  })
+})
+
+describe('port of the local server', () => {
+  it('stays quiet on a room that got its port', () => {
+    // The ordinary case, and the one that decides whether the badge is read at
+    // all: shown all day, it would become furniture.
+    const wrapper = mount(PortBadge, { props: { port: null } })
+    expect(wrapper.text()).toBe('')
+  })
+
+  it('names both ports when the room has moved', () => {
+    /*
+     * The failure it covers: the room works, projects and records, while OBS's
+     * Browser Sources — which carry the port in hard — look somewhere else. Three
+     * hours later, nothing on screen explains a projection that has been black
+     * since the morning.
+     */
+    const wrapper = mount(PortBadge, { props: { port: { wanted: 7788, actual: 7789 } } })
+
+    expect(wrapper.text()).toBe('port 7789 · 7788 occupé')
+    // A warning, not an alert: the room runs. What is broken is elsewhere, in OBS.
+    expect(wrapper.html()).toContain('text-warn')
+    // And the tooltip says what to do about it, because the badge alone would
+    // only worry.
+    expect(wrapper.get('[data-role="port-fallback"]').attributes('title')).toContain('OBS')
   })
 })
 

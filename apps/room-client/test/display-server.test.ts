@@ -516,3 +516,56 @@ describe('a port already taken', () => {
     expect(moved.portFallback()).toBeNull()
   })
 })
+
+describe('closing with pages still connected', () => {
+  /**
+   * The room used to survive its own quit.
+   *
+   * `app.close()` waits for the requests in flight to finish, and an SSE stream
+   * never finishes — that is what makes it a stream. Every page of a working room
+   * holds one: the projection, the control app, the two overlays. So the close
+   * waited forever, the process stayed in the background holding its port, and the
+   * next launch found it taken. Nothing said any of this out loud.
+   *
+   * The test is written with a deadline rather than by awaiting the close, because
+   * the defect it guards is exactly "it never comes back": awaiting it would hang
+   * the whole suite instead of failing.
+   */
+  const deadline = <T>(promise: Promise<T>, ms: number) =>
+    Promise.race([
+      promise.then(() => 'closed' as const),
+      new Promise<'hung'>((resolve) => setTimeout(() => resolve('hung'), ms)),
+    ])
+
+  it('hangs up on an open stream rather than waiting for it', async () => {
+    const stream = await fetch(`${origin}/display/state?vue=projecteur`)
+    expect(stream.status).toBe(200)
+
+    expect(await deadline(server.close(), 3_000)).toBe('closed')
+
+    // Closed for good: the port is free again, which is the whole point.
+    await expect(fetch(`${origin}/health`)).rejects.toThrow()
+  })
+
+  it('hangs up on the levels stream too, and unsubscribes OBS', async () => {
+    /*
+     * The second stream, and it carries something beyond its own socket: OBS-B's
+     * VU meter emits fifty times a second while somebody is subscribed. A close
+     * that forgot it would leave that subscription behind.
+     */
+    const levels: boolean[] = []
+    const watched = new DisplayServer({
+      runtime,
+      assets,
+      program: () => store.activeProgram(),
+      port: 0,
+      onLevelsRequested: (active) => levels.push(active),
+    })
+    const watchedOrigin = await watched.listen()
+    await fetch(`${watchedOrigin}/display/audio`)
+    expect(levels).toEqual([true])
+
+    expect(await deadline(watched.close(), 3_000)).toBe('closed')
+    expect(levels).toEqual([true, false])
+  })
+})

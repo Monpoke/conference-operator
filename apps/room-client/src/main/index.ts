@@ -167,10 +167,29 @@ async function main(): Promise<void> {
     await room.connectObs()
   }
 
-  app.on('before-quit', () => {
-    // With no explicit close, the reconnection timers keep the process alive and
-    // the application never closes.
-    void room.close()
+  /**
+   * Quitting: the close is **waited for**, and given a deadline.
+   *
+   * It used to be fired and forgotten — `void room.close()` — because the close
+   * could not be waited for: it never came back as long as a page held an SSE
+   * stream, which is to say always. Electron quit over the top of it, and what the
+   * close had left to do was left undone: the database closed after the exit,
+   * leaving its `-wal` and `-shm` files behind.
+   *
+   * Now that it terminates, the quit is deferred until it has. The deadline is
+   * there because this runs on an event day: a close that got stuck on an OBS that
+   * is no longer answering must cost five seconds, not the evening. Quitting badly
+   * beats not quitting.
+   */
+  let closing = false
+  app.on('before-quit', (event) => {
+    // The `app.quit()` below comes back through here: the second pass is the one
+    // that actually quits.
+    if (closing) return
+    event.preventDefault()
+    closing = true
+    const deadline = new Promise<void>((resolve) => setTimeout(resolve, 5_000))
+    void Promise.race([room.close(), deadline]).finally(() => app.quit())
   })
 }
 

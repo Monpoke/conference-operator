@@ -140,11 +140,21 @@ export class DisplayServer {
   private readonly clients = new Set<StreamSubscriber>()
   private readonly levelSubscribers = new Set<(body: string) => void>()
   /**
-   * The wall's QR code, computed once per room.
+   * How to hang up on each open stream, one entry per connected page.
    *
-   * Regenerating it on every state send would cost one render per second for an
-   * image that never changes.
+   * Without it, `close()` never returned. The two SSE routes write on `reply.raw`
+   * and **never end the response** — that is what a stream is — so `app.close()`
+   * waited on sockets nobody was ever going to close: the projection, the control
+   * app and the two overlays, that is to say every page of a working room. The
+   * room then stayed in the background, holding its port, and the next launch
+   * found it taken.
+   *
+   * The ping timers are in here too, and they are the other half of the leak: a
+   * `setInterval` per page, cleared only when the page disconnects. Kept alive,
+   * they hold the Node event loop open on their own — a process that will not
+   * quit even once the sockets are gone.
    */
+  private readonly openStreams = new Set<() => void>()
   /**
    * Set when the wanted port was taken and the next free one was used.
    *
@@ -152,6 +162,12 @@ export class DisplayServer {
    * settled at `listen()`, long after the state and its runtime were built.
    */
   private portFallbackState: { wanted: number; actual: number } | null = null
+  /**
+   * The wall's QR code, computed once per room.
+   *
+   * Regenerating it on every state send would cost one render per second for an
+   * image that never changes.
+   */
   private wallCache: { url: string; qrSvg: string } | null = null
   private wallCacheKey: string | null = null
   /** The same reason for the OpenFeedback QR code, which changes with every talk. */
@@ -785,10 +801,17 @@ export class DisplayServer {
       // idle room's only traffic.
       const heartbeat = setInterval(() => reply.raw.write(': ping\n\n'), 10_000)
 
-      request.raw.on('close', () => {
+      const hangUp = (): void => {
         clearInterval(heartbeat)
         this.clients.delete(subscriber)
-      })
+        this.openStreams.delete(hangUp)
+        // Ends the response, which is what `app.close()` is waiting for. Harmless
+        // when the page hung up first: the stream is already finished.
+        reply.raw.end()
+      }
+      this.openStreams.add(hangUp)
+
+      request.raw.on('close', hangUp)
     })
 
     /**
@@ -820,11 +843,27 @@ export class DisplayServer {
 
       const heartbeat = setInterval(() => reply.raw.write(': ping\n\n'), 10_000)
 
-      request.raw.on('close', () => {
+      /*
+       * Called twice, and it has to survive that.
+       *
+       * `close()` hangs up on the stream, and ending the response makes the socket
+       * fire its own `close` — which calls this again. The second pass must be
+       * silent: on its own, `size === 0` was true both times, and OBS-B was
+       * unsubscribed twice for one page. The removal is therefore what decides —
+       * only the pass that really took a subscriber out speaks.
+       */
+      const hangUp = (): void => {
         clearInterval(heartbeat)
-        this.levelSubscribers.delete(write)
-        if (this.levelSubscribers.size === 0) this.options.onLevelsRequested?.(false)
-      })
+        const removed = this.levelSubscribers.delete(write)
+        this.openStreams.delete(hangUp)
+        // With no subscriber left, OBS-B must stop sending its VU meter fifty
+        // times a second.
+        if (removed && this.levelSubscribers.size === 0) this.options.onLevelsRequested?.(false)
+        reply.raw.end()
+      }
+      this.openStreams.add(hangUp)
+
+      request.raw.on('close', hangUp)
     })
 
     this.app.get<{ Params: { sha256: string } }>('/assets/:sha256', async (request, reply) => {
@@ -908,11 +947,29 @@ export class DisplayServer {
     return this.portFallbackState
   }
 
+  /**
+   * Closes the server, **hanging up on the open streams first**.
+   *
+   * The order is the whole of it. `app.close()` waits for the requests in flight
+   * to finish, and an SSE stream never finishes: leaving them open made the close
+   * wait forever, on every page of a room that was working. The room survived its
+   * own quit, holding its port — and the next launch found it taken.
+   *
+   * Hanging up is done through the routes' own cleanup, not by destroying sockets
+   * from here: it is what clears the ping timers and unsubscribes OBS-B's VU
+   * meter. Destroying the socket would have left both behind.
+   *
+   * `end()` and not `destroy()`: a page that is still there gets a closed stream
+   * rather than a severed connection, and `EventSource` reconnects on its own —
+   * which is what one wants of a projection when the room is restarted.
+   */
   async close(): Promise<void> {
     // Unsubscribe first: without that, one last state change triggers a read of the
     // program on an already closed database.
     this.options.runtime.off('state', this.onStateChange)
+    for (const hangUp of [...this.openStreams]) hangUp()
     this.clients.clear()
+    this.levelSubscribers.clear()
     await this.app.close()
   }
 }

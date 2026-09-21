@@ -1115,6 +1115,45 @@ l'adresse de qui l'a demandée : une salle qui se remet à télécharger son
 programme au milieu de la journée sans que personne ne l'ait demandé sur place
 se lirait sinon comme un incident.
 
+### La salle survivait à son propre arrêt
+
+**Le serveur local restait actif en arrière-plan, port compris.** `app.close()`
+attend la fin des requêtes en cours, et un flux SSE ne finit jamais — c'est ce
+qui en fait un flux. Or chaque page d'une salle qui marche en tient un : la
+projection, la régie, les deux overlays. La fermeture attendait donc des sockets
+que personne n'allait fermer, et n'en revenait pas. Rien ne le disait.
+
+Deux conséquences, et la seconde est la plus sournoise. En headless, l'arrêt
+était `room.close().then(() => process.exit(0))` : le `then` ne venait jamais, le
+processus restait. Sous Electron, le quit passait par-dessus, et ce que la
+fermeture avait encore à faire restait à faire — la base fermée après la sortie,
+ses fichiers `-wal` et `-shm` laissés derrière, exactement le symptôme que
+`dev-rooms.sh` décrit déjà pour le hub.
+
+**La fermeture raccroche maintenant sur les flux ouverts avant de fermer le
+serveur**, et l'ordre est tout le propos. Elle passe par le nettoyage des routes
+elles-mêmes plutôt que de détruire les sockets depuis l'extérieur : c'est lui qui
+purge les minuteurs de ping — un `setInterval` par page, qui tenait à lui seul la
+boucle d'événements ouverte — et qui désabonne le vumètre d'OBS-B. `end()` et non
+`destroy()` : une page encore là reçoit un flux clos et non une connexion coupée,
+et `EventSource` se rouvre tout seul, ce qu'on veut d'une projection quand la
+salle redémarre.
+
+Le raccrochage est **appelé deux fois et doit y survivre** : terminer la réponse
+fait tirer à la socket son propre `close`, qui rappelle le même nettoyage. C'est
+la suppression qui décide — seule la passe qui a réellement retiré un abonné
+parle —, sans quoi OBS-B était désabonné deux fois pour une page.
+
+Sous Electron, le quit **attend** désormais cette fermeture, avec un délai de
+cinq secondes. Il ne l'attendait pas parce qu'il ne le pouvait pas. Le délai est
+là parce que tout ceci tourne un jour d'événement : une fermeture coincée sur un
+OBS qui ne répond plus doit coûter cinq secondes, pas la soirée. Mal quitter vaut
+mieux que ne pas quitter.
+
+Ce défaut et le repli de port ci-dessous se tiennent : un processus zombie qui
+gardait son port faisait démarrer la salle suivante sur 7789 en silence. Le repli
+aurait masqué la fuite au lieu de la signaler.
+
 ### Un port occupé ne doit plus coûter la journée
 
 **La salle se replie sur le port libre suivant au lieu de s'arrêter.** Le port du

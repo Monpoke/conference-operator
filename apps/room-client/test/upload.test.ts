@@ -91,7 +91,11 @@ const ONE_TAKE: VodCandidate = {
   sizeBytes: SIZE,
   beingWritten: false,
   sessionId: 'sess-1',
-  sidecar: { file: '2026-10-30_track1_1100_honeyswamp.json', sizeBytes: 900 },
+  sidecar: {
+    file: '2026-10-30_track1_1100_honeyswamp.json',
+    sizeBytes: 900,
+    segments: ['2026-10-30_track1_1100_honeyswamp.mkv'],
+  },
 }
 
 interface Rig {
@@ -190,6 +194,30 @@ describe('uploading footage', () => {
     expect(log.begin.map((b) => b.kind)).toEqual(['rush', 'sidecar'])
     expect(log.begin.at(-1)?.file).toBe(ONE_TAKE.sidecar?.file)
     expect(m.sends.at(-1)?.url).toContain('.json')
+  })
+
+  it('holds the sidecar of a split take until its last piece is up', async () => {
+    /*
+     * OBS set to split writes one take into several files, and the sidecar
+     * describes the take: sending it after the first piece would announce to
+     * editing four files of which three are still on the room machine's disk.
+     */
+    const SPLIT = ['2026-10-30_track1_1100_honeyswamp_01.mkv', '2026-10-30_track1_1100_honeyswamp_02.mkv']
+    const take = SPLIT.map((file) => ({
+      ...ONE_TAKE,
+      file,
+      sidecar: { ...ONE_TAKE.sidecar!, segments: SPLIT },
+    }))
+    const { hub, log } = fakeHub()
+    const m = rig(hub, {}, take)
+
+    await requestAndWait(m, SPLIT[0]!)
+    expect(log.begin.map((b) => b.kind)).toEqual(['rush'])
+
+    await m.uploads.pass()
+    // One sidecar for the take, and it leaves on the pass that completes it.
+    expect(log.begin.map((b) => b.kind)).toEqual(['rush', 'rush', 'sidecar'])
+    expect(log.begin.at(-1)?.file).toBe(ONE_TAKE.sidecar?.file)
   })
 
   it('does not upload the sidecar when the footage failed', async () => {

@@ -643,3 +643,74 @@ describe('preview', () => {
     expect((await listRecordings(deps()))[0]!.file).toBe('sample.mkv')
   }, 90_000)
 })
+
+describe('a take split over several files', () => {
+  /**
+   * One take, one sidecar — next to the first piece, naming all of them. The
+   * whole point of these tests is that the other pieces must not be treated as
+   * the orphan rushes the check exists to catch.
+   */
+  const SPLIT: Partial<Sidecar> = {
+    videoFile: 'take_01.mkv',
+    durationMs: 45 * 60_000,
+    segments: [
+      { file: 'take_01.mkv', offsetMs: 0, durationMs: 30 * 60_000 },
+      { file: 'take_02.mkv', offsetMs: 30 * 60_000, durationMs: 15 * 60_000 },
+    ],
+  }
+
+  it('carries the take sidecar onto every piece', async () => {
+    video('take_01.mkv')
+    video('take_02.mkv')
+    sidecar('take_01.json', SPLIT)
+
+    const entries = await listRecordings(deps())
+    const second = entries.find((entry) => entry.file === 'take_02.mkv')!
+
+    // The title, the speakers and the markers of a talk whose sidecar is one file
+    // away: without this, the second piece leaves for the storage anonymous.
+    expect(second.sidecar?.title).toBe('HoneySwamp')
+    expect(second.sidecarFile).toBe('take_01.json')
+  })
+
+  it('judges a piece against its own duration, not the take\'s', async () => {
+    /*
+     * Comparing fifteen minutes of container to the forty-five of the talk it
+     * belongs to declared "missing ending" on every file of every split take of
+     * the day — which is the surest way to make a warning stop being read.
+     */
+    video('take_02.mkv', 900_000_000)
+    sidecar('take_01.json', SPLIT)
+
+    const check = await inspectRecording(
+      deps({ probe: probeFn({ durationMs: 15 * 60_000 }) }),
+      'take_02.mkv',
+    )
+
+    expect(check.status).toBe('ok')
+    expect(check.reasons.join(' ')).not.toContain('fin manquante')
+  })
+
+  it('still catches a piece that stops short', async () => {
+    // The check has not been softened: a segment that does not last what the
+    // stopwatch says it should is still the symptom of an abrupt stop.
+    video('take_01.mkv', 900_000_000)
+    sidecar('take_01.json', SPLIT)
+
+    const check = await inspectRecording(
+      deps({ probe: probeFn({ durationMs: 5 * 60_000 }) }),
+      'take_01.mkv',
+    )
+
+    expect(check.status).toBe('suspect')
+    expect(check.reasons.join(' ')).toContain('fin manquante')
+  })
+
+  it('leaves a piece no sidecar names an orphan', async () => {
+    video('autre.mkv', 900_000_000)
+    sidecar('take_01.json', SPLIT)
+
+    const check = await inspectRecording(deps({ probe: probeFn() }), 'autre.mkv')
+    expect(check.reasons.join(' ')).toContain('sidecar absent')
+  })
+})

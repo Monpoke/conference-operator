@@ -183,6 +183,47 @@ describe('configuration', () => {
     await second.close()
   })
 
+  it('seeds the prefix from the environment, once only and slashes stripped', async () => {
+    // Fitting several editions into one bucket, on an installation nobody opens
+    // the console of before the day. Without seeding, the first rushes land at
+    // the bucket's root and mix with last edition's.
+    const base = {
+      port: 0,
+      host: '127.0.0.1',
+      publicUrl: 'http://127.0.0.1',
+      authSecret: 'test-secret-'.padEnd(48, 'x'),
+      logLevel: 'fatal' as const,
+      s3Endpoint: 'http://localhost:9000',
+      s3AccessKeyId: 'cle',
+      s3SecretAccessKey: 'secret',
+      s3Bucket: 'rushes-seed',
+    }
+    const databasePath = join(mkdtempSync(join(tmpdir(), 'hub-vod-prefix-')), 'hub.db')
+
+    // The slashes are stripped on the way in: a prefix copied from a storage
+    // browser arrives as `/cn26/`, and the reading side would strip them anyway —
+    // leaving them in the setting would only show a value the console did not
+    // write in that shape.
+    const first = await createHub({ ...base, databasePath, s3Prefix: '/cn26/' })
+    expect(first.services.settings.get().vodPrefix).toBe('cn26')
+    first.services.settings.update({ vodPrefix: 'cn27' })
+    await first.close()
+
+    // Same rule as the bucket: a correction made during the event survives the
+    // restart that follows it.
+    const second = await createHub({ ...base, databasePath, s3Prefix: '/cn26/' })
+    expect(second.services.settings.get().vodPrefix).toBe('cn27')
+    await second.close()
+
+    // And the two are independent: a bucket already set does not stop a prefix
+    // from being seeded.
+    const elsewhere = join(mkdtempSync(join(tmpdir(), 'hub-vod-prefix-')), 'hub.db')
+    const alone = await createHub({ ...base, databasePath: elsewhere, s3Prefix: 'cn26' })
+    expect(alone.services.settings.get().vodBucket).toBe('rushes-seed')
+    expect(alone.services.settings.get().vodPrefix).toBe('cn26')
+    await alone.close()
+  })
+
   it('has keys but is not ready while no bucket is set', () => {
     const vod = service(fakeS3().transport)
     expect(vod.ready()).toBe(false)

@@ -41,8 +41,14 @@ export interface VodCandidate {
   /** The file moved a few seconds ago: the take may still be running. */
   beingWritten: boolean
   sessionId: string | null
-  /** An existing sidecar next to the rush, or `null`. */
-  sidecar: { file: string; sizeBytes: number } | null
+  /**
+   * The take's sidecar, or `null`.
+   *
+   * `segments` lists every rush it describes — itself alone in the ordinary case,
+   * all the pieces when OBS split the take. One sidecar per take, and it only
+   * leaves once every piece it names has arrived.
+   */
+  sidecar: { file: string; sizeBytes: number; segments: string[] } | null
 }
 
 /** The hub, seen from the uploader. Injected: the test does not need a real one. */
@@ -351,13 +357,19 @@ export class Uploads {
         chosen.candidate.sizeBytes,
         verdict,
       )
-      // The sidecar follows the rush, never the other way round: a sidecar alone at
-      // the storage would describe a talk whose video did not arrive.
-      if (chosen.candidate.sidecar != null && !this.cancelled.has(chosen.candidate.file)) {
-        const row = this.row(chosen.candidate.file)
-        if (row?.state === 'termine') {
-          await this.uploadSidecar(hub, chosen.candidate)
-        }
+      /*
+       * The sidecar follows the rush, never the other way round: a sidecar alone at
+       * the storage would describe a talk whose video did not arrive.
+       *
+       * Split, it follows the **last** piece: it describes the whole take, and
+       * shipping it back after the first segment would announce to editing four
+       * files of which three are still on a room machine's disk. It therefore goes
+       * up once, on the pass that completes the take.
+       */
+      const sidecar = chosen.candidate.sidecar
+      if (sidecar != null && !this.cancelled.has(chosen.candidate.file)) {
+        const done = sidecar.segments.every((file) => this.row(file)?.state === 'termine')
+        if (done) await this.uploadSidecar(hub, chosen.candidate)
       }
     } catch (cause) {
       this.fail(chosen.candidate.file, cause as Error)

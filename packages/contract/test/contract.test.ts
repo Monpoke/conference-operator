@@ -9,6 +9,7 @@ import {
   contract,
   envelopeSchema,
   hubSettingsSchema,
+  hubSettingsPatchSchema,
   sessionStateSchema,
   sessionStateViewSchema,
   isCommandExpired,
@@ -384,6 +385,19 @@ describe('message exchange', () => {
       level: 'info',
     })
     expect(byDefault).toMatchObject({ target: 'operator' })
+  })
+
+  it('carries nothing but the settings a patch names', () => {
+    const patch = hubSettingsPatchSchema.parse({ openFeedbackProjectId: 'cloud-nord-2026' })
+    // `.partial()` would return the ten fields here, the nine absent ones filled
+    // with their defaults — and the hub, merging them, would wipe the program URL
+    // and the storage configuration on a save meant for the OpenFeedback key.
+    expect(Object.keys(patch)).toEqual(['openFeedbackProjectId'])
+  })
+
+  it('patches the VOD policy field by field', () => {
+    const patch = hubSettingsPatchSchema.parse({ vodPolitique: { debitMaxOctetsS: 500_000 } })
+    expect(Object.keys(patch.vodPolitique ?? {})).toEqual(['debitMaxOctetsS'])
   })
 
   it('classes a room message as required', () => {

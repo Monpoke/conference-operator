@@ -1,0 +1,18 @@
+apiVersion: v2
+name: hub
+description: Le hub de conference-operator — la console, sa base SQLite et son ingress.
+type: application
+
+# Comme les `package.json` et le `newTag` du kustomize : le numéro n'existe que
+# dans le tag git. `release.yml` réécrit ces deux lignes au moment de publier ;
+# dans le dépôt elles restent à zéro, pour qu'aucune valeur fausse n'y dorme
+# entre deux publications.
+version: "0.0.0"
+appVersion: "0.0.0"
+
+keywords:
+  - conference
+  - statefulset
+home: https://github.com/monpoke/conference-operator
+sources:
+  - https://github.com/monpoke/conference-operator

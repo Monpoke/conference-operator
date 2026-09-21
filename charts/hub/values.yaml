@@ -1,0 +1,179 @@
+# Les valeurs par défaut du hub.
+#
+# Ce fichier est la documentation des réglages, pas une configuration prête à
+# poser : `config.publicUrl` et `ingress.host` n'ont pas de valeur devinable, et
+# le chart refuse de rendre tant qu'ils portent leur exemple.
+#
+# Les secrets ne se mettent pas ici. Ils vont dans un fichier à vous, gardé hors
+# du dépôt, passé par `-f` — voir `values.secrets.example.yaml` à côté.
+
+image:
+  repository: ghcr.io/monpoke/conference-operator/hub
+  # Vide = l'`appVersion` du chart. Un déploiement suit donc la version du chart
+  # par défaut, ce qui est le cas normal d'une release.
+  tag: ""
+  # Renseigné, il l'emporte sur le tag : `repository@sha256:…`. C'est ce que pose
+  # `build:local k8s` entre deux versions, et la seule forme qui garantisse de
+  # faire tourner exactement ce qu'on vient de construire.
+  digest: ""
+  pullPolicy: IfNotPresent
+  # Registre privé : les noms des secrets de type `kubernetes.io/dockerconfigjson`.
+  pullSecrets: []
+
+# Ce qui n'est pas secret. Tout a un défaut dans l'image sauf `publicUrl`.
+config:
+  # L'adresse **publique**, celle qu'un navigateur voit — pas celle du service.
+  # Better Auth signe ses cookies avec, et l'URI qu'un opérateur lit pour appairer
+  # une salle en découle. Fausse ici, l'appairage envoie les gens nulle part.
+  publicUrl: "https://hub.exemple.fr"
+
+  # L'export « conference-center ». Ne sert qu'au tout premier démarrage : ensuite
+  # c'est le réglage de la console qui compte.
+  programSourceUrl: ""
+
+  logLevel: info
+
+  # Appairage. Dix minutes : assez pour traverser une salle avec le code, assez
+  # court pour que la file de la console se vide d'elle-même.
+  deviceCodeTtl: 10m
+  devicePollInterval: 5s
+
+  # Le stockage des rushes, côté non secret. Une adresse de stockage et un nom de
+  # bucket ne sont pas des secrets ; seules les clés le sont, et elles vivent sous
+  # `secret.s3`. Les trois obligatoires vont ensemble — `config.s3.endpoint`,
+  # `secret.s3.accessKeyId`, `secret.s3.secretAccessKey` — zéro ou trois.
+  s3:
+    endpoint: ""
+    # Graine du premier démarrage seulement : ensuite c'est le réglage de la console.
+    bucket: ""
+    # Préfixe dans le bucket, pour loger plusieurs éditions sans les mélanger.
+    # Même règle que le bucket : graine du premier démarrage, la console fait foi
+    # ensuite. Les barres obliques de tête et de queue sont retirées à la lecture.
+    prefix: ""
+    region: ""
+
+  # Toute autre variable d'environnement non secrète, telle quelle.
+  #   extra:
+  #     VOD_ABANDON_MINUTES: "45"
+  extra: {}
+
+# Les secrets. Deux voies, et une seule à la fois.
+secret:
+  # Un secret déjà présent dans le namespace — celui qu'on crée à la main avec
+  # `kubectl create secret generic hub --from-literal=…`. Renseigné, le chart n'en
+  # rend aucun et se contente de le monter : rien de sensible ne passe alors par
+  # les values ni par l'historique des releases Helm.
+  existingSecret: ""
+
+  # Sinon, le chart rend le secret à partir des valeurs ci-dessous. Pratique — un
+  # fichier à garder, un `helm upgrade` qui pose tout — au prix suivant : Helm
+  # archive chaque release dans un Secret du cluster, valeurs comprises. Les
+  # secrets sont donc lisibles par qui peut lire les releases du namespace.
+  create: true
+
+  # Requis, 32 caractères minimum. `openssl rand -base64 48`.
+  # En changer déconnecte tous les opérateurs ; ça ne touche pas les salles
+  # appairées, dont les jetons vivent dans la base.
+  betterAuthSecret: ""
+
+  # Connexion Google Workspace, facultative. Les trois vont ensemble : deux sur
+  # trois empêchent le hub de démarrer, et le chart refuse de rendre avant.
+  # `hostedDomain` **est** la liste des opérateurs : tout compte du domaine en est un.
+  google:
+    clientId: ""
+    clientSecret: ""
+    hostedDomain: ""
+
+  # Web Push, facultatif. Sans elles le hub fabrique une paire au premier
+  # démarrage et la garde en base ; les poser sert à survivre à une base recréée,
+  # puisque des clés changées invalident tous les abonnements.
+  vapid:
+    publicKey: ""
+    privateKey: ""
+    subject: ""
+
+  # Rapatriement des rushes, facultatif — les clés seules. L'adresse et le bucket
+  # sont sous `config.s3`. Le compte a besoin de **lister** le bucket et pas
+  # seulement d'y écrire : sans `ListBucket`, le hub démarre en annonçant le
+  # stockage actif puis échoue en 403 sur la reprise des téléversements ouverts.
+  s3:
+    accessKeyId: ""
+    secretAccessKey: ""
+
+  # Toute autre variable secrète, telle quelle.
+  extra: {}
+
+service:
+  port: 8787
+
+ingress:
+  enabled: true
+  className: nginx
+  host: "hub.exemple.fr"
+  # **Vide par défaut, et c'est délibéré.** Helm fusionne les maps : une annotation
+  # posée ici serait ajoutée à la vôtre et non remplacée par elle, et il faudrait
+  # `--set ingress.annotations=null` pour s'en défaire. Le défaut d'ingress-nginx
+  # atterrissait donc sur les ingress traefik.
+  #
+  # Mais le point qu'elles font doit être fait, quel que soit le contrôleur : **le
+  # hub tient des WebSockets longues sur `/ws`**, par où une salle reçoit ses
+  # commandes et remonte son état. Un proxy qui ferme les connexions inactives au
+  # bout d'une minute donne des salles qui se reconnectent toute la journée — ça se
+  # lit comme un réseau instable, c'est un délai d'expiration.
+  #
+  # ingress-nginx :
+  #   annotations:
+  #     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+  #     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+  #
+  # traefik : le réglage ne vit pas dans une annotation de timeout mais dans la
+  # configuration du point d'entrée (`--entryPoints.websecure.transport.respondingTimeouts`
+  # côté contrôleur, à zéro pour ne pas couper). Ce que l'ingress porte, c'est le
+  # point d'entrée :
+  #   className: traefik
+  #   annotations:
+  #     traefik.ingress.kubernetes.io/router.entrypoints: websecure
+  annotations: {}
+  tls:
+    enabled: true
+    # Vide = `<nom>-tls`.
+    secretName: ""
+
+# La base SQLite, et les images du programme à côté.
+#
+# La revendication s'appelle `data-hub-0` une fois créée et **survit au chart** :
+# `helm uninstall` la laisse en place, et une réinstallation la reprend. La
+# supprimer est un `kubectl delete pvc` délibéré.
+persistence:
+  size: 1Gi
+  # Vide = la classe par défaut du cluster.
+  storageClass: ""
+
+# Un point de départ, pas une mesure : l'image est un process Node qui sert une
+# poignée de salles et une console. Regardez-la tourner une heure avant d'y croire.
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 768Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}
+
+# Ce qui n'est pas un réglage, et pourquoi
+#
+# `replicas` n'existe pas dans ces values, et ce n'est pas un oubli. Le hub garde
+# son état dans un fichier SQLite et diffuse ses WebSockets en mémoire ; deux
+# répliques recevraient chacune son volume, donc sa propre base, et ne
+# connaîtraient que leurs propres salles. Deux hubs, pas un hub à deux têtes.
+#
+# La stratégie de mise à jour non plus : le `RollingUpdate` d'un StatefulSet à une
+# réplique termine `hub-0` avant de le recréer, ce qui est exactement ce qu'on
+# veut — deux écrivains sur un fichier SQLite n'arrivent pas. L'offrir en réglage
+# serait offrir de casser la base.
+#
+# Le `securityContext` et les sondes sont figés pour la même raison : ils
+# décrivent ce que l'image est, pas ce qu'un déploiement choisit.

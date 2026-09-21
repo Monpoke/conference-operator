@@ -603,6 +603,28 @@ export interface Marker {
   role?: MarkerRole
 }
 
+/**
+ * One of the files a take was written into.
+ *
+ * OBS can be set to split a recording every so many minutes or gigabytes — the
+ * usual protection against a single unreadable four-hour container. What it
+ * produces is one take spread over several files, and nothing in the take says
+ * so: the names only differ by the `(2)` OBS appends to avoid a collision.
+ *
+ * `offsetMs` is where this file starts **in the take**, which is the frame the
+ * markers are in: a chapter at 42 min falls in the segment whose offset is below
+ * it, at `offsetMs` from its start. Without it, editing would have to guess the
+ * order and the joins from the file names.
+ */
+export interface SidecarSegment {
+  /** File name, in the sidecar's own folder. */
+  file: string
+  /** Where this file starts in the take. */
+  offsetMs: number
+  /** How long this file lasts. */
+  durationMs: number
+}
+
 /** Metadata written next to the master, for editing and upload. */
 export interface Sidecar {
   sessionId: string | null
@@ -615,8 +637,22 @@ export interface Sidecar {
   endedAt: string
   durationMs: number
   markers: Marker[]
-  /** Final name of the video file, once renamed. */
+  /**
+   * Final name of the video file, once renamed.
+   *
+   * The **first** one when the take is split: it is the file the sidecar sits
+   * next to, and the one whose start the markers are counted from.
+   */
   videoFile: string | null
+  /**
+   * The files the take was written into, in order.
+   *
+   * Absent on a take written into a single file — which is the ordinary case, and
+   * every sidecar written before splitting was handled. A reader that ignores the
+   * field therefore keeps reading the same thing as before: `videoFile`, the
+   * whole take. One take, one sidecar, whatever OBS cut it into.
+   */
+  segments?: SidecarSegment[]
 }
 
 
@@ -694,7 +730,21 @@ export interface VodEntry {
    * Checking it now would call a recording that is doing fine "truncated".
    */
   beingWritten: boolean
+  /**
+   * The take's sidecar — the same object on every segment of a split take.
+   *
+   * Resolved by `segments`, not by the file name: only the first segment carries
+   * the `.json` next to it, and the others would otherwise show up in the control
+   * app as anonymous rushes of a talk whose title is one file away.
+   */
   sidecar: Sidecar | null
+  /**
+   * Where that sidecar is, relative to the root. `null` when there is none.
+   *
+   * It is not deducible from `file` on a split take, and the upload needs it: it
+   * is the file it sends alongside the rush.
+   */
+  sidecarFile: string | null
   check: VodCheck | null
   /**
    * The talk's YouTube consent, `null` while nobody has answered.

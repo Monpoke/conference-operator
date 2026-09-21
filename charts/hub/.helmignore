@@ -1,0 +1,5 @@
+.DS_Store
+.git/
+*.tgz
+# Le gabarit de secrets : une aide de lecture, pas une valeur à embarquer.
+values.secrets.example.yaml

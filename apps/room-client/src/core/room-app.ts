@@ -1428,6 +1428,15 @@ export class RoomApp implements ControlTarget {
       case 'audio':
         this.levels.push(event.inputs)
         break
+      /*
+       * OBS has split the take: the capture carries on in another container.
+       *
+       * Nothing to report to the hub — the recording has not changed state — but
+       * the file has to reach the take, and this is the only moment it is said.
+       */
+      case 'record-file':
+        this.recording?.noteSegment(event.path)
+        break
       case 'recording':
         this.runtime.observeCapture({ recording: event.active })
         // OBS ended the take on an error — a full disk, an encoder that gave up.
@@ -1445,6 +1454,9 @@ export class RoomApp implements ControlTarget {
         this.beat()
         this.wakeUplink()
         // The path only arrives at the stop: it unblocks the sidecar's writing.
+        // The container the take opens in: OBS announces it at the start, and never
+        // again. Without it a split take would begin at its second file.
+        if (event.active && event.outputPath != null) this.recording?.noteSegment(event.outputPath)
         if (!event.active) {
           if (this.pendingOutputPath != null) {
             this.pendingOutputPath(event.outputPath)
@@ -1792,7 +1804,9 @@ export class RoomApp implements ControlTarget {
 
     return await Promise.all(
       entries.map(async (entry) => {
-        const name = entry.file.replace(/\.[^./]+$/, '.json')
+        // The take's sidecar, which is not necessarily this file's neighbour: split,
+        // a take carries one sidecar, next to its first segment.
+        const name = entry.sidecarFile
         /**
          * The sidecar's size is **read from disk**, it is not derived.
          *
@@ -1802,7 +1816,18 @@ export class RoomApp implements ControlTarget {
          * unreadable at editing time. A JSON cut in the middle does not show in a
          * list of files; it is discovered by opening it, months later.
          */
-        const stat = entry.sidecar == null ? null : await deps.fs.stat(pathUnder(root, name))
+        const stat = name == null ? null : await deps.fs.stat(pathUnder(root, name))
+        /*
+         * The whole take, seen from this file.
+         *
+         * The sidecar describes the take and travels once for all its segments;
+         * the uploader needs to know which ones, so as to send it only when every
+         * piece it names has reached the storage. A take in one piece names
+         * itself, and the rule then says what it has always said.
+         */
+        const directory = entry.file.includes('/') ? entry.file.replace(/\/[^/]*$/, '/') : ''
+        const segments =
+          entry.sidecar?.segments?.map((segment) => directory + segment.file) ?? [entry.file]
         return {
           file: entry.file,
           sizeBytes: entry.sizeBytes,
@@ -1810,7 +1835,7 @@ export class RoomApp implements ControlTarget {
           sessionId: entry.sidecar?.sessionId ?? null,
           // Absent, we only upload the rush: a rush with no sidecar is precisely the
           // one that has to be saved.
-          sidecar: stat == null ? null : { file: name, sizeBytes: stat.size },
+          sidecar: stat == null || name == null ? null : { file: name, sizeBytes: stat.size, segments },
         }
       }),
     )

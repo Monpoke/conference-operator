@@ -1,0 +1,32 @@
+Le hub est posé : {{ include "hub.image" . }}
+
+  Console     {{ .Values.config.publicUrl }}/admin
+{{- if .Values.ingress.enabled }}
+  Ingress     {{ .Values.ingress.host }}{{ if .Values.ingress.tls.enabled }} (TLS){{ end }}
+{{- else }}
+  Ingress     désactivé — rien n'expose le hub hors du cluster.
+{{- end }}
+{{- if .Values.secret.existingSecret }}
+  Secret      {{ .Values.secret.existingSecret }} (existant, non géré par ce chart)
+{{- else }}
+  Secret      {{ include "hub.name" . }} (rendu par le chart, donc archivé dans la release Helm)
+{{- end }}
+
+Suivre le démarrage — il joue les migrations et importe le programme :
+
+  kubectl -n {{ .Release.Namespace }} rollout status statefulset/{{ include "hub.name" . }} --timeout=5m
+  kubectl -n {{ .Release.Namespace }} logs {{ include "hub.name" . }}-0 -f
+
+L'inscription publique est fermée : sans un compte opérateur, la console est
+inaccessible. Sur une base neuve, c'est le geste qui suit l'installation —
+l'image est distroless, d'où le chemin complet vers node :
+
+  kubectl -n {{ .Release.Namespace }} exec {{ include "hub.name" . }}-0 -- \
+    /nodejs/bin/node --import tsx src/cli/operator.ts \
+    vous@exemple.fr "Régie" '<mot-de-passe>' --role admin
+
+Si le pod reste en ImagePullBackOff ou CrashLoopBackOff, un `helm upgrade` ne le
+remplacera pas : un StatefulSet ne met à jour un pod qu'après l'avoir vu Ready.
+Le débloquer demande un geste explicite :
+
+  kubectl -n {{ .Release.Namespace }} delete pod {{ include "hub.name" . }}-0

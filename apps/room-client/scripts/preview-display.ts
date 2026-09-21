@@ -235,6 +235,8 @@ const base: DisplayPayload = {
 const variants: { name: string; payload: DisplayPayload }[] = [
   { name: 'sponsors', payload: base },
   { name: 'programme', payload: { ...base, state: { ...base.state, mode: 'programme' } } },
+  // The layout under comparison: the same day, in two columns, on one still screen.
+  { name: 'agenda', payload: { ...base, state: { ...base.state, mode: 'agenda' as const } } },
   { name: 'countdown', payload: { ...base, state: { ...base.state, mode: 'countdown' } } },
   { name: 'feedback', payload: { ...base, state: { ...base.state, mode: 'feedback' as const } } },
   {

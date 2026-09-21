@@ -207,6 +207,18 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   }
 
   /**
+   * `S3_PREFIX`, under the same rule and separately.
+   *
+   * Separately because the two settings are independent: a bucket already
+   * corrected in the console must not keep a prefix from being seeded, and the
+   * reverse holds too. Sharing one condition would have tied them together for
+   * no reason other than being written on the same line.
+   */
+  if (config.s3Prefix != null && settings.get().vodPrefix == null) {
+    settings.update({ vodPrefix: config.s3Prefix.replace(/^\/+|\/+$/g, '') })
+  }
+
+  /**
    * The storage's certificate authority, read once at startup.
    *
    * If unreadable, we say so **as an error** and carry on without it: shipping

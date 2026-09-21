@@ -12,6 +12,7 @@ import { eventIdentitySchema } from './event-identity.js'
 import {
   openFeedbackCheckSchema,
   hubSettingsSchema,
+  hubSettingsPatchSchema,
   notifLevelsSchema,
   roomConfigPatchSchema,
   roomConfigSchema,
@@ -582,7 +583,7 @@ export const contract = {
 
   settings: {
     get: oc.output(hubSettingsSchema),
-    update: oc.input(hubSettingsSchema.partial()).output(hubSettingsSchema),
+    update: oc.input(hubSettingsPatchSchema).output(hubSettingsSchema),
   },
 
   ingest: {

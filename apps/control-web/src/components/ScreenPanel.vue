@@ -14,6 +14,10 @@ const MODES: Command[] = [
   { value: 'loop', label: 'Boucle' },
   { value: 'sponsors', label: 'Sponsors' },
   { value: 'programme', label: 'Programme' },
+  // The same day in two columns, offered alongside rather than in place: the two
+  // layouts are compared on the room's own video projector, and it is there that
+  // one of them is chosen.
+  { value: 'agenda', label: 'Agenda (2 colonnes)' },
   { value: 'countdown', label: 'Compte à rebours' },
   { value: 'message', label: 'Message' },
   // End of talk: the audience is still seated, and it is the only moment feedback

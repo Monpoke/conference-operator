@@ -182,6 +182,33 @@ Les modes `sponsors` et `programme` restent disponibles seuls : quand quelque
 chose se passe, on veut pouvoir figer l'écran sur une page précise plutôt que
 d'attendre que la boucle y revienne.
 
+### Deux mises en page pour la journée, le temps de choisir
+
+Une journée fait deux à trois fois la hauteur de l'écran, et personne ne peut
+faire défiler un vidéoprojecteur. Le mode `programme` amenait le créneau en cours
+au centre et s'y arrêtait : tout ce qui suivait était coupé, et la salle lisait un
+programme qui s'arrêtait au milieu de l'après-midi. Il fait désormais le tour
+complet — créneau en cours, fin de journée, début, retour au créneau en cours —
+à vitesse constante quelle que soit la longueur du jour. Dans la boucle d'attente,
+le même défaut était ailleurs : chaque passage rejouait le même écran ; un passage
+reprend maintenant là où le précédent s'est arrêté et repart du matin une fois la
+fin lue.
+
+Le mode `agenda` est la **seconde proposition**, gardée à côté de la première :
+la même journée, en deux colonnes, sur un écran immobile où rien n'attend un
+défilement pour être lu. Il porte les mêmes données et les mêmes règles — la fin
+effective grise ce qui est passé, le créneau en cours est mis en avant — et ne
+change que la forme, ce qui est précisément ce qui rend les deux comparables dans
+la salle. Ce qui ne tient pas n'est pas caché, il est réduit : l'échelle baisse
+après insertion, une fois la hauteur réelle connue, jusqu'à ce que la journée
+tienne. Les deux écrans sont offerts côte à côte dans la console ; c'est sur le
+vidéoprojecteur de la salle que l'un des deux sera choisi.
+
+Un détail qui valait pour les deux : le grisé du passé passe par un `filter`, pas
+par `opacity`. L'animation d'entrée se termine sur `opacity: 1` et la conserve —
+`both` —, si bien que toute opacité posée sur le même élément était effacée dès
+que la ligne s'était posée. La salle voyait la journée entière au même poids.
+
 ### Ce qui alimente les deux pages nouvelles
 
 **Les autres salles** sont calculées par la salle elle-même, sur le programme
@@ -408,6 +435,20 @@ des exemples, pas des constantes du code.
   **racine des captations**, qui est un chemin de notre côté ; sinon le nom
   qu'on avait dicté à OBS. Faute de conteneur, on renonce : un sidecar orphelin
   tromperait la chaîne de montage.
+- **Une prise peut arriver en plusieurs fichiers.** `Sortie → Enregistrement →
+  Découpage automatique` est un réglage raisonnable — c'est la protection contre
+  un unique conteneur de quatre heures illisible — et il produit *un* talk
+  réparti sur plusieurs fichiers qu'OBS nomme seul, en ajoutant le « (2) » des
+  collisions. L'arrêt n'annonce que le dernier : les segments fermés en route ne
+  se connaissent que par `RecordFileChanged`, qui dit le conteneur dans lequel la
+  captation *continue*, et par le chemin porté par le démarrage, qui est le seul
+  à nommer le premier. La régie les collecte donc au fil de la prise, les
+  renomme en `…_01.mkv`, `…_02.mkv` — « (2) » ne dit ni où l'on est ni combien il
+  y a de morceaux, et c'est ce qu'on lit devant le dossier le soir — et écrit
+  **un seul sidecar**, à côté du premier, qui porte la liste des fichiers avec
+  leur place dans la prise. Un sidecar par prise, quoi qu'OBS en ait fait : les
+  marqueurs se comptent depuis le début du talk, et les découper par fichier
+  n'aurait servi qu'au montage à les recoller.
 - **Un arrêt déclenché depuis OBS clôt quand même la prise.** L'opérateur a
   souvent la main dans OBS et y appuie sur « Arrêter l'enregistrement » : la
   régie n'a alors rien demandé, personne n'attend le chemin du fichier, et le
@@ -1166,7 +1207,9 @@ dossier, et MKV plutôt que MP4, un OBS qui tombe n'abîme pas un MKV) et qui
 clé, l'application les applique juste avant de démarrer. Le nom de fichier non
 plus : elle écrit le format juste avant la prise, puis renomme le fichier à
 l'arrêt en `2026-10-30_track1_1100_titre-du-talk.mkv` et dépose le sidecar
-`.json` à côté. **Le dossier reste celui d'OBS** — le champ « Dossier des
+`.json` à côté. Si le découpage automatique est actif, les morceaux sont
+numérotés `…_01.mkv`, `…_02.mkv`, et le sidecar unique de la prise, posé à côté
+du premier, les énumère. **Le dossier reste celui d'OBS** — le champ « Dossier des
 VOD » du ⚙ ne déplace rien ; il dit seulement où la régie va *relire* ce qui a
 été produit, et à défaut elle demande à OBS-B où il écrit.
 
@@ -1315,6 +1358,16 @@ absent » est certain ; le débit se calcule sur un fichier à moitié écrit, d
 dont le premier — le seul qui explique les deux autres — se lisait au milieu des
 autres.
 
+**Le sidecar d'une prise découpée vaut pour tous ses morceaux.** Il n'y en a
+qu'un, à côté du premier fichier ; les autres le retrouvent par la liste de
+segments qu'il porte. Sans cela ils figuraient dans la liste comme des rushes
+anonymes et partaient au stockage sans le titre, les intervenants ni les
+marqueurs d'un talk dont le sidecar était à un fichier de là. La durée se
+compare de même au **segment** et non à la prise : mettre quinze minutes de
+conteneur en face des cinquante du talk annonçait « fin manquante » sur chaque
+fichier de chaque prise de la journée, ce qui est la façon la plus sûre de
+faire cesser de lire un avertissement.
+
 **La fenêtre d'écriture se juge sur l'heure du poste, pas sur celle du hub.** Les
 `mtime` viennent du système de fichiers : les comparer à l'horloge corrigée de la
 salle revenait à soustraire deux heures qui ne mesurent pas la même chose. Sans
@@ -1453,8 +1506,12 @@ matin même, quand on s'aperçoit qu'on visait celui de l'an dernier.
 règle que `PROGRAM_SOURCE_URL`. Elle sert aux déploiements où personne n'ouvre
 la console : une machine provisionnée d'avance, un script qui monte le hub.
 Ensuite le réglage fait foi, et une correction faite en cours d'événement
-survit au redémarrage qui suit. Le préfixe n'a pas d'équivalent : il se règle
-dans la console.
+survit au redémarrage qui suit. `S3_PREFIX` suit exactement la même règle, et
+pour la même raison : loger plusieurs éditions dans un même bucket ne doit pas
+demander d'aller taper le nom de l'édition à la main avant le premier
+téléversement. Les deux amorces sont indépendantes — un bucket déjà corrigé
+dans la console n'empêche pas le préfixe d'être amorcé, et l'inverse vaut
+aussi.
 
 ⚠️ Corollaire : **vider le champ Bucket n'éteint pas durablement le
 rapatriement** quand `S3_BUCKET` est posée — le démarrage suivant le
@@ -1471,6 +1528,13 @@ Ce qui monte : le **rush et son sidecar**, sous la même clé à l'extension pr�
 La date est celle du **rush**, lue dans son nom, pas celle du rapatriement : un
 fichier du 30 octobre remonté le 5 novembre se range au 30 octobre, sinon
 personne ne le retrouve en cherchant la journée.
+
+Une prise découpée monte morceau par morceau — chacun est un fichier du disque
+comme un autre, et la file n'en envoie toujours qu'un à la fois — mais son
+sidecar unique ne part qu'**après le dernier**. Le rush précède toujours son
+sidecar, pour la même raison qu'avant : un sidecar seul au stockage décrirait un
+talk dont la vidéo n'est pas arrivée, et découpé il en annoncerait quatre
+fichiers dont trois sont encore sur le disque de la salle.
 
 #### Les droits à donner sur le bucket
 

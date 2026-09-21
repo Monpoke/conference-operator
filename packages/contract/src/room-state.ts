@@ -439,6 +439,46 @@ export const hubSettingsSchema = z.object({
 export type HubSettings = z.infer<typeof hubSettingsSchema>
 export type HubSettingsInput = z.input<typeof hubSettingsSchema>
 
+/** A field, stripped of its default value. */
+type Undefaulted<Field> = Field extends z.ZodDefault<infer Inner> ? Inner : Field
+
+type PatchShape<Shape extends z.ZodRawShape> = {
+  [Key in keyof Shape]: z.ZodOptional<Undefaulted<Shape[Key]>>
+}
+
+/**
+ * The patch form of a schema: **an absent field stays absent**.
+ *
+ * Not `.partial()`. It wraps each field's `.default()` rather than removing it,
+ * and `parse` then returns the absent keys filled with their defaults — a patch
+ * that silently carries the whole schema. A settings panel only sends the fields
+ * of its own form; merged as-is, saving the OpenFeedback key put back a null
+ * program URL and a blank storage configuration, in the middle of an event and
+ * with nothing to say so. Unwrapping the defaults is what makes the merge
+ * downstream mean what it reads like.
+ */
+function patchOf<Shape extends z.ZodRawShape>(shape: Shape): z.ZodObject<PatchShape<Shape>> {
+  const fields = Object.entries(shape).map(([key, field]) => {
+    // `unwrap()` answers in Zod's core type, which knows nothing of `optional()`.
+    const undefaulted = (field instanceof z.ZodDefault ? field.unwrap() : field) as z.ZodType
+    return [key, undefaulted.optional()]
+  })
+  return z.object(Object.fromEntries(fields) as PatchShape<Shape>)
+}
+
+/**
+ * What `settings.update` accepts: the fields one wants to change, and those alone.
+ *
+ * The VOD policy is patched too, field by field: correcting the throughput
+ * ceiling during the event must not take the part size or `actif` back to their
+ * defaults along the way.
+ */
+export const hubSettingsPatchSchema = patchOf({
+  ...hubSettingsSchema.shape,
+  vodPolitique: patchOf(vodPolicySchema.shape),
+})
+export type HubSettingsPatch = z.infer<typeof hubSettingsPatchSchema>
+
 /**
  * A talk's state, enriched with the program.
  *

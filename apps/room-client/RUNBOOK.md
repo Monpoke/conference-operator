@@ -213,6 +213,11 @@ Deux causes se rencontrent en salle :
 
   Un port choisi ainsi n'allume pas le badge : c'est celui qu'on a demandé.
 
+  Si le badge revient à chaque lancement **sur une machine où rien d'autre ne
+  tourne**, chercher une salle précédente restée en arrière-plan : c'était le
+  défaut corrigé en même temps que ce repli — la salle survivait à son propre
+  arrêt et gardait son port. Sur une version à jour, cela ne doit plus arriver.
+
 - **« n'a trouvé aucun port libre »** : dix ports de suite occupés à partir de
   celui voulu. Ce n'est plus un port pris mais une machine où quelque chose se
   met systématiquement en travers ; là, le démarrage s'arrête et nomme les ports

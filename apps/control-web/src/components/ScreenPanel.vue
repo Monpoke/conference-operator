@@ -24,6 +24,9 @@ const MODES: Command[] = [
   // actually comes in.
   { value: 'feedback', label: 'Notez le talk' },
   { value: 'wall', label: 'Mur & questions' },
+  // Our wall and the social one sit side by side: one is the room talking to the
+  // room, the other the event seen from outside. Neither replaces the other.
+  { value: 'wallsio', label: 'Mur social' },
   { value: 'question', label: 'Question choisie' },
 ]
 
@@ -41,6 +44,19 @@ const NOTHING_TO_SHOW_REMOTELY = ['message', 'question']
 const props = defineProps<{
   mode: string | null
   /**
+   * The screens this edition withdrew, decided on the hub.
+   *
+   * Filtered out rather than greyed out: a disabled button asks the question
+   * "why?" in front of a room, and the answer is on another machine. An edition
+   * with no sponsors simply has no sponsors button.
+   *
+   * It never hides the screen **currently** on air, however it got there: a lit
+   * button describes what the room is showing, and a screen withdrawn while it
+   * was up must not vanish from the console that is showing it — the operator
+   * would have no way left to read, or to leave, the state they are in.
+   */
+  disabled?: string[]
+  /**
    * Served by the hub, on a phone.
    *
    * The mode arrives there through the room's heartbeat, so slightly behind a
@@ -51,9 +67,14 @@ const props = defineProps<{
   remote?: boolean
 }>()
 
-const commands = computed<Command[]>(() =>
-  props.remote === true ? MODES.filter((m) => !NOTHING_TO_SHOW_REMOTELY.includes(m.value)) : MODES,
-)
+const commands = computed<Command[]>(() => {
+  const withdrawn = props.disabled ?? []
+  return MODES.filter(
+    (m) =>
+      (!withdrawn.includes(m.value) || m.value === props.mode)
+      && (props.remote !== true || !NOTHING_TO_SHOW_REMOTELY.includes(m.value)),
+  )
+})
 </script>
 
 <template>

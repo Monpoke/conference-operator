@@ -292,6 +292,11 @@ describe('talk lifecycle', () => {
       // No account declared to start with: the rooms' loop skips its social page
       // rather than showing an empty frame.
       socialLinks: [],
+      // No social wall, and no screen withdrawn: an edition that has set nothing
+      // is offered everything the binary knows how to draw, minus the one screen
+      // that needs an address nobody gave.
+      wallsIoUrl: null,
+      screensDisabled: [],
       programSourceUrl: null,
       // Nothing about the event is set by default: the hub derives it from the
       // imported program, and that is what makes the repository agnostic.

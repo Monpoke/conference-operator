@@ -247,6 +247,65 @@ aux comptes qui descendent du hub. Les remonter en réglage demanderait de les
 faire voyager dans la charge utile ; ils y gagneraient de survivre à un
 changement d'événement.
 
+### Le mur social, la seule page dessinée par quelqu'un d'autre
+
+**`wallsio` encadre le mur walls.io de l'événement.** Il ne remplace pas le mur
+`wall` : celui-là porte les messages que le public dépose sur la page du hub et
+que la régie modère, celui-ci ce qui se dit ailleurs, sur les réseaux, collecté
+et modéré par walls.io. L'un est la salle qui se parle, l'autre l'événement vu
+du dehors ; aucun des deux ne dit ce que dit l'autre.
+
+**C'est la seule page de l'écran de salle qui dépend d'Internet pour son
+contenu.** Tout le reste se dessine sur le programme en cache et tient réseau
+débranché ; celle-ci est une iframe, et une salle coupée y montre le cadre en
+erreur du navigateur. C'est assumé plutôt que contourné : un mur de publications
+récupérées il y a cinq minutes n'est pas un mur, et rien de local ne pouvait en
+tenir lieu. Le garde-fou d'autonomie n'a pas sauté pour autant — il refuse
+toujours toute origine externe dans la page servie, iframe comprise, et un test
+tient que le cadre ne sort pas de son écran : une salle qui montre les sponsors
+ne charge rien.
+
+**L'adresse est un réglage du hub** (« Écrans de salle »), descendue au `sync` et
+mise en cache comme les comptes. L'adresse complète, jeton compris, et non un nom
+de compte à recomposer : le jeton est par mur, walls.io le régénère avec lui, et
+la forme de l'adresse appartient à quelqu'un d'autre. Vide — le défaut —, l'écran
+n'est proposé nulle part : un mur absent vaut mieux qu'un 404 encadré devant la
+salle. Le jeton n'est pas un secret, il ne donne à lire qu'un mur déjà public.
+
+Dans la boucle, la page passe **en dernier et dure vingt secondes**. C'est la
+seule qu'on *lit* — une dizaine de publications, chacune une phrase — là où les
+autres se regardent ; et la seule qui charge du dehors : arriver en dernier laisse
+à l'iframe toutes les pages précédentes pour se remplir.
+
+### Activer un écran, ce n'est pas l'afficher
+
+**Le hub décide de ce qui est *disponible*, la régie de ce qui est *montré*.**
+Toutes les éditions ne se servent pas de tous les écrans : un événement sans
+sponsors, une journée dont le programme arrive au dernier moment, et la console
+garde des boutons qui projettent un cadre vide — et la boucle s'arrête douze
+secondes dessus. Le panneau « Écrans de salle » les retire un à un.
+
+Retirer un écran le sort **des choix de la régie et de la rotation de la
+boucle** : la salle ne le verra plus passer. Cela ne touche pas à ce qui est
+projeté à cet instant — une salle qui affiche un écran qu'on vient de retirer
+continue de l'afficher jusqu'à ce que quelqu'un en décide autrement, et le bouton
+correspondant reste dans sa console. Le retirer là aussi enlèverait à la fois ce
+qui dit où l'on est, et la seule façon d'en sortir.
+
+**C'est une liste de refus, pas d'autorisations**, et c'est le sens du réglage :
+les écrans qui existent sont ceux que le code connaît, et un écran ajouté dans
+une version ultérieure doit être disponible sur un événement configuré avant
+qu'il existe. Une liste d'autorisations l'aurait tu, silencieusement, sur tous
+les hubs déjà réglés. La case cochée de la console dit « allumé » et le réglage
+dit « retiré » : l'inversion vit dans la vue, au seul endroit où les deux
+lectures sont visibles ensemble.
+
+`loop` et `live` n'y figurent pas. La boucle est l'écran vers lequel on revient —
+la retirer laisserait une salle sans repli — et `live` n'est pas un choix mais
+l'état d'être à l'antenne. `rooms` et `socials`, à l'inverse, y sont sans être des
+modes d'affichage : ils n'existent que dans la boucle, et l'organisateur qui
+retire « la page des autres salles » n'a que faire de cette distinction.
+
 ## Servir un autre événement
 
 Le dépôt ne connaît pas l'événement qu'il sert. Le hub **déduit son identité du

@@ -151,6 +151,72 @@ async function saveSocialLinks(): Promise<void> {
   }
 }
 
+// — Room screens: what this edition offers —
+/**
+ * The catalog, in the order the control app offers it.
+ *
+ * Written here rather than read from the contract's enum: the enum knows the
+ * identifiers, not what an organizer calls them, and the order of an enum is an
+ * implementation detail — here it is the order of the buttons an operator knows
+ * by heart. The two lists are held together by `screensDisabled`, which refuses
+ * an identifier the contract does not know.
+ */
+const SCREENS: { value: string; label: string; hint: string }[] = [
+  { value: 'sponsors', label: 'Sponsors', hint: 'Les logos, par niveau.' },
+  { value: 'programme', label: 'Programme', hint: 'La journée de la salle, déroulée.' },
+  { value: 'agenda', label: 'Agenda', hint: 'La même journée, entière, en deux colonnes.' },
+  { value: 'countdown', label: 'Compte à rebours', hint: 'Le temps restant sur le créneau.' },
+  { value: 'message', label: 'Message', hint: 'La bannière saisie en régie.' },
+  { value: 'feedback', label: 'Notez le talk', hint: 'Le QR code OpenFeedback du talk en cours.' },
+  { value: 'wall', label: 'Mur & questions', hint: 'Les messages du public, modérés en régie.' },
+  { value: 'question', label: 'Question choisie', hint: 'Une question du public, en grand.' },
+  { value: 'wallsio', label: 'Mur social (walls.io)', hint: "Le mur de l'événement sur les réseaux." },
+  { value: 'rooms', label: 'Pendant ce temps…', hint: 'Ce qui se passe dans les autres salles.' },
+  { value: 'socials', label: 'Nos réseaux', hint: 'Les comptes déclarés ci-dessus.' },
+]
+
+const wallsIoUrl = ref('')
+/**
+ * Held the right way up — what is **on** — and sent the other way.
+ *
+ * A checkbox one ticks to switch a screen off reads backwards, and the setting is
+ * a deny list for a reason of its own (a screen added later must be available to
+ * an event configured before it existed). The inversion lives here, in the one
+ * place both readings are visible at once.
+ */
+const screensOn = ref<Record<string, boolean>>({})
+
+watch(
+  settings,
+  (value) => {
+    if (value == null) return
+    if (globalThis.document?.activeElement?.id !== 'walls-io-url') {
+      wallsIoUrl.value = value.wallsIoUrl ?? ''
+    }
+    const off = value.screensDisabled ?? []
+    screensOn.value = Object.fromEntries(
+      SCREENS.map((screen) => [screen.value, !off.includes(screen.value)]),
+    )
+  },
+  { immediate: true, deep: true },
+)
+
+async function saveScreens(): Promise<void> {
+  const url = wallsIoUrl.value.trim()
+  try {
+    await store.update({
+      // Empty means "no wall", and that is a null: an empty string would travel
+      // down to the rooms, fail the contract's URL check, and take the whole save
+      // with it.
+      wallsIoUrl: url === '' ? null : url,
+      screensDisabled: SCREENS.filter((s) => screensOn.value[s.value] === false).map((s) => s.value),
+    })
+    toast.say('Écrans enregistrés')
+  } catch {
+    /* already reported */
+  }
+}
+
 // — Automatic closure —
 const autoEnabled = ref(false)
 const autoGrace = ref(5)
@@ -632,6 +698,49 @@ async function confirmRemoveIntegration(): Promise<void> {
           Ajouter un compte
         </Button>
         <Button id="btn-social-links" variant="primary" size="small" @click="saveSocialLinks">
+          Enregistrer
+        </Button>
+      </div>
+    </Panel>
+
+        <Panel title="Écrans de salle">
+      <p class="mb-2 text-[13px] text-dim">
+        Ce qu'une régie peut choisir d'afficher, et ce que la boucle d'attente fait défiler.
+        Retirer un écran ne change rien à ce qui est projeté en ce moment : c'est la régie
+        qui décide, salle par salle.
+      </p>
+
+      <label class="mb-[5px] block text-xs text-dim" for="walls-io-url">
+        Mur social — adresse d'intégration walls.io
+      </label>
+      <input
+        id="walls-io-url"
+        v-model="wallsIoUrl"
+        placeholder="https://my.walls.io/mon-mur?token=…"
+        class="mb-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text"
+      />
+      <p class="mb-3 text-[13px] text-dim">
+        L'adresse complète, jeton compris, telle que walls.io la donne. Vide, l'écran n'est
+        proposé nulle part — un mur absent vaut mieux qu'un cadre en erreur devant la salle.
+      </p>
+
+      <div id="screens" class="border-t border-edge pt-2">
+        <label
+          v-for="screen in SCREENS"
+          :key="screen.value"
+          class="flex items-baseline gap-3 py-1.5"
+          :data-screen="screen.value"
+        >
+          <input v-model="screensOn[screen.value]" type="checkbox" class="w-auto" />
+          <span class="flex-1">
+            <strong class="block text-sm">{{ screen.label }}</strong>
+            <span class="text-xs text-dim">{{ screen.hint }}</span>
+          </span>
+        </label>
+      </div>
+
+      <div class="mt-2">
+        <Button id="btn-screens" variant="primary" size="small" @click="saveScreens">
           Enregistrer
         </Button>
       </div>

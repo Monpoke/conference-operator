@@ -8,6 +8,7 @@ import {
   isoDateTimeSchema,
   executionModeSchema,
   roomIdSchema,
+  roomScreenSchema,
   sceneRoleSchema,
   sessionIdSchema,
   audioInputSchema,
@@ -419,6 +420,40 @@ export const hubSettingsSchema = z.object({
    */
   socialLinks: z.array(socialLinkSchema).max(8).default([]),
   /**
+   * The event's walls.io wall, embedded on the room screens.
+   *
+   * The whole embed address, token included, and not just the account name: the
+   * token is what walls.io hands over when the wall is created, it is per wall,
+   * and it is regenerated the day the wall is. Cutting it into pieces here would
+   * mean rebuilding an address whose shape belongs to somebody else.
+   *
+   * A hub setting and not an environment variable, for the same reason as
+   * `programSourceUrl`: it is corrected during the event, and restarting the hub
+   * that day is exactly what cannot be done. `null` — the default — and the
+   * screen is not offered at all: no wall beats an embed that answers 404 on the
+   * room's video projector.
+   *
+   * It is not a secret. The token only gives read access to a wall that is
+   * already public, and it travels down to every room and up to every control app
+   * like the rest of the settings.
+   */
+  wallsIoUrl: z.url().nullable().default(null),
+  /**
+   * The screens withdrawn from this edition.
+   *
+   * A **deny** list, and that is the point: the screens that exist are those the
+   * code knows, and a screen added in a later version must be available to an
+   * event configured before it existed. An allow list would silently withhold it
+   * from every hub already set up.
+   *
+   * Withdrawing a screen removes it from the control app's choices and from the
+   * waiting loop's rotation. It does not take down what is on screen at that
+   * moment: a room showing a screen that has just been withdrawn keeps showing it
+   * until somebody decides otherwise — the hub arbitrates what is *available*,
+   * never what a room is *doing*.
+   */
+  screensDisabled: z.array(roomScreenSchema).max(20).default([]),
+  /**
    * Bucket the rushes land in. `null` = none, and nothing leaves.
    *
    * Here and not in the environment, unlike the keys: a bucket name is not a
@@ -536,6 +571,16 @@ export const syncResultSchema = z.object({
    * able to run its whole loop without touching the network once synchronized.
    */
   socialLinks: z.array(socialLinkSchema).default([]),
+  /**
+   * The social wall's embed address, and the screens this edition withdrew.
+   *
+   * Sent down for the same reason as the accounts above: the loop must run
+   * through without touching the network, and what is available on the screens is
+   * decided on the hub. Both default to "nothing withdrawn, no wall", which is
+   * what an older hub that does not send them means.
+   */
+  wallsIoUrl: z.url().nullable().default(null),
+  screensDisabled: z.array(roomScreenSchema).default([]),
   /**
    * The event's identity, decided by the hub.
    *

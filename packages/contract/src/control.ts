@@ -6,6 +6,7 @@ import {
   displayModeSchema,
   isoDateTimeSchema,
   roomIdSchema,
+  roomScreenSchema,
   sceneRoleSchema,
   sessionIdSchema,
   audioInputSchema,
@@ -178,6 +179,16 @@ export const controlViewSchema = z.object({
    * would have the page claim something it does not know.
    */
   displayMode: displayModeSchema.nullable(),
+
+  /**
+   * The screens this edition withdrew, as the hub holds them.
+   *
+   * The phone reads the same list as a room's own control app, and hides the same
+   * buttons: an operator who withdrew the sponsors screen from the console must
+   * not find it again by picking up a phone. It is a hub setting, so here it is
+   * first-hand — no heartbeat delay.
+   */
+  screensDisabled: z.array(roomScreenSchema).default([]),
 
   /**
    * The OBS-A roles actually mapped for this room.

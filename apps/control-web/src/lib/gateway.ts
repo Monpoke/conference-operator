@@ -712,6 +712,17 @@ export function payloadFromView(view: ControlView, nowMs: number): DisplayPayloa
     wall: null,
     otherRooms: [],
     socialLinks: [],
+    /*
+     * No social wall on a phone, but the same withdrawn screens.
+     *
+     * `wallsIoUrl` is null because the remote page does not project anything: the
+     * screen is chosen here and drawn over there, on the room's machine, which has
+     * the address. The withdrawn list, on the other hand, does travel — it is what
+     * builds the menu, and an operator must find the same buttons on a phone as on
+     * the console.
+     */
+    wallsIoUrl: null,
+    screensDisabled: view.screensDisabled,
     eventIdentity: view.event,
     feedback: null,
     /*

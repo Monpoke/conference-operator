@@ -230,6 +230,12 @@ const base: DisplayPayload = {
     { network: 'LinkedIn', handle: 'Cloud Nord', url: 'https://www.linkedin.com/company/cloud-nord' },
     { network: 'Mastodon', handle: '@cloudnord@piaille.fr', url: 'https://piaille.fr/@cloudnord' },
   ],
+  // The preview's wall is the real one: it is the only page whose rendering is
+  // done by somebody else, and a placeholder address would show an error frame
+  // exactly where the thing to judge is.
+  wallsIoUrl: 'https://my.walls.io/cloud-nord?token=b58a8dcde25eaeb9d96cddd110abcfc00c2226ec',
+  // Nothing withdrawn: the preview is there to show every screen.
+  screensDisabled: [],
 }
 
 const variants: { name: string; payload: DisplayPayload }[] = [
@@ -239,6 +245,7 @@ const variants: { name: string; payload: DisplayPayload }[] = [
   { name: 'agenda', payload: { ...base, state: { ...base.state, mode: 'agenda' as const } } },
   { name: 'countdown', payload: { ...base, state: { ...base.state, mode: 'countdown' } } },
   { name: 'feedback', payload: { ...base, state: { ...base.state, mode: 'feedback' as const } } },
+  { name: 'wallsio', payload: { ...base, state: { ...base.state, mode: 'wallsio' as const } } },
   {
     name: 'question',
     payload: {
@@ -399,7 +406,7 @@ for (const { name, payload } of variants) {
  * is forced in the script, like the card's style above: the served page itself
  * always starts from zero.
  */
-const LOOP_PAGES = ['sponsors', 'programme', 'rooms', 'socials']
+const LOOP_PAGES = ['sponsors', 'agenda', 'rooms', 'socials', 'wallsio']
 for (const [index, name] of LOOP_PAGES.entries()) {
   const html = renderProjectorPage({
     initialPayload: { ...base, state: { ...base.state, mode: 'loop' as const } },

@@ -248,6 +248,14 @@ export function controlView(services: Services, roomId: string, at: number): Con
      * that an active button describes a fact.
      */
     displayMode: status?.displayMode ?? null,
+    /*
+     * Withdrawn screens: read from the settings, not from the room.
+     *
+     * It is an event-wide decision — the same list for the three rooms — so it
+     * does not travel through the heartbeat, and the phone gets it without the ten
+     * seconds of delay the reported screen carries.
+     */
+    screensDisabled: services.settings.get().screensDisabled,
 
     /*
      * The mapped roles, not the full list of possible roles.

@@ -703,7 +703,7 @@ async function confirmRemoveIntegration(): Promise<void> {
       </div>
     </Panel>
 
-        <Panel title="Écrans de salle">
+    <Panel title="Écrans de salle">
       <p class="mb-2 text-[13px] text-dim">
         Ce qu'une régie peut choisir d'afficher, et ce que la boucle d'attente fait défiler.
         Retirer un écran ne change rien à ce qui est projeté en ce moment : c'est la régie

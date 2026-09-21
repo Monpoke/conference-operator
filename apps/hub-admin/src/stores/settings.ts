@@ -17,6 +17,10 @@ export interface Settings {
   autoEndEnabled: boolean
   autoEndGraceMinutes: number
   socialLinks: SocialLink[]
+  /** The walls.io wall's embed address. `null` = no social wall screen. */
+  wallsIoUrl?: string | null
+  /** The screens withdrawn from this edition — a deny list; see the contract. */
+  screensDisabled?: string[]
   vodBucket?: string | null
   vodPrefix?: string | null
 }

@@ -359,6 +359,7 @@ export class RoomApp implements ControlTarget {
       // every scene switch, and a room started with the hub unreachable keeps the
       // last known ones rather than an empty page.
       socialLinks: () => this.store.settings().socialLinks,
+      screens: () => this.store.settings().screens,
       event: () => this.store.settings().event,
       version: options.version ?? null,
       onLevelsRequested: (active) => {

@@ -312,7 +312,7 @@ useKeyboardLayer(
             scene: that is what lets it be driven with nothing added between a phone
             and the room machine. Short of two modes — see the panel.
           -->
-          <ScreenPanel :mode="payload.state.mode" :remote="true" />
+          <ScreenPanel :mode="payload.state.mode" :disabled="payload.screensDisabled" :remote="true" />
           <ProjectionPanel
             :scene-role="payload.state.sceneRole"
             :relay-source-room-id="payload.diagnostics?.relaySourceRoomId ?? null"
@@ -372,7 +372,7 @@ useKeyboardLayer(
       </div>
 
       <div class="flex min-h-0 flex-col gap-2.5 lg:overflow-y-auto">
-        <ScreenPanel :mode="payload.state.mode" />
+        <ScreenPanel :mode="payload.state.mode" :disabled="payload.screensDisabled" />
         <ProjectionPanel
           :scene-role="payload.state.sceneRole"
           :relay-source-room-id="payload.diagnostics?.relaySourceRoomId ?? null"

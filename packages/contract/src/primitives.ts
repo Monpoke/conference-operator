@@ -78,6 +78,20 @@ export const displayModeSchema = z.enum([
   'message',
   'wall',
   /**
+   * The event's social wall, embedded from walls.io.
+   *
+   * Distinct from `wall`, which is **our** wall — the messages the audience posts
+   * on the hub's public page, moderated in the control app. This one is what is
+   * being said elsewhere, on the networks, and it is walls.io that collects and
+   * moderates it. The two live side by side because neither replaces the other:
+   * one is the room talking to the room, the other the event seen from outside.
+   *
+   * Its address is a hub setting (`wallsIoUrl`): the embed carries an account and
+   * a token that change from one edition to the next, and a URL compiled into the
+   * binary would have to be reinstalled on every machine to be corrected.
+   */
+  'wallsio',
+  /**
    * Waiting loop: sponsors, room program, other rooms, social accounts.
    *
    * What you leave running during breaks. The `sponsors` and `programme` modes
@@ -89,6 +103,38 @@ export const displayModeSchema = z.enum([
   'live',
 ])
 export type DisplayMode = z.infer<typeof displayModeSchema>
+
+/**
+ * The screens an event can withdraw, one by one.
+ *
+ * Not every edition uses every screen: an event with no sponsors, or one whose
+ * program is imported at the last minute, ends up with buttons in the control app
+ * that project an empty frame — and with loop pages nobody wants to see come
+ * round. Withdrawing a screen here removes it from the control app's choices and
+ * from the waiting loop; it says nothing about what is **currently** on the
+ * screen, which stays the operator's decision alone.
+ *
+ * Two values are deliberately missing. `loop` is the screen one always comes back
+ * to — withdrawing it would leave a room with nothing to fall back on — and
+ * `live` is not a choice but the state of being on air. Two values are here that
+ * are not display modes: `rooms` and `socials` exist only inside the loop, and an
+ * organizer withdrawing "the other rooms' page" does not care about that
+ * distinction.
+ */
+export const roomScreenSchema = z.enum([
+  'sponsors',
+  'programme',
+  'agenda',
+  'countdown',
+  'message',
+  'feedback',
+  'wall',
+  'question',
+  'wallsio',
+  'rooms',
+  'socials',
+])
+export type RoomScreen = z.infer<typeof roomScreenSchema>
 
 export const connectivitySchema = z.enum(['ONLINE', 'DEGRADED', 'OFFLINE'])
 export type Connectivity = z.infer<typeof connectivitySchema>

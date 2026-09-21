@@ -29,6 +29,16 @@ const PAGES: [string, string][] = [
 ]
 
 /**
+ * The page's markup, script bodies removed.
+ *
+ * These pages carry their whole script inline, and that script *writes* html: the
+ * tag names it assembles are ordinary text in the served document. Looking for a
+ * tag without setting the scripts aside would find the code that may one day
+ * build it, which is not the same claim at all.
+ */
+const markup = (html: string) => html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, '')
+
+/**
  * The pages' source files, for the writing guards.
  *
  * These pages are literal templates: what one writes in them goes through a
@@ -84,6 +94,17 @@ describe('pages served by the client', () => {
     expect(external).toEqual(ALLOWED[name] ?? [])
     expect(html).not.toMatch(/@import\s+url/)
 
+    /*
+     * And no frame onto the outside **in the served page**.
+     *
+     * The social wall is the second named external dependency, and the only one
+     * that is not written here: its address is a hub setting, so it arrives in the
+     * payload and is drawn by the script. What this line holds is that it stays
+     * there — a frame baked into the served html would load on every screen, for
+     * every room, including the ones showing something else.
+     */
+    expect(markup(html)).not.toMatch(/<iframe/)
+
     // Loaded `async`: nothing that is read should wait on the network.
     for (const address of external) {
       expect(html).toMatch(new RegExp('<script async src="' + address.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '"'))
@@ -105,6 +126,27 @@ describe('pages served by the client', () => {
     // A guard for the guard: if the extraction stopped finding anything at all,
     // the previous test would pass while checking nothing.
     expect(extractScripts(html).length).toBeGreaterThan(0)
+  })
+
+  it('the social wall is confined to its own screen', () => {
+    /*
+     * The one external dependency the page does not carry: walls.io, framed on
+     * the `wallsio` screen and nowhere else.
+     *
+     * It is accepted with its eyes open — a wall of posts collected five minutes
+     * ago is not a wall, and nothing local could stand in for it — but it must not
+     * spread: a room showing the sponsors, or cut off from the network, must load
+     * nothing at all. The payload travels in the served html, so a frame that had
+     * slipped out of its screen would be visible right here.
+     */
+    const html = renderProjectorPage({
+      initialPayload: { wallsIoUrl: 'https://my.walls.io/cloud-nord?token=b58a8dc' } as never,
+    })
+
+    expect(markup(html)).not.toMatch(/<iframe/)
+    // The address is there, as data: it is the screen that will do something with
+    // it, when the room is asked for that screen.
+    expect(html).toContain('my.walls.io')
   })
 
   it('the address screen escapes the value it puts back before the eyes', () => {

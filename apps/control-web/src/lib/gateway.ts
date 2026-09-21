@@ -680,6 +680,15 @@ export function payloadFromView(view: ControlView, nowMs: number): DisplayPayloa
     sponsorTiers: [],
     diagnostics: {
       obs: { A: null, B: null },
+      /*
+       * Null on a phone: the hub does not know it.
+       *
+       * The port fallback is settled on the room's machine, at startup, and only
+       * travels as far as the pages that machine serves itself. It is not a gap
+       * one works around from here anyway — what the badge asks for is a correction
+       * in OBS, on that machine, in front of it.
+       */
+      portFallback: null,
       questions: [],
       questionsRefreshedAt: null,
       questionsSession: null,

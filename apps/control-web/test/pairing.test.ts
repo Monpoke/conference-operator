@@ -104,7 +104,15 @@ describe('pairing code', () => {
       rooms: ROOMS,
       requestedRoomId: 'track-1',
     })
-    await flushPromises()
+    /*
+     * Waited for, not flushed once.
+     *
+     * The QR code comes from a `await import('qrcode')`: a dynamic import takes
+     * more than the microtasks a single flush drains, and under the load of the
+     * whole suite running at once it landed a tick too late. The test then failed
+     * only in a full run, never on its own — the worst shape a red suite can take.
+     */
+    await vi.waitFor(() => expect(wrapper.find('[data-role="pairing-qr"]').exists()).toBe(true))
 
     const qr = wrapper.get('[data-role="pairing-qr"]')
     expect(qr.html()).toContain('<svg')

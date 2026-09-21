@@ -8,6 +8,7 @@ import CpuIndicator from './CpuIndicator.vue'
 import HubIndicator from './HubIndicator.vue'
 import ModeBadge from './ModeBadge.vue'
 import ProtocolBadge from './ProtocolBadge.vue'
+import PortBadge from './PortBadge.vue'
 import RoomClock from './RoomClock.vue'
 import ScreensMenu from './ScreensMenu.vue'
 
@@ -107,6 +108,7 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', syncFulls
 
     <ModeBadge :mode="payload.diagnostics?.mode ?? null" />
     <ProtocolBadge :protocol="payload.diagnostics?.protocol ?? null" />
+    <PortBadge :port="payload.diagnostics?.portFallback ?? null" />
 
     <HubIndicator
       :connectivity="payload.state.connectivity"

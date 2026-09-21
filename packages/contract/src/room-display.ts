@@ -303,6 +303,16 @@ export interface ControlDiagnostics {
    * Only their disagreement is shown: a room older or newer than its hub.
    */
   protocol: { room: number; hub: number | null }
+  /**
+   * The room serves on a port other than the one it wanted, and which.
+   *
+   * `null` in the ordinary case — the room took its port, there is nothing to
+   * say. Filled in, it reports a fact no other indicator would betray: the room
+   * works, projects, records, and OBS's Browser Sources — which carry the old
+   * port in hard — are looking somewhere else. A room that has moved looks
+   * exactly like a room that is fine.
+   */
+  portFallback: { wanted: number; actual: number } | null
   /** Relayed room, `null` if relaying is not configured for this room. */
   relaySourceRoomId: string | null
   /**

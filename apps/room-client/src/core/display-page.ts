@@ -409,6 +409,16 @@ ${initialState}
   -->
   <main id="content" class="relative flex min-h-0 flex-1 flex-col overflow-hidden"></main>
 
+  <!--
+    The page marker, outside the layers on purpose.
+
+    Rendered inside the page, it left with it and came back with the next one: the
+    one thing on screen whose job is to say "it turns, and here is when" was also
+    the one thing that disappeared at every turn. Here it holds still while the
+    pages slide behind it, and its gauge goes on filling.
+  -->
+  <div id="pager" class="flex flex-none items-center justify-center gap-[1.2vmin]" hidden></div>
+
   <footer class="flex flex-none items-center justify-between gap-[2vmin] border-t border-white/10 pt-[2vmin] text-[2.2vmin] text-dim">
     <div id="next-up"></div>
     <div class="flex items-center gap-[1vmin]">
@@ -1105,26 +1115,40 @@ ${initialState}
     loopShownIndex = index
     loopDuration = page.duration
 
-    /**
-     * The progress marker.
-     *
-     * Three dots at the bottom say there is more to come, and that it turns:
-     * without them, a screen that changes on its own reads as an unstable screen.
-     * The active dot fills over the page's duration, which additionally says
-     * *when* it is going to turn.
-     *
-     * The duration is written here because it does not move for the whole page;
-     * the time already elapsed is set afterwards from the script — putting it in
-     * the html would make it change every second, and the slightest received
-     * state would restart a transition in the middle.
-     */
-    const position = pages.indexOf(page)
-    const dots = pages.map((_, i) => i === position
-      ? '<span class="dot active" style="--duration:' + page.duration + 'ms"></span>'
-      : '<span class="dot"></span>').join('')
+    return '<div class="flex min-h-0 flex-1 flex-col justify-center">' + page.render(data) + '</div>'
+  }
 
-    return '<div class="flex min-h-0 flex-1 flex-col justify-center">' + page.render(data) + '</div>' +
-      '<div class="mt-[2.5vmin] flex flex-none items-center justify-center gap-[1.2vmin]">' + dots + '</div>'
+  /**
+   * The progress marker, written into the scene's frame rather than into the page.
+   *
+   * Three dots at the bottom say there is more to come, and that it turns:
+   * without them, a screen that changes on its own reads as an unstable screen.
+   * The active dot fills over the page's duration, which additionally says *when*
+   * it is going to turn.
+   *
+   * Rewritten only when the row itself changes — the page that is active, or the
+   * number of pages. Rewriting it on every state would restart the gauge's fill
+   * from zero every second, which is the one thing it must never do.
+   *
+   * Neither the duration nor the elapsed time is written here: both are set from
+   * setGauge(), because the loop can stretch a page after it has been drawn.
+   */
+  function setPager(data) {
+    const pager = document.getElementById('pager')
+    if (data.state.mode !== 'loop') {
+      pager.hidden = true
+      pager.__html = null
+      return
+    }
+    const pages = loopPages(data)
+    const position = pages.indexOf(LOOP_PAGES[loopShownIndex])
+    const html = pages.map((_, i) => i === position
+      ? '<span class="dot active"></span>'
+      : '<span class="dot"></span>').join('')
+    pager.hidden = false
+    if (html === pager.__html) return
+    pager.__html = html
+    pager.innerHTML = html
   }
 
   /** Moves to the next page, skipping those with nothing to say. */
@@ -1181,8 +1205,8 @@ ${initialState}
    * Set here and not in the html: the value changes every second, and putting it
    * in the template would make the render differ permanently.
    */
-  function setGauge(layer) {
-    const gauge = layer?.querySelector('.dot.active')
+  function setGauge() {
+    const gauge = document.querySelector('#pager .dot.active')
     if (!gauge) return
     /*
      * The duration too, and no longer the html's alone: a screen that asks for
@@ -1440,10 +1464,16 @@ ${initialState}
         loopUntil += needed - loopDuration
         loopDuration = needed
       }
-      setGauge(alive)
     } else {
       applyScreen(data.state.mode, alive)
     }
+    /*
+     * After the page, and in every mode: it is the pager that hides itself
+     * outside the loop, and the gauge is set on the row this render leaves in
+     * place — the stretched duration included.
+     */
+    setPager(data)
+    setGauge()
   }
 
   function tick() {
@@ -1470,6 +1500,33 @@ ${initialState}
     }
   }
   setInterval(tick, 1000)
+
+  /**
+   * F, to put the projection full screen and to bring it back.
+   *
+   * The screen is set up with a keyboard at hand and left without one: whoever
+   * plugs the projector in needs the browser's frame gone in one gesture, and
+   * needs it back just as fast when the day's talk is over. The Electron room has
+   * its "Écrans" menu for this; a page opened in a browser — a rehearsal, a
+   * second screen, a spare machine — had nothing at all.
+   *
+   * The lowercase and the uppercase, because a caps lock left on is not a reason
+   * to refuse. The modifiers are left alone: Ctrl-F is the browser's search, and
+   * taking it would be taking something that is not ours.
+   *
+   * A guard, because the request is refused where the gesture does not count as
+   * one — and a refused full screen must not leave an unhandled rejection in the
+   * console of a machine nobody is watching.
+   */
+  addEventListener('keydown', (event) => {
+    if (event.key !== 'f' && event.key !== 'F') return
+    if (event.ctrlKey || event.metaKey || event.altKey) return
+    event.preventDefault()
+    try {
+      if (document.fullscreenElement) document.exitFullscreen?.()
+      else document.documentElement.requestFullscreen?.()?.catch(() => {})
+    } catch { /* an engine without the full screen api: the page stays as it is */ }
+  })
 
   // The embedded state: the page displays something as soon as it loads, without
   // waiting for the stream's first message.

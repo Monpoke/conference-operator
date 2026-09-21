@@ -249,6 +249,10 @@ const content = () => document.getElementById('content')!
  */
 const alive = () => content().querySelector('.layer:not(.leaving)')!
 
+/** The page marker, which lives in the scene's frame and not in the pages. */
+const pager = () => document.getElementById('pager')!
+const active = () => pager().querySelector('.dot.active') as HTMLElement
+
 beforeEach(() => {
   mountScreen()
 })
@@ -446,6 +450,73 @@ describe('agenda screen', () => {
  * export — all 27 match — so the address is derived from the already cached
  * program, with no API key and no network call on the day.
  */
+/**
+ * The keyboard, on a screen that is set up and then left alone.
+ *
+ * Whoever plugs the projector in needs the browser's frame gone in one gesture,
+ * and needs it back just as fast. The Electron room has its "Écrans" menu; a page
+ * opened in a plain browser had nothing.
+ */
+describe('full screen on F', () => {
+  let asked: string[]
+  let element: Element | null
+
+  beforeEach(() => {
+    asked = []
+    element = null
+    const root = document.documentElement as unknown as Record<string, unknown>
+    root.requestFullscreen = () => { asked.push('enter'); return Promise.resolve() }
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      get: () => element,
+    })
+    ;(document as unknown as Record<string, unknown>).exitFullscreen = () => {
+      asked.push('exit')
+      return Promise.resolve()
+    }
+  })
+
+  const press = (key: string, modifiers: Record<string, boolean> = {}): void => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key, ...modifiers }))
+  }
+
+  /**
+   * What was asked for, without counting how many times.
+   *
+   * Every mount replays the page's scripts in the same window, so the suite ends
+   * up with one listener per screen mounted before this one — a bench artefact:
+   * a real page loads once. What the key does is what matters here, not how many
+   * copies of the page heard it.
+   */
+  const actions = (): string[] => [...new Set(asked)]
+
+  it('goes full screen', () => {
+    press('f')
+
+    expect(actions()).toEqual(['enter'])
+  })
+
+  it('comes back from it, on the same key', () => {
+    element = document.documentElement
+    press('f')
+
+    expect(actions()).toEqual(['exit'])
+  })
+
+  it('does not mind a caps lock left on', () => {
+    press('F')
+
+    expect(actions()).toEqual(['enter'])
+  })
+
+  it('leaves Ctrl-F to the browser', () => {
+    // Taking the browser's search would be taking something that is not ours.
+    press('f', { ctrlKey: true })
+
+    expect(actions()).toEqual([])
+  })
+})
+
 describe('the "rate the talk" screen', () => {
   const WITH_QR = {
     ...STATE,
@@ -913,13 +984,39 @@ describe('waiting loop', () => {
     // It is the gauge that says *when* it is going to turn: a wrong duration is a
     // marker that lies, worse than no marker at all.
     mountScreen(inLoop())
-    const sponsors = content().querySelector('.dot.active') as HTMLElement
 
-    expect(sponsors.style.getPropertyValue('--duration')).toBe('12000ms')
+    expect(active().style.getPropertyValue('--duration')).toBe('12000ms')
 
     advance(13)
-    const program = alive().querySelector('.dot.active') as HTMLElement
-    expect(program.style.getPropertyValue('--duration')).toBe('15000ms')
+    expect(active().style.getPropertyValue('--duration')).toBe('15000ms')
+  })
+
+  it('holds the marker still while the pages slide behind it', () => {
+    /*
+     * The defect this covers: the marker was rendered inside the page, so it left
+     * with it and came back with the next one. The one thing on screen whose job
+     * is to say "it turns, and here is when" was also the one thing that
+     * disappeared at every turn.
+     *
+     * Outside the layers, it therefore survives the transition that carries the
+     * page away — including the moment when two layers coexist.
+     */
+    mountScreen(inLoop())
+    advance(13)
+
+    expect(content().querySelectorAll('.layer').length).toBe(2)
+    // Nothing of the marker inside the pages, neither the leaving one nor the new.
+    expect(content().querySelector('.dot')).toBeNull()
+    expect(pager().hidden).toBe(false)
+    expect(pager().querySelectorAll('.dot').length).toBe(4)
+  })
+
+  it('takes the marker away where nothing turns', () => {
+    // A marker in front of a screen one sets and leaves would announce a change
+    // that never comes.
+    mountScreen()
+
+    expect(pager().hidden).toBe(true)
   })
 
   /**

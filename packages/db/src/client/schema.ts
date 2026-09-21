@@ -40,6 +40,18 @@ export const roomSettings = sqliteTable('room_settings', {
    */
   socialLinksJson: text('social_links_json'),
   /**
+   * The screens this edition offers, pushed by the hub at sync.
+   *
+   * One column for two settings — the walls.io wall's address and the list of
+   * withdrawn screens — because they are read together and only ever together: it
+   * is the answer to "what may this room show?". Splitting them would cost a
+   * second migration for a second value read in the same breath.
+   *
+   * Cached like the rest: a room starting with an unreachable hub must offer what
+   * was decided yesterday, not everything the binary happens to know how to draw.
+   */
+  screensJson: text('screens_json'),
+  /**
    * The event's identity, pushed by the hub at sync.
    *
    * Cached for the same reason as the rest: a room starting with an unreachable

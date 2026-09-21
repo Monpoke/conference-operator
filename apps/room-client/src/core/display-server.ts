@@ -102,6 +102,14 @@ export interface DisplayServerOptions {
   pairing?: () => DisplayPayload['pairing']
   /** The event's accounts, read back from the local cache on every send. */
   socialLinks?: () => DisplayPayload['socialLinks']
+  /**
+   * What the hub leaves available, read back from the cache on every send.
+   *
+   * Absent — a test, a preview — every screen is offered and there is no social
+   * wall: the permissive fallback is the one that does not silently remove a
+   * button from an operator's console.
+   */
+  screens?: () => { wallsIoUrl: string | null; disabled: DisplayPayload['screensDisabled'] }
   /** The event's identity, read back from the local cache on every send. */
   event?: () => DisplayPayload['eventIdentity']
   /** The machine's version, handed to the control app. */
@@ -170,6 +178,7 @@ export class DisplayServer {
     const feedback = this.feedbackFor(state.currentSession?.id ?? null)
     const pairing = this.options.pairing?.() ?? null
     const socialLinks = this.options.socialLinks?.() ?? []
+    const screens = this.options.screens?.() ?? { wallsIoUrl: null, disabled: [] }
     const eventIdentity = this.options.event?.() ?? DEFAULT_EVENT_IDENTITY
     if (cached == null) {
       return {
@@ -185,6 +194,8 @@ export class DisplayServer {
         pairing,
         otherRooms: [],
         socialLinks,
+        wallsIoUrl: screens.wallsIoUrl,
+        screensDisabled: screens.disabled,
         eventIdentity,
       }
     }
@@ -205,6 +216,8 @@ export class DisplayServer {
       pairing,
       otherRooms: this.otherRooms(program, state.roomId),
       socialLinks,
+      wallsIoUrl: screens.wallsIoUrl,
+      screensDisabled: screens.disabled,
       eventIdentity,
     }
   }

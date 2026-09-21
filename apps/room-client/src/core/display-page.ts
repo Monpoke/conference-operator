@@ -969,6 +969,38 @@ ${initialState}
   }
 
   /**
+   * The event's social wall, hosted by walls.io.
+   *
+   * The only screen whose content **is not ours**: everything else on this page
+   * is drawn from the cached program and works with the network unplugged. This
+   * one is an iframe onto walls.io, and a room cut off shows the browser's failed
+   * frame. That is accepted rather than worked around — a wall of posts collected
+   * five minutes ago is not a wall, and nothing local could stand in for it.
+   *
+   * The address is the hub's setting, taken whole: it carries the account and the
+   * wall's read token, and their shape belongs to walls.io. With no address
+   * configured, the screen says so rather than framing a 404 in front of the room
+   * — and the loop, for its part, never gets here: it skips the page.
+   *
+   * Left alone once written. The page is only rewritten when its html changes,
+   * and this one does not: the iframe therefore keeps loading across a state that
+   * arrives every second. It does reload each time the loop comes back round,
+   * which is the price of a loop that rebuilds its page — about once a minute,
+   * and walls.io is built to be embedded.
+   */
+  function renderWallsIo(data) {
+    const url = data.wallsIoUrl
+    if (!url) {
+      return '<div class="' + SECTION_TITLE + '">Mur social</div>' +
+        '<div class="text-[3vmin] text-dim">Aucun mur configuré sur le hub.</div>'
+    }
+    return '<div class="' + SECTION_TITLE + '">Sur les réseaux</div>' +
+      '<div class="min-h-0 flex-1">' +
+      '<iframe src="' + escape(url) + '" title="Mur social" loading="eager" ' +
+      'class="h-full w-full rounded-[1.4vmin] border-0 bg-white/5"></iframe></div>'
+  }
+
+  /**
    * What is going on next door.
    *
    * The only piece of information an attendee sitting in this room cannot guess:
@@ -1043,6 +1075,17 @@ ${initialState}
    * logos is looked at. They are deliberately long — a screen that changes every
    * three seconds draws the eye during a break where people are talking.
    */
+  /**
+   * Has this screen been withdrawn from the edition, on the hub?
+   *
+   * Read here and not only in the control app, because the loop chooses on its
+   * own: withdrawing the sponsors screen and still seeing it come round every
+   * twelve seconds in front of the room would make the setting look broken. It
+   * only ever governs what is *offered* — a screen the operator has explicitly
+   * put up stays up, whatever this says.
+   */
+  const offered = (data, mode) => !(data.screensDisabled ?? []).includes(mode)
+
   const LOOP_PAGES = [
     { mode: 'sponsors', duration: 12_000, available: (d) => (d.sponsorTiers ?? []).some((t) => t.sponsors.length > 0), render: renderSponsors },
     /*
@@ -1056,6 +1099,16 @@ ${initialState}
     { mode: 'agenda', duration: 15_000, available: (d) => (d.sessions ?? []).length > 0, render: renderAgenda },
     { mode: 'rooms', duration: 12_000, available: (d) => (d.otherRooms ?? []).some((s) => s.session != null), render: renderOtherRooms },
     { mode: 'socials', duration: 10_000, available: (d) => (d.socialLinks ?? []).length > 0, render: renderSocial },
+    /*
+     * Last, and the longest.
+     *
+     * It is the only page one actually *reads* — a dozen posts, each of them a
+     * sentence — where the others are looked at. And it is the only one loading
+     * from outside: arriving last leaves the iframe the whole of the preceding
+     * pages to load in, so the room sees a filled wall rather than a frame
+     * assembling itself.
+     */
+    { mode: 'wallsio', duration: 20_000, available: (d) => Boolean(d.wallsIoUrl), render: renderWallsIo },
   ]
   /**
    * An index into LOOP_PAGES, and not into the list of available pages.
@@ -1074,7 +1127,8 @@ ${initialState}
   let loopShownIndex = 0
   let loopDuration = 0
 
-  const loopPages = (data) => LOOP_PAGES.filter((page) => page.available(data))
+  const loopPages = (data) =>
+    LOOP_PAGES.filter((page) => offered(data, page.mode) && page.available(data))
 
   /**
    * The first page that has something to show, starting from this index.
@@ -1084,7 +1138,8 @@ ${initialState}
   function pageFrom(data, start) {
     for (let step = 0; step < LOOP_PAGES.length; step += 1) {
       const index = (start + step) % LOOP_PAGES.length
-      if (LOOP_PAGES[index].available(data)) return index
+      const page = LOOP_PAGES[index]
+      if (offered(data, page.mode) && page.available(data)) return index
     }
     return -1
   }
@@ -1356,6 +1411,7 @@ ${initialState}
       feedback: renderFeedback,
       question: renderQuestion,
       wall: renderWall,
+      wallsio: renderWallsIo,
       loop: renderLoop,
       live: () => '',
     }

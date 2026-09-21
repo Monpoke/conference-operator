@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { desc, eq, sql } from 'drizzle-orm'
+import { z } from 'zod'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { openDatabase } from '@conference-operator/db'
@@ -17,10 +18,12 @@ import {
   eventIdentitySchema,
   DEFAULT_EVENT_IDENTITY,
   roomConfigSchema,
+  roomScreenSchema,
   socialLinkSchema,
   vodSyncSchema,
   type EventIdentity,
   type RoomConfig,
+  type RoomScreen,
   type SocialLink,
   type VodSync,
 } from '@conference-operator/contract'
@@ -38,6 +41,37 @@ function readSocialLinks(raw: string | null): SocialLink[] {
     return parsed.success ? parsed.data : []
   } catch {
     return []
+  }
+}
+
+/** What the room may show: the social wall's address, and what was withdrawn. */
+export interface RoomScreens {
+  wallsIoUrl: string | null
+  disabled: RoomScreen[]
+}
+
+const NO_SCREEN_RESTRICTION: RoomScreens = { wallsIoUrl: null, disabled: [] }
+
+/**
+ * The offered screens, read back from the local cache.
+ *
+ * Tolerant like the accounts, and the fallback is deliberately "nothing
+ * withdrawn": a cache we can no longer read must leave the operator every screen
+ * rather than take some away with nothing on the page to say why. The missing
+ * wall address has the same tone — the screen simply is not offered.
+ */
+function readScreens(raw: string | null): RoomScreens {
+  if (raw == null) return NO_SCREEN_RESTRICTION
+  try {
+    const parsed = z
+      .object({
+        wallsIoUrl: z.string().nullable().default(null),
+        disabled: z.array(roomScreenSchema).default([]),
+      })
+      .safeParse(JSON.parse(raw))
+    return parsed.success ? parsed.data : NO_SCREEN_RESTRICTION
+  } catch {
+    return NO_SCREEN_RESTRICTION
   }
 }
 
@@ -132,6 +166,8 @@ export interface RoomSettings {
   activeContentHash: string | null
   /** The event's accounts, pushed by the hub. Cached like the program. */
   socialLinks: SocialLink[]
+  /** The screens the hub leaves available, and the social wall's address. */
+  screens: RoomScreens
   /**
    * The event's name, pushed by the hub. Cached for the same reason.
    *
@@ -209,6 +245,7 @@ export class LocalStore {
       // A decorative setting: an unreadable cache must not stop the room from
       // starting, the loop will simply skip its social page.
       socialLinks: readSocialLinks(row?.socialLinksJson ?? null),
+      screens: readScreens(row?.screensJson ?? null),
       event: readIdentity(row?.eventIdentityJson ?? null),
       vod: readVod(row?.vodJson ?? null),
       nextSeq: row?.nextSeq ?? 1,
@@ -224,6 +261,7 @@ export class LocalStore {
     if (patch.config !== undefined) update.configJson = JSON.stringify(patch.config)
     if (patch.activeContentHash !== undefined) update.activeContentHash = patch.activeContentHash
     if (patch.socialLinks !== undefined) update.socialLinksJson = JSON.stringify(patch.socialLinks)
+    if (patch.screens !== undefined) update.screensJson = JSON.stringify(patch.screens)
     if (patch.event !== undefined) update.eventIdentityJson = JSON.stringify(patch.event)
     if (patch.vod !== undefined) update.vodJson = patch.vod == null ? null : JSON.stringify(patch.vod)
     if (patch.lastCommandSeq !== undefined) update.lastCommandSeq = patch.lastCommandSeq

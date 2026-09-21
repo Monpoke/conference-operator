@@ -31,6 +31,10 @@ const SETTINGS = {
   autoEndEnabled: true,
   autoEndGraceMinutes: 5,
   socialLinks: [],
+  wallsIoUrl: null,
+  // Two screens withdrawn to start with: what the panel shows is a state that
+  // already exists, not a blank form.
+  screensDisabled: ['sponsors'],
 }
 
 const STORAGE = {
@@ -251,6 +255,33 @@ describe('settings view', () => {
     // would refuse an empty URL.
     const sent = calls.find((call) => call.path === 'settings/update')
     expect((sent?.input as { socialLinks: unknown[] }).socialLinks).toEqual([])
+  })
+
+  it('sends back the screens left on, inverted', async () => {
+    const { calls, wrapper } = await mountView()
+
+    // The box is ticked when the screen is **on**: a checkbox one ticks to switch
+    // a screen off reads backwards. Ticking the sponsors puts them back.
+    await wrapper.get('[data-screen="sponsors"] input').setValue(true)
+    await wrapper.get('[data-screen="countdown"] input').setValue(false)
+    await wrapper.get('#btn-screens').trigger('click')
+    await flushPromises()
+
+    const sent = calls.find((call) => call.path === 'settings/update')
+    expect((sent?.input as { screensDisabled: string[] }).screensDisabled).toEqual(['countdown'])
+  })
+
+  it('sends no wall rather than an empty address', async () => {
+    const { calls, wrapper } = await mountView()
+
+    // An empty string would travel down to the rooms, fail the contract's URL
+    // check, and take the whole save with it.
+    await wrapper.get('#walls-io-url').setValue('   ')
+    await wrapper.get('#btn-screens').trigger('click')
+    await flushPromises()
+
+    const sent = calls.find((call) => call.path === 'settings/update')
+    expect((sent?.input as { wallsIoUrl: string | null }).wallsIoUrl).toBeNull()
   })
 
   it('converts the rate shown in kB/s into bytes', async () => {

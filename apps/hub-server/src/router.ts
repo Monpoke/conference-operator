@@ -560,6 +560,19 @@ export const router = os.router({
         // Sent down with the rest: the waiting loop must run through in full
         // without touching the network once the room is synchronized.
         socialLinks: settings.socialLinks,
+        /**
+         * The social wall's address and the screens withdrawn from this edition.
+         *
+         * Sent down with the rest and cached by the room, for the same reason: the
+         * waiting loop must run through in full without touching the network, and
+         * a room that starts with the hub unreachable must offer the screens
+         * decided yesterday rather than all of them.
+         *
+         * The walls.io embed does need the Internet to *display* — the wall lives
+         * over there — but knowing whether there is one must not.
+         */
+        wallsIoUrl: settings.wallsIoUrl,
+        screensDisabled: settings.screensDisabled,
         // Same reason, and it is what makes the screens renameable: the room
         // titles its windows with the name the hub decided, not with a constant
         // compiled into the binary installed on the machine.

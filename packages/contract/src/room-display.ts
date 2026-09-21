@@ -5,6 +5,7 @@ import type {
   DisplayMode,
   ExecutionMode,
   ObsInstance,
+  RoomScreen,
   SceneRole,
 } from './primitives.js'
 import type { SceneRoleMap, SessionStatus } from './room-state.js'
@@ -397,6 +398,24 @@ export interface DisplayPayload {
   /** The event's accounts, set on the hub. Empty = the loop skips this page. */
   socialLinks: { network: string; handle: string; url: string }[]
   /**
+   * The walls.io wall's embed address, set on the hub. `null` = no such screen.
+   *
+   * Travels with the rest and is cached: the embed itself needs the Internet —
+   * nothing can be done about that, the wall lives at walls.io — but *knowing
+   * whether there is a wall* must not, or a room started before the hub answered
+   * would offer the screen to nobody.
+   */
+  wallsIoUrl: string | null
+  /**
+   * The screens this edition has withdrawn, decided on the hub.
+   *
+   * Read in two places, and it is the same list in both: the control app removes
+   * them from its choices, the waiting loop skips them. Cached like the rest, so
+   * that a room that starts with the hub unreachable offers what was decided
+   * yesterday rather than everything.
+   */
+  screensDisabled: RoomScreen[]
+  /**
    * Event name, decided by the hub and read back from the local cache.
    *
    * Distinct from the program's `event.name`: the hub can contradict it by
@@ -496,6 +515,9 @@ export const FIELDS_BY_VIEW: Record<DisplayView, readonly (keyof DisplayPayload)
     // Two fields for the waiting loop alone: they only move at a slot change and
     // at sync, so they cost the flow nothing.
     'otherRooms', 'socialLinks',
+    // The walls.io address and the withdrawn screens: the loop reads both, and
+    // both only move at sync.
+    'wallsIoUrl', 'screensDisabled',
     // The event name: two words that only move at sync, and without which every
     // page would retitle itself with a compiled-in constant.
     'eventIdentity',
@@ -510,6 +532,9 @@ export const FIELDS_BY_VIEW: Record<DisplayView, readonly (keyof DisplayPayload)
     // is waste — but it only changes at sync, and splitting the field in two would
     // cost more to read than it saves.
     'wall',
+    // The screens menu offers what the hub left available, and nothing else: a
+    // button withdrawn on the hub must disappear here too, not fail on use.
+    'screensDisabled',
   ],
 }
 

@@ -215,28 +215,6 @@ export function renderProjectorPage(options: ProjectorPageOptions = {}): string 
   }
 
   /*
-   * Scrolling the program.
-   *
-   * The day is two to three times the screen's height. Rather than jumping to the
-   * running slot and stopping there, the list starts from it and slides towards
-   * what follows while the page is displayed. The two plateaus leave time to read
-   * before and after the movement.
-   *
-   * As a translation, not as scrollTop: native scrolling goes back through layout
-   * on every frame, the translation does not.
-   */
-  .scroller { overflow: hidden; }
-  .scrolling {
-    animation-name: scroll;
-    animation-timing-function: cubic-bezier(.4, 0, .2, 1);
-    animation-fill-mode: both;
-  }
-  @keyframes scroll {
-    0%, 14% { transform: translateY(var(--from)); }
-    86%, 100% { transform: translateY(var(--to)); }
-  }
-
-  /*
    * The same program, on the screen one sets and leaves.
    *
    * The \`programme\` mode does not turn: it used to bring the running slot to the
@@ -1066,10 +1044,18 @@ ${initialState}
    * three seconds draws the eye during a break where people are talking.
    */
   const LOOP_PAGES = [
-    { duration: 12_000, available: (d) => (d.sponsorTiers ?? []).some((t) => t.sponsors.length > 0), render: renderSponsors },
-    { duration: 15_000, available: (d) => (d.sessions ?? []).length > 0, render: renderProgram },
-    { duration: 12_000, available: (d) => (d.otherRooms ?? []).some((s) => s.session != null), render: renderOtherRooms },
-    { duration: 10_000, available: (d) => (d.socialLinks ?? []).length > 0, render: renderSocial },
+    { mode: 'sponsors', duration: 12_000, available: (d) => (d.sponsorTiers ?? []).some((t) => t.sponsors.length > 0), render: renderSponsors },
+    /*
+     * The day, in the loop, is the agenda and not the scrolled program.
+     *
+     * Both show the same thing; only one of them is readable in a page one
+     * crosses. A list that slides asks the room to wait for its slot to come
+     * round, and a room crossing a corridor does not wait — the agenda puts the
+     * whole day on the screen at once, reduced until it fits.
+     */
+    { mode: 'agenda', duration: 15_000, available: (d) => (d.sessions ?? []).length > 0, render: renderAgenda },
+    { mode: 'rooms', duration: 12_000, available: (d) => (d.otherRooms ?? []).some((s) => s.session != null), render: renderOtherRooms },
+    { mode: 'socials', duration: 10_000, available: (d) => (d.socialLinks ?? []).length > 0, render: renderSocial },
   ]
   /**
    * An index into LOOP_PAGES, and not into the list of available pages.
@@ -1198,52 +1184,14 @@ ${initialState}
   function setGauge(layer) {
     const gauge = layer?.querySelector('.dot.active')
     if (!gauge) return
+    /*
+     * The duration too, and no longer the html's alone: a screen that asks for
+     * its full round stretches the page after it has been written. A gauge left
+     * on the announced duration would then fill up well before the page turns,
+     * and say the wrong thing about the only moment it exists to announce.
+     */
+    gauge.style.setProperty('--duration', loopDuration + 'ms')
     gauge.style.setProperty('--elapsed', Math.max(0, loopDuration - (loopUntil - Date.now())) + 'ms')
-  }
-
-  /**
-   * Slides the program, from the running slot towards the rest of the day.
-   *
-   * Both bounds are measured after insertion: they depend on the screen's real
-   * height, which goes from 1024x768 to 4K. Outside a real browser all these
-   * measurements are zero, the class is not applied, and the list simply stays
-   * where it is.
-   */
-  /**
-   * Where the program resumes on the loop's next pass.
-   *
-   * \`null\` means "from the running slot": that is where the first pass starts,
-   * and where every return to the loop starts again. Afterwards each pass takes
-   * over where the previous one stopped, and goes back to the top of the day once
-   * the end has been shown. Without this, the fifteen seconds always replayed the
-   * same screenful and the end of the afternoon was never displayed — the room
-   * read a program that stopped in the middle.
-   */
-  let programResumeAt = null
-
-  function setScroll(layer) {
-    const frame = layer?.querySelector('.scroller')
-    const list = frame?.firstElementChild
-    if (!frame || !list || list.classList.contains('scrolling')) return
-
-    const height = frame.clientHeight
-    const travel = list.scrollHeight - height
-    if (!(travel > 0)) return
-
-    const anchor = layer.querySelector('.anchor')
-    const aim = anchor ? anchor.offsetTop - (height - anchor.offsetHeight) / 2 : 0
-    const start = programResumeAt ?? aim
-    const from = Math.max(0, Math.min(start, travel))
-    // About one screen further down, without ever going past the end of the day.
-    const to = Math.min(from + height * 0.85, travel)
-    // The end of the day has been read: the next pass starts again from the
-    // morning, which is also the moment the room is looking for it.
-    programResumeAt = to >= travel ? 0 : to
-
-    list.style.setProperty('--from', -from + 'px')
-    list.style.setProperty('--to', -to + 'px')
-    list.style.animationDuration = loopDuration + 'ms'
-    list.classList.add('scrolling')
   }
 
   /**
@@ -1263,11 +1211,15 @@ ${initialState}
   function setProgramCycle(layer) {
     const frame = layer?.querySelector('.scroller')
     const list = frame?.firstElementChild
-    if (!frame || !list || list.classList.contains('cycling')) return
+    if (!frame || !list) return null
+    // Already walking: we do not restart it, but we still say how long it needs —
+    // the loop asks on every render, and answering nothing here would cut the
+    // page short on the first state that arrives.
+    if (list.classList.contains('cycling')) return Number.parseInt(list.style.animationDuration, 10) || null
 
     const height = frame.clientHeight
     const travel = list.scrollHeight - height
-    if (!(travel > 0)) return
+    if (!(travel > 0)) return null
 
     const anchor = layer.querySelector('.anchor')
     const aim = anchor ? anchor.offsetTop - (height - anchor.offsetHeight) / 2 : 0
@@ -1282,8 +1234,10 @@ ${initialState}
     list.style.setProperty('--from', -from + 'px')
     list.style.setProperty('--end', -travel + 'px')
     // The round trip covers the travel twice; the plateaus take a fifth of it.
-    list.style.animationDuration = Math.round(travel / height * 22_000 + 12_000) + 'ms'
+    const duration = Math.round(travel / height * 22_000 + 12_000)
+    list.style.animationDuration = duration + 'ms'
     list.classList.add('cycling')
+    return duration
   }
 
   /**
@@ -1320,6 +1274,35 @@ ${initialState}
       scale = Math.round((scale - 0.03) * 100) / 100
       flow.style.setProperty('--agenda-scale', scale)
     }
+  }
+
+  /**
+   * The behaviour a screen carries with it, wherever it is shown.
+   *
+   * The loop does not re-implement the screens, it shows them: the same renderer
+   * must therefore be followed by the same measurements, whether the console
+   * asked for that screen or whether the loop is passing through it. Keyed on the
+   * **screen's** mode and not on the state's, because in the loop the two differ
+   * — the state says \`loop\`, the page on screen says \`agenda\`.
+   *
+   * Returns the time the screen needs to be read whole when it has an opinion on
+   * it: the program's round trip lasts as long as the day is tall. Null when any
+   * duration suits, which is the case of every still screen.
+   */
+  function applyScreen(mode, layer) {
+    if (mode === 'programme') {
+      // The centring is what the first frame shows; the cycle then walks the
+      // whole day, and does nothing where nothing is measurable.
+      layer?.querySelector('.anchor')?.scrollIntoView({ block: 'center' })
+      return setProgramCycle(layer)
+    }
+    if (mode === 'agenda') {
+      // Nothing to centre: the day is there whole, only its size is negotiated.
+      fitAgenda(layer)
+      return null
+    }
+    layer?.querySelector('.anchor')?.scrollIntoView({ block: 'center' })
+    return null
   }
 
   /**
@@ -1382,7 +1365,7 @@ ${initialState}
      * Leaving on a message then coming back must resume at the sponsors, not land
      * in the middle of the program with two seconds before the next switch.
      */
-    if (data.state.mode !== 'loop') { loopIndex = 0; loopUntil = 0; programResumeAt = null }
+    if (data.state.mode !== 'loop') { loopIndex = 0; loopUntil = 0 }
     /**
      * Redrawn only when the render changes.
      *
@@ -1443,16 +1426,23 @@ ${initialState}
     // header. Since the result is kept per URL, the sweep costs nothing more.
     cropLogos(document)
     if (data.state.mode === 'loop') {
+      /*
+       * The page on screen decides, not the state.
+       *
+       * The loop shows the screens as they are, so it applies what each one
+       * carries — and gives it the time that screen says it needs. A page that
+       * walks the whole day would otherwise turn in the middle of its journey,
+       * which is exactly the movement one must not show a room: it starts, and
+       * it never arrives.
+       */
+      const needed = applyScreen(LOOP_PAGES[loopShownIndex].mode, alive)
+      if (needed != null && needed > loopDuration) {
+        loopUntil += needed - loopDuration
+        loopDuration = needed
+      }
       setGauge(alive)
-      setScroll(alive)
-    } else if (data.state.mode === 'programme') {
-      // The centring is what the first frame shows; the cycle then walks the
-      // whole day, and does nothing where nothing is measurable.
-      alive?.querySelector('.anchor')?.scrollIntoView({ block: 'center' })
-      setProgramCycle(alive)
-    } else if (data.state.mode === 'agenda') {
-      // Nothing to centre: the day is there whole, only its size is negotiated.
-      fitAgenda(alive)
+    } else {
+      applyScreen(data.state.mode, alive)
     }
   }
 

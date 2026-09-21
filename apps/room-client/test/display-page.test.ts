@@ -762,9 +762,9 @@ describe('waiting loop', () => {
   it('chains the pages by itself', () => {
     mountScreen(inLoop())
 
-    // Sponsors 12 s, then the program.
+    // Sponsors 12 s, then the day — shown as the agenda, the screen one crosses.
     advance(13)
-    expect(alive().textContent).toContain('Programme de la salle')
+    expect(alive().querySelector('.agenda')).not.toBeNull()
 
     // Then the other rooms, then the social accounts.
     advance(16)
@@ -800,29 +800,43 @@ describe('waiting loop', () => {
     expect(alive().textContent).not.toContain('#CloudNord')
   })
 
-  it('shows the rest of the day on the program\'s next pass', () => {
+  it('shows the whole day rather than a screenful of it', () => {
     /*
-     * Each pass used to replay the same screenful, taken from the running slot:
-     * whatever happened, the end of the afternoon was never displayed. A pass now
-     * takes over where the previous one stopped, and goes back to the morning
-     * once the end has been read.
+     * What the loop used to do: slide the program by one screenful per pass, so
+     * the room saw a fragment of the day and had to wait for the loop to come
+     * round for the rest. The agenda answers it in one screen — reduced until it
+     * fits, never cut.
+     *
+     * happy-dom lays nothing out, so the reduction itself cannot be observed
+     * here; what is checked is that the whole day is on the page, from the first
+     * slot to the last.
      */
-    stubLayout({ frame: 400, list: 1_200 })
-    try {
-      mountScreen(inLoop())
-      const stops: string[] = []
-      // Three passes of the program, one full turn of the loop apart.
-      for (let pass = 0; pass < 3; pass += 1) {
-        advance(pass === 0 ? 13 : 52)
-        stops.push((alive().querySelector('.scrolling') as HTMLElement).style.getPropertyValue('--to'))
-      }
+    mountScreen(inLoop())
+    advance(13)
 
-      // The end of the day is reached, and the next pass starts again from it.
-      expect(stops[1]).not.toBe(stops[0])
-      expect(stops).toContain('-800px')
-    } finally {
-      restoreLayout()
-    }
+    const text = alive().textContent ?? ''
+    expect(alive().querySelectorAll('.agenda-item').length).toBe(SESSIONS.length)
+    expect(text).toContain('Accueil')
+    expect(text).toContain('Houston')
+    // And no scrolling frame: the loop no longer carries a sliding list at all.
+    expect(alive().querySelector('.scroller')).toBeNull()
+  })
+
+  it('applies the screen\'s own behaviour, and not the loop\'s idea of it', () => {
+    /*
+     * The defect this covers: the loop rendered the screens but ran its own
+     * after-render code, keyed on the state's mode — which says `loop`. The
+     * screens therefore behaved in the loop differently from the way they behave
+     * when the console calls them up, and the day was the visible victim.
+     *
+     * `--agenda-scale` is the proof that fitAgenda() ran on this page: it is set
+     * from the script, never from the html.
+     */
+    mountScreen(inLoop())
+    advance(13)
+
+    const flow = alive().querySelector('.agenda') as HTMLElement
+    expect(flow.style.getPropertyValue('--agenda-scale')).not.toBe('')
   })
 
   it('comes back to the beginning after the last screen', () => {
@@ -837,11 +851,11 @@ describe('waiting loop', () => {
     // seconds on an empty frame: it shrinks to what exists.
     mountScreen(inLoop({ sponsorTiers: [], socialLinks: [] }))
 
-    expect(alive().textContent).toContain('Programme de la salle')
+    expect(alive().querySelector('.agenda')).not.toBeNull()
     advance(16)
     expect(alive().textContent).toContain('Pendant ce temps')
     advance(13)
-    expect(alive().textContent).toContain('Programme de la salle')
+    expect(alive().querySelector('.agenda')).not.toBeNull()
   })
 
   it('says what is going on next door, and at what time', () => {
@@ -883,7 +897,7 @@ describe('waiting loop', () => {
 
     expect(content().querySelectorAll('.layer').length).toBe(2)
     expect(content().querySelector('.leaving')?.textContent).toContain('Nos partenaires')
-    expect(alive().textContent).toContain('Programme de la salle')
+    expect(alive().querySelector('.agenda')).not.toBeNull()
   })
 
   it('never stacks two dead layers', () => {

@@ -1,4 +1,4 @@
-import type { Boucle, BoucleLogo, BoucleView, SponsorRef } from '@conference-operator/contract'
+import { DUREES_PAR_DEFAUT, type Boucle, type BoucleLogo, type BoucleView, type SponsorRef } from '@conference-operator/contract'
 import {
   defaultSponsorPages,
   programSponsors,
@@ -61,8 +61,10 @@ export function buildBoucleView(sources: BoucleSources): BoucleView {
       logos: annonce.logos.map(logo),
     })),
     merciSponsors: boucle.merciSponsors,
+    durees: { ...DUREES_PAR_DEFAUT, ...boucle.durees },
     sponsorPages: pages.map((page) => ({
       titre: page.titre,
+      duree: page.duree ?? null,
       rangs: page.rangs.map((row) => ({ taille: row.taille, logos: row.logos.map(logo) })),
     })),
     mur: {

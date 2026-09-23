@@ -181,6 +181,7 @@ const SCREENS: { value: string; label: string; hint: string }[] = [
   { value: 'posts', label: 'Mur de posts (manuel)', hint: 'Des posts saisis à la main, quand walls.io est absent.' },
   { value: 'code-of-conduct', label: 'Code de conduite', hint: "Le rappel, et le QR vers l'intégralité." },
   { value: 'event-feedback', label: "QR feedbacks de l'événement", hint: 'Le QR OpenFeedback de la journée entière.' },
+  { value: 'other-agendas', label: 'Plannings des autres salles', hint: 'La journée des autres salles, après celle de la salle.' },
 ]
 
 const wallsIoUrl = ref('')

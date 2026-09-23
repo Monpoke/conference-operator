@@ -25,7 +25,10 @@ function finEffective(sessions: Session[], index: number): number | null {
 export function programme(el: HTMLElement): Scene {
   el.innerHTML = `
     <header class="bande">
-      <h2 class="f-titre" data-titre data-effet="mots"></h2>
+      <div class="bande-titre">
+        <h2 class="f-titre" data-titre data-effet="mots"></h2>
+        <span class="pastille pastille-ici" data-effet="pop" data-delai="500">Vous êtes ici</span>
+      </div>
       <p class="bande-droite" data-horloge>--:--</p>
     </header>
     <div class="contenu scroller"><ol class="programme-liste" data-effet-enfants="entre" data-cible=".seance" data-pas="40" data-delai="200"></ol></div>
@@ -68,13 +71,17 @@ export function programme(el: HTMLElement): Scene {
       liste.replaceChildren(...data.sessions.map((s, index) => {
         const end = finEffective(data.sessions, index)
         const classes = ['seance']
-        if (s.kind === 'break') classes.push('est-pause')
+        // A shared slot — breakfast, lunch, coffee — and not any slot without a
+        // speaker: the opening keynote has none, and is no break.
+        const pause = s.kind === 'break' && ((s.roomSpan ?? 1) > 1 || s.sharedFrom != null)
+        if (pause) classes.push('est-pause')
         if (s.id === running) classes.push('est-encours')
         else if (end != null && end < now) classes.push('est-passee')
         if (s.id === anchor) classes.push('anchor')
         const li = cree('li', classes.join(' '))
         const heure = cree('div', 'seance-heure')
         heure.append(cree('strong', null, heureDans(s.startsAtMs, data.timezone)))
+        if (end != null) heure.append(cree('span', null, heureDans(end, data.timezone)))
         const corps = cree('div', 'seance-corps')
         corps.append(cree('p', 'seance-titre', s.title))
         const qui = s.speakers.map((p) => (p.company ? `${p.name} (${p.company})` : p.name)).join(', ')

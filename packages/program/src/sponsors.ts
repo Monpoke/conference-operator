@@ -57,6 +57,8 @@ export interface SponsorPlacement {
 
 export interface SponsorPageLayout {
   titre: string
+  /** Seconds on screen for this page; absent or `null` = the sponsor pages' duration. */
+  duree?: number | null
   rangs: { taille: number; logos: SponsorPlacement[] }[]
 }
 

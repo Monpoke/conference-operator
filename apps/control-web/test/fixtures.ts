@@ -163,6 +163,7 @@ export function payload(overrides: Partial<DisplayPayload> = {}): DisplayPayload
     screensDisabled: [],
     boucle: null,
     agenda: [],
+    plannings: [],
     wallsIoReachable: false,
     eventIdentity: { name: 'Cloud Nord 2026', shortName: 'Cloud Nord' },
     feedback: null,

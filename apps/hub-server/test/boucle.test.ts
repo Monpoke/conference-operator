@@ -13,6 +13,7 @@ import { AssetStore } from '../src/services/assets.js'
 import { SettingsService } from '../src/services/sessions.js'
 import { createHub, type Hub } from '../src/server.js'
 import { provisionOperator } from '../src/operators.js'
+import { previewTime } from '../src/pages/boucle-preview.js'
 
 /**
  * The welcome loop's content, on the hub side: a setting saved one panel at a
@@ -38,7 +39,7 @@ const PIXEL = Buffer.from(
 describe('the loop settings', () => {
   it('merge section by section', () => {
     const settings = new SettingsService(openHubDatabase(':memory:').orm)
-    const pages = [{ titre: 'Merci', rangs: [{ taille: 1, logos: [{ sponsor: 'mtg', nom: 'MTG', logo: null, echelle: 0.7 }] }] }]
+    const pages = [{ titre: 'Merci', duree: null, rangs: [{ taille: 1, logos: [{ sponsor: 'mtg', nom: 'MTG', logo: null, echelle: 0.7 }] }] }]
     settings.update({ boucle: { sponsorPages: pages, merciSponsors: 'Merci !' } })
 
     // The messages panel saves its own section. The sponsor pages laid out by
@@ -237,6 +238,72 @@ describe('the loop over the wire', () => {
     expect(html).toContain('window.__PREVIEW__ = true')
   })
 
+  it('draws the preview at another time, and the hub clock does not move', async () => {
+    importProgram()
+    const before = hub.services.clock.now()
+    const html = await (await fetch(`${origin}/boucle/apercu?heure=09:15`, {
+      headers: { authorization: `Bearer ${await signIn()}` },
+    })).text()
+    const state = JSON.parse(html.match(/<script id="etat-initial" type="application\/json">(.*?)<\/script>/)![1]!)
+    // 09:15 in Paris on the event's day: the opening keynote is on.
+    expect(state.state.currentSession.title).toBe("Keynote d'ouverture")
+    expect(Math.abs(hub.services.clock.now() - before)).toBeLessThan(60_000)
+  })
+
+  it('opens the preview to the public with the key, and only with it', async () => {
+    importProgram()
+    const key = 'Pk9-public_key_for_the_loop_2026'
+    expect((await fetch(`${origin}/boucle/apercu?cle=${key}`)).status).toBe(401)
+
+    await admin.settings.update({ boucle: { lienPublic: key } })
+    const open = await fetch(`${origin}/boucle/apercu?cle=${key}&salle=${TRACK_1}`)
+    expect(open.status).toBe(200)
+    expect(await open.text()).toContain('<div id="stage">')
+    expect((await fetch(`${origin}/boucle/apercu?cle=${key.slice(0, -1)}x`)).status).toBe(401)
+
+    // Taking the link back cuts it.
+    await admin.settings.update({ boucle: { lienPublic: null } })
+    expect((await fetch(`${origin}/boucle/apercu?cle=${key}`)).status).toBe(401)
+  })
+
+  it('previews the other rooms\' schedules with their durations', async () => {
+    importProgram()
+    await admin.settings.update({
+      boucle: { plannings: { 'hands-on': { afficher: false, duree: 15 }, 'track-2-mf-1092': { afficher: true, duree: 30 } } },
+    })
+    const html = await (await fetch(`${origin}/boucle/apercu?salle=${TRACK_1}`, {
+      headers: { authorization: `Bearer ${await signIn()}` },
+    })).text()
+    const state = JSON.parse(html.match(/<script id="etat-initial" type="application\/json">(.*?)<\/script>/)![1]!)
+    expect(state.plannings.map((p: { roomId: string; duree: number }) => [p.roomId, p.duree])).toEqual([['track-2-mf-1092', 30]])
+    expect(state.plannings[0].agenda.length).toBeGreaterThan(0)
+  })
+
+  it('draws the global screen: every room\'s day, none of its own', async () => {
+    importProgram()
+    const key = 'Pk9-public_key_for_the_loop_2026'
+    await admin.settings.update({ boucle: { lienPublic: key } })
+    const html = await (await fetch(`${origin}/boucle/apercu?cle=${key}&salle=global`)).text()
+    const state = JSON.parse(html.match(/<script id="etat-initial" type="application\/json">(.*?)<\/script>/)![1]!)
+    expect(state.state.roomId).toBeNull()
+    expect(state.agenda).toEqual([])
+    expect(state.plannings.map((p: { roomId: string }) => p.roomId)).toEqual([TRACK_1, 'track-2-mf-1092', 'hands-on'])
+    // The page fetches its state again, with the same key and the same screen.
+    expect(html).toContain(`boucle.suivre("/boucle/apercu/etat?salle=global&cle=${key}", 20000)`)
+    const feed = await fetch(`${origin}/boucle/apercu/etat?salle=global&cle=${key}`)
+    expect(feed.status).toBe(200)
+    expect(((await feed.json()) as { plannings: unknown[] }).plannings).toHaveLength(3)
+    expect((await fetch(`${origin}/boucle/apercu/etat?salle=global`)).status).toBe(401)
+  })
+
+  it('does not refetch a preview drawn at a set time', async () => {
+    importProgram()
+    const html = await (await fetch(`${origin}/boucle/apercu?heure=10:00`, {
+      headers: { authorization: `Bearer ${await signIn()}` },
+    })).text()
+    expect(html).not.toContain('boucle.suivre(')
+  })
+
   it('holds one scene when asked', async () => {
     importProgram()
     const html = await (await fetch(`${origin}/boucle/apercu?scene=5`, {
@@ -288,4 +355,19 @@ describe('the loop over the wire', () => {
     const { token } = await machine.devices.claim()
     return { authorization: `Bearer ${token}` }
   }
+})
+
+describe('the preview time', () => {
+  it('reads the time in the event timezone, on the event day by default', () => {
+    expect(previewTime({ heure: '08:30' }, 'Europe/Paris', '2026-10-30T07:00:00.000+00:00'))
+      .toBe(Date.parse('2026-10-30T07:30:00Z'))
+    // A summer day is two hours ahead of UTC, not one.
+    expect(previewTime({ heure: '08:30', jour: '2026-07-01' }, 'Europe/Paris', null))
+      .toBe(Date.parse('2026-07-01T06:30:00Z'))
+  })
+
+  it('leaves the hub clock alone when the time is absent or malformed', () => {
+    expect(previewTime({ heure: null }, 'Europe/Paris', null)).toBeNull()
+    expect(previewTime({ heure: '9h' }, 'Europe/Paris', null)).toBeNull()
+  })
 })

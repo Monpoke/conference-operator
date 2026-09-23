@@ -155,8 +155,11 @@ pnpm --filter @conference-operator/projector build
 | 14 | Code de conduite | 14 s | réglages *Boucle* | jamais |
 | 15 | Feedbacks de l'événement | 10 s | réglages *Boucle* | pas de QR |
 
-L'ordre et les durées sont ceux du prototype (`BOUCLE`, dans
-`packages/projector/src/browser/sequence.ts`), avec les deux pages que la
+L'ordre et les durées par défaut sont ceux du prototype (`BOUCLE`, dans
+`packages/projector/src/browser/sequence.ts`). **Les durées se règlent par
+type de scène** dans la vue *Boucle* (`boucle.durees`) : seules celles qui
+diffèrent de la maquette sont envoyées, et toutes les pages d'un même type —
+les pages de sponsors, les annonces — partagent la leur. On y trouve aussi les deux pages que la
 boucle précédente avait en plus : « Pendant ce temps » et « Nos réseaux »,
 redessinées dans le thème. **Une scène sans contenu est sautée, pas affichée
 vide** : dix secondes de cadre désert devant la salle se lisent comme une panne.
@@ -166,6 +169,49 @@ En bas, en permanence, **le bandeau** : la prochaine session de la salle (avec
 le nom de la salle quand elle a lieu ailleurs), le message et le hashtag, l'heure
 — et, discrètement, la pause de la salle et un point quand la liaison au hub est
 dégradée. Une barre de progression dit quand la scène va tourner.
+
+**Les pauses s'écrivent en petit**, comme dans la maquette : sans cadre, sans
+heure de fin. Une pause, c'est un créneau que la grille amont étend sur plusieurs
+salles (`extendWidth`, lu en `roomSpan`) et qui n'a ni intervenant ni format ; la
+keynote d'ouverture, sans intervenant elle aussi mais d'une seule salle, reste
+une session. Un hub dont le programme a été importé avant `roomSpan` le
+normalise à nouveau au démarrage, depuis l'export brut qu'il garde, et la version
+du modèle (`PROGRAM_MODEL_VERSION`) entre dans l'empreinte servie : les salles
+retéléchargent une fois le programme corrigé.
+
+**Les plannings des autres salles** suivent l'agenda de la salle : une scène
+par autre salle (six au plus), la même mise en page, sans la pastille « Vous
+êtes ici » que porte la journée de la salle elle-même, et sans les sessions de
+la salle où l'écran est installé — la keynote qui a lieu ici n'a rien à faire
+sous le nom d'une autre salle ; les pauses partagées, elles, restent. Chaque salle s'affiche ou
+non, et pour la durée voulue (15 s par défaut), depuis le panneau « Plannings des
+autres salles » ; « Écrans de salle » les retire toutes (`other-agendas`). Une
+page de sponsors peut aussi avoir sa propre durée ; sans elle, c'est celle des
+pages de sponsors.
+
+**Les plénières restent dans leur salle.** La maquette montrait la keynote
+d'ouverture sur tous les écrans, avec la pastille de la salle qui l'accueille :
+elle envoyait le public vers une salle où il n'était pas. Elle n'apparaît plus que
+dans la salle qui l'accueille — et, sur l'écran global, dans le planning de cette
+salle.
+
+**L'écran global** — le hall, l'accueil — n'est pas une machine de salle : c'est
+le hub qui le sert, dans n'importe quel navigateur (`/boucle/apercu?cle=…&salle=global`,
+la clé du lien public). Même boucle que partout, sans agenda à soi ni « Vous
+êtes ici » : les plannings de toutes les salles à la place, « En ce moment dans
+les salles », et un bandeau « À suivre » qui annonce la prochaine session de
+n'importe quelle salle avec son nom. La page redemande son état au hub toutes
+les vingt secondes (`/boucle/apercu/etat`), sans se recharger : walls.io et la
+scène en cours ne sont pas interrompus. Pas de cache hors ligne : si le hub
+tombe, l'écran reste sur ce qu'il savait.
+
+**L'écran attend ses polices** avant de lever l'écran de chargement (trois
+secondes au plus), comme la maquette : l'agenda et les pages de sponsors se
+dimensionnent en mesurant leur texte, et mesurés dans la police de secours ils
+débordaient une fois la vraie police arrivée.
+
+**Une seule horloge** : celle du bandeau du bas. L'heure en haut à droite de
+l'agenda et du programme n'apparaît que si le bandeau est désactivé.
 
 ### Monter une fois, ne jamais redessiner sous les yeux de la salle
 
@@ -226,19 +272,34 @@ le hub rend `/boucle/apercu` — le même document que les salles projettent
 (`renderProjectorDocument`), nourri de ce qu'une salle recevrait au `sync`, sur
 l'horloge du hub, simulée ou non. On y choisit la salle ; le cadre se recharge
 après chaque enregistrement, et « Ouvrir dans un onglet » le montre en plein
-écran (`?scene=n` tient une scène, `?hud=1` ouvre le panneau). Deux différences
+écran (`?scene=n` tient une scène, `?hud=1` ouvre le panneau). Les champs
+**Heure** et **Jour** dessinent l'aperçu à un autre moment (`?heure=HH:MM`,
+`?jour=AAAA-MM-JJ`, le premier jour de l'événement par défaut, dans son fuseau) :
+pour l'aperçu seulement, sans toucher à l'horloge du hub que suivent les salles. Deux différences
 avec une salle, dites sous le cadre : les images viennent du magasin du hub (une
 adresse pas encore téléchargée s'affiche depuis sa source), et walls.io y est
-toujours montré. L'aperçu demande une session opérateur (`settings:read`).
+toujours montré. L'aperçu demande une session opérateur (`settings:read`) — sauf par le **lien
+public** : une clé créée depuis le panneau d'aperçu (`boucle.lienPublic`) ouvre
+`/boucle/apercu?cle=…` à qui l'a, pour toutes les salles (`&salle=` choisit).
+« Régénérer » coupe les liens déjà donnés, « Désactiver » les coupe tous. La boucle
+est ce que les salles projettent devant tout le monde : rien de ce qu'elle montre
+n'est confidentiel.
 
 ### Les polices
 
-Peace Sans (titres), Gagalin (« Bienvenue à »), Bukhari Script (« Merci
-beaucoup ! ») et Open Sans. Elles se déposent dans
-`apps/room-client/assets/fonts/` et sont servies par la salle elle-même
-(`/fonts/…`, liste blanche) ; seules celles présentes sont déclarées, les autres
-retombent sur les polices de secours du prototype. Voir le `LISEZMOI.md` du
-dossier, et la licence de chacune avant de la versionner.
+Le dépôt est open source et n'embarque que des polices libres, avec leur
+licence, dans `apps/room-client/assets/fonts/` : **Peace Sans** (titres) et
+**Open Sans** (textes) comme dans la maquette, sous SIL OFL 1.1. Gagalin et
+Bukhari Script, que la maquette utilisait, ne peuvent pas être redistribuées —
+et la licence de Bukhari Script interdit la diffusion, ce que fait un écran capté
+par OBS. Elles sont remplacées par les polices libres les plus proches :
+**Luckiest Guy** (Apache 2.0) pour « Bienvenue à », **Pacifico** (SIL OFL 1.1)
+pour « Merci beaucoup ! ». Les originales restent en tête des piles CSS, pour
+une machine qui les aurait installées sous sa propre licence.
+
+La salle les sert elle-même (`/fonts/…`, liste blanche), le hub aussi pour son
+aperçu (`/boucle/polices/…`) ; seules celles présentes sont déclarées. Voir le
+`LISEZMOI.md` du dossier.
 
 ### Le mur social, la seule page dessinée par quelqu'un d'autre
 

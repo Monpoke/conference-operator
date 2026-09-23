@@ -22,12 +22,12 @@ export interface AgendaEntry {
    * opening keynote, shown on every screen with an orange pill. `null` here.
    */
   elsewhere: string | null
+  /** Identifier of the room the slot is attached to upstream (its first room). */
+  roomId: string
   speakers: { name: string; company: string | null }[]
 }
 
 export interface AgendaOptions {
-  /** A slot overlapped by nothing (the opening keynote) appears in every room. */
-  plenaries: boolean
   /** Corrected clock of the caller — picks the day to show. */
   nowMs: number
 }
@@ -40,8 +40,9 @@ export interface AgendaOptions {
  * - a slot belongs to its room **and to the neighbouring rooms it covers** in the
  *   upstream grid (`roomSpan`): the breakfast laid across three tracks is in all
  *   three, the croissant break across two is not in the Hands on room;
- * - a slot that no other overlaps is a plenary — the opening keynote — and shows
- *   on every screen, with the name of the room where it happens;
+ * - a plenary — the opening keynote — stays in the room that hosts it: the
+ *   reference showed it on every screen with an orange pill, which sent people
+ *   to a room they were not in;
  * - only one day: today, or the next one with sessions, or the last one.
  *
  * Works on the program's own slots: the copies `applySharedBreaks` projects into
@@ -78,11 +79,8 @@ export function agendaForRoom(program: Program, roomId: string, options: AgendaO
 
   const here = (p: Placed) => p.first <= index && index <= p.last
   const isPause = (p: Placed) => p.last > p.first && p.session.speakers.length === 0 && p.session.format == null
-  const alone = (p: Placed) =>
-    !isPause(p) && !placed.some((o) => o !== p && o.start < p.end && p.start < o.end)
-
   return placed
-    .filter((p) => here(p) || (options.plenaries && alone(p)))
+    .filter(here)
     .sort((a, b) => a.start - b.start || a.first - b.first)
     .map((p): AgendaEntry => {
       const language = (p.session.language ?? '').toLowerCase()
@@ -95,6 +93,7 @@ export function agendaForRoom(program: Program, roomId: string, options: AgendaO
         format: p.session.format ? p.session.format.name.replace(/\s*\(.*\)\s*$/, '') : null,
         language: language && language !== 'fr' ? language.toUpperCase() : null,
         elsewhere: here(p) ? null : rooms[p.first]!.name,
+        roomId: rooms[p.first]!.id,
         speakers: p.session.speakers.map((s) => ({ name: s.name, company: s.company })),
       }
     })

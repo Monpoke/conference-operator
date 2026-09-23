@@ -142,6 +142,7 @@ export const roomScreenSchema = z.enum([
   'posts',
   'code-of-conduct',
   'event-feedback',
+  'other-agendas',
 ])
 export type RoomScreen = z.infer<typeof roomScreenSchema>
 

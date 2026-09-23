@@ -5,17 +5,38 @@ import { heureDans, maintenant } from '../time.js'
 
 const POLICE_MAX = 68 // px, the agenda's largest text
 
+/** Which day a schedule scene shows: the room's own, or another room's. */
+export interface Journee {
+  nom: string
+  entries: AgendaEntry[]
+  /** The room this screen stands in: it carries the « Vous êtes ici » badge. */
+  ici: boolean
+}
+
+/** The room's own day. */
+export const journeeIci = (data: Data): Journee => ({ nom: data.roomName ?? '', entries: data.agenda, ici: true })
+
+/** Another room's day, the `index`-th the hub leaves shown. */
+export const journeeAutre = (index: number) => (data: Data): Journee | null => {
+  const planning = data.plannings[index]
+  return planning == null ? null : { nom: planning.nom, entries: planning.agenda, ici: false }
+}
+
 /**
- * The room's day in two columns, text size computed to fill the space.
+ * A room's day in two columns, text size computed to fill the space.
  *
- * The reference's agenda, fed by `data.agenda`: the room's slots, the shared ones
- * covering it, the plenaries held elsewhere with an orange pill. Finished
- * sessions leave, and the rest of the day takes their room.
+ * The reference's agenda: the room's slots, the shared ones covering it, the
+ * pill of another room when a slot happens there. Finished sessions leave, and the
+ * rest of the day takes their room. The same scene shows the other rooms' days;
+ * only this room's carries « Vous êtes ici ».
  */
-export function agenda(el: HTMLElement): Scene {
+export function agenda(el: HTMLElement, lire: (data: Data) => Journee | null = journeeIci): Scene {
   el.innerHTML = `
     <header class="bande">
-      <h2 class="f-titre" data-titre data-effet="mots"></h2>
+      <div class="bande-titre">
+        <h2 class="f-titre" data-titre data-effet="mots"></h2>
+        <span class="pastille pastille-ici" data-ici data-effet="pop" data-delai="500" hidden>Vous êtes ici</span>
+      </div>
       <p class="bande-droite" data-horloge>--:--</p>
     </header>
     <div class="contenu agenda" data-effet-enfants="entre" data-cible=".seance" data-pas="60" data-delai="200">
@@ -24,6 +45,7 @@ export function agenda(el: HTMLElement): Scene {
     </div>
     <p class="vide" hidden>Programme indisponible</p>`
   const titre = el.querySelector<HTMLElement>('[data-titre]')!
+  const ici = el.querySelector<HTMLElement>('[data-ici]')!
   const horloge = el.querySelector<HTMLElement>('[data-horloge]')!
   const zone = el.querySelector<HTMLElement>('.agenda')!
   const cols = [...el.querySelectorAll<HTMLElement>('.agenda-col')] as [HTMLElement, HTMLElement]
@@ -105,11 +127,13 @@ export function agenda(el: HTMLElement): Scene {
 
   const scene: Scene = {
     el,
-    cle: (data: Data) => [data.agenda, data.roomName, data.timezone, masquer(data)],
-    jouable: (data: Data) => data.agenda.length > 0,
+    cle: (data: Data) => [lire(data), data.timezone, masquer(data)],
+    jouable: (data: Data) => (lire(data)?.entries.length ?? 0) > 0,
     rendre(data: Data) {
-      ecrire(titre, data.roomName ?? '')
-      toutes = data.agenda
+      const journee = lire(data)
+      ecrire(titre, journee?.nom ?? '')
+      ici.hidden = !journee?.ici
+      toutes = journee?.entries ?? []
       vide.hidden = toutes.length > 0
       const m = maintenant(data)
       nbTerminees = toutes.filter((s) => m >= s.endsAtMs).length

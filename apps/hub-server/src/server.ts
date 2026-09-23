@@ -25,6 +25,7 @@ import { SocketTickets } from './services/socket-tickets.js'
 import { CONTROL_SESSION_HEADER } from '@conference-operator/contract'
 import { SessionStateService, SettingsService } from './services/sessions.js'
 import { readFileSync } from 'node:fs'
+import { timingSafeEqual } from 'node:crypto'
 import { s3Keys, VodService } from './services/vod.js'
 import { EventIdentityService } from './services/event-identity.js'
 import { mutableClock } from './services/clock.js'
@@ -36,7 +37,7 @@ import {
   type SocialSource,
 } from './services/social.js'
 import { renderWallPage } from './pages/wall-page.js'
-import { renderBouclePreview } from './pages/boucle-preview.js'
+import { previewPayload, renderBouclePreview } from './pages/boucle-preview.js'
 import { readFont, resolveFontsFolder } from '@conference-operator/projector/server'
 import { requirePermission, resolveOperator } from './context.js'
 import {
@@ -377,16 +378,48 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
    * The same document a room projects, fed by the hub with what a room would
    * receive at sync (see `renderBouclePreview`): the console's « Boucle » view
    * frames it and reloads it after a save. Behind the operator's session, like
-   * the settings it shows — `?salle=` picks the room, `?scene=` holds one scene.
+   * the settings it shows — `?salle=` picks the room, `?scene=` holds one scene,
+   * `?heure=` (and `?jour=`) draws it at another time than the hub's, and
+   * `?salle=global` is the hall's screen: the whole program, no room of its own. With
+   * `?cle=` and the key of the public link set in the console, no session is
+   * asked: that address is the one shared with the public.
    */
   const fontsFolder = resolveFontsFolder()
-  app.get<{ Querystring: { salle?: string; scene?: string } }>('/boucle/apercu', async (request, reply) => {
-    reply.header('content-type', 'text/html; charset=utf-8')
-    reply.header('cache-control', 'no-store')
+  type ApercuQuery = { salle?: string; scene?: string; heure?: string; jour?: string; cle?: string }
+
+  /**
+   * May this request see the preview? An operator allowed to read the settings,
+   * or anyone with the public link's key — the loop is what the rooms project in
+   * front of everyone anyway.
+   */
+  async function apercuAutorise(request: { query: ApercuQuery; headers: Record<string, string | string[] | undefined> }): Promise<'public' | 'operateur' | null> {
+    const publicKey = services.settings.get().boucle.lienPublic
+    if (publicKey != null && request.query.cle != null && sameKey(request.query.cle, publicKey)) return 'public'
     try {
       const { operator } = await resolveOperator(contextFrom(auth, services, headersOf(request.headers)))
       requirePermission(operator, 'settings:read')
+      return 'operateur'
     } catch {
+      return null
+    }
+  }
+
+  const apercuOptions = (query: ApercuQuery) => {
+    const scene = Number.parseInt(query.scene ?? '', 10)
+    return {
+      roomId: query.salle ?? null,
+      scene: Number.isFinite(scene) ? scene : null,
+      heure: query.heure ?? null,
+      jour: query.jour ?? null,
+      fonts: { folder: fontsFolder, base: '/boucle/polices' },
+    }
+  }
+
+  app.get<{ Querystring: ApercuQuery }>('/boucle/apercu', async (request, reply) => {
+    reply.header('content-type', 'text/html; charset=utf-8')
+    reply.header('cache-control', 'no-store')
+    const acces = await apercuAutorise(request)
+    if (acces == null) {
       reply.status(401)
       return reply.send(
         '<!doctype html><html lang="fr"><meta charset="utf-8"><title>Aperçu de la boucle</title>' +
@@ -394,14 +427,25 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
           '<a href="/admin/boucle">console</a> pour voir l\'aperçu de la boucle.</body></html>',
       )
     }
-    const scene = Number.parseInt(request.query.scene ?? '', 10)
-    return reply.send(
-      await renderBouclePreview(services, {
-        roomId: request.query.salle ?? null,
-        scene: Number.isFinite(scene) ? scene : null,
-        fonts: { folder: fontsFolder, base: '/boucle/polices' },
-      }),
-    )
+    if (acces === 'public') reply.header('x-robots-tag', 'noindex')
+    /*
+     * The page asks for its state again while it stays open — a hall screen, a
+     * public link left on a TV. Not at a set time: the clock would jump back to
+     * it on every refresh.
+     */
+    const flux = request.query.heure
+      ? null
+      : `/boucle/apercu/etat?${new URLSearchParams(
+          Object.entries({ salle: request.query.salle, cle: request.query.cle }).filter((entry): entry is [string, string] => entry[1] != null),
+        ).toString()}`
+    return reply.send(await renderBouclePreview(services, { ...apercuOptions(request.query), flux }))
+  })
+
+  /** The preview's state, fetched again by the page every twenty seconds. */
+  app.get<{ Querystring: ApercuQuery }>('/boucle/apercu/etat', async (request, reply) => {
+    reply.header('cache-control', 'no-store')
+    if ((await apercuAutorise(request)) == null) return reply.status(401).send({ error: 'accès refusé' })
+    return reply.send(await previewPayload(services, apercuOptions(request.query)))
   })
 
   /** The loop's typefaces, for the preview — the allow-list is in `readFont`. */
@@ -900,6 +944,13 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       if (sqlite.open) sqlite.close()
     },
   }
+}
+
+/** Compares a key without telling, by its timing, how much of it was right. */
+function sameKey(given: string, expected: string): boolean {
+  const a = Buffer.from(given)
+  const b = Buffer.from(expected)
+  return a.length === b.length && timingSafeEqual(a, b)
 }
 
 function contextFrom(auth: Auth, services: Services, headers: Headers): HubContext {

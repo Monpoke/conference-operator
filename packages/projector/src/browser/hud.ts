@@ -24,13 +24,15 @@ export class Hud {
     if (this.el.hidden) return
     const r = this.regie
     const etape = r.prog.etapes[r.courante]
-    this.barre.style.transform = `scaleX(${etape && etape.duree ? Math.min(1, r.ecoule / (etape.duree * 1000)) : 0})`
+    const duree = r.duree(etape)
+    this.barre.style.transform = `scaleX(${duree ? Math.min(1, r.ecoule / (duree * 1000)) : 0})`
     if (!complet) return
-    if (this.prog !== r.prog) {
-      this.prog = r.prog
+    const cle = JSON.stringify(r.prog.etapes.map((e) => [e.scene, r.duree(e)]))
+    if (this.prog !== cle) {
+      this.prog = cle
       this.liste.replaceChildren(...r.prog.etapes.map((e, i) => {
         const li = cree('li', null, `${i + 1}. ${r.scenes.get(e.scene)?.def.nom ?? e.scene}`)
-        li.append(cree('span', null, r.prog.tourne ? `${e.duree} s, ${NOMS_TRANSITIONS[e.transition] ?? e.transition}` : 'tenu'))
+        li.append(cree('span', null, r.prog.tourne ? `${r.duree(e)} s, ${NOMS_TRANSITIONS[e.transition] ?? e.transition}` : 'tenu'))
         return li
       }))
     }

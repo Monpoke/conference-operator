@@ -434,10 +434,15 @@ export interface DisplayPayload {
   boucle: BoucleView | null
   /**
    * The room's day as the loop's agenda and bottom band show it: its own slots,
-   * the shared ones it is covered by, the plenaries held elsewhere. See
+   * the shared ones it is covered by. See
    * `agendaForRoom`.
    */
   agenda: AgendaEntry[]
+  /**
+   * The other rooms' days, for the loop's schedule scenes: those the hub leaves
+   * shown, in the program's room order, each with its seconds on screen.
+   */
+  plannings: { roomId: string; nom: string; duree: number; agenda: AgendaEntry[] }[]
   /**
    * Whether walls.io answers, checked by the room's server every minute.
    *
@@ -553,7 +558,7 @@ export const FIELDS_BY_VIEW: Record<DisplayView, readonly (keyof DisplayPayload)
     // The loop's own content and the room's day as its agenda shows it: the first
     // moves at sync, the second at a slot change. Whether walls.io answers travels
     // apart, so that the connection coming and going does not resend the loop.
-    'boucle', 'agenda', 'wallsIoReachable',
+    'boucle', 'agenda', 'plannings', 'wallsIoReachable',
   ],
   overlay: ['state', 'event', 'eventIdentity'],
   // The banner only reads `state.liveMessage`: pushing it the program and the

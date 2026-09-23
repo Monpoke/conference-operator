@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { waitForRender } from './helpers/wait-for-render.js'
 import { openHubDatabase, type HubDatabase } from '../src/db.js'
 import { ProgramService } from '../src/services/program.js'
+import { programSnapshot } from '@conference-operator/db/hub'
 import { CommandService } from '../src/services/commands.js'
 import { IngestService } from '../src/services/ingest.js'
 import { DeviceService, RoomService } from '../src/services/rooms.js'
@@ -66,6 +67,23 @@ describe('ProgramService', () => {
 
     expect(second.contentHash).toBe(first.contentHash)
     expect(programs.list()).toHaveLength(1)
+  })
+
+  it('normalizes again, at start-up, a snapshot an older hub normalized', () => {
+    const first = new ProgramService(db)
+    first.importFromText(rawProgram, 'https://exemple/programme.json')
+    // What a hub from before `roomSpan` stored: the same program, without it.
+    const old = JSON.parse(db.select().from(programSnapshot).get()!.programJson)
+    for (const session of old.sessions) delete session.roomSpan
+    db.update(programSnapshot).set({ programJson: JSON.stringify(old) }).run()
+    expect(first.active()!.program.sessions.find((s) => s.title === 'Déjeuner')!.roomSpan).toBe(1)
+
+    // The next start reads the kept raw export again: lunch covers the three rooms.
+    const restarted = new ProgramService(db)
+    const served = restarted.active()!
+    expect(served.program.sessions.find((s) => s.title === 'Déjeuner' && s.sharedFrom == null)!.roomSpan).toBe(3)
+    // And the fingerprint says so to the rooms, which re-download it once.
+    expect(served.contentHash).toMatch(/\.m\d+$/)
   })
 
   it('allows going back to a previous snapshot', () => {

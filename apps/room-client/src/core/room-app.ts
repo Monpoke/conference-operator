@@ -1066,13 +1066,13 @@ export class RoomApp implements ControlTarget {
   async importProgramFile(path: string): Promise<{ contentHash: string; sessions: number }> {
     const { readFile } = await import('node:fs/promises')
     const { createHash } = await import('node:crypto')
-    const { normalizeProgram } = await import('@conference-operator/program')
+    const { normalizeProgram, PROGRAM_MODEL_VERSION } = await import('@conference-operator/program')
 
     const raw = await readFile(path, 'utf8')
     const program = normalizeProgram(JSON.parse(raw))
-    // The same fingerprint as on the hub side: a manual import then a sync do not
-    // create two versions of the same program.
-    const contentHash = createHash('sha256').update(raw).digest('hex').slice(0, 32)
+    // The same fingerprint as on the hub side — raw content and model version: a
+    // manual import then a sync do not create two versions of the same program.
+    const contentHash = `${createHash('sha256').update(raw).digest('hex').slice(0, 32)}.m${PROGRAM_MODEL_VERSION}`
 
     this.store.saveProgram(contentHash, program)
     this.runtime.setProgram(contentHash, program)

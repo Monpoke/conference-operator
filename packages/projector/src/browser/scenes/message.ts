@@ -20,7 +20,9 @@ export function message(el: HTMLElement, cle: Cle): Scene {
   return {
     el,
     cle: donnees,
-    jouable: (data: Data) => Boolean(donnees(data)?.texte),
+    // Silencing phones speaks to a room about to hear a talk: the global screen —
+    // a hall, with no talk of its own — has no one to ask.
+    jouable: (data: Data) => Boolean(donnees(data)?.texte) && !(cle === 'silence' && data.state.roomId == null),
     rendre(data: Data) {
       const m = donnees(data)
       const effet = m?.effet ?? 'claque'

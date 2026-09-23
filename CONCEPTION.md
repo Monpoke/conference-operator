@@ -145,13 +145,13 @@ pnpm --filter @conference-operator/projector build
 | 4 | Merci à nos sponsors | 6 s | réglages *Boucle* | aucune page de sponsors |
 | 5 | Pages de sponsors (×8 au plus) | 8 s | programme + mise en page | page vide |
 | 6 | Mur de posts (manuel) | 15 s | réglages *Boucle* | aucun post |
-| 7 | Message « Bienvenue » | 7 s | réglages *Boucle* | texte vide |
-| 8 | Pendant ce temps, à côté | 12 s | programme | rien ailleurs |
+| 7 | Message « Bienvenue » | 7 s | réglages *Boucle* | texte vide — le cas par défaut : l'accueil le dit déjà |
+| 8 | Pendant ce temps, à côté | 12 s | programme | rien ailleurs, ou plannings des autres salles affichés |
 | 9 | Agenda (rappel) | 20 s | programme | journée vide |
 | 10 | Message « Partage » | 7 s | réglages *Boucle* | texte vide |
 | 11 | Nos réseaux | 10 s | réglages hub | aucun compte |
 | 12 | Walls.io | 25 s | réglages hub | pas d'adresse, ou walls.io muet |
-| 13 | Message « Téléphones » | 7 s | réglages *Boucle* | texte vide |
+| 13 | Message « Téléphones » | 7 s | réglages *Boucle* | texte vide, ou écran global |
 | 14 | Code de conduite | 14 s | réglages *Boucle* | jamais |
 | 15 | Feedbacks de l'événement | 10 s | réglages *Boucle* | pas de QR |
 

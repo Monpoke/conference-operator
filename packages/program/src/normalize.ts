@@ -188,6 +188,7 @@ export function normalizeProgram(input: unknown): Program {
       endsAtMs: toEpochMs(endsAt),
       durationMinutes: rawSession.durationMinutes ?? null,
       roomId,
+      roomSpan: Math.max(1, Math.trunc(rawSession.extendWidth ?? 1) || 1),
       kind: speakerIds.length > 0 ? 'talk' : 'break',
       // Nothing is projected at normalization time: the shared-breaks rule
       // applies to the normalized program, and is therefore read back from it.

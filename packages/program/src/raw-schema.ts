@@ -80,6 +80,8 @@ export const rawSessionSchema = z.looseObject({
   level: nullableString,
   imageUrl: nullableString,
   tags: z.array(z.string()).nullish(),
+  /** Number of neighbouring tracks the slot covers in the upstream grid (2-3 for shared breaks). */
+  extendWidth: z.number().nullish(),
 })
 
 export const rawSponsorSchema = z.looseObject({

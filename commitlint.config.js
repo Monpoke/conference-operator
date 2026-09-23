@@ -37,6 +37,7 @@ export default {
         'hub', // apps/hub-server
         'hub-client',
         'program',
+        'projector', // packages/projector: the room screen, shared with the hub's preview
         'control', // apps/control-web
         'room-client',
         'ui',

@@ -173,6 +173,14 @@ const SCREENS: { value: string; label: string; hint: string }[] = [
   { value: 'wallsio', label: 'Mur social (walls.io)', hint: "Le mur de l'événement sur les réseaux." },
   { value: 'rooms', label: 'Pendant ce temps…', hint: 'Ce qui se passe dans les autres salles.' },
   { value: 'socials', label: 'Nos réseaux', hint: 'Les comptes déclarés ci-dessus.' },
+  // The loop's own scenes: their content is laid out in the « Boucle » tab.
+  { value: 'welcome', label: 'Accueil', hint: "Le logo de l'événement, en grand." },
+  { value: 'announcements', label: 'Annonces “offert par”', hint: 'Le petit déjeuner, le déjeuner… et qui les offre.' },
+  { value: 'sponsors-thanks', label: 'Merci à nos sponsors', hint: 'Le remerciement avant les pages de logos.' },
+  { value: 'slogans', label: 'Messages animés', hint: 'Bienvenue, partage, silence des téléphones.' },
+  { value: 'posts', label: 'Mur de posts (manuel)', hint: 'Des posts saisis à la main, quand walls.io est absent.' },
+  { value: 'code-of-conduct', label: 'Code de conduite', hint: "Le rappel, et le QR vers l'intégralité." },
+  { value: 'event-feedback', label: "QR feedbacks de l'événement", hint: 'Le QR OpenFeedback de la journée entière.' },
 ]
 
 const wallsIoUrl = ref('')

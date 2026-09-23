@@ -8,9 +8,12 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { toString } from 'qrcode'
-import { normalizeProgram, sessionsForRoom } from '@conference-operator/program'
-import { resolveEventIdentity } from '@conference-operator/contract'
+import { agendaForRoom, normalizeProgram, sessionsForRoom } from '@conference-operator/program'
+import { DEFAULT_BOUCLE, resolveEventIdentity, type Boucle } from '@conference-operator/contract'
+import { BOUCLE } from '@conference-operator/projector'
 import { renderProjectorPage } from '../src/core/display-page.js'
+import { boucleQrUrls, buildBoucleView } from '../src/core/boucle-view.js'
+import { availableFonts, resolveFontsFolder } from '../src/core/fonts.js'
 import { renderOverlayPage } from '../src/core/overlay-page.js'
 import { renderOverlayLivePage } from '../src/core/overlay-live-page.js'
 import type { DisplayPayload } from '../src/core/display-server.js'
@@ -31,6 +34,52 @@ const program = normalizeProgram(
 const sessions = sessionsForRoom(program, TRACK_1)
 const current = sessions.find((s) => s.startsAtMs <= AT && (s.endsAtMs ?? 0) > AT) ?? null
 const next = sessions.find((s) => s.startsAtMs > AT) ?? null
+
+/** QR codes drawn with the room's own options. */
+const qr = async (url: string) =>
+  toString(url, { type: 'svg', margin: 1, errorCorrectionLevel: 'H', color: { dark: '#0d0f16', light: '#ffffff' } })
+
+/**
+ * The loop's content: the reference defaults, with the two things a fresh hub
+ * lacks — a code-of-conduct address and a few posts — so that every scene shows.
+ */
+const settings: Boucle = {
+  ...DEFAULT_BOUCLE,
+  conduite: { ...DEFAULT_BOUCLE.conduite, url: 'https://www.cloudnord.fr/code-de-conduite' },
+  mur: {
+    ...DEFAULT_BOUCLE.mur,
+    posts: [
+      {
+        auteur: 'Camille Roussel', titre: 'Ingénieure SRE chez Pixelmine', photo: null, date: '35 min', image: null,
+        texte: "Premier talk de la journée et déjà trois pages de notes.\nMerci à toute l'équipe d'organisation ! #CloudNord2026 #SRE",
+        reactions: 86, commentaires: 7, reseau: 'LinkedIn',
+      },
+      {
+        auteur: 'Julien Marchetti', titre: 'CTO chez Hautbanc', photo: null, date: '1 h', image: null,
+        texte: 'Très fier d\'avoir présenté notre retour d\'expérience sur la migration de 400 services vers Kubernetes 🚀 #CloudNord2026',
+        reactions: 214, commentaires: 31, reseau: 'LinkedIn',
+      },
+      {
+        auteur: 'Sarah Benali', titre: 'Développeuse backend, Ardoise', photo: null, date: '1 h', image: null,
+        texte: 'Je découvre l\'événement cette année et je suis bluffée par la qualité des échanges. #CloudNord2026',
+        reactions: 47, commentaires: 3, reseau: 'LinkedIn',
+      },
+    ],
+  },
+}
+const WALLS_IO = 'https://my.walls.io/cloud-nord?token=b58a8dcde25eaeb9d96cddd110abcfc00c2226ec'
+const qrCodes = new Map<string, string>()
+for (const url of boucleQrUrls(settings, 'cloud-nord-2026')) qrCodes.set(url, await qr(url))
+const boucle = buildBoucleView({
+  boucle: settings,
+  program,
+  openFeedbackProjectId: 'cloud-nord-2026',
+  wallsIoUrl: WALLS_IO,
+  eventShortName: 'Cloud Nord',
+  // The preview reads the images where they are: it is not a room, it has no cache.
+  localize: (ref) => ref,
+  qr: (url) => qrCodes.get(url) ?? null,
+})
 
 const base: DisplayPayload = {
   state: {
@@ -236,9 +285,12 @@ const base: DisplayPayload = {
   // The preview's wall is the real one: it is the only page whose rendering is
   // done by somebody else, and a placeholder address would show an error frame
   // exactly where the thing to judge is.
-  wallsIoUrl: 'https://my.walls.io/cloud-nord?token=b58a8dcde25eaeb9d96cddd110abcfc00c2226ec',
+  wallsIoUrl: WALLS_IO,
   // Nothing withdrawn: the preview is there to show every screen.
   screensDisabled: [],
+  boucle,
+  agenda: agendaForRoom(program, TRACK_1, { plenaries: true, nowMs: AT }),
+  wallsIoReachable: true,
 }
 
 const variants: { name: string; payload: DisplayPayload }[] = [
@@ -380,43 +432,37 @@ writeFileSync(join(outDir, 'overlay-live-banner.html'), banner)
 console.log(`written ${join(outDir, 'overlay-live-banner.html')}`)
 
 /**
- * The start of the screen's `body` tag, as the page writes it.
- *
- * The previews graft themselves onto it to neutralize the SSE stream. The pattern
- * aimed at carried the `data-mode` attribute first; since the tag gained a class,
- * it no longer matched anything — silently, since a `replace` that finds nothing
- * returns the string unchanged. The previews therefore opened a real `EventSource`,
- * which overwrote at the first message the loop index forced further down: one was
- * reviewing something other than what one believed.
+ * The page, frozen for review: no stream, no transitions, the loop paused on
+ * one scene. The typefaces are read from the folder the room serves them from.
  */
-const BODY_OPENING = '<body class="bg-canvas'
+const fontsFolder = resolveFontsFolder()
+function preview(payload: DisplayPayload, scene: number | null): string {
+  const html = renderProjectorPage({
+    initialPayload: payload,
+    fonts: fontsFolder == null ? undefined : { base: `file://${fontsFolder}`, files: availableFonts(fontsFolder) },
+  })
+  const freeze = scene == null ? '' : `boucle.pause(); boucle.allerA(${scene}, 'cut');`
+  return html
+    .replace('<body ', "<script>window.__PREVIEW__ = true; window.__BOUCLE__ = { transition: 'cut' }</script><body ")
+    .replace('</body>', `<script>${freeze} boucle.pause()</script></body>`)
+}
 
 for (const { name, payload } of variants) {
-  const html = renderProjectorPage({ initialPayload: payload }).replace(
-    BODY_OPENING,
-    '<script>window.__PREVIEW__ = true</script>' + BODY_OPENING,
-  )
   const filePath = join(outDir, `display-${name}.html`)
-  writeFileSync(filePath, html)
+  writeFileSync(filePath, preview(payload, null))
   console.log(`written ${filePath}`)
 }
 
 /**
- * The waiting loop, page by page.
+ * The welcome loop, scene by scene.
  *
- * One file per page rather than a single one: the preview is static, it does not
- * turn — and it is each page one comes to judge, not the switch. The starting index
- * is forced in the script, like the card's style above: the served page itself
- * always starts from zero.
+ * One file per scene rather than a single one: it is each scene one comes to
+ * judge, not the switch. The slots the hub leaves empty (a fourth announcement,
+ * an eighth sponsor page) are left out.
  */
-const LOOP_PAGES = ['sponsors', 'agenda', 'rooms', 'socials', 'wallsio']
-for (const [index, name] of LOOP_PAGES.entries()) {
-  const html = renderProjectorPage({
-    initialPayload: { ...base, state: { ...base.state, mode: 'loop' as const } },
-  })
-    .replace(BODY_OPENING, '<script>window.__PREVIEW__ = true</script>' + BODY_OPENING)
-    .replace('let loopIndex = 0', `let loopIndex = ${index}`)
-  const filePath = join(outDir, `display-loop-${index + 1}-${name}.html`)
-  writeFileSync(filePath, html)
+const loop = { ...base, state: { ...base.state, mode: 'loop' as const } }
+for (const [index, step] of BOUCLE.entries()) {
+  const filePath = join(outDir, `display-loop-${String(index + 1).padStart(2, '0')}-${step.scene}.html`)
+  writeFileSync(filePath, preview(loop, index + 1))
   console.log(`written ${filePath}`)
 }

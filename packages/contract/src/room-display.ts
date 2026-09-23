@@ -1,4 +1,5 @@
-import type { Program, Session, SponsorTier } from '@conference-operator/program'
+import type { AgendaEntry, Program, Session, SponsorTier } from '@conference-operator/program'
+import type { BoucleView } from './boucle.js'
 import type { EventIdentity } from './event-identity.js'
 import type {
   Connectivity,
@@ -426,6 +427,25 @@ export interface DisplayPayload {
    */
   screensDisabled: RoomScreen[]
   /**
+   * The welcome loop's content, resolved by the room: hub settings merged with
+   * the program, images localised, QR codes drawn. `null` until the room knows
+   * anything — never a remote address.
+   */
+  boucle: BoucleView | null
+  /**
+   * The room's day as the loop's agenda and bottom band show it: its own slots,
+   * the shared ones it is covered by, the plenaries held elsewhere. See
+   * `agendaForRoom`.
+   */
+  agenda: AgendaEntry[]
+  /**
+   * Whether walls.io answers, checked by the room's server every minute.
+   *
+   * Apart from `boucle` so that the connection coming and going does not resend
+   * the whole loop. `false` = the walls.io scene is skipped.
+   */
+  wallsIoReachable: boolean
+  /**
    * Event name, decided by the hub and read back from the local cache.
    *
    * Distinct from the program's `event.name`: the hub can contradict it by
@@ -521,16 +541,19 @@ export type DisplayView = 'projecteur' | 'overlay' | 'bandeau' | 'regie'
  */
 export const FIELDS_BY_VIEW: Record<DisplayView, readonly (keyof DisplayPayload)[]> = {
   projecteur: [
-    'state', 'roomName', 'event', 'timezone', 'sessions', 'sponsorTiers', 'wall', 'feedback',
+    'state', 'roomName', 'event', 'timezone', 'sessions', 'wall', 'feedback',
     // Two fields for the waiting loop alone: they only move at a slot change and
     // at sync, so they cost the flow nothing.
     'otherRooms', 'socialLinks',
-    // The walls.io address and the withdrawn screens: the loop reads both, and
-    // both only move at sync.
-    'wallsIoUrl', 'screensDisabled',
+    // The withdrawn screens: the loop skips them, and they only move at sync.
+    'screensDisabled',
     // The event name: two words that only move at sync, and without which every
     // page would retitle itself with a compiled-in constant.
     'eventIdentity',
+    // The loop's own content and the room's day as its agenda shows it: the first
+    // moves at sync, the second at a slot change. Whether walls.io answers travels
+    // apart, so that the connection coming and going does not resend the loop.
+    'boucle', 'agenda', 'wallsIoReachable',
   ],
   overlay: ['state', 'event', 'eventIdentity'],
   // The banner only reads `state.liveMessage`: pushing it the program and the

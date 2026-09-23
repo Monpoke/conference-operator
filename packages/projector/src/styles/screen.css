@@ -1,0 +1,158 @@
+/*
+ * What this screen adds to the reference loop, in the reference's own idiom:
+ * the two pages it did not have ("Pendant ce temps", "Nos réseaux"), the screens
+ * the operator puts up from the control room, and the room's state in the bottom
+ * band. Same stage, same px, same palette — nothing here overrides the reference.
+ */
+
+/* The event's logo is the one image of the frame that may be missing. */
+#logo[hidden] { display: none; }
+
+/* A scene's message when it has nothing to show — only in the modes the operator
+   chose; the loop skips an empty scene instead. */
+.vide {
+  position: absolute;
+  inset: var(--bande) var(--marge) calc(var(--barre-bas) + 14px);
+  display: grid;
+  place-items: center;
+  font: 800 56px / 1.2 var(--f-texte);
+  color: rgba(255, 255, 255, .78);
+  text-align: center;
+  white-space: pre-line;
+}
+.vide[hidden] { display: none; }
+
+/* ---------- Signature: the LinkedIn mark, drawn rather than shipped ---------- */
+.signature svg { width: 64px; height: 64px; flex: none; }
+
+/* ---------- Bottom band: the room's break and its link to the hub ---------- */
+.bb-etat { flex: none; display: flex; align-items: center; gap: 18px; }
+.bb-etat .pastille { font: 700 24px var(--f-texte); }
+.bb-etat .pastille[hidden] { display: none; }
+.pastille-pause { background: var(--orange); color: #2a1470; }
+.pastille-pause.a-venir { background: rgba(255, 255, 255, .22); color: var(--orange); }
+/* Discreet on purpose: it speaks to the technician, not to the room. */
+.bb-lien { width: 16px; height: 16px; border-radius: 50%; background: #f2b33d; }
+.bb-lien[hidden] { display: none; }
+body[data-connectivity="OFFLINE"] .bb-lien { background: #ef5a5a; }
+#barre-bas { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+
+/* ---------- "Pendant ce temps, à côté" and the hub's wall: white cards ---------- */
+.salles { display: grid; grid-template-columns: repeat(var(--n, 2), minmax(0, 1fr)); gap: 32px; align-content: center; }
+.salle .carte-tete { grid-template-columns: minmax(0, 1fr) auto; margin-bottom: 18px; }
+.salle-nom { font-size: 30px; font-weight: 800; color: var(--violet); }
+.salle-heure { font: 800 40px var(--f-texte); color: #c77414; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.salle-heure.maintenant { color: var(--violet); }
+.salle-titre { font-size: 40px; font-weight: 800; line-height: 1.18; }
+.salle-qui { margin-top: 14px; font-size: 26px; font-weight: 700; color: #6b6590; }
+
+/* ---------- "Nos réseaux" ---------- */
+.reseaux { display: flex; flex-wrap: wrap; align-content: center; justify-content: center; gap: 40px 48px; }
+.reseau { min-width: 520px; padding: 36px 48px 40px; text-align: center; }
+.reseau-nom { font: 800 30px var(--f-texte); letter-spacing: .12em; text-transform: uppercase; color: var(--violet); }
+.reseau-compte { margin-top: 14px; font: 800 64px / 1.05 var(--f-texte); color: #1d1747; overflow-wrap: anywhere; }
+
+/* ---------- Programme: the day in one column, walking round ---------- */
+.scroller { overflow: hidden; }
+.programme-liste { list-style: none; display: flex; flex-direction: column; gap: .28em; font-size: 40px; }
+.cycling {
+  animation-name: program-cycle;
+  animation-timing-function: cubic-bezier(.4, 0, .2, 1);
+  animation-iteration-count: infinite;
+  animation-fill-mode: both;
+}
+@keyframes program-cycle {
+  0%, 14% { transform: translateY(var(--from)); }
+  38%, 52% { transform: translateY(var(--end)); }
+  76%, 90% { transform: translateY(0); }
+  100% { transform: translateY(var(--from)); }
+}
+
+/* ---------- Countdown ---------- */
+.decompte {
+  position: absolute;
+  inset: var(--bande) var(--marge) calc(var(--barre-bas) + 14px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 30px;
+  text-align: center;
+}
+.decompte-titre { font-size: 96px; line-height: 1; }
+.decompte-chiffres { font-size: 330px; line-height: .95; font-variant-numeric: tabular-nums; --contour-epaisseur: .12em; }
+.decompte-reprise { font: 800 56px / 1.2 var(--f-texte); color: var(--orange); }
+.beat { animation: beat .5s ease-out; }
+@keyframes beat { from { scale: 1.035; } to { scale: 1; } }
+
+/* ---------- The console's message, on screen ---------- */
+.message.urgent { padding: 60px; border-radius: 28px; background: rgba(122, 20, 32, .88); }
+.message.warning .message-texte { color: var(--orange); }
+
+/* ---------- The running talk's feedback QR ---------- */
+.avis {
+  position: absolute;
+  inset: var(--bande) var(--marge) calc(var(--barre-bas) + 14px);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 90px;
+  padding: 0 60px;
+}
+.avis .cadre-qr { width: 520px; height: 520px; }
+.avis .cadre-qr .qr { position: absolute; inset: 12%; background: #fff; border-radius: 12px; padding: 14px; }
+.avis .cadre-qr .qr svg { display: block; width: 100%; height: 100%; }
+.avis-titre { font-size: 84px; line-height: 1.02; }
+.avis-talk { margin-top: 36px; font: 800 48px / 1.2 var(--f-texte); }
+.avis-aide { margin-top: 24px; font: 700 34px / 1.35 var(--f-texte); color: rgba(255, 255, 255, .8); }
+
+/* QR codes drawn by the room (code of conduct, feedbacks): white square in the
+   reference's rounded frame, where the reference had an image. */
+.cadre-qr .qr { position: absolute; inset: 12%; background: #fff; border-radius: 8px; padding: 6px; }
+.cadre-qr .qr svg { display: block; width: 100%; height: 100%; }
+.fb-qr.cadre-qr { width: 410px; height: 410px; }
+
+/* ---------- Audience question ---------- */
+.question {
+  position: absolute;
+  left: 200px;
+  right: 200px;
+  top: 190px;
+  bottom: calc(var(--barre-bas) + 60px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 40px;
+  padding: 60px 80px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .3);
+  text-align: center;
+  --contour-couleur: var(--marine);
+  --contour-epaisseur: .15em;
+}
+.question-texte { font: 800 64px / 1.25 var(--f-texte); white-space: pre-line; }
+.question-auteur { font: 800 40px var(--f-texte); color: var(--orange); }
+
+/* ---------- The hub's moderated wall ---------- */
+.mur-hub { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 48px; align-items: start; }
+.mur-hub-liste { display: flex; flex-direction: column; gap: 22px; overflow: hidden; max-height: 100%; }
+.mur-hub .carte-texte { -webkit-line-clamp: 4; font-size: 32px; }
+.mur-hub-qr { display: flex; flex-direction: column; align-items: center; gap: 22px; }
+.mur-hub-qr .cadre-qr { width: 340px; height: 340px; }
+.mur-hub-qr p { font: 700 30px / 1.3 var(--f-texte); text-align: center; }
+
+/* ---------- On air: the stage goes black, the band leaves ---------- */
+body[data-mode="live"] #stage { background: #000; }
+body[data-mode="live"] #decor,
+body[data-mode="live"] #logo,
+body[data-mode="live"] #barre-bas,
+body[data-mode="live"] #progression { opacity: 0; transition: opacity .45s ease; }
+
+/* The welcome's logo in a fixed box: the reference's is a wide wordmark, the
+   program's may well be square — contained, it can no longer push the
+   « Bienvenue à » off the stage. */
+.accueil-logo { height: 600px; object-fit: contain; }
+
+/* `hidden` always wins: the browser's own `[hidden] { display: none }` loses to
+   the slightest author rule setting a display — a trap met on the console. */
+[hidden] { display: none !important; }

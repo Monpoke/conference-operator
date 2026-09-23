@@ -19,6 +19,7 @@
     "@conference-operator/db": "workspace:*",
     "@conference-operator/format": "workspace:*",
     "@conference-operator/program": "workspace:*",
+    "@conference-operator/projector": "workspace:*",
     "@conference-operator/room-state": "workspace:*",
     "@conference-operator/ui": "workspace:*",
     "@fastify/http-proxy": "11.6.2",

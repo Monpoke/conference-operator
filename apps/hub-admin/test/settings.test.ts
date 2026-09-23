@@ -271,6 +271,24 @@ describe('settings view', () => {
     expect((sent?.input as { screensDisabled: string[] }).screensDisabled).toEqual(['countdown'])
   })
 
+  it('offers the loop scenes like the other screens', async () => {
+    const { calls, wrapper } = await mountView()
+
+    // Labelled as the organisers name them, and withdrawn the same way.
+    expect(wrapper.get('[data-screen="announcements"]').text()).toContain('Annonces “offert par”')
+    expect(wrapper.get('[data-screen="event-feedback"]').text()).toContain("QR feedbacks de l'événement")
+    for (const screen of ['welcome', 'sponsors-thanks', 'slogans', 'posts', 'code-of-conduct']) {
+      expect(wrapper.find(`[data-screen="${screen}"]`).exists(), screen).toBe(true)
+    }
+
+    await wrapper.get('[data-screen="posts"] input').setValue(false)
+    await wrapper.get('#btn-screens').trigger('click')
+    await flushPromises()
+
+    const sent = calls.find((call) => call.path === 'settings/update')
+    expect((sent?.input as { screensDisabled: string[] }).screensDisabled).toEqual(['sponsors', 'posts'])
+  })
+
   it('sends no wall rather than an empty address', async () => {
     const { calls, wrapper } = await mountView()
 

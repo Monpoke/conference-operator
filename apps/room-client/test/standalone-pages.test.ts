@@ -45,11 +45,12 @@ const markup = (html: string) => html.replace(/<script\b[^>]*>[\s\S]*?<\/script>
  * parser twice, TypeScript's and then the browser's.
  */
 const SOURCES = [
-  'display-page.ts',
-  'overlay-page.ts',
-  'overlay-live-page.ts',
-  'hub-address-page.ts',
-].map((name) => [name, readFileSync(fileURLToPath(new URL('../src/core/' + name, import.meta.url)), 'utf8')] as const)
+  // The projected page's template lives with the page, shared with the hub.
+  '../../../packages/projector/src/server/page.ts',
+  '../src/core/overlay-page.ts',
+  '../src/core/overlay-live-page.ts',
+  '../src/core/hub-address-page.ts',
+].map((path) => [path.split('/').pop()!, readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8')] as const)
 
 describe('writing the templates', () => {
   it.each(SOURCES)('%s: no bare backtick in the template body', (_name, source) => {
@@ -78,15 +79,12 @@ describe('pages served by the client', () => {
      * A tag pointing at a CDN breaks the page at the first network cut — that is,
      * exactly when it is needed.
      *
-     * **A single exception, named here**: the X button on the projection's
-     * Réseaux slide. The test does not disappear for all that, and that is the
-     * point: it lists the external origins and refuses any other than that one. A
-     * second dependency that invited itself in — a font, an analytics script —
-     * would fail here, and the first stays tied to its page and to its `async`.
+     * No exception any more: the X button the projection's Réseaux slide used
+     * to load left with the reference loop's design — a projector has no mouse.
+     * The list stays, so that a dependency inviting itself in — a font, an
+     * analytics script — has to be named here to pass.
      */
-    const ALLOWED: Record<string, string[]> = {
-      projector: ['https://platform.x.com/widgets.js'],
-    }
+    const ALLOWED: Record<string, string[]> = {}
     const external = [...html.matchAll(/<(?:script|link)\b[^>]*\b(?:src|href)="([^"]+)"/g)]
       .map((found) => found[1]!)
       .filter((address) => /^(?:https?:)?\/\//.test(address))

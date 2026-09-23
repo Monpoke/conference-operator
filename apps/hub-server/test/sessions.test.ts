@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { normalizeProgram, sessionsForRoom, type Program } from '@conference-operator/program'
-import { DEFAULT_VOD_POLICY, hubSettingsPatchSchema } from '@conference-operator/contract'
+import { DEFAULT_BOUCLE, DEFAULT_VOD_POLICY, hubSettingsPatchSchema } from '@conference-operator/contract'
 import { openHubDatabase, type HubDatabase } from '../src/db.js'
 import { SessionStateService, SettingsService } from '../src/services/sessions.js'
 import { RoomService } from '../src/services/rooms.js'
@@ -228,6 +228,8 @@ describe('hub settings', () => {
       vodPrefix: null,
       // `vodPolitique` is a contract field: it does not get renamed.
       vodPolitique: DEFAULT_VOD_POLICY,
+      // The reference loop, until the console lays out another.
+      boucle: DEFAULT_BOUCLE,
     })
   })
 
@@ -245,6 +247,7 @@ describe('hub settings', () => {
       vodBucket: null,
       vodPrefix: null,
       vodPolitique: DEFAULT_VOD_POLICY,
+      boucle: DEFAULT_BOUCLE,
     })
     expect(settings.get().autoEndGraceMinutes).toBe(15)
   })

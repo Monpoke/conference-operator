@@ -91,6 +91,15 @@ extraResources:
   # with it.
   - from: ../../packages/db/migrations/client
     to: migrations/client
+  # The loop's typefaces, served to the projector by `/fonts/:file`: the screen
+  # must not fetch them from the Internet. `resolveFontsFolder` looks here first.
+  - from: assets/fonts
+    to: fonts
+    filter:
+      - "*.woff2"
+      - "*.woff"
+      - "*.otf"
+      - "*.ttf"
   # The control app's bundle. Outside the asar, and at this exact place:
   # `resolveControlBundle` walks up the folders from the main process's bundle
   # until it finds `apps/control-web/dist`, exactly as it does from the sources.

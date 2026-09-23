@@ -16,9 +16,11 @@ import { renderOverlayPage } from '../src/core/overlay-page.js'
  * Since the move to Tailwind, this test only holds thanks to
  * `flattenLayersInHtml`: happy-dom ignores `@layer`, where the whole sheet lives.
  */
-const PAGES: [string, () => string][] = [
-  ['projector', renderProjectorPage],
-  ['overlay', renderOverlayPage],
+/** Each page, and a class of its own sheet that gives an element a display. */
+const PAGES: [string, () => string, string][] = [
+  // The projector carries the reference loop's sheet, not Tailwind.
+  ['projector', renderProjectorPage, 'accueil'],
+  ['overlay', renderOverlayPage, 'flex'],
 ]
 
 function mount(html: string): void {
@@ -26,12 +28,12 @@ function mount(html: string): void {
 }
 
 describe('effective visibility', () => {
-  it.each(PAGES)('%s: a hidden element is really invisible', (_name, render) => {
+  it.each(PAGES)('%s: a hidden element is really invisible', (_name, render, displayed) => {
     mount(render())
-    // We set up a clear-cut case: an element to which a utility gives a display,
+    // We set up a clear-cut case: an element to which a rule gives a display,
     // exactly the situation that beat `[hidden]`.
     const probe = document.createElement('div')
-    probe.className = 'flex'
+    probe.className = displayed
     probe.id = 'probe'
     probe.hidden = true
     document.body.append(probe)

@@ -14,6 +14,7 @@ import {
   audioInputSchema,
 } from './primitives.js'
 import { DEFAULT_VOD_POLICY, vodPolicySchema, vodSyncSchema } from './vod.js'
+import { boucleSchema, DEFAULT_BOUCLE } from './boucle.js'
 
 /**
  * Role → OBS scene name mapping, per room and per instance.
@@ -452,7 +453,7 @@ export const hubSettingsSchema = z.object({
    * until somebody decides otherwise — the hub arbitrates what is *available*,
    * never what a room is *doing*.
    */
-  screensDisabled: z.array(roomScreenSchema).max(20).default([]),
+  screensDisabled: z.array(roomScreenSchema).max(40).default([]),
   /**
    * Bucket the rushes land in. `null` = none, and nothing leaves.
    *
@@ -470,6 +471,11 @@ export const hubSettingsSchema = z.object({
    */
   vodPrefix: z.string().max(200).nullable().default(null),
   vodPolitique: vodPolicySchema.default(DEFAULT_VOD_POLICY),
+  /**
+   * The welcome loop's own content — texts, sponsor pages, posts, QR addresses.
+   * See `boucleSchema`. Defaults to the reference loop.
+   */
+  boucle: boucleSchema.default(DEFAULT_BOUCLE),
 })
 export type HubSettings = z.infer<typeof hubSettingsSchema>
 export type HubSettingsInput = z.input<typeof hubSettingsSchema>
@@ -506,11 +512,14 @@ function patchOf<Shape extends z.ZodRawShape>(shape: Shape): z.ZodObject<PatchSh
  *
  * The VOD policy is patched too, field by field: correcting the throughput
  * ceiling during the event must not take the part size or `actif` back to their
- * defaults along the way.
+ * defaults along the way. The loop's content likewise, section by section: the
+ * console saves one panel at a time, and saving the messages must not bring the
+ * sponsor pages back to their automatic layout.
  */
 export const hubSettingsPatchSchema = patchOf({
   ...hubSettingsSchema.shape,
   vodPolitique: patchOf(vodPolicySchema.shape),
+  boucle: patchOf(boucleSchema.shape),
 })
 export type HubSettingsPatch = z.infer<typeof hubSettingsPatchSchema>
 
@@ -581,6 +590,11 @@ export const syncResultSchema = z.object({
    */
   wallsIoUrl: z.url().nullable().default(null),
   screensDisabled: z.array(roomScreenSchema).default([]),
+  /**
+   * The welcome loop's content. Sent down and cached like the rest; an older hub
+   * that does not send it gives the reference loop.
+   */
+  boucle: boucleSchema.default(DEFAULT_BOUCLE),
   /**
    * The event's identity, decided by the hub.
    *

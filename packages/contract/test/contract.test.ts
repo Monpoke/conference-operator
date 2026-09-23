@@ -3,6 +3,9 @@ import { ulid } from './ulid.js'
 import {
   DELIVERY_BY_EVENT,
   DEFAULT_VOD_POLICY,
+  DEFAULT_BOUCLE,
+  boucleImageRefs,
+  imageRefSchema,
   PROTOCOL_VERSION,
   commandPayloadSchema,
   commandSchema,
@@ -128,6 +131,9 @@ describe('contract surface', () => {
     expect(Object.keys(contract).sort()).toEqual([
       // What the signed-in operator's groups let them do, flattened for the pages.
       'access',
+      // The welcome loop's editor: the program's partners to lay out, and images
+      // uploaded from the console. The content itself goes through `settings`.
+      'boucle',
       'clock',
       'devices',
       // The event's identity, read-only: what the hub decided for the name shown
@@ -308,6 +314,8 @@ describe('talk lifecycle', () => {
       vodBucket: null,
       vodPrefix: null,
       vodPolitique: DEFAULT_VOD_POLICY,
+      // The reference loop, as designed: a fresh hub shows it without any setting.
+      boucle: DEFAULT_BOUCLE,
     })
     expect(DEFAULT_VOD_POLICY.actif).toBe(false)
     expect(DEFAULT_VOD_POLICY.debitMaxOctetsS).toBeNull()
@@ -398,6 +406,29 @@ describe('message exchange', () => {
     // with their defaults — and the hub, merging them, would wipe the program URL
     // and the storage configuration on a save meant for the OpenFeedback key.
     expect(Object.keys(patch)).toEqual(['openFeedbackProjectId'])
+  })
+
+  it('patches the loop section by section', () => {
+    const patch = hubSettingsPatchSchema.parse({ boucle: { merciSponsors: 'Merci !' } })
+    expect(Object.keys(patch.boucle ?? {})).toEqual(['merciSponsors'])
+  })
+
+  it('reproduces the reference loop by default', () => {
+    expect(DEFAULT_BOUCLE.messages.bienvenue).toEqual({
+      texte: 'Bienvenue chez\nCloud Nord !',
+      sousTitre: '30 octobre 2026',
+      effet: 'eclate',
+    })
+    expect(DEFAULT_BOUCLE.sponsorPages).toBeNull()
+    expect(DEFAULT_BOUCLE.conduite.paragraphes).toHaveLength(3)
+    expect(boucleImageRefs(DEFAULT_BOUCLE)).toEqual([])
+  })
+
+  it('accepts only downloadable or uploaded images', () => {
+    expect(imageRefSchema.safeParse('https://exemple.fr/logo.png').success).toBe(true)
+    expect(imageRefSchema.safeParse(`hub-image:${'a'.repeat(64)}.png`).success).toBe(true)
+    expect(imageRefSchema.safeParse('file:///etc/passwd').success).toBe(false)
+    expect(imageRefSchema.safeParse('hub-image:../x.png').success).toBe(false)
   })
 
   it('patches the VOD policy field by field', () => {

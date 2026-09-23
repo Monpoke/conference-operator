@@ -9,7 +9,7 @@ import { httpPairingTransport, runPairing, type DeviceCodeResponse } from './pai
 import { createORPCClient } from '@orpc/client'
 import { RPCLink as FetchLink } from '@orpc/client/fetch'
 import type { ContractRouterClient } from '@orpc/contract'
-import { contract, NO_EDITING_MARKS } from '@conference-operator/contract'
+import { boucleImageRefs, contract, NO_EDITING_MARKS } from '@conference-operator/contract'
 import { DEFAULT_TIMEZONE } from '@conference-operator/program'
 import { RoomRuntime } from './runtime.js'
 import { LocalStore } from './store.js'
@@ -18,6 +18,7 @@ import { CanvasObsController } from './obs-canvas.js'
 import type { AudioSource, ObsCapture, ObsControllerEvent, ObsTransport } from './obs.js'
 import type { ObsInstance } from '@conference-operator/contract'
 import { ConnectivityTracker, probeConnectivity } from './connectivity.js'
+import { WallsIoProbe } from './wallsio-probe.js'
 import { RecordingSession, slugify, type MarkerRole, type StopResult } from './recording.js'
 import type { ControlDiagnostics, ControlTarget, VisibleObsEndpoint, VodList } from './control-api.js'
 import {
@@ -268,6 +269,8 @@ export class RoomApp implements ControlTarget {
   /** Interrupts the pairing under way — the operator has chosen another room. */
   private pairingAbort: AbortController | null = null
   private readonly connectivity: ConnectivityTracker
+  /** Whether the walls.io scene can play: checked by the machine, not the page. */
+  private readonly wallsIo: WallsIoProbe
 
   constructor(private readonly options: RoomAppOptions) {
     this.store = new LocalStore(join(options.dataDir, 'salle.db'))
@@ -346,6 +349,10 @@ export class RoomApp implements ControlTarget {
       hubOrigin: options.hubOrigin,
       onChange: (value) => this.runtime.setConnectivity(value),
     })
+    this.wallsIo = new WallsIoProbe({
+      url: () => this.store.settings().screens.wallsIoUrl,
+      onChange: () => this.display.broadcast(),
+    })
     this.display = new DisplayServer({
       runtime: this.runtime,
       assets: this.assets,
@@ -361,6 +368,8 @@ export class RoomApp implements ControlTarget {
       socialLinks: () => this.store.settings().socialLinks,
       screens: () => this.store.settings().screens,
       event: () => this.store.settings().event,
+      boucle: () => this.store.settings().boucle,
+      wallsIoReachable: () => this.wallsIo.reachable,
       version: options.version ?? null,
       onLevelsRequested: (active) => {
         this.levelsRequested = active
@@ -626,6 +635,7 @@ export class RoomApp implements ControlTarget {
      * would never catch up on its rushes in the evening, when the hub comes back.
      */
     this.uploads.start()
+    this.wallsIo.start()
 
     return url
   }
@@ -885,6 +895,13 @@ export class RoomApp implements ControlTarget {
           })
         }
       }
+      // The loop's own images — uploaded logos, post photos — after the program's:
+      // the loop shows the sponsor's name in its circle until they arrive.
+      const loopImages = await this.assets.prefetchUrls(boucleImageRefs(this.store.settings().boucle))
+      if (loopImages.failed.length > 0) {
+        this.store.log('warn', 'images de la boucle', { echecs: loopImages.failed.length })
+      }
+      this.display.refreshBoucle()
     }
     return result.ok
   }
@@ -2319,6 +2336,7 @@ export class RoomApp implements ControlTarget {
     if (this.roomsTimer != null) clearInterval(this.roomsTimer)
     if (this.heartbeat != null) clearInterval(this.heartbeat)
     if (this.tick != null) clearInterval(this.tick)
+    this.wallsIo.stop()
     await this.link?.close()
     await this.obsA?.disconnect().catch(() => {})
     await this.obsB?.disconnect().catch(() => {})

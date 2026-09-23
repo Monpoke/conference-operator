@@ -107,175 +107,156 @@ REGIE_VITE_ORIGIN=http://127.0.0.1:5174 MODE=dev pnpm --filter @conference-opera
 
 ## L'écran d'attente : une boucle
 
-`loop` est le mode d'écran par défaut d'une salle — celui qu'on veut y trouver
+`loop` est le mode d'écran par défaut d'une salle : celui qu'on veut y trouver
 le matin sans que personne n'ait rien touché, et celui sur lequel on retombe
-quand un message s'efface. Il enchaîne quatre pages :
+quand un message s'efface. Depuis la version 2026, **c'est la boucle d'accueil
+dessinée pour Cloud Nord** (le prototype autonome `boucle-cloudnord`), reprise
+à l'identique — thème, écrans, durées, effets — et branchée sur ce que le hub
+sait déjà : le programme, les paliers de sponsors, les réseaux, walls.io, les
+écrans retirés.
 
-| Page | Durée | Ce qu'elle apporte |
-|---|---|---|
-| Nos partenaires | 12 s | Le palier de tête en grand, les autres engagements dessous |
-| Programme de la salle | 15 s | La journée, du créneau en cours vers la suite |
-| Pendant ce temps, à côté | 12 s | Le talk en cours ou à venir des **autres** salles |
-| Suivez *\<événement\>* | 10 s | Les comptes de l'organisateur, handle en grand |
+### Un plateau fixe, mis à l'échelle
 
-Un cycle complet fait 49 secondes. Les durées ne sont pas égales : un programme
-de vingt-sept lignes se lit, une rangée de logos se regarde. Elles sont
-volontairement longues — un écran qui change toutes les trois secondes attire
-l'œil pendant une pause où les gens se parlent. Les points en bas disent qu'il y
-a une suite, et qu'elle tourne : sans eux, un écran qui change tout seul se lit
-comme un écran instable. Le point actif se remplit sur la durée de la page, ce
-qui dit en plus *quand* elle va tourner.
+La page est un **plateau de 1920 × 1080 en px**, mis à l'échelle de la fenêtre
+(`transform: scale`). C'est ce qui garde la même composition d'un
+vidéoprojecteur 1024 × 768 à un écran 4K — le rôle que tenait le `vmin` — sans
+retoucher une ligne de la feuille d'origine : `packages/projector/src/styles/reference.css`
+en est la copie exacte, comparable ligne à ligne ; ce que cet écran ajoute
+(les deux pages en plus, les écrans de la régie, l'état de la salle) vit à côté,
+dans `screen.css`. Le projecteur ne charge plus Tailwind.
 
-**Les partenaires sont en podium.** Le premier palier — celui qui a payé le
-plus cher, et les paliers arrivent déjà triés par rang — occupe seul un bandeau
-doré en haut de l'écran, logos au plus grand. L'or ne vient pas du thème de
-l'événement, et c'est voulu : la marque habille l'écran, l'or dit le rang. Tant
-que le bandeau reprenait la couleur de marque, le palier de tête se lisait comme
-un encadré de plus. Il se déclenche sur le **rang**, jamais sur le nom du
-palier : « Gold » peut devenir « Platine » d'une édition à l'autre, le premier
-reste le premier. Tout le reste est fondu en une rangée
-où chaque sponsor n'apparaît **qu'une fois**, avec la liste des packs qu'il a
-pris ; ceux qui s'en sont offert plusieurs y ont une carte plus large, encadrée
-de la couleur de marque, sous l'intitulé « Et sur tous les fronts ».
+Le code vit dans son propre paquet, `@conference-operator/projector` : du vrai
+TypeScript et de la vraie CSS, compilés par esbuild en deux constantes
+(`PROJECTOR_JS`, `PROJECTOR_CSS`) que `display-page.ts` insère dans la page. Le
+module généré est versionné et un test vérifie qu'il correspond aux sources,
+comme la machine d'état de `room-state` :
 
-La hiérarchie est portée par le cadre, jamais par la taille du logo : dans une
-rangée, toutes les pastilles partagent la même hauteur et la même ligne, et
-toutes les légendes le même appui. Faire maigrir le logo de celui qui n'a pris
-qu'un pack cassait la ligne — une rangée de partenaires se lit comme une
-étagère, ou ne se lit pas.
+```bash
+pnpm --filter @conference-operator/projector build
+```
 
-**Les logos sont détourés à l'affichage.** Les sponsors déposent ce qu'ils
-veulent : certains fichiers sont cadrés au plus près, d'autres laissent flotter
-la marque au milieu d'une grande marge. Posés côte à côte à hauteur égale, les
-seconds paraissent deux fois plus petits — c'est du vide qu'on affiche à leur
-place. La page mesure donc l'encre de chaque logo et recadre dessus, une fois
-par image, gardée ensuite en mémoire.
+### Les scènes, dans l'ordre
 
-Deux garde-fous. Seules les marges **transparentes ou blanches** sont rognées :
-un logo posé sur un aplat de couleur — le carré bleu d'AXA — a cet aplat pour
-marque, et le resserrer sur le texte qu'il contient l'abîmerait. Et le calcul
-n'est possible que parce que les images du cache sont servies par le client
-lui-même sur `/assets` : un logo encore distant invalide le canvas, la lecture
-lève, et l'image est gardée telle quelle.
+| # | Scène | Durée | Nourrie par | Sautée quand |
+|---|---|---|---|---|
+| 1 | Accueil (« Bienvenue à » + logo) | 10 s, stinger | réglages *Boucle* | jamais |
+| 2 | Agenda de la salle | 20 s | programme | journée vide |
+| 3 | Annonces « offert par » (×4 au plus) | 8 s | réglages *Boucle* | pas de logo |
+| 4 | Merci à nos sponsors | 6 s | réglages *Boucle* | aucune page de sponsors |
+| 5 | Pages de sponsors (×8 au plus) | 8 s | programme + mise en page | page vide |
+| 6 | Mur de posts (manuel) | 15 s | réglages *Boucle* | aucun post |
+| 7 | Message « Bienvenue » | 7 s | réglages *Boucle* | texte vide |
+| 8 | Pendant ce temps, à côté | 12 s | programme | rien ailleurs |
+| 9 | Agenda (rappel) | 20 s | programme | journée vide |
+| 10 | Message « Partage » | 7 s | réglages *Boucle* | texte vide |
+| 11 | Nos réseaux | 10 s | réglages hub | aucun compte |
+| 12 | Walls.io | 25 s | réglages hub | pas d'adresse, ou walls.io muet |
+| 13 | Message « Téléphones » | 7 s | réglages *Boucle* | texte vide |
+| 14 | Code de conduite | 14 s | réglages *Boucle* | jamais |
+| 15 | Feedbacks de l'événement | 10 s | réglages *Boucle* | pas de QR |
 
-Le dédoublonnage ne peut pas passer par l'identifiant : l'export amont en donne
-un **par palier**, si bien qu'un même partenaire en porte autant que de packs
-pris. C'est le site qui sert de clé, à la barre finale près, et le nom en repli.
-Sans cela le même logo revenait à l'identique à trois lignes d'écart — projeté,
-cela se lit comme un défaut d'affichage, pas comme de la générosité.
+L'ordre et les durées sont ceux du prototype (`BOUCLE`, dans
+`packages/projector/src/browser/sequence.ts`), avec les deux pages que la
+boucle précédente avait en plus : « Pendant ce temps » et « Nos réseaux »,
+redessinées dans le thème. **Une scène sans contenu est sautée, pas affichée
+vide** : dix secondes de cadre désert devant la salle se lisent comme une panne.
+Revenir à la boucle la reprend **toujours à l'accueil**, derrière le stinger.
 
-**Elle est animée, sobrement.** Deux pages se croisent en fondu — la sortante
-s'efface par-dessus la nouvelle qui entre — les listes arrivent ligne à ligne
-plutôt que d'un bloc, le programme part du créneau en cours et glisse vers la
-suite de la journée pendant qu'il est affiché, et le halo de marque dérive en
-quarante-quatre secondes derrière tout cela. Rien de tout ceci n'anime autre
-chose qu'`opacity` et `transform` : ce sont les deux propriétés qu'un
-compositeur traite sans repasser par la mise en page, seule façon de tenir dans
-une Browser Source OBS en 4K. Un écran de pause parfaitement immobile pendant
-vingt minutes finit par se lire comme un poste éteint sur une image.
+En bas, en permanence, **le bandeau** : la prochaine session de la salle (avec
+le nom de la salle quand elle a lieu ailleurs), le message et le hashtag, l'heure
+— et, discrètement, la pause de la salle et un point quand la liaison au hub est
+dégradée. Une barre de progression dit quand la scène va tourner.
 
-**Une page sans contenu est sautée, pas affichée vide** : dix secondes de cadre
-désert devant la salle se lisent comme une panne. Une salle jamais synchronisée
-se réduit donc aux sponsors, exactement comme avant.
+### Monter une fois, ne jamais redessiner sous les yeux de la salle
 
-Les modes `sponsors` et `programme` restent disponibles seuls : quand quelque
-chose se passe, on veut pouvoir figer l'écran sur une page précise plutôt que
-d'attendre que la boucle y revienne.
+Toutes les scènes sont **montées une fois**, transparentes, et restent dans le
+document : une scène qui entre est déjà mise en page, ses images déjà décodées.
+Un état reçu marque *sales* les scènes dont les données ont changé, et **une scène
+sale n'est reconstruite que hors écran** — jamais pendant que la salle la lit.
+Les écrans que la régie pose (question, message, compte à rebours…) font
+exception : on les a choisis pour maintenant, ils suivent leurs données sur place.
 
-### Deux mises en page pour la journée, le temps de choisir
+C'est aussi ce qui garde l'iframe walls.io : elle n'est jamais dans un balisage
+réécrit, un état reçu chaque seconde ne la recharge pas. Elle n'est remplacée
+que si son adresse change, et rechargée toutes les `rechargeMinutes`, hors écran.
 
-Une journée fait deux à trois fois la hauteur de l'écran, et personne ne peut
-faire défiler un vidéoprojecteur. Le mode `programme` amenait le créneau en cours
-au centre et s'y arrêtait : tout ce qui suivait était coupé, et la salle lisait un
-programme qui s'arrêtait au milieu de l'après-midi. Il fait désormais le tour
-complet — créneau en cours, fin de journée, début, retour au créneau en cours —
-à vitesse constante quelle que soit la longueur du jour. Dans la boucle d'attente,
-le même défaut était ailleurs : chaque passage rejouait le même écran ; un passage
-reprend maintenant là où le précédent s'est arrêté et repart du matin une fois la
-fin lue.
+### L'agenda de la boucle ne suit pas la règle de la console
 
-Le mode `agenda` est la **seconde proposition**, gardée à côté de la première :
-la même journée, en deux colonnes, sur un écran immobile où rien n'attend un
-défilement pour être lu. Il porte les mêmes données et les mêmes règles — la fin
-effective grise ce qui est passé, le créneau en cours est mis en avant — et ne
-change que la forme, ce qui est précisément ce qui rend les deux comparables dans
-la salle. Ce qui ne tient pas n'est pas caché, il est réduit : l'échelle baisse
-après insertion, une fois la hauteur réelle connue, jusqu'à ce que la journée
-tienne. Les deux écrans sont offerts côte à côte dans la console ; c'est sur le
-vidéoprojecteur de la salle que l'un des deux sera choisi.
+La boucle reprend la règle du prototype, qui n'est pas celle de la machine
+d'état : un créneau appartient à sa salle **et aux salles voisines qu'il couvre**
+dans la grille amont (`extendWidth`, lu en `roomSpan`) ; un créneau que rien ne
+chevauche — la keynote d'ouverture — est une **plénière** et s'affiche sur tous
+les écrans avec une pastille orange au nom de sa salle ; les sessions terminées
+disparaissent au fil de la journée. C'est `agendaForRoom` (`packages/program`),
+calculée par la salle sur l'horloge corrigée du hub, jamais sur celle du poste.
 
-Un détail qui valait pour les deux : le grisé du passé passe par un `filter`, pas
-par `opacity`. L'animation d'entrée se termine sur `opacity: 1` et la conserve —
-`both` —, si bien que toute opacité posée sur le même élément était effacée dès
-que la ligne s'était posée. La salle voyait la journée entière au même poids.
+La console, elle, continue de traiter la keynote sans speaker comme une pause :
+les deux lectures coexistent volontairement, l'une dit où aller, l'autre quoi
+piloter.
 
-### Ce qui alimente les deux pages nouvelles
+### Le contenu de la boucle est un réglage du hub
 
-**Les autres salles** sont calculées par la salle elle-même, sur le programme
-déjà en cache et l'horloge corrigée du hub — jamais sur l'heure du poste, qui
-peut en être à des semaines quand le hub tourne sur une horloge simulée. Aucun
-appel réseau : la boucle tourne pendant les pauses, c'est-à-dire quand le réseau
-de l'événement est le plus chargé. Les pauses des autres salles sont écartées —
-« Déjeuner en Track #2 » n'aide personne à choisir où aller.
+Tout ce que l'export ne porte pas — textes des messages animés, annonces
+« offert par », mise en page des sponsors, posts du mur manuel, code de
+conduite, adresses des QR, bandeau, signature, logo — est un réglage du hub
+(`boucle` dans `HubSettings`, console → **Boucle**), descendu au `sync` et mis en
+cache par la salle comme le programme. Les valeurs par défaut **reproduisent le
+prototype** : un hub neuf montre la boucle telle qu'elle a été dessinée. Les
+posts sont vides par défaut — ceux du prototype étaient fictifs.
 
-**Les comptes de l'organisateur** sont un réglage du hub (console, onglet
-*Réglages*, panneau « Nos réseaux »), poussé aux salles au `sync` et **mis en
-cache local** comme le programme. L'export amont ne porte que les réseaux des
-*speakers* : ceux de l'événement n'ont aucune source, et corriger un handle ne
-doit pas demander de rejouer une release sur les trois machines de salle. Le nom
-écrit au-dessus (« Suivez … ») vient de la même descente, et suit l'événement.
+- **Sponsors.** Sans mise en page saisie, une page par palier du programme,
+  le premier sans titre, des rangées de quatre au plus. L'éditeur permet de
+  regrouper librement : pages (titre), rangées (taille des ronds), logos (échelle
+  dans le rond), choisis parmi les partenaires du programme — dédoublonnés par
+  site — ou ajoutés à la main avec un logo déposé. Un logo désigné qui n'est plus
+  dans le programme est signalé « absent du programme ».
+- **Images.** Une adresse `https://…` que le hub télécharge, ou une image
+  déposée depuis la console (`hub-image:<sha>.<ext>`). Les deux finissent dans le
+  même cache que les logos du programme ; la salle les récupère sur le hub et
+  écrit le nom du sponsor dans son rond tant qu'une image manque — jamais d'appel
+  à Internet depuis le projecteur.
+- **QR codes.** Dessinés par la salle à partir d'adresses : le code de conduite
+  (masqué tant que l'adresse n'est pas renseignée), les feedbacks (par défaut la
+  page OpenFeedback de l'événement).
 
-**Le hashtag y a sa carte**, à la suite des comptes : `#CloudNord` en grand, et
-sous lui le bouton officiel de X (« Post #CloudNord »). C'est la **seule
-dépendance externe** de l'écran de salle — `platform.x.com/widgets.js` — et elle
-est tenue à trois règles :
+### Voir le résultat depuis le hub
 
-- **chargée en `async`, en dernier, et rien n'en dépend.** Sans elle la carte
-  affiche le hashtag, qui est de toute façon ce qu'on retape depuis le fond de
-  la salle : un écran projeté n'a pas de souris, et le bouton n'est cliquable
-  que sur les surfaces où cette page est ouverte dans un navigateur ;
-- **rappelée à chaque retour de la slide.** `widgets.js` remplace l'ancre par
-  son iframe au chargement du script, une fois ; or la boucle réécrit la couche
-  entière à chaque passage. Sans le rappel, le bouton n'apparaîtrait qu'au
-  premier tour ;
-- **surveillée par les tests d'autonomie**, qui n'ont pas été assouplis mais
-  resserrés : ils listent les origines externes de chaque page et refusent tout
-  ce qui n'est pas cette adresse-là, sur cette page-là, en `async`.
+La vue **Boucle** de la console commence par un **aperçu de l'écran de salle** :
+le hub rend `/boucle/apercu` — le même document que les salles projettent
+(`renderProjectorDocument`), nourri de ce qu'une salle recevrait au `sync`, sur
+l'horloge du hub, simulée ou non. On y choisit la salle ; le cadre se recharge
+après chaque enregistrement, et « Ouvrir dans un onglet » le montre en plein
+écran (`?scene=n` tient une scène, `?hud=1` ouvre le panneau). Deux différences
+avec une salle, dites sous le cadre : les images viennent du magasin du hub (une
+adresse pas encore téléchargée s'affiche depuis sa source), et walls.io y est
+toujours montré. L'aperçu demande une session opérateur (`settings:read`).
 
-Le hashtag et le compte associé sont écrits dans `display-page.ts`, contrairement
-aux comptes qui descendent du hub. Les remonter en réglage demanderait de les
-faire voyager dans la charge utile ; ils y gagneraient de survivre à un
-changement d'événement.
+### Les polices
+
+Peace Sans (titres), Gagalin (« Bienvenue à »), Bukhari Script (« Merci
+beaucoup ! ») et Open Sans. Elles se déposent dans
+`apps/room-client/assets/fonts/` et sont servies par la salle elle-même
+(`/fonts/…`, liste blanche) ; seules celles présentes sont déclarées, les autres
+retombent sur les polices de secours du prototype. Voir le `LISEZMOI.md` du
+dossier, et la licence de chacune avant de la versionner.
 
 ### Le mur social, la seule page dessinée par quelqu'un d'autre
 
 **`wallsio` encadre le mur walls.io de l'événement.** Il ne remplace pas le mur
 `wall` : celui-là porte les messages que le public dépose sur la page du hub et
-que la régie modère, celui-ci ce qui se dit ailleurs, sur les réseaux, collecté
-et modéré par walls.io. L'un est la salle qui se parle, l'autre l'événement vu
-du dehors ; aucun des deux ne dit ce que dit l'autre.
+que la régie modère, celui-ci ce qui se dit ailleurs, collecté et modéré par
+walls.io.
 
-**C'est la seule page de l'écran de salle qui dépend d'Internet pour son
-contenu.** Tout le reste se dessine sur le programme en cache et tient réseau
-débranché ; celle-ci est une iframe, et une salle coupée y montre le cadre en
-erreur du navigateur. C'est assumé plutôt que contourné : un mur de publications
-récupérées il y a cinq minutes n'est pas un mur, et rien de local ne pouvait en
-tenir lieu. Le garde-fou d'autonomie n'a pas sauté pour autant — il refuse
-toujours toute origine externe dans la page servie, iframe comprise, et un test
-tient que le cadre ne sort pas de son écran : une salle qui montre les sponsors
-ne charge rien.
+**C'est la seule page de l'écran de salle qui dépend d'Internet.** L'adresse est
+un réglage du hub (« Écrans de salle »), les options d'affichage (mise en page,
+zoom, rechargement) un réglage de la boucle. **La salle vérifie elle-même, toutes
+les minutes, que walls.io répond** (`WallsIoProbe`) et le dit à la page
+(`wallsIoReachable`) : tant qu'il ne répond pas, la scène est sautée. Le
+garde-fou d'autonomie tient toujours : aucune origine externe dans la page
+servie, iframe comprise — elle n'existe que dessinée par le script, sur sa scène.
 
-**L'adresse est un réglage du hub** (« Écrans de salle »), descendue au `sync` et
-mise en cache comme les comptes. L'adresse complète, jeton compris, et non un nom
-de compte à recomposer : le jeton est par mur, walls.io le régénère avec lui, et
-la forme de l'adresse appartient à quelqu'un d'autre. Vide — le défaut —, l'écran
-n'est proposé nulle part : un mur absent vaut mieux qu'un 404 encadré devant la
-salle. Le jeton n'est pas un secret, il ne donne à lire qu'un mur déjà public.
-
-Dans la boucle, la page passe **en dernier et dure vingt secondes**. C'est la
-seule qu'on *lit* — une dizaine de publications, chacune une phrase — là où les
-autres se regardent ; et la seule qui charge du dehors : arriver en dernier laisse
-à l'iframe toutes les pages précédentes pour se remplir.
+Le bouton « Post #CloudNord » de X, seul script externe de l'ancienne page, est
+parti avec elle : un vidéoprojecteur n'a pas de souris.
 
 ### Activer un écran, ce n'est pas l'afficher
 
@@ -302,9 +283,11 @@ lectures sont visibles ensemble.
 
 `loop` et `live` n'y figurent pas. La boucle est l'écran vers lequel on revient —
 la retirer laisserait une salle sans repli — et `live` n'est pas un choix mais
-l'état d'être à l'antenne. `rooms` et `socials`, à l'inverse, y sont sans être des
-modes d'affichage : ils n'existent que dans la boucle, et l'organisateur qui
-retire « la page des autres salles » n'a que faire de cette distinction.
+l'état d'être à l'antenne. `rooms`, `socials` et les scènes propres à la boucle
+(`welcome`, `announcements`, `sponsors-thanks`, `slogans`, `posts`,
+`code-of-conduct`, `event-feedback`), à l'inverse, y sont sans être des modes
+d'affichage : elles n'existent que dans la boucle, et l'organisateur qui retire
+« le code de conduite » n'a que faire de cette distinction.
 
 ## Servir un autre événement
 

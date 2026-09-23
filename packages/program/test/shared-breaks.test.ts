@@ -97,6 +97,7 @@ describe('applySharedBreaks — edge cases', () => {
     endsAtMs: end == null ? null : at(end),
     durationMinutes: null,
     roomId,
+    roomSpan: 1,
     kind,
     sharedFrom: null,
     feedbackId: null,

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { FIELDS_BY_VIEW, type DisplayView } from '../src/core/display-server.js'
@@ -16,9 +16,24 @@ import { FIELDS_BY_VIEW, type DisplayView } from '../src/core/display-server.js'
  * reads its sources back the same way.
  */
 const PAGES: { view: DisplayView; file: string }[] = [
-  { view: 'projecteur', file: 'display-page.ts' },
+  // The projected page's script lives in its own package: every module of it.
+  { view: 'projecteur', file: 'packages/projector/src/browser' },
   { view: 'overlay', file: 'overlay-page.ts' },
 ]
+
+const ROOT = join(import.meta.dirname, '..', '..', '..')
+
+/** The page's source: one template, or every module of a folder. */
+function source(file: string): string {
+  if (file.startsWith('packages/')) {
+    const folder = join(ROOT, file)
+    return readdirSync(folder, { recursive: true, encoding: 'utf8' })
+      .filter((name) => name.endsWith('.ts'))
+      .map((name) => readFileSync(join(folder, name), 'utf8'))
+      .join('\n')
+  }
+  return readFileSync(join(import.meta.dirname, '..', 'src', 'core', file), 'utf8')
+}
 
 /**
  * Payload fields consulted by a page, by reading its source.
@@ -31,8 +46,7 @@ const PAGES: { view: DisplayView; file: string }[] = [
  * was built only once.
  */
 function fieldsRead(file: string): string[] {
-  const source = readFileSync(join(import.meta.dirname, '..', 'src', 'core', file), 'utf8')
-  const found = source.matchAll(/\bdata\??\.([a-zA-Z]+)/g)
+  const found = source(file).matchAll(/\bdata\??\.([a-zA-Z]+)/g)
   return [...new Set([...found].map((m) => m[1]!))].sort()
 }
 

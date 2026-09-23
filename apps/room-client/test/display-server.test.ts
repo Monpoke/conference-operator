@@ -137,20 +137,15 @@ async function countSse(url: string, durationMs: number): Promise<number> {
 }
 
 describe('local display server', () => {
-  it('serves a self-contained page, bar one optional script', async () => {
+  it('serves a self-contained page', async () => {
     const html = await (await fetch(`${origin}/display/projector`)).text()
     expect(html).toContain('<!doctype html>')
-    /*
-     * A tag pointing at a CDN would break the screen at the first network cut.
-     * Only the X button escapes that: loaded `async`, last, and nothing that is
-     * read depends on it — the Réseaux slide carries the hashtag in large type,
-     * which stays there without it.
-     */
+    // A tag pointing at a CDN would break the screen at the first network cut.
     const external = [...html.matchAll(/<(?:script|link)\b[^>]*\b(?:src|href)="([^"]+)"/g)]
       .map((found) => found[1]!)
       .filter((url) => /^(?:https?:)?\/\//.test(url))
-    expect(external).toEqual(['https://platform.x.com/widgets.js'])
-    expect(html).toContain("new EventSource('/display/state?vue=projecteur&partiel=1')")
+    expect(external).toEqual([])
+    expect(html).toMatch(/new EventSource\(["']\/display\/state\?vue=projecteur&partiel=1["']\)/)
   })
 
   it('exposes the program filtered down to the room', async () => {

@@ -6,11 +6,13 @@ import {
   FIELDS_BY_VIEW,
   MERGED_FIELDS,
   DEFAULT_EVENT_IDENTITY,
+  type Boucle,
+  type BoucleView,
   type DisplayPayload,
   type DisplayView,
 } from '@conference-operator/contract'
-import { timelinePosition } from '@conference-operator/program/selectors'
 import {
+  agendaForRoom,
   DEFAULT_TIMEZONE,
   openFeedbackUrl,
   sessionsForRoom,
@@ -22,6 +24,9 @@ import type { AssetCache } from './assets.js'
 import type { InputLevel } from './obs.js'
 import type { DisplayState, RoomRuntime } from './runtime.js'
 import { renderProjectorPage } from './display-page.js'
+import { boucleQrUrls, buildBoucleView } from './boucle-view.js'
+import { otherRoomsFor } from '@conference-operator/projector/server'
+import { availableFonts, readFont, resolveFontsFolder } from './fonts.js'
 import { renderOverlayPage } from './overlay-page.js'
 import { renderOverlayLivePage } from './overlay-live-page.js'
 import {
@@ -112,6 +117,17 @@ export interface DisplayServerOptions {
   screens?: () => { wallsIoUrl: string | null; disabled: DisplayPayload['screensDisabled'] }
   /** The event's identity, read back from the local cache on every send. */
   event?: () => DisplayPayload['eventIdentity']
+  /**
+   * The welcome loop's settings, read back from the local cache.
+   *
+   * Absent — a test, a preview — no loop content is built and the page plays the
+   * scenes the program alone can fill.
+   */
+  boucle?: () => Boucle
+  /** Does walls.io answer right now? Absent = assumed reachable. */
+  wallsIoReachable?: () => boolean
+  /** Where the loop's typefaces are. Absent = searched from this file. */
+  fontsFolder?: string | null
   /** The machine's version, handed to the control app. */
   version?: string | null
   /**
@@ -183,8 +199,11 @@ export class DisplayServer {
    */
   private readonly hostLoad: () => HostLoad
 
+  private readonly fontsFolder: string | null
+
   constructor(private readonly options: DisplayServerOptions) {
     this.hostLoad = options.hostLoad ?? hostMonitor()
+    this.fontsFolder = options.fontsFolder !== undefined ? options.fontsFolder : resolveFontsFolder()
     this.app = Fastify({ logger: false })
     this.registerRoutes()
     // Rebroadcasts on every state change: the screen never polls.
@@ -203,6 +222,8 @@ export class DisplayServer {
     const socialLinks = this.options.socialLinks?.() ?? []
     const screens = this.options.screens?.() ?? { wallsIoUrl: null, disabled: [] }
     const eventIdentity = this.options.event?.() ?? DEFAULT_EVENT_IDENTITY
+    const boucle = this.boucleFor(cached, screens.wallsIoUrl, eventIdentity.shortName)
+    const wallsIoReachable = this.options.wallsIoReachable?.() ?? true
     if (cached == null) {
       return {
         state,
@@ -219,6 +240,9 @@ export class DisplayServer {
         socialLinks,
         wallsIoUrl: screens.wallsIoUrl,
         screensDisabled: screens.disabled,
+        boucle,
+        agenda: [],
+        wallsIoReachable,
         eventIdentity,
       }
     }
@@ -241,54 +265,88 @@ export class DisplayServer {
       socialLinks,
       wallsIoUrl: screens.wallsIoUrl,
       screensDisabled: screens.disabled,
+      boucle,
+      agenda: state.roomId == null
+        ? []
+        : agendaForRoom(program, state.roomId, {
+            plenaries: boucle?.agenda.plenieres ?? true,
+            nowMs: this.options.runtime.correctedNow(),
+          }),
+      wallsIoReachable,
       eventIdentity,
     }
   }
 
   /**
-   * What is going on, or about to go on, in the other rooms.
+   * The loop's content, rebuilt only when what it is made of changed.
    *
-   * Computed on the cached program and the hub's corrected clock — never on the
-   * machine's time, which can be weeks away when the hub runs on a simulated
-   * clock. The breaks are discarded: "Lunch in Track #2" helps nobody choose where
-   * to go.
+   * `payload()` runs on every state change — every second while a talk runs — and
+   * resolving the loop reads the image cache once per logo. The key is what the
+   * view is made of; `refreshBoucle()` drops it when the cache itself moved.
    */
-  private otherRooms(program: Program, roomId: string | null): DisplayPayload['otherRooms'] {
-    const at = this.options.runtime.correctedNow()
-    return program.rooms
-      .filter((room) => room.id !== roomId)
-      .map((room) => {
-        /**
-         * The position is computed on **all** the slots, breaks included, and we
-         * keep only the talks afterwards.
-         *
-         * The order matters: a slot's end is derived from the next one's start when
-         * the export does not give it, and searching directly in a filtered list
-         * skipped the break that closes it. A talk with no end time then stayed
-         * "running" on the neighbouring screen until the end of the day.
-         */
-        const slots = sessionsForRoom(program, room.id)
-        const { current } = timelinePosition(slots, at)
-        // The breaks are discarded here: "Lunch in Track #2" helps nobody choose
-        // where to go.
-        const runningTalk = current?.kind === 'talk' ? current : null
-        const session =
-          runningTalk ?? slots.find((c) => c.kind === 'talk' && c.startsAtMs > at) ?? null
-        return {
-          roomId: room.id,
-          name: room.name,
-          session:
-            session == null
-              ? null
-              : {
-                  id: session.id,
-                  title: session.title,
-                  startsAt: session.startsAt,
-                  speakers: session.speakers.map((person) => person.name),
-                },
-          running: session != null && session === runningTalk,
-        }
+  private boucleFor(
+    cached: { contentHash: string; program: Program } | null,
+    wallsIoUrl: string | null,
+    shortName: string,
+  ): BoucleView | null {
+    const settings = this.options.boucle?.()
+    if (settings == null) return null
+    const project = this.options.roomConfig?.()?.openFeedbackProjectId ?? null
+    const key = JSON.stringify([settings, cached?.contentHash ?? null, project, wallsIoUrl, shortName, this.qrGeneration])
+    if (key === this.boucleKey && this.boucleCache != null) return this.boucleCache
+    this.boucleKey = key
+    this.boucleCache = buildBoucleView({
+      boucle: settings,
+      program: cached?.program ?? null,
+      openFeedbackProjectId: project,
+      wallsIoUrl,
+      eventShortName: shortName,
+      localize: (ref) => this.options.assets.localizeRef(ref),
+      qr: (url) => this.qrFor(url),
+    })
+    return this.boucleCache
+  }
+
+  private boucleCache: BoucleView | null = null
+  private boucleKey: string | null = null
+  /** QR codes drawn for the loop, by address; `''` while being drawn. */
+  private readonly loopQr = new Map<string, string>()
+  private qrGeneration = 0
+
+  /** A loop QR code, drawn in the background the first time it is asked for. */
+  private qrFor(url: string): string | null {
+    const svg = this.loopQr.get(url)
+    if (svg != null) return svg === '' ? null : svg
+    this.loopQr.set(url, '')
+    void import('qrcode')
+      .then(({ toString }) =>
+        toString(url, { type: 'svg', margin: 1, errorCorrectionLevel: 'H', color: { dark: '#0d0f16', light: '#ffffff' } }),
+      )
+      .then((drawn) => {
+        this.loopQr.set(url, drawn)
+        this.qrGeneration += 1
+        this.broadcast()
       })
+      .catch(() => this.loopQr.delete(url))
+    return null
+  }
+
+  /**
+   * The loop's images or settings moved outside a state change — a prefetch that
+   * just finished: rebuild its content and send it.
+   */
+  refreshBoucle(): void {
+    this.boucleKey = null
+    const settings = this.options.boucle?.()
+    if (settings != null) {
+      for (const url of boucleQrUrls(settings, this.options.roomConfig?.()?.openFeedbackProjectId ?? null)) this.qrFor(url)
+    }
+    this.broadcast()
+  }
+
+  /** What is going on, or about to go on, in the other rooms — see `otherRoomsFor`. */
+  private otherRooms(program: Program, roomId: string | null): DisplayPayload['otherRooms'] {
+    return otherRoomsFor(program, roomId, this.options.runtime.correctedNow())
   }
 
   /**
@@ -433,7 +491,7 @@ export class DisplayServer {
     for (const write of this.levelSubscribers) write(body)
   }
 
-  private broadcast(): void {
+  broadcast(): void {
     const { fields, parts } = this.serializedFields()
     for (const subscriber of this.clients) {
       const keys = DisplayServer.viewKeys(fields, subscriber.view)
@@ -560,7 +618,23 @@ export class DisplayServer {
     this.app.get('/display/projector', async (_request, reply) => {
       reply.header('content-type', 'text/html; charset=utf-8')
       // The state is embedded: no blank screen when the Browser Source reloads.
-      return reply.send(renderProjectorPage({ initialPayload: this.payload() }))
+      return reply.send(
+        renderProjectorPage({
+          initialPayload: this.payload(),
+          // Read at every load: a typeface dropped in the folder shows at the
+          // next reload of the Browser Source, without restarting the room.
+          fonts: { base: '/fonts', files: availableFonts(this.fontsFolder) },
+        }),
+      )
+    })
+
+    /** The loop's typefaces — the allow-list is in `readFont`. */
+    this.app.get<{ Params: { file: string } }>('/fonts/:file', async (request, reply) => {
+      const font = await readFont(this.fontsFolder, request.params.file)
+      if (font == null) return reply.status(404).send({ error: 'police absente' })
+      reply.header('content-type', font.type)
+      reply.header('cache-control', 'public, max-age=86400')
+      return reply.send(font.bytes)
     })
 
     /**

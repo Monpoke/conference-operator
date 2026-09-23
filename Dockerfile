@@ -66,6 +66,7 @@ COPY packages/format/package.json packages/format/
 COPY packages/components/package.json packages/components/
 COPY packages/hub-client/package.json packages/hub-client/
 COPY packages/program/package.json packages/program/
+COPY packages/projector/package.json packages/projector/
 COPY packages/ui/package.json packages/ui/
 
 # No `--prod` here: the build tooling is precisely what is needed. The filter
@@ -120,6 +121,7 @@ COPY packages/format/package.json packages/format/
 COPY packages/components/package.json packages/components/
 COPY packages/hub-client/package.json packages/hub-client/
 COPY packages/program/package.json packages/program/
+COPY packages/projector/package.json packages/projector/
 COPY packages/ui/package.json packages/ui/
 
 # `--prod`: no typescript, no turbo, no tests. `tsx` survives it because it is
@@ -140,6 +142,9 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 COPY tsconfig.base.json ./
 COPY packages/ packages/
 COPY apps/hub-server/ apps/hub-server/
+# The loop's typefaces, for the console's preview of the room screen: the hub
+# serves the same files the rooms do (`/boucle/polices/…`).
+COPY apps/room-client/assets/fonts/ apps/room-client/assets/fonts/
 
 # The two bundles, built in the previous stage. The hub serves them, it does not
 # import them: that is what lets `pnpm typecheck` and `pnpm test` never trigger a

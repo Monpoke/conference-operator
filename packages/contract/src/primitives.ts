@@ -119,7 +119,9 @@ export type DisplayMode = z.infer<typeof displayModeSchema>
  * `live` is not a choice but the state of being on air. Two values are here that
  * are not display modes: `rooms` and `socials` exist only inside the loop, and an
  * organizer withdrawing "the other rooms' page" does not care about that
- * distinction.
+ * distinction. The same holds for the loop scenes that follow them — the welcome,
+ * the "offered by" announcements, the thanks to the sponsors, the animated
+ * slogans, the hand-fed posts, the code of conduct and the event's feedback QR.
  */
 export const roomScreenSchema = z.enum([
   'sponsors',
@@ -133,6 +135,13 @@ export const roomScreenSchema = z.enum([
   'wallsio',
   'rooms',
   'socials',
+  'welcome',
+  'announcements',
+  'sponsors-thanks',
+  'slogans',
+  'posts',
+  'code-of-conduct',
+  'event-feedback',
 ])
 export type RoomScreen = z.infer<typeof roomScreenSchema>
 

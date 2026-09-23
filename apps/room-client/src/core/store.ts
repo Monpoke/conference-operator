@@ -15,6 +15,9 @@ import {
 } from '@conference-operator/db/client'
 import { programSchema, type Program } from '@conference-operator/program'
 import {
+  boucleSchema,
+  DEFAULT_BOUCLE,
+  type Boucle,
   eventIdentitySchema,
   DEFAULT_EVENT_IDENTITY,
   roomConfigSchema,
@@ -110,6 +113,23 @@ function readIdentity(raw: string | null): EventIdentity {
 }
 
 /**
+ * The loop's content, read back from the local cache.
+ *
+ * The fallback is the reference loop rather than nothing: a cache that is absent
+ * or written by an older version must leave the room a loop to play, and the
+ * defaults are the one the event designed.
+ */
+function readBoucle(raw: string | null): Boucle {
+  if (raw == null) return DEFAULT_BOUCLE
+  try {
+    const parsed = boucleSchema.safeParse(JSON.parse(raw))
+    return parsed.success ? parsed.data : DEFAULT_BOUCLE
+  } catch {
+    return DEFAULT_BOUCLE
+  }
+}
+
+/**
  * The local migrations folder.
  *
  * Two locations depending on the context: from the sources it lives in the
@@ -178,6 +198,8 @@ export interface RoomSettings {
   event: EventIdentity
   /** The shipping destination and policy, pushed by the hub. */
   vod: VodSync | null
+  /** The welcome loop's content, pushed by the hub. */
+  boucle: Boucle
   nextSeq: number
   lastCommandSeq: number
   clockOffsetMs: number
@@ -248,6 +270,7 @@ export class LocalStore {
       screens: readScreens(row?.screensJson ?? null),
       event: readIdentity(row?.eventIdentityJson ?? null),
       vod: readVod(row?.vodJson ?? null),
+      boucle: readBoucle(row?.boucleJson ?? null),
       nextSeq: row?.nextSeq ?? 1,
       lastCommandSeq: row?.lastCommandSeq ?? 0,
       clockOffsetMs: row?.clockOffsetMs ?? 0,
@@ -264,6 +287,7 @@ export class LocalStore {
     if (patch.screens !== undefined) update.screensJson = JSON.stringify(patch.screens)
     if (patch.event !== undefined) update.eventIdentityJson = JSON.stringify(patch.event)
     if (patch.vod !== undefined) update.vodJson = patch.vod == null ? null : JSON.stringify(patch.vod)
+    if (patch.boucle !== undefined) update.boucleJson = JSON.stringify(patch.boucle)
     if (patch.lastCommandSeq !== undefined) update.lastCommandSeq = patch.lastCommandSeq
     if (patch.clockOffsetMs !== undefined) update.clockOffsetMs = patch.clockOffsetMs
 

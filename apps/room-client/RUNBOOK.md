@@ -69,6 +69,23 @@ l'opérateur a l'application ouverte et rien d'autre.
    gravé dans la VOD. La question du public, elle, part bien en VOD, mais par
    `overlay`, qui ne porte qu'elle.
 
+   La source `display/projector` se règle en **1920 × 1080**, et deux cases de
+   ses propriétés restent **décochées** : « Arrêter la source quand elle n'est
+   pas visible » et « Actualiser le navigateur quand la scène devient active ».
+   Cochées, la boucle repartirait de zéro — et walls.io se rechargerait — à
+   chaque changement de scène.
+8. Vérifier la boucle d'accueil une fois, en entier : console du hub → **Boucle**
+   pour les textes, les annonces, les pages de sponsors, le code de conduite
+   (son adresse, sans quoi le QR est masqué) et les posts du mur manuel. Les
+   polices de la charte se déposent dans `apps/room-client/assets/fonts/` (voir
+   le `LISEZMOI.md` du dossier) ; une police absente est remplacée sans bruit.
+
+   Sur l'écran de salle, au clavier : **H** ouvre le panneau de contrôle (scène
+   en cours, scènes sautées, état de walls.io), **Espace** met en pause, les
+   **flèches** passent à la scène précédente ou suivante, **1-9 / 0** vont à une
+   scène, **T** force une transition, **R** redessine les scènes, **F** passe en
+   plein écran. Rien de tout cela ne change le mode choisi en régie.
+
 ---
 
 ## Déroulé d'un talk

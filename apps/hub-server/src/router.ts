@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { implement, withEventMeta } from '@orpc/server'
 import { ORPCError } from '@orpc/server'
 import { CONTROL_WATCH_FLOOR_MS } from '@conference-operator/contract'
@@ -5,6 +6,7 @@ import {
   DEFAULT_VOD_POLICY,
   PROTOCOL_VERSION,
   CONTROL_SESSION_HEADER,
+  boucleImageRefs,
   contract,
   isCommandExpired,
   permissionsOf,
@@ -18,6 +20,8 @@ import {
   nextSession,
   DEFAULT_TIMEZONE,
   openFeedbackUrl,
+  programSponsors,
+  defaultSponsorPages,
   type Session,
 } from '@conference-operator/program'
 import type { RawCapture } from './services/ingest.js'
@@ -573,6 +577,10 @@ export const router = os.router({
          */
         wallsIoUrl: settings.wallsIoUrl,
         screensDisabled: settings.screensDisabled,
+        // The loop's texts, pages and posts: same reason again. Its images are not
+        // inlined — the room fetches them from `/assets/<sha256(ref)>` like the
+        // program's, and keeps them.
+        boucle: settings.boucle,
         // Same reason, and it is what makes the screens renameable: the room
         // titles its windows with the name the hub decided, not with a constant
         // compiled into the binary installed on the machine.
@@ -909,7 +917,72 @@ export const router = os.router({
     get: os.settings.get.use(operatorCan('settings:read')).handler(({ context }) => context.services.settings.get()),
     update: os.settings.update
       .use(operatorCan('settings:update'))
-      .handler(({ input, context }) => context.services.settings.update(input)),
+      .handler(({ input, context }) => {
+        const settings = context.services.settings.update(input)
+        /**
+         * The loop's images, in the background — as at a program import.
+         *
+         * A logo given by address must be on the hub before a room asks for it:
+         * the screen never goes to the Internet for a logo. Failures are recorded
+         * by the store; only an unexpected error lands here.
+         */
+        if (input.boucle != null) {
+          void context.services.assets
+            .prefetchUrls(boucleImageRefs(settings.boucle))
+            .catch((cause: unknown) => console.error('Images de la boucle :', readableCause(cause)))
+        }
+        return settings
+      }),
+  },
+
+  boucle: {
+    catalogue: os.boucle.catalogue.use(operatorCan('settings:read')).handler(({ context }) => {
+      const snapshot = context.services.programs.active()
+      if (snapshot == null) return { sponsors: [], pagesParDefaut: [] }
+      const { assets } = context.services
+      return {
+        sponsors: programSponsors(snapshot.program).map((sponsor) => ({
+          key: sponsor.key,
+          name: sponsor.name,
+          website: sponsor.website,
+          logoPreview: sponsor.logoUrl == null ? null : (assets.previewUrl(sponsor.logoUrl) ?? sponsor.logoUrl),
+          tiers: sponsor.tiers,
+        })),
+        pagesParDefaut: defaultSponsorPages(snapshot.program),
+      }
+    }),
+
+    uploadImage: os.boucle.uploadImage
+      .use(operatorCan('settings:update'))
+      .handler(async ({ input, context }) => {
+        const bytes = Buffer.from(input.base64, 'base64')
+        if (bytes.byteLength === 0 || bytes.byteLength > MAX_UPLOAD_BYTES) {
+          throw new ORPCError('BAD_REQUEST', {
+            message: `Image trop lourde : ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024 * 10) / 10} Mo au plus`,
+          })
+        }
+        if (!looksLike(input.contentType, bytes)) {
+          throw new ORPCError('BAD_REQUEST', { message: "Le fichier n'est pas l'image annoncée" })
+        }
+        const sha256 = createHash('sha256').update(bytes).digest('hex')
+        const ref = `hub-image:${sha256}.${UPLOAD_EXTENSIONS[input.contentType]}`
+        await context.services.assets.store(ref, bytes, input.contentType)
+        return { ref, preview: `/assets/${context.services.assets.keyOf(ref)}` }
+      }),
+
+    /**
+     * An address the hub does not hold yet is returned as is: the console runs in
+     * a browser that reaches the Internet, and showing the logo while the hub
+     * catches up beats a blank. An upload the hub lost has nowhere else: `null`.
+     */
+    previews: os.boucle.previews.use(operatorCan('settings:read')).handler(({ input, context }) =>
+      Object.fromEntries(
+        input.refs.map((ref) => [
+          ref,
+          context.services.assets.previewUrl(ref) ?? (/^https?:\/\//.test(ref) ? ref : null),
+        ]),
+      ),
+    ),
   },
 
   ingest: {
@@ -1981,6 +2054,44 @@ function isExpiredNow(command: Command): boolean {
 }
 
 export type Router = typeof router
+
+/**
+ * An uploaded image, decoded. The console reduces it before sending, so this
+ * only stops a file sent as is by mistake — or by something else than the console.
+ */
+const MAX_UPLOAD_BYTES = 2.5 * 1024 * 1024
+
+const UPLOAD_EXTENSIONS = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/svg+xml': 'svg',
+} as const
+
+/**
+ * Whether the bytes are the image they claim to be — by their first bytes.
+ *
+ * Not a validation of the image: a check that a PDF or a zip renamed `.png`
+ * does not end up on the room screens as a broken frame.
+ */
+function looksLike(contentType: keyof typeof UPLOAD_EXTENSIONS, bytes: Buffer): boolean {
+  const starts = (...signature: number[]) => signature.every((byte, index) => bytes[index] === byte)
+  switch (contentType) {
+    case 'image/png':
+      return starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)
+    case 'image/jpeg':
+      return starts(0xff, 0xd8, 0xff)
+    case 'image/gif':
+      return bytes.subarray(0, 4).toString('latin1') === 'GIF8'
+    case 'image/webp':
+      return bytes.subarray(0, 4).toString('latin1') === 'RIFF' && bytes.subarray(8, 12).toString('latin1') === 'WEBP'
+    case 'image/svg+xml': {
+      const text = bytes.toString('utf8').replace(/^\uFEFF/, '').trimStart()
+      return text.startsWith('<') && text.includes('<svg')
+    }
+  }
+}
 
 /** The rooms' messages, each with the name its room goes by today. */
 function roomMessages(services: HubContext['services'], limit: number) {

@@ -34,6 +34,7 @@ const LABELS: Record<string, string> = {
   moderation: 'Modération',
   messages: 'Messages',
   vod: 'VOD',
+  boucle: 'Boucle',
   reglages: 'Réglages',
   developpement: 'Développement',
 }

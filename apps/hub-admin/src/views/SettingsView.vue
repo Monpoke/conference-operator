@@ -165,6 +165,11 @@ const SCREENS: { value: string; label: string; hint: string }[] = [
   { value: 'sponsors', label: 'Sponsors', hint: 'Les logos, par niveau.' },
   { value: 'programme', label: 'Programme', hint: 'La journée de la salle, déroulée.' },
   { value: 'agenda', label: 'Agenda', hint: 'La même journée, entière, en deux colonnes.' },
+  {
+    value: 'agenda-reminder',
+    label: "Rappel de l'agenda",
+    hint: "Le second passage de l'agenda, au milieu de la boucle. Retirer l'agenda retire aussi le rappel.",
+  },
   { value: 'countdown', label: 'Compte à rebours', hint: 'Le temps restant sur le créneau.' },
   { value: 'message', label: 'Message', hint: 'La bannière saisie en régie.' },
   { value: 'feedback', label: 'Notez le talk', hint: 'Le QR code OpenFeedback du talk en cours.' },

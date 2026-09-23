@@ -143,6 +143,7 @@ export const roomScreenSchema = z.enum([
   'code-of-conduct',
   'event-feedback',
   'other-agendas',
+  'agenda-reminder',
 ])
 export type RoomScreen = z.infer<typeof roomScreenSchema>
 

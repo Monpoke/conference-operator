@@ -26,7 +26,10 @@ export class BarreBas {
 
   maj(data: Data, force = false): void {
     const conf = data.boucle?.barreBas
-    if (conf?.afficher === false) { this.el.hidden = true; return }
+    const masquee = conf?.afficher === false
+    // Read by the stylesheet: the scenes' own clock stands in for the band's.
+    document.body.classList.toggle('sans-barre-bas', masquee)
+    if (masquee) { this.el.hidden = true; return }
     this.el.hidden = false
     const now = maintenant(data)
     const s = Math.floor(now / 1000)

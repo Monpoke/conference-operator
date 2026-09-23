@@ -165,3 +165,10 @@ body[data-mode="live"] #progression { opacity: 0; transition: opacity .45s ease;
 /* `hidden` always wins: the browser's own `[hidden] { display: none }` loses to
    the slightest author rule setting a display — a trap met on the console. */
 [hidden] { display: none !important; }
+
+/* ---------- One clock on screen ----------
+   The agenda and the programme carried the time top right, as in the reference,
+   and the permanent band carries it bottom right: the same minute twice. The top
+   one only shows when the band is switched off. */
+body:not(.sans-barre-bas) .bande-droite[data-horloge] { display: none; }
+

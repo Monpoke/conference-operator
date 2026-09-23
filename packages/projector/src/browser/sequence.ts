@@ -73,6 +73,8 @@ export interface Etape {
   dureeTransition: number
   /** The hub setting that withdraws it; `null` = never withdrawn. */
   ecran: RoomScreen | null
+  /** A second setting that withdraws it alone — the agenda's reminder. */
+  aussi?: RoomScreen
   /**
    * The slot of a scene whose duration comes with its content — a sponsor page,
    * another room's schedule — rather than from its kind alone.
@@ -129,7 +131,9 @@ export const BOUCLE: Etape[] = [
   etape('posts', 'posts', 'posts', 'slide', 1000),
   etape('message-bienvenue', 'message-bienvenue', 'slogans'),
   etape('salles', 'salles', 'rooms'),
-  etape('agenda-rappel', 'agenda-rappel', 'agenda'),
+  // The room's day again, mid-loop, for whoever came in after the first pass.
+  // Withdrawn with the agenda, or on its own.
+  { ...etape('agenda-rappel', 'agenda-rappel', 'agenda'), aussi: 'agenda-reminder' },
   etape('message-partage', 'message-partage', 'slogans'),
   etape('reseaux', 'reseaux', 'socials'),
   etape('wallsio', 'wallsio', 'wallsio'),

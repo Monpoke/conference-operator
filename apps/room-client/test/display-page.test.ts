@@ -308,6 +308,16 @@ describe('the welcome loop', () => {
     expect(etat()).toBe(false)
   })
 
+  it('withdraws the agenda\'s reminder on its own, or with the agenda', () => {
+    const jouable = (scene: string) => (window as unknown as { boucle: { etat: () => { scenes: { scene: string; jouable: boolean }[] } } })
+      .boucle.etat().scenes.find((s) => s.scene === scene)!.jouable
+    mount(payload({ screensDisabled: ['agenda-reminder'] }))
+    expect(jouable('agenda')).toBe(true)
+    expect(jouable('agenda-rappel')).toBe(false)
+    mount(payload({ screensDisabled: ['agenda'] }))
+    expect(jouable('agenda-rappel')).toBe(false)
+  })
+
   it('says « Vous êtes ici » on this room\'s own day only', () => {
     mount()
     expect(scene('agenda').querySelector<HTMLElement>('[data-ici]')!.hidden).toBe(false)

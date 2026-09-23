@@ -200,7 +200,8 @@ export class Regie {
 
   /** Withdrawn on the hub — only the loop listens to it. */
   private retiree(e: Etape): boolean {
-    return e.ecran != null && (this.data?.screensDisabled ?? []).includes(e.ecran)
+    const retires = this.data?.screensDisabled ?? []
+    return (e.ecran != null && retires.includes(e.ecran)) || (e.aussi != null && retires.includes(e.aussi))
   }
 
   jouable(i: number): boolean {

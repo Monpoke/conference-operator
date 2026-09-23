@@ -147,7 +147,7 @@ pnpm --filter @conference-operator/projector build
 | 6 | Mur de posts (manuel) | 15 s | réglages *Boucle* | aucun post |
 | 7 | Message « Bienvenue » | 7 s | réglages *Boucle* | texte vide — le cas par défaut : l'accueil le dit déjà |
 | 8 | Pendant ce temps, à côté | 12 s | programme | rien ailleurs, ou plannings des autres salles affichés |
-| 9 | Agenda (rappel) | 20 s | programme | journée vide |
+| 9 | Agenda (rappel) | 20 s | programme | journée vide ; se retire seul (`agenda-reminder`) ou avec l'agenda |
 | 10 | Message « Partage » | 7 s | réglages *Boucle* | texte vide |
 | 11 | Nos réseaux | 10 s | réglages hub | aucun compte |
 | 12 | Walls.io | 25 s | réglages hub | pas d'adresse, ou walls.io muet |

@@ -5,6 +5,15 @@
  * band. Same stage, same px, same palette — nothing here overrides the reference.
  */
 
+/* The free stand-ins for the reference's two non-free faces (see
+   packages/projector/src/server/fonts.ts): Luckiest Guy for Gagalin, Pacifico
+   for Bukhari Script. The originals stay first in line, for a machine that
+   has them installed under a licence of its own. */
+:root {
+  --f-accueil: "Gagalin", "Luckiest Guy", "Peace Sans", "Arial Black", sans-serif;
+  --f-script: "Bukhari Script", "Pacifico", "Segoe Script", "Brush Script MT", cursive;
+}
+
 /* The event's logo is the one image of the frame that may be missing. */
 #logo[hidden] { display: none; }
 

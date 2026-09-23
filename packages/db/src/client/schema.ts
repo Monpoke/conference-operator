@@ -69,6 +69,12 @@ export const roomSettings = sqliteTable('room_settings', {
    * trying to spare. Absent, nothing leaves: that is the right default.
    */
   vodJson: text('vod_json'),
+  /**
+   * The welcome loop's content, pushed by the hub at sync: texts, sponsor pages,
+   * posts, QR addresses. Cached like the rest — the loop runs during the breaks,
+   * when the network is busiest, and must run in full without it.
+   */
+  boucleJson: text('boucle_json'),
   /** Next `seq` to assign to outgoing events. Monotonic, never reset. */
   nextSeq: integer('next_seq').notNull().default(1),
   /** Last command `seq` applied: it is the `lastEventId` sent back on resumption. */

@@ -99,9 +99,20 @@ export class AssetStore {
    * console can name them — the one place from which an export gets corrected.
    */
   async prefetch(program: Program, fetchImpl: typeof fetch = fetch): Promise<AssetReport> {
+    return this.prefetchUrls(assetUrls(program), fetchImpl)
+  }
+
+  /**
+   * The same, for a list of addresses — the loop's logos and posts.
+   *
+   * Anything that is not `http(s)` is skipped rather than failed: an uploaded
+   * image (`hub-image:…`) is already here, and has nowhere to be fetched from.
+   */
+  async prefetchUrls(urls: Iterable<string>, fetchImpl: typeof fetch = fetch): Promise<AssetReport> {
     const report: AssetReport = { downloaded: 0, reused: 0, failed: [] }
 
-    for (const url of assetUrls(program)) {
+    for (const url of new Set(urls)) {
+      if (!/^https?:\/\//.test(url)) continue
       const sha256 = this.keyOf(url)
       if ((await this.read(sha256)) != null || this.adopt(sha256, url)) {
         report.reused += 1
@@ -117,6 +128,37 @@ export class AssetStore {
       }
     }
     return report
+  }
+
+  /**
+   * Keeps bytes that came from the console rather than from a download.
+   *
+   * Keyed like everything else, by the SHA-256 of the reference: a room asks
+   * for `/assets/<sha256(ref)>` exactly as it does for an address, with nothing
+   * to know about where the image came from. The reference itself names the
+   * content (`hub-image:<sha256 of the bytes>.<ext>`), so storing the same file
+   * twice is a harmless rewrite.
+   */
+  async store(ref: string, bytes: Buffer, contentType: string): Promise<void> {
+    const sha256 = this.keyOf(ref)
+    const target = this.fileFor(sha256, ref)
+    const temporary = `${target}.partial`
+    await writeFile(temporary, bytes)
+    await rename(temporary, target)
+    this.remember(sha256, ref, { contentType, byteSize: bytes.byteLength })
+  }
+
+  /** Whether the hub holds this reference's bytes. */
+  has(ref: string): boolean {
+    const sha256 = this.keyOf(ref)
+    const row = this.db.select().from(asset).where(eq(asset.sha256, sha256)).get()
+    if (row != null && row.downloadedAt != null) return existsSync(this.fileFor(sha256, row.sourceUrl))
+    return this.adopt(sha256, ref)
+  }
+
+  /** The hub's own address for a reference — `null` when it does not hold it. */
+  previewUrl(ref: string): string | null {
+    return this.has(ref) ? `/assets/${this.keyOf(ref)}` : null
   }
 
   /**

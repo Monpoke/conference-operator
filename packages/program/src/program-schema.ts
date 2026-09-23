@@ -60,6 +60,8 @@ export const sessionSchema = z.object({
   endsAtMs: z.number().nullable(),
   durationMinutes: z.number().nullable(),
   roomId: z.string().nullable(),
+  /** See `Session.roomSpan`. A default so that a cache written before it reads back. */
+  roomSpan: z.number().int().min(1).default(1),
   kind: sessionKindSchema,
   /**
    * Projection of a slot from another room. See `Session.sharedFrom`.

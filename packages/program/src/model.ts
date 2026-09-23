@@ -58,6 +58,12 @@ export interface Session {
   endsAtMs: number | null
   durationMinutes: number | null
   roomId: string | null
+  /**
+   * Number of rooms the slot covers, starting from `roomId` in `program.rooms`
+   * order — the upstream grid's `extendWidth`. 1 for an ordinary talk; a
+   * breakfast laid across the three tracks carries 3.
+   */
+  roomSpan: number
   kind: SessionKind
   /**
    * Slot this one is the projection of in another room, or `null` for a slot of

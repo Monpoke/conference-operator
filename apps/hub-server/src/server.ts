@@ -36,6 +36,9 @@ import {
   type SocialSource,
 } from './services/social.js'
 import { renderWallPage } from './pages/wall-page.js'
+import { renderBouclePreview } from './pages/boucle-preview.js'
+import { readFont, resolveFontsFolder } from '@conference-operator/projector/server'
+import { requirePermission, resolveOperator } from './context.js'
 import {
   developmentAssets,
   productionAssets,
@@ -330,7 +333,9 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
    * mean carrying that authentication outside oRPC to protect nothing more.
    *
    * `immutable`, because the key is the URL and an upstream export names its
-   * images by UUID: this hash will never stand for other bytes.
+   * images by UUID: this hash will never stand for other bytes. The loop's
+   * uploaded images are served here too, keyed by their `hub-image:` reference —
+   * which names their content, so the same holds.
    */
   app.get<{ Params: { sha256: string } }>('/assets/:sha256', async (request, reply) => {
     const file = await services.assets.read(request.params.sha256)
@@ -338,6 +343,11 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
 
     reply.header('content-type', file.contentType ?? 'application/octet-stream')
     reply.header('cache-control', 'public, max-age=31536000, immutable')
+    // An SVG uploaded from the console is served from the console's own origin:
+    // opened directly, a script in it would run there. As an `<img>` nothing of
+    // this applies, so the screens lose nothing.
+    reply.header('content-security-policy', "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox")
+    reply.header('x-content-type-options', 'nosniff')
     return reply.send(file.bytes)
   })
 
@@ -359,6 +369,48 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
         event: services.identity.get(),
       }),
     )
+  })
+
+  /**
+   * The room screen, previewed from the console.
+   *
+   * The same document a room projects, fed by the hub with what a room would
+   * receive at sync (see `renderBouclePreview`): the console's « Boucle » view
+   * frames it and reloads it after a save. Behind the operator's session, like
+   * the settings it shows — `?salle=` picks the room, `?scene=` holds one scene.
+   */
+  const fontsFolder = resolveFontsFolder()
+  app.get<{ Querystring: { salle?: string; scene?: string } }>('/boucle/apercu', async (request, reply) => {
+    reply.header('content-type', 'text/html; charset=utf-8')
+    reply.header('cache-control', 'no-store')
+    try {
+      const { operator } = await resolveOperator(contextFrom(auth, services, headersOf(request.headers)))
+      requirePermission(operator, 'settings:read')
+    } catch {
+      reply.status(401)
+      return reply.send(
+        '<!doctype html><html lang="fr"><meta charset="utf-8"><title>Aperçu de la boucle</title>' +
+          '<body style="font:18px system-ui;padding:40px">Connectez-vous à la ' +
+          '<a href="/admin/boucle">console</a> pour voir l\'aperçu de la boucle.</body></html>',
+      )
+    }
+    const scene = Number.parseInt(request.query.scene ?? '', 10)
+    return reply.send(
+      await renderBouclePreview(services, {
+        roomId: request.query.salle ?? null,
+        scene: Number.isFinite(scene) ? scene : null,
+        fonts: { folder: fontsFolder, base: '/boucle/polices' },
+      }),
+    )
+  })
+
+  /** The loop's typefaces, for the preview — the allow-list is in `readFont`. */
+  app.get<{ Params: { file: string } }>('/boucle/polices/:file', async (request, reply) => {
+    const font = await readFont(fontsFolder, request.params.file)
+    if (font == null) return reply.status(404).send({ error: 'police absente' })
+    reply.header('content-type', font.type)
+    reply.header('cache-control', 'public, max-age=86400')
+    return reply.send(font.bytes)
   })
 
   /**

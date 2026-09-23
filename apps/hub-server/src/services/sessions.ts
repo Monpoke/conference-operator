@@ -63,11 +63,26 @@ export class SettingsService {
         ? current.vodPolitique
         : { ...current.vodPolitique, ...patch.vodPolitique }
 
+    /**
+     * The loop's content merges section by section, for the same reason.
+     *
+     * The console saves it one panel at a time: saving the animated messages must
+     * leave the sponsor pages as laid out. A section named replaces the current
+     * one whole — within a section, what the panel sends is what it shows.
+     */
+    const boucle =
+      patch.boucle == null
+        ? current.boucle
+        : {
+            ...current.boucle,
+            ...Object.fromEntries(Object.entries(patch.boucle).filter(([, value]) => value !== undefined)),
+          }
+
     // A key present but `undefined` — what an in-process caller writes without
     // thinking about it — would spread over the current value and come back out of
     // `parse` as the field's default. Absent and undefined mean the same thing here.
     const named = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined))
-    const next = hubSettingsSchema.parse({ ...current, ...named, vodPolitique })
+    const next = hubSettingsSchema.parse({ ...current, ...named, vodPolitique, boucle })
     const values = {
       key: SETTINGS_KEY,
       valueJson: JSON.stringify(next),

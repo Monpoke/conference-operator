@@ -223,6 +223,9 @@ export class HubLink {
         // The same for the shipping: the regulator decides several times a minute,
         // and it must never depend on a network call.
         vod: result.vod,
+        // The loop's own content, cached like the rest: it plays during the
+        // breaks, when the network is busiest.
+        boucle: result.boucle,
       })
       runtime.setRoomId(result.room.id)
 

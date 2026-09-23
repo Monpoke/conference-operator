@@ -43,6 +43,13 @@
       "when": 1789991204986,
       "tag": "0005_cool_kylun",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1790180322237,
+      "tag": "0006_freezing_toxin",
+      "breakpoints": true
     }
   ]
 }

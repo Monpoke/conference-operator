@@ -8,6 +8,7 @@ import SettingsView from './views/SettingsView.vue'
 import VodView from './views/VodView.vue'
 import ModerationView from './views/ModerationView.vue'
 import AccessView from './views/AccessView.vue'
+import BoucleView from './views/BoucleView.vue'
 import { useConferencesStore } from './stores/conferences.js'
 import { useOperationsStore } from './stores/operations.js'
 import { useMessagesStore } from './stores/messages.js'
@@ -16,6 +17,7 @@ import { useSettingsStore } from './stores/settings.js'
 import { useIntegrationsStore } from './stores/integrations.js'
 import { useVodStore } from './stores/vod.js'
 import { useModerationStore } from './stores/moderation.js'
+import { useBoucleStore } from './stores/boucle.js'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -83,6 +85,14 @@ const routes: RouteRecordRaw[] = [
     name: 'conferences',
     component: ConferencesView,
     meta: { view: 'conferences', refresh: () => useConferencesStore().load(), intervalMs: 10_000 },
+  },
+  {
+    path: viewPath('boucle'),
+    name: 'boucle',
+    component: BoucleView,
+    // The panels keep their drafts through the refresh: a sponsor page being laid
+    // out is not redrawn under the pointer.
+    meta: { view: 'boucle', refresh: () => useBoucleStore().load(), intervalMs: 10_000 },
   },
   {
     path: viewPath('reglages'),

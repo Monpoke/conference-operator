@@ -1,0 +1,667 @@
+/*
+ * The reference loop's stylesheet, carried over verbatim from its index.html
+ * (boucle-cloudnord, lines 45-701): colours, stage, decor, scenes, bottom band,
+ * progress bar, ambient animations, HUD. Kept whole and untouched so that it can
+ * be compared line for line with the design it comes from; what this screen adds
+ * lives in the other files of this folder.
+ *
+ * The @font-face rules are not here: the room declares only the typefaces whose
+ * files it has (see apps/room-client/src/core/fonts.ts).
+ */
+:root {
+  /* Couleurs relevées dans la vidéo d'origine */
+  --violet: #5e17eb;
+  --magenta: #d420f8;
+  --cyan: #20d0dc;
+  --orange: #ffbd59;
+  --creme: #f4f0e4;
+  --marine: #2c2ca4;
+  --rose: #c868b4;
+  --degrade: linear-gradient(80deg, #9d3bdc 0%, #7636c8 25%, #5032b6 50%, #2a2ea4 75%, #112b99 100%);
+  --bulle: linear-gradient(90deg, #e21bfb, #14d3dc);
+
+  --f-titre: "Peace Sans", "Arial Black", "Segoe UI Black", sans-serif;
+  --f-texte: "Open Sans", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --f-accueil: "Gagalin", "Peace Sans", "Arial Black", sans-serif;
+  --f-script: "Bukhari Script", "Segoe Script", "Brush Script MT", cursive;
+
+  /* Bandeau du haut : logo à gauche, titre de la scène après --zone-logo */
+  --bande: 124px;
+  --marge: 48px;
+  --zone-logo: 470px;
+  /* Place réservée en bas pour le bandeau permanent (prochain talk, hashtag, heure) */
+  --barre-bas: 92px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+body { font-family: var(--f-texte); color: #fff; cursor: none; }
+body.curseur, body.hud-on { cursor: default; }
+
+.f-titre { font-family: var(--f-titre); font-weight: 900; font-synthesis: none; }
+
+/* Texte avec contour épais, comme dans Canva : une copie du texte, tracée
+   derrière avec un trait large (data-texte est rempli automatiquement). */
+.contour { position: relative; z-index: 0; }
+.contour::before {
+  content: attr(data-texte);
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  color: var(--contour-couleur, var(--violet));
+  -webkit-text-stroke: var(--contour-epaisseur, .2em) var(--contour-couleur, var(--violet));
+}
+
+/* ---------- Plateau fixe 1920×1080, mis à l'échelle de la fenêtre ---------- */
+#stage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1920px;
+  height: 1080px;
+  transform: translate(-50%, -50%) scale(var(--scale, 1));
+  overflow: hidden;
+  background: var(--degrade);
+}
+
+/* ---------- Décor commun à toutes les scènes (fixe pendant les transitions) ---------- */
+#decor { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+#decor svg { position: absolute; inset: 0; }
+.bulle {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--bulle);
+  animation: flotte var(--d, 9s) ease-in-out var(--delai, 0s) infinite alternate;
+}
+@keyframes flotte {
+  from { transform: translate3d(0, -8px, 0); }
+  to   { transform: translate3d(0, 8px, 0); }
+}
+
+/* ---------- Scènes : transparentes, toutes montées, jamais en display:none ---------- */
+.scene {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+  backface-visibility: hidden;
+  contain: layout paint;
+}
+/* will-change seulement sur les deux scènes d'une transition : sinon chaque scène garde
+   une grande couche en mémoire vidéo. Elles sont préparées une image avant la transition. */
+.scene.is-live, .scene.is-entering { will-change: opacity, transform; }
+.scene.is-live { opacity: 1; z-index: 2; }
+.scene.is-entering { z-index: 3; }
+.scene > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+
+/* ---------- Logo permanent, signature ---------- */
+#logo {
+  position: absolute;
+  top: 26px;
+  left: var(--marge);
+  z-index: 5;
+  width: 400px;
+  height: 72px;
+  object-fit: contain;
+  object-position: left center;
+  visibility: hidden;
+}
+.signature {
+  position: absolute;
+  right: 30px;
+  bottom: calc(var(--barre-bas) + 14px);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font: 700 42px var(--f-texte);
+}
+.signature img { width: 64px; height: 64px; }
+
+/* ---------- Bandeau du haut (agenda, mur) ---------- */
+.bande {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--bande);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 40px;
+  padding: 0 var(--marge) 0 var(--zone-logo);
+}
+.bande h2 {
+  min-width: 0;
+  font-size: 60px;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bande-droite {
+  flex: none;
+  font: 800 56px var(--f-texte);
+  color: var(--orange);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.contenu {
+  position: absolute;
+  top: var(--bande);
+  left: var(--marge);
+  right: var(--marge);
+  bottom: calc(var(--barre-bas) + 14px);
+}
+
+/* ---------- Rond blanc contenant un logo (sponsors, annonces) ---------- */
+.rond {
+  flex: none;
+  /* Sans min-width: 0, un rond qui affiche un nom au lieu d'un logo s'élargit à la taille
+     du texte, déforme la rangée et la fait passer à la ligne. */
+  min-width: 0;
+  min-height: 0;
+  /* Largeur ET hauteur imposées : un rond reste rond, quel que soit son voisin dans la rangée
+     (avec aspect-ratio seul, flexbox étirait certains ronds en ovale). */
+  width: calc(240px * var(--t, 1) * var(--k, 1));
+  height: calc(240px * var(--t, 1) * var(--k, 1));
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: #fff;
+}
+.rond img {
+  width: calc(var(--e, .7) * 100%);
+  height: calc(var(--e, .7) * 100%);
+  object-fit: contain;
+}
+.rond.sans-logo {
+  /* padding en em, pas en % : un pourcentage se calcule sur la largeur de la rangée,
+     ce qui gonflait le rond jusqu'à le rendre plus grand que ses voisins. */
+  padding: .6em;
+  font: 800 calc(26px * var(--t, 1) * var(--k, 1)) / 1.1 var(--f-texte);
+  text-align: center;
+  overflow-wrap: anywhere;
+  color: var(--violet);
+}
+
+/* ---------- Calques de transition ---------- */
+#voile { position: absolute; inset: 0; z-index: 10; opacity: 0; pointer-events: none; background: #1b0f55; }
+#stinger {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -400px;
+  width: 2720px;
+  z-index: 10;
+  pointer-events: none;
+  transform: translateX(-2800px) skewX(-14deg);
+  will-change: transform;
+  background: linear-gradient(90deg,
+    var(--cyan) 0 10%, var(--violet) 10% 16%,
+    #e21bfb 16%, #8a6cf0 50%, #14d3dc 84%,
+    var(--violet) 84% 90%, var(--orange) 90% 100%);
+}
+
+/* ---------- Accueil ---------- */
+.accueil {
+  position: absolute;
+  inset: 0;
+  padding-bottom: var(--barre-bas);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 120px;
+  padding-top: 30px;
+}
+.accueil-bienvenue {
+  font-family: var(--f-accueil);
+  font-weight: 900;
+  font-synthesis: none;
+  font-size: 112px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.accueil-logo { width: 1780px; max-width: 93%; visibility: hidden; }
+
+/* ---------- Messages en typographie animée ---------- */
+.message {
+  position: absolute;
+  top: var(--bande);
+  left: var(--marge);
+  right: var(--marge);
+  bottom: calc(var(--barre-bas) + 18px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 34px;
+  text-align: center;
+}
+.message-texte { font-size: 150px; line-height: 1.04; white-space: pre-line; }
+.message-sous { font: 800 56px / 1.2 var(--f-texte); color: var(--orange); white-space: pre-line; }
+.message-sous:empty { display: none; }
+/* Style « arcenciel » : lettres blanches à ombre violette, parcourues par une vague de couleurs */
+.arcenciel { text-shadow: 0 .05em 0 var(--violet), 0 .1em .12em rgba(27, 15, 85, .45); }
+.vague.arcenciel .morceau {
+  animation: vague 3.4s ease-in-out infinite, teinte 3.6s linear infinite;
+  animation-delay: calc(var(--i, 0) * -.22s), calc(var(--i, 0) * -.09s);
+}
+@keyframes teinte {
+  0%, 55%, 100% { color: #fff; }
+  65% { color: var(--orange); }
+  75% { color: #ff8bf5; }
+  85% { color: #8ef4ff; }
+}
+.deux-points { animation: deux-points 1s steps(1) infinite; }
+@keyframes deux-points { 50% { opacity: .25; } }
+
+/* ---------- Grand titre seul (« Merci à nos Sponsors ») ---------- */
+.titre-plein { position: absolute; inset: 0; padding-bottom: var(--barre-bas); display: grid; place-items: center; }
+.titre-plein h2 { font-size: 190px; line-height: 1.02; text-align: center; white-space: pre-line; }
+
+/* ---------- Annonce « offert par » ---------- */
+.annonce {
+  position: absolute;
+  top: var(--bande);
+  left: 0;
+  right: 0;
+  bottom: calc(var(--barre-bas) + 10px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.annonce-titre { font-size: 138px; line-height: 1; white-space: pre-line; }
+.annonce-sous { margin-top: 8px; font-size: 92px; line-height: 1.05; }
+.annonce-logos { display: flex; align-items: center; gap: 60px; margin-top: 44px; }
+.annonce-logos .rond { --t: 1.375; }
+
+/* ---------- Pages sponsors ---------- */
+.sp {
+  position: absolute;
+  top: var(--bande);
+  left: var(--marge);
+  right: var(--marge);
+  bottom: calc(var(--barre-bas) + 28px);
+  display: flex;
+  flex-direction: column;
+}
+.sp-titre { margin-bottom: 36px; font-size: 110px; line-height: .98; text-align: center; white-space: pre-line; }
+.sp-titre:empty { display: none; }
+.sp-zone { flex: 1; min-height: 0; display: flex; align-items: center; overflow: hidden; }
+.sp-rangs { width: 100%; display: flex; flex-direction: column; align-items: center; gap: calc(80px * var(--k, 1)); }
+.sp-rang {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: calc(60px * var(--k, 1)) calc(90px * var(--k, 1));
+}
+
+/* ---------- Code de conduite ---------- */
+.cc-panneau {
+  position: absolute;
+  left: 293px;
+  right: 314px;
+  top: 130px;
+  padding: 36px 50px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25em;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .3);
+  font: 800 39px / 1.3 var(--f-texte);
+  text-align: center;
+  --contour-couleur: var(--marine);
+  --contour-epaisseur: .15em;
+}
+.cc-panneau p { white-space: pre-line; }
+.cc-qr { position: absolute; left: 14px; bottom: calc(var(--barre-bas) + 16px); display: flex; align-items: center; }
+.cc-legende { width: 380px; font: 700 33px / 1.3 var(--f-texte); text-align: center; white-space: pre-line; }
+.cadre-qr { position: relative; width: 222px; height: 222px; }
+.cadre-qr svg { position: absolute; inset: 0; }
+.cadre-qr img { position: absolute; inset: 12%; width: 76%; height: 76%; }
+
+/* Slogans inclinés (« Passez une bonne conférence », « Pensez à donner vos feedbacks ») */
+.slogan {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  transform: translate(-50%, -50%) rotate(-11deg);
+  font: 800 78px / 1.02 var(--f-texte);
+  text-align: center;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.slogan-creux { color: transparent; -webkit-text-stroke: 3px #fff; }
+.slogan-orange { color: var(--orange); white-space: pre; --contour-epaisseur: .12em; }
+.cc-slogan { --x: 1256px; --y: 812px; font-size: 68px; }
+
+/* ---------- Feedbacks ---------- */
+.fb-slogan { --x: 690px; --y: 200px; }
+.fb-qr { position: absolute; left: 456px; top: 380px; width: 410px; }
+.fb-merci {
+  position: absolute;
+  left: 1513px;
+  top: 606px;
+  transform: translate(-50%, -50%) rotate(-14deg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-family: var(--f-script);
+  line-height: .95;
+  color: var(--creme);
+  text-shadow: 4px 4px 0 #e0585c, 8px 8px 0 #b44c70;
+  white-space: nowrap;
+}
+.fb-merci span:first-child { font-size: 190px; }
+.fb-merci span:last-child { margin-left: 120px; font-size: 128px; }
+
+/* ---------- Agenda : deux colonnes, taille de texte calculée pour remplir l'espace ---------- */
+.agenda {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 36px;
+  font-size: var(--fs, 32px);
+  overflow: hidden;
+}
+.agenda-col { list-style: none; display: flex; flex-direction: column; gap: .28em; }
+.seance {
+  position: relative;
+  display: grid;
+  grid-template-columns: 3.2em minmax(0, 1fr);
+  column-gap: .6em;
+  padding: .4em .6em .48em .75em;
+  border-radius: .2em;
+  background: rgba(30, 16, 110, .72); /* assez dense pour que les bulles du décor ne gênent pas la lecture */
+  overflow: hidden;
+}
+.seance::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: .16em;
+}
+.seance-heure strong {
+  display: block;
+  font-weight: 800;
+  line-height: 1.12;
+  color: var(--orange);
+  font-variant-numeric: tabular-nums;
+}
+.seance-heure span {
+  display: block;
+  font-size: .6em;
+  font-weight: 700;
+  color: rgba(255, 255, 255, .72);
+  font-variant-numeric: tabular-nums;
+}
+.seance-titre { font-weight: 800; line-height: 1.14; }
+.seance-meta { margin-top: .28em; font-size: .6em; font-weight: 700; line-height: 1.3; color: #c6f3f7; }
+.pastille {
+  display: inline-block;
+  margin-right: .5em;
+  padding: .02em .45em .08em;
+  border-radius: .25em;
+  background: var(--violet);
+  color: #fff;
+}
+/* Session qui a lieu dans une autre salle (keynote en plénière) */
+.pastille-lieu { background: var(--orange); color: #2a1470; }
+.pastille-langue { background: rgba(255, 255, 255, .22); }
+.seance.est-encours .pastille:not(.pastille-lieu) { background: rgba(20, 8, 80, .55); }
+.seance.est-pause { background: transparent; padding-top: .16em; padding-bottom: .16em; }
+.seance.est-pause .seance-heure strong,
+.seance.est-pause .seance-titre { font-size: .66em; font-weight: 700; color: rgba(255, 255, 255, .75); line-height: 1.3; }
+.seance.est-pause .seance-heure span { display: none; }
+.seance-avance {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: .13em;
+  background: var(--bulle);
+  transform-origin: left;
+  transform: scaleX(var(--avance, 0));
+}
+.seance.est-passee { opacity: .4; }
+.seance.est-encours { background: rgba(94, 23, 235, .94); }
+.seance.est-encours::before { background: linear-gradient(180deg, #e21bfb, #14d3dc); }
+.seance.est-pause.est-encours { background: rgba(30, 16, 110, .5); }
+.seance.est-suivante::before { background: var(--orange); }
+
+/* ---------- Mur social ---------- */
+.mur { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 28px; }
+.mur-col { position: relative; display: flex; flex-direction: column; gap: 24px; overflow: hidden; }
+.carte {
+  flex: none;
+  padding: 26px 28px 20px;
+  border-radius: 18px;
+  background: #fff;
+  color: #1d1747;
+  box-shadow: 0 10px 30px rgba(26, 12, 90, .25);
+}
+.carte-tete {
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.avatar {
+  width: 68px;
+  height: 68px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 26px;
+  font-weight: 800;
+  color: #fff;
+  background: var(--c, var(--violet));
+}
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.carte-nom { font-size: 27px; font-weight: 800; line-height: 1.15; }
+.carte-titre, .carte-date { font-size: 20px; font-weight: 700; color: #6b6590; }
+.carte-titre { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.carte-date { align-self: start; white-space: nowrap; }
+.carte-texte {
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 1.42;
+  white-space: pre-line;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 9;
+  overflow: hidden;
+}
+.carte.avec-image .carte-texte { -webkit-line-clamp: 5; }
+.carte-texte .tag { color: var(--violet); font-weight: 800; }
+.carte-image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  margin-top: 16px;
+  border-radius: 10px;
+}
+.carte-pied {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #e6e2f3;
+  font-size: 20px;
+  font-weight: 700;
+  color: #6b6590;
+}
+
+/* ---------- Bandeau permanent du bas : prochain talk, hashtag, heure ---------- */
+#barre-bas {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 8px;
+  z-index: 6;
+  height: calc(var(--barre-bas) - 8px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 40px;
+  padding: 0 40px 0 var(--marge);
+  background: linear-gradient(90deg, rgba(18, 9, 64, .78), rgba(18, 9, 64, .55));
+  border-top: 1px solid rgba(255, 255, 255, .16);
+}
+#barre-bas[hidden] { display: none; }
+#barre-bas [hidden] { display: none; } /* sinon .pastille (inline-block) l'emporte sur [hidden] */
+.bb-prochain { min-width: 0; display: flex; align-items: baseline; gap: 20px; }
+.bb-libelle { flex: none; font: 700 26px var(--f-texte); color: var(--ciel); }
+.bb-heure { flex: none; font: 800 40px var(--f-texte); color: var(--orange); font-variant-numeric: tabular-nums; }
+.bb-titre { min-width: 0; font: 800 34px var(--f-texte); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bb-prochain .pastille { flex: none; font: 700 24px var(--f-texte); }
+.bb-partage { flex: none; display: flex; align-items: baseline; gap: 16px; }
+.bb-message { font: 700 28px var(--f-texte); color: rgba(255, 255, 255, .78); }
+.bb-hashtag { font: 800 40px var(--f-texte); color: var(--orange); }
+.bb-horloge { flex: none; font: 800 46px var(--f-texte); color: #fff; font-variant-numeric: tabular-nums; }
+
+/* ---------- Barre de progression de la scène ---------- */
+#progression {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 6;
+  height: 8px;
+  background: rgba(255, 255, 255, .14);
+}
+#progression i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #e21bfb, #14d3dc, #ffbd59);
+  box-shadow: 0 0 14px rgba(226, 27, 251, .7);
+  transform-origin: left;
+  transform: scaleX(0);
+}
+
+/* ---------- Walls.io ---------- */
+/* Le mur est affiché plus petit puis agrandi (zoom dans donnees.js) : Walls.io met
+   moins de colonnes et tout devient lisible de loin. */
+.wallsio { border-radius: 18px; overflow: hidden; }
+.wallsio iframe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(100% / var(--zoom-wallsio, 1));
+  height: calc(100% / var(--zoom-wallsio, 1));
+  border: 0;
+  background: transparent;
+  transform: scale(var(--zoom-wallsio, 1));
+  transform-origin: 0 0;
+}
+/* Intégration JavaScript : le widget Walls.io pose ses propres styles en ligne sur l'iframe,
+   il faut donc reprendre la main avec !important. */
+.wallsio.js iframe {
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  width: calc(100% / var(--zoom-wallsio, 1)) !important;
+  height: calc(100% / var(--zoom-wallsio, 1)) !important;
+  max-width: none !important;
+  border: 0 !important;
+}
+
+/* ---------- Animations d'ambiance : en continu, pour que rien ne reste figé ----------
+   Elles utilisent translate / scale / rotate, qui s'ajoutent aux effets d'apparition
+   (animés, eux, avec transform) sans les perturber. */
+.vague .morceau { animation: vague 3.4s ease-in-out infinite; animation-delay: calc(var(--i, 0) * -.22s); }
+@keyframes vague { 0%, 100% { translate: 0 0; } 50% { translate: 0 -.07em; } }
+.respire { animation: respire 2.8s ease-in-out infinite; }
+@keyframes respire { 0%, 100% { scale: 1; } 50% { scale: 1.045; } }
+.flotte { animation: flotte-doux 5s ease-in-out infinite alternate; animation-delay: calc(var(--i, 0) * -1.3s); }
+@keyframes flotte-doux { from { translate: 0 -7px; } to { translate: 0 7px; } }
+.balance { animation: balance 4.2s ease-in-out infinite; animation-delay: calc(var(--i, 0) * -1.4s); }
+@keyframes balance { 0%, 100% { rotate: -2.5deg; } 50% { rotate: 2.5deg; } }
+/* Halo pulsé : une opacité animée, gérée par la carte graphique, plutôt qu'une ombre
+   recalculée à chaque image. */
+.seance.est-encours::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow: inset 0 0 40px rgba(226, 27, 251, .85);
+  animation: pulse-opacite 2.6s ease-in-out infinite;
+}
+@keyframes pulse-opacite { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+.seance.est-suivante::before { animation: clignote 1.6s ease-in-out infinite; }
+@keyframes clignote { 50% { opacity: .35; } }
+
+/* ---------- Effets d'apparition : morceaux de texte animés un par un ---------- */
+.morceau, .mot-lettres { display: inline-block; }
+.mot-lettres { white-space: nowrap; }
+.contour.decoupe::before { content: none; } /* le contour passe sur chaque mot */
+
+/* Les animations d'ambiance ne tournent que sur la scène affichée. En pause ailleurs :
+   même rendu, beaucoup moins de calcul (une quinzaine de scènes sont montées en permanence). */
+.scene:not(.is-live):not(.is-entering) :is(.vague .morceau, .respire, .flotte, .balance, .deux-points) { animation-play-state: paused; }
+.scene:not(.is-live):not(.is-entering) .seance.est-encours::after,
+.scene:not(.is-live):not(.is-entering) .seance.est-suivante::before { animation-play-state: paused; }
+
+/* Seulement si respecterReductionAnimations est activé (voir le script). */
+.anim-reduites .bulle, .anim-reduites .vague .morceau, .anim-reduites .respire, .anim-reduites .flotte,
+.anim-reduites .balance, .anim-reduites .seance.est-encours::after, .anim-reduites .seance.est-suivante::before,
+.anim-reduites .deux-points { animation: none; }
+
+/* ---------- Écran de démarrage (le seul moment de chargement) ---------- */
+#chargement {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 40px;
+  background: var(--degrade);
+  color: rgba(255, 255, 255, .8);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: center;
+}
+#chargement p { max-width: 760px; }
+
+/* ---------- Panneau de contrôle (touche H) ---------- */
+#hud {
+  position: fixed;
+  left: 20px;
+  bottom: 20px;
+  z-index: 100;
+  width: 420px;
+  padding: 16px 18px 14px;
+  background: rgba(27, 15, 85, .95);
+  border: 1px solid rgba(255, 255, 255, .25);
+  border-radius: 8px;
+  font-size: 15px;
+  line-height: 1.4;
+}
+#hud[hidden] { display: none; }
+.hud-etat { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.hud-etat strong { color: var(--orange); }
+.hud-etat span, .hud-infos { color: rgba(255, 255, 255, .7); }
+.hud-infos { margin-bottom: 10px; font-size: 13px; }
+#hud ol { list-style: none; margin-bottom: 12px; }
+#hud li { display: flex; justify-content: space-between; gap: 12px; padding: 2px 8px; border-radius: 4px; }
+#hud li span { color: rgba(255, 255, 255, .6); }
+#hud li.est-live { background: rgba(255, 189, 89, .22); }
+#hud li.est-vide { opacity: .45; }
+.hud-barre { height: 4px; margin-bottom: 12px; overflow: hidden; background: rgba(255, 255, 255, .2); }
+.hud-barre i { display: block; height: 100%; background: var(--bulle); transform-origin: left; transform: scaleX(0); }
+.hud-aide { font-size: 13px; color: rgba(255, 255, 255, .7); }

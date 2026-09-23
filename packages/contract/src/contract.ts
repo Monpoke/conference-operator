@@ -32,6 +32,7 @@ import {
   controlWatchEventSchema,
 } from './control.js'
 import { commentSchema, commentSourceSchema, questionSchema } from './wall.js'
+import { imageRefSchema, sponsorPageSchema } from './boucle.js'
 import {
   storageCheckSchema,
   vodFolderSchema,
@@ -584,6 +585,55 @@ export const contract = {
   settings: {
     get: oc.output(hubSettingsSchema),
     update: oc.input(hubSettingsPatchSchema).output(hubSettingsSchema),
+  },
+
+  /**
+   * What the console's "Boucle" view needs beside the settings themselves.
+   *
+   * The settings are read and written through `settings` like the others; these
+   * two only exist because laying out sponsor pages means choosing among the
+   * program's partners, and an organiser has image files rather than addresses.
+   */
+  boucle: {
+    /**
+     * The program's partners, deduplicated, and the automatic layout.
+     *
+     * `logoPreview` is the hub's cached copy (`/assets/…`) when there is one: the
+     * console shows what the rooms will show, not what the upstream server serves.
+     */
+    catalogue: oc.output(
+      z.object({
+        sponsors: z.array(
+          z.object({
+            key: z.string(),
+            name: z.string(),
+            website: z.string().nullable(),
+            logoPreview: z.string().nullable(),
+            tiers: z.array(z.string()),
+          }),
+        ),
+        pagesParDefaut: z.array(sponsorPageSchema),
+      }),
+    ),
+    /**
+     * Stores an image in the hub's asset store and returns its reference.
+     *
+     * Base64 inside the RPC rather than a multipart route: the console already
+     * speaks this protocol, and the image is reduced in the browser first, so it
+     * weighs a few hundred kilobytes.
+     */
+    uploadImage: oc
+      .input(
+        z.object({
+          contentType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml']),
+          base64: z.string().min(1).max(3_000_000),
+        }),
+      )
+      .output(z.object({ ref: imageRefSchema, preview: z.string() })),
+    /** Where the console shows an image reference from. `null` = not cached yet. */
+    previews: oc
+      .input(z.object({ refs: z.array(z.string().max(600)).max(200) }))
+      .output(z.record(z.string(), z.string().nullable())),
   },
 
   ingest: {

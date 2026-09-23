@@ -321,6 +321,9 @@ importers:
       '@conference-operator/program':
         specifier: workspace:*
         version: link:../../packages/program
+      '@conference-operator/projector':
+        specifier: workspace:*
+        version: link:../../packages/projector
       '@conference-operator/room-state':
         specifier: workspace:*
         version: link:../../packages/room-state
@@ -348,6 +351,9 @@ importers:
       fastify:
         specifier: 5.12.3
         version: 5.12.3
+      qrcode:
+        specifier: 1.5.4
+        version: 1.5.4
       tsx:
         specifier: 4.23.13
         version: 4.23.13
@@ -382,6 +388,9 @@ importers:
       '@types/node':
         specifier: 26.4.1
         version: 26.4.1
+      '@types/qrcode':
+        specifier: 1.5.6
+        version: 1.5.6
       '@types/web-push':
         specifier: 3.6.4
         version: 3.6.4
@@ -412,6 +421,9 @@ importers:
       '@conference-operator/program':
         specifier: workspace:*
         version: link:../../packages/program
+      '@conference-operator/projector':
+        specifier: workspace:*
+        version: link:../../packages/projector
       '@conference-operator/room-state':
         specifier: workspace:*
         version: link:../../packages/room-state
@@ -634,6 +646,25 @@ importers:
         specifier: 4.5.4
         version: 4.5.4
     devDependencies:
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@26.4.1)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13))
+
+  packages/projector:
+    dependencies:
+      '@conference-operator/contract':
+        specifier: workspace:*
+        version: link:../contract
+      '@conference-operator/program':
+        specifier: workspace:*
+        version: link:../program
+    devDependencies:
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
       typescript:
         specifier: 7.0.2
         version: 7.0.2

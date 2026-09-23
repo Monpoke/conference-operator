@@ -195,6 +195,17 @@ export class AssetCache {
    * failures are returned so they can be displayed in the control app.
    */
   async prefetch(program: Program, fetchImpl: typeof fetch = fetch): Promise<PrefetchReport> {
+    return this.prefetchUrls(assetUrls(program), fetchImpl)
+  }
+
+  /**
+   * Prefetches a list of addresses — the program's, or the loop's images.
+   *
+   * The loop names images uploaded on the hub (`hub-image:…`), which have no
+   * upstream: they come from the hub or not at all, which `download` already
+   * does, the second attempt failing on the scheme.
+   */
+  async prefetchUrls(urls: Iterable<string>, fetchImpl: typeof fetch = fetch): Promise<PrefetchReport> {
     const report: PrefetchReport = {
       downloaded: 0,
       reused: 0,
@@ -203,7 +214,7 @@ export class AssetCache {
       failed: [],
     }
 
-    for (const url of assetUrls(program)) {
+    for (const url of urls) {
       if ((this.lookup(url) ?? this.adopt(url)) != null) {
         report.reused += 1
         continue
@@ -261,6 +272,17 @@ export class AssetCache {
         })),
       })),
     }
+  }
+
+  /**
+   * The local address of one image, or `null` when it is not cached.
+   *
+   * Stricter than `localize`, on purpose: the loop writes the sponsor's name in
+   * its circle rather than send the projector to the Internet for a logo.
+   */
+  localizeRef(ref: string | null): string | null {
+    if (ref == null) return null
+    return (this.lookup(ref) ?? this.adopt(ref))?.localUrl ?? null
   }
 
   async read(sha256: string): Promise<{ bytes: Buffer; contentType: string | null } | null> {

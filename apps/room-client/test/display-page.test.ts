@@ -10,6 +10,7 @@ import { DEFAULT_BOUCLE, type Boucle } from '@conference-operator/contract'
 import { agendaForRoom, normalizeProgram, sessionsForRoom, type Session } from '@conference-operator/program'
 import { renderProjectorPage } from '../src/core/display-page.js'
 import { buildBoucleView } from '../src/core/boucle-view.js'
+import { planningsFor } from '@conference-operator/projector/server'
 import type { DisplayPayload } from '../src/core/display-server.js'
 
 /**
@@ -87,7 +88,8 @@ function payload(overrides: Partial<DisplayPayload> = {}, state: Partial<Display
     wallsIoUrl: null,
     screensDisabled: [],
     boucle: boucle(),
-    agenda: agendaForRoom(program, TRACK_1, { plenaries: true, nowMs: AT }),
+    agenda: agendaForRoom(program, TRACK_1, { nowMs: AT }),
+    plannings: [],
     wallsIoReachable: true,
     ...overrides,
   } as unknown as DisplayPayload
@@ -216,6 +218,86 @@ describe('the welcome loop', () => {
     expect(text(scene('annonce-1').querySelector('[data-titre]'))).toBe('Petit déjeuner')
   })
 
+  it('holds each scene for the duration the hub set for its kind', () => {
+    mount(payload({ boucle: boucle({ durees: { accueil: 4, agenda: 30 } }) }))
+    advance(4)
+    expect(live().dataset.scene).toBe('agenda')
+    advance(29)
+    expect(live().dataset.scene).toBe('agenda')
+    advance(1)
+    expect(live().dataset.scene).toBe('annonce-1')
+  })
+
+  it('holds a sponsor page for its own duration, the others for the common one', () => {
+    const pages = [
+      { titre: '', duree: 3, rangs: [{ taille: 1, logos: [{ sponsor: 'Zenika', nom: 'Zenika', logo: null, echelle: 0.7 }] }] },
+      { titre: 'Deux', duree: null, rangs: [{ taille: 1, logos: [{ sponsor: 'MTG', nom: 'MTG', logo: null, echelle: 0.7 }] }] },
+    ]
+    mount(payload({ boucle: boucle({ sponsorPages: pages, annonces: [] }) }))
+    advance(10 + 20 + 6)
+    expect(live().dataset.scene).toBe('sponsors-1')
+    advance(3)
+    expect(live().dataset.scene).toBe('sponsors-2')
+    advance(7)
+    expect(live().dataset.scene).toBe('sponsors-2')
+    advance(1)
+    expect(live().dataset.scene).not.toBe('sponsors-2')
+  })
+
+  it('shows the other rooms\' days after this one\'s, each for its own time', () => {
+    const plannings = planningsFor(program, TRACK_1, { ...DEFAULT_BOUCLE, plannings: { 'hands-on': { afficher: true, duree: 5 } } }, AT)
+    mount(payload({ plannings }))
+    advance(10 + 20)
+    expect(live().dataset.scene).toBe('planning-1')
+    expect(text(live().querySelector('[data-titre]'))).toBe('Track #2 - MF 1092')
+    expect(live().querySelector<HTMLElement>('[data-ici]')!.hidden).toBe(true)
+    advance(15)
+    expect(live().dataset.scene).toBe('planning-2')
+    advance(5)
+    expect(live().dataset.scene).toBe('annonce-1')
+  })
+
+  it('leaves this room\'s own sessions out of the other rooms\' days, breaks aside', () => {
+    const early = Date.parse('2026-10-30T07:00:00Z')
+    const plannings = planningsFor(program, TRACK_1, DEFAULT_BOUCLE, early)
+    const track2 = plannings.find((p) => p.roomId === TRACK_2)!
+    const titles = track2.agenda.map((e) => e.title)
+    // The keynote happens here, in Track #1: it is on this room's agenda, not Track #2's.
+    expect(titles).not.toContain("Keynote d'ouverture")
+    expect(titles).toContain('Déjeuner')
+  })
+
+  it('turns, on the global screen, through every room\'s day and announces the next talk anywhere', () => {
+    const early = Date.parse('2026-10-30T07:40:00Z')
+    mount(payload(
+      {
+        roomName: null,
+        agenda: [],
+        plannings: planningsFor(program, null, DEFAULT_BOUCLE, early),
+      },
+      { roomId: null, serverTimeOffsetMs: early - Date.now() },
+    ))
+    advance(10)
+    expect(live().dataset.scene).toBe('planning-1')
+    expect(text(live().querySelector('[data-titre]'))).toBe('Track #1 - Teilhard de Chardin')
+    // The keynote, next anywhere, with the room it happens in.
+    expect(text(document.querySelector('[data-bb-titre]'))).toBe("Keynote d'ouverture")
+    expect(text(document.querySelector('[data-bb-salle]'))).toBe('Track #1 - Teilhard de Chardin')
+    expect(text(scene('salles').querySelector('[data-titre]'))).toBe('En ce moment dans les salles')
+  })
+
+  it('says « Vous êtes ici » on this room\'s own day only', () => {
+    mount()
+    expect(scene('agenda').querySelector<HTMLElement>('[data-ici]')!.hidden).toBe(false)
+    expect(scene('agenda-rappel').querySelector<HTMLElement>('[data-ici]')!.hidden).toBe(false)
+  })
+
+  it('skips the other rooms\' days when the hub withdrew them', () => {
+    mount(payload({ plannings: planningsFor(program, TRACK_1, DEFAULT_BOUCLE, AT), screensDisabled: ['other-agendas'] }))
+    advance(10 + 20)
+    expect(live().dataset.scene).toBe('annonce-1')
+  })
+
   it('skips the slots with nothing to show', () => {
     mount()
     advance(10 + 20 + 8)
@@ -298,20 +380,38 @@ describe('agenda', () => {
   })
 
   it('keeps the whole day when the setting says so', () => {
-    const agenda = { masquerTerminees: false, plenieres: true }
+    const agenda = { masquerTerminees: false }
     mount(payload({ boucle: boucle({ agenda }) }, { mode: 'agenda' }))
     expect(text(live())).toContain('IA for OPS')
     expect(live().querySelector('.seance.est-passee')).not.toBeNull()
   })
 
-  it('shows the opening keynote on the other screens, with the room it happens in', () => {
+  it('keeps the opening keynote off the screens of the rooms that do not host it', () => {
     const early = Date.parse('2026-10-30T07:00:00Z')
     mount(payload(
-      { roomName: 'Track #2', agenda: agendaForRoom(program, TRACK_2, { plenaries: true, nowMs: early }) },
+      { roomName: 'Track #2', agenda: agendaForRoom(program, TRACK_2, { nowMs: early }) },
       { mode: 'agenda', serverTimeOffsetMs: early - Date.now() },
     ))
-    const keynote = [...live().querySelectorAll('.seance')].find((row) => text(row).includes("Keynote d'ouverture"))!
-    expect(text(keynote.querySelector('.pastille-lieu'))).toBe('Track #1 - Teilhard de Chardin')
+    expect(text(live())).not.toContain("Keynote d'ouverture")
+  })
+
+  it('writes the shared breaks as breaks, the keynote as a talk', () => {
+    const agenda = { masquerTerminees: false }
+    mount(payload({ boucle: boucle({ agenda }) }, { mode: 'agenda' }))
+    const rows = [...live().querySelectorAll('.seance')]
+    const pause = (title: string) => rows.find((row) => text(row).includes(title))!.classList.contains('est-pause')
+    for (const title of ['Accueil et petit déjeuner', 'Pause croissants', 'Déjeuner', 'Pause café', 'Apéro Networking']) {
+      expect(pause(title), title).toBe(true)
+    }
+    expect(pause("Keynote d'ouverture")).toBe(false)
+  })
+
+  it('shows one clock: the band\'s, or the scene\'s when the band is off', () => {
+    mount(payload({}, { mode: 'agenda' }))
+    expect(document.body.classList.contains('sans-barre-bas')).toBe(false)
+    const barreBas = { ...DEFAULT_BOUCLE.barreBas, afficher: false }
+    mount(payload({ boucle: boucle({ barreBas }) }, { mode: 'agenda' }))
+    expect(document.body.classList.contains('sans-barre-bas')).toBe(true)
   })
 
   it('says so rather than showing an empty frame', () => {
@@ -326,16 +426,6 @@ describe('bottom band', () => {
     expect(text(document.querySelector('[data-bb-titre]'))).toBe(next.title)
     expect(text(document.querySelector('[data-bb-hashtag]'))).toBe('#CloudNord2026')
     expect(text(document.querySelector('[data-bb-horloge]'))).toBe('11:20')
-  })
-
-  it('names the room when the next one happens elsewhere', () => {
-    const early = Date.parse('2026-10-30T06:45:00Z')
-    mount(payload(
-      { agenda: agendaForRoom(program, TRACK_2, { plenaries: true, nowMs: early }) },
-      { serverTimeOffsetMs: early - Date.now() },
-    ))
-    expect(text(document.querySelector('[data-bb-titre]'))).toBe("Keynote d'ouverture")
-    expect(document.querySelector<HTMLElement>('[data-bb-salle]')!.hidden).toBe(false)
   })
 
   it('leaves when the setting takes it away', () => {

@@ -60,13 +60,19 @@ export class BarreBas {
     // Only when something is wrong: it speaks to the technician, not to the room.
     this.lien.hidden = data.state.connectivity === 'ONLINE'
 
-    // The room's next session: breaks skipped, to announce a real talk.
-    const suivante = data.agenda.find((e) => e.startsAtMs > now && !e.pause)
+    // The room's next session: breaks skipped, to announce a real talk. The
+    // global screen has no room of its own: the next one anywhere, with its room.
+    const jour = data.agenda.length > 0
+      ? data.agenda
+      : data.plannings
+          .flatMap((p) => p.agenda.map((e) => ({ ...e, elsewhere: e.pause ? null : p.nom })))
+          .sort((a, b) => a.startsAtMs - b.startsAtMs)
+    const suivante = jour.find((e) => e.startsAtMs > now && !e.pause)
     const empreinte = suivante ? `${suivante.startsAtMs}|${suivante.title}|${suivante.elsewhere}` : 'rien'
     if (empreinte !== this.prochain || force) {
       this.prochain = empreinte
       if (suivante) {
-        this.libelle.textContent = conf?.libelle ?? 'Ensuite'
+        this.libelle.textContent = conf?.libelle ?? 'À suivre'
         this.heure.textContent = heureDans(suivante.startsAtMs, data.timezone)
         this.titre.textContent = suivante.title
         this.salle.textContent = suivante.elsewhere ?? ''
@@ -74,7 +80,7 @@ export class BarreBas {
       } else {
         this.libelle.textContent = ''
         this.heure.textContent = ''
-        this.titre.textContent = data.agenda.length ? (conf?.finJournee ?? "Merci et à l'année prochaine !") : ''
+        this.titre.textContent = jour.length ? (conf?.finJournee ?? "Merci et à l'année prochaine !") : ''
         this.salle.hidden = true
       }
       const bloc = this.el.querySelector<HTMLElement>('.bb-prochain')

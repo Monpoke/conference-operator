@@ -55,11 +55,22 @@ export function demarrer(): void {
     courant = data
     regie.recevoir(data)
     barre.maj(data, true)
-    if (premier) lever()
+    if (premier) void lever()
   }
 
-  /** The loading screen lifts once the first state is drawn. */
-  function lever(): void {
+  /**
+   * The loading screen lifts once the first state is drawn **and the typefaces
+   * are there**, as in the reference loop: the agenda and the sponsor pages are
+   * sized by measuring their text, and measured in a fallback face they overflow
+   * once the real one arrives. Three seconds at most — a missing face must not
+   * keep the screen dark.
+   */
+  async function lever(): Promise<void> {
+    const polices = document.fonts?.ready
+    if (polices != null) {
+      await Promise.race([polices, new Promise((r) => setTimeout(r, 3000))])
+      regie.relire(true)
+    }
     const chargement = document.getElementById('chargement')
     regie.lever()
     if (chargement == null) return
@@ -111,6 +122,19 @@ export function demarrer(): void {
     pause: () => { if (!regie.enPause) regie.basculerPause() },
     lecture: () => { if (regie.enPause) regie.basculerPause() },
     relire: () => regie.relire(),
+    /**
+     * Fetches the state again at this address, every `ms` — the hub's public and
+     * global screens, which have no stream of their own. A failed fetch keeps the
+     * last state: the screen stays on what it knew.
+     */
+    suivre: (url: string, ms: number) => {
+      setInterval(() => {
+        fetch(url, { cache: 'no-store', credentials: 'same-origin' })
+          .then((response) => (response.ok ? (response.json() as Promise<Data>) : null))
+          .then((data) => { if (data != null) recevoir(data) })
+          .catch(() => {})
+      }, ms)
+    },
     etat: () => ({
       mode: regie.mode,
       scene: regie.prog.etapes[regie.courante]?.scene ?? null,

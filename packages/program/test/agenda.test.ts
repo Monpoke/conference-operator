@@ -19,8 +19,7 @@ const TRACK_2 = 'track-2-mf-1092'
 const HANDS_ON = 'hands-on'
 const DAY = Date.parse('2026-10-30T08:00:00Z')
 
-const titles = (roomId: string, plenaries = true) =>
-  agendaForRoom(program, roomId, { plenaries, nowMs: DAY }).map((e) => e.title)
+const titles = (roomId: string) => agendaForRoom(program, roomId, { nowMs: DAY }).map((e) => e.title)
 
 describe('normalizeProgram — roomSpan', () => {
   it('reads the grid width of shared slots', () => {
@@ -38,34 +37,38 @@ describe('agendaForRoom', () => {
     for (const room of [TRACK_1, TRACK_2, HANDS_ON]) expect(titles(room)).toContain('Déjeuner')
   })
 
-  it('shows the opening keynote everywhere, with the room it happens in', () => {
-    const entry = agendaForRoom(program, TRACK_2, { plenaries: true, nowMs: DAY })
-      .find((e) => e.title === "Keynote d'ouverture")!
-    expect(entry.elsewhere).toBe('Track #1 - Teilhard de Chardin')
-    expect(entry.pause).toBe(false)
-    expect(titles(TRACK_2, false)).not.toContain("Keynote d'ouverture")
+  it('keeps the opening keynote in the room that hosts it', () => {
+    const keynote = agendaForRoom(program, TRACK_1, { nowMs: DAY }).find((e) => e.title === "Keynote d'ouverture")!
+    expect(keynote).toMatchObject({ pause: false, elsewhere: null })
+    expect(titles(TRACK_2)).not.toContain("Keynote d'ouverture")
+    expect(titles(HANDS_ON)).not.toContain("Keynote d'ouverture")
   })
 
   it('marks shared slots as breaks, without a room pill where they belong', () => {
-    const lunch = agendaForRoom(program, HANDS_ON, { plenaries: true, nowMs: DAY }).find((e) => e.title === 'Déjeuner')!
+    const lunch = agendaForRoom(program, HANDS_ON, { nowMs: DAY }).find((e) => e.title === 'Déjeuner')!
     expect(lunch).toMatchObject({ pause: true, elsewhere: null })
   })
 
   it('ignores the copies projected into free rooms', () => {
     const served = applySharedBreaks(program)
-    const count = agendaForRoom(served, HANDS_ON, { plenaries: true, nowMs: DAY }).length
-    expect(count).toBe(agendaForRoom(program, HANDS_ON, { plenaries: true, nowMs: DAY }).length)
+    const count = agendaForRoom(served, HANDS_ON, { nowMs: DAY }).length
+    expect(count).toBe(agendaForRoom(program, HANDS_ON, { nowMs: DAY }).length)
   })
 
   it('is sorted and resolves speakers and formats', () => {
-    const entries = agendaForRoom(program, TRACK_1, { plenaries: true, nowMs: DAY })
+    const entries = agendaForRoom(program, TRACK_1, { nowMs: DAY })
     expect(entries.map((e) => e.startsAtMs)).toEqual([...entries.map((e) => e.startsAtMs)].sort((a, b) => a - b))
     const talk = entries.find((e) => e.speakers.length > 0)!
     expect(talk.format).not.toMatch(/\(/)
   })
 
+  it('says which room each slot is attached to', () => {
+    const lunch = agendaForRoom(program, TRACK_2, { nowMs: DAY }).find((e) => e.title === 'Déjeuner')!
+    expect(lunch.roomId).toBe(TRACK_1)
+  })
+
   it('knows nothing of an unknown room', () => {
-    expect(agendaForRoom(program, 'nope', { plenaries: true, nowMs: DAY })).toEqual([])
+    expect(agendaForRoom(program, 'nope', { nowMs: DAY })).toEqual([])
   })
 })
 

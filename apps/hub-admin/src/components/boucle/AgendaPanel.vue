@@ -32,13 +32,6 @@ async function save(): Promise<void> {
           <span class="text-xs text-dim">Le reste de la journée prend la place.</span>
         </span>
       </label>
-      <label class="flex items-baseline gap-3 py-1.5">
-        <input id="boucle-agenda-plenieres" v-model="draft.plenieres" type="checkbox" class="w-auto" />
-        <span>
-          <strong class="block text-sm">Plénières dans toutes les salles</strong>
-          <span class="text-xs text-dim">Un créneau seul sur son horaire (la keynote d'ouverture) s'affiche partout.</span>
-        </span>
-      </label>
       <SaveBar id="btn-boucle-agenda" :dirty="dirty" @save="save" />
     </div>
   </Panel>

@@ -11,6 +11,7 @@ import { toString } from 'qrcode'
 import { agendaForRoom, normalizeProgram, sessionsForRoom } from '@conference-operator/program'
 import { DEFAULT_BOUCLE, resolveEventIdentity, type Boucle } from '@conference-operator/contract'
 import { BOUCLE } from '@conference-operator/projector'
+import { planningsFor } from '@conference-operator/projector/server'
 import { renderProjectorPage } from '../src/core/display-page.js'
 import { boucleQrUrls, buildBoucleView } from '../src/core/boucle-view.js'
 import { availableFonts, resolveFontsFolder } from '../src/core/fonts.js'
@@ -45,6 +46,8 @@ const qr = async (url: string) =>
  */
 const settings: Boucle = {
   ...DEFAULT_BOUCLE,
+  // The whole day, breaks included: it is what one comes to judge.
+  agenda: { masquerTerminees: false },
   conduite: { ...DEFAULT_BOUCLE.conduite, url: 'https://www.cloudnord.fr/code-de-conduite' },
   mur: {
     ...DEFAULT_BOUCLE.mur,
@@ -289,7 +292,8 @@ const base: DisplayPayload = {
   // Nothing withdrawn: the preview is there to show every screen.
   screensDisabled: [],
   boucle,
-  agenda: agendaForRoom(program, TRACK_1, { plenaries: true, nowMs: AT }),
+  agenda: agendaForRoom(program, TRACK_1, { nowMs: AT }),
+  plannings: planningsFor(program, TRACK_1, settings, AT),
   wallsIoReachable: true,
 }
 

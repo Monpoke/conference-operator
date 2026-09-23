@@ -74,6 +74,8 @@ export const sponsorPageSchema = z.object({
       }),
     )
     .max(4),
+  /** Seconds on screen for this page; `null` = the sponsor pages' duration. */
+  duree: z.number().int().min(3).max(600).nullable().default(null),
 })
 export type SponsorPage = z.infer<typeof sponsorPageSchema>
 
@@ -109,6 +111,47 @@ const sloganSchema = z.object({
 export const MAX_ANNONCES = 4
 export const MAX_SPONSOR_PAGES = 8
 
+/**
+ * How long each kind of scene stays on screen, in seconds — the reference loop's
+ * `data-duration`. The pages of a kind share theirs: every sponsor page, every
+ * announcement.
+ */
+export const DUREES_PAR_DEFAUT = {
+  accueil: 10,
+  agenda: 20,
+  annonces: 8,
+  merci: 6,
+  sponsors: 8,
+  posts: 15,
+  'message-bienvenue': 7,
+  salles: 12,
+  'agenda-rappel': 20,
+  'message-partage': 7,
+  reseaux: 10,
+  wallsio: 25,
+  'message-silence': 7,
+  conduite: 14,
+  feedbacks: 10,
+} as const satisfies Record<string, number>
+
+export type DureeScene = keyof typeof DUREES_PAR_DEFAUT
+
+/** How long another room's schedule stays on screen when nothing is set. */
+export const DUREE_PLANNING_PAR_DEFAUT = 15
+/** The other rooms' schedules mounted at most — scenes are mounted ahead. */
+export const MAX_PLANNINGS = 6
+
+/** Another room's schedule in the loop: shown or not, and for how long. */
+export const planningSchema = z.object({
+  afficher: z.boolean().default(true),
+  duree: z.number().int().min(3).max(600).default(DUREE_PLANNING_PAR_DEFAUT),
+})
+export type Planning = z.infer<typeof planningSchema>
+
+/** The public preview link's key: long enough not to be guessed. */
+export const lienPublicSchema = z.string().regex(/^[A-Za-z0-9_-]{24,64}$/)
+export const dureeSceneSchema = z.enum(Object.keys(DUREES_PAR_DEFAUT) as [DureeScene, ...DureeScene[]])
+
 export const boucleSchema = z.object({
   /** Logo top left of every scene and large on the welcome. `null` = the program's. */
   logo: imageRefSchema.nullable().default(null),
@@ -141,10 +184,8 @@ export const boucleSchema = z.object({
     .object({
       /** Finished sessions leave the screen and the rest of the day takes the room. */
       masquerTerminees: z.boolean().default(true),
-      /** A slot alone on its time (the opening keynote) shows in every room. */
-      plenieres: z.boolean().default(true),
     })
-    .default({ masquerTerminees: true, plenieres: true }),
+    .default({ masquerTerminees: true }),
   messages: z
     .object({ bienvenue: messageSchema, partage: messageSchema, silence: messageSchema })
     .default({
@@ -172,6 +213,19 @@ export const boucleSchema = z.object({
       },
     ]),
   merciSponsors: z.string().max(80).default('Merci à nos\nSponsors'),
+  /**
+   * The other rooms' schedules, by room identifier. A room absent here is shown,
+   * for `DUREE_PLANNING_PAR_DEFAUT` seconds.
+   */
+  plannings: z.record(z.string().max(120), planningSchema).default({}),
+  /**
+   * The key of the public link to the loop's preview (`/boucle/apercu?cle=…`),
+   * or `null`: no public link. One key for every room — the address picks the
+   * room. Regenerating it cuts the links already shared.
+   */
+  lienPublic: lienPublicSchema.nullable().default(null),
+  /** Seconds per kind of scene; absent = the reference's (`DUREES_PAR_DEFAUT`). */
+  durees: z.partialRecord(dureeSceneSchema, z.number().int().min(3).max(600)).default({}),
   /** `null` = one page per tier of the program, laid out automatically. */
   sponsorPages: z.array(sponsorPageSchema).max(MAX_SPONSOR_PAGES).nullable().default(null),
   mur: z
@@ -272,7 +326,9 @@ export interface BoucleView {
   messages: Boucle['messages']
   annonces: { titre: string; sousTitre: string; logos: BoucleLogo[] }[]
   merciSponsors: string
-  sponsorPages: { titre: string; rangs: { taille: number; logos: BoucleLogo[] }[] }[]
+  /** Every kind of scene's duration, the settings over the reference's. */
+  durees: Record<DureeScene, number>
+  sponsorPages: { titre: string; duree: number | null; rangs: { taille: number; logos: BoucleLogo[] }[] }[]
   mur: {
     titre: string
     hashtag: string

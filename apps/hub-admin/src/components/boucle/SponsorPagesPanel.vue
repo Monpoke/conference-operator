@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { MAX_SPONSOR_PAGES, type SponsorPage, type SponsorRef } from '@conference-operator/contract'
+import { DUREES_PAR_DEFAUT, MAX_SPONSOR_PAGES, type SponsorPage, type SponsorRef } from '@conference-operator/contract'
 import { Button, Empty, Panel, useToast } from '@conference-operator/components'
 import { useDraft } from '../../composables/draft.js'
 import { findSponsor, useBoucleStore } from '../../stores/boucle.js'
@@ -26,12 +26,16 @@ const { draft, dirty, reset } = useDraft(() =>
 )
 
 const blankLogo = (): SponsorRef => ({ sponsor: '', nom: null, logo: null, echelle: 0.8 })
-const blankPage = (): SponsorPage => ({ titre: '', rangs: [{ taille: 1, logos: [] }] })
+const blankPage = (): SponsorPage => ({ titre: '', duree: null, rangs: [{ taille: 1, logos: [] }] })
+
+/** What a page without a duration of its own is shown for: the sponsor pages' setting. */
+const dureeCommune = () => store.boucle?.durees.sponsors ?? DUREES_PAR_DEFAUT.sponsors
 
 /** Starts from the automatic layout: the organiser corrects rather than rebuilds. */
 function customise(): void {
   if (draft.value == null) return
-  const pages = JSON.parse(JSON.stringify(store.catalogue.pagesParDefaut)) as SponsorPage[]
+  const pages = (JSON.parse(JSON.stringify(store.catalogue.pagesParDefaut)) as SponsorPage[])
+    .map((page) => ({ ...page, duree: page.duree ?? null }))
   draft.value.sponsorPages = pages.length > 0 ? pages.slice(0, MAX_SPONSOR_PAGES) : [blankPage()]
 }
 
@@ -45,7 +49,15 @@ function nameOf(logo: SponsorRef): string {
 
 async function save(): Promise<void> {
   if (draft.value == null) return
-  const pages = draft.value.sponsorPages
+  // A number field hands back "" once emptied: that is "the common duration".
+  const pages = draft.value.sponsorPages?.map((page) => ({
+    ...page,
+    duree: typeof page.duree === 'number' && Number.isFinite(page.duree) ? page.duree : null,
+  })) ?? null
+  if (pages?.some((page) => page.duree != null && (!Number.isInteger(page.duree) || page.duree < 3 || page.duree > 600))) {
+    toast.fail('Durée d\'une page : un nombre entier entre 3 et 600 secondes, ou vide')
+    return
+  }
   if (pages?.some((page) => page.rangs.some((row) => row.logos.some((logo) => logo.sponsor.trim() === '')))) {
     toast.fail('Choisissez un partenaire pour chaque logo, ou retirez-le')
     return
@@ -99,8 +111,22 @@ async function save(): Promise<void> {
               rows="1"
               maxlength="120"
               placeholder="Titre — vide : les logos seuls"
-              :class="[FIELD, 'mb-0 flex-1']"
+              :class="[FIELD, 'mb-0 min-w-0 flex-1']"
             />
+            <label class="flex shrink-0 items-center gap-1 pt-1.5 text-xs text-dim" :for="`boucle-page-${pageIndex}-duree`">
+              Durée
+              <input
+                :id="`boucle-page-${pageIndex}-duree`"
+                v-model.number="page.duree"
+                type="number"
+                min="3"
+                max="600"
+                step="1"
+                :placeholder="String(dureeCommune())"
+                :class="[SMALL, 'w-[70px] text-right']"
+              />
+              s
+            </label>
             <ListControls :list="draft.sponsorPages" :index="pageIndex" noun="la page" />
           </div>
 

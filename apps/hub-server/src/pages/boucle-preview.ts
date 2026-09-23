@@ -8,17 +8,34 @@ import {
   boucleQrUrls,
   buildBoucleView,
   otherRoomsFor,
+  planningsFor,
   renderProjectorDocument,
 } from '@conference-operator/projector/server'
 import type { Services } from '../context.js'
 
+/** The `salle` of the global screen: the whole program, no room of its own. */
+export const SALLE_GLOBALE = 'global'
+
 export interface BouclePreviewOptions {
-  /** The room to preview; `null` = the program's first. */
+  /** The room to preview; `null` = the program's first; `global` = the whole program. */
   roomId: string | null
   /** A scene of the loop to hold (1 = the welcome); `null` = the loop plays. */
   scene: number | null
+  /**
+   * The time the preview is drawn at, for the preview alone: `HH:MM` on `jour`
+   * (`YYYY-MM-DD`, default the event's first day), in the event's timezone.
+   * `null` = the hub's clock. The rooms never see it — nothing is set on the hub.
+   */
+  heure?: string | null
+  jour?: string | null
   /** Where the typefaces are, and the address they are served from. */
   fonts: { folder: string | null; base: string }
+  /**
+   * Where the page fetches its state again, every twenty seconds — the public
+   * and global screens stay on for hours. `null` = drawn once (a console
+   * preview, which is reloaded after a save; a preview at a set time).
+   */
+  flux?: string | null
 }
 
 /** The same options as the room's QR codes: photographed from afar, at an angle. */
@@ -42,12 +59,31 @@ const QR_OPTIONS = {
  * reloaded after a save.
  */
 export async function renderBouclePreview(services: Services, options: BouclePreviewOptions): Promise<string> {
+  return renderProjectorDocument({
+    initialPayload: await previewPayload(services, options),
+    preview: true,
+    fonts: { base: options.fonts.base, files: availableFonts(options.fonts.folder) },
+    after: [
+      options.flux ? `boucle.suivre(${JSON.stringify(options.flux)}, 20000)` : '',
+      // Held on one scene: no transition, the loop paused there.
+      options.scene == null ? '' : `boucle.pause(); boucle.allerA(${Math.max(1, Math.trunc(options.scene))}, 'cut')`,
+    ].filter(Boolean).join(';') || undefined,
+  })
+}
+
+/**
+ * The state a room would build from its sync — or, for the global screen, the
+ * one of a room that is none: no agenda of its own, every room's schedule.
+ */
+export async function previewPayload(services: Services, options: BouclePreviewOptions): Promise<DisplayPayload> {
   const settings = services.settings.get()
   const snapshot = services.programs.active()
   const program = snapshot?.program ?? null
-  const now = services.clock.now()
+  const now = previewTime(options, program?.timezone ?? DEFAULT_TIMEZONE, program?.event.startsAt ?? null)
+    ?? services.clock.now()
   const identity = services.identity.get()
-  const roomId = program == null
+  const global = options.roomId === SALLE_GLOBALE
+  const roomId = program == null || global
     ? null
     : (program.rooms.find((room) => room.id === options.roomId) ?? program.rooms[0])?.id ?? null
   const room = program?.rooms.find((candidate) => candidate.id === roomId) ?? null
@@ -115,17 +151,49 @@ export async function renderBouclePreview(services: Services, options: BouclePre
     boucle,
     agenda: program == null || roomId == null
       ? []
-      : agendaForRoom(program, roomId, { plenaries: settings.boucle.agenda.plenieres, nowMs: now }),
+      : agendaForRoom(program, roomId, { nowMs: now }),
+    plannings: program == null ? [] : planningsFor(program, roomId, settings.boucle, now),
     wallsIoReachable: true,
   } as unknown as DisplayPayload
 
-  return renderProjectorDocument({
-    initialPayload: payload,
-    preview: true,
-    fonts: { base: options.fonts.base, files: availableFonts(options.fonts.folder) },
-    // Held on one scene: no transition, the loop paused there.
-    after: options.scene == null
-      ? undefined
-      : `boucle.pause(); boucle.allerA(${Math.max(1, Math.trunc(options.scene))}, 'cut')`,
-  })
+  return payload
+}
+
+/**
+ * The instant of `heure` on `jour`, in the event's timezone — or `null` when
+ * `heure` is absent or malformed.
+ *
+ * Found by correcting a first guess by the zone's offset at that guess: exact
+ * everywhere but inside a daylight-saving jump, where a preview can live with a
+ * minute that does not exist.
+ */
+export function previewTime(
+  options: Pick<BouclePreviewOptions, 'heure' | 'jour'>,
+  timezone: string,
+  eventStart: string | null,
+): number | null {
+  const time = /^(\d{1,2}):(\d{2})$/.exec(options.heure ?? '')
+  if (time == null) return null
+  const dayOf = (ms: number) => {
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' })
+        .formatToParts(ms)
+        .map((part) => [part.type, part.value]),
+    )
+    return `${parts.year}-${parts.month}-${parts.day}`
+  }
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(options.jour ?? '')
+    ? options.jour!
+    : dayOf(eventStart != null && !Number.isNaN(Date.parse(eventStart)) ? Date.parse(eventStart) : Date.now())
+  const [year, month, date] = day.split('-').map(Number) as [number, number, number]
+  const guess = Date.UTC(year, month - 1, date, Number(time[1]), Number(time[2]))
+  const shown = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    })
+      .formatToParts(guess)
+      .map((part) => [part.type, part.value]),
+  )
+  const asIfUtc = Date.UTC(+shown.year!, +shown.month! - 1, +shown.day!, +shown.hour!, +shown.minute!)
+  return guess - (asIfUtc - guess)
 }

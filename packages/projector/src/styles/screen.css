@@ -172,3 +172,15 @@ body[data-mode="live"] #progression { opacity: 0; transition: opacity .45s ease;
    one only shows when the band is switched off. */
 body:not(.sans-barre-bas) .bande-droite[data-horloge] { display: none; }
 
+/* ---------- « Vous êtes ici » ----------
+   The loop now shows the other rooms' days too: this room's says so, next to
+   its name, in the orange the plenaries' room pill already uses. */
+.bande-titre { min-width: 0; display: flex; align-items: center; gap: 26px; }
+.pastille-ici {
+  flex: none;
+  margin: 0;
+  padding: .12em .6em .18em;
+  font: 800 30px var(--f-texte);
+  background: var(--orange);
+  color: #2a1470;
+}

@@ -9,16 +9,19 @@ import { heureDans } from '../time.js'
 export function salles(el: HTMLElement): Scene {
   el.innerHTML = `
     <header class="bande">
-      <h2 class="f-titre" data-effet="mots">Pendant ce temps, à côté</h2>
+      <h2 class="f-titre" data-titre data-effet="mots"></h2>
     </header>
     <div class="contenu salles" data-effet-enfants="entre" data-cible=".carte" data-pas="140" data-delai="250"></div>`
+  const titre = el.querySelector<HTMLElement>('[data-titre]')!
   const zone = el.querySelector<HTMLElement>('.salles')!
   const occupees = (data: Data) => data.otherRooms.filter((room) => room.session != null)
   return {
     el,
-    cle: (data: Data) => [data.otherRooms, data.timezone],
+    cle: (data: Data) => [data.otherRooms, data.timezone, data.state.roomId],
     jouable: (data: Data) => occupees(data).length > 0,
     rendre(data: Data) {
+      // A room looks next door; the hall's screen, with no room, at all of them.
+      ecrire(titre, data.state.roomId == null ? 'En ce moment dans les salles' : 'Pendant ce temps, à côté')
       const rooms = occupees(data)
       zone.style.setProperty('--n', String(rooms.length > 2 ? 2 : Math.max(1, rooms.length)))
       zone.replaceChildren(...rooms.map((room) => {

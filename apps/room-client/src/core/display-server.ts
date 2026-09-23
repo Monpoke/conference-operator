@@ -25,7 +25,7 @@ import type { InputLevel } from './obs.js'
 import type { DisplayState, RoomRuntime } from './runtime.js'
 import { renderProjectorPage } from './display-page.js'
 import { boucleQrUrls, buildBoucleView } from './boucle-view.js'
-import { otherRoomsFor } from '@conference-operator/projector/server'
+import { otherRoomsFor, planningsFor } from '@conference-operator/projector/server'
 import { availableFonts, readFont, resolveFontsFolder } from './fonts.js'
 import { renderOverlayPage } from './overlay-page.js'
 import { renderOverlayLivePage } from './overlay-live-page.js'
@@ -242,6 +242,7 @@ export class DisplayServer {
         screensDisabled: screens.disabled,
         boucle,
         agenda: [],
+        plannings: [],
         wallsIoReachable,
         eventIdentity,
       }
@@ -269,9 +270,9 @@ export class DisplayServer {
       agenda: state.roomId == null
         ? []
         : agendaForRoom(program, state.roomId, {
-            plenaries: boucle?.agenda.plenieres ?? true,
             nowMs: this.options.runtime.correctedNow(),
           }),
+      plannings: planningsFor(program, state.roomId, this.options.boucle?.() ?? null, this.options.runtime.correctedNow()),
       wallsIoReachable,
       eventIdentity,
     }

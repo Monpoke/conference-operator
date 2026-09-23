@@ -1,7 +1,7 @@
-import type { DisplayMode, RoomScreen } from '@conference-operator/contract'
+import type { DisplayMode, DureeScene, RoomScreen } from '@conference-operator/contract'
 import type { Scene } from './scene.js'
 import { accueil } from './scenes/accueil.js'
-import { agenda } from './scenes/agenda.js'
+import { agenda, journeeAutre } from './scenes/agenda.js'
 import { annonce, merci, sponsors } from './scenes/sponsors.js'
 import { mur } from './scenes/mur.js'
 import { message } from './scenes/message.js'
@@ -13,6 +13,8 @@ import { avis, banniere, decompte, direct, murHub, programme, question } from '.
 /** The number of slots mounted for the scenes whose count the hub decides. */
 export const ANNONCES = 4
 export const PAGES_SPONSORS = 8
+/** The other rooms' schedules mounted at most — the contract's `MAX_PLANNINGS`. */
+export const PLANNINGS = 6
 
 export interface DefinitionScene {
   id: string
@@ -28,7 +30,10 @@ const range = (n: number) => Array.from({ length: n }, (_, i) => i)
 /** Every scene of the stage, in document order. */
 export const SCENES: DefinitionScene[] = [
   { id: 'accueil', nom: 'Accueil', fabrique: accueil },
-  { id: 'agenda', nom: 'Agenda', fabrique: agenda },
+  { id: 'agenda', nom: 'Agenda', fabrique: (el) => agenda(el) },
+  ...range(PLANNINGS).map((i) => ({
+    id: `planning-${i + 1}`, nom: `Planning d'une autre salle ${i + 1}`, fabrique: (el: HTMLElement) => agenda(el, journeeAutre(i)),
+  })),
   ...range(ANNONCES).map((i) => ({ id: `annonce-${i + 1}`, nom: `Annonce ${i + 1}`, fabrique: (el: HTMLElement) => annonce(el, i) })),
   { id: 'merci', nom: 'Merci à nos sponsors', fabrique: merci, signature: true },
   ...range(PAGES_SPONSORS).map((i) => ({
@@ -37,7 +42,7 @@ export const SCENES: DefinitionScene[] = [
   { id: 'posts', nom: 'Mur social', fabrique: mur },
   { id: 'message-bienvenue', nom: 'Message : bienvenue', fabrique: (el) => message(el, 'bienvenue'), signature: true },
   { id: 'salles', nom: 'Pendant ce temps', fabrique: salles },
-  { id: 'agenda-rappel', nom: 'Agenda (rappel)', fabrique: agenda },
+  { id: 'agenda-rappel', nom: 'Agenda (rappel)', fabrique: (el) => agenda(el) },
   { id: 'message-partage', nom: 'Message : partage', fabrique: (el) => message(el, 'partage'), signature: true },
   { id: 'reseaux', nom: 'Nos réseaux', fabrique: reseaux },
   { id: 'wallsio', nom: 'Walls.io', fabrique: wallsio },
@@ -58,18 +63,55 @@ export const SCENE_IDS = SCENES.map((scene) => scene.id)
 
 export interface Etape {
   scene: string
-  /** Seconds on screen. */
+  /** Seconds on screen, the reference's — `groupe` lets the hub set another. */
   duree: number
+  /** The kind of scene whose duration the hub setting overrides; `null` = held. */
+  groupe: DureeScene | null
   /** How it comes in: slide, stinger, cut, fade, wipe, zoom, dip. */
   transition: string
   /** ms. */
   dureeTransition: number
   /** The hub setting that withdraws it; `null` = never withdrawn. */
   ecran: RoomScreen | null
+  /**
+   * The slot of a scene whose duration comes with its content — a sponsor page,
+   * another room's schedule — rather than from its kind alone.
+   */
+  page?: { de: 'sponsors' | 'plannings'; index: number }
 }
 
-const etape = (scene: string, duree: number, ecran: RoomScreen | null, transition = 'slide', dureeTransition = 900): Etape =>
-  ({ scene, duree, transition, dureeTransition, ecran })
+/**
+ * The reference's durations, in seconds, when the hub sends none.
+ *
+ * A copy of the contract's `DUREES_PAR_DEFAUT` and not an import: importing a
+ * value from the contract would bring zod into the projected page, ten times
+ * its weight. A test holds the two equal.
+ */
+export const DUREES: Record<DureeScene, number> = {
+  accueil: 10,
+  agenda: 20,
+  annonces: 8,
+  merci: 6,
+  sponsors: 8,
+  posts: 15,
+  'message-bienvenue': 7,
+  salles: 12,
+  'agenda-rappel': 20,
+  'message-partage': 7,
+  reseaux: 10,
+  wallsio: 25,
+  'message-silence': 7,
+  conduite: 14,
+  feedbacks: 10,
+}
+
+const etape = (
+  scene: string,
+  groupe: DureeScene | null,
+  ecran: RoomScreen | null,
+  transition = 'slide',
+  dureeTransition = 900,
+): Etape => ({ scene, duree: groupe == null ? 0 : DUREES[groupe], groupe, transition, dureeTransition, ecran })
 
 /**
  * The welcome loop, in the reference's order and with its durations, plus the
@@ -77,21 +119,23 @@ const etape = (scene: string, duree: number, ecran: RoomScreen | null, transitio
  * A scene with nothing to show, or withdrawn on the hub, is skipped.
  */
 export const BOUCLE: Etape[] = [
-  etape('accueil', 10, 'welcome', 'stinger', 1100),
-  etape('agenda', 20, 'agenda'),
-  ...range(ANNONCES).map((i) => etape(`annonce-${i + 1}`, 8, 'announcements')),
-  etape('merci', 6, 'sponsors-thanks'),
-  ...range(PAGES_SPONSORS).map((i) => etape(`sponsors-${i + 1}`, 8, 'sponsors')),
-  etape('posts', 15, 'posts', 'slide', 1000),
-  etape('message-bienvenue', 7, 'slogans'),
-  etape('salles', 12, 'rooms'),
-  etape('agenda-rappel', 20, 'agenda'),
-  etape('message-partage', 7, 'slogans'),
-  etape('reseaux', 10, 'socials'),
-  etape('wallsio', 25, 'wallsio'),
-  etape('message-silence', 7, 'slogans'),
-  etape('conduite', 14, 'code-of-conduct'),
-  etape('feedbacks', 10, 'event-feedback'),
+  etape('accueil', 'accueil', 'welcome', 'stinger', 1100),
+  etape('agenda', 'agenda', 'agenda'),
+  // The other rooms' days, right after this one's: 15 s each unless the hub says otherwise.
+  ...range(PLANNINGS).map((i) => ({ ...etape(`planning-${i + 1}`, null, 'other-agendas'), page: { de: 'plannings' as const, index: i } })),
+  ...range(ANNONCES).map((i) => etape(`annonce-${i + 1}`, 'annonces', 'announcements')),
+  etape('merci', 'merci', 'sponsors-thanks'),
+  ...range(PAGES_SPONSORS).map((i) => ({ ...etape(`sponsors-${i + 1}`, 'sponsors', 'sponsors'), page: { de: 'sponsors' as const, index: i } })),
+  etape('posts', 'posts', 'posts', 'slide', 1000),
+  etape('message-bienvenue', 'message-bienvenue', 'slogans'),
+  etape('salles', 'salles', 'rooms'),
+  etape('agenda-rappel', 'agenda-rappel', 'agenda'),
+  etape('message-partage', 'message-partage', 'slogans'),
+  etape('reseaux', 'reseaux', 'socials'),
+  etape('wallsio', 'wallsio', 'wallsio'),
+  etape('message-silence', 'message-silence', 'slogans'),
+  etape('conduite', 'conduite', 'code-of-conduct'),
+  etape('feedbacks', 'feedbacks', 'event-feedback'),
 ]
 
 export interface Programmation {
@@ -110,13 +154,16 @@ export interface Programmation {
  * offered, never what a room is doing.
  */
 export function programmation(mode: DisplayMode): Programmation {
-  const seul = (scene: string): Programmation => ({ etapes: [etape(scene, 0, null)], tourne: false })
+  const seul = (scene: string): Programmation => ({ etapes: [etape(scene, null, null)], tourne: false })
   switch (mode) {
     case 'loop':
       return { etapes: BOUCLE, tourne: true }
     case 'sponsors':
       return {
-        etapes: [etape('merci', 6, null), ...range(PAGES_SPONSORS).map((i) => etape(`sponsors-${i + 1}`, 8, null))],
+        etapes: [
+          etape('merci', 'merci', null),
+          ...range(PAGES_SPONSORS).map((i) => ({ ...etape(`sponsors-${i + 1}`, 'sponsors', null), page: { de: 'sponsors' as const, index: i } })),
+        ],
         tourne: true,
       }
     case 'agenda': return seul('agenda')
@@ -127,7 +174,7 @@ export function programmation(mode: DisplayMode): Programmation {
     case 'feedback': return seul('avis')
     case 'question': return seul('question')
     case 'wall': return seul('mur-hub')
-    case 'live': return { etapes: [etape('direct', 0, null, 'fade', 450)], tourne: false }
+    case 'live': return { etapes: [etape('direct', null, null, 'fade', 450)], tourne: false }
     default: return { etapes: BOUCLE, tourne: true }
   }
 }

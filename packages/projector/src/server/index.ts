@@ -5,6 +5,7 @@
  */
 export { boucleQrUrls, buildBoucleView, wallsIoSrc, type BoucleSources } from './boucle-view.js'
 export { otherRoomsFor } from './other-rooms.js'
+export { planningsFor } from './plannings.js'
 export {
   availableFonts,
   fontFaces,

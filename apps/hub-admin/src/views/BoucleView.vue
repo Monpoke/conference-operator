@@ -2,10 +2,12 @@
 import AgendaPanel from '../components/boucle/AgendaPanel.vue'
 import AnnoncesPanel from '../components/boucle/AnnoncesPanel.vue'
 import ConduitePanel from '../components/boucle/ConduitePanel.vue'
+import DureesPanel from '../components/boucle/DureesPanel.vue'
 import FeedbacksPanel from '../components/boucle/FeedbacksPanel.vue'
 import IdentityPanel from '../components/boucle/IdentityPanel.vue'
 import MerciPanel from '../components/boucle/MerciPanel.vue'
 import MessagesPanel from '../components/boucle/MessagesPanel.vue'
+import PlanningsPanel from '../components/boucle/PlanningsPanel.vue'
 import PostsPanel from '../components/boucle/PostsPanel.vue'
 import PreviewPanel from '../components/boucle/PreviewPanel.vue'
 import SponsorPagesPanel from '../components/boucle/SponsorPagesPanel.vue'
@@ -23,15 +25,17 @@ import WallsioPanel from '../components/boucle/WallsioPanel.vue'
 </script>
 
 <template>
-  <div id="boucle-view" class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] gap-3.5">
+  <div id="boucle-view" class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] gap-3.5 [&>*]:min-w-0">
     <div class="col-span-full">
       <PreviewPanel />
     </div>
+    <DureesPanel />
     <IdentityPanel />
     <MessagesPanel />
     <AnnoncesPanel />
     <MerciPanel />
     <AgendaPanel />
+    <PlanningsPanel />
     <SponsorPagesPanel />
     <WallsioPanel />
     <ConduitePanel />

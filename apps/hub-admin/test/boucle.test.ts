@@ -26,6 +26,7 @@ const ZENIKA = { key: 'https://zenika.com', name: 'Zenika', website: 'https://ze
 const DEFAULT_PAGES = [
   {
     titre: '',
+    duree: null,
     rangs: [
       {
         taille: 1,
@@ -56,6 +57,13 @@ function stub(boucle: Boucle = DEFAULT_BOUCLE) {
           current = { ...current, ...(input.boucle ?? {}) }
           return settings()
         },
+      },
+      rooms: {
+        list: async () => [
+          { id: 'track-1', name: 'Track #1' },
+          { id: 'track-2', name: 'Track #2' },
+          { id: 'hands-on', name: 'Hands on' },
+        ],
       },
       boucle: {
         catalogue: async () => {
@@ -95,6 +103,52 @@ beforeEach(() => {
 })
 
 describe('saving one panel', () => {
+  it('sends only the durations that differ from the reference', async () => {
+    const { calls, wrapper } = await mountView()
+    const sponsors = wrapper.find('#boucle-duree-sponsors')
+    expect(sponsors.attributes('placeholder')).toBe('8')
+    await sponsors.setValue('12')
+    await wrapper.find('#boucle-duree-accueil').setValue('10')
+    await wrapper.find('#btn-boucle-durees').trigger('click')
+    await flushPromises()
+    // Ten is the welcome's own duration: sending it would pin it.
+    expect(updates(calls)).toEqual([{ durees: { sponsors: 12 } }])
+  })
+
+  it('refuses a duration the hub would refuse', async () => {
+    const { calls, wrapper } = await mountView()
+    await wrapper.find('#boucle-duree-wallsio').setValue('1')
+    await wrapper.find('#btn-boucle-durees').trigger('click')
+    await flushPromises()
+    expect(updates(calls)).toEqual([])
+  })
+
+  it('creates a public link to the preview, and takes it back', async () => {
+    const { calls, wrapper } = await mountView()
+    await wrapper.find('#btn-boucle-lien-creer').trigger('click')
+    await flushPromises()
+    const key = updates(calls)[0]!.lienPublic!
+    expect(key).toMatch(/^[A-Za-z0-9_-]{24,64}$/)
+    expect((wrapper.find('#boucle-lien-public').element as HTMLInputElement).value).toContain(`/boucle/apercu?cle=${key}`)
+    await wrapper.find('#btn-boucle-lien-desactiver').trigger('click')
+    await flushPromises()
+    expect(updates(calls)[1]).toEqual({ lienPublic: null })
+  })
+
+  it('keeps only the other rooms\' schedules that differ from the default', async () => {
+    const { calls, wrapper } = await mountView()
+    await flushPromises()
+    await wrapper.find('#boucle-planning-hands-on-afficher').setValue(false)
+    const duree = wrapper.find('#boucle-planning-track-2-duree')
+    await duree.setValue('30')
+    await duree.trigger('change')
+    await wrapper.find('#btn-boucle-plannings').trigger('click')
+    await flushPromises()
+    expect(updates(calls)).toEqual([
+      { plannings: { 'hands-on': { afficher: false, duree: 15 }, 'track-2': { afficher: true, duree: 30 } } },
+    ])
+  })
+
   it('sends its own section and nothing else', async () => {
     const { calls, wrapper } = await mountView()
 
@@ -207,6 +261,7 @@ describe('the sponsor pages', () => {
   it('flag a logo the program does not know', async () => {
     const pages = [
       {
+        duree: null,
         titre: '',
         rangs: [
           {

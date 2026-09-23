@@ -114,6 +114,18 @@ export class Regie {
     return this.prog.etapes[i] ?? this.prog.etapes[0]!
   }
 
+  /** Seconds on screen: the hub's setting for its kind, or the reference's. */
+  duree(e: Etape | undefined = this.etape()): number {
+    if (e == null) return 0
+    // A sponsor page or another room's schedule may carry its own.
+    if (e.page?.de === 'sponsors') {
+      const own = this.data?.boucle?.sponsorPages[e.page.index]?.duree
+      if (own != null) return own
+    }
+    if (e.page?.de === 'plannings') return this.data?.plannings[e.page.index]?.duree ?? 15
+    return (e.groupe != null ? this.data?.boucle?.durees[e.groupe] : undefined) ?? e.duree
+  }
+
   private estVisible(m: Montee): boolean {
     const cl = m.scene.el.classList
     return cl.contains('is-live') || cl.contains('is-entering')
@@ -143,10 +155,14 @@ export class Regie {
     }
   }
 
-  /** Everything rebuilt at the next occasion — the R key. */
-  relire(): void {
+  /**
+   * Everything rebuilt — the R key, off screen only. `aussiVisible`: the scene on
+   * screen too, for the one moment it is allowed — under the loading screen, once
+   * the typefaces have arrived and every measurement is to be taken again.
+   */
+  relire(aussiVisible = false): void {
     for (const m of this.scenes.values()) m.sale = true
-    this.rendreSales(false)
+    this.rendreSales(aussiVisible)
   }
 
   private majLogo(data: Data): void {
@@ -371,7 +387,7 @@ export class Regie {
   }
 
   private barreDepart(): void {
-    this.jouerBarre([{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], this.etape().duree * 1000, 'linear')
+    this.jouerBarre([{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], this.duree() * 1000, 'linear')
   }
 
   private barreVide(duree: number): void {
@@ -406,7 +422,7 @@ export class Regie {
 
     if (this.prog.tourne && !this.enPause && !this.enTransition) {
       this.ecoule += dt
-      if (this.ecoule >= this.etape().duree * 1000) {
+      if (this.ecoule >= this.duree() * 1000) {
         const suivante = this.voisine(this.courante, 1)
         if (suivante === this.courante) this.ecoule = 0
         else void this.allerA(suivante)

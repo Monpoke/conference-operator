@@ -43,7 +43,7 @@ async function save(): Promise<void> {
           v-model="draft.paragraphes[index]"
           rows="3"
           maxlength="300"
-          :class="[FIELD, 'mb-0 flex-1']"
+          :class="[FIELD, 'mb-0 min-w-0 flex-1']"
         />
         <ListControls :list="draft.paragraphes" :index="index" noun="le paragraphe" />
       </div>
@@ -67,7 +67,7 @@ async function save(): Promise<void> {
       <textarea id="boucle-conduite-legende" v-model="draft.legende" rows="2" maxlength="80" :class="FIELD" />
 
       <h3 :class="SUBTITLE">Slogan</h3>
-      <div class="grid grid-cols-[1fr_2fr] gap-2">
+      <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-2">
         <input id="boucle-conduite-creux" v-model="draft.slogan.creux" maxlength="40" placeholder="Passez" :class="FIELD" />
         <textarea
           id="boucle-conduite-orange"

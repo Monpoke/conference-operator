@@ -62,7 +62,7 @@ async function save(): Promise<void> {
           id="boucle-signature-texte"
           v-model="draft.signature.texte"
           maxlength="40"
-          :class="[FIELD, 'mb-0 flex-1']"
+          :class="[FIELD, 'mb-0 min-w-0 flex-1']"
         />
         <select id="boucle-signature-icone" v-model="draft.signature.icone" :class="[FIELD, 'mb-0 w-auto']">
           <option value="linkedin">Icône LinkedIn</option>

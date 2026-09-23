@@ -189,7 +189,9 @@ export const boucleSchema = z.object({
   messages: z
     .object({ bienvenue: messageSchema, partage: messageSchema, silence: messageSchema })
     .default({
-      bienvenue: { texte: 'Bienvenue chez\nCloud Nord !', sousTitre: '30 octobre 2026', effet: 'eclate' },
+      // Empty, so skipped: the welcome scene already says it, logo included. The
+      // reference's text stays one field away for whoever wants it back.
+      bienvenue: { texte: '', sousTitre: '', effet: 'eclate' },
       partage: {
         texte: 'Partagez la journée\navec #CloudNord2026',
         sousTitre: "Vos posts s'affichent sur le mur",

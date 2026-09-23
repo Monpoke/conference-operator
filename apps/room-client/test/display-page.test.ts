@@ -286,6 +286,28 @@ describe('the welcome loop', () => {
     expect(text(scene('salles').querySelector('[data-titre]'))).toBe('En ce moment dans les salles')
   })
 
+  it('skips « Pendant ce temps » where the other rooms\' days are shown', () => {
+    const otherRooms = [{
+      roomId: TRACK_2, name: 'Track #2', running: true,
+      session: { id: 's', title: 'Un talk', startsAt: '2026-10-30T10:00:00Z', speakers: [] },
+    }]
+    const etat = () => (window as unknown as { boucle: { etat: () => { scenes: { scene: string; jouable: boolean }[] } } })
+      .boucle.etat().scenes.find((s) => s.scene === 'salles')!.jouable
+    mount(payload({ otherRooms, plannings: [] }))
+    expect(etat()).toBe(true)
+    mount(payload({ otherRooms, plannings: planningsFor(program, TRACK_1, DEFAULT_BOUCLE, AT) }))
+    expect(etat()).toBe(false)
+  })
+
+  it('keeps the phones message off the global screen', () => {
+    const etat = () => (window as unknown as { boucle: { etat: () => { scenes: { scene: string; jouable: boolean }[] } } })
+      .boucle.etat().scenes.find((s) => s.scene === 'message-silence')!.jouable
+    mount()
+    expect(etat()).toBe(true)
+    mount(payload({ roomName: null, agenda: [] }, { roomId: null }))
+    expect(etat()).toBe(false)
+  })
+
   it('says « Vous êtes ici » on this room\'s own day only', () => {
     mount()
     expect(scene('agenda').querySelector<HTMLElement>('[data-ici]')!.hidden).toBe(false)

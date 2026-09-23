@@ -18,7 +18,9 @@ export function salles(el: HTMLElement): Scene {
   return {
     el,
     cle: (data: Data) => [data.otherRooms, data.timezone, data.state.roomId],
-    jouable: (data: Data) => occupees(data).length > 0,
+    // The other rooms' schedules already show what is on there: this scene only
+    // plays where they are not shown.
+    jouable: (data: Data) => occupees(data).length > 0 && data.plannings.length === 0,
     rendre(data: Data) {
       // A room looks next door; the hall's screen, with no room, at all of them.
       ecrire(titre, data.state.roomId == null ? 'En ce moment dans les salles' : 'Pendant ce temps, à côté')

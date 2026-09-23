@@ -414,11 +414,10 @@ describe('message exchange', () => {
   })
 
   it('reproduces the reference loop by default', () => {
-    expect(DEFAULT_BOUCLE.messages.bienvenue).toEqual({
-      texte: 'Bienvenue chez\nCloud Nord !',
-      sousTitre: '30 octobre 2026',
-      effet: 'eclate',
-    })
+    // The welcome scene says it already: the reference's welcome message is left
+    // out, the other two stay.
+    expect(DEFAULT_BOUCLE.messages.bienvenue.texte).toBe('')
+    expect(DEFAULT_BOUCLE.messages.partage.texte).toBe('Partagez la journée\navec #CloudNord2026')
     expect(DEFAULT_BOUCLE.sponsorPages).toBeNull()
     expect(DEFAULT_BOUCLE.conduite.paragraphes).toHaveLength(3)
     expect(boucleImageRefs(DEFAULT_BOUCLE)).toEqual([])

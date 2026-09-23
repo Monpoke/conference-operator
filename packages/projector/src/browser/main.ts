@@ -40,8 +40,23 @@ export function demarrer(): void {
   const { signal } = arret
 
   const plateau = document.getElementById('stage')!
-  const ajuster = () => plateau.style.setProperty('--scale', String(Math.min(innerWidth / 1920, innerHeight / 1080) || 1))
+  /*
+   * The hub's preview, opened on a phone: held upright, the 16:9 stage would be
+   * a strip in the middle. It turns a quarter so the phone only has to be turned.
+   * Previews only, and touch screens only: a room machine, or a narrow window
+   * on a desk, are never turned.
+   */
+  const apercu = window.__PREVIEW__ === true
+  const tactile = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
+  document.body.classList.toggle('apercu', apercu)
+  const ajuster = () => {
+    const pivote = apercu && tactile && innerHeight > innerWidth
+    document.body.classList.toggle('pivote', pivote)
+    const [largeur, hauteur] = pivote ? [innerHeight, innerWidth] : [innerWidth, innerHeight]
+    plateau.style.setProperty('--scale', String(Math.min(largeur / 1920, hauteur / 1080) || 1))
+  }
   addEventListener('resize', ajuster, { signal })
+  addEventListener('orientationchange', ajuster, { signal })
   ajuster()
 
   const regie = new Regie(reglages)
@@ -144,6 +159,31 @@ export function demarrer(): void {
     }),
   }
   if (params.get('hud') === '1') hud.basculer()
+
+  /*
+   * « Toucher pour le plein écran » — the preview on a phone or a tablet. A page
+   * may only go full screen on a gesture, and only then lock itself sideways
+   * (Android). Where the engine cannot do it at all — an iPhone — nothing is
+   * offered: the stage already turns in portrait.
+   */
+  const pleinEcranPossible = typeof document.documentElement.requestFullscreen === 'function' && document.fullscreenEnabled
+  if (apercu && tactile && pleinEcranPossible) {
+    const invite = document.createElement('button')
+    invite.type = 'button'
+    invite.id = 'plein-ecran'
+    invite.textContent = 'Toucher pour le plein écran'
+    document.body.append(invite)
+    const passer = () => {
+      invite.remove()
+      document.documentElement.requestFullscreen()
+        .then(() => (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.('landscape'))
+        .catch(() => {})
+        .finally(ajuster)
+    }
+    addEventListener('pointerup', passer, { once: true, signal })
+    // Out of the way once read: the whole screen still answers the tap.
+    setTimeout(() => invite.classList.add('discret'), 6000)
+  }
 
   const embarque = document.getElementById('etat-initial')
   if (embarque?.textContent) recevoir(JSON.parse(embarque.textContent) as Data)

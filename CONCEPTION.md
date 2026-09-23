@@ -189,6 +189,15 @@ autres salles » ; « Écrans de salle » les retire toutes (`other-agendas`). U
 page de sponsors peut aussi avoir sa propre durée ; sans elle, c'est celle des
 pages de sponsors.
 
+**Sur un téléphone**, l'aperçu et le lien public s'adaptent : tenu droit, le
+plateau pivote d'un quart de tour pour occuper tout l'écran — il suffit de tourner
+le téléphone —, et « Toucher pour le plein écran » passe en plein écran puis
+verrouille l'affichage en paysage là où le navigateur le permet (Android ; le
+plein écran seul sur iPad ; rien sur iPhone, qui ne met en plein écran que les
+vidéos). Le plateau est en `position: fixed` : dans le flux, ses 1920 px faisaient
+élargir la fenêtre d'un navigateur mobile, et il y était dessiné deux fois trop
+petit. Les écrans de salle ne pivotent jamais.
+
 **Les plénières restent dans leur salle.** La maquette montrait la keynote
 d'ouverture sur tous les écrans, avec la pastille de la salle qui l'accueille :
 elle envoyait le public vers une salle où il n'était pas. Elle n'apparaît plus que

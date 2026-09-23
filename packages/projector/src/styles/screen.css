@@ -184,3 +184,30 @@ body:not(.sans-barre-bas) .bande-droite[data-horloge] { display: none; }
   background: var(--orange);
   color: #2a1470;
 }
+
+/* ---------- The preview on a phone ----------
+   Held upright, the stage turns a quarter to fill the screen; the phone only has
+   to be turned (see main.ts). And an invitation to go full screen where the
+   engine allows it. */
+/* Fixed rather than absolute: a 1920-px box in the flow makes a mobile browser
+   widen its viewport to fit it, whatever the overflow says — and the stage is
+   then scaled for a screen twice the phone's width. */
+#stage { position: fixed; }
+body.pivote #stage { transform: translate(-50%, -50%) rotate(90deg) scale(var(--scale, 1)); }
+#plein-ecran {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  z-index: 60;
+  transform: translateX(-50%);
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(18, 9, 64, .88);
+  color: #fff;
+  font: 700 15px var(--f-texte);
+  transition: opacity .6s ease;
+}
+#plein-ecran.discret { opacity: .35; }
+/* Turned with the stage: at the bottom of what the viewer reads, over the band. */
+body.pivote #plein-ecran { left: 34px; top: 50%; bottom: auto; transform: translate(-50%, -50%) rotate(90deg); }

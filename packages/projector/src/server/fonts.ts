@@ -7,15 +7,18 @@ import { fileURLToPath } from 'node:url'
  * The loop's typefaces, served by the machine itself.
  *
  * The reference design is set in Peace Sans (titles), Gagalin (the welcome),
- * Bukhari Script ("Merci beaucoup !") and Open Sans. None of them is on a room
- * machine, and the projector must not fetch anything from the Internet: the files
- * are dropped in `apps/room-client/assets/fonts/`, packaged with the client, and
- * read from the same folder by the hub's preview.
+ * Bukhari Script ("Merci beaucoup !") and Open Sans. The repository is open
+ * source and ships only free typefaces: Peace Sans and Open Sans (SIL OFL 1.1)
+ * as designed; Gagalin and Bukhari Script, whose licences forbid redistributing
+ * them — and, for Bukhari, broadcasting it — give way to Luckiest Guy (Apache
+ * 2.0) and Pacifico (SIL OFL 1.1), the closest free faces. The files and their
+ * licences live in `apps/room-client/assets/fonts/`, packaged with the client
+ * and read from the same folder by the hub's preview.
  *
  * Only the files that are there are declared: an `@font-face` pointing at a
  * missing file, with `font-display: block`, would hide the text for three
- * seconds on every load. A missing typeface falls back on the reference loop's
- * fallbacks, and says nothing.
+ * seconds on every load. A missing typeface falls back on the next one of its
+ * stack, and says nothing.
  */
 export interface FontFamily {
   family: string
@@ -26,8 +29,8 @@ export interface FontFamily {
 
 export const LOOP_FONTS: FontFamily[] = [
   { family: 'Peace Sans', weight: 400, names: ['PeaceSans'] },
-  { family: 'Gagalin', weight: 400, names: ['Gagalin', 'Gagalin-Regular'] },
-  { family: 'Bukhari Script', weight: 400, names: ['BukhariScript', 'BukhariScript-Regular'] },
+  { family: 'Luckiest Guy', weight: 400, names: ['LuckiestGuy', 'LuckiestGuy-Regular'] },
+  { family: 'Pacifico', weight: 400, names: ['Pacifico', 'Pacifico-Regular'] },
   { family: 'Open Sans', weight: 700, names: ['OpenSans-Bold'] },
   { family: 'Open Sans', weight: 800, names: ['OpenSans-ExtraBold'] },
 ]
@@ -94,17 +97,27 @@ export function availableFonts(folder: string | null): AvailableFont[] {
   return found
 }
 
+/** How a weight is named in a face's full name, for `local()`. */
+const WEIGHT_NAMES: Record<number, string> = { 700: 'Bold', 800: 'ExtraBold' }
+
 /**
  * The `@font-face` rules for the present files, served under `base`.
  *
- * `local()` first: a machine that has the typeface installed does not even ask.
+ * `local()` first, by the face's full name and not the family's: a machine
+ * that has the typeface installed does not even ask — and `local("Open Sans")`
+ * would hand the regular face to a rule declared bold.
  */
 export function fontFaces(fonts: AvailableFont[], base: string): string {
   return fonts
-    .map((font) =>
-      `@font-face { font-family: "${font.family}"; font-weight: ${font.weight}; font-display: block; ` +
-      `src: local("${font.family}"), url("${base}/${encodeURIComponent(font.file)}") format("${font.format}"); }`,
-    )
+    .map((font) => {
+      const weight = WEIGHT_NAMES[font.weight]
+      const locals = weight == null
+        ? [font.family, font.family.replace(/\s+/g, '')]
+        : [`${font.family} ${weight}`, `${font.family.replace(/\s+/g, '')}-${weight}`]
+      const local = [...new Set(locals)].map((name) => `local("${name}")`).join(', ')
+      return `@font-face { font-family: "${font.family}"; font-weight: ${font.weight}; font-display: block; ` +
+        `src: ${local}, url("${base}/${encodeURIComponent(font.file)}") format("${font.format}"); }`
+    })
     .join('\n')
 }
 

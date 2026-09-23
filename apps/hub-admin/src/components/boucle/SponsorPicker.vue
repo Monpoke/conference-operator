@@ -60,7 +60,7 @@ const overridden = computed(() => model.value.nom != null || model.value.logo !=
 </script>
 
 <template>
-  <div class="flex flex-col gap-1.5" :data-sponsor-picker="props.id">
+  <div class="flex min-w-0 flex-col gap-1.5" :data-sponsor-picker="props.id">
     <div class="flex items-center gap-1.5">
       <span
         class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-edge bg-white"
@@ -78,7 +78,7 @@ const overridden = computed(() => model.value.nom != null || model.value.logo !=
       <select
         :id="`${props.id}-choice`"
         :value="choice"
-        :class="[SMALL, 'flex-1']"
+        :class="[SMALL, 'min-w-0 flex-1']"
         @change="choose(($event.target as HTMLSelectElement).value)"
       >
         <option value="" disabled>— Choisir un partenaire —</option>
@@ -110,7 +110,7 @@ const overridden = computed(() => model.value.nom != null || model.value.logo !=
         max="2"
         step="0.05"
         :value="model.echelle"
-        class="flex-1"
+        class="min-w-0 flex-1"
         @input="update({ echelle: Number(($event.target as HTMLInputElement).value) })"
       />
       <input

@@ -46,7 +46,7 @@ async function save(): Promise<void> {
             v-model="annonce.titre"
             maxlength="80"
             placeholder="Petit déjeuner"
-            :class="[FIELD, 'mb-0 flex-1']"
+            :class="[FIELD, 'mb-0 min-w-0 flex-1']"
           />
           <ListControls :list="draft.annonces" :index="index" noun="l'annonce" />
         </div>
@@ -61,7 +61,7 @@ async function save(): Promise<void> {
           <SponsorPicker
             :id="`boucle-annonce-${index}-logo-${logoIndex}`"
             v-model="annonce.logos[logoIndex]!"
-            class="flex-1"
+            class="min-w-0 flex-1"
           />
           <ListControls :list="annonce.logos" :index="logoIndex" noun="le logo" />
         </div>

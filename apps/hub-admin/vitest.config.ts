@@ -17,6 +17,8 @@ export default defineConfig({
   },
   test: {
     environment: 'happy-dom',
+    // The « Boucle » view frames the hub's preview: nothing to load in a test.
+    environmentOptions: { happyDOM: { settings: { disableIframePageLoading: true } } },
     include: ['test/**/*.test.ts'],
   },
 })

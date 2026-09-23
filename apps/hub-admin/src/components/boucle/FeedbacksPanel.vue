@@ -49,7 +49,7 @@ async function save(): Promise<void> {
       </p>
 
       <h3 :class="SUBTITLE">Slogan</h3>
-      <div class="grid grid-cols-[1fr_2fr] gap-2">
+      <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-2">
         <input id="boucle-feedbacks-creux" v-model="draft.slogan.creux" maxlength="40" placeholder="Pensez" :class="FIELD" />
         <textarea
           id="boucle-feedbacks-orange"
@@ -60,7 +60,7 @@ async function save(): Promise<void> {
         />
       </div>
       <h3 :class="SUBTITLE">Remerciement</h3>
-      <div class="grid grid-cols-2 gap-2">
+      <div class="grid grid-cols-[repeat(2,minmax(0,1fr))] gap-2">
         <input id="boucle-feedbacks-merci-0" v-model="draft.merci[0]" maxlength="30" :class="FIELD" />
         <input id="boucle-feedbacks-merci-1" v-model="draft.merci[1]" maxlength="30" :class="FIELD" />
       </div>

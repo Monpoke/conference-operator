@@ -83,7 +83,7 @@ async function save(): Promise<void> {
               v-model="post.auteur"
               maxlength="80"
               placeholder="Auteur"
-              :class="[SMALL, 'flex-1']"
+              :class="[SMALL, 'min-w-0 flex-1']"
             />
             <ListControls :list="draft.posts" :index="index" noun="le post" />
           </div>
@@ -95,7 +95,7 @@ async function save(): Promise<void> {
             :class="[SMALL, 'mb-1.5 w-full']"
           />
           <ImageField :id="`boucle-post-${index}-photo`" v-model="post.photo" label="Photo" placeholder="Aucune photo" />
-          <div class="mb-1.5 grid grid-cols-2 gap-1.5">
+          <div class="mb-1.5 grid grid-cols-[repeat(2,minmax(0,1fr))] gap-1.5">
             <input
               :id="`boucle-post-${index}-date`"
               v-model="post.date"
@@ -120,7 +120,7 @@ async function save(): Promise<void> {
             :class="FIELD"
           />
           <ImageField :id="`boucle-post-${index}-image`" v-model="post.image" label="Image" placeholder="Aucune image" />
-          <div class="grid grid-cols-2 gap-1.5">
+          <div class="grid grid-cols-[repeat(2,minmax(0,1fr))] gap-1.5">
             <input
               :id="`boucle-post-${index}-reactions`"
               type="number"

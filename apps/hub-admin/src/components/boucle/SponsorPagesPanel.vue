@@ -121,7 +121,7 @@ async function save(): Promise<void> {
                 step="0.1"
                 :class="[SMALL, 'w-[70px]']"
               />
-              <span class="flex-1" />
+              <span class="min-w-0 flex-1" />
               <ListControls :list="page.rangs" :index="rowIndex" noun="la rangée" />
             </div>
             <div class="grid grid-cols-[repeat(auto-fill,minmax(min(300px,100%),1fr))] gap-2">
@@ -133,7 +133,7 @@ async function save(): Promise<void> {
                 <SponsorPicker
                   :id="`boucle-page-${pageIndex}-rang-${rowIndex}-logo-${logoIndex}`"
                   v-model="row.logos[logoIndex]!"
-                  class="flex-1"
+                  class="min-w-0 flex-1"
                 />
                 <ListControls :list="row.logos" :index="logoIndex" noun="le logo" />
               </div>

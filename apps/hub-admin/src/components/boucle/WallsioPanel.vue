@@ -45,7 +45,7 @@ async function save(): Promise<void> {
       <input id="boucle-wallsio-hashtag" v-model="draft.hashtag" maxlength="40" :class="FIELD" />
       <label :class="LABEL" for="boucle-wallsio-options">Options ajoutées à l'adresse</label>
       <input id="boucle-wallsio-options" v-model="draft.options" maxlength="300" :class="[FIELD, 'font-mono']" />
-      <div class="grid grid-cols-2 gap-2">
+      <div class="grid grid-cols-[repeat(2,minmax(0,1fr))] gap-2">
         <div>
           <label :class="LABEL" for="boucle-wallsio-zoom">Agrandissement (0,5 à 3)</label>
           <input

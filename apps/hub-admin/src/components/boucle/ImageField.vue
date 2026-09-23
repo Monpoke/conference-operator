@@ -77,7 +77,7 @@ async function pick(event: Event): Promise<void> {
         v-model="text"
         type="url"
         :placeholder="uploaded ? 'Image déposée' : (props.placeholder ?? 'https://…')"
-        :class="[SMALL, 'flex-1']"
+        :class="[SMALL, 'min-w-0 flex-1']"
         @change="commit"
       />
       <input

@@ -125,14 +125,14 @@ export const boucleSchema = z.object({
   barreBas: z
     .object({
       afficher: z.boolean().default(true),
-      libelle: z.string().max(30).default('Ensuite'),
+      libelle: z.string().max(30).default('À suivre'),
       message: z.string().max(60).default('Partagez la journée avec'),
       hashtag: z.string().max(40).default('#CloudNord2026'),
       finJournee: z.string().max(80).default("Merci et à l'année prochaine !"),
     })
     .default({
       afficher: true,
-      libelle: 'Ensuite',
+      libelle: 'À suivre',
       message: 'Partagez la journée avec',
       hashtag: '#CloudNord2026',
       finJournee: "Merci et à l'année prochaine !",

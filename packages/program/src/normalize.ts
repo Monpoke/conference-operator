@@ -24,6 +24,17 @@ import type {
  */
 export const DEFAULT_TIMEZONE = 'Europe/Paris'
 
+/**
+ * The version of what `normalizeProgram` produces.
+ *
+ * Bumped whenever the normalized model gains or changes a field — 2 brought
+ * `roomSpan`. A hub keeps the raw export of every import and normalizes it again
+ * at start-up; the version enters the fingerprint it serves, so that the rooms,
+ * which only re-download a program whose fingerprint moved, fetch the new model
+ * once instead of keeping the old one in cache for good.
+ */
+export const PROGRAM_MODEL_VERSION = 2
+
 function isHttpUrl(value: string): boolean {
   try {
     const url = new URL(value)

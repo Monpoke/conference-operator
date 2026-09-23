@@ -3,6 +3,7 @@ import { asc, desc, eq } from 'drizzle-orm'
 import {
   applySharedBreaks,
   normalizeProgram,
+  PROGRAM_MODEL_VERSION,
   programSchema,
   type Program,
   type SessionKind,
@@ -31,8 +32,44 @@ export function hashProgramSource(rawText: string): string {
   return createHash('sha256').update(rawText).digest('hex').slice(0, 32)
 }
 
+/**
+ * The fingerprint served to the rooms: the raw content's, and the model version.
+ *
+ * The raw content alone would not move when the normalization does — a room
+ * whose cache predates `roomSpan` would keep reading every slot as one room wide,
+ * and never learn otherwise. See `PROGRAM_MODEL_VERSION`.
+ */
+export const servedHash = (contentHash: string): string => `${contentHash}.m${PROGRAM_MODEL_VERSION}`
+
 export class ProgramService {
-  constructor(private readonly db: HubDatabase) {}
+  constructor(private readonly db: HubDatabase) {
+    this.renormalize()
+  }
+
+  /**
+   * Normalizes every stored snapshot again, from the raw export kept beside it.
+   *
+   * A snapshot normalized by an older version lacks what the model has gained
+   * since — the grid width of the shared breaks, for one — and reimporting the
+   * same export would not help: an identical content reuses its snapshot as is.
+   * Deterministic, so a hub already up to date writes nothing.
+   */
+  private renormalize(): void {
+    const rows = this.db
+      .select({ contentHash: programSnapshot.contentHash, rawJson: programSnapshot.rawJson, programJson: programSnapshot.programJson })
+      .from(programSnapshot)
+      .all()
+    for (const row of rows) {
+      try {
+        const programJson = JSON.stringify(normalizeProgram(JSON.parse(row.rawJson)))
+        if (programJson === row.programJson) continue
+        this.db.update(programSnapshot).set({ programJson }).where(eq(programSnapshot.contentHash, row.contentHash)).run()
+      } catch {
+        // An export the current normalizer refuses keeps its old normalization:
+        // better an older model than no program at all.
+      }
+    }
+  }
 
   /**
    * Event name of the active snapshot, or `null` with no imported program.
@@ -99,7 +136,7 @@ export class ProgramService {
     if (existing != null) {
       this.activate(contentHash)
       return {
-        contentHash,
+        contentHash: servedHash(contentHash),
         program: programSchema.parse(JSON.parse(existing.programJson)),
         importedAt: existing.importedAt,
         // An import describes the **imported version**, not the served program:
@@ -126,11 +163,17 @@ export class ProgramService {
       .run()
     this.activate(contentHash)
 
-    return { contentHash, program, importedAt, overrides: {} }
+    return { contentHash: servedHash(contentHash), program, importedAt, overrides: {} }
   }
 
-  /** Switches the active snapshot. A failed import rolls back in one call. */
-  activate(contentHash: string): void {
+  /**
+   * Switches the active snapshot. A failed import rolls back in one call.
+   *
+   * Takes the snapshot's own fingerprint, as the console lists it, or the one
+   * served to the rooms — the model version and the decisions stripped off.
+   */
+  activate(served: string): void {
+    const contentHash = served.replace(/\.m\d+(~.*)?$/, '')
     this.db.transaction((tx) => {
       tx.update(programSnapshot).set({ active: false }).run()
       tx.update(programSnapshot)
@@ -202,7 +245,7 @@ export class ProgramService {
 
     if (decisions.size === 0 && corrections.size === 0) {
       return {
-        contentHash: row.contentHash,
+        contentHash: servedHash(row.contentHash),
         program: applySharedBreaks(program),
         importedAt: row.importedAt,
         overrides: {},
@@ -232,7 +275,7 @@ export class ProgramService {
 
     if (Object.keys(appliedKinds).length === 0 && Object.keys(appliedIds).length === 0) {
       return {
-        contentHash: row.contentHash,
+        contentHash: servedHash(row.contentHash),
         program: applySharedBreaks(program),
         importedAt: row.importedAt,
         overrides: {},
@@ -250,7 +293,7 @@ export class ProgramService {
        * rooms would not re-download would leave the projected QR code on the old
        * address, the very one we have just declared wrong.
        */
-      contentHash: `${row.contentHash}~${fingerprintOf(appliedKinds, appliedIds)}`,
+      contentHash: `${servedHash(row.contentHash)}~${fingerprintOf(appliedKinds, appliedIds)}`,
       program: applySharedBreaks({ ...program, sessions }),
       importedAt: row.importedAt,
       overrides: appliedKinds,

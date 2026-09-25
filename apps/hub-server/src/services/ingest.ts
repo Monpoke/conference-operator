@@ -3,6 +3,7 @@ import {
   envelopeSchema,
   type Envelope,
   type ObsInstance,
+  type RemoteCommandOutcome,
   type RoomEventPayload,
   type VodConsent,
   type VodConsentRecord,
@@ -38,6 +39,15 @@ export interface RawCapture {
 }
 
 export class IngestService {
+  /**
+   * The last command outcome each room reported.
+   *
+   * In memory and not in `room_state`: it only serves a phone waiting a few
+   * seconds for the word on its own gesture, and a hub restarted since has no
+   * phone waiting.
+   */
+  private readonly outcomes = new Map<string, RemoteCommandOutcome>()
+
   constructor(
     private readonly db: HubDatabase,
     /** A batch was applied: whoever watches this room recomposes its view. */
@@ -76,6 +86,17 @@ export class IngestService {
     }
 
     if (valid.length === 0) return outcome
+
+    let outcomeMoved = false
+    for (const envelope of valid) {
+      if (envelope.payload.type !== 'room.heartbeat') continue
+      const reported = envelope.payload.lastCommand
+      const held = this.outcomes.get(roomId)
+      // The highest `seq` wins: a replayed batch must not bring back an older word.
+      if (reported == null || (held != null && held.seq >= reported.seq)) continue
+      this.outcomes.set(roomId, reported)
+      outcomeMoved = true
+    }
 
     const before = this.projected(roomId)
     let newMessage = false
@@ -122,9 +143,14 @@ export class IngestService {
 
     // After the commit, never inside: a watcher woken mid-transaction would read
     // the state from before.
-    if (this.moved(before, this.projected(roomId))) this.onChange(roomId)
+    if (outcomeMoved || this.moved(before, this.projected(roomId))) this.onChange(roomId)
     if (newMessage) this.onRoomMessage()
     return outcome
+  }
+
+  /** The last command outcome the room reported, `null` if it never did. */
+  lastCommand(roomId: string): RemoteCommandOutcome | null {
+    return this.outcomes.get(roomId) ?? null
   }
 
   /** The room's projected state, as the watchers would read it. */

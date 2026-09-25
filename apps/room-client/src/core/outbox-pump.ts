@@ -1,4 +1,12 @@
-import type { AudioInput, Connectivity, DisplayMode, Envelope, RoomEventPayload, SceneRole } from '@conference-operator/contract'
+import type {
+  AudioInput,
+  Connectivity,
+  DisplayMode,
+  Envelope,
+  RemoteCommandOutcome,
+  RoomEventPayload,
+  SceneRole,
+} from '@conference-operator/contract'
 import { heartbeatDedupKey, type Outbox } from './outbox.js'
 
 // Re-exported here: it is the pump that uses it when emitting.
@@ -237,8 +245,10 @@ export interface HeartbeatInput {
   programContentHash: string | null
   /** What the room screen displays: it only comes up through the heartbeat. */
   displayMode: DisplayMode
+  /** The outcome of the last gesture a phone sent: it is waiting on it. */
+  lastCommand?: RemoteCommandOutcome | null
 }
 
 export function buildHeartbeat(input: HeartbeatInput): RoomEventPayload {
-  return { type: 'room.heartbeat', ...input }
+  return { type: 'room.heartbeat', ...input, lastCommand: input.lastCommand ?? null }
 }

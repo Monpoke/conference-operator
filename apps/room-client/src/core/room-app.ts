@@ -302,6 +302,11 @@ export class RoomApp implements ControlTarget {
         refreshRoomStatuses: () => {
           void this.refreshRoomStatuses()
         },
+        // A phone is waiting on this outcome: up at once, not at the next beat.
+        onRemoteOutcome: () => {
+          this.beat()
+          this.wakeUplink()
+        },
         /**
          * A capture asked for from a mobile control app.
          *
@@ -1062,6 +1067,7 @@ export class RoomApp implements ControlTarget {
         outboxDepth: this.outboxDepth(),
         programContentHash: state.contentHash,
         displayMode: state.mode,
+        lastCommand: this.runtime.lastRemoteOutcome,
       }),
       heartbeatDedupKey(roomId),
     )

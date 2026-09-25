@@ -40,7 +40,7 @@ export class Hud {
       li.classList.toggle('est-live', i === r.courante)
       li.classList.toggle('est-vide', !r.jouable(i))
     })
-    this.etat.textContent = r.enPause ? 'En pause' : 'Lecture'
+    this.etat.textContent = r.horsAntenne ? 'Hors antenne (OBS) : en pause' : r.enPause ? 'En pause' : 'Lecture'
     this.transition.textContent = r.transitionForcee
       ? `Transition forcée : ${NOMS_TRANSITIONS[r.transitionForcee] ?? r.transitionForcee}`
       : 'Transition propre à chaque scène'

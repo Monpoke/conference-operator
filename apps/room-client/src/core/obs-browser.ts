@@ -53,9 +53,11 @@
  * animation resumes where it was instead of jumping to its start. Transitions are
  * cut dead, for want of an equivalent.
  *
- * What is NOT frozen: the JavaScript timers. The clock, the page loop and the SSE
- * stream carry on, otherwise the page would come back on air showing the time
- * from ten minutes ago.
+ * What is NOT frozen: the JavaScript timers. The clock and the SSE stream carry
+ * on, otherwise the page would come back on air showing the time from ten minutes
+ * ago. The projector's loop listens to the `on-air` event below and stops moving
+ * on by itself — and pauses its own animations, which this CSS does not reach
+ * (see `Regie.antenne` in the projector).
  */
 export const OBS_ON_AIR_CSS = `
   body[data-on-air="no"] *,

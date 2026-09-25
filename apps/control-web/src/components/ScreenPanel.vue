@@ -4,31 +4,40 @@ import { computed } from 'vue'
 import CommandGrid, { type Command } from './CommandGrid.vue'
 
 /**
- * What the room sees.
+ * What the room sees, in two groups.
  *
  * The loop first: it is the default waiting screen, the one one comes back to.
- * The pages it cycles through stay available on their own, so the screen can be
- * frozen on one of them when something happens.
+ * The pages it cycles through stay reachable on their own — the sponsors, the
+ * social wall, the agenda — so the screen can be frozen on one of them when
+ * something happens. They are the loop's own scenes: putting one up shows
+ * exactly what the loop shows.
  */
-const MODES: Command[] = [
-  { value: 'loop', label: 'Boucle' },
+const BOUCLE: Command[] = [
+  { value: 'loop', label: 'Boucle entière' },
   { value: 'sponsors', label: 'Sponsors' },
-  { value: 'programme', label: 'Programme' },
-  // The same day in two columns, offered alongside rather than in place: the two
-  // layouts are compared on the room's own video projector, and it is there that
-  // one of them is chosen.
-  { value: 'agenda', label: 'Agenda (2 colonnes)' },
+  // Our wall and the social one are both offered: one is the room talking to the
+  // room, the other the event seen from outside. Neither replaces the other.
+  { value: 'wallsio', label: 'Mur social' },
+  { value: 'agenda', label: 'Agenda' },
+]
+
+/** The screens the operator puts up for a moment of the talk. */
+const OPERATEUR: Command[] = [
   { value: 'countdown', label: 'Compte à rebours' },
   { value: 'message', label: 'Message' },
   // End of talk: the audience is still seated, and it is the only moment feedback
   // actually comes in.
   { value: 'feedback', label: 'Notez le talk' },
   { value: 'wall', label: 'Mur & questions' },
-  // Our wall and the social one sit side by side: one is the room talking to the
-  // room, the other the event seen from outside. Neither replaces the other.
-  { value: 'wallsio', label: 'Mur social' },
   { value: 'question', label: 'Question choisie' },
 ]
+
+/**
+ * The single-column programme, no longer offered: the loop's agenda took its
+ * place. A room can still be on it — put up from its own control app, or before
+ * the change — and the lit button must then still say so, and be there to leave.
+ */
+const PROGRAMME: Command = { value: 'programme', label: 'Programme' }
 
 /**
  * The two modes that display something chosen elsewhere.
@@ -67,22 +76,35 @@ const props = defineProps<{
   remote?: boolean
 }>()
 
-const commands = computed<Command[]>(() => {
+function visible(list: Command[]): Command[] {
   const withdrawn = props.disabled ?? []
-  return MODES.filter(
+  return list.filter(
     (m) =>
       (!withdrawn.includes(m.value) || m.value === props.mode)
       && (props.remote !== true || !NOTHING_TO_SHOW_REMOTELY.includes(m.value)),
   )
-})
+}
+
+const groups = computed(() => [
+  { title: 'Boucle', commands: visible(BOUCLE) },
+  {
+    title: 'Opérateur',
+    commands: visible(props.mode === PROGRAMME.value ? [...OPERATEUR, PROGRAMME] : OPERATEUR),
+  },
+].filter((group) => group.commands.length > 0))
 </script>
 
 <template>
   <Panel title="Écran de salle">
-    <CommandGrid
-      :commands="commands"
-      :current="mode"
-      :build="(value) => ({ action: 'display.set', mode: value })"
-    />
+    <section v-for="group in groups" :key="group.title" :data-group="group.title" class="not-first:mt-3">
+      <h3 class="mb-1.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+        {{ group.title }}
+      </h3>
+      <CommandGrid
+        :commands="group.commands"
+        :current="mode"
+        :build="(value) => ({ action: 'display.set', mode: value })"
+      />
+    </section>
   </Panel>
 </template>

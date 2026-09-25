@@ -25,6 +25,8 @@ export const ACCESS_STATEMENTS = {
   clock: ['read', 'set'],
   settings: ['read', 'update'],
   push: ['subscribe'],
+  /** The audit log: who did what through the hub. */
+  audit: ['read'],
   /** Better Auth's admin plugin statements, verbatim: its endpoints check them. */
   user: [
     'create',
@@ -80,6 +82,7 @@ export const ACCESS_ROLES = {
     clock: ['read', 'set'],
     settings: ['read', 'update'],
     push: ['subscribe'],
+    audit: ['read'],
     user: ['create', 'list', 'set-role', 'ban', 'delete', 'set-password', 'set-email', 'get', 'update'],
     session: ['list', 'revoke', 'delete'],
   },

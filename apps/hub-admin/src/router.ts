@@ -9,6 +9,7 @@ import VodView from './views/VodView.vue'
 import ModerationView from './views/ModerationView.vue'
 import AccessView from './views/AccessView.vue'
 import BoucleView from './views/BoucleView.vue'
+import JournalView from './views/JournalView.vue'
 import { useConferencesStore } from './stores/conferences.js'
 import { useOperationsStore } from './stores/operations.js'
 import { useMessagesStore } from './stores/messages.js'
@@ -18,6 +19,7 @@ import { useIntegrationsStore } from './stores/integrations.js'
 import { useVodStore } from './stores/vod.js'
 import { useModerationStore } from './stores/moderation.js'
 import { useBoucleStore } from './stores/boucle.js'
+import { useAuditStore } from './stores/audit.js'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -115,6 +117,12 @@ const routes: RouteRecordRaw[] = [
     // The view loads its accounts itself: nothing to poll, a checkbox being
     // ticked must not be redrawn under the pointer.
     meta: { view: 'acces' },
+  },
+  {
+    path: viewPath('journal'),
+    name: 'journal',
+    component: JournalView,
+    meta: { view: 'journal', refresh: () => useAuditStore().load(), intervalMs: 10_000 },
   },
   {
     path: viewPath('exploitation'),

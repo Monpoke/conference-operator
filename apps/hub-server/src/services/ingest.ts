@@ -54,6 +54,8 @@ export class IngestService {
     private readonly onChange: (roomId: string | null) => void = () => {},
     /** A new `room.message` was stored — a replayed one does not count. */
     private readonly onRoomMessage: () => void = () => {},
+    /** A room reported what became of a command it was sent: the audit completes its entry. */
+    private readonly onCommandOutcome: (roomId: string, outcome: RemoteCommandOutcome) => void = () => {},
   ) {}
 
   /**
@@ -96,6 +98,7 @@ export class IngestService {
       if (reported == null || (held != null && held.seq >= reported.seq)) continue
       this.outcomes.set(roomId, reported)
       outcomeMoved = true
+      this.onCommandOutcome(roomId, reported)
     }
 
     const before = this.projected(roomId)

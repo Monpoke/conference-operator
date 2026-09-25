@@ -149,7 +149,7 @@ const base: DisplayPayload = {
       },
     ],
   },
-  roomName: 'Track #1 — Teilhard de Chardin',
+  roomName: 'Track #1 - Teilhard de Chardin',
   pairing: { status: 'paired' },
   diagnostics: {
     // The room is on its own port: the badge has nothing to say, which is the
@@ -219,7 +219,7 @@ const base: DisplayPayload = {
       editing: { startMs: 52_000, endMs: null },
     },
     rooms: [
-      { roomId: 'track-1-teilhard-de-chardin', name: 'Track #1 — Teilhard de Chardin', connectivity: 'ONLINE', sceneRole: 'LIVE', recording: true, outboxDepth: 3, lastSeenAt: new Date(AT - 4_000).toISOString(), currentSessionId: null, conference: 'en-cours' },
+      { roomId: 'track-1-teilhard-de-chardin', name: 'Track #1 - Teilhard de Chardin', connectivity: 'ONLINE', sceneRole: 'LIVE', recording: true, outboxDepth: 3, lastSeenAt: new Date(AT - 4_000).toISOString(), currentSessionId: null, conference: 'en-cours' },
       { roomId: 'track-2-mf-1092', name: 'Track #2 — MF 1092', connectivity: 'ONLINE', sceneRole: 'HOLD', recording: false, outboxDepth: 0, lastSeenAt: new Date(AT - 9_000).toISOString(), currentSessionId: null, conference: 'en-cours' },
       { roomId: 'hands-on', name: 'Hands on', connectivity: 'OFFLINE', sceneRole: null, recording: false, outboxDepth: 41, lastSeenAt: new Date(AT - 480_000).toISOString(), currentSessionId: null, conference: 'en-cours' },
     ],
@@ -387,13 +387,7 @@ const overlay = renderOverlayPage({ initialPayload: base })
 writeFileSync(join(outDir, 'overlay-recording.html'), overlay)
 console.log(`written ${join(outDir, 'overlay-recording.html')}`)
 
-/**
- * The same overlay, with an audience question on air.
- *
- * Two files rather than one: it is the framing of both cards together one comes to
- * judge — the card under the webcam, the question at the foot of the slides — and it does not
- * show on a preview where one of the two is missing.
- */
+/** The same overlay with an audience question on air, to check both cards together. */
 const overlayQuestion = renderOverlayPage({
   initialPayload: {
     ...base,
@@ -410,12 +404,7 @@ const overlayQuestion = renderOverlayPage({
 writeFileSync(join(outDir, 'overlay-recording-question.html'), overlayQuestion)
 console.log(`written ${join(outDir, 'overlay-recording-question.html')}`)
 
-/**
- * The same overlay, with a talk given by two speakers.
- *
- * The card is 370 pixels wide: it is the case where the names shrink so the title
- * keeps its lines, and the only way to judge it is to see it.
- */
+/** The same overlay with a two-speaker talk. */
 const overlayDuo = renderOverlayPage({
   initialPayload: {
     ...base,
@@ -437,9 +426,8 @@ writeFileSync(join(outDir, 'overlay-recording-duo.html'), overlayDuo)
 console.log(`written ${join(outDir, 'overlay-recording-duo.html')}`)
 
 /**
- * The worst card the program holds: its longest title, given by its two longest
- * names. Computed rather than typed, so that next year's program is checked the
- * same way — the 2026 one broke the card at full size.
+ * Worst case from the program: its longest title with its two longest speaker
+ * names. Computed, so a new program gets checked the same way.
  */
 const talks = program.sessions.filter((session) => session.kind === 'talk')
 const longestTitle = talks.reduce((a, b) => (b.title.length > a.title.length ? b : a))

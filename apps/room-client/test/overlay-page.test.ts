@@ -169,7 +169,30 @@ describe('capture frame', () => {
 
     expect(document.getElementById('room-name')?.textContent).toBe('Salle 1')
     expect(document.getElementById('hashtag')?.textContent).toBe('#CloudNord2026')
-    expect(document.getElementById('footer-event')?.textContent).toBe('Cloud Nord 2026')
+  })
+
+  it('follows the hashtag with the conference\'s accounts, not its name', () => {
+    // The name already heads the frame; the footer says where to follow it.
+    mountOverlay({
+      ...FRAMED,
+      socialLinks: [
+        { network: 'Bluesky', handle: '@cloudnord.fr', url: 'https://bsky.app/profile/cloudnord.fr' },
+        { network: 'LinkedIn', handle: 'Cloud Nord', url: 'https://www.linkedin.com/company/cloud-nord' },
+      ],
+    } as unknown as DisplayPayload)
+
+    const footer = document.getElementById('footer')?.textContent ?? ''
+    expect(footer).toContain('Bluesky@cloudnord.fr')
+    expect(footer).toContain('LinkedInCloud Nord')
+    expect(footer).not.toContain('Cloud Nord 2026')
+  })
+
+  it('shows four accounts at most', () => {
+    // A longer line would run under the decor's corners.
+    const links = ['A', 'B', 'C', 'D', 'E'].map((n) => ({ network: n, handle: '@' + n, url: 'https://example.org/' + n }))
+    mountOverlay({ ...FRAMED, socialLinks: links } as unknown as DisplayPayload)
+
+    expect(document.querySelectorAll('#footer .social')).toHaveLength(4)
   })
 
   it('always names the conference at the top, logo or not', () => {

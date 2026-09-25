@@ -409,6 +409,32 @@ const overlayQuestion = renderOverlayPage({
 writeFileSync(join(outDir, 'overlay-recording-question.html'), overlayQuestion)
 console.log(`written ${join(outDir, 'overlay-recording-question.html')}`)
 
+/**
+ * The same overlay, with a talk given by two speakers.
+ *
+ * The card is 370 pixels wide: it is the case where the names shrink so the title
+ * keeps its lines, and the only way to judge it is to see it.
+ */
+const overlayDuo = renderOverlayPage({
+  initialPayload: {
+    ...base,
+    state: {
+      ...base.state,
+      currentSession: current == null
+        ? null
+        : {
+            ...current,
+            speakers: [
+              { ...current.speakers[0]!, name: 'Steven LE ROUX', company: 'Clever Cloud' },
+              { ...current.speakers[0]!, name: 'Camille Dupont', company: 'OVHcloud' },
+            ],
+          },
+    },
+  },
+}).replace('<body ', `<script>window.__PREVIEW__ = true</script>${checkerboard}<body `)
+writeFileSync(join(outDir, 'overlay-recording-duo.html'), overlayDuo)
+console.log(`written ${join(outDir, 'overlay-recording-duo.html')}`)
+
 // The live banner: the only surface a preview can show in situation, since it only
 // displays on the console's order.
 /** The banner's two presentations, side by side in the previews. */

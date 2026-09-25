@@ -284,7 +284,10 @@ export class RoomRuntime extends EventEmitter {
   observeCapture(patch: { recording?: boolean; streaming?: boolean }): void {
     const next = { ...this.display, ...patch }
     if (next.recording !== this.display.recording || next.streaming !== this.display.streaming) {
+      const recordingChanged = next.recording !== this.display.recording
       this.patch({ recording: next.recording, streaming: next.streaming })
+      // The talk on air is held while recording: stopping releases it.
+      if (recordingChanged) this.refreshSessions()
     }
   }
 
@@ -379,7 +382,18 @@ export class RoomRuntime extends EventEmitter {
      */
     const roomSessions = sessionsForRoom(this.program, roomId)
     const target = talkToControl(roomSessions, at, this.display.sessionStates)
-    const onAir = talkOnAir(roomSessions, this.display.sessionStates)
+    /**
+     * The talk on air, held while OBS records.
+     *
+     * The hub ends a forgotten talk a few minutes after its slot, even if the
+     * speaker is still talking. Without the hold, the card would vanish mid-take.
+     * While recording, the last talk stays until another one starts or the
+     * recording stops.
+     */
+    const held = this.display.onAirSession
+    const onAir =
+      talkOnAir(roomSessions, this.display.sessionStates) ??
+      (this.display.recording && held != null && held.roomId === roomId ? held : null)
 
     /**
      * The question on air drops with the talk it belongs to.

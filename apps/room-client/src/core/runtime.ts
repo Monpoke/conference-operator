@@ -92,6 +92,16 @@ export interface RuntimeEffects {
 export type CommandOutcome =
   | { applied: true }
   | { applied: false; reason: 'expired' | 'already-applied' | 'unsupported' }
+  | { applied: false; reason: 'failed'; message: string }
+
+/**
+ * How long a scene switch asked from the hub may wait for OBS.
+ *
+ * The command stream applies one command after the other: an OBS that accepts
+ * the connection and never answers — frozen, half-open — would otherwise hold
+ * every command behind it, the screen's included.
+ */
+export const REMOTE_SCENE_TIMEOUT_MS = 5_000
 
 /**
  * The room's current state and the application of the downward commands.
@@ -425,11 +435,42 @@ export class RoomRuntime extends EventEmitter {
       return { applied: false, reason: 'already-applied' }
     }
 
+    /*
+     * A command that fails is applied all the same — as far as the stream goes.
+     *
+     * Thrown, the failure went up into the stream's loop, which read it as a lost
+     * hub: the room went offline, reconnected, was handed the same command, failed
+     * again — until it expired. One tap on "LIVE" from a phone with OBS down cut
+     * the room off from the hub for thirty seconds, every gesture behind it with it.
+     * A failed gesture is the operator's to hear about, not the link's.
+     */
+    try {
+      return await this.execute(command)
+    } catch (cause) {
+      const message = (cause as Error).message
+      this.store.markApplied(command.seq, command.payload.type)
+      this.notify({ level: 'warning', text: `Commande du hub non appliquée (${command.payload.type}) : ${message}` })
+      return { applied: false, reason: 'failed', message }
+    }
+  }
+  private async execute(command: Command): Promise<CommandOutcome> {
     const payload = command.payload
     switch (payload.type) {
-      case 'scene.force':
-        await this.setSceneRole(payload.role)
+      case 'scene.force': {
+        let timer: NodeJS.Timeout | undefined
+        const late = new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`OBS n'a pas répondu en ${REMOTE_SCENE_TIMEOUT_MS / 1000} s`)),
+            REMOTE_SCENE_TIMEOUT_MS,
+          )
+        })
+        try {
+          await Promise.race([this.setSceneRole(payload.role), late])
+        } finally {
+          clearTimeout(timer)
+        }
         break
+      }
       case 'display.set':
         this.patch({ mode: payload.mode })
         break

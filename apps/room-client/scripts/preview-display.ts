@@ -302,6 +302,7 @@ const base: DisplayPayload = {
     { network: 'Bluesky', handle: '@cloudnord.fr', url: 'https://bsky.app/profile/cloudnord.fr' },
     { network: 'LinkedIn', handle: 'Cloud Nord', url: 'https://www.linkedin.com/company/cloud-nord' },
     { network: 'Mastodon', handle: '@cloudnord@piaille.fr', url: 'https://piaille.fr/@cloudnord' },
+    { network: 'Site', handle: 'cloudnord.fr', url: 'https://cloudnord.fr' },
   ],
   // Nothing withdrawn: the preview is there to show every screen.
   screensDisabled: [],

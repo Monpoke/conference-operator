@@ -171,28 +171,33 @@ describe('capture frame', () => {
     expect(document.getElementById('hashtag')?.textContent).toBe('#CloudNord2026')
   })
 
-  it('follows the hashtag with the conference\'s accounts, not its name', () => {
-    // The name already heads the frame; the footer says where to follow it.
+  it('keeps the website and LinkedIn from the conference\'s accounts', () => {
+    // The loop's screens show every account; the capture only the two a VOD
+    // viewer follows. No event name either: it already heads the frame.
     mountOverlay({
       ...FRAMED,
       socialLinks: [
         { network: 'Bluesky', handle: '@cloudnord.fr', url: 'https://bsky.app/profile/cloudnord.fr' },
         { network: 'LinkedIn', handle: 'Cloud Nord', url: 'https://www.linkedin.com/company/cloud-nord' },
+        { network: 'Site web', handle: 'cloudnord.fr', url: 'https://cloudnord.fr' },
       ],
     } as unknown as DisplayPayload)
 
-    const footer = document.getElementById('footer')?.textContent ?? ''
-    expect(footer).toContain('Bluesky@cloudnord.fr')
-    expect(footer).toContain('LinkedInCloud Nord')
-    expect(footer).not.toContain('Cloud Nord 2026')
+    const items = [...document.querySelectorAll('#footer .social')].map((item) => item.textContent)
+    expect(items).toEqual(['cloudnord.fr', 'LinkedInCloud Nord'])
+    expect(document.getElementById('footer')?.textContent).not.toContain('Bluesky')
+    expect(document.getElementById('footer')?.textContent).not.toContain('Cloud Nord 2026')
   })
 
-  it('shows four accounts at most', () => {
-    // A longer line would run under the decor's corners.
-    const links = ['A', 'B', 'C', 'D', 'E'].map((n) => ({ network: n, handle: '@' + n, url: 'https://example.org/' + n }))
-    mountOverlay({ ...FRAMED, socialLinks: links } as unknown as DisplayPayload)
+  it('leaves out an account it does not find', () => {
+    // No website entry in the hub: the footer reads hashtag and LinkedIn, with no
+    // dangling separator.
+    mountOverlay({
+      ...FRAMED,
+      socialLinks: [{ network: 'LinkedIn', handle: 'Cloud Nord', url: 'https://www.linkedin.com/company/cloud-nord' }],
+    } as unknown as DisplayPayload)
 
-    expect(document.querySelectorAll('#footer .social')).toHaveLength(4)
+    expect(document.getElementById('footer')?.textContent).toBe('#CloudNord2026•LinkedInCloud Nord')
   })
 
   it('always names the conference at the top, logo or not', () => {

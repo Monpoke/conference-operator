@@ -13,6 +13,7 @@ import {
 } from './primitives.js'
 import { eventIdentitySchema } from './event-identity.js'
 import { sessionStatusSchema } from './room-state.js'
+import { remoteCommandOutcomeSchema } from './events.js'
 
 /**
  * The mobile control app: driving a room from a phone, through the hub.
@@ -179,6 +180,12 @@ export const controlViewSchema = z.object({
    * would have the page claim something it does not know.
    */
   displayMode: displayModeSchema.nullable(),
+  /**
+   * The outcome of the last command the room received from a phone, as it
+   * reported it. `null`: never said — an older room, or nothing sent since the
+   * hub started.
+   */
+  lastCommand: remoteCommandOutcomeSchema.nullable().default(null),
 
   /**
    * The screens this edition withdrew, as the hub holds them.

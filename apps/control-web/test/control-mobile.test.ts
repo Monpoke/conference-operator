@@ -70,6 +70,7 @@ function vue(overrides: Partial<ControlView> = {}): ControlView {
     streaming: false,
     audioInputs: [],
     displayMode: 'loop',
+    lastCommand: null,
     screensDisabled: [],
     sceneRoles: ['LIVE', 'HOLD'],
     relaySourceRoomId: null,

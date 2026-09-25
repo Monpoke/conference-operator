@@ -14,6 +14,22 @@ import {
 import { vodConsentSchema } from './vod.js'
 
 /**
+ * What became of a command a mobile control app sent: its `seq`, and whether the
+ * room carried it out.
+ *
+ * The hub answers a gesture as soon as it has queued it; this is what the room
+ * says afterwards. Without it, a phone pressing "LIVE" with OBS down read "Fait"
+ * while the room's own screen listed the refusal.
+ */
+export const remoteCommandOutcomeSchema = z.object({
+  seq: z.number().int().positive(),
+  ok: z.boolean(),
+  /** Why it failed, in the operator's words; `null` when it worked. */
+  message: z.string().max(300).nullable(),
+})
+export type RemoteCommandOutcome = z.infer<typeof remoteCommandOutcomeSchema>
+
+/**
  * Upstream events (room outbox → hub).
  *
  * Discriminated union on `type`: adding an event without updating the hub fails
@@ -137,6 +153,13 @@ export const roomEventPayloadSchema = z.discriminatedUnion('type', [
      * beating, and simply shows no source to mute.
      */
     audioInputs: z.array(audioInputSchema).max(64).default([]),
+    /**
+     * The outcome of the last control command received — see `remoteCommandOutcomeSchema`.
+     *
+     * Optional on input like the fields above: an older room says nothing, and a
+     * phone then falls back to what the view shows.
+     */
+    lastCommand: remoteCommandOutcomeSchema.nullable().default(null),
   }),
   /**
    * The stream's health, measured by the room between two samples.

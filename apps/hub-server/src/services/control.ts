@@ -248,6 +248,8 @@ export function controlView(services: Services, roomId: string, at: number): Con
      * that an active button describes a fact.
      */
     displayMode: status?.displayMode ?? null,
+    // The room's word on the last gesture: the phone waits for it after "queued".
+    lastCommand: services.ingest.lastCommand(roomId),
     /*
      * Withdrawn screens: read from the settings, not from the room.
      *
@@ -290,7 +292,7 @@ export function controlCommand(
   roomId: string,
   action: ControlCommand,
   author: string,
-): { applied: 'now' | 'queued' } {
+): { applied: 'now' | 'queued'; seq?: number } {
   switch (action.type) {
     case 'session.start':
       services.sessions.start(action.sessionId, roomId, author)
@@ -302,30 +304,27 @@ export function controlCommand(
       services.sessions.reset(action.sessionId)
       return { applied: 'now' }
     case 'scene.set':
-      publish(services, roomId, { type: 'scene.force', role: action.role, requestedBy: author })
-      return { applied: 'queued' }
+      return { applied: 'queued', seq: publish(services, roomId, { type: 'scene.force', role: action.role, requestedBy: author }) }
     case 'display.set':
       /*
        * With no `sessionId`: remotely you choose a mode, not the talk to put in
        * it. The room applies the mode to whatever it is already driving, which is
        * also what its own control app does.
        */
-      publish(services, roomId, { type: 'display.set', mode: action.mode })
-      return { applied: 'queued' }
+      return { applied: 'queued', seq: publish(services, roomId, { type: 'display.set', mode: action.mode }) }
     case 'recording.set':
-      publish(services, roomId, { type: 'recording.set', on: action.on, requestedBy: author })
-      return { applied: 'queued' }
+      return { applied: 'queued', seq: publish(services, roomId, { type: 'recording.set', on: action.on, requestedBy: author }) }
     case 'stream.set':
-      publish(services, roomId, { type: 'stream.set', on: action.on, requestedBy: author })
-      return { applied: 'queued' }
-    case 'audio.mute':
-      publish(services, roomId, {
+      return { applied: 'queued', seq: publish(services, roomId, { type: 'stream.set', on: action.on, requestedBy: author }) }
+    case 'audio.mute': {
+      const seq = publish(services, roomId, {
         type: 'audio.mute',
         input: action.input,
         muted: action.muted,
         requestedBy: author,
       })
-      return { applied: 'queued' }
+      return { applied: 'queued', seq }
+    }
   }
 }
 
@@ -343,8 +342,8 @@ function publish(
     CommandPayloadInput,
     { type: 'scene.force' | 'display.set' | 'recording.set' | 'stream.set' | 'audio.mute' }
   >,
-): void {
-  services.commands.publish(roomId, payload, CONTROL_COMMAND_TTL[payload.type])
+): number {
+  return services.commands.publish(roomId, payload, CONTROL_COMMAND_TTL[payload.type]).seq
 }
 
 function roomSessionStatuses(services: Services, roomId: string): SessionStatuses {

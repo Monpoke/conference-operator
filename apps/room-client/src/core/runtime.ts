@@ -10,6 +10,7 @@ import {
   type DisplayMode,
   type DisplayState,
   type Notification,
+  type RemoteCommandOutcome,
   type SceneRole,
   type SessionStatus,
 } from '@conference-operator/contract'
@@ -81,6 +82,13 @@ export interface RuntimeEffects {
   /** An audio source, muted or restored on both OBS instances. */
   setAudioMute?: (input: string, muted: boolean) => void | Promise<void>
   /**
+   * The outcome of a phone's gesture is known: `lastRemoteOutcome` moved.
+   *
+   * The machine sends it up at once — the phone is waiting on it, and the next
+   * heartbeat is seconds away.
+   */
+  onRemoteOutcome?: () => void
+  /**
    * Asks the hub for the other rooms' state again, without waiting for the polling
    * turn.
    *
@@ -105,6 +113,9 @@ export type CommandOutcome =
  * every command behind it, the screen's included.
  */
 export const REMOTE_SCENE_TIMEOUT_MS = 5_000
+
+/** The commands a mobile control app sends, whose outcome it waits for. */
+const REMOTE_GESTURES = new Set(['scene.force', 'display.set', 'recording.set', 'stream.set', 'audio.mute'])
 
 /**
  * The room's current state and the application of the downward commands.
@@ -432,6 +443,7 @@ export class RoomRuntime extends EventEmitter {
     if (isCommandExpired(command, this.correctedNow())) {
       // Marked anyway: otherwise every reconnection would redeliver it.
       this.store.markApplied(command.seq, command.payload.type)
+      this.reportRemote(command, false, 'arrivée trop tard à la salle, ignorée')
       return { applied: false, reason: 'expired' }
     }
     if (this.store.hasApplied(command.seq)) {
@@ -448,14 +460,34 @@ export class RoomRuntime extends EventEmitter {
      * A failed gesture is the operator's to hear about, not the link's.
      */
     try {
-      return await this.execute(command)
+      const outcome = await this.execute(command)
+      // The captation's gestures report once OBS has answered: see `announce`.
+      if (command.payload.type === 'scene.force' || command.payload.type === 'display.set') {
+        this.reportRemote(command, true, null)
+      }
+      return outcome
     } catch (cause) {
       const message = (cause as Error).message
       this.store.markApplied(command.seq, command.payload.type)
       this.notify({ level: 'warning', text: `Commande du hub non appliquée (${command.payload.type}) : ${message}` })
+      this.reportRemote(command, false, message)
       return { applied: false, reason: 'failed', message }
     }
   }
+
+  /**
+   * The outcome of the last gesture a phone sent, as the heartbeat carries it up.
+   * `null` until one arrives.
+   */
+  lastRemoteOutcome: RemoteCommandOutcome | null = null
+
+  private reportRemote(command: Command, ok: boolean, message: string | null): void {
+    if (!REMOTE_GESTURES.has(command.payload.type)) return
+    if (this.lastRemoteOutcome != null && this.lastRemoteOutcome.seq > command.seq) return
+    this.lastRemoteOutcome = { seq: command.seq, ok, message: message?.slice(0, 300) ?? null }
+    this.effects.onRemoteOutcome?.()
+  }
+
   private async execute(command: Command): Promise<CommandOutcome> {
     const payload = command.payload
     switch (payload.type) {
@@ -606,6 +638,7 @@ export class RoomRuntime extends EventEmitter {
          * it saves one going to look for a defect where there is none.
          */
         this.announce(
+          command,
           this.effects.setRecording?.(payload.on),
           `${payload.on ? 'Enregistrement démarré' : 'Enregistrement arrêté'} ${requestedByLabel(payload.requestedBy)}`,
           `${payload.on ? 'Enregistrement non démarré' : 'Enregistrement non arrêté'}, demandé ${requestedByLabel(payload.requestedBy)}`,
@@ -613,6 +646,7 @@ export class RoomRuntime extends EventEmitter {
         break
       case 'stream.set':
         this.announce(
+          command,
           this.effects.setStreaming?.(payload.on),
           `${payload.on ? 'Diffusion démarrée' : 'Diffusion arrêtée'} ${requestedByLabel(payload.requestedBy)}`,
           `${payload.on ? 'Diffusion non démarrée' : 'Diffusion non arrêtée'}, demandée ${requestedByLabel(payload.requestedBy)}`,
@@ -622,6 +656,7 @@ export class RoomRuntime extends EventEmitter {
         // Named, like the capture: a microphone cut with nobody at the keyboard
         // reads as a sound failure.
         this.announce(
+          command,
           this.effects.setAudioMute?.(payload.input, payload.muted),
           `${payload.input} ${payload.muted ? 'coupé' : 'rétabli'} ${requestedByLabel(payload.requestedBy)}`,
           `${payload.input} ${payload.muted ? 'non coupé' : 'non rétabli'}, demandé ${requestedByLabel(payload.requestedBy)}`,
@@ -749,15 +784,20 @@ export class RoomRuntime extends EventEmitter {
    * cannot afford. Not awaited: OBS may take its time, and the commands behind
    * this one must not wait for it.
    */
-  private announce(result: void | Promise<void>, done: string, failed: string): void {
-    if (!(result instanceof Promise)) {
+  private announce(command: Command, result: void | Promise<void>, done: string, failed: string): void {
+    const succeeded = () => {
       this.notify({ level: 'info', text: done })
+      this.reportRemote(command, true, null)
+    }
+    if (!(result instanceof Promise)) {
+      succeeded()
       return
     }
-    result.then(
-      () => this.notify({ level: 'info', text: done }),
-      (cause: Error) => this.notify({ level: 'warning', text: `${failed} : ${cause.message}` }),
-    )
+    result.then(succeeded, (cause: Error) => {
+      this.notify({ level: 'warning', text: `${failed} : ${cause.message}` })
+      // The phone knows what it asked for: OBS's reason is what it lacks.
+      this.reportRemote(command, false, cause.message)
+    })
   }
 
   /** Removes a message whose TTL has run out. To be called on a clock tick. */

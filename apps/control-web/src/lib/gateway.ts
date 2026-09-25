@@ -4,6 +4,7 @@ import type {
   DisplayPayload,
   ControlCommand,
   ControlView,
+  RemoteCommandOutcome,
   SceneRole,
   StreamPatch,
 } from '@conference-operator/contract'
@@ -442,6 +443,25 @@ export function remoteGateway(options: RemoteGatewayOptions): ControlGateway {
     }
   }
 
+  /**
+   * The room's word on one command, once it has reported it.
+   *
+   * `null` when it said nothing in time. A later `seq` already reported says the
+   * room is past this one: its own outcome is lost, and taken as done — the
+   * failures are what the room sends up at once.
+   */
+  async function roomsWord(seq: number): Promise<RemoteCommandOutcome | null> {
+    const settled = (view: ControlView | null) => {
+      const word = view?.lastCommand
+      if (word == null || word.seq < seq) return null
+      return word.seq === seq ? word : { seq, ok: true, message: null }
+    }
+    const deadline = now() + OBSERVATION_MS
+    let word = settled(latest)
+    while (word == null && now() < deadline) word = settled(await nextView(POLL_MS))
+    return word
+  }
+
   return {
     start(subscription) {
       if (running) return
@@ -486,10 +506,32 @@ export function remoteGateway(options: RemoteGatewayOptions): ControlGateway {
         return { ok: false, message: "Ce geste demande la régie de la salle" }
       }
 
+      let seq: number | null
       try {
-        await options.client.rpc.regie.command({ roomId: options.roomId, action: translated })
+        const result = await options.client.rpc.regie.command({ roomId: options.roomId, action: translated })
+        seq = result.seq ?? null
       } catch (cause) {
         return { ok: false, message: (cause as Error).message || 'Geste refusé' }
+      }
+
+      /*
+       * The room's word, not the hub's.
+       *
+       * The hub answers once it has queued the command: "Fait" then meant
+       * "posted", and a "LIVE" refused by an OBS that was down read as done on
+       * the phone while the room's own screen listed the refusal. The room now
+       * reports each outcome; a room that never reports — an older version —
+       * keeps the old answer rather than a false failure.
+       */
+      if (seq != null) {
+        const reported = latest?.lastCommand != null
+        const word = await roomsWord(seq)
+        if (word != null && !word.ok) {
+          return { ok: false, message: `La salle : ${word.message ?? 'commande non appliquée'}` }
+        }
+        if (word == null && reported && translated.type !== 'recording.set') {
+          return { ok: false, message: "La salle n'a pas confirmé : hors ligne, ou trop lente" }
+        }
       }
 
       if (translated.type === 'recording.set') {

@@ -440,6 +440,49 @@ describe('mobile control app, from the phone to the room', () => {
     controller.abort()
   }, 30_000)
 
+  it("returns to the phone the room's refusal of its gesture", async () => {
+    /*
+     * OBS down, "LIVE" pressed on the phone. The hub used to answer "queued" and
+     * the phone read "Fait"; the refusal stayed on the room's own screen.
+     */
+    const { runtime, controller, store } = await pluggedRoom({
+      setSceneRole: async () => {
+        throw new Error("OBS-A n'est pas connecté")
+      },
+    })
+    const link = openLinks.at(-1)!
+    const outbox = new Outbox(store, TRACK_1)
+    const pump = new OutboxPump({ outbox, store, push: (batch) => link.client.ingest.push({ batch }) })
+
+    const phone = await asPhone(await signInOperator())
+    await phone.regie.hold({ roomId: TRACK_1, force: false })
+    const { seq } = await phone.regie.command({ roomId: TRACK_1, action: { type: 'scene.set', role: 'LIVE' } })
+    expect(seq).not.toBeNull()
+    await sleep(400)
+
+    // What `RoomApp` sends up the moment the outcome is known.
+    outbox.enqueue(
+      buildHeartbeat({
+        connectivity: 'ONLINE',
+        sceneRole: runtime.state().sceneRole,
+        recording: false,
+        streaming: false,
+        audioInputs: [],
+        outboxDepth: 0,
+        programContentHash: runtime.state().contentHash,
+        displayMode: runtime.state().mode,
+        lastCommand: runtime.lastRemoteOutcome,
+      }),
+      { dedupKey: heartbeatDedupKey(TRACK_1) },
+    )
+    await pump.drainOnce()
+
+    const vue = await phone.regie.view({ roomId: TRACK_1 })
+    expect(vue.lastCommand).toEqual({ seq, ok: false, message: "OBS-A n'est pas connecté" })
+
+    controller.abort()
+  }, 30_000)
+
   it('refuses the gesture of whoever does not hold the room, sending nothing', async () => {
     const scenes: string[] = []
     const { controller } = await pluggedRoom({

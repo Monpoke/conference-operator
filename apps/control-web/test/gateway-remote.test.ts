@@ -42,6 +42,7 @@ function view(overrides: Partial<ControlView> = {}): ControlView {
     streaming: false,
     audioInputs: [],
     displayMode: 'loop',
+    lastCommand: null,
     screensDisabled: [],
     sceneRoles: ['LIVE', 'HOLD'],
     relaySourceRoomId: null,
@@ -61,7 +62,7 @@ function view(overrides: Partial<ControlView> = {}): ControlView {
  * what allows "the room eventually confirms" and "the room never confirms" to be
  * described with the same tool.
  */
-function fakeClient(views: ControlView[]) {
+function fakeClient(views: ControlView[], seq: number | null = null) {
   const commands: ControlCommand[] = []
   let remaining = [...views]
   return {
@@ -75,7 +76,7 @@ function fakeClient(views: ControlView[]) {
           },
           command: async ({ action }: { action: ControlCommand }) => {
             commands.push(action)
-            return { ok: true, applied: 'queued' as const }
+            return { ok: true, applied: 'queued' as const, seq }
           },
         },
       },
@@ -144,9 +145,9 @@ describe('poster un geste', () => {
   let gateway: ReturnType<typeof remoteGateway>
   let clock: number
 
-  function open(views: ControlView[]) {
+  function open(views: ControlView[], seq: number | null = null) {
     clock = AT
-    const { client, commands } = fakeClient(views)
+    const { client, commands } = fakeClient(views, seq)
     gateway = remoteGateway({
       client,
       roomId: 'track-1',
@@ -182,6 +183,51 @@ describe('poster un geste', () => {
     // The switch is read on the button at the next poll, as in the room's own
     // control app: nobody chains anything onto it.
     expect(result.ok).toBe(true)
+  })
+
+  it("says what the room refused, rather than the hub's \"queued\"", async () => {
+    /*
+     * OBS down, "LIVE" pressed: the hub queued it, the room refused it. The phone
+     * used to read "Fait" while the room's own screen listed the refusal.
+     */
+    open(
+      [
+        view({ lastCommand: { seq: 6, ok: true, message: null } }),
+        view({ lastCommand: { seq: 7, ok: false, message: "OBS-A n'est pas connecté" } }),
+      ],
+      7,
+    )
+    const result = await gateway.act({ action: 'scene.set', role: 'LIVE' })
+
+    expect(result).toEqual({ ok: false, message: "La salle : OBS-A n'est pas connecté" })
+  })
+
+  it('answers once the room has done it', async () => {
+    open(
+      [
+        view({ lastCommand: { seq: 6, ok: true, message: null } }),
+        view({ lastCommand: { seq: 7, ok: true, message: null } }),
+      ],
+      7,
+    )
+    expect(await gateway.act({ action: 'display.set', mode: 'sponsors' })).toEqual({ ok: true })
+  })
+
+  it('declares a gesture unconfirmed when a room that reports stays silent', async () => {
+    open([view({ lastCommand: { seq: 6, ok: true, message: null } })], 7)
+    const start = clock
+    const result = await gateway.act({ action: 'display.set', mode: 'sponsors' })
+
+    expect(result.ok).toBe(false)
+    expect(result.message).toContain("n'a pas confirmé")
+    expect(clock - start).toBeGreaterThanOrEqual(OBSERVATION_MS)
+  })
+
+  it('keeps the old answer for a room that never reports', async () => {
+    // An older room says nothing about its commands: a false failure on every
+    // gesture would be worse than the "Fait" it always gave.
+    open([view({ lastCommand: null })], 7)
+    expect(await gateway.act({ action: 'display.set', mode: 'sponsors' })).toEqual({ ok: true })
   })
 
   it('confirms the take by observation, not by the response', async () => {

@@ -380,6 +380,38 @@ describe('drivable talk', () => {
     runtime.setSessionStatus(talk.id, 'ended')
     expect(runtime.state().onAirSession).toBeNull()
   })
+
+  it('holds the talk on air while OBS records, even once ended', () => {
+    // The hub's automatic end must not wipe the card mid-take.
+    const runtime = a('2026-10-30T10:20:00Z')
+    const talk = runtime.state().targetSession!
+    runtime.setSessionStatus(talk.id, 'running')
+    runtime.observeCapture({ recording: true })
+
+    runtime.setSessionStatus(talk.id, 'ended')
+    expect(runtime.state().onAirSession?.id).toBe(talk.id)
+
+    runtime.observeCapture({ recording: false })
+    expect(runtime.state().onAirSession).toBeNull()
+  })
+
+  it('lets the next talk take over while recording', () => {
+    const runtime = a('2026-10-30T10:20:00Z')
+    const first = runtime.state().targetSession!
+    runtime.setSessionStatus(first.id, 'running')
+    runtime.observeCapture({ recording: true })
+    runtime.setSessionStatus(first.id, 'ended')
+
+    const second = runtime.state().nextSession!
+    runtime.setSessionStatus(second.id, 'running')
+    expect(runtime.state().onAirSession?.id).toBe(second.id)
+  })
+
+  it('holds nothing when recording starts with no talk on air', () => {
+    const runtime = a('2026-10-30T10:20:00Z')
+    runtime.observeCapture({ recording: true })
+    expect(runtime.state().onAirSession).toBeNull()
+  })
 })
 
 /**

@@ -54,20 +54,20 @@ describe('capture overlay', () => {
   it('titles the running talk', () => {
     mountOverlay()
 
-    expect(document.body.dataset.lowerThird).toBe('visible')
+    expect(document.body.dataset.card).toBe('visible')
     expect(document.getElementById('title')?.textContent).toContain('HoneySwamp')
     expect(document.getElementById('people')?.textContent).toContain('Clever Cloud')
   })
 
   it('does not title a break', () => {
-    // A slot with no speaker has nothing to title — and the lower third would
-    // stay on screen for the whole lunch.
+    // A slot with no speaker has nothing to title — and the card would stay on
+    // screen for the whole lunch.
     mountOverlay({
       ...STATE,
       state: { ...STATE.state, currentSession: { ...TALK, kind: 'break', title: 'Déjeuner' } },
     } as unknown as DisplayPayload)
 
-    expect(document.body.dataset.lowerThird).toBe('hidden')
+    expect(document.body.dataset.card).toBe('hidden')
   })
 
   it('titles with no empty line when nobody is announced yet', () => {
@@ -85,9 +85,30 @@ describe('capture overlay', () => {
       },
     } as unknown as DisplayPayload)
 
-    expect(document.body.dataset.lowerThird).toBe('visible')
+    expect(document.body.dataset.card).toBe('visible')
     expect(document.getElementById('title')?.textContent).toContain('Keynote')
     expect(document.getElementById('people')?.hidden).toBe(true)
+    expect(document.getElementById('card-label')?.hidden).toBe(true)
+  })
+
+  it('gives every speaker their own line', () => {
+    // Joined on one line, three names and their companies overflow a card that is
+    // 370 pixels wide.
+    mountOverlay({
+      ...STATE,
+      state: {
+        ...STATE.state,
+        currentSession: {
+          ...TALK,
+          speakers: [{ name: 'Ada Lovelace', company: 'Analytical' }, { name: 'Alan Turing', company: null }],
+        },
+      },
+    } as unknown as DisplayPayload)
+
+    const names = [...document.querySelectorAll('#people .speaker-name')].map((n) => n.textContent)
+    expect(names).toEqual(['Ada Lovelace', 'Alan Turing'])
+    expect(document.querySelectorAll('#people .speaker-company')).toHaveLength(1)
+    expect(document.getElementById('card-label')?.textContent).toBe('Speakers')
   })
 
   it('does not report the recording, even mid-take', () => {
@@ -111,6 +132,66 @@ describe('capture overlay', () => {
  * other hand, does not — it speaks to the room of right now. The two long shared
  * a single field, which made it impossible to show one without risking the other.
  */
+/**
+ * The frame around the slides and the webcam.
+ *
+ * Nothing in it is compiled in: the event, its day, the room and the hashtag come
+ * from the hub, so the same page dresses another event's capture.
+ */
+describe('capture frame', () => {
+  const FRAMED = {
+    ...STATE,
+    roomName: 'Salle 1',
+    timezone: 'Europe/Paris',
+    eventIdentity: { name: 'Cloud Nord 2026', shortName: 'Cloud Nord' },
+    event: { startsAt: '2026-10-30T07:00:00.000Z', locationName: 'Lille', logoUrl: null },
+    boucle: { barreBas: { hashtag: '#CloudNord2026' } },
+  } as unknown as DisplayPayload
+
+  it('dates the capture with the talk\'s day and the venue', () => {
+    mountOverlay(FRAMED)
+
+    expect(document.getElementById('date')?.textContent).toBe('30 octobre 2026 – Lille')
+  })
+
+  it('dates in the event\'s timezone, not the machine\'s', () => {
+    // 23:30 UTC on the 29th is already the 30th in Lille.
+    mountOverlay({
+      ...FRAMED,
+      state: { ...FRAMED.state, currentSession: { ...TALK, startsAt: '2026-10-29T23:30:00.000Z' } },
+    } as unknown as DisplayPayload)
+
+    expect(document.getElementById('date')?.textContent).toContain('30 octobre')
+  })
+
+  it('names the room and the hashtag', () => {
+    mountOverlay(FRAMED)
+
+    expect(document.getElementById('room-name')?.textContent).toBe('Salle 1')
+    expect(document.getElementById('hashtag')?.textContent).toBe('#CloudNord2026')
+    expect(document.getElementById('footer-event')?.textContent).toBe('Cloud Nord 2026')
+  })
+
+  it('writes the event name where the logo is missing, never beside it', () => {
+    mountOverlay(FRAMED)
+    expect(document.getElementById('logo')?.hidden).toBe(true)
+    expect(document.getElementById('event-name')?.textContent).toBe('Cloud Nord 2026')
+
+    mountOverlay({ ...FRAMED, event: { ...(FRAMED.event as object), logoUrl: '/assets/logo.png' } } as unknown as DisplayPayload)
+    expect(document.getElementById('logo')?.hidden).toBe(false)
+    expect(document.getElementById('event-name')?.hidden).toBe(true)
+  })
+
+  it('leaves the slides and the webcam transparent', () => {
+    // The decor is clipped by an even-odd path: the outer canvas, then one
+    // rounded rectangle per hole. Without the holes, OBS would show only the decor.
+    mountOverlay(FRAMED)
+
+    const holes = document.getElementById('holesPath')?.getAttribute('d') ?? ''
+    expect(holes.match(/Z/g)).toHaveLength(3)
+  })
+})
+
 describe('audience question on the capture', () => {
   const withState = (state: Record<string, unknown>) =>
     ({ ...STATE, state: { ...STATE.state, ...state } }) as unknown as DisplayPayload
@@ -146,14 +227,14 @@ describe('audience question on the capture', () => {
   })
 
   it('stays visible outside a titleable talk', () => {
-    // The lower third leaves through an early return on a slot with no speaker:
+    // The card leaves through an early return on a slot with no speaker:
     // the question, for its part, must not stay frozen on the previous one.
     mountOverlay(withState({
       currentSession: null,
       question: { text: 'Et les faux positifs ?', author: null, sessionId: 'ses-1' },
     }))
 
-    expect(document.body.dataset.lowerThird).toBe('hidden')
+    expect(document.body.dataset.card).toBe('hidden')
     expect(document.body.dataset.question).toBe('visible')
   })
 })

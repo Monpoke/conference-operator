@@ -20,7 +20,8 @@ import { renderOverlayPage } from '../src/core/overlay-page.js'
 const PAGES: [string, () => string, string][] = [
   // The projector carries the reference loop's sheet, not Tailwind.
   ['projector', renderProjectorPage, 'accueil'],
-  ['overlay', renderOverlayPage, 'flex'],
+  // The frame carries its own sheet too: `row` lays out the question and the footer.
+  ['overlay', renderOverlayPage, 'row'],
 ]
 
 function mount(html: string): void {
@@ -46,7 +47,7 @@ describe('effective visibility', () => {
     // nothing checked.
     mount(renderOverlayPage())
     const probe = document.createElement('div')
-    probe.className = 'flex'
+    probe.className = 'row'
     document.body.append(probe)
     expect(globalThis.getComputedStyle(probe).display).toBe('flex')
   })

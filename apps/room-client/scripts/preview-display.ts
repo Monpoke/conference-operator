@@ -390,7 +390,7 @@ console.log(`written ${join(outDir, 'overlay-recording.html')}`)
  * The same overlay, with an audience question on air.
  *
  * Two files rather than one: it is the framing of both cards together one comes to
- * judge — the lower third on the left, the question on the right — and it does not
+ * judge — the card under the webcam, the question at the foot of the slides — and it does not
  * show on a preview where one of the two is missing.
  */
 const overlayQuestion = renderOverlayPage({

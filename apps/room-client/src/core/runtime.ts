@@ -71,12 +71,15 @@ export interface RuntimeEffects {
    * module decides *what* to do, the machine knows *how*. Asking for what is
    * already running must be a silent success — a command replayed on reconnection
    * must not produce an incident in the control app's stack.
+   *
+   * Settles when OBS has answered, and rejects when it refused: the room
+   * announces what happened, never what was asked for.
    */
-  setRecording?: (on: boolean) => void
+  setRecording?: (on: boolean) => void | Promise<void>
   /** OBS-B's stream. The same shape and the same reasons as `setRecording`. */
-  setStreaming?: (on: boolean) => void
+  setStreaming?: (on: boolean) => void | Promise<void>
   /** An audio source, muted or restored on both OBS instances. */
-  setAudioMute?: (input: string, muted: boolean) => void
+  setAudioMute?: (input: string, muted: boolean) => void | Promise<void>
   /**
    * Asks the hub for the other rooms' state again, without waiting for the polling
    * turn.
@@ -602,27 +605,27 @@ export class RoomRuntime extends EventEmitter {
          * touched the room's keyboard reads as an OBS failure. Naming who asked for
          * it saves one going to look for a defect where there is none.
          */
-        this.notify({
-          level: 'info',
-          text: `${payload.on ? 'Enregistrement démarré' : 'Enregistrement arrêté'} ${requestedByLabel(payload.requestedBy)}`,
-        })
-        this.effects.setRecording?.(payload.on)
+        this.announce(
+          this.effects.setRecording?.(payload.on),
+          `${payload.on ? 'Enregistrement démarré' : 'Enregistrement arrêté'} ${requestedByLabel(payload.requestedBy)}`,
+          `${payload.on ? 'Enregistrement non démarré' : 'Enregistrement non arrêté'}, demandé ${requestedByLabel(payload.requestedBy)}`,
+        )
         break
       case 'stream.set':
-        this.notify({
-          level: 'info',
-          text: `${payload.on ? 'Diffusion démarrée' : 'Diffusion arrêtée'} ${requestedByLabel(payload.requestedBy)}`,
-        })
-        this.effects.setStreaming?.(payload.on)
+        this.announce(
+          this.effects.setStreaming?.(payload.on),
+          `${payload.on ? 'Diffusion démarrée' : 'Diffusion arrêtée'} ${requestedByLabel(payload.requestedBy)}`,
+          `${payload.on ? 'Diffusion non démarrée' : 'Diffusion non arrêtée'}, demandée ${requestedByLabel(payload.requestedBy)}`,
+        )
         break
       case 'audio.mute':
         // Named, like the capture: a microphone cut with nobody at the keyboard
         // reads as a sound failure.
-        this.notify({
-          level: 'info',
-          text: `${payload.input} ${payload.muted ? 'coupé' : 'rétabli'} ${requestedByLabel(payload.requestedBy)}`,
-        })
-        this.effects.setAudioMute?.(payload.input, payload.muted)
+        this.announce(
+          this.effects.setAudioMute?.(payload.input, payload.muted),
+          `${payload.input} ${payload.muted ? 'coupé' : 'rétabli'} ${requestedByLabel(payload.requestedBy)}`,
+          `${payload.input} ${payload.muted ? 'non coupé' : 'non rétabli'}, demandé ${requestedByLabel(payload.requestedBy)}`,
+        )
         break
       case 'regie.hold':
         /**
@@ -736,6 +739,25 @@ export class RoomRuntime extends EventEmitter {
 
     this.store.markApplied(command.seq, payload.type)
     return { applied: true }
+  }
+
+  /**
+   * Announces a gesture asked from a phone once OBS has answered.
+   *
+   * "Enregistrement démarré" used to go out before OBS was even asked: with OBS
+   * down, the room announced a take that never began — the one lie a capture
+   * cannot afford. Not awaited: OBS may take its time, and the commands behind
+   * this one must not wait for it.
+   */
+  private announce(result: void | Promise<void>, done: string, failed: string): void {
+    if (!(result instanceof Promise)) {
+      this.notify({ level: 'info', text: done })
+      return
+    }
+    result.then(
+      () => this.notify({ level: 'info', text: done }),
+      (cause: Error) => this.notify({ level: 'warning', text: `${failed} : ${cause.message}` }),
+    )
   }
 
   /** Removes a message whose TTL has run out. To be called on a clock tick. */

@@ -697,6 +697,28 @@ describe('mobile control app commands', () => {
     expect(last?.text).toContain('Enregistrement arrêté')
   })
 
+  it('does not announce a take OBS refused', async () => {
+    // OBS down: "Enregistrement démarré" went out all the same, before OBS was
+    // even asked — a take announced that never began.
+    const runtime = makeRuntime({
+      setRecording: async () => {
+        throw new Error("OBS-B n'est pas connecté")
+      },
+    })
+
+    await runtime.applyCommand(
+      command({ type: 'recording.set', on: true, requestedBy: 'regie@cloudnord.fr' }, 90),
+    )
+    await Promise.resolve()
+
+    const texts = runtime.state().notifications.map((n) => n.text)
+    expect(texts.join(' ')).not.toContain('Enregistrement démarré')
+    const last = runtime.state().notifications.at(-1)
+    expect(last?.level).toBe('warning')
+    expect(last?.text).toContain('Enregistrement non démarré')
+    expect(last?.text).toContain("OBS-B n'est pas connecté")
+  })
+
   it('toggles the stream the same way', async () => {
     const diffusions: boolean[] = []
     const runtime = makeRuntime({ setStreaming: (on: boolean) => diffusions.push(on) })

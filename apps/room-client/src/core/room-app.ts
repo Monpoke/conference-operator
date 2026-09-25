@@ -310,40 +310,26 @@ export class RoomApp implements ControlTarget {
          * is recording, and throwing here would fill the notice stack with incidents
          * that are not any.
          *
-         * A real failure, for its part, goes to the log and not as an exception:
-         * this path is a downward command, nobody is waiting for an answer at the
-         * end. It is the view that will say the recording did not start — the mobile
-         * control app never paints ahead, exactly like the room's.
+         * A real failure goes to the log, and back to the runtime: it is what
+         * announces the gesture in the control app, and it must announce what OBS
+         * did — never "Enregistrement démarré" for a take that did not begin. The
+         * mobile control app, for its part, reads it on the next view.
          */
         setRecording: (on) => {
           if (this.runtime.state().recording === on) return
           const gesture = on ? this.startRecording() : this.stopRecording()
-          void gesture.catch((cause: Error) => {
-            this.options.onLog?.('warn', "captation : commande distante refusée", {
-              on,
-              message: cause.message,
-            })
-          })
+          return this.logRefusal(gesture, 'captation : commande distante refusée', { on })
         },
         setStreaming: (on) => {
           if (this.runtime.state().streaming === on) return
           const gesture = on ? this.startStreaming() : this.stopStreaming()
-          void gesture.catch((cause: Error) => {
-            this.options.onLog?.('warn', "diffusion : commande distante refusée", {
-              on,
-              message: cause.message,
-            })
-          })
+          return this.logRefusal(gesture, 'diffusion : commande distante refusée', { on })
         },
-        setAudioMute: (input, muted) => {
-          void this.setAudioMute(input, muted).catch((cause: Error) => {
-            this.options.onLog?.('warn', 'source audio : commande distante refusée', {
-              input,
-              muted,
-              message: cause.message,
-            })
-          })
-        },
+        setAudioMute: (input, muted) =>
+          this.logRefusal(this.setAudioMute(input, muted), 'source audio : commande distante refusée', {
+            input,
+            muted,
+          }),
       },
       options.now,
     )
@@ -2221,6 +2207,16 @@ export class RoomApp implements ControlTarget {
   /** Empties the log read in the control app's Diagnostic panel. */
   clearLog(): void {
     this.store.clearLogs()
+  }
+
+  /** A remote gesture's outcome, its refusal logged on the way through. */
+  private async logRefusal(gesture: Promise<unknown>, message: string, context: Record<string, unknown>): Promise<void> {
+    try {
+      await gesture
+    } catch (cause) {
+      this.options.onLog?.('warn', message, { ...context, message: (cause as Error).message })
+      throw cause
+    }
   }
 
   /** The diagnostic dialog's reset: see `HubLink.forgetCommands`. */

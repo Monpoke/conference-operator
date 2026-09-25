@@ -188,7 +188,7 @@ describe('local display server', () => {
     })
     // The room's program is most of the payload's weight, and the overlay never
     // displays it.
-    expect(Object.keys(messages[0]!.raw).sort()).toEqual(['event', 'eventIdentity', 'state'])
+    expect(Object.keys(messages[0]!.raw).sort()).toEqual(['boucle', 'event', 'eventIdentity', 'roomName', 'state', 'timezone'])
     expect(messages[0]!.raw).not.toHaveProperty('sessions')
     expect(messages[0]!.raw).not.toHaveProperty('diagnostics')
   })

@@ -18,6 +18,57 @@ import { comment, question, questionVote } from '@conference-operator/db/hub'
 import type { HubDatabase } from '../db.js'
 
 const CHANNEL = 'wall'
+
+/**
+ * What to do with a stored row the contract refuses.
+ *
+ * Called once per row and per service, not on every read: the screen snapshot is
+ * recomputed on every write, and one bad row must not flood the log.
+ */
+export type UnreadableRow = (table: 'comment' | 'question', id: string, reason: string) => void
+
+const warnUnreadable: UnreadableRow = (table, id, reason) => {
+  console.warn(`mur : ligne ${table} ${id} illisible, écartée — ${reason}`)
+}
+
+/**
+ * The rows of a list, bar the ones the contract refuses.
+ *
+ * **One bad row must never take the hub down.** The case happened: an image built
+ * from an older commit started on a base where a newer one had already written
+ * \`wallsio\` and \`hub\` posts — values its enum did not know. The strict parse
+ * threw in the constructor, and the whole hub stopped, rooms and console with it,
+ * for want of reading one wall post. A list with a hole in it is a lesser evil.
+ *
+ * Single-row reads stay strict: they return a row this code has just written.
+ */
+function readable<Row extends { id: string }, T>(
+  rows: Row[],
+  parse: (row: Row) => T,
+  table: 'comment' | 'question',
+  warned: Set<string>,
+  warn: UnreadableRow,
+): T[] {
+  const out: T[] = []
+  for (const row of rows) {
+    try {
+      out.push(parse(row))
+    } catch (cause) {
+      if (warned.has(row.id)) continue
+      warned.add(row.id)
+      warn(table, row.id, reason(cause))
+    }
+  }
+  return out
+}
+
+/** The first issue of a validation error, in one line. */
+function reason(cause: unknown): string {
+  const issues = (cause as { issues?: { path: PropertyKey[]; message: string }[] }).issues
+  const first = issues?.[0]
+  if (first == null) return (cause as Error)?.message ?? String(cause)
+  return `${first.path.map(String).join('.') || '(racine)'} : ${first.message}`
+}
 const SCREEN_CHANGED = 'screen'
 
 /**
@@ -93,9 +144,13 @@ export class WallService {
   /** The social wall as the rooms fetch it — from memory, for the same reason. */
   private screenSnapshot: WallSnapshot = { revision: '', posts: [] }
 
+  /** The rows already reported unreadable. */
+  private readonly warned = new Set<string>()
+
   constructor(
     private readonly db: HubDatabase,
     private readonly snapshotSize = 50,
+    private readonly warn: UnreadableRow = warnUnreadable,
   ) {
     this.emitter.setMaxListeners(256)
     this.refreshSnapshot()
@@ -321,7 +376,7 @@ export class WallService {
       .orderBy(desc(comment.seq))
       .limit(SCREEN_LATEST_MAX)
       .all()
-    const posts = [...featured, ...latest].map(toComment)
+    const posts = this.comments([...featured, ...latest])
     const revision = createHash('sha256')
       .update(
         [...featured, ...latest]
@@ -345,7 +400,7 @@ export class WallService {
       .orderBy(asc(comment.seq))
       .limit(200)
       .all()
-    return rows.map(toComment)
+    return this.comments(rows)
   }
 
   /**
@@ -416,7 +471,7 @@ export class WallService {
   }
 
   private backlog(roomId: string | null, sinceSeq: number): { seq: number; comment: Comment }[] {
-    return this.db
+    const rows = this.db
       .select()
       .from(comment)
       .where(
@@ -430,19 +485,22 @@ export class WallService {
       .orderBy(asc(comment.seq))
       .limit(this.snapshotSize)
       .all()
-      .map((row) => ({ seq: row.seq, comment: toComment(row) }))
+    return readable(rows, (row) => ({ seq: row.seq, comment: toComment(row) }), 'comment', this.warned, this.warn)
   }
 
   private refreshSnapshot(): void {
-    this.approvedSnapshot = this.db
+    const rows = this.db
       .select()
       .from(comment)
       .where(and(eq(comment.status, 'approved'), notInArray(comment.source, LOOP_ONLY_SOURCES)))
       .orderBy(desc(comment.seq))
       .limit(this.snapshotSize)
       .all()
-      .map(toComment)
-      .reverse()
+    this.approvedSnapshot = this.comments(rows).reverse()
+  }
+
+  private comments(rows: (typeof comment.$inferSelect)[]): Comment[] {
+    return readable(rows, toComment, 'comment', this.warned, this.warn)
   }
 }
 
@@ -454,7 +512,13 @@ export class WallService {
  * that nobody votes.
  */
 export class QuestionService {
-  constructor(private readonly db: HubDatabase) {}
+  /** The rows already reported unreadable. */
+  private readonly warned = new Set<string>()
+
+  constructor(
+    private readonly db: HubDatabase,
+    private readonly warn: UnreadableRow = warnUnreadable,
+  ) {}
 
   post(input: { roomId: string; sessionId: string | null; author: string | null; text: string }): Question {
     const row = this.db
@@ -497,7 +561,7 @@ export class QuestionService {
 
   /** Sorted by votes: that is the order the speaker must see them in. */
   list(roomId: string, sessionId: string | null): Question[] {
-    return this.db
+    const rows = this.db
       .select()
       .from(question)
       .where(
@@ -508,7 +572,7 @@ export class QuestionService {
       .orderBy(desc(question.votes), asc(question.createdAt))
       .limit(100)
       .all()
-      .map(toQuestion)
+    return readable(rows, toQuestion, 'question', this.warned, this.warn)
   }
 
   setStatus(id: string, status: 'open' | 'asked' | 'answered'): void {

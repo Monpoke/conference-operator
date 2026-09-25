@@ -126,6 +126,8 @@ export function renderOverlayPage(options: OverlayPageOptions = {}): string {
 
   #footer { left: 40px; width: 1840px; top: 1000px; height: 50px; align-items: center;
             justify-content: center; gap: 28px; font-size: 22px; font-weight: 500; color: #dfe5ff; }
+  #footer .network { color: var(--muted); font-weight: 400; margin-right: 8px; }
+  #footer .dot-sep { color: var(--muted); }
   #footer b { font-weight: 900; background: linear-gradient(90deg, var(--c1), var(--c2));
               -webkit-background-clip: text; background-clip: text; color: transparent; }
 </style>
@@ -173,8 +175,8 @@ ${initialState}
     <circle cx="10" cy="1075" r="70" fill="url(#gAccentV)"/>
     <circle cx="40" cy="1080" r="120" fill="none" stroke="#00c8ff" stroke-width="2" opacity=".5"/>
     <circle cx="330" cy="1040" r="16" fill="url(#gAccentV)"/>
-    <circle cx="560" cy="1048" r="10" fill="url(#gAccentV)"/>
-    <circle cx="1420" cy="1040" r="12" fill="url(#gAccentV)"/>
+    <circle cx="235" cy="1050" r="10" fill="url(#gAccentV)"/>
+    <circle cx="1620" cy="1040" r="12" fill="url(#gAccentV)"/>
     <circle cx="1690" cy="95" r="14" fill="url(#gAccentV)"/>
     <circle cx="260" cy="95" r="9" fill="url(#gAccentV)"/>
   </g>
@@ -211,9 +213,8 @@ ${initialState}
   </div>
 </div>
 
+<!-- The hashtag, then the conference's accounts: what a viewer of the VOD can follow. -->
 <div id="footer" class="row">
-  <div><b id="footer-event"></b></div>
-  <div id="footer-sep" hidden>•</div><div id="hashtag" hidden></div>
 </div>
 </div>
 
@@ -299,11 +300,36 @@ ${initialState}
     document.getElementById('event-name').hidden = eventName === ''
     setText('date', dateLine(data, session))
 
-    setText('footer-event', eventName)
+    /**
+     * The footer: the hashtag, then the conference's accounts as the hub lists
+     * them. No event name: it already heads the frame. Four accounts at most, so
+     * the line never runs under the decor's corners.
+     */
+    const footer = document.getElementById('footer')
+    const items = []
     const hashtag = data.boucle?.barreBas?.hashtag ?? ''
-    setText('hashtag', hashtag)
-    document.getElementById('hashtag').hidden = hashtag === ''
-    document.getElementById('footer-sep').hidden = hashtag === '' || eventName === ''
+    if (hashtag) {
+      const tag = document.createElement('b')
+      tag.id = 'hashtag'
+      tag.textContent = hashtag
+      items.push(tag)
+    }
+    for (const link of (data.socialLinks ?? []).slice(0, 4)) {
+      const item = document.createElement('div')
+      item.className = 'social'
+      const network = document.createElement('span')
+      network.className = 'network'
+      network.textContent = link.network
+      item.append(network, link.handle)
+      items.push(item)
+    }
+    footer.replaceChildren(...items.flatMap((item, index) => {
+      if (index === 0) return [item]
+      const dot = document.createElement('span')
+      dot.className = 'dot-sep'
+      dot.textContent = '•'
+      return [dot, item]
+    }))
 
     /**
      * A question on air.

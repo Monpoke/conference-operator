@@ -27,6 +27,8 @@ const STATE = {
   state: {
     mode: 'sponsors',
     currentSession: TALK,
+    // Started by the room: the card titles the talk on air, not the scheduled slot.
+    onAirSession: TALK,
     nextSession: null,
     recording: false,
     streaming: false,
@@ -60,10 +62,33 @@ describe('capture overlay', () => {
     // Otherwise the card would stay on screen for the whole lunch.
     mountOverlay({
       ...STATE,
-      state: { ...STATE.state, currentSession: { ...TALK, kind: 'break', title: 'Déjeuner' } },
+      state: { ...STATE.state, onAirSession: { ...TALK, kind: 'break', title: 'Déjeuner' } },
     } as unknown as DisplayPayload)
 
     expect(document.body.dataset.card).toBe('hidden')
+  })
+
+  it('waits for Start, even during the talk\'s slot', () => {
+    // The speaker may not be on stage yet: nothing is titled before the room starts.
+    mountOverlay({
+      ...STATE,
+      state: { ...STATE.state, currentSession: TALK, onAirSession: null },
+    } as unknown as DisplayPayload)
+
+    expect(document.body.dataset.card).toBe('hidden')
+  })
+
+  it('keeps an overrunning talk until End, whatever the schedule says', () => {
+    // The next slot has begun, but the room has not ended the first talk: its
+    // speaker is still the one on stage.
+    const next = { ...TALK, id: 'ses-2', title: 'Le talk suivant', speakers: [{ name: 'Alex Martin', company: null }] }
+    mountOverlay({
+      ...STATE,
+      state: { ...STATE.state, currentSession: next, onAirSession: TALK },
+    } as unknown as DisplayPayload)
+
+    expect(document.getElementById('title')?.textContent).toContain('HoneySwamp')
+    expect(document.getElementById('people')?.textContent).toContain('Steven LE ROUX')
   })
 
   it('titles with no empty line when nobody is announced yet', () => {
@@ -77,7 +102,7 @@ describe('capture overlay', () => {
       ...STATE,
       state: {
         ...STATE.state,
-        currentSession: { ...TALK, title: "Keynote d'ouverture", speakers: [] },
+        onAirSession: { ...TALK, title: "Keynote d'ouverture", speakers: [] },
       },
     } as unknown as DisplayPayload)
 
@@ -94,7 +119,7 @@ describe('capture overlay', () => {
       ...STATE,
       state: {
         ...STATE.state,
-        currentSession: {
+        onAirSession: {
           ...TALK,
           speakers: [{ name: 'Ada Lovelace', company: 'Analytical' }, { name: 'Alan Turing', company: null }],
         },
@@ -149,7 +174,7 @@ describe('capture frame', () => {
     // 23:30 UTC on the 29th is already the 30th in Lille.
     mountOverlay({
       ...FRAMED,
-      state: { ...FRAMED.state, currentSession: { ...TALK, startsAt: '2026-10-29T23:30:00.000Z' } },
+      state: { ...FRAMED.state, onAirSession: { ...TALK, startsAt: '2026-10-29T23:30:00.000Z' } },
     } as unknown as DisplayPayload)
 
     expect(document.getElementById('date')?.textContent).toContain('30 octobre')
@@ -255,7 +280,7 @@ describe('audience question on the capture', () => {
     // The card leaves through an early return on a slot with no speaker:
     // the question, for its part, must not stay frozen on the previous one.
     mountOverlay(withState({
-      currentSession: null,
+      onAirSession: null,
       question: { text: 'Et les faux positifs ?', author: null, sessionId: 'ses-1' },
     }))
 

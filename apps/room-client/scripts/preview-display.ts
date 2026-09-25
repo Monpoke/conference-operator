@@ -114,6 +114,8 @@ const base: DisplayPayload = {
     currentSession: current,
     nextSession: next,
     targetSession: current ?? next,
+    // Marked running below: the talk is on air, as once the room pressed Start.
+    onAirSession: current,
     targetIsUpcoming: current == null,
     remoteHolder: null,
     // The preview sits on a talk: no break to announce.
@@ -410,7 +412,7 @@ const overlayDuo = renderOverlayPage({
     ...base,
     state: {
       ...base.state,
-      currentSession: current == null
+      onAirSession: current == null
         ? null
         : {
             ...current,
@@ -440,7 +442,7 @@ const overlayLong = renderOverlayPage({
     ...base,
     state: {
       ...base.state,
-      currentSession: current == null ? null : { ...current, title: longestTitle.title, speakers: longestSpeakers },
+      onAirSession: current == null ? null : { ...current, title: longestTitle.title, speakers: longestSpeakers },
     },
   },
 }).replace('<body ', `<script>window.__PREVIEW__ = true</script>${checkerboard}<body `)

@@ -688,6 +688,8 @@ export function payloadFromView(view: ControlView, nowMs: number): DisplayPayloa
        */
       currentSession: null,
       nextSession: null,
+      // Only the capture overlay reads it, and it is never mounted remotely.
+      onAirSession: null,
       outboxDepth: 0,
       /*
        * The hub's clock is authoritative, and it is the one installed here.

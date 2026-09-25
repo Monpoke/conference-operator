@@ -127,6 +127,13 @@ export interface DisplayState {
    */
   targetSession: Session | null
   /**
+   * The talk on air: the last one started and not ended in this room, or `null`.
+   *
+   * Follows Start and End, not the schedule. The capture overlay titles this
+   * one, so an overrunning talk keeps its speaker until it is ended.
+   */
+  onAirSession: Session | null
+  /**
    * The room's break, running or imminent — or `null`.
    *
    * Separate from the current session: the two coexist, and "BREAK coming up"

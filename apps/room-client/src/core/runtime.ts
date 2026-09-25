@@ -14,7 +14,7 @@ import {
   type SceneRole,
   type SessionStatus,
 } from '@conference-operator/contract'
-import { talkToControl, roomBreak } from '@conference-operator/room-state'
+import { talkOnAir, talkToControl, roomBreak } from '@conference-operator/room-state'
 import {
   currentSession,
   nextSession,
@@ -165,6 +165,7 @@ export class RoomRuntime extends EventEmitter {
       notifications: [],
       simulatedClock: false,
       targetSession: null,
+      onAirSession: null,
       targetIsUpcoming: false,
       remoteHolder: null,
       breakBadge: null,
@@ -362,7 +363,7 @@ export class RoomRuntime extends EventEmitter {
   refreshSessions(): void {
     const { roomId } = this.display
     if (this.program == null || roomId == null) {
-      this.patch({ currentSession: null, nextSession: null, breakBadge: null })
+      this.patch({ currentSession: null, nextSession: null, onAirSession: null, breakBadge: null })
       return
     }
     const at = this.correctedNow()
@@ -376,11 +377,9 @@ export class RoomRuntime extends EventEmitter {
      * hub's console and the test bench run it too, and three copies of a schedule
      * rule always end up diverging.
      */
-    const target = talkToControl(
-      sessionsForRoom(this.program, roomId),
-      at,
-      this.display.sessionStates,
-    )
+    const roomSessions = sessionsForRoom(this.program, roomId)
+    const target = talkToControl(roomSessions, at, this.display.sessionStates)
+    const onAir = talkOnAir(roomSessions, this.display.sessionStates)
 
     /**
      * The question on air drops with the talk it belongs to.
@@ -400,6 +399,7 @@ export class RoomRuntime extends EventEmitter {
       currentSession: running,
       nextSession: next,
       targetSession: target,
+      onAirSession: onAir,
       /**
        * "Upcoming" is read on the schedule, not on the gap to the current session.
        *

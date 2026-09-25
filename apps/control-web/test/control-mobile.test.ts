@@ -392,10 +392,10 @@ describe('the room screen', () => {
 
     // The click posts, and stops there. The button will only move at the poll that
     // reports the switch — as in the room's control app, where it waits for OBS.
-    await wrapper.get('[data-command="programme"]').trigger('click')
+    await wrapper.get('[data-command="agenda"]').trigger('click')
     await flushPromises()
 
-    expect(hub.commands).toEqual([{ type: 'display.set', mode: 'programme' }])
+    expect(hub.commands).toEqual([{ type: 'display.set', mode: 'agenda' }])
     expect(wrapper.get('[data-command="sponsors"]').classes().join(' ')).toContain('bg-brand')
   })
 })

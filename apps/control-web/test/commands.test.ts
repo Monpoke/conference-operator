@@ -110,7 +110,7 @@ describe('room screen', () => {
     stubFetch()
     const wrapper = mount(ScreenPanel, { props: { mode: 'loop' } })
 
-    for (const mode of ['sponsors', 'programme', 'countdown', 'feedback']) {
+    for (const mode of ['sponsors', 'agenda', 'countdown', 'feedback']) {
       await wrapper.get(`[data-command="${mode}"]`).trigger('click')
       await flushPromises()
     }
@@ -121,6 +121,25 @@ describe('room screen', () => {
      * screen with "Fait" while the operator was watching the room.
      */
     expect(useToast().notices.value).toHaveLength(1)
+  })
+
+  it('offers the loop and its pages apart from the operator screens', () => {
+    const wrapper = mount(ScreenPanel, { props: { mode: 'loop' } })
+
+    const boucle = wrapper.get('[data-group="Boucle"]')
+    for (const mode of ['loop', 'sponsors', 'wallsio', 'agenda']) {
+      expect(boucle.find(`[data-command="${mode}"]`).exists()).toBe(true)
+    }
+    expect(boucle.get('[data-command="agenda"]').text()).toBe('Agenda')
+    expect(wrapper.get('[data-group="Opérateur"]').find('[data-command="countdown"]').exists()).toBe(true)
+    // The loop's agenda replaced the programme.
+    expect(wrapper.find('[data-command="programme"]').exists()).toBe(false)
+  })
+
+  it('still shows the programme while the room is on it', () => {
+    const wrapper = mount(ScreenPanel, { props: { mode: 'programme' } })
+
+    expect(wrapper.get('[data-command="programme"]').classes()).toContain('bg-brand')
   })
 
   it('drops the screens the hub has withdrawn', () => {

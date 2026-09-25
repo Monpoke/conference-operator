@@ -435,6 +435,29 @@ const overlayDuo = renderOverlayPage({
 writeFileSync(join(outDir, 'overlay-recording-duo.html'), overlayDuo)
 console.log(`written ${join(outDir, 'overlay-recording-duo.html')}`)
 
+/**
+ * The worst card the program holds: its longest title, given by its two longest
+ * names. Computed rather than typed, so that next year's program is checked the
+ * same way — the 2026 one broke the card at full size.
+ */
+const talks = program.sessions.filter((session) => session.kind === 'talk')
+const longestTitle = talks.reduce((a, b) => (b.title.length > a.title.length ? b : a))
+const weight = (s: { name: string; company: string | null }) => s.name.length + (s.company ?? '').length
+const longestSpeakers = [...new Map(talks.flatMap((t) => t.speakers).map((s) => [s.name, s])).values()]
+  .sort((a, b) => weight(b) - weight(a))
+  .slice(0, 2)
+const overlayLong = renderOverlayPage({
+  initialPayload: {
+    ...base,
+    state: {
+      ...base.state,
+      currentSession: current == null ? null : { ...current, title: longestTitle.title, speakers: longestSpeakers },
+    },
+  },
+}).replace('<body ', `<script>window.__PREVIEW__ = true</script>${checkerboard}<body `)
+writeFileSync(join(outDir, 'overlay-recording-long.html'), overlayLong)
+console.log(`written ${join(outDir, 'overlay-recording-long.html')}`)
+
 // The live banner: the only surface a preview can show in situation, since it only
 // displays on the console's order.
 /** The banner's two presentations, side by side in the previews. */

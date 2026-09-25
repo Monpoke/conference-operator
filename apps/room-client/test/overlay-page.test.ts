@@ -8,11 +8,8 @@ import { renderOverlayPage } from '../src/core/overlay-page.js'
 import type { DisplayPayload } from '../src/core/display-server.js'
 
 /**
- * The capture overlay.
- *
- * What is in this page is **burned into the master**: it is a source of OBS-B's
- * scene, so everything it displays goes into the VOD and into the live stream.
- * That is the only constraint that counts here.
+ * The capture overlay. Everything it displays ends up in the recording and the
+ * live stream.
  */
 const TALK = {
   id: 'ses-1',
@@ -60,8 +57,7 @@ describe('capture overlay', () => {
   })
 
   it('does not title a break', () => {
-    // A slot with no speaker has nothing to title — and the card would stay on
-    // screen for the whole lunch.
+    // Otherwise the card would stay on screen for the whole lunch.
     mountOverlay({
       ...STATE,
       state: { ...STATE.state, currentSession: { ...TALK, kind: 'break', title: 'Déjeuner' } },
@@ -125,18 +121,12 @@ describe('capture overlay', () => {
 })
 
 /**
- * An audience question in the master.
- *
- * It **does** have its place in the VOD: a capture where the speaker answers a
- * question one has never read is incomprehensible. The console's banner, on the
- * other hand, does not — it speaks to the room of right now. The two long shared
- * a single field, which made it impossible to show one without risking the other.
+ * Audience question on the capture. It belongs in the VOD so the answer makes
+ * sense; the console banner does not, and has its own field.
  */
 /**
- * The frame around the slides and the webcam.
- *
- * Nothing in it is compiled in: the event, its day, the room and the accounts come
- * from the hub, so the same page dresses another event's capture.
+ * The frame around the slides and the webcam. Event, day, room and accounts all
+ * come from the hub.
  */
 describe('capture frame', () => {
   const FRAMED = {
@@ -152,7 +142,7 @@ describe('capture frame', () => {
   it('dates the capture with the talk\'s day and the venue', () => {
     mountOverlay(FRAMED)
 
-    expect(document.getElementById('date')?.textContent).toBe('30 octobre 2026 – Lille')
+    expect(document.getElementById('date')?.textContent).toBe('30 octobre 2026 • Lille')
   })
 
   it('dates in the event\'s timezone, not the machine\'s', () => {
@@ -172,15 +162,13 @@ describe('capture frame', () => {
   })
 
   it('carries no hashtag, even with one set for the loop', () => {
-    // A VOD is watched long after the day the hashtag would have tagged.
     mountOverlay(FRAMED)
 
     expect(document.getElementById('footer')?.textContent).not.toContain('#')
   })
 
   it('keeps the website and LinkedIn from the conference\'s accounts', () => {
-    // The loop's screens show every account; the capture only the two a VOD
-    // viewer follows. No event name either: it already heads the frame.
+    // The loop's screens show every account, the capture only these two.
     mountOverlay({
       ...FRAMED,
       socialLinks: [
@@ -197,8 +185,7 @@ describe('capture frame', () => {
   })
 
   it('leaves out an account it does not find', () => {
-    // No website entry in the hub: the footer reads LinkedIn alone, with no
-    // dangling separator.
+    // No website entry: LinkedIn alone, without a stray separator.
     mountOverlay({
       ...FRAMED,
       socialLinks: [{ network: 'LinkedIn', handle: 'Cloud Nord', url: 'https://www.linkedin.com/company/cloud-nord' }],

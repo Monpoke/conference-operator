@@ -2,29 +2,19 @@ import { OBS_ON_AIR_CSS, OBS_ON_AIR_JS } from './obs-browser.js'
 import { STREAM_PATCH_JS } from './stream-patch.js'
 
 /**
- * The capture overlay composited over the camera and the slides in OBS-B.
+ * The capture overlay, a Browser Source in OBS-B's scene.
  *
- * **Everything here goes into the master.** This page is a source of OBS-B's
- * scene: it is burned into the recording and into the live stream. It therefore
- * carries only what has its place in a VOD — the event's frame, the talk's card
- * and the audience question. A recording indicator once appeared here: useful to
- * the operator, but engraved into the delivered video. That marker lives in the
- * control app, in the "Captation" panel, where it costs nobody anything.
+ * Everything drawn here ends up in the recording and the live stream, so it only
+ * shows what belongs in a VOD: the event frame, the talk card and the audience
+ * question. The recording indicator lives in the control app instead.
  *
- * ## A frame with two holes
+ * The decor is a 1920×1080 canvas with two transparent holes: the slides
+ * (`SCREEN`, 16:9) and the webcam (`CAM`, 1:1). The OBS scene must place those
+ * two sources at the same rectangles, in canvas pixels. The canvas is scaled to
+ * the source size, so 720p and 1080p give the same framing.
  *
- * The page is a full decor drawn on a 1920×1080 canvas, cut out where the slides
- * (`SCREEN`, 16:9) and the webcam (`CAM`, 1:1) show through. **The OBS scene must
- * place those two sources at exactly these rectangles**, in canvas pixels — the
- * holes are fixed here, not discovered from OBS.
- *
- * The canvas is scaled to the viewport as a whole: a control room in 720p and
- * another in 1080p render the same framing, as with the `vh` units this page used
- * before the frame.
- *
- * Constraints: a genuinely transparent background inside the holes, no expensive
- * animation — the page runs while OBS encodes — and nothing fetched from the
- * Internet: the fonts are local, the logo comes from the room's cache.
+ * The page runs while OBS encodes: animations stay cheap, and nothing is loaded
+ * from the Internet (local fonts, logo from the room's cache).
  */
 export interface OverlayPageOptions {
   initialPayload?: unknown
@@ -50,25 +40,21 @@ export function renderOverlayPage(options: OverlayPageOptions = {}): string {
     --c3: #e0245e;   /* the stripes' red */
     --muted: #aab4e8;
   }
-  /*
-   * \`hidden\` comes from the browser's sheet, and the slightest author rule setting
-   * a \`display\` beats it: a ghost category or an empty room line would be burned
-   * into the VOD.
-   */
+  /* Any rule setting \`display\` would otherwise beat the \`hidden\` attribute. */
   [hidden] { display: none !important; }
   .row { display: flex; }
   html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
-  /* Local faces only: the room machine must render the same with the network cut. */
+  /* Local fonts only: the room machine may be offline. */
   body { font-family: "Roboto", "Open Sans", "Helvetica Neue", Arial, sans-serif; color: #fff; }
 
-  /* The 1920×1080 canvas, scaled as a whole to the OBS source's size. */
+  /* The 1920×1080 canvas, scaled to the OBS source size. */
   #stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
   #stage > * { position: absolute; }
   #bg { inset: 0; }
 
   #header { left: 0; top: 0; width: 1920px; height: 150px; display: flex; flex-direction: column;
             align-items: center; justify-content: center; gap: 8px; }
-  /* The conference's name, always; its logo beside it when the program has one. */
+  /* Conference name, with the program's logo beside it when there is one. */
   #brand { display: flex; align-items: center; gap: 18px; height: 64px; }
   #logo { height: 64px; width: auto; display: block; }
   #event-name { font-size: 52px; font-weight: 900; letter-spacing: .5px; line-height: 1; white-space: nowrap;
@@ -77,30 +63,27 @@ export function renderOverlayPage(options: OverlayPageOptions = {}): string {
   #date { font-size: 22px; font-weight: 700; letter-spacing: .5px; color: #e8ecff; }
   #date:empty { display: none; }
 
-  /* The talk's card, under the webcam. Nothing shows while no talk is running. */
+  /* Talk card under the webcam, hidden outside talks. */
   #card { box-sizing: border-box; padding: 28px 30px; display: flex; flex-direction: column;
           border-radius: 22px; background: rgba(8, 12, 40, .72); border: 2px solid rgba(123, 47, 247, .55);
           box-shadow: 0 0 30px rgba(123, 47, 247, .25) inset; overflow: hidden;
           opacity: 0; transition: opacity .4s ease; }
   body[data-card="visible"] #card { opacity: 1; }
-  /* The category rides the label's row: the title needs the card's height more. */
+  /* Category on the label row, to leave the height to the title. */
   #card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 26px; }
   .label { font-size: 18px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase;
            background: linear-gradient(90deg, var(--c1), var(--c2)); -webkit-background-clip: text;
            background-clip: text; color: transparent; }
   #people { display: flex; flex-direction: column; gap: 12px; margin-top: 10px; }
-  /*
-   * \`--fit\` shrinks the card's texts together when they overflow it: see
-   * \`fitCard()\`. A long title with two long names must not push the room out.
-   */
+  /* \`--fit\` scales the card texts down when they overflow, see \`fitCard()\`. */
   .speaker-name { font-size: calc(36px * var(--fit, 1)); font-weight: 900; line-height: 1.1; }
   .speaker-company { font-size: calc(22px * var(--fit, 1)); color: var(--muted); margin-top: 6px; line-height: 1.3; }
-  /* Two speakers or more: the names shrink rather than push the title out. */
+  /* Smaller names when there are several speakers. */
   #people[data-count="many"] .speaker-name { font-size: calc(28px * var(--fit, 1)); }
   #people[data-count="many"] .speaker-company { font-size: calc(19px * var(--fit, 1)); margin-top: 2px; }
   #sep { height: 3px; width: 80px; flex: none; border-radius: 2px; margin: 18px 0;
          background: linear-gradient(90deg, var(--c1), var(--c2)); }
-  /* The clamp is a last resort only, past the smallest \`--fit\`. */
+  /* Clamp only applies once \`--fit\` is at its minimum. */
   #title { font-size: calc(28px * var(--fit, 1)); font-weight: 700; line-height: 1.25;
            display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; overflow: hidden; flex: none; }
   #category { flex: none; padding: 3px 9px; border-radius: 6px;
@@ -113,12 +96,8 @@ export function renderOverlayPage(options: OverlayPageOptions = {}): string {
   @keyframes pulse { 50% { opacity: .35 } }
 
   /*
-   * A question from the audience.
-   *
-   * It **does** have its place in the master, unlike the console's banner: a VOD
-   * where the speaker answers a question one has never read is incomprehensible.
-   * It sits at the foot of the slides — the card, under the webcam, stays on
-   * screen at the same time: the speaker is titled while they answer.
+   * Audience question, at the bottom of the slides. It belongs in the VOD so the
+   * answer makes sense, and it can show alongside the talk card.
    */
   #question { align-items: stretch; filter: drop-shadow(0 6px 16px rgba(0, 0, 0, .55));
               opacity: 0; transform: translateY(16px); transition: opacity .35s ease, transform .35s ease; }
@@ -168,7 +147,7 @@ ${initialState}
     <clipPath id="cBR"><circle cx="1890" cy="1070" r="115"/></clipPath>
   </defs>
 
-  <!-- The whole decor is cut out: the slides and webcam areas stay transparent. -->
+  <!-- Decor clipped so the slides and webcam areas stay transparent. -->
   <g clip-path="url(#holes)">
     <rect width="1920" height="1080" fill="url(#gBg)"/>
     <circle cx="300" cy="120" r="420" fill="url(#gGlow)"/>
@@ -186,7 +165,7 @@ ${initialState}
     <circle cx="260" cy="95" r="9" fill="url(#gAccentV)"/>
   </g>
 
-  <!-- Glowing frames around the holes, drawn outside them. -->
+  <!-- Glowing frames around the holes. -->
   <g id="frames" fill="none"></g>
 </svg>
 
@@ -218,14 +197,14 @@ ${initialState}
   </div>
 </div>
 
-<!-- The conference's website and LinkedIn: what a viewer of the VOD can follow. -->
+<!-- Conference website and LinkedIn. -->
 <div id="footer" class="row">
 </div>
 </div>
 
 <script>
 (() => {
-  /* ====== Geometry, in canvas pixels — to be reproduced in the OBS scene ====== */
+  // Geometry in canvas pixels. The OBS scene uses the same rectangles.
   const SCREEN = { x: 40, y: 165, w: 1440, h: 810, r: 16 }    // slides, 16:9
   const CAM = { x: 1510, y: 165, w: 370, h: 370, r: 22 }      // webcam, 1:1
   const CARD = { x: 1510, y: 560, w: 370, h: 415 }
@@ -258,11 +237,11 @@ ${initialState}
     frame(b, 3, 4, 1, false)    // sharp line
   }
   place('card', CARD)
-  // The question sits at the foot of the slides, inside their hole.
+  // The question sits inside the slides hole, at the bottom.
   Object.assign(document.getElementById('question').style,
     { left: (SCREEN.x + 24) + 'px', bottom: (1080 - SCREEN.y - SCREEN.h + 24) + 'px', maxWidth: '1100px' })
 
-  // The canvas follows the source's size: 1280×720 and 1920×1080 frame alike.
+  // Scale the canvas to the source size.
   const stage = document.getElementById('stage')
   function fit() {
     const scale = Math.min(window.innerWidth / 1920, window.innerHeight / 1080) || 1
@@ -273,10 +252,7 @@ ${initialState}
 
   const setText = (id, value) => { document.getElementById(id).textContent = value ?? '' }
 
-  /**
-   * The day under the conference's name: the talk's own day, so that a VOD of the second day
-   * does not carry the first one's date; the event's first day between talks.
-   */
+  // The talk's day (the event's first day between talks), then the venue.
   function dateLine(data, session) {
     const at = session?.startsAt ?? data.event?.startsAt
     let day = ''
@@ -286,42 +262,29 @@ ${initialState}
           .format(new Date(at))
       } catch { day = '' }
     }
-    return [day, data.event?.locationName].filter(Boolean).join(' – ')
+    return [day, data.event?.locationName].filter(Boolean).join(' • ')
   }
 
   function render(data) {
-    // Nothing is hard-compiled: the name comes from the hub and stays in cache to
-    // survive a start with the network cut.
     const eventName = data.eventIdentity?.name ?? ''
-    if (eventName) document.title = eventName + ' — habillage captation'
+    if (eventName) document.title = eventName + ' • habillage captation'
     const session = data.state.currentSession
 
     const logo = document.getElementById('logo')
     const logoUrl = data.event?.logoUrl
     if (logoUrl) { if (logo.getAttribute('src') !== logoUrl) logo.src = logoUrl; logo.hidden = false } else logo.hidden = true
-    // The name always reads at the top: a logo alone does not say which conference
-    // a VOD comes from once it is cut out of the event.
     setText('event-name', eventName)
     document.getElementById('event-name').hidden = eventName === ''
     setText('date', dateLine(data, session))
 
-    /**
-     * The footer: the conference's website, then its LinkedIn. No event name — it
-     * already heads the frame — and no hashtag: a VOD is watched long after the
-     * day it would have tagged.
-     *
-     * Both come from the hub's social accounts — the list the loop's screens show
-     * in full. The capture keeps two of them: the website is the entry named
-     * « Site » (or « Site web », « Website »…), shown as its bare address; LinkedIn
-     * is the one a talk's VOD is shared on.
-     */
+    // Footer: website and LinkedIn, picked from the hub's social accounts. The
+    // website is the entry named "Site" (or "Site web", "Website"...).
     const footer = document.getElementById('footer')
     const items = []
     const links = data.socialLinks ?? []
     const site = links.find((link) => /^\\s*(site( web| internet)?|web ?site|web|internet)\\s*$/i.test(link.network))
     const linkedIn = links.find((link) => /linkedin/i.test(link.network))
     if (site) {
-      // The address alone, in the frame's accent: it is what one types back.
       const item = document.createElement('b')
       item.className = 'social site'
       item.textContent = site.handle
@@ -344,18 +307,8 @@ ${initialState}
       return [dot, item]
     }))
 
-    /**
-     * A question on air.
-     *
-     * Rendered **before** the card and outside its condition: it does not depend
-     * on a talk being titleable, and above all the card leaves through an early
-     * return — placing it after would have left it frozen on the previous
-     * question between two talks.
-     *
-     * Reads the question, and never the console's banner: what is here goes into
-     * the master, and the console's operational instructions have no business in
-     * a VOD.
-     */
+    // Question on air. Rendered before the card's early return so it still
+    // updates between talks. The console banner is never shown here.
     const question = data.state.question
     document.body.dataset.question = question == null ? 'hidden' : 'visible'
     if (question != null) {
@@ -369,20 +322,14 @@ ${initialState}
     setText('room-name', roomName)
     document.getElementById('room').hidden = roomName === ''
 
-    // No talk, or a slot with no speaker: nothing to title.
+    // Only talks get a card.
     const titleable = session != null && session.kind === 'talk'
     document.body.dataset.card = titleable ? 'visible' : 'hidden'
     if (!titleable) return
 
     setText('title', session.title)
-    /**
-     * The speakers' block hidden when nobody is announced.
-     *
-     * The case has existed since a slot can be declared a talk by hand: an opening
-     * keynote whose speaker is not announced yet carries a title and no name. An
-     * empty block would keep its margin and would read, in the live stream as in
-     * the VOD, as a name that failed to load.
-     */
+    // A talk can have no announced speaker yet: hide the block rather than leave
+    // an empty gap.
     const people = document.getElementById('people')
     const speakers = session.speakers ?? []
     people.replaceChildren(...speakers.map((speaker) => {
@@ -414,14 +361,8 @@ ${initialState}
     fitCard()
   }
 
-  /**
-   * Shrinks the card's texts until everything fits, the room line included.
-   *
-   * The 2026 program has a 105-character title and two-speaker talks: at full
-   * size, the title was cut after four lines and the room left the card. Steps of
-   * 5 % down to 60 %, from full size again on every render so that a short
-   * title after a long one gets its size back.
-   */
+  // Scale the card texts down in 5% steps, to 60% at most, until the card
+  // (room line included) fits. Starts again from 100% on every render.
   function fitCard() {
     const card = document.getElementById('card')
     let fit = 1
@@ -431,11 +372,10 @@ ${initialState}
       card.style.setProperty('--fit', String(fit))
     }
   }
-  // Local fonts can land after the first render and change every width.
+  // Fonts may load after the first render.
   document.fonts?.ready?.then(() => fitCard())
 
-  // The stream only sends what changes: we keep the current state and merge.
-  // A complete message (on opening, and after every reconnection) replaces it.
+  // The stream sends a full state on connect, then patches.
   let currentState = {}
   const embedded = document.getElementById('etat-initial')
   if (embedded) { currentState = JSON.parse(embedded.textContent); render(currentState) }

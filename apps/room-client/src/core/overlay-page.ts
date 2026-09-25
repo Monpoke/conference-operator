@@ -218,7 +218,7 @@ ${initialState}
   </div>
 </div>
 
-<!-- The hashtag, then the conference's accounts: what a viewer of the VOD can follow. -->
+<!-- The conference's website and LinkedIn: what a viewer of the VOD can follow. -->
 <div id="footer" class="row">
 </div>
 </div>
@@ -306,8 +306,9 @@ ${initialState}
     setText('date', dateLine(data, session))
 
     /**
-     * The footer: the hashtag, the conference's website, its LinkedIn. No event
-     * name: it already heads the frame.
+     * The footer: the conference's website, then its LinkedIn. No event name — it
+     * already heads the frame — and no hashtag: a VOD is watched long after the
+     * day it would have tagged.
      *
      * Both come from the hub's social accounts — the list the loop's screens show
      * in full. The capture keeps two of them: the website is the entry named
@@ -316,18 +317,12 @@ ${initialState}
      */
     const footer = document.getElementById('footer')
     const items = []
-    const hashtag = data.boucle?.barreBas?.hashtag ?? ''
-    if (hashtag) {
-      const tag = document.createElement('b')
-      tag.id = 'hashtag'
-      tag.textContent = hashtag
-      items.push(tag)
-    }
     const links = data.socialLinks ?? []
     const site = links.find((link) => /^\\s*(site( web| internet)?|web ?site|web|internet)\\s*$/i.test(link.network))
     const linkedIn = links.find((link) => /linkedin/i.test(link.network))
     if (site) {
-      const item = document.createElement('div')
+      // The address alone, in the frame's accent: it is what one types back.
+      const item = document.createElement('b')
       item.className = 'social site'
       item.textContent = site.handle
       items.push(item)

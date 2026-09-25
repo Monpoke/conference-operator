@@ -135,7 +135,7 @@ describe('capture overlay', () => {
 /**
  * The frame around the slides and the webcam.
  *
- * Nothing in it is compiled in: the event, its day, the room and the hashtag come
+ * Nothing in it is compiled in: the event, its day, the room and the accounts come
  * from the hub, so the same page dresses another event's capture.
  */
 describe('capture frame', () => {
@@ -146,6 +146,7 @@ describe('capture frame', () => {
     eventIdentity: { name: 'Cloud Nord 2026', shortName: 'Cloud Nord' },
     event: { startsAt: '2026-10-30T07:00:00.000Z', locationName: 'Lille', logoUrl: null },
     boucle: { barreBas: { hashtag: '#CloudNord2026' } },
+    socialLinks: [],
   } as unknown as DisplayPayload
 
   it('dates the capture with the talk\'s day and the venue', () => {
@@ -164,11 +165,17 @@ describe('capture frame', () => {
     expect(document.getElementById('date')?.textContent).toContain('30 octobre')
   })
 
-  it('names the room and the hashtag', () => {
+  it('names the room', () => {
     mountOverlay(FRAMED)
 
     expect(document.getElementById('room-name')?.textContent).toBe('Salle 1')
-    expect(document.getElementById('hashtag')?.textContent).toBe('#CloudNord2026')
+  })
+
+  it('carries no hashtag, even with one set for the loop', () => {
+    // A VOD is watched long after the day the hashtag would have tagged.
+    mountOverlay(FRAMED)
+
+    expect(document.getElementById('footer')?.textContent).not.toContain('#')
   })
 
   it('keeps the website and LinkedIn from the conference\'s accounts', () => {
@@ -190,14 +197,14 @@ describe('capture frame', () => {
   })
 
   it('leaves out an account it does not find', () => {
-    // No website entry in the hub: the footer reads hashtag and LinkedIn, with no
+    // No website entry in the hub: the footer reads LinkedIn alone, with no
     // dangling separator.
     mountOverlay({
       ...FRAMED,
       socialLinks: [{ network: 'LinkedIn', handle: 'Cloud Nord', url: 'https://www.linkedin.com/company/cloud-nord' }],
     } as unknown as DisplayPayload)
 
-    expect(document.getElementById('footer')?.textContent).toBe('#CloudNord2026•LinkedInCloud Nord')
+    expect(document.getElementById('footer')?.textContent).toBe('LinkedInCloud Nord')
   })
 
   it('always names the conference at the top, logo or not', () => {

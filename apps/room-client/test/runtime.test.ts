@@ -367,6 +367,19 @@ describe('drivable talk', () => {
     const runtime = a('2026-10-31T12:00:00Z')
     expect(runtime.state().targetSession).toBeNull()
   })
+
+  it('puts a talk on air at Start and takes it off at End', () => {
+    // The capture overlay titles this talk: the schedule alone does not.
+    const runtime = a('2026-10-30T10:20:00Z')
+    expect(runtime.state().onAirSession).toBeNull()
+
+    const talk = runtime.state().targetSession!
+    runtime.setSessionStatus(talk.id, 'running')
+    expect(runtime.state().onAirSession?.id).toBe(talk.id)
+
+    runtime.setSessionStatus(talk.id, 'ended')
+    expect(runtime.state().onAirSession).toBeNull()
+  })
 })
 
 /**

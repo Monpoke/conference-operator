@@ -141,6 +141,7 @@ export function state(): DisplayPayload['state'] {
     sessionStates: {},
     notifications: [],
     targetSession: talk(),
+    onAirSession: null,
     breakBadge: null,
     targetIsUpcoming: false,
     simulatedClock: false,

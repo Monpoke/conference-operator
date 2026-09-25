@@ -268,7 +268,9 @@ ${initialState}
   function render(data) {
     const eventName = data.eventIdentity?.name ?? ''
     if (eventName) document.title = eventName + ' • habillage captation'
-    const session = data.state.currentSession
+    // The talk the room started and has not ended, not the scheduled slot: an
+    // overrunning talk keeps its speaker until End.
+    const session = data.state.onAirSession
 
     const logo = document.getElementById('logo')
     const logoUrl = data.event?.logoUrl
@@ -322,7 +324,7 @@ ${initialState}
     setText('room-name', roomName)
     document.getElementById('room').hidden = roomName === ''
 
-    // Only talks get a card.
+    // No talk on air: no card.
     const titleable = session != null && session.kind === 'talk'
     document.body.dataset.card = titleable ? 'visible' : 'hidden'
     if (!titleable) return

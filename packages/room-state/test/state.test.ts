@@ -7,6 +7,7 @@ import {
   roomBreak,
   roomConferenceState,
   stateOfSlots,
+  talkOnAir,
   talkToControl,
 } from '../src/index.js'
 
@@ -213,6 +214,35 @@ describe('inherited breaks', () => {
  * wins beyond the slot — that is the overrun, and that is where "End" is the
  * only useful gesture.
  */
+/**
+ * The talk on air, as the capture overlay titles it: Start and End decide, the
+ * schedule does not.
+ */
+describe('talk on air', () => {
+  const program = normalizeProgram(rawFixture)
+  const slots = sessionsForRoom(program, TRACK_1)
+  const iaForOps = slots.find((s) => s.title.startsWith('IA for OPS'))!
+  const honeySwamp = slots.find((s) => s.title.startsWith('HoneySwamp'))!
+
+  it('is nothing until a talk is started, even during its slot', () => {
+    expect(talkOnAir(slots, {})).toBeNull()
+  })
+
+  it('is the running talk, whatever slot the schedule is on', () => {
+    expect(talkOnAir(slots, { [iaForOps.id]: 'running' })?.id).toBe(iaForOps.id)
+  })
+
+  it('is nothing once the talk is ended', () => {
+    expect(talkOnAir(slots, { [iaForOps.id]: 'ended' })).toBeNull()
+  })
+
+  it('is the later talk when two were left running', () => {
+    // One left open in the morning, one started since: the later one is on air.
+    const statuses = { [iaForOps.id]: 'running' as const, [honeySwamp.id]: 'running' as const }
+    expect(talkOnAir(slots, statuses)?.id).toBe(honeySwamp.id)
+  })
+})
+
 describe('talk to control', () => {
   const program = normalizeProgram(rawFixture)
   const slots = sessionsForRoom(program, TRACK_1)

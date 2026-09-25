@@ -290,6 +290,21 @@ export function talkToControl<T extends Slot>(
 }
 
 /**
+ * The talk on air: the last one started and not ended, in program order.
+ *
+ * Unlike `talkToControl`, it ignores the schedule. A talk that overruns stays on
+ * air until it is ended, even once the next slot has begun; a talk not started
+ * yet is not on air, even during its slot. The capture overlay titles this one.
+ */
+export function talkOnAir<T extends Slot>(slots: readonly T[], statuses: SessionStatuses = {}): T | null {
+  for (let index = slots.length - 1; index >= 0; index -= 1) {
+    const slot = slots[index]!
+    if (slot.kind === 'talk' && statuses[slot.id] === 'running') return slot
+  }
+  return null
+}
+
+/**
  * The scheduling rule: when an overrunning slot closes by itself.
  *
  * It exists because nobody thinks of pressing `End` when a talk overruns and

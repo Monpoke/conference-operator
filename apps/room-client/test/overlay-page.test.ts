@@ -172,14 +172,17 @@ describe('capture frame', () => {
     expect(document.getElementById('footer-event')?.textContent).toBe('Cloud Nord 2026')
   })
 
-  it('writes the event name where the logo is missing, never beside it', () => {
+  it('always names the conference at the top, logo or not', () => {
+    // A logo alone does not say which conference a VOD comes from once it is cut
+    // out of the event.
     mountOverlay(FRAMED)
     expect(document.getElementById('logo')?.hidden).toBe(true)
     expect(document.getElementById('event-name')?.textContent).toBe('Cloud Nord 2026')
 
     mountOverlay({ ...FRAMED, event: { ...(FRAMED.event as object), logoUrl: '/assets/logo.png' } } as unknown as DisplayPayload)
     expect(document.getElementById('logo')?.hidden).toBe(false)
-    expect(document.getElementById('event-name')?.hidden).toBe(true)
+    expect(document.getElementById('event-name')?.hidden).toBe(false)
+    expect(document.getElementById('event-name')?.textContent).toBe('Cloud Nord 2026')
   })
 
   it('leaves the slides and the webcam transparent', () => {

@@ -67,10 +67,14 @@ export function renderOverlayPage(options: OverlayPageOptions = {}): string {
   #bg { inset: 0; }
 
   #header { left: 0; top: 0; width: 1920px; height: 150px; display: flex; flex-direction: column;
-            align-items: center; justify-content: center; gap: 10px; }
-  #logo { height: 86px; width: auto; display: block; }
-  #event-name { font-size: 56px; font-weight: 900; letter-spacing: .5px; }
-  #date { font-size: 24px; font-weight: 700; letter-spacing: .5px; color: #e8ecff; }
+            align-items: center; justify-content: center; gap: 8px; }
+  /* The conference's name, always; its logo beside it when the program has one. */
+  #brand { display: flex; align-items: center; gap: 18px; height: 64px; }
+  #logo { height: 64px; width: auto; display: block; }
+  #event-name { font-size: 52px; font-weight: 900; letter-spacing: .5px; line-height: 1; white-space: nowrap;
+                background: linear-gradient(90deg, #fff 40%, #cfd8ff); -webkit-background-clip: text;
+                background-clip: text; color: transparent; }
+  #date { font-size: 22px; font-weight: 700; letter-spacing: .5px; color: #e8ecff; }
   #date:empty { display: none; }
 
   /* The talk's card, under the webcam. Nothing shows while no talk is running. */
@@ -180,8 +184,10 @@ ${initialState}
 </svg>
 
 <div id="header">
-  <img id="logo" alt="" hidden>
-  <div id="event-name"></div>
+  <div id="brand">
+    <img id="logo" alt="" hidden>
+    <div id="event-name"></div>
+  </div>
   <div id="date"></div>
 </div>
 
@@ -262,7 +268,7 @@ ${initialState}
   const setText = (id, value) => { document.getElementById(id).textContent = value ?? '' }
 
   /**
-   * The day under the logo: the talk's own day, so that a VOD of the second day
+   * The day under the conference's name: the talk's own day, so that a VOD of the second day
    * does not carry the first one's date; the event's first day between talks.
    */
   function dateLine(data, session) {
@@ -287,9 +293,10 @@ ${initialState}
     const logo = document.getElementById('logo')
     const logoUrl = data.event?.logoUrl
     if (logoUrl) { if (logo.getAttribute('src') !== logoUrl) logo.src = logoUrl; logo.hidden = false } else logo.hidden = true
-    // The name stands in for a missing logo, never next to it.
-    setText('event-name', logoUrl ? '' : eventName)
-    document.getElementById('event-name').hidden = Boolean(logoUrl)
+    // The name always reads at the top: a logo alone does not say which conference
+    // a VOD comes from once it is cut out of the event.
+    setText('event-name', eventName)
+    document.getElementById('event-name').hidden = eventName === ''
     setText('date', dateLine(data, session))
 
     setText('footer-event', eventName)

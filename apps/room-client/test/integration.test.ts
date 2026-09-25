@@ -223,6 +223,33 @@ describe('room and hub, full chain', () => {
     second.abort()
   }, 20_000)
 
+  it('starts over with a hub whose numbering started over', async () => {
+    /*
+     * The hub reinstalled, the room not: the room remembers `seq`s the new hub
+     * has not reached. Kept, that record stopped every command — the hub sent
+     * nothing past it, the room dropped the rest as already applied — and a
+     * phone's gestures answered "Fait" to a screen that never moved.
+     */
+    const token = await pair()
+    const { store, runtime, link } = makeClient(token)
+    for (const seq of [1, 2, 3, 50]) store.markApplied(seq, 'scene.force')
+
+    // The stream opens on the old numbering, as a room already running would.
+    const controller = new AbortController()
+    void link.consumeCommands(controller.signal)
+    await sleep(200)
+
+    await link.sync()
+    await sleep(300)
+    expect(store.settings().lastCommandSeq).toBeLessThan(50)
+
+    hub.services.commands.publish(TRACK_1, { type: 'display.set', mode: 'sponsors' }, 30)
+    await sleep(400)
+
+    expect(runtime.state().mode).toBe('sponsors')
+    controller.abort()
+  }, 20_000)
+
   it('starts on its cache when the hub is unreachable', async () => {
     const token = await pair()
     const dbPath = join(tempDir, 'salle.db')

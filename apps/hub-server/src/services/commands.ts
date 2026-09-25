@@ -102,6 +102,12 @@ export class CommandService {
     return issued
   }
 
+  /** The last `seq` issued, `0` when none was. */
+  lastSeq(): number {
+    const row = this.db.select({ seq: command.seq }).from(command).orderBy(desc(command.seq)).limit(1).get()
+    return row?.seq ?? 0
+  }
+
   /** A room's commands after `sinceSeq`, global broadcasts included. */
   backlog(roomId: string, sinceSeq: number): Command[] {
     return this.db

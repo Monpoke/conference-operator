@@ -104,6 +104,10 @@ export class HubLink {
   readonly client: HubClient
   private stopped = false
   private sockets = new Set<WebSocket>()
+  /** The command stream's current connection: aborted to reopen it from scratch. */
+  private commandsConnection: AbortController | null = null
+  /** The last command the hub said it issued, at the last sync. `null` before one. */
+  hubCommandSeq: number | null = null
 
   constructor(private readonly options: HubLinkOptions) {
     const wsUrl = `${options.hubOrigin.replace(/^http/, 'ws')}/ws`
@@ -205,6 +209,25 @@ export class HubLink {
       // The clock offset: the VOD timecodes and the timeline depend on it. The hub
       // also says whether its time is simulated — the control app must report it.
       runtime.setServerTime(result.serverTime, result.simulatedClock)
+
+      /*
+       * The hub's numbering started over — a reinstall, a restored backup.
+       *
+       * Nothing says so otherwise: the hub sends nothing past what the room last
+       * saw, the room drops what does come as already applied, and a phone's every
+       * gesture answers "Fait" to a screen that does not move. The record goes,
+       * and the stream reopens from the start of the new numbering.
+       */
+      this.hubCommandSeq = result.commandSeq
+      const held = store.settings().lastCommandSeq
+      if (result.commandSeq != null && held > result.commandSeq) {
+        const context = { held, hub: result.commandSeq }
+        const message = 'numérotation des commandes du hub repartie de zéro, historique local oublié'
+        this.options.onLog?.('warn', message, context)
+        // In the journal too: it is what the Diagnostic panel shows the operator.
+        store.log('warn', message, context)
+        this.forgetCommands()
+      }
       this.options.onHubMode?.(result.mode)
       this.options.onHubProtocol?.(result.protocolVersion)
 
@@ -284,6 +307,19 @@ export class HubLink {
   }
 
   /**
+   * Forgets the commands applied and reopens the stream from the hub's first.
+   *
+   * What a sync does by itself on seeing the hub's numbering behind the room's;
+   * offered by hand in the diagnostic dialog for what it would not see — an older
+   * hub, a record gone wrong some other way. Replaying costs little: what has
+   * expired is dropped, and the rest is what the room should be showing anyway.
+   */
+  forgetCommands(): void {
+    this.options.store.forgetCommands()
+    this.commandsConnection?.abort()
+  }
+
+  /**
    * Consumes the command stream until it stops.
    *
    * The resume goes through oRPC's `lastEventId`: we restart from the last applied
@@ -297,9 +333,15 @@ export class HubLink {
     const outage = new OutageTracker('flux de commandes', this.options.now)
 
     while (!this.stopped && !isAborted()) {
+      const connection = new AbortController()
+      this.commandsConnection = connection
+      const reopened = () => connection.signal.aborted && !isAborted() && !this.stopped
       try {
         const lastEventId = String(store.settings().lastCommandSeq)
-        const iterator = await this.client.rooms.commands(undefined, { lastEventId, signal })
+        const iterator = await this.client.rooms.commands(undefined, {
+          lastEventId,
+          signal: signal == null ? connection.signal : AbortSignal.any([signal, connection.signal]),
+        })
         runtime.setConnectivity('ONLINE')
 
         // The stream is restored: we say so, in the log and in the control app.
@@ -310,13 +352,25 @@ export class HubLink {
         if (restored != null) {
           this.options.onLog?.('info', restored.message)
           runtime.notify({ level: 'info', text: `Hub rejoint — ${restored.message}` })
+          // The hub may have been reinstalled meanwhile: the sync is what tells.
+          void this.sync()
         }
 
         for await (const command of iterator) {
           const issue = await runtime.applyCommand(command)
           if (issue.applied) this.options.onCommandApplied?.(command)
+          else {
+            // Dropped without a word, it looks from the phone like a gesture lost.
+            this.options.onLog?.('info', 'commande du hub ignorée', {
+              seq: command.seq,
+              type: command.payload.type,
+              reason: issue.reason,
+            })
+          }
         }
       } catch (cause) {
+        // Reopened on purpose — the hub's numbering started over: at once, from 0.
+        if (reopened()) continue
         if (isAborted() || this.stopped) return
         runtime.setConnectivity('OFFLINE')
 

@@ -104,6 +104,7 @@ export function diagnostics(): NonNullable<DisplayPayload['diagnostics']> {
   return {
     obs: { A: null, B: null },
     portFallback: null,
+    commands: { lastApplied: 0, applied: 0, hubLast: null },
     questions: [],
     questionsRefreshedAt: null,
     questionsSession: null,

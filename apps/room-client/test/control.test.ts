@@ -281,6 +281,31 @@ describe('control window', () => {
     expect((await act({ action: 'log.clear' })).body).toEqual({ ok: true, message: 'Journal effacé' })
     expect((await state()).diagnostics?.log).toEqual([])
   }, 40_000)
+
+  it('shows where the command stream stands, and takes it again from the start', async () => {
+    // A record the hub has not reached: what a reinstalled hub leaves behind.
+    room.store.markApplied(500, 'scene.force')
+    const before = (await state()).diagnostics?.commands
+    expect(before?.lastApplied).toBe(500)
+    expect(before?.hubLast).not.toBeNull()
+    expect(before!.lastApplied).toBeGreaterThan(before!.hubLast!)
+
+    expect((await act({ action: 'commands.forget' })).body).toEqual({
+      ok: true,
+      message: 'Commandes du hub reprises depuis le début',
+    })
+    await new Promise((resolve) => setTimeout(resolve, 400))
+
+    const after = (await state()).diagnostics
+    expect(after?.commands.lastApplied).toBeLessThanOrEqual(after!.commands.hubLast!)
+    expect(after?.log.map((entry) => entry.message).join(' ')).toContain('historique des commandes oublié')
+
+    // And the stream flows again. With no expiry: this suite sets the room's
+    // clock to the event's morning, far from the hub's.
+    hub.services.commands.publish(TRACK_1, { type: 'display.set', mode: 'sponsors' }, null)
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(room.runtime.state().mode).toBe('sponsors')
+  }, 40_000)
 })
 
 describe('configuring the room from the control app', () => {

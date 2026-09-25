@@ -2223,6 +2223,16 @@ export class RoomApp implements ControlTarget {
     this.store.clearLogs()
   }
 
+  /** The diagnostic dialog's reset: see `HubLink.forgetCommands`. */
+  async forgetCommands(): Promise<void> {
+    if (this.link == null) throw new Error('Pas de hub : aucune commande à reprendre')
+    this.store.log('warn', 'historique des commandes oublié à la main, flux repris depuis le début', {
+      lastApplied: this.store.settings().lastCommandSeq,
+      hub: this.link.hubCommandSeq,
+    })
+    this.link.forgetCommands()
+  }
+
   /**
    * Records a room setting, then puts the room back in agreement with it.
    *
@@ -2281,6 +2291,11 @@ export class RoomApp implements ControlTarget {
        * `listen()`, and it is the server that had to look for a free one.
        */
       portFallback: this.display.portFallback(),
+      commands: {
+        lastApplied: this.store.settings().lastCommandSeq,
+        applied: this.store.appliedCount(),
+        hubLast: this.link?.hubCommandSeq ?? null,
+      },
       config: this.configVisible(),
       questions: this.questions,
       questionsRefreshedAt: this.questionsAt,

@@ -6,6 +6,7 @@ import { useActionsStore } from '../stores/actions.js'
 import { ROLES, useConfigStore } from '../stores/config.js'
 import { useGatewayStore } from '../stores/gateway.js'
 import { useKeyboardLayer } from '../stores/keyboard.js'
+import CommandsDiagnosticDialog from './CommandsDiagnosticDialog.vue'
 import ObsConfigBlock from './ObsConfigBlock.vue'
 
 const props = defineProps<{ payload: DisplayPayload }>()
@@ -23,6 +24,9 @@ const gateway = useGatewayStore()
  */
 const unpairOpen = ref(false)
 const canUnpair = computed(() => !gateway.remote)
+
+/** The command stream's diagnostic: the machine's own bookkeeping, local only too. */
+const diagnosticOpen = ref(false)
 
 async function unpair(): Promise<void> {
   await actions.act({ action: 'pairing.forget' })
@@ -182,6 +186,19 @@ const FIELD =
           </Button>
         </div>
 
+        <div
+          v-if="canUnpair"
+          class="mt-2 flex items-center justify-between gap-4 rounded-lg border border-edge px-3 py-2.5"
+        >
+          <p class="text-[11px] leading-relaxed text-dim">
+            Les gestes de la régie mobile répondent « Fait » mais la salle ne bouge pas ? Le
+            diagnostic montre si les commandes du hub arrivent jusqu’ici, et les reprend au besoin.
+          </p>
+          <Button id="btn-commands-diagnostic" class="shrink-0" @click="diagnosticOpen = true">
+            Diagnostic…
+          </Button>
+        </div>
+
         <!--
           What "Commencer" brings with it.
 
@@ -252,6 +269,8 @@ const FIELD =
       </Button>
     </template>
   </Dialog>
+
+  <CommandsDiagnosticDialog v-model:open="diagnosticOpen" :payload="payload" />
 
   <ConfirmDialog
     v-model:open="unpairOpen"

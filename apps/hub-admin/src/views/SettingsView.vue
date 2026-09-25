@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { Badge, Button, ConfirmDialog, Empty, Hint, Panel, useToast } from '@conference-operator/components'
+import { timeAgo } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import IntegrationDialog from '../components/IntegrationDialog.vue'
 import { useSeededField } from '../composables/seededField.js'
 import {
@@ -18,6 +19,7 @@ import {
   type SocialLink,
   type StorageCheck,
 } from '../stores/settings.js'
+import { useWallsIoStore } from '../stores/wallsio.js'
 
 /**
  * What is set once, and holds for the day.
@@ -175,7 +177,7 @@ const SCREENS: { value: string; label: string; hint: string }[] = [
   { value: 'feedback', label: 'Notez le talk', hint: 'Le QR code OpenFeedback du talk en cours.' },
   { value: 'wall', label: 'Mur & questions', hint: 'Les messages du public, modérés en régie.' },
   { value: 'question', label: 'Question choisie', hint: 'Une question du public, en grand.' },
-  { value: 'wallsio', label: 'Mur social (walls.io)', hint: "Le mur de l'événement sur les réseaux." },
+  { value: 'wallsio', label: 'Mur social', hint: 'walls.io, les messages du public et les posts partenaires, en mosaïque.' },
   { value: 'rooms', label: 'Pendant ce temps…', hint: 'Ce qui se passe dans les autres salles.' },
   { value: 'socials', label: 'Nos réseaux', hint: 'Les comptes déclarés ci-dessus.' },
   // The loop's own scenes: their content is laid out in the « Boucle » tab.
@@ -183,13 +185,11 @@ const SCREENS: { value: string; label: string; hint: string }[] = [
   { value: 'announcements', label: 'Annonces “offert par”', hint: 'Le petit déjeuner, le déjeuner… et qui les offre.' },
   { value: 'sponsors-thanks', label: 'Merci à nos sponsors', hint: 'Le remerciement avant les pages de logos.' },
   { value: 'slogans', label: 'Messages animés', hint: 'Bienvenue, partage, silence des téléphones.' },
-  { value: 'posts', label: 'Mur de posts (manuel)', hint: 'Des posts saisis à la main, quand walls.io est absent.' },
   { value: 'code-of-conduct', label: 'Code de conduite', hint: "Le rappel, et le QR vers l'intégralité." },
   { value: 'event-feedback', label: "QR feedbacks de l'événement", hint: 'Le QR OpenFeedback de la journée entière.' },
   { value: 'other-agendas', label: 'Plannings des autres salles', hint: 'La journée des autres salles, après celle de la salle.' },
 ]
 
-const wallsIoUrl = ref('')
 /**
  * Held the right way up — what is **on** — and sent the other way.
  *
@@ -204,9 +204,6 @@ watch(
   settings,
   (value) => {
     if (value == null) return
-    if (globalThis.document?.activeElement?.id !== 'walls-io-url') {
-      wallsIoUrl.value = value.wallsIoUrl ?? ''
-    }
     const off = value.screensDisabled ?? []
     screensOn.value = Object.fromEntries(
       SCREENS.map((screen) => [screen.value, !off.includes(screen.value)]),
@@ -216,18 +213,41 @@ watch(
 )
 
 async function saveScreens(): Promise<void> {
-  const url = wallsIoUrl.value.trim()
   try {
     await store.update({
-      // Empty means "no wall", and that is a null: an empty string would travel
-      // down to the rooms, fail the contract's URL check, and take the whole save
-      // with it.
-      wallsIoUrl: url === '' ? null : url,
       screensDisabled: SCREENS.filter((s) => screensOn.value[s.value] === false).map((s) => s.value),
     })
     toast.say('Écrans enregistrés')
   } catch {
     /* already reported */
+  }
+}
+
+// — walls.io —
+/**
+ * Typed, sent, emptied: the token never comes back to fill the field, only
+ * whether there is one and its last characters.
+ */
+const wallsIo = useWallsIoStore()
+const { status: wallsIoStatus } = storeToRefs(wallsIo)
+const wallsIoToken = ref('')
+const wallsIoBusy = ref(false)
+onMounted(() => {
+  void wallsIo.load().catch(() => {})
+})
+
+async function saveWallsIoToken(token: string | null): Promise<void> {
+  wallsIoBusy.value = true
+  try {
+    const status = await wallsIo.setToken(token)
+    wallsIoToken.value = ''
+    if (token == null) toast.say('Jeton walls.io retiré')
+    else if (status.lastError != null) toast.fail(status.lastError)
+    else toast.say(`Jeton walls.io enregistré : ${status.imported} post(s) sur le mur`)
+  } catch {
+    /* already reported */
+  } finally {
+    wallsIoBusy.value = false
   }
 }
 
@@ -717,25 +737,56 @@ async function confirmRemoveIntegration(): Promise<void> {
       </div>
     </Panel>
 
+    <Panel title="Mur social — walls.io">
+      <p class="mb-2 text-[13px] text-dim">
+        Le hub lit les posts du mur walls.io par son API et les ajoute au mur social de la
+        boucle, déjà modérés par walls.io. Le jeton d'accès se trouve dans les réglages du mur,
+        sur walls.io. Il est chiffré sur le hub et ne descend jamais en salle.
+      </p>
+      <label class="mb-[5px] block text-xs text-dim" for="walls-io-token">Jeton d'accès API</label>
+      <input
+        id="walls-io-token"
+        v-model="wallsIoToken"
+        type="password"
+        autocomplete="off"
+        :placeholder="wallsIoStatus?.hasToken ? `Jeton enregistré (…${wallsIoStatus.tokenHint ?? ''})` : 'Aucun jeton'"
+        class="mb-2 w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text"
+      />
+      <p id="walls-io-status" class="mb-3 text-[13px] text-dim">
+        <template v-if="wallsIoStatus?.hasToken">
+          {{ wallsIoStatus.imported }} post(s) walls.io sur le mur<template v-if="wallsIoStatus.lastPollAt">
+            — dernière lecture {{ timeAgo(wallsIoStatus.lastPollAt) }}</template>.
+          <span v-if="wallsIoStatus.lastError" class="text-alert">{{ wallsIoStatus.lastError }}</span>
+        </template>
+        <template v-else>Sans jeton, le mur social montre les messages du public et les posts partenaires.</template>
+      </p>
+      <div class="flex gap-2">
+        <Button
+          id="btn-walls-io-token"
+          variant="primary"
+          size="small"
+          :disabled="wallsIoBusy || wallsIoToken.trim().length < 8"
+          @click="saveWallsIoToken(wallsIoToken.trim())"
+        >
+          Enregistrer
+        </Button>
+        <Button
+          v-if="wallsIoStatus?.hasToken"
+          id="btn-walls-io-clear"
+          size="small"
+          :disabled="wallsIoBusy"
+          @click="saveWallsIoToken(null)"
+        >
+          Retirer le jeton
+        </Button>
+      </div>
+    </Panel>
+
     <Panel title="Écrans de salle">
       <p class="mb-2 text-[13px] text-dim">
         Ce qu'une régie peut choisir d'afficher, et ce que la boucle d'attente fait défiler.
         Retirer un écran ne change rien à ce qui est projeté en ce moment : c'est la régie
         qui décide, salle par salle.
-      </p>
-
-      <label class="mb-[5px] block text-xs text-dim" for="walls-io-url">
-        Mur social — adresse d'intégration walls.io
-      </label>
-      <input
-        id="walls-io-url"
-        v-model="wallsIoUrl"
-        placeholder="https://my.walls.io/mon-mur?token=…"
-        class="mb-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text"
-      />
-      <p class="mb-3 text-[13px] text-dim">
-        L'adresse complète, jeton compris, telle que walls.io la donne. Vide, l'écran n'est
-        proposé nulle part — un mur absent vaut mieux qu'un cadre en erreur devant la salle.
       </p>
 
       <div id="screens" class="border-t border-edge pt-2">

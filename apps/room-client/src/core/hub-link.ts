@@ -215,7 +215,7 @@ export class HubLink {
         // The offered screens, cached in the same breath: the control app reads
         // them to build its menu, the loop to skip what was withdrawn, and both
         // have to work with the hub unreachable.
-        screens: { wallsIoUrl: result.wallsIoUrl, disabled: result.screensDisabled },
+        screens: { disabled: result.screensDisabled },
         // The event's name comes down with the rest and stays cached: the pages
         // must title themselves correctly at the next start, an unreachable hub
         // included.
@@ -254,6 +254,32 @@ export class HubLink {
       })
       runtime.setConnectivity('OFFLINE')
       return { ok: false }
+    }
+  }
+
+  /**
+   * Fetches the social wall, when it moved since the revision held.
+   *
+   * Never throws, like `sync`: the wall is decorative, and a hub from before it
+   * (no `rooms.wall`) or out of reach leaves the room on its cache. Returns
+   * whether posts came down — `false` when nothing changed or nothing answered.
+   */
+  async syncWall(): Promise<boolean> {
+    const { store } = this.options
+    try {
+      const held = store.settings().wall
+      const result = await this.client.rooms.wall(
+        { since: held.revision },
+        { signal: AbortSignal.timeout(this.options.syncTimeoutMs ?? 8_000) },
+      )
+      if (result.posts == null) return false
+      store.saveSettings({ wall: { revision: result.revision, posts: result.posts } })
+      return true
+    } catch (cause) {
+      this.options.onLog?.('warn', 'mur social non synchronisé, cache local conservé', {
+        message: (cause as Error).message,
+      })
+      return false
     }
   }
 

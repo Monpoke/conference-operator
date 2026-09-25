@@ -4,7 +4,7 @@ import { z } from 'zod'
  * The welcome loop's own content: everything the room screens show that the
  * program export does not carry.
  *
- * A hub setting, like the social accounts and the walls.io address, and for the
+ * A hub setting, like the social accounts, and for the
  * same reason: a slogan, a hashtag or a sponsor's place on a page is corrected
  * during the event, and doing so must not require shipping a release to the room
  * machines. The defaults reproduce the reference loop (`donnees.js` and the fixed
@@ -86,21 +86,6 @@ export const annonceSchema = z.object({
 })
 export type Annonce = z.infer<typeof annonceSchema>
 
-/** A post on the hand-fed social wall — the offline fallback of walls.io. */
-export const postSchema = z.object({
-  auteur: z.string().min(1).max(80),
-  titre: z.string().max(120).default(''),
-  photo: imageRefSchema.nullable().default(null),
-  /** `2026-10-30T10:42` (shown "25 min", computed live) or free text ("2 h"). */
-  date: z.string().max(40).default(''),
-  texte: z.string().max(1500),
-  image: imageRefSchema.nullable().default(null),
-  reactions: z.number().int().min(0).nullable().default(null),
-  commentaires: z.number().int().min(0).nullable().default(null),
-  reseau: z.string().max(30).default('LinkedIn'),
-})
-export type Post = z.infer<typeof postSchema>
-
 const sloganSchema = z.object({
   /** The hollow word above ("Passez"). */
   creux: z.string().max(40),
@@ -122,7 +107,6 @@ export const DUREES_PAR_DEFAUT = {
   annonces: 8,
   merci: 6,
   sponsors: 8,
-  posts: 15,
   'message-bienvenue': 7,
   salles: 12,
   'agenda-rappel': 20,
@@ -227,34 +211,33 @@ export const boucleSchema = z.object({
    */
   lienPublic: lienPublicSchema.nullable().default(null),
   /** Seconds per kind of scene; absent = the reference's (`DUREES_PAR_DEFAUT`). */
-  durees: z.partialRecord(dureeSceneSchema, z.number().int().min(3).max(600)).default({}),
+  durees: z
+    .preprocess(
+      // A kind of scene this version no longer has (the hand-fed `posts`) is
+      // dropped rather than failing the settings whole.
+      (value) =>
+        value != null && typeof value === 'object' && !Array.isArray(value)
+          ? Object.fromEntries(Object.entries(value).filter(([key]) => key in DUREES_PAR_DEFAUT))
+          : value,
+      z.partialRecord(dureeSceneSchema, z.number().int().min(3).max(600)),
+    )
+    .default({}),
   /** `null` = one page per tier of the program, laid out automatically. */
   sponsorPages: z.array(sponsorPageSchema).max(MAX_SPONSOR_PAGES).nullable().default(null),
-  mur: z
-    .object({
-      titre: z.string().max(60).default('Ils en parlent sur LinkedIn'),
-      hashtag: z.string().max(40).default('#CloudNord2026'),
-      posts: z.array(postSchema).max(40).default([]),
-    })
-    .default({ titre: 'Ils en parlent sur LinkedIn', hashtag: '#CloudNord2026', posts: [] }),
+  /**
+   * The social wall's page: its band, and how many posts share a page.
+   *
+   * The posts themselves are not settings: they are the hub's wall — walls.io,
+   * the audience, the partners — and travel apart (`rooms.wall`).
+   */
   wallsio: z
     .object({
-      /** Added to the wall's address: layout, background, header. */
-      options: z.string().max(300).default('nobackground=1&show_header=0&layout=kiosk'),
-      /** Enlargement: the wall is laid out smaller, then scaled up, fewer columns. */
-      zoom: z.number().min(0.5).max(3).default(1.2),
-      /** Reload off screen every N minutes (stable memory over a day). 0 = never. */
-      rechargeMinutes: z.number().int().min(0).max(1440).default(60),
       titre: z.string().max(60).default('Le mur Cloud Nord'),
       hashtag: z.string().max(40).default('#CloudNord2026'),
+      /** Cards on a page, the featured one included. */
+      parPage: z.number().int().min(3).max(6).default(5),
     })
-    .default({
-      options: 'nobackground=1&show_header=0&layout=kiosk',
-      zoom: 1.2,
-      rechargeMinutes: 60,
-      titre: 'Le mur Cloud Nord',
-      hashtag: '#CloudNord2026',
-    }),
+    .default({ titre: 'Le mur Cloud Nord', hashtag: '#CloudNord2026', parPage: 5 }),
   conduite: z
     .object({
       paragraphes: z.array(z.string().max(300)).max(6),
@@ -291,6 +274,16 @@ export type BoucleInput = z.input<typeof boucleSchema>
 
 export const DEFAULT_BOUCLE: Boucle = boucleSchema.parse({})
 
+/**
+ * Every image the social wall's posts name — the hub downloads them, the rooms
+ * cache them, like the loop's logos.
+ */
+export function wallImageRefs(posts: readonly { avatar: string | null; image: string | null; sponsor: { logo: string | null } | null }[]): string[] {
+  const refs: (string | null)[] = []
+  for (const post of posts) refs.push(post.avatar, post.image, post.sponsor?.logo ?? null)
+  return [...new Set(refs.filter((ref): ref is string => ref != null))]
+}
+
 /** Every image the loop settings name — what the hub downloads and the rooms cache. */
 export function boucleImageRefs(boucle: Boucle): string[] {
   const refs: (string | null)[] = [boucle.logo]
@@ -298,7 +291,6 @@ export function boucleImageRefs(boucle: Boucle): string[] {
   for (const page of boucle.sponsorPages ?? []) {
     for (const row of page.rangs) for (const logo of row.logos) refs.push(logo.logo)
   }
-  for (const post of boucle.mur.posts) refs.push(post.photo, post.image)
   return [...new Set(refs.filter((ref): ref is string => ref != null))]
 }
 
@@ -331,13 +323,7 @@ export interface BoucleView {
   /** Every kind of scene's duration, the settings over the reference's. */
   durees: Record<DureeScene, number>
   sponsorPages: { titre: string; duree: number | null; rangs: { taille: number; logos: BoucleLogo[] }[] }[]
-  mur: {
-    titre: string
-    hashtag: string
-    posts: (Omit<Post, 'photo' | 'image'> & { photoUrl: string | null; imageUrl: string | null })[]
-  }
-  /** `src` is the embed address with the options merged in; `null` = no wall. */
-  wallsio: Omit<Boucle['wallsio'], 'options'> & { src: string | null }
+  wallsio: Boucle['wallsio']
   conduite: Omit<Boucle['conduite'], 'url'> & { qrSvg: string | null }
   feedbacks: Omit<Boucle['feedbacks'], 'url'> & { qrSvg: string | null }
 }

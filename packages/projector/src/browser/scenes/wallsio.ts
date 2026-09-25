@@ -1,14 +1,21 @@
+import type { WallCard } from '@conference-operator/contract'
 import type { Data, Scene } from '../scene.js'
 import { ecrire } from '../dom.js'
+import { maintenant } from '../time.js'
+import { carte } from './carte.js'
 
 /**
- * The walls.io wall.
+ * The social wall: what is said about the event — walls.io, the audience's
+ * messages, the partners' posts — as a mosaic of cards.
  *
- * Loaded once, then left running: the iframe is never inside markup that gets
- * rewritten, so a state arriving every second does not reload it. It is only
- * replaced when its address changes, and reloaded every `rechargeMinutes` —
- * always off screen — to keep the memory stable over a day. Skipped while the
- * room's server says walls.io does not answer.
+ * One featured post on each page, large, in the first column: put forward in the
+ * console, pinned on walls.io, or a partner's; they take turns from one pass to
+ * the next. The others fill two columns (three when nothing is featured), as
+ * many as the page holds and at most `parPage` cards in all — the posts shown go
+ * to the back of the line, those that found no room come first on the next page.
+ *
+ * Drawn off screen only, like every loop scene: a post arriving while the wall
+ * is up waits for the next pass rather than moving a card in front of the room.
  */
 export function wallsio(el: HTMLElement): Scene {
   el.innerHTML = `
@@ -16,54 +23,92 @@ export function wallsio(el: HTMLElement): Scene {
       <h2 class="f-titre" data-titre data-effet="mots"></h2>
       <p class="bande-droite" data-hashtag data-effet="glisse" data-delai="350"></p>
     </header>
-    <div class="contenu wallsio" data-effet="entre" data-delai="200"></div>
-    <p class="vide" hidden>Aucun mur configuré sur le hub.</p>`
+    <div class="contenu mur" data-effet-enfants="entre" data-cible=".carte" data-ordre="position" data-pas="110" data-delai="250">
+      <div class="mur-col mur-avant"></div>
+      <div class="mur-col"></div>
+      <div class="mur-col"></div>
+    </div>
+    <p class="vide" hidden>Aucun post sur le mur pour le moment.</p>`
   const titre = el.querySelector<HTMLElement>('[data-titre]')!
   const hashtag = el.querySelector<HTMLElement>('[data-hashtag]')!
-  const zone = el.querySelector<HTMLElement>('.wallsio')!
+  const mur = el.querySelector<HTMLElement>('.mur')!
+  const avant = el.querySelector<HTMLElement>('.mur-avant')!
   const vide = el.querySelector<HTMLElement>('.vide')!
-  let chargeA = 0
-  let pret = false
+  const cols = [...el.querySelectorAll<HTMLElement>('.mur-col')]
+  let posts: WallCard[] = []
+  let parPage = 5
+  let now = 0
+  /** The regular posts' line, by id: shown ones go to the back. */
+  let file: string[] = []
+  /** Which featured post leads the next page. */
+  let tour = 0
+  /** When the page on screen was laid out: held by the operator, it turns on its own. */
+  let poseA = 0
 
-  function charger(src: string): void {
-    pret = false
-    chargeA = Date.now()
-    zone.dataset.url = src
-    const cadre = document.createElement('iframe')
-    cadre.title = 'Mur social'
-    cadre.loading = 'eager'
-    cadre.addEventListener('load', () => { pret = true }, { once: true })
-    // A frame that never says "load" must not keep the scene away for the day.
-    setTimeout(() => { pret = true }, 15_000)
-    cadre.src = src
-    zone.replaceChildren(cadre)
+  function page(): void {
+    poseA = now
+    cols.forEach((c) => c.replaceChildren())
+    const enAvant = posts.filter((p) => p.featured)
+    const autres = posts.filter((p) => !p.featured)
+    const tete = enAvant.length ? enAvant[tour % enAvant.length]! : null
+    tour += 1
+    mur.classList.toggle('sans-avant', tete == null)
+    if (tete) avant.append(carte(tete, now))
+    const colonnes = tete ? cols.slice(1) : cols
+
+    // The line keeps its order across passes; new posts join at the front.
+    const ids = new Set(autres.map((p) => p.id))
+    const connus = new Set(file)
+    file = [...autres.filter((p) => !connus.has(p.id)).map((p) => p.id), ...file.filter((id) => ids.has(id))]
+    const parId = new Map(autres.map((p) => [p.id, p]))
+
+    const bas = (c: HTMLElement) => {
+      const d = c.lastElementChild as HTMLElement | null
+      return d ? d.offsetTop + d.offsetHeight : 0
+    }
+    const places: string[] = []
+    const max = Math.max(0, parPage - (tete ? 1 : 0))
+    let echecs = 0
+    for (const id of file) {
+      if (places.length >= max || echecs >= 4) break
+      const col = colonnes.reduce((a, c) => (bas(c) < bas(a) ? c : a))
+      const c = carte(parId.get(id)!, now)
+      col.append(c)
+      if (places.length && col.clientHeight > 0 && bas(col) > col.clientHeight) { c.remove(); echecs++; continue }
+      places.push(id)
+    }
+    file = file.filter((id) => !places.includes(id)).concat(places)
   }
 
   const scene: Scene = {
     el,
-    cle: (data: Data) => [data.boucle?.wallsio, data.wallsIoReachable],
-    // The iframe exists as soon as there is an address: the page loads it off
-    // screen and plays the scene once walls.io answers.
-    jouable: (data: Data) => Boolean(data.boucle?.wallsio.src) && data.wallsIoReachable && pret,
+    cle: (data: Data) => [data.socialWall, data.boucle?.wallsio],
+    jouable: (data: Data) => (data.socialWall?.length ?? 0) > 0,
     rendre(data: Data) {
       const c = data.boucle?.wallsio
       ecrire(titre, c?.titre ?? '')
       ecrire(hashtag, c?.hashtag ?? '')
-      zone.style.setProperty('--zoom-wallsio', String(Math.max(0.5, c?.zoom ?? 1)))
-      const src = c?.src ?? null
-      vide.hidden = src != null
-      if (src == null) {
-        zone.replaceChildren()
-        delete zone.dataset.url
-        return
-      }
-      const minutes = c?.rechargeMinutes ?? 0
-      const expire = minutes > 0 && chargeA > 0 && Date.now() - chargeA > minutes * 60_000
-      if (data.wallsIoReachable && (zone.dataset.url !== src || expire)) charger(src)
+      parPage = c?.parPage ?? 5
+      posts = data.socialWall ?? []
+      vide.hidden = posts.length > 0
+      now = maintenant(data)
+      page()
     },
+    quitte(data: Data) {
+      now = maintenant(data)
+      page()
+    },
+    /**
+     * Put up on its own by the operator, the wall never leaves the screen: it
+     * asks to be redrawn once its page has had its time — the engine redraws a
+     * held screen in place, a loop scene only once it is off screen.
+     */
     tick(data: Data) {
-      const minutes = data.boucle?.wallsio.rechargeMinutes ?? 0
-      if (minutes > 0 && chargeA > 0 && Date.now() - chargeA > minutes * 60_000) scene.sale = true
+      // In the loop, the next page is laid out as it leaves (`quitte`): turning
+      // here too would use up posts nobody saw.
+      if (data.state.mode !== 'wallsio') return
+      const duree = (data.boucle?.durees.wallsio ?? 25) * 1000
+      if (poseA > 0 && maintenant(data) - poseA >= duree) scene.sale = true
     },
   }
   return scene

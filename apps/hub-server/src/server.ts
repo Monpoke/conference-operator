@@ -36,6 +36,8 @@ import {
   xSource,
   type SocialSource,
 } from './services/social.js'
+import { WallsIoConfig, wallsioSource } from './services/wallsio.js'
+import { migrateLegacyMur } from './services/legacy-mur.js'
 import { renderWallPage } from './pages/wall-page.js'
 import { previewPayload, renderBouclePreview } from './pages/boucle-preview.js'
 import { readFont, resolveFontsFolder } from '@conference-operator/projector/server'
@@ -61,7 +63,7 @@ export interface Hub {
   app: FastifyInstance
   auth: Auth
   services: Services
-  social: SocialIngestor | null
+  social: SocialIngestor
   close: () => Promise<void>
   /**
    * Last-resort shutdown, **synchronous**.
@@ -98,17 +100,23 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   const changes = new RoomChanges()
   const touch = (roomId: string | null) => changes.touch(roomId)
 
+  const secretBox = createSecretBox(config.authSecret)
   const services: Services = {
     programs,
     assets,
     // Keyed off the hub's own secret: the stream keys are encrypted at rest
     // with material the deployment already has to hold and already has to
     // keep — one more secret to provision would be one more to lose.
-    rooms: new RoomService(orm, createSecretBox(config.authSecret)),
+    rooms: new RoomService(orm, secretBox),
     devices,
     commands: new CommandService(orm, () => clock.now()),
     ingest: new IngestService(orm, touch, () => changes.messageArrived()),
     wall: new WallService(orm),
+    // The token is sealed with the same box as the stream keys. `kick` is bound
+    // once the ingestor exists, below.
+    wallsIo: { config: new WallsIoConfig(orm, secretBox), kick: async () => undefined },
+    // Bound to Fastify's log once the server exists, below.
+    log: () => undefined,
     questions: new QuestionService(orm),
     // Five posts in a row then one every ten seconds: enough to post normally,
     // not enough to drown the moderation queue.
@@ -154,9 +162,13 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   await migrateAuth(authOptions)
   const auth = createAuth(authOptions)
 
-  // Social ingestion: only mounted if a hashtag is configured. With no hashtag,
-  // the wall still works — through the form and the QR code.
-  const sources: SocialSource[] = []
+  // Social ingestion. walls.io is always there and polls only once a token is
+  // set in the console; the networks followed by hashtag, only if one is
+  // configured. With neither, the wall still works — through the form and the
+  // QR code.
+  const sources: SocialSource[] = [
+    wallsioSource({ config: services.wallsIo.config, onLog: (level, message, context) => services.log(level, message, context) }),
+  ]
   if (config.socialHashtag != null) {
     sources.push(blueskySource({ hashtag: config.socialHashtag }))
     if (config.mastodonInstance != null) {
@@ -186,6 +198,11 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
         ? 'projet OpenFeedback : surcharges de salle effacées, le réglage du hub fait foi'
         : 'projet OpenFeedback repris depuis une salle vers les réglages du hub',
     )
+  }
+
+  const legacyMur = migrateLegacyMur(orm, settings, services.wall)
+  if (legacyMur != null) {
+    app.log.info(legacyMur, 'posts de la boucle repris sur le mur social')
   }
 
   /**
@@ -292,13 +309,62 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     app.log.error({ variable }, `${variable} ignoré : ${reason}`)
   }
 
-  const social =
-    sources.length === 0
-      ? null
-      : new SocialIngestor(sources, services.wall, {
-          intervalMs: config.socialPollIntervalMs,
-          onLog: (level, message, context) => app.log[level]({ context }, message),
-        })
+  services.log = (level, message, context) => app.log[level](context ?? {}, message)
+
+  const social = new SocialIngestor(sources, services.wall, {
+    intervalMs: config.socialPollIntervalMs,
+    onLog: services.log,
+    prefetch: (refs) => services.assets.prefetchUrls(refs),
+  })
+  services.wallsIo.kick = () => social.kick()
+
+  // What the social wall will do, said once at startup: a hub that stays silent
+  // about walls.io leaves one wondering whether it reads it at all.
+  {
+    const followed = sources.map((source) => source.id).filter((id) => id !== 'wallsio')
+    const wallsIo = services.wallsIo.config.status(services.wall.countOnScreen('wallsio'))
+    app.log.info(
+      {
+        intervalleS: Math.round(config.socialPollIntervalMs / 1000),
+        wallsio: wallsIo.hasToken ? `jeton …${wallsIo.tokenHint}` : 'aucun jeton',
+        reseaux: followed,
+        postsALecran: services.wall.screen().posts.length,
+      },
+      wallsIo.hasToken
+        ? 'mur social : lecture de walls.io active'
+        : 'mur social : walls.io inactif (aucun jeton, console → Réglages)',
+    )
+  }
+
+  /*
+   * The social wall moved: the rooms are told, and fetch it themselves.
+   *
+   * Grouped over two seconds — a poll that brings ten posts, a moderator hiding
+   * three in a row — so that one burst is one notice. The revision alone travels:
+   * a notice lost during an outage costs nothing, the room asks again on
+   * reconnection. An hour of life, like the other notices a room catching up
+   * would otherwise replay by the dozen.
+   */
+  let wallNotice: NodeJS.Timeout | null = null
+  const stopWallNotices = services.wall.onScreenChanged((snapshot) => {
+    app.log.info(
+      {
+        revision: snapshot.revision,
+        posts: snapshot.posts.length,
+        enAvant: snapshot.posts.filter((post) => post.featured).length,
+        walls_io: snapshot.posts.filter((post) => post.source === 'wallsio').length,
+      },
+      'mur social : nouvelle version',
+    )
+    if (wallNotice != null) return
+    wallNotice = setTimeout(() => {
+      wallNotice = null
+      const { revision } = services.wall.screen()
+      const notice = services.commands.publish(null, { type: 'wall.changed', revision }, 3600)
+      app.log.info({ revision, seq: notice.seq }, 'mur social : salles prévenues')
+    }, 2_000)
+    wallNotice.unref?.()
+  })
 
   // Neither Better Auth nor oRPC wants a body already consumed by Fastify.
   app.removeAllContentTypeParsers()
@@ -890,7 +956,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   }, 15_000)
   supervisionTimer.unref?.()
 
-  if (social != null) social.start()
+  social.start()
 
   /**
    * Housekeeping of stalled uploads.
@@ -915,7 +981,9 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     clearInterval(autoEndSweep)
     clearInterval(supervisionTimer)
     services.vod?.stopHousekeeping()
-    social?.stop()
+    social.stop()
+    stopWallNotices()
+    if (wallNotice != null) clearTimeout(wallNotice)
     /**
      * The order is imposed. `wss.close()` stops accepting new connections but
      * **leaves the existing ones alive**: without cutting them explicitly, an RPC

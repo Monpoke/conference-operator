@@ -126,25 +126,26 @@ describe('pages served by the client', () => {
     expect(extractScripts(html).length).toBeGreaterThan(0)
   })
 
-  it('the social wall is confined to its own screen', () => {
+  it('the social wall brings no external origin with it', () => {
     /*
-     * The one external dependency the page does not carry: walls.io, framed on
-     * the `wallsio` screen and nowhere else.
-     *
-     * It is accepted with its eyes open — a wall of posts collected five minutes
-     * ago is not a wall, and nothing local could stand in for it — but it must not
-     * spread: a room showing the sponsors, or cut off from the network, must load
-     * nothing at all. The payload travels in the served html, so a frame that had
-     * slipped out of its screen would be visible right here.
+     * walls.io used to be the one external dependency of the page, an iframe.
+     * Its posts now come from the hub, and their photos from the room's cache:
+     * the page served carries no frame and no remote address, even with a wall.
      */
     const html = renderProjectorPage({
-      initialPayload: { wallsIoUrl: 'https://my.walls.io/cloud-nord?token=b58a8dc' } as never,
+      initialPayload: {
+        socialWall: [
+          {
+            id: 'p1', source: 'wallsio', author: 'Anne', authorSubtitle: null, avatarUrl: '/assets/a',
+            text: 'Bonjour', imageUrl: '/assets/b', network: 'Instagram',
+            postedAt: '2026-10-30T10:00:00.000Z', featured: true, sponsor: null,
+          },
+        ],
+      } as never,
     })
 
     expect(markup(html)).not.toMatch(/<iframe/)
-    // The address is there, as data: it is the screen that will do something with
-    // it, when the room is asked for that screen.
-    expect(html).toContain('my.walls.io')
+    expect(html).not.toContain('walls.io/')
   })
 
   it('the address screen escapes the value it puts back before the eyes', () => {

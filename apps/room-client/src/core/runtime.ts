@@ -47,6 +47,8 @@ export interface RuntimeEffects {
   reloadSessionStates?: () => void
   /** A full resynchronization asked for by the console. */
   fullResync?: () => void
+  /** The social wall moved on the hub: fetch it. */
+  syncWall?: () => void
   /**
    * Shipping the rushes back, asked for by the console. A null `file` = everything
    * that is left.
@@ -491,6 +493,11 @@ export class RoomRuntime extends EventEmitter {
         break
       case 'program.invalidate':
         this.effects.resync?.(payload.contentHash)
+        break
+      case 'wall.changed':
+        // The revision alone: the room asks for the posts, and asks for nothing
+        // if it already holds this one.
+        this.effects.syncWall?.()
         break
       case 'room.resync':
         /**

@@ -78,17 +78,13 @@ export const displayModeSchema = z.enum([
   'message',
   'wall',
   /**
-   * The event's social wall, embedded from walls.io.
+   * The event's social wall: a mosaic of what is said about it — walls.io, the
+   * audience's messages, the partners' posts.
    *
-   * Distinct from `wall`, which is **our** wall — the messages the audience posts
-   * on the hub's public page, moderated in the control app. This one is what is
-   * being said elsewhere, on the networks, and it is walls.io that collects and
-   * moderates it. The two live side by side because neither replaces the other:
-   * one is the room talking to the room, the other the event seen from outside.
-   *
-   * Its address is a hub setting (`wallsIoUrl`): the embed carries an account and
-   * a token that change from one edition to the next, and a URL compiled into the
-   * binary would have to be reinstalled on every machine to be corrected.
+   * Distinct from `wall`, which shows the audience's messages alone, full screen,
+   * on the operator's call: the room talking to the room. This one is the event
+   * seen from outside, and it is a loop page too. The name stays from when it was
+   * walls.io's embed: the value is stored in rooms and consoles already deployed.
    */
   'wallsio',
   /**
@@ -121,7 +117,7 @@ export type DisplayMode = z.infer<typeof displayModeSchema>
  * organizer withdrawing "the other rooms' page" does not care about that
  * distinction. The same holds for the loop scenes that follow them — the welcome,
  * the "offered by" announcements, the thanks to the sponsors, the animated
- * slogans, the hand-fed posts, the code of conduct and the event's feedback QR.
+ * slogans, the code of conduct and the event's feedback QR.
  */
 export const roomScreenSchema = z.enum([
   'sponsors',
@@ -139,13 +135,26 @@ export const roomScreenSchema = z.enum([
   'announcements',
   'sponsors-thanks',
   'slogans',
-  'posts',
   'code-of-conduct',
   'event-feedback',
   'other-agendas',
   'agenda-reminder',
 ])
 export type RoomScreen = z.infer<typeof roomScreenSchema>
+
+/**
+ * A list of screens, read tolerantly: a screen this version no longer knows is
+ * dropped, not an error.
+ *
+ * The lists live in stored settings and room caches, and one unknown value would
+ * fail the whole parse — the hub's settings fall back to their defaults on
+ * failure, every one of them. A screen withdrawn from the code (the hand-fed
+ * `posts`, merged into the social wall) must not cost an event its settings.
+ */
+export const roomScreenListSchema = z.preprocess(
+  (value) => (Array.isArray(value) ? value.filter((v) => roomScreenSchema.safeParse(v).success) : value),
+  z.array(roomScreenSchema),
+)
 
 export const connectivitySchema = z.enum(['ONLINE', 'DEGRADED', 'OFFLINE'])
 export type Connectivity = z.infer<typeof connectivitySchema>

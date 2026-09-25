@@ -6,7 +6,7 @@ import {
   displayModeSchema,
   isoDateTimeSchema,
   roomIdSchema,
-  roomScreenSchema,
+  roomScreenListSchema,
   sceneRoleSchema,
   sessionIdSchema,
   audioInputSchema,
@@ -188,7 +188,7 @@ export const controlViewSchema = z.object({
    * not find it again by picking up a phone. It is a hub setting, so here it is
    * first-hand — no heartbeat delay.
    */
-  screensDisabled: z.array(roomScreenSchema).default([]),
+  screensDisabled: roomScreenListSchema.default([]),
 
   /**
    * The OBS-A roles actually mapped for this room.
@@ -267,5 +267,11 @@ export type ControlCommand = z.infer<typeof controlCommandSchema>
 export const controlCommandResultSchema = z.object({
   ok: z.boolean(),
   applied: z.enum(['now', 'queued']),
+  /**
+   * The command queued for the room, for a `queued` answer: the phone waits for
+   * the room's word on this `seq` (`lastCommand`). `null` for what the hub settles
+   * itself, and from an older hub.
+   */
+  seq: z.number().int().positive().nullable().default(null),
 })
 export type ControlCommandResult = z.infer<typeof controlCommandResultSchema>

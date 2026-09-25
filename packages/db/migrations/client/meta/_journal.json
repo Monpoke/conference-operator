@@ -50,6 +50,13 @@
       "when": 1790180322237,
       "tag": "0006_freezing_toxin",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1790331658606,
+      "tag": "0007_colorful_radioactive_man",
+      "breakpoints": true
     }
   ]
 }

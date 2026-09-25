@@ -51,7 +51,10 @@ export class Hud {
       if (data.roomName) infos.push(`Salle : ${data.roomName}`)
       infos.push(`Heure du hub : ${heureDans(maintenant(data), data.timezone)}`)
       if (data.state.serverTimeOffsetMs && Math.abs(data.state.serverTimeOffsetMs) > 60_000) infos.push('horloge du hub décalée')
-      if (data.boucle?.wallsio.src) infos.push(`Walls.io : ${data.wallsIoReachable ? 'joignable' : 'hors ligne, scène sautée'}`)
+      const mur = data.socialWall ?? []
+      infos.push(mur.length
+        ? `Mur social : ${mur.length} post${mur.length > 1 ? 's' : ''} (${mur.filter((p) => p.featured).length} en avant)`
+        : 'Mur social : vide, scène sautée')
       if (data.screensDisabled.length) infos.push(`Écrans retirés : ${data.screensDisabled.join(', ')}`)
     }
     this.infos.textContent = infos.join('. ')

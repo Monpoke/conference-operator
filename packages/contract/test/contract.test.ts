@@ -5,6 +5,8 @@ import {
   DEFAULT_VOD_POLICY,
   DEFAULT_BOUCLE,
   boucleImageRefs,
+  commentSchema,
+  wallImageRefs,
   imageRefSchema,
   PROTOCOL_VERSION,
   commandPayloadSchema,
@@ -159,6 +161,8 @@ describe('contract surface', () => {
       // addresses, the room uploads. No secret goes down to a room.
       'vod',
       'wall',
+      // The walls.io link: apart from `settings` because its token never comes back.
+      'wallsio',
     ])
     // The lifecycle is drivable from both sides: room control app and console.
     // `override` corrects the program itself — a lunch break the export calls a
@@ -206,6 +210,8 @@ describe('contract surface', () => {
       'statuses',
       'streams',
       'sync',
+      // The social wall, apart from `sync`: it moves all day, the program twice.
+      'wall',
     ])
     // Pairing goes through Better Auth; the contract only carries the business
     // part (which room) that Better Auth does not know.
@@ -298,10 +304,8 @@ describe('talk lifecycle', () => {
       // No account declared to start with: the rooms' loop skips its social page
       // rather than showing an empty frame.
       socialLinks: [],
-      // No social wall, and no screen withdrawn: an edition that has set nothing
-      // is offered everything the binary knows how to draw, minus the one screen
-      // that needs an address nobody gave.
-      wallsIoUrl: null,
+      // No screen withdrawn: an edition that has set nothing is offered
+      // everything the binary knows how to draw.
       screensDisabled: [],
       programSourceUrl: null,
       // Nothing about the event is set by default: the hub derives it from the
@@ -421,6 +425,47 @@ describe('message exchange', () => {
     expect(DEFAULT_BOUCLE.sponsorPages).toBeNull()
     expect(DEFAULT_BOUCLE.conduite.paragraphes).toHaveLength(3)
     expect(boucleImageRefs(DEFAULT_BOUCLE)).toEqual([])
+  })
+
+  it('reads settings stored by a version that still had the hand-fed posts', () => {
+    // The settings are one blob: a single value this version no longer knows
+    // would fail the parse, and the hub would fall back to every default.
+    const stored = hubSettingsSchema.parse({
+      eventName: 'Cloud Nord',
+      wallsIoUrl: 'https://walls.io/abc',
+      screensDisabled: ['posts', 'sponsors'],
+      boucle: {
+        durees: { posts: 20, agenda: 30 },
+        mur: { titre: 'Ils en parlent', posts: [{ auteur: 'A', texte: 'B' }] },
+        wallsio: { options: 'layout=kiosk', zoom: 1.2, titre: 'Le mur' },
+      },
+    })
+    expect(stored.eventName).toBe('Cloud Nord')
+    expect(stored.screensDisabled).toEqual(['sponsors'])
+    expect(stored.boucle.durees).toEqual({ agenda: 30 })
+    expect(stored.boucle.wallsio).toEqual({ titre: 'Le mur', hashtag: '#CloudNord2026', parPage: 5 })
+    expect('wallsIoUrl' in stored).toBe(false)
+  })
+
+  it('defaults the social fields of a message sent by an older hub', () => {
+    const comment = commentSchema.parse({
+      id: 'c-1',
+      source: 'form',
+      author: 'Anne',
+      authorHandle: null,
+      text: 'Bravo',
+      status: 'approved',
+      roomId: null,
+      sessionId: null,
+      createdAt: '2026-10-30T10:00:00.000Z',
+    })
+    expect(comment).toMatchObject({ featured: false, sponsor: null, image: null, avatar: null })
+    expect(
+      wallImageRefs([
+        { avatar: 'https://a/1.jpg', image: 'https://a/2.jpg', sponsor: { logo: 'https://a/1.jpg' } },
+        { avatar: null, image: null, sponsor: null },
+      ]),
+    ).toEqual(['https://a/1.jpg', 'https://a/2.jpg'])
   })
 
   it('accepts only downloadable or uploaded images', () => {

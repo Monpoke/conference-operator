@@ -31,7 +31,14 @@ import {
   controlViewSchema,
   controlWatchEventSchema,
 } from './control.js'
-import { commentSchema, commentSourceSchema, questionSchema } from './wall.js'
+import {
+  commentSchema,
+  commentSourceSchema,
+  hubPostInputSchema,
+  questionSchema,
+  wallSnapshotSchema,
+  wallsIoStatusSchema,
+} from './wall.js'
 import { imageRefSchema, sponsorPageSchema } from './boucle.js'
 import {
   storageCheckSchema,
@@ -297,6 +304,17 @@ export const contract = {
     sync: oc
       .input(z.object({ since: z.string().nullable() }))
       .output(syncResultSchema),
+    /**
+     * The social wall as the loop shows it: walls.io, the audience, the partners.
+     *
+     * Apart from `sync` because it moves all day long — a post every few minutes
+     * — where the program moves twice. `since` = the last `revision` held; `posts`
+     * is `null` when nothing changed. Image references only: the room fetches the
+     * bytes from the hub's store, like the loop's logos.
+     */
+    wall: oc
+      .input(z.object({ since: z.string().nullable() }))
+      .output(z.object({ revision: z.string(), posts: z.array(commentSchema).nullable() })),
     /**
      * A room configuring itself.
      *
@@ -687,9 +705,35 @@ export const contract = {
     pending: oc
       .input(z.object({ source: commentSourceSchema.optional() }))
       .output(z.array(commentSchema)),
+    /**
+     * `reject` also hides a post already on screen — walls.io's included: the
+     * decision is the hub's, and walls.io's own later answers never undo it.
+     */
     moderate: oc
       .input(z.object({ id: z.string(), decision: z.enum(['approve', 'reject']) }))
       .output(z.object({ ok: z.boolean() })),
+    /** What the rooms show right now, featured first. Admin. */
+    onScreen: oc.output(wallSnapshotSchema),
+    /** Puts a post forward, or back in line. A walls.io pin stays forward. Admin. */
+    feature: oc
+      .input(z.object({ id: z.string(), featured: z.boolean() }))
+      .output(z.object({ ok: z.boolean() })),
+    /** Writes a post from the console — a partner's, or one of the event. Admin. */
+    save: oc.input(hubPostInputSchema).output(commentSchema),
+  },
+
+  /**
+   * The walls.io link. Admin.
+   *
+   * Apart from `settings` because of the token: the settings travel whole to
+   * every console that reads them, and this one must never come back.
+   */
+  wallsio: {
+    status: oc.output(wallsIoStatusSchema),
+    /** `null` removes the token: the wall stops fetching, what it holds stays. */
+    setToken: oc
+      .input(z.object({ token: z.string().trim().min(8).max(200).nullable() }))
+      .output(wallsIoStatusSchema),
   },
 
   /**

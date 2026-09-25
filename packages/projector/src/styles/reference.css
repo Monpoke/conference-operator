@@ -496,6 +496,7 @@ body.curseur, body.hud-on { cursor: default; }
 .carte-pied {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 16px;
   margin-top: 16px;
   padding-top: 12px;
@@ -504,6 +505,36 @@ body.curseur, body.hud-on { cursor: default; }
   font-weight: 700;
   color: #6b6590;
 }
+
+/* La colonne de tête : un post mis en avant par page, plus grand. Sans post mis
+   en avant, elle redevient une colonne comme les autres. */
+.mur:not(.sans-avant) { grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(0, 1fr)); }
+.carte.en-avant { position: relative; }
+.mur-avant .carte.en-avant {
+  padding: 34px 36px 26px;
+  box-shadow: 0 14px 40px rgba(26, 12, 90, .35), inset 0 6px 0 var(--orange);
+}
+.mur-avant .carte.en-avant .avatar { width: 84px; height: 84px; font-size: 32px; }
+.mur-avant .carte.en-avant .carte-tete { grid-template-columns: 84px minmax(0, 1fr) auto; }
+.mur-avant .carte.en-avant .carte-nom { font-size: 32px; }
+.mur-avant .carte.en-avant .carte-texte { font-size: 32px; -webkit-line-clamp: 11; }
+.mur-avant .carte.en-avant.avec-image .carte-texte { -webkit-line-clamp: 6; }
+.mur-avant .carte.en-avant .carte-image { aspect-ratio: 4 / 3; }
+/* Un post partenaire le dit : il n'est pas celui du public. */
+.carte-sponsor { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.carte-sponsor img { height: 34px; max-width: 160px; object-fit: contain; }
+.badge-partenaire {
+  flex: none;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--violet);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.carte-reseau { flex: none; }
 
 /* ---------- Bandeau permanent du bas : prochain talk, hashtag, heure ---------- */
 #barre-bas {
@@ -550,33 +581,6 @@ body.curseur, body.hud-on { cursor: default; }
   box-shadow: 0 0 14px rgba(226, 27, 251, .7);
   transform-origin: left;
   transform: scaleX(0);
-}
-
-/* ---------- Walls.io ---------- */
-/* Le mur est affiché plus petit puis agrandi (zoom dans donnees.js) : Walls.io met
-   moins de colonnes et tout devient lisible de loin. */
-.wallsio { border-radius: 18px; overflow: hidden; }
-.wallsio iframe {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: calc(100% / var(--zoom-wallsio, 1));
-  height: calc(100% / var(--zoom-wallsio, 1));
-  border: 0;
-  background: transparent;
-  transform: scale(var(--zoom-wallsio, 1));
-  transform-origin: 0 0;
-}
-/* Intégration JavaScript : le widget Walls.io pose ses propres styles en ligne sur l'iframe,
-   il faut donc reprendre la main avec !important. */
-.wallsio.js iframe {
-  position: absolute !important;
-  left: 0 !important;
-  top: 0 !important;
-  width: calc(100% / var(--zoom-wallsio, 1)) !important;
-  height: calc(100% / var(--zoom-wallsio, 1)) !important;
-  max-width: none !important;
-  border: 0 !important;
 }
 
 /* ---------- Animations d'ambiance : en continu, pour que rien ne reste figé ----------

@@ -164,10 +164,34 @@ export const comment = sqliteTable(
     createdAt: text('created_at').notNull().default(now),
     moderatedAt: text('moderated_at'),
     moderatedBy: text('moderated_by'),
+    // What the social wall draws: the line under the name, images (references
+    // the hub downloads, never bytes), where it was posted.
+    authorSubtitle: text('author_subtitle'),
+    avatar: text('avatar'),
+    image: text('image'),
+    permalink: text('permalink'),
+    network: text('network'),
+    postedAt: text('posted_at'),
+    /** Put forward from the console: always on the page, in a larger card. */
+    featured: integer('featured', { mode: 'boolean' }).notNull().default(false),
+    /**
+     * What the source says, apart from `status`, which is the hub's decision.
+     *
+     * walls.io can unpin or deactivate a post at any time, and its answer must
+     * never undo a post hidden here: on screen = `status = 'approved'` **and**
+     * `source_active`.
+     */
+    sourcePinned: integer('source_pinned', { mode: 'boolean' }).notNull().default(false),
+    sourceActive: integer('source_active', { mode: 'boolean' }).notNull().default(true),
+    /** A partner's post: « Partenaire » on screen, with its logo. */
+    sponsorName: text('sponsor_name'),
+    sponsorLogo: text('sponsor_logo'),
+    updatedAt: text('updated_at'),
   },
   (table) => [
     uniqueIndex('comment_id_idx').on(table.id),
     index('comment_status_idx').on(table.status, table.seq),
+    index('comment_screen_idx').on(table.status, table.sourceActive, table.seq),
     /**
      * Deduplication of the social sources: a firehose can redeliver a post, and
      * polling always overlaps the previous window a little. SQLite treats NULLs

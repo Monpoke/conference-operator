@@ -7,6 +7,7 @@ import {
   PROTOCOL_VERSION,
   CONTROL_SESSION_HEADER,
   boucleImageRefs,
+  wallImageRefs,
   contract,
   isCommandExpired,
   permissionsOf,
@@ -565,19 +566,15 @@ export const router = os.router({
         // without touching the network once the room is synchronized.
         socialLinks: settings.socialLinks,
         /**
-         * The social wall's address and the screens withdrawn from this edition.
+         * The screens withdrawn from this edition.
          *
          * Sent down with the rest and cached by the room, for the same reason: the
          * waiting loop must run through in full without touching the network, and
          * a room that starts with the hub unreachable must offer the screens
          * decided yesterday rather than all of them.
-         *
-         * The walls.io embed does need the Internet to *display* — the wall lives
-         * over there — but knowing whether there is one must not.
          */
-        wallsIoUrl: settings.wallsIoUrl,
         screensDisabled: settings.screensDisabled,
-        // The loop's texts, pages and posts: same reason again. Its images are not
+        // The loop's texts and pages: same reason again. Its images are not
         // inlined — the room fetches them from `/assets/<sha256(ref)>` like the
         // program's, and keeps them.
         boucle: settings.boucle,
@@ -600,6 +597,26 @@ export const router = os.router({
             ? null
             : context.services.vod.sync(),
       }
+    }),
+
+    /**
+     * The social wall, from the service's memory. `null` when the room already
+     * holds this revision — the two-minute check of every room costs nothing.
+     */
+    wall: os.rooms.wall.use(roomOnly).handler(({ input, context }) => {
+      const screen = context.services.wall.screen()
+      const current = input.since === screen.revision
+      // Only when posts actually leave: the two-minute check that finds nothing
+      // new would otherwise fill the log with every room, all day.
+      if (!current) {
+        context.services.log('info', 'mur social envoyé à une salle', {
+          roomId: context.roomId,
+          revision: screen.revision,
+          avant: input.since,
+          posts: screen.posts.length,
+        })
+      }
+      return { revision: screen.revision, posts: current ? null : screen.posts }
     }),
 
     commands: os.rooms.commands
@@ -1188,8 +1205,14 @@ export const router = os.router({
         context.operator.email,
       )
       if (moderated == null) throw new ORPCError('NOT_FOUND', { message: 'Message introuvable' })
+      context.services.log('info', input.decision === 'approve' ? 'mur : message publié' : 'mur : message rejeté ou masqué', {
+        id: moderated.id,
+        source: moderated.source,
+        par: context.operator.email,
+      })
 
       // Tell the rooms: the screen must be able to react without waiting a tick.
+      // The social wall tells them itself (`wall.changed`), hidden posts included.
       if (input.decision === 'approve') {
         context.services.commands.publish(
           moderated.roomId,
@@ -1198,6 +1221,65 @@ export const router = os.router({
         )
       }
       return { ok: true }
+    }),
+
+    onScreen: os.wall.onScreen
+      .use(operatorCan('wall:moderate'))
+      .handler(({ context }) => context.services.wall.screen()),
+
+    feature: os.wall.feature.use(operatorCan('wall:moderate')).handler(({ input, context }) => {
+      const updated = context.services.wall.setFeatured(input.id, input.featured)
+      if (updated == null) throw new ORPCError('NOT_FOUND', { message: 'Message introuvable' })
+      context.services.log('info', input.featured ? 'mur social : post mis en avant' : 'mur social : post remis dans le fil', {
+        id: updated.id,
+        source: updated.source,
+        par: context.operator.email,
+      })
+      return { ok: true }
+    }),
+
+    /**
+     * A post written in the console. Its images are fetched **before** it is
+     * saved: the rooms are told about it right after, and a post whose photo the
+     * hub does not hold yet would reach the screens without it.
+     */
+    save: os.wall.save.use(operatorCan('wall:moderate')).handler(async ({ input, context }) => {
+      await context.services.assets.prefetchUrls(
+        wallImageRefs([{ avatar: input.avatar ?? null, image: input.image ?? null, sponsor: input.sponsor ?? null }]),
+      )
+      const saved = context.services.wall.saveHubPost(input, context.operator.email)
+      if (saved == null) throw new ORPCError('NOT_FOUND', { message: 'Post introuvable' })
+      context.services.log('info', input.id == null ? 'mur social : post écrit dans la console' : 'mur social : post modifié', {
+        id: saved.id,
+        partenaire: saved.sponsor?.name ?? null,
+        par: context.operator.email,
+      })
+      return saved
+    }),
+  },
+
+  /**
+   * The walls.io link. Its token goes in and never comes out: no procedure
+   * returns it, and it is not logged.
+   */
+  wallsio: {
+    status: os.wallsio.status
+      .use(operatorCan('settings:read'))
+      .handler(({ context }) =>
+        context.services.wallsIo.config.status(context.services.wall.countOnScreen('wallsio')),
+      ),
+
+    setToken: os.wallsio.setToken.use(operatorCan('settings:update')).handler(async ({ input, context }) => {
+      context.services.wallsIo.config.setToken(input.token)
+      // Its last characters and who, never the token itself.
+      context.services.log('info', input.token == null ? 'walls.io : jeton retiré' : 'walls.io : jeton enregistré', {
+        jeton: input.token == null ? null : `…${input.token.slice(-4)}`,
+        par: context.operator.email,
+      })
+      // Polled now rather than at the next tick: the console shows straight away
+      // whether the token works. Its failure is in the status, not an error here.
+      await context.services.wallsIo.kick().catch(() => undefined)
+      return context.services.wallsIo.config.status(context.services.wall.countOnScreen('wallsio'))
     }),
   },
 

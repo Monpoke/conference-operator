@@ -14,6 +14,7 @@ import { router } from './router.js'
 import type { HubContext, Services } from './context.js'
 import { AssetStore } from './services/assets.js'
 import { ProgramService } from './services/program.js'
+import { AuditService } from './services/audit.js'
 import { CommandService } from './services/commands.js'
 import { IngestService } from './services/ingest.js'
 import { DeviceService, RoomService } from './services/rooms.js'
@@ -101,7 +102,9 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   const touch = (roomId: string | null) => changes.touch(roomId)
 
   const secretBox = createSecretBox(config.authSecret)
+  const audit = new AuditService(orm, () => clock.now())
   const services: Services = {
+    audit,
     programs,
     assets,
     // Keyed off the hub's own secret: the stream keys are encrypted at rest
@@ -110,7 +113,12 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     rooms: new RoomService(orm, secretBox),
     devices,
     commands: new CommandService(orm, () => clock.now()),
-    ingest: new IngestService(orm, touch, () => changes.messageArrived()),
+    ingest: new IngestService(
+      orm,
+      touch,
+      () => changes.messageArrived(),
+      (roomId, outcome) => audit.outcome(roomId, outcome.seq, outcome.ok, outcome.message),
+    ),
     wall: new WallService(orm),
     // The token is sealed with the same box as the stream keys. `kick` is bound
     // once the ingestor exists, below.
@@ -370,8 +378,46 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   app.removeAllContentTypeParsers()
   app.addContentTypeParser('*', (_request, _payload, done) => done(null))
 
+  /*
+   * Accounts and roles, in the audit log.
+   *
+   * They go through Better Auth's own endpoints, not the router: its guard never
+   * sees them. The body is read first — Better Auth would consume the stream — and
+   * only for these writes, which are rare and small.
+   */
+  const auditAuth = async (
+    url: URL,
+    body: string,
+    status: number,
+    headers: Record<string, string | string[] | undefined>,
+  ) => {
+    try {
+      const session = await auth.api.getSession({ headers: headersOf(headers) }).catch(() => null)
+      let input: unknown = null
+      try { input = JSON.parse(body) } catch { /* not JSON: nothing to show */ }
+      services.audit.record({
+        actor: session?.user.email ?? 'inconnu',
+        action: `auth.${url.pathname.replace(/^\/api\/auth\//, '').replaceAll('/', '.')}`,
+        roomId: null,
+        input,
+        ok: status < 400,
+        error: status < 400 ? null : `refusé par l'authentification (HTTP ${status})`,
+      })
+    } catch (cause) {
+      app.log.warn({ message: (cause as Error).message }, "journal d'audit : entrée non écrite")
+    }
+  }
+
   app.all('/api/auth/*', async (request, reply) => {
-    const response = await auth.handler(toWebRequest(request, config.publicUrl))
+    const url = new URL(request.url, config.publicUrl)
+    const adminWrite = request.method === 'POST' && url.pathname.startsWith('/api/auth/admin/')
+    const body = adminWrite ? await readBody(request.raw) : null
+    const response = await auth.handler(
+      body == null
+        ? toWebRequest(request, config.publicUrl)
+        : new Request(url, { method: request.method, headers: headersOf(request.headers), body }),
+    )
+    if (body != null) await auditAuth(url, body, response.status, request.headers)
     reply.status(response.status)
     response.headers.forEach((value, key) => reply.header(key, value))
     return reply.send(response.body == null ? null : await response.text())
@@ -897,6 +943,22 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
    * development hub.
    */
   const watch = new SupervisionWatch()
+  /*
+   * The audit log's retention, on the hub's clock: once at start, then hourly.
+   * A purge that fails costs a few old lines kept, never the hub.
+   */
+  const purgeAudit = () => {
+    try {
+      const purged = services.audit.purge()
+      if (purged > 0) app.log.info({ purged }, "journal d'audit : entrées anciennes purgées")
+    } catch (cause) {
+      app.log.warn({ message: (cause as Error).message }, "journal d'audit : purge impossible")
+    }
+  }
+  purgeAudit()
+  const auditPurge = setInterval(purgeAudit, 3_600_000)
+  auditPurge.unref?.()
+
   const supervisionTimer = setInterval(() => {
     /*
      * Expired mobile control locks, **before** the early return.
@@ -980,6 +1042,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     closed = true
     clearInterval(autoEndSweep)
     clearInterval(supervisionTimer)
+    clearInterval(auditPurge)
     services.vod?.stopHousekeeping()
     social.stop()
     stopWallNotices()
@@ -1035,6 +1098,13 @@ function headersOf(raw: Record<string, string | string[] | undefined>): Headers 
 }
 
 /** Fastify → standard `Request`, the only format Better Auth's handler understands. */
+/** A request's body, whole: for the few the hub has to read before handing on. */
+async function readBody(stream: NodeJS.ReadableStream): Promise<string> {
+  const chunks: Buffer[] = []
+  for await (const chunk of stream) chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk)
+  return Buffer.concat(chunks).toString('utf8')
+}
+
 function toWebRequest(
   request: {
     method: string

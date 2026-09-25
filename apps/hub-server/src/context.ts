@@ -2,6 +2,7 @@ import { ORPCError } from '@orpc/server'
 import type { Auth } from './auth.js'
 import type { AssetStore } from './services/assets.js'
 import type { ProgramService } from './services/program.js'
+import type { AuditService } from './services/audit.js'
 import type { CommandService } from './services/commands.js'
 import type { IngestService } from './services/ingest.js'
 import type { DeviceService, RoomService } from './services/rooms.js'
@@ -28,6 +29,8 @@ import {
 export type HubLog = (level: 'debug' | 'info' | 'warn', message: string, context?: object) => void
 
 export interface Services {
+  /** Who did what through the hub: every operator write, and the room's word on it. */
+  audit: AuditService
   programs: ProgramService
   assets: AssetStore
   rooms: RoomService

@@ -425,6 +425,38 @@ export const regieLock = sqliteTable('regie_lock', {
 })
 
 /**
+ * The audit log: one row per operator write through the hub.
+ *
+ * Append-only, bar the room's outcome filled in afterwards. No foreign key to
+ * `room`: deleting a room must not erase what was done to it. Purged past
+ * `AUDIT_RETENTION_DAYS`, on the hub's clock.
+ */
+export const auditLog = sqliteTable(
+  'audit_log',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    at: text('at').notNull().default(now),
+    actor: text('actor').notNull(),
+    action: text('action').notNull(),
+    roomId: text('room_id'),
+    /** The request, secrets masked and long values cut. */
+    detail: text('detail'),
+    ok: integer('ok', { mode: 'boolean' }).notNull(),
+    error: text('error'),
+    /** The command queued for the room, when there was one. */
+    commandSeq: integer('command_seq'),
+    /** The room's word on it; all null until it reports. */
+    outcomeOk: integer('outcome_ok', { mode: 'boolean' }),
+    outcomeMessage: text('outcome_message'),
+    outcomeAt: text('outcome_at'),
+  },
+  (table) => [
+    index('audit_log_at_idx').on(table.at),
+    index('audit_log_command_idx').on(table.commandSeq),
+  ],
+)
+
+/**
  * Hub settings, as JSON key/value.
  *
  * Deliberately generic: these settings get changed on the day, often in a hurry,
@@ -614,4 +646,5 @@ export const hubSchema = {
   pushSubscription,
   vodUpload,
   asset,
+  auditLog,
 }

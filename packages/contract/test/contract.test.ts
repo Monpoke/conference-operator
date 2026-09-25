@@ -133,6 +133,7 @@ describe('contract surface', () => {
     expect(Object.keys(contract).sort()).toEqual([
       // What the signed-in operator's groups let them do, flattened for the pages.
       'access',
+      'audit',
       // The welcome loop's editor: the program's partners to lay out, and images
       // uploaded from the console. The content itself goes through `settings`.
       'boucle',

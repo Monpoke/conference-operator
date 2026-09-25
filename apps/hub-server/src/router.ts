@@ -48,6 +48,7 @@ import {
   requirePermission,
   type ActorContext,
   type HubContext,
+  type OperatorContext,
 } from './context.js'
 
 const os = implement(contract).$context<HubContext>()
@@ -74,10 +75,12 @@ const roomOnly = os.middleware(async ({ context, next }) =>
  * any signed-in account may ask: its own rights.
  */
 const operatorCan = (permission: Permission) =>
-  os.middleware(async ({ context, next }) => {
+  os.middleware(async ({ context, next, path }, input) => {
     const resolved = await resolveOperator(context)
-    requirePermission(resolved.operator, permission)
-    return next({ context: resolved })
+    return audited(resolved, permission, path, input, async () => {
+      requirePermission(resolved.operator, permission)
+      return next({ context: resolved })
+    })
   })
 
 /**
@@ -91,11 +94,89 @@ const operatorCan = (permission: Permission) =>
  * over its own room, and the handlers bound it to that room.
  */
 const roomOrOperatorCan = (permission: Permission) =>
-  os.middleware(async ({ context, next }) => {
+  os.middleware(async ({ context, next, path }, input) => {
     const actor = await resolveActor(context)
-    if (actor.operator != null) requirePermission(actor.operator, permission)
-    return next({ context: actor })
+    const operator = actor.operator
+    // A room machine acting on its own room is not an operator's decision.
+    if (operator == null) return next({ context: actor })
+    return audited({ ...actor, operator }, permission, path, input, async () => {
+      requirePermission(operator, permission)
+      return next({ context: actor })
+    })
   })
+
+/**
+ * The procedures an operator-only guard lets through that change something: the
+ * integrations. `operatorOnly` alone is for what any account may ask — its own
+ * rights, the list — and those are not written down.
+ */
+const operatorWrites = os.middleware(async ({ context, next, path }, input) => {
+  const resolved = await resolveOperator(context)
+  return audited(resolved, null, path, input, async () => next({ context: resolved }))
+})
+
+/**
+ * What a write permission guards that only reads: nothing to write down.
+ *
+ * Listing the pending messages takes `wall:moderate`, looking a pairing code up
+ * takes `device:manage` — they change nothing, and the log would drown in them.
+ */
+const NOT_AUDITED = new Set([
+  'devices.lookup',
+  'wall.pending',
+  'wall.onScreen',
+  'push.publicKey',
+  'program.controleOpenFeedback',
+])
+
+/** A permission that only lets one look. */
+const READS_ONLY = /:(read|view|list|get)$/
+
+/**
+ * Runs an operator's call, writing it down when it changes something.
+ *
+ * Written whatever happens: accepted, refused by a lock, a permission the
+ * operator lacks. The refused gestures are the ones one looks for afterwards.
+ * The command it queued for a room, if any (`seq`), is kept so the room's word
+ * on it completes the entry. The log never stands in the way: an entry that
+ * cannot be written is a line in the hub's log, and the gesture goes through.
+ */
+async function audited<T>(
+  context: OperatorContext,
+  permission: Permission | null,
+  path: readonly string[],
+  input: unknown,
+  run: () => Promise<T>,
+): Promise<T> {
+  const action = path.join('.')
+  if ((permission != null && READS_ONLY.test(permission)) || NOT_AUDITED.has(action)) return run()
+
+  const roomId =
+    input != null && typeof input === 'object' && typeof (input as { roomId?: unknown }).roomId === 'string'
+      ? (input as { roomId: string }).roomId
+      : null
+  const write = (entry: { ok: boolean; error?: string; commandSeq?: number | null }) => {
+    try {
+      context.services.audit.record({ actor: context.operator.email, action, roomId, input, ...entry })
+    } catch (cause) {
+      context.services.log('warn', "journal d'audit : entrée non écrite", {
+        action,
+        message: (cause as Error).message,
+      })
+    }
+  }
+
+  try {
+    const result = await run()
+    const output = (result as { output?: unknown }).output
+    const seq = output != null && typeof output === 'object' ? (output as { seq?: unknown }).seq : null
+    write({ ok: true, commandSeq: typeof seq === 'number' ? seq : null })
+    return result
+  } catch (cause) {
+    write({ ok: false, error: (cause as Error).message })
+    throw cause
+  }
+}
 
 /**
  * The hub's time, as it will be propagated to the rooms.
@@ -1314,26 +1395,32 @@ export const router = os.router({
   /**
    * Slack, Mattermost, webhook: operators only — an address posts in a channel.
    */
+  audit: {
+    list: os.audit.list
+      .use(operatorCan('audit:read'))
+      .handler(({ input, context }) => context.services.audit.list(input)),
+  },
+
   integrations: {
     list: os.integrations.list
       .use(operatorOnly)
       .handler(({ context }) => context.services.integrations.list()),
 
     create: os.integrations.create
-      .use(operatorOnly)
+      .use(operatorWrites)
       .handler(({ input, context }) => context.services.integrations.create(input)),
 
-    update: os.integrations.update.use(operatorOnly).handler(({ input, context }) => {
+    update: os.integrations.update.use(operatorWrites).handler(({ input, context }) => {
       const updated = context.services.integrations.update(input)
       if (updated == null) throw new ORPCError('NOT_FOUND', { message: 'Intégration introuvable' })
       return updated
     }),
 
     remove: os.integrations.remove
-      .use(operatorOnly)
+      .use(operatorWrites)
       .handler(({ input, context }) => ({ ok: context.services.integrations.remove(input.id) })),
 
-    test: os.integrations.test.use(operatorOnly).handler(async ({ input, context }) => {
+    test: os.integrations.test.use(operatorWrites).handler(async ({ input, context }) => {
       const outcome = await context.services.integrations.test(input.id)
       if (outcome == null) throw new ORPCError('NOT_FOUND', { message: 'Intégration introuvable' })
       return outcome

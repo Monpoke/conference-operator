@@ -36,6 +36,7 @@ const LABELS: Record<string, string> = {
   vod: 'VOD',
   boucle: 'Boucle',
   reglages: 'Réglages',
+  journal: 'Journal',
   developpement: 'Développement',
 }
 

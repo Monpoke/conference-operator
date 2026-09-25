@@ -55,6 +55,7 @@ import {
   integrationUpdateSchema,
   integrationViewSchema,
 } from './integrations.js'
+import { auditEntrySchema, auditQuerySchema } from './audit.js'
 
 /**
  * The system's single contract, mounted on three transports:
@@ -860,6 +861,14 @@ export const contract = {
       )
       .output(z.object({ ok: z.boolean() })),
     unsubscribe: oc.input(z.object({ endpoint: z.url() })).output(z.object({ ok: z.boolean() })),
+  },
+
+  /**
+   * The audit log: what operators did through the hub. Newest first, a page at a
+   * time. Reserved to `audit:read` — who did what is not everyone's to read.
+   */
+  audit: {
+    list: oc.input(auditQuerySchema).output(z.array(auditEntrySchema)),
   },
 
   /**

@@ -23,7 +23,7 @@ import type { Permission } from './access.js'
  * to its module, which the router must import lazily rather than statically.
  */
 export function consoleViews(dev: boolean): string[] {
-  const views = ['exploitation', 'conferences', 'moderation', 'messages', 'vod', 'appairage', 'boucle', 'reglages', 'acces']
+  const views = ['exploitation', 'conferences', 'moderation', 'messages', 'vod', 'appairage', 'boucle', 'reglages', 'acces', 'journal']
   return dev ? [...views, 'developpement'] : views
 }
 
@@ -44,6 +44,7 @@ export const VIEW_PERMISSIONS: Record<string, Permission> = {
   boucle: 'settings:read',
   reglages: 'settings:read',
   acces: 'user:list',
+  journal: 'audit:read',
   developpement: 'clock:set',
 }
 

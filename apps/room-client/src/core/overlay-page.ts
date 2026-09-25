@@ -89,15 +89,20 @@ export function renderOverlayPage(options: OverlayPageOptions = {}): string {
            background: linear-gradient(90deg, var(--c1), var(--c2)); -webkit-background-clip: text;
            background-clip: text; color: transparent; }
   #people { display: flex; flex-direction: column; gap: 12px; margin-top: 10px; }
-  .speaker-name { font-size: 36px; font-weight: 900; line-height: 1.1; }
-  .speaker-company { font-size: 22px; color: var(--muted); margin-top: 6px; line-height: 1.3; }
+  /*
+   * \`--fit\` shrinks the card's texts together when they overflow it: see
+   * \`fitCard()\`. A long title with two long names must not push the room out.
+   */
+  .speaker-name { font-size: calc(36px * var(--fit, 1)); font-weight: 900; line-height: 1.1; }
+  .speaker-company { font-size: calc(22px * var(--fit, 1)); color: var(--muted); margin-top: 6px; line-height: 1.3; }
   /* Two speakers or more: the names shrink rather than push the title out. */
-  #people[data-count="many"] .speaker-name { font-size: 28px; }
-  #people[data-count="many"] .speaker-company { font-size: 19px; margin-top: 2px; }
+  #people[data-count="many"] .speaker-name { font-size: calc(28px * var(--fit, 1)); }
+  #people[data-count="many"] .speaker-company { font-size: calc(19px * var(--fit, 1)); margin-top: 2px; }
   #sep { height: 3px; width: 80px; flex: none; border-radius: 2px; margin: 18px 0;
          background: linear-gradient(90deg, var(--c1), var(--c2)); }
-  #title { font-size: 28px; font-weight: 700; line-height: 1.25;
-           display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; flex: none; }
+  /* The clamp is a last resort only, past the smallest \`--fit\`. */
+  #title { font-size: calc(28px * var(--fit, 1)); font-weight: 700; line-height: 1.25;
+           display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; overflow: hidden; flex: none; }
   #category { flex: none; padding: 3px 9px; border-radius: 6px;
               font-size: 14px; letter-spacing: 2px; text-transform: uppercase; background: var(--category, var(--c2)); }
   #room-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -398,7 +403,28 @@ ${initialState}
       category.textContent = session.category.name
       category.style.setProperty('--category', session.category.color ?? '')
     }
+    fitCard()
   }
+
+  /**
+   * Shrinks the card's texts until everything fits, the room line included.
+   *
+   * The 2026 program has a 105-character title and two-speaker talks: at full
+   * size, the title was cut after four lines and the room left the card. Steps of
+   * 5 % down to 60 %, from full size again on every render so that a short
+   * title after a long one gets its size back.
+   */
+  function fitCard() {
+    const card = document.getElementById('card')
+    let fit = 1
+    card.style.setProperty('--fit', '1')
+    while (fit > 0.6 && card.scrollHeight > card.clientHeight + 1) {
+      fit = Math.round((fit - 0.05) * 100) / 100
+      card.style.setProperty('--fit', String(fit))
+    }
+  }
+  // Local fonts can land after the first render and change every width.
+  document.fonts?.ready?.then(() => fitCard())
 
   // The stream only sends what changes: we keep the current state and merge.
   // A complete message (on opening, and after every reconnection) replaces it.

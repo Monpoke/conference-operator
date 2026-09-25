@@ -561,10 +561,9 @@ export const FIELDS_BY_VIEW: Record<DisplayView, readonly (keyof DisplayPayload)
     // so that a new post does not resend the loop.
     'boucle', 'agenda', 'plannings', 'socialWall',
   ],
-  // The frame reads the room's name, the day in the event's timezone, the loop's
-  // hashtag and the social accounts: all only move at sync, so they cost the flow
-  // nothing.
-  overlay: ['state', 'roomName', 'event', 'timezone', 'eventIdentity', 'boucle', 'socialLinks'],
+  // The frame reads the room's name, the day in the event's timezone and the
+  // social accounts: all only move at sync, so they cost the flow nothing.
+  overlay: ['state', 'roomName', 'event', 'timezone', 'eventIdentity', 'socialLinks'],
   // The banner only reads `state.liveMessage`: pushing it the program and the
   // sponsors would cost thirty kilobytes per screen change.
   bandeau: ['state', 'eventIdentity'],

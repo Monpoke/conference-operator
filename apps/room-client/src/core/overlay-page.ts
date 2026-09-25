@@ -306,9 +306,13 @@ ${initialState}
     setText('date', dateLine(data, session))
 
     /**
-     * The footer: the hashtag, then the conference's accounts as the hub lists
-     * them. No event name: it already heads the frame. Four accounts at most, so
-     * the line never runs under the decor's corners.
+     * The footer: the hashtag, the conference's website, its LinkedIn. No event
+     * name: it already heads the frame.
+     *
+     * Both come from the hub's social accounts — the list the loop's screens show
+     * in full. The capture keeps two of them: the website is the entry named
+     * « Site » (or « Site web », « Website »…), shown as its bare address; LinkedIn
+     * is the one a talk's VOD is shared on.
      */
     const footer = document.getElementById('footer')
     const items = []
@@ -319,13 +323,22 @@ ${initialState}
       tag.textContent = hashtag
       items.push(tag)
     }
-    for (const link of (data.socialLinks ?? []).slice(0, 4)) {
+    const links = data.socialLinks ?? []
+    const site = links.find((link) => /^\\s*(site( web| internet)?|web ?site|web|internet)\\s*$/i.test(link.network))
+    const linkedIn = links.find((link) => /linkedin/i.test(link.network))
+    if (site) {
+      const item = document.createElement('div')
+      item.className = 'social site'
+      item.textContent = site.handle
+      items.push(item)
+    }
+    if (linkedIn) {
       const item = document.createElement('div')
       item.className = 'social'
       const network = document.createElement('span')
       network.className = 'network'
-      network.textContent = link.network
-      item.append(network, link.handle)
+      network.textContent = linkedIn.network
+      item.append(network, linkedIn.handle)
       items.push(item)
     }
     footer.replaceChildren(...items.flatMap((item, index) => {

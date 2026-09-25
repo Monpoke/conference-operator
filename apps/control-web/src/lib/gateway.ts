@@ -689,6 +689,8 @@ export function payloadFromView(view: ControlView, nowMs: number): DisplayPayloa
        * in OBS, on that machine, in front of it.
        */
       portFallback: null,
+      // The room's own bookkeeping: the dialog that reads it is not offered here.
+      commands: { lastApplied: 0, applied: 0, hubLast: null },
       questions: [],
       questionsRefreshedAt: null,
       questionsSession: null,

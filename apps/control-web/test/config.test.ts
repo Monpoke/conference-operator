@@ -740,6 +740,38 @@ describe('unpairing a machine', () => {
     wrapper.unmount()
   })
 
+  it('opens the command diagnostic, and confirms before taking the stream again', async () => {
+    const view = room()
+    view.diagnostics!.commands = { lastApplied: 412, applied: 37, hubLast: 12 }
+    useRoomStore().seed(view)
+    useConfigStore().show()
+    const sent: unknown[] = []
+    vi.spyOn(useActionsStore(), 'act').mockImplementation(async (action) => {
+      sent.push(action)
+      return { ok: true }
+    })
+
+    const wrapper = mount(ConfigDialog, { props: { payload: view }, attachTo: document.body })
+    const open = await until(() => document.querySelector('#btn-commands-diagnostic'))
+    open.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+    // The room waits past what the hub issued: said as such, not left to the numbers.
+    const verdict = await until(() => document.querySelector('[data-role="commands-verdict"]'))
+    expect(verdict.textContent).toContain('Désaligné')
+    expect(document.querySelector('[data-role="commands-last-applied"]')?.textContent).toContain('#412')
+
+    const ask = await until(() => document.querySelector('[data-action="commands.forget"]'))
+    ask.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(sent).toEqual([])
+
+    const confirm = await until(() => button('Reprendre'))
+    confirm.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flushPromises()
+
+    expect(sent).toEqual([{ action: 'commands.forget' }])
+    wrapper.unmount()
+  })
+
   it('does not offer it to a control app served remotely', async () => {
     // The boot scope only: `start` would also open a session against a hub that
     // does not exist here, and its refusal would land in whichever test runs next.
@@ -753,6 +785,7 @@ describe('unpairing a machine', () => {
     await until(() => document.querySelector('#cfg-port'))
 
     expect(document.querySelector('#btn-unpair')).toBeNull()
+    expect(document.querySelector('#btn-commands-diagnostic')).toBeNull()
     wrapper.unmount()
   })
 })

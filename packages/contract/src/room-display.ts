@@ -314,6 +314,15 @@ export interface ControlDiagnostics {
    * exactly like a room that is fine.
    */
   portFallback: { wanted: number; actual: number } | null
+  /**
+   * Where the hub's command stream stands, for the diagnostic dialog.
+   *
+   * `lastApplied` is the last `seq` this room applied, `hubLast` the last the hub
+   * said it issued, at the last sync — `null` before one, or from an older hub.
+   * The first above the second is a hub whose numbering started over: it sends
+   * the room nothing, and every gesture from a phone answers "Fait" for nothing.
+   */
+  commands: { lastApplied: number; applied: number; hubLast: number | null }
   /** Relayed room, `null` if relaying is not configured for this room. */
   relaySourceRoomId: string | null
   /**

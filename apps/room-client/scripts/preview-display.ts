@@ -155,6 +155,7 @@ const base: DisplayPayload = {
     // The room is on its own port: the badge has nothing to say, which is the
     // case to review first.
     portFallback: null,
+    commands: { lastApplied: 0, applied: 0, hubLast: null },
     obs: {
       A: {
         instance: 'A', connected: true, currentSceneName: 'Habillage web',

@@ -136,6 +136,14 @@ export const controlActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('questions.refresh') }),
   /** Empties the machine's log, shown in the Diagnostic panel. */
   z.object({ action: z.literal('log.clear') }),
+  /**
+   * Forgets the hub commands applied, and takes the stream again from the start.
+   *
+   * The diagnostic dialog's remedy for a room that no longer receives anything —
+   * a hub reinstalled, whose numbering is behind the room's. Offered on the
+   * machine's own screen only, like the unpairing.
+   */
+  z.object({ action: z.literal('commands.forget') }),
   /** Dismisses a notice that has been read. */
   z.object({ action: z.literal('notification.dismiss'), id: z.string().min(1) }),
   /**
@@ -209,6 +217,7 @@ export interface ControlTarget {
   unpair(): Promise<void>
   dismissNotification(id: string): void
   clearLog(): void
+  forgetCommands(): Promise<void>
   sendMessage(text: string, level: 'info' | 'warning' | 'urgent'): void
   setAiredQuestion(text: string | null, author: string | null): void
   refreshQuestions(): Promise<void>
@@ -361,6 +370,9 @@ export async function runControlAction(
       case 'log.clear':
         target.clearLog()
         return { ok: true, message: 'Journal effacé' }
+      case 'commands.forget':
+        await target.forgetCommands()
+        return { ok: true, message: 'Commandes du hub reprises depuis le début' }
       case 'notification.dismiss':
         target.dismissNotification(action.id)
         return { ok: true }

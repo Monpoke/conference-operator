@@ -223,6 +223,35 @@ describe('room and hub, full chain', () => {
     second.abort()
   }, 20_000)
 
+  it('keeps the link when OBS refuses a scene asked from a phone', async () => {
+    /*
+     * OBS down, "LIVE" pressed on a phone. The failure used to go up into the
+     * stream's loop: the room went offline, was handed the same command on
+     * reconnecting, failed again — cut off from the hub until it expired.
+     */
+    const { runtime, controller } = await pluggedRoom({
+      setSceneRole: async () => {
+        throw new Error('Socket not identified')
+      },
+    })
+    const offline = vi.fn()
+    runtime.on('state', (state: { connectivity: string }) => {
+      if (state.connectivity === 'OFFLINE') offline()
+    })
+
+    hub.services.commands.publish(TRACK_1, { type: 'scene.force', role: 'LIVE' }, 30)
+    hub.services.commands.publish(TRACK_1, { type: 'display.set', mode: 'sponsors' }, 30)
+    await sleep(400)
+
+    expect(offline).not.toHaveBeenCalled()
+    expect(runtime.state().connectivity).toBe('ONLINE')
+    // The command behind it went through.
+    expect(runtime.state().mode).toBe('sponsors')
+    // And the operator hears about the one that failed.
+    expect(runtime.state().notifications.map((n) => n.text).join(' ')).toContain('Socket not identified')
+    controller.abort()
+  }, 20_000)
+
   it('starts over with a hub whose numbering started over', async () => {
     /*
      * The hub reinstalled, the room not: the room remembers `seq`s the new hub

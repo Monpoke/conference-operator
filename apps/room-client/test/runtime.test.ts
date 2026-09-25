@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { commandSchema, type Command, type CommandPayloadInput } from '@conference-operator/contract'
 import { normalizeProgram } from '@conference-operator/program'
 import { LocalStore } from '../src/core/store.js'
-import { RoomRuntime } from '../src/core/runtime.js'
+import { REMOTE_SCENE_TIMEOUT_MS, RoomRuntime } from '../src/core/runtime.js'
 
 const program = normalizeProgram(
   JSON.parse(
@@ -80,6 +80,31 @@ describe('applying the commands', () => {
     expect(outcome).toEqual({ applied: true })
     expect(setSceneRole).toHaveBeenCalledWith('LIVE')
     expect(runtime.state().sceneRole).toBe('LIVE')
+  })
+
+  it('gives up on an OBS that never answers, and lets the next command through', async () => {
+    // Frozen or half-open: the call is accepted and nothing comes back. Awaited
+    // for ever, it held every command queued behind it — the screen's included.
+    vi.useFakeTimers()
+    try {
+      const runtime = makeRuntime({ setSceneRole: () => new Promise<void>(() => {}) })
+
+      const live = command({ type: 'scene.force', role: 'LIVE' }, 30)
+      const pending = runtime.applyCommand(live)
+      await vi.advanceTimersByTimeAsync(REMOTE_SCENE_TIMEOUT_MS)
+      const outcome = await pending
+
+      expect(outcome).toMatchObject({ applied: false, reason: 'failed' })
+      // The scene is not claimed: OBS never said it switched.
+      expect(runtime.state().sceneRole).not.toBe('LIVE')
+      // Marked, so a reconnection does not hand it back.
+      expect(await runtime.applyCommand(live)).toEqual({
+        applied: false,
+        reason: 'already-applied',
+      })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   /**

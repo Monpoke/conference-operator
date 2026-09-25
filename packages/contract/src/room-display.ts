@@ -10,7 +10,7 @@ import type {
   SceneRole,
 } from './primitives.js'
 import type { SceneRoleMap, SessionStatus } from './room-state.js'
-import type { Comment } from './wall.js'
+import type { Comment, WallCard } from './wall.js'
 import type { VodConsentRecord } from './vod.js'
 import type { AudioInput } from './primitives.js'
 
@@ -409,15 +409,6 @@ export interface DisplayPayload {
   /** The event's accounts, set on the hub. Empty = the loop skips this page. */
   socialLinks: { network: string; handle: string; url: string }[]
   /**
-   * The walls.io wall's embed address, set on the hub. `null` = no such screen.
-   *
-   * Travels with the rest and is cached: the embed itself needs the Internet —
-   * nothing can be done about that, the wall lives at walls.io — but *knowing
-   * whether there is a wall* must not, or a room started before the hub answered
-   * would offer the screen to nobody.
-   */
-  wallsIoUrl: string | null
-  /**
    * The screens this edition has withdrawn, decided on the hub.
    *
    * Read in two places, and it is the same list in both: the control app removes
@@ -444,12 +435,13 @@ export interface DisplayPayload {
    */
   plannings: { roomId: string; nom: string; duree: number; agenda: AgendaEntry[] }[]
   /**
-   * Whether walls.io answers, checked by the room's server every minute.
+   * The social wall's posts, featured first, as the room last fetched them.
    *
-   * Apart from `boucle` so that the connection coming and going does not resend
-   * the whole loop. `false` = the walls.io scene is skipped.
+   * Apart from `boucle` because it moves all day — a post every few minutes —
+   * and resending the whole loop for each would be waste. Empty = the social
+   * wall scene is skipped.
    */
-  wallsIoReachable: boolean
+  socialWall: WallCard[]
   /**
    * Event name, decided by the hub and read back from the local cache.
    *
@@ -556,9 +548,9 @@ export const FIELDS_BY_VIEW: Record<DisplayView, readonly (keyof DisplayPayload)
     // page would retitle itself with a compiled-in constant.
     'eventIdentity',
     // The loop's own content and the room's day as its agenda shows it: the first
-    // moves at sync, the second at a slot change. Whether walls.io answers travels
-    // apart, so that the connection coming and going does not resend the loop.
-    'boucle', 'agenda', 'plannings', 'wallsIoReachable',
+    // moves at sync, the second at a slot change. The social wall travels apart,
+    // so that a new post does not resend the loop.
+    'boucle', 'agenda', 'plannings', 'socialWall',
   ],
   overlay: ['state', 'event', 'eventIdentity'],
   // The banner only reads `state.liveMessage`: pushing it the program and the

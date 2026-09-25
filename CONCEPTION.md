@@ -112,8 +112,8 @@ le matin sans que personne n'ait rien touché, et celui sur lequel on retombe
 quand un message s'efface. Depuis la version 2026, **c'est la boucle d'accueil
 dessinée pour Cloud Nord** (le prototype autonome `boucle-cloudnord`), reprise
 à l'identique — thème, écrans, durées, effets — et branchée sur ce que le hub
-sait déjà : le programme, les paliers de sponsors, les réseaux, walls.io, les
-écrans retirés.
+sait déjà : le programme, les paliers de sponsors, les réseaux, le mur social,
+les écrans retirés.
 
 ### Un plateau fixe, mis à l'échelle
 
@@ -144,16 +144,15 @@ pnpm --filter @conference-operator/projector build
 | 3 | Annonces « offert par » (×4 au plus) | 8 s | réglages *Boucle* | pas de logo |
 | 4 | Merci à nos sponsors | 6 s | réglages *Boucle* | aucune page de sponsors |
 | 5 | Pages de sponsors (×8 au plus) | 8 s | programme + mise en page | page vide |
-| 6 | Mur de posts (manuel) | 15 s | réglages *Boucle* | aucun post |
-| 7 | Message « Bienvenue » | 7 s | réglages *Boucle* | texte vide — le cas par défaut : l'accueil le dit déjà |
-| 8 | Pendant ce temps, à côté | 12 s | programme | rien ailleurs, ou plannings des autres salles affichés |
-| 9 | Agenda (rappel) | 20 s | programme | journée vide ; se retire seul (`agenda-reminder`) ou avec l'agenda |
-| 10 | Message « Partage » | 7 s | réglages *Boucle* | texte vide |
-| 11 | Nos réseaux | 10 s | réglages hub | aucun compte |
-| 12 | Walls.io | 25 s | réglages hub | pas d'adresse, ou walls.io muet |
-| 13 | Message « Téléphones » | 7 s | réglages *Boucle* | texte vide, ou écran global |
-| 14 | Code de conduite | 14 s | réglages *Boucle* | jamais |
-| 15 | Feedbacks de l'événement | 10 s | réglages *Boucle* | pas de QR |
+| 6 | Message « Bienvenue » | 7 s | réglages *Boucle* | texte vide — le cas par défaut : l'accueil le dit déjà |
+| 7 | Pendant ce temps, à côté | 12 s | programme | rien ailleurs, ou plannings des autres salles affichés |
+| 8 | Agenda (rappel) | 20 s | programme | journée vide ; se retire seul (`agenda-reminder`) ou avec l'agenda |
+| 9 | Message « Partage » | 7 s | réglages *Boucle* | texte vide |
+| 10 | Nos réseaux | 10 s | réglages hub | aucun compte |
+| 11 | Mur social | 25 s | mur du hub (walls.io, public, partenaires) | aucun post |
+| 12 | Message « Téléphones » | 7 s | réglages *Boucle* | texte vide, ou écran global |
+| 13 | Code de conduite | 14 s | réglages *Boucle* | jamais |
+| 14 | Feedbacks de l'événement | 10 s | réglages *Boucle* | pas de QR |
 
 L'ordre et les durées par défaut sont ceux du prototype (`BOUCLE`, dans
 `packages/projector/src/browser/sequence.ts`). **Les durées se règlent par
@@ -210,8 +209,8 @@ la clé du lien public). Même boucle que partout, sans agenda à soi ni « Vous
 êtes ici » : les plannings de toutes les salles à la place, « En ce moment dans
 les salles », et un bandeau « À suivre » qui annonce la prochaine session de
 n'importe quelle salle avec son nom. La page redemande son état au hub toutes
-les vingt secondes (`/boucle/apercu/etat`), sans se recharger : walls.io et la
-scène en cours ne sont pas interrompus. Pas de cache hors ligne : si le hub
+les vingt secondes (`/boucle/apercu/etat`), sans se recharger : la scène en
+cours n'est pas interrompue. Pas de cache hors ligne : si le hub
 tombe, l'écran reste sur ce qu'il savait.
 
 **L'écran attend ses polices** avant de lever l'écran de chargement (trois
@@ -231,9 +230,10 @@ sale n'est reconstruite que hors écran** — jamais pendant que la salle la lit
 Les écrans que la régie pose (question, message, compte à rebours…) font
 exception : on les a choisis pour maintenant, ils suivent leurs données sur place.
 
-C'est aussi ce qui garde l'iframe walls.io : elle n'est jamais dans un balisage
-réécrit, un état reçu chaque seconde ne la recharge pas. Elle n'est remplacée
-que si son adresse change, et rechargée toutes les `rechargeMinutes`, hors écran.
+C'est aussi ce qui tient le mur social : un post qui arrive pendant que la
+mosaïque est à l'écran attend le passage suivant, aucune carte ne bouge devant
+la salle. Posé seul par la régie, le mur tourne de page tout seul, à la durée de
+sa scène.
 
 ### L'agenda de la boucle ne suit pas la règle de la console
 
@@ -286,8 +286,8 @@ après chaque enregistrement, et « Ouvrir dans un onglet » le montre en plein
 `?jour=AAAA-MM-JJ`, le premier jour de l'événement par défaut, dans son fuseau) :
 pour l'aperçu seulement, sans toucher à l'horloge du hub que suivent les salles. Deux différences
 avec une salle, dites sous le cadre : les images viennent du magasin du hub (une
-adresse pas encore téléchargée s'affiche depuis sa source), et walls.io y est
-toujours montré. L'aperçu demande une session opérateur (`settings:read`) — sauf par le **lien
+adresse pas encore téléchargée s'affiche depuis sa source), et le mur social y
+est celui du hub, à l'instant. L'aperçu demande une session opérateur (`settings:read`) — sauf par le **lien
 public** : une clé créée depuis le panneau d'aperçu (`boucle.lienPublic`) ouvre
 `/boucle/apercu?cle=…` à qui l'a, pour toutes les salles (`&salle=` choisit).
 « Régénérer » coupe les liens déjà donnés, « Désactiver » les coupe tous. La boucle
@@ -310,20 +310,60 @@ La salle les sert elle-même (`/fonts/…`, liste blanche), le hub aussi pour so
 aperçu (`/boucle/polices/…`) ; seules celles présentes sont déclarées. Voir le
 `LISEZMOI.md` du dossier.
 
-### Le mur social, la seule page dessinée par quelqu'un d'autre
+### Le mur social : walls.io est une source du mur du hub
 
-**`wallsio` encadre le mur walls.io de l'événement.** Il ne remplace pas le mur
-`wall` : celui-là porte les messages que le public dépose sur la page du hub et
-que la régie modère, celui-ci ce qui se dit ailleurs, collecté et modéré par
-walls.io.
+**`wallsio` est une mosaïque de posts dessinée par la boucle**, dans son thème :
+ce qui se dit de l'événement sur walls.io, les messages du public publiés en
+modération, et les posts partenaires écrits dans la console. Elle ne remplace
+pas le mode `wall` : celui-là reste la salle qui parle à la salle, en plein
+écran, sur décision de la régie — il ne montre que les messages du public, pas
+walls.io ni les partenaires. Le nom `wallsio` reste celui de l'ancienne iframe :
+la valeur est stockée dans les salles et les consoles déjà déployées.
 
-**C'est la seule page de l'écran de salle qui dépend d'Internet.** L'adresse est
-un réglage du hub (« Écrans de salle »), les options d'affichage (mise en page,
-zoom, rechargement) un réglage de la boucle. **La salle vérifie elle-même, toutes
-les minutes, que walls.io répond** (`WallsIoProbe`) et le dit à la page
-(`wallsIoReachable`) : tant qu'il ne répond pas, la scène est sautée. Le
-garde-fou d'autonomie tient toujours : aucune origine externe dans la page
-servie, iframe comprise — elle n'existe que dessinée par le script, sur sa scène.
+**walls.io est une source du mur du hub, comme Bluesky**, lue par son API
+(`/v1/posts`, puis `/v1/posts/changed?since=…` toutes les trente secondes). À
+une différence près : **ses posts arrivent approuvés**. walls.io modère en amont
+— c'est ce pour quoi il est payé — et relire chaque post une seconde fois ici
+serait modérer deux fois. Le hub garde le dernier mot : **masquer un post dans
+Modération le retire des écrans, quoi que walls.io dise ensuite.** C'est pour ça
+que la ligne tient deux colonnes distinctes : `status`, la décision du hub, que
+walls.io n'écrit jamais, et `source_active`, ce que walls.io en dit (désactivé
+là-bas, il quitte les écrans ; réactivé, il revient — sauf masqué ici).
+
+**Un post par page est mis en avant**, en grand dans la première colonne : mis
+en avant depuis la console, épinglé sur walls.io (`is_pinned` — la console ne
+peut que le masquer, pas le « dé-épingler »), ou partenaire. Les posts
+partenaires sont écrits dans Modération, avec le nom et le logo du partenaire :
+la carte porte le badge « Partenaire », un message de sponsor ne doit pas passer
+pour celui du public. Ils sont aussi exclus de la page publique du mur.
+
+**Le jeton walls.io est chiffré sur le hub** (la boîte à secrets des clés de
+diffusion) et hors des réglages : ceux-là partent entiers vers chaque console,
+lui ne revient jamais — seulement ses quatre derniers caractères. Il se change
+depuis Réglages, sans redémarrage : il est relu à chaque lecture, et le hub
+relit walls.io aussitôt pour dire si le jeton marche.
+
+**Le chemin jusqu'à l'écran** : le hub lit walls.io, **télécharge les photos
+avant de prévenir les salles**, recalcule le mur (les mis en avant, puis les
+soixante derniers, avec une révision) et publie `wall.changed` — la révision
+seule, groupée sur deux secondes. La salle demande alors `rooms.wall`, qui ne
+renvoie rien si elle tient déjà cette révision, le met en cache avec ses images,
+et le pousse à la page. Filet de sécurité : la salle redemande toutes les deux
+minutes et à la reconnexion. Compter une trentaine de secondes entre walls.io et
+la salle, puis le prochain passage de la scène ; un masquage depuis la console,
+quelques secondes.
+
+**La page de salle n'a plus aucune origine externe**, walls.io compris : les
+photos viennent du cache de la salle, une image absente laisse la carte sans
+elle (les initiales pour l'avatar), jamais une adresse distante. Hub coupé, la
+salle garde le dernier mur qu'elle a reçu.
+
+**Les posts saisis à la main dans la boucle** (l'ancienne scène `posts`) ont
+rejoint le mur : au premier démarrage, le hub les reprend en posts de la console
+mis en avant, puis réécrit les réglages sans eux (`migrateLegacyMur`). Une
+édition qui avait retiré cette page ne les voit pas revenir. Les écrans retirés
+et les durées qui nommaient encore `posts` se relisent sans lui, plutôt que de
+faire échouer tous les réglages.
 
 Le bouton « Post #CloudNord » de X, seul script externe de l'ancienne page, est
 parti avec elle : un vidéoprojecteur n'a pas de souris.
@@ -354,8 +394,8 @@ lectures sont visibles ensemble.
 `loop` et `live` n'y figurent pas. La boucle est l'écran vers lequel on revient —
 la retirer laisserait une salle sans repli — et `live` n'est pas un choix mais
 l'état d'être à l'antenne. `rooms`, `socials` et les scènes propres à la boucle
-(`welcome`, `announcements`, `sponsors-thanks`, `slogans`, `posts`,
-`code-of-conduct`, `event-feedback`), à l'inverse, y sont sans être des modes
+(`welcome`, `announcements`, `sponsors-thanks`, `slogans`, `code-of-conduct`,
+`event-feedback`), à l'inverse, y sont sans être des modes
 d'affichage : elles n'existent que dans la boucle, et l'organisateur qui retire
 « le code de conduite » n'a que faire de cette distinction.
 

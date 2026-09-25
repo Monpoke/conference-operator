@@ -161,6 +161,17 @@ export const commandPayloadSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     /**
+     * The social wall moved: a post in, a post hidden, put forward.
+     *
+     * Carries the revision alone — the room fetches the posts itself
+     * (`rooms.wall`), so two notices in a row cost one download, and a notice lost
+     * during an outage costs nothing: the room asks again on reconnection.
+     */
+    type: z.literal('wall.changed'),
+    revision: z.string(),
+  }),
+  z.object({
+    /**
      * Upload the rushes, requested from the console.
      *
      * The console does not hold the files: it can only ask, and it is the room

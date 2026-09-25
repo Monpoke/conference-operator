@@ -31,7 +31,6 @@ const SETTINGS = {
   autoEndEnabled: true,
   autoEndGraceMinutes: 5,
   socialLinks: [],
-  wallsIoUrl: null,
   // Two screens withdrawn to start with: what the panel shows is a state that
   // already exists, not a blank form.
   screensDisabled: ['sponsors'],
@@ -58,6 +57,7 @@ function stub(options: {
   snapshots?: unknown[]
   images?: { held: number; failed: { url: string; reason: string; at: string }[] }
   streams?: { roomId: string; name: string; rtmpUrl: string; hasKey: boolean }[]
+  wallsIoToken?: boolean
 }): { calls: Call[]; client: unknown; settings: Record<string, unknown> } {
   const calls: Call[] = []
   // Mutated by the tests that simulate a change from elsewhere — another operator,
@@ -123,6 +123,21 @@ function stub(options: {
                   ? (before?.hasKey ?? false)
                   : patch.streamKey != null && patch.streamKey !== '',
             }
+          },
+        },
+        wallsio: {
+          status: note('wallsio/status', {
+            hasToken: options.wallsIoToken ?? false,
+            tokenHint: options.wallsIoToken ? 'abcd' : null,
+            lastPollAt: null,
+            lastError: null,
+            imported: 0,
+          }),
+          // Answers like the hub: whether there is a token, never the token.
+          setToken: async (input: unknown) => {
+            calls.push({ path: 'wallsio/setToken', input })
+            const { token } = input as { token: string | null }
+            return { hasToken: token != null, tokenHint: token?.slice(-4) ?? null, lastPollAt: null, lastError: null, imported: 3 }
           },
         },
         vod: {
@@ -277,29 +292,32 @@ describe('settings view', () => {
     // Labelled as the organisers name them, and withdrawn the same way.
     expect(wrapper.get('[data-screen="announcements"]').text()).toContain('Annonces “offert par”')
     expect(wrapper.get('[data-screen="event-feedback"]').text()).toContain("QR feedbacks de l'événement")
-    for (const screen of ['welcome', 'sponsors-thanks', 'slogans', 'posts', 'code-of-conduct']) {
+    for (const screen of ['welcome', 'sponsors-thanks', 'slogans', 'wallsio', 'code-of-conduct']) {
       expect(wrapper.find(`[data-screen="${screen}"]`).exists(), screen).toBe(true)
     }
+    // The hand-fed posts joined the social wall: no screen of their own left.
+    expect(wrapper.find('[data-screen="posts"]').exists()).toBe(false)
 
-    await wrapper.get('[data-screen="posts"] input').setValue(false)
+    await wrapper.get('[data-screen="wallsio"] input').setValue(false)
     await wrapper.get('#btn-screens').trigger('click')
     await flushPromises()
 
     const sent = calls.find((call) => call.path === 'settings/update')
-    expect((sent?.input as { screensDisabled: string[] }).screensDisabled).toEqual(['sponsors', 'posts'])
+    expect((sent?.input as { screensDisabled: string[] }).screensDisabled).toEqual(['sponsors', 'wallsio'])
   })
 
-  it('sends no wall rather than an empty address', async () => {
+  it('sends the walls.io token, then forgets it', async () => {
     const { calls, wrapper } = await mountView()
 
-    // An empty string would travel down to the rooms, fail the contract's URL
-    // check, and take the whole save with it.
-    await wrapper.get('#walls-io-url').setValue('   ')
-    await wrapper.get('#btn-screens').trigger('click')
+    await wrapper.get('#walls-io-token').setValue('  jeton-walls-io-1234  ')
+    await wrapper.get('#btn-walls-io-token').trigger('click')
     await flushPromises()
 
-    const sent = calls.find((call) => call.path === 'settings/update')
-    expect((sent?.input as { wallsIoUrl: string | null }).wallsIoUrl).toBeNull()
+    expect(calls).toContainEqual({ path: 'wallsio/setToken', input: { token: 'jeton-walls-io-1234' } })
+    // The field is emptied: the token is on the hub, not left on the page.
+    expect((wrapper.get('#walls-io-token').element as HTMLInputElement).value).toBe('')
+    expect(wrapper.get('#walls-io-token').attributes('placeholder')).toContain('…1234')
+    expect(wrapper.html()).not.toContain('jeton-walls-io-1234')
   })
 
   it('converts the rate shown in kB/s into bytes', async () => {

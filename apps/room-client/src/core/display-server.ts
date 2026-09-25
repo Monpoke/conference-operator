@@ -8,8 +8,10 @@ import {
   DEFAULT_EVENT_IDENTITY,
   type Boucle,
   type BoucleView,
+  type Comment,
   type DisplayPayload,
   type DisplayView,
+  type WallCard,
 } from '@conference-operator/contract'
 import {
   agendaForRoom,
@@ -24,7 +26,7 @@ import type { AssetCache } from './assets.js'
 import type { InputLevel } from './obs.js'
 import type { DisplayState, RoomRuntime } from './runtime.js'
 import { renderProjectorPage } from './display-page.js'
-import { boucleQrUrls, buildBoucleView } from './boucle-view.js'
+import { boucleQrUrls, buildBoucleView, buildWallCards } from './boucle-view.js'
 import { otherRoomsFor, planningsFor } from '@conference-operator/projector/server'
 import { availableFonts, readFont, resolveFontsFolder } from './fonts.js'
 import { renderOverlayPage } from './overlay-page.js'
@@ -110,11 +112,11 @@ export interface DisplayServerOptions {
   /**
    * What the hub leaves available, read back from the cache on every send.
    *
-   * Absent — a test, a preview — every screen is offered and there is no social
-   * wall: the permissive fallback is the one that does not silently remove a
-   * button from an operator's console.
+   * Absent — a test, a preview — every screen is offered: the permissive
+   * fallback is the one that does not silently remove a button from an
+   * operator's console.
    */
-  screens?: () => { wallsIoUrl: string | null; disabled: DisplayPayload['screensDisabled'] }
+  screens?: () => { disabled: DisplayPayload['screensDisabled'] }
   /** The event's identity, read back from the local cache on every send. */
   event?: () => DisplayPayload['eventIdentity']
   /**
@@ -124,8 +126,12 @@ export interface DisplayServerOptions {
    * scenes the program alone can fill.
    */
   boucle?: () => Boucle
-  /** Does walls.io answer right now? Absent = assumed reachable. */
-  wallsIoReachable?: () => boolean
+  /**
+   * The social wall's posts, read back from the local cache.
+   *
+   * Absent — a test, a preview — the wall is empty and its scene skipped.
+   */
+  socialWall?: () => { revision: string | null; posts: Comment[] }
   /** Where the loop's typefaces are. Absent = searched from this file. */
   fontsFolder?: string | null
   /** The machine's version, handed to the control app. */
@@ -220,10 +226,10 @@ export class DisplayServer {
     const feedback = this.feedbackFor(state.currentSession?.id ?? null)
     const pairing = this.options.pairing?.() ?? null
     const socialLinks = this.options.socialLinks?.() ?? []
-    const screens = this.options.screens?.() ?? { wallsIoUrl: null, disabled: [] }
+    const screens = this.options.screens?.() ?? { disabled: [] }
     const eventIdentity = this.options.event?.() ?? DEFAULT_EVENT_IDENTITY
-    const boucle = this.boucleFor(cached, screens.wallsIoUrl, eventIdentity.shortName)
-    const wallsIoReachable = this.options.wallsIoReachable?.() ?? true
+    const boucle = this.boucleFor(cached, eventIdentity.shortName)
+    const socialWall = this.socialWallFor()
     if (cached == null) {
       return {
         state,
@@ -238,12 +244,11 @@ export class DisplayServer {
         pairing,
         otherRooms: [],
         socialLinks,
-        wallsIoUrl: screens.wallsIoUrl,
         screensDisabled: screens.disabled,
         boucle,
         agenda: [],
         plannings: [],
-        wallsIoReachable,
+        socialWall,
         eventIdentity,
       }
     }
@@ -264,7 +269,6 @@ export class DisplayServer {
       pairing,
       otherRooms: this.otherRooms(program, state.roomId),
       socialLinks,
-      wallsIoUrl: screens.wallsIoUrl,
       screensDisabled: screens.disabled,
       boucle,
       agenda: state.roomId == null
@@ -273,7 +277,7 @@ export class DisplayServer {
             nowMs: this.options.runtime.correctedNow(),
           }),
       plannings: planningsFor(program, state.roomId, this.options.boucle?.() ?? null, this.options.runtime.correctedNow()),
-      wallsIoReachable,
+      socialWall,
       eventIdentity,
     }
   }
@@ -287,20 +291,18 @@ export class DisplayServer {
    */
   private boucleFor(
     cached: { contentHash: string; program: Program } | null,
-    wallsIoUrl: string | null,
     shortName: string,
   ): BoucleView | null {
     const settings = this.options.boucle?.()
     if (settings == null) return null
     const project = this.options.roomConfig?.()?.openFeedbackProjectId ?? null
-    const key = JSON.stringify([settings, cached?.contentHash ?? null, project, wallsIoUrl, shortName, this.qrGeneration])
+    const key = JSON.stringify([settings, cached?.contentHash ?? null, project, shortName, this.qrGeneration])
     if (key === this.boucleKey && this.boucleCache != null) return this.boucleCache
     this.boucleKey = key
     this.boucleCache = buildBoucleView({
       boucle: settings,
       program: cached?.program ?? null,
       openFeedbackProjectId: project,
-      wallsIoUrl,
       eventShortName: shortName,
       localize: (ref) => this.options.assets.localizeRef(ref),
       qr: (url) => this.qrFor(url),
@@ -310,6 +312,23 @@ export class DisplayServer {
 
   private boucleCache: BoucleView | null = null
   private boucleKey: string | null = null
+
+  /**
+   * The social wall's cards, rebuilt only when its revision moved — or when
+   * `refreshBoucle()` says images came in. Same reason as the loop: `payload()`
+   * runs every second during a talk, and localising reads the image cache.
+   */
+  private socialWallFor(): WallCard[] {
+    const wall = this.options.socialWall?.()
+    if (wall == null) return []
+    if (wall.revision === this.wallRevision && this.wallCards != null) return this.wallCards
+    this.wallRevision = wall.revision
+    this.wallCards = buildWallCards(wall.posts, (ref) => this.options.assets.localizeRef(ref))
+    return this.wallCards
+  }
+
+  private wallCards: WallCard[] | null = null
+  private wallRevision: string | null = null
   /** QR codes drawn for the loop, by address; `''` while being drawn. */
   private readonly loopQr = new Map<string, string>()
   private qrGeneration = 0
@@ -338,6 +357,7 @@ export class DisplayServer {
    */
   refreshBoucle(): void {
     this.boucleKey = null
+    this.wallCards = null
     const settings = this.options.boucle?.()
     if (settings != null) {
       for (const url of boucleQrUrls(settings, this.options.roomConfig?.()?.openFeedbackProjectId ?? null)) this.qrFor(url)

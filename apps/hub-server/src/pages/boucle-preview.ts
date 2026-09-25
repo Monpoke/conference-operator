@@ -7,6 +7,7 @@ import {
   availableFonts,
   boucleQrUrls,
   buildBoucleView,
+  buildWallCards,
   otherRoomsFor,
   planningsFor,
   renderProjectorDocument,
@@ -88,6 +89,8 @@ export async function previewPayload(services: Services, options: BouclePreviewO
     : (program.rooms.find((room) => room.id === options.roomId) ?? program.rooms[0])?.id ?? null
   const room = program?.rooms.find((candidate) => candidate.id === roomId) ?? null
 
+  const localize = (ref: string | null) =>
+    ref == null ? null : (services.assets.previewUrl(ref) ?? (/^https?:\/\//.test(ref) ? ref : null))
   const qrCodes = new Map<string, string>()
   for (const url of boucleQrUrls(settings.boucle, settings.openFeedbackProjectId)) {
     qrCodes.set(url, await qrSvg(url, QR_OPTIONS))
@@ -96,9 +99,8 @@ export async function previewPayload(services: Services, options: BouclePreviewO
     boucle: settings.boucle,
     program,
     openFeedbackProjectId: settings.openFeedbackProjectId,
-    wallsIoUrl: settings.wallsIoUrl,
     eventShortName: identity.shortName,
-    localize: (ref) => (ref == null ? null : (services.assets.previewUrl(ref) ?? (/^https?:\/\//.test(ref) ? ref : null))),
+    localize,
     qr: (url) => qrCodes.get(url) ?? null,
   })
 
@@ -145,7 +147,6 @@ export async function previewPayload(services: Services, options: BouclePreviewO
     pairing: null,
     otherRooms: program == null ? [] : otherRoomsFor(program, roomId, now),
     socialLinks: settings.socialLinks,
-    wallsIoUrl: settings.wallsIoUrl,
     screensDisabled: settings.screensDisabled,
     eventIdentity: identity,
     boucle,
@@ -153,7 +154,8 @@ export async function previewPayload(services: Services, options: BouclePreviewO
       ? []
       : agendaForRoom(program, roomId, { nowMs: now }),
     plannings: program == null ? [] : planningsFor(program, roomId, settings.boucle, now),
-    wallsIoReachable: true,
+    // The hub's own wall, as the rooms will show it.
+    socialWall: buildWallCards(services.wall.screen().posts, localize),
   } as unknown as DisplayPayload
 
   return payload

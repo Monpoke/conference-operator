@@ -3,7 +3,7 @@
  * hub that previews it: the loop's content resolved for the screen, the other
  * rooms, the typefaces, and the document itself.
  */
-export { boucleQrUrls, buildBoucleView, wallsIoSrc, type BoucleSources } from './boucle-view.js'
+export { boucleQrUrls, buildBoucleView, buildWallCards, type BoucleSources } from './boucle-view.js'
 export { otherRoomsFor } from './other-rooms.js'
 export { planningsFor } from './plannings.js'
 export {

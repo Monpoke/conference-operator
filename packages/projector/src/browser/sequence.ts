@@ -3,7 +3,6 @@ import type { Scene } from './scene.js'
 import { accueil } from './scenes/accueil.js'
 import { agenda, journeeAutre } from './scenes/agenda.js'
 import { annonce, merci, sponsors } from './scenes/sponsors.js'
-import { mur } from './scenes/mur.js'
 import { message } from './scenes/message.js'
 import { reseaux, salles } from './scenes/salles.js'
 import { wallsio } from './scenes/wallsio.js'
@@ -39,13 +38,12 @@ export const SCENES: DefinitionScene[] = [
   ...range(PAGES_SPONSORS).map((i) => ({
     id: `sponsors-${i + 1}`, nom: `Sponsors, page ${i + 1}`, fabrique: (el: HTMLElement) => sponsors(el, i), signature: true,
   })),
-  { id: 'posts', nom: 'Mur social', fabrique: mur },
   { id: 'message-bienvenue', nom: 'Message : bienvenue', fabrique: (el) => message(el, 'bienvenue'), signature: true },
   { id: 'salles', nom: 'Pendant ce temps', fabrique: salles },
   { id: 'agenda-rappel', nom: 'Agenda (rappel)', fabrique: (el) => agenda(el) },
   { id: 'message-partage', nom: 'Message : partage', fabrique: (el) => message(el, 'partage'), signature: true },
   { id: 'reseaux', nom: 'Nos réseaux', fabrique: reseaux },
-  { id: 'wallsio', nom: 'Walls.io', fabrique: wallsio },
+  { id: 'wallsio', nom: 'Mur social', fabrique: wallsio },
   { id: 'message-silence', nom: 'Message : téléphones', fabrique: (el) => message(el, 'silence'), signature: true },
   { id: 'conduite', nom: 'Code de conduite', fabrique: conduite, signature: true },
   { id: 'feedbacks', nom: 'Feedbacks', fabrique: feedbacks, signature: true },
@@ -95,7 +93,6 @@ export const DUREES: Record<DureeScene, number> = {
   annonces: 8,
   merci: 6,
   sponsors: 8,
-  posts: 15,
   'message-bienvenue': 7,
   salles: 12,
   'agenda-rappel': 20,
@@ -128,7 +125,6 @@ export const BOUCLE: Etape[] = [
   ...range(ANNONCES).map((i) => etape(`annonce-${i + 1}`, 'annonces', 'announcements')),
   etape('merci', 'merci', 'sponsors-thanks'),
   ...range(PAGES_SPONSORS).map((i) => ({ ...etape(`sponsors-${i + 1}`, 'sponsors', 'sponsors'), page: { de: 'sponsors' as const, index: i } })),
-  etape('posts', 'posts', 'posts', 'slide', 1000),
   etape('message-bienvenue', 'message-bienvenue', 'slogans'),
   etape('salles', 'salles', 'rooms'),
   // The room's day again, mid-loop, for whoever came in after the first pass.
@@ -136,7 +132,7 @@ export const BOUCLE: Etape[] = [
   { ...etape('agenda-rappel', 'agenda-rappel', 'agenda'), aussi: 'agenda-reminder' },
   etape('message-partage', 'message-partage', 'slogans'),
   etape('reseaux', 'reseaux', 'socials'),
-  etape('wallsio', 'wallsio', 'wallsio'),
+  etape('wallsio', 'wallsio', 'wallsio', 'slide', 1000),
   etape('message-silence', 'message-silence', 'slogans'),
   etape('conduite', 'conduite', 'code-of-conduct'),
   etape('feedbacks', 'feedbacks', 'event-feedback'),
@@ -151,9 +147,9 @@ export interface Programmation {
 /**
  * What each display mode plays.
  *
- * The loop's own screens are the loop's scenes — the agenda, the walls.io wall
- * — so that putting one up from the control room shows exactly what the loop
- * shows, and the wall's iframe is the same one, already loaded. What the
+ * The loop's own screens are the loop's scenes — the agenda, the social wall —
+ * so that putting one up from the control room shows exactly what the loop
+ * shows. What the
  * operator puts up is shown even if the hub withdrew it: the hub decides what is
  * offered, never what a room is doing.
  */

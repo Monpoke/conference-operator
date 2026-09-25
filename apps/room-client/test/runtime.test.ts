@@ -234,6 +234,35 @@ describe('applying the commands', () => {
     expect(resync).toHaveBeenCalledWith('hash-2')
   })
 
+  it('fetches the social wall when the hub says it moved', async () => {
+    const syncWall = vi.fn()
+    const runtime = makeRuntime({ syncWall })
+    await runtime.applyCommand(command({ type: 'wall.changed', revision: 'r-2' }))
+    expect(syncWall).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the social wall and the screens through a cache written by another version', () => {
+    store.saveSettings({
+      wall: {
+        revision: 'r-1',
+        posts: [
+          {
+            id: 'c-1', source: 'wallsio', author: 'Anne', authorHandle: null, text: 'Bonjour',
+            status: 'approved', roomId: null, sessionId: null, createdAt: '2026-10-30T10:00:00.000Z',
+            authorSubtitle: null, avatar: null, image: null, permalink: null, network: 'Instagram',
+            postedAt: null, featured: true, pinned: false, sponsor: null,
+          },
+        ],
+      },
+    })
+    expect(store.settings().wall.revision).toBe('r-1')
+    expect(store.settings().wall.posts[0]?.featured).toBe(true)
+
+    // `posts` was a screen before it joined the social wall: dropped, the rest kept.
+    store.saveSettings({ screens: { disabled: ['posts', 'sponsors'] as never } })
+    expect(store.settings().screens.disabled).toEqual(['sponsors'])
+  })
+
   it('does not loop on a command not supported yet', async () => {
     const runtime = makeRuntime()
     const later = command({ type: 'wall.approved', commentId: 'c-1' })

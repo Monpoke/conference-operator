@@ -9,7 +9,7 @@ import { httpPairingTransport, runPairing, type DeviceCodeResponse } from './pai
 import { createORPCClient } from '@orpc/client'
 import { RPCLink as FetchLink } from '@orpc/client/fetch'
 import type { ContractRouterClient } from '@orpc/contract'
-import { boucleImageRefs, contract, NO_EDITING_MARKS } from '@conference-operator/contract'
+import { boucleImageRefs, contract, NO_EDITING_MARKS, wallImageRefs } from '@conference-operator/contract'
 import { DEFAULT_TIMEZONE } from '@conference-operator/program'
 import { RoomRuntime } from './runtime.js'
 import { LocalStore } from './store.js'
@@ -18,7 +18,6 @@ import { CanvasObsController } from './obs-canvas.js'
 import type { AudioSource, ObsCapture, ObsControllerEvent, ObsTransport } from './obs.js'
 import type { ObsInstance } from '@conference-operator/contract'
 import { ConnectivityTracker, probeConnectivity } from './connectivity.js'
-import { WallsIoProbe } from './wallsio-probe.js'
 import { RecordingSession, slugify, type MarkerRole, type StopResult } from './recording.js'
 import type { ControlDiagnostics, ControlTarget, VisibleObsEndpoint, VodList } from './control-api.js'
 import {
@@ -269,8 +268,9 @@ export class RoomApp implements ControlTarget {
   /** Interrupts the pairing under way — the operator has chosen another room. */
   private pairingAbort: AbortController | null = null
   private readonly connectivity: ConnectivityTracker
-  /** Whether the walls.io scene can play: checked by the machine, not the page. */
-  private readonly wallsIo: WallsIoProbe
+  /** The social wall's safety net: asked again every two minutes. */
+  private wallTimer: NodeJS.Timeout | null = null
+  private wallInFlight: Promise<void> | null = null
 
   constructor(private readonly options: RoomAppOptions) {
     this.store = new LocalStore(join(options.dataDir, 'salle.db'))
@@ -289,6 +289,9 @@ export class RoomApp implements ControlTarget {
         },
         fullResync: () => {
           void this.fullResync()
+        },
+        syncWall: () => {
+          void this.syncWall()
         },
         uploadVod: (file) => {
           void this.uploads.request(file)
@@ -349,10 +352,6 @@ export class RoomApp implements ControlTarget {
       hubOrigin: options.hubOrigin,
       onChange: (value) => this.runtime.setConnectivity(value),
     })
-    this.wallsIo = new WallsIoProbe({
-      url: () => this.store.settings().screens.wallsIoUrl,
-      onChange: () => this.display.broadcast(),
-    })
     this.display = new DisplayServer({
       runtime: this.runtime,
       assets: this.assets,
@@ -369,7 +368,7 @@ export class RoomApp implements ControlTarget {
       screens: () => this.store.settings().screens,
       event: () => this.store.settings().event,
       boucle: () => this.store.settings().boucle,
-      wallsIoReachable: () => this.wallsIo.reachable,
+      socialWall: () => this.store.settings().wall,
       version: options.version ?? null,
       onLevelsRequested: (active) => {
         this.levelsRequested = active
@@ -635,7 +634,6 @@ export class RoomApp implements ControlTarget {
      * would never catch up on its rushes in the evening, when the hub comes back.
      */
     this.uploads.start()
-    this.wallsIo.start()
 
     return url
   }
@@ -843,6 +841,11 @@ export class RoomApp implements ControlTarget {
 
     void this.link.consumeCommands(this.abort.signal)
     void this.link.consumeWall(this.abort.signal)
+    // The social wall is told about by command (`wall.changed`); this is the
+    // net under it — a notice lost, a hub restarted — and it costs one small
+    // request when nothing moved.
+    this.wallTimer ??= setInterval(() => void this.syncWall(), 120_000)
+    this.wallTimer.unref?.()
     this.startOutbox()
     this.startRoomWatch()
 
@@ -902,8 +905,30 @@ export class RoomApp implements ControlTarget {
         this.store.log('warn', 'images de la boucle', { echecs: loopImages.failed.length })
       }
       this.display.refreshBoucle()
+      await this.syncWall()
     }
     return result.ok
+  }
+
+  /**
+   * The social wall: its posts if they moved, then their images, then the screen.
+   *
+   * The images are asked for every time, not only when posts came down: one the
+   * hub did not hold yet at the last pass is picked up at this one — the card
+   * showed without it meanwhile, never with a remote address.
+   */
+  private syncWall(): Promise<void> {
+    this.wallInFlight ??= (async () => {
+      if (this.link == null) return
+      const moved = await this.link.syncWall()
+      const images = await this.assets.prefetchUrls(wallImageRefs(this.store.settings().wall.posts))
+      if (moved || images.downloaded > 0) this.display.refreshBoucle()
+    })()
+      .catch((cause: Error) => this.options.onLog?.('warn', 'mur social non rafraîchi', { message: cause.message }))
+      .finally(() => {
+        this.wallInFlight = null
+      })
+    return this.wallInFlight
   }
 
   /**
@@ -2336,7 +2361,7 @@ export class RoomApp implements ControlTarget {
     if (this.roomsTimer != null) clearInterval(this.roomsTimer)
     if (this.heartbeat != null) clearInterval(this.heartbeat)
     if (this.tick != null) clearInterval(this.tick)
-    this.wallsIo.stop()
+    if (this.wallTimer != null) clearInterval(this.wallTimer)
     await this.link?.close()
     await this.obsA?.disconnect().catch(() => {})
     await this.obsB?.disconnect().catch(() => {})

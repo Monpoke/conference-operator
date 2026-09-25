@@ -6,6 +6,7 @@ import type { CommandService } from './services/commands.js'
 import type { IngestService } from './services/ingest.js'
 import type { DeviceService, RoomService } from './services/rooms.js'
 import type { QuestionService, WallService } from './services/wall.js'
+import type { WallsIoConfig } from './services/wallsio.js'
 import type { RateLimiter } from './services/rate-limit.js'
 import type { PushService } from './services/push.js'
 import type { IntegrationService } from './services/integrations.js'
@@ -24,6 +25,8 @@ import {
   type Permission,
 } from '@conference-operator/contract'
 
+export type HubLog = (level: 'debug' | 'info' | 'warn', message: string, context?: object) => void
+
 export interface Services {
   programs: ProgramService
   assets: AssetStore
@@ -32,6 +35,16 @@ export interface Services {
   commands: CommandService
   ingest: IngestService
   wall: WallService
+  /**
+   * The walls.io link: its sealed token and where the polling stands. `kick`
+   * polls now — a token just typed should show it works without waiting.
+   */
+  wallsIo: { config: WallsIoConfig; kick: () => Promise<unknown> }
+  /**
+   * The hub's log, for what the procedures do out of sight — the social wall
+   * served to a room, a post hidden. Fastify's, bound once the server exists.
+   */
+  log: HubLog
   questions: QuestionService
   limiter: RateLimiter
   sessions: SessionStateService

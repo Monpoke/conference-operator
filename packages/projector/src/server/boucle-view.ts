@@ -1,4 +1,12 @@
-import { DUREES_PAR_DEFAUT, type Boucle, type BoucleLogo, type BoucleView, type SponsorRef } from '@conference-operator/contract'
+import {
+  DUREES_PAR_DEFAUT,
+  type Boucle,
+  type BoucleLogo,
+  type BoucleView,
+  type Comment,
+  type SponsorRef,
+  type WallCard,
+} from '@conference-operator/contract'
 import {
   defaultSponsorPages,
   programSponsors,
@@ -13,8 +21,6 @@ export interface BoucleSources {
   program: Program | null
   /** The event's OpenFeedback project — the feedback QR's default address. */
   openFeedbackProjectId: string | null
-  /** The walls.io embed address set on the hub. */
-  wallsIoUrl: string | null
   /** The event's short name — the signature's default text. */
   eventShortName: string | null
   /** An image's local address, or `null` when it is not cached. */
@@ -44,7 +50,6 @@ export function buildBoucleView(sources: BoucleSources): BoucleView {
 
   const { url: _conduiteUrl, ...conduite } = boucle.conduite
   const { url: _feedbackUrl, ...feedbacks } = boucle.feedbacks
-  const { options, ...wallsio } = boucle.wallsio
 
   return {
     logoUrl: localize(boucle.logo ?? program?.event.logoUrl ?? null),
@@ -67,36 +72,41 @@ export function buildBoucleView(sources: BoucleSources): BoucleView {
       duree: page.duree ?? null,
       rangs: page.rangs.map((row) => ({ taille: row.taille, logos: row.logos.map(logo) })),
     })),
-    mur: {
-      titre: boucle.mur.titre,
-      hashtag: boucle.mur.hashtag,
-      posts: boucle.mur.posts.map(({ photo, image, ...post }) => ({
-        ...post,
-        photoUrl: localize(photo),
-        imageUrl: localize(image),
-      })),
-    },
-    wallsio: { ...wallsio, src: wallsIoSrc(sources.wallsIoUrl, options) },
+    wallsio: boucle.wallsio,
     conduite: { ...conduite, qrSvg: boucle.conduite.url == null ? null : sources.qr(boucle.conduite.url) },
     feedbacks: { ...feedbacks, qrSvg: feedbackUrl == null ? null : sources.qr(feedbackUrl) },
   }
 }
 
 /**
- * The embed address with the display options merged in.
+ * The social wall's posts as the room screen draws them.
  *
- * The options win over what the address already carries: they are the setting
- * made for the screens, the address is what walls.io handed over.
+ * Pure, like the loop's view: the images go through `localize`, and a photo the
+ * room does not hold yet is `null` — the card shows without it, never with a
+ * remote address.
  */
-export function wallsIoSrc(url: string | null, options: string): string | null {
-  if (url == null) return null
-  try {
-    const src = new URL(url)
-    for (const [key, value] of new URLSearchParams(options)) src.searchParams.set(key, value)
-    return src.toString()
-  } catch {
-    return null
-  }
+export function buildWallCards(posts: readonly Comment[], localize: (ref: string | null) => string | null): WallCard[] {
+  return posts.map((post) => ({
+    id: post.id,
+    source: post.source,
+    author: post.author,
+    authorSubtitle: post.authorSubtitle,
+    avatarUrl: localize(post.avatar),
+    text: post.text,
+    imageUrl: localize(post.image),
+    network: post.network ?? NETWORK_BY_SOURCE[post.source] ?? null,
+    postedAt: post.postedAt ?? post.createdAt,
+    featured: post.featured,
+    sponsor: post.sponsor == null ? null : { name: post.sponsor.name, logoUrl: localize(post.sponsor.logo) },
+  }))
+}
+
+/** What the card's foot says when the post does not name its network. */
+const NETWORK_BY_SOURCE: Partial<Record<Comment['source'], string>> = {
+  bluesky: 'Bluesky',
+  mastodon: 'Mastodon',
+  x: 'X',
+  form: 'Sur place',
 }
 
 /** Every address the loop draws as a QR code — drawn ahead, at sync. */

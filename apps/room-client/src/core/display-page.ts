@@ -18,8 +18,8 @@ import { STREAM_PATCH_JS } from './stream-patch.js'
  * shows — the loop and what the operator puts up — lives on that stage. The hub
  * renders the same document as a preview in its console.
  *
- * **One exception to "no network"**, and only one: the walls.io wall, an iframe,
- * shown only while the room's server says walls.io answers.
+ * No exception to "no network": even the social wall's posts and photos come
+ * from the room's own cache, fetched from the hub.
  */
 export interface ProjectorPageOptions {
   /**

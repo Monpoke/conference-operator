@@ -16,12 +16,14 @@ import {
 import { programSchema, type Program } from '@conference-operator/program'
 import {
   boucleSchema,
+  commentSchema,
   DEFAULT_BOUCLE,
   type Boucle,
+  type Comment,
   eventIdentitySchema,
   DEFAULT_EVENT_IDENTITY,
   roomConfigSchema,
-  roomScreenSchema,
+  roomScreenListSchema,
   socialLinkSchema,
   vodSyncSchema,
   type EventIdentity,
@@ -47,30 +49,26 @@ function readSocialLinks(raw: string | null): SocialLink[] {
   }
 }
 
-/** What the room may show: the social wall's address, and what was withdrawn. */
+/** What the room may show: what the hub withdrew. */
 export interface RoomScreens {
-  wallsIoUrl: string | null
   disabled: RoomScreen[]
 }
 
-const NO_SCREEN_RESTRICTION: RoomScreens = { wallsIoUrl: null, disabled: [] }
+const NO_SCREEN_RESTRICTION: RoomScreens = { disabled: [] }
 
 /**
  * The offered screens, read back from the local cache.
  *
  * Tolerant like the accounts, and the fallback is deliberately "nothing
  * withdrawn": a cache we can no longer read must leave the operator every screen
- * rather than take some away with nothing on the page to say why. The missing
- * wall address has the same tone — the screen simply is not offered.
+ * rather than take some away with nothing on the page to say why. A screen this
+ * version no longer knows is dropped, not a reason to forget the others.
  */
 function readScreens(raw: string | null): RoomScreens {
   if (raw == null) return NO_SCREEN_RESTRICTION
   try {
     const parsed = z
-      .object({
-        wallsIoUrl: z.string().nullable().default(null),
-        disabled: z.array(roomScreenSchema).default([]),
-      })
+      .object({ disabled: roomScreenListSchema.default([]) })
       .safeParse(JSON.parse(raw))
     return parsed.success ? parsed.data : NO_SCREEN_RESTRICTION
   } catch {
@@ -126,6 +124,33 @@ function readBoucle(raw: string | null): Boucle {
     return parsed.success ? parsed.data : DEFAULT_BOUCLE
   } catch {
     return DEFAULT_BOUCLE
+  }
+}
+
+/** The social wall as last fetched: its revision, and its posts. */
+export interface CachedWall {
+  /** `null` = never fetched: the next ask brings everything. */
+  revision: string | null
+  posts: Comment[]
+}
+
+const NO_WALL: CachedWall = { revision: null, posts: [] }
+
+/**
+ * The social wall, read back from the local cache.
+ *
+ * Tolerant like the rest: an unreadable cache is an empty wall — the scene is
+ * skipped until the next fetch — never a room that does not start.
+ */
+function readWall(raw: string | null): CachedWall {
+  if (raw == null) return NO_WALL
+  try {
+    const parsed = z
+      .object({ revision: z.string().nullable(), posts: z.array(commentSchema) })
+      .safeParse(JSON.parse(raw))
+    return parsed.success ? parsed.data : NO_WALL
+  } catch {
+    return NO_WALL
   }
 }
 
@@ -186,7 +211,7 @@ export interface RoomSettings {
   activeContentHash: string | null
   /** The event's accounts, pushed by the hub. Cached like the program. */
   socialLinks: SocialLink[]
-  /** The screens the hub leaves available, and the social wall's address. */
+  /** The screens the hub leaves available. */
   screens: RoomScreens
   /**
    * The event's name, pushed by the hub. Cached for the same reason.
@@ -200,6 +225,8 @@ export interface RoomSettings {
   vod: VodSync | null
   /** The welcome loop's content, pushed by the hub. */
   boucle: Boucle
+  /** The social wall's posts, fetched from the hub apart from the rest (`rooms.wall`). */
+  wall: CachedWall
   nextSeq: number
   lastCommandSeq: number
   clockOffsetMs: number
@@ -271,6 +298,7 @@ export class LocalStore {
       event: readIdentity(row?.eventIdentityJson ?? null),
       vod: readVod(row?.vodJson ?? null),
       boucle: readBoucle(row?.boucleJson ?? null),
+      wall: readWall(row?.wallJson ?? null),
       nextSeq: row?.nextSeq ?? 1,
       lastCommandSeq: row?.lastCommandSeq ?? 0,
       clockOffsetMs: row?.clockOffsetMs ?? 0,
@@ -288,6 +316,7 @@ export class LocalStore {
     if (patch.event !== undefined) update.eventIdentityJson = JSON.stringify(patch.event)
     if (patch.vod !== undefined) update.vodJson = patch.vod == null ? null : JSON.stringify(patch.vod)
     if (patch.boucle !== undefined) update.boucleJson = JSON.stringify(patch.boucle)
+    if (patch.wall !== undefined) update.wallJson = JSON.stringify(patch.wall)
     if (patch.lastCommandSeq !== undefined) update.lastCommandSeq = patch.lastCommandSeq
     if (patch.clockOffsetMs !== undefined) update.clockOffsetMs = patch.clockOffsetMs
 

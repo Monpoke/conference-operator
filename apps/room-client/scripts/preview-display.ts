@@ -9,11 +9,11 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { toString } from 'qrcode'
 import { agendaForRoom, normalizeProgram, sessionsForRoom } from '@conference-operator/program'
-import { DEFAULT_BOUCLE, resolveEventIdentity, type Boucle } from '@conference-operator/contract'
+import { commentSchema, DEFAULT_BOUCLE, resolveEventIdentity, type Boucle } from '@conference-operator/contract'
 import { BOUCLE } from '@conference-operator/projector'
 import { planningsFor } from '@conference-operator/projector/server'
 import { renderProjectorPage } from '../src/core/display-page.js'
-import { boucleQrUrls, buildBoucleView } from '../src/core/boucle-view.js'
+import { boucleQrUrls, buildBoucleView, buildWallCards } from '../src/core/boucle-view.js'
 import { availableFonts, resolveFontsFolder } from '../src/core/fonts.js'
 import { renderOverlayPage } from '../src/core/overlay-page.js'
 import { renderOverlayLivePage } from '../src/core/overlay-live-page.js'
@@ -41,43 +41,60 @@ const qr = async (url: string) =>
   toString(url, { type: 'svg', margin: 1, errorCorrectionLevel: 'H', color: { dark: '#0d0f16', light: '#ffffff' } })
 
 /**
- * The loop's content: the reference defaults, with the two things a fresh hub
- * lacks — a code-of-conduct address and a few posts — so that every scene shows.
+ * The loop's content: the reference defaults, with what a fresh hub lacks — a
+ * code-of-conduct address — so that every scene shows.
  */
 const settings: Boucle = {
   ...DEFAULT_BOUCLE,
   // The whole day, breaks included: it is what one comes to judge.
   agenda: { masquerTerminees: false },
   conduite: { ...DEFAULT_BOUCLE.conduite, url: 'https://www.cloudnord.fr/code-de-conduite' },
-  mur: {
-    ...DEFAULT_BOUCLE.mur,
-    posts: [
-      {
-        auteur: 'Camille Roussel', titre: 'Ingénieure SRE chez Pixelmine', photo: null, date: '35 min', image: null,
-        texte: "Premier talk de la journée et déjà trois pages de notes.\nMerci à toute l'équipe d'organisation ! #CloudNord2026 #SRE",
-        reactions: 86, commentaires: 7, reseau: 'LinkedIn',
-      },
-      {
-        auteur: 'Julien Marchetti', titre: 'CTO chez Hautbanc', photo: null, date: '1 h', image: null,
-        texte: 'Très fier d\'avoir présenté notre retour d\'expérience sur la migration de 400 services vers Kubernetes 🚀 #CloudNord2026',
-        reactions: 214, commentaires: 31, reseau: 'LinkedIn',
-      },
-      {
-        auteur: 'Sarah Benali', titre: 'Développeuse backend, Ardoise', photo: null, date: '1 h', image: null,
-        texte: 'Je découvre l\'événement cette année et je suis bluffée par la qualité des échanges. #CloudNord2026',
-        reactions: 47, commentaires: 3, reseau: 'LinkedIn',
-      },
-    ],
-  },
 }
-const WALLS_IO = 'https://my.walls.io/cloud-nord?token=b58a8dcde25eaeb9d96cddd110abcfc00c2226ec'
+
+/**
+ * The social wall: walls.io, the audience and a partner, one of each kind of
+ * card — a featured one, a partner's, a photo, text alone.
+ */
+const minutesAgo = (minutes: number) => new Date(AT - minutes * 60_000).toISOString()
+const wallPost = (post: Record<string, unknown>) =>
+  commentSchema.parse({ authorHandle: null, status: 'approved', roomId: null, sessionId: null, ...post })
+const socialPosts = [
+  wallPost({
+    id: 'p1', source: 'hub', author: 'APE Factory', authorSubtitle: 'Partenaire Gold',
+    text: 'Le petit déjeuner est servi au stand APE Factory : venez prendre un café et parler observabilité ! ☕',
+    featured: true, sponsor: { name: 'APE Factory', logo: null }, createdAt: minutesAgo(50),
+  }),
+  wallPost({
+    id: 'p2', source: 'wallsio', author: 'Camille Roussel', authorSubtitle: null, network: 'LinkedIn',
+    text: "Premier talk de la journée et déjà trois pages de notes.\nMerci à toute l'équipe d'organisation ! #CloudNord2026 #SRE",
+    featured: true, createdAt: minutesAgo(35),
+  }),
+  wallPost({
+    id: 'p3', source: 'wallsio', author: 'Julien Marchetti', network: 'Instagram',
+    text: "Très fier d'avoir présenté notre retour d'expérience sur la migration de 400 services vers Kubernetes 🚀 #CloudNord2026",
+    createdAt: minutesAgo(60),
+  }),
+  wallPost({
+    id: 'p4', source: 'form', author: 'Sarah',
+    text: "Je découvre l'événement cette année et je suis bluffée par la qualité des échanges.",
+    createdAt: minutesAgo(12),
+  }),
+  wallPost({
+    id: 'p5', source: 'bluesky', author: 'Sam', authorHandle: 'sam.bsky.social',
+    text: 'Salle comble pour le talk sur eBPF, prévoyez d’arriver tôt ! #CloudNord2026', createdAt: minutesAgo(8),
+  }),
+  wallPost({
+    id: 'p6', source: 'wallsio', author: 'Lina Morel', network: 'Instagram',
+    text: 'Les stickers de cette année sont incroyables 😍', createdAt: minutesAgo(4),
+  }),
+]
+
 const qrCodes = new Map<string, string>()
 for (const url of boucleQrUrls(settings, 'cloud-nord-2026')) qrCodes.set(url, await qr(url))
 const boucle = buildBoucleView({
   boucle: settings,
   program,
   openFeedbackProjectId: 'cloud-nord-2026',
-  wallsIoUrl: WALLS_IO,
   eventShortName: 'Cloud Nord',
   // The preview reads the images where they are: it is not a room, it has no cache.
   localize: (ref) => ref,
@@ -285,16 +302,12 @@ const base: DisplayPayload = {
     { network: 'LinkedIn', handle: 'Cloud Nord', url: 'https://www.linkedin.com/company/cloud-nord' },
     { network: 'Mastodon', handle: '@cloudnord@piaille.fr', url: 'https://piaille.fr/@cloudnord' },
   ],
-  // The preview's wall is the real one: it is the only page whose rendering is
-  // done by somebody else, and a placeholder address would show an error frame
-  // exactly where the thing to judge is.
-  wallsIoUrl: WALLS_IO,
   // Nothing withdrawn: the preview is there to show every screen.
   screensDisabled: [],
   boucle,
   agenda: agendaForRoom(program, TRACK_1, { nowMs: AT }),
   plannings: planningsFor(program, TRACK_1, settings, AT),
-  wallsIoReachable: true,
+  socialWall: buildWallCards(socialPosts, (ref) => ref),
 }
 
 const variants: { name: string; payload: DisplayPayload }[] = [
@@ -330,17 +343,16 @@ const variants: { name: string; payload: DisplayPayload }[] = [
         ...base.state,
         mode: 'wall' as const,
         comments: [
-          {
-            id: 'c1', text: 'Super talk, merci !', author: 'Camille', authorHandle: null,
-            source: 'form' as const, status: 'approved' as const, roomId: TRACK_1,
+          wallPost({
+            id: 'c1', text: 'Super talk, merci !', author: 'Camille',
+            source: 'form', roomId: TRACK_1,
             sessionId: current?.id ?? null, createdAt: new Date(AT - 120_000).toISOString(),
-          },
-          {
+          }),
+          wallPost({
             id: 'c2', text: 'Le lien des slides est-il dispo quelque part ?', author: 'Sam',
-            authorHandle: '@sam.bsky.social', source: 'bluesky' as const,
-            status: 'approved' as const, roomId: TRACK_1,
+            authorHandle: '@sam.bsky.social', source: 'bluesky', roomId: TRACK_1,
             sessionId: current?.id ?? null, createdAt: new Date(AT - 60_000).toISOString(),
-          },
+          }),
         ],
       },
     },

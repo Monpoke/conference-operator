@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { DEFAULT_BOUCLE, type Boucle } from '@conference-operator/contract'
+import { DEFAULT_BOUCLE, type Boucle, type WallCard } from '@conference-operator/contract'
 import { agendaForRoom, normalizeProgram, sessionsForRoom, type Session } from '@conference-operator/program'
 import { renderProjectorPage } from '../src/core/display-page.js'
 import { buildBoucleView } from '../src/core/boucle-view.js'
@@ -35,12 +35,11 @@ const next = SESSIONS.find((s) => s.startsAtMs > AT)!
 
 const QR = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>'
 
-function boucle(settings: Partial<Boucle> = {}, wallsIoUrl: string | null = null) {
+function boucle(settings: Partial<Boucle> = {}) {
   return buildBoucleView({
     boucle: { ...DEFAULT_BOUCLE, ...settings },
     program,
     openFeedbackProjectId: 'cloud-nord-2026',
-    wallsIoUrl,
     eventShortName: 'Cloud Nord',
     localize: (ref) => ref,
     qr: () => QR,
@@ -85,12 +84,11 @@ function payload(overrides: Partial<DisplayPayload> = {}, state: Partial<Display
     pairing: null,
     otherRooms: [],
     socialLinks: [],
-    wallsIoUrl: null,
     screensDisabled: [],
     boucle: boucle(),
     agenda: agendaForRoom(program, TRACK_1, { nowMs: AT }),
     plannings: [],
-    wallsIoReachable: true,
+    socialWall: [],
     ...overrides,
   } as unknown as DisplayPayload
 }
@@ -343,11 +341,11 @@ describe('the welcome loop', () => {
     expect(live().dataset.scene).toBe('merci')
   })
 
-  it('skips the posts wall while nobody has written any', () => {
+  it('skips the social wall while nobody has written anything', () => {
     mount()
     const ids = (window as unknown as { boucle: { etat: () => { scenes: { scene: string; jouable: boolean }[] } } })
       .boucle.etat().scenes
-    expect(ids.find((s) => s.scene === 'posts')?.jouable).toBe(false)
+    expect(ids.find((s) => s.scene === 'wallsio')?.jouable).toBe(false)
     expect(ids.find((s) => s.scene === 'sponsors-1')?.jouable).toBe(true)
   })
 
@@ -614,33 +612,66 @@ describe('on air', () => {
   })
 })
 
-describe('the walls.io wall', () => {
-  const URL_WALL = 'https://my.walls.io/cloud-nord?token=abc'
+describe('the social wall', () => {
+  const card = (id: string, extra: Partial<WallCard> = {}): WallCard => ({
+    id,
+    source: 'wallsio',
+    author: `Auteur ${id}`,
+    authorSubtitle: null,
+    avatarUrl: null,
+    text: `Post ${id} #CloudNord2026`,
+    imageUrl: null,
+    network: 'Instagram',
+    postedAt: new Date(AT - 10 * 60_000).toISOString(),
+    featured: false,
+    sponsor: null,
+    ...extra,
+  })
+  const wall = [
+    card('a', { featured: true }),
+    card('p', { featured: true, source: 'hub', sponsor: { name: 'APE Factory', logoUrl: '/assets/logo' } }),
+    card('b', { imageUrl: '/assets/photo-b' }),
+    card('c', { source: 'form', network: 'Sur place' }),
+  ]
+  const noms = (el: Element) => [...el.querySelectorAll('.carte-nom')].map((n) => text(n))
 
-  it('frames the wall with the display options merged in', () => {
-    mount(payload({ boucle: boucle({}, URL_WALL) }, { mode: 'wallsio' }))
-    const frame = live().querySelector('iframe')!
-    expect(frame.getAttribute('src')).toContain('my.walls.io/cloud-nord')
-    expect(frame.getAttribute('src')).toContain('layout=kiosk')
+  it('leads each page with a featured post, in its own column', () => {
+    mount(payload({ socialWall: wall }, { mode: 'wallsio' }))
+    const avant = live().querySelector('.mur-avant')!
+    expect(noms(avant)).toEqual(['Auteur a'])
+    expect(avant.querySelector('.carte')!.classList.contains('en-avant')).toBe(true)
+    expect(live().querySelector<HTMLElement>('.vide')!.hidden).toBe(true)
   })
 
-  it('keeps the same frame across the states that arrive every second', () => {
-    mount(payload({ boucle: boucle({}, URL_WALL) }))
-    const frame = scene('wallsio').querySelector('iframe')!
-    push(payload({ boucle: boucle({}, URL_WALL) }, { outboxDepth: 3 }))
-    push(payload({ boucle: boucle({}, URL_WALL), roomName: 'Autre nom' }))
-    expect(scene('wallsio').querySelector('iframe')).toBe(frame)
+  it('says a partner is a partner', () => {
+    mount(payload({ socialWall: [wall[1]!] }, { mode: 'wallsio' }))
+    const partenaire = live().querySelector('.carte.partenaire')!
+    expect(text(partenaire.querySelector('.badge-partenaire'))).toBe('Partenaire')
+    expect(partenaire.querySelector('.carte-sponsor img')!.getAttribute('src')).toBe('/assets/logo')
   })
 
-  it('is skipped while walls.io does not answer', () => {
-    mount(payload({ boucle: boucle({}, URL_WALL), wallsIoReachable: false }))
+  it('draws with the room\'s images only, initials when there is none', () => {
+    mount(payload({ socialWall: wall }, { mode: 'wallsio' }))
+    for (const img of live().querySelectorAll('img')) expect(img.getAttribute('src')).toMatch(/^\/assets\//)
+    expect(live().querySelector('.avatar')!.textContent).toBe('AA')
+  })
+
+  it('turns to the next featured post when held on screen', () => {
+    mount(payload({ socialWall: wall }, { mode: 'wallsio' }))
+    expect(noms(live().querySelector('.mur-avant')!)).toEqual(['Auteur a'])
+    // The page's time (25 s), then the tick that redraws it.
+    advance(27)
+    expect(noms(live().querySelector('.mur-avant')!)).toEqual(['Auteur p'])
+  })
+
+  it('is played by the loop only when it has posts', () => {
+    mount(payload({ socialWall: wall }))
     const etat = (window as unknown as { boucle: { etat: () => { scenes: { scene: string; jouable: boolean }[] } } }).boucle.etat()
-    expect(etat.scenes.find((s) => s.scene === 'wallsio')?.jouable).toBe(false)
+    expect(etat.scenes.find((s) => s.scene === 'wallsio')?.jouable).toBe(true)
   })
 
-  it('says so rather than framing nothing', () => {
+  it('says so rather than showing an empty frame', () => {
     mount(payload({}, { mode: 'wallsio' }))
-    expect(live().querySelector('iframe')).toBeNull()
     expect(live().querySelector<HTMLElement>('.vide')!.hidden).toBe(false)
   })
 })

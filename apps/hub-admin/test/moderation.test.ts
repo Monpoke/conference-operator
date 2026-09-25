@@ -25,21 +25,25 @@ interface Call {
   input: unknown
 }
 
-function fakeClient(pending: unknown[]): { calls: Call[]; client: ReturnType<typeof build> } {
+function fakeClient(pending: unknown[], screen: unknown[] = []): { calls: Call[]; client: ReturnType<typeof build> } {
   const calls: Call[] = []
+  const note = (path: string, result: unknown) => async (input: unknown = undefined) => {
+    calls.push({ path, input })
+    return result
+  }
   function build() {
     return {
       token: { read: () => 'jeton', write: () => {}, clear: () => {} },
       rpc: {
         wall: {
-          pending: async (input: unknown) => {
-            calls.push({ path: 'wall/pending', input })
-            return pending
-          },
-          moderate: async (input: unknown) => {
-            calls.push({ path: 'wall/moderate', input })
-            return { ok: true }
-          },
+          pending: note('wall/pending', pending),
+          onScreen: note('wall/onScreen', { revision: 'r', posts: screen }),
+          moderate: note('wall/moderate', { ok: true }),
+          feature: note('wall/feature', { ok: true }),
+          save: note('wall/save', {}),
+        },
+        boucle: {
+          previews: note('boucle/previews', {}),
         },
       },
     }
@@ -55,8 +59,8 @@ const MESSAGE = {
   createdAt: '2026-10-30T09:59:00Z',
 }
 
-function mountView(pending: unknown[]): { calls: Call[]; wrapper: ReturnType<typeof mount> } {
-  const fake = fakeClient(pending)
+function mountView(pending: unknown[], screen: unknown[] = []): { calls: Call[]; wrapper: ReturnType<typeof mount> } {
+  const fake = fakeClient(pending, screen)
   const session = useSessionStore()
   // The store owns the client so that the expired-session branch lives in one
   // place; a test swaps it here, at the same seam.
@@ -134,5 +138,67 @@ describe('moderation view', () => {
     // soon as two operators moderate at once. A single source of truth, and it is
     // the hub.
     expect(calls.filter((call) => call.path === 'wall/pending')).toHaveLength(2)
+  })
+
+  it('puts a post forward, and hides one from the screens', async () => {
+    const post = {
+      ...MESSAGE,
+      source: 'wallsio',
+      authorSubtitle: null,
+      avatar: null,
+      image: null,
+      network: 'Instagram',
+      permalink: null,
+      featured: false,
+      pinned: false,
+      sponsor: null,
+    }
+    const { calls, wrapper } = mountView([], [post])
+    await useModerationStore().load()
+    await flushPromises()
+
+    const card = wrapper.get(`[data-post="${MESSAGE.id}"]`)
+    expect(card.text()).toContain('walls.io')
+    await card.get('[data-role="feature"]').trigger('click')
+    await flushPromises()
+    expect(calls).toContainEqual({ path: 'wall/feature', input: { id: MESSAGE.id, featured: true } })
+
+    await wrapper.get(`[data-post="${MESSAGE.id}"] [data-role="hide"]`).trigger('click')
+    await flushPromises()
+    expect(calls).toContainEqual({ path: 'wall/moderate', input: { id: MESSAGE.id, decision: 'reject' } })
+  })
+
+  it('does not offer to unfeature what walls.io pinned', async () => {
+    const pinned = {
+      ...MESSAGE, source: 'wallsio', authorSubtitle: null, avatar: null, image: null, network: null,
+      permalink: null, featured: true, pinned: true, sponsor: null,
+    }
+    const { wrapper } = mountView([], [pinned])
+    await useModerationStore().load()
+    await flushPromises()
+
+    const card = wrapper.get(`[data-post="${MESSAGE.id}"]`)
+    expect(card.text()).toContain('épinglé sur walls.io')
+    expect(card.find('[data-role="unfeature"]').exists()).toBe(false)
+  })
+
+  it('writes a partner post', async () => {
+    const { calls, wrapper } = mountView([])
+    await useModerationStore().load()
+    await flushPromises()
+
+    await wrapper.get('#hub-post-author').setValue('APE Factory')
+    await wrapper.get('#hub-post-text').setValue('Le café est servi')
+    await wrapper.get('#hub-post-sponsor').setValue('APE Factory')
+    await wrapper.get('#btn-hub-post').trigger('click')
+    await flushPromises()
+
+    const sent = calls.find((call) => call.path === 'wall/save')?.input as Record<string, unknown>
+    expect(sent).toMatchObject({
+      author: 'APE Factory',
+      text: 'Le café est servi',
+      sponsor: { name: 'APE Factory', logo: null },
+      featured: true,
+    })
   })
 })

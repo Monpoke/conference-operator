@@ -8,7 +8,6 @@ import IdentityPanel from '../components/boucle/IdentityPanel.vue'
 import MerciPanel from '../components/boucle/MerciPanel.vue'
 import MessagesPanel from '../components/boucle/MessagesPanel.vue'
 import PlanningsPanel from '../components/boucle/PlanningsPanel.vue'
-import PostsPanel from '../components/boucle/PostsPanel.vue'
 import PreviewPanel from '../components/boucle/PreviewPanel.vue'
 import SponsorPagesPanel from '../components/boucle/SponsorPagesPanel.vue'
 import WallsioPanel from '../components/boucle/WallsioPanel.vue'
@@ -40,6 +39,5 @@ import WallsioPanel from '../components/boucle/WallsioPanel.vue'
     <WallsioPanel />
     <ConduitePanel />
     <FeedbacksPanel />
-    <PostsPanel />
   </div>
 </template>

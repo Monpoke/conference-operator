@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import type { CommentSource } from '@conference-operator/contract'
-import type { PostInput, WallService } from './wall.js'
+import { wallImageRefs, type CommentSource } from '@conference-operator/contract'
+import type { PostInput, PostOutcome, WallService } from './wall.js'
 
 /**
  * A social source.
@@ -167,8 +167,10 @@ export function xSource(options: {
 }
 
 export interface IngestorReport {
-  bySource: Record<string, { collected: number; error: string | null }>
+  bySource: Record<string, { collected: number; error: string | null; outcomes?: Record<PostOutcome, number> }>
 }
+
+type IngestLog = (level: 'debug' | 'info' | 'warn', message: string, context?: object) => void
 
 /**
  * Polls the sources and posts into the moderation queue.
@@ -179,16 +181,32 @@ export interface IngestorReport {
  */
 export class SocialIngestor {
   private timer: NodeJS.Timeout | null = null
-  private running = false
+  private running: Promise<IngestorReport> | null = null
 
   constructor(
     private readonly sources: SocialSource[],
     private readonly wall: WallService,
     private readonly options: {
       intervalMs?: number
-      onLog?: (level: 'info' | 'warn', message: string, context?: unknown) => void
+      onLog?: IngestLog
+      /**
+       * Downloads the social wall's images before the rooms are told about it: a
+       * room told about a post fetches its photo from the hub straight away.
+       */
+      prefetch?: (refs: string[]) => Promise<{ downloaded: number; reused: number; failed: { url: string; reason: string }[] }>
     } = {},
   ) {}
+
+  /**
+   * One poll now, unless one is under way — a token just typed in the console
+   * should not wait for the next tick to show it works.
+   */
+  kick(): Promise<IngestorReport> {
+    this.running ??= this.runOnce().finally(() => {
+      this.running = null
+    })
+    return this.running
+  }
 
   async runOnce(): Promise<IngestorReport> {
     const report: IngestorReport = { bySource: {} }
@@ -198,25 +216,52 @@ export class SocialIngestor {
         const posts = await source.poll()
         // Posting is idempotent on `externalId`: re-reading the same window has no
         // consequence, which allows a generous overlap.
-        for (const post of posts) this.wall.post(post)
-        report.bySource[source.id] = { collected: posts.length, error: null }
+        const outcomes: Record<PostOutcome, number> = { created: 0, known: 0, updated: 0, deactivated: 0, reactivated: 0 }
+        for (const post of posts) outcomes[this.wall.ingest(post).outcome] += 1
+        report.bySource[source.id] = { collected: posts.length, error: null, outcomes }
+        // Said at `info` when something moved, at `debug` otherwise: a poll
+        // every thirty seconds that re-reads the same posts is not news.
+        const moved = posts.length - outcomes.known
+        this.options.onLog?.(
+          moved > 0 ? 'info' : 'debug',
+          moved > 0
+            ? `source ${source.id} : ${describe(outcomes)}`
+            : `source ${source.id} : rien de nouveau (${posts.length} reçu${posts.length > 1 ? 's' : ''})`,
+          { source: source.id, recus: posts.length, ...outcomes },
+        )
       } catch (cause) {
         const message = (cause as Error).message
         report.bySource[source.id] = { collected: 0, error: message }
         this.options.onLog?.('warn', `source ${source.id} indisponible`, { message })
       }
     }
+
+    // The social wall, once per poll, after its images: a post whose photo is
+    // not in yet would reach the rooms without it.
+    if (this.options.prefetch != null) {
+      const refs = wallImageRefs(this.wall.nextScreen().posts)
+      try {
+        const images = await this.options.prefetch(refs)
+        if (images.downloaded > 0 || images.failed.length > 0) {
+          this.options.onLog?.(images.failed.length > 0 ? 'warn' : 'info', 'images du mur social', {
+            telechargees: images.downloaded,
+            dejaLa: images.reused,
+            echecs: images.failed.map((failure) => `${failure.url} : ${failure.reason}`),
+          })
+        }
+      } catch (cause) {
+        this.options.onLog?.('warn', 'images du mur social non téléchargées', { message: (cause as Error).message })
+      }
+    }
+    this.wall.publishScreen()
     return report
   }
 
   start(): void {
     if (this.timer != null) return
     this.timer = setInterval(() => {
-      if (this.running) return
-      this.running = true
-      void this.runOnce().finally(() => {
-        this.running = false
-      })
+      if (this.running != null) return
+      void this.kick()
     }, this.options.intervalMs ?? 30_000)
     this.timer.unref?.()
   }
@@ -225,6 +270,20 @@ export class SocialIngestor {
     if (this.timer != null) clearInterval(this.timer)
     this.timer = null
   }
+}
+
+/** "3 nouveaux, 1 désactivé" — only what happened. */
+function describe(outcomes: Record<PostOutcome, number>): string {
+  const labels: [PostOutcome, string, string][] = [
+    ['created', 'nouveau', 'nouveaux'],
+    ['updated', 'modifié', 'modifiés'],
+    ['deactivated', 'désactivé', 'désactivés'],
+    ['reactivated', 'réactivé', 'réactivés'],
+  ]
+  return labels
+    .filter(([key]) => outcomes[key] > 0)
+    .map(([key, one, many]) => `${outcomes[key]} ${outcomes[key] > 1 ? many : one}`)
+    .join(', ')
 }
 
 /** Reduces Mastodon's HTML to displayable text. */

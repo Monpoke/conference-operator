@@ -71,10 +71,16 @@ export const roomSettings = sqliteTable('room_settings', {
   vodJson: text('vod_json'),
   /**
    * The welcome loop's content, pushed by the hub at sync: texts, sponsor pages,
-   * posts, QR addresses. Cached like the rest — the loop runs during the breaks,
+   * QR addresses. Cached like the rest — the loop runs during the breaks,
    * when the network is busiest, and must run in full without it.
    */
   boucleJson: text('boucle_json'),
+  /**
+   * The social wall's posts, as last fetched (`rooms.wall`), with their revision.
+   * Apart from the loop because it moves all day; cached so that a room cut off
+   * keeps showing the last posts it knew.
+   */
+  wallJson: text('wall_json'),
   /** Next `seq` to assign to outgoing events. Monotonic, never reset. */
   nextSeq: integer('next_seq').notNull().default(1),
   /** Last command `seq` applied: it is the `lastEventId` sent back on resumption. */

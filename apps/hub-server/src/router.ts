@@ -560,6 +560,8 @@ export const router = os.router({
           stream: context.services.rooms.streamOf(context.roomId),
         },
         serverTime: nowIso(context),
+        // The room compares it with the last one it applied: see the contract.
+        commandSeq: context.services.commands.lastSeq(),
         simulatedClock: context.services.clock.simulated,
         mode: context.services.mode,
         // Sent down with the rest: the waiting loop must run through in full

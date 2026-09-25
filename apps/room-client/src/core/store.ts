@@ -388,6 +388,25 @@ export class LocalStore {
     })
   }
 
+  /** How many commands the record holds. */
+  appliedCount(): number {
+    return this.orm.select({ n: sql<number>`count(*)` }).from(appliedCommand).get()?.n ?? 0
+  }
+
+  /**
+   * Forgets every command applied: the hub's numbering started over.
+   *
+   * Kept, the record would drop the new hub's commands as already applied — their
+   * `seq` reuses the old one's — and the stream would resume after a `seq` the
+   * hub has not reached yet.
+   */
+  forgetCommands(): void {
+    this.orm.transaction((tx) => {
+      tx.delete(appliedCommand).run()
+      tx.update(roomSettings).set({ lastCommandSeq: 0 }).where(eq(roomSettings.id, SETTINGS_ID)).run()
+    })
+  }
+
   /**
    * The local log.
    *

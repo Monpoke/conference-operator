@@ -541,6 +541,16 @@ export const syncResultSchema = z.object({
   /** Base of the clock offset: the VOD timecodes depend on it. */
   serverTime: isoDateTimeSchema,
   /**
+   * The last command the hub issued, `0` when it has issued none.
+   *
+   * A room holding a higher one is talking to a hub whose database started over —
+   * a reinstall, a restored backup. The hub then sends it nothing it thinks it
+   * already has, and the room would drop what it did send as already applied:
+   * every gesture from a phone answers "Fait" and changes nothing. The room
+   * forgets its record when it sees this. `null`: an older hub that does not say.
+   */
+  commandSeq: z.number().int().nonnegative().nullable().default(null),
+  /**
    * The hub's mode.
    *
    * The room compares it with its own and reports any divergence: a development

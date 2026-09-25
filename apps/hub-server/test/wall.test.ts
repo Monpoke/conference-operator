@@ -1,4 +1,6 @@
+import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
+import { comment, question } from '@conference-operator/db/hub'
 import { openHubDatabase, type HubDatabase } from '../src/db.js'
 import { QuestionService, WallService } from '../src/services/wall.js'
 import { RateLimiter } from '../src/services/rate-limit.js'
@@ -143,6 +145,72 @@ describe('questions to the speaker', () => {
 
     expect(questions.list(TRACK_1, 'ses-1').map((q) => q.text)).toEqual(['A'])
     expect(questions.list(TRACK_1, null)).toHaveLength(2)
+  })
+})
+
+/**
+ * A stored row the contract refuses.
+ *
+ * The incident: an image built from an older commit started on a base where a
+ * newer one had written `wallsio` and `hub` posts. Its enum did not know them, the
+ * strict parse threw in the constructor, and the whole hub stopped — rooms and
+ * console with it — for want of reading one wall post.
+ */
+describe('unreadable rows', () => {
+  /** Approves a real post, then gives it a source this code does not know. */
+  function corruptApproved(): string {
+    const posted = wall.post({ source: 'form', author: 'Alice', text: 'Du futur' })
+    wall.moderate(posted.id, 'approve', 'regie@example.org')
+    db.update(comment).set({ source: 'linkedin' }).where(eq(comment.id, posted.id)).run()
+    return posted.id
+  }
+
+  it('does not stop the hub from starting', () => {
+    const bad = corruptApproved()
+    const good = wall.post({ source: 'form', author: 'Bob', text: 'Lisible' })
+    wall.moderate(good.id, 'approve', 'regie@example.org')
+    const warnings: string[] = []
+
+    const restarted = new WallService(db, 50, (_table, id) => warnings.push(id))
+
+    expect(restarted.approved().map((entry) => entry.id)).toEqual([good.id])
+    expect(restarted.screen().posts.map((entry) => entry.id)).toEqual([good.id])
+    expect(warnings).toEqual([bad])
+  })
+
+  it('reports a bad row once, not on every read', () => {
+    // The screen snapshot is recomputed on every write: a warning per read would
+    // bury the log under one line.
+    const bad = corruptApproved()
+    const warnings: string[] = []
+    const restarted = new WallService(db, 50, (_table, id) => warnings.push(id))
+
+    restarted.post({ source: 'form', author: 'Carole', text: 'Encore' })
+    restarted.pending()
+    restarted.screen()
+
+    expect(warnings).toEqual([bad])
+  })
+
+  it('says which field is wrong', () => {
+    corruptApproved()
+    const reasons: string[] = []
+
+    new WallService(db, 50, (_table, _id, why) => reasons.push(why))
+
+    expect(reasons[0]).toContain('source')
+  })
+
+  it('keeps the other questions of a session', () => {
+    const kept = questions.post({ roomId: TRACK_1, sessionId: null, author: null, text: 'Et après ?' })
+    const broken = questions.post({ roomId: TRACK_1, sessionId: null, author: null, text: 'Hors contrat' })
+    db.update(question).set({ status: 'archived' }).where(eq(question.id, broken.id)).run()
+    const warnings: string[] = []
+
+    const list = new QuestionService(db, (table, id) => warnings.push(`${table}:${id}`)).list(TRACK_1, null)
+
+    expect(list.map((entry) => entry.id)).toEqual([kept.id])
+    expect(warnings).toEqual([`question:${broken.id}`])
   })
 })
 

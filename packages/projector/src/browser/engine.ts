@@ -3,6 +3,7 @@ import type { Data, Scene } from './scene.js'
 import { contours, cree, linkedin } from './dom.js'
 import { DEBUT_EFFETS, jouerEffets, peutAnimer } from './effects.js'
 import { maintenant } from './time.js'
+import { auRetour } from './antenne.js'
 import { programmation, SCENES, type DefinitionScene, type Etape, type Programmation } from './sequence.js'
 
 /**
@@ -48,10 +49,21 @@ export class Regie {
   visible: Montee | null = null
   ecoule = 0
   enPause = false
+  /**
+   * The OBS source has left the program scene: nobody sees the page.
+   *
+   * Told by the page (`on-air`, see the room client's `obs-browser`), never
+   * guessed: outside OBS it stays `false`, and the loop turns as it always did.
+   */
+  horsAntenne = false
   enTransition = false
   transitionForcee: string | null = null
   private enAttente: { i: number; transition?: string } | null = null
   private dernierTick = Date.now()
+  /** When the source left the program scene. */
+  private quitteLAntenne = 0
+  /** The animations frozen off air — exactly these are played again on the way back. */
+  private gelees: Animation[] = []
   private animBarre: Animation | null = null
   private readonly barre = document.querySelector<HTMLElement>('#progression i')
   private readonly voile = document.getElementById('voile')!
@@ -384,7 +396,10 @@ export class Regie {
     if (cadre.hidden || !peutAnimer()) return
     this.animBarre?.cancel()
     this.animBarre = this.barre.animate(images, { duration: Math.max(1, duree), easing, fill: 'forwards' })
-    if (this.enPause) this.animBarre.pause()
+    if (this.horsAntenne) {
+      this.animBarre.pause()
+      this.gelees.push(this.animBarre)
+    } else if (this.enPause) this.animBarre.pause()
   }
 
   private barreDepart(): void {
@@ -398,6 +413,42 @@ export class Regie {
   basculerPause(): void {
     this.enPause = !this.enPause
     if (this.animBarre) (this.enPause ? this.animBarre.pause() : this.animBarre.play())
+    this.onChange()
+  }
+
+  /* ================= On air ================= */
+
+  /**
+   * The OBS source entered or left the program scene.
+   *
+   * Off air, the loop stops where it is: it no longer moves on, and the stage's
+   * own animations — transitions, progress bar, which the page's CSS freeze does
+   * not reach — are paused. The clocks and the data carry on, so that nothing
+   * comes back stale. On the way back it resumes where it stopped, or from the
+   * welcome after a long absence: see `auRetour`.
+   */
+  antenne(active: boolean): void {
+    // Already there: OBS repeats itself on a scene reload.
+    if (active === !this.horsAntenne) return
+    if (!active) {
+      this.horsAntenne = true
+      this.quitteLAntenne = Date.now()
+      this.gelees = (document.getAnimations?.() ?? []).filter((a) => a.playState === 'running')
+      for (const a of this.gelees) a.pause()
+      this.onChange()
+      return
+    }
+
+    this.horsAntenne = false
+    for (const a of this.gelees) {
+      // One cancelled meanwhile — a transition finished by its safety timer.
+      if (a.playState === 'paused') a.play()
+    }
+    this.gelees = []
+    if (auRetour(Date.now() - this.quitteLAntenne, this.prog.tourne) === 'recommencer') {
+      this.courante = -1
+      void this.allerA(this.premiereJouable())
+    }
     this.onChange()
   }
 
@@ -421,7 +472,7 @@ export class Regie {
     }
     this.rendreSales(false)
 
-    if (this.prog.tourne && !this.enPause && !this.enTransition) {
+    if (this.prog.tourne && !this.enPause && !this.horsAntenne && !this.enTransition) {
       this.ecoule += dt
       if (this.ecoule >= this.duree() * 1000) {
         const suivante = this.voisine(this.courante, 1)

@@ -100,6 +100,11 @@ export function demarrer(): void {
     hud.maj(false)
   }, 1000)
 
+  // The OBS source in or out of the program scene, told by the page's OBS script.
+  addEventListener('on-air', (event) => {
+    regie.antenne((event as CustomEvent<{ active?: boolean }>).detail?.active !== false)
+  }, { signal })
+
   const cycle = [null, ...regie.nomsTransitions]
   addEventListener('keydown', (event) => {
     if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return

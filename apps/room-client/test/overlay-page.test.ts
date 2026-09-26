@@ -258,6 +258,19 @@ describe('capture frame', () => {
     expect(document.getElementById('event-name')?.textContent).toBe('Cloud Nord 2026')
   })
 
+  it('lets a logo that spells the name stand alone, when the console says so', () => {
+    mountOverlay({
+      ...FRAMED,
+      boucle: { ...(FRAMED.boucle as object), logoUrl: '/assets/console.png', logoAvecNom: true },
+    } as unknown as DisplayPayload)
+    expect(document.getElementById('logo')?.hidden).toBe(false)
+    expect(document.getElementById('event-name')?.hidden).toBe(true)
+
+    // Without a logo to carry it, the name comes back.
+    mountOverlay({ ...FRAMED, boucle: { ...(FRAMED.boucle as object), logoAvecNom: true } } as unknown as DisplayPayload)
+    expect(document.getElementById('event-name')?.hidden).toBe(false)
+  })
+
   it('wears the logo set in the console over the program\'s', () => {
     mountOverlay({
       ...FRAMED,

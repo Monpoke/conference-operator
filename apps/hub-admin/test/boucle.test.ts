@@ -162,16 +162,18 @@ describe('saving one panel', () => {
     expect(patch!.messages?.bienvenue).toEqual(DEFAULT_BOUCLE.messages.bienvenue)
   })
 
-  it('sends the four sections of the identity panel together', async () => {
+  it('sends the sections of the identity panel together', async () => {
     const { calls, wrapper } = await mountView()
 
+    await wrapper.get('#boucle-logo-avec-nom').setValue(true)
     await wrapper.get('#boucle-signature-on').setValue(false)
     await wrapper.get('#boucle-barre-hashtag').setValue('#CN27')
     await wrapper.get('#btn-boucle-identite').trigger('click')
     await flushPromises()
 
     const [patch] = updates(calls)
-    expect(Object.keys(patch!).sort()).toEqual(['accueil', 'barreBas', 'logo', 'signature'])
+    expect(Object.keys(patch!).sort()).toEqual(['accueil', 'barreBas', 'logo', 'logoAvecNom', 'signature'])
+    expect(patch!.logoAvecNom).toBe(true)
     expect(patch!.signature).toBeNull()
     expect(patch!.barreBas?.hashtag).toBe('#CN27')
   })

@@ -53,6 +53,7 @@ export function buildBoucleView(sources: BoucleSources): BoucleView {
 
   return {
     logoUrl: localize(boucle.logo ?? program?.event.logoUrl ?? null),
+    logoAvecNom: boucle.logoAvecNom,
     accueil: boucle.accueil,
     signature: boucle.signature == null
       ? null

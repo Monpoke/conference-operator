@@ -276,7 +276,9 @@ ${initialState}
     const logoUrl = data.boucle?.logoUrl ?? data.event?.logoUrl
     if (logoUrl) { if (logo.getAttribute('src') !== logoUrl) logo.src = logoUrl; logo.hidden = false } else logo.hidden = true
     setText('event-name', eventName)
-    document.getElementById('event-name').hidden = eventName === ''
+    // A logo that already spells the name (set in the console) stands alone.
+    const nameInLogo = !logo.hidden && data.boucle?.logoAvecNom === true
+    document.getElementById('event-name').hidden = eventName === '' || nameInLogo
     setText('date', dateLine(data, session))
 
     // Footer: website and LinkedIn, picked from the hub's social accounts. The

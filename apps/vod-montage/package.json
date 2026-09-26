@@ -1,0 +1,23 @@
+{
+  "name": "@conference-operator/vod-montage",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "rendre": "tsx src/cli/rendre.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@conference-operator/contract": "workspace:*",
+    "@conference-operator/program": "workspace:*",
+    "@conference-operator/projector": "workspace:*",
+    "tsx": "4.23.13",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.1",
+    "typescript": "7.0.2",
+    "vitest": "5.0.0"
+  }
+}

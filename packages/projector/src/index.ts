@@ -8,3 +8,4 @@
 export { PROJECTOR_CSS, PROJECTOR_JS } from './generated/projector.js'
 export { projectorBody } from './markup.js'
 export { SCENE_IDS, BOUCLE } from './browser/sequence.js'
+export { INTRO_MS, OUTRO_MS } from './vod/timeline.js'

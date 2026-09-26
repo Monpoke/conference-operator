@@ -1362,6 +1362,15 @@ export class RoomApp implements ControlTarget {
           case 'audio-inputs':
             this.observeAudioInputs('A', event.inputs)
             break
+          case 'program-repaired':
+            this.options.onLog?.(
+              'warn',
+              event.repaired
+                ? 'OBS-A comptait des sources à l’antenne comme inactives : scène resélectionnée'
+                : 'OBS-A compte des sources à l’antenne comme inactives, la resélection n’a pas suffi',
+              { scene: event.sceneName, sources: event.sources },
+            )
+            break
           case 'disconnected':
             this.observeAudioInputs('A', [])
             this.emit({ type: 'obs.connection', obs: 'A', connected: false, unresolvedRoles: [] })

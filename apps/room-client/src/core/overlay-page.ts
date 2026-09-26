@@ -91,9 +91,6 @@ export function renderOverlayPage(options: OverlayPageOptions = {}): string {
   #room-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #room { margin-top: auto; padding-top: 14px; font-size: 20px; font-weight: 500; color: var(--muted);
           display: flex; align-items: center; gap: 10px; }
-  #room .dot { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--c3);
-               box-shadow: 0 0 12px var(--c3); animation: pulse 2s infinite; }
-  @keyframes pulse { 50% { opacity: .35 } }
 
   /*
    * Audience question, at the bottom of the slides. It belongs in the VOD so the
@@ -185,7 +182,7 @@ ${initialState}
   <div id="people"></div>
   <div id="sep"></div>
   <div id="title"></div>
-  <div id="room" hidden><span class="dot"></span><span id="room-name"></span></div>
+  <div id="room" hidden><span id="room-name"></span></div>
 </div>
 
 <div id="question" class="row">

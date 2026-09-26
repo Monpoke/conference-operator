@@ -211,3 +211,13 @@ body.pivote #stage { transform: translate(-50%, -50%) rotate(90deg) scale(var(--
 #plein-ecran.discret { opacity: .35; }
 /* Turned with the stage: at the bottom of what the viewer reads, over the band. */
 body.pivote #plein-ecran { left: 34px; top: 50%; bottom: auto; transform: translate(-50%, -50%) rotate(90deg); }
+
+/* ---------- Transition layers: there only while their transition runs ---------- */
+/*
+ * In OBS, the stinger was found held across the screen for minutes after a loop
+ * wrap, the loop playing on underneath: every later transition had cancelled its
+ * animations, yet the band stayed — a composited layer the browser kept painting
+ * where it last was. Hidden and with no layer of its own at rest, a stale layer
+ * has nothing left to paint. Screen only: the VOD's stinger lives by its own rules.
+ */
+#stinger:not(.joue), #voile:not(.joue) { visibility: hidden; will-change: auto; }

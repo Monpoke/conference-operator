@@ -283,11 +283,13 @@ export class Regie {
       this.anim(to, [{ opacity: 0, transform: 'scale(1.12)' }, { opacity: 1, transform: 'scale(1)' }], d),
     ]),
     dip: async ({ d, swap }) => {
+      this.voile.classList.add('joue')
       await this.anim(this.voile, [{ opacity: 0 }, { opacity: 1 }], d / 2, 'ease-in')
       swap()
       await this.anim(this.voile, [{ opacity: 1 }, { opacity: 0 }], d / 2, 'ease-out')
     },
     stinger: async ({ d, swap }) => {
+      this.stinger.classList.add('joue')
       await this.anim(this.stinger, [
         { transform: 'translateX(-2800px) skewX(-14deg)' },
         { transform: 'translateX(0) skewX(-14deg)' },
@@ -357,6 +359,7 @@ export class Regie {
       for (const el of [depuis?.scene.el, vers.scene.el, this.voile, this.stinger]) {
         el?.getAnimations?.().forEach((a) => a.cancel())
       }
+      this.rangerCalques()
       this.courante = i
       this.visible = vers
       this.ecoule = 0
@@ -492,6 +495,13 @@ export class Regie {
       console.warn(`Calque de transition « ${el.id} » resté animé : remis en place`)
       for (const a of restes) a.cancel()
     }
+    this.rangerCalques()
+  }
+
+  /** The stinger and the veil, hidden and off their own layer: see `screen.css`. */
+  private rangerCalques(): void {
+    this.stinger.classList.remove('joue')
+    this.voile.classList.remove('joue')
   }
 
   /* ================= The clock ================= */

@@ -249,7 +249,10 @@ export class HubLink {
         // The loop's own content, cached like the rest: it plays during the
         // breaks, when the network is busiest.
         boucle: result.boucle,
+        // The forced talks, cached so a restart with no hub keeps them.
+        pins: result.pins,
       })
+      runtime.setPins(result.pins)
       runtime.setRoomId(result.room.id)
 
       if (result.program != null) {

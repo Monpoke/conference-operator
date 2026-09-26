@@ -71,6 +71,46 @@ describe('room state', () => {
   })
 })
 
+/**
+ * A forced talk: the hub says "this room is on that talk", whatever the clock
+ * says — the emergency gesture of an inverted programme.
+ */
+describe('forced talk', () => {
+  const coupable = () => program.sessions.find((s) => s.roomId === TRACK_1 && s.title.includes('Coupable'))!
+
+  it('makes it current and target, and puts the skipped talk next', () => {
+    const runtime = makeRuntime()
+    runtime.setPins({ [TRACK_1]: coupable().id })
+    const state = runtime.state()
+    expect(state.currentSession?.id).toBe(coupable().id)
+    expect(state.targetSession?.id).toBe(coupable().id)
+    expect(state.pinnedSessionId).toBe(coupable().id)
+    // Decided now: not "upcoming", whatever its slot says.
+    expect(state.targetIsUpcoming).toBe(false)
+    expect(state.nextSession?.title).toContain('HoneySwamp')
+  })
+
+  it('ignores another room\'s pin', () => {
+    const runtime = makeRuntime()
+    runtime.setPins({ 'track-2-mf-1092': coupable().id })
+    expect(runtime.state().currentSession?.title).toContain('HoneySwamp')
+    expect(runtime.state().pinnedSessionId).toBeNull()
+  })
+
+  it('follows `room.pins`, and keeps it across a restart', async () => {
+    const runtime = makeRuntime()
+    await runtime.applyCommand(command({ type: 'room.pins', pins: { [TRACK_1]: coupable().id } }))
+    expect(runtime.state().currentSession?.id).toBe(coupable().id)
+
+    // The machine restarts with the hub out of reach: the cache holds the pin.
+    expect(makeRuntime().state().currentSession?.id).toBe(coupable().id)
+
+    await runtime.applyCommand(command({ type: 'room.pins', pins: {} }))
+    expect(runtime.state().currentSession?.title).toContain('HoneySwamp')
+    expect(runtime.state().pinnedSessionId).toBeNull()
+  })
+})
+
 describe('applying the commands', () => {
   it('switches to the requested OBS scene', async () => {
     const setSceneRole = vi.fn(async () => {})

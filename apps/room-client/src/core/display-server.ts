@@ -367,7 +367,7 @@ export class DisplayServer {
 
   /** What is going on, or about to go on, in the other rooms — see `otherRoomsFor`. */
   private otherRooms(program: Program, roomId: string | null): DisplayPayload['otherRooms'] {
-    return otherRoomsFor(program, roomId, this.options.runtime.correctedNow())
+    return otherRoomsFor(program, roomId, this.options.runtime.correctedNow(), this.options.runtime.pins())
   }
 
   /**

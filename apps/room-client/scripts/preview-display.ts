@@ -117,6 +117,7 @@ const base: DisplayPayload = {
     // Marked running below: the talk is on air, as once the room pressed Start.
     onAirSession: current,
     targetIsUpcoming: current == null,
+    pinnedSessionId: null,
     remoteHolder: null,
     // The preview sits on a talk: no break to announce.
     breakBadge: null,

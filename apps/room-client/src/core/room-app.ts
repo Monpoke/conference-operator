@@ -2129,6 +2129,36 @@ export class RoomApp implements ControlTarget {
     await this.decideSession('reset')
   }
 
+  /**
+   * Forces one of the room's talks as the current one — or, with `null`, gives the
+   * room back to the clock.
+   *
+   * Through the hub, like the lifecycle: the console must see the room is forced,
+   * and "Start" must reach the same talk from a phone. Applied locally at once,
+   * the `room.pins` broadcast then confirms it.
+   */
+  async pinSession(sessionId: string | null): Promise<void> {
+    const roomId = this.runtime.state().roomId
+    if (roomId == null) throw new Error('Salle non appairée')
+    if (this.link == null) throw new Error('Hub non connecté : la décision ne serait vue nulle part')
+    const { pins } = await this.link.client.sessions.pin({ roomId, sessionId })
+    this.store.saveSettings({ pins })
+    this.runtime.setPins(pins)
+  }
+
+  /**
+   * Swaps two of the room's talks in the programme.
+   *
+   * The corrected programme comes back down like any other: re-synchronized now
+   * rather than on the `program.invalidate` that follows, so the screen moves
+   * with the button.
+   */
+  async swapSessions(a: string, b: string): Promise<void> {
+    if (this.link == null) throw new Error('Hub non connecté : la décision ne serait vue nulle part')
+    await this.link.client.sessions.swap({ a, b })
+    await this.link.sync()
+  }
+
   private async decideSession(action: 'start' | 'end' | 'reset'): Promise<void> {
     // The target, not the "running" session: between two talks or during a break,
     // it is the talk that is coming that one wants to drive.

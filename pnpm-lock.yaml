@@ -519,6 +519,43 @@ importers:
         specifier: 5.0.0
         version: 5.0.0(@types/node@26.4.1)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13))
 
+  apps/vod-montage:
+    dependencies:
+      '@conference-operator/contract':
+        specifier: workspace:*
+        version: link:../../packages/contract
+      '@conference-operator/program':
+        specifier: workspace:*
+        version: link:../../packages/program
+      '@conference-operator/projector':
+        specifier: workspace:*
+        version: link:../../packages/projector
+      '@orpc/client':
+        specifier: 2.0.0-beta.37
+        version: 2.0.0-beta.37
+      '@orpc/contract':
+        specifier: 2.0.0-beta.37
+        version: 2.0.0-beta.37
+      tsx:
+        specifier: 4.23.13
+        version: 4.23.13
+      zod:
+        specifier: 4.5.4
+        version: 4.5.4
+    devDependencies:
+      '@conference-operator/hub-server':
+        specifier: workspace:*
+        version: link:../hub-server
+      '@types/node':
+        specifier: 26.4.1
+        version: 26.4.1
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@26.4.1)(happy-dom@20.14.0)(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13))
+
   packages/components:
     dependencies:
       '@conference-operator/format':

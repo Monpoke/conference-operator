@@ -146,6 +146,9 @@ describe('contract surface', () => {
       // The same notices, sent to a team: Slack, Mattermost, generic webhook.
       'integrations',
       'messages',
+      // Editing the VODs: a queue the hub holds, workers hosted anywhere take
+      // from it with their own token, and only ever get signed addresses.
+      'montage',
       // A surface of its own, and not one more mode on the room screen: the
       // banner overlays the video where a screen message replaces everything.
       'overlay',
@@ -324,6 +327,7 @@ describe('talk lifecycle', () => {
       vodBucket: null,
       vodPrefix: null,
       vodPolitique: DEFAULT_VOD_POLICY,
+      montageAuto: 'si-confiance-haute',
       // The reference loop, as designed: a fresh hub shows it without any setting.
       boucle: DEFAULT_BOUCLE,
     })

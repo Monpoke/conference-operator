@@ -51,6 +51,18 @@ import {
   uploadViewSchema,
 } from './vod.js'
 import {
+  markerRoleSchema,
+  montageAnalyseSchema,
+  montageAudioSchema,
+  montageClaimSchema,
+  montageCoupeSchema,
+  montageEtapeSchema,
+  montageJobViewSchema,
+  montageWorkerViewSchema,
+  vodHabillageSchema,
+  ARTEFACT_NAME,
+} from './montage.js'
+import {
   integrationCreateSchema,
   integrationTestResultSchema,
   integrationUpdateSchema,
@@ -1143,6 +1155,136 @@ export const contract = {
         }),
       )
       .output(z.object({ ok: z.boolean() })),
+  },
+
+  /**
+   * Editing the VODs: intro, talk cut on its marks, outro.
+   *
+   * Two audiences. The **worker** procedures take a `wt_…` token and nothing
+   * else: a worker takes a job, reports where it stands, uploads the result
+   * through signed addresses and says it is done. The **console** ones list,
+   * relaunch, cancel, and manage the workers' tokens.
+   */
+  montage: {
+    /** Takes the next job, or `null` when there is none. Worker. */
+    claim: oc.output(montageClaimSchema.nullable()),
+
+    /**
+     * Signed addresses to download the take's files. Worker.
+     *
+     * Only files of the job's room, only rushes the room has finished
+     * uploading. `manquants`: named by the sidecar, not in the storage yet — the
+     * worker then gives the job back with `fail{reessayer: true}`.
+     */
+    fichiers: oc
+      .input(z.object({ jobId: z.string(), files: z.array(z.string().min(1).max(400)).min(1).max(50) }))
+      .output(z.object({ urls: z.array(z.object({ file: z.string(), url: z.url() })), manquants: z.array(z.string()) })),
+
+    /** Where the worker stands; renews the lease. `annule`: stop, the console cancelled. Worker. */
+    heartbeat: oc
+      .input(z.object({ jobId: z.string(), etape: montageEtapeSchema, pourcent: z.number().int().min(0).max(100) }))
+      .output(z.object({ ok: z.boolean(), annule: z.boolean(), bail: isoDateTimeSchema })),
+
+    /** Opens the output's multipart upload. Worker. */
+    envoi: oc
+      .input(z.object({ jobId: z.string(), sizeBytes: z.number().int().positive() }))
+      .output(z.object({ taillePartOctets: z.number().int().positive(), parts: z.number().int().positive() })),
+
+    /** Signs a batch of the output's parts. Worker. */
+    parts: oc
+      .input(z.object({ jobId: z.string(), numeros: z.array(z.number().int().positive()).min(1).max(100) }))
+      .output(z.array(signedPartSchema)),
+
+    /** The output is uploaded: the hub reassembles it. Worker. */
+    complete: oc
+      .input(
+        z.object({
+          jobId: z.string(),
+          parts: z.array(z.object({ n: z.number().int().positive(), etag: z.string().min(1) })).min(1),
+          durationMs: z.number().int().nonnegative(),
+          marquesManquantes: z.array(markerRoleSchema),
+          /** The cut edited on, and what was done to the sound. */
+          coupe: montageCoupeSchema.optional(),
+          audio: montageAudioSchema.nullable().optional(),
+        }),
+      )
+      .output(z.object({ ok: z.boolean(), objectKey: z.string() })),
+
+    /**
+     * Signed addresses to upload the analysis files beside the take. Worker.
+     *
+     * Named by the worker, from a short list of kinds: a waveform, stills
+     * around each end, a few seconds of sound around each end.
+     */
+    artefacts: oc
+      .input(z.object({ jobId: z.string(), noms: z.array(z.string().regex(ARTEFACT_NAME)).min(1).max(20) }))
+      .output(z.array(z.object({ nom: z.string(), url: z.url() }))),
+
+    /**
+     * The analysis is done. Worker.
+     *
+     * `montage`: the cut went through without anybody — the worker carries on
+     * with the files it has, under the same lease. `validation`: it waits for
+     * the console, and the worker is free.
+     */
+    analyseTerminee: oc
+      .input(montageAnalyseSchema.extend({ jobId: z.string() }))
+      .output(z.object({ suite: z.enum(['montage', 'validation']), coupe: montageCoupeSchema.nullable() })),
+
+    /**
+     * The job failed. Worker.
+     *
+     * `reessayer`: not the job's fault — its rush is still on its way. It goes
+     * back to the queue a little later, and the attempt does not count.
+     */
+    fail: oc
+      .input(z.object({ jobId: z.string(), raison: z.string().max(4_000), reessayer: z.boolean().default(false) }))
+      .output(z.object({ ok: z.boolean() })),
+
+    /** The jobs, a talk's or all of them. Admin. */
+    list: oc
+      .input(z.object({ sessionId: sessionIdSchema.nullable().default(null) }))
+      .output(z.array(montageJobViewSchema)),
+
+    /** Queues the talk's latest take again — after a new mark, a new logo. Admin. */
+    relancer: oc.input(z.object({ sessionId: sessionIdSchema })).output(montageJobViewSchema),
+
+    annuler: oc.input(z.object({ jobId: z.string() })).output(z.object({ ok: z.boolean() })),
+
+    /** What the analysis proposed, with read addresses for its files. Admin. */
+    analyse: oc
+      .input(z.object({ jobId: z.string() }))
+      .output(
+        z.object({
+          analyse: montageAnalyseSchema.nullable(),
+          fichiers: z.array(z.object({ nom: z.string(), url: z.url() })),
+        }),
+      ),
+
+    /**
+     * The cut to edit on, as set in the console. Admin.
+     *
+     * From `a-valider`, or again on a job already edited or failed: the
+     * montage runs again on the new cut.
+     */
+    valider: oc
+      .input(z.object({ jobId: z.string(), debutMs: z.number().int().nonnegative(), finMs: z.number().int().positive() }))
+      .output(montageJobViewSchema),
+
+    /** A signed address to download the edited video. Admin. */
+    telecharger: oc.input(z.object({ jobId: z.string() })).output(z.object({ url: z.url() })),
+
+    /** What the intro and outro of a talk will show. Admin — the console's preview. */
+    habillage: oc.input(z.object({ sessionId: sessionIdSchema })).output(vodHabillageSchema),
+
+    workers: {
+      list: oc.output(z.array(montageWorkerViewSchema)),
+      /** The token is shown once, here: the hub only keeps its hash. */
+      create: oc
+        .input(z.object({ nom: z.string().trim().min(1).max(80) }))
+        .output(montageWorkerViewSchema.extend({ token: z.string() })),
+      revoke: oc.input(z.object({ id: z.string() })).output(z.object({ ok: z.boolean() })),
+    },
   },
 
   /**

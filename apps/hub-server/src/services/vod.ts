@@ -316,6 +316,80 @@ export class VodService {
     return { objets: keys.length, multiparts: open.length }
   }
 
+  /* ---------- For the montage: reading the takes, writing the edited video ---------- */
+
+  /** One upload, whoever it belongs to — the montage reads the sidecar it was queued for. */
+  upload(uploadId: string) {
+    return this.db.select().from(vodUpload).where(eq(vodUpload.id, uploadId)).get() ?? null
+  }
+
+  /**
+   * A room's file, **if it has finished arriving** in the storage.
+   *
+   * By name: the sidecar names its files as the room wrote them. A rush still on
+   * its way is `null` — handing out a read address to half an object would make
+   * the worker cut a talk that stops in the middle.
+   */
+  uploadedFile(roomId: string, file: string) {
+    const row = this.db
+      .select()
+      .from(vodUpload)
+      .where(and(eq(vodUpload.roomId, roomId), eq(vodUpload.file, file)))
+      .get()
+    return row != null && row.state === 'termine' ? row : null
+  }
+
+  /** The talk's most recent sidecar in the storage: its latest take. */
+  latestSidecar(sessionId: string) {
+    return this.db
+      .select()
+      .from(vodUpload)
+      .where(and(eq(vodUpload.sessionId, sessionId), eq(vodUpload.kind, 'sidecar'), eq(vodUpload.state, 'termine')))
+      .orderBy(desc(vodUpload.finishedAt))
+      .get() ?? null
+  }
+
+  /** A signed address to write one object — the montage's analysis files. */
+  presignPut(key: string): string {
+    return this.client().presignPut(key, SIGNATURE_TTL_S)
+  }
+
+  presignGet(key: string, filename?: string): string {
+    return this.client().presignGet(key, SIGNATURE_TTL_S, filename)
+  }
+
+  /**
+   * Where a take's edited video goes: beside the rushes, under `montages/`.
+   *
+   * `<prefix>/montages/<yyyy-mm-dd>/<room>/<sidecar's name>.mp4`: the name the
+   * room gave the take (date, time, title) stays readable in the bucket.
+   */
+  montageKeyFor(sidecarKey: string): string {
+    const prefix = (this.settings.get().vodPrefix ?? '').replace(/^\/+|\/+$/g, '')
+    const rest = prefix !== '' && sidecarKey.startsWith(`${prefix}/`) ? sidecarKey.slice(prefix.length + 1) : sidecarKey
+    return [prefix, 'montages', rest.replace(/\.json$/i, '') + '.mp4'].filter((part) => part !== '').join('/')
+  }
+
+  openMultipart(key: string): Promise<string> {
+    return this.client().createMultipart(key, 'video/mp4')
+  }
+
+  signPart(key: string, s3UploadId: string, numero: number): SignedPart {
+    return {
+      numero,
+      url: this.client().presignPart(key, s3UploadId, numero, SIGNATURE_TTL_S),
+      expiresAt: new Date(Date.now() + SIGNATURE_TTL_S * 1000).toISOString(),
+    }
+  }
+
+  completeMultipart(key: string, s3UploadId: string, parts: { n: number; etag: string }[]): Promise<void> {
+    return this.client().completeMultipart(key, s3UploadId, parts)
+  }
+
+  abortMultipart(key: string, s3UploadId: string): Promise<void> {
+    return this.abortAtS3(key, s3UploadId)
+  }
+
   private client(): S3Client {
     const bucket = this.settings.get().vodBucket
     if (bucket == null || bucket.trim().length === 0) {

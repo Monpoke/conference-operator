@@ -4,6 +4,9 @@ import { time } from '@conference-operator/format'
 import { computed, ref, watch } from 'vue'
 import { UPLOAD_STATES, progress, type Upload } from '../stores/vod.js'
 import { useConferencesStore, type PlannedSession } from '../stores/conferences.js'
+import type { MontageJobView } from '@conference-operator/contract'
+import { MONTAGE_STATES, describe, useMontageStore } from '../stores/montage.js'
+import CoupeValidation from './CoupeValidation.vue'
 
 /**
  * Where a talk's capture stands.
@@ -41,6 +44,16 @@ const store = useConferencesStore()
 const toast = useToast()
 
 const folder = ref<Folder | null>(null)
+/** The talk's latest montage, if any. */
+const montage = ref<MontageJobView | null>(null)
+const montages = useMontageStore()
+/** The cut of a montage already done, opened again. */
+const reviewing = ref(false)
+
+function onValidated(job: MontageJobView): void {
+  montage.value = job
+  reviewing.value = false
+}
 const error = ref('')
 const loading = ref(false)
 
@@ -49,16 +62,21 @@ watch(
   async ([ouvert, id]) => {
     if (!ouvert || id == null) return
     folder.value = null
+    reviewing.value = false
     error.value = ''
     loading.value = true
     try {
-      const response = (await store.vodFolder(id)) as Folder
+      const [response, jobs] = await Promise.all([
+        store.vodFolder(id) as Promise<Folder>,
+        montages.forSession(id).catch(() => []),
+      ])
       /*
        * A response arriving after the modal has been closed, or after another talk
        * has been opened, must not repaint the modal on top.
        */
       if (!open.value || props.session?.id !== id) return
       folder.value = response
+      montage.value = jobs[0] ?? null
     } catch (cause) {
       if (!open.value || props.session?.id !== id) return
       error.value = cause instanceof Error ? cause.message : 'Lecture impossible.'
@@ -134,6 +152,27 @@ const consent = computed<{ text: string; tone: string }>(() => {
     ? { text: `Accordée par le conférencier, à ${when}.`, tone: 'text-ok' }
     : { text: `Refusée par le conférencier, à ${when}. Ne pas publier.`, tone: 'text-alert' }
 })
+
+async function relaunchMontage(sessionId: string): Promise<void> {
+  try {
+    montage.value = await montages.relaunch(sessionId)
+    toast.say('Montage relancé')
+  } catch {
+    /* already reported by the client's error hook */
+  }
+}
+
+async function downloadMontage(jobId: string): Promise<void> {
+  try {
+    await montages.download(jobId)
+  } catch {
+    /* already reported by the client's error hook */
+  }
+}
+
+/** The intro or outro as the worker will capture it, playing. */
+const previewUrl = (clip: 'intro' | 'outro') =>
+  props.session == null ? '#' : `/montage/apercu/${encodeURIComponent(props.session.id)}?clip=${clip}`
 
 function uploadState(row: Upload): { label: string; tone: string } {
   return UPLOAD_STATES[row.state] ?? { label: row.state, tone: '' }
@@ -279,6 +318,62 @@ function uploadState(row: Upload): { label: string; tone: string } {
             @click="bringHome(row.roomId, row.file)"
           >
             Relancer
+          </Button>
+        </div>
+
+        <!--
+          Last, because it comes last: the rushes arrive, then the video is
+          edited from them. The previews are the pages the worker captures —
+          what is checked here is what goes into the video.
+        -->
+        <h3 class="mt-3.5 mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+          Montage
+        </h3>
+
+        <p class="mb-1.5 text-sm" data-role="vod-montage">
+          <template v-if="montage == null">
+            <span class="text-dim">Pas encore monté — il se met en file quand la prise arrive dans le stockage.</span>
+          </template>
+          <template v-else>
+            <span :class="MONTAGE_STATES[montage.state]?.tone">{{ MONTAGE_STATES[montage.state]?.label ?? montage.state }}</span>
+            <template v-if="describe(montage) !== ''"> · {{ describe(montage) }}</template>
+            <span v-if="montage.erreur != null && montage.state === 'echoue'" class="block text-[11px] text-alert">
+              {{ montage.erreur }}
+            </span>
+          </template>
+        </p>
+
+        <div class="flex flex-wrap gap-1.5">
+          <a :href="previewUrl('intro')" target="_blank" rel="noopener" class="text-sm text-brand underline">Aperçu de l’intro</a>
+          <a :href="previewUrl('outro')" target="_blank" rel="noopener" class="text-sm text-brand underline">Aperçu de l’outro</a>
+        </div>
+        <!--
+          La coupe proposée, à valider ici : d'office quand elle attend, sur
+          demande pour un montage déjà fait ou en échec — une marque corrigée
+          après coup se reprend ici, sans repasser par la régie.
+        -->
+        <CoupeValidation
+          v-if="montage != null && montage.analyse != null && (montage.state === 'a-valider' || reviewing)"
+          :job="montage"
+          @validated="onValidated"
+        />
+        <div class="mt-1.5 flex flex-wrap gap-1.5">
+          <Button v-if="montage?.state === 'termine'" size="small" @click="downloadMontage(montage.id)">
+            Télécharger la vidéo
+          </Button>
+          <Button
+            v-if="montage != null && montage.analyse != null && (montage.state === 'termine' || montage.state === 'echoue') && !reviewing"
+            size="small"
+            @click="reviewing = true"
+          >
+            Revoir la coupe
+          </Button>
+          <Button
+            v-if="session != null && folder.stockageConfigure && folder.televersements.some((row) => row.kind === 'sidecar' && row.state === 'termine')"
+            size="small"
+            @click="relaunchMontage(session.id)"
+          >
+            {{ montage == null ? 'Monter' : 'Remonter' }}
           </Button>
         </div>
       </template>

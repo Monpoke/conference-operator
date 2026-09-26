@@ -2,7 +2,7 @@ import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify'
 import fastifyProxy from '@fastify/http-proxy'
 import fastifyStatic from '@fastify/static'
 import { dirname, join } from 'node:path'
-import { consolePaths, CONTROL_PATH, controlRoomIdFromPath } from '@conference-operator/contract'
+import { consolePaths, CONTROL_PATH, controlRoomIdFromPath, type VodHabillage } from '@conference-operator/contract'
 import { WebSocketServer, type WebSocket as NodeWebSocket } from 'ws'
 import { RPCHandler as FastifyRPCHandler } from '@orpc/server/fastify'
 import { RPCHandler as WebSocketRPCHandler } from '@orpc/server/websocket'
@@ -42,7 +42,7 @@ import { WallsIoConfig, wallsioSource } from './services/wallsio.js'
 import { migrateLegacyMur } from './services/legacy-mur.js'
 import { renderWallPage } from './pages/wall-page.js'
 import { previewPayload, renderBouclePreview } from './pages/boucle-preview.js'
-import { readFont, resolveFontsFolder } from '@conference-operator/projector/server'
+import { availableFonts, buildVodHabillage, readFont, renderVodDocument, resolveFontsFolder } from '@conference-operator/projector/server'
 import { requirePermission, resolveOperator } from './context.js'
 import {
   developmentAssets,
@@ -59,6 +59,7 @@ import {
 import { renderServiceWorker } from './pages/service-worker.js'
 import { PushService } from './services/push.js'
 import { IntegrationService } from './services/integrations.js'
+import { MontageService } from './services/montage.js'
 import { roomStatuses, SupervisionWatch } from './supervision.js'
 
 export interface Hub {
@@ -146,6 +147,23 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     // Filled in right after the server is created: the service logs, and its log
     // is Fastify's.
     vod: null,
+    // Reads `services.vod` when called: the storage is set up further down.
+    montage: new MontageService(
+      orm,
+      () => services.vod,
+      (sessionId) => vodHabillageFor(services, config.publicUrl, sessionId),
+      () => new Date(clock.now()),
+      (level, message, context) => services.log(level, message, context),
+      (sessionId) => programs.active()?.program.sessions.find((session) => session.id === sessionId)?.title ?? null,
+      // The room's buttons, in the hub's clock. The take's start in the sidecar
+      // is already corrected to the hub's clock by the room: no offset to add.
+      (sessionId, roomId) => {
+        const lived = services.sessions.states(roomId).find((state) => state.sessionId === sessionId)
+        if (lived == null || lived.startedAt == null) return null
+        return { startedAt: lived.startedAt, endedAt: lived.endedAt, auto: lived.decidedBy === 'auto', decalageMs: null }
+      },
+      () => settings.get().montageAuto,
+    ),
     clock,
     mode: config.mode,
   }
@@ -569,6 +587,32 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     reply.header('content-type', font.type)
     reply.header('cache-control', 'public, max-age=86400')
     return reply.send(font.bytes)
+  })
+
+  /**
+   * A talk's VOD intro or outro, playing, for the console to look at before the
+   * montage — the same page the worker captures frame by frame. Behind the
+   * operator's session: the talk's content is public, but the page is a tool.
+   */
+  app.get<{ Params: { sessionId: string }; Querystring: { clip?: string } }>('/montage/apercu/:sessionId', async (request, reply) => {
+    reply.header('content-type', 'text/html; charset=utf-8')
+    reply.header('cache-control', 'no-store')
+    try {
+      const { operator } = await resolveOperator(contextFrom(auth, services, headersOf(request.headers)))
+      requirePermission(operator, 'vod:read')
+    } catch {
+      reply.status(401)
+      return reply.send(
+        '<!doctype html><html lang="fr"><meta charset="utf-8"><title>Aperçu du montage</title>' +
+          '<body style="font:18px system-ui;padding:40px">Connectez-vous à la ' +
+          '<a href="/admin/vod">console</a> pour voir l\'aperçu du montage.</body></html>',
+      )
+    }
+    return reply.send(renderVodDocument({
+      clip: request.query.clip === 'outro' ? 'outro' : 'intro',
+      habillage: services.montage.habillageFor(request.params.sessionId),
+      fonts: fontsFolder == null ? undefined : { base: '/boucle/polices', files: availableFonts(fontsFolder) },
+    }))
   })
 
   /**
@@ -1127,4 +1171,27 @@ function toWebRequest(
     // Required by undici as soon as a streamed body is provided.
     ...(hasBody ? { duplex: 'half' } : {}),
   } as RequestInit)
+}
+
+/**
+ * What a talk's intro and outro show, resolved on the hub.
+ *
+ * The images go as the hub's own `/assets/…` addresses when it holds them —
+ * the worker then needs nothing but the hub — and as the export's otherwise.
+ * A talk the program does not know gets an empty title: the worker completes
+ * it from the take's sidecar, which it reads anyway.
+ */
+function vodHabillageFor(services: Services, publicUrl: string, sessionId: string): VodHabillage {
+  const base = publicUrl.replace(/\/+$/, '')
+  return buildVodHabillage({
+    program: services.programs.active()?.program ?? null,
+    boucle: services.settings.get().boucle,
+    sidecar: { sessionId, title: '', speakers: [], category: null },
+    eventName: services.identity.get().name,
+    localize: (ref) => {
+      if (ref == null) return null
+      const local = services.assets.previewUrl(ref)
+      return local == null ? (/^https?:\/\//.test(ref) ? ref : null) : base + local
+    },
+  })
 }

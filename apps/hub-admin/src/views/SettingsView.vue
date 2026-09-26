@@ -287,6 +287,14 @@ const rate = ref('')
 const cpu = ref(80)
 const margin = ref(5)
 const part = ref(16)
+const montageAuto = ref<'jamais' | 'si-confiance-haute' | 'toujours'>('si-confiance-haute')
+watch(
+  settings,
+  (value) => {
+    if (value?.montageAuto != null) montageAuto.value = value.montageAuto
+  },
+  { immediate: true },
+)
 
 watch(
   storage,
@@ -316,6 +324,7 @@ async function saveStorage(): Promise<void> {
         margeConferenceMinutes: Number(margin.value),
         taillePartMo: Number(part.value),
       },
+      montageAuto: montageAuto.value,
     })
     toast.say('Stockage enregistré')
   } catch {
@@ -963,6 +972,24 @@ async function confirmRemoveIntegration(): Promise<void> {
           <input id="vod-part" v-model="part" type="number" min="5" max="64"
             class="w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text" />
         </div>
+      </div>
+
+      <!--
+        Le montage, pas le téléversement : ce réglage ne descend pas aux salles.
+        Il décide quand une coupe analysée part au montage sans que personne
+        l'ait regardée.
+      -->
+      <div class="mt-3">
+        <label class="mb-[5px] block text-xs text-dim" for="vod-montage-auto">Montage sans validation</label>
+        <select
+          id="vod-montage-auto"
+          v-model="montageAuto"
+          class="w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text"
+        >
+          <option value="si-confiance-haute">Si la coupe est sûre (deux marques calées sur un silence)</option>
+          <option value="jamais">Jamais : chaque coupe se valide dans le dossier du talk</option>
+          <option value="toujours">Toujours : aucune coupe ne se valide</option>
+        </select>
       </div>
 
       <div class="mt-3 flex gap-1.5">

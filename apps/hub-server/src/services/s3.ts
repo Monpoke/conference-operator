@@ -388,6 +388,19 @@ export class S3Client {
     return presign(this.keysFor(), { method: 'PUT', path: this.path(key) }, expiresInS)
   }
 
+  /**
+   * Signed address to read an object — a rush, for the montage worker.
+   *
+   * `filename` sets the name a browser saves it under: the object key is a
+   * path, and "cmq3nx….mp4" says nothing to whoever downloads it.
+   */
+  presignGet(key: string, expiresInS: number, filename?: string): string {
+    const query = filename == null
+      ? undefined
+      : { 'response-content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}` }
+    return presign(this.keysFor(), { method: 'GET', path: this.path(key), query }, expiresInS)
+  }
+
   async completeMultipart(
     key: string,
     uploadId: string,

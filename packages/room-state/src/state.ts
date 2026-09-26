@@ -98,7 +98,9 @@ export function stateOfSlots(
   slots: readonly Slot[],
   nowMs: number,
   statuses: SessionStatuses = {},
+  pinnedId: string | null = null,
 ): RoomConferenceState {
+  const pinned = pinnedSlot(slots, statuses, pinnedId)
   /**
    * Overrun first: it is the only state that speaks of a *past* slot, and the
    * only one that shifts the rest of the day.
@@ -115,10 +117,22 @@ export function stateOfSlots(
      * blink over a fact we have just corrected ourselves.
      */
     if (slot.kind === 'break') return false
+    /**
+     * Nor can the forced talk: it runs outside its slot by decision, and the
+     * clock has nothing to say about a talk someone chose to put on now.
+     */
+    if (slot === pinned) return false
     const end = effectiveEndAt(slots, index)
     return end != null && end <= nowMs
   })
   if (overrunning) return 'depassement'
+
+  /**
+   * A forced talk *is* where the room stands: running, or waiting to be
+   * started. Reading the clock instead would call the room "late" for a slot
+   * that was deliberately set aside.
+   */
+  if (pinned != null) return statuses[pinned.id] === 'running' ? 'en-cours' : 'pas-commencee'
 
   const { current } = timelinePosition(slots as Slot[], nowMs)
   if (current == null) return 'aucune'
@@ -264,7 +278,12 @@ export function talkToControl<T extends Slot>(
   slots: readonly T[],
   nowMs: number,
   statuses: SessionStatuses = {},
+  pinnedId: string | null = null,
 ): T | null {
+  /** A forced talk comes before all three: that is the whole point of forcing it. */
+  const pinned = pinnedSlot(slots, statuses, pinnedId)
+  if (pinned != null) return pinned
+
   const { current } = timelinePosition(slots as T[], nowMs)
   if (current?.kind === 'talk') return current
 
@@ -287,6 +306,77 @@ export function talkToControl<T extends Slot>(
   }
 
   return nextTalk(slots, nowMs, statuses)
+}
+
+/**
+ * The room's forced talk, if the pin still means something.
+ *
+ * A pin is a decision stored apart from the programme, and the programme can move
+ * under it — a reimport, a swap, the talk ended from another screen. So it is
+ * read defensively: it holds only for a **talk** of **this room's** slots that has
+ * not **ended**. Anything else is inert, and the room falls back on the clock
+ * rather than titling a talk that is over or that is no longer here.
+ */
+export function pinnedSlot<T extends Slot>(
+  slots: readonly T[],
+  statuses: SessionStatuses = {},
+  pinnedId: string | null = null,
+): T | null {
+  if (pinnedId == null) return null
+  const slot = slots.find((candidate) => candidate.id === pinnedId)
+  if (slot == null || slot.kind !== 'talk') return null
+  return statuses[slot.id] === 'ended' ? null : slot
+}
+
+export interface RoomPosition<T> {
+  /** What the room is on: the forced talk, else the clock's slot. */
+  current: T | null
+  /** What comes next. With a pin, the first talk still to be given. */
+  next: T | null
+  /** The talk `Start` and `End` act on. See `talkToControl`. */
+  target: T | null
+  /** The forced talk when the pin holds, `null` otherwise. */
+  pinned: T | null
+}
+
+/**
+ * Current, next and target talk of a room, pin included — the one place that
+ * reads a pin, so that the projector, the control app and the hub cannot follow it
+ * differently.
+ *
+ * Without a pin, nothing changes: the clock gives current and next, and
+ * `talkToControl` the target.
+ *
+ * With one, the forced talk is both current and target, and **next** is the
+ * first talk still to be given: not the forced one, not started, not ended, and
+ * either with its slot not over yet or **the talk the forced one jumped over** —
+ * the talk right before it in the room's order. That is the inversion case: the
+ * 11:00 talk is forced at 10:00 because the 10:00 speaker is late, and the 10:00
+ * talk is exactly what comes after, even once its own slot has run out.
+ */
+export function roomPosition<T extends Slot>(
+  slots: readonly T[],
+  nowMs: number,
+  statuses: SessionStatuses = {},
+  pinnedId: string | null = null,
+): RoomPosition<T> {
+  const pinned = pinnedSlot(slots, statuses, pinnedId)
+  if (pinned == null) {
+    const { current, next } = timelinePosition(slots as T[], nowMs)
+    return { current, next, target: talkToControl(slots, nowMs, statuses), pinned: null }
+  }
+
+  const talks = slots.filter((slot) => slot.kind === 'talk')
+  const jumpedOver = talks[talks.indexOf(pinned) - 1] ?? null
+  const next =
+    slots.find((slot, index) => {
+      if (slot === pinned || slot.kind !== 'talk') return false
+      if ((statuses[slot.id] ?? 'scheduled') !== 'scheduled') return false
+      if (slot === jumpedOver) return true
+      const end = effectiveEndAt(slots, index)
+      return end == null || end > nowMs
+    }) ?? null
+  return { current: pinned, next, target: pinned, pinned }
 }
 
 /**

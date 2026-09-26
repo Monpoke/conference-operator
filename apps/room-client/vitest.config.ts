@@ -17,6 +17,8 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     include: ['test/**/*.test.ts'],
+    // A room's sync prefetches the programme's images: never from a test.
+    setupFiles: ['../../scripts/vitest-offline.ts'],
     hookTimeout: 60_000,
     testTimeout: 30_000,
   },

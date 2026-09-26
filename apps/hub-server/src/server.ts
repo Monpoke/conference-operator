@@ -2,7 +2,7 @@ import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify'
 import fastifyProxy from '@fastify/http-proxy'
 import fastifyStatic from '@fastify/static'
 import { dirname, join } from 'node:path'
-import { consolePaths, CONTROL_PATH, controlRoomIdFromPath } from '@conference-operator/contract'
+import { consolePaths, CONTROL_PATH, controlRoomIdFromPath, type VodHabillage } from '@conference-operator/contract'
 import { WebSocketServer, type WebSocket as NodeWebSocket } from 'ws'
 import { RPCHandler as FastifyRPCHandler } from '@orpc/server/fastify'
 import { RPCHandler as WebSocketRPCHandler } from '@orpc/server/websocket'
@@ -41,7 +41,7 @@ import { WallsIoConfig, wallsioSource } from './services/wallsio.js'
 import { migrateLegacyMur } from './services/legacy-mur.js'
 import { renderWallPage } from './pages/wall-page.js'
 import { previewPayload, renderBouclePreview } from './pages/boucle-preview.js'
-import { readFont, resolveFontsFolder } from '@conference-operator/projector/server'
+import { buildVodHabillage, readFont, resolveFontsFolder } from '@conference-operator/projector/server'
 import { requirePermission, resolveOperator } from './context.js'
 import {
   developmentAssets,
@@ -58,6 +58,7 @@ import {
 import { renderServiceWorker } from './pages/service-worker.js'
 import { PushService } from './services/push.js'
 import { IntegrationService } from './services/integrations.js'
+import { MontageService } from './services/montage.js'
 import { roomStatuses, SupervisionWatch } from './supervision.js'
 
 export interface Hub {
@@ -144,6 +145,14 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     // Filled in right after the server is created: the service logs, and its log
     // is Fastify's.
     vod: null,
+    // Reads `services.vod` when called: the storage is set up further down.
+    montage: new MontageService(
+      orm,
+      () => services.vod,
+      (sessionId) => vodHabillageFor(services, config.publicUrl, sessionId),
+      () => new Date(clock.now()),
+      (level, message, context) => services.log(level, message, context),
+    ),
     clock,
     mode: config.mode,
   }
@@ -1123,4 +1132,27 @@ function toWebRequest(
     // Required by undici as soon as a streamed body is provided.
     ...(hasBody ? { duplex: 'half' } : {}),
   } as RequestInit)
+}
+
+/**
+ * What a talk's intro and outro show, resolved on the hub.
+ *
+ * The images go as the hub's own `/assets/…` addresses when it holds them —
+ * the worker then needs nothing but the hub — and as the export's otherwise.
+ * A talk the program does not know gets an empty title: the worker completes
+ * it from the take's sidecar, which it reads anyway.
+ */
+function vodHabillageFor(services: Services, publicUrl: string, sessionId: string): VodHabillage {
+  const base = publicUrl.replace(/\/+$/, '')
+  return buildVodHabillage({
+    program: services.programs.active()?.program ?? null,
+    boucle: services.settings.get().boucle,
+    sidecar: { sessionId, title: '', speakers: [], category: null },
+    eventName: services.identity.get().name,
+    localize: (ref) => {
+      if (ref == null) return null
+      const local = services.assets.previewUrl(ref)
+      return local == null ? (/^https?:\/\//.test(ref) ? ref : null) : base + local
+    },
+  })
 }

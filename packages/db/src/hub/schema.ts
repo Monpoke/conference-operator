@@ -667,6 +667,67 @@ export const asset = sqliteTable(
   (table) => [index('asset_source_idx').on(table.sourceUrl)],
 )
 
+/**
+ * The machines allowed to edit the VODs.
+ *
+ * A worker is not a room: it serves no room, and a room token must not open
+ * the rushes of the whole event. So it gets its own token, issued from the
+ * console and shown once, hashed here like a room's.
+ */
+export const montageWorker = sqliteTable('montage_worker', {
+  id: text('id').primaryKey(),
+  /** Readable in the console: "Mac mini du local technique". */
+  nom: text('nom').notNull(),
+  tokenHash: text('token_hash'),
+  createdAt: text('created_at').notNull().default(now),
+  /** Better Auth user who created it — an accountability trace. */
+  createdBy: text('created_by'),
+  lastSeenAt: text('last_seen_at'),
+  revokedAt: text('revoked_at'),
+})
+
+/**
+ * One montage of one take: intro, the talk cut on its marks, outro.
+ *
+ * Queued when a take's sidecar arrives in the storage, taken by a worker with a
+ * lease: a worker that dies mid-render leaves a lease that expires, and the job
+ * goes back to the queue. `pas_avant` holds back a job whose rush is still on
+ * its way — the sidecar, a few kilobytes, usually arrives first.
+ */
+export const montageJob = sqliteTable(
+  'montage_job',
+  {
+    id: text('id').primaryKey(),
+    sessionId: text('session_id').notNull(),
+    roomId: text('room_id').notNull(),
+    /** The sidecar's upload: its object key says where the take is. */
+    sidecarUploadId: text('sidecar_upload_id').notNull(),
+    /** `attente`, `en-cours`, `termine`, `echoue`, `annule`. */
+    state: text('state').notNull(),
+    /** Where the worker stands: `telechargement`, `intro`, `outro`, `assemblage`, `envoi`. */
+    etape: text('etape'),
+    pourcent: integer('pourcent').notNull().default(0),
+    workerId: text('worker_id'),
+    leaseUntil: text('lease_until'),
+    pasAvant: text('pas_avant'),
+    tentatives: integer('tentatives').notNull().default(0),
+    outputKey: text('output_key'),
+    /** The output's open multipart, while the worker uploads it. */
+    s3UploadId: text('s3_upload_id'),
+    durationMs: integer('duration_ms'),
+    /** JSON: the marks that were missing, the take then kept whole on that side. */
+    marquesManquantes: text('marques_manquantes'),
+    erreur: text('erreur'),
+    createdAt: text('created_at').notNull().default(now),
+    updatedAt: text('updated_at').notNull().default(now),
+    finishedAt: text('finished_at'),
+  },
+  (table) => [
+    index('montage_job_state_idx').on(table.state, table.pasAvant),
+    index('montage_job_session_idx').on(table.sessionId),
+  ],
+)
+
 export const hubSchema = {
   programSnapshot,
   room,
@@ -689,4 +750,6 @@ export const hubSchema = {
   vodUpload,
   asset,
   auditLog,
+  montageWorker,
+  montageJob,
 }

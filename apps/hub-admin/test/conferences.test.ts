@@ -3,8 +3,12 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ConferencesView from '../src/views/ConferencesView.vue'
 import {
+  canPin,
   overrideChoice,
+  partnersByRoom,
   placeInDay,
+  swapBlocked,
+  swapPartners,
   useConferencesStore,
   type PlannedSession,
 } from '../src/stores/conferences.js'
@@ -65,6 +69,7 @@ function stub(options: {
   serverTime?: string
   projectId?: string | null
   overrideError?: string
+  pins?: Record<string, string>
 }): { calls: Call[]; client: unknown } {
   const calls: Call[] = []
   const note =
@@ -85,6 +90,9 @@ function stub(options: {
           end: note('sessions/end', { ok: true }),
           reset: note('sessions/reset', { ok: true }),
           override: note('sessions/override', { ok: true }, options.overrideError),
+          swap: note('sessions/swap', { ok: true, contentHash: 'h' }),
+          resetSlots: note('sessions/resetSlots', { ok: true, contentHash: 'h' }),
+          pin: note('sessions/pin', { ok: true, pins: {} }),
           feedbackId: note('sessions/feedbackId', { ok: true }),
         },
         program: {
@@ -96,6 +104,7 @@ function stub(options: {
             timezone: PARIS,
             serverTime: options.serverTime ?? '2026-10-30T08:00:00Z',
             openFeedbackProjectId: options.projectId === undefined ? 'cloudnord' : options.projectId,
+            pins: options.pins ?? {},
           }),
           controleOpenFeedback: note('program/controleOpenFeedback', {
             projet: 'cloudnord',
@@ -159,6 +168,147 @@ describe('decision menu', () => {
     expect(overrideChoice({ ...TALK, overriddenAs: 'break' })).toEqual({
       scheduled: 'talk',
       action: 'break',
+    })
+  })
+})
+
+/** Another talk of the same day, in the other room. */
+const OTHER: PlannedSession = {
+  ...TALK,
+  id: 'talk-2',
+  roomId: 'track-2',
+  roomName: 'Track #2',
+  title: 'Pinia sans détour',
+  startsAt: '2026-10-30T10:00:00Z',
+  endsAt: '2026-10-30T10:45:00Z',
+}
+
+describe('swap partners', () => {
+  it('says why a slot cannot be swapped, before the hub refuses it', () => {
+    expect(swapBlocked(TALK)).toBeNull()
+    expect(swapBlocked(PAUSE)).toBe("Seule une conférence s'échange")
+    expect(swapBlocked({ ...TALK, sharedFrom: 'track-2' })).toBe("Pause héritée d'une autre salle")
+    // Its lifecycle was written for the room and the hour it had.
+    expect(swapBlocked({ ...TALK, startedAt: '2026-10-30T09:01:00Z' })).toBe(
+      'Conférence déjà commencée',
+    )
+    expect(
+      swapBlocked({ ...TALK, startedAt: '2026-10-30T09:01:00Z', endedAt: '2026-10-30T09:40:00Z' }),
+    ).toBe('Conférence déjà terminée')
+  })
+
+  it('offers the other talks of the same day not yet started, and never itself', () => {
+    const tomorrow = { ...OTHER, id: 'talk-3', startsAt: '2026-10-31T09:00:00Z' }
+    const started = { ...OTHER, id: 'talk-4', startedAt: '2026-10-30T10:00:00Z' }
+    const partners = swapPartners(TALK, [TALK, OTHER, PAUSE, tomorrow, started], PARIS)
+    expect(partners.map((s) => s.id)).toEqual(['talk-2'])
+  })
+
+  it("reads the day in the event's zone, not in UTC", () => {
+    // 23:30 UTC on the 29th is already the 30th in Paris.
+    const late = { ...OTHER, id: 'talk-5', startsAt: '2026-10-29T23:30:00Z' }
+    expect(swapPartners(TALK, [late], PARIS).map((s) => s.id)).toEqual(['talk-5'])
+  })
+
+  it('offers nothing to a slot that cannot be swapped', () => {
+    expect(swapPartners(PAUSE, [TALK, OTHER], PARIS)).toEqual([])
+  })
+
+  it('groups the partners by room', () => {
+    const groups = partnersByRoom([OTHER, TALK, { ...OTHER, id: 'talk-6' }])
+    expect(groups.map((g) => [g.room, g.sessions.length])).toEqual([
+      ['Track #2', 2],
+      ['Track #1', 1],
+    ])
+  })
+
+  it('forces only a talk of a room, not over yet', () => {
+    expect(canPin(TALK)).toBe(true)
+    expect(canPin({ ...TALK, startedAt: '2026-10-30T09:01:00Z' })).toBe(true)
+    expect(canPin({ ...TALK, endedAt: '2026-10-30T09:40:00Z' })).toBe(false)
+    expect(canPin({ ...TALK, roomId: null })).toBe(false)
+    expect(canPin(PAUSE)).toBe(false)
+  })
+})
+
+describe('emergency gestures', () => {
+  it('swaps two talks and reads the program back from the hub', async () => {
+    const { calls, wrapper } = await mountView({ sessions: [TALK, OTHER] })
+    await wrapper.get('#btn-planning-actions').trigger('click')
+
+    await wrapper.get('[data-swap-session="talk-1"]').setValue('talk-2')
+    await flushPromises()
+
+    expect(calls).toContainEqual({ path: 'sessions/swap', input: { a: 'talk-1', b: 'talk-2' } })
+    expect(calls.filter((call) => call.path === 'program/planning')).toHaveLength(2)
+    // A trigger, not a state: the menu goes back to its prompt.
+    const menu = wrapper.get('[data-swap-session="talk-1"]').element as HTMLSelectElement
+    expect(menu.value).toBe('')
+  })
+
+  it('greys out the menu on a talk already started, and says why', async () => {
+    const { wrapper } = await mountView({
+      sessions: [{ ...TALK, startedAt: '2026-10-30T09:01:00Z' }, OTHER],
+    })
+    await wrapper.get('#btn-planning-actions').trigger('click')
+
+    const menu = wrapper.get('[data-swap-session="talk-1"]')
+    expect(menu.attributes('disabled')).toBeDefined()
+    expect(menu.attributes('title')).toBe('Conférence déjà commencée')
+  })
+
+  it('shows a moved talk, and whose slot it took, even with the actions collapsed', async () => {
+    const { wrapper } = await mountView({ sessions: [{ ...TALK, movedTo: 'talk-2' }, OTHER] })
+
+    expect(wrapper.get('[data-moved="talk-1"]').attributes('title')).toBe(
+      'Occupe le créneau de Pinia sans détour',
+    )
+    expect(wrapper.get('#planning-moved').text()).toContain('1 conférence déplacée')
+  })
+
+  it('gives the slots back to the program only once confirmed', async () => {
+    const { calls, wrapper } = await mountView({ sessions: [{ ...TALK, movedTo: 'talk-2' }, OTHER] })
+    await wrapper.get('#btn-planning-actions').trigger('click')
+
+    await wrapper.get('#btn-reset-slots').trigger('click')
+    await flushPromises()
+    expect(calls.filter((call) => call.path === 'sessions/resetSlots')).toHaveLength(0)
+
+    const confirm = [...document.querySelectorAll('button')].find(
+      (button) => button.textContent?.includes('Rendre les créneaux') && button.id === '',
+    )
+    confirm!.click()
+    await flushPromises()
+    expect(calls.filter((call) => call.path === 'sessions/resetSlots')).toHaveLength(1)
+  })
+
+  it('forces a talk in its room, and lifts it', async () => {
+    const { calls, wrapper } = await mountView({ sessions: [TALK, OTHER] })
+    await wrapper.get('#btn-planning-actions').trigger('click')
+
+    await wrapper.get('[data-pin-session="talk-2"]').trigger('click')
+    await flushPromises()
+    expect(calls).toContainEqual({
+      path: 'sessions/pin',
+      input: { roomId: 'track-2', sessionId: 'talk-2' },
+    })
+  })
+
+  it('marks the forced talk and offers to lift it', async () => {
+    const { calls, wrapper } = await mountView({
+      sessions: [TALK, OTHER],
+      pins: { 'track-2': 'talk-2' },
+    })
+    await wrapper.get('#btn-planning-actions').trigger('click')
+
+    expect(wrapper.get('[data-pinned="talk-2"]').text()).toContain('Forcée')
+    expect(wrapper.find('[data-pin-session="talk-2"]').exists()).toBe(false)
+
+    await wrapper.get('[data-unpin-session="talk-2"]').trigger('click')
+    await flushPromises()
+    expect(calls).toContainEqual({
+      path: 'sessions/pin',
+      input: { roomId: 'track-2', sessionId: null },
     })
   })
 })

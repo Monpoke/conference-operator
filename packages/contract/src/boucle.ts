@@ -139,6 +139,11 @@ export const dureeSceneSchema = z.enum(Object.keys(DUREES_PAR_DEFAUT) as [DureeS
 export const boucleSchema = z.object({
   /** Logo top left of every scene and large on the welcome. `null` = the program's. */
   logo: imageRefSchema.nullable().default(null),
+  /**
+   * The logo already spells the event's name (a wordmark): the capture overlay
+   * then shows it alone, rather than followed by the name a second time.
+   */
+  logoAvecNom: z.boolean().default(false),
   accueil: z.object({ texte: z.string().max(60) }).default({ texte: 'Bienvenue à' }),
   /** Bottom right of some scenes. `null` removes it. */
   signature: z
@@ -313,6 +318,8 @@ export interface BoucleLogo {
  */
 export interface BoucleView {
   logoUrl: string | null
+  /** The logo already spells the event's name: the overlay does not repeat it. */
+  logoAvecNom: boolean
   accueil: { texte: string }
   signature: { texte: string; icone: 'linkedin' | 'aucune' } | null
   barreBas: Boucle['barreBas']

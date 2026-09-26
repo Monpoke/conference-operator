@@ -15,6 +15,7 @@ const { draft, dirty, reset } = useDraft(() =>
     ? null
     : {
         logo: store.boucle.logo,
+        logoAvecNom: store.boucle.logoAvecNom,
         accueil: store.boucle.accueil,
         signature: store.boucle.signature,
         barreBas: store.boucle.barreBas,
@@ -42,6 +43,10 @@ async function save(): Promise<void> {
   <Panel title="Identité & bandeau">
     <div v-if="draft != null" id="boucle-identite" class="flex flex-1 flex-col">
       <ImageField id="boucle-logo" v-model="draft.logo" label="Logo" placeholder="Celui du programme" />
+      <label class="mb-[11px] flex items-center gap-2 text-sm">
+        <input id="boucle-logo-avec-nom" v-model="draft.logoAvecNom" type="checkbox" class="w-auto" />
+        Le logo contient déjà le nom de l'évènement (l'habillage de captation ne le répète pas)
+      </label>
 
       <label :class="LABEL" for="boucle-accueil">Accueil — au-dessus du logo</label>
       <input id="boucle-accueil" v-model="draft.accueil.texte" maxlength="60" :class="FIELD" />

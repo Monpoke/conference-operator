@@ -285,7 +285,8 @@ ${initialState}
     const session = data.state.currentSession
 
     const logo = document.getElementById('logo')
-    const logoUrl = data.event?.logoUrl
+    // The console's logo first, as on the loop: the capture wears the same one.
+    const logoUrl = data.boucle?.logoUrl ?? data.event?.logoUrl
     if (logoUrl) { if (logo.getAttribute('src') !== logoUrl) logo.src = logoUrl; logo.hidden = false } else logo.hidden = true
     // The name stands in for a missing logo, never next to it.
     setText('event-name', logoUrl ? '' : eventName)

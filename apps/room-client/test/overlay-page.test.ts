@@ -182,6 +182,17 @@ describe('capture frame', () => {
     expect(document.getElementById('event-name')?.hidden).toBe(true)
   })
 
+  it('wears the logo set in the console over the program\'s', () => {
+    mountOverlay({
+      ...FRAMED,
+      event: { ...(FRAMED.event as object), logoUrl: '/assets/programme.png' },
+      boucle: { ...(FRAMED.boucle as object), logoUrl: '/assets/console.png' },
+    } as unknown as DisplayPayload)
+
+    expect(document.getElementById('logo')?.getAttribute('src')).toBe('/assets/console.png')
+    expect(document.getElementById('event-name')?.hidden).toBe(true)
+  })
+
   it('leaves the slides and the webcam transparent', () => {
     // The decor is clipped by an even-odd path: the outer canvas, then one
     // rounded rectangle per hole. Without the holes, OBS would show only the decor.

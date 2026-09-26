@@ -31,6 +31,62 @@
 @import "./shadcn.css";
 
 /*
+ * Tinted fills: a state colour, muted down to a background.
+ *
+ * They used to be written literally in the components — `bg-[#3a1519]` on the
+ * danger button, `bg-[#102e22]` under a success toast. Dark hexes that the light
+ * palette below could not reach: the console would have turned white around
+ * black-red buttons. Named, they follow the theme like everything else.
+ *
+ * Here and not in `base.css`: only the Vue components use them, and the frozen
+ * sheet has no reason to carry them.
+ */
+@theme {
+  --color-alert-soft: #3a1519;
+  --color-alert-edge: #6c2027;
+  --color-ok-soft: #102e22;
+  --color-warn-soft: #3a2a13;
+}
+
+/*
+ * The light palette — the hub console only.
+ *
+ * The dark theme is the rule, and stays the default: the control app lives in a
+ * blacked-out room. But the console is carried on a laptop from room to room,
+ * into a lit foyer, next to a window, and a dark screen in daylight is a screen
+ * one squints at. So a switch, set on `<html data-theme="light">` by the console
+ * alone (`stores/theme.ts`), and remembered per device.
+ *
+ * An attribute rather than shadcn's `.dark` class: the absence of the attribute
+ * is the dark theme, so one oversight leaves the room dark, never white.
+ *
+ * Every utility reads `var(--color-*)`, so redefining the variables is enough.
+ * The state colours are darkened a notch: the pastel greens and ambers of the
+ * dark theme fell under the contrast threshold as text on white. The dark ink
+ * set on the brand and state fills (`text-[#05070d]`) stays readable on both.
+ */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --color-brand: #4d6ef2;
+  --color-brand2: #0891b2;
+  --color-canvas: #f3f5fa;
+  --color-surface: #ffffff;
+  --color-surface2: #e8ecf5;
+  --color-edge: #cdd4e3;
+  --color-text: #111726;
+  --color-dim: #586179;
+  --color-ok: #059669;
+  --color-warn: #b45309;
+  --color-alert: #e11d48;
+
+  --color-alert-soft: #fde4e8;
+  --color-alert-edge: #f3a5b1;
+  --color-ok-soft: #d9f4e8;
+  --color-warn-soft: #fcefd6;
+}
+
+/*
  * The pointer of an application, not of a document.
  *
  * The console and the control app are tools one operates: over a label, a title

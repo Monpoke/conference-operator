@@ -168,7 +168,7 @@ onBeforeUnmount(() => {
             class="cursor-pointer rounded-lg border px-3 py-2 text-[13px] font-semibold disabled:cursor-not-allowed disabled:opacity-40"
             :class="
               danger === true
-                ? 'border-[#6c2027] bg-[#3a1519] text-text'
+                ? 'border-alert-edge bg-alert-soft text-text'
                 : 'border-brand bg-brand text-[#05070d]'
             "
             @click="emit('confirm')"

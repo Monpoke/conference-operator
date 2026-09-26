@@ -19,7 +19,7 @@ const button = cva(
       variant: {
         neutral: 'border-edge bg-surface2 text-text hover:not-disabled:border-brand hover:not-disabled:bg-edge',
         primary: 'border-brand bg-brand text-[#05070d]',
-        danger: 'border-[#6c2027] bg-[#3a1519] text-text hover:not-disabled:border-brand',
+        danger: 'border-alert-edge bg-alert-soft text-text hover:not-disabled:border-brand',
         tab: 'border-transparent bg-transparent text-dim hover:not-disabled:border-edge',
       },
       size: {

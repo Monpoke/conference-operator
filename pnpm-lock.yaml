@@ -530,6 +530,12 @@ importers:
       '@conference-operator/projector':
         specifier: workspace:*
         version: link:../../packages/projector
+      '@orpc/client':
+        specifier: 2.0.0-beta.37
+        version: 2.0.0-beta.37
+      '@orpc/contract':
+        specifier: 2.0.0-beta.37
+        version: 2.0.0-beta.37
       tsx:
         specifier: 4.23.13
         version: 4.23.13
@@ -537,6 +543,9 @@ importers:
         specifier: 4.5.4
         version: 4.5.4
     devDependencies:
+      '@conference-operator/hub-server':
+        specifier: workspace:*
+        version: link:../hub-server
       '@types/node':
         specifier: 26.4.1
         version: 26.4.1

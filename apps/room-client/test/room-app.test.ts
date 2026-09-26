@@ -27,10 +27,21 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 function fakeObs(scenes = ['Capture HDMI', 'Habillage']) {
   const handlers = new Map<string, ((payload: unknown) => void)[]>()
   let current = scenes[1] ?? scenes[0]!
+  /** The Browser Sources and their address. */
+  const browser = new Map<string, string>()
+  /** The Browser Sources reloaded, in order. */
+  const reloaded: string[] = []
   const transport: ObsTransport = {
     connect: vi.fn(async () => {}),
     disconnect: vi.fn(async () => {}),
     call: (async (request: string, args?: Record<string, unknown>) => {
+      if (request === 'GetInputList' && args?.inputKind === 'browser_source') {
+        return { inputs: [...browser.keys()].map((inputName) => ({ inputName, inputKind: 'browser_source' })) }
+      }
+      if (request === 'GetInputSettings' && browser.has(args!.inputName as string)) {
+        return { inputSettings: { url: browser.get(args!.inputName as string) } }
+      }
+      if (request === 'PressInputPropertiesButton') reloaded.push(args!.inputName as string)
       if (request === 'GetSceneList') {
         return { currentProgramSceneName: current, scenes: scenes.map((sceneName) => ({ sceneName })) }
       }
@@ -48,6 +59,8 @@ function fakeObs(scenes = ['Capture HDMI', 'Habillage']) {
   }
   return {
     transport,
+    browser,
+    reloaded,
     get currentScene() { return current },
     /** What OBS pushes on its own: a recording started on the machine. */
     emit(event: string, payload: unknown) {
@@ -210,6 +223,33 @@ describe('room machine, full start-up', () => {
     await sleep(400)
     const after = (await (await fetch(`${url}/display/data`)).json()) as DisplayPayload
     expect(after.state.mode).toBe('programme')
+  }, 30_000)
+
+  it('reloads the OBS pages that never loaded, and only those', async () => {
+    room = makeApp()
+    const url = await room.startDisplay()
+    const token = await room.ensurePaired()
+    await room.connectHub(token!)
+
+    // OBS started before the room: its overlay got "connection refused" and stays
+    // empty. The projector page, reloaded by hand, follows its stream.
+    obs.browser.set('Écran de salle', `${url}/display/projector`)
+    obs.browser.set('Habillage enregistrement', `${url}/display/overlay`)
+    obs.browser.set('Page sans rapport', 'https://exemple.org/')
+    const abort = new AbortController()
+    const stream = await fetch(`${url}/display/state?vue=projecteur&partiel=1`, {
+      headers: { 'user-agent': 'Mozilla/5.0 Chrome/127.0.0.0 Safari/537.36 OBS/32.2.2' },
+      signal: abort.signal,
+    })
+    await stream.body!.getReader().read()
+
+    try {
+      await room.connectObs()
+      expect(await room.reloadObsPages()).toEqual(['Habillage enregistrement'])
+      expect(obs.reloaded).toEqual(['Habillage enregistrement'])
+    } finally {
+      abort.abort()
+    }
   }, 30_000)
 
   it('caches the assets so the screen no longer depends on the network', async () => {

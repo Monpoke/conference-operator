@@ -47,6 +47,31 @@ import { hostMonitor, type HostLoad } from './host.js'
 
 export { FIELDS_BY_VIEW, type DisplayPayload, type DisplayView }
 
+/** The pages served to OBS, and the view each one follows on the state stream. */
+const PAGE_VIEWS: Record<string, DisplayView> = {
+  '/display/projector': 'projecteur',
+  '/display/overlay': 'overlay',
+  '/display/overlay-live': 'bandeau',
+}
+
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
+
+/**
+ * The view a Browser Source follows when it loads this address from this room,
+ * `null` for any other address — another machine, another port, another page.
+ */
+export function displayViewOf(url: string, port: number): DisplayView | null {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return null
+  }
+  if (parsed.protocol !== 'http:' || !LOCAL_HOSTS.has(parsed.hostname)) return null
+  if (Number(parsed.port || 80) !== port) return null
+  return PAGE_VIEWS[parsed.pathname.replace(/\/+$/, '')] ?? null
+}
+
 /**
  * A subscriber to the stream: its view, and the last value it received per field.
  *
@@ -62,6 +87,8 @@ interface StreamSubscriber {
    * keep understanding the stream after the reconnection.
    */
   partial: boolean
+  /** Opened by an OBS Browser Source, whose user agent carries `OBS/<version>`. */
+  fromObs: boolean
   last: Record<string, string>
   /** The last sub-fields sent, per merged field. */
   lastParts: Record<string, Record<string, string>>
@@ -883,7 +910,14 @@ export class DisplayServer {
       // `EventSource` reconnection, with no resume logic to write.
       const { fields, parts } = this.serializedFields()
       const keys = DisplayServer.viewKeys(fields, view)
-      const subscriber: StreamSubscriber = { view, partial: query?.partiel === '1', last: {}, lastParts: {}, write }
+      const subscriber: StreamSubscriber = {
+        view,
+        partial: query?.partiel === '1',
+        fromObs: /\bOBS\/\d/.test(request.headers['user-agent'] ?? ''),
+        last: {},
+        lastParts: {},
+        write,
+      }
       for (const key of keys) {
         subscriber.last[key] = fields[key] ?? 'null'
         if (parts[key] != null) subscriber.lastParts[key] = parts[key]
@@ -1040,6 +1074,27 @@ export class DisplayServer {
   /** The port the room wanted and the one it got, or `null` if it got its own. */
   portFallback(): { wanted: number; actual: number } | null {
     return this.portFallbackState
+  }
+
+  /** The port actually listened on, `null` before `listen`. */
+  port(): number | null {
+    const address = this.app.server.address()
+    return typeof address === 'object' && address != null ? address.port : null
+  }
+
+  /**
+   * The views an OBS Browser Source is following right now.
+   *
+   * A page loaded in OBS holds the state stream open, and reopens it by itself
+   * when the room restarts. A view missing here while OBS has a source on it is a
+   * page that never loaded — see `RoomApp.reloadObsPages`.
+   */
+  obsViews(): Set<DisplayView> {
+    const views = new Set<DisplayView>()
+    for (const client of this.clients) {
+      if (client.fromObs && client.view != null) views.add(client.view)
+    }
+    return views
   }
 
   /**

@@ -90,6 +90,8 @@ describe('the words', () => {
       actionLabel(entry({ detail: JSON.stringify({ action: { type: 'display.set', mode: 'sponsors' } }) })),
     ).toBe('Écran : sponsors (régie mobile)')
     expect(actionLabel(entry({ action: 'settings.update', detail: null }))).toBe('Réglages modifiés')
+    expect(actionLabel(entry({ action: 'sessions.swap', detail: null }))).toBe('Créneaux échangés')
+    expect(actionLabel(entry({ action: 'sessions.pin', detail: null }))).toBe('Conférence forcée en salle')
     // What has no words yet keeps its procedure: readable, if not pretty.
     expect(actionLabel(entry({ action: 'nouveau.truc', detail: null }))).toBe('nouveau.truc')
   })

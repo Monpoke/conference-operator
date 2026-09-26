@@ -1,14 +1,26 @@
 <script setup lang="ts">
 import { isTransitionAllowed } from '@conference-operator/room-state'
-import { Badge, Button, Empty, Hint, Panel, useToast } from '@conference-operator/components'
+import {
+  Badge,
+  Button,
+  ConfirmDialog,
+  Empty,
+  Hint,
+  Panel,
+  useToast,
+} from '@conference-operator/components'
 import { timeFormatter } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import FeedbackIdDialog from '../components/FeedbackIdDialog.vue'
 import VodFolderDialog from '../components/VodFolderDialog.vue'
 import {
+  canPin,
   overrideChoice,
+  partnersByRoom,
   placeInDay,
+  swapBlocked,
+  swapPartners,
   useConferencesStore,
   type FeedbackCheck,
   type PlannedSession,
@@ -28,7 +40,7 @@ import {
  * the room.
  */
 const store = useConferencesStore()
-const { states, planning, hasActiveProgram, room, actionsShown } = storeToRefs(store)
+const { states, planning, hasActiveProgram, room, actionsShown, pins } = storeToRefs(store)
 const toast = useToast()
 
 const zone = computed(() => planning.value?.timezone ?? 'Europe/Paris')
@@ -172,6 +184,63 @@ async function changeOverride(session: PlannedSession, menu: HTMLSelectElement):
      * reaches neither the rooms nor the QR codes.
      */
     menu.value = before
+  }
+}
+
+/*
+ * The two emergency gestures: swapping two talks' slots, and forcing a room's
+ * current talk. Both correct what the hub **serves**, so every screen follows —
+ * and both are read back from the hub rather than patched here.
+ */
+const moved = computed(
+  () => (planning.value?.sessions ?? []).filter((s) => s.movedTo != null).length,
+)
+
+function titleOf(sessionId: string | null | undefined): string {
+  return planning.value?.sessions.find((s) => s.id === sessionId)?.title ?? sessionId ?? '—'
+}
+
+/** Among the whole program, not the filtered room: a swap crosses rooms. */
+function partnerGroups(session: PlannedSession): ReturnType<typeof partnersByRoom> {
+  return partnersByRoom(swapPartners(session, planning.value?.sessions ?? [], zone.value))
+}
+
+async function changeSwap(session: PlannedSession, menu: HTMLSelectElement): Promise<void> {
+  const other = menu.value
+  // The menu is a trigger, not a state: it goes back to its prompt whatever the
+  // outcome, the result reads in the "Déplacée" badge.
+  menu.value = ''
+  if (other === '') return
+  try {
+    await store.swap(session.id, other)
+    toast.say(`Créneaux échangés avec « ${titleOf(other)} »`)
+  } catch {
+    /* already reported */
+  }
+}
+
+function isPinned(session: PlannedSession): boolean {
+  return session.roomId != null && pins.value[session.roomId] === session.id
+}
+
+async function changePin(session: PlannedSession, pinned: boolean): Promise<void> {
+  if (session.roomId == null) return
+  try {
+    await store.pin(session.roomId, pinned ? session.id : null)
+    toast.say(pinned ? `« ${session.title} » forcée en salle` : 'Salle rendue à son horaire')
+  } catch {
+    /* already reported */
+  }
+}
+
+const resetOpen = ref(false)
+
+async function confirmResetSlots(): Promise<void> {
+  try {
+    await store.resetSlots()
+    toast.say('Créneaux rendus au programme')
+  } catch {
+    /* already reported */
   }
 }
 
@@ -349,6 +418,25 @@ function openVod(session: PlannedSession): void {
           {{ actionsShown ? 'Masquer les actions' : 'Modifier les créneaux'
           }}{{ decisions === 0 ? '' : ` (${decisions} décision${decisions > 1 ? 's' : ''})` }}
         </Button>
+        <!--
+          Les échanges se comptent à part des décisions : ils déplacent des
+          conférences d'une salle à l'autre, ce qu'un statut ne fait pas. Et ils
+          se défont d'un seul geste — le lendemain d'une journée où l'on a
+          improvisé, c'est le programme exporté qu'on veut retrouver.
+        -->
+        <span v-if="moved > 0" id="planning-moved" class="shrink-0 text-xs text-warn">
+          {{ moved }} conférence{{ moved > 1 ? 's' : '' }} déplacée{{ moved > 1 ? 's' : '' }}
+        </span>
+        <Button
+          v-if="actionsShown && moved > 0"
+          id="btn-reset-slots"
+          size="small"
+          variant="danger"
+          class="shrink-0"
+          @click="resetOpen = true"
+        >
+          Rendre les créneaux au programme
+        </Button>
       </div>
 
       <div v-if="checking || check != null || checkError !== ''" id="check-feedback" class="mb-2.5">
@@ -464,6 +552,34 @@ function openVod(session: PlannedSession): void {
                   pause commune, héritée d'une autre salle
                 </div>
                 <!--
+                  Hors de la colonne « Action », repliée : un talk déplacé ou forcé
+                  change ce que la salle projette, et cela se voit en lisant le
+                  planning, pas seulement en le modifiant.
+                -->
+                <div
+                  v-if="session.movedTo != null || isPinned(session)"
+                  class="mt-1 flex flex-wrap gap-1"
+                >
+                  <Badge
+                    v-if="session.movedTo != null"
+                    variant="warning"
+                    class="px-2 py-0.5 text-[11px]"
+                    :data-moved="session.id"
+                    :title="`Occupe le créneau de ${titleOf(session.movedTo)}`"
+                  >
+                    Déplacée
+                  </Badge>
+                  <Badge
+                    v-if="isPinned(session)"
+                    variant="alert"
+                    class="px-2 py-0.5 text-[11px]"
+                    :data-pinned="session.id"
+                    title="Forcée en cours dans sa salle, quelle que soit l'heure"
+                  >
+                    Forcée
+                  </Badge>
+                </div>
+                <!--
                   Dit en toutes lettres ce que le trait montre : le surlignage
                   seul se confondrait avec une ligne survolée, et l'hour
                   affichée peut être simulée — auquel cas « en ce moment » est la
@@ -554,6 +670,54 @@ function openVod(session: PlannedSession): void {
                       : 'Considérer comme break' }}
                   </option>
                 </select>
+                <!--
+                  Les gestes d'urgence : un orateur en retard, le suivant est
+                  prêt. Le menu ne propose que ce que le hub acceptera — une
+                  conférence du même jour, pas encore commencée — et dit pourquoi
+                  il est grisé plutôt que de laisser le refus arriver après coup.
+                -->
+                <div v-if="session.kind === 'talk' && session.sharedFrom == null" class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <select
+                    class="w-auto rounded-lg border border-edge bg-canvas px-2 py-1 text-xs text-text disabled:opacity-40"
+                    :data-swap-session="session.id"
+                    :disabled="swapBlocked(session) != null || partnerGroups(session).length === 0"
+                    :title="
+                      swapBlocked(session) ??
+                      (partnerGroups(session).length === 0
+                        ? 'Aucune autre conférence à venir ce jour-là'
+                        : 'Échanger salle et horaires avec une autre conférence')
+                    "
+                    value=""
+                    @change="changeSwap(session, $event.target as HTMLSelectElement)"
+                  >
+                    <option value="">Échanger avec…</option>
+                    <optgroup v-for="group in partnerGroups(session)" :key="group.room" :label="group.room">
+                      <option v-for="other in group.sessions" :key="other.id" :value="other.id">
+                        {{ hour(other.startsAt) }} — {{ other.title }}
+                      </option>
+                    </optgroup>
+                  </select>
+                  <template v-if="canPin(session)">
+                    <Button
+                      v-if="isPinned(session)"
+                      size="small"
+                      :data-unpin-session="session.id"
+                      title="Rendre la salle à son horaire"
+                      @click="changePin(session, false)"
+                    >
+                      Libérer
+                    </Button>
+                    <Button
+                      v-else
+                      size="small"
+                      :data-pin-session="session.id"
+                      title="La salle passe sur cette conférence maintenant, quelle que soit l'heure"
+                      @click="changePin(session, true)"
+                    >
+                      Forcer en cours
+                    </Button>
+                  </template>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -574,6 +738,14 @@ function openVod(session: PlannedSession): void {
       </Hint>
     </Panel>
 
+    <ConfirmDialog
+      v-model:open="resetOpen"
+      title="Rendre les créneaux au programme"
+      :detail="`Les ${moved} conférence${moved > 1 ? 's' : ''} déplacée${moved > 1 ? 's' : ''} retrouvent la salle et l'horaire de l'export. Toutes les salles suivent.`"
+      confirm-label="Rendre les créneaux"
+      danger
+      @confirm="confirmResetSlots"
+    />
     <FeedbackIdDialog v-model:open="feedbackOpen" :session="feedbackSlot" />
     <VodFolderDialog v-model:open="vodOpen" :session="vodSlot" :timezone="zone" />
   </div>

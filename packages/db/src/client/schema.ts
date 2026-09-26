@@ -81,6 +81,13 @@ export const roomSettings = sqliteTable('room_settings', {
    * keeps showing the last posts it knew.
    */
   wallJson: text('wall_json'),
+  /**
+   * The forced talk of every room (`room_id → session_id`), pushed by the hub at
+   * sync and by `room.pins`. Cached so that a room restarting with the hub out of
+   * reach keeps showing the talk it was told to show, not the one the clock
+   * would pick.
+   */
+  pinsJson: text('pins_json'),
   /** Next `seq` to assign to outgoing events. Monotonic, never reset. */
   nextSeq: integer('next_seq').notNull().default(1),
   /** Last command `seq` applied: it is the `lastEventId` sent back on resumption. */

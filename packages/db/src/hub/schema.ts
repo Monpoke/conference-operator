@@ -273,6 +273,46 @@ export const sessionFeedback = sqliteTable('session_feedback', {
 })
 
 /**
+ * A talk moved into another talk's slot, on the day, without a reimport.
+ *
+ * The emergency gesture of an inverted programme: a speaker is late, the next
+ * one is ready, the two talks swap. The row does not store times but a pointer
+ * — "this talk now occupies the slot the export gave to `slot_of`" — and that is
+ * deliberate. Swaps compose into a permutation, so no two talks can ever end up
+ * in the same slot; swapping the same pair back makes both rows moot, and they
+ * are deleted; and a reimport that moves the export's times carries the swapped
+ * talks along instead of pinning them to hours that no longer exist.
+ *
+ * A separate table rather than columns of `session_override`, for the reason
+ * `session_feedback` is one: that table decides the slot's *kind*.
+ */
+export const sessionSlot = sqliteTable('session_slot', {
+  sessionId: text('session_id').primaryKey(),
+  /** The export session whose room and times this talk takes. */
+  slotOf: text('slot_of').notNull(),
+  updatedAt: text('updated_at').notNull().default(now),
+})
+
+/**
+ * A room's forced talk: "the talk on in this room is this one", whatever the
+ * clock says.
+ *
+ * The other emergency gesture, the one that does not touch the programme: the
+ * room must show and start another of its talks *now*, and nobody has the time to
+ * rework the schedule. One row per room at most — a room has one current talk. It
+ * is lifted by hand, or by ending the talk it forces.
+ */
+export const roomPin = sqliteTable('room_pin', {
+  roomId: text('room_id')
+    .primaryKey()
+    .references(() => room.id, { onDelete: 'cascade' }),
+  sessionId: text('session_id').notNull(),
+  /** Who forced it, for the console: an operator's id, or `room:<id>`. */
+  pinnedBy: text('pinned_by').notNull(),
+  pinnedAt: text('pinned_at').notNull().default(now),
+})
+
+/**
  * A talk's YouTube broadcast consent, as reported by its room.
  *
  * A table and not a projection of the ingestion log, unlike the takes. The takes
@@ -638,6 +678,8 @@ export const hubSchema = {
   questionVote,
   sessionOverride,
   sessionFeedback,
+  sessionSlot,
+  roomPin,
   sessionConsent,
   roomDevice,
   deviceRequest,

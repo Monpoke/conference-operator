@@ -10,6 +10,11 @@
  *
  * `--apercu` writes the two pages as HTML too, playing in a browser: the
  * quickest way to work on the design.
+ *
+ * `--hub-data apps/hub-server/data` reads a hub's folder instead: its active
+ * program, the console's settings — the loop's logo and sponsor pages, the
+ * event's name — and the images it holds. `--logo <fichier|url>` forces the
+ * intro's logo, for trying one before setting it in the console.
  */
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -20,11 +25,14 @@ import { normalizeProgram, programSchema, type Program } from '@conference-opera
 import { availableFonts, buildVodHabillage, renderVodDocument, resolveFontsFolder } from '@conference-operator/projector/server'
 import { pathToFileURL } from 'node:url'
 import { launchChrome } from '../chrome.js'
+import { readHubData } from './hub-data.js'
 import { monter, renderClips } from '../pipeline.js'
 
 const { values } = parseArgs({
   options: {
     programme: { type: 'string' },
+    'hub-data': { type: 'string' },
+    logo: { type: 'string' },
     boucle: { type: 'string' },
     session: { type: 'string' },
     sidecar: { type: 'string' },
@@ -40,19 +48,24 @@ async function main(): Promise<void> {
   if (values.session == null && values.sidecar == null) {
     throw new Error('Préciser --session <id> (intro/outro seules) ou --sidecar <fichier.json> (montage complet)')
   }
-  const program = values.programme == null ? null : await readProgram(values.programme)
-  const boucle = values.boucle == null ? null : (JSON.parse(await readFile(values.boucle, 'utf8')) as Boucle)
+  const hub = values['hub-data'] == null ? null : readHubData(resolve(values['hub-data']))
+  const program = values.programme == null ? (hub?.program ?? null) : await readProgram(values.programme)
+  const boucle = values.boucle == null ? (hub?.boucle ?? null) : (JSON.parse(await readFile(values.boucle, 'utf8')) as Boucle)
   const sidecar: Sidecar = values.sidecar != null
     ? (JSON.parse(await readFile(values.sidecar, 'utf8')) as Sidecar)
     : fakeSidecar(program, values.session!)
 
-  const habillage = buildVodHabillage({
+  const built = buildVodHabillage({
     program,
     boucle,
     sidecar,
-    eventName: null,
-    localize: (ref) => ref,
+    eventName: hub?.eventName ?? null,
+    localize: hub?.localize ?? ((ref) => ref),
   })
+  const habillage = values.logo == null
+    ? built
+    : { ...built, event: { ...built.event, logoUrl: /^https?:\/\//.test(values.logo) ? values.logo : resolve(values.logo) } }
+  log(`logo de l’intro : ${habillage.event.logoUrl ?? 'aucun'}`)
 
   const out = resolve(values.sortie ?? `montage-${sidecar.sessionId ?? 'talk'}`)
   await mkdir(out, { recursive: true })

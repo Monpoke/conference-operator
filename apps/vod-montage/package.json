@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "tsx --env-file-if-exists=.env src/main.ts",
-    "rendre": "tsx src/cli/rendre.ts",
+    "rendre": "tsx --no-warnings=ExperimentalWarning src/cli/rendre.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "e2e": "tsx scripts/e2e-local.ts"

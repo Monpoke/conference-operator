@@ -24,6 +24,26 @@ La structure du dépôt est décrite plus bas, et les choix qui ne se devinent p
 à la lecture du code sont réunis dans « Décisions structurantes ». Pour
 contribuer : [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Architecture fonctionnelle
+
+![OpenPlanner alimente le hub, le hub alimente les salles](docs/architecture.png)
+
+- **OpenPlanner n'est appelé que par le hub, et rarement.** Le JSON est lu à
+  l'import (premier démarrage, ou bouton de la console), sans rafraîchissement
+  automatique. Les images sont téléchargées une fois : leur URL porte un UUID,
+  une image modifiée est une nouvelle URL, rien n'expire.
+- **Les salles passent par le hub.** Elles demandent chaque image sous
+  `/assets/<sha256 de l'URL source>`, une clé qu'elles calculent elles-mêmes.
+  L'appel direct à OpenPlanner (pointillés) n'est qu'un repli, quand le hub ne
+  détient pas encore l'image. C'est ce repli qui, dans les tests, retéléchargeait
+  toutes les images à chaque test : ils tournent désormais sans réseau sortant
+  (`scripts/vitest-offline.ts`).
+- **Une salle tient seule.** Lien coupé, elle tourne sur son cache SQLite ; ses
+  remontées attendent dans l'outbox et repartent à la reconnexion.
+
+La source est [`docs/architecture.mmd`](docs/architecture.mmd). Pour régénérer
+l'image : `npx @mermaid-js/mermaid-cli -i docs/architecture.mmd -o docs/architecture.png -s 3 -b white`.
+
 ## État
 
 | Lot | Contenu | État |

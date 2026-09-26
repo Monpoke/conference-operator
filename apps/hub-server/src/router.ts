@@ -1075,6 +1075,9 @@ export const router = os.router({
             .prefetchUrls(boucleImageRefs(settings.boucle))
             .catch((cause: unknown) => console.error('Images de la boucle :', readableCause(cause)))
         }
+        // Every room reads these settings back. With a TTL, like the wall's notice:
+        // a room offline for longer syncs on reconnection anyway.
+        context.services.commands.publish(null, { type: 'settings.changed' }, 3600)
         return settings
       }),
   },

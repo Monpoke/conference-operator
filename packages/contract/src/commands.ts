@@ -173,6 +173,16 @@ export const commandPayloadSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     /**
+     * The console saved the settings the rooms read — the loop above all.
+     *
+     * Carries nothing: the room reads them back with a sync, the same one a
+     * connection makes. Without it, a change saved in the console reached a room
+     * only at its next program import, reconnection or resync.
+     */
+    type: z.literal('settings.changed'),
+  }),
+  z.object({
+    /**
      * Upload the rushes, requested from the console.
      *
      * The console does not hold the files: it can only ask, and it is the room

@@ -44,6 +44,8 @@ export function clipEncodeArgs(options: {
   durationMs: number
   jingle: string | null
   output: string
+  /** The loudness the jingle is brought to — the talk's, so that neither jumps. */
+  lufs?: number
 }): string[] {
   const { format, output } = options
   const seconds = (options.durationMs / 1000).toFixed(3)
@@ -54,7 +56,7 @@ export function clipEncodeArgs(options: {
     : ['-i', options.jingle]
   const audioFilter = options.jingle == null
     ? `[1:a]atrim=0:${seconds}[a]`
-    : `[1:a]aresample=${format.sampleRate},aformat=channel_layouts=stereo,loudnorm=I=-16:TP=-1.5:LRA=11,` +
+    : `[1:a]aresample=${format.sampleRate},aformat=channel_layouts=stereo,loudnorm=I=${options.lufs ?? -16}:TP=-1.5:LRA=11,` +
       `apad,atrim=0:${seconds},afade=t=out:st=${fadeStart}:d=${fade}[a]`
   return [
     '-y', '-hide_banner', '-loglevel', 'error',
@@ -78,6 +80,8 @@ export interface RenderClipOptions {
   format?: ClipFormat
   /** An audio file under the clip, or `null` for silence. */
   jingle?: string | null
+  /** The loudness the jingle is brought to. */
+  lufs?: number
   output: string
   /** Where the page is written, to be opened as a file. */
   workDir: string
@@ -118,7 +122,7 @@ export async function renderClip(options: RenderClipOptions): Promise<{ duration
 
     const frames = frameCount(durationMs, format.fps)
     const step = 1000 / fpsValue(format.fps)
-    const encoder = start(FFMPEG, clipEncodeArgs({ format, durationMs, jingle: options.jingle ?? null, output: options.output }))
+    const encoder = start(FFMPEG, clipEncodeArgs({ format, durationMs, jingle: options.jingle ?? null, output: options.output, lufs: options.lufs }))
     try {
       for (let i = 0; i < frames; i++) {
         await cdp.evaluate(sessionId, `(window.__vod.figer(${(i * step).toFixed(3)}),

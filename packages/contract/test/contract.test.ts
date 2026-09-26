@@ -327,6 +327,7 @@ describe('talk lifecycle', () => {
       vodBucket: null,
       vodPrefix: null,
       vodPolitique: DEFAULT_VOD_POLICY,
+      montageAuto: 'si-confiance-haute',
       // The reference loop, as designed: a fresh hub shows it without any setting.
       boucle: DEFAULT_BOUCLE,
     })

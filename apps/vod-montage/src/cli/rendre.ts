@@ -26,6 +26,7 @@ import { availableFonts, buildVodHabillage, renderVodDocument, resolveFontsFolde
 import { pathToFileURL } from 'node:url'
 import { launchChrome } from '../chrome.js'
 import { readHubData } from './hub-data.js'
+import { configSchema } from '../config.js'
 import { monter, renderClips } from '../pipeline.js'
 
 const { values } = parseArgs({
@@ -39,6 +40,9 @@ const { values } = parseArgs({
     jingle: { type: 'string' },
     sortie: { type: 'string' },
     apercu: { type: 'boolean', default: false },
+    lufs: { type: 'string' },
+    compression: { type: 'string' },
+    'passe-haut': { type: 'string' },
   },
 })
 
@@ -67,6 +71,11 @@ async function main(): Promise<void> {
     : { ...built, event: { ...built.event, logoUrl: /^https?:\/\//.test(values.logo) ? values.logo : resolve(values.logo) } }
   log(`logo de l’intro : ${habillage.event.logoUrl ?? 'aucun'}`)
 
+  const audioOptions = configSchema.shape.audio.parse({
+    lufs: values.lufs,
+    compression: values.compression,
+    highpassHz: values['passe-haut'],
+  })
   const out = resolve(values.sortie ?? `montage-${sidecar.sessionId ?? 'talk'}`)
   await mkdir(out, { recursive: true })
   const jingle = values.jingle == null ? null : resolve(values.jingle)
@@ -85,7 +94,7 @@ async function main(): Promise<void> {
   const started = Date.now()
   try {
     if (values.sidecar == null) {
-      const clips = await renderClips({ chrome, habillage, jingle, workDir: out, log })
+      const clips = await renderClips({ chrome, habillage, jingle, workDir: out, lufs: audioOptions.lufs, log })
       log(`intro ${clips.intro.durationMs / 1000} s → ${clips.intro.file}`)
       log(`outro ${clips.outro.durationMs / 1000} s → ${clips.outro.file}`)
     } else {
@@ -98,6 +107,7 @@ async function main(): Promise<void> {
         jingle,
         workDir: out,
         output: join(out, `${sidecar.sessionId ?? 'talk'}.mp4`),
+        audio: audioOptions,
         log,
         onStep: (etape) => {
           if (etape !== last) log(`${etape}…`)
@@ -105,6 +115,8 @@ async function main(): Promise<void> {
         },
       })
       log(`montage ${(result.durationMs / 60_000).toFixed(1)} min → ${result.output}`)
+      log(`coupe : ${JSON.stringify(result.coupe)}`)
+      log(`son : ${JSON.stringify(result.audio)}`)
     }
     log(`terminé en ${((Date.now() - started) / 1000).toFixed(1)} s`)
   } finally {

@@ -155,6 +155,14 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       () => new Date(clock.now()),
       (level, message, context) => services.log(level, message, context),
       (sessionId) => programs.active()?.program.sessions.find((session) => session.id === sessionId)?.title ?? null,
+      // The room's buttons, in the hub's clock. The take's start in the sidecar
+      // is already corrected to the hub's clock by the room: no offset to add.
+      (sessionId, roomId) => {
+        const lived = services.sessions.states(roomId).find((state) => state.sessionId === sessionId)
+        if (lived == null || lived.startedAt == null) return null
+        return { startedAt: lived.startedAt, endedAt: lived.endedAt, auto: lived.decidedBy === 'auto', decalageMs: null }
+      },
+      () => settings.get().montageAuto,
     ),
     clock,
     mode: config.mode,

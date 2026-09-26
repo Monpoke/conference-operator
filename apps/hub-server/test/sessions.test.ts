@@ -235,6 +235,7 @@ describe('hub settings', () => {
       vodPrefix: null,
       // `vodPolitique` is a contract field: it does not get renamed.
       vodPolitique: DEFAULT_VOD_POLICY,
+      montageAuto: 'si-confiance-haute',
       // The reference loop, until the console lays out another.
       boucle: DEFAULT_BOUCLE,
     })
@@ -253,6 +254,7 @@ describe('hub settings', () => {
       vodBucket: null,
       vodPrefix: null,
       vodPolitique: DEFAULT_VOD_POLICY,
+      montageAuto: 'si-confiance-haute',
       boucle: DEFAULT_BOUCLE,
     })
     expect(settings.get().autoEndGraceMinutes).toBe(15)

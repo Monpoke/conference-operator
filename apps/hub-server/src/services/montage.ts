@@ -2,8 +2,14 @@ import { createHash, randomBytes } from 'node:crypto'
 import { and, desc, eq, inArray, isNull, lt } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import type {
+  MontageAnalyse,
+  MontageAuto,
+  MontageAudio,
   MontageClaim,
+  MontageCoupe,
   MontageEtape,
+  MontagePhase,
+  MontageRegie,
   MontageJobView,
   MontageState,
   MontageWorkerView,
@@ -65,6 +71,10 @@ export class MontageService {
     private readonly onLog: (level: 'info' | 'warn', message: string, context?: object) => void = () => {},
     /** The talk's title in the active program, for the console's list. */
     private readonly titleOf: (sessionId: string) => string | null = () => null,
+    /** The room's « Commencer » / « Terminer » for the talk, for the analysis. */
+    private readonly regieFor: (sessionId: string, roomId: string) => MontageRegie | null = () => null,
+    /** When an analysed cut goes on without anybody validating it. */
+    private readonly montageAuto: () => MontageAuto = () => 'si-confiance-haute',
   ) {}
 
   /* ---------- Workers ---------- */
@@ -133,7 +143,18 @@ export class MontageService {
     if (waiting != null) {
       this.db
         .update(montageJob)
-        .set({ sidecarUploadId: input.sidecarUploadId, roomId: input.roomId, pasAvant: null, erreur: null, updatedAt: this.iso() })
+        .set({
+          sidecarUploadId: input.sidecarUploadId,
+          roomId: input.roomId,
+          pasAvant: null,
+          erreur: null,
+          // A new take is analysed again: the old one's cut says nothing of it.
+          phase: 'analyse',
+          analyseJson: null,
+          coupeJson: null,
+          valideePar: null,
+          updatedAt: this.iso(),
+        })
         .where(eq(montageJob.id, waiting.id))
         .run()
       return this.view(this.job(waiting.id))
@@ -144,6 +165,7 @@ export class MontageService {
       roomId: input.roomId,
       sidecarUploadId: input.sidecarUploadId,
       state: 'attente',
+      phase: 'analyse',
       pourcent: 0,
       tentatives: 0,
       createdAt: this.iso(),
@@ -191,6 +213,7 @@ export class MontageService {
         .run().changes > 0
       if (!taken) continue
       this.onLog('info', 'montage pris', { jobId: job.id, sessionId: job.sessionId, worker: worker.nom })
+      const phase = job.phase as MontagePhase
       return {
         jobId: job.id,
         sessionId: job.sessionId,
@@ -198,6 +221,9 @@ export class MontageService {
         sidecarUrl: vod.presignGet(sidecar.objectKey),
         habillage: this.habillage(job.sessionId),
         bail,
+        phase,
+        regie: phase === 'analyse' ? this.regieFor(job.sessionId, job.roomId) : null,
+        coupe: phase === 'montage' ? parseJson<MontageCoupe>(job.coupeJson) : null,
       }
     }
     return null
@@ -267,7 +293,14 @@ export class MontageService {
 
   async complete(
     worker: Worker,
-    input: { jobId: string; parts: { n: number; etag: string }[]; durationMs: number; marquesManquantes: ('debut' | 'fin')[] },
+    input: {
+      jobId: string
+      parts: { n: number; etag: string }[]
+      durationMs: number
+      marquesManquantes: ('debut' | 'fin')[]
+      coupe?: MontageCoupe
+      audio?: MontageAudio | null
+    },
   ): Promise<string> {
     const vod = this.requireVod()
     const job = this.held(worker, input.jobId)
@@ -285,6 +318,8 @@ export class MontageService {
         leaseUntil: null,
         durationMs: input.durationMs,
         marquesManquantes: JSON.stringify(input.marquesManquantes),
+        ...(input.coupe == null ? {} : { coupeJson: JSON.stringify(input.coupe) }),
+        audioJson: input.audio == null ? null : JSON.stringify(input.audio),
         erreur: null,
         finishedAt: this.iso(),
         updatedAt: this.iso(),
@@ -323,7 +358,106 @@ export class MontageService {
     this.onLog('warn', 'montage échoué', { jobId, sessionId: job.sessionId, raison })
   }
 
+  /** Upload addresses for the analysis files, beside the take's montage. */
+  artefactUploads(worker: Worker, jobId: string, noms: string[]): { nom: string; url: string }[] {
+    const vod = this.requireVod()
+    const job = this.held(worker, jobId)
+    return noms.map((nom) => ({ nom, url: vod.presignPut(this.artefactKey(job, nom)) }))
+  }
+
+  /**
+   * The analysis is in. Through to the montage when the policy lets it — the
+   * worker then carries on with the files it has — else to the console.
+   */
+  analysisDone(worker: Worker, jobId: string, analyse: MontageAnalyse): { suite: 'montage' | 'validation'; coupe: MontageCoupe | null } {
+    const job = this.held(worker, jobId)
+    if (job.phase !== 'analyse') throw new MontageError('CONFLICT', 'ce job n’est pas en analyse')
+    const policy = this.montageAuto()
+    const auto = policy === 'toujours' || (policy === 'si-confiance-haute' && analyse.confiance === 'haute')
+    if (auto) {
+      this.db
+        .update(montageJob)
+        .set({
+          analyseJson: JSON.stringify(analyse),
+          phase: 'montage',
+          coupeJson: JSON.stringify(analyse.proposition),
+          valideePar: 'auto',
+          leaseUntil: new Date(this.now().getTime() + LEASE_MS).toISOString(),
+          updatedAt: this.iso(),
+        })
+        .where(eq(montageJob.id, jobId))
+        .run()
+      return { suite: 'montage', coupe: analyse.proposition }
+    }
+    this.db
+      .update(montageJob)
+      .set({
+        analyseJson: JSON.stringify(analyse),
+        state: 'a-valider',
+        workerId: null,
+        leaseUntil: null,
+        etape: null,
+        pourcent: 0,
+        updatedAt: this.iso(),
+      })
+      .where(eq(montageJob.id, jobId))
+      .run()
+    this.onLog('info', 'coupe à valider', { jobId, sessionId: job.sessionId, confiance: analyse.confiance })
+    return { suite: 'validation', coupe: null }
+  }
+
   /* ---------- Console ---------- */
+
+  /** What the analysis proposed, with read addresses for its files. */
+  analysisView(jobId: string): { analyse: MontageAnalyse | null; fichiers: { nom: string; url: string }[] } {
+    const job = this.job(jobId)
+    const analyse = parseJson<MontageAnalyse>(job.analyseJson)
+    const vod = this.vod()
+    if (analyse == null || vod == null || !vod.ready()) return { analyse, fichiers: [] }
+    return { analyse, fichiers: analyse.artefacts.map((nom) => ({ nom, url: vod.presignGet(this.artefactKey(job, nom)) })) }
+  }
+
+  /**
+   * The cut set in the console: the job goes to the montage on it.
+   *
+   * An end left where the analysis put it keeps its source; an end moved is
+   * `manuel` — and says by how much, for whoever reads the job later.
+   */
+  validate(jobId: string, cut: { debutMs: number; finMs: number }, by: string): MontageJobView {
+    const job = this.job(jobId)
+    if (!['a-valider', 'termine', 'echoue'].includes(job.state)) {
+      throw new MontageError('CONFLICT', `ce montage ne se valide pas dans l’état « ${job.state} »`)
+    }
+    const analyse = parseJson<MontageAnalyse>(job.analyseJson)
+    if (analyse == null) throw new MontageError('PRECONDITION_FAILED', 'ce montage n’a pas encore été analysé')
+    if (cut.debutMs >= cut.finMs || cut.finMs > analyse.takeMs) {
+      throw new MontageError('PRECONDITION_FAILED', 'coupe impossible : le début doit précéder la fin, dans la prise')
+    }
+    const side = (proposed: MontageCoupe['debut'], proposedMs: number, ms: number): MontageCoupe['debut'] =>
+      ms === proposedMs ? proposed : { source: 'manuel', calee: false, deplacementMs: ms - proposedMs }
+    const coupe: MontageCoupe = {
+      debutMs: cut.debutMs,
+      finMs: cut.finMs,
+      debut: side(analyse.proposition.debut, analyse.proposition.debutMs, cut.debutMs),
+      fin: side(analyse.proposition.fin, analyse.proposition.finMs, cut.finMs),
+    }
+    this.db
+      .update(montageJob)
+      .set({
+        phase: 'montage',
+        state: 'attente',
+        coupeJson: JSON.stringify(coupe),
+        valideePar: by,
+        tentatives: 0,
+        pasAvant: null,
+        erreur: null,
+        finishedAt: null,
+        updatedAt: this.iso(),
+      })
+      .where(eq(montageJob.id, jobId))
+      .run()
+    return this.view(this.job(jobId))
+  }
 
   /** What the talk's intro and outro will show — the console previews it. */
   habillageFor(sessionId: string): VodHabillage {
@@ -448,11 +582,23 @@ export class MontageService {
       outputKey: row.state === 'termine' ? row.outputKey : null,
       durationMs: row.durationMs,
       marquesManquantes: parseMarks(row.marquesManquantes),
+      phase: row.phase as MontagePhase,
+      analyse: parseJson<MontageAnalyse>(row.analyseJson),
+      coupe: parseJson<MontageCoupe>(row.coupeJson),
+      valideePar: row.valideePar,
+      audio: parseJson<MontageAudio>(row.audioJson),
       erreur: row.erreur,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       finishedAt: row.finishedAt,
     }
+  }
+
+  /** The analysis files sit beside the montage: `<montage key without .mp4>.analyse/<name>`. */
+  private artefactKey(job: JobRow, nom: string): string {
+    const sidecar = this.requireVod().upload(job.sidecarUploadId)
+    if (sidecar == null) throw new MontageError('NOT_FOUND', 'le sidecar de la prise a disparu du registre')
+    return `${this.requireVod().montageKeyFor(sidecar.objectKey).replace(/\.mp4$/, '')}.analyse/${job.id}/${nom}`
   }
 
   private iso(): string {
@@ -473,6 +619,15 @@ function parseMarks(json: string | null): ('debut' | 'fin')[] {
     return Array.isArray(read) ? read.filter((m): m is 'debut' | 'fin' => m === 'debut' || m === 'fin') : []
   } catch {
     return []
+  }
+}
+
+function parseJson<T>(json: string | null): T | null {
+  if (json == null) return null
+  try {
+    return JSON.parse(json) as T
+  } catch {
+    return null
   }
 }
 

@@ -349,6 +349,11 @@ export class VodService {
       .get() ?? null
   }
 
+  /** A signed address to write one object — the montage's analysis files. */
+  presignPut(key: string): string {
+    return this.client().presignPut(key, SIGNATURE_TTL_S)
+  }
+
   presignGet(key: string, filename?: string): string {
     return this.client().presignGet(key, SIGNATURE_TTL_S, filename)
   }

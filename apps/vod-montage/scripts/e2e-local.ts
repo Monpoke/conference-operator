@@ -207,8 +207,26 @@ try {
 
   const chrome = await launchChrome(config.chrome, await mkdtemp(join(work, 'chrome-')))
   const started = Date.now()
+  const workerLog = (level: string, text: string, context?: object) => say(`${level} ${text} ${context ? JSON.stringify(context) : ''}`)
   try {
-    await processJob({ hub: workerHub, claim, config, chrome, log: (level, text, context) => say(`${level} ${text} ${context ? JSON.stringify(context) : ''}`) })
+    // First pass: the analysis. A one-minute "talk" is too short to be sure of:
+    // it waits for the console.
+    await processJob({ hub: workerHub, claim, config, chrome, log: workerLog })
+    const [analysed] = hub.services.montage.list(SESSION)
+    if (analysed?.state !== 'a-valider' || analysed.analyse == null) throw new Error(`analyse : job ${analysed?.state} ${analysed?.erreur ?? ''}`)
+    const { analyse } = analysed
+    say(`analyse : ${analyse.proposition.debutMs} → ${analyse.proposition.finMs} ms, confiance ${analyse.confiance} — ${analyse.raisons.join(' · ')}`)
+    const files = hub.services.montage.analysisView(analysed.id).fichiers
+    for (const { nom } of files) {
+      if (![...objects.keys()].some((key) => key.endsWith(`/${nom}`))) throw new Error(`aperçu ${nom} absent du stockage`)
+    }
+    say(`aperçus dans le stockage : ${files.map((f) => f.nom).join(', ')}`)
+
+    // The console validates the proposed cut; the second pass edits on it.
+    hub.services.montage.validate(analysed.id, { debutMs: analyse.proposition.debutMs, finMs: analyse.proposition.finMs }, 'e2e@console')
+    const again = await workerHub.montage.claim()
+    if (again?.phase !== 'montage' || again.coupe == null) throw new Error('la coupe validée n’est pas revenue au worker')
+    await processJob({ hub: workerHub, claim: again, config, chrome, log: workerLog })
   } finally {
     await chrome.stop()
   }
@@ -221,7 +239,9 @@ try {
   const file = join(out, 'montage.mp4')
   await writeFile(file, video)
   const probed = await probe(file)
-  const expected = 6_000 + 40_000 + 8_000 - 1_000
+  const coupe = done.coupe!
+  const expected = 6_000 + (coupe.finMs - coupe.debutMs) + 8_000 - 1_000
+  say(`son : ${JSON.stringify(done.audio)}`)
   say(`montage : ${done.outputKey} — ${(probed.durationMs / 1000).toFixed(2)} s (attendu ≈ ${expected / 1000} s), ${probed.format.width}×${probed.format.height} à ${probed.format.fps} i/s`)
   say(`en ${((Date.now() - started) / 1000).toFixed(0)} s → ${file}`)
   if (Math.abs(probed.durationMs - expected) > 1_000) throw new Error('durée inattendue')

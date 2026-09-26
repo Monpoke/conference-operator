@@ -51,6 +51,20 @@ export function output(binary: string, args: string[]): Promise<string> {
   })
 }
 
+/**
+ * Runs a tool and returns the end of its stderr — where ffmpeg's analysis
+ * filters (`loudnorm`'s report) write what they measured.
+ */
+export function stderrOf(binary: string, args: string[], keep = 64_000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(binary, args, { stdio: ['ignore', 'ignore', 'pipe'] })
+    let err = ''
+    child.stderr.on('data', (chunk: Buffer) => (err = (err + chunk.toString()).slice(-keep)))
+    child.on('error', (error) => reject(new Error(`${binary} introuvable : ${error.message}`)))
+    child.on('close', (code) => (code === 0 ? resolve(err) : reject(new Error(`${binary} a échoué (code ${code}) : ${err.trim().split('\n').slice(-6).join('\n')}`))))
+  })
+}
+
 /** Writes to a stream, waiting when it asks to. */
 export function write(stream: Writable, chunk: Buffer): Promise<void> {
   return new Promise((resolve, reject) => {

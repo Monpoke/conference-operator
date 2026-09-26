@@ -5,6 +5,8 @@ import type { Chrome } from './chrome.js'
 import type { Config } from './config.js'
 import type { Hub } from './hub.js'
 import { takeFiles } from './montage.js'
+import { analyser } from './analyse.js'
+import { makeApercus, uploadApercus } from './apercus.js'
 import { monter } from './pipeline.js'
 import { download, uploadParts } from './transfer.js'
 
@@ -79,13 +81,49 @@ export async function processJob(options: {
       report('telechargement', (index + 1) / urls.length)
     }
 
+    // First the analysis: where to cut, how loud, and what the console shows of
+    // it. Through to the montage only if the hub says so.
+    let coupe = claim.coupe
+    if (claim.phase === 'analyse') {
+      report('analyse', 0)
+      const analysed = await analyser({
+        sidecar, folder: jobDir, audio: config.audio, scratchDir: jobDir, regie: claim.regie,
+        log: (text) => log('info', text, { jobId: claim.jobId }),
+      })
+      const apercusDir = join(jobDir, 'apercus')
+      await mkdir(apercusDir, { recursive: true })
+      const noms = await makeApercus({
+        segments: analysed.segments, takeMs: analysed.takeMs, hasAudio: analysed.hasAudio, coupe: analysed.coupe, dir: apercusDir,
+        log: (text) => log('warn', text, { jobId: claim.jobId }),
+      })
+      if (noms.length > 0) await uploadApercus(apercusDir, await hub.montage.artefacts({ jobId: claim.jobId, noms }))
+      report('analyse', 1)
+      const next = await hub.montage.analyseTerminee({
+        jobId: claim.jobId,
+        proposition: analysed.coupe,
+        confiance: analysed.confiance,
+        raisons: analysed.raisons.map((raison) => raison.slice(0, 300)),
+        audio: analysed.audio,
+        takeMs: Math.max(1, Math.round(analysed.takeMs)),
+        artefacts: noms,
+      })
+      if (next.suite === 'validation') {
+        log('info', 'coupe à valider dans la console', { jobId: claim.jobId, confiance: analysed.confiance })
+        return
+      }
+      coupe = next.coupe
+    }
+    if (coupe == null) throw new Error('montage sans coupe validée : le hub n’en a pas transmis')
+
     const output = join(jobDir, 'montage.mp4')
     const result = await monter({
+      coupe,
       chrome: options.chrome,
       habillage: completeFromSidecar(claim.habillage, sidecar),
       sidecar,
       folder: jobDir,
       jingle: config.jingle ?? null,
+      audio: config.audio,
       workDir: jobDir,
       output,
       onStep: report,
@@ -107,6 +145,8 @@ export async function processJob(options: {
       parts,
       durationMs: result.durationMs,
       marquesManquantes: result.missingMarks,
+      coupe: result.coupe,
+      audio: result.audio,
     })
     log('info', 'montage envoyé', { jobId: claim.jobId, objectKey, minutes: +(result.durationMs / 60_000).toFixed(1) })
   } catch (error) {

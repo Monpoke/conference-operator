@@ -1722,6 +1722,17 @@ export const router = os.router({
       })),
     ),
 
+    artefacts: os.montage.artefacts.use(workerOnly).handler(({ input, context }) =>
+      onMontage(context, () => context.services.montage.artefactUploads(context.worker, input.jobId, input.noms)),
+    ),
+
+    analyseTerminee: os.montage.analyseTerminee.use(workerOnly).handler(({ input, context }) =>
+      onMontage(context, () => {
+        const { jobId, ...analyse } = input
+        return context.services.montage.analysisDone(context.worker, jobId, analyse)
+      }),
+    ),
+
     fail: os.montage.fail.use(workerOnly).handler(({ input, context }) =>
       onMontage(context, async () => {
         await context.services.montage.fail(context.worker, input.jobId, input.raison, input.reessayer)
@@ -1739,6 +1750,15 @@ export const router = os.router({
 
     annuler: os.montage.annuler.use(operatorCan('vod:manage')).handler(({ input, context }) =>
       onMontage(context, async () => ({ ok: await context.services.montage.cancel(input.jobId) })),
+    ),
+
+    analyse: os.montage.analyse.use(operatorCan('vod:read')).handler(({ input, context }) =>
+      onMontage(context, () => context.services.montage.analysisView(input.jobId)),
+    ),
+
+    valider: os.montage.valider.use(operatorCan('vod:manage')).handler(({ input, context }) =>
+      onMontage(context, () =>
+        context.services.montage.validate(input.jobId, { debutMs: input.debutMs, finMs: input.finMs }, context.operator.email)),
     ),
 
     telecharger: os.montage.telecharger.use(operatorCan('vod:read')).handler(({ input, context }) =>

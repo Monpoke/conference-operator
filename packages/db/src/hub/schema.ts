@@ -717,6 +717,16 @@ export const montageJob = sqliteTable(
     durationMs: integer('duration_ms'),
     /** JSON: the marks that were missing, the take then kept whole on that side. */
     marquesManquantes: text('marques_manquantes'),
+    /** `analyse` first — where to cut, how loud — then `montage`. */
+    phase: text('phase').notNull().default('analyse'),
+    /** JSON: what the analysis proposed, its confidence and reasons, its files. */
+    analyseJson: text('analyse_json'),
+    /** JSON: the cut the video is edited on, once validated. */
+    coupeJson: text('coupe_json'),
+    /** An operator's email, or `auto`. */
+    valideePar: text('validee_par'),
+    /** JSON: what was done to the sound. */
+    audioJson: text('audio_json'),
     erreur: text('erreur'),
     createdAt: text('created_at').notNull().default(now),
     updatedAt: text('updated_at').notNull().default(now),

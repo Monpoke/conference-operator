@@ -97,7 +97,14 @@ export const CROSSFADE_S = 0.5
 export interface AssemblyPlan {
   intro: { file: string; durationMs: number }
   /** The take's files, in order; the cut is in the take's own time. */
-  take: { files: string[]; hasAudio: boolean; startMs: number; endMs: number }
+  take: {
+    files: string[]
+    hasAudio: boolean
+    startMs: number
+    endMs: number
+    /** The talk's own sound filters — high-pass, compression, one gain (`audio.ts`). */
+    audioFilter?: string
+  }
   outro: { file: string; durationMs: number }
   format: ClipFormat
   output: string
@@ -140,7 +147,7 @@ export function assemblyArgs(plan: AssemblyPlan): string[] {
   const talkS = (take.endMs - take.startMs) / 1000
   filters.push(
     `[tv]trim=start=${s(take.startMs)}:end=${s(take.endMs)},setpts=PTS-STARTPTS,${video}[t_v]`,
-    `[ta]atrim=start=${s(take.startMs)}:end=${s(take.endMs)},asetpts=PTS-STARTPTS,${audio}[t_a]`,
+    `[ta]atrim=start=${s(take.startMs)}:end=${s(take.endMs)},asetpts=PTS-STARTPTS,${take.audioFilter ? `${take.audioFilter},` : ''}${audio}[t_a]`,
     `[0:v]${video}[i_v]`,
     `[0:a]${audio}[i_a]`,
     `[${outroIndex}:v]${video}[o_v]`,

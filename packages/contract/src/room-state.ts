@@ -16,6 +16,7 @@ import {
   audioInputSchema,
 } from './primitives.js'
 import { DEFAULT_VOD_POLICY, vodPolicySchema, vodSyncSchema } from './vod.js'
+import { montageAutoSchema } from './montage.js'
 import { boucleSchema, DEFAULT_BOUCLE } from './boucle.js'
 
 /**
@@ -454,6 +455,8 @@ export const hubSettingsSchema = z.object({
    */
   vodPrefix: z.string().max(200).nullable().default(null),
   vodPolitique: vodPolicySchema.default(DEFAULT_VOD_POLICY),
+  /** When an analysed cut is edited without anybody validating it. See `montageAutoSchema`. */
+  montageAuto: montageAutoSchema.default('si-confiance-haute'),
   /**
    * The welcome loop's own content — texts, sponsor pages, posts, QR addresses.
    * See `boucleSchema`. Defaults to the reference loop.

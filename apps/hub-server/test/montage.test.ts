@@ -170,6 +170,95 @@ describe('a worker that dies', () => {
   })
 })
 
+describe('analysis, then montage', () => {
+  const side = (source: 'marque' | 'regie', deplacementMs = -800) => ({ source, calee: true, deplacementMs })
+  const analysis = (confiance: 'haute' | 'moyenne' | 'basse') => ({
+    proposition: { debutMs: 120_000, finMs: 2_700_000, debut: side('marque'), fin: side('regie', 1_200) },
+    confiance,
+    raisons: ['Début : marque posée en régie', 'Fin : bouton de la régie'],
+    audio: { lufsAvant: -27.3, lufsApres: -16, truePeak: -9, lra: 6.4, lineaire: true, quasiMuet: false },
+    takeMs: 3_000_000,
+    artefacts: ['forme.png', 'debut.mp3'],
+  })
+
+  async function analysing() {
+    const worker = montage.fromToken(montage.createWorker('w', null).token)!
+    montage.enqueue({ sessionId: 'sess-1', roomId: TRACK_1, sidecarUploadId: await uploaded(SIDECAR, 'sidecar') })
+    const claim = montage.claim(worker)!
+    return { worker, claim }
+  }
+
+  it('starts every take with its analysis, and hands it the room’s buttons', async () => {
+    const regie = { startedAt: '2026-10-30T10:02:00.000Z', endedAt: '2026-10-30T10:47:00.000Z', auto: false, decalageMs: null }
+    montage = new MontageService(db, () => vod, () => HABILLAGE, () => clock, () => {}, () => null, () => regie)
+    const { claim } = await analysing()
+    expect(claim).toMatchObject({ phase: 'analyse', regie, coupe: null })
+  })
+
+  it('goes straight on to the montage when sure, with the same worker', async () => {
+    const { worker, claim } = await analysing()
+    const next = montage.analysisDone(worker, claim.jobId, analysis('haute'))
+    expect(next).toEqual({ suite: 'montage', coupe: analysis('haute').proposition })
+    expect(montage.list('sess-1')[0]).toMatchObject({ state: 'en-cours', phase: 'montage', valideePar: 'auto' })
+    // Still its job: it uploads the video without being claimed again.
+    expect(await montage.openUpload(worker, claim.jobId, 1_000_000)).toMatchObject({ parts: 1 })
+  })
+
+  it('waits for the console when doubtful, and frees the worker', async () => {
+    const { worker, claim } = await analysing()
+    expect(montage.analysisDone(worker, claim.jobId, analysis('moyenne')).suite).toBe('validation')
+    const job = montage.list('sess-1')[0]!
+    expect(job).toMatchObject({ state: 'a-valider', phase: 'analyse', worker: null, analyse: { confiance: 'moyenne' } })
+    expect(montage.claim(worker)).toBeNull()
+  })
+
+  it('never goes on without a look when the policy says so', async () => {
+    montage = new MontageService(db, () => vod, () => HABILLAGE, () => clock, () => {}, () => null, () => null, () => 'jamais')
+    const { worker, claim } = await analysing()
+    expect(montage.analysisDone(worker, claim.jobId, analysis('haute')).suite).toBe('validation')
+  })
+
+  it('edits on the cut set in the console, and says which end was moved by hand', async () => {
+    const { worker, claim } = await analysing()
+    montage.analysisDone(worker, claim.jobId, analysis('basse'))
+    const job = montage.validate(claim.jobId, { debutMs: 120_000, finMs: 2_650_000 }, 'regie@cloudnord.fr')
+    expect(job).toMatchObject({ state: 'attente', phase: 'montage', valideePar: 'regie@cloudnord.fr' })
+    expect(job.coupe).toEqual({
+      debutMs: 120_000,
+      finMs: 2_650_000,
+      debut: side('marque'),
+      fin: { source: 'manuel', calee: false, deplacementMs: -50_000 },
+    })
+    expect(montage.claim(worker)).toMatchObject({ phase: 'montage', regie: null, coupe: job.coupe })
+  })
+
+  it('refuses a cut outside the take, or backwards', async () => {
+    const { worker, claim } = await analysing()
+    montage.analysisDone(worker, claim.jobId, analysis('basse'))
+    expect(() => montage.validate(claim.jobId, { debutMs: 10_000, finMs: 3_100_000 }, 'x')).toThrow(MontageError)
+    expect(() => montage.validate(claim.jobId, { debutMs: 50_000, finMs: 40_000 }, 'x')).toThrow(MontageError)
+  })
+
+  it('files the analysis beside the montage, readable from the console', async () => {
+    const { worker, claim } = await analysing()
+    const [upload] = montage.artefactUploads(worker, claim.jobId, ['forme.png'])
+    expect(upload!.url).toContain(`/rushes/cn26/montages/2026-10-30/${TRACK_1}/2026-10-30_1100_honeyswamp.analyse/${claim.jobId}/forme.png`)
+    montage.analysisDone(worker, claim.jobId, analysis('basse'))
+    const view = montage.analysisView(claim.jobId)
+    expect(view.fichiers.map((f) => f.nom)).toEqual(['forme.png', 'debut.mp3'])
+    expect(view.fichiers[0]!.url).toContain('X-Amz-Signature=')
+  })
+
+  it('analyses a new take again rather than reuse the old one’s cut', async () => {
+    const { worker, claim } = await analysing()
+    montage.analysisDone(worker, claim.jobId, analysis('basse'))
+    montage.validate(claim.jobId, { debutMs: 120_000, finMs: 2_700_000 }, 'x')
+    const later = await uploaded('2026-10-30/track1/2026-10-30_1120_honeyswamp.json', 'sidecar')
+    const job = montage.enqueue({ sessionId: 'sess-1', roomId: TRACK_1, sidecarUploadId: later })
+    expect(job).toMatchObject({ phase: 'analyse', coupe: null, analyse: null })
+  })
+})
+
 describe('the edited video', () => {
   it('goes beside the rushes under montages/, and is downloadable once done', async () => {
     const worker = montage.fromToken(montage.createWorker('w', null).token)!

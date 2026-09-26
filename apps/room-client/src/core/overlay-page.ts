@@ -366,7 +366,31 @@ ${initialState}
       category.textContent = session.category.name
       category.style.setProperty('--category', session.category.color ?? '')
     }
+    fitCard()
   }
+
+  /**
+   * The card's content kept inside the card.
+   *
+   * The card clips what overflows — and what overflows is its foot: the end of
+   * the title, the room's line. Two speakers whose names wrap and a title of a
+   * hundred characters did exactly that, cut mid-line for the whole talk, burnt
+   * into the recording. So the title gives way until it fits: smaller first,
+   * then fewer lines, with its ellipsis. The speakers never do — their names are
+   * what the card is for.
+   */
+  const TITLE_STEPS = [[28, 4], [26, 4], [24, 4], [22, 4], [22, 3], [20, 3], [20, 2]]
+  function fitCard() {
+    const card = document.getElementById('card')
+    const title = document.getElementById('title')
+    for (const [size, lines] of TITLE_STEPS) {
+      title.style.fontSize = size + 'px'
+      title.style.webkitLineClamp = String(lines)
+      if (card.scrollHeight <= card.clientHeight) return
+    }
+  }
+  // Measured again once the typefaces are in: a fallback face is narrower.
+  if (document.fonts) document.fonts.ready.then(() => { if (document.body.dataset.card === 'visible') fitCard() })
 
   // The stream only sends what changes: we keep the current state and merge.
   // A complete message (on opening, and after every reconnection) replaces it.

@@ -35,8 +35,39 @@ describe('what the intro and outro show', () => {
 
   it('lays the sponsors out as the loop does when the console set nothing', () => {
     const h = buildVodHabillage({ program, boucle: null, sidecar, eventName: null, localize: (ref) => ref })
-    expect(h.sponsorPages.map((p) => p.titre)).toEqual(['', 'Digital', 'Speaker Diner & Petit dèj', 'Pack Inclusivité'])
+    // The last two tiers only hold sponsors already shown higher up: they go.
+    expect(h.sponsorPages.map((p) => p.titre)).toEqual(['', 'Digital'])
     expect(h.merci).toBe('Merci à nos sponsors')
+  })
+
+  it('shows each sponsor once, in its highest tier', () => {
+    const h = buildVodHabillage({ program, boucle: null, sidecar, eventName: null, localize: (ref) => ref })
+    const names = h.sponsorPages.flatMap((p) => p.rangs.flatMap((r) => r.logos.map((l) => l.nom.toLowerCase())))
+    expect(new Set(names).size).toBe(names.length)
+    // Ape Factory took three packs: it stays in the first one it appears in.
+    const tierOf = (name: string) => h.sponsorPages.findIndex((p) => p.rangs.some((r) => r.logos.some((l) => l.nom.toLowerCase().includes(name))))
+    expect(tierOf('ape factory')).toBe(h.sponsorPages.findIndex((p) => p.titre === 'Digital'))
+  })
+
+  it('recognises a sponsor laid out by hand under another spelling', () => {
+    const h = buildVodHabillage({
+      program: null,
+      boucle: {
+        logo: null,
+        merciSponsors: 'Merci',
+        sponsorPages: [
+          { titre: '', duree: null, rangs: [{ taille: 1, logos: [{ sponsor: 'Ape Factory', nom: null, logo: null, echelle: 0.7 }] }] },
+          { titre: 'Autres', duree: null, rangs: [{ taille: 1, logos: [
+            { sponsor: 'APE-factory', nom: null, logo: null, echelle: 0.7 },
+            { sponsor: 'Jetdev', nom: null, logo: null, echelle: 0.7 },
+          ] }] },
+        ],
+      },
+      sidecar,
+      eventName: null,
+      localize: (ref) => ref,
+    })
+    expect(h.sponsorPages.map((p) => p.rangs.flatMap((r) => r.logos.map((l) => l.nom)))).toEqual([['Ape Factory'], ['Jetdev']])
   })
 
   it('prefers the console’s logo, and shows nothing it cannot localise', () => {

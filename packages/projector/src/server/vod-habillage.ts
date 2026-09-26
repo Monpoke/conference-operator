@@ -62,16 +62,48 @@ export function buildVodHabillage(sources: VodHabillageSources): VodHabillage {
     },
     speakers: speakers.slice(0, MAX_SPEAKERS),
     merci: boucle?.merciSponsors || 'Merci à nos sponsors',
-    sponsorPages: pages
-      .map((page) => ({
-        titre: page.titre,
-        rangs: page.rangs
-          .map((row) => ({ taille: row.taille, logos: row.logos.map(logo) }))
-          .filter((row) => row.logos.length > 0),
-      }))
-      .filter((page) => page.rangs.length > 0),
+    sponsorPages: onceEach(pages, logo),
   }
 }
+
+/**
+ * The sponsor pages, each sponsor once — in the first page it appears in.
+ *
+ * The loop can show a sponsor on every page it paid for: each page is on screen
+ * on its own. The outro stacks every page on one frame, where "Ape Factory"
+ * three times reads as a mistake and shrinks everyone else. The pages come in
+ * rank order, so the first appearance is the highest tier. Rows and pages left
+ * empty go.
+ *
+ * Recognised by its reference or by its name, simplified: a sponsor laid out
+ * by hand in the console under another spelling is the same sponsor.
+ */
+function onceEach(
+  pages: { titre: string; rangs: { taille: number; logos: SponsorPlacement[] }[] }[],
+  logo: (ref: SponsorPlacement) => VodLogo,
+): VodHabillage['sponsorPages'] {
+  const seen = new Set<string>()
+  return pages
+    .map((page) => ({
+      titre: page.titre,
+      rangs: page.rangs
+        .map((row) => ({
+          taille: row.taille,
+          logos: row.logos.flatMap((ref) => {
+            const resolved = logo(ref)
+            const keys = [simplify(ref.sponsor), simplify(resolved.nom)].filter((key) => key !== '')
+            if (keys.some((key) => seen.has(key))) return []
+            for (const key of keys) seen.add(key)
+            return [resolved]
+          }),
+        }))
+        .filter((row) => row.logos.length > 0),
+    }))
+    .filter((page) => page.rangs.length > 0)
+}
+
+const simplify = (text: string) =>
+  text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/[^a-z0-9]+/g, '')
 
 /** « 30 octobre 2026 », in the event's time zone. */
 function eventDate(program: Program): string | null {

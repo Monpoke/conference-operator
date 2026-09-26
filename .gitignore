@@ -27,3 +27,5 @@ preview/
 .out/
 
 spikes/
+
+.claude/worktrees/

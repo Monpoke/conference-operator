@@ -21,6 +21,8 @@ export {
   breakOfSlots,
   effectiveEndAt,
   nextTalk,
+  pinnedSlot,
+  roomPosition,
   shouldAutoEnd,
   stateFromProgram,
   stateOfSlots,
@@ -30,6 +32,7 @@ export {
 export type {
   AutoEndSetting,
   Break,
+  RoomPosition,
   RoomConferenceState,
   SessionStatuses,
   Slot,

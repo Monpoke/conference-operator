@@ -4,8 +4,10 @@ import { describe, expect, it } from 'vitest'
 import { applySharedBreaks, currentSession, normalizeProgram, sessionsForRoom } from '@conference-operator/program'
 
 import {
+  pinnedSlot,
   roomBreak,
   roomConferenceState,
+  roomPosition,
   stateOfSlots,
   talkOnAir,
   talkToControl,
@@ -297,6 +299,59 @@ describe('talk to control', () => {
   it('prefers the current slot over a talk left open', () => {
     const statuses = { [iaForOps.id]: 'running' as const }
     expect(talkToControl(slots, at('2026-10-30T10:20:00Z'), statuses)?.id).toBe(
+      honeySwamp.id,
+    )
+  })
+})
+
+/**
+ * A room's forced talk: the emergency gesture when the programme's order no
+ * longer holds on site — a speaker is late, the next one is ready.
+ */
+describe('forced talk', () => {
+  const program = normalizeProgram(rawFixture)
+  const slots = sessionsForRoom(program, TRACK_1)
+  const talks = slots.filter((s) => s.kind === 'talk')
+  const honeySwamp = slots.find((s) => s.title.startsWith('HoneySwamp'))!
+  /** The talk right after HoneySwamp: the one forced ahead of it. */
+  const following = talks[talks.indexOf(honeySwamp) + 1]!
+  const late = at('2026-10-30T10:07:00Z')
+
+  it('changes nothing without a pin', () => {
+    const position = roomPosition(slots, late)
+    expect(position.current?.id).toBe(honeySwamp.id)
+    expect(position.target?.id).toBe(honeySwamp.id)
+    expect(position.pinned).toBeNull()
+  })
+
+  it('makes the forced talk current and target, and the skipped one next', () => {
+    const position = roomPosition(slots, late, {}, following.id)
+    expect(position.current?.id).toBe(following.id)
+    expect(position.target?.id).toBe(following.id)
+    expect(position.pinned?.id).toBe(following.id)
+    expect(position.next?.id).toBe(honeySwamp.id)
+    expect(talkToControl(slots, late, {}, following.id)?.id).toBe(following.id)
+  })
+
+  it('still announces the skipped talk once its own slot is over', () => {
+    const afterItsSlot = honeySwamp.startsAtMs + 3 * 60 * 60_000
+    const position = roomPosition(slots, afterItsSlot, { [following.id]: 'running' }, following.id)
+    expect(position.next?.id).toBe(honeySwamp.id)
+  })
+
+  it('does not call the room late, nor the forced talk overrunning', () => {
+    expect(stateOfSlots(slots, late, {}, following.id)).toBe('pas-commencee')
+    expect(stateOfSlots(slots, late, { [following.id]: 'running' }, following.id)).toBe('en-cours')
+    const wayAfter = following.startsAtMs + 5 * 60 * 60_000
+    expect(stateOfSlots(slots, wayAfter, { [following.id]: 'running' }, following.id)).toBe('en-cours')
+  })
+
+  it('is inert on an ended talk, a break, or a talk from elsewhere', () => {
+    const lunch = slots.find((s) => s.kind === 'break')!
+    expect(pinnedSlot(slots, { [following.id]: 'ended' }, following.id)).toBeNull()
+    expect(pinnedSlot(slots, {}, lunch.id)).toBeNull()
+    expect(pinnedSlot(slots, {}, 'nowhere')).toBeNull()
+    expect(roomPosition(slots, late, { [following.id]: 'ended' }, following.id).current?.id).toBe(
       honeySwamp.id,
     )
   })

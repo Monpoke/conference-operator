@@ -1,5 +1,11 @@
-import { describe, expect, it, vi } from 'vitest'
-import { ObsController, type ObsTransport } from '../src/core/obs.js'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  ObsController,
+  PROGRAM_WATCH_MS,
+  TRANSITION_WAIT_MS,
+  type ObsControllerEvent,
+  type ObsTransport,
+} from '../src/core/obs.js'
 
 /** A fake OBS: implements the subset in use, with no real instance. */
 function fakeObs(scenes: string[], current = scenes[0] ?? 'Scene') {
@@ -571,5 +577,191 @@ describe('audio sources', () => {
     )
     expect(levels).toHaveLength(1)
     expect(levels[0]!.inputs.map((input) => input.name)).toEqual(['Micro cravate'])
+  })
+})
+
+/**
+ * An OBS with a real fade, and the defect it has.
+ *
+ * A switch starts a 300 ms transition and announces the new scene at its end, as
+ * OBS 32 does. Switching back to the scene being left while the fade still runs
+ * leaves that scene's sources counted inactive — what froze a room's loop — and
+ * only re-selecting the scene on air counts them again.
+ */
+function fadingObs(options: { repairable?: boolean; endsTransitions?: boolean } = {}) {
+  const handlers = new Map<string, ((payload: unknown) => void)[]>()
+  const switches: { sceneName: string; duringTransition: boolean }[] = []
+  const items: Record<string, string[]> = { Habillage: ['Page habillage'], Capture: ['Carte HDMI'] }
+  let program = 'Habillage'
+  let fade: { from: string; timer: ReturnType<typeof setTimeout> } | null = null
+  const broken = new Set<string>()
+
+  function emit(event: string, payload: unknown = {}): void {
+    for (const handler of handlers.get(event) ?? []) handler(payload)
+  }
+
+  const transport: ObsTransport = {
+    connect: vi.fn(async () => {}),
+    disconnect: vi.fn(async () => {}),
+    call: (async (request: string, args?: Record<string, unknown>) => {
+      switch (request) {
+        case 'GetSceneList':
+          return { currentProgramSceneName: program, scenes: Object.keys(items).map((sceneName) => ({ sceneName })) }
+        case 'GetSceneItemList':
+          return {
+            sceneItems: (items[args!.sceneName as string] ?? []).map((sourceName) => ({
+              sourceName,
+              inputKind: 'browser_source',
+              sceneItemEnabled: true,
+            })),
+          }
+        case 'GetSourceActive':
+          return { videoActive: !broken.has(args!.sourceName as string) }
+        case 'SetCurrentProgramScene': {
+          const target = args!.sceneName as string
+          switches.push({ sceneName: target, duringTransition: fade != null })
+          if (fade != null) {
+            if (target === fade.from) for (const source of items[target] ?? []) broken.add(source)
+            clearTimeout(fade.timer)
+          } else if (target === program && options.repairable !== false) {
+            for (const source of items[target] ?? []) broken.delete(source)
+          }
+          const from = fade?.from ?? program
+          emit('SceneTransitionStarted', { transitionName: 'Fondu' })
+          const timer = setTimeout(() => {
+            fade = null
+            program = target
+            if (options.endsTransitions === false) return
+            emit('CurrentProgramSceneChanged', { sceneName: target })
+            emit('SceneTransitionEnded', { transitionName: 'Fondu' })
+          }, 300)
+          fade = { from, timer }
+          return {}
+        }
+        default:
+          return {}
+      }
+    }) as ObsTransport['call'],
+    on: (event, handler) => {
+      const list = handlers.get(event) ?? []
+      list.push(handler as (payload: unknown) => void)
+      handlers.set(event, list)
+    },
+  }
+
+  return { transport, switches, broken, get program() { return program } }
+}
+
+describe('switching scenes without breaking OBS', () => {
+  const controllerFor = (obs: ReturnType<typeof fadingObs>, events: ObsControllerEvent[] = []) =>
+    new ObsController({
+      instance: 'A',
+      url: 'ws://127.0.0.1:4455',
+      sceneRoles: { HOLD: 'Habillage', LIVE: 'Capture' },
+      transport: obs.transport,
+      onEvent: (event) => events.push(event),
+    })
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('never switches while a transition is running', async () => {
+    const obs = fadingObs()
+    const controller = controllerFor(obs)
+    await controller.connect()
+
+    // The control room's cut to the speaker, then straight back: the pattern that
+    // left the loop frozen on air.
+    const toLive = controller.setRole('LIVE')
+    const back = controller.setRole('HOLD')
+    await vi.advanceTimersByTimeAsync(1_000)
+    await Promise.all([toLive, back])
+
+    expect(obs.switches).toEqual([
+      { sceneName: 'Capture', duringTransition: false },
+      { sceneName: 'Habillage', duringTransition: false },
+    ])
+    expect(obs.program).toBe('Habillage')
+    expect(obs.broken.size).toBe(0)
+    await controller.disconnect()
+  })
+
+  it('does not wait forever on a transition OBS never ends', async () => {
+    const obs = fadingObs({ endsTransitions: false })
+    const controller = controllerFor(obs)
+    await controller.connect()
+
+    await controller.setRole('LIVE')
+    let done = false
+    const back = controller.setRole('HOLD').then(() => {
+      done = true
+    })
+    await vi.advanceTimersByTimeAsync(TRANSITION_WAIT_MS - 100)
+    expect(done).toBe(false)
+    await vi.advanceTimersByTimeAsync(200)
+    await back
+    expect(obs.switches.map((s) => s.sceneName)).toEqual(['Capture', 'Habillage'])
+    await controller.disconnect()
+  })
+
+  it('re-selects the scene on air when OBS counts its sources inactive', async () => {
+    const obs = fadingObs()
+    const events: ObsControllerEvent[] = []
+    const controller = controllerFor(obs, events)
+    await controller.connect()
+
+    // A click in OBS itself, back during the fade: nothing here could prevent it.
+    obs.broken.add('Page habillage')
+    await vi.advanceTimersByTimeAsync(PROGRAM_WATCH_MS + 3_000)
+
+    expect(obs.switches).toEqual([{ sceneName: 'Habillage', duringTransition: false }])
+    expect(obs.broken.size).toBe(0)
+    expect(events).toContainEqual({
+      type: 'program-repaired',
+      sceneName: 'Habillage',
+      sources: ['Page habillage'],
+      repaired: true,
+    })
+    await controller.disconnect()
+  })
+
+  it('leaves a healthy program alone', async () => {
+    const obs = fadingObs()
+    const controller = controllerFor(obs)
+    await controller.connect()
+    await vi.advanceTimersByTimeAsync(PROGRAM_WATCH_MS * 5)
+    expect(obs.switches).toEqual([])
+    await controller.disconnect()
+  })
+
+  it('tries once on a scene re-selecting does not repair, then says so', async () => {
+    const obs = fadingObs({ repairable: false })
+    const events: ObsControllerEvent[] = []
+    const controller = controllerFor(obs, events)
+    await controller.connect()
+
+    obs.broken.add('Page habillage')
+    await vi.advanceTimersByTimeAsync(PROGRAM_WATCH_MS * 6)
+
+    expect(obs.switches).toHaveLength(1)
+    expect(events.filter((e) => e.type === 'program-repaired')).toEqual([
+      { type: 'program-repaired', sceneName: 'Habillage', sources: ['Page habillage'], repaired: false },
+    ])
+    await controller.disconnect()
+  })
+
+  it('stops watching once disconnected', async () => {
+    const obs = fadingObs()
+    const controller = controllerFor(obs)
+    await controller.connect()
+    await controller.disconnect()
+
+    obs.broken.add('Page habillage')
+    await vi.advanceTimersByTimeAsync(PROGRAM_WATCH_MS * 3)
+    expect(obs.switches).toEqual([])
   })
 })

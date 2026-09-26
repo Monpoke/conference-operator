@@ -127,6 +127,12 @@ export type ObsControllerEvent =
   | { type: 'audio'; inputs: InputLevel[] }
   /** The audio sources and their mute state, whenever either changes. */
   | { type: 'audio-inputs'; inputs: AudioSource[] }
+  /**
+   * Sources of the program scene that OBS left inactive, and what the watchdog did
+   * about it: `repaired` false when re-selecting the scene did not bring them back.
+   * See {@link ObsController.watchProgram}.
+   */
+  | { type: 'program-repaired'; sceneName: string; sources: string[]; repaired: boolean }
 
 /** An OBS source that carries audio, and whether it is muted. */
 export interface AudioSource {
@@ -175,6 +181,23 @@ function isSettledTransition(outputState: string | undefined): boolean {
 }
 
 /**
+ * The longest wait for a scene transition to end before switching anyway.
+ *
+ * A fade lasts 300 ms, a stinger a second or two: past this, OBS has lost the
+ * event, and holding the control room's switch any longer would cost more than
+ * the defect it avoids.
+ */
+export const TRANSITION_WAIT_MS = 5_000
+
+/** How often the program scene's sources are checked. */
+export const PROGRAM_WATCH_MS = 5_000
+
+/** The second look before repairing: a source seen inactive once may be mid-switch. */
+export const PROGRAM_CONFIRM_MS = 1_000
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+/**
  * Drives an OBS instance reasoning in **roles**, never in scene names.
  *
  * Each room names its scenes as it likes; the code knows nothing of them. The
@@ -187,6 +210,14 @@ export class ObsController implements ObsCapture {
   private levelsActive = false
   /** The audio sources, as last read from OBS. Empty while disconnected. */
   private audioSources: AudioSource[] = []
+  /** A scene transition under way — announced by OBS or started by us. */
+  private transition: { done: Promise<void>; end: () => void } | null = null
+  /** The scene switches, one after the other: see {@link switchTo}. */
+  private switching: Promise<void> = Promise.resolve()
+  private watchdog: ReturnType<typeof setInterval> | null = null
+  private watching = false
+  /** The scene whose inactive sources re-selecting did not bring back: left alone. */
+  private unrepairable: string | null = null
 
   constructor(private readonly options: ObsControllerOptions) {
     this.state = {
@@ -215,8 +246,18 @@ export class ObsController implements ObsCapture {
   private bindEvents(): void {
     const { transport } = this.options
 
+    transport.on('SceneTransitionStarted', () => {
+      this.transitionStarted()
+    })
+    transport.on('SceneTransitionEnded', () => {
+      this.transitionEnded()
+    })
+
     transport.on('CurrentProgramSceneChanged', (payload: never) => {
       const { sceneName } = payload as unknown as { sceneName: string }
+      // OBS announces the new program scene when the transition is over — and a
+      // cut, which may announce nothing else, ends there too.
+      this.transitionEnded()
       const role = this.roleOf(sceneName)
       this.patch({ currentSceneName: sceneName, currentRole: role })
       this.options.onEvent?.({ type: 'scene', sceneName, role })
@@ -309,6 +350,8 @@ export class ObsController implements ObsCapture {
     }
 
     transport.on('ConnectionClosed', () => {
+      this.stopWatchdog()
+      this.transitionEnded()
       this.audioSources = []
       // The library also fires it on every failed connection attempt: with OBS off,
       // the resume loop would announce a "disconnection" every three seconds — a
@@ -419,6 +462,7 @@ export class ObsController implements ObsCapture {
     // Tolerant, like the output status: a source list OBS refuses to give must not
     // prevent driving the scenes.
     await this.refreshAudioInputs().catch(() => {})
+    this.startWatchdog()
     return this.snapshot()
   }
 
@@ -621,6 +665,7 @@ export class ObsController implements ObsCapture {
   }
 
   async disconnect(): Promise<void> {
+    this.stopWatchdog()
     await this.options.transport.disconnect()
     this.patch({ connected: false })
   }
@@ -638,8 +683,139 @@ export class ObsController implements ObsCapture {
         `La scène « ${sceneName} » (rôle ${role}) n'existe pas dans OBS-${this.options.instance}`,
       )
     }
-    await this.options.transport.call('SetCurrentProgramScene', { sceneName })
+    await this.switchTo(sceneName)
     // We do not anticipate the state: `CurrentProgramSceneChanged` is authoritative.
+  }
+
+  /**
+   * Puts a scene on air, never while a transition is still running.
+   *
+   * Switching back to the scene being left before its fade is over leaves OBS
+   * counting that scene's sources as inactive although they are on air: a browser
+   * source then stops painting and its page believes it is off air — the room's
+   * loop froze mid-stinger that way, with OBS itself rendering fine. So every
+   * switch waits for the previous one to end, and they go out one at a time.
+   */
+  private switchTo(sceneName: string): Promise<void> {
+    const run = this.switching.then(async () => {
+      await this.transitionSettled()
+      // Ours from the request on: OBS's `SceneTransitionStarted` may come after the
+      // reply, and a switch queued behind this one must already wait.
+      this.transitionStarted()
+      try {
+        await this.options.transport.call('SetCurrentProgramScene', { sceneName })
+      } catch (cause) {
+        this.transitionEnded()
+        throw cause
+      }
+    })
+    this.switching = run.catch(() => {})
+    return run
+  }
+
+  private transitionStarted(): void {
+    if (this.transition != null) return
+    let end = () => {}
+    const done = new Promise<void>((resolve) => {
+      end = resolve
+    })
+    this.transition = { done, end }
+  }
+
+  private transitionEnded(): void {
+    const transition = this.transition
+    this.transition = null
+    transition?.end()
+  }
+
+  private async transitionSettled(): Promise<void> {
+    const transition = this.transition
+    if (transition == null) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    await Promise.race([
+      transition.done,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, TRANSITION_WAIT_MS)
+      }),
+    ])
+    clearTimeout(timer)
+    // OBS lost the event: the next switch must not wait on it too.
+    if (this.transition === transition) this.transitionEnded()
+  }
+
+  private startWatchdog(): void {
+    this.stopWatchdog()
+    this.watchdog = setInterval(() => {
+      void this.watchProgram().catch(() => {})
+    }, PROGRAM_WATCH_MS)
+    this.watchdog.unref?.()
+  }
+
+  private stopWatchdog(): void {
+    if (this.watchdog != null) clearInterval(this.watchdog)
+    this.watchdog = null
+  }
+
+  /**
+   * The program scene's sources that OBS counts as inactive.
+   *
+   * A visible source of the scene on air is active, always — unless OBS lost
+   * count, see {@link switchTo}. Nested scenes and groups are left out: their
+   * own sources are what shows.
+   */
+  private async inactiveOnAir(sceneName: string): Promise<string[]> {
+    const { sceneItems } = (await this.options.transport.call('GetSceneItemList', { sceneName })) as {
+      sceneItems?: { sourceName: string; inputKind?: string | null; sceneItemEnabled?: boolean }[]
+    }
+    const inactive: string[] = []
+    for (const item of sceneItems ?? []) {
+      if (item.sceneItemEnabled === false || item.inputKind == null) continue
+      const { videoActive } = (await this.options.transport.call('GetSourceActive', {
+        sourceName: item.sourceName,
+      })) as { videoActive?: boolean }
+      // Only a plain "no" counts: an OBS that does not answer repairs nothing.
+      if (videoActive === false) inactive.push(item.sourceName)
+    }
+    return inactive
+  }
+
+  /**
+   * Repairs the program scene when OBS counts its sources as inactive.
+   *
+   * {@link switchTo} prevents the defect for the switches made from here, not for
+   * a click in OBS or on a Stream Deck. Re-selecting the scene on air repairs it,
+   * and shows nothing: a fade from the scene to itself. Hiding and showing the
+   * source again does not — tried on a real OBS 32.
+   *
+   * Seen twice, a second apart, before acting: a source caught in the middle of a
+   * switch is not a defect. And a scene that re-selecting did not repair is left
+   * alone until the program changes — re-selecting it every five seconds would
+   * repair nothing more.
+   */
+  async watchProgram(): Promise<void> {
+    if (this.watching || !this.state.connected) return
+    this.watching = true
+    try {
+      const sceneName = this.state.currentSceneName
+      if (sceneName == null || this.transition != null) return
+      if (this.unrepairable != null && this.unrepairable !== sceneName) this.unrepairable = null
+      if (this.unrepairable === sceneName) return
+      if ((await this.inactiveOnAir(sceneName)).length === 0) return
+
+      await sleep(PROGRAM_CONFIRM_MS)
+      if (this.transition != null || this.state.currentSceneName !== sceneName) return
+      const sources = await this.inactiveOnAir(sceneName)
+      if (sources.length === 0) return
+
+      await this.switchTo(sceneName)
+      await this.transitionSettled()
+      await sleep(PROGRAM_CONFIRM_MS)
+      const repaired = this.state.currentSceneName !== sceneName || (await this.inactiveOnAir(sceneName)).length === 0
+      if (!repaired) this.unrepairable = sceneName
+      this.options.onEvent?.({ type: 'program-repaired', sceneName, sources, repaired })
+    } finally {
+      this.watching = false
+    }
   }
 
   async startRecording(): Promise<void> {

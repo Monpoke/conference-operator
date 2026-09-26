@@ -70,9 +70,9 @@
  *    console and the whole control app would change without a line asking for it.
  *    Radii are written literally in the copied components.
  *
- * 2. **The light `:root` block and the `.dark` class.** The theme is dark, and
- *    only dark: the control app is a machine in a blacked-out room, and the
- *    console is held by the same people on the same day. Keeping shadcn's
- *    template would leave a dead light palette in the sheet and a class that one
- *    oversight on `<html>` would be enough to turn white.
+ * 2. **The light `:root` block and the `.dark` class.** The theme is dark by
+ *    default: the control app is a machine in a blacked-out room. The console's
+ *    light palette lives in `apps.css`, behind an attribute whose absence means
+ *    dark — shadcn's `.dark` class would be the other way round, and one
+ *    oversight on `<html>` would be enough to turn a room white.
  */

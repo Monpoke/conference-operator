@@ -16,3 +16,5 @@ export {
   type FontFamily,
 } from './fonts.js'
 export { renderProjectorDocument, type ProjectorDocumentOptions } from './page.js'
+export { renderVodDocument, type VodDocumentOptions } from './vod-page.js'
+export { buildVodHabillage, type VodHabillageSources } from './vod-habillage.js'

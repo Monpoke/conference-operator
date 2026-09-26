@@ -281,8 +281,10 @@ export class RoomApp implements ControlTarget {
         setSceneRole: async (role) => {
           await this.obsA?.setRole(role)
         },
+        // The whole sync, not the link's alone: the loop comes down with the
+        // program, and its new images and the screen's refresh come after.
         resync: () => {
-          void this.link?.sync()
+          void this.syncEverything()
         },
         reloadSessionStates: () => {
           void this.loadSessionStates()
@@ -292,6 +294,9 @@ export class RoomApp implements ControlTarget {
         },
         syncWall: () => {
           void this.syncWall()
+        },
+        syncSettings: () => {
+          void this.syncEverything()
         },
         uploadVod: (file) => {
           void this.uploads.request(file)

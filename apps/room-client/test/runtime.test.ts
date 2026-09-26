@@ -299,6 +299,13 @@ describe('applying the commands', () => {
     expect(resync).toHaveBeenCalledWith('hash-2')
   })
 
+  it('reads the settings back when the console saved them', async () => {
+    const syncSettings = vi.fn()
+    const runtime = makeRuntime({ syncSettings })
+    await runtime.applyCommand(command({ type: 'settings.changed' }))
+    expect(syncSettings).toHaveBeenCalledOnce()
+  })
+
   it('fetches the social wall when the hub says it moved', async () => {
     const syncWall = vi.fn()
     const runtime = makeRuntime({ syncWall })

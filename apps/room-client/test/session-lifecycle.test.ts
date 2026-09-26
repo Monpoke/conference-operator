@@ -402,6 +402,26 @@ describe('full resynchronisation', () => {
 })
 
 /**
+ * The loop saved in the console reaches the rooms by itself.
+ *
+ * It used to stay on the hub until the room's next sync — a program import, a
+ * reconnection, a resync asked by hand — and the screen went on showing the old
+ * settings with nothing to say so.
+ */
+describe('settings saved in the console', () => {
+  it('reach the room screen without a resync', async () => {
+    expect((await view()).boucle?.logoAvecNom).toBe(false)
+
+    const admin = await operatorClient()
+    await admin.settings.update({ boucle: { logoAvecNom: true } })
+    await sleep(1_000)
+
+    expect((await view()).boucle?.logoAvecNom).toBe(true)
+    await admin.settings.update({ boucle: { logoAvecNom: false } })
+  }, 40_000)
+})
+
+/**
  * Slots whose kind is corrected from the console.
  *
  * The upstream export does not tell a lunch from a talk, and the normaliser

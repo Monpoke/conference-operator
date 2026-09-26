@@ -49,6 +49,8 @@ export interface RuntimeEffects {
   fullResync?: () => void
   /** The social wall moved on the hub: fetch it. */
   syncWall?: () => void
+  /** The console saved the settings (the loop, the social links…): read them back. */
+  syncSettings?: () => void
   /**
    * Shipping the rushes back, asked for by the console. A null `file` = everything
    * that is left.
@@ -623,6 +625,9 @@ export class RoomRuntime extends EventEmitter {
         // The revision alone: the room asks for the posts, and asks for nothing
         // if it already holds this one.
         this.effects.syncWall?.()
+        break
+      case 'settings.changed':
+        this.effects.syncSettings?.()
         break
       case 'room.resync':
         /**

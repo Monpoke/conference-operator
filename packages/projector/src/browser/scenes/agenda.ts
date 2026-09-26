@@ -59,6 +59,8 @@ export function agenda(el: HTMLElement, lire: (data: Data) => Journee | null = j
   let derniere = -1
 
   const masquer = (data: Data) => data.boucle?.agenda.masquerTerminees ?? true
+  /** The room's forced talk — only on this room's own day, the others follow their clock. */
+  const epingle = (data: Data): string | null => (lire(data)?.ici ? (data.state.pinnedSessionId ?? null) : null)
 
   function ligne(s: AgendaEntry, tz: string): HTMLElement {
     const li = cree('li', s.pause ? 'seance est-pause' : 'seance')
@@ -127,7 +129,7 @@ export function agenda(el: HTMLElement, lire: (data: Data) => Journee | null = j
 
   const scene: Scene = {
     el,
-    cle: (data: Data) => [lire(data), data.timezone, masquer(data)],
+    cle: (data: Data) => [lire(data), data.timezone, masquer(data), epingle(data), data.state.nextSession?.id ?? null],
     jouable: (data: Data) => (lire(data)?.entries.length ?? 0) > 0,
     rendre(data: Data) {
       const journee = lire(data)
@@ -139,7 +141,9 @@ export function agenda(el: HTMLElement, lire: (data: Data) => Journee | null = j
       nbTerminees = toutes.filter((s) => m >= s.endsAtMs).length
       // Finished sessions leave to give the rest of the day all the room — except
       // at the end of the day, when the whole program stays.
-      const restantes = toutes.filter((s) => m < s.endsAtMs)
+      // A forced talk and the one it jumped over stay, even past their slot.
+      const gardees = [epingle(data), epingle(data) == null ? null : (data.state.nextSession?.id ?? null)]
+      const restantes = toutes.filter((s) => m < s.endsAtMs || gardees.includes(s.id))
       sessions = masquer(data) && restantes.length ? restantes : toutes
       lignes = sessions.map((s) => ligne(s, data.timezone))
       derniere = -1
@@ -162,10 +166,18 @@ export function agenda(el: HTMLElement, lire: (data: Data) => Journee | null = j
       }
       // A session just ended: the agenda is rebuilt as soon as it is off screen.
       if (masquer(data) && toutes.filter((s) => m >= s.endsAtMs).length !== nbTerminees) scene.sale = true
-      const suivante = sessions.findIndex((s) => s.startsAtMs > m && !s.pause)
+      /*
+       * A forced talk is what the room is on, whatever the clock says, and the
+       * next one is the room's word, not the schedule's: the talk it jumped over
+       * comes next even though its slot is behind.
+       */
+      const force = epingle(data)
+      const suivante = force == null
+        ? sessions.findIndex((s) => s.startsAtMs > m && !s.pause)
+        : sessions.findIndex((s) => s.id === data.state.nextSession?.id)
       sessions.forEach((s, i) => {
         const li = lignes[i]!
-        const enCours = m >= s.startsAtMs && m < s.endsAtMs
+        const enCours = force == null ? m >= s.startsAtMs && m < s.endsAtMs : s.id === force
         li.classList.toggle('est-passee', m >= s.endsAtMs)
         li.classList.toggle('est-encours', enCours)
         li.classList.toggle('est-suivante', i === suivante)

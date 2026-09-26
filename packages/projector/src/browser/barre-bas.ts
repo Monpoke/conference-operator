@@ -67,7 +67,11 @@ export class BarreBas {
       : data.plannings
           .flatMap((p) => p.agenda.map((e) => ({ ...e, elsewhere: e.pause ? null : p.nom })))
           .sort((a, b) => a.startsAtMs - b.startsAtMs)
-    const suivante = jour.find((e) => e.startsAtMs > now && !e.pause)
+    // A forced talk: what comes next is the room's word, not the schedule's.
+    const epingle = data.agenda.length > 0 && data.state.pinnedSessionId != null
+    const suivante = epingle
+      ? jour.find((e) => e.id === data.state.nextSession?.id)
+      : jour.find((e) => e.startsAtMs > now && !e.pause)
     const empreinte = suivante ? `${suivante.startsAtMs}|${suivante.title}|${suivante.elsewhere}` : 'rien'
     if (empreinte !== this.prochain || force) {
       this.prochain = empreinte

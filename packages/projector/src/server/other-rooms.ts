@@ -1,4 +1,4 @@
-import type { DisplayPayload } from '@conference-operator/contract'
+import type { DisplayPayload, RoomPins } from '@conference-operator/contract'
 import { sessionsForRoom, type Program } from '@conference-operator/program'
 import { timelinePosition } from '@conference-operator/program/selectors'
 
@@ -9,8 +9,17 @@ import { timelinePosition } from '@conference-operator/program/selectors'
  * its preview — never on the machine's time, which can be weeks away when the
  * hub runs on a simulated clock. The breaks are discarded: "Lunch in Track #2"
  * helps nobody choose where to go.
+ *
+ * A room's forced talk wins over the clock: it is the one actually on next door,
+ * and sending the audience to the talk the schedule names would send them to the
+ * wrong one.
  */
-export function otherRoomsFor(program: Program, roomId: string | null, at: number): DisplayPayload['otherRooms'] {
+export function otherRoomsFor(
+  program: Program,
+  roomId: string | null,
+  at: number,
+  pins: RoomPins = {},
+): DisplayPayload['otherRooms'] {
   return program.rooms
     .filter((room) => room.id !== roomId)
     .map((room) => {
@@ -24,8 +33,9 @@ export function otherRoomsFor(program: Program, roomId: string | null, at: numbe
        * "running" on the neighbouring screen until the end of the day.
        */
       const slots = sessionsForRoom(program, room.id)
+      const pinned = slots.find((slot) => slot.id === pins[room.id] && slot.kind === 'talk') ?? null
       const { current } = timelinePosition(slots, at)
-      const runningTalk = current?.kind === 'talk' ? current : null
+      const runningTalk = pinned ?? (current?.kind === 'talk' ? current : null)
       const session = runningTalk ?? slots.find((c) => c.kind === 'talk' && c.startsAtMs > at) ?? null
       return {
         roomId: room.id,

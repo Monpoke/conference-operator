@@ -23,11 +23,13 @@ import {
   eventIdentitySchema,
   DEFAULT_EVENT_IDENTITY,
   roomConfigSchema,
+  roomPinsSchema,
   roomScreenListSchema,
   socialLinkSchema,
   vodSyncSchema,
   type EventIdentity,
   type RoomConfig,
+  type RoomPins,
   type RoomScreen,
   type SocialLink,
   type VodSync,
@@ -73,6 +75,22 @@ function readScreens(raw: string | null): RoomScreens {
     return parsed.success ? parsed.data : NO_SCREEN_RESTRICTION
   } catch {
     return NO_SCREEN_RESTRICTION
+  }
+}
+
+/**
+ * The forced talks read back from the cache.
+ *
+ * Unreadable means "nothing forced": the room then follows the clock, which is
+ * what it would do anyway the moment the pin was lifted.
+ */
+function readPins(raw: string | null): RoomPins {
+  if (raw == null) return {}
+  try {
+    const parsed = roomPinsSchema.safeParse(JSON.parse(raw))
+    return parsed.success ? parsed.data : {}
+  } catch {
+    return {}
   }
 }
 
@@ -227,6 +245,8 @@ export interface RoomSettings {
   boucle: Boucle
   /** The social wall's posts, fetched from the hub apart from the rest (`rooms.wall`). */
   wall: CachedWall
+  /** Every room's forced talk, pushed by the hub. Cached so it survives a restart. */
+  pins: RoomPins
   nextSeq: number
   lastCommandSeq: number
   clockOffsetMs: number
@@ -299,6 +319,7 @@ export class LocalStore {
       vod: readVod(row?.vodJson ?? null),
       boucle: readBoucle(row?.boucleJson ?? null),
       wall: readWall(row?.wallJson ?? null),
+      pins: readPins(row?.pinsJson ?? null),
       nextSeq: row?.nextSeq ?? 1,
       lastCommandSeq: row?.lastCommandSeq ?? 0,
       clockOffsetMs: row?.clockOffsetMs ?? 0,
@@ -317,6 +338,7 @@ export class LocalStore {
     if (patch.vod !== undefined) update.vodJson = patch.vod == null ? null : JSON.stringify(patch.vod)
     if (patch.boucle !== undefined) update.boucleJson = JSON.stringify(patch.boucle)
     if (patch.wall !== undefined) update.wallJson = JSON.stringify(patch.wall)
+    if (patch.pins !== undefined) update.pinsJson = JSON.stringify(patch.pins)
     if (patch.lastCommandSeq !== undefined) update.lastCommandSeq = patch.lastCommandSeq
     if (patch.clockOffsetMs !== undefined) update.clockOffsetMs = patch.clockOffsetMs
 

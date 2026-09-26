@@ -11,13 +11,12 @@ import {
   type DisplayState,
   type Notification,
   type RemoteCommandOutcome,
+  type RoomPins,
   type SceneRole,
   type SessionStatus,
 } from '@conference-operator/contract'
-import { talkOnAir, talkToControl, roomBreak } from '@conference-operator/room-state'
+import { talkOnAir, roomBreak, roomPosition } from '@conference-operator/room-state'
 import {
-  currentSession,
-  nextSession,
   sessionsForRoom,
   type Program,
   type Session,
@@ -126,6 +125,8 @@ const REMOTE_GESTURES = new Set(['scene.force', 'display.set', 'recording.set', 
 export class RoomRuntime extends EventEmitter {
   private display: DisplayState
   private program: Program | null
+  /** Every room's forced talk, as the hub last said. See `setPins`. */
+  private roomPins: RoomPins
 
   constructor(
     private readonly store: LocalStore,
@@ -136,6 +137,8 @@ export class RoomRuntime extends EventEmitter {
     const settings = store.settings()
     const cached = store.activeProgram()
     this.program = cached?.program ?? null
+    // Cached: a room restarting with the hub out of reach keeps its forced talk.
+    this.roomPins = settings.pins
     this.display = {
       /**
        * At startup, the waiting loop.
@@ -166,6 +169,7 @@ export class RoomRuntime extends EventEmitter {
       simulatedClock: false,
       targetSession: null,
       onAirSession: null,
+      pinnedSessionId: null,
       targetIsUpcoming: false,
       remoteHolder: null,
       breakBadge: null,
@@ -362,26 +366,55 @@ export class RoomRuntime extends EventEmitter {
     this.refreshSessions()
   }
 
+  /** Every room's forced talk, as the hub last said. */
+  pins(): RoomPins {
+    return { ...this.roomPins }
+  }
+
+  /**
+   * The forced talks changed — at sync, or by `room.pins`.
+   *
+   * The whole map, every room's: this one's decides what the room is on, the
+   * others' what the "other rooms" panel titles.
+   */
+  setPins(pins: RoomPins): void {
+    this.roomPins = { ...pins }
+    this.refreshSessions()
+  }
+
   /** Recomputes the running / next session. To be called again on a clock tick. */
   refreshSessions(): void {
     const { roomId } = this.display
     if (this.program == null || roomId == null) {
-      this.patch({ currentSession: null, nextSession: null, onAirSession: null, breakBadge: null })
+      this.patch({
+        currentSession: null,
+        nextSession: null,
+        onAirSession: null,
+        breakBadge: null,
+        pinnedSessionId: null,
+      })
       return
     }
     const at = this.correctedNow()
-    const running = currentSession(this.program, roomId, at)
-    const next = nextSession(this.program, roomId, at)
 
     /**
-     * The commands' target: what "Start" and "End" reach.
+     * Current, next and the commands' target: what "Start" and "End" reach.
      *
-     * The rule lives in `talkToControl`, with the rest of the state machine: the
+     * The rule lives in `roomPosition`, with the rest of the state machine: the
      * hub's console and the test bench run it too, and three copies of a schedule
-     * rule always end up diverging.
+     * rule always end up diverging. It is also the one place that reads a forced
+     * talk — which then wins over the clock for all three.
      */
     const roomSessions = sessionsForRoom(this.program, roomId)
-    const target = talkToControl(roomSessions, at, this.display.sessionStates)
+    const position = roomPosition(
+      roomSessions,
+      at,
+      this.display.sessionStates,
+      this.roomPins[roomId] ?? null,
+    )
+    const running = position.current
+    const next = position.next
+    const target = position.target
     /**
      * The talk on air, held while OBS records.
      *
@@ -422,7 +455,9 @@ export class RoomRuntime extends EventEmitter {
        * identifiers announced it as "upcoming" at the precise moment it was
        * overrunning.
        */
-      targetIsUpcoming: target != null && target.startsAtMs > at,
+      // A forced talk is decided *now*: it is not "upcoming", whatever its slot says.
+      targetIsUpcoming: position.pinned == null && target != null && target.startsAtMs > at,
+      pinnedSessionId: position.pinned?.id ?? null,
       breakBadge:
         onBreak == null
           ? null
@@ -718,6 +753,10 @@ export class RoomRuntime extends EventEmitter {
         }
         break
       }
+      case 'room.pins':
+        this.store.saveSettings({ pins: payload.pins })
+        this.setPins(payload.pins)
+        break
       case 'clock.changed': {
         /**
          * The hub's time has moved: we realign immediately.

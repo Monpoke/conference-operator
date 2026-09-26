@@ -108,6 +108,13 @@ export const controlActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('session.start') }),
   z.object({ action: z.literal('session.end') }),
   z.object({ action: z.literal('session.reset') }),
+  /**
+   * The emergency gestures: force one of the room's talks as the current one
+   * (`null` lifts it), or swap two of its talks in the programme. Both settled on
+   * the hub — the console and the other rooms must see them.
+   */
+  z.object({ action: z.literal('session.pin'), sessionId: z.string().min(1).nullable() }),
+  z.object({ action: z.literal('session.swap'), a: z.string().min(1), b: z.string().min(1) }),
   /** Choosing the room served, from the pairing screen. */
   z.object({ action: z.literal('pairing.chooseRoom'), roomId: z.string().min(1) }),
   /**
@@ -213,6 +220,8 @@ export interface ControlTarget {
   startSession(): Promise<void>
   endSession(): Promise<void>
   resetSession(): Promise<void>
+  pinSession(sessionId: string | null): Promise<void>
+  swapSessions(a: string, b: string): Promise<void>
   chooseRoom(roomId: string): Promise<void>
   unpair(): Promise<void>
   dismissNotification(id: string): void
@@ -361,6 +370,15 @@ export async function runControlAction(
       case 'session.reset':
         await target.resetSession()
         return { ok: true, message: 'Conférence remise à « à venir »' }
+      case 'session.pin':
+        await target.pinSession(action.sessionId)
+        return {
+          ok: true,
+          message: action.sessionId == null ? 'Conférence libérée : retour au programme' : 'Conférence forcée en salle',
+        }
+      case 'session.swap':
+        await target.swapSessions(action.a, action.b)
+        return { ok: true, message: 'Créneaux échangés' }
       case 'pairing.chooseRoom':
         await target.chooseRoom(action.roomId)
         return { ok: true, message: 'Demande d\'appairage envoyée' }

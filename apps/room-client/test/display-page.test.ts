@@ -61,6 +61,7 @@ function payload(overrides: Partial<DisplayPayload> = {}, state: Partial<Display
       nextSession: next,
       targetSession: running,
       targetIsUpcoming: false,
+      pinnedSessionId: null,
       breakBadge: null,
       outboxDepth: 0,
       serverTimeOffsetMs: AT - Date.now(),

@@ -55,7 +55,10 @@ export async function makeApercus(options: {
     const whole = windowInputs(segments, 0, takeMs)
     await attempt('forme.png', [
       ...whole.args,
-      '-filter_complex', `${whole.join},aformat=channel_layouts=mono,showwavespic=s=1600x200:colors=0x8b5cf6[w]`,
+      // Drawn from a levelled copy: a take recorded quiet — the room mixer set
+      // low — would otherwise draw a flat line, and nobody could see where the
+      // talk sits. The sound itself is not touched.
+      '-filter_complex', `${whole.join},aformat=channel_layouts=mono,dynaudnorm=f=250:g=15,showwavespic=s=1600x200:colors=0x8b5cf6:scale=sqrt[w]`,
       '-map', '[w]', '-frames:v', '1',
     ])
   }

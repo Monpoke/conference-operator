@@ -2,7 +2,7 @@
 import { Button, Field, Hint, Panel, useToast } from '@conference-operator/components'
 import type { MontageJobView } from '@conference-operator/contract'
 import { storeToRefs } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { MONTAGE_STATES, describe, useMontageStore } from '../stores/montage.js'
 
 /**
@@ -15,6 +15,9 @@ import { MONTAGE_STATES, describe, useMontageStore } from '../stores/montage.js'
 const store = useMontageStore()
 const { jobs, workers } = storeToRefs(store)
 const toast = useToast()
+
+/** Cuts waiting for somebody: nothing goes out for these talks until they are looked at. */
+const toValidate = computed(() => jobs.value.filter((job) => job.state === 'a-valider').length)
 
 const nom = ref('')
 /** The token just created — shown once, here, and never again. */
@@ -53,6 +56,10 @@ async function copyToken(): Promise<void> {
 
 <template>
   <Panel title="Montages" class="col-span-full">
+    <p v-if="toValidate > 0" id="montage-a-valider" class="mb-2 text-sm text-warn">
+      {{ toValidate }} coupe{{ toValidate > 1 ? 's' : '' }} à valider — dans le dossier VOD du talk
+      (Conférences → colonne VOD → « captation »).
+    </p>
     <div class="overflow-x-auto">
       <table class="w-full border-collapse text-[13px]">
         <thead>

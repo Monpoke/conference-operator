@@ -558,3 +558,145 @@ describe('ended before its slot', () => {
     expect(wrapper.get('[data-role="talk-detail"]').text()).toContain('Commencer')
   })
 })
+
+describe('forcing a talk into the room', () => {
+  it('sends the pin, and lifts it with null', async () => {
+    roomAt(START_MS)
+    const talkStore = useTalkStore()
+
+    await talkStore.pin('talk-2')
+    await talkStore.pin(null)
+
+    expect(sends.map((send) => send.body)).toEqual([
+      { action: 'session.pin', sessionId: 'talk-2' },
+      { action: 'session.pin', sessionId: null },
+    ])
+  })
+
+  it('swaps two slots, target first', async () => {
+    roomAt(START_MS)
+
+    await useTalkStore().swap('talk-1', 'talk-2')
+
+    expect(sends.map((send) => send.body)).toEqual([
+      { action: 'session.swap', a: 'talk-1', b: 'talk-2' },
+    ])
+  })
+
+  it("reports the hub's refusal as any other gesture", async () => {
+    roomAt(START_MS)
+    refuse = 'session.swap'
+
+    const result = await useTalkStore().swap('talk-1', 'talk-2')
+
+    expect(result.ok).toBe(false)
+    expect(useToast().notices.value.at(-1)?.text).toBe('Refusé')
+  })
+
+  it('does not ask "very early?" of a talk forced by hand', async () => {
+    // Forcing it was the decision: asking again would put the same question twice.
+    roomAt(START_MS - TOO_EARLY_MS - 60_000, { pinnedSessionId: 'talk-1' })
+    useRoomStore().payload!.diagnostics!.recording = {
+      active: true,
+      markers: 0,
+      startedAtMs: 0,
+      startedAtCorrectedMs: null,
+      editing: NO_EDITING_MARKS,
+    }
+    const talkStore = useTalkStore()
+
+    talkStore.askStart()
+    await flushPromises()
+
+    expect(talkStore.forced).toBe(true)
+    expect(talkStore.tooEarlyOpen).toBe(false)
+    expect(actions()).toEqual(['session.start', 'scene.set'])
+  })
+})
+
+describe('the forced talk, on the panel', () => {
+  const later = () =>
+    talk({
+      id: 'talk-2',
+      title: 'Le suivant',
+      startsAt: '2026-10-30T10:00:00.000Z',
+      startsAtMs: END_MS + 900_000,
+      endsAtMs: null,
+    })
+
+  it('says it is forced, and offers to give the room back to the clock', async () => {
+    const view = payload({ sessions: [talk(), later()] })
+    view.state.targetSession = later()
+    view.state.pinnedSessionId = 'talk-2'
+    const wrapper = mount(TalkPanel, { props: { payload: view, nowMs: START_MS } })
+
+    expect(wrapper.get('[data-role="talk-forced"]').text()).toBe('Forcée')
+    // The next one is the talk it jumped over, not the one after it.
+    expect(wrapper.get('[data-role="next"]').text()).toContain('Ce que le flux ne dit pas')
+
+    await wrapper.get('[data-role="btn-talk-unpin"]').trigger('click')
+    await flushPromises()
+    expect(sends.map((send) => send.body)).toEqual([{ action: 'session.pin', sessionId: null }])
+  })
+
+  it('shows neither badge nor "Libérer" when the clock decides', () => {
+    const wrapper = mount(TalkPanel, { props: { payload: payload(), nowMs: START_MS } })
+
+    expect(wrapper.find('[data-role="talk-forced"]').exists()).toBe(false)
+    expect(wrapper.find('[data-role="btn-talk-unpin"]').exists()).toBe(false)
+  })
+
+  it('lists the talks still to give, and swaps only those not begun', async () => {
+    const ended = talk({ id: 'talk-0', title: 'Déjà tenue' })
+    const pause = talk({ id: 'break-1', kind: 'break', title: 'Pause' })
+    const view = payload({ sessions: [ended, talk(), pause, later()] })
+    view.state.sessionStates = { 'talk-0': 'ended' }
+    useRoomStore().seed(view)
+    const wrapper = mount(TalkPanel, {
+      props: { payload: view, nowMs: START_MS },
+      attachTo: document.body,
+    })
+
+    await wrapper.get('[data-role="btn-talk-force"]').trigger('click')
+    await flushPromises()
+
+    const rows = [...document.body.querySelectorAll('[data-role="force-row"]')]
+    // Neither the ended talk nor the break: one cannot be replayed, the other is no talk.
+    expect(rows.map((row) => row.getAttribute('data-session'))).toEqual(['talk-1', 'talk-2'])
+    // The target cannot be swapped with itself.
+    expect(rows[0]!.querySelector('[data-role="force-swap"]')).toBeNull()
+    const swap = rows[1]!.querySelector<HTMLButtonElement>('[data-role="force-swap"]')!
+    expect(swap.textContent).toContain('Échanger avec « Ce que le flux ne dit pas »')
+
+    swap.click()
+    await flushPromises()
+    expect(sends.map((send) => send.body)).toEqual([
+      { action: 'session.swap', a: 'talk-1', b: 'talk-2' },
+    ])
+    // Closed on success.
+    expect(useTalkStore().forceOpen).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('offers no swap once the target is running', async () => {
+    const view = payload({ sessions: [talk(), later()] })
+    view.state.sessionStates = { 'talk-1': 'running' }
+    useRoomStore().seed(view)
+    const wrapper = mount(TalkPanel, {
+      props: { payload: view, nowMs: START_MS },
+      attachTo: document.body,
+    })
+
+    await wrapper.get('[data-role="btn-talk-force"]').trigger('click')
+    await flushPromises()
+
+    expect(document.body.querySelector('[data-role="force-swap"]')).toBeNull()
+    const pin = document.body.querySelector<HTMLButtonElement>(
+      '[data-session="talk-2"] [data-role="force-pin"]',
+    )!
+    pin.click()
+    await flushPromises()
+    expect(sends.map((send) => send.body)).toEqual([{ action: 'session.pin', sessionId: 'talk-2' }])
+    wrapper.unmount()
+  })
+})

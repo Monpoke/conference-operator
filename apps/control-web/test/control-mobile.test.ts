@@ -63,6 +63,7 @@ function vue(overrides: Partial<ControlView> = {}): ControlView {
     conference: 'en-cours',
     targetSession: talk(),
     targetIsUpcoming: false,
+    pinnedSessionId: null,
     sessionStates: {},
     sessions: [talk()],
     sceneRole: 'HOLD',

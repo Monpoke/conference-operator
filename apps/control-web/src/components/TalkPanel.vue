@@ -7,6 +7,7 @@ import { computed } from 'vue'
 import { nextTalkFor, scheduleGapMs } from '../lib/countdown.js'
 import { useTalkStore } from '../stores/talk.js'
 import Countdown from './Countdown.vue'
+import ForceTalkDialog from './ForceTalkDialog.vue'
 
 /**
  * The talk being driven, and the two gestures that bound it.
@@ -26,6 +27,17 @@ const status = computed(() =>
   session.value == null
     ? 'scheduled'
     : (props.payload.state.sessionStates?.[session.value.id] ?? 'scheduled'),
+)
+
+/**
+ * Forced by hand rather than chosen by the clock.
+ *
+ * Said on the panel and not only in the list: a pin outlives the emergency that
+ * justified it, and a room left forced keeps showing that talk after it ends.
+ */
+const forced = computed(
+  () => props.payload.state.pinnedSessionId != null &&
+    props.payload.state.pinnedSessionId === session.value?.id,
 )
 
 const speakers = computed(() =>
@@ -103,6 +115,22 @@ const overrun = computed(() => scheduleWord.value.startsWith('dépassement'))
  * allowed to slip or not.
  */
 const next = computed(() => {
+  /*
+   * Forced, the target may sit later in the day than talks still to be given:
+   * the next one is then the first of those it jumped over, not the one after it.
+   */
+  if (forced.value) {
+    return (
+      props.payload.state.nextSession ??
+      (props.payload.sessions ?? []).find(
+        (slot) =>
+          slot.kind === 'talk' &&
+          slot.id !== session.value?.id &&
+          (props.payload.state.sessionStates?.[slot.id] ?? 'scheduled') === 'scheduled',
+      ) ??
+      null
+    )
+  }
   const from = session.value?.startsAtMs ?? props.nowMs
   return (props.payload.sessions ?? []).find((slot) => slot.startsAtMs > from) ?? null
 })
@@ -116,6 +144,17 @@ const nextSpeakers = computed(() =>
   <Panel>
     <div class="mb-2 flex items-start gap-2">
       <Badge :class="status" data-role="talk-badge">{{ badge }}</Badge>
+      <Badge v-if="forced" variant="warning" data-role="talk-forced">Forcée</Badge>
+      <Button
+        v-if="payload.state.pinnedSessionId != null"
+        size="small"
+        class="ml-auto"
+        data-role="btn-talk-unpin"
+        title="Rendre la salle au programme"
+        @click="talk.pin(null)"
+      >
+        Libérer
+      </Button>
     </div>
 
     <div class="mb-2 line-clamp-2 text-sm leading-snug" data-role="talk-title">
@@ -173,5 +212,18 @@ const nextSpeakers = computed(() =>
         Terminer
       </Button>
     </div>
+
+    <!-- Discreet: an emergency gesture, not one of the day's. -->
+    <div class="mt-1.5 text-right">
+      <button
+        type="button"
+        class="cursor-pointer text-xs text-dim underline-offset-2 hover:text-text hover:underline"
+        data-role="btn-talk-force"
+        @click="talk.forceOpen = true"
+      >
+        Forcer un talk…
+      </button>
+    </div>
+    <ForceTalkDialog :payload="payload" />
   </Panel>
 </template>

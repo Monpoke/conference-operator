@@ -583,6 +583,19 @@ export function translate(
       const sessionId = view?.targetSession?.id
       return sessionId == null ? null : { type: action, sessionId }
     }
+    /*
+     * Forcing and swapping already name their talks: the operator picked them
+     * from the list, so nothing is read back from the view. `null` lifts the pin.
+     */
+    case 'session.pin':
+      return {
+        type: 'session.pin',
+        sessionId: typeof gesture.sessionId === 'string' ? gesture.sessionId : null,
+      }
+    case 'session.swap':
+      return typeof gesture.a === 'string' && typeof gesture.b === 'string'
+        ? { type: 'session.swap', a: gesture.a, b: gesture.b }
+        : null
     case 'scene.set':
       return { type: 'scene.set', role: gesture.role as SceneRole }
     case 'display.set':
@@ -709,6 +722,7 @@ export function payloadFromView(view: ControlView, nowMs: number): DisplayPayloa
       targetSession: view.targetSession,
       breakBadge: null,
       targetIsUpcoming: view.targetIsUpcoming,
+      pinnedSessionId: view.pinnedSessionId,
       simulatedClock: view.simulatedClock,
       /*
        * Null, and rightly so: this field tells the **room** that it is being

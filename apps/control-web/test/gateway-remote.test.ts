@@ -35,6 +35,7 @@ function view(overrides: Partial<ControlView> = {}): ControlView {
     conference: 'en-cours',
     targetSession: talk(),
     targetIsUpcoming: false,
+    pinnedSessionId: null,
     sessionStates: {},
     sessions: [talk()],
     sceneRole: 'HOLD',
@@ -124,6 +125,24 @@ describe('translating a control gesture', () => {
       type: 'display.set',
       mode: 'sponsors',
     })
+  })
+
+  it('carries forcing and swapping with the talks the operator picked', () => {
+    // Named explicitly, not read back from the view: they come from the list.
+    expect(translate({ action: 'session.pin', sessionId: 'talk-2' }, view())).toEqual({
+      type: 'session.pin',
+      sessionId: 'talk-2',
+    })
+    expect(translate({ action: 'session.pin', sessionId: null }, view({ targetSession: null }))).toEqual({
+      type: 'session.pin',
+      sessionId: null,
+    })
+    expect(translate({ action: 'session.swap', a: 'talk-1', b: 'talk-2' }, view())).toEqual({
+      type: 'session.swap',
+      a: 'talk-1',
+      b: 'talk-2',
+    })
+    expect(translate({ action: 'session.swap', a: 'talk-1' }, view())).toBeNull()
   })
 
   it('discards everything that requires the room machine', () => {

@@ -6,6 +6,7 @@ import { UPLOAD_STATES, progress, type Upload } from '../stores/vod.js'
 import { useConferencesStore, type PlannedSession } from '../stores/conferences.js'
 import type { MontageJobView } from '@conference-operator/contract'
 import { MONTAGE_STATES, describe, useMontageStore } from '../stores/montage.js'
+import CoupeValidation from './CoupeValidation.vue'
 
 /**
  * Where a talk's capture stands.
@@ -46,6 +47,13 @@ const folder = ref<Folder | null>(null)
 /** The talk's latest montage, if any. */
 const montage = ref<MontageJobView | null>(null)
 const montages = useMontageStore()
+/** The cut of a montage already done, opened again. */
+const reviewing = ref(false)
+
+function onValidated(job: MontageJobView): void {
+  montage.value = job
+  reviewing.value = false
+}
 const error = ref('')
 const loading = ref(false)
 
@@ -54,6 +62,7 @@ watch(
   async ([ouvert, id]) => {
     if (!ouvert || id == null) return
     folder.value = null
+    reviewing.value = false
     error.value = ''
     loading.value = true
     try {
@@ -338,9 +347,26 @@ function uploadState(row: Upload): { label: string; tone: string } {
           <a :href="previewUrl('intro')" target="_blank" rel="noopener" class="text-sm text-brand underline">Aperçu de l’intro</a>
           <a :href="previewUrl('outro')" target="_blank" rel="noopener" class="text-sm text-brand underline">Aperçu de l’outro</a>
         </div>
+        <!--
+          La coupe proposée, à valider ici : d'office quand elle attend, sur
+          demande pour un montage déjà fait ou en échec — une marque corrigée
+          après coup se reprend ici, sans repasser par la régie.
+        -->
+        <CoupeValidation
+          v-if="montage != null && montage.analyse != null && (montage.state === 'a-valider' || reviewing)"
+          :job="montage"
+          @validated="onValidated"
+        />
         <div class="mt-1.5 flex flex-wrap gap-1.5">
           <Button v-if="montage?.state === 'termine'" size="small" @click="downloadMontage(montage.id)">
             Télécharger la vidéo
+          </Button>
+          <Button
+            v-if="montage != null && montage.analyse != null && (montage.state === 'termine' || montage.state === 'echoue') && !reviewing"
+            size="small"
+            @click="reviewing = true"
+          >
+            Revoir la coupe
           </Button>
           <Button
             v-if="session != null && folder.stockageConfigure && folder.televersements.some((row) => row.kind === 'sidecar' && row.state === 'termine')"

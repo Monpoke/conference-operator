@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { MontageJobView, MontageWorkerView } from '@conference-operator/contract'
+import type { MontageAnalyse, MontageJobView, MontageWorkerView } from '@conference-operator/contract'
 import { useSessionStore } from './session.js'
 
 /**
@@ -38,6 +38,18 @@ export const useMontageStore = defineStore('montage', () => {
     await load()
   }
 
+  /** What the analysis proposed, with read addresses for its files (an hour). */
+  async function analysis(jobId: string): Promise<{ analyse: MontageAnalyse | null; fichiers: { nom: string; url: string }[] }> {
+    return await session.client.rpc.montage.analyse({ jobId })
+  }
+
+  /** The cut to edit on: the job goes to the montage. */
+  async function validate(jobId: string, debutMs: number, finMs: number): Promise<MontageJobView> {
+    const job = await session.client.rpc.montage.valider({ jobId, debutMs, finMs })
+    await load()
+    return job
+  }
+
   /** Opens the edited video: a signed address, valid an hour. */
   async function download(jobId: string): Promise<void> {
     const { url } = await session.client.rpc.montage.telecharger({ jobId })
@@ -56,13 +68,14 @@ export const useMontageStore = defineStore('montage', () => {
     await load()
   }
 
-  return { jobs, workers, load, forSession, relaunch, cancel, download, createWorker, revokeWorker }
+  return { jobs, workers, load, forSession, relaunch, cancel, download, analysis, validate, createWorker, revokeWorker }
 })
 
 /** What a job's state says, and in what colour. */
 export const MONTAGE_STATES: Record<string, { label: string; tone: string }> = {
   attente: { label: 'en attente', tone: 'text-dim' },
   'en-cours': { label: 'en cours', tone: 'text-brand' },
+  'a-valider': { label: 'à valider', tone: 'text-warn' },
   termine: { label: 'monté', tone: 'text-ok' },
   echoue: { label: 'en échec', tone: 'text-alert' },
   annule: { label: 'annulé', tone: 'text-dim' },
@@ -70,6 +83,7 @@ export const MONTAGE_STATES: Record<string, { label: string; tone: string }> = {
 
 export const MONTAGE_ETAPES: Record<string, string> = {
   telechargement: 'téléchargement',
+  analyse: 'analyse de la coupe et du son',
   intro: 'rendu de l’intro',
   outro: 'rendu de l’outro',
   assemblage: 'assemblage',
@@ -87,9 +101,33 @@ export function minutes(ms: number | null): string {
 export function describe(job: MontageJobView): string {
   if (job.state === 'en-cours' && job.etape != null) return `${MONTAGE_ETAPES[job.etape] ?? job.etape} · ${job.pourcent} %`
   if (job.state === 'attente' && job.pasAvant != null) return 'attend ses rushes'
+  if (job.state === 'a-valider' && job.analyse != null) return `coupe proposée, confiance ${job.analyse.confiance}`
   if (job.state === 'termine') {
     const missing = job.marquesManquantes.length > 0 ? ` · sans marque ${job.marquesManquantes.join(' ni ')}` : ''
-    return `${minutes(job.durationMs)}${missing}`
+    const sound = job.audio == null
+      ? ''
+      : job.audio.quasiMuet ? ' · son quasi absent' : ` · son ${job.audio.lufsAvant.toFixed(1)} → ${job.audio.lufsApres} LUFS`
+    return `${minutes(job.durationMs)}${missing}${sound}`
   }
   return ''
+}
+
+/** « 1:02:07,4 » — a position in the take, to the tenth of a second. */
+export function timecode(ms: number): string {
+  const tenths = Math.round(ms / 100)
+  const s = Math.floor(tenths / 10)
+  const h = Math.floor(s / 3600)
+  const mm = String(Math.floor(s / 60) % 60).padStart(2, '0')
+  const ss = String(s % 60).padStart(2, '0')
+  return `${h > 0 ? `${h}:` : ''}${mm}:${ss},${tenths % 10}`
+}
+
+/** « 1:02:07,4 », « 2:07 », « 127.4 » → ms; `null` when unreadable. */
+export function parseTimecode(text: string): number | null {
+  const clean = text.trim().replace(',', '.')
+  if (clean === '') return null
+  const parts = clean.split(':').map(Number)
+  if (parts.some((part) => !Number.isFinite(part) || part < 0) || parts.length > 3) return null
+  const seconds = parts.reduce((total, part) => total * 60 + part, 0)
+  return Math.round(seconds * 1000)
 }

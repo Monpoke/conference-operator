@@ -273,7 +273,8 @@ ${initialState}
     const session = data.state.onAirSession
 
     const logo = document.getElementById('logo')
-    const logoUrl = data.event?.logoUrl
+    // The console's logo first, as on the loop: the capture wears the same one.
+    const logoUrl = data.boucle?.logoUrl ?? data.event?.logoUrl
     if (logoUrl) { if (logo.getAttribute('src') !== logoUrl) logo.src = logoUrl; logo.hidden = false } else logo.hidden = true
     setText('event-name', eventName)
     document.getElementById('event-name').hidden = eventName === ''

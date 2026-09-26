@@ -579,8 +579,9 @@ export const FIELDS_BY_VIEW: Record<DisplayView, readonly (keyof DisplayPayload)
     'boucle', 'agenda', 'plannings', 'socialWall',
   ],
   // The frame reads the room's name, the day in the event's timezone and the
-  // social accounts: all only move at sync, so they cost the flow nothing.
-  overlay: ['state', 'roomName', 'event', 'timezone', 'eventIdentity', 'socialLinks'],
+  // social accounts: all only move at sync, so they cost the flow nothing. The
+  // loop too, for the logo set in the console, which the capture must wear.
+  overlay: ['state', 'roomName', 'event', 'timezone', 'eventIdentity', 'socialLinks', 'boucle'],
   // The banner only reads `state.liveMessage`: pushing it the program and the
   // sponsors would cost thirty kilobytes per screen change.
   bandeau: ['state', 'eventIdentity'],

@@ -3,7 +3,7 @@ import type { Data, Scene } from './scene.js'
 import { contours, cree, linkedin } from './dom.js'
 import { DEBUT_EFFETS, jouerEffets, peutAnimer } from './effects.js'
 import { maintenant } from './time.js'
-import { auRetour } from './antenne.js'
+import { auRetour, transitionBloquee } from './antenne.js'
 import { programmation, SCENES, type DefinitionScene, type Etape, type Programmation } from './sequence.js'
 
 /**
@@ -62,6 +62,10 @@ export class Regie {
   private dernierTick = Date.now()
   /** When the source left the program scene. */
   private quitteLAntenne = 0
+  /** How the transition under way ends: the clock may have to end it, see `surveillerTransition`. */
+  private finirEnCours: (() => void) | null = null
+  private transitionDepuis = 0
+  private transitionDuree = 0
   /** The animations frozen off air — exactly these are played again on the way back. */
   private gelees: Animation[] = []
   private animBarre: Animation | null = null
@@ -330,6 +334,8 @@ export class Regie {
     const d = e.dureeTransition
 
     this.enTransition = true
+    this.transitionDepuis = Date.now()
+    this.transitionDuree = d
     // With a veil (stinger, dip), the effects start when the content is uncovered.
     const avecVoile = nom === 'dip' || nom === 'stinger'
     let bascule = false
@@ -340,8 +346,13 @@ export class Regie {
       depuis?.scene.el.classList.remove('is-live')
       if (avecVoile && this.reglages.effets) jouerEffets(vers.scene.el, 60)
     }
+    let fini = false
     const finir = () => {
-      swap()
+      // Once only: the clock may have ended a transition whose animations then resume.
+      if (fini) return
+      fini = true
+      this.finirEnCours = null
+      try { swap() } catch (cause) { console.error('Transition : bascule', cause) }
       vers.scene.el.classList.remove('is-entering')
       for (const el of [depuis?.scene.el, vers.scene.el, this.voile, this.stinger]) {
         el?.getAnimations?.().forEach((a) => a.cancel())
@@ -363,6 +374,7 @@ export class Regie {
       if (suite) void this.allerA(suite.i, suite.transition)
     }
 
+    this.finirEnCours = finir
     vers.scene.el.classList.add('is-entering')
     if (nom === 'cut') {
       if (this.reglages.effets) jouerEffets(vers.scene.el, 0)
@@ -372,6 +384,8 @@ export class Regie {
     // Two frames ahead: the incoming scene's layer is ready before it moves.
     await prochaineImage()
     await prochaineImage()
+    // Ended by the clock while its frames were not coming: nothing left to animate.
+    if (fini) return
     this.barreVide(d)
     if (!avecVoile && this.reglages.effets) jouerEffets(vers.scene.el, d * (DEBUT_EFFETS[nom] ?? 0))
     try {
@@ -440,6 +454,8 @@ export class Regie {
     }
 
     this.horsAntenne = false
+    // Time off air does not count against a transition: it had no frames.
+    if (this.enTransition) this.transitionDepuis = Date.now()
     for (const a of this.gelees) {
       // One cancelled meanwhile — a transition finished by its safety timer.
       if (a.playState === 'paused') a.play()
@@ -450,6 +466,32 @@ export class Regie {
       void this.allerA(this.premiereJouable())
     }
     this.onChange()
+  }
+
+  /**
+   * Repairs what a transition left behind, whatever left it.
+   *
+   * On air in OBS, the loop was found under a stinger held across the screen,
+   * the panel saying it was playing. Two ways there, both repaired here: a
+   * transition that never ends — its frames never came — and a veil or a band
+   * an animation still holds once no transition is running, which nothing
+   * legitimate does. Off air, nothing is seen and frames are not owed: wait.
+   */
+  private surveillerTransition(): void {
+    if (this.horsAntenne) return
+    if (this.enTransition) {
+      if (transitionBloquee(Date.now() - this.transitionDepuis, this.transitionDuree)) {
+        console.warn('Transition bloquée : terminée par l’horloge')
+        this.finirEnCours?.()
+      }
+      return
+    }
+    for (const el of [this.stinger, this.voile]) {
+      const restes = el.getAnimations?.() ?? []
+      if (restes.length === 0) continue
+      console.warn(`Calque de transition « ${el.id} » resté animé : remis en place`)
+      for (const a of restes) a.cancel()
+    }
   }
 
   /* ================= The clock ================= */
@@ -471,6 +513,7 @@ export class Regie {
       try { m.scene.tick(data, now) } catch (cause) { console.error(`Scène « ${m.def.nom} »`, cause) }
     }
     this.rendreSales(false)
+    this.surveillerTransition()
 
     if (this.prog.tourne && !this.enPause && !this.horsAntenne && !this.enTransition) {
       this.ecoule += dt

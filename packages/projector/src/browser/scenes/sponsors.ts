@@ -80,20 +80,28 @@ export function sponsors(el: HTMLElement, index: number): Scene {
         rang.append(...row.logos.map((logo) => rond(logo, i++)))
         return rang
       }))
-      // The largest size that fits. A margin is kept: otherwise the top and bottom
-      // circles, which float, would be clipped by the edge of the zone.
-      const marge = 30
-      let bas = 0.2
-      let haut = ZOOM_SPONSORS_MAX
-      let ok = zone.clientHeight > 0 ? bas : 1
-      if (zone.clientHeight > 0) {
-        for (let n = 0; n < 12; n++) {
-          const k = (bas + haut) / 2
-          zone.style.setProperty('--k', k.toFixed(3))
-          if (contenu.offsetHeight <= zone.clientHeight - marge) { ok = k; bas = k } else haut = k
-        }
-      }
-      zone.style.setProperty('--k', ok.toFixed(3))
+      ajusterRonds(zone, contenu)
     },
   }
+}
+
+/**
+ * Gives the circles of `contenu` the largest size (`--k` on `zone`) that fits.
+ *
+ * A margin is kept: otherwise the top and bottom circles, which float, would be
+ * clipped by the edge of the zone. Shared with the VOD outro, laid out the same.
+ */
+export function ajusterRonds(zone: HTMLElement, contenu: HTMLElement): void {
+  const marge = 30
+  let bas = 0.2
+  let haut = ZOOM_SPONSORS_MAX
+  let ok = zone.clientHeight > 0 ? bas : 1
+  if (zone.clientHeight > 0) {
+    for (let n = 0; n < 12; n++) {
+      const k = (bas + haut) / 2
+      zone.style.setProperty('--k', k.toFixed(3))
+      if (contenu.offsetHeight <= zone.clientHeight - marge) { ok = k; bas = k } else haut = k
+    }
+  }
+  zone.style.setProperty('--k', ok.toFixed(3))
 }

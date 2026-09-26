@@ -21,6 +21,8 @@ export interface Settings {
   screensDisabled?: string[]
   vodBucket?: string | null
   vodPrefix?: string | null
+  /** When an analysed cut is edited without anybody validating it. */
+  montageAuto?: 'jamais' | 'si-confiance-haute' | 'toujours'
 }
 
 export interface SocialLink {

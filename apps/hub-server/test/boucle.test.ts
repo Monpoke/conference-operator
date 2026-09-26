@@ -250,6 +250,25 @@ describe('the loop over the wire', () => {
     expect(Math.abs(hub.services.clock.now() - before)).toBeLessThan(60_000)
   })
 
+  it('previews a talk’s VOD intro and outro for an operator only', async () => {
+    importProgram()
+    const talk = 'cmq3nx20102h901ppuyjkennd'
+    expect((await fetch(`${origin}/montage/apercu/${talk}`)).status).toBe(401)
+
+    await admin.settings.update({ boucle: { merciSponsors: 'Merci à nos partenaires' } })
+    const headers = { authorization: `Bearer ${await signIn()}` }
+    const intro = await (await fetch(`${origin}/montage/apercu/${talk}`, { headers })).text()
+    const data = JSON.parse(intro.match(/<script id="vod-donnees" type="application\/json">(.*?)<\/script>/)![1]!)
+    // The page the worker captures, playing: nothing frozen here.
+    expect(data.clip).toBe('intro')
+    expect(data.habillage.speakers.map((s: { name: string }) => s.name)).toEqual(['Guillaume Leroy', 'Mazlum Tosun'])
+    expect(intro).not.toContain('__VOD_CAPTURE__ = true')
+
+    const outro = await (await fetch(`${origin}/montage/apercu/${talk}?clip=outro`, { headers })).text()
+    expect(outro).toContain('"clip":"outro"')
+    expect(outro).toContain('Merci à nos partenaires')
+  })
+
   it('opens the preview to the public with the key, and only with it', async () => {
     importProgram()
     const key = 'Pk9-public_key_for_the_loop_2026'

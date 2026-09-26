@@ -3,6 +3,7 @@ import { Button, Hint, Panel, useToast } from '@conference-operator/components'
 import { storeToRefs } from 'pinia'
 import { computed, watch } from 'vue'
 import { UPLOAD_STATES, progress, useVodStore, type Upload } from '../stores/vod.js'
+import MontagePanels from '../components/MontagePanels.vue'
 
 /**
  * Uploads of the takes.
@@ -131,5 +132,7 @@ function requestAll(): void {
         nulle part ailleurs qu'à Lille.
       </Hint>
     </Panel>
+
+    <MontagePanels />
   </div>
 </template>

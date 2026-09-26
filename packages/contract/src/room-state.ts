@@ -8,6 +8,7 @@ import {
   isoDateTimeSchema,
   executionModeSchema,
   roomIdSchema,
+  roomPinsSchema,
   roomScreenListSchema,
   roomScreenSchema,
   sceneRoleSchema,
@@ -605,6 +606,15 @@ export const syncResultSchema = z.object({
    * trying to spare. `null` when the hub has no storage configured.
    */
   vod: vodSyncSchema.nullable().default(null),
+  /**
+   * The forced talk of **every** room, not just this one.
+   *
+   * The other rooms' too, because the projector's "in the other rooms" panel
+   * would otherwise title, next door, the talk the clock picks rather than the
+   * one actually on. Cached like the program; an older hub that does not send it
+   * means "nothing forced".
+   */
+  pins: roomPinsSchema.default({}),
 })
 
 /** Hub view of a room, fed by the heartbeats — the supervision screen. */

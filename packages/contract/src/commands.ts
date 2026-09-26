@@ -2,6 +2,7 @@ import { z } from 'zod'
 import {
   displayModeSchema,
   isoDateTimeSchema,
+  roomPinsSchema,
   sceneRoleSchema,
   sessionIdSchema,
 } from './primitives.js'
@@ -227,6 +228,17 @@ export const commandPayloadSchema = z.discriminatedUnion('type', [
     sessionTitle: z.string().nullable(),
     status: sessionStatusSchema,
     decidedBy: z.string(),
+  }),
+  z.object({
+    /**
+     * The forced talks changed.
+     *
+     * Broadcast to every room with the **whole** map, not the one room that
+     * changed: each room also titles the others, and a full state applied twice is
+     * still the same state — which a delta on an at-least-once stream is not.
+     */
+    type: z.literal('room.pins'),
+    pins: roomPinsSchema,
   }),
   z.object({
     /**

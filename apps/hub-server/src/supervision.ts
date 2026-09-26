@@ -1,5 +1,5 @@
-import { roomBreak, roomConferenceState, type SessionStatuses } from '@conference-operator/room-state'
-import { currentSession } from '@conference-operator/program'
+import { roomBreak, roomPosition, stateOfSlots, type SessionStatuses } from '@conference-operator/room-state'
+import { sessionsForRoom } from '@conference-operator/program'
 import type { RoomStatus } from '@conference-operator/contract'
 import type { Services } from './context.js'
 import type { PushPayload } from './services/push.js'
@@ -22,7 +22,11 @@ export function roomStatuses(services: Services, at: number): RoomStatus[] {
     )
 
   return services.rooms.statuses().map((status) => {
-    const session = snapshot == null ? null : currentSession(snapshot.program, status.roomId, at)
+    const slots = snapshot == null ? [] : sessionsForRoom(snapshot.program, status.roomId)
+    const statuses = statusesOf(status.roomId)
+    // The forced talk wins over the clock: it is what the room is actually on.
+    const pinnedId = services.pins.get(status.roomId)
+    const session = roomPosition(slots, at, statuses, pinnedId).current
     const roomPause = snapshot == null ? null : roomBreak(snapshot.program, status.roomId, at)
     return {
       ...status,
@@ -48,7 +52,7 @@ export function roomStatuses(services: Services, at: number): RoomStatus[] {
       conference:
         snapshot == null
           ? ('aucune' as const)
-          : roomConferenceState(snapshot.program, status.roomId, at, statusesOf(status.roomId)),
+          : stateOfSlots(slots, at, statuses, pinnedId),
     }
   })
 }

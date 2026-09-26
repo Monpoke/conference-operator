@@ -15,10 +15,9 @@ import {
   type CaptureView,
   type Command,
 } from '@conference-operator/contract'
-import { roomBreak } from '@conference-operator/room-state'
+import { roomBreak, roomPosition } from '@conference-operator/room-state'
 import {
-  currentSession,
-  nextSession,
+  sessionsForRoom,
   DEFAULT_TIMEZONE,
   openFeedbackUrl,
   programSponsors,
@@ -35,6 +34,13 @@ import {
   controlView,
 } from './services/control.js'
 import { TransitionRefused } from './services/sessions.js'
+import {
+  announceServedProgram,
+  pinTalk,
+  releasePinAfter,
+  resetSwaps,
+  swapTalks,
+} from './services/pins.js'
 import { IncompleteStorage, type VodService } from './services/vod.js'
 import { S3Error } from './services/s3.js'
 import { roomStatuses } from './supervision.js'
@@ -440,6 +446,7 @@ export const router = os.router({
             feedbackIdOverride: session.feedbackId,
             overriddenAs: appliedOverrides[session.id] ?? null,
             sharedFrom: session.sharedFrom,
+            movedTo: snapshot.moves[session.id] ?? null,
             /**
              * An inherited break carries a derived identifier the lifecycle does
              * not know: it is the original slot that is driven. Looking it up
@@ -452,6 +459,7 @@ export const router = os.router({
             decidedBy: lived.get(session.id)?.decidedBy ?? null,
           }
         }),
+        pins: context.services.pins.all(),
       }
     }),
   },
@@ -486,10 +494,16 @@ export const router = os.router({
               endsAt: session.endsAt,
             }
 
-      return {
-        current: preview(currentSession(snapshot.program, input.roomId, at)),
-        next: preview(nextSession(snapshot.program, input.roomId, at)),
-      }
+      // The forced talk, when there is one: it is what the room is on.
+      const position = roomPosition(
+        sessionsForRoom(snapshot.program, input.roomId),
+        at,
+        Object.fromEntries(
+          context.services.sessions.states(input.roomId).map((state) => [state.sessionId, state.status]),
+        ),
+        context.services.pins.get(input.roomId),
+      )
+      return { current: preview(position.current), next: preview(position.next) }
     }),
 
     /**
@@ -679,6 +693,7 @@ export const router = os.router({
           context.services.vod == null || !context.services.vod.ready()
             ? null
             : context.services.vod.sync(),
+        pins: context.services.pins.all(),
       }
     }),
 
@@ -833,16 +848,36 @@ export const router = os.router({
 
       context.services.rooms.setOverride(input.sessionId, input.action)
       // A slot turned into a break, or back: it moves the target of "Commencer".
-      context.services.changes.touch(null)
-      // Read back after the write: it is the fingerprint of the program as it is
-      // now served, and it is what we announce to the rooms.
-      const contentHash = context.services.programs.active()?.contentHash ?? snapshot.contentHash
-      context.services.commands.publish(
-        null,
-        { type: 'program.invalidate', contentHash },
-        null,
-      )
+      const contentHash = announceServedProgram(context.services, snapshot.contentHash)
       return { ok: true, contentHash }
+    }),
+
+    /**
+     * Swaps two talks' slots — the emergency gesture of an inverted programme.
+     *
+     * The guard is the override's, since it is the programme being corrected; a
+     * room machine keeps it for its own talks, which `swapTalks` bounds.
+     */
+    swap: os.sessions.swap.use(roomOrOperatorCan('talk:override')).handler(({ input, context }) => {
+      const { contentHash } = swapTalks(context.services, input.a, input.b, context.roomId)
+      return { ok: true, contentHash }
+    }),
+
+    resetSlots: os.sessions.resetSlots.use(operatorCan('talk:override')).handler(({ context }) => {
+      const { contentHash } = resetSwaps(context.services)
+      return { ok: true, contentHash }
+    }),
+
+    /**
+     * Forces a room's current talk. The lifecycle's guard: forcing a talk is
+     * deciding what the room runs, like starting it.
+     */
+    pin: os.sessions.pin.use(roomOrOperatorCan('talk:run')).handler(({ input, context }) => {
+      requireSameRoom(context, input.roomId)
+      const pins = onRoom(() =>
+        pinTalk(context.services, input.roomId, input.sessionId, authorOf(context)),
+      )
+      return { ok: true, pins }
     }),
 
     /**
@@ -1786,7 +1821,7 @@ export const router = os.router({
        * given two ways of announcing the same fact.
        */
       const action = input.action
-      if ('sessionId' in action) {
+      if (action.type === 'session.start' || action.type === 'session.end' || action.type === 'session.reset') {
         const state = context.services.sessions.get(action.sessionId)
         broadcastState(context, {
           sessionId: action.sessionId,
@@ -2179,6 +2214,9 @@ function broadcastState(
 ): void {
   const snapshot = context.services.programs.active()
   const session = snapshot?.program.sessions.find((s) => s.id === state.sessionId)
+
+  // Ending the forced talk, or starting another one, lifts the room's pin.
+  releasePinAfter(context.services, state)
 
   context.services.commands.publish(
     null,

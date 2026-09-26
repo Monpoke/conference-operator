@@ -13,6 +13,7 @@ import type { PushService } from './services/push.js'
 import type { IntegrationService } from './services/integrations.js'
 import type { VodService } from './services/vod.js'
 import type { ControlService } from './services/control.js'
+import type { PinService } from './services/pins.js'
 import type { RoomChanges } from './services/changes.js'
 import type { SocketTickets } from './services/socket-tickets.js'
 import type { SessionStateService, SettingsService } from './services/sessions.js'
@@ -59,6 +60,11 @@ export interface Services {
    * gestures intact.
    */
   regie: ControlService
+  /**
+   * The emergency gestures: talks swapped in the programme, a room's forced talk.
+   * See `services/pins.ts`.
+   */
+  pins: PinService
   /**
    * "This room has changed", for the mobile control apps watching it.
    *

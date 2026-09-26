@@ -122,6 +122,7 @@ export async function previewPayload(services: Services, options: BouclePreviewO
       nextSession: next,
       targetSession: current ?? next,
       targetIsUpcoming: current == null,
+      pinnedSessionId: null,
       breakBadge: pause == null
         ? null
         : { state: pause.state, title: pause.session.title, startsAt: pause.session.startsAt },

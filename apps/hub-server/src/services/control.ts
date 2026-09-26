@@ -12,6 +12,7 @@ import {
   type SceneRole,
 } from '@conference-operator/contract'
 import {
+  pinnedSlot,
   talkToControl,
   stateOfSlots,
   type SessionStatuses,
@@ -20,6 +21,7 @@ import { DEFAULT_TIMEZONE, sessionsForRoom } from '@conference-operator/program'
 import { regieLock } from '@conference-operator/db/hub'
 import type { HubDatabase } from '../db.js'
 import type { Services } from '../context.js'
+import { pinTalk, swapTalks } from './pins.js'
 
 /**
  * The mobile control lock, and the view it shows.
@@ -186,6 +188,7 @@ export function controlRooms(services: Services, at: number): ControlRoom[] {
             sessionsForRoom(snapshot.program, status.roomId),
             at,
             roomSessionStatuses(services, status.roomId),
+            services.pins.get(status.roomId),
           ),
     connectivity: status.connectivity,
     lock: services.regie.lock(status.roomId),
@@ -212,7 +215,9 @@ export function controlView(services: Services, roomId: string, at: number): Con
   const snapshot = services.programs.active()
   const slots = snapshot == null ? [] : sessionsForRoom(snapshot.program, roomId)
   const statuses = roomSessionStatuses(services, roomId)
-  const target = talkToControl(slots, at, statuses)
+  const pinnedId = services.pins.get(roomId)
+  const pinned = pinnedSlot(slots, statuses, pinnedId)
+  const target = talkToControl(slots, at, statuses, pinnedId)
 
   return controlViewSchema.parse({
     roomId,
@@ -225,14 +230,16 @@ export function controlView(services: Services, roomId: string, at: number): Con
     connectivity: status?.connectivity ?? 'OFFLINE',
     lastSeenAt: status?.lastSeenAt ?? null,
 
-    conference: stateOfSlots(slots, at, statuses),
+    conference: stateOfSlots(slots, at, statuses, pinnedId),
     targetSession: target,
     /*
      * "Upcoming" is read from the schedule, exactly as in the room's control app.
      * Comparing with the current session announced as "upcoming" a talk in full
      * overrun — the precise moment it is on air.
      */
-    targetIsUpcoming: target != null && target.startsAtMs > at,
+    targetIsUpcoming: pinned == null && target != null && target.startsAtMs > at,
+    // Only a pin that still holds: an inert one would show a badge nothing obeys.
+    pinnedSessionId: pinned?.id ?? null,
     sessionStates: statuses,
     sessions: slots,
 
@@ -302,6 +309,16 @@ export function controlCommand(
       return { applied: 'now' }
     case 'session.reset':
       services.sessions.reset(action.sessionId)
+      return { applied: 'now' }
+    /*
+     * The emergency gestures, bounded to the room the phone holds: the same checks
+     * as the console's and the room machine's, through the same functions.
+     */
+    case 'session.pin':
+      pinTalk(services, roomId, action.sessionId, author)
+      return { applied: 'now' }
+    case 'session.swap':
+      swapTalks(services, action.a, action.b, roomId)
       return { applied: 'now' }
     case 'scene.set':
       return { applied: 'queued', seq: publish(services, roomId, { type: 'scene.force', role: action.role, requestedBy: author }) }

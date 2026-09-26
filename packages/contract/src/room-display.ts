@@ -130,7 +130,9 @@ export interface DisplayState {
    * The talk on air: the last one started and not ended in this room, or `null`.
    *
    * Follows Start and End, not the schedule. The capture overlay titles this
-   * one, so an overrunning talk keeps its speaker until it is ended. While OBS
+   * one, so an overrunning talk keeps its speaker until it is ended — and falls
+   * back on `targetSession` when it is `null`, so a take started with the talk
+   * opens on the names. While OBS
    * records, the last talk is held even once ended, until another one starts or
    * the recording stops.
    */

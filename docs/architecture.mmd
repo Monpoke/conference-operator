@@ -1,0 +1,46 @@
+flowchart LR
+  subgraph OP["OpenPlanner (externe)"]
+    JSON["Export JSON du programme<br/>storage.googleapis.com/…/events/&lt;id&gt;.json"]
+    IMG["Stockage d'images<br/>photos, logos sponsors, visuels"]
+  end
+
+  subgraph HUB["Hub (cloud) : Fastify + oRPC + SQLite"]
+    IMPORT["Import du programme<br/>au 1er démarrage ou bouton console"]
+    PROG[("Programme normalisé<br/>+ corrections du jour")]
+    ASSETS[("Cache d'images<br/>/assets/&lt;sha256(url)&gt;")]
+    CMD["Salles & commandes<br/>talk forcé, échanges, messages"]
+    SOCIAL["Social<br/>mur, Q&A, modération"]
+    CONSOLE["/admin : console d'exploitation"]
+    REGIEMOB["/regie : régie mobile"]
+    MUR["/mur : mur public (QR)"]
+  end
+
+  subgraph SALLE["Salle ×3 : room-client (Electron)"]
+    LINK["Lien hub<br/>sync programme + WebSocket commandes<br/>outbox/inbox"]
+    LOCAL[("Cache local SQLite<br/>programme + images")]
+    DISPLAY["Serveur d'affichage<br/>/display/projector · /overlay · /overlay-live"]
+    CTRL["/regie : fenêtre opérateur"]
+    OBSA["OBS-A : ce que voit la salle"]
+    OBSB["OBS-B : captation, VOD, live"]
+  end
+
+  JSON -- "fetch JSON (à l'import)" --> IMPORT
+  IMPORT --> PROG
+  IMG -- "préchargement une seule fois<br/>(clé = URL, jamais revalidé)" --> ASSETS
+  PROG --> CMD
+
+  CMD <-- "oRPC HTTP : rooms.sync<br/>+ WebSocket /ws : commandes, état" --> LINK
+  ASSETS -- "GET /assets/&lt;sha256&gt;" --> LOCAL
+  IMG -. "repli si le hub ne détient pas l'image" .-> LOCAL
+
+  LINK --> LOCAL
+  LOCAL --> DISPLAY
+  DISPLAY -- "Browser Source" --> OBSA
+  DISPLAY -- "Browser Source transparente" --> OBSB
+  CTRL -- "obs-websocket" --> OBSA
+  CTRL -- "obs-websocket" --> OBSB
+
+  CONSOLE --> CMD
+  REGIEMOB -- "WebSocket à ticket" --> CMD
+  SOCIAL --> MUR
+  SOCIAL -- "questions du public" --> CMD

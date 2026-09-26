@@ -10,6 +10,7 @@ import NotificationsDialog from './components/NotificationsDialog.vue'
 import SignInScreen from './components/SignInScreen.vue'
 import { useNotificationsStore } from './stores/notifications.js'
 import { useSessionStore } from './stores/session.js'
+import { useThemeStore } from './stores/theme.js'
 
 /**
  * The console's shell, and its refresh loop.
@@ -32,6 +33,8 @@ const { signedIn, eventName, mode, identity, permissions, version } = storeToRef
  */
 const versionShown = ref(false)
 const { supported, on } = storeToRefs(notifications)
+const themeStore = useThemeStore()
+const { theme } = storeToRefs(themeStore)
 const route = useRoute()
 const router = useRouter()
 
@@ -177,6 +180,18 @@ function refresh(): void {
           @click="notifSettingsOpen = true"
         >
           {{ on ? 'Notifications ●' : 'Notifications' }}
+        </Button>
+        <!--
+          Le portable passe de la régie noire au foyer éclairé : le thème se
+          règle ici, et reste propre à cet appareil.
+        -->
+        <Button
+          id="btn-theme"
+          size="small"
+          :title="theme === 'light' ? 'Repasser en thème sombre' : 'Passer en thème clair, pour une salle éclairée'"
+          @click="themeStore.toggle()"
+        >
+          {{ theme === 'light' ? '☾ Sombre' : '☀ Clair' }}
         </Button>
         <Button id="btn-refresh" size="small" @click="refresh">Rafraîchir</Button>
         <Button id="btn-sign-out" size="small" @click="session.signOut()">Déconnexion</Button>

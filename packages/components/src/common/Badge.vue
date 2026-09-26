@@ -20,7 +20,7 @@ const badge = cva(
       variant: {
         neutral: 'bg-surface2 text-dim',
         running: 'bg-ok text-[#05231a]',
-        ended: 'bg-[#3a2a13] text-warn',
+        ended: 'bg-warn-soft text-warn',
         warning: 'bg-surface2 text-warn',
         alert: 'bg-surface2 text-alert',
       },

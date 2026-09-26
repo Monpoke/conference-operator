@@ -1,6 +1,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { CONSOLE_THEME_KEY } from '@conference-operator/contract'
 import { describe, expect, it } from 'vitest'
 import {
   developmentAssets,
@@ -110,5 +111,15 @@ describe('console shell', () => {
 
   it('goes through the Vite server in development, building nothing', () => {
     expect(developmentAssets().scripts).toEqual(['/admin/@vite/client', '/admin/src/main.ts'])
+  })
+
+  it('applies the remembered theme before the first paint', () => {
+    // Left to the bundle, a console set to light would flash dark on every load:
+    // the module runs after the sheet has painted.
+    const html = shell()
+    const theme = html.indexOf(`localStorage.getItem("${CONSOLE_THEME_KEY}")`)
+    expect(theme).toBeGreaterThan(-1)
+    expect(theme).toBeLessThan(html.indexOf('<link rel="stylesheet"'))
+    expect(theme).toBeLessThan(html.indexOf('<body'))
   })
 })

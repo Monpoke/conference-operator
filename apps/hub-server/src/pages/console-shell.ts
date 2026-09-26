@@ -1,7 +1,12 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { DEFAULT_EVENT_IDENTITY, type EventIdentity, type ExecutionMode } from '@conference-operator/contract'
+import {
+  CONSOLE_THEME_KEY,
+  DEFAULT_EVENT_IDENTITY,
+  type EventIdentity,
+  type ExecutionMode,
+} from '@conference-operator/contract'
 import { escapeHtml } from '@conference-operator/format'
 
 /**
@@ -96,6 +101,16 @@ export function developmentAssets(base = '/admin/'): ConsoleAssets {
   return { scripts: [`${base}@vite/client`, `${base}src/main.ts`], styles: [] }
 }
 
+/**
+ * The theme, applied before the first paint.
+ *
+ * The bundle is a module, so it runs after the sheet has painted: a console set
+ * to light would flash dark on every load. These few lines run in `<head>`,
+ * before `<body>` exists. The console's store takes over from there
+ * (`stores/theme.ts`); storage refused — private browsing — leaves it dark.
+ */
+const THEME_SCRIPT = `<script>try{if(localStorage.getItem(${JSON.stringify(CONSOLE_THEME_KEY)})==='light')document.documentElement.dataset.theme='light'}catch(e){}</script>`
+
 export function renderConsoleShell(options: ConsoleShellOptions): string {
   const identity = options.event ?? DEFAULT_EVENT_IDENTITY
   const name = escapeHtml(identity.name)
@@ -120,6 +135,7 @@ export function renderConsoleShell(options: ConsoleShellOptions): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>${name} — console hub</title>
+${THEME_SCRIPT}
 ${styles}
 </head>
 <body class="bg-canvas font-sans text-text">

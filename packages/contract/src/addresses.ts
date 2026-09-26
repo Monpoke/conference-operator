@@ -128,3 +128,12 @@ export function controlRoomIdFromPath(pathname: string): string | null {
   if (rest === '' || rest.includes('/')) return null
   return decodeURIComponent(rest)
 }
+
+/**
+ * Where the console remembers its theme, on this device.
+ *
+ * Here because two sides read it and neither can depend on the other: the hub's
+ * shell, which applies it before the first paint — waiting for the bundle would
+ * flash the dark theme on every load — and the console, which writes it.
+ */
+export const CONSOLE_THEME_KEY = 'hub-theme'

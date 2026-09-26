@@ -6,6 +6,7 @@ import { computed, onScopeDispose, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AlertStack from './components/AlertStack.vue'
 import ConsoleNav from './components/ConsoleNav.vue'
+import HeaderIcon from './components/HeaderIcon.vue'
 import NotificationsDialog from './components/NotificationsDialog.vue'
 import SignInScreen from './components/SignInScreen.vue'
 import { useNotificationsStore } from './stores/notifications.js'
@@ -149,7 +150,12 @@ function refresh(): void {
       <div v-if="identity != null" id="identity" class="hidden text-[13px] text-dim sm:block">
         {{ identity }}
       </div>
-      <div class="ml-auto flex gap-1.5">
+      <!--
+        Sur un téléphone, les libellés cèdent la place aux icônes et la rangée
+        peut passer à la ligne : cinq boutons en toutes lettres débordaient de
+        l'écran. Le libellé reste dans aria-label et title.
+      -->
+      <div class="ml-auto flex flex-wrap justify-end gap-1.5">
         <!--
           Un lien et non un bouton : la régie mobile est une autre application,
           servie par le même hub. Masqué pour qui n'a pas le droit de l'ouvrir,
@@ -159,9 +165,12 @@ function refresh(): void {
           v-if="session.can('regie:view')"
           id="btn-regie"
           :href="CONTROL_PATH"
-          class="rounded-lg border border-edge bg-surface2 px-3 py-2 text-[13px] font-semibold text-text transition-colors hover:border-brand hover:bg-edge"
+          aria-label="Régie mobile"
+          title="Régie mobile"
+          class="inline-flex items-center gap-1.5 rounded-lg border border-edge bg-surface2 px-3 py-2 text-[13px] font-semibold text-text transition-colors hover:border-brand hover:bg-edge"
         >
-          Régie mobile
+          <HeaderIcon name="regie" />
+          <span class="hidden sm:inline">Régie mobile</span>
         </a>
         <!--
           Le bouton n'apparaît que si le navigateur sait notifier. Le point
@@ -172,6 +181,8 @@ function refresh(): void {
           v-if="supported"
           id="btn-notifs"
           size="small"
+          class="inline-flex items-center gap-1.5"
+          :aria-label="on ? 'Notifications activées' : 'Notifications'"
           :title="
             on
               ? 'Alertes activées sur cet appareil'
@@ -179,7 +190,9 @@ function refresh(): void {
           "
           @click="notifSettingsOpen = true"
         >
-          {{ on ? 'Notifications ●' : 'Notifications' }}
+          <HeaderIcon name="bell" />
+          <span class="hidden sm:inline">Notifications</span>
+          <span v-if="on" aria-hidden="true">●</span>
         </Button>
         <!--
           Le portable passe de la régie noire au foyer éclairé : le thème se
@@ -188,13 +201,36 @@ function refresh(): void {
         <Button
           id="btn-theme"
           size="small"
+          class="inline-flex items-center gap-1.5"
+          :aria-label="theme === 'light' ? 'Thème sombre' : 'Thème clair'"
           :title="theme === 'light' ? 'Repasser en thème sombre' : 'Passer en thème clair, pour une salle éclairée'"
           @click="themeStore.toggle()"
         >
-          {{ theme === 'light' ? '☾ Sombre' : '☀ Clair' }}
+          <HeaderIcon :name="theme === 'light' ? 'moon' : 'sun'" />
+          <span class="hidden sm:inline">{{ theme === 'light' ? 'Sombre' : 'Clair' }}</span>
         </Button>
-        <Button id="btn-refresh" size="small" @click="refresh">Rafraîchir</Button>
-        <Button id="btn-sign-out" size="small" @click="session.signOut()">Déconnexion</Button>
+        <Button
+          id="btn-refresh"
+          size="small"
+          class="inline-flex items-center gap-1.5"
+          aria-label="Rafraîchir"
+          title="Rafraîchir"
+          @click="refresh"
+        >
+          <HeaderIcon name="refresh" />
+          <span class="hidden sm:inline">Rafraîchir</span>
+        </Button>
+        <Button
+          id="btn-sign-out"
+          size="small"
+          class="inline-flex items-center gap-1.5"
+          aria-label="Déconnexion"
+          title="Déconnexion"
+          @click="session.signOut()"
+        >
+          <HeaderIcon name="sign-out" />
+          <span class="hidden sm:inline">Déconnexion</span>
+        </Button>
       </div>
     </header>
 

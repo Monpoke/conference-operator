@@ -41,7 +41,7 @@ import { WallsIoConfig, wallsioSource } from './services/wallsio.js'
 import { migrateLegacyMur } from './services/legacy-mur.js'
 import { renderWallPage } from './pages/wall-page.js'
 import { previewPayload, renderBouclePreview } from './pages/boucle-preview.js'
-import { buildVodHabillage, readFont, resolveFontsFolder } from '@conference-operator/projector/server'
+import { availableFonts, buildVodHabillage, readFont, renderVodDocument, resolveFontsFolder } from '@conference-operator/projector/server'
 import { requirePermission, resolveOperator } from './context.js'
 import {
   developmentAssets,
@@ -152,6 +152,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       (sessionId) => vodHabillageFor(services, config.publicUrl, sessionId),
       () => new Date(clock.now()),
       (level, message, context) => services.log(level, message, context),
+      (sessionId) => programs.active()?.program.sessions.find((session) => session.id === sessionId)?.title ?? null,
     ),
     clock,
     mode: config.mode,
@@ -576,6 +577,32 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     reply.header('content-type', font.type)
     reply.header('cache-control', 'public, max-age=86400')
     return reply.send(font.bytes)
+  })
+
+  /**
+   * A talk's VOD intro or outro, playing, for the console to look at before the
+   * montage — the same page the worker captures frame by frame. Behind the
+   * operator's session: the talk's content is public, but the page is a tool.
+   */
+  app.get<{ Params: { sessionId: string }; Querystring: { clip?: string } }>('/montage/apercu/:sessionId', async (request, reply) => {
+    reply.header('content-type', 'text/html; charset=utf-8')
+    reply.header('cache-control', 'no-store')
+    try {
+      const { operator } = await resolveOperator(contextFrom(auth, services, headersOf(request.headers)))
+      requirePermission(operator, 'vod:read')
+    } catch {
+      reply.status(401)
+      return reply.send(
+        '<!doctype html><html lang="fr"><meta charset="utf-8"><title>Aperçu du montage</title>' +
+          '<body style="font:18px system-ui;padding:40px">Connectez-vous à la ' +
+          '<a href="/admin/vod">console</a> pour voir l\'aperçu du montage.</body></html>',
+      )
+    }
+    return reply.send(renderVodDocument({
+      clip: request.query.clip === 'outro' ? 'outro' : 'intro',
+      habillage: services.montage.habillageFor(request.params.sessionId),
+      fonts: fontsFolder == null ? undefined : { base: '/boucle/polices', files: availableFonts(fontsFolder) },
+    }))
   })
 
   /**

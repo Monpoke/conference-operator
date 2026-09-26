@@ -63,6 +63,8 @@ export class MontageService {
     private readonly habillage: (sessionId: string) => VodHabillage,
     private readonly now: () => Date = () => new Date(),
     private readonly onLog: (level: 'info' | 'warn', message: string, context?: object) => void = () => {},
+    /** The talk's title in the active program, for the console's list. */
+    private readonly titleOf: (sessionId: string) => string | null = () => null,
   ) {}
 
   /* ---------- Workers ---------- */
@@ -435,6 +437,7 @@ export class MontageService {
     return {
       id: row.id,
       sessionId: row.sessionId,
+      title: this.titleOf(row.sessionId),
       roomId: row.roomId,
       state: row.state as MontageState,
       etape: (row.etape as MontageEtape | null) ?? null,

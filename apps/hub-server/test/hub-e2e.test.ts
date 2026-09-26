@@ -618,6 +618,132 @@ describe('correcting a slot\'s kind', () => {
 })
 
 /**
+ * The emergency gestures of a programme that no longer holds: two talks swapped,
+ * or a room forced onto one of its talks.
+ */
+describe('swapping talks and forcing one', () => {
+  /** "IA for OPS on Scaleway", 08:50 → 09:40 in Track #1. */
+  const FIRST = 'cmotqj1r1008401pxxsm6y2fu'
+  /** "HoneySwamp", 10:00 → 10:50 in Track #1. */
+  const SECOND = 'cmqav0qto03qe01nsitbr18cn'
+
+  const served = (id: string) => hub.services.programs.active()!.program.sessions.find((s) => s.id === id)!
+
+  it('swaps two talks of a room, and swapping back gives the fingerprint back', async () => {
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    const original = hub.services.programs.active()!.contentHash
+    const first = served(FIRST)
+    const second = served(SECOND)
+
+    const swapped = await admin.sessions.swap({ a: FIRST, b: SECOND })
+    expect(swapped.contentHash).not.toBe(original)
+    expect(served(FIRST).startsAt).toBe(second.startsAt)
+    expect(served(SECOND).startsAt).toBe(first.startsAt)
+    // Served in order: everything downstream reads the room's slots sorted.
+    const sessions = hub.services.programs.active()!.program.sessions
+    expect(sessions.findIndex((s) => s.id === SECOND)).toBeLessThan(sessions.findIndex((s) => s.id === FIRST))
+
+    const planning = await admin.program.planning()
+    expect(planning.sessions.find((s) => s.id === FIRST)?.movedTo).toBe(SECOND)
+
+    const back = await admin.sessions.swap({ a: FIRST, b: SECOND })
+    expect(back.contentHash).toBe(original)
+    expect(served(FIRST).startsAt).toBe(first.startsAt)
+  })
+
+  it('moves a talk across rooms, and "Start" follows it', async () => {
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    const elsewhere = hub.services.programs
+      .active()!
+      .program.sessions.find((s) => s.roomId === 'track-2-mf-1092' && s.kind === 'talk' && s.roomSpan === 1)!
+
+    await admin.sessions.swap({ a: SECOND, b: elsewhere.id })
+    expect(served(SECOND).roomId).toBe('track-2-mf-1092')
+    expect(served(elsewhere.id).roomId).toBe(TRACK_1)
+
+    // The room machine now drives the talk that came in, not the one that left.
+    const room = wsClient(await pairRoomDevice())
+    await expect(room.sessions.start({ sessionId: SECOND })).rejects.toThrow()
+    expect((await room.sessions.start({ sessionId: elsewhere.id })).status).toBe('running')
+
+    await admin.sessions.resetSlots()
+    expect(served(SECOND).roomId).toBe(TRACK_1)
+  })
+
+  it('refuses a started talk, and a room swapping across rooms', async () => {
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    await admin.sessions.start({ sessionId: FIRST })
+    await expect(admin.sessions.swap({ a: FIRST, b: SECOND })).rejects.toThrow(/déjà en cours/)
+
+    const elsewhere = hub.services.programs
+      .active()!
+      .program.sessions.find((s) => s.roomId === 'track-2-mf-1092' && s.kind === 'talk')!
+    const room = wsClient(await pairRoomDevice())
+    await expect(room.sessions.swap({ a: SECOND, b: elsewhere.id })).rejects.toThrow(/console/)
+  })
+
+  it('forces a talk, then lifts the pin when it ends', async () => {
+    hub.services.clock.setSimulated('2026-10-30T09:00:00.000Z')
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+
+    const { pins } = await admin.sessions.pin({ roomId: TRACK_1, sessionId: SECOND })
+    expect(pins).toEqual({ [TRACK_1]: SECOND })
+    // The room is on the forced talk, whatever the clock says.
+    expect((await admin.rooms.current({ roomId: TRACK_1 })).current?.id).toBe(SECOND)
+    expect((await admin.program.planning()).pins).toEqual({ [TRACK_1]: SECOND })
+
+    await admin.sessions.start({ sessionId: SECOND })
+    await admin.sessions.end({ sessionId: SECOND })
+    expect(hub.services.pins.all()).toEqual({})
+  })
+
+  it('lifts the pin when another talk of the room starts', async () => {
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    await admin.sessions.pin({ roomId: TRACK_1, sessionId: SECOND })
+    await admin.sessions.start({ sessionId: FIRST })
+    expect(hub.services.pins.all()).toEqual({})
+  })
+
+  it('refuses a break, a talk of another room, and a room pinning elsewhere', async () => {
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    const lunch = hub.services.programs
+      .active()!
+      .program.sessions.find((s) => s.roomId === TRACK_1 && s.kind === 'break')!
+    const elsewhere = hub.services.programs
+      .active()!
+      .program.sessions.find((s) => s.roomId === 'track-2-mf-1092' && s.kind === 'talk')!
+    await expect(admin.sessions.pin({ roomId: TRACK_1, sessionId: lunch.id })).rejects.toThrow()
+    await expect(admin.sessions.pin({ roomId: TRACK_1, sessionId: elsewhere.id })).rejects.toThrow(
+      /échangez/,
+    )
+
+    const room = wsClient(await pairRoomDevice())
+    await expect(room.sessions.pin({ roomId: 'track-2-mf-1092', sessionId: elsewhere.id })).rejects.toThrow()
+    expect((await room.sessions.pin({ roomId: TRACK_1, sessionId: SECOND })).pins).toEqual({
+      [TRACK_1]: SECOND,
+    })
+    expect((await room.rooms.sync({ since: null })).pins).toEqual({ [TRACK_1]: SECOND })
+  })
+
+  it('tells every room the whole map of pins', async () => {
+    const room = wsClient(await pairRoomDevice())
+    const received: Command[] = []
+    const stream = (async () => {
+      for await (const command of await room.rooms.commands()) {
+        received.push(command)
+        break
+      }
+    })()
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    await sleep(200)
+    await admin.sessions.pin({ roomId: TRACK_1, sessionId: SECOND })
+
+    await Promise.race([stream, sleep(3_000)])
+    expect(received[0]?.payload).toEqual({ type: 'room.pins', pins: { [TRACK_1]: SECOND } })
+  })
+})
+
+/**
  * The shared slot, seen from the event and not from a room.
  *
  * A different question from the cards': they say where each room is at, this one

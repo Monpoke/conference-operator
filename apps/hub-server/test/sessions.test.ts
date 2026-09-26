@@ -155,6 +155,14 @@ describe('automatic closing', () => {
     expect(sessions.get(TALK.id)).toMatchObject({ status: 'ended', decidedBy: 'auto' })
   })
 
+  it('leaves a forced talk alone: it runs outside its slot by decision', () => {
+    sessions.start(TALK.id, TRACK_1, 'op')
+
+    clock = END + 60 * 60_000
+    expect(sessions.sweep(program, new Set([TALK.id])).ended).toEqual([])
+    expect(sessions.get(TALK.id)?.status).toBe('running')
+  })
+
   it('honours the configured period', () => {
     settings.update({ autoEndGraceMinutes: 20 })
     sessions.start(TALK.id, TRACK_1, 'op')

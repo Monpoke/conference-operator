@@ -285,7 +285,7 @@ export class SessionStateService {
    * "upcoming" rather than being declared ended. Claiming a talk took place when
    * nobody launched it would be a lie in the history, and would skew the VOD.
    */
-  sweep(program: Program | null): SweepResult {
+  sweep(program: Program | null, pinned: ReadonlySet<string> = new Set()): SweepResult {
     const settings = this.settings.get()
     if (!settings.autoEndEnabled || program == null) return { ended: [] }
 
@@ -300,6 +300,7 @@ export class SessionStateService {
        * two rules used to speak of different times, and a room could stay in
        * overrun all day without this sweep ever seeing it.
        */
+      if (pinned.has(state.sessionId)) continue
       const end = effectiveEndInProgram(program, state.sessionId)
       if (!shouldAutoEnd(end, state.status, now, setting)) continue
       ended.push(this.end(state.sessionId, state.roomId, 'auto'))

@@ -8,7 +8,7 @@ import {
   type Program,
   type SessionKind,
 } from '@conference-operator/program'
-import { programSnapshot, sessionFeedback, sessionOverride } from '@conference-operator/db/hub'
+import { programSnapshot, sessionFeedback, sessionOverride, sessionSlot } from '@conference-operator/db/hub'
 import type { HubDatabase } from '../db.js'
 
 export interface Snapshot {
@@ -25,6 +25,13 @@ export interface Snapshot {
    * it gets removed.
    */
   overrides: Record<string, SessionKind>
+  /**
+   * Swaps **actually applied**: moved talk → export slot it now occupies.
+   *
+   * Same reason as `overrides`: the program already carries the new places, and
+   * this record only tells the console which talks were moved, and from where.
+   */
+  moves: Record<string, string>
 }
 
 /** Fingerprint of the *raw* content: two identical imports create one version. */
@@ -142,6 +149,7 @@ export class ProgramService {
         // An import describes the **imported version**, not the served program:
         // the day's decisions are read in `active()`, which applies them.
         overrides: {},
+        moves: {},
       }
     }
 
@@ -163,7 +171,7 @@ export class ProgramService {
       .run()
     this.activate(contentHash)
 
-    return { contentHash: servedHash(contentHash), program, importedAt, overrides: {} }
+    return { contentHash: servedHash(contentHash), program, importedAt, overrides: {}, moves: {} }
   }
 
   /**
@@ -243,19 +251,57 @@ export class ProgramService {
         .map((row) => [row.sessionId, row.feedbackId]),
     )
 
-    if (decisions.size === 0 && corrections.size === 0) {
+    /**
+     * The swapped slots: which export slot each moved talk now occupies.
+     *
+     * Read against the **export**, never the served program: a talk takes its
+     * donor's slot as the export gives it, so two chained swaps compose instead of
+     * compounding. A row whose talk or donor the export no longer holds — a
+     * reimport took it away — is ignored: the talk stays where the export puts it,
+     * rather than going nowhere.
+     */
+    const exported = new Map(program.sessions.map((session) => [session.id, session]))
+    const moves = new Map(
+      this.db
+        .select()
+        .from(sessionSlot)
+        .orderBy(asc(sessionSlot.sessionId))
+        .all()
+        .filter((move) => move.slotOf !== move.sessionId)
+        .filter((move) => exported.has(move.sessionId) && exported.has(move.slotOf))
+        .map((move) => [move.sessionId, move.slotOf]),
+    )
+
+    if (decisions.size === 0 && corrections.size === 0 && moves.size === 0) {
       return {
         contentHash: servedHash(row.contentHash),
         program: applySharedBreaks(program),
         importedAt: row.importedAt,
         overrides: {},
+        moves: {},
       }
     }
 
     const appliedKinds: Record<string, SessionKind> = {}
     /** What really contradicts the export: the rest does not count. */
     const appliedIds: Record<string, string> = {}
-    const sessions = program.sessions.map((session) => {
+    const appliedSlots: Record<string, string> = {}
+    const sessions = program.sessions.map((exportedSession) => {
+      const donor = exported.get(moves.get(exportedSession.id) ?? '')
+      let session = exportedSession
+      if (donor != null) {
+        appliedSlots[session.id] = donor.id
+        session = {
+          ...session,
+          roomId: donor.roomId,
+          roomSpan: donor.roomSpan,
+          startsAt: donor.startsAt,
+          endsAt: donor.endsAt,
+          startsAtMs: donor.startsAtMs,
+          endsAtMs: donor.endsAtMs,
+          durationMinutes: donor.durationMinutes,
+        }
+      }
       const wanted = decisions.get(session.id)
       const corrected = corrections.get(session.id)
       // A correction that repeats the export's identifier is moot, exactly like a
@@ -273,14 +319,29 @@ export class ProgramService {
       }
     })
 
-    if (Object.keys(appliedKinds).length === 0 && Object.keys(appliedIds).length === 0) {
+    if (
+      Object.keys(appliedKinds).length === 0 &&
+      Object.keys(appliedIds).length === 0 &&
+      Object.keys(appliedSlots).length === 0
+    ) {
       return {
         contentHash: servedHash(row.contentHash),
         program: applySharedBreaks(program),
         importedAt: row.importedAt,
         overrides: {},
+        moves: {},
       }
     }
+
+    /**
+     * Sorted again, the way the normalizer does: a swapped talk has changed hours,
+     * and everything downstream — the room's current slot, the effective end
+     * taken from the next one — reads the list in order. And only then the shared
+     * breaks, so that a room freed by a swap inherits the break next door.
+     */
+    const served = Object.keys(appliedSlots).length === 0
+      ? sessions
+      : [...sessions].sort((a, b) => a.startsAtMs - b.startsAtMs || a.id.localeCompare(b.id))
 
     return {
       /**
@@ -291,12 +352,14 @@ export class ProgramService {
        * lunch break we have just declared as such — and with nothing to flag it.
        * The corrected identifiers enter it on the same footing: a correction the
        * rooms would not re-download would leave the projected QR code on the old
-       * address, the very one we have just declared wrong.
+       * address, the very one we have just declared wrong. A swap too: a room
+       * left on its cache would title the talk that is no longer there.
        */
-      contentHash: `${servedHash(row.contentHash)}~${fingerprintOf(appliedKinds, appliedIds)}`,
-      program: applySharedBreaks({ ...program, sessions }),
+      contentHash: `${servedHash(row.contentHash)}~${fingerprintOf(appliedKinds, appliedIds, appliedSlots)}`,
+      program: applySharedBreaks({ ...program, sessions: served }),
       importedAt: row.importedAt,
       overrides: appliedKinds,
+      moves: appliedSlots,
     }
   }
 
@@ -323,19 +386,24 @@ export class ProgramService {
 function fingerprintOf(
   appliedKinds: Record<string, SessionKind>,
   appliedIds: Record<string, string> = {},
+  appliedSlots: Record<string, string> = {},
 ): string {
   const sorted = (entries: Record<string, string>, prefix: string) =>
     Object.entries(entries)
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
       .map(([sessionId, value]) => `${prefix}${sessionId}:${value}`)
   /*
-   * Both families are prefixed.
+   * Every family is prefixed.
    *
    * With no prefix, a decision and a correction carrying the same (slot, value)
    * pair would give the same string — unlikely, but a fingerprint that confuses
    * two different states is a bug you would only discover in the room, on a cache
    * that refuses to refresh.
    */
-  const joined = [...sorted(appliedKinds, 'k:'), ...sorted(appliedIds, 'f:')].join(',')
+  const joined = [
+    ...sorted(appliedKinds, 'k:'),
+    ...sorted(appliedIds, 'f:'),
+    ...sorted(appliedSlots, 's:'),
+  ].join(',')
   return createHash('sha256').update(joined).digest('hex').slice(0, 8)
 }

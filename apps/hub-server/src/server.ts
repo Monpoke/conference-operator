@@ -21,6 +21,7 @@ import { DeviceService, RoomService } from './services/rooms.js'
 import { QuestionService, WallService } from './services/wall.js'
 import { RateLimiter } from './services/rate-limit.js'
 import { ControlService } from './services/control.js'
+import { PinService } from './services/pins.js'
 import { RoomChanges } from './services/changes.js'
 import { SocketTickets } from './services/socket-tickets.js'
 import { CONTROL_SESSION_HEADER } from '@conference-operator/contract'
@@ -133,6 +134,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     identity: new EventIdentityService(settings, programs),
     sessions: new SessionStateService(orm, settings, () => clock.now(), touch),
     regie: new ControlService(orm, () => clock.now(), touch),
+    pins: new PinService(orm, touch),
     changes,
     tickets: new SocketTickets(),
     push,
@@ -914,7 +916,9 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
    */
   const autoEndSweep = setInterval(() => {
     const snapshot = services.programs.active()
-    for (const state of services.sessions.sweep(snapshot?.program ?? null).ended) {
+    // A forced talk runs outside its slot by decision: the clock does not close it.
+    const pinned = new Set(Object.values(services.pins.all()))
+    for (const state of services.sessions.sweep(snapshot?.program ?? null, pinned).ended) {
       const session = snapshot?.program.sessions.find((s) => s.id === state.sessionId)
       // Broadcast to everyone: the other rooms use it to notify.
       services.commands.publish(

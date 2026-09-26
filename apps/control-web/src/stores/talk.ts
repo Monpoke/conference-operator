@@ -1,7 +1,7 @@
 import { remaining, time } from '@conference-operator/format'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { useActionsStore } from './actions.js'
+import { useActionsStore, type ActionResult } from './actions.js'
 import { useRoomStore } from './room.js'
 
 /**
@@ -35,8 +35,18 @@ export const useTalkStore = defineStore('talk', () => {
   const recordingOpen = ref(false)
   const endEarlyOpen = ref(false)
   const stopRecordingOpen = ref(false)
+  /** The list of the room's talks, to force one or swap two. */
+  const forceOpen = ref(false)
 
   const session = computed(() => room.payload?.state.targetSession ?? null)
+
+  /** The talk forced into the room by hand, or `null` when the clock decides. */
+  const pinnedSessionId = computed(() => room.payload?.state.pinnedSessionId ?? null)
+
+  /** The target is there because someone forced it, not because of the hour. */
+  const forced = computed(
+    () => pinnedSessionId.value != null && pinnedSessionId.value === session.value?.id,
+  )
 
   /**
    * The start settings, defaults included.
@@ -102,10 +112,16 @@ export const useTalkStore = defineStore('talk', () => {
     )
   })
 
-  /** First guard: is this really the talk being aimed at? */
+  /**
+   * First guard: is this really the talk being aimed at?
+   *
+   * A forced talk has already answered it: someone picked it from the list and
+   * pressed "Forcer maintenant". Asking again whether it is early would put the
+   * same question twice to the one person who knows it best.
+   */
   function askStart(): void {
     const early = earlyByMs.value
-    if (early == null || early <= TOO_EARLY_MS) {
+    if (forced.value || early == null || early <= TOO_EARLY_MS) {
       void start()
       return
     }
@@ -190,11 +206,34 @@ export const useTalkStore = defineStore('talk', () => {
     await actions.act({ action: 'session.reset' })
   }
 
+  /**
+   * Forcing a talk into the room, or giving the room back to the clock.
+   *
+   * The emergency gesture — a speaker stuck in a train, the next one ready. It
+   * starts nothing: "Commencer" stays the gesture that writes the talk as held.
+   *
+   * @param sessionId One of the room's talks, or `null` to lift the pin.
+   */
+  async function pin(sessionId: string | null): Promise<ActionResult> {
+    return actions.act({ action: 'session.pin', sessionId })
+  }
+
+  /**
+   * Swapping two of the room's slots in the programme.
+   *
+   * The hub refuses it once either talk has run or ended: the refusal comes back
+   * as the usual notice, and nothing is painted ahead of it.
+   */
+  async function swap(a: string, b: string): Promise<ActionResult> {
+    return actions.act({ action: 'session.swap', a, b })
+  }
+
   return {
     tooEarlyOpen,
     recordingOpen,
     endEarlyOpen,
     stopRecordingOpen,
+    forceOpen,
     settings,
     recording,
     earlyByMs,
@@ -209,5 +248,9 @@ export const useTalkStore = defineStore('talk', () => {
     end,
     finish,
     reset,
+    pinnedSessionId,
+    forced,
+    pin,
+    swap,
   }
 })

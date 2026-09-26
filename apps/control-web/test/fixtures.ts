@@ -144,6 +144,7 @@ export function state(): DisplayPayload['state'] {
     onAirSession: null,
     breakBadge: null,
     targetIsUpcoming: false,
+    pinnedSessionId: null,
     simulatedClock: false,
     remoteHolder: null,
   }

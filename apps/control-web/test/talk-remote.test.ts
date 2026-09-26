@@ -39,6 +39,7 @@ function view(overrides: Partial<ControlView> = {}): ControlView {
     conference: 'pas-commencee',
     targetSession: talk(),
     targetIsUpcoming: true,
+    pinnedSessionId: null,
     sessionStates: {},
     sessions: [talk()],
     sceneRole: 'HOLD',
@@ -222,5 +223,29 @@ describe('ending, from a phone', () => {
     // reflex, which amounts to no longer reading it.
     expect(talk.endEarlyOpen).toBe(false)
     expect(types()).toEqual(['session.end'])
+  })
+})
+
+describe('forcing, from a phone', () => {
+  it('carries the pin and the swap with the talks named', async () => {
+    remoteRoom([view()])
+    const talk = useTalkStore()
+
+    await talk.pin('talk-2')
+    await talk.pin(null)
+    await talk.swap('talk-1', 'talk-2')
+
+    // The hub applies both itself: no room confirmation to wait for.
+    expect(commands).toEqual([
+      { type: 'session.pin', sessionId: 'talk-2' },
+      { type: 'session.pin', sessionId: null },
+      { type: 'session.swap', a: 'talk-1', b: 'talk-2' },
+    ])
+  })
+
+  it('reads the pin from the view', () => {
+    remoteRoom([view({ pinnedSessionId: 'talk-1' })])
+
+    expect(useTalkStore().forced).toBe(true)
   })
 })

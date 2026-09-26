@@ -36,6 +36,7 @@ import {
 } from './services/control.js'
 import { TransitionRefused } from './services/sessions.js'
 import { IncompleteStorage, type VodService } from './services/vod.js'
+import { MontageError } from './services/montage.js'
 import { S3Error } from './services/s3.js'
 import { roomStatuses } from './supervision.js'
 import {
@@ -45,6 +46,7 @@ import {
   resolveClaim,
   resolveOperator,
   resolveRoom,
+  resolveWorker,
   requirePermission,
   type ActorContext,
   type HubContext,
@@ -65,6 +67,13 @@ const operatorOnly = os.middleware(async ({ context, next }) =>
  */
 const roomOnly = os.middleware(async ({ context, next }) =>
   next({ context: await resolveRoom(context) }),
+)
+
+/**
+ * Montage worker: adds `worker` to the context. Its token opens nothing else.
+ */
+const workerOnly = os.middleware(async ({ context, next }) =>
+  next({ context: await resolveWorker(context) }),
 )
 
 /**
@@ -1452,10 +1461,17 @@ export const router = os.router({
     ),
 
     complete: os.vod.complete.use(roomOnly).handler(({ input, context }) =>
-      onStorage(context, async () => ({
-        ok: true,
-        objectKey: await requireStorage(context).complete(context.roomId, input.uploadId),
-      })),
+      onStorage(context, async () => {
+        const vod = requireStorage(context)
+        const objectKey = await vod.complete(context.roomId, input.uploadId)
+        // A take's sidecar in the storage is the signal: it names the rushes and
+        // holds the marks. The montage waits for the rushes it names if needed.
+        const row = vod.upload(input.uploadId)
+        if (row?.kind === 'sidecar' && row.sessionId != null) {
+          context.services.montage.enqueue({ sessionId: row.sessionId, roomId: row.roomId, sidecarUploadId: row.id })
+        }
+        return { ok: true, objectKey }
+      }),
     ),
 
     abort: os.vod.abort.use(roomOnly).handler(({ input, context }) =>
@@ -1633,6 +1649,83 @@ export const router = os.router({
       )
       return { ok: true }
     }),
+  },
+
+  /**
+   * The VODs' montage.
+   *
+   * The worker procedures are bounded by `workerOnly` and by the job: a worker
+   * only touches the job it holds, and only reads the files of that take. The
+   * console's are ordinary operator procedures.
+   */
+  montage: {
+    claim: os.montage.claim.use(workerOnly).handler(({ context }) =>
+      onMontage(context, () => context.services.montage.claim(context.worker)),
+    ),
+
+    fichiers: os.montage.fichiers.use(workerOnly).handler(({ input, context }) =>
+      onMontage(context, () => context.services.montage.files(context.worker, input.jobId, input.files)),
+    ),
+
+    heartbeat: os.montage.heartbeat.use(workerOnly).handler(({ input, context }) =>
+      onMontage(context, () =>
+        context.services.montage.heartbeat(context.worker, input.jobId, input.etape, input.pourcent)),
+    ),
+
+    envoi: os.montage.envoi.use(workerOnly).handler(({ input, context }) =>
+      onMontage(context, () => context.services.montage.openUpload(context.worker, input.jobId, input.sizeBytes)),
+    ),
+
+    parts: os.montage.parts.use(workerOnly).handler(({ input, context }) =>
+      onMontage(context, () => context.services.montage.signParts(context.worker, input.jobId, input.numeros)),
+    ),
+
+    complete: os.montage.complete.use(workerOnly).handler(({ input, context }) =>
+      onMontage(context, async () => ({
+        ok: true,
+        objectKey: await context.services.montage.complete(context.worker, input),
+      })),
+    ),
+
+    fail: os.montage.fail.use(workerOnly).handler(({ input, context }) =>
+      onMontage(context, async () => {
+        await context.services.montage.fail(context.worker, input.jobId, input.raison, input.reessayer)
+        return { ok: true }
+      }),
+    ),
+
+    list: os.montage.list.use(operatorCan('vod:read')).handler(({ input, context }) =>
+      context.services.montage.list(input.sessionId),
+    ),
+
+    relancer: os.montage.relancer.use(operatorCan('vod:manage')).handler(({ input, context }) =>
+      onMontage(context, () => context.services.montage.relaunch(input.sessionId)),
+    ),
+
+    annuler: os.montage.annuler.use(operatorCan('vod:manage')).handler(({ input, context }) =>
+      onMontage(context, async () => ({ ok: await context.services.montage.cancel(input.jobId) })),
+    ),
+
+    telecharger: os.montage.telecharger.use(operatorCan('vod:read')).handler(({ input, context }) =>
+      onMontage(context, () => ({ url: context.services.montage.downloadUrl(input.jobId) })),
+    ),
+
+    habillage: os.montage.habillage.use(operatorCan('vod:read')).handler(({ input, context }) => {
+      resolveSession(context, input.sessionId)
+      return context.services.montage.habillageFor(input.sessionId)
+    }),
+
+    workers: {
+      list: os.montage.workers.list.use(operatorCan('vod:read')).handler(({ context }) =>
+        context.services.montage.workers(),
+      ),
+      create: os.montage.workers.create.use(operatorCan('vod:manage')).handler(({ input, context }) =>
+        context.services.montage.createWorker(input.nom, context.operator.email),
+      ),
+      revoke: os.montage.workers.revoke.use(operatorCan('vod:manage')).handler(({ input, context }) => ({
+        ok: context.services.montage.revokeWorker(input.id),
+      })),
+    },
   },
 
   /**
@@ -1840,6 +1933,12 @@ export const router = os.router({
  * `NoSuchBucket`, `AccessDenied` are the only words you can put into a search
  * engine, and translating them would lose them.
  */
+/**
+ * The montage's procedures: its refusals (`MontageError`) and the storage's,
+ * translated by the same block — a worker calls the storage through the hub too.
+ */
+const onMontage = onStorage
+
 async function onStorage<T>(
   context: { services: HubContext['services'] },
   gesture: () => T | Promise<T>,
@@ -1856,6 +1955,9 @@ async function onStorage<T>(
      * this block is meant to render.
      */
     if (error instanceof ORPCError) throw error
+    if (error instanceof MontageError) {
+      throw new ORPCError(error.code, { message: error.message })
+    }
     if (error instanceof IncompleteStorage) {
       throw new ORPCError('BAD_REQUEST', { message: error.message })
     }

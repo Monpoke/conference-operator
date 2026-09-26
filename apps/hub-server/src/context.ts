@@ -12,6 +12,7 @@ import type { RateLimiter } from './services/rate-limit.js'
 import type { PushService } from './services/push.js'
 import type { IntegrationService } from './services/integrations.js'
 import type { VodService } from './services/vod.js'
+import type { MontageService, Worker } from './services/montage.js'
 import type { ControlService } from './services/control.js'
 import type { RoomChanges } from './services/changes.js'
 import type { SocketTickets } from './services/socket-tickets.js'
@@ -92,6 +93,8 @@ export interface Services {
    * and buttons that fail. Every procedure then refuses and says so.
    */
   vod: VodService | null
+  /** The montage queue and its workers' tokens. Refuses everything while `vod` is `null`. */
+  montage: MontageService
   push: PushService
   /** The same notices as `push`, sent to Slack, Mattermost or a webhook. */
   integrations: IntegrationService
@@ -194,7 +197,40 @@ export function isRoomToken(context: HubContext): boolean {
   return bearer(context)?.startsWith('rt_') === true
 }
 
+/** A montage worker's token, likewise. */
+export function isWorkerToken(context: HubContext): boolean {
+  return bearer(context)?.startsWith('wt_') === true
+}
+
+export interface WorkerContext extends HubContext {
+  worker: Worker
+}
+
+/**
+ * Resolves the montage worker calling.
+ *
+ * Its own kind of token, and nothing else opens these procedures: a room's
+ * token must not read the rushes of the whole event, an operator's session has
+ * no business pretending to render.
+ */
+export async function resolveWorker(context: HubContext): Promise<WorkerContext> {
+  const token = bearer(context)
+  if (token == null || !token.startsWith('wt_')) {
+    throw new ORPCError('UNAUTHORIZED', { message: 'Jeton de worker de montage requis' })
+  }
+  const worker = context.services.montage.fromToken(token)
+  if (worker == null) {
+    throw new ORPCError('UNAUTHORIZED', { message: 'Jeton de worker inconnu ou révoqué : en recréer un dans la console' })
+  }
+  return { ...context, worker }
+}
+
 export async function resolveOperator(context: HubContext): Promise<OperatorContext> {
+  if (isWorkerToken(context)) {
+    throw new ORPCError('FORBIDDEN', {
+      message: "Cette opération est réservée à la console : un worker de montage n'y a pas accès",
+    })
+  }
   if (isRoomToken(context)) {
     // An explicit refusal rather than "session required": a machine attempting an
     // operator procedure signals a problem, not a forgotten sign-in.

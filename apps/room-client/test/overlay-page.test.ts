@@ -68,14 +68,40 @@ describe('capture overlay', () => {
     expect(document.body.dataset.card).toBe('hidden')
   })
 
-  it('waits for Start, even during the talk\'s slot', () => {
-    // The speaker may not be on stage yet: nothing is titled before the room starts.
+  it('announces the talk Start will launch, before Start', () => {
+    // The recording often starts with the talk: waiting for Start would open the
+    // VOD on an empty frame, then fade the names in.
     mountOverlay({
       ...STATE,
-      state: { ...STATE.state, currentSession: TALK, onAirSession: null },
+      state: { ...STATE.state, currentSession: TALK, onAirSession: null, targetSession: TALK },
     } as unknown as DisplayPayload)
 
-    expect(document.body.dataset.card).toBe('hidden')
+    expect(document.body.dataset.card).toBe('visible')
+    expect(document.getElementById('title')?.textContent).toContain('HoneySwamp')
+    expect(document.getElementById('people')?.textContent).toContain('Steven LE ROUX')
+  })
+
+  it('titles the talk on air over the one Start would launch', () => {
+    // A forgotten End: the next slot is the target, but the speaker on stage is
+    // still the one on air.
+    const next = { ...TALK, id: 'ses-2', title: 'Kubernetes sans larmes', speakers: [{ name: 'Ada Martin' }] }
+    mountOverlay({
+      ...STATE,
+      state: { ...STATE.state, onAirSession: TALK, targetSession: next },
+    } as unknown as DisplayPayload)
+
+    expect(document.getElementById('title')?.textContent).toContain('HoneySwamp')
+  })
+
+  it('announces nothing when Start would launch no talk', () => {
+    for (const targetSession of [null, { ...TALK, kind: 'break', title: 'Déjeuner' }]) {
+      mountOverlay({
+        ...STATE,
+        state: { ...STATE.state, onAirSession: null, targetSession },
+      } as unknown as DisplayPayload)
+
+      expect(document.body.dataset.card).toBe('hidden')
+    }
   })
 
   it('keeps an overrunning talk until End, whatever the schedule says', () => {

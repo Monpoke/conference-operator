@@ -266,8 +266,10 @@ ${initialState}
     const eventName = data.eventIdentity?.name ?? ''
     if (eventName) document.title = eventName + ' • habillage captation'
     // The talk the room started and has not ended, not the scheduled slot: an
-    // overrunning talk keeps its speaker until End.
-    const session = data.state.onAirSession
+    // overrunning talk keeps its speaker until End. With nothing on air, the talk
+    // Start will launch: the recording often begins with the talk, and its first
+    // frame must already carry the names rather than wait for a fade-in.
+    const session = data.state.onAirSession ?? data.state.targetSession
 
     const logo = document.getElementById('logo')
     // The console's logo first, as on the loop: the capture wears the same one.

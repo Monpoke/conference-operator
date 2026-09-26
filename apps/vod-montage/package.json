@@ -4,18 +4,23 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "start": "tsx --env-file-if-exists=.env src/main.ts",
     "rendre": "tsx src/cli/rendre.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "e2e": "tsx scripts/e2e-local.ts"
   },
   "dependencies": {
     "@conference-operator/contract": "workspace:*",
     "@conference-operator/program": "workspace:*",
     "@conference-operator/projector": "workspace:*",
+    "@orpc/client": "2.0.0-beta.37",
+    "@orpc/contract": "2.0.0-beta.37",
     "tsx": "4.23.13",
     "zod": "4.5.4"
   },
   "devDependencies": {
+    "@conference-operator/hub-server": "workspace:*",
     "@types/node": "26.4.1",
     "typescript": "7.0.2",
     "vitest": "5.0.0"

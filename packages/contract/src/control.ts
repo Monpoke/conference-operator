@@ -148,6 +148,13 @@ export const controlViewSchema = z.object({
    */
   targetSession: sessionSchema.nullable(),
   targetIsUpcoming: z.boolean(),
+  /**
+   * The talk forced on this room, or `null`.
+   *
+   * When set, it is also `targetSession`: the phone shows it as forced and offers
+   * to lift it. Defaults to `null` for an older hub that does not say.
+   */
+  pinnedSessionId: sessionIdSchema.nullable().default(null),
   /** Lifecycle of the room's talks, by identifier. */
   sessionStates: z.record(sessionIdSchema, sessionStatusSchema),
   /** The room's slots, for the timeline and the countdown. */
@@ -246,6 +253,10 @@ export const controlCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('session.start'), sessionId: sessionIdSchema }),
   z.object({ type: z.literal('session.end'), sessionId: sessionIdSchema }),
   z.object({ type: z.literal('session.reset'), sessionId: sessionIdSchema }),
+  /** Forces the room's current talk; `null` lifts it. Settled on the hub. */
+  z.object({ type: z.literal('session.pin'), sessionId: sessionIdSchema.nullable() }),
+  /** Swaps two of the room's talks in the programme. Settled on the hub. */
+  z.object({ type: z.literal('session.swap'), a: sessionIdSchema, b: sessionIdSchema }),
   z.object({ type: z.literal('scene.set'), role: sceneRoleSchema }),
   /**
    * The room's screen, off air.

@@ -174,9 +174,14 @@ describe('contract surface', () => {
       // match: without it, a dead QR code cannot be repaired.
       'feedbackId',
       'override',
+      // The emergency gestures: a room forced onto one of its talks, and two
+      // talks swapped in the programme — undone all at once by `resetSlots`.
+      'pin',
       'reset',
+      'resetSlots',
       'start',
       'states',
+      'swap',
     ])
     expect(Object.keys(contract.program).sort()).toEqual([
       'activate',

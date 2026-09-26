@@ -136,6 +136,14 @@ export interface DisplayState {
    */
   onAirSession: Session | null
   /**
+   * The talk forced on this room, or `null`.
+   *
+   * When it is set, `currentSession` and `targetSession` are that talk, whatever
+   * the clock says, and `nextSession` is the first talk still to come. The screens
+   * that read the programme by themselves (agenda, "next up") use it to follow.
+   */
+  pinnedSessionId: string | null
+  /**
    * The room's break, running or imminent — or `null`.
    *
    * Separate from the current session: the two coexist, and "BREAK coming up"

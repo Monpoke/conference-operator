@@ -12,6 +12,15 @@ export const PROTOCOL_VERSION = 1
 export const roomIdSchema = z.string().min(1)
 export const sessionIdSchema = z.string().min(1)
 
+/**
+ * The forced talk of each room that has one: `roomId → sessionId`.
+ *
+ * Always the whole map, never a delta: it travels on an at-least-once stream, and
+ * the last one received is the truth.
+ */
+export const roomPinsSchema = z.record(roomIdSchema, sessionIdSchema)
+export type RoomPins = z.infer<typeof roomPinsSchema>
+
 /** ULID generated client-side: time-sorted, and therefore usable as an order key. */
 export const ulidSchema = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{26}$/, 'ULID attendu')
 

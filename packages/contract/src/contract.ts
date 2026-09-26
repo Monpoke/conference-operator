@@ -6,6 +6,7 @@ import { envelopeSchema, ingestResultSchema } from './events.js'
 import {
   isoDateTimeSchema,
   roomIdSchema,
+  roomPinsSchema,
   sessionIdSchema,
 } from './primitives.js'
 import { eventIdentitySchema } from './event-identity.js'
@@ -149,6 +150,15 @@ const planningSessionSchema = sessionPreviewSchema.extend({
    */
   sharedFrom: z.string().nullable().default(null),
   /**
+   * The export slot this talk occupies after a swap, or `null`.
+   *
+   * `roomId`, `startsAt` and `endsAt` above are already the served ones: a
+   * swapped talk arrives at its new place, as everywhere else. This field says it
+   * was moved there, and from whose slot — the console shows it, and offers to
+   * swap back.
+   */
+  movedTo: z.string().nullable().default(null),
+  /**
    * When the talk **actually** started and ended, or `null`.
    *
    * The `startsAt` / `endsAt` above are the program's: what was planned. These
@@ -287,6 +297,8 @@ export const contract = {
         openFeedbackProjectId: z.string().nullable(),
         rooms: z.array(z.object({ id: roomIdSchema, name: z.string() })),
         sessions: z.array(planningSessionSchema),
+        /** The forced talk of each room that has one (`roomId → sessionId`). */
+        pins: roomPinsSchema.default({}),
       }),
     ),
   },
@@ -504,6 +516,36 @@ export const contract = {
           feedbackUrl: z.url().nullable(),
         }),
       ),
+
+    /**
+     * Swaps two talks' slots — room and times — without a reimport.
+     *
+     * The emergency gesture of an inverted programme: a speaker is late, the next
+     * one is ready. It corrects the **served** program, so every screen follows —
+     * projector, agenda, "next up", the other rooms, the capture card. Swapping the
+     * same pair again gives both slots back to the export.
+     *
+     * Open to a room for two of its own talks; across rooms, to the console only.
+     * Refused on a talk already started or ended: its lifecycle was written for the
+     * room and the hour it had.
+     */
+    swap: oc
+      .input(z.object({ a: sessionIdSchema, b: sessionIdSchema }))
+      .output(z.object({ ok: z.boolean(), contentHash: z.string() })),
+    /** Gives every swapped slot back to the export. Console only. */
+    resetSlots: oc.output(z.object({ ok: z.boolean(), contentHash: z.string() })),
+    /**
+     * Forces a room's current talk, whatever the clock says; `null` lifts it.
+     *
+     * The other emergency gesture: no schedule change, just "this room is on
+     * that talk now". "Start" then acts on it, the projector titles it, and the
+     * next talk shown is the first one still to come. Lifted by hand, or by ending
+     * the forced talk. A talk of the room itself only — moving a talk across rooms
+     * is what `swap` is for.
+     */
+    pin: oc
+      .input(z.object({ roomId: roomIdSchema, sessionId: sessionIdSchema.nullable() }))
+      .output(z.object({ ok: z.boolean(), pins: roomPinsSchema })),
   },
 
   /**

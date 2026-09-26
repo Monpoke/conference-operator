@@ -75,6 +75,8 @@ export const markerRoleSchema = z.enum(['debut', 'fin'])
 export const montageJobViewSchema = z.object({
   id: z.string(),
   sessionId: sessionIdSchema,
+  /** The talk's title in the active program; `null` for a talk it does not know. */
+  title: z.string().nullable(),
   roomId: roomIdSchema,
   state: montageStateSchema,
   etape: montageEtapeSchema.nullable(),

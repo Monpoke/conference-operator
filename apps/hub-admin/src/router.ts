@@ -17,6 +17,7 @@ import { usePairingStore } from './stores/pairing.js'
 import { useSettingsStore } from './stores/settings.js'
 import { useIntegrationsStore } from './stores/integrations.js'
 import { useVodStore } from './stores/vod.js'
+import { useMontageStore } from './stores/montage.js'
 import { useModerationStore } from './stores/moderation.js'
 import { useBoucleStore } from './stores/boucle.js'
 import { useAuditStore } from './stores/audit.js'
@@ -80,7 +81,14 @@ const routes: RouteRecordRaw[] = [
     path: viewPath('vod'),
     name: 'vod',
     component: VodView,
-    meta: { view: 'vod', refresh: () => useVodStore().load(), intervalMs: 10_000 },
+    meta: {
+      view: 'vod',
+      // The uploads and the montages side by side: a talk's rushes arrive, then its video.
+      refresh: async () => {
+        await Promise.all([useVodStore().load(), useMontageStore().load()])
+      },
+      intervalMs: 10_000,
+    },
   },
   {
     path: viewPath('conferences'),

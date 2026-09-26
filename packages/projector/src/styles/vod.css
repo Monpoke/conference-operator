@@ -1,0 +1,88 @@
+/*
+ * The VOD's intro and outro, on the loop's stage: same backdrop, same palette,
+ * same typefaces — the video opens on what the room saw between two talks.
+ * No bottom band and no permanent logo here: the frame is the talk's only.
+ */
+
+/* Nothing shows before the typefaces and images are in: a frame half-drawn in a
+   fallback face would be captured as is. */
+body:not(.pret) #clip { visibility: hidden; }
+
+#noir { position: absolute; inset: 0; z-index: 11; background: #000; opacity: 0; pointer-events: none; }
+
+.vod { position: absolute; inset: 0; z-index: 1; }
+
+/* ---------- Intro ---------- */
+.vod-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 84px 140px 96px;
+  text-align: center;
+}
+.vod-tete { display: flex; flex-direction: column; align-items: center; gap: 22px; }
+.vod-logo { width: 760px; height: 170px; object-fit: contain; }
+.vod-logo[hidden] { display: none; }
+.vod-edition { font: 800 42px var(--f-texte); color: var(--orange); letter-spacing: .02em; }
+
+.vod-talk { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 26px; }
+.vod-categorie {
+  padding: 8px 28px 10px;
+  border-radius: 999px;
+  background: var(--c, var(--cyan));
+  color: #fff;
+  font: 800 32px var(--f-texte);
+  box-shadow: 0 6px 0 rgba(27, 15, 85, .35);
+}
+.vod-categorie[hidden] { display: none; }
+.vod-titre {
+  width: 100%;
+  max-height: 330px;
+  font-size: 110px;
+  line-height: 1.05;
+  overflow-wrap: break-word;
+  --contour-epaisseur: .16em;
+}
+
+.vod-orateurs {
+  --photo: calc(220px - (var(--n, 1) - 1) * 18px);
+  list-style: none;
+  display: flex;
+  justify-content: center;
+  gap: calc(96px - (var(--n, 1) - 1) * 10px);
+}
+.vod-orateur { display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: calc(var(--photo) + 180px); }
+.vod-photo {
+  width: var(--photo);
+  height: var(--photo);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  border: 8px solid #fff;
+  background: #fff;
+  box-shadow: 0 0 0 8px var(--magenta), 0 18px 40px rgba(17, 12, 70, .45);
+  font: 800 calc(var(--photo) * .34) var(--f-titre);
+  color: #fff;
+}
+.vod-photo img { width: 100%; height: 100%; object-fit: cover; }
+.vod-nom { margin-top: 10px; font: 800 40px / 1.1 var(--f-texte); }
+.vod-societe { font: 700 30px / 1.2 var(--f-texte); color: #c6f3f7; }
+
+/* ---------- Outro ---------- */
+.vod-outro { display: flex; flex-direction: column; align-items: center; padding: 70px var(--marge) 60px; }
+.vod-merci { font-size: 120px; line-height: 1; text-align: center; white-space: pre-line; }
+.vod-outro.sans-sponsors { justify-content: center; }
+.vod-outro.sans-sponsors .vod-merci { font-size: 170px; }
+.vod-outro .sp-zone { width: 100%; margin-top: 24px; }
+.vod-outro .sp-rangs { gap: calc(44px * var(--k, 1)); }
+.vod-groupe { display: flex; flex-direction: column; align-items: center; gap: calc(22px * var(--k, 1)); }
+.vod-niveau { font-size: calc(46px * var(--k, 1)); line-height: 1; color: var(--orange); }
+.vod-autres {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: calc(40px * var(--k, 1)) calc(110px * var(--k, 1));
+}

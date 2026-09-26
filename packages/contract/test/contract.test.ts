@@ -146,6 +146,9 @@ describe('contract surface', () => {
       // The same notices, sent to a team: Slack, Mattermost, generic webhook.
       'integrations',
       'messages',
+      // Editing the VODs: a queue the hub holds, workers hosted anywhere take
+      // from it with their own token, and only ever get signed addresses.
+      'montage',
       // A surface of its own, and not one more mode on the room screen: the
       // banner overlays the video where a screen message replaces everything.
       'overlay',

@@ -1,0 +1,69 @@
+# The montage worker: takes a talk from the hub's queue, edits it, sends it back.
+#
+# Not in `kustomization.yaml`, on purpose: it needs a worker token, and a token
+# only exists once the hub runs — console → VOD → Workers de montage, shown
+# once. Applied by hand, after the secret:
+#
+#   kubectl -n conference-operator create secret generic vod-montage \
+#     --from-literal=HUB_WORKER_TOKEN=wt_…
+#   kubectl apply -n conference-operator -f manifests/vod-montage.yaml
+#
+# Until the secret exists the pod waits in `CreateContainerConfigError` and
+# starts on its own once it is created.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vod-montage
+spec:
+  # One job per worker: for more throughput, more replicas.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vod-montage
+  # Never two versions side by side: a worker from another version would be
+  # refused mid-job by the hub.
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vod-montage
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      # SIGTERM lets the worker finish the job in hand rather than leave it
+      # leased for nobody; an encode takes minutes, not seconds.
+      terminationGracePeriodSeconds: 1800
+      containers:
+        - name: vod-montage
+          image: ghcr.io/monpoke/conference-operator/vod-montage:0.0.0
+          env:
+            # Inside the cluster, straight to the hub's Service.
+            - name: HUB_URL
+              value: http://hub:8787
+          envFrom:
+            - secretRef:
+                name: vod-montage
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+            limits:
+              memory: 4Gi
+          volumeMounts:
+            - name: work
+              mountPath: /work
+      volumes:
+        # A take and its montage: room for two rushes, thrown away with the pod.
+        - name: work
+          emptyDir:
+            sizeLimit: 30Gi

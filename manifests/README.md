@@ -207,3 +207,23 @@ de migration ci-dessus n'a pas été jouée. Le premier déploiement mérite d'�
 regardé :
 `kubectl -n conference-operator logs hub-0 -f`, le temps que les migrations
 passent et que le programme s'importe.
+
+## Le worker de montage
+
+Le montage des VODs tourne dans un worker à part (`apps/vod-montage`, image
+`vod-montage`), qui prend les talks dans la file du hub. Il n'est pas dans
+`kustomization.yaml` : il lui faut un jeton `wt_…`, qui n'existe qu'une fois le
+hub démarré (console → **VOD** → **Workers de montage**, affiché une seule fois).
+
+```bash
+kubectl -n conference-operator create secret generic vod-montage \
+  --from-literal=HUB_WORKER_TOKEN=wt_…
+kubectl apply -n conference-operator -f manifests/vod-montage.yaml
+```
+
+Avec une image construite localement, même principe que pour le hub — le digest :
+
+```bash
+kubectl -n conference-operator set image deployment/vod-montage \
+  vod-montage=registry.exemple.fr/cloudnord/vod-montage@sha256:<digest>
+```

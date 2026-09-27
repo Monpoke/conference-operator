@@ -78,7 +78,14 @@ async function goTo(next: number): Promise<void> {
 }
 
 const FILTER = 'min-w-[150px] flex-1 rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text'
-const CELL = 'border-t border-edge py-[9px] pr-2.5 align-top'
+const CELL = 'border-t border-edge py-[9px] pr-2.5 align-top max-md:border-t-0 max-md:py-0 max-md:pr-0'
+/**
+ * Under 768 px a row is a card, as on the Conferences page: when and where,
+ * then what was done across the width, then who and what came of it. Same
+ * markup, other classes: the table stays a table beyond.
+ */
+const ROW =
+  'max-md:flex max-md:flex-wrap max-md:items-baseline max-md:gap-x-2.5 max-md:gap-y-1 max-md:border-t max-md:border-edge max-md:py-2.5'
 </script>
 
 <template>
@@ -110,8 +117,8 @@ const CELL = 'border-t border-edge py-[9px] pr-2.5 align-top'
       </div>
 
       <div class="overflow-x-auto">
-        <table class="w-full border-collapse text-[13px]">
-          <thead>
+        <table class="w-full border-collapse text-[13px] max-md:block">
+          <thead class="max-md:hidden">
             <tr class="text-[11px] tracking-[.08em] text-dim uppercase">
               <th class="pr-2.5 pb-2 text-left font-semibold">Quand</th>
               <th class="pr-2.5 pb-2 text-left font-semibold">Qui</th>
@@ -120,16 +127,20 @@ const CELL = 'border-t border-edge py-[9px] pr-2.5 align-top'
               <th class="pb-2 text-left font-semibold">Résultat</th>
             </tr>
           </thead>
-          <tbody id="journal-rows">
-            <tr v-if="entries.length === 0">
+          <tbody id="journal-rows" class="max-md:block">
+            <tr v-if="entries.length === 0" class="max-md:block">
               <td colspan="5" class="py-3.5 text-dim">
                 {{ filtered ? 'Aucune action ne correspond.' : 'Aucune action enregistrée.' }}
               </td>
             </tr>
-            <tr v-for="entry in entries" :key="entry.id" :data-entry="entry.id">
-              <td :class="CELL" class="whitespace-nowrap tabular-nums">{{ DATE.format(new Date(entry.at)) }}</td>
-              <td :class="CELL">{{ entry.actor }}</td>
-              <td :class="CELL">
+            <tr v-for="entry in entries" :key="entry.id" :data-entry="entry.id" :class="ROW">
+              <td :class="CELL" class="whitespace-nowrap tabular-nums max-md:order-1 max-md:text-xs max-md:text-dim">
+                {{ DATE.format(new Date(entry.at)) }}
+              </td>
+              <td :class="CELL" class="max-md:order-4 max-md:text-xs max-md:break-all max-md:text-dim">
+                {{ entry.actor }}
+              </td>
+              <td :class="CELL" class="max-md:order-3 max-md:basis-full max-md:font-semibold">
                 {{ actionLabel(entry) }}
                 <!-- The request itself, for whoever needs more than the words. -->
                 <details v-if="entry.detail != null" class="text-[11px] text-dim">
@@ -137,8 +148,13 @@ const CELL = 'border-t border-edge py-[9px] pr-2.5 align-top'
                   <code class="font-mono break-all">{{ entry.detail }}</code>
                 </details>
               </td>
-              <td :class="CELL">{{ entry.roomId == null ? '—' : roomName(entry.roomId) }}</td>
-              <td :class="[CELL, resultOf(entry, now).tone]" data-role="result">
+              <!-- A dash only aligns a column: the card leaves it out. -->
+              <td :class="CELL" class="max-md:order-2 max-md:text-xs max-md:text-dim">
+                <span :class="{ 'max-md:hidden': entry.roomId == null }">
+                  {{ entry.roomId == null ? '—' : roomName(entry.roomId) }}
+                </span>
+              </td>
+              <td :class="[CELL, resultOf(entry, now).tone]" class="max-md:order-5 max-md:text-xs" data-role="result">
                 {{ resultOf(entry, now).label }}
               </td>
             </tr>

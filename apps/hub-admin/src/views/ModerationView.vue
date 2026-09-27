@@ -131,6 +131,18 @@ async function feature(post: WallPost, featured: boolean): Promise<void> {
   }
 }
 
+/** The post's own address — only an `http(s)` one: a link is a door into the operator's session. */
+function linkOf(post: WallPost): string | null {
+  return post.permalink != null && /^https?:\/\//i.test(post.permalink) ? post.permalink : null
+}
+
+/** « voir sur Instagram »: the network the post names, else the network it came from. */
+function linkLabel(post: WallPost): string {
+  if (post.network) return `voir sur ${post.network}`
+  if (['bluesky', 'mastodon', 'x'].includes(post.source)) return `voir sur ${SOURCES[post.source]}`
+  return 'voir le post'
+}
+
 function shown(post: WallPost): string {
   if (post.impressions === 0) return 'jamais affiché'
   const times = `${post.impressions.toLocaleString('fr-FR')} affichage${post.impressions > 1 ? 's' : ''}`
@@ -407,6 +419,17 @@ async function savePost(): Promise<void> {
               <span class="font-medium text-text">{{ post.author }}</span>
               <span v-if="post.network">{{ post.network }}</span>
               <span>{{ timeAgo(post.createdAt) }}</span>
+              <!-- Where it was written: to read the thread, see the image full size, before deciding. -->
+              <a
+                v-if="linkOf(post) != null"
+                :href="linkOf(post)!"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-brand underline"
+                data-role="permalink"
+              >
+                {{ linkLabel(post) }} ↗
+              </a>
             </div>
             <p class="mb-2 line-clamp-4 text-sm leading-snug break-words">{{ post.text }}</p>
             <p v-if="post.status !== 'pending'" class="mb-2 text-xs text-dim" data-role="impressions">

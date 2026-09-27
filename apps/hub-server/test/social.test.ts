@@ -47,6 +47,7 @@ describe('Bluesky', () => {
       author: 'David',
       authorHandle: 'lucasfontaine.bsky.social',
       externalId: 'at://did:plc:abc/app.bsky.feed.post/1',
+      permalink: 'https://bsky.app/profile/lucasfontaine.bsky.social/post/1',
     })
   })
 
@@ -93,6 +94,7 @@ describe('Mastodon', () => {
       fetchImpl: json([
         {
           id: '109',
+          url: 'https://framapiaf.org/@lucasfontaine/109',
           content: '<p>Belle keynote <b>!</b></p>',
           account: { acct: 'lucasfontaine@framapiaf.org', display_name: 'David' },
         },
@@ -102,7 +104,12 @@ describe('Mastodon', () => {
 
     const posts = await source.poll()
     expect(posts).toHaveLength(1)
-    expect(posts[0]).toMatchObject({ source: 'mastodon', text: 'Belle keynote !', externalId: '109' })
+    expect(posts[0]).toMatchObject({
+      source: 'mastodon',
+      text: 'Belle keynote !',
+      externalId: '109',
+      permalink: 'https://framapiaf.org/@lucasfontaine/109',
+    })
   })
 })
 
@@ -121,7 +128,12 @@ describe('X', () => {
         includes: { users: [{ id: 'u1', username: 'alice', name: 'Alice' }] },
       }),
     })
-    expect((await source.poll())[0]).toMatchObject({ source: 'x', author: 'Alice', externalId: '1' })
+    expect((await source.poll())[0]).toMatchObject({
+      source: 'x',
+      author: 'Alice',
+      externalId: '1',
+      permalink: 'https://x.com/alice/status/1',
+    })
   })
 })
 

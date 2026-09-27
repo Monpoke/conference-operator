@@ -61,8 +61,13 @@ async function copyToken(): Promise<void> {
       (Conférences → colonne VOD → « captation »).
     </p>
     <div class="overflow-x-auto">
-      <table class="w-full border-collapse text-[13px]">
-        <thead>
+      <!--
+        Under 768 px a montage is a card, as on the Conferences page: the talk
+        across the width, then its state, where it stands and the worker, then
+        the buttons. Same markup, other classes: the table stays a table beyond.
+      -->
+      <table class="w-full border-collapse text-[13px] max-md:block">
+        <thead class="max-md:hidden">
           <tr class="text-[11px] tracking-[.08em] text-dim uppercase">
             <th class="pr-2.5 pb-2 text-left font-semibold">Talk</th>
             <th class="pr-2.5 pb-2 text-left font-semibold">État</th>
@@ -71,31 +76,36 @@ async function copyToken(): Promise<void> {
             <th class="pb-2"></th>
           </tr>
         </thead>
-        <tbody id="montage-rows">
-          <tr v-if="jobs.length === 0">
-            <td colspan="5" class="py-3.5 text-dim">
+        <tbody id="montage-rows" class="max-md:block">
+          <tr v-if="jobs.length === 0" class="max-md:block">
+            <td colspan="5" class="py-3.5 text-dim max-md:block">
               Aucun montage : ils se mettent en file d’eux-mêmes quand une prise arrive dans le stockage.
             </td>
           </tr>
-          <tr v-for="job in jobs" :key="job.id" :data-montage="job.id">
-            <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
+          <tr
+            v-for="job in jobs"
+            :key="job.id"
+            :data-montage="job.id"
+            class="max-md:flex max-md:flex-wrap max-md:items-baseline max-md:gap-x-2.5 max-md:gap-y-1 max-md:border-t max-md:border-edge max-md:py-2.5"
+          >
+            <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:basis-full max-md:font-semibold">
               {{ job.title ?? job.sessionId }}
               <div v-if="job.erreur != null && job.state !== 'termine'" class="text-[11px]" :class="job.state === 'echoue' ? 'text-alert' : 'text-dim'">
                 {{ job.erreur }}
               </div>
             </td>
-            <td class="border-t border-edge py-[9px] pr-2.5 align-middle" :class="stateOf(job).tone">
+            <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0" :class="stateOf(job).tone">
               {{ stateOf(job).label }}
               <span v-if="job.tentatives > 1" class="text-dim"> · essai {{ job.tentatives }}</span>
             </td>
             <td
-              class="border-t border-edge py-[9px] pr-2.5 align-middle tabular-nums"
+              class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0 tabular-nums"
               :class="job.marquesManquantes.length > 0 ? 'text-warn' : ''"
             >
               {{ describe(job) }}
             </td>
-            <td class="border-t border-edge py-[9px] pr-2.5 align-middle text-dim">{{ job.worker ?? '' }}</td>
-            <td class="border-t border-edge py-[9px] align-middle whitespace-nowrap">
+            <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0 text-dim max-md:empty:hidden">{{ job.worker ?? '' }}</td>
+            <td class="border-t border-edge py-[9px] align-middle whitespace-nowrap max-md:basis-full max-md:border-t-0 max-md:py-0 max-md:pt-1">
               <Button v-if="job.state === 'termine'" size="small" @click="attempt(() => store.download(job.id), '')">
                 Télécharger
               </Button>

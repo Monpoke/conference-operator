@@ -13,8 +13,15 @@ import { imageRefSchema } from './boucle.js'
 export const commentSourceSchema = z.enum(['form', 'bluesky', 'mastodon', 'x', 'wallsio', 'hub'])
 export type CommentSource = z.infer<typeof commentSourceSchema>
 
-/** The partner behind a post written in the hub: « Partenaire » on screen. */
+/**
+ * The partner behind a sponsored post: « Partenaire » on screen.
+ *
+ * `key` attaches it to a partner of the program (`sponsorKey()`); the hub then
+ * takes the name, and the logo unless one is given, from the program. `null` =
+ * a name typed before posts were attached, kept as it was.
+ */
 export const wallSponsorSchema = z.object({
+  key: z.string().trim().min(1).max(200).nullable().default(null),
   name: z.string().trim().min(1).max(80),
   logo: imageRefSchema.nullable().default(null),
 })
@@ -51,6 +58,49 @@ export const commentSchema = z.object({
   sponsor: wallSponsorSchema.nullable().default(null),
 })
 export type Comment = z.infer<typeof commentSchema>
+
+/**
+ * Posts a room screen put on air: post id → times shown. What the projector page
+ * sends to its room machine, and what that machine sends to the hub.
+ */
+export const wallImpressionCountsSchema = z
+  .record(z.string().min(1).max(40), z.number().int().positive().max(100_000))
+  .refine((counts) => Object.keys(counts).length <= 500, { message: '500 posts au plus par envoi' })
+export type WallImpressionCounts = z.infer<typeof wallImpressionCountsSchema>
+
+/** The moderation lists: waiting for a decision, published, rejected or hidden. */
+export const wallListViewSchema = z.enum(['pending', 'approved', 'rejected'])
+export type WallListView = z.infer<typeof wallListViewSchema>
+
+export const wallListInputSchema = z.object({
+  view: wallListViewSchema,
+  /** Searched in the text, the author, the handle and the partner's name. */
+  q: z.string().trim().max(100).default(''),
+  page: z.number().int().min(1).default(1),
+  pageSize: z.number().int().min(5).max(50).default(20),
+})
+export type WallListInput = z.input<typeof wallListInputSchema>
+
+/** A post as the console lists it: what the rooms draw, and what it did there. */
+export const moderatedPostSchema = commentSchema.extend({
+  /** In the social wall the rooms hold right now. */
+  onScreen: z.boolean(),
+  /** Times a room put it on air, every room and day together. */
+  impressions: z.number().int().nonnegative(),
+  lastShownAt: isoDateTimeSchema.nullable(),
+})
+export type ModeratedPost = z.infer<typeof moderatedPostSchema>
+
+export const wallListSchema = z.object({
+  items: z.array(moderatedPostSchema),
+  /** Matching the search, in this view. */
+  total: z.number().int().nonnegative(),
+  page: z.number().int().min(1),
+  pageSize: z.number().int().min(1),
+  /** Each view's size, search applied: the tabs' figures. */
+  counts: z.record(wallListViewSchema, z.number().int().nonnegative()),
+})
+export type WallList = z.infer<typeof wallListSchema>
 
 /**
  * What the rooms hold of the wall: the posts on screen, featured first.

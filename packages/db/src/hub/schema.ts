@@ -186,6 +186,12 @@ export const comment = sqliteTable(
     /** A partner's post: « Partenaire » on screen, with its logo. */
     sponsorName: text('sponsor_name'),
     sponsorLogo: text('sponsor_logo'),
+    /**
+     * The program partner a sponsored post is attached to (`sponsorKey()`: its
+     * website, or its name). `null` on a post written before the link existed,
+     * which keeps only the name it was given.
+     */
+    sponsorKey: text('sponsor_key'),
     updatedAt: text('updated_at'),
   },
   (table) => [
@@ -217,6 +223,30 @@ export const question = sqliteTable(
     createdAt: text('created_at').notNull().default(now),
   },
   (table) => [index('question_room_status_idx').on(table.roomId, table.status)],
+)
+
+/**
+ * How many times a post was shown on a room screen: one counter per post, room
+ * and day, not one row per display.
+ *
+ * A room reports the pages of the wall it put on air (`wall.impressions`); the
+ * counts are added in the same transaction as the event is stored, so a batch
+ * replayed after an outage adds nothing a second time. `day` is the UTC date of
+ * the report — enough to tell one day of the event from the next.
+ */
+export const commentImpression = sqliteTable(
+  'comment_impression',
+  {
+    commentId: text('comment_id').notNull(),
+    roomId: text('room_id').notNull(),
+    day: text('day').notNull(),
+    count: integer('count').notNull().default(0),
+    lastShownAt: text('last_shown_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.commentId, table.roomId, table.day] }),
+    index('comment_impression_comment_idx').on(table.commentId),
+  ],
 )
 
 /** One vote per device and per question, without requiring a user account. */
@@ -745,6 +775,7 @@ export const hubSchema = {
   ingestEvent,
   command,
   comment,
+  commentImpression,
   question,
   questionVote,
   sessionOverride,

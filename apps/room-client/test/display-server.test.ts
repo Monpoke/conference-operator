@@ -608,3 +608,34 @@ describe('the pages OBS follows', () => {
     expect(displayViewOf('', port)).toBeNull()
   })
 })
+
+describe('social wall display counts', () => {
+  it('hands the posts the screen put on air to the room, and refuses a malformed report', async () => {
+    const reported: Record<string, number>[] = []
+    const counting = new DisplayServer({
+      runtime,
+      assets,
+      program: () => store.activeProgram(),
+      onWallImpressions: (counts) => reported.push(counts),
+      port: 0,
+    })
+    const at = await counting.listen()
+    try {
+      const send = (body: unknown) =>
+        fetch(`${at}/display/wall/impressions`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+
+      expect((await send({ counts: { post1: 2, post2: 1 } })).status).toBe(204)
+      expect((await send({ counts: { post1: -1 } })).status).toBe(400)
+      expect((await send({ counts: {} })).status).toBe(204)
+
+      // The empty report is not passed on: nothing to count.
+      expect(reported).toEqual([{ post1: 2, post2: 1 }])
+    } finally {
+      await counting.close()
+    }
+  })
+})

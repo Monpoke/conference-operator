@@ -22,6 +22,8 @@ export interface Scene {
   jouable(data: Data): boolean
   /** Every second, visible or not: the clock, the running slot. */
   tick?(data: Data, now: number): void
+  /** Just after it has gone live — the moment the room sees it. */
+  entre?(data: Data): void
   /** Just after it has left the screen. */
   quitte?(data: Data): void
   /** Set by `tick` when the scene wants rebuilding (a session just ended). */

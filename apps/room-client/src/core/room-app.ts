@@ -374,6 +374,8 @@ export class RoomApp implements ControlTarget {
       event: () => this.store.settings().event,
       boucle: () => this.store.settings().boucle,
       socialWall: () => this.store.settings().wall,
+      // The partners' figures: through the outbox, which holds them across an outage.
+      onWallImpressions: (counts) => this.emit({ type: 'wall.impressions', counts }),
       version: options.version ?? null,
       onLevelsRequested: (active) => {
         this.levelsRequested = active

@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { comment, question } from '@conference-operator/db/hub'
 import { openHubDatabase, type HubDatabase } from '../src/db.js'
+import { IngestService } from '../src/services/ingest.js'
 import { QuestionService, WallService } from '../src/services/wall.js'
 import { RateLimiter } from '../src/services/rate-limit.js'
 import { RoomService } from '../src/services/rooms.js'
@@ -245,5 +246,132 @@ describe('rate limiting', () => {
     now += 20 * 60_000
     limiter.prune()
     expect(limiter.size).toBe(0)
+  })
+})
+
+describe('moderation lists', () => {
+  const approved = (text: string, author = 'Alice') => {
+    const posted = wall.post({ source: 'form', author, text })
+    wall.moderate(posted.id, 'approve', 'regie@cloudnord.fr')
+    return posted
+  }
+
+  it('lists each view apart, and counts them all', () => {
+    wall.post({ source: 'form', author: 'Alice', text: 'En attente' })
+    approved('Publié')
+    const rejected = wall.post({ source: 'form', author: 'Bob', text: 'Rejeté' })
+    wall.moderate(rejected.id, 'reject', 'regie@cloudnord.fr')
+
+    const list = wall.list({ view: 'approved' })
+    expect(list.items.map((post) => post.text)).toEqual(['Publié'])
+    expect(list.counts).toEqual({ pending: 1, approved: 1, rejected: 1 })
+    expect(wall.list({ view: 'rejected' }).items.map((post) => post.text)).toEqual(['Rejeté'])
+  })
+
+  it('reads the queue oldest first, the published newest first', () => {
+    wall.post({ source: 'form', author: 'A', text: 'premier' })
+    wall.post({ source: 'form', author: 'A', text: 'second' })
+    approved('ancien')
+    approved('récent')
+
+    expect(wall.list({ view: 'pending' }).items.map((post) => post.text)).toEqual(['premier', 'second'])
+    expect(wall.list({ view: 'approved' }).items.map((post) => post.text)).toEqual(['récent', 'ancien'])
+  })
+
+  it('searches the text, the author and the partner, every word', () => {
+    approved('Le café est servi', 'Alice')
+    approved('Superbe keynote', 'Camille Dupont')
+    wall.saveHubPost({ author: 'Équipe', text: 'Venez au stand', sponsor: { key: 'nova-atelier.test', name: 'NOVA Atelier' } }, 'regie')
+
+    const texts = (q: string) => wall.list({ view: 'approved', q }).items.map((post) => post.text)
+    expect(texts('café')).toEqual(['Le café est servi'])
+    expect(texts('dupont')).toEqual(['Superbe keynote'])
+    expect(texts('nova atelier')).toEqual(['Venez au stand'])
+    expect(texts('keynote alice')).toEqual([])
+    // The counts follow the search: the tabs say what it found in each.
+    expect(wall.list({ view: 'pending', q: 'dupont' }).counts.approved).toBe(1)
+  })
+
+  it('takes a wildcard for a character', () => {
+    approved('100% cloud')
+    approved('1000 participants')
+
+    expect(wall.list({ view: 'approved', q: '100%' }).items.map((post) => post.text)).toEqual(['100% cloud'])
+    expect(wall.list({ view: 'approved', q: '_' }).items).toEqual([])
+  })
+
+  it('serves a page at a time, and the last one when asked beyond it', () => {
+    for (let i = 0; i < 12; i++) wall.post({ source: 'form', author: 'A', text: `message ${i}` })
+
+    const second = wall.list({ view: 'pending', page: 2, pageSize: 5 })
+    expect(second.items.map((post) => post.text)).toEqual(['message 5', 'message 6', 'message 7', 'message 8', 'message 9'])
+    expect(second.total).toBe(12)
+
+    const beyond = wall.list({ view: 'pending', page: 9, pageSize: 5 })
+    expect(beyond.page).toBe(3)
+    expect(beyond.items.map((post) => post.text)).toEqual(['message 10', 'message 11'])
+  })
+
+  it('says which published posts the rooms hold', () => {
+    const shown = approved('sur les écrans')
+    const post = wall.list({ view: 'approved' }).items[0]!
+    expect(post.id).toBe(shown.id)
+    expect(post.onScreen).toBe(true)
+  })
+
+  it('keeps the partner a sponsored post is attached to', () => {
+    const saved = wall.saveHubPost(
+      { author: 'NOVA Atelier', text: 'Le café est servi', sponsor: { key: 'nova-atelier.test', name: 'NOVA Atelier' } },
+      'regie',
+    )
+    expect(saved?.sponsor).toEqual({ key: 'nova-atelier.test', name: 'NOVA Atelier', logo: null })
+    expect(wall.screen().posts[0]?.sponsor?.key).toBe('nova-atelier.test')
+  })
+})
+
+describe('display counts', () => {
+  const impressions = (id: string, seq: number, counts: Record<string, number>, occurredAt = '2026-10-30T09:00:00.000Z') => ({
+    id,
+    roomId: TRACK_1,
+    seq,
+    occurredAt,
+    monotonicMs: seq * 1000,
+    delivery: 'required',
+    payload: { type: 'wall.impressions', counts },
+  })
+
+  it('adds what the rooms put on air, per post', () => {
+    const ingest = new IngestService(db)
+    const a = wall.saveHubPost({ author: 'A', text: 'a' }, 'regie')!
+    const b = wall.saveHubPost({ author: 'B', text: 'b' }, 'regie')!
+
+    ingest.push(TRACK_1, [impressions('01AAAAAAAAAAAAAAAAAAAAAAAA', 1, { [a.id]: 2, [b.id]: 1 })])
+    ingest.push(TRACK_1, [
+      impressions('01BBBBBBBBBBBBBBBBBBBBBBBB', 2, { [a.id]: 3 }, '2026-10-31T08:00:00.000Z'),
+    ])
+
+    const shown = wall.impressions([a.id, b.id])
+    expect(shown.get(a.id)).toEqual({ count: 5, lastShownAt: '2026-10-31T08:00:00.000Z' })
+    expect(shown.get(b.id)?.count).toBe(1)
+    const listed = wall.list({ view: 'approved' }).items.find((post) => post.id === a.id)
+    expect(listed?.impressions).toBe(5)
+  })
+
+  it('never counts a replayed batch twice', () => {
+    const ingest = new IngestService(db)
+    const a = wall.saveHubPost({ author: 'A', text: 'a' }, 'regie')!
+    const batch = [impressions('01AAAAAAAAAAAAAAAAAAAAAAAA', 1, { [a.id]: 4 })]
+
+    ingest.push(TRACK_1, batch)
+    // The room lost the acknowledgement in an outage, and sends it again.
+    const replay = ingest.push(TRACK_1, batch)
+
+    expect(replay.duplicates).toEqual(['01AAAAAAAAAAAAAAAAAAAAAAAA'])
+    expect(wall.impressions([a.id]).get(a.id)?.count).toBe(4)
+  })
+
+  it('counts nothing for a post never shown', () => {
+    const a = wall.saveHubPost({ author: 'A', text: 'a' }, 'regie')!
+    expect(wall.list({ view: 'approved' }).items[0]).toMatchObject({ id: a.id, impressions: 0, lastShownAt: null })
   })
 })

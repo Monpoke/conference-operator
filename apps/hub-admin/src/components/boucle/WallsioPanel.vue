@@ -24,6 +24,7 @@ async function save(): Promise<void> {
     await store.save('wallsio', {
       ...draft.value,
       parPage: Math.min(6, Math.max(3, Math.round(Number(draft.value.parPage) || 5))),
+      sponsoriseTous: Math.min(30, Math.max(0, Math.round(Number(draft.value.sponsoriseTous) || 0))),
     })
     reset()
     toast.say('Mur social enregistré')
@@ -38,7 +39,7 @@ async function save(): Promise<void> {
     <div v-if="draft != null" id="boucle-wallsio" class="flex flex-1 flex-col">
       <p class="mb-2 text-[13px] text-dim">
         Les posts se gèrent dans <a :href="moderationPath" class="text-brand underline">Modération</a>
-        (mise en avant, posts partenaires), le jeton walls.io dans
+        (mise en avant, posts sponsorisés et leurs affichages), le jeton walls.io dans
         <a :href="settingsPath" class="text-brand underline">Réglages</a>.
       </p>
       <label :class="LABEL" for="boucle-wallsio-titre">Titre</label>
@@ -54,7 +55,19 @@ async function save(): Promise<void> {
         max="6"
         :class="FIELD"
       />
-      <SaveBar id="btn-boucle-wallsio" :dirty="dirty" @save="save" />
+      <label :class="LABEL" for="boucle-wallsio-sponsorise">
+        Un post sponsorisé tous les … posts (0 : les posts partenaires ouvrent la page, comme un post
+        mis en avant)
+      </label>
+      <input
+        id="boucle-wallsio-sponsorise"
+        v-model.number="draft.sponsoriseTous"
+        type="number"
+        min="0"
+        max="30"
+        :class="FIELD"
+      />
+            <SaveBar id="btn-boucle-wallsio" :dirty="dirty" @save="save" />
     </div>
   </Panel>
 </template>

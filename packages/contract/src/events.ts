@@ -12,6 +12,7 @@ import {
   audioInputSchema,
 } from './primitives.js'
 import { vodConsentSchema } from './vod.js'
+import { wallImpressionCountsSchema } from './wall.js'
 
 /**
  * What became of a command a mobile control app sent: its `seq`, and whether the
@@ -125,6 +126,19 @@ export const roomEventPayloadSchema = z.discriminatedUnion('type', [
     text: z.string().min(1).max(500),
     level: z.enum(['info', 'warning', 'urgent']),
   }),
+  /**
+   * The social wall's posts the room put on air since its last report: post id →
+   * times shown. Counted by the screen when a page of the wall goes live, never
+   * when it is laid out off screen.
+   *
+   * `required`: these are the partners' figures, and an outage in the middle of
+   * the afternoon must not wipe them. The hub adds them once — a replayed batch
+   * is a duplicate, and adds nothing.
+   */
+  z.object({
+    type: z.literal('wall.impressions'),
+    counts: wallImpressionCountsSchema,
+  }),
   // ── best-effort from here on ──
   z.object({
     type: z.literal('room.heartbeat'),
@@ -215,6 +229,7 @@ export const DELIVERY_BY_EVENT: Record<RoomEventType, z.infer<typeof deliverySch
   'stream.stopped': 'required',
   'obs.connection': 'required',
   'room.message': 'required',
+  'wall.impressions': 'required',
   'room.heartbeat': 'best-effort',
   'stream.telemetry': 'best-effort',
 }

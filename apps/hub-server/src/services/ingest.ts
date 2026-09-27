@@ -11,6 +11,7 @@ import {
 import { ingestEvent, roomState, sessionConsent } from '@conference-operator/db/hub'
 import type { HubDatabase, HubTransaction } from '../db.js'
 import { SILENCE_MS } from './rooms.js'
+import { addImpressions } from './wall.js'
 
 export interface IngestOutcome {
   acked: string[]
@@ -125,6 +126,10 @@ export class IngestService {
         else {
           outcome.acked.push(envelope.id)
           if (envelope.payload.type === 'room.message') newMessage = true
+          // Counted here, with the event, and only when it is new: a replay adds nothing.
+          if (envelope.payload.type === 'wall.impressions') {
+            addImpressions(tx, envelope.roomId, envelope.occurredAt, envelope.payload.counts)
+          }
         }
       }
 

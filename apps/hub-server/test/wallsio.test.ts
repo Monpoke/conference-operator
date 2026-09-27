@@ -176,7 +176,7 @@ describe('the social wall', () => {
     )
     // Featured first: a page always has one to put in front.
     expect(posts.at(-1)?.text).toBe('post 1')
-    expect(posts.find((entry) => entry.source === 'hub')?.sponsor).toEqual({ name: 'NOVA Atelier', logo: null })
+    expect(posts.find((entry) => entry.source === 'hub')?.sponsor).toEqual({ key: null, name: 'NOVA Atelier', logo: null })
     // Partners are not the audience's: the phones' "already on screen" leaves them out.
     expect(wall.approved()).toEqual([])
   })

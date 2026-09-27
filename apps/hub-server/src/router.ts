@@ -7,6 +7,7 @@ import {
   PROTOCOL_VERSION,
   CONTROL_SESSION_HEADER,
   boucleImageRefs,
+  imageRefSchema,
   wallImageRefs,
   contract,
   isCommandExpired,
@@ -22,6 +23,7 @@ import {
   openFeedbackUrl,
   programSponsors,
   defaultSponsorPages,
+  type Program,
   type Session,
 } from '@conference-operator/program'
 import type { RawCapture } from './services/ingest.js'
@@ -141,6 +143,8 @@ const NOT_AUDITED = new Set([
   'devices.lookup',
   'wall.pending',
   'wall.onScreen',
+  'wall.list',
+  'wall.sponsors',
   'push.publicKey',
   'program.controleOpenFeedback',
 ])
@@ -1087,15 +1091,8 @@ export const router = os.router({
     catalogue: os.boucle.catalogue.use(operatorCan('settings:read')).handler(({ context }) => {
       const snapshot = context.services.programs.active()
       if (snapshot == null) return { sponsors: [], pagesParDefaut: [] }
-      const { assets } = context.services
       return {
-        sponsors: programSponsors(snapshot.program).map((sponsor) => ({
-          key: sponsor.key,
-          name: sponsor.name,
-          website: sponsor.website,
-          logoPreview: sponsor.logoUrl == null ? null : (assets.previewUrl(sponsor.logoUrl) ?? sponsor.logoUrl),
-          tiers: sponsor.tiers,
-        })),
+        sponsors: catalogueSponsors(context.services),
         pagesParDefaut: defaultSponsorPages(snapshot.program),
       }
     }),
@@ -1358,6 +1355,14 @@ export const router = os.router({
       .use(operatorCan('wall:moderate'))
       .handler(({ context }) => context.services.wall.screen()),
 
+    list: os.wall.list
+      .use(operatorCan('wall:moderate'))
+      .handler(({ input, context }) => context.services.wall.list(input)),
+
+    sponsors: os.wall.sponsors
+      .use(operatorCan('wall:moderate'))
+      .handler(({ context }) => catalogueSponsors(context.services)),
+
     feature: os.wall.feature.use(operatorCan('wall:moderate')).handler(({ input, context }) => {
       const updated = context.services.wall.setFeatured(input.id, input.featured)
       if (updated == null) throw new ORPCError('NOT_FOUND', { message: 'Message introuvable' })
@@ -1375,10 +1380,11 @@ export const router = os.router({
      * hub does not hold yet would reach the screens without it.
      */
     save: os.wall.save.use(operatorCan('wall:moderate')).handler(async ({ input, context }) => {
+      const post = { ...input, sponsor: attachSponsor(input.sponsor ?? null, context.services.programs.active()?.program) }
       await context.services.assets.prefetchUrls(
-        wallImageRefs([{ avatar: input.avatar ?? null, image: input.image ?? null, sponsor: input.sponsor ?? null }]),
+        wallImageRefs([{ avatar: post.avatar ?? null, image: post.image ?? null, sponsor: post.sponsor }]),
       )
-      const saved = context.services.wall.saveHubPost(input, context.operator.email)
+      const saved = context.services.wall.saveHubPost(post, context.operator.email)
       if (saved == null) throw new ORPCError('NOT_FOUND', { message: 'Post introuvable' })
       context.services.log('info', input.id == null ? 'mur social : post écrit dans la console' : 'mur social : post modifié', {
         id: saved.id,
@@ -2414,6 +2420,40 @@ function codeRefusalReason(cause: unknown): 'inconnu' | 'expire' | null {
   if (error === 'expired_token') return 'expire'
   if (error === 'invalid_request') return 'inconnu'
   return null
+}
+
+/** The program's partners, with where the console shows their logo from. */
+function catalogueSponsors(services: HubContext['services']) {
+  const snapshot = services.programs.active()
+  if (snapshot == null) return []
+  return programSponsors(snapshot.program).map((sponsor) => ({
+    key: sponsor.key,
+    name: sponsor.name,
+    website: sponsor.website,
+    logoPreview: sponsor.logoUrl == null ? null : (services.assets.previewUrl(sponsor.logoUrl) ?? sponsor.logoUrl),
+    tiers: sponsor.tiers,
+  }))
+}
+
+/**
+ * A sponsored post's partner, as the program knows it: its name, and its logo
+ * unless the console gave one. A key the program does not (or no longer) knows
+ * keeps what was typed — a program reimported without a partner must not make
+ * its posts unsaveable.
+ */
+function attachSponsor(
+  sponsor: { key?: string | null; name: string; logo?: string | null } | null,
+  program: Program | undefined,
+): { key: string | null; name: string; logo: string | null } | null {
+  if (sponsor == null) return null
+  const key = sponsor.key ?? null
+  const found = key == null || program == null ? undefined : programSponsors(program).find((s) => s.key === key)
+  return {
+    key,
+    name: found?.name ?? sponsor.name,
+    // The program's logo only if it reads as an image address: the post would not save otherwise.
+    logo: sponsor.logo ?? (imageRefSchema.safeParse(found?.logoUrl).success ? found!.logoUrl : null),
+  }
 }
 
 /**

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { VIEW_PERMISSIONS, consoleViews, viewPath } from '@conference-operator/contract'
-import { computed } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useSessionStore } from '../stores/session.js'
 
@@ -43,16 +43,35 @@ const LABELS: Record<string, string> = {
 function current(view: string): boolean {
   return route.meta.view === view
 }
+
+/**
+ * On a phone the tabs hold on one line that scrolls sideways — wrapped, ten of
+ * them took four lines before the page started. The current one is brought
+ * into view: a tab hidden past the edge reads as a tab that does not exist.
+ */
+const nav = ref<HTMLElement | null>(null)
+function revealCurrent(): void {
+  void nextTick(() => {
+    nav.value
+      ?.querySelector<HTMLElement>('[aria-current="page"]')
+      ?.scrollIntoView?.({ inline: 'center', block: 'nearest' })
+  })
+}
+onMounted(revealCurrent)
+watch(() => route.meta.view, revealCurrent)
 </script>
 
 <template>
-  <nav class="flex flex-wrap gap-1.5 border-b border-edge px-4 pb-3">
+  <nav
+    ref="nav"
+    class="flex flex-wrap gap-1.5 border-b border-edge px-4 pb-3 max-md:-mx-3 max-md:flex-nowrap max-md:overflow-x-auto max-md:px-3 max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden"
+  >
     <RouterLink
       v-for="entry in views"
       :id="`nav-${entry.view}`"
       :key="entry.view"
       :to="entry.path"
-      class="rounded-lg border px-3 py-2 text-[13px]"
+      class="shrink-0 rounded-lg border px-3 py-2 text-[13px] whitespace-nowrap"
       :class="
         current(entry.view)
           ? 'border-edge bg-surface2 text-text'

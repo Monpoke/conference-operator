@@ -210,8 +210,13 @@ onMounted(async () => {
 
     <Panel title="Machines appairées">
       <div class="overflow-x-auto">
-        <table class="w-full border-collapse text-[13px]">
-          <thead>
+        <!--
+          Under 768 px a machine is a card, as on the Conferences page: its name
+          across the width, then its room and the button. Same markup, other
+          classes: the table stays a table beyond.
+        -->
+        <table class="w-full border-collapse text-[13px] max-md:block">
+          <thead class="max-md:hidden">
             <tr>
               <th class="pr-2.5 pb-2 text-left text-[11px] font-semibold tracking-[.08em] text-dim uppercase">
                 Machine
@@ -222,16 +227,23 @@ onMounted(async () => {
               <th class="pb-2"></th>
             </tr>
           </thead>
-          <tbody id="machines">
-            <tr v-if="devices.length === 0">
-              <td colspan="3" class="py-3.5 text-[13px] text-dim">Aucune machine appairée.</td>
+          <tbody id="machines" class="max-md:block">
+            <tr v-if="devices.length === 0" class="max-md:block">
+              <td colspan="3" class="py-3.5 text-[13px] text-dim max-md:block">Aucune machine appairée.</td>
             </tr>
-            <tr v-for="machine in devices" :key="machine.clientId" :data-machine="machine.clientId">
-              <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
+            <tr
+              v-for="machine in devices"
+              :key="machine.clientId"
+              :data-machine="machine.clientId"
+              class="max-md:flex max-md:flex-wrap max-md:items-center max-md:gap-x-2.5 max-md:gap-y-1.5 max-md:border-t max-md:border-edge max-md:py-2.5"
+            >
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:basis-full max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:font-semibold max-md:break-all">
                 {{ machine.label ?? machine.clientId }}
               </td>
-              <td class="border-t border-edge py-[9px] pr-2.5 align-middle">{{ machine.roomId }}</td>
-              <td class="border-t border-edge py-[9px] align-middle">
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:flex-1 max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:text-dim">
+                {{ roomName(machine.roomId) ?? machine.roomId }}
+              </td>
+              <td class="border-t border-edge py-[9px] align-middle max-md:border-t-0 max-md:py-0">
                 <span v-if="machine.revokedAt != null" class="text-dim">révoquée</span>
                 <Button v-else variant="danger" size="small" @click="revokeMachine(machine.clientId)">
                   Révoquer

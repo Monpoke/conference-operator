@@ -215,4 +215,17 @@ describe('vue d’appairage', () => {
 
     expect(calls).toContainEqual({ path: 'devices/revoke', input: { clientId: 'machine-a' } })
   })
+
+  it('names the room a machine serves, not its identifier', async () => {
+    const { wrapper } = await mountView({
+      devices: [
+        { clientId: 'machine-a', roomId: 'track-1', label: null, revokedAt: null },
+        { clientId: 'machine-c', roomId: 'salle-disparue', label: null, revokedAt: null },
+      ],
+    })
+
+    expect(wrapper.get('[data-machine="machine-a"]').text()).toContain('Track #1')
+    // A room the hub no longer knows keeps its identifier: better than a blank.
+    expect(wrapper.get('[data-machine="machine-c"]').text()).toContain('salle-disparue')
+  })
 })

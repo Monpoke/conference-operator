@@ -1453,6 +1453,9 @@ export const router = os.router({
     list: os.audit.list
       .use(operatorCan('audit:read'))
       .handler(({ input, context }) => context.services.audit.list(input)),
+    page: os.audit.page
+      .use(operatorCan('audit:read'))
+      .handler(({ input, context }) => context.services.audit.page(input)),
   },
 
   integrations: {

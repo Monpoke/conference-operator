@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { AUDIT_RETENTION_DAYS, type AuditEntry } from '@conference-operator/contract'
+import { AUDIT_RETENTION_DAYS, type AuditEntry, type AuditPage } from '@conference-operator/contract'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createHub, type Hub } from '../src/server.js'
 import { provisionOperator } from '../src/operators.js'
@@ -188,6 +188,43 @@ describe('reading it', () => {
     expect(room).toHaveLength(1)
     const nobody = (await rpc('audit/list', { actor: MOBILE.email })).body.json as AuditEntry[]
     expect(nobody).toEqual([])
+  })
+
+  it('serves numbered pages, with how many entries match', async () => {
+    for (let i = 0; i < 25; i++) await rpc('rooms/resync', { roomId: TRACK_1 })
+
+    const second = (await rpc('audit/page', { pageSize: 10, page: 2 })).body.json as AuditPage
+    expect(second.total).toBe(25)
+    expect(second.items).toHaveLength(10)
+    const first = (await rpc('audit/page', { pageSize: 10, page: 1 })).body.json as AuditPage
+    // Newest first, and the second page picks up where the first stops.
+    expect(first.items.at(-1)!.id).toBeGreaterThan(second.items[0]!.id)
+
+    const beyond = (await rpc('audit/page', { pageSize: 10, page: 9 })).body.json as AuditPage
+    expect(beyond.page).toBe(3)
+    expect(beyond.items).toHaveLength(5)
+  })
+
+  it('searches who, what and the request', async () => {
+    await rpc('rooms/resync', { roomId: TRACK_1 })
+    await rpc('overlay/hide', { roomId: TRACK_1 })
+
+    const found = async (q: string, extra: Record<string, unknown> = {}) =>
+      ((await rpc('audit/page', { q, ...extra })).body.json as AuditPage).items.map((entry) => entry.action)
+    expect(await found('overlay')).toEqual(['overlay.hide'])
+    expect(await found('teilhard')).toHaveLength(2)
+    expect(await found(OPERATOR.email.toUpperCase())).toHaveLength(2)
+    expect(await found('personne')).toEqual([])
+    // The console names what the hub does not: « Bandeau retiré » is `overlay.hide`.
+    expect(await found('bandeau retiré', { actions: ['overlay.hide'] })).toEqual(['overlay.hide'])
+    expect(await found('Track #1', { rooms: [TRACK_1] })).toHaveLength(2)
+    // A wildcard is a character.
+    expect(await found('%')).toEqual([])
+  })
+
+  it('reserves the pages to those who may read the log', async () => {
+    const mobile = await signIn(MOBILE)
+    expect((await rpc('audit/page', {}, mobile)).status).toBe(403)
   })
 
   it(`forgets what is older than ${AUDIT_RETENTION_DAYS} days, on the hub's clock`, async () => {

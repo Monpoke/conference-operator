@@ -43,6 +43,18 @@ function mountView(rows: AuditEntry[]) {
           calls.push({ path: 'audit/list', input })
           return rows
         },
+        // The hub's paging, as far as the view reads it.
+        page: async (input: { page: number; pageSize: number }) => {
+          calls.push({ path: 'audit/page', input })
+          const last = Math.max(1, Math.ceil(rows.length / input.pageSize))
+          const page = Math.min(input.page, last)
+          return {
+            items: rows.slice((page - 1) * input.pageSize, page * input.pageSize),
+            total: rows.length,
+            page,
+            pageSize: input.pageSize,
+          }
+        },
       },
       rooms: { list: async () => [{ id: TRACK_1, name: 'Track #1' }] },
     },
@@ -80,6 +92,77 @@ describe('the journal view', () => {
     await flushPromises()
 
     expect(calls.at(-1)?.input).toMatchObject({ roomId: TRACK_1, actor: null })
+  })
+
+  it('searches once typing pauses, from the first page, in the console\'s words too', async () => {
+    vi.useFakeTimers()
+    try {
+      const { calls, wrapper } = mountView(Array.from({ length: 120 }, (_, i) => entry({ id: i + 1 })))
+      await useAuditStore().load()
+      await useAuditStore().goTo(2)
+      await flushPromises()
+
+      await wrapper.get('#journal-search').setValue('Reglages')
+      await wrapper.get('#journal-search').setValue('Réglages modif')
+      const before = calls.length
+      await vi.advanceTimersByTimeAsync(300)
+      await flushPromises()
+
+      // One request for the pause, not one per key.
+      expect(calls.slice(before)).toHaveLength(1)
+      expect(calls.at(-1)).toMatchObject({
+        path: 'audit/page',
+        // What the hub stores for what the operator reads.
+        input: { q: 'Réglages modif', page: 1, actions: ['settings.update'], rooms: [] },
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('finds a room by its name', async () => {
+    vi.useFakeTimers()
+    try {
+      const { calls, wrapper } = mountView([entry()])
+      await useAuditStore().load()
+      await flushPromises()
+
+      await wrapper.get('#journal-search').setValue('track #1')
+      await vi.advanceTimersByTimeAsync(300)
+      await flushPromises()
+
+      expect(calls.at(-1)?.input).toMatchObject({ rooms: [TRACK_1] })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('pages through the log, newest first', async () => {
+    const { calls, wrapper } = mountView(Array.from({ length: 120 }, (_, i) => entry({ id: 120 - i })))
+    await useAuditStore().load()
+    await flushPromises()
+
+    expect(wrapper.findAll('[data-entry]')).toHaveLength(50)
+    expect(wrapper.get('#journal-pages').text()).toContain('Page 1 sur 3')
+    expect(wrapper.get('#journal-pages [data-role="previous"]').attributes('disabled')).toBeDefined()
+
+    await wrapper.get('#journal-pages [data-role="next"]').trigger('click')
+    await flushPromises()
+
+    expect(calls.at(-1)).toMatchObject({ path: 'audit/page', input: { page: 2, pageSize: 50 } })
+    expect(wrapper.get('#journal-pages').text()).toContain('Page 2 sur 3')
+    expect(wrapper.get('[data-entry]').attributes('data-entry')).toBe('70')
+  })
+
+  it('exports what the search found, not the whole log', async () => {
+    const { calls, wrapper } = mountView([entry()])
+    await useAuditStore().load()
+    await useAuditStore().search('regie')
+    await flushPromises()
+
+    await useAuditStore().everything()
+    expect(calls.at(-1)).toMatchObject({ path: 'audit/list', input: { q: 'regie', limit: 1000 } })
+    wrapper.unmount()
   })
 })
 

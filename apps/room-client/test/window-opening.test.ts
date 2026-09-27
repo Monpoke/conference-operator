@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decideOpening } from '../src/core/window-opening.js'
+import { DEFAULT_WINDOW_TITLE, decideOpening, windowTitleFor } from '../src/core/window-opening.js'
 
 const LOCAL = 'http://127.0.0.1:7788'
 
@@ -31,5 +31,31 @@ describe('decideOpening', () => {
     expect(decideOpening('file:///etc/passwd', LOCAL)).toBe('refuse')
     expect(decideOpening('mailto:regie@cloudnord.fr', LOCAL)).toBe('refuse')
     expect(decideOpening('pas une adresse', LOCAL)).toBe('refuse')
+  })
+})
+
+describe('the title of a window opened from the control app', () => {
+  const FILE = '2026-10-30_amphi-rs-031_0950_industrialiser-l-ia.mp4'
+
+  it('names a rush after its file, not after the npm package', () => {
+    // A video has no document title: the window used to keep Electron's default,
+    // `@conference-operator/room-client`.
+    expect(windowTitleFor(`${LOCAL}/control/recordings/file?file=${encodeURIComponent(FILE)}`)).toBe(FILE)
+  })
+
+  it('keeps only the file s name when the path comes with its folder', () => {
+    expect(windowTitleFor(`${LOCAL}/control/recordings/file?file=${encodeURIComponent(`C:\\obs\\${FILE}`)}`)).toBe(FILE)
+  })
+
+  it('says an excerpt is one', () => {
+    expect(windowTitleFor(`${LOCAL}/control/recordings/excerpt?file=${encodeURIComponent(FILE)}&at=0`)).toBe(
+      `Extrait — ${FILE}`,
+    )
+  })
+
+  it('starts any other page as the room s shell, until its own title comes', () => {
+    expect(windowTitleFor(`${LOCAL}/display/overlay`)).toBe(DEFAULT_WINDOW_TITLE)
+    expect(windowTitleFor(`${LOCAL}/control/recordings/file`)).toBe(DEFAULT_WINDOW_TITLE)
+    expect(windowTitleFor('pas une adresse')).toBe(DEFAULT_WINDOW_TITLE)
   })
 })

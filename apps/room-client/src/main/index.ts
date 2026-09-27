@@ -4,7 +4,7 @@ import { RoomApp } from '../core/room-app.js'
 import { formatLogLine } from '../core/console-log.js'
 import { createMockObsTransport } from '../core/obs-mock.js'
 import { modeOffset, readMode } from '../core/mode.js'
-import { decideOpening } from '../core/window-opening.js'
+import { decideOpening, windowTitleFor } from '../core/window-opening.js'
 import { loadOrCreateClientId } from './identity.js'
 import { createSecretVault } from './secrets.js'
 import { resolveHubAddress } from './hub-address.js'
@@ -314,7 +314,7 @@ function wireScreenOpenings(control: BrowserWindow, localOrigin: string): void {
       case 'refuse':
         return { action: 'deny' }
       case 'window':
-        return { action: 'allow' }
+        return { action: 'allow', overrideBrowserWindowOptions: { title: windowTitleFor(url) } }
     }
   })
 }

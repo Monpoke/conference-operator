@@ -47,3 +47,29 @@ function sameOrigin(target: URL, localOrigin: string): boolean {
     return false
   }
 }
+
+/**
+ * The title of a window the control app opens.
+ *
+ * A video has no document title: the window kept Electron's default — the
+ * application's name, which is the npm package's (`@conference-operator/room-client`),
+ * on top of a rush the operator had just asked to see. A take is named after its
+ * file; any other page starts as the room's shell and takes its own `<title>` as
+ * soon as it has one.
+ */
+export function windowTitleFor(url: string): string {
+  let target: URL
+  try {
+    target = new URL(url)
+  } catch {
+    return DEFAULT_WINDOW_TITLE
+  }
+  const file = target.searchParams.get('file')
+  const name = file == null ? '' : (file.split(/[\\/]/).pop() ?? '')
+  if (name !== '' && target.pathname === '/control/recordings/file') return name
+  if (name !== '' && target.pathname === '/control/recordings/excerpt') return `Extrait — ${name}`
+  return DEFAULT_WINDOW_TITLE
+}
+
+/** What the installer calls the application: `productName` in `electron-builder.yml`. */
+export const DEFAULT_WINDOW_TITLE = 'Régie de salle'

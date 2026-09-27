@@ -631,8 +631,9 @@ function vodOf(session: PlannedSession): { statut: VodStatut; detail: string } {
                   noter ↗
                 </a>
                 <span v-else class="text-dim">—</span>
+                <!-- A correction of the slot, like the actions: hidden with them. -->
                 <Button
-                  v-if="session.kind !== 'break'"
+                  v-if="session.kind !== 'break' && actionsShown"
                   size="small"
                   class="ml-1.5"
                   :class="session.feedbackIdOverride != null ? 'text-warn' : 'text-dim'"

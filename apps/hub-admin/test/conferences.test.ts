@@ -435,8 +435,19 @@ describe('conferences view', () => {
     const { wrapper } = await mountView({
       sessions: [{ ...TALK, feedbackIdOverride: 'vue-et-les-regies' }],
     })
+    await wrapper.get('#btn-planning-actions').trigger('click')
 
     expect(wrapper.get('[data-feedback-session="talk-1"]').text()).toContain('✱')
+  })
+
+  it('hides the feedback identifier until the slots are being edited', async () => {
+    const { wrapper } = await mountView({ sessions: [TALK] })
+
+    // Correcting the identifier is a change to the slot, like the actions: it
+    // stays out of the way of whoever only reads the list.
+    expect(wrapper.find('[data-feedback-session="talk-1"]').exists()).toBe(false)
+    await wrapper.get('#btn-planning-actions').trigger('click')
+    expect(wrapper.find('[data-feedback-session="talk-1"]').exists()).toBe(true)
   })
 
   it('warns when no OpenFeedback project is set', async () => {

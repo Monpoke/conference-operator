@@ -40,14 +40,35 @@ async function requestUpload(roomId: string, file: string | null): Promise<void>
   }
 }
 
-function requestAll(): void {
-  if (room.value === '') {
-    // The request goes to one specific machine: with no room there would be nobody
-    // to talk to. Saying so beats a button that does nothing.
-    toast.fail('Choisissez une salle : la demande part vers une machine précise.')
+/**
+ * Everything not yet uploaded, from the room chosen — or from every room.
+ *
+ * The hub only knows how to ask one machine: the request is a command addressed to
+ * a room, which a disconnected room catches up on reconnection. "Toutes les salles"
+ * is therefore one request per room, and the operator is told how many went out
+ * and which failed — at the end of the day, a room left behind is a disk
+ * dismantled with its rushes still on it.
+ */
+async function requestAll(): Promise<void> {
+  if (room.value !== '') {
+    await requestUpload(room.value, null)
     return
   }
-  void requestUpload(room.value, null)
+  const targets = rooms.value
+  if (targets.length === 0) {
+    toast.fail('Aucune salle à rapatrier.')
+    return
+  }
+  const results = await Promise.allSettled(targets.map((target) => store.request(target.id, null)))
+  const failed = targets.filter((_, index) => results[index]!.status === 'rejected')
+  const asked = targets.length - failed.length
+  if (failed.length === 0) {
+    toast.say(`Rapatriement demandé à ${asked} salle${asked > 1 ? 's' : ''}`)
+  } else {
+    toast.fail(
+      `Rapatriement demandé à ${asked} salle${asked > 1 ? 's' : ''} sur ${targets.length} — échec : ${failed.map((target) => target.name).join(', ')}`,
+    )
+  }
 }
 </script>
 

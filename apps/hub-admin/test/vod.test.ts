@@ -10,8 +10,8 @@ import { useSessionStore } from '../src/stores/session.js'
  *
  * This view is looked at at a precise moment: just before dismantling a room,
  * while its disk is still plugged in. What counts is therefore that it tells the
- * truth about what is left to bring home — and that it clearly refuses a request
- * it would not know where to address.
+ * truth about what is left to bring home — and that a request for every room
+ * reaches every room, one machine at a time.
  */
 
 interface Call {
@@ -124,14 +124,36 @@ describe('vue VOD', () => {
     })
   })
 
-  it('refuses "tout relancer" with no room, rather than doing nothing', async () => {
+  it('asks every room when "toutes les salles" is chosen', async () => {
     const { calls, wrapper } = await mountView([IN_PROGRESS])
 
     await wrapper.get('#btn-vod-retry').trigger('click')
     await flushPromises()
 
-    // The request targets one machine: with no room there is nobody to talk to.
-    expect(calls.filter((call) => call.path === 'vod/request')).toHaveLength(0)
+    // The hub only asks one machine at a time: one request per room.
+    expect(calls.filter((call) => call.path === 'vod/request').map((call) => call.input)).toEqual([
+      { roomId: 'track-1', file: null },
+      { roomId: 'track-2', file: null },
+    ])
+  })
+
+  it('still asks the other rooms when one refuses', async () => {
+    const { calls, wrapper } = await mountView([IN_PROGRESS])
+    const client = useSessionStore().client as unknown as {
+      rpc: { vod: { request: (input: { roomId: string }) => Promise<unknown> } }
+    }
+    const request = client.rpc.vod.request
+    client.rpc.vod.request = async (input) => {
+      if (input.roomId === 'track-1') throw new Error('Salle injoignable')
+      return request(input)
+    }
+
+    await wrapper.get('#btn-vod-retry').trigger('click')
+    await flushPromises()
+
+    expect(calls.filter((call) => call.path === 'vod/request').map((call) => call.input)).toEqual([
+      { roomId: 'track-2', file: null },
+    ])
   })
 
   it('brings back a whole room once one has been chosen', async () => {

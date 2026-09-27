@@ -12,6 +12,8 @@ import {
   type DisplayPayload,
   type DisplayView,
   type WallCard,
+  type WallImpressionCounts,
+  wallImpressionCountsSchema,
 } from '@conference-operator/contract'
 import {
   agendaForRoom,
@@ -144,6 +146,11 @@ export interface DisplayServerOptions {
    * the levels of does not pay their price.
    */
   onLevelsRequested?: (active: boolean) => void
+  /**
+   * The screen put pages of the social wall on air: which posts, how many times.
+   * Absent — a test — the counts are dropped.
+   */
+  onWallImpressions?: (counts: WallImpressionCounts) => void
   /** The machine's load, read on demand. By default, this machine's. */
   hostLoad?: () => HostLoad
   host?: string
@@ -673,6 +680,18 @@ export class DisplayServer {
     })
 
     this.registerControl()
+
+    /**
+     * The projector page reports the wall's posts it put on air. Only the room's
+     * own page calls it: the hub's previews never reach a room machine, so they
+     * are never counted.
+     */
+    this.app.post('/display/wall/impressions', async (request, reply) => {
+      const parsed = wallImpressionCountsSchema.safeParse((request.body as { counts?: unknown } | null)?.counts)
+      if (!parsed.success) return reply.status(400).send({ ok: false })
+      if (Object.keys(parsed.data).length > 0) this.options.onWallImpressions?.(parsed.data)
+      return reply.status(204).send()
+    })
 
     /**
      * Control actions.

@@ -108,6 +108,7 @@ export class Regie {
       const depart = this.scenes.get(this.etape().scene)!
       depart.scene.el.classList.add('is-live')
       this.visible = depart
+      depart.scene.entre?.(data)
       this.barreDepart()
       this.onChange()
       return
@@ -350,6 +351,7 @@ export class Regie {
       this.visible = vers
       this.ecoule = 0
       this.enTransition = false
+      if (this.data) vers.scene.entre?.(this.data)
       this.barreDepart()
       this.onChange()
       if (depuis?.scene.quitte && this.data) {

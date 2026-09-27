@@ -1,21 +1,26 @@
 import { createHash } from 'node:crypto'
 import { EventEmitter, on } from 'node:events'
-import { and, asc, desc, eq, gt, isNull, notInArray, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gt, inArray, isNull, max, notInArray, or, sql, sum, type SQL, type SQLWrapper } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import {
   commentSchema,
   hubPostInputSchema,
+  wallListInputSchema,
   imageRefSchema,
   isoDateTimeSchema,
   questionSchema,
   type Comment,
   type CommentSource,
   type HubPostInput,
+  type ModeratedPost,
   type Question,
+  type WallList,
+  type WallListInput,
+  type WallListView,
   type WallSnapshot,
 } from '@conference-operator/contract'
-import { comment, question, questionVote } from '@conference-operator/db/hub'
-import type { HubDatabase } from '../db.js'
+import { comment, commentImpression, question, questionVote } from '@conference-operator/db/hub'
+import type { HubDatabase, HubTransaction } from '../db.js'
 
 const CHANNEL = 'wall'
 
@@ -263,6 +268,7 @@ export class WallService {
       featured: input.featured,
       sponsorName: input.sponsor?.name ?? null,
       sponsorLogo: input.sponsor?.logo ?? null,
+      sponsorKey: input.sponsor?.key ?? null,
       updatedAt: new Date().toISOString(),
     }
     let row: typeof comment.$inferSelect | undefined
@@ -386,6 +392,72 @@ export class WallService {
       .digest('hex')
       .slice(0, 16)
     return { revision, posts }
+  }
+
+  /**
+   * One page of a moderation list, searched, with what each post did on screen.
+   *
+   * The queue reads oldest first — it is a queue; the others newest first. This
+   * one does go to SQL: it serves the console, a handful of operators, never the
+   * audience.
+   */
+  list(raw: WallListInput): WallList {
+    const input = wallListInputSchema.parse(raw)
+    const search = searchClause(input.q)
+    const where = (view: WallListView) => and(eq(comment.status, view), search)
+
+    const counts = { pending: 0, approved: 0, rejected: 0 } satisfies Record<WallListView, number>
+    const grouped = this.db
+      .select({ status: comment.status, n: count() })
+      .from(comment)
+      .where(search)
+      .groupBy(comment.status)
+      .all()
+    for (const { status, n } of grouped) if (status in counts) counts[status as WallListView] = n
+
+    const total = counts[input.view]
+    const lastPage = Math.max(1, Math.ceil(total / input.pageSize))
+    const page = Math.min(input.page, lastPage)
+    const rows = this.db
+      .select()
+      .from(comment)
+      .where(where(input.view))
+      .orderBy(input.view === 'pending' ? asc(comment.seq) : desc(comment.seq))
+      .limit(input.pageSize)
+      .offset((page - 1) * input.pageSize)
+      .all()
+
+    const shown = this.impressions(rows.map((row) => row.id))
+    const onScreen = new Set(this.screenSnapshot.posts.map((post) => post.id))
+    const items = readable(
+      rows,
+      (row): ModeratedPost => ({
+        ...toComment(row),
+        onScreen: onScreen.has(row.id),
+        impressions: shown.get(row.id)?.count ?? 0,
+        lastShownAt: shown.get(row.id)?.lastShownAt ?? null,
+      }),
+      'comment',
+      this.warned,
+      this.warn,
+    )
+    return { items, total, page, pageSize: input.pageSize, counts }
+  }
+
+  /** Times each post was put on air, every room and day together. */
+  impressions(ids: readonly string[]): Map<string, { count: number; lastShownAt: string | null }> {
+    if (ids.length === 0) return new Map()
+    const rows = this.db
+      .select({
+        id: commentImpression.commentId,
+        count: sum(commentImpression.count).mapWith(Number),
+        lastShownAt: max(commentImpression.lastShownAt),
+      })
+      .from(commentImpression)
+      .where(inArray(commentImpression.commentId, [...ids]))
+      .groupBy(commentImpression.commentId)
+      .all()
+    return new Map(rows.map((row) => [row.id, { count: row.count ?? 0, lastShownAt: row.lastShownAt }]))
   }
 
   pending(source?: CommentSource): Comment[] {
@@ -580,6 +652,55 @@ export class QuestionService {
   }
 }
 
+/**
+ * Adds what a room put on air to the counters.
+ *
+ * Takes the transaction it runs in: the ingest calls it for an event it has just
+ * stored, never for a replayed one, so that a count is added exactly once.
+ */
+export function addImpressions(
+  tx: HubTransaction,
+  roomId: string,
+  at: string,
+  counts: Record<string, number>,
+): void {
+  const day = at.slice(0, 10)
+  for (const [commentId, n] of Object.entries(counts)) {
+    tx.insert(commentImpression)
+      .values({ commentId, roomId, day, count: n, lastShownAt: at })
+      .onConflictDoUpdate({
+        target: [commentImpression.commentId, commentImpression.roomId, commentImpression.day],
+        set: {
+          count: sql`${commentImpression.count} + ${n}`,
+          lastShownAt: sql`max(${commentImpression.lastShownAt}, ${at})`,
+        },
+      })
+      .run()
+  }
+}
+
+/**
+ * The search, as a clause: every word must appear somewhere — the text, the
+ * author, the handle or the partner. `LIKE` ignores case (for ASCII letters),
+ * and its wildcards are escaped: searching "100%" finds "100%".
+ */
+function searchClause(q: string): SQL | undefined {
+  const words = q.split(/\s+/).filter((word) => word !== '')
+  if (words.length === 0) return undefined
+  return and(
+    ...words.map((word) => {
+      const pattern = `%${word.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
+      const like = (column: SQLWrapper) => sql`${column} like ${pattern} escape '\\'`
+      return or(
+        like(comment.text),
+        like(comment.author),
+        like(sql`coalesce(${comment.authorHandle}, '')`),
+        like(sql`coalesce(${comment.sponsorName}, '')`),
+      )!
+    }),
+  )
+}
+
 function toComment(row: typeof comment.$inferSelect): Comment {
   return commentSchema.parse({
     id: row.id,
@@ -599,7 +720,7 @@ function toComment(row: typeof comment.$inferSelect): Comment {
     postedAt: row.postedAt,
     featured: row.featured || row.sourcePinned || row.sponsorName != null,
     pinned: row.sourcePinned,
-    sponsor: row.sponsorName == null ? null : { name: row.sponsorName, logo: row.sponsorLogo },
+    sponsor: row.sponsorName == null ? null : { key: row.sponsorKey, name: row.sponsorName, logo: row.sponsorLogo },
   })
 }
 

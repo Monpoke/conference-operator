@@ -155,6 +155,13 @@
       "when": 1790433619159,
       "tag": "0021_wide_marvel_zombies",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1790526616028,
+      "tag": "0022_orange_scrambler",
+      "breakpoints": true
     }
   ]
 }

@@ -236,8 +236,14 @@ export const boucleSchema = z.object({
       hashtag: z.string().max(40).default('#CloudNord2026'),
       /** Cards on a page, the featured one included. */
       parPage: z.number().int().min(3).max(6).default(5),
+      /**
+       * One sponsored post every this many posts of the wall, the partners taking
+       * turns. `0` = none slotted in: a partner's post then leads the page like
+       * any featured one.
+       */
+      sponsoriseTous: z.number().int().min(0).max(30).default(0),
     })
-    .default({ titre: 'Le mur Cloud Nord', hashtag: '#CloudNord2026', parPage: 5 }),
+    .default({ titre: 'Le mur Cloud Nord', hashtag: '#CloudNord2026', parPage: 5, sponsoriseTous: 0 }),
   conduite: z
     .object({
       paragraphes: z.array(z.string().max(300)).max(6),

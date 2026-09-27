@@ -12,6 +12,7 @@ import { dateLisible } from '../time.js'
 export function carte(p: WallCard, now: number): HTMLElement {
   const auteur = p.author || '?'
   const article = cree('article', 'carte')
+  article.dataset.post = p.id
   if (p.featured) article.classList.add('en-avant')
   if (p.sponsor) article.classList.add('partenaire')
 

@@ -37,6 +37,8 @@ import {
   commentSourceSchema,
   hubPostInputSchema,
   questionSchema,
+  wallListInputSchema,
+  wallListSchema,
   wallSnapshotSchema,
   wallsIoStatusSchema,
 } from './wall.js'
@@ -69,6 +71,15 @@ import {
   integrationViewSchema,
 } from './integrations.js'
 import { auditEntrySchema, auditQuerySchema } from './audit.js'
+
+/** A partner of the program, as the console chooses it. */
+const catalogueSponsorSchema = z.object({
+  key: z.string(),
+  name: z.string(),
+  website: z.string().nullable(),
+  logoPreview: z.string().nullable(),
+  tiers: z.array(z.string()),
+})
 
 /**
  * The system's single contract, mounted on three transports:
@@ -676,15 +687,7 @@ export const contract = {
      */
     catalogue: oc.output(
       z.object({
-        sponsors: z.array(
-          z.object({
-            key: z.string(),
-            name: z.string(),
-            website: z.string().nullable(),
-            logoPreview: z.string().nullable(),
-            tiers: z.array(z.string()),
-          }),
-        ),
+        sponsors: z.array(catalogueSponsorSchema),
         pagesParDefaut: z.array(sponsorPageSchema),
       }),
     ),
@@ -769,6 +772,17 @@ export const contract = {
       .output(z.object({ ok: z.boolean() })),
     /** What the rooms show right now, featured first. Admin. */
     onScreen: oc.output(wallSnapshotSchema),
+    /**
+     * The moderation lists, a page at a time, searched: every post the hub ever
+     * held — the queue, the published, the rejected — with its display counts.
+     * Admin.
+     */
+    list: oc.input(wallListInputSchema).output(wallListSchema),
+    /**
+     * The program's partners a sponsored post can be attached to — the loop's
+     * catalogue, for a moderator who does not read the settings. Admin.
+     */
+    sponsors: oc.output(z.array(catalogueSponsorSchema)),
     /** Puts a post forward, or back in line. A walls.io pin stays forward. Admin. */
     feature: oc
       .input(z.object({ id: z.string(), featured: z.boolean() }))

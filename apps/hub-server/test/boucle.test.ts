@@ -217,6 +217,19 @@ describe('the loop over the wire', () => {
     expect(served.headers.get('content-security-policy')).toContain('sandbox')
   })
 
+  it('keeps the social accounts it is sent, and refuses an address that is not one', async () => {
+    const site = { network: 'Site', handle: 'cloudnord.fr', url: 'https://cloudnord.fr/' }
+    await admin.settings.update({ socialLinks: [site] })
+    // Read back, not trusted: the console once said « enregistrés » for nothing.
+    expect((await admin.settings.get()).socialLinks).toEqual([site])
+
+    await expect(
+      admin.settings.update({ socialLinks: [{ network: 'Site', handle: 'x', url: 'cloudnord.fr' }] }),
+    ).rejects.toThrow()
+    // The refusal changed nothing.
+    expect((await admin.settings.get()).socialLinks).toEqual([site])
+  })
+
   it('previews the room screen for a signed-in operator only', async () => {
     importProgram()
     const anonymous = await fetch(`${origin}/boucle/apercu`)

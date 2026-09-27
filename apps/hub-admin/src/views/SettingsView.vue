@@ -5,6 +5,7 @@ import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import IntegrationDialog from '../components/IntegrationDialog.vue'
 import { useSeededField } from '../composables/seededField.js'
+import { checkSocialLinks, type SocialField, type SocialRowError } from '../composables/socialLinks.js'
 import {
   KIND_LABELS,
   deliveryStatus,
@@ -139,17 +140,34 @@ watch(
   { immediate: true, deep: true },
 )
 
+/** What is wrong with each row, by index — cleared as soon as the row is edited. */
+const socialErrors = ref<Record<number, SocialRowError>>({})
+
+watch(socialLinks, () => {
+  socialErrors.value = {}
+}, { deep: true })
+
+function socialInvalid(index: number, field: SocialField): boolean {
+  return socialErrors.value[index]?.fields.includes(field) === true
+}
+
 async function saveSocialLinks(): Promise<void> {
-  // Empty rows are dropped here: adding a row and then thinking better of it is a
-  // normal gesture, and the hub would refuse an empty URL.
-  const filled = socialLinks.value.filter(
-    (link) => link.network.trim() !== '' && link.handle.trim() !== '' && link.url.trim() !== '',
-  )
+  // Checked here, not left to the hub: see `checkSocialLinks`. An empty row is
+  // dropped, a half-filled one stops the save with what is missing.
+  const { links, errors } = checkSocialLinks(socialLinks.value)
+  if (Object.keys(errors).length > 0) {
+    socialErrors.value = errors
+    const count = Object.keys(errors).length
+    toast.fail(`Rien n'est enregistré : ${count} compte${count > 1 ? 's' : ''} à corriger.`)
+    return
+  }
   try {
-    await store.update({ socialLinks: filled })
-    toast.say('Réseaux enregistrés')
+    await store.update({ socialLinks: links })
+    // What was stored, as stored: `cloudnord.fr` now reads `https://cloudnord.fr/`.
+    socialLinks.value = links.map((link) => ({ ...link }))
+    toast.say(links.length === 0 ? 'Réseaux enregistrés : aucun compte' : `Réseaux enregistrés : ${links.length} compte${links.length > 1 ? 's' : ''}`)
   } catch {
-    /* already reported */
+    /* already reported by the client's error hook — and nothing is said to have been saved */
   }
 }
 
@@ -711,29 +729,36 @@ async function confirmRemoveIntegration(): Promise<void> {
         <Empty v-if="socialLinks.length === 0">
           Aucun compte déclaré. La boucle des salles saute cette page.
         </Empty>
-        <div
-          v-for="(link, index) in socialLinks"
-          :key="index"
-          class="mb-1.5 grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,2fr)_auto] items-center gap-1.5"
-        >
-          <input
-            v-model="link.network"
-            placeholder="Réseau"
-            class="min-w-0 rounded-lg border border-edge bg-canvas px-2 py-1.5 text-sm text-text"
-          />
-          <input
-            v-model="link.handle"
-            placeholder="@handle"
-            class="min-w-0 rounded-lg border border-edge bg-canvas px-2 py-1.5 text-sm text-text"
-          />
-          <input
-            v-model="link.url"
-            placeholder="https://…"
-            class="min-w-0 rounded-lg border border-edge bg-canvas px-2 py-1.5 text-sm text-text"
-          />
-          <Button variant="danger" size="small" title="Retirer ce compte" @click="socialLinks.splice(index, 1)">
-            ×
-          </Button>
+        <div v-for="(link, index) in socialLinks" :key="index" class="mb-1.5" :data-social-row="index">
+          <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,2fr)_auto] items-center gap-1.5">
+            <input
+              v-model="link.network"
+              placeholder="Réseau"
+              :aria-invalid="socialInvalid(index, 'network')"
+              class="min-w-0 rounded-lg border bg-canvas px-2 py-1.5 text-sm text-text"
+              :class="socialInvalid(index, 'network') ? 'border-alert' : 'border-edge'"
+            />
+            <input
+              v-model="link.handle"
+              placeholder="@handle"
+              :aria-invalid="socialInvalid(index, 'handle')"
+              class="min-w-0 rounded-lg border bg-canvas px-2 py-1.5 text-sm text-text"
+              :class="socialInvalid(index, 'handle') ? 'border-alert' : 'border-edge'"
+            />
+            <input
+              v-model="link.url"
+              placeholder="https://…"
+              :aria-invalid="socialInvalid(index, 'url')"
+              class="min-w-0 rounded-lg border bg-canvas px-2 py-1.5 text-sm text-text"
+              :class="socialInvalid(index, 'url') ? 'border-alert' : 'border-edge'"
+            />
+            <Button variant="danger" size="small" title="Retirer ce compte" @click="socialLinks.splice(index, 1)">
+              ×
+            </Button>
+          </div>
+          <p v-if="socialErrors[index]" class="mt-1 text-xs text-alert" :data-social-error="index">
+            {{ socialErrors[index]!.message }}
+          </p>
         </div>
       </div>
       <div class="mt-2 flex gap-1.5">

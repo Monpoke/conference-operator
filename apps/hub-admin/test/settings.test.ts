@@ -272,6 +272,41 @@ describe('settings view', () => {
     expect((sent?.input as { socialLinks: unknown[] }).socialLinks).toEqual([])
   })
 
+  it('saves nothing, and says why, when a social row is half filled', async () => {
+    const { calls, wrapper } = await mountView()
+
+    await wrapper.get('#btn-social-add').trigger('click')
+    await flushPromises()
+    const inputs = wrapper.findAll('[data-social-row="0"] input')
+    await inputs[0]!.setValue('Site')
+    await inputs[1]!.setValue('cloudnord.fr')
+    await wrapper.get('#btn-social-links').trigger('click')
+    await flushPromises()
+
+    // It used to drop the row and announce « Réseaux enregistrés ».
+    expect(calls.some((call) => call.path === 'settings/update')).toBe(false)
+    expect(wrapper.get('[data-social-error="0"]').text()).toContain("l'adresse")
+    expect(inputs[2]!.attributes('aria-invalid')).toBe('true')
+  })
+
+  it('completes the address the way the hub wants it', async () => {
+    const { calls, wrapper } = await mountView()
+
+    await wrapper.get('#btn-social-add').trigger('click')
+    await flushPromises()
+    const inputs = wrapper.findAll('[data-social-row="0"] input')
+    await inputs[0]!.setValue('Site')
+    await inputs[1]!.setValue('cloudnord.fr')
+    await inputs[2]!.setValue('cloudnord.fr')
+    await wrapper.get('#btn-social-links').trigger('click')
+    await flushPromises()
+
+    const sent = calls.find((call) => call.path === 'settings/update')
+    expect((sent?.input as { socialLinks: unknown[] }).socialLinks).toEqual([
+      { network: 'Site', handle: 'cloudnord.fr', url: 'https://cloudnord.fr/' },
+    ])
+  })
+
   it('sends back the screens left on, inverted', async () => {
     const { calls, wrapper } = await mountView()
 

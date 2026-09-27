@@ -92,8 +92,13 @@ async function requestAll(): Promise<void> {
       </div>
 
       <div class="overflow-x-auto">
-        <table class="w-full border-collapse text-[13px]">
-          <thead>
+        <!--
+          Under 768 px an upload is a card, as on the Conferences page: room,
+          state and progress, then the file across the width, then the button.
+          Same markup, other classes: the table stays a table beyond.
+        -->
+        <table class="w-full border-collapse text-[13px] max-md:block">
+          <thead class="max-md:hidden">
             <tr class="text-[11px] tracking-[.08em] text-dim uppercase">
               <th class="pr-2.5 pb-2 text-left font-semibold">Salle</th>
               <th class="pr-2.5 pb-2 text-left font-semibold">Fichier</th>
@@ -102,19 +107,20 @@ async function requestAll(): Promise<void> {
               <th class="pb-2"></th>
             </tr>
           </thead>
-          <tbody id="vod-rows">
-            <tr v-if="uploads.length === 0">
-              <td colspan="5" class="py-3.5 text-dim">Aucun téléversement.</td>
+          <tbody id="vod-rows" class="max-md:block">
+            <tr v-if="uploads.length === 0" class="max-md:block">
+              <td colspan="5" class="py-3.5 text-dim max-md:block">Aucun téléversement.</td>
             </tr>
             <tr
               v-for="upload in uploads"
               :key="`${upload.roomId}/${upload.file}`"
               :data-upload="upload.file"
+              class="max-md:flex max-md:flex-wrap max-md:items-baseline max-md:gap-x-2.5 max-md:gap-y-1 max-md:border-t max-md:border-edge max-md:py-2.5"
             >
-              <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:order-1 max-md:font-semibold">
                 {{ upload.roomName ?? upload.roomId }}
               </td>
-              <td class="border-t border-edge py-[9px] pr-2.5 align-middle font-mono text-[11px]">
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0 font-mono text-[11px] max-md:order-4 max-md:basis-full max-md:break-all">
                 {{ upload.file }}
                 <!--
                   L'erreur du stockage est reprise telle quelle : « AccessDenied »
@@ -125,15 +131,15 @@ async function requestAll(): Promise<void> {
                 </div>
               </td>
               <td
-                class="border-t border-edge py-[9px] pr-2.5 align-middle"
+                class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:order-2"
                 :class="stateOf(upload).tone"
               >
                 {{ stateOf(upload).label }}
               </td>
-              <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:order-3 max-md:text-dim">
                 {{ progress(upload) }} %{{ rate(upload) }}
               </td>
-              <td class="border-t border-edge py-[9px] align-middle">
+              <td class="border-t border-edge py-[9px] align-middle max-md:order-5 max-md:border-t-0 max-md:py-0 max-md:empty:hidden">
                 <Button
                   v-if="upload.state !== 'termine'"
                   size="small"

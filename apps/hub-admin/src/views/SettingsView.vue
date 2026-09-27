@@ -646,8 +646,12 @@ async function confirmRemoveIntegration(): Promise<void> {
       </div>
 
       <div class="overflow-x-auto">
-        <table class="w-full border-collapse text-[13px]">
-          <thead>
+        <!--
+          Under 768 px a version is a card, as on the Conferences page; the
+          figures carry their word, the column headers being gone.
+        -->
+        <table class="w-full border-collapse text-[13px] max-md:block">
+          <thead class="max-md:hidden">
             <tr class="text-[11px] tracking-[.08em] text-dim uppercase">
               <th class="pr-2.5 pb-2 text-left font-semibold">Version</th>
               <th class="pr-2.5 pb-2 text-left font-semibold">Créneaux</th>
@@ -655,27 +659,31 @@ async function confirmRemoveIntegration(): Promise<void> {
               <th class="pb-2"></th>
             </tr>
           </thead>
-          <tbody id="snapshots">
-            <tr v-if="snapshots.length === 0">
-              <td colspan="4"><Empty>Aucun programme importé.</Empty></td>
+          <tbody id="snapshots" class="max-md:block">
+            <tr v-if="snapshots.length === 0" class="max-md:block">
+              <td colspan="4" class="max-md:block"><Empty>Aucun programme importé.</Empty></td>
             </tr>
             <tr
               v-for="snapshot in snapshots"
               v-else
               :key="snapshot.contentHash"
               :data-snapshot="snapshot.contentHash"
+              class="max-md:flex max-md:flex-wrap max-md:items-center max-md:gap-x-2.5 max-md:gap-y-1 max-md:border-t max-md:border-edge max-md:py-2.5"
             >
-              <td class="border-t border-edge py-[9px] pr-2.5 align-middle font-mono text-[11px]">
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0 font-mono text-[11px] max-md:basis-full">
                 <span v-if="snapshot.active" class="text-ok">● actif </span>
                 {{ snapshot.contentHash.slice(0, 10) }}
               </td>
-              <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
-                {{ snapshot.sessionCount }}
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0">
+                {{ snapshot.sessionCount }}<span class="md:hidden"> créneaux</span>
               </td>
-              <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
-                {{ snapshot.issueCount > 0 ? snapshot.issueCount : '—' }}
+              <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:flex-1" :class="{ 'max-md:text-dim': snapshot.issueCount === 0 }">
+                <span class="max-md:hidden">{{ snapshot.issueCount > 0 ? snapshot.issueCount : '—' }}</span>
+                <span class="md:hidden">
+                  {{ snapshot.issueCount > 0 ? `${snapshot.issueCount} anomalie${snapshot.issueCount > 1 ? 's' : ''}` : 'aucune anomalie' }}
+                </span>
               </td>
-              <td class="border-t border-edge py-[9px] align-middle">
+              <td class="border-t border-edge py-[9px] align-middle max-md:border-t-0 max-md:py-0">
                 <!-- A failed import on the day is rolled back with one click. -->
                 <Button
                   v-if="!snapshot.active"
@@ -730,7 +738,9 @@ async function confirmRemoveIntegration(): Promise<void> {
           Aucun compte déclaré. La boucle des salles saute cette page.
         </Empty>
         <div v-for="(link, index) in socialLinks" :key="index" class="mb-1.5" :data-social-row="index">
-          <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,2fr)_auto] items-center gap-1.5">
+          <div
+            class="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,2fr)_auto] items-center gap-1.5 max-md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+          >
             <input
               v-model="link.network"
               placeholder="Réseau"
@@ -749,7 +759,7 @@ async function confirmRemoveIntegration(): Promise<void> {
               v-model="link.url"
               placeholder="https://…"
               :aria-invalid="socialInvalid(index, 'url')"
-              class="min-w-0 rounded-lg border bg-canvas px-2 py-1.5 text-sm text-text"
+              class="min-w-0 rounded-lg border bg-canvas px-2 py-1.5 text-sm text-text max-md:order-last max-md:col-span-3"
               :class="socialInvalid(index, 'url') ? 'border-alert' : 'border-edge'"
             />
             <Button variant="danger" size="small" title="Retirer ce compte" @click="socialLinks.splice(index, 1)">

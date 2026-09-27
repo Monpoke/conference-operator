@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { wallImageRefs, type CommentSource } from '@conference-operator/contract'
-import type { PostInput, PostOutcome, WallService } from './wall.js'
+import { sourcePermalink, type PostInput, type PostOutcome, type WallService } from './wall.js'
 
 /**
  * A social source.
@@ -62,6 +62,7 @@ export function blueskySource(options: {
           text: String(post.record.text),
           // The post's URI: stable, and it is what deduplicates redeliveries.
           externalId: post.uri,
+          permalink: sourcePermalink('bluesky', post.uri, post.author.handle),
         }))
     },
   }
@@ -71,6 +72,8 @@ const mastodonStatusSchema = z.array(
   z.looseObject({
     id: z.string(),
     content: z.string(),
+    /** The status's page on its own instance — the one to open, whatever instance relayed it. */
+    url: z.string().nullish(),
     account: z.looseObject({ acct: z.string(), display_name: z.string().nullish() }),
   }),
 )
@@ -106,6 +109,7 @@ export function mastodonSource(options: {
           authorHandle: status.account.acct,
           text: htmlToText(status.content),
           externalId: status.id,
+          permalink: status.url ?? null,
         }))
         .filter((entry) => entry.text.length > 0)
     },
@@ -160,6 +164,7 @@ export function xSource(options: {
           authorHandle: user?.username ?? null,
           text: tweet.text,
           externalId: tweet.id,
+          permalink: sourcePermalink('x', tweet.id, user?.username ?? null),
         }
       })
     },

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { comment, question } from '@conference-operator/db/hub'
 import { openHubDatabase, type HubDatabase } from '../src/db.js'
 import { IngestService } from '../src/services/ingest.js'
-import { QuestionService, WallService } from '../src/services/wall.js'
+import { QuestionService, WallService, safePermalink, sourcePermalink } from '../src/services/wall.js'
 import { RateLimiter } from '../src/services/rate-limit.js'
 import { RoomService } from '../src/services/rooms.js'
 import { testSecrets } from './helpers/secrets.js'
@@ -373,5 +373,56 @@ describe('display counts', () => {
   it('counts nothing for a post never shown', () => {
     const a = wall.saveHubPost({ author: 'A', text: 'a' }, 'regie')!
     expect(wall.list({ view: 'approved' }).items[0]).toMatchObject({ id: a.id, impressions: 0, lastShownAt: null })
+  })
+})
+
+describe("a post's own address", () => {
+  it('is rebuilt from what Bluesky and X give', () => {
+    expect(sourcePermalink('bluesky', 'at://did:plc:abc123/app.bsky.feed.post/3kxyz', 'alice.bsky.social')).toBe(
+      'https://bsky.app/profile/alice.bsky.social/post/3kxyz',
+    )
+    // No handle: the DID opens the same profile.
+    expect(sourcePermalink('bluesky', 'at://did:plc:abc123/app.bsky.feed.post/3kxyz', null)).toBe(
+      'https://bsky.app/profile/did%3Aplc%3Aabc123/post/3kxyz',
+    )
+    expect(sourcePermalink('x', '1850000000000000000', 'cloudnord')).toBe('https://x.com/cloudnord/status/1850000000000000000')
+    expect(sourcePermalink('x', '1850000000000000000', null)).toBe('https://x.com/i/web/status/1850000000000000000')
+    expect(sourcePermalink('form', null, null)).toBeNull()
+  })
+
+  it('is only ever one a browser should open', () => {
+    expect(safePermalink('https://www.instagram.com/p/abc/')).toBe('https://www.instagram.com/p/abc/')
+    expect(safePermalink('javascript:alert(1)')).toBeNull()
+    expect(safePermalink('data:text/html,<b>x</b>')).toBeNull()
+    expect(safePermalink('pas une adresse')).toBeNull()
+    expect(safePermalink(`https://exemple.fr/${'a'.repeat(600)}`)).toBeNull()
+  })
+
+  it('is kept for a post still waiting for moderation', () => {
+    const posted = wall.post({
+      source: 'mastodon',
+      author: 'Alice',
+      text: 'Super talk',
+      externalId: '1122',
+      permalink: 'https://piaille.fr/@alice/1122',
+    })
+    expect(posted.status).toBe('pending')
+    expect(wall.list({ view: 'pending' }).items[0]?.permalink).toBe('https://piaille.fr/@alice/1122')
+  })
+
+  it('is given to the posts stored before the hub kept it', () => {
+    // A row as an older hub wrote it: no address, but the post's URI and author.
+    db.insert(comment)
+      .values({
+        id: 'ancien',
+        source: 'bluesky',
+        author: 'Alice',
+        authorHandle: 'alice.bsky.social',
+        externalId: 'at://did:plc:abc123/app.bsky.feed.post/3kxyz',
+        text: 'Super talk',
+      })
+      .run()
+
+    expect(wall.pending()[0]?.permalink).toBe('https://bsky.app/profile/alice.bsky.social/post/3kxyz')
   })
 })

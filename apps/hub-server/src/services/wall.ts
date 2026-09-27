@@ -203,6 +203,9 @@ export class WallService {
         status: trusted ? 'approved' : 'pending',
         roomId: input.roomId ?? null,
         sessionId: input.sessionId ?? null,
+        // Every source's own address, the queue included: the moderator opens
+        // the post where it was written before deciding.
+        permalink: safePermalink(input.permalink),
         ...(trusted
           ? { moderatedAt: new Date().toISOString(), moderatedBy: input.source, ...sourceFields(input) }
           : {}),
@@ -715,13 +718,52 @@ function toComment(row: typeof comment.$inferSelect): Comment {
     authorSubtitle: row.authorSubtitle,
     avatar: row.avatar,
     image: row.image,
-    permalink: row.permalink,
+    permalink: safePermalink(row.permalink) ?? sourcePermalink(row.source, row.externalId, row.authorHandle),
     network: row.network,
     postedAt: row.postedAt,
     featured: row.featured || row.sourcePinned || row.sponsorName != null,
     pinned: row.sourcePinned,
     sponsor: row.sponsorName == null ? null : { key: row.sponsorKey, name: row.sponsorName, logo: row.sponsorLogo },
   })
+}
+
+/**
+ * A post's address, only if it is one a browser should open: `http(s)`, of a
+ * sane length. The console puts it behind a link — a `javascript:` given by a
+ * source would run in an operator's session.
+ */
+export function safePermalink(value: string | null | undefined): string | null {
+  if (value == null || value.length > 600) return null
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' || url.protocol === 'http:' ? value : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Where a post lives, rebuilt from what its source gave: a Bluesky post's URI
+ * and its author, a tweet's id. What the ingest stores from now on, and what the
+ * posts stored before it still get. `null` when there is nothing to build from —
+ * a Mastodon status names its own address, it is not rebuilt.
+ */
+export function sourcePermalink(
+  source: string,
+  externalId: string | null | undefined,
+  handle: string | null | undefined,
+): string | null {
+  if (externalId == null) return null
+  if (source === 'bluesky') {
+    // at://did:plc:…/app.bsky.feed.post/<rkey>
+    const match = /^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/([^/]+)$/.exec(externalId)
+    if (match == null) return null
+    return `https://bsky.app/profile/${encodeURIComponent(handle || match[1]!)}/post/${encodeURIComponent(match[2]!)}`
+  }
+  if (source === 'x' && /^\d+$/.test(externalId)) {
+    return handle ? `https://x.com/${encodeURIComponent(handle)}/status/${externalId}` : `https://x.com/i/web/status/${externalId}`
+  }
+  return null
 }
 
 /**
@@ -737,7 +779,7 @@ function sourceFields(input: PostInput) {
     authorSubtitle: input.authorSubtitle?.slice(0, 120) ?? null,
     avatar: valid(imageRefSchema, input.avatar),
     image: valid(imageRefSchema, input.image),
-    permalink: input.permalink != null && input.permalink.length <= 600 ? input.permalink : null,
+    permalink: safePermalink(input.permalink),
     network: input.network?.slice(0, 30) ?? null,
     postedAt: valid(isoDateTimeSchema, input.postedAt),
     sourceActive: input.active ?? true,

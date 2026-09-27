@@ -284,6 +284,26 @@ describe('moderation view', () => {
     expect(card.find('[data-role="unfeature"]').exists()).toBe(false)
   })
 
+  it('links a post to where it was written, never to a script', async () => {
+    const { wrapper } = mountView([
+      { ...POST, permalink: 'https://www.instagram.com/p/abc/' },
+      { ...POST, id: 'bsky', source: 'bluesky', network: null, permalink: 'https://bsky.app/profile/a/post/1' },
+      { ...POST, id: 'piege', permalink: 'javascript:alert(1)' },
+      { ...POST, id: 'sans', permalink: null },
+    ])
+    await useModerationStore().show('approved')
+    await flushPromises()
+
+    const link = wrapper.get(`[data-post="${POST.id}"] [data-role="permalink"]`)
+    expect(link.attributes('href')).toBe('https://www.instagram.com/p/abc/')
+    expect(link.attributes('target')).toBe('_blank')
+    expect(link.attributes('rel')).toContain('noopener')
+    expect(link.text()).toContain('voir sur Instagram')
+    expect(wrapper.get('[data-post="bsky"] [data-role="permalink"]').text()).toContain('voir sur bluesky')
+    expect(wrapper.find('[data-post="piege"] [data-role="permalink"]').exists()).toBe(false)
+    expect(wrapper.find('[data-post="sans"] [data-role="permalink"]').exists()).toBe(false)
+  })
+
   it('brings back a post rejected by mistake', async () => {
     const { calls, wrapper } = mountView([{ ...POST, status: 'rejected' }])
     await useModerationStore().show('rejected')

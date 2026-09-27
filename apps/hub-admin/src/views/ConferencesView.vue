@@ -310,8 +310,8 @@ function vodOf(session: PlannedSession): { statut: VodStatut; detail: string } {
   >
     <Panel class="col-span-full" title="Conférences — toutes salles">
       <div class="overflow-x-auto">
-        <table class="w-full border-collapse text-[13px]">
-          <thead>
+        <table class="w-full border-collapse text-[13px] max-md:block">
+          <thead class="max-md:hidden">
             <tr class="text-[11px] tracking-[.08em] text-dim uppercase">
               <th class="pr-2.5 pb-2 text-left font-semibold">Salle</th>
               <th class="pr-2.5 pb-2 text-left font-semibold">Conférence</th>
@@ -321,7 +321,7 @@ function vodOf(session: PlannedSession): { statut: VodStatut; detail: string } {
               <th class="pb-2"></th>
             </tr>
           </thead>
-          <tbody id="conferences">
+          <tbody id="conferences" class="max-md:block">
             <tr v-if="!hasActiveProgram">
               <td colspan="6"><Empty>Aucun programme actif.</Empty></td>
             </tr>
@@ -333,23 +333,29 @@ function vodOf(session: PlannedSession): { statut: VodStatut; detail: string } {
                 </Empty>
               </td>
             </tr>
-            <tr v-for="state in states" v-else :key="state.sessionId" :data-session="state.sessionId">
-              <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
+            <tr
+              v-for="state in states"
+              v-else
+              :key="state.sessionId"
+              :data-session="state.sessionId"
+              class="max-md:flex max-md:flex-wrap max-md:items-baseline max-md:gap-x-2.5 max-md:gap-y-1 max-md:border-t max-md:border-edge max-md:py-2.5"
+            >
+              <td class="border-t border-edge py-[9px] pr-2.5 max-md:border-t-0 max-md:py-0 max-md:pr-0 align-middle max-md:basis-full max-md:text-xs max-md:text-dim">
                 {{ state.roomName ?? state.roomId ?? '—' }}
               </td>
               <!-- The title, not the identifier: nobody recognises a talk by its id. -->
-              <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
+              <td class="border-t border-edge py-[9px] pr-2.5 max-md:border-t-0 max-md:py-0 max-md:pr-0 align-middle max-md:basis-full max-md:font-semibold">
                 {{ state.title ?? state.sessionId }}
               </td>
-              <td class="border-t border-edge py-[9px] pr-2.5 align-middle text-dim">
+              <td class="border-t border-edge py-[9px] pr-2.5 max-md:border-t-0 max-md:py-0 max-md:pr-0 align-middle text-dim">
                 {{ state.scheduledStartsAt == null
                   ? '—'
                   : `${hour(state.scheduledStartsAt)}–${hour(state.scheduledEndsAt)}` }}
               </td>
-              <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
+              <td class="border-t border-edge py-[9px] pr-2.5 max-md:border-t-0 max-md:py-0 max-md:pr-0 align-middle">
                 <span :class="remaining(state).tone">{{ remaining(state).text }}</span>
               </td>
-              <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
+              <td class="border-t border-edge py-[9px] pr-2.5 max-md:border-t-0 max-md:py-0 max-md:pr-0 align-middle">
                 <Badge :variant="state.status === 'running' ? 'running' : 'ended'">
                   {{ state.status === 'running' ? 'en cours' : 'terminée' }}
                 </Badge>
@@ -363,7 +369,7 @@ function vodOf(session: PlannedSession): { statut: VodStatut; detail: string } {
                   {{ state.decidedBy === 'auto' ? 'auto' : state.decidedBy }}
                 </span>
               </td>
-              <td class="border-t border-edge py-[9px] align-middle">
+              <td class="border-t border-edge py-[9px] align-middle max-md:border-t-0 max-md:py-0">
                 <div class="flex gap-1.5">
                   <Button
                     v-for="offered in actions(state)"
@@ -503,8 +509,8 @@ function vodOf(session: PlannedSession): { statut: VodStatut; detail: string } {
       </div>
 
       <div class="overflow-x-auto">
-        <table class="w-full border-collapse text-[13px]">
-          <thead>
+        <table class="w-full border-collapse text-[13px] max-md:block">
+          <thead class="max-md:hidden">
             <tr class="text-[11px] tracking-[.08em] text-dim uppercase">
               <th class="pr-2.5 pb-2 text-left font-semibold">Prévu</th>
               <th class="pr-2.5 pb-2 text-left font-semibold">Réel</th>
@@ -515,7 +521,7 @@ function vodOf(session: PlannedSession): { statut: VodStatut; detail: string } {
               <th v-if="actionsShown" class="pb-2 text-left font-semibold">Action</th>
             </tr>
           </thead>
-          <tbody id="planning">
+          <tbody id="planning" class="max-md:block">
             <tr v-if="planning == null || planning.sessions.length === 0">
               <td colspan="7">
                 <Empty>Aucun programme actif. Il s'importe depuis les réglages.</Empty>
@@ -530,13 +536,14 @@ function vodOf(session: PlannedSession): { statut: VodStatut; detail: string } {
               :key="session.id"
               :data-slot="session.id"
               :data-when="placeOf(session)"
+              class="max-md:flex max-md:flex-wrap max-md:items-baseline max-md:gap-x-2.5 max-md:gap-y-1 max-md:border-t max-md:border-edge max-md:py-2.5"
               :class="{
                 'bg-surface2': placeOf(session) === 'en-cours',
                 'opacity-55': placeOf(session) === 'passe',
               }"
             >
               <td
-                class="border-t border-edge py-[9px] pr-2.5 align-middle whitespace-nowrap tabular-nums"
+                class="border-t border-edge py-[9px] pr-2.5 max-md:border-t-0 max-md:py-0 max-md:pr-0 align-middle whitespace-nowrap tabular-nums"
                 :class="
                   placeOf(session) === 'en-cours' ? 'font-semibold text-text' : 'text-dim'
                 "
@@ -547,7 +554,10 @@ function vodOf(session: PlannedSession): { statut: VodStatut; detail: string } {
                 ></span>
                 {{ slotLabel(session) }}
               </td>
-              <td class="border-t border-edge py-[9px] pr-2.5 align-middle whitespace-nowrap tabular-nums">
+              <td
+                class="border-t border-edge py-[9px] pr-2.5 max-md:border-t-0 max-md:py-0 max-md:pr-0 align-middle whitespace-nowrap tabular-nums"
+                :class="{ 'max-md:hidden': actual(session) == null }"
+              >
                 <span v-if="actual(session) == null" class="text-dim">—</span>
                 <span v-else :title="actual(session)!.title">
                   {{ actual(session)!.text }}–<span
@@ -557,7 +567,7 @@ function vodOf(session: PlannedSession): { statut: VodStatut; detail: string } {
                   ><template v-else>{{ hour(session.endedAt) }}</template>
                 </span>
               </td>
-              <td class="border-t border-edge py-[9px] pr-2.5 align-middle whitespace-nowrap">
+              <td class="border-t border-edge py-[9px] pr-2.5 max-md:border-t-0 max-md:py-0 max-md:pr-0 align-middle whitespace-nowrap max-md:text-dim">
                 {{ session.roomName ?? '—' }}
               </td>
               <!--
@@ -566,14 +576,14 @@ function vodOf(session: PlannedSession): { statut: VodStatut; detail: string } {
                 ouvrant le planning.
               -->
               <td
-                class="border-t border-edge py-[9px] pr-2.5 align-middle"
+                class="border-t border-edge py-[9px] pr-2.5 max-md:border-t-0 max-md:py-0 max-md:pr-0 align-middle max-md:basis-full max-md:font-semibold"
                 :class="{ 'text-dim': session.kind === 'break' }"
               >
                 {{ session.title }}
-                <div v-if="session.speakers.length > 0" class="text-xs text-dim">
+                <div v-if="session.speakers.length > 0" class="text-xs font-normal text-dim">
                   {{ session.speakers.join(', ') }}
                 </div>
-                <div v-if="session.sharedFrom != null" class="text-xs text-dim">
+                <div v-if="session.sharedFrom != null" class="text-xs font-normal text-dim">
                   pause commune, héritée d'une autre salle
                 </div>
                 <!--
@@ -618,7 +628,13 @@ function vodOf(session: PlannedSession): { statut: VodStatut; detail: string } {
                   en ce moment
                 </div>
               </td>
-              <td class="border-t border-edge py-[9px] pr-2.5 align-middle whitespace-nowrap">
+              <td
+                class="border-t border-edge py-[9px] pr-2.5 max-md:border-t-0 max-md:py-0 max-md:pr-0 align-middle whitespace-nowrap"
+                :class="{
+                  'max-md:hidden':
+                    session.feedbackUrl == null && (session.kind === 'break' || !actionsShown),
+                }"
+              >
                 <!-- An empty cell rather than a dead link: with no OpenFeedback project
                      réglé, ou sur une pause, il n'y a rien à noter. -->
                 <a
@@ -630,7 +646,7 @@ function vodOf(session: PlannedSession): { statut: VodStatut; detail: string } {
                 >
                   noter ↗
                 </a>
-                <span v-else class="text-dim">—</span>
+                <span v-else class="text-dim max-md:hidden">—</span>
                 <!-- A correction of the slot, like the actions: hidden with them. -->
                 <Button
                   v-if="session.kind !== 'break' && actionsShown"
@@ -648,7 +664,9 @@ function vodOf(session: PlannedSession): { statut: VodStatut; detail: string } {
                   {{ session.feedbackIdOverride != null ? 'id ✱' : 'id' }}
                 </Button>
               </td>
-              <td class="border-t border-edge py-[9px] pr-2.5 align-middle">
+              <td
+                :class="{ 'max-md:hidden': session.kind === 'break' || session.sharedFrom != null }"
+                class="border-t border-edge py-[9px] pr-2.5 max-md:border-t-0 max-md:py-0 max-md:pr-0 align-middle">
                 <!--
                   Rien sur une pause : personne ne cherche le rush du déjeuner, et
                   un bouton qui ouvrirait une modale vide sur vingt-sept lignes
@@ -665,9 +683,9 @@ function vodOf(session: PlannedSession): { statut: VodStatut; detail: string } {
                 >
                   captation
                 </Button>
-                <span v-else class="text-dim">—</span>
+                <span v-else class="text-dim max-md:hidden">—</span>
               </td>
-              <td v-if="actionsShown" class="border-t border-edge py-[9px] align-middle">
+              <td v-if="actionsShown" class="border-t border-edge py-[9px] align-middle max-md:border-t-0 max-md:py-0 max-md:basis-full">
                 <!--
                   Une pause héritée d'une autre salle ne s'édite pas ici : c'est
                   le créneau d'origine qu'on corrige, et la projection suit. Un

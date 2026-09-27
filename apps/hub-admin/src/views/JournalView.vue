@@ -2,8 +2,8 @@
 import { Button, Hint, Panel, useToast } from '@conference-operator/components'
 import { AUDIT_RETENTION_DAYS } from '@conference-operator/contract'
 import { storeToRefs } from 'pinia'
-import { computed, ref, watch } from 'vue'
-import { actionLabel, resultOf, toCsv, useAuditStore } from '../stores/audit.js'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { PAGE_SIZE, actionLabel, resultOf, toCsv, useAuditStore } from '../stores/audit.js'
 
 /**
  * The audit log: who did what through the hub.
@@ -14,7 +14,7 @@ import { actionLabel, resultOf, toCsv, useAuditStore } from '../stores/audit.js'
  * remembers changing.
  */
 const store = useAuditStore()
-const { entries, rooms, room, actor, actors, more } = storeToRefs(store)
+const { entries, total, page, rooms, room, actor, actors } = storeToRefs(store)
 const toast = useToast()
 const exporting = ref(false)
 
@@ -28,6 +28,20 @@ const actorOptions = computed(() => [
 ])
 
 watch([room, actor], () => void store.reload().catch(() => {}))
+
+// The search leaves once typing pauses, not on every key.
+const search = ref(store.query)
+let typing: ReturnType<typeof setTimeout> | null = null
+watch(search, (q) => {
+  if (typing != null) clearTimeout(typing)
+  typing = setTimeout(() => void store.search(q).catch(() => {}), 300)
+})
+onBeforeUnmount(() => {
+  if (typing != null) clearTimeout(typing)
+})
+
+const pages = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)))
+const filtered = computed(() => search.value.trim() !== '' || room.value !== '' || actor.value !== '')
 
 const roomName = (id: string) => rooms.value.find((room) => room.id === id)?.name ?? id
 
@@ -54,9 +68,10 @@ async function exportCsv(): Promise<void> {
   }
 }
 
-async function loadMore(): Promise<void> {
+async function goTo(next: number): Promise<void> {
   try {
-    await store.loadMore()
+    await store.goTo(next)
+    document.getElementById('journal-view')?.scrollIntoView?.({ block: 'start' })
   } catch {
     /* already reported by the client's error hook */
   }
@@ -80,6 +95,15 @@ const CELL = 'border-t border-edge py-[9px] pr-2.5 align-top'
             {{ option.label }}
           </option>
         </select>
+        <input
+          id="journal-search"
+          v-model="search"
+          type="search"
+          maxlength="100"
+          placeholder="Rechercher : action, personne, détail…"
+          aria-label="Rechercher dans le journal"
+          :class="FILTER"
+        />
         <Button id="btn-journal-export" size="small" :disabled="exporting" @click="exportCsv">
           Exporter en CSV
         </Button>
@@ -98,7 +122,9 @@ const CELL = 'border-t border-edge py-[9px] pr-2.5 align-top'
           </thead>
           <tbody id="journal-rows">
             <tr v-if="entries.length === 0">
-              <td colspan="5" class="py-3.5 text-dim">Aucune action enregistrée.</td>
+              <td colspan="5" class="py-3.5 text-dim">
+                {{ filtered ? 'Aucune action ne correspond.' : 'Aucune action enregistrée.' }}
+              </td>
             </tr>
             <tr v-for="entry in entries" :key="entry.id" :data-entry="entry.id">
               <td :class="CELL" class="whitespace-nowrap tabular-nums">{{ DATE.format(new Date(entry.at)) }}</td>
@@ -120,9 +146,20 @@ const CELL = 'border-t border-edge py-[9px] pr-2.5 align-top'
         </table>
       </div>
 
-      <div v-if="more" class="mt-2">
-        <Button id="btn-journal-more" size="small" @click="loadMore">Voir plus ancien</Button>
-      </div>
+      <nav
+        v-if="pages > 1"
+        id="journal-pages"
+        class="mt-2 flex items-center justify-between gap-2"
+        aria-label="Pages du journal"
+      >
+        <Button size="small" data-role="previous" :disabled="page <= 1" @click="goTo(page - 1)">
+          Plus récent
+        </Button>
+        <span class="text-center text-xs text-dim">Page {{ page }} sur {{ pages }} · {{ total }} entrées</span>
+        <Button size="small" data-role="next" :disabled="page >= pages" @click="goTo(page + 1)">
+          Plus ancien
+        </Button>
+      </nav>
 
       <Hint id="journal-hint">
         Toutes les actions qui modifient quelque chose via le hub — régie mobile, réglages, postes,

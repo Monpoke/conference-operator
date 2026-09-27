@@ -1,8 +1,11 @@
-import { and, desc, eq, isNull, lt } from 'drizzle-orm'
+import { and, count, desc, eq, inArray, isNull, lt, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm'
 import {
   AUDIT_RETENTION_DAYS,
+  auditPageQuerySchema,
   auditQuerySchema,
   type AuditEntry,
+  type AuditPage,
+  type AuditPageQuery,
   type AuditQuery,
 } from '@conference-operator/contract'
 import { auditLog } from '@conference-operator/db/hub'
@@ -97,40 +100,95 @@ export class AuditService {
       .run()
   }
 
+  /** Newest first, from `beforeId` down: what the export walks through. */
   list(query: AuditQuery = {}): AuditEntry[] {
     const q = auditQuerySchema.parse(query)
-    const filters = [
-      q.roomId == null ? undefined : eq(auditLog.roomId, q.roomId),
-      q.actor == null ? undefined : eq(auditLog.actor, q.actor),
-      q.beforeId == null ? undefined : lt(auditLog.id, q.beforeId),
-    ].filter((filter) => filter != null)
     return this.db
       .select()
       .from(auditLog)
-      .where(filters.length === 0 ? undefined : and(...filters))
+      .where(and(matching(q), q.beforeId == null ? undefined : lt(auditLog.id, q.beforeId)))
       .orderBy(desc(auditLog.id))
       .limit(q.limit)
       .all()
-      .map((row) => ({
-        id: row.id,
-        at: row.at,
-        actor: row.actor,
-        action: row.action,
-        roomId: row.roomId,
-        detail: row.detail,
-        ok: row.ok,
-        error: row.error,
-        commandSeq: row.commandSeq,
-        outcome:
-          row.outcomeAt == null
-            ? null
-            : { ok: row.outcomeOk === true, message: row.outcomeMessage, at: row.outcomeAt },
-      }))
+      .map(toEntry)
+  }
+
+  /**
+   * One numbered page, newest first, with the count of what matches. Asked
+   * beyond the last page — the log was purged, a search narrowed it — it serves
+   * the last one.
+   */
+  page(query: AuditPageQuery = {}): AuditPage {
+    const q = auditPageQuerySchema.parse(query)
+    const where = matching(q)
+    const total = this.db.select({ n: count() }).from(auditLog).where(where).get()?.n ?? 0
+    const page = Math.min(q.page, Math.max(1, Math.ceil(total / q.pageSize)))
+    const items = this.db
+      .select()
+      .from(auditLog)
+      .where(where)
+      .orderBy(desc(auditLog.id))
+      .limit(q.pageSize)
+      .offset((page - 1) * q.pageSize)
+      .all()
+      .map(toEntry)
+    return { items, total, page, pageSize: q.pageSize }
   }
 
   /** Forgets what is older than the retention. Returns how many entries went. */
   purge(): number {
     const cutoff = new Date(this.now() - AUDIT_RETENTION_DAYS * 24 * 3_600_000).toISOString()
     return this.db.delete(auditLog).where(lt(auditLog.at, cutoff)).run().changes
+  }
+}
+
+/** The filters and the search, as one clause. */
+function matching(q: {
+  roomId: string | null
+  actor: string | null
+  q: string
+  actions: string[]
+  rooms: string[]
+}): SQL | undefined {
+  return and(
+    q.roomId == null ? undefined : eq(auditLog.roomId, q.roomId),
+    q.actor == null ? undefined : eq(auditLog.actor, q.actor),
+    searching(q.q, q.actions, q.rooms),
+  )
+}
+
+/**
+ * The search: the text as typed, found anywhere in who, what, the request, the
+ * refusal or the room — or one of the procedures and rooms the console says it
+ * names. `LIKE` ignores case (ASCII letters); its wildcards are escaped.
+ */
+function searching(text: string, actions: string[], rooms: string[]): SQL | undefined {
+  if (text === '') return undefined
+  const pattern = `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
+  const like = (column: SQLWrapper) => sql`coalesce(${column}, '') like ${pattern} escape '\\'`
+  return or(
+    like(auditLog.actor),
+    like(auditLog.action),
+    like(auditLog.detail),
+    like(auditLog.error),
+    like(auditLog.roomId),
+    actions.length === 0 ? undefined : inArray(auditLog.action, actions),
+    rooms.length === 0 ? undefined : inArray(auditLog.roomId, rooms),
+  )
+}
+
+function toEntry(row: typeof auditLog.$inferSelect): AuditEntry {
+  return {
+    id: row.id,
+    at: row.at,
+    actor: row.actor,
+    action: row.action,
+    roomId: row.roomId,
+    detail: row.detail,
+    ok: row.ok,
+    error: row.error,
+    commandSeq: row.commandSeq,
+    outcome:
+      row.outcomeAt == null ? null : { ok: row.outcomeOk === true, message: row.outcomeMessage, at: row.outcomeAt },
   }
 }

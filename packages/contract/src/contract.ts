@@ -71,7 +71,7 @@ import {
   integrationUpdateSchema,
   integrationViewSchema,
 } from './integrations.js'
-import { auditEntrySchema, auditQuerySchema } from './audit.js'
+import { auditEntrySchema, auditPageQuerySchema, auditPageSchema, auditQuerySchema } from './audit.js'
 
 /** A partner of the program, as the console chooses it. */
 const catalogueSponsorSchema = z.object({
@@ -938,6 +938,8 @@ export const contract = {
    */
   audit: {
     list: oc.input(auditQuerySchema).output(z.array(auditEntrySchema)),
+    /** One numbered page, with how many entries match. */
+    page: oc.input(auditPageQuerySchema).output(auditPageSchema),
   },
 
   /**

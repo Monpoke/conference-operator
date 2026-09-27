@@ -7,68 +7,94 @@ import { useSessionStore } from './session.js'
  * The audit log: who did what through the hub, and what came of it.
  *
  * Read after the fact — a scene that switched by itself, a setting nobody
- * remembers changing. Newest first, a page at a time.
+ * remembers changing. Newest first, a numbered page at a time, searched.
  */
 
-const PAGE = 200
+export const PAGE_SIZE = 50
 
 export interface Room {
   id: string
   name: string
 }
 
+/** Lower case, accents gone: « Démarrée » finds « démarrée » and « demarree ». */
+const fold = (text: string) =>
+  text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+
 export const useAuditStore = defineStore('audit', () => {
   const entries = ref<AuditEntry[]>([])
+  const total = ref(0)
+  const page = ref(1)
+  const query = ref('')
   const rooms = ref<Room[]>([])
   const room = ref<string>('')
   const actor = ref<string>('')
   /** Everyone seen so far: the person filter offers them. */
   const actors = ref<string[]>([])
-  /** A page came back full: there may be more below. */
-  const more = ref(false)
 
   const session = useSessionStore()
 
-  const filters = () => ({
-    roomId: room.value === '' ? null : room.value,
-    actor: actor.value === '' ? null : actor.value,
-  })
+  /**
+   * The filters, and the search with what it means in the console's words: the
+   * hub stores `sessions.start` and a room's id, the operator types « démarrée »
+   * or « Track #1 ».
+   */
+  const filters = () => {
+    const q = query.value.trim()
+    const wanted = fold(q)
+    return {
+      roomId: room.value === '' ? null : room.value,
+      actor: actor.value === '' ? null : actor.value,
+      q,
+      actions: q === '' ? [] : Object.keys(ACTIONS).filter((key) => fold(ACTIONS[key]!).includes(wanted)),
+      rooms: q === '' ? [] : rooms.value.filter((r) => fold(r.name).includes(wanted)).map((r) => r.id),
+    }
+  }
 
   function remember(rows: AuditEntry[]): void {
     actors.value = [...new Set([...actors.value, ...rows.map((row) => row.actor)])].sort()
   }
 
-  /** The newest page. Polled: what is below stays as it was loaded. */
+  /**
+   * The page asked for. Polled: the page on screen is read again, and the hub
+   * answers with the last one when it no longer goes that far.
+   *
+   * Only the latest call writes: a search typed fast sends several, and an older
+   * answer arriving last must not replace the newer list.
+   */
+  let asked = 0
   async function load(): Promise<void> {
-    const [rows, roomList] = await Promise.all([
-      session.client.rpc.audit.list({ ...filters(), limit: PAGE }),
+    const call = ++asked
+    const [answer, roomList] = await Promise.all([
+      session.client.rpc.audit.page({ ...filters(), page: page.value, pageSize: PAGE_SIZE }),
       session.client.rpc.rooms.list(),
     ])
-    const fresh = rows as AuditEntry[]
-    const oldest = fresh.at(-1)?.id
-    // The pages loaded below the fresh one stay: a poll must not fold them away.
-    const below = oldest == null ? [] : entries.value.filter((row) => row.id < oldest)
-    if (below.length === 0) more.value = fresh.length === PAGE
-    entries.value = [...fresh, ...below]
+    if (call !== asked) return
+    entries.value = answer.items as AuditEntry[]
+    total.value = answer.total
+    page.value = answer.page
     rooms.value = roomList as Room[]
-    remember(fresh)
+    remember(entries.value)
   }
 
-  async function loadMore(): Promise<void> {
-    const beforeId = entries.value.at(-1)?.id ?? null
-    const rows = (await session.client.rpc.audit.list({ ...filters(), beforeId, limit: PAGE })) as AuditEntry[]
-    entries.value = [...entries.value, ...rows]
-    more.value = rows.length === PAGE
-    remember(rows)
-  }
-
-  /** A filter changed: start again from the top. */
-  async function reload(): Promise<void> {
-    entries.value = []
+  async function goTo(next: number): Promise<void> {
+    page.value = Math.max(1, next)
     await load()
   }
 
-  /** Everything the filters match, however many pages: what the export writes. */
+  async function search(q: string): Promise<void> {
+    query.value = q
+    page.value = 1
+    await load()
+  }
+
+  /** A filter changed: start again from the first page. */
+  async function reload(): Promise<void> {
+    page.value = 1
+    await load()
+  }
+
+  /** Everything the filters and the search match, however many pages: what the export writes. */
   async function everything(): Promise<AuditEntry[]> {
     const all: AuditEntry[] = []
     for (;;) {
@@ -82,7 +108,7 @@ export const useAuditStore = defineStore('audit', () => {
     }
   }
 
-  return { entries, rooms, room, actor, actors, more, load, loadMore, reload, everything }
+  return { entries, total, page, query, rooms, room, actor, actors, load, goTo, search, reload, everything }
 })
 
 /** The procedures, in the operator's words. */

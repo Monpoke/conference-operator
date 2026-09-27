@@ -9,6 +9,7 @@ import {
   Panel,
   useToast,
 } from '@conference-operator/components'
+import type { VodStatut } from '@conference-operator/contract'
 import { timeFormatter } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
@@ -275,6 +276,30 @@ const vodSlot = ref<PlannedSession | null>(null)
 function openVod(session: PlannedSession): void {
   vodSlot.value = session
   vodOpen.value = true
+}
+
+/**
+ * The « captation » button's colour: how far the talk's capture got.
+ *
+ * The evening of the strike, the list is read for one thing — which rush is still
+ * on a machine about to be unplugged, which one failed — and a column of identical
+ * grey buttons answered neither without opening them one by one. Neutral when
+ * nothing was taken: a colour on every row would say nothing.
+ */
+const VOD_TONES: Record<VodStatut, string> = {
+  aucune: '',
+  'en-cours': 'border-alert text-alert animate-pulse',
+  'sur-la-machine': 'border-warn text-warn',
+  televersement: 'border-brand2 text-brand2',
+  'sur-le-stockage': 'border-brand text-brand',
+  montage: 'border-brand text-brand',
+  'a-valider': 'border-warn bg-warn-soft text-warn',
+  prete: 'border-ok bg-ok-soft text-ok',
+  erreur: 'border-alert bg-alert-soft text-alert',
+}
+
+function vodOf(session: PlannedSession): { statut: VodStatut; detail: string } {
+  return store.vodStatuts[session.id] ?? { statut: 'aucune', detail: 'Où en est la captation de cette conférence' }
 }
 </script>
 
@@ -632,7 +657,9 @@ function openVod(session: PlannedSession): void {
                   v-if="session.kind !== 'break' && session.sharedFrom == null"
                   size="small"
                   :data-vod-session="session.id"
-                  title="Où en est la captation de cette conférence"
+                  :data-vod-statut="vodOf(session).statut"
+                  :class="VOD_TONES[vodOf(session).statut]"
+                  :title="vodOf(session).detail"
                   @click="openVod(session)"
                 >
                   captation

@@ -70,6 +70,8 @@ function stub(options: {
   projectId?: string | null
   overrideError?: string
   pins?: Record<string, string>
+  /** What `vod.statuts` answers — or `'refuse'`, as for an operator without `vod:read`. */
+  vodStatuts?: unknown[] | 'refuse'
 }): { calls: Call[]; client: unknown } {
   const calls: Call[] = []
   const note =
@@ -114,7 +116,14 @@ function stub(options: {
             manquants: [],
           }),
         },
-        vod: { conference: note('vod/conference', {}), request: note('vod/request', { ok: true }) },
+        vod: {
+          conference: note('vod/conference', {}),
+          request: note('vod/request', { ok: true }),
+          statuts:
+            options.vodStatuts === 'refuse'
+              ? note('vod/statuts', null, 'Forbidden')
+              : note('vod/statuts', options.vodStatuts ?? []),
+        },
       },
     },
   }
@@ -399,6 +408,27 @@ describe('conferences view', () => {
     // twenty-seven rows would cast doubt on all twenty-seven.
     expect(wrapper.find('[data-vod-session="talk-1"]').exists()).toBe(true)
     expect(wrapper.find('[data-vod-session="pause-1"]').exists()).toBe(false)
+  })
+
+  it('colours the capture button with how far the talk s capture got', async () => {
+    const { wrapper } = await mountView({
+      sessions: [TALK],
+      vodStatuts: [{ sessionId: 'talk-1', statut: 'sur-la-machine', detail: 'Rush sur la machine de la salle, pas encore téléversé' }],
+    })
+
+    // The rush still on a machine about to be unplugged: seen without opening it.
+    const button = wrapper.get('[data-vod-session="talk-1"]')
+    expect(button.attributes('data-vod-statut')).toBe('sur-la-machine')
+    expect(button.classes()).toContain('text-warn')
+    expect(button.attributes('title')).toBe('Rush sur la machine de la salle, pas encore téléversé')
+  })
+
+  it('keeps the list usable, uncoloured, when the statuses are refused', async () => {
+    const { wrapper } = await mountView({ sessions: [TALK], vodStatuts: 'refuse' })
+
+    const button = wrapper.get('[data-vod-session="talk-1"]')
+    expect(button.attributes('data-vod-statut')).toBe('aucune')
+    expect(wrapper.find('[data-slot="talk-1"]').exists()).toBe(true)
   })
 
   it('reports a corrected feedback identifier', async () => {

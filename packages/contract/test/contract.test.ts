@@ -254,6 +254,8 @@ describe('contract surface', () => {
       // refused on the server side — not merely absent from the console.
       'reset',
       'status',
+      // Every talk's capture in one word: the conference list's button colours.
+      'statuts',
       'uploads',
     ])
   })

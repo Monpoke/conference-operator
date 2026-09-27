@@ -44,6 +44,7 @@ import { imageRefSchema, sponsorPageSchema } from './boucle.js'
 import {
   storageCheckSchema,
   vodFolderSchema,
+  vodStatutsSchema,
   vodKindSchema,
   signedPartSchema,
   uploadPlanSchema,
@@ -1049,6 +1050,15 @@ export const contract = {
     conference: oc
       .input(z.object({ sessionId: sessionIdSchema }))
       .output(vodFolderSchema),
+
+    /**
+     * Every talk's capture status, in one word. Admin.
+     *
+     * What the conference list colours its « captation » buttons with, without
+     * opening twenty-seven folders. Same sources as `conference` — the takes, the
+     * uploads, the latest montage — summed up by `vodStatut`.
+     */
+    statuts: oc.output(vodStatutsSchema),
 
     /**
      * Is the storage configured, and how. Admin.

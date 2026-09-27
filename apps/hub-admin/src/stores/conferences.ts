@@ -1,3 +1,4 @@
+import type { VodStatut } from '@conference-operator/contract'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useSessionStore } from './session.js'
@@ -66,6 +67,12 @@ export const useConferencesStore = defineStore('conferences', () => {
   const planning = ref<Planning | null>(null)
   const hasActiveProgram = ref(true)
   const room = ref('')
+  /**
+   * Each talk's capture status, by session id — the colour of its « captation »
+   * button. Empty when the hub refuses it (an operator without `vod:read`): the
+   * list stays usable, only uncoloured.
+   */
+  const vodStatuts = ref<Record<string, { statut: VodStatut; detail: string }>>({})
 
   /** Read from the planning, never kept apart: a pin lifts itself on the hub side. */
   const pins = computed<Record<string, string>>(() => planning.value?.pins ?? {})
@@ -76,11 +83,22 @@ export const useConferencesStore = defineStore('conferences', () => {
   const session = useSessionStore()
 
   async function load(): Promise<void> {
-    const [sessionStates, snapshots, plan] = await Promise.all([
+    const [sessionStates, snapshots, plan, statuts] = await Promise.all([
       session.client.rpc.sessions.states({ roomId: null }),
       session.client.rpc.program.snapshots(),
       session.client.rpc.program.planning(),
+      // Deferred so a hub that predates the procedure fails inside the promise,
+      // not before it: the list must load all the same.
+      Promise.resolve()
+        .then(() => session.client.rpc.vod.statuts())
+        .catch(() => null),
     ])
+    vodStatuts.value = Object.fromEntries(
+      ((statuts ?? []) as { sessionId: string; statut: VodStatut; detail: string }[]).map((entry) => [
+        entry.sessionId,
+        { statut: entry.statut, detail: entry.detail },
+      ]),
+    )
     states.value = sessionStates as SessionState[]
     hasActiveProgram.value = (snapshots as { active?: boolean }[]).some((s) => s.active === true)
     planning.value = plan as Planning
@@ -167,6 +185,7 @@ export const useConferencesStore = defineStore('conferences', () => {
     checkFeedback,
     vodFolder,
     requestVod,
+    vodStatuts,
   }
 })
 

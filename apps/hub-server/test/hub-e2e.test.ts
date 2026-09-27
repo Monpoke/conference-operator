@@ -1209,4 +1209,54 @@ describe('a talk\'s VOD folder', () => {
 
     await expect(machine.vod.conference({ sessionId: talk.id })).rejects.toThrow()
   })
+
+  it('sums every talk up in one status, for the list s buttons', async () => {
+    const admin = httpClient({ authorization: `Bearer ${await signInOperator()}` })
+    const talk = await talkOfRoom1(admin)
+
+    hub.services.ingest.push(TRACK_1, [
+      {
+        id: '01M1AAAAAAAAAAAAAAAAAAAAAA',
+        roomId: TRACK_1,
+        seq: 1,
+        occurredAt: '2026-10-30T10:00:00.000+00:00',
+        monotonicMs: 1000,
+        delivery: 'required',
+        payload: { type: 'recording.started', obs: 'B', sessionId: talk.id },
+      },
+      {
+        id: '01M2AAAAAAAAAAAAAAAAAAAAAA',
+        roomId: TRACK_1,
+        seq: 2,
+        occurredAt: '2026-10-30T10:50:00.000+00:00',
+        monotonicMs: 2000,
+        delivery: 'required',
+        payload: {
+          type: 'recording.stopped',
+          obs: 'B',
+          sessionId: talk.id,
+          outputPath: '/rushes/le-talk.mkv',
+          durationMs: 3_000_000,
+          sidecarWritten: true,
+        },
+      },
+    ])
+
+    const statuts = await admin.vod.statuts()
+    const byId = new Map(statuts.map((entry) => [entry.sessionId, entry]))
+
+    // Taken, on the machine, not uploaded: no storage on this hub.
+    expect(byId.get(talk.id)).toMatchObject({ statut: 'sur-la-machine' })
+    // The other talks have nothing yet; the breaks are not listed at all.
+    expect(statuts.filter((entry) => entry.sessionId !== talk.id).every((entry) => entry.statut === 'aucune')).toBe(true)
+    const program = hub.services.programs.active()!.program
+    const breaks = program.sessions.filter((session) => session.kind === 'break').map((session) => session.id)
+    expect(statuts.some((entry) => breaks.includes(entry.sessionId))).toBe(false)
+  })
+
+  it('keeps the statuses closed to room machines', async () => {
+    const machine = httpClient(await pairRoomDevice())
+
+    await expect(machine.vod.statuts()).rejects.toThrow()
+  })
 })

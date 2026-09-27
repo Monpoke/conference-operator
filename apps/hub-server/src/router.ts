@@ -43,6 +43,7 @@ import {
 } from './services/pins.js'
 import { IncompleteStorage, type VodService } from './services/vod.js'
 import { MontageError } from './services/montage.js'
+import { vodStatut } from './services/vod-statut.js'
 import { S3Error } from './services/s3.js'
 import { roomStatuses } from './supervision.js'
 import {
@@ -1583,6 +1584,47 @@ export const router = os.router({
          */
         consentementYoutube: context.services.ingest.consent(input.sessionId),
       }
+    }),
+
+    /**
+     * Every talk's capture status. Admin.
+     *
+     * The folder's sources, talk by talk — the takes attached the same way, the
+     * uploads, the latest montage — each summed up by `vodStatut`. The takes and
+     * the lived slots are read once per room: twenty-seven talks are not twenty-seven
+     * reads of the ingestion log. Without `requireStorage`, like the folder: a hub
+     * with no S3 still says which rush is on which machine.
+     */
+    statuts: os.vod.statuts.use(operatorCan('vod:read')).handler(({ context }) => {
+      const sessions = context.services.programs.active()?.program.sessions ?? []
+      const vod = context.services.vod
+      const rooms = new Map(context.services.rooms.list().map((room) => [room.id, room.name]))
+      const byRoom = new Map<string, { takes: RawCapture[]; lived: ReturnType<HubContext['services']['sessions']['states']> }>()
+      const ofRoom = (roomId: string) => {
+        let entry = byRoom.get(roomId)
+        if (entry == null) {
+          entry = { takes: context.services.ingest.captations(roomId), lived: context.services.sessions.states(roomId) }
+          byRoom.set(roomId, entry)
+        }
+        return entry
+      }
+      return sessions
+        .filter((session) => session.kind !== 'break')
+        .map((session) => {
+          const room = session.roomId == null ? null : ofRoom(session.roomId)
+          const state = room?.lived.find((candidate) => candidate.sessionId === session.id)
+          const captations = (room?.takes ?? [])
+            .map((capture) => attachCapture(capture, session.id, state))
+            .filter((capture) => capture != null)
+          return {
+            sessionId: session.id,
+            ...vodStatut({
+              captations,
+              televersements: vod == null ? [] : vod.forSession(session.id, (id) => rooms.get(id) ?? null),
+              montage: context.services.montage.list(session.id)[0] ?? null,
+            }),
+          }
+        })
     }),
 
     /**

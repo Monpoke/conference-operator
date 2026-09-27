@@ -311,6 +311,37 @@ export const vodFolderSchema = z.object({
 export type VodFolder = z.infer<typeof vodFolderSchema>
 
 /**
+ * Where a talk's capture stands, in one word — what the conference list colours
+ * its « captation » button with.
+ *
+ * The folder answers the question for one talk, once opened; the list needs it for
+ * every talk at a glance, the evening of the strike, to see which rush is still on
+ * a machine about to be unplugged. The order is the capture's path, from nothing
+ * to a VOD ready to publish; `erreur` stands apart, whatever step it stopped at.
+ */
+export const vodStatutSchema = z.enum([
+  'aucune',
+  'en-cours',
+  'sur-la-machine',
+  'televersement',
+  'sur-le-stockage',
+  'montage',
+  'a-valider',
+  'prete',
+  'erreur',
+])
+export type VodStatut = z.infer<typeof vodStatutSchema>
+
+export const vodStatutsSchema = z.array(
+  z.object({
+    sessionId: sessionIdSchema,
+    statut: vodStatutSchema,
+    /** The sentence behind the colour, for the button's tooltip. */
+    detail: z.string(),
+  }),
+)
+
+/**
  * The four steps of a connection check, in the order in which they fail.
  *
  * A boolean would be useless: "it does not work" is precisely what we already

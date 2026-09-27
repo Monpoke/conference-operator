@@ -281,3 +281,60 @@ describe('the capture in the projection s vertical canvas', () => {
     expect(meters).toHaveBeenCalledWith(true)
   })
 })
+
+describe('the file name the canvas writes under', () => {
+  const format = async (transport: ObsTransport): Promise<unknown> =>
+    ((await transport.call('GetProfileParameter', {
+      parameterCategory: 'Output',
+      parameterName: 'FilenameFormatting',
+    })) as { parameterValue?: unknown }).parameterValue
+
+  const setFormat = (transport: ObsTransport, value: string): Promise<unknown> =>
+    transport.call('SetProfileParameter', {
+      parameterCategory: 'Output',
+      parameterName: 'FilenameFormatting',
+      parameterValue: value,
+    })
+
+  it('gives back a dated name to a profile left with a talk s name', async () => {
+    const room = singleObs()
+    const logs: string[] = []
+    const capture = new CanvasObsController({
+      transport: () => room.transport,
+      host: () => room.host,
+      sceneRoles: CANVAS_ROLES,
+      onLog: (_level, message) => logs.push(message),
+    })
+    // What an OBS keeps after serving as a second instance: the last talk's name,
+    // under which every take of a single-OBS room would then land.
+    await setFormat(room.transport, '2026-10-30_track-1-teilhard_0950_ia-for-ops-on-scaleway')
+    await room.host.connect()
+
+    await capture.connect()
+    expect(await format(room.transport)).toBe('%CCYY-%MM-%DD %hh-%mm-%ss')
+    expect(logs).toContain('nom de fichier figé dans le profil OBS : format daté rétabli')
+  })
+
+  it('leaves an operator s own dated format alone', async () => {
+    const room = singleObs()
+    await setFormat(room.transport, 'salle-1 %CCYY%MM%DD-%hh%mm%ss')
+    await room.host.connect()
+
+    await room.capture.connect()
+    expect(await format(room.transport)).toBe('salle-1 %CCYY%MM%DD-%hh%mm%ss')
+  })
+
+  it('touches nothing while a take is running', async () => {
+    const room = singleObs()
+    await room.host.connect()
+    await room.capture.connect()
+    await room.capture.startRecording()
+    await settle()
+    await setFormat(room.transport, 'nom-fige')
+
+    // The room restarts in the middle of a talk: it adopts the take, and changes
+    // nothing under it.
+    await room.capture.connect()
+    expect(await format(room.transport)).toBe('nom-fige')
+  })
+})

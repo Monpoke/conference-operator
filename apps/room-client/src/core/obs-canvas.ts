@@ -73,6 +73,9 @@ interface CanvasStreamOutput {
   congestion?: number
 }
 
+/** OBS's own default: a take per second, never twice the same name. */
+export const DATED_FILENAME_FORMAT = '%CCYY-%MM-%DD %hh-%mm-%ss'
+
 export class CanvasObsController implements ObsCapture {
   /**
    * Shares the projection's OBS process.
@@ -268,6 +271,7 @@ export class CanvasObsController implements ObsCapture {
     }
 
     const status = await this.vendor<{ recording?: boolean; streaming?: boolean }>('status')
+    if (status.recording !== true) await this.unfreezeFilename(transport)
     const settings = await this.vendor<CanvasSettings>('get_settings').catch(() => ({}) as CanvasSettings)
     const inventory = await this.readScenes(settings.current_scene ?? null)
 
@@ -359,13 +363,45 @@ export class CanvasObsController implements ObsCapture {
   }
 
   /**
-   * The canvas names its own files, and that changes nothing.
+   * Gives back a dated file name to a profile left with a frozen one.
    *
-   * OBS's `Output/FilenameFormatting` drives the main program; the plugin writes
-   * its own name, from its own settings. The take's name does not depend on it
-   * anyway: the file is **renamed** at the stop, from the path the plugin
-   * announces — which is the source in both setups, precisely because the format
-   * may not have taken.
+   * The canvas writes its take under OBS's `Output/FilenameFormatting`, followed by
+   * `-vertical` — seen on OBS 32 with the plugin, whose own format setting goes
+   * unused. With two instances, the room writes a talk's name there before each
+   * take; an OBS that once served as that second instance keeps the last one for
+   * good, and every take of a single-OBS room then lands on the same file. The
+   * rename at the stop gives each its talk's name — but a rename that fails once
+   * leaves the next take to overwrite it. It happened: a take was lost that way.
+   *
+   * Only a format with no `%` at all is replaced: that is a name, not a format. An
+   * operator's own dated format is theirs. Tolerant: a question OBS refuses must
+   * not keep the capture from connecting.
+   */
+  private async unfreezeFilename(transport: ObsTransport): Promise<void> {
+    try {
+      const { parameterValue } = (await transport.call('GetProfileParameter', {
+        parameterCategory: 'Output',
+        parameterName: 'FilenameFormatting',
+      })) as { parameterValue?: string | null }
+      if (typeof parameterValue !== 'string' || parameterValue === '' || parameterValue.includes('%')) return
+      await transport.call('SetProfileParameter', {
+        parameterCategory: 'Output',
+        parameterName: 'FilenameFormatting',
+        parameterValue: DATED_FILENAME_FORMAT,
+      })
+      this.options.onLog?.('info', 'nom de fichier figé dans le profil OBS : format daté rétabli', {
+        avant: parameterValue,
+        apres: DATED_FILENAME_FORMAT,
+      })
+    } catch (cause) {
+      this.options.onLog?.('warn', 'format de nom de fichier d\'OBS illisible', { message: (cause as Error).message })
+    }
+  }
+
+  /**
+   * Nothing to write per take: the rename at the stop is what names the master,
+   * from the path the plugin announces. See `unfreezeFilename` for the one format
+   * the canvas does depend on.
    */
   async setProfileParameter(_category: string, _name: string, _value: string): Promise<void> {
     /* nothing to write: the rename at the stop is what names the master */

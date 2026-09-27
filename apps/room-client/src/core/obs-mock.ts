@@ -302,6 +302,11 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
           return {}
         }
 
+        case 'GetProfileParameter':
+          return args?.parameterName === 'FilenameFormatting'
+            ? { parameterValue: format, defaultParameterValue: '%CCYY-%MM-%DD %hh-%mm-%ss' }
+            : { parameterValue: null, defaultParameterValue: null }
+
         case 'SetProfileParameter':
           if (args?.parameterName === 'FilenameFormatting') {
             format = String(args.parameterValue)

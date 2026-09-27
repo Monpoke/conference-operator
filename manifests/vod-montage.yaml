@@ -46,6 +46,13 @@ spec:
             # Inside the cluster, straight to the hub's Service.
             - name: HUB_URL
               value: http://hub:8787
+            # IPv4 first, as the hub does. The storage answers on IPv6 too, and the
+            # cluster's IPv6 egress is not in the storage proxy's IP allowlist: every
+            # signed download came back 403 « Forbidden » — the proxy's refusal, not
+            # S3's — and no montage could fetch its sources. The lasting fix is to
+            # allow the cluster's IPv6 egress there; this line can go on that day.
+            - name: NODE_OPTIONS
+              value: --dns-result-order=ipv4first
           envFrom:
             - secretRef:
                 name: vod-montage

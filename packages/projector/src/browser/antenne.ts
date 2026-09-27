@@ -16,3 +16,18 @@ export function auRetour(absentMs: number, tourne: boolean): 'reprendre' | 'reco
   if (!tourne) return 'reprendre'
   return absentMs >= RETOUR_AU_DEBUT_MS ? 'recommencer' : 'reprendre'
 }
+
+/**
+ * Past its own length plus this, a transition is stuck, and the clock ends it.
+ *
+ * A transition waits for animation frames, and an OBS Browser Source only gets
+ * frames while OBS renders it: the loop was found on air frozen mid-stinger,
+ * alive under a band nothing was going to move again. The transition's own
+ * safety timer only starts once its first frames have come.
+ */
+export const TRANSITION_BLOQUEE_MS = 3_000
+
+/** Has this transition, started `ecouleMs` ago and meant to last `dureeMs`, stuck? */
+export function transitionBloquee(ecouleMs: number, dureeMs: number): boolean {
+  return ecouleMs > dureeMs + TRANSITION_BLOQUEE_MS
+}

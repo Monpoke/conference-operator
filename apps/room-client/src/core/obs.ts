@@ -670,6 +670,29 @@ export class ObsController implements ObsCapture {
     this.patch({ connected: false })
   }
 
+  /** The Browser Sources and the address each one loads. */
+  async browserSources(): Promise<{ inputName: string; url: string }[]> {
+    const { transport } = this.options
+    const { inputs } = (await transport.call('GetInputList', { inputKind: 'browser_source' })) as {
+      inputs?: { inputName: string; inputKind?: string }[]
+    }
+    const found: { inputName: string; url: string }[] = []
+    for (const { inputName, inputKind } of inputs ?? []) {
+      if (inputKind != null && inputKind !== 'browser_source') continue
+      const { inputSettings } = (await transport.call('GetInputSettings', { inputName })) as {
+        inputSettings?: { url?: unknown; is_local_file?: unknown }
+      }
+      if (inputSettings?.is_local_file === true || typeof inputSettings?.url !== 'string') continue
+      found.push({ inputName, url: inputSettings.url })
+    }
+    return found
+  }
+
+  /** Reloads a Browser Source — the "Refresh cache of current page" button. */
+  async reloadBrowserSource(inputName: string): Promise<void> {
+    await this.options.transport.call('PressInputPropertiesButton', { inputName, propertyName: 'refreshnocache' })
+  }
+
   /** Switches to the requested role. Fails explicitly if the role is not mapped. */
   async setRole(role: SceneRole): Promise<void> {
     const sceneName = this.options.sceneRoles[role]

@@ -2,7 +2,7 @@ import { streamHealthBetween, type StreamSample } from './stream-health.js'
 import { PROTOCOL_VERSION } from '@conference-operator/contract'
 import { join } from 'node:path'
 import { AssetCache } from './assets.js'
-import { DisplayServer } from './display-server.js'
+import { DisplayServer, displayViewOf } from './display-server.js'
 import { HubLink } from './hub-link.js'
 import { ObsController } from './obs.js'
 import { httpPairingTransport, runPairing, type DeviceCodeResponse } from './pairing.js'
@@ -77,6 +77,13 @@ function obsFingerprint(config: RoomConfigCache, instance: ObsInstance): string 
 function singleObs(config: RoomConfigCache): boolean {
   return config.obs.B.url.trim() === ''
 }
+
+/**
+ * How long the pages already loaded in OBS get to reopen their stream, after a
+ * connection to OBS, before those still silent are reloaded. An `EventSource`
+ * retries within three seconds.
+ */
+export const OBS_PAGES_GRACE_MS = 8_000
 
 /** Where this machine's pairing stands. */
 export interface PairingState {
@@ -196,6 +203,8 @@ export class RoomApp implements ControlTarget {
   readonly display: DisplayServer
   private link: HubLink | null = null
   private obsA: ObsController | null = null
+  /** The check of OBS's pages, pending after a connection: see {@link reloadObsPages}. */
+  private obsPagesTimer: ReturnType<typeof setTimeout> | null = null
   /**
    * The projection's transport, kept because the capture may live inside it.
    *
@@ -1317,6 +1326,49 @@ export class RoomApp implements ControlTarget {
     })
   }
 
+  private scheduleObsPagesCheck(): void {
+    if (this.obsPagesTimer != null) clearTimeout(this.obsPagesTimer)
+    this.obsPagesTimer = setTimeout(() => {
+      this.obsPagesTimer = null
+      void this.reloadObsPages().catch((cause) => {
+        this.options.onLog?.('warn', 'vérification des pages OBS impossible', { message: (cause as Error).message })
+      })
+    }, OBS_PAGES_GRACE_MS)
+    this.obsPagesTimer.unref?.()
+  }
+
+  /**
+   * Reloads the OBS pages that never loaded, and only those.
+   *
+   * OBS loads its Browser Sources as it starts: an OBS started before the room
+   * gets "connection refused" on every page, and never tries again — the room's
+   * screen stays empty, transparent, for as long as nobody presses "Refresh".
+   *
+   * A page that did load, on the other hand, holds the state stream open and
+   * reopens it by itself when the room restarts. Reloading it would cut the loop
+   * on air for nothing, so a source is only reloaded when no OBS page follows its
+   * view once the grace period is over.
+   */
+  async reloadObsPages(): Promise<string[]> {
+    const obs = this.obsA
+    const port = this.display.port()
+    if (obs == null || port == null || !obs.snapshot().connected) return []
+    const following = this.display.obsViews()
+    const reloaded: string[] = []
+    for (const { inputName, url } of await obs.browserSources()) {
+      const view = displayViewOf(url, port)
+      if (view == null || following.has(view)) continue
+      await obs.reloadBrowserSource(inputName)
+      reloaded.push(inputName)
+    }
+    if (reloaded.length > 0) {
+      this.options.onLog?.('info', 'pages OBS rechargées : elles ne suivaient pas le poste de salle', {
+        sources: reloaded,
+      })
+    }
+    return reloaded
+  }
+
   private async connectProjection(config: RoomConfigCache, manual = false): Promise<void> {
     const transport = (this.options.obsTransportFactory ?? createObsTransport)(
       'A',
@@ -1341,6 +1393,7 @@ export class RoomApp implements ControlTarget {
             // Adopt the observed state: without it, the control app and the console
             // show an empty scene until the first switch.
             this.runtime.observeSceneRole(event.currentRole)
+            this.scheduleObsPagesCheck()
             this.emit({
               type: 'obs.connection',
               obs: 'A',
@@ -2423,6 +2476,7 @@ export class RoomApp implements ControlTarget {
     if (this.heartbeat != null) clearInterval(this.heartbeat)
     if (this.tick != null) clearInterval(this.tick)
     if (this.wallTimer != null) clearInterval(this.wallTimer)
+    if (this.obsPagesTimer != null) clearTimeout(this.obsPagesTimer)
     await this.link?.close()
     await this.obsA?.disconnect().catch(() => {})
     await this.obsB?.disconnect().catch(() => {})

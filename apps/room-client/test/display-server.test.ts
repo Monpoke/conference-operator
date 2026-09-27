@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyStreamPatch, type StreamPatch } from '@conference-operator/contract'
 import { normalizeProgram, type Program } from '@conference-operator/program'
 import { AssetCache } from '../src/core/assets.js'
-import { DisplayServer, type DisplayPayload } from '../src/core/display-server.js'
+import { DisplayServer, displayViewOf, type DisplayPayload } from '../src/core/display-server.js'
 import { LocalStore } from '../src/core/store.js'
 import { RoomRuntime } from '../src/core/runtime.js'
 
@@ -562,5 +562,49 @@ describe('closing with pages still connected', () => {
 
     expect(await deadline(watched.close(), 3_000)).toBe('closed')
     expect(levels).toEqual([true, false])
+  })
+})
+
+describe('the pages OBS follows', () => {
+  /** Opens the stream as a Browser Source would, and keeps it open until aborted. */
+  async function follow(view: string, userAgent: string): Promise<AbortController> {
+    const abort = new AbortController()
+    const response = await fetch(`${origin}/display/state?vue=${view}&partiel=1`, {
+      headers: { 'user-agent': userAgent },
+      signal: abort.signal,
+    })
+    // The opening snapshot: the subscriber is registered once it has arrived.
+    await response.body!.getReader().read()
+    return abort
+  }
+
+  it('knows which views an OBS Browser Source is following', async () => {
+    const obs = await follow(
+      'projecteur',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/127.0.0.0 Safari/537.36 OBS/32.2.2',
+    )
+    // The same page in an ordinary browser: the room's screen may be broken in OBS
+    // all the same.
+    const browser = await follow('overlay', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/127.0.0.0')
+    try {
+      expect([...server.obsViews()]).toEqual(['projecteur'])
+    } finally {
+      obs.abort()
+      browser.abort()
+    }
+    await vi.waitFor(() => expect(server.obsViews().size).toBe(0))
+  })
+
+  it('tells the room pages from any other address', () => {
+    const port = server.port()!
+    expect(displayViewOf(`http://localhost:${port}/display/projector`, port)).toBe('projecteur')
+    expect(displayViewOf(`http://127.0.0.1:${port}/display/overlay`, port)).toBe('overlay')
+    expect(displayViewOf(`http://127.0.0.1:${port}/display/overlay-live/`, port)).toBe('bandeau')
+    // Another port: a room that moved, or another application.
+    expect(displayViewOf(`http://localhost:${port + 1}/display/projector`, port)).toBeNull()
+    // Another machine, another page, no address at all.
+    expect(displayViewOf(`http://192.168.1.20:${port}/display/projector`, port)).toBeNull()
+    expect(displayViewOf(`http://localhost:${port}/control`, port)).toBeNull()
+    expect(displayViewOf('', port)).toBeNull()
   })
 })

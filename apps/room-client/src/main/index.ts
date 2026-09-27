@@ -359,6 +359,9 @@ function openProjectorWindow(url: string): BrowserWindow {
     fullscreen: target != null,
     width: 1920,
     height: 1080,
+    // The page's own title, until it comes — and for good if it never does:
+    // without it, the window carried the npm package's name.
+    title: 'Écran de salle',
     backgroundColor: '#10121a',
     autoHideMenuBar: true,
     webPreferences: { nodeIntegration: false, contextIsolation: true },

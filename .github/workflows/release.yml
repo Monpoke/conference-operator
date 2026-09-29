@@ -366,19 +366,41 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # The chart goes to GHCR, next to the images it deploys.
+      packages: write
     steps:
       # Before the artifacts: `checkout` cleans the workspace, and would take the
-      # downloads with it. Only `manifests/` is fetched — it is all this job reads
-      # from the repository.
+      # downloads with it. Only `manifests/` and `charts/` are fetched — all this
+      # job reads from the repository.
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: manifests
+          sparse-checkout: |
+            manifests
+            charts
 
       - uses: actions/download-artifact@v4
         with:
           pattern: room-control-*
           merge-multiple: true
           path: artifacts
+
+      - uses: azure/setup-helm@v4
+
+      # The chart, versioned by the tag like everything else: `Chart.yaml` holds
+      # `0.0.0` in the repository and gets the number here, `version` and
+      # `appVersion` alike — so the chart deploys, by default, the images this
+      # very run pushed. Pushed as an OCI artifact next to them, and attached to
+      # the release for whoever installs from a file.
+      - shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          sed -i -e "s|^version: .*|version: \"${version}\"|" \
+                 -e "s|^appVersion: .*|appVersion: \"${version}\"|" charts/hub/Chart.yaml
+          helm lint charts/hub --set config.publicUrl=https://hub.lint.invalid --set ingress.host=hub.lint.invalid --set secret.betterAuthSecret="$(head -c 48 /dev/zero | tr '\0' x)"
+          helm package charts/hub --destination artifacts
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
+          helm push "artifacts/hub-${version}.tgz" "oci://ghcr.io/${GITHUB_REPOSITORY,,}/charts"
 
       # The release notes stay in French, like the README and the RUNBOOK: they
       # are read by the people who run the event, not by the people who maintain
@@ -434,8 +456,20 @@ jobs:
           Image \`linux/amd64\`. La console et la régie mobile y sont, servies par
           le hub — il n'y a rien d'autre à déployer de ce côté.
 
-          Sur Kubernetes, \`manifests-${version}.tar.gz\` porte les manifestes de
-          cette version — l'image y est déjà épinglée :
+          Sur Kubernetes, le chart Helm pose le hub **et le worker de montage**,
+          avec leur jeton partagé — rien à créer dans la console :
+
+          \`\`\`bash
+          helm install hub oci://ghcr.io/${GITHUB_REPOSITORY,,}/charts/hub --version ${version} \\
+            -f mes-valeurs.yaml --set montage.enabled=true
+          \`\`\`
+
+          Les valeurs à fournir (adresse publique, secret, stockage S3) sont
+          décrites dans le \`values.yaml\` du chart.
+
+          Sans Helm, \`manifests-${version}.tar.gz\` porte les manifestes kustomize de
+          cette version — l'image y est déjà épinglée, le worker de montage reste
+          à poser à la main :
 
           \`\`\`bash
           tar xzf manifests-${version}.tar.gz

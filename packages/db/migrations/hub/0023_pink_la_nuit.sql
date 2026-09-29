@@ -1,0 +1,1 @@
+ALTER TABLE `montage_job` ADD `bail_id` text;

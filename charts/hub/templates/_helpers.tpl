@@ -57,3 +57,63 @@ Le nom du secret monté par `envFrom` : celui qu'on fournit, ou celui qu'on rend
 {{- include "hub.name" . -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Le worker de montage : `vod-montage`, le nom que portent déjà les manifestes
+kustomize — même raison que pour le hub, une installation existante s'adopte
+sans rien renommer.
+*/}}
+{{- define "hub.montageName" -}}
+vod-montage
+{{- end -}}
+
+{{- define "hub.montageImage" -}}
+{{- $repo := .Values.montage.image.repository -}}
+{{- if .Values.montage.image.digest -}}
+{{- printf "%s@%s" $repo .Values.montage.image.digest -}}
+{{- else -}}
+{{- printf "%s:%s" $repo (default .Chart.AppVersion .Values.montage.image.tag) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Le secret qui porte le jeton partagé, et la clé sous laquelle il le porte.
+*/}}
+{{- define "hub.montageSecretName" -}}
+{{- if .Values.montage.existingSecret -}}
+{{- .Values.montage.existingSecret -}}
+{{- else -}}
+{{- printf "%s-montage" (include "hub.name" .) -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "hub.montageSecretKey" -}}
+{{- if .Values.montage.existingSecret -}}
+{{- .Values.montage.existingSecretKey -}}
+{{- else -}}
+token
+{{- end -}}
+{{- end -}}
+
+{{/*
+Le jeton que le chart range dans son secret.
+
+Celui des values s'il y en a un. Sinon celui que le secret porte déjà dans le
+cluster : un `helm upgrade` ne doit pas le changer, sans quoi chaque mise à jour
+serait une rotation. Sinon, au premier `helm install`, un jeton tiré au hasard.
+
+`lookup` ne voit rien sous `helm template` ni `--dry-run` : le jeton affiché y
+change à chaque rendu, ce qui est sans conséquence — rien n'est posé.
+*/}}
+{{- define "hub.montageToken" -}}
+{{- if .Values.montage.token -}}
+{{- .Values.montage.token -}}
+{{- else -}}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace (include "hub.montageSecretName" .) -}}
+{{- if and $existing $existing.data (hasKey $existing.data "token") -}}
+{{- index $existing.data "token" | b64dec -}}
+{{- else -}}
+{{- printf "wt_%s" (randAlphaNum 48) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

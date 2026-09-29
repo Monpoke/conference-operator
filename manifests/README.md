@@ -212,14 +212,28 @@ passent et que le programme s'importe.
 
 Le montage des VODs tourne dans un worker à part (`apps/vod-montage`, image
 `vod-montage`), qui prend les talks dans la file du hub. Il n'est pas dans
-`kustomization.yaml` : il lui faut un jeton `wt_…`, qui n'existe qu'une fois le
-hub démarré (console → **VOD** → **Workers de montage**, affiché une seule fois).
+`kustomization.yaml` : il lui faut un jeton `wt_…` que le hub connaisse.
+
+Le plus simple est de le **choisir** et de le donner aux deux : le hub le lit en
+`MONTAGE_WORKER_TOKEN` et déclare au démarrage un « Worker du déploiement » qui
+l'accepte, le worker le présente en `HUB_WORKER_TOKEN`. Rien à créer dans la
+console. (Le chart Helm fait exactement ça, jeton compris : `montage.enabled=true`.)
 
 ```bash
+token="wt_$(openssl rand -base64 36 | tr '+/' '-_' | tr -d '=')"
+# Le hub : ajouter la clé à son secret, puis le redémarrer pour qu'il la lise.
+kubectl -n conference-operator patch secret hub --type merge \
+  -p "{\"stringData\":{\"MONTAGE_WORKER_TOKEN\":\"$token\"}}"
+kubectl -n conference-operator rollout restart statefulset/hub
+# Le worker.
 kubectl -n conference-operator create secret generic vod-montage \
-  --from-literal=HUB_WORKER_TOKEN=wt_…
+  --from-literal=HUB_WORKER_TOKEN="$token"
 kubectl apply -n conference-operator -f manifests/vod-montage.yaml
 ```
+
+Un jeton créé dans la console (**VOD** → **Workers de montage**, affiché une
+seule fois) marche aussi, à la place de `$token` : c'est la voie d'un worker hors
+du cluster, sur la machine qui a du CPU à revendre.
 
 Avec une image construite localement, même principe que pour le hub — le digest :
 

@@ -2,7 +2,19 @@
 
 Les mêmes six ressources que `manifests/`, avec un fichier de values pour ce qui
 change d'un déploiement à l'autre — au premier chef **les secrets**, qui tiennent
-alors dans un fichier gardé hors du dépôt.
+alors dans un fichier gardé hors du dépôt. Et, sur demande, le worker de montage
+des VODs, branché sur le hub sans rien créer dans la console.
+
+Chaque version est publiée sur GHCR, à côté de ses images, qu'elle épingle :
+
+```bash
+helm upgrade --install hub oci://ghcr.io/monpoke/conference-operator/charts/hub \
+  --version X.Y.Z \
+  --namespace conference-operator --create-namespace \
+  -f ~/.config/conference-operator/hub-prod.yaml
+```
+
+Depuis le dépôt, pour un chart en cours de modification :
 
 ```bash
 cp charts/hub/values.secrets.example.yaml ~/.config/conference-operator/hub-prod.yaml
@@ -14,6 +26,34 @@ helm upgrade --install hub charts/hub \
 ```
 
 `values.yaml` documente chaque réglage et la raison de ceux qui n'en sont pas.
+
+## Le worker de montage
+
+`montage.enabled: true` pose un Deployment `vod-montage` à côté du hub. Il
+n'a de sens qu'avec le stockage S3 configuré : c'est là qu'il lit les rushes et
+renvoie la vidéo montée.
+
+Le hub et le worker partagent un jeton `wt_…`. Le hub le lit en
+`MONTAGE_WORKER_TOKEN` et déclare au démarrage un « Worker du déploiement » qui
+l'accepte ; le worker le présente en `HUB_WORKER_TOKEN`. Le montage tourne donc
+dès la première installation, sans passer par la console.
+
+| `montage.token` vide (défaut) | Le chart tire un jeton au premier `helm install`, le range dans le secret `hub-montage`, et le **relit** aux `upgrade` suivants : il ne change pas d'une mise à jour à l'autre. |
+| `montage.token: wt_…` | Le jeton des values. En changer est une rotation : le hub et les workers redémarrent, l'ancien jeton n'ouvre plus rien. |
+| `montage.existingSecret` | Un secret créé à la main, qui porte le jeton sous `montage.existingSecretKey`. Une rotation s'y fait à la main, suivie d'un redémarrage du hub et du worker. |
+
+Ce worker apparaît dans la console (**VOD** → **Workers de montage**) mais ne
+s'y révoque pas : la console le refuserait, puisque le redémarrage suivant le
+rétablirait. On le retire en repassant `montage.enabled` à `false` — le hub,
+sans la variable, le révoque à son démarrage et remet ses montages en file.
+
+Pour monter plus de talks à la fois : `montage.replicas`. Les répliques
+partagent le jeton, et donc une seule ligne dans la console ; chacune tient
+son propre montage. Le worker ne garde rien entre deux jobs — la file et les
+baux sont dans le hub, les vidéos dans S3 — et une réplique perdue rend son job
+à la file au bout de dix minutes. Chaque prise a son propre bail : une réplique
+qui revient après que son bail a expiré est refusée dès son appel suivant et
+abandonne, sans jamais envoyer par-dessus celle qui a repris le talk.
 
 ## Les secrets, et où ils finissent
 
@@ -103,9 +143,22 @@ WebSockets de `/ws`, doit être fait quel que soit le contrôleur.
 
 ## Après l'installation
 
-L'inscription publique est fermée : sans compte opérateur, la console est
-inaccessible. L'image est distroless, d'où le chemin complet vers `node`, que
-`kubectl exec` ne prend pas de l'`ENTRYPOINT` :
+L'inscription publique est fermée : il faut un premier administrateur. Deux
+voies n'y demandent rien de plus que les values :
+
+- **`secret.initialAdmin`** (adresse et mot de passe) : le hub crée ce compte au
+  démarrage, **s'il n'a encore aucun compte**. Ensuite la valeur est ignorée —
+  un mot de passe changé dans la console n'est pas remis au redémarrage suivant.
+- **Google Workspace** : sur un hub sans compte, le premier à se connecter
+  devient administrateur. Les suivants arrivent en lecture seule, jusqu'à ce
+  qu'il les élève (console → **Accès**).
+
+Avec l'un et l'autre, `initialAdmin` passe en premier : la connexion Google qui
+suit n'est plus la première.
+
+À défaut, la commande `operator`, dans le conteneur. L'image est distroless,
+d'où le chemin complet vers `node`, que `kubectl exec` ne prend pas de
+l'`ENTRYPOINT` :
 
 ```bash
 kubectl -n conference-operator exec hub-0 -- \

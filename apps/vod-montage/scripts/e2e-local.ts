@@ -180,11 +180,11 @@ try {
       const precoce = connectHub(hubUrl, hub.services.montage.createWorker('précoce', null).token)
       const early = await precoce.montage.claim()
       if (early == null) throw new Error('aucun job créé à l’arrivée du sidecar')
-      const refused = await connectHub(hubUrl, roomToken).montage.fichiers({ jobId: early.jobId, files: ['talk.mkv'] }).catch((e: Error) => e)
+      const refused = await connectHub(hubUrl, roomToken).montage.fichiers({ jobId: early.jobId, bailId: early.bailId, files: ['talk.mkv'] }).catch((e: Error) => e)
       if (!(refused instanceof Error)) throw new Error('un jeton de salle a ouvert le montage')
-      const { manquants } = await precoce.montage.fichiers({ jobId: early.jobId, files: ['talk.mkv', 'talk (2).mkv'] })
+      const { manquants } = await precoce.montage.fichiers({ jobId: early.jobId, bailId: early.bailId, files: ['talk.mkv', 'talk (2).mkv'] })
       if (manquants.length !== 2) throw new Error('des rushes absents ont été signés')
-      await precoce.montage.fail({ jobId: early.jobId, raison: 'rushes en route', reessayer: true })
+      await precoce.montage.fail({ jobId: early.jobId, bailId: early.bailId, raison: 'rushes en route', reessayer: true })
       say('job créé à l’arrivée du sidecar ; jeton de salle refusé ; rushes manquants → rendu à la file')
     }
   }

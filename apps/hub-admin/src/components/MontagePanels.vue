@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Button, Field, Hint, Panel, useToast } from '@conference-operator/components'
-import type { MontageJobView } from '@conference-operator/contract'
+import { DEPLOYMENT_WORKER_ID, type MontageJobView } from '@conference-operator/contract'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import { MONTAGE_STATES, describe, useMontageStore } from '../stores/montage.js'
@@ -151,8 +151,11 @@ async function copyToken(): Promise<void> {
             · {{ worker.lastSeenAt == null ? 'jamais vu' : `vu ${new Date(worker.lastSeenAt).toLocaleString('fr-FR')}` }}
           </span>
         </span>
+        <!-- Its token is in the hub's configuration: a revocation here would last
+             until the next start. It is retired by removing MONTAGE_WORKER_TOKEN. -->
+        <span v-if="worker.id === DEPLOYMENT_WORKER_ID" class="text-[11px] text-dim">géré par le déploiement</span>
         <Button
-          v-if="worker.revokedAt == null"
+          v-else-if="worker.revokedAt == null"
           size="small"
           variant="danger"
           @click="attempt(() => store.revokeWorker(worker.id), 'Worker révoqué')"

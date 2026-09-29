@@ -37,6 +37,15 @@ et ce sont ceux qui coûtent une soirée quand ils se découvrent tard.
   {{- fail "secret.google.hostedDomain est obligatoire avec un clientId : il décide qui est opérateur, tout compte du domaine en étant un." -}}
   {{- end -}}
 
+  {{/* L'administrateur initial : par paire, et un mot de passe digne d'un admin. */}}
+  {{- $admin := .Values.secret.initialAdmin -}}
+  {{- if not (eq (empty $admin.email) (empty $admin.password)) -}}
+  {{- fail "secret.initialAdmin.email et secret.initialAdmin.password vont par paire : les deux, ou aucun." -}}
+  {{- end -}}
+  {{- if and $admin.password (lt (len $admin.password) 12) -}}
+  {{- fail "secret.initialAdmin.password doit faire au moins 12 caractères : c'est celui d'un administrateur, sur un hub joignable depuis Internet." -}}
+  {{- end -}}
+
 {{- end -}}
 
 {{/*
@@ -59,6 +68,19 @@ hub qui refusera de démarrer, comme avant, et le message sera dans ses logs.
 
 {{- if or (not .Values.config.publicUrl) (eq .Values.config.publicUrl "https://hub.exemple.fr") -}}
 {{- fail "config.publicUrl porte encore l'exemple. C'est l'adresse qu'un navigateur voit : Better Auth signe ses cookies avec, et l'appairage des salles en découle." -}}
+{{- end -}}
+
+{{/*
+Le jeton de montage : même règle que le hub (`montageWorkerToken`), redite ici
+pour échouer au `helm upgrade` plutôt qu'en CrashLoopBackOff.
+*/}}
+{{- if and .Values.montage.enabled .Values.montage.token -}}
+  {{- if not (regexMatch "^wt_[A-Za-z0-9_-]{32,}$" .Values.montage.token) -}}
+  {{- fail "montage.token : « wt_ » suivi d'au moins 32 caractères [A-Za-z0-9_-]. Laissé vide, le chart en tire un." -}}
+  {{- end -}}
+{{- end -}}
+{{- if and .Values.montage.existingSecret .Values.montage.token -}}
+{{- fail "montage.existingSecret et montage.token s'excluent : le jeton vient du secret existant, ou des values." -}}
 {{- end -}}
 
 {{- if .Values.ingress.enabled -}}

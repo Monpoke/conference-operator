@@ -100,6 +100,20 @@ secret:
     accessKeyId: ""
     secretAccessKey: ""
 
+  # Le premier administrateur, créé au démarrage **si le hub n'a encore aucun
+  # compte** : la console s'ouvre sur une installation neuve sans `kubectl exec`.
+  # Ignoré dès qu'un compte existe — il amorce, il ne gouverne pas : un mot de
+  # passe changé depuis n'est pas remis à chaque redémarrage. Adresse et mot de
+  # passe vont par paire, 12 caractères au moins.
+  #
+  # Sans lui, le tout premier compte à se connecter par Google devient
+  # administrateur, et les suivants arrivent en lecture seule.
+  initialAdmin:
+    email: ""
+    password: ""
+    # Vide = la partie locale de l'adresse.
+    name: ""
+
   # Toute autre variable secrète, telle quelle.
   extra: {}
 
@@ -162,6 +176,77 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 podAnnotations: {}
+
+# Le worker de montage des VODs, posé avec le hub.
+#
+# Il prend les talks dans la file du hub, les monte, et renvoie la vidéo dans le
+# stockage. Il n'a rien à faire sans stockage S3 : l'activer n'a de sens qu'avec
+# `config.s3` et `secret.s3` renseignés.
+#
+# Le hub et ses workers partagent un jeton (`wt_…`). Le hub le reçoit en
+# `MONTAGE_WORKER_TOKEN` et déclare au démarrage un « Worker du déploiement » qui
+# l'accepte ; le worker le présente en `HUB_WORKER_TOKEN`. Rien à créer dans la
+# console : le montage tourne dès le premier démarrage.
+montage:
+  enabled: false
+
+  # Un job par réplique : pour monter plus de talks à la fois, plus de répliques.
+  # Elles partagent le jeton, et donc une seule ligne dans la console.
+  replicas: 1
+
+  image:
+    repository: ghcr.io/monpoke/conference-operator/vod-montage
+    # Vide = l'`appVersion` du chart, comme le hub. Un worker d'une autre version
+    # que le hub est refusé en plein montage : ne les désaligner qu'en connaissance
+    # de cause.
+    tag: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+
+  # Le jeton partagé. Trois voies :
+  #   - vide (le défaut) : le chart en tire un au premier `helm install`, le range
+  #     dans le secret `<hub>-montage`, et le **relit** aux `helm upgrade` suivants —
+  #     il ne change donc pas d'une mise à jour à l'autre ;
+  #   - renseigné : « wt_ » suivi d'au moins 32 caractères [A-Za-z0-9_-]. En changer
+  #     est une rotation : le hub et les workers redémarrent avec le nouveau.
+  #     echo "wt_$(openssl rand -base64 36 | tr '+/' '-_' | tr -d '=')"
+  #   - `existingSecret` : un secret du namespace, créé à la main, qui porte le
+  #     jeton sous la clé `existingSecretKey`. Rien de sensible ne passe alors par
+  #     les values.
+  token: ""
+  existingSecret: ""
+  existingSecretKey: token
+
+  # Adresses IPv4 d'abord pour les appels sortants du worker. Utile quand la
+  # sortie IPv6 du cluster n'est pas autorisée par le stockage : chaque
+  # téléchargement signé revient alors en 403, et aucun montage ne récupère ses
+  # sources.
+  ipv4First: true
+
+  # Toute autre variable du worker, telle quelle (voir apps/vod-montage/src/config.ts).
+  #   extra:
+  #     MONTAGE_LUFS: "-16"
+  #     POLL_SECONDS: "30"
+  extra: {}
+
+  # Un rush et son montage : de la place pour deux rushes, jetée avec le pod.
+  workDirSize: 30Gi
+
+  # SIGTERM laisse le worker finir le job en cours plutôt que de le laisser loué à
+  # personne : un encodage se compte en minutes.
+  terminationGracePeriodSeconds: 1800
+
+  resources:
+    requests:
+      cpu: "1"
+      memory: 1Gi
+    limits:
+      memory: 4Gi
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
 
 # Ce qui n'est pas un réglage, et pourquoi
 #

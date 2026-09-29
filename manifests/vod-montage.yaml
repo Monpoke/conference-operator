@@ -1,12 +1,16 @@
 # The montage worker: takes a talk from the hub's queue, edits it, sends it back.
 #
-# Not in `kustomization.yaml`, on purpose: it needs a worker token, and a token
-# only exists once the hub runs — console → VOD → Workers de montage, shown
-# once. Applied by hand, after the secret:
+# Not in `kustomization.yaml`, on purpose: it needs a worker token the hub
+# knows. Either one chosen here and given to the hub too, as
+# `MONTAGE_WORKER_TOKEN` in its secret — the hub then declares the worker at
+# startup — or one created in the console (VOD → Workers de montage, shown
+# once). See manifests/README.md. Applied by hand, after the secret:
 #
 #   kubectl -n conference-operator create secret generic vod-montage \
 #     --from-literal=HUB_WORKER_TOKEN=wt_…
 #   kubectl apply -n conference-operator -f manifests/vod-montage.yaml
+#
+# The Helm chart does all of this itself: `montage.enabled=true`.
 #
 # Until the secret exists the pod waits in `CreateContainerConfigError` and
 # starts on its own once it is created.

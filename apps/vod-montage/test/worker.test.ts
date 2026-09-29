@@ -1,11 +1,57 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
-import type { VodHabillage } from '@conference-operator/contract'
+import { ORPCError } from '@orpc/client'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { MontageClaim, VodHabillage } from '@conference-operator/contract'
 import { loadConfig } from '../src/config.js'
+import type { Hub } from '../src/hub.js'
 import { uploadParts } from '../src/transfer.js'
-import { completeFromSidecar } from '../src/worker.js'
+import { completeFromSidecar, processJob } from '../src/worker.js'
+
+describe('a lease lost to another worker', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('stops the job without failing it — it is another worker’s now', async () => {
+    const workDir = await mkdtemp(join(tmpdir(), 'bail-perdu-'))
+    vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ videoFile: 'talk.mkv' })))
+    const calls: { name: string; input: unknown }[] = []
+    const hub = {
+      montage: {
+        heartbeat: async (input: unknown) => {
+          calls.push({ name: 'heartbeat', input })
+          return { ok: true, annule: false, bail: new Date().toISOString() }
+        },
+        fichiers: async (input: unknown) => {
+          calls.push({ name: 'fichiers', input })
+          throw new ORPCError('CONFLICT', { message: 'ce montage est tenu par un autre worker, ou son bail a expiré' })
+        },
+        fail: async (input: unknown) => {
+          calls.push({ name: 'fail', input })
+          return { ok: true }
+        },
+      },
+    } as unknown as Hub
+    const lines: string[] = []
+
+    await processJob({
+      hub,
+      claim: { jobId: 'job-1', bailId: 'bail-1', sidecarUrl: 'https://stockage.example/sidecar.json' } as MontageClaim,
+      config: loadConfig({ HUB_URL: 'https://hub.example', HUB_WORKER_TOKEN: 'wt_abc', WORK_DIR: workDir }),
+      chrome: null as never,
+      log: (_level, message) => lines.push(message),
+    })
+
+    expect(calls.find((call) => call.name === 'fichiers')?.input).toMatchObject({ jobId: 'job-1', bailId: 'bail-1' })
+    expect(calls.some((call) => call.name === 'fail')).toBe(false)
+    expect(lines).toContain('bail perdu : le montage a été repris par un autre worker')
+    // Nothing of the take is kept once the job is dropped.
+    expect(await readdir(workDir)).toEqual([])
+    await rm(workDir, { recursive: true, force: true })
+  })
+})
 
 describe('the configuration', () => {
   it('refuses a room token, and names the variable', () => {

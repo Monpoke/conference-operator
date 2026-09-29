@@ -115,6 +115,23 @@ const configSchema = z.object({
   googleHostedDomain: z.string().min(1).optional(),
 
   /**
+   * The first admin, created at startup **on a hub that has no account yet**.
+   *
+   * What lets a deployment open its console with nothing more than its
+   * configuration: public sign-up is closed, and without it the operator
+   * command, run inside the container, was the only way in. Ignored as soon as
+   * any account exists — it seeds, it does not govern: a password changed since
+   * is not reset at every restart.
+   *
+   * Twelve characters at least: this one sits in a deployment secret, on a hub
+   * reachable from the internet, and it is an admin's.
+   */
+  initialAdminEmail: z.email('INITIAL_ADMIN_EMAIL : une adresse e-mail').optional(),
+  initialAdminPassword: z.string().min(12, 'INITIAL_ADMIN_PASSWORD doit faire au moins 12 caractères').optional(),
+  /** Its display name; the address's local part when absent. */
+  initialAdminName: z.string().min(1).optional(),
+
+  /**
    * VAPID keys for the pushed notifications (RFC 8292).
    *
    * Optional: without them, the hub generates a pair at the first startup and
@@ -223,6 +240,23 @@ const configSchema = z.object({
    */
   vodAbandonMinutes: z.coerce.number().int().min(5).max(1440).default(30),
 
+  /**
+   * A montage worker's token, declared by the deployment.
+   *
+   * The same secret is handed to the hub and to its workers (`HUB_WORKER_TOKEN`),
+   * so that the montage runs from the first start with nothing to create in the
+   * console. Absent, only the workers created in the console exist; removed after
+   * having been set, the worker it declared is revoked at the next start.
+   *
+   * `wt_` and at least 32 characters: what the console issues, and what a worker
+   * checks before calling. A short token would be the one guessable secret of the
+   * deployment, and it opens the rushes of the whole event.
+   */
+  montageWorkerToken: z
+    .string()
+    .regex(/^wt_[A-Za-z0-9_-]{32,}$/, 'MONTAGE_WORKER_TOKEN : « wt_ » suivi d’au moins 32 caractères [A-Za-z0-9_-]')
+    .optional(),
+
   /** Hashtag followed on the social networks. Empty = no social ingestion. */
   socialHashtag: z.string().optional(),
   /** Mastodon instance queried for the hashtag's public timeline. */
@@ -292,6 +326,16 @@ const configSchema = z.object({
     path: ['googleHostedDomain'],
     message:
       'GOOGLE_HOSTED_DOMAIN est obligatoire avec GOOGLE_CLIENT_ID : il décide qui est opérateur',
+  })
+  /**
+   * An initial admin needs both halves.
+   *
+   * An address without its password would create nothing and say nothing: the
+   * console would stay closed, and the failure would be looked for in the ingress.
+   */
+  .refine((config) => (config.initialAdminEmail == null) === (config.initialAdminPassword == null), {
+    path: ['initialAdminEmail'],
+    message: 'INITIAL_ADMIN_EMAIL et INITIAL_ADMIN_PASSWORD vont par paire : renseigner les deux, ou aucun',
   })
   /**
    * Half-configured S3 storage does not start.
@@ -409,6 +453,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     googleClientId: env.GOOGLE_CLIENT_ID,
     googleClientSecret: env.GOOGLE_CLIENT_SECRET,
     googleHostedDomain: env.GOOGLE_HOSTED_DOMAIN,
+    // Empty means unset, as for the montage token: a chart renders the keys even
+    // when they carry nothing.
+    initialAdminEmail: env.INITIAL_ADMIN_EMAIL || undefined,
+    initialAdminPassword: env.INITIAL_ADMIN_PASSWORD || undefined,
+    initialAdminName: env.INITIAL_ADMIN_NAME || undefined,
     vapidPublicKey: env.VAPID_PUBLIC_KEY,
     vapidPrivateKey: env.VAPID_PRIVATE_KEY,
     vapidSubject: env.VAPID_SUBJECT,
@@ -421,6 +470,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     s3SecretAccessKey: env.S3_SECRET_ACCESS_KEY,
     s3ForcePathStyle: env.S3_FORCE_PATH_STYLE,
     vodAbandonMinutes: env.VOD_ABANDON_MINUTES,
+    // Empty means unset: a chart renders the variable even when it has no value.
+    montageWorkerToken: env.MONTAGE_WORKER_TOKEN || undefined,
     socialHashtag: env.SOCIAL_HASHTAG,
     mastodonInstance: env.MASTODON_INSTANCE,
     xBearerToken: env.X_BEARER_TOKEN,

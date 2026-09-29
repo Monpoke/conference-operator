@@ -29,6 +29,11 @@ spec:
         {{- if .Values.secret.create }}
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
         {{- end }}
+        {{- if .Values.montage.enabled }}
+        # Le jeton des values seulement : celui que le chart tire ne change pas, et
+        # l'inclure ici ferait redémarrer le hub au premier upgrade qui le relit.
+        checksum/montage-token: {{ .Values.montage.token | sha256sum }}
+        {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -64,6 +69,17 @@ spec:
                 name: {{ include "hub.name" . }}
             - secretRef:
                 name: {{ include "hub.secretName" . }}
+          {{- if .Values.montage.enabled }}
+          # Le jeton que le hub déclare au démarrage comme « Worker du déploiement ».
+          # Désactiver le montage retire la variable : le hub révoque alors ce
+          # worker au démarrage suivant.
+          env:
+            - name: MONTAGE_WORKER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "hub.montageSecretName" . }}
+                  key: {{ include "hub.montageSecretKey" . }}
+          {{- end }}
           volumeMounts:
             - name: data
               mountPath: /data

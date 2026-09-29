@@ -7,6 +7,7 @@ import { WebSocketServer, type WebSocket as NodeWebSocket } from 'ws'
 import { RPCHandler as FastifyRPCHandler } from '@orpc/server/fastify'
 import { RPCHandler as WebSocketRPCHandler } from '@orpc/server/websocket'
 import { createAuth, createAuthOptions, migrateAuth, type Auth } from './auth.js'
+import { ensureInitialAdmin } from './operators.js'
 import { configSchema, durationMs, type ConfigInput } from './config.js'
 import { openHubDatabase } from './db.js'
 import { createSecretBox } from './secrets.js'
@@ -186,6 +187,8 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
             hostedDomain: config.googleHostedDomain!,
           }
         : undefined,
+    onFirstAccount: (email) =>
+      services.log('warn', 'premier compte du hub : administrateur', { email }),
   })
   await migrateAuth(authOptions)
   const auth = createAuth(authOptions)
@@ -338,6 +341,27 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   }
 
   services.log = (level, message, context) => app.log[level](context ?? {}, message)
+
+  // The montage worker the deployment declares, if any: its token is in the
+  // configuration, so it exists — or is retired — before any worker calls.
+  services.montage.syncDeploymentWorker(config.montageWorkerToken ?? null)
+
+  // The first admin, if the configuration names one and the hub has no account
+  // yet: the console opens on a fresh deployment with nothing to run inside it.
+  if (config.initialAdminEmail != null && config.initialAdminPassword != null) {
+    const outcome = await ensureInitialAdmin(auth, sqlite, {
+      email: config.initialAdminEmail,
+      password: config.initialAdminPassword,
+      name: config.initialAdminName ?? config.initialAdminEmail.split('@')[0]!,
+    })
+    if (outcome === 'created') {
+      app.log.warn({ email: config.initialAdminEmail }, 'administrateur initial créé (INITIAL_ADMIN_EMAIL)')
+    } else {
+      // Said, rather than silent: someone who changed the password in the
+      // secret expects it to apply, and it does not.
+      app.log.info('INITIAL_ADMIN_EMAIL ignoré : le hub a déjà des comptes, il ne sert qu’au premier démarrage')
+    }
+  }
 
   const social = new SocialIngestor(sources, services.wall, {
     intervalMs: config.socialPollIntervalMs,

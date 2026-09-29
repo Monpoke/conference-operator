@@ -11,14 +11,12 @@
 # is the single source, injected at packaging time.
 name: Release
 
+# A pushed version tag, and nothing else. No manual trigger: a version is built
+# from the commit its tag names, or not at all — a build with no tag had no
+# number to carry, and nothing to tell it apart from the real thing.
 on:
   push:
-    tags: ['v*']
-  # The rehearsal. Builds both packages without publishing anything: the
-  # installer goes out as an artifact (90 days), the image never leaves the
-  # runner. This is what lets the packaging chain be exercised the week before,
-  # without burning a version number or pushing anything public.
-  workflow_dispatch:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+*']
 
 concurrency:
   # No cancellation here, unlike CI: a half-finished release would leave an
@@ -30,9 +28,27 @@ permissions:
   contents: read
 
 jobs:
+  # A version is published once. A tag pushed again — moved, or rewritten along
+  # with the history — would otherwise rebuild the images and push them over the
+  # ones already out under that number, which is what happened to v0.0.2 when
+  # the history was rewritten: same number, different image. Refused here, before
+  # anything is built; a fix goes out under the next number.
+  new-version:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            echo "::error::$GITHUB_REF_NAME est déjà publiée : rien n'est reconstruit. Publier le correctif sous un nouveau numéro."
+            exit 1
+          fi
+
   # Types, tests and bundles, exactly as for any pull request. Nothing ships
   # behind a red suite.
   verify:
+    needs: new-version
     uses: ./.github/workflows/ci.yml
 
   image:
@@ -51,10 +67,8 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       # `GITHUB_TOKEN` is enough: GHCR asks for no third-party account, and
-      # hosting a public package there is free. No login on a rehearsal — there
-      # is nothing to push.
+      # hosting a public package there is free.
       - uses: docker/login-action@v3
-        if: startsWith(github.ref, 'refs/tags/v')
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -71,7 +85,6 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=rehearsal,enable=${{ github.event_name == 'workflow_dispatch' }}
 
       # `linux/amd64` only, and deliberately so. The Dockerfile carries just the
       # linux-x64 and linuxmusl-x64 `better-sqlite3` binaries — the other six are
@@ -89,7 +102,7 @@ jobs:
         with:
           context: .
           platforms: linux/amd64
-          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # The number the hub shows in its console, the same one as the tag.
@@ -97,10 +110,8 @@ jobs:
             VERSION=${{ steps.meta.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # Provenance and SBOM only mean something attached to a pushed image:
-          # a rehearsal produces no manifest to attach them to.
-          provenance: ${{ startsWith(github.ref, 'refs/tags/v') && 'mode=max' || 'false' }}
-          sbom: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          provenance: mode=max
+          sbom: true
 
       # GHCR only accepts a lowercase name, and the repository's own need not be
       # one. `metadata-action` lowercases what it is given; this action does not,
@@ -115,11 +126,9 @@ jobs:
       #
       #   gh attestation verify oci://<image>:<version> --repo <owner>/<repo>
       #
-      # A rehearsal pushes no image, so there is no digest to attest. And this
-      # runs *after* the push on purpose: a release whose attestation fails still
-      # has its image, and the step can be replayed.
+      # This runs *after* the push on purpose: a release whose attestation fails
+      # still has its image, and the step can be replayed.
       - uses: actions/attest-build-provenance@v4
-        if: startsWith(github.ref, 'refs/tags/v')
         with:
           subject-name: ${{ steps.name.outputs.image }}
           subject-digest: ${{ steps.build.outputs.digest }}
@@ -144,7 +153,6 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/login-action@v3
-        if: startsWith(github.ref, 'refs/tags/v')
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -157,7 +165,6 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=rehearsal,enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - id: build
         uses: docker/build-push-action@v6
@@ -165,19 +172,18 @@ jobs:
           context: .
           file: apps/vod-montage/Dockerfile
           platforms: linux/amd64
-          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=vod-montage
           cache-to: type=gha,mode=max,scope=vod-montage
-          provenance: ${{ startsWith(github.ref, 'refs/tags/v') && 'mode=max' || 'false' }}
-          sbom: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          provenance: mode=max
+          sbom: true
 
       - id: name
         run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}/vod-montage" >> "$GITHUB_OUTPUT"
 
       - uses: actions/attest-build-provenance@v4
-        if: startsWith(github.ref, 'refs/tags/v')
         with:
           subject-name: ${{ steps.name.outputs.image }}
           subject-digest: ${{ steps.build.outputs.digest }}
@@ -218,12 +224,7 @@ jobs:
       # on site could say which one is running.
       - id: version
         shell: bash
-        run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            echo "number=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-          else
-            echo "number=0.0.0-rehearsal.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
-          fi
+        run: echo "number=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       # What `package:win` does, plus the version number. Order matters: the
       # control-room bundle travels inside the installer's `resources`, so it has
@@ -292,7 +293,6 @@ jobs:
       # After the upload on purpose: an attestation that fails leaves the
       # installer in the run's artifacts all the same.
       - uses: actions/attest-build-provenance@v4
-        if: startsWith(github.ref, 'refs/tags/v')
         with:
           subject-path: apps/room-client/release/*.exe
 
@@ -330,12 +330,7 @@ jobs:
 
       - id: version
         shell: bash
-        run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            echo "number=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-          else
-            echo "number=0.0.0-rehearsal.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
-          fi
+        run: echo "number=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       # `package:linux`, plus the version number. Same order and same reason as
       # on Windows: the control-room bundle travels inside `resources`.
@@ -361,15 +356,12 @@ jobs:
           retention-days: 90
 
       - uses: actions/attest-build-provenance@v4
-        if: startsWith(github.ref, 'refs/tags/v')
         with:
           subject-path: |
             apps/room-client/release/*.AppImage
             apps/room-client/release/*.tar.gz
 
   release:
-    # A rehearsal stops here: both packages were built, neither is published.
-    if: startsWith(github.ref, 'refs/tags/v')
     needs: [image, image-montage, installer, installer-linux]
     runs-on: ubuntu-latest
     permissions:

@@ -3026,10 +3026,18 @@ Les sommes portent le nom de leur plateforme (`SHA256SUMS-windows.txt`,
 `SHA256SUMS-linux.txt`) : les deux jobs déposent leurs pièces jointes dans le
 même dossier, où un `SHA256SUMS.txt` commun écraserait l'autre sans rien dire.
 
-**La répétition.** Le même workflow se déclenche à la main
-(`workflow_dispatch`) : il construit l'image et les deux paquets client, les
-dépose en artefacts pour 90 jours, et ne publie rien. C'est ce qui permet d'éprouver la
-chaîne d'empaquetage la semaine d'avant sans brûler un numéro de version.
+**Une version ne se construit que sur un tag poussé**, de la forme `vX.Y.Z`,
+éventuellement suivi de `-rc.N`. Pas de déclenchement à la main : un build sans
+tag n'avait pas de numéro à porter, et rien ne le distinguait du vrai. Pour
+éprouver la chaîne d'empaquetage la semaine d'avant, on pousse un
+`vX.Y.Z-rc.1` : il est publié comme pré-version, et ne devient pas la dernière
+version du dépôt.
+
+**Une version n'est publiée qu'une fois.** Le premier job refuse un tag dont la
+release existe déjà. Un tag repoussé — déplacé, ou réécrit avec l'historique —
+reconstruisait sinon les images et les poussait par-dessus celles déjà sorties
+sous ce numéro : même numéro, image différente. C'est arrivé à la v0.0.2 lors de
+la réécriture de l'historique. Un correctif sort sous le numéro suivant.
 
 **Les source maps ne sont pas dans les paquets**, et c'est déjà le cas depuis
 que l'installeur existe : rien n'active `--enable-source-maps` sur un poste de

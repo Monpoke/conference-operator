@@ -65,6 +65,23 @@ jobs:
       - name: Bundles
         run: pnpm build
 
+      # The chart, because the release publishes it and nothing else renders it
+      # before then: a template error would otherwise show up on the day a
+      # version is tagged. Rendered with the montage on, since that is the part
+      # with the most moving pieces — the shared token, its secret, both pods.
+      - uses: azure/setup-helm@v4
+
+      - name: Chart
+        run: |
+          set -euo pipefail
+          values=(
+            --set config.publicUrl=https://hub.ci.invalid
+            --set ingress.host=hub.ci.invalid
+            --set secret.betterAuthSecret=ci-secret-ci-secret-ci-secret-ci-secret
+          )
+          helm lint charts/hub "${values[@]}"
+          helm template hub charts/hub "${values[@]}" --set montage.enabled=true > /dev/null
+
   # The pull request's commit messages, against `commitlint.config.js`.
   #
   # On pull requests only. The history from before the convention does not follow

@@ -196,8 +196,24 @@ export const montageJobViewSchema = z.object({
 export type MontageJobView = z.infer<typeof montageJobViewSchema>
 
 /** What a worker receives when it takes a job. */
+/**
+ * A worker's hold on a job: the job, and the lease it took it under.
+ *
+ * Every call a worker makes about its job names both. The lease id is drawn at
+ * each claim and never reused, so a worker whose lease lapsed — and whose job
+ * another took since — is refused at its next call, even when both share the
+ * deployment's token and so one worker id.
+ */
+export const montageLeaseSchema = z.object({
+  jobId: z.string(),
+  bailId: z.string(),
+})
+export type MontageLease = z.infer<typeof montageLeaseSchema>
+
 export const montageClaimSchema = z.object({
   jobId: z.string(),
+  /** Named back in every later call about this job — see `montageLeaseSchema`. */
+  bailId: z.string(),
   sessionId: sessionIdSchema,
   roomId: roomIdSchema,
   /** The take's sidecar: it names the files, and holds the marks. */

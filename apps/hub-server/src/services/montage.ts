@@ -12,6 +12,7 @@ import type {
   MontagePhase,
   MontageRegie,
   MontageJobView,
+  MontageLease,
   MontageState,
   MontageWorkerView,
   SignedPart,
@@ -260,6 +261,7 @@ export class MontageService {
         continue
       }
       const bail = new Date(this.now().getTime() + LEASE_MS).toISOString()
+      const bailId = ulid()
       // Conditional on the state: two workers claiming at once cannot both win.
       const taken = this.db
         .update(montageJob)
@@ -267,6 +269,7 @@ export class MontageService {
           state: 'en-cours',
           workerId: worker.id,
           leaseUntil: bail,
+          bailId,
           tentatives: job.tentatives + 1,
           etape: 'telechargement',
           pourcent: 0,
@@ -280,6 +283,7 @@ export class MontageService {
       const phase = job.phase as MontagePhase
       return {
         jobId: job.id,
+        bailId,
         sessionId: job.sessionId,
         roomId: job.roomId,
         sidecarUrl: vod.presignGet(sidecar.objectKey),
@@ -297,9 +301,9 @@ export class MontageService {
    * Read addresses for the take's files, named as the sidecar names them —
    * relative to the sidecar's own folder.
    */
-  files(worker: Worker, jobId: string, names: string[]): { urls: { file: string; url: string }[]; manquants: string[] } {
+  files(worker: Worker, lease: MontageLease, names: string[]): { urls: { file: string; url: string }[]; manquants: string[] } {
     const vod = this.requireVod()
-    const job = this.held(worker, jobId)
+    const job = this.held(worker, lease)
     const sidecar = vod.upload(job.sidecarUploadId)
     if (sidecar == null) throw new MontageError('NOT_FOUND', 'le sidecar de la prise a disparu du registre')
     const folder = folderOf(sidecar.file)
@@ -314,23 +318,23 @@ export class MontageService {
     return { urls, manquants }
   }
 
-  heartbeat(worker: Worker, jobId: string, etape: MontageEtape, pourcent: number): { ok: boolean; annule: boolean; bail: string } {
-    const job = this.job(jobId)
-    if (job.workerId !== worker.id) throw new MontageError('CONFLICT', 'ce montage est tenu par un autre worker')
+  heartbeat(worker: Worker, lease: MontageLease, etape: MontageEtape, pourcent: number): { ok: boolean; annule: boolean; bail: string } {
+    const job = this.job(lease.jobId)
+    this.checkLease(worker, job, lease)
     const bail = new Date(this.now().getTime() + LEASE_MS).toISOString()
     if (job.state !== 'en-cours') return { ok: false, annule: job.state === 'annule', bail: job.leaseUntil ?? bail }
     this.db
       .update(montageJob)
       .set({ etape, pourcent, leaseUntil: bail, updatedAt: this.iso() })
-      .where(eq(montageJob.id, jobId))
+      .where(and(eq(montageJob.id, lease.jobId), eq(montageJob.bailId, lease.bailId)))
       .run()
     return { ok: true, annule: false, bail }
   }
 
   /** Opens the output's multipart, at the key beside the take's rushes. */
-  async openUpload(worker: Worker, jobId: string, sizeBytes: number): Promise<{ taillePartOctets: number; parts: number }> {
+  async openUpload(worker: Worker, lease: MontageLease, sizeBytes: number): Promise<{ taillePartOctets: number; parts: number }> {
     const vod = this.requireVod()
-    const job = this.held(worker, jobId)
+    const job = this.held(worker, lease)
     const sidecar = vod.upload(job.sidecarUploadId)
     if (sidecar == null) throw new MontageError('NOT_FOUND', 'le sidecar de la prise a disparu du registre')
     // A retried upload leaves the previous multipart open: abandoned now, not billed until housekeeping.
@@ -340,15 +344,15 @@ export class MontageService {
     this.db
       .update(montageJob)
       .set({ outputKey, s3UploadId, etape: 'envoi', pourcent: 0, updatedAt: this.iso() })
-      .where(eq(montageJob.id, jobId))
+      .where(eq(montageJob.id, lease.jobId))
       .run()
     const taillePartOctets = Math.max(MIN_PART_BYTES, Math.ceil(sizeBytes / MAX_PARTS))
     return { taillePartOctets, parts: Math.max(1, Math.ceil(sizeBytes / taillePartOctets)) }
   }
 
-  signParts(worker: Worker, jobId: string, numeros: number[]): SignedPart[] {
+  signParts(worker: Worker, lease: MontageLease, numeros: number[]): SignedPart[] {
     const vod = this.requireVod()
-    const job = this.held(worker, jobId)
+    const job = this.held(worker, lease)
     if (job.s3UploadId == null || job.outputKey == null) {
       throw new MontageError('PRECONDITION_FAILED', 'aucun envoi ouvert : appeler montage.envoi d’abord')
     }
@@ -357,8 +361,7 @@ export class MontageService {
 
   async complete(
     worker: Worker,
-    input: {
-      jobId: string
+    input: MontageLease & {
       parts: { n: number; etag: string }[]
       durationMs: number
       marquesManquantes: ('debut' | 'fin')[]
@@ -367,7 +370,7 @@ export class MontageService {
     },
   ): Promise<string> {
     const vod = this.requireVod()
-    const job = this.held(worker, input.jobId)
+    const job = this.held(worker, input)
     if (job.s3UploadId == null || job.outputKey == null) {
       throw new MontageError('PRECONDITION_FAILED', 'aucun envoi ouvert : appeler montage.envoi d’abord')
     }
@@ -394,9 +397,10 @@ export class MontageService {
     return job.outputKey
   }
 
-  async fail(worker: Worker, jobId: string, raison: string, reessayer: boolean): Promise<void> {
+  async fail(worker: Worker, lease: MontageLease, raison: string, reessayer: boolean): Promise<void> {
+    const jobId = lease.jobId
     const job = this.job(jobId)
-    if (job.workerId !== worker.id) throw new MontageError('CONFLICT', 'ce montage est tenu par un autre worker')
+    this.checkLease(worker, job, lease)
     if (job.state !== 'en-cours') return
     await this.abortOutput(job)
     if (reessayer) {
@@ -423,9 +427,9 @@ export class MontageService {
   }
 
   /** Upload addresses for the analysis files, beside the take's montage. */
-  artefactUploads(worker: Worker, jobId: string, noms: string[]): { nom: string; url: string }[] {
+  artefactUploads(worker: Worker, lease: MontageLease, noms: string[]): { nom: string; url: string }[] {
     const vod = this.requireVod()
-    const job = this.held(worker, jobId)
+    const job = this.held(worker, lease)
     return noms.map((nom) => ({ nom, url: vod.presignPut(this.artefactKey(job, nom)) }))
   }
 
@@ -433,8 +437,9 @@ export class MontageService {
    * The analysis is in. Through to the montage when the policy lets it — the
    * worker then carries on with the files it has — else to the console.
    */
-  analysisDone(worker: Worker, jobId: string, analyse: MontageAnalyse): { suite: 'montage' | 'validation'; coupe: MontageCoupe | null } {
-    const job = this.held(worker, jobId)
+  analysisDone(worker: Worker, lease: MontageLease, analyse: MontageAnalyse): { suite: 'montage' | 'validation'; coupe: MontageCoupe | null } {
+    const jobId = lease.jobId
+    const job = this.held(worker, lease)
     if (job.phase !== 'analyse') throw new MontageError('CONFLICT', 'ce job n’est pas en analyse')
     const policy = this.montageAuto()
     const auto = policy === 'toujours' || (policy === 'si-confiance-haute' && analyse.confiance === 'haute')
@@ -613,9 +618,22 @@ export class MontageService {
   }
 
   /** The job, provided this worker holds it and it is still being edited. */
-  private held(worker: Worker, jobId: string): JobRow {
-    const job = this.job(jobId)
-    if (job.workerId !== worker.id) throw new MontageError('CONFLICT', 'ce montage est tenu par un autre worker')
+  /**
+   * The call comes from the lease that holds the job — not only from its worker.
+   *
+   * Both checks, because workers sharing the deployment's token share one id: a
+   * replica whose lease lapsed would pass the first, and only the lease's own id
+   * tells it from the replica that took the job after it.
+   */
+  private checkLease(worker: Worker, job: JobRow, lease: MontageLease): void {
+    if (job.workerId !== worker.id || job.bailId !== lease.bailId) {
+      throw new MontageError('CONFLICT', 'ce montage est tenu par un autre worker, ou son bail a expiré')
+    }
+  }
+
+  private held(worker: Worker, lease: MontageLease): JobRow {
+    const job = this.job(lease.jobId)
+    this.checkLease(worker, job, lease)
     if (job.state !== 'en-cours') throw new MontageError('CONFLICT', `ce montage n’est plus en cours (${job.state})`)
     return job
   }

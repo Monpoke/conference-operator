@@ -14,10 +14,21 @@ export type Log = (level: 'info' | 'warn' | 'error', message: string, context?: 
 
 /** The console cancelled the job: stop, and say nothing more to the hub about it. */
 export class Cancelled extends Error {
-  constructor() {
-    super('montage annulé depuis la console')
+  constructor(message = 'montage annulé depuis la console') {
+    super(message)
     this.name = 'Cancelled'
   }
+}
+
+/**
+ * The hub says the job is no longer ours: our lease lapsed — the hub out of
+ * reach longer than it lasts — and another worker took the job since.
+ *
+ * Carrying on would only render for nothing, and every later call would be
+ * refused anyway. Nor is the job failed on the way out: it is another's now.
+ */
+export function leaseLost(error: unknown): boolean {
+  return (error as { code?: unknown } | null)?.code === 'CONFLICT'
 }
 
 /** A heartbeat every minute, well inside the hub's ten-minute lease. */
@@ -39,16 +50,21 @@ export async function processJob(options: {
 }): Promise<void> {
   const { hub, claim, config, log } = options
   const jobDir = join(config.workDir, claim.jobId)
+  // Named in every call about this job: the hub refuses a lease that is no
+  // longer the job's current one.
+  const lease = { jobId: claim.jobId, bailId: claim.bailId }
   await mkdir(jobDir, { recursive: true })
 
   let etape: MontageEtape = 'telechargement'
   let pourcent = 0
   let cancelled = false
+  let lost = false
   const beat = async () => {
     try {
-      const answer = await hub.montage.heartbeat({ jobId: claim.jobId, etape, pourcent })
+      const answer = await hub.montage.heartbeat({ ...lease, etape, pourcent })
       if (answer.annule) cancelled = true
     } catch (error) {
+      if (leaseLost(error)) lost = true
       log('warn', 'battement refusé par le hub', { jobId: claim.jobId, error: message(error) })
     }
   }
@@ -57,6 +73,7 @@ export async function processJob(options: {
     etape = next
     pourcent = Math.round(Math.min(1, Math.max(0, fraction)) * 100)
     if (changed) void beat()
+    if (lost) throw new Cancelled('bail perdu : le montage a été repris par un autre worker')
     if (cancelled) throw new Cancelled()
   }
   const timer = setInterval(() => void beat(), HEARTBEAT_MS)
@@ -68,10 +85,10 @@ export async function processJob(options: {
     const sidecar = JSON.parse(await readFile(sidecarFile, 'utf8')) as Sidecar
     const names = takeFiles(sidecar).map((f) => f.file)
 
-    const { urls, manquants } = await hub.montage.fichiers({ jobId: claim.jobId, files: names })
+    const { urls, manquants } = await hub.montage.fichiers({ ...lease, files: names })
     if (manquants.length > 0) {
       log('info', 'rush pas encore dans le stockage : job rendu, repris plus tard', { jobId: claim.jobId, manquants })
-      await hub.montage.fail({ jobId: claim.jobId, raison: `en attente de : ${manquants.join(', ')}`, reessayer: true })
+      await hub.montage.fail({ ...lease, raison: `en attente de : ${manquants.join(', ')}`, reessayer: true })
       return
     }
     for (const [index, { file, url }] of urls.entries()) {
@@ -96,10 +113,10 @@ export async function processJob(options: {
         segments: analysed.segments, takeMs: analysed.takeMs, hasAudio: analysed.hasAudio, coupe: analysed.coupe, dir: apercusDir,
         log: (text) => log('warn', text, { jobId: claim.jobId }),
       })
-      if (noms.length > 0) await uploadApercus(apercusDir, await hub.montage.artefacts({ jobId: claim.jobId, noms }))
+      if (noms.length > 0) await uploadApercus(apercusDir, await hub.montage.artefacts({ ...lease, noms }))
       report('analyse', 1)
       const next = await hub.montage.analyseTerminee({
-        jobId: claim.jobId,
+        ...lease,
         proposition: analysed.coupe,
         confiance: analysed.confiance,
         raisons: analysed.raisons.map((raison) => raison.slice(0, 300)),
@@ -130,18 +147,17 @@ export async function processJob(options: {
       log: (text) => log('info', text, { jobId: claim.jobId }),
     })
     report('envoi', 0)
-    if (cancelled) throw new Cancelled()
 
     const { size } = await stat(output)
-    const plan = await hub.montage.envoi({ jobId: claim.jobId, sizeBytes: size })
+    const plan = await hub.montage.envoi({ ...lease, sizeBytes: size })
     const parts = await uploadParts(output, {
       partSize: plan.taillePartOctets,
       parts: plan.parts,
-      sign: (numeros) => hub.montage.parts({ jobId: claim.jobId, numeros }),
+      sign: (numeros) => hub.montage.parts({ ...lease, numeros }),
     }, { concurrency: config.uploadConcurrency, onProgress: (fraction) => report('envoi', fraction) })
 
     const { objectKey } = await hub.montage.complete({
-      jobId: claim.jobId,
+      ...lease,
       parts,
       durationMs: result.durationMs,
       marquesManquantes: result.missingMarks,
@@ -151,11 +167,15 @@ export async function processJob(options: {
     log('info', 'montage envoyé', { jobId: claim.jobId, objectKey, minutes: +(result.durationMs / 60_000).toFixed(1) })
   } catch (error) {
     if (error instanceof Cancelled) {
-      log('info', 'montage annulé depuis la console', { jobId: claim.jobId })
+      log('info', error.message, { jobId: claim.jobId })
+      return
+    }
+    if (leaseLost(error)) {
+      log('warn', 'bail perdu : le montage a été repris par un autre worker', { jobId: claim.jobId })
       return
     }
     log('error', 'montage échoué', { jobId: claim.jobId, error: message(error) })
-    await hub.montage.fail({ jobId: claim.jobId, raison: message(error), reessayer: false }).catch(() => undefined)
+    await hub.montage.fail({ ...lease, raison: message(error), reessayer: false }).catch(() => undefined)
   } finally {
     clearInterval(timer)
     await rm(jobDir, { recursive: true, force: true })

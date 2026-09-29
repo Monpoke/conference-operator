@@ -739,6 +739,17 @@ export const montageJob = sqliteTable(
     pourcent: integer('pourcent').notNull().default(0),
     workerId: text('worker_id'),
     leaseUntil: text('lease_until'),
+    /**
+     * The lease's own identity, drawn at each claim and never reused.
+     *
+     * Every worker call names it, and the hub refuses one that is not the
+     * current lease's. The worker's id is not enough: workers sharing the
+     * deployment's token share one id, and a replica whose lease lapsed — the
+     * hub unreachable for ten minutes — would otherwise keep reporting and
+     * uploading over the replica that took the job after it. `tentatives` is not
+     * enough either: a "try again later" gives an attempt back.
+     */
+    bailId: text('bail_id'),
     pasAvant: text('pas_avant'),
     tentatives: integer('tentatives').notNull().default(0),
     outputKey: text('output_key'),

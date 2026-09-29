@@ -49,7 +49,11 @@ sans la variable, le révoque à son démarrage et remet ses montages en file.
 
 Pour monter plus de talks à la fois : `montage.replicas`. Les répliques
 partagent le jeton, et donc une seule ligne dans la console ; chacune tient
-son propre montage.
+son propre montage. Le worker ne garde rien entre deux jobs — la file et les
+baux sont dans le hub, les vidéos dans S3 — et une réplique perdue rend son job
+à la file au bout de dix minutes. Chaque prise a son propre bail : une réplique
+qui revient après que son bail a expiré est refusée dès son appel suivant et
+abandonne, sans jamais envoyer par-dessus celle qui a repris le talk.
 
 ## Les secrets, et où ils finissent
 

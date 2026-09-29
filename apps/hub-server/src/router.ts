@@ -1753,20 +1753,20 @@ export const router = os.router({
     ),
 
     fichiers: os.montage.fichiers.use(workerOnly).handler(({ input, context }) =>
-      onMontage(context, () => context.services.montage.files(context.worker, input.jobId, input.files)),
+      onMontage(context, () => context.services.montage.files(context.worker, input, input.files)),
     ),
 
     heartbeat: os.montage.heartbeat.use(workerOnly).handler(({ input, context }) =>
       onMontage(context, () =>
-        context.services.montage.heartbeat(context.worker, input.jobId, input.etape, input.pourcent)),
+        context.services.montage.heartbeat(context.worker, input, input.etape, input.pourcent)),
     ),
 
     envoi: os.montage.envoi.use(workerOnly).handler(({ input, context }) =>
-      onMontage(context, () => context.services.montage.openUpload(context.worker, input.jobId, input.sizeBytes)),
+      onMontage(context, () => context.services.montage.openUpload(context.worker, input, input.sizeBytes)),
     ),
 
     parts: os.montage.parts.use(workerOnly).handler(({ input, context }) =>
-      onMontage(context, () => context.services.montage.signParts(context.worker, input.jobId, input.numeros)),
+      onMontage(context, () => context.services.montage.signParts(context.worker, input, input.numeros)),
     ),
 
     complete: os.montage.complete.use(workerOnly).handler(({ input, context }) =>
@@ -1777,19 +1777,19 @@ export const router = os.router({
     ),
 
     artefacts: os.montage.artefacts.use(workerOnly).handler(({ input, context }) =>
-      onMontage(context, () => context.services.montage.artefactUploads(context.worker, input.jobId, input.noms)),
+      onMontage(context, () => context.services.montage.artefactUploads(context.worker, input, input.noms)),
     ),
 
     analyseTerminee: os.montage.analyseTerminee.use(workerOnly).handler(({ input, context }) =>
       onMontage(context, () => {
-        const { jobId, ...analyse } = input
-        return context.services.montage.analysisDone(context.worker, jobId, analyse)
+        const { jobId, bailId, ...analyse } = input
+        return context.services.montage.analysisDone(context.worker, { jobId, bailId }, analyse)
       }),
     ),
 
     fail: os.montage.fail.use(workerOnly).handler(({ input, context }) =>
       onMontage(context, async () => {
-        await context.services.montage.fail(context.worker, input.jobId, input.raison, input.reessayer)
+        await context.services.montage.fail(context.worker, input, input.raison, input.reessayer)
         return { ok: true }
       }),
     ),

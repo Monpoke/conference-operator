@@ -61,6 +61,7 @@ import {
   montageCoupeSchema,
   montageEtapeSchema,
   montageJobViewSchema,
+  montageLeaseSchema,
   montageWorkerViewSchema,
   vodHabillageSchema,
   ARTEFACT_NAME,
@@ -1203,29 +1204,28 @@ export const contract = {
      * worker then gives the job back with `fail{reessayer: true}`.
      */
     fichiers: oc
-      .input(z.object({ jobId: z.string(), files: z.array(z.string().min(1).max(400)).min(1).max(50) }))
+      .input(montageLeaseSchema.extend({ files: z.array(z.string().min(1).max(400)).min(1).max(50) }))
       .output(z.object({ urls: z.array(z.object({ file: z.string(), url: z.url() })), manquants: z.array(z.string()) })),
 
     /** Where the worker stands; renews the lease. `annule`: stop, the console cancelled. Worker. */
     heartbeat: oc
-      .input(z.object({ jobId: z.string(), etape: montageEtapeSchema, pourcent: z.number().int().min(0).max(100) }))
+      .input(montageLeaseSchema.extend({ etape: montageEtapeSchema, pourcent: z.number().int().min(0).max(100) }))
       .output(z.object({ ok: z.boolean(), annule: z.boolean(), bail: isoDateTimeSchema })),
 
     /** Opens the output's multipart upload. Worker. */
     envoi: oc
-      .input(z.object({ jobId: z.string(), sizeBytes: z.number().int().positive() }))
+      .input(montageLeaseSchema.extend({ sizeBytes: z.number().int().positive() }))
       .output(z.object({ taillePartOctets: z.number().int().positive(), parts: z.number().int().positive() })),
 
     /** Signs a batch of the output's parts. Worker. */
     parts: oc
-      .input(z.object({ jobId: z.string(), numeros: z.array(z.number().int().positive()).min(1).max(100) }))
+      .input(montageLeaseSchema.extend({ numeros: z.array(z.number().int().positive()).min(1).max(100) }))
       .output(z.array(signedPartSchema)),
 
     /** The output is uploaded: the hub reassembles it. Worker. */
     complete: oc
       .input(
-        z.object({
-          jobId: z.string(),
+        montageLeaseSchema.extend({
           parts: z.array(z.object({ n: z.number().int().positive(), etag: z.string().min(1) })).min(1),
           durationMs: z.number().int().nonnegative(),
           marquesManquantes: z.array(markerRoleSchema),
@@ -1243,7 +1243,7 @@ export const contract = {
      * around each end, a few seconds of sound around each end.
      */
     artefacts: oc
-      .input(z.object({ jobId: z.string(), noms: z.array(z.string().regex(ARTEFACT_NAME)).min(1).max(20) }))
+      .input(montageLeaseSchema.extend({ noms: z.array(z.string().regex(ARTEFACT_NAME)).min(1).max(20) }))
       .output(z.array(z.object({ nom: z.string(), url: z.url() }))),
 
     /**
@@ -1254,7 +1254,7 @@ export const contract = {
      * the console, and the worker is free.
      */
     analyseTerminee: oc
-      .input(montageAnalyseSchema.extend({ jobId: z.string() }))
+      .input(montageAnalyseSchema.extend(montageLeaseSchema.shape))
       .output(z.object({ suite: z.enum(['montage', 'validation']), coupe: montageCoupeSchema.nullable() })),
 
     /**
@@ -1264,7 +1264,7 @@ export const contract = {
      * back to the queue a little later, and the attempt does not count.
      */
     fail: oc
-      .input(z.object({ jobId: z.string(), raison: z.string().max(4_000), reessayer: z.boolean().default(false) }))
+      .input(montageLeaseSchema.extend({ raison: z.string().max(4_000), reessayer: z.boolean().default(false) }))
       .output(z.object({ ok: z.boolean() })),
 
     /** The jobs, a talk's or all of them. Admin. */

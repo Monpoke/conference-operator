@@ -149,6 +149,27 @@ describe('the deployment’s worker', () => {
     expect(montage.fromToken(TOKEN)).not.toBeNull()
   })
 
+  it('refuses a replica whose lease lapsed, though it shares the id of the one that took over', async () => {
+    montage.syncDeploymentWorker(TOKEN)
+    montage.enqueue({ sessionId: 'sess-1', roomId: TRACK_1, sidecarUploadId: await uploaded(SIDECAR, 'sidecar') })
+    const zombie = montage.claim(montage.fromToken(TOKEN)!)!
+
+    // The hub out of reach for longer than the lease: the job goes to another replica.
+    clock = new Date(clock.getTime() + LEASE_MS + 60_000)
+    const taker = montage.claim(montage.fromToken(TOKEN)!)!
+    expect(taker.jobId).toBe(zombie.jobId)
+    expect(taker.bailId).not.toBe(zombie.bailId)
+
+    const worker = montage.fromToken(TOKEN)!
+    expect(() => montage.heartbeat(worker, zombie, 'assemblage', 90)).toThrow(MontageError)
+    await expect(montage.openUpload(worker, zombie, 1_000_000)).rejects.toThrow(MontageError)
+    // Nor can it give back a job that is no longer its own.
+    await expect(montage.fail(worker, zombie, 'plus rien', false)).rejects.toThrow(MontageError)
+
+    expect(montage.heartbeat(worker, taker, 'intro', 5)).toMatchObject({ ok: true })
+    expect(montage.list(null)[0]!.state).toBe('en-cours')
+  })
+
   it('lets two replicas sharing the token each hold their own job', async () => {
     montage.syncDeploymentWorker(TOKEN)
     montage.enqueue({ sessionId: 'sess-1', roomId: TRACK_1, sidecarUploadId: await uploaded(SIDECAR, 'sidecar') })
@@ -176,7 +197,7 @@ describe('the queue', () => {
     expect(claim!.sidecarUrl).toContain('/rushes/cn26/2026-10-30/')
     expect(claim!.sidecarUrl).toContain('X-Amz-Signature=')
     expect(montage.claim(b)).toBeNull()
-    expect(() => montage.heartbeat(b, claim!.jobId, 'intro', 10)).toThrow(MontageError)
+    expect(() => montage.heartbeat(b, claim!, 'intro', 10)).toThrow(MontageError)
   })
 
   it('keeps one waiting job per talk: a later take replaces it', async () => {
@@ -191,11 +212,11 @@ describe('the queue', () => {
     montage.enqueue({ sessionId: 'sess-1', roomId: TRACK_1, sidecarUploadId: await uploaded(SIDECAR, 'sidecar') })
     const claim = montage.claim(worker)!
 
-    const early = montage.files(worker, claim.jobId, ['2026-10-30_1100_honeyswamp.mkv'])
+    const early = montage.files(worker, claim, ['2026-10-30_1100_honeyswamp.mkv'])
     expect(early).toEqual({ urls: [], manquants: ['2026-10-30_1100_honeyswamp.mkv'] })
 
     // The rush still on its way: given back, and the attempt does not count.
-    await montage.fail(worker, claim.jobId, 'rush pas encore arrivé', true)
+    await montage.fail(worker, claim, 'rush pas encore arrivé', true)
     const waiting = montage.list('sess-1')[0]!
     expect(waiting).toMatchObject({ state: 'attente', tentatives: 0 })
     expect(montage.claim(worker)).toBeNull()
@@ -203,7 +224,7 @@ describe('the queue', () => {
     await uploaded(RUSH, 'rush')
     clock = new Date(clock.getTime() + 11 * 60_000)
     const again = montage.claim(worker)!
-    const ready = montage.files(worker, again.jobId, ['2026-10-30_1100_honeyswamp.mkv'])
+    const ready = montage.files(worker, again, ['2026-10-30_1100_honeyswamp.mkv'])
     expect(ready.manquants).toEqual([])
     expect(ready.urls[0]!.url).toContain('2026-10-30_1100_honeyswamp.mkv')
   })
@@ -212,7 +233,7 @@ describe('the queue', () => {
     const worker = montage.fromToken(montage.createWorker('w', null).token)!
     montage.enqueue({ sessionId: 'sess-1', roomId: TRACK_1, sidecarUploadId: await uploaded(SIDECAR, 'sidecar') })
     const claim = montage.claim(worker)!
-    expect(() => montage.files(worker, claim.jobId, ['../autre/rush.mkv'])).toThrow(MontageError)
+    expect(() => montage.files(worker, claim, ['../autre/rush.mkv'])).toThrow(MontageError)
   })
 })
 
@@ -234,7 +255,7 @@ describe('a worker that dies', () => {
     montage.enqueue({ sessionId: 'sess-1', roomId: TRACK_1, sidecarUploadId: await uploaded(SIDECAR, 'sidecar') })
     const claim = montage.claim(worker)!
     clock = new Date(clock.getTime() + LEASE_MS - 1_000)
-    montage.heartbeat(worker, claim.jobId, 'assemblage', 40)
+    montage.heartbeat(worker, claim, 'assemblage', 40)
     clock = new Date(clock.getTime() + LEASE_MS - 1_000)
     expect(montage.list('sess-1')[0]).toMatchObject({ state: 'en-cours', etape: 'assemblage', pourcent: 40 })
   })
@@ -267,16 +288,16 @@ describe('analysis, then montage', () => {
 
   it('goes straight on to the montage when sure, with the same worker', async () => {
     const { worker, claim } = await analysing()
-    const next = montage.analysisDone(worker, claim.jobId, analysis('haute'))
+    const next = montage.analysisDone(worker, claim, analysis('haute'))
     expect(next).toEqual({ suite: 'montage', coupe: analysis('haute').proposition })
     expect(montage.list('sess-1')[0]).toMatchObject({ state: 'en-cours', phase: 'montage', valideePar: 'auto' })
     // Still its job: it uploads the video without being claimed again.
-    expect(await montage.openUpload(worker, claim.jobId, 1_000_000)).toMatchObject({ parts: 1 })
+    expect(await montage.openUpload(worker, claim, 1_000_000)).toMatchObject({ parts: 1 })
   })
 
   it('waits for the console when doubtful, and frees the worker', async () => {
     const { worker, claim } = await analysing()
-    expect(montage.analysisDone(worker, claim.jobId, analysis('moyenne')).suite).toBe('validation')
+    expect(montage.analysisDone(worker, claim, analysis('moyenne')).suite).toBe('validation')
     const job = montage.list('sess-1')[0]!
     expect(job).toMatchObject({ state: 'a-valider', phase: 'analyse', worker: null, analyse: { confiance: 'moyenne' } })
     expect(montage.claim(worker)).toBeNull()
@@ -285,12 +306,12 @@ describe('analysis, then montage', () => {
   it('never goes on without a look when the policy says so', async () => {
     montage = new MontageService(db, () => vod, () => HABILLAGE, () => clock, () => {}, () => null, () => null, () => 'jamais')
     const { worker, claim } = await analysing()
-    expect(montage.analysisDone(worker, claim.jobId, analysis('haute')).suite).toBe('validation')
+    expect(montage.analysisDone(worker, claim, analysis('haute')).suite).toBe('validation')
   })
 
   it('edits on the cut set in the console, and says which end was moved by hand', async () => {
     const { worker, claim } = await analysing()
-    montage.analysisDone(worker, claim.jobId, analysis('basse'))
+    montage.analysisDone(worker, claim, analysis('basse'))
     const job = montage.validate(claim.jobId, { debutMs: 120_000, finMs: 2_650_000 }, 'regie@cloudnord.fr')
     expect(job).toMatchObject({ state: 'attente', phase: 'montage', valideePar: 'regie@cloudnord.fr' })
     expect(job.coupe).toEqual({
@@ -304,16 +325,16 @@ describe('analysis, then montage', () => {
 
   it('refuses a cut outside the take, or backwards', async () => {
     const { worker, claim } = await analysing()
-    montage.analysisDone(worker, claim.jobId, analysis('basse'))
+    montage.analysisDone(worker, claim, analysis('basse'))
     expect(() => montage.validate(claim.jobId, { debutMs: 10_000, finMs: 3_100_000 }, 'x')).toThrow(MontageError)
     expect(() => montage.validate(claim.jobId, { debutMs: 50_000, finMs: 40_000 }, 'x')).toThrow(MontageError)
   })
 
   it('files the analysis beside the montage, readable from the console', async () => {
     const { worker, claim } = await analysing()
-    const [upload] = montage.artefactUploads(worker, claim.jobId, ['forme.png'])
+    const [upload] = montage.artefactUploads(worker, claim, ['forme.png'])
     expect(upload!.url).toContain(`/rushes/cn26/montages/2026-10-30/${TRACK_1}/2026-10-30_1100_honeyswamp.analyse/${claim.jobId}/forme.png`)
-    montage.analysisDone(worker, claim.jobId, analysis('basse'))
+    montage.analysisDone(worker, claim, analysis('basse'))
     const view = montage.analysisView(claim.jobId)
     expect(view.fichiers.map((f) => f.nom)).toEqual(['forme.png', 'debut.mp3'])
     expect(view.fichiers[0]!.url).toContain('X-Amz-Signature=')
@@ -321,7 +342,7 @@ describe('analysis, then montage', () => {
 
   it('analyses a new take again rather than reuse the old one’s cut', async () => {
     const { worker, claim } = await analysing()
-    montage.analysisDone(worker, claim.jobId, analysis('basse'))
+    montage.analysisDone(worker, claim, analysis('basse'))
     montage.validate(claim.jobId, { debutMs: 120_000, finMs: 2_700_000 }, 'x')
     const later = await uploaded('2026-10-30/track1/2026-10-30_1120_honeyswamp.json', 'sidecar')
     const job = montage.enqueue({ sessionId: 'sess-1', roomId: TRACK_1, sidecarUploadId: later })
@@ -335,12 +356,13 @@ describe('the edited video', () => {
     montage.enqueue({ sessionId: 'sess-1', roomId: TRACK_1, sidecarUploadId: await uploaded(SIDECAR, 'sidecar') })
     const claim = montage.claim(worker)!
 
-    const plan = await montage.openUpload(worker, claim.jobId, 3 * 1024 ** 3)
+    const plan = await montage.openUpload(worker, claim, 3 * 1024 ** 3)
     expect(plan.parts).toBeLessThanOrEqual(9_000)
-    expect(montage.signParts(worker, claim.jobId, [1, 2])).toHaveLength(2)
+    expect(montage.signParts(worker, claim, [1, 2])).toHaveLength(2)
 
     const key = await montage.complete(worker, {
       jobId: claim.jobId,
+      bailId: claim.bailId,
       parts: [{ n: 2, etag: '"b"' }, { n: 1, etag: '"a"' }],
       durationMs: 3_000_000,
       marquesManquantes: ['debut'],
@@ -366,6 +388,6 @@ describe('the edited video', () => {
     montage.enqueue({ sessionId: 'sess-1', roomId: TRACK_1, sidecarUploadId: await uploaded(SIDECAR, 'sidecar') })
     const claim = montage.claim(worker)!
     expect(await montage.cancel(claim.jobId)).toBe(true)
-    expect(montage.heartbeat(worker, claim.jobId, 'intro', 5)).toMatchObject({ ok: false, annule: true })
+    expect(montage.heartbeat(worker, claim, 'intro', 5)).toMatchObject({ ok: false, annule: true })
   })
 })

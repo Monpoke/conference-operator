@@ -223,6 +223,23 @@ const configSchema = z.object({
    */
   vodAbandonMinutes: z.coerce.number().int().min(5).max(1440).default(30),
 
+  /**
+   * A montage worker's token, declared by the deployment.
+   *
+   * The same secret is handed to the hub and to its workers (`HUB_WORKER_TOKEN`),
+   * so that the montage runs from the first start with nothing to create in the
+   * console. Absent, only the workers created in the console exist; removed after
+   * having been set, the worker it declared is revoked at the next start.
+   *
+   * `wt_` and at least 32 characters: what the console issues, and what a worker
+   * checks before calling. A short token would be the one guessable secret of the
+   * deployment, and it opens the rushes of the whole event.
+   */
+  montageWorkerToken: z
+    .string()
+    .regex(/^wt_[A-Za-z0-9_-]{32,}$/, 'MONTAGE_WORKER_TOKEN : « wt_ » suivi d’au moins 32 caractères [A-Za-z0-9_-]')
+    .optional(),
+
   /** Hashtag followed on the social networks. Empty = no social ingestion. */
   socialHashtag: z.string().optional(),
   /** Mastodon instance queried for the hashtag's public timeline. */
@@ -421,6 +438,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     s3SecretAccessKey: env.S3_SECRET_ACCESS_KEY,
     s3ForcePathStyle: env.S3_FORCE_PATH_STYLE,
     vodAbandonMinutes: env.VOD_ABANDON_MINUTES,
+    // Empty means unset: a chart renders the variable even when it has no value.
+    montageWorkerToken: env.MONTAGE_WORKER_TOKEN || undefined,
     socialHashtag: env.SOCIAL_HASHTAG,
     mastodonInstance: env.MASTODON_INSTANCE,
     xBearerToken: env.X_BEARER_TOKEN,

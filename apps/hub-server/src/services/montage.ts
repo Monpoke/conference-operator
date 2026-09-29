@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { and, desc, eq, inArray, isNull, lt } from 'drizzle-orm'
 import { ulid } from 'ulid'
+import { DEPLOYMENT_WORKER_ID } from '@conference-operator/contract'
 import type {
   MontageAnalyse,
   MontageAuto,
@@ -58,6 +59,22 @@ export interface Worker {
   nom: string
 }
 
+/**
+ * The worker the deployment declares, under a fixed id.
+ *
+ * Its token comes from the hub's configuration (`MONTAGE_WORKER_TOKEN`) rather
+ * than from the console, so that a chart can hand the same secret to the hub and
+ * to its workers and have the montage run from the first start — the console's
+ * "create, copy, paste into a secret, restart the worker" dance needed a hub
+ * already up, which a deployment cannot wait for.
+ *
+ * Every replica of that worker shares the one identity. That is enough: a job is
+ * leased by a conditional update on its state, and every later call checks the
+ * job it names, so two replicas under one id each hold their own job.
+ */
+export { DEPLOYMENT_WORKER_ID }
+const DEPLOYMENT_WORKER_NAME = 'Worker du déploiement'
+
 type JobRow = typeof montageJob.$inferSelect
 
 export class MontageService {
@@ -96,8 +113,55 @@ export class MontageService {
     }))
   }
 
-  /** Revokes a worker; the jobs it held go back to the queue at once. */
+  /**
+   * Aligns the deployment's worker with the configuration, at startup.
+   *
+   * A token: the worker exists with that token — created, or its token replaced
+   * when the secret was rotated. No token: a worker left from an earlier
+   * configuration is revoked, and its jobs go back to the queue; removing the
+   * variable is how that worker is retired.
+   */
+  syncDeploymentWorker(token: string | null): void {
+    const existing = this.db.select().from(montageWorker).where(eq(montageWorker.id, DEPLOYMENT_WORKER_ID)).get()
+    if (token == null) {
+      if (existing != null && existing.revokedAt == null) {
+        this.revoke(DEPLOYMENT_WORKER_ID)
+        this.onLog('info', 'worker du déploiement révoqué : MONTAGE_WORKER_TOKEN n’est plus configuré')
+      }
+      return
+    }
+    const tokenHash = hashToken(token)
+    if (existing == null) {
+      this.db
+        .insert(montageWorker)
+        .values({ id: DEPLOYMENT_WORKER_ID, nom: DEPLOYMENT_WORKER_NAME, tokenHash, createdBy: null, createdAt: this.iso() })
+        .run()
+      this.onLog('info', 'worker du déploiement déclaré')
+      return
+    }
+    if (existing.tokenHash === tokenHash) return
+    this.db.update(montageWorker).set({ tokenHash, revokedAt: null }).where(eq(montageWorker.id, DEPLOYMENT_WORKER_ID)).run()
+    this.onLog('info', existing.revokedAt == null ? 'jeton du worker du déploiement remplacé' : 'worker du déploiement rétabli')
+  }
+
+  /**
+   * Revokes a worker; the jobs it held go back to the queue at once.
+   *
+   * Not the deployment's: its token lives in the configuration, and the next
+   * start would bring it back — a revocation that only lasts until a restart
+   * would say something false. It is retired by removing `MONTAGE_WORKER_TOKEN`.
+   */
   revokeWorker(id: string): boolean {
+    if (id === DEPLOYMENT_WORKER_ID) {
+      throw new MontageError(
+        'PRECONDITION_FAILED',
+        'ce worker est déclaré par le déploiement : retirer MONTAGE_WORKER_TOKEN de la configuration pour le révoquer',
+      )
+    }
+    return this.revoke(id)
+  }
+
+  private revoke(id: string): boolean {
     const done = this.db
       .update(montageWorker)
       .set({ revokedAt: this.iso(), tokenHash: null })

@@ -339,6 +339,10 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
 
   services.log = (level, message, context) => app.log[level](context ?? {}, message)
 
+  // The montage worker the deployment declares, if any: its token is in the
+  // configuration, so it exists — or is retired — before any worker calls.
+  services.montage.syncDeploymentWorker(config.montageWorkerToken ?? null)
+
   const social = new SocialIngestor(sources, services.wall, {
     intervalMs: config.socialPollIntervalMs,
     onLog: services.log,

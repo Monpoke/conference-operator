@@ -1831,9 +1831,9 @@ export const router = os.router({
       create: os.montage.workers.create.use(operatorCan('vod:manage')).handler(({ input, context }) =>
         context.services.montage.createWorker(input.nom, context.operator.email),
       ),
-      revoke: os.montage.workers.revoke.use(operatorCan('vod:manage')).handler(({ input, context }) => ({
-        ok: context.services.montage.revokeWorker(input.id),
-      })),
+      revoke: os.montage.workers.revoke.use(operatorCan('vod:manage')).handler(({ input, context }) =>
+        onMontage(context, () => ({ ok: context.services.montage.revokeWorker(input.id) })),
+      ),
     },
   },
 

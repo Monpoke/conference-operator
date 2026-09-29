@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { VodHabillage } from '@conference-operator/contract'
+import { loadConfig } from '../src/config.js'
 import { openHubDatabase, type HubDatabase } from '../src/db.js'
 import { RoomService } from '../src/services/rooms.js'
 import { SettingsService } from '../src/services/sessions.js'
 import { VodService } from '../src/services/vod.js'
-import { LEASE_MS, MAX_ATTEMPTS, MontageError, MontageService } from '../src/services/montage.js'
+import { DEPLOYMENT_WORKER_ID, LEASE_MS, MAX_ATTEMPTS, MontageError, MontageService } from '../src/services/montage.js'
 import type { S3Transport } from '../src/services/s3.js'
 import { testSecrets } from './helpers/secrets.js'
 
@@ -92,6 +93,75 @@ describe('workers', () => {
 
   it('refuses a room token as a worker token', () => {
     expect(montage.fromToken('rt_abc')).toBeNull()
+  })
+})
+
+describe('the deployment’s worker', () => {
+  const TOKEN = `wt_${'a'.repeat(40)}`
+  const ROTATED = `wt_${'b'.repeat(40)}`
+
+  it('takes a strong token from the environment, and an empty variable as none', () => {
+    const env = { BETTER_AUTH_SECRET: 'x'.repeat(40) }
+    expect(loadConfig({ ...env, MONTAGE_WORKER_TOKEN: TOKEN }).montageWorkerToken).toBe(TOKEN)
+    // What a chart renders when the value is left empty.
+    expect(loadConfig({ ...env, MONTAGE_WORKER_TOKEN: '' }).montageWorkerToken).toBeUndefined()
+    // Too short, or a room's prefix: the one guessable secret of the deployment.
+    expect(() => loadConfig({ ...env, MONTAGE_WORKER_TOKEN: 'wt_court' })).toThrow(/MONTAGE_WORKER_TOKEN/)
+    expect(() => loadConfig({ ...env, MONTAGE_WORKER_TOKEN: `rt_${'a'.repeat(40)}` })).toThrow(/MONTAGE_WORKER_TOKEN/)
+  })
+
+  it('exists from the start with the configured token, once', () => {
+    montage.syncDeploymentWorker(TOKEN)
+    montage.syncDeploymentWorker(TOKEN)
+    expect(montage.fromToken(TOKEN)).toEqual({ id: DEPLOYMENT_WORKER_ID, nom: 'Worker du déploiement' })
+    expect(montage.workers().map((worker) => worker.id)).toEqual([DEPLOYMENT_WORKER_ID])
+  })
+
+  it('follows a rotated secret: the old token opens nothing', () => {
+    montage.syncDeploymentWorker(TOKEN)
+    montage.syncDeploymentWorker(ROTATED)
+    expect(montage.fromToken(TOKEN)).toBeNull()
+    expect(montage.fromToken(ROTATED)?.id).toBe(DEPLOYMENT_WORKER_ID)
+  })
+
+  it('is retired when the token leaves the configuration, and gives back its jobs', async () => {
+    montage.syncDeploymentWorker(TOKEN)
+    montage.enqueue({ sessionId: 'sess-1', roomId: TRACK_1, sidecarUploadId: await uploaded(SIDECAR, 'sidecar') })
+    expect(montage.claim(montage.fromToken(TOKEN)!)).not.toBeNull()
+
+    montage.syncDeploymentWorker(null)
+    expect(montage.fromToken(TOKEN)).toBeNull()
+    expect(montage.list(null)[0]!.state).toBe('attente')
+
+    // Set again, it comes back — same identity, same place in the console.
+    montage.syncDeploymentWorker(TOKEN)
+    expect(montage.fromToken(TOKEN)?.id).toBe(DEPLOYMENT_WORKER_ID)
+  })
+
+  it('does nothing without a token when there never was one', () => {
+    montage.syncDeploymentWorker(null)
+    expect(montage.workers()).toEqual([])
+  })
+
+  it('cannot be revoked from the console: the next start would bring it back', () => {
+    montage.syncDeploymentWorker(TOKEN)
+    expect(() => montage.revokeWorker(DEPLOYMENT_WORKER_ID)).toThrow(MontageError)
+    expect(montage.fromToken(TOKEN)).not.toBeNull()
+  })
+
+  it('lets two replicas sharing the token each hold their own job', async () => {
+    montage.syncDeploymentWorker(TOKEN)
+    montage.enqueue({ sessionId: 'sess-1', roomId: TRACK_1, sidecarUploadId: await uploaded(SIDECAR, 'sidecar') })
+    montage.enqueue({
+      sessionId: 'sess-2',
+      roomId: TRACK_1,
+      sidecarUploadId: await uploaded('2026-10-30/track1/2026-10-30_1400_autre.json', 'sidecar', 'sess-2'),
+    })
+    const first = montage.claim(montage.fromToken(TOKEN)!)
+    const second = montage.claim(montage.fromToken(TOKEN)!)
+    expect(first?.jobId).toBeDefined()
+    expect(second?.jobId).toBeDefined()
+    expect(second!.jobId).not.toBe(first!.jobId)
   })
 })
 

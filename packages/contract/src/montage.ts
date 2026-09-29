@@ -213,6 +213,15 @@ export const montageClaimSchema = z.object({
 })
 export type MontageClaim = z.infer<typeof montageClaimSchema>
 
+/**
+ * The worker the deployment declares, from `MONTAGE_WORKER_TOKEN`.
+ *
+ * Here because both sides need it: the hub creates it under this id at startup,
+ * the console shows it without a « Révoquer » button — its token lives in the
+ * configuration, and a revocation would last until the next start.
+ */
+export const DEPLOYMENT_WORKER_ID = 'deploiement'
+
 export const montageWorkerViewSchema = z.object({
   id: z.string(),
   nom: z.string(),

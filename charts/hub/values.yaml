@@ -100,6 +100,20 @@ secret:
     accessKeyId: ""
     secretAccessKey: ""
 
+  # Le premier administrateur, créé au démarrage **si le hub n'a encore aucun
+  # compte** : la console s'ouvre sur une installation neuve sans `kubectl exec`.
+  # Ignoré dès qu'un compte existe — il amorce, il ne gouverne pas : un mot de
+  # passe changé depuis n'est pas remis à chaque redémarrage. Adresse et mot de
+  # passe vont par paire, 12 caractères au moins.
+  #
+  # Sans lui, le tout premier compte à se connecter par Google devient
+  # administrateur, et les suivants arrivent en lecture seule.
+  initialAdmin:
+    email: ""
+    password: ""
+    # Vide = la partie locale de l'adresse.
+    name: ""
+
   # Toute autre variable secrète, telle quelle.
   extra: {}
 

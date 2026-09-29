@@ -23,13 +23,21 @@ Suivre le démarrage — il joue les migrations et importe le programme :
   kubectl -n {{ .Release.Namespace }} rollout status statefulset/{{ include "hub.name" . }} --timeout=5m
   kubectl -n {{ .Release.Namespace }} logs {{ include "hub.name" . }}-0 -f
 
-L'inscription publique est fermée : sans un compte opérateur, la console est
-inaccessible. Sur une base neuve, c'est le geste qui suit l'installation —
-l'image est distroless, d'où le chemin complet vers node :
+{{- if and .Values.secret.create .Values.secret.initialAdmin.email }}
+Premier administrateur : {{ .Values.secret.initialAdmin.email }}, créé au démarrage
+si le hub n'a encore aucun compte. Ensuite, la console → Accès.
+{{- else if and .Values.secret.create .Values.secret.google.clientId }}
+Premier administrateur : le premier compte à se connecter par Google
+(@{{ .Values.secret.google.hostedDomain }}) — les suivants arrivent en lecture seule.
+{{- else }}
+Premier administrateur : INITIAL_ADMIN_EMAIL et INITIAL_ADMIN_PASSWORD dans le
+secret, ou le premier compte à se connecter par Google. À défaut, la commande
+operator, dans le conteneur — l'image est distroless, d'où le chemin complet :
 
   kubectl -n {{ .Release.Namespace }} exec {{ include "hub.name" . }}-0 -- \
     /nodejs/bin/node --import tsx src/cli/operator.ts \
     vous@exemple.fr "Régie" '<mot-de-passe>' --role admin
+{{- end }}
 
 Si le pod reste en ImagePullBackOff ou CrashLoopBackOff, un `helm upgrade` ne le
 remplacera pas : un StatefulSet ne met à jour un pod qu'après l'avoir vu Ready.

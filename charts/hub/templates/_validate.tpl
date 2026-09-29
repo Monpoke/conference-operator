@@ -37,6 +37,15 @@ et ce sont ceux qui coûtent une soirée quand ils se découvrent tard.
   {{- fail "secret.google.hostedDomain est obligatoire avec un clientId : il décide qui est opérateur, tout compte du domaine en étant un." -}}
   {{- end -}}
 
+  {{/* L'administrateur initial : par paire, et un mot de passe digne d'un admin. */}}
+  {{- $admin := .Values.secret.initialAdmin -}}
+  {{- if not (eq (empty $admin.email) (empty $admin.password)) -}}
+  {{- fail "secret.initialAdmin.email et secret.initialAdmin.password vont par paire : les deux, ou aucun." -}}
+  {{- end -}}
+  {{- if and $admin.password (lt (len $admin.password) 12) -}}
+  {{- fail "secret.initialAdmin.password doit faire au moins 12 caractères : c'est celui d'un administrateur, sur un hub joignable depuis Internet." -}}
+  {{- end -}}
+
 {{- end -}}
 
 {{/*

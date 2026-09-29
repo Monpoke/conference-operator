@@ -139,9 +139,22 @@ WebSockets de `/ws`, doit être fait quel que soit le contrôleur.
 
 ## Après l'installation
 
-L'inscription publique est fermée : sans compte opérateur, la console est
-inaccessible. L'image est distroless, d'où le chemin complet vers `node`, que
-`kubectl exec` ne prend pas de l'`ENTRYPOINT` :
+L'inscription publique est fermée : il faut un premier administrateur. Deux
+voies n'y demandent rien de plus que les values :
+
+- **`secret.initialAdmin`** (adresse et mot de passe) : le hub crée ce compte au
+  démarrage, **s'il n'a encore aucun compte**. Ensuite la valeur est ignorée —
+  un mot de passe changé dans la console n'est pas remis au redémarrage suivant.
+- **Google Workspace** : sur un hub sans compte, le premier à se connecter
+  devient administrateur. Les suivants arrivent en lecture seule, jusqu'à ce
+  qu'il les élève (console → **Accès**).
+
+Avec l'un et l'autre, `initialAdmin` passe en premier : la connexion Google qui
+suit n'est plus la première.
+
+À défaut, la commande `operator`, dans le conteneur. L'image est distroless,
+d'où le chemin complet vers `node`, que `kubectl exec` ne prend pas de
+l'`ENTRYPOINT` :
 
 ```bash
 kubectl -n conference-operator exec hub-0 -- \

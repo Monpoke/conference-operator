@@ -2,7 +2,19 @@
 
 Les mêmes six ressources que `manifests/`, avec un fichier de values pour ce qui
 change d'un déploiement à l'autre — au premier chef **les secrets**, qui tiennent
-alors dans un fichier gardé hors du dépôt.
+alors dans un fichier gardé hors du dépôt. Et, sur demande, le worker de montage
+des VODs, branché sur le hub sans rien créer dans la console.
+
+Chaque version est publiée sur GHCR, à côté de ses images, qu'elle épingle :
+
+```bash
+helm upgrade --install hub oci://ghcr.io/monpoke/conference-operator/charts/hub \
+  --version X.Y.Z \
+  --namespace conference-operator --create-namespace \
+  -f ~/.config/conference-operator/hub-prod.yaml
+```
+
+Depuis le dépôt, pour un chart en cours de modification :
 
 ```bash
 cp charts/hub/values.secrets.example.yaml ~/.config/conference-operator/hub-prod.yaml
@@ -14,6 +26,30 @@ helm upgrade --install hub charts/hub \
 ```
 
 `values.yaml` documente chaque réglage et la raison de ceux qui n'en sont pas.
+
+## Le worker de montage
+
+`montage.enabled: true` pose un Deployment `vod-montage` à côté du hub. Il
+n'a de sens qu'avec le stockage S3 configuré : c'est là qu'il lit les rushes et
+renvoie la vidéo montée.
+
+Le hub et le worker partagent un jeton `wt_…`. Le hub le lit en
+`MONTAGE_WORKER_TOKEN` et déclare au démarrage un « Worker du déploiement » qui
+l'accepte ; le worker le présente en `HUB_WORKER_TOKEN`. Le montage tourne donc
+dès la première installation, sans passer par la console.
+
+| `montage.token` vide (défaut) | Le chart tire un jeton au premier `helm install`, le range dans le secret `hub-montage`, et le **relit** aux `upgrade` suivants : il ne change pas d'une mise à jour à l'autre. |
+| `montage.token: wt_…` | Le jeton des values. En changer est une rotation : le hub et les workers redémarrent, l'ancien jeton n'ouvre plus rien. |
+| `montage.existingSecret` | Un secret créé à la main, qui porte le jeton sous `montage.existingSecretKey`. Une rotation s'y fait à la main, suivie d'un redémarrage du hub et du worker. |
+
+Ce worker apparaît dans la console (**VOD** → **Workers de montage**) mais ne
+s'y révoque pas : la console le refuserait, puisque le redémarrage suivant le
+rétablirait. On le retire en repassant `montage.enabled` à `false` — le hub,
+sans la variable, le révoque à son démarrage et remet ses montages en file.
+
+Pour monter plus de talks à la fois : `montage.replicas`. Les répliques
+partagent le jeton, et donc une seule ligne dans la console ; chacune tient
+son propre montage.
 
 ## Les secrets, et où ils finissent
 

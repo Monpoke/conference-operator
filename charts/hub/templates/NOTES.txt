@@ -11,6 +11,12 @@ Le hub est posé : {{ include "hub.image" . }}
 {{- else }}
   Secret      {{ include "hub.name" . }} (rendu par le chart, donc archivé dans la release Helm)
 {{- end }}
+{{- if .Values.montage.enabled }}
+  Montage     {{ .Values.montage.replicas }} × {{ include "hub.montageImage" . }}
+              jeton partagé dans le secret {{ include "hub.montageSecretName" . }} — « Worker du déploiement » dans la console
+{{- else }}
+  Montage     désactivé (montage.enabled=true pour poser le worker avec le hub)
+{{- end }}
 
 Suivre le démarrage — il joue les migrations et importe le programme :
 

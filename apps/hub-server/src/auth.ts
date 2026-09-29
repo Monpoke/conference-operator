@@ -7,6 +7,7 @@ import { deviceAuthorization } from 'better-auth/plugins/device-authorization'
 import { DEFAULT_ROLE } from '@conference-operator/contract'
 import type { SqliteDatabase } from '@conference-operator/db'
 import { accessControl, accessRoles } from './access.js'
+import { hasNoAccount } from './operators.js'
 
 /**
  * Better Auth style duration ("5s", "30m"). The package's `TimeString` type is
@@ -37,6 +38,8 @@ export interface AuthDeps {
    * team out.
    */
   google?: { clientId: string; clientSecret: string; hostedDomain: string }
+  /** Told when the hub's very first account is made admin — for the log. */
+  onFirstAccount?: (email: string) => void
 }
 
 /**
@@ -62,6 +65,7 @@ export function createAuthOptions({
   deviceInterval = '5s',
   deviceCodeExpiresIn = '10m',
   google,
+  onFirstAccount = () => {},
 }: AuthDeps) {
   return {
     // The same SQLite file as the rest of the hub: one lock, one backup.
@@ -73,6 +77,33 @@ export function createAuthOptions({
       enabled: true,
       // Accounts created by the organization, no open sign-up on a public hub.
       disableSignUp: true,
+    },
+    /**
+     * The hub's very first account is its admin.
+     *
+     * Every other new account only reads until an admin raises it — but on a
+     * fresh hub there is no admin to do the raising, and the first Google sign-in
+     * would open a console where nobody can do anything. So whoever arrives on an
+     * empty hub gets everything: in practice the person who just deployed it,
+     * since only the organization's domain gets past Google, and password
+     * sign-up is closed.
+     *
+     * Any path counts, not only Google: the operator command and
+     * `INITIAL_ADMIN_EMAIL` make an admin anyway, and the console can only
+     * create accounts once an admin exists. Our hooks run after the admin
+     * plugin's, which fills in the default role only when none is given — so
+     * this one wins.
+     */
+    databaseHooks: {
+      user: {
+        create: {
+          before: async (user) => {
+            if (!hasNoAccount(sqlite)) return
+            onFirstAccount(user.email)
+            return { data: { ...user, role: 'admin' } }
+          },
+        },
+      },
     },
     plugins: [
       // Bearer tokens: the room client has no cookie jar.

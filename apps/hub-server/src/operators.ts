@@ -1,5 +1,6 @@
 import { createLocalAccountIssuer } from '@better-auth/core/db'
 import type { AccessRole } from '@conference-operator/contract'
+import type { SqliteDatabase } from '@conference-operator/db'
 import type { Auth } from './auth.js'
 
 export interface ProvisionResult {
@@ -81,4 +82,32 @@ export async function provisionOperator(
   })
   await ctx.internalAdapter.updateUser(user.id, { role: (roles ?? ['admin']).join(',') })
   return { id: user.id, created: true }
+}
+
+/** Whether the hub has no account yet — not one, whatever its role or origin. */
+export function hasNoAccount(sqlite: SqliteDatabase): boolean {
+  const row = sqlite.prepare('SELECT COUNT(*) AS n FROM "user"').get() as { n: number }
+  return row.n === 0
+}
+
+/**
+ * The first admin, from the configuration, on a hub that has no account yet.
+ *
+ * What lets a deployment open its console without a `kubectl exec`: public
+ * sign-up is closed, so on a fresh database nobody can sign in, and the operator
+ * command was the only way in.
+ *
+ * **Only on an empty hub.** Once any account exists the variables are ignored —
+ * a password left in a secret must not reset, at every restart, the one an
+ * operator has since changed in the console, nor bring back an account an admin
+ * removed. They seed, they do not govern.
+ */
+export async function ensureInitialAdmin(
+  auth: Auth,
+  sqlite: SqliteDatabase,
+  admin: { email: string; name: string; password: string },
+): Promise<'created' | 'ignored'> {
+  if (!hasNoAccount(sqlite)) return 'ignored'
+  await provisionOperator(auth, { ...admin, roles: ['admin'] })
+  return 'created'
 }

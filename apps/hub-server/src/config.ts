@@ -115,6 +115,23 @@ const configSchema = z.object({
   googleHostedDomain: z.string().min(1).optional(),
 
   /**
+   * The first admin, created at startup **on a hub that has no account yet**.
+   *
+   * What lets a deployment open its console with nothing more than its
+   * configuration: public sign-up is closed, and without it the operator
+   * command, run inside the container, was the only way in. Ignored as soon as
+   * any account exists — it seeds, it does not govern: a password changed since
+   * is not reset at every restart.
+   *
+   * Twelve characters at least: this one sits in a deployment secret, on a hub
+   * reachable from the internet, and it is an admin's.
+   */
+  initialAdminEmail: z.email('INITIAL_ADMIN_EMAIL : une adresse e-mail').optional(),
+  initialAdminPassword: z.string().min(12, 'INITIAL_ADMIN_PASSWORD doit faire au moins 12 caractères').optional(),
+  /** Its display name; the address's local part when absent. */
+  initialAdminName: z.string().min(1).optional(),
+
+  /**
    * VAPID keys for the pushed notifications (RFC 8292).
    *
    * Optional: without them, the hub generates a pair at the first startup and
@@ -311,6 +328,16 @@ const configSchema = z.object({
       'GOOGLE_HOSTED_DOMAIN est obligatoire avec GOOGLE_CLIENT_ID : il décide qui est opérateur',
   })
   /**
+   * An initial admin needs both halves.
+   *
+   * An address without its password would create nothing and say nothing: the
+   * console would stay closed, and the failure would be looked for in the ingress.
+   */
+  .refine((config) => (config.initialAdminEmail == null) === (config.initialAdminPassword == null), {
+    path: ['initialAdminEmail'],
+    message: 'INITIAL_ADMIN_EMAIL et INITIAL_ADMIN_PASSWORD vont par paire : renseigner les deux, ou aucun',
+  })
+  /**
    * Half-configured S3 storage does not start.
    *
    * The same rule as the Google pair, and for the same reason: three variables out
@@ -426,6 +453,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     googleClientId: env.GOOGLE_CLIENT_ID,
     googleClientSecret: env.GOOGLE_CLIENT_SECRET,
     googleHostedDomain: env.GOOGLE_HOSTED_DOMAIN,
+    // Empty means unset, as for the montage token: a chart renders the keys even
+    // when they carry nothing.
+    initialAdminEmail: env.INITIAL_ADMIN_EMAIL || undefined,
+    initialAdminPassword: env.INITIAL_ADMIN_PASSWORD || undefined,
+    initialAdminName: env.INITIAL_ADMIN_NAME || undefined,
     vapidPublicKey: env.VAPID_PUBLIC_KEY,
     vapidPrivateKey: env.VAPID_PRIVATE_KEY,
     vapidSubject: env.VAPID_SUBJECT,

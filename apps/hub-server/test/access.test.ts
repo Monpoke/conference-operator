@@ -137,8 +137,16 @@ describe('operator groups', () => {
 })
 
 describe('accounts and their groups', () => {
-  it('only lets a new account read', async () => {
+  it('only lets a new account read, once the hub has anyone', async () => {
     const ctx = await hub.auth.$context
+    // The hub's very first account is its admin — see `auth.ts`. The rule under
+    // test is for everyone after.
+    const first = await ctx.internalAdapter.createUser(
+      { email: 'premier@cloudnord.fr', name: 'Premier', emailVerified: true },
+      { method: 'email' },
+    )
+    expect((first as { role?: string }).role).toBe('admin')
+
     const user = await ctx.internalAdapter.createUser(
       { email: 'nouveau@cloudnord.fr', name: 'Nouveau', emailVerified: true },
       { method: 'email' },

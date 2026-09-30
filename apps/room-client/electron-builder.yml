@@ -18,6 +18,10 @@ copyright: Conference Operator
 
 directories:
   output: release
+  # Where electron-builder finds the icon without being told: `icon.ico` for the
+  # Windows executable, installer and shortcuts, `icon.png` for the AppImage and
+  # the desktop entry. Both are drawn from `icon.svg` — `pnpm icons` after
+  # changing it. Nothing in this folder travels into the application itself.
   buildResources: build
 
 # The default name — `${productName} Setup ${version}.exe` — carries a space and
@@ -124,7 +128,15 @@ win:
       arch: [x64]
   # Unsigned, SmartScreen will warn on first launch: plan to install it before the
   # day, not in front of a room that is waiting.
-  signAndEditExecutable: false
+  #
+  # `true` all the same, because "sign" is only half of it: the other half writes
+  # the icon and the version resource into the `.exe` — the icon the shortcuts,
+  # the taskbar and Explorer show, and the publisher (`author`), description and
+  # version the file's properties show. Left `false`, the executable kept
+  # Electron's icon and resource. With no certificate configured, the signing
+  # step does nothing; the editing is done in JavaScript, so it needs no wine
+  # when packaging from Linux either.
+  signAndEditExecutable: true
 
 # The same application, for a room machine that does not run Windows. Two formats
 # rather than one, and not for symmetry:

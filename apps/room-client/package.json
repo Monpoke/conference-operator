@@ -1,6 +1,18 @@
 {
   "name": "@conference-operator/room-client",
   "version": "0.0.0",
+  "description": "Régie de salle d’une conférence : écran de projection, pilotage d’OBS et remontée des enregistrements vers le hub.",
+  "author": {
+    "name": "Pierre Bourgeois",
+    "email": "contact@pierrebourgeois.fr"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/Monpoke/conference-operator",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Monpoke/conference-operator.git",
+    "directory": "apps/room-client"
+  },
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,6 +20,7 @@
     "typecheck": "tsc --noEmit",
     "preview": "tsx scripts/preview-display.ts",
     "build": "node scripts/build-main.mjs",
+    "icons": "node scripts/build-icons.mjs",
     "package:win": "pnpm --filter @conference-operator/control-web build && pnpm build && electron-builder --win --publish never",
     "package:linux": "pnpm --filter @conference-operator/control-web build && pnpm build && electron-builder --linux --publish never",
     "package:dir": "pnpm --filter @conference-operator/control-web build && pnpm build && electron-builder --dir --publish never",

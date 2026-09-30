@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!--
+    Régie de salle — the application's icon.
+
+    A room screen on its stand, the programme on it and the "on air" light lit:
+    what the software drives. The colours are the control app's tokens — `brand`
+    #5b7cfa, `canvas` #0b0d14, `text` #e8ecf7, `alert` #fb7185.
+
+    Source of `icon.png` and `icon.ico`: `pnpm icons` regenerates both.
+  -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7a96ff"/>
+      <stop offset="1" stop-color="#3a52d4"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#151a27"/>
+      <stop offset="1" stop-color="#0b0d14"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="48" y="48" width="928" height="928" rx="208" fill="url(#tile)"/>
+
+  <!-- The stand. -->
+  <rect x="482" y="660" width="60" height="150" rx="14" fill="#e8ecf7"/>
+  <rect x="352" y="786" width="320" height="52" rx="26" fill="#e8ecf7"/>
+
+  <!-- The screen. -->
+  <rect x="176" y="236" width="672" height="444" rx="56" fill="#e8ecf7"/>
+  <rect x="216" y="276" width="592" height="364" rx="28" fill="url(#glass)"/>
+
+  <!-- On air. -->
+  <circle cx="306" cy="366" r="40" fill="#fb7185"/>
+
+  <!-- The programme. -->
+  <rect x="384" y="340" width="336" height="52" rx="26" fill="#5b7cfa"/>
+  <rect x="264" y="456" width="456" height="40" rx="20" fill="#e8ecf7"/>
+  <rect x="264" y="536" width="304" height="40" rx="20" fill="#97a1bd"/>
+</svg>

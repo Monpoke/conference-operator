@@ -42,19 +42,31 @@ async function save(): Promise<void> {
         (mise en avant, posts sponsorisés et leurs affichages), le jeton walls.io dans
         <a :href="settingsPath" class="text-brand underline">Réglages</a>.
       </p>
-      <label :class="LABEL" for="boucle-wallsio-titre">Titre</label>
-      <input id="boucle-wallsio-titre" v-model="draft.titre" maxlength="60" :class="FIELD" />
-      <label :class="LABEL" for="boucle-wallsio-hashtag">Hashtag</label>
-      <input id="boucle-wallsio-hashtag" v-model="draft.hashtag" maxlength="40" :class="FIELD" />
-      <label :class="LABEL" for="boucle-wallsio-par-page">Posts par page (3 à 6, le post mis en avant compris)</label>
-      <input
-        id="boucle-wallsio-par-page"
-        v-model.number="draft.parPage"
-        type="number"
-        min="3"
-        max="6"
-        :class="FIELD"
-      />
+      <label class="mb-2 flex items-center gap-2 text-sm">
+        <input id="boucle-wallsio-bandeau" v-model="draft.bandeau" type="checkbox" class="w-auto" />
+        Afficher le bandeau du haut (titre, hashtag) — décoché, les posts prennent sa place
+      </label>
+      <template v-if="draft.bandeau">
+        <label :class="LABEL" for="boucle-wallsio-titre">Titre</label>
+        <input id="boucle-wallsio-titre" v-model="draft.titre" maxlength="60" :class="FIELD" />
+        <label :class="LABEL" for="boucle-wallsio-hashtag">Hashtag</label>
+        <input id="boucle-wallsio-hashtag" v-model="draft.hashtag" maxlength="40" :class="FIELD" />
+      </template>
+      <label class="mb-2 flex items-center gap-2 text-sm">
+        <input id="boucle-wallsio-remplir" v-model="draft.remplir" type="checkbox" class="w-auto" />
+        Remplir la page — des posts courts laissent la place à d'autres posts
+      </label>
+      <template v-if="!draft.remplir">
+        <label :class="LABEL" for="boucle-wallsio-par-page">Posts par page (3 à 6, le post mis en avant compris)</label>
+        <input
+          id="boucle-wallsio-par-page"
+          v-model.number="draft.parPage"
+          type="number"
+          min="3"
+          max="6"
+          :class="FIELD"
+        />
+      </template>
       <label :class="LABEL" for="boucle-wallsio-sponsorise">
         Un post sponsorisé tous les … posts (0 : les posts partenaires ouvrent la page, comme un post
         mis en avant)

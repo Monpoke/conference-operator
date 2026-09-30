@@ -29,6 +29,11 @@ export const EFFETS: Record<string, Effet> = {
     images: [{ opacity: 0, transform: 'translateX(120px)' }, { opacity: 1, transform: 'none' }],
     duree: 700, easing: 'cubic-bezier(.2, .9, .25, 1.12)',
   },
+  // A card fading in where it stands: the social wall's posts.
+  fondu: {
+    images: [{ opacity: 0 }, { opacity: 1 }],
+    duree: 900, easing: 'ease-out',
+  },
   // Letters arriving from everywhere and assembling (drawn at random on every pass).
   eclate: {
     images: () => {

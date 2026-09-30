@@ -455,7 +455,14 @@ describe('message exchange', () => {
     expect(stored.eventName).toBe('Cloud Nord')
     expect(stored.screensDisabled).toEqual(['sponsors'])
     expect(stored.boucle.durees).toEqual({ agenda: 30 })
-    expect(stored.boucle.wallsio).toEqual({ titre: 'Le mur', hashtag: '#CloudNord2026', parPage: 5, sponsoriseTous: 0 })
+    expect(stored.boucle.wallsio).toEqual({
+      titre: 'Le mur',
+      hashtag: '#CloudNord2026',
+      parPage: 5,
+      sponsoriseTous: 0,
+      bandeau: true,
+      remplir: true,
+    })
     expect('wallsIoUrl' in stored).toBe(false)
   })
 

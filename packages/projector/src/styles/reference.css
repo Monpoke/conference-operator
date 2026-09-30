@@ -520,6 +520,11 @@ body.curseur, body.hud-on { cursor: default; }
 .mur-avant .carte.en-avant .carte-texte { font-size: 32px; -webkit-line-clamp: 11; }
 .mur-avant .carte.en-avant.avec-image .carte-texte { -webkit-line-clamp: 6; }
 .mur-avant .carte.en-avant .carte-image { aspect-ratio: 4 / 3; }
+/* Sans bandeau, les posts montent jusqu'en haut, à hauteur du logo ; la première
+   colonne, sous le logo, lui laisse sa place. */
+.sans-bande .bande { display: none; }
+.sans-bande .contenu.mur { top: 26px; }
+.sans-bande .mur-col:first-child { padding-top: 96px; }
 /* Un post partenaire le dit : il n'est pas celui du public. */
 .carte-sponsor { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .carte-sponsor img { height: 34px; max-width: 160px; object-fit: contain; }

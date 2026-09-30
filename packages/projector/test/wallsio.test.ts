@@ -26,12 +26,22 @@ const post = (id: string, extra: Partial<WallCard> = {}): WallCard => ({
 
 const sponsored = (id: string) => post(id, { featured: true, sponsor: { name: id, logoUrl: null } })
 
-const data = (posts: WallCard[], wall: { parPage?: number; sponsoriseTous?: number } = {}): Data =>
+type Wall = { parPage?: number; sponsoriseTous?: number; bandeau?: boolean; remplir?: boolean }
+
+/** Capped at `parPage` unless said otherwise: no layout here, a filled page would take every post. */
+const data = (posts: WallCard[], wall: Wall = {}, mode = 'boucle'): Data =>
   ({
-    state: { mode: 'boucle', serverTimeOffsetMs: 0 },
+    state: { mode, serverTimeOffsetMs: 0 },
     socialWall: posts,
     boucle: {
-      wallsio: { titre: 'Le mur', hashtag: '#test', parPage: wall.parPage ?? 5, sponsoriseTous: wall.sponsoriseTous ?? 0 },
+      wallsio: {
+        titre: 'Le mur',
+        hashtag: '#test',
+        parPage: wall.parPage ?? 5,
+        sponsoriseTous: wall.sponsoriseTous ?? 0,
+        bandeau: wall.bandeau ?? true,
+        remplir: wall.remplir ?? false,
+      },
       durees: {},
     },
   }) as unknown as Data
@@ -109,5 +119,44 @@ describe('the social wall', () => {
     await vi.advanceTimersByTimeAsync(30_000)
 
     expect(fetched).toEqual([{ counts: { a: 2, b: 2 } }])
+  })
+
+  it('fills the page past its cap', () => {
+    const el = document.createElement('div')
+    const scene = wallsio(el)
+    const posts = [post('top', { featured: true }), ...['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((id) => post(id))]
+    scene.rendre(data(posts, { parPage: 3, remplir: true }))
+
+    expect(head(el)).toBe('top')
+    expect(shown(el)).toHaveLength(8)
+    // No heights here: every column is as short, the ordinary ones are served first.
+    expect(el.querySelectorAll('.mur-avant .carte')).toHaveLength(1)
+  })
+
+  it('drops its band when asked, and gets it back', () => {
+    const el = document.createElement('div')
+    const scene = wallsio(el)
+    scene.rendre(data([post('a')], { bandeau: false }))
+    expect(el.classList.contains('sans-bande')).toBe(true)
+
+    scene.rendre(data([post('a')]))
+    expect(el.classList.contains('sans-bande')).toBe(false)
+  })
+
+  it('turns its page in place once held long enough', () => {
+    const el = document.createElement('div')
+    const scene = wallsio(el)
+    const posts = ['a', 'b', 'c', 'd'].map((id) => post(id))
+    vi.setSystemTime(new Date('2026-10-30T09:00:00Z'))
+    scene.rendre(data(posts, { parPage: 3 }, 'wallsio'))
+    expect(shown(el)).toEqual(['a', 'b', 'c'])
+
+    vi.setSystemTime(new Date('2026-10-30T09:00:10Z'))
+    scene.tick!(data(posts, { parPage: 3 }, 'wallsio'), 0)
+    expect(shown(el)).toEqual(['a', 'b', 'c'])
+
+    vi.setSystemTime(new Date('2026-10-30T09:00:26Z'))
+    scene.tick!(data(posts, { parPage: 3 }, 'wallsio'), 0)
+    expect(shown(el)).toEqual(['d', 'a', 'b'])
   })
 })

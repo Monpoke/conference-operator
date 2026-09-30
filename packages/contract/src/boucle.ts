@@ -247,8 +247,23 @@ export const boucleSchema = z.object({
        * any featured one.
        */
       sponsoriseTous: z.number().int().min(0).max(30).default(0),
+      /** The band on top (title, hashtag). Off, the posts take its height. */
+      bandeau: z.boolean().default(true),
+      /**
+       * Keep laying posts while the page has room — short posts leave space that
+       * another post fills, the featured post's column included. `parPage` then
+       * no longer caps the page.
+       */
+      remplir: z.boolean().default(true),
     })
-    .default({ titre: 'Le mur Cloud Nord', hashtag: '#CloudNord2026', parPage: 5, sponsoriseTous: 0 }),
+    .default({
+      titre: 'Le mur Cloud Nord',
+      hashtag: '#CloudNord2026',
+      parPage: 5,
+      sponsoriseTous: 0,
+      bandeau: true,
+      remplir: true,
+    }),
   conduite: z
     .object({
       paragraphes: z.array(z.string().max(300)).max(6),

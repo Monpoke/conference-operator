@@ -8,6 +8,7 @@ import { RPCHandler as FastifyRPCHandler } from '@orpc/server/fastify'
 import { RPCHandler as WebSocketRPCHandler } from '@orpc/server/websocket'
 import { createAuth, createAuthOptions, migrateAuth, type Auth } from './auth.js'
 import { ensureInitialAdmin } from './operators.js'
+import { hubLoggerOptions } from './log-format.js'
 import { configSchema, durationMs, type ConfigInput } from './config.js'
 import { openHubDatabase } from './db.js'
 import { createSecretBox } from './secrets.js'
@@ -210,7 +211,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     }
   }
 
-  const app = Fastify({ logger: { level: config.logLevel } })
+  const app = Fastify({ logger: hubLoggerOptions(config.logLevel) })
 
   /*
    * Taking over the OpenFeedback project once entered on a control app.

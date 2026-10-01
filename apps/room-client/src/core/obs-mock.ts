@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ObsInstance } from '@conference-operator/contract'
 import type { ObsTransport } from './obs.js'
+import { canvasStreamOutputName } from './obs-canvas.js'
 
 /**
  * A simulated OBS, to develop without installing OBS.
@@ -73,6 +74,8 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
   let canvasScene = canvasScenes?.[0] ?? null
   let canvasRecording = false
   let canvasStreaming = false
+  /** Like the plugin's, the stream output only exists in OBS once it has started. */
+  let canvasStreamCreated = false
   let canvasBytes = 0
   let canvasFrames = 0
 
@@ -223,6 +226,7 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
 
       case 'start_streaming':
         canvasStreaming = true
+        canvasStreamCreated = true
         canvasBytes = 0
         canvasFrames = 0
         log('canvas : diffusion démarrée')
@@ -234,29 +238,6 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
         log('canvas : diffusion arrêtée')
         canvasEvent('streaming_stopped', { name: 'Direct', code: 0, last_error: '' })
         return { success: true }
-
-      case 'record_status':
-        return { success: true, active: canvasRecording, paused: false, path: '', duration_ms: 0, bytes: 0 }
-
-      case 'stream_status':
-        if (canvasStreaming) {
-          canvasBytes += 5_625_000
-          canvasFrames += 300
-        }
-        return {
-          success: true,
-          outputs: [
-            {
-              name: 'Direct',
-              enabled: true,
-              active: canvasStreaming,
-              bytes: canvasBytes,
-              total_frames: canvasFrames,
-              dropped_frames: 0,
-              congestion: 0,
-            },
-          ],
-        }
 
       default:
         return { success: false, error: `Requête inconnue : ${requestType}` }
@@ -421,6 +402,26 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
             outputTotalFrames: streamFrames,
             outputCongestion: 0,
           }
+
+        // The canvas's stream output, as obs-websocket finds it by name — and does
+        // not find before the plugin has started it once.
+        case 'GetOutputStatus': {
+          const outputName = String(args?.outputName)
+          if (canvasScenes == null || !canvasStreamCreated || outputName !== canvasStreamOutputName('Direct')) {
+            throw new Error(`No output was found with the name \`${outputName}\`.`)
+          }
+          if (canvasStreaming) {
+            canvasBytes += 5_625_000
+            canvasFrames += 300
+          }
+          return {
+            outputActive: canvasStreaming,
+            outputBytes: canvasBytes,
+            outputSkippedFrames: 0,
+            outputTotalFrames: canvasFrames,
+            outputCongestion: 0,
+          }
+        }
 
         case 'CallVendorRequest': {
           if (canvasScenes == null || args?.vendorName !== 'aitum-vertical-canvas') {

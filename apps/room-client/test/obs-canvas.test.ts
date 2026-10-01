@@ -155,26 +155,30 @@ describe('the capture in the projection s vertical canvas', () => {
         calls.push({ request, args })
         const type = args?.requestType
         if (type === 'get_settings') {
-          return { responseData: { success: true, stream: { outputs: [{ name: 'Direct', enabled: true }] } } }
-        }
-        if (type === 'stream_status') {
           return {
             responseData: {
               success: true,
-              outputs: [
-                { name: 'éteint', enabled: false, active: false },
-                {
-                  name: 'Direct',
-                  active: true,
-                  bytes: 5_625_000,
-                  total_frames: 300,
-                  dropped_frames: 4,
-                  congestion: 2,
-                },
-              ],
+              stream: {
+                outputs: [
+                  { name: 'éteint', enabled: false },
+                  { name: '', enabled: true },
+                  { name: 'Direct', enabled: true },
+                ],
+              },
             },
           }
         }
+        if (request === 'GetOutputStatus' && args?.outputName === 'vertical_canvas_stream_Direct') {
+          return {
+            outputActive: true,
+            outputBytes: 5_625_000,
+            outputTotalFrames: 300,
+            outputSkippedFrames: 4,
+            outputCongestion: 2,
+          }
+        }
+        // The unnamed output never started: OBS does not know it yet.
+        if (request === 'GetOutputStatus') throw new Error(`No output was found with the name \`${args?.outputName}\`.`)
         return { responseData: { success: true } }
       }) as ObsTransport['call'],
       on: () => {},
@@ -191,14 +195,35 @@ describe('the capture in the projection s vertical canvas', () => {
       stream: { outputs: [{ index: 0, server: 'rtmp://exemple/live', key: 'clé-secrète', enabled: true }] },
     })
 
-    // The first **active** output: an idle one would describe a stream nobody
-    // receives. Congestion stays within bounds, whatever the plugin reports.
+    // The first **active** output, read from obs-websocket under the plugin's name
+    // for it: an idle one would describe a stream nobody receives, and one that
+    // never started is skipped. Congestion stays within bounds, whatever OBS reports.
     expect(await capture.streamStatus()).toEqual({
       outputBytes: 5_625_000,
       totalFrames: 300,
       skippedFrames: 4,
       congestion: 1,
     })
+    expect(
+      calls.filter((call) => call.request === 'GetOutputStatus').map((call) => call.args?.outputName),
+    ).toEqual(['vertical_canvas_stream', 'vertical_canvas_stream_Direct'])
+  })
+
+  it('reads nothing before the first stream, then counters that grow', async () => {
+    const room = singleObs()
+    await room.host.connect()
+    await room.capture.connect()
+
+    // The plugin creates its output on the first start: until then OBS knows no
+    // such name, and the telemetry reads zero rather than failing.
+    expect((await room.capture.streamStatus()).outputBytes).toBe(0)
+
+    await room.capture.startStream()
+    const first = await room.capture.streamStatus()
+    const second = await room.capture.streamStatus()
+    expect(first.outputBytes).toBeGreaterThan(0)
+    expect(second.outputBytes).toBeGreaterThan(first.outputBytes)
+    expect(second.totalFrames).toBeGreaterThan(first.totalFrames)
   })
 
   it('passes the plugin s refusal on rather than a silent success', async () => {

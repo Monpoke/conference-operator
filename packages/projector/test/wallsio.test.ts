@@ -26,7 +26,7 @@ const post = (id: string, extra: Partial<WallCard> = {}): WallCard => ({
 
 const sponsored = (id: string) => post(id, { featured: true, sponsor: { name: id, logoUrl: null } })
 
-type Wall = { parPage?: number; sponsoriseTous?: number; bandeau?: boolean; remplir?: boolean }
+type Wall = { parPage?: number; sponsoriseTous?: number; bandeau?: boolean; remplir?: boolean; dureePage?: number }
 
 /** Capped at `parPage` unless said otherwise: no layout here, a filled page would take every post. */
 const data = (posts: WallCard[], wall: Wall = {}, mode = 'boucle'): Data =>
@@ -41,6 +41,7 @@ const data = (posts: WallCard[], wall: Wall = {}, mode = 'boucle'): Data =>
         sponsoriseTous: wall.sponsoriseTous ?? 0,
         bandeau: wall.bandeau ?? true,
         remplir: wall.remplir ?? false,
+        dureePage: wall.dureePage ?? 0,
       },
       durees: {},
     },
@@ -158,5 +159,48 @@ describe('the social wall', () => {
     vi.setSystemTime(new Date('2026-10-30T09:00:26Z'))
     scene.tick!(data(posts, { parPage: 3 }, 'wallsio'), 0)
     expect(shown(el)).toEqual(['d', 'a', 'b'])
+  })
+
+  it('turns its pages in the loop while a whole one still fits in its pass', () => {
+    const el = document.createElement('div')
+    const scene = wallsio(el)
+    const posts = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((id) => post(id))
+    const wall = data(posts, { parPage: 3, dureePage: 10 })
+    const at = (s: number) => vi.setSystemTime(new Date(Date.parse('2026-10-30T09:00:00Z') + s * 1000))
+    at(0)
+    scene.rendre(wall)
+    // Laid off screen long before: its time starts when it goes live.
+    at(100)
+    el.classList.add('is-live')
+    scene.entre!(wall)
+    expect(shown(el)).toEqual(['a', 'b', 'c'])
+
+    at(109)
+    scene.tick!(wall, 0)
+    expect(shown(el)).toEqual(['a', 'b', 'c'])
+    // The page fades out, then the next tick lays the next one.
+    at(110)
+    scene.tick!(wall, 0)
+    at(111)
+    scene.tick!(wall, 0)
+    expect(shown(el)).toEqual(['d', 'e', 'f'])
+    // 25 s on screen: a third page would be cut short.
+    at(121)
+    scene.tick!(wall, 0)
+    expect(shown(el)).toEqual(['d', 'e', 'f'])
+  })
+
+  it('keeps one page per pass without a page duration', () => {
+    const el = document.createElement('div')
+    const scene = wallsio(el)
+    const posts = ['a', 'b', 'c', 'd'].map((id) => post(id))
+    const wall = data(posts, { parPage: 3 })
+    vi.setSystemTime(new Date('2026-10-30T09:00:00Z'))
+    scene.rendre(wall)
+    el.classList.add('is-live')
+    scene.entre!(wall)
+    vi.setSystemTime(new Date('2026-10-30T09:00:24Z'))
+    scene.tick!(wall, 0)
+    expect(shown(el)).toEqual(['a', 'b', 'c'])
   })
 })

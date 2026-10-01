@@ -25,6 +25,7 @@ async function save(): Promise<void> {
       ...draft.value,
       parPage: Math.min(6, Math.max(3, Math.round(Number(draft.value.parPage) || 5))),
       sponsoriseTous: Math.min(30, Math.max(0, Math.round(Number(draft.value.sponsoriseTous) || 0))),
+      dureePage: Math.min(120, Math.max(0, Math.round(Number(draft.value.dureePage) || 0))),
     })
     reset()
     toast.say('Mur social enregistré')
@@ -67,6 +68,18 @@ async function save(): Promise<void> {
           :class="FIELD"
         />
       </template>
+      <label :class="LABEL" for="boucle-wallsio-duree-page">
+        Durée d'une page, en secondes (0 : une seule page par passage dans la boucle ; les pages
+        tournent en fondu tant que le mur a le temps d'en montrer une entière)
+      </label>
+      <input
+        id="boucle-wallsio-duree-page"
+        v-model.number="draft.dureePage"
+        type="number"
+        min="0"
+        max="120"
+        :class="FIELD"
+      />
       <label :class="LABEL" for="boucle-wallsio-sponsorise">
         Un post sponsorisé tous les … posts (0 : les posts partenaires ouvrent la page, comme un post
         mis en avant)

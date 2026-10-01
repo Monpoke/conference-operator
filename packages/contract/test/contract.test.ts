@@ -462,6 +462,7 @@ describe('message exchange', () => {
       sponsoriseTous: 0,
       bandeau: true,
       remplir: true,
+      dureePage: 0,
     })
     expect('wallsIoUrl' in stored).toBe(false)
   })

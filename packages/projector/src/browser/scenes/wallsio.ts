@@ -29,7 +29,9 @@ import { carte } from './carte.js'
  *
  * Drawn off screen only, like every loop scene: a post arriving while the wall
  * is up waits for the next pass rather than moving a card in front of the room.
- * Held on screen by the operator, its page turns in place, faded out then in.
+ * Its own pages turn in place, faded out then in: every `dureePage` seconds in
+ * the loop — a new page only if it still has its whole time before the wall
+ * leaves — and, held by the operator, every `dureePage` or the wall's duration.
  */
 /** Cards on a filled page at most: every one laid is measured. */
 const MAX_REMPLIES = 12
@@ -69,6 +71,8 @@ export function wallsio(el: HTMLElement): Scene {
   let depuisSponsorise = 0
   /** When the page on screen was laid out: held by the operator, it turns on its own. */
   let poseA = 0
+  /** When the wall last went live: in the loop, its pass is counted from there. */
+  let entreA = 0
   /** The posts on the page laid out, counted when it goes live. */
   let affiches: string[] = []
   /** The page fading out before it turns in place, and since when. */
@@ -202,8 +206,11 @@ export function wallsio(el: HTMLElement): Scene {
       // Redrawn in place, the new page does not pop in front of the room.
       apparaitre()
     },
-    entre() {
+    entre(data: Data) {
       compterAffichages(affiches)
+      entreA = maintenant(data)
+      // Laid off screen a whole loop ago: its time starts now.
+      poseA = entreA
     },
     quitte(data: Data) {
       arreterFondu()
@@ -211,16 +218,25 @@ export function wallsio(el: HTMLElement): Scene {
       page()
     },
     /**
-     * Put up on its own by the operator, the wall never leaves the screen: it
-     * turns its page in place once it has had its time, with a fade — a loop
-     * scene is only ever redrawn off screen.
+     * The page turns in place once it has had its time, with a fade. Put up on
+     * its own by the operator, the wall never leaves the screen and turns for
+     * as long as it is held; in the loop, only with a page duration, and never
+     * a page cut short by the wall leaving — the next one is laid as it leaves
+     * (`quitte`).
      */
     tick(data: Data) {
-      // In the loop, the next page is laid out as it leaves (`quitte`): turning
-      // here too would use up posts nobody saw.
-      if (data.state.mode !== 'wallsio') return
-      const duree = (data.boucle?.durees.wallsio ?? 25) * 1000
-      if (poseA > 0 && maintenant(data) - poseA >= duree) tourner(data)
+      // A fade under way ends, wherever the wall is: `tourner` lays nothing off screen.
+      if (fondu != null) { tourner(data); return }
+      const t = maintenant(data)
+      const passage = (data.boucle?.durees.wallsio ?? 25) * 1000
+      const parPage = (data.boucle?.wallsio?.dureePage ?? 0) * 1000
+      if (data.state.mode === 'wallsio') {
+        if (poseA > 0 && t - poseA >= (parPage || passage)) tourner(data)
+        return
+      }
+      if (parPage <= 0 || entreA === 0 || !el.classList.contains('is-live')) return
+      // The engine counts the pass on its own one-second clock: a second of slack.
+      if (t - poseA >= parPage && t - entreA + parPage <= passage + 1000) tourner(data)
     },
   }
   return scene

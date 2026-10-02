@@ -19,6 +19,7 @@ const plugin = join(root, 'io.github.monpoke.conference-operator.sdPlugin', 'img
 /** 24×24 pictograms, white strokes. */
 const GLYPHS = {
   scene: '<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/>',
+  'scene-toggle': '<path d="M4 8h13l-3-3M20 16H7l3 3"/>',
   display: '<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M7 21h10"/><path d="M6 8h12M6 12h8"/>',
   recording: '<circle cx="12" cy="12" r="7" fill="#fff"/>',
   mark: '<path d="M6 21V4M6 4h11l-2 4 2 4H6"/>',
@@ -32,6 +33,8 @@ const GLYPHS = {
 /** The "on" ground of each kind; "off" is the console's dark surface. */
 const ON = {
   scene: '#5b7cfa',
+  // On = the first scene of the pair is on air: Direct, red like everything on air.
+  'scene-toggle': '#e11d48',
   display: '#5b7cfa',
   recording: '#e11d48',
   mark: '#059669',

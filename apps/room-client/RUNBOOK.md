@@ -119,7 +119,8 @@ Sur le poste de salle, avec l'application Stream Deck **7.1 ou plus** :
    autre port — à régler dans le panneau de la touche Statut.
 
 Arrêter l'enregistrement, terminer la conférence et couper le direct
-**se maintiennent une seconde**.
+**se maintiennent une seconde**. Une seule touche pour passer de **Direct** à
+**Habillage** et retour : l'action **Bascule de scène**.
 
 ## Déroulé d'un talk
 

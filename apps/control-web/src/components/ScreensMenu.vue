@@ -2,6 +2,7 @@
 import type { DisplayPayload } from '@conference-operator/contract'
 import { Button } from '@conference-operator/components'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { readDock } from '../boot.js'
 
 /**
  * The locally served screens.
@@ -26,6 +27,13 @@ const props = defineProps<{ payload: DisplayPayload }>()
 const open = ref(false)
 
 /**
+ * In an OBS dock, this page in another window would open inside OBS, and server
+ * mode has nothing to free: the dock already is the light way to drive the room.
+ */
+const dock = readDock(globalThis.location.search)
+const screens = dock ? SCREENS.filter((entry) => entry[0] !== '/regie') : SCREENS
+
+/**
  * The public wall depends on the hub, not on the local server.
  *
  * Added only when the room knows its address: a dead link in this list would send
@@ -34,9 +42,9 @@ const open = ref(false)
 const links = computed(() => {
   const wall = props.payload.wall?.url
   return wall == null
-    ? SCREENS.map((entry) => ({ href: entry[0], title: entry[1], detail: entry[2] }))
+    ? screens.map((entry) => ({ href: entry[0], title: entry[1], detail: entry[2] }))
     : [
-        ...SCREENS.map((entry) => ({ href: entry[0], title: entry[1], detail: entry[2] })),
+        ...screens.map((entry) => ({ href: entry[0], title: entry[1], detail: entry[2] })),
         { href: wall, title: 'Mur public', detail: wall },
       ]
 })
@@ -185,6 +193,30 @@ onBeforeUnmount(() => {
           class="shrink-0 cursor-pointer rounded-lg border border-edge bg-surface2 px-3 py-2 text-[13px] font-semibold text-text no-underline transition-colors hover:border-brand hover:bg-edge"
         >
           Ouvrir
+        </a>
+      </div>
+
+      <!--
+        Server mode replaces this page, in this window: it is the point — the
+        console stops rendering, and the window that keeps the room running stays
+        where it is. Nothing to copy either: it is no OBS source.
+      -->
+      <div
+        v-if="!dock"
+        class="mt-[5px] flex items-center gap-2 rounded-md border-t border-edge px-3 py-2 hover:bg-edge"
+      >
+        <div class="min-w-0 flex-1">
+          <div class="text-sm text-text">Mode serveur</div>
+          <small class="mt-0.5 block text-xs text-dim">
+            Cette fenêtre sans la console — quand un dock OBS pilote la salle
+          </small>
+        </div>
+        <a
+          href="/regie/serveur"
+          data-role="btn-server-mode"
+          class="shrink-0 cursor-pointer rounded-lg border border-edge bg-surface2 px-3 py-2 text-[13px] font-semibold text-text no-underline transition-colors hover:border-brand hover:bg-edge"
+        >
+          Basculer
         </a>
       </div>
     </div>

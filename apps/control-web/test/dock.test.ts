@@ -93,3 +93,78 @@ describe('the single column, below 1024 px', () => {
     }
   })
 })
+
+describe('the server-mode offer', () => {
+  afterEach(() => globalThis.sessionStorage.clear())
+
+  /** Mounts with this payload already in the store, before the first render. */
+  async function mountWith(address: string, dockConnected: boolean): Promise<ReturnType<typeof mount>> {
+    globalThis.history.replaceState({}, '', address)
+    useRoomStore().seed({ ...payload(), dockConnected })
+    const wrapper = mount(App, { attachTo: document.body })
+    mounted.push(wrapper)
+    await flushPromises()
+    return wrapper
+  }
+
+  const offer = (wrapper: ReturnType<typeof mount>) => wrapper.find('[data-role="server-mode-offer"]')
+
+  it('tells the machine the stream comes from a dock', async () => {
+    await mountAt('/regie?dock')
+    expect(streams).toContain('/display/state?vue=regie&partiel=1&dock=1')
+  })
+
+  it('says nothing of a dock from the machine window', async () => {
+    await mountAt('/regie')
+    expect(streams).toContain('/display/state?vue=regie&partiel=1')
+  })
+
+  it('is offered while a dock drives the room, and only then', async () => {
+    const wrapper = await mountAt('/regie')
+    expect(offer(wrapper).exists()).toBe(false)
+
+    useRoomStore().seed({ ...payload(), dockConnected: true })
+    await flushPromises()
+    expect(offer(wrapper).exists()).toBe(true)
+  })
+
+  it('never shows in the dock itself', async () => {
+    const wrapper = await mountWith('/regie?dock', true)
+    expect(offer(wrapper).exists()).toBe(false)
+  })
+
+  it('goes once declined, and comes back with the next dock', async () => {
+    const wrapper = await mountWith('/regie', true)
+    const room = useRoomStore()
+
+    await wrapper.find('[data-role="btn-stay"]').trigger('click')
+    expect(offer(wrapper).exists()).toBe(false)
+
+    room.seed({ ...payload(), dockConnected: false })
+    await flushPromises()
+    room.seed({ ...payload(), dockConnected: true })
+    await flushPromises()
+    expect(offer(wrapper).exists()).toBe(true)
+  })
+
+  it('is not offered again on the way back from server mode', async () => {
+    const wrapper = await mountWith('/regie?console', true)
+    expect(offer(wrapper).exists()).toBe(false)
+  })
+
+  it('stays reachable from the screens menu, in this window', async () => {
+    const wrapper = await mountAt('/regie')
+    await wrapper.find('[data-role="btn-screens"]').trigger('click')
+    const link = wrapper.find('[data-role="screens-list"] a[href="/regie/serveur"]')
+    expect(link.exists()).toBe(true)
+    expect(link.attributes('target')).toBeUndefined()
+  })
+
+  it('leaves it out of the dock menu, and this page in another window too', async () => {
+    const wrapper = await mountAt('/regie?dock')
+    await wrapper.find('[data-role="btn-screens"]').trigger('click')
+    const list = wrapper.find('[data-role="screens-list"]')
+    expect(list.find('a[href="/regie/serveur"]').exists()).toBe(false)
+    expect(list.find('a[href="/regie"]').exists()).toBe(false)
+  })
+})

@@ -495,6 +495,16 @@ export interface DisplayPayload {
     rooms?: { id: string; name: string }[]
     requestedRoomId?: string | null
   } | null
+  /**
+   * An OBS dock is driving this room's control app right now.
+   *
+   * Seen by the local server alone — a page that opened the state stream as a
+   * dock (`dock=1`, or a `/regie` loaded by OBS). The machine's own window then
+   * offers to step aside into server mode: the dock does the steering, and
+   * rendering the full control app a second time is pure waste. Absent from
+   * every payload the hub builds, where it means "no".
+   */
+  dockConnected?: boolean
 }
 
 /**
@@ -596,6 +606,8 @@ export const FIELDS_BY_VIEW: Record<DisplayView, readonly (keyof DisplayPayload)
     // The screens menu offers what the hub left available, and nothing else: a
     // button withdrawn on the hub must disappear here too, not fail on use.
     'screensDisabled',
+    // The dock's presence: the machine's window offers server mode on it.
+    'dockConnected',
   ],
 }
 

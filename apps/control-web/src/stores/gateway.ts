@@ -2,7 +2,7 @@ import { controlPath, controlRoomIdFromPath, type ControlLock } from '@conferenc
 import { watchControlRoom } from '@conference-operator/hub-client'
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
-import type { BootScope } from '../boot.js'
+import { readDock, type BootScope } from '../boot.js'
 import {
   remoteGateway,
   localGateway,
@@ -94,7 +94,7 @@ export const useGatewayStore = defineStore('gateway', () => {
 
   /** Builds the current scope's gateway, without opening it. */
   function build(options: Opening): ControlGateway | null {
-    if (!remote.value) return localGateway(options.openStream)
+    if (!remote.value) return localGateway(options.openStream, readDock(globalThis.location.search))
     const room = roomId.value
     // Nothing to drive with no room: the choice screen commands nobody.
     if (room == null) return null

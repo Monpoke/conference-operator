@@ -331,7 +331,9 @@ describe('applying the commands', () => {
     expect(store.settings().wall.posts[0]?.featured).toBe(true)
 
     // `posts` was a screen before it joined the social wall: dropped, the rest kept.
-    store.saveSettings({ screens: { disabled: ['posts', 'sponsors'] as never } })
+    store.saveSettings({
+      screens: { disabled: ['posts', 'sponsors'] as never, features: { wall: true, questions: true }, urgentPinHash: null },
+    })
     expect(store.settings().screens.disabled).toEqual(['sponsors'])
   })
 
@@ -394,6 +396,23 @@ describe("the control app's own message", () => {
 
     runtime.clearMessage()
     expect(runtime.state()).toMatchObject({ mode: 'countdown', message: null })
+  })
+
+  it('goes down with the message screen: nothing left showing unseen', async () => {
+    // Left in the state, it kept the control app saying "À l'écran" and an urgent
+    // one on the live banner long after the room moved on.
+    const runtime = makeRuntime()
+    runtime.showMessage('Évacuez', 'urgent', null)
+    await runtime.setDisplayMode('countdown')
+    expect(runtime.state()).toMatchObject({ mode: 'countdown', message: null })
+  })
+
+  it('says who wrote it', () => {
+    const runtime = makeRuntime()
+    runtime.showMessage('Bienvenue', 'info', null)
+    expect(runtime.state().message?.source).toBe('regie')
+    runtime.showMessage('Ouverture des portes', 'info', null, 'hub')
+    expect(runtime.state().message?.source).toBe('hub')
   })
 })
 

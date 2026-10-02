@@ -265,6 +265,10 @@ export function controlView(services: Services, roomId: string, at: number): Con
      * seconds of delay the reported screen carries.
      */
     screensDisabled: services.settings.get().screensDisabled,
+    features: {
+      wall: services.settings.get().wallEnabled,
+      questions: services.settings.get().questionsEnabled,
+    },
 
     /*
      * The mapped roles, not the full list of possible roles.

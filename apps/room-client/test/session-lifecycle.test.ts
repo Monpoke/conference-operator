@@ -768,6 +768,8 @@ describe('exchanging messages', () => {
        * covered by the runtime's tests.
        */
       ttlSeconds: null,
+      // Urgent asks the sender's password again: see the hub's `urgent-proof.ts`.
+      password: OPERATOR.password,
     })
     await sleep(600)
 
@@ -776,6 +778,19 @@ describe('exchanging messages', () => {
     expect(payload.state.message).toMatchObject({ level: 'urgent' })
     // The control app knows what is being projected in its own room.
     expect(payload.state.notifications.map((n) => n.text).join(' ')).toContain('Affiché en salle')
+
+    // And the hub hears back what the screen says: the console and the hall screen read it.
+    await vi.waitFor(
+      async () => {
+        const screens = (await rpcAdmin('messages/screens', { limit: 10 })).body.json as unknown as {
+          current: { roomId: string; level: string; source: string }[]
+        }
+        expect(screens.current).toEqual([
+          expect.objectContaining({ roomId: TRACK_1, level: 'urgent', source: 'hub' }),
+        ])
+      },
+      { timeout: 15_000, interval: 300 },
+    )
   }, 40_000)
 
   it('reaches every room when none is named', async () => {

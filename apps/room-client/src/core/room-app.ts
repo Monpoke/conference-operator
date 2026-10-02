@@ -1,5 +1,6 @@
 import { streamHealthBetween, type StreamSample } from './stream-health.js'
-import { PROTOCOL_VERSION } from '@conference-operator/contract'
+import { PROTOCOL_VERSION, type BroadcastMessage } from '@conference-operator/contract'
+import { UrgentPinGate } from './pin.js'
 import { join } from 'node:path'
 import { AssetCache } from './assets.js'
 import { DisplayServer, displayViewOf } from './display-server.js'
@@ -352,6 +353,7 @@ export class RoomApp implements ControlTarget {
       },
       options.now,
     )
+    this.followScreenMessage()
     this.wantedRoomId = options.roomId ?? null
     this.connectivity = new ConnectivityTracker({
       hubOrigin: options.hubOrigin,
@@ -2246,6 +2248,37 @@ export class RoomApp implements ControlTarget {
     this.runtime.setSessionStatus(state.sessionId, state.status)
   }
 
+  /**
+   * Tells the hub what the room's screen says, whoever wrote it.
+   *
+   * Watched on the state rather than at each call site: the control app, the
+   * console's audience message, a mode change and the expiry all move it, and the
+   * hub must hear about every one — the console shows what each screen says, the
+   * hall screen relays what is urgent. The message already on screen at startup
+   * is not announced again: the hub heard it before the restart.
+   */
+  private followScreenMessage(): void {
+    let last = JSON.stringify(this.runtime.state().message ?? null)
+    this.runtime.on('state', (state: { message?: BroadcastMessage | null }) => {
+      const message = state.message ?? null
+      const key = JSON.stringify(message)
+      if (key === last) return
+      last = key
+      this.emit(
+        message == null
+          ? { type: 'screen.message', action: 'cleared', text: null, level: null, expiresAt: null, source: null }
+          : {
+              type: 'screen.message',
+              action: 'shown',
+              text: message.text,
+              level: message.level,
+              expiresAt: message.expiresAtMs == null ? null : new Date(message.expiresAtMs).toISOString(),
+              source: message.source ?? 'regie',
+            },
+      )
+    })
+  }
+
   /** The operator's own message, on the room's screen. */
   showScreenMessage(text: string, level: 'info' | 'warning' | 'urgent', ttlSeconds: number | null): void {
     this.runtime.showMessage(text, level, ttlSeconds)
@@ -2253,6 +2286,13 @@ export class RoomApp implements ControlTarget {
 
   clearScreenMessage(): void {
     this.runtime.clearMessage()
+  }
+
+  /** The hub's PIN, as cached at the last sync: it must answer with the hub cut off. */
+  private readonly urgentPin = new UrgentPinGate(() => this.store.settings().screens.urgentPinHash)
+
+  checkUrgentPin(pin: string | undefined): string | null {
+    return this.urgentPin.check(pin)
   }
 
   /**

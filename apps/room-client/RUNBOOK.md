@@ -38,6 +38,11 @@ l'opérateur a l'application ouverte et rien d'autre.
    Fermer la régie pendant un enregistrement ou une diffusion demande une
    confirmation : OBS continuerait sans personne pour le piloter (ni marqueurs,
    ni arrêt propre, ni envoi des rushs). **Annuler** est le choix par défaut.
+
+   Un message **Urgent** depuis le panneau « Message à l'écran » demande le
+   **code PIN régie**, défini dans les réglages du hub. Il s'affiche aussi sur le
+   bandeau live et sur l'écran global du hall. Sans code défini au hub, la régie
+   refuse les urgents.
 3. Au premier lancement, la régie demande **quelle salle dessert ce poste**.
    Choisir la bonne : la console la retrouvera pré-sélectionnée.
 4. La régie affiche ensuite un **code d'appairage**. Le donner à la personne qui

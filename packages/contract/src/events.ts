@@ -184,6 +184,22 @@ export const roomEventPayloadSchema = z.discriminatedUnion('type', [
    * without a compatibility concern.
    */
   z.object({
+    /**
+     * A message went up on the room's screen, or came down.
+     *
+     * Whoever sent it — the room's control app or the hub's console — so that the
+     * console sees what every screen says, and the hall screen can relay what is
+     * urgent. `required`: a message shown during an outage still belongs in the
+     * log. The current state is read off the last one, with `expiresAt`.
+     */
+    type: z.literal('screen.message'),
+    action: z.enum(['shown', 'cleared']),
+    text: z.string().max(500).nullable(),
+    level: z.enum(['info', 'warning', 'urgent']).nullable(),
+    expiresAt: isoDateTimeSchema.nullable(),
+    source: z.enum(['regie', 'hub']).nullable(),
+  }),
+  z.object({
     type: z.literal('stream.telemetry'),
     bitrateKbps: z.number().nonnegative(),
     /** Share of the frames OBS skipped since the previous sample, 0–1. */
@@ -230,6 +246,7 @@ export const DELIVERY_BY_EVENT: Record<RoomEventType, z.infer<typeof deliverySch
   'obs.connection': 'required',
   'room.message': 'required',
   'wall.impressions': 'required',
+  'screen.message': 'required',
   'room.heartbeat': 'best-effort',
   'stream.telemetry': 'best-effort',
 }

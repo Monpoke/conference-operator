@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto'
 import { implement, withEventMeta } from '@orpc/server'
 import { ORPCError } from '@orpc/server'
 import { CONTROL_WATCH_FLOOR_MS } from '@conference-operator/contract'
+import { hashPin } from './pin.js'
+import { requireUrgentProof, urgentProofOf } from './urgent-proof.js'
 import {
   DEFAULT_VOD_POLICY,
   PROTOCOL_VERSION,
@@ -26,7 +28,7 @@ import {
   type Program,
   type Session,
 } from '@conference-operator/program'
-import type { RawCapture } from './services/ingest.js'
+import type { RawCapture, ScreenMessageReport } from './services/ingest.js'
 import { checkOpenFeedback } from './services/openfeedback.js'
 import {
   controlCommand,
@@ -153,6 +155,19 @@ const NOT_AUDITED = new Set([
 const READS_ONLY = /:(read|view|list|get)$/
 
 /**
+ * What the log must never hold in clear: the control app's PIN, the password
+ * that confirms an urgent message. The entry keeps the gesture, not the secret.
+ */
+const SECRET_FIELDS = new Set(['pin', 'password'])
+
+export function redactSecrets(input: unknown): unknown {
+  if (input == null || typeof input !== 'object' || Array.isArray(input)) return input
+  return Object.fromEntries(
+    Object.entries(input).map(([key, value]) => [key, SECRET_FIELDS.has(key) && value != null ? '•••' : value]),
+  )
+}
+
+/**
  * Runs an operator's call, writing it down when it changes something.
  *
  * Written whatever happens: accepted, refused by a lock, a permission the
@@ -177,7 +192,13 @@ async function audited<T>(
       : null
   const write = (entry: { ok: boolean; error?: string; commandSeq?: number | null }) => {
     try {
-      context.services.audit.record({ actor: context.operator.email, action, roomId, input, ...entry })
+      context.services.audit.record({
+        actor: context.operator.email,
+        action,
+        roomId,
+        input: redactSecrets(input),
+        ...entry,
+      })
     } catch (cause) {
       context.services.log('warn', "journal d'audit : entrée non écrite", {
         action,
@@ -195,6 +216,22 @@ async function audited<T>(
   } catch (cause) {
     write({ ok: false, error: (cause as Error).message })
     throw cause
+  }
+}
+
+/**
+ * The public wall or the questions, refused when the hub turned them off.
+ *
+ * The page no longer offers them, but a phone that kept the page open — or a
+ * script — still knows the address: the switch has to hold here.
+ */
+function requireFeature(context: HubContext, feature: 'wall' | 'questions'): void {
+  const settings = context.services.settings.get()
+  const on = feature === 'wall' ? settings.wallEnabled : settings.questionsEnabled
+  if (!on) {
+    throw new ORPCError('FORBIDDEN', {
+      message: feature === 'wall' ? "Le mur n'est pas ouvert pour cet événement." : 'Les questions ne sont pas ouvertes pour cet événement.',
+    })
   }
 }
 
@@ -708,6 +745,9 @@ export const router = os.router({
             ? null
             : context.services.vod.sync(),
         pins: context.services.pins.all(),
+        features: { wall: settings.wallEnabled, questions: settings.questionsEnabled },
+        // Hashed, checked by the room itself: see the contract.
+        urgentPinHash: context.services.settings.urgentPinHash(),
       }
     }),
 
@@ -757,7 +797,8 @@ export const router = os.router({
    * VOD of every targeted room.
    */
   overlay: {
-    show: os.overlay.show.use(operatorCan('overlay:show')).handler(({ input, context }) => {
+    show: os.overlay.show.use(operatorCan('overlay:show')).handler(async ({ input, context }) => {
+      if (input.message.level === 'urgent') await requireUrgentProof(context, input.password)
       context.services.commands.publish(
         input.roomId,
         { type: 'overlay.set', message: input.message },
@@ -965,10 +1006,12 @@ export const router = os.router({
   },
 
   messages: {
-    send: os.messages.send.use(operatorCan('message:send')).handler(({ input, context }) => {
+    send: os.messages.send.use(operatorCan('message:send')).handler(async ({ input, context }) => {
       if (input.roomId != null && context.services.rooms.get(input.roomId) == null) {
         throw new ORPCError('NOT_FOUND', { message: `Salle inconnue : ${input.roomId}` })
       }
+      // Its own right, and a fresh proof of identity: see `urgent-proof.ts`.
+      if (input.level === 'urgent') await requireUrgentProof(context, input.password)
       context.services.commands.publish(
         input.roomId,
         {
@@ -983,6 +1026,18 @@ export const router = os.router({
       return { ok: true }
     }),
 
+    urgentProof: os.messages.urgentProof
+      .use(operatorCan('message:send'))
+      .handler(({ context }) => urgentProofOf(context)),
+
+    screens: os.messages.screens.use(operatorCan('message:read')).handler(({ input, context }) => {
+      const names = new Map(context.services.rooms.list().map((room) => [room.id, room.name]))
+      const named = (report: ScreenMessageReport) => ({ ...report, roomName: names.get(report.roomId) ?? null })
+      return {
+        current: context.services.ingest.currentScreenMessages(context.services.clock.now()).map(named),
+        log: context.services.ingest.screenMessages(input.limit).map(named),
+      }
+    }),
   },
 
   clock: {
@@ -1033,6 +1088,10 @@ export const router = os.router({
     identity: os.event.identity.use(operatorCan('program:read')).handler(({ context }) => ({
       resolved: context.services.identity.get(),
       derived: context.services.identity.derived(),
+      features: {
+        wall: context.services.settings.get().wallEnabled,
+        questions: context.services.settings.get().questionsEnabled,
+      },
     })),
   },
 
@@ -1047,6 +1106,18 @@ export const router = os.router({
 
   settings: {
     get: os.settings.get.use(operatorCan('settings:read')).handler(({ context }) => context.services.settings.get()),
+    urgentPin: {
+      status: os.settings.urgentPin.status
+        .use(operatorCan('settings:read'))
+        .handler(({ context }) => ({ set: context.services.settings.urgentPinHash() != null })),
+      set: os.settings.urgentPin.set
+        .use(operatorCan('settings:update'))
+        .handler(({ input, context }) => {
+          context.services.settings.setUrgentPinHash(input.pin == null ? null : hashPin(input.pin))
+          // The rooms pick it up at their next sync — within a few minutes.
+          return { set: input.pin != null }
+        }),
+    },
     update: os.settings.update
       .use(operatorCan('settings:update'))
       .handler(({ input, context }) => {
@@ -1271,6 +1342,7 @@ export const router = os.router({
    */
   wall: {
     post: os.wall.post.handler(({ input, context }) => {
+      requireFeature(context, 'wall')
       if (!context.services.limiter.take(publicIdentity(context))) {
         throw new ORPCError('TOO_MANY_REQUESTS', {
           message: 'Trop de messages coup sur coup. Patientez quelques instants.',
@@ -1291,9 +1363,10 @@ export const router = os.router({
      * Read from the service's in-memory snapshot, never in SQL — it is the only
      * unbounded load of the day.
      */
-    recent: os.wall.recent.handler(({ input, context }) =>
-      context.services.wall.approved(null).slice(-input.limit).reverse(),
-    ),
+    recent: os.wall.recent.handler(({ input, context }) => {
+      requireFeature(context, 'wall')
+      return context.services.wall.approved(null).slice(-input.limit).reverse()
+    }),
 
     feed: os.wall.feed.handler(async function* ({ input, context, lastEventId, signal }) {
       for await (const entry of context.services.wall.stream(
@@ -1989,6 +2062,7 @@ export const router = os.router({
 
   questions: {
     post: os.questions.post.handler(({ input, context }) => {
+      requireFeature(context, 'questions')
       if (!context.services.limiter.take(publicIdentity(context))) {
         throw new ORPCError('TOO_MANY_REQUESTS', {
           message: 'Trop de questions coup sur coup. Patientez quelques instants.',
@@ -1998,6 +2072,7 @@ export const router = os.router({
     }),
 
     vote: os.questions.vote.handler(({ input, context }) => {
+      requireFeature(context, 'questions')
       // The bucket is keyed on the device: voting is the easiest gesture to
       // automate, and it is the one that would skew the ranking.
       if (!context.services.limiter.take(publicIdentity(context, input.deviceId))) {
@@ -2006,9 +2081,10 @@ export const router = os.router({
       return { votes: context.services.questions.vote(input.id, input.deviceId) }
     }),
 
-    list: os.questions.list.handler(({ input, context }) =>
-      context.services.questions.list(input.roomId, input.sessionId),
-    ),
+    list: os.questions.list.handler(({ input, context }) => {
+      requireFeature(context, 'questions')
+      return context.services.questions.list(input.roomId, input.sessionId)
+    }),
   },
 })
 

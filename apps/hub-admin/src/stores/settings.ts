@@ -19,6 +19,10 @@ export interface Settings {
   socialLinks: SocialLink[]
   /** The screens withdrawn from this edition — a deny list; see the contract. */
   screensDisabled?: string[]
+  /** The public wall's form — off, the page, the screens and the control app drop it. */
+  wallEnabled?: boolean
+  /** Audience questions — off, the tab, the votes and "question on air" go. */
+  questionsEnabled?: boolean
   vodBucket?: string | null
   vodPrefix?: string | null
   /** When an analysed cut is edited without anybody validating it. */
@@ -84,6 +88,8 @@ export const useSettingsStore = defineStore('settings', () => {
   const snapshots = ref<Snapshot[]>([])
   const rooms = ref<{ id: string; name: string }[]>([])
   const streams = ref<RoomStream[]>([])
+  /** Whether the control app's PIN is set. The console never sees the PIN itself. */
+  const urgentPinSet = ref(false)
   const storage = ref<StorageStatus | null>(null)
   /**
    * The programme's images, as the hub holds them.
@@ -108,6 +114,7 @@ export const useSettingsStore = defineStore('settings', () => {
       storageData,
       imagesData,
       streamsData,
+      pinData,
     ] = await Promise.all([
       session.client.rpc.settings.get(),
       session.client.rpc.event.identity(),
@@ -116,6 +123,7 @@ export const useSettingsStore = defineStore('settings', () => {
       session.client.rpc.vod.status(),
       session.client.rpc.program.images(),
       session.client.rpc.rooms.streams(),
+      session.client.rpc.settings.urgentPin.status(),
     ])
     settings.value = settingsData as Settings
     const identity = identityData as { derived?: DerivedIdentity }
@@ -125,6 +133,13 @@ export const useSettingsStore = defineStore('settings', () => {
     storage.value = storageData as StorageStatus
     images.value = imagesData as typeof images.value
     streams.value = streamsData as RoomStream[]
+    urgentPinSet.value = (pinData as { set: boolean }).set
+  }
+
+  /** Sets the control app's PIN, or clears it with `null`. */
+  async function setUrgentPin(pin: string | null): Promise<void> {
+    const result = (await session.client.rpc.settings.urgentPin.set({ pin })) as { set: boolean }
+    urgentPinSet.value = result.set
   }
 
   /**
@@ -202,6 +217,8 @@ export const useSettingsStore = defineStore('settings', () => {
     resync,
     setStream,
     checkStorage,
+    urgentPinSet,
+    setUrgentPin,
   }
 })
 

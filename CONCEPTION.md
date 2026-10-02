@@ -2041,6 +2041,63 @@ C'est là toute la différence avec le mode « Message » de l'écran de salle, 
 continue dessous. Les deux servent à des moments différents — une évacuation
 prend l'écran, un retard de cinq minutes non.
 
+### Messages d'écran : remontés au hub, urgents partout
+
+Un message d'écran part de la **régie de la salle** ou de la **console** (« Le
+public ») ; dans les deux cas il prend l'écran de la salle (mode « Message »).
+Ce qui a changé :
+
+- **Le hub sait ce que dit chaque écran.** La salle émet `screen.message`
+  (affiché / retiré, texte, niveau, expiration, origine `regie` ou `hub`) par sa
+  file sortante, `required` : un message affiché pendant une coupure reste au
+  journal. La console Messages montre « À l'écran dans les salles » (le dernier
+  rapport de chaque salle, non expiré) et le journal des écrans, relus toutes les
+  dix secondes. Rien en base de plus : c'est lu dans `ingest_event`.
+- **Quitter le mode « Message » retire le message.** Il restait dans l'état sans
+  être vu : la régie disait « À l'écran », le hub n'apprenait rien, et un urgent
+  restait sur le bandeau. L'expiration ne renvoie plus à la boucle un écran qui a
+  déjà changé de mode.
+- **Un urgent est répété sur le bandeau live** (`/display/overlay-live`, OBS-A),
+  devant le bandeau de la console et la question. **Jamais sur l'habillage de
+  captation** : il serait gravé dans la VOD.
+- **L'écran global du hall** (`/boucle/apercu?salle=global`) passe en message
+  dès qu'une salle affiche un urgent, préfixé du nom des salles concernées — sans
+  préfixe quand toutes affichent le même texte (envoyé à tout l'événement). Il
+  se relit toutes les 5 s au lieu de 20.
+
+**Un urgent se confirme par une preuve d'identité fraîche, et c'est un droit à
+part** (`message:urgent` — groupe admin et groupe « Messages urgents », qui
+s'ajoute à un autre) :
+
+- **console**, compte à mot de passe : le mot de passe est ressaisi, vérifié par
+  Better Auth (`verifyPassword`) ;
+- **console**, compte Google (SSO) : pas de mot de passe sur le hub — la preuve
+  est une session ouverte il y a moins de cinq minutes. « Se reconnecter » renvoie
+  chez le fournisseur et revient sur la page, le brouillon intact
+  (`sessionStorage`) ;
+- **régie locale** : elle n'a pas de compte. Elle demande le **code PIN régie**
+  défini au hub (Réglages), descendu haché (scrypt) à la synchronisation et
+  vérifié **sur le poste** — l'alarme doit pouvoir partir hub coupé. Pas de code
+  défini : la salle refuse les urgents. Cinq erreurs bloquent une minute.
+
+Le bandeau urgent de la console (`overlay.show`) suit la même règle. Ni le mot de
+passe ni le PIN n'entrent au journal d'audit (`redactSecrets`).
+
+### Mur public et questions : désactivables
+
+Deux interrupteurs du hub (Réglages → « Mur public & questions »),
+indépendants : `wallEnabled` (le formulaire de message de `/mur`) et
+`questionsEnabled` (l'onglet Questions, les votes, la question à l'antenne).
+
+- Le hub refuse les appels publics de la fonctionnalité coupée ; `/mur` n'offre
+  plus que l'autre onglet, ou une page fermée si les deux sont coupés.
+- Les salles le reçoivent à la synchronisation (caché, valable hub coupé) : la
+  régie retire « Question choisie » et l'onglet Questions avec les questions,
+  « Mur & questions » et le lien « Mur public » quand les deux sont coupés — et
+  les écrans ne montrent plus de QR vers `/mur`.
+- La console masque le lien « mur ↗ » des salles et le modèle de bandeau
+  « Questions ». Le mur social de la boucle (walls.io) n'est pas concerné.
+
 ### Question du public : deux canaux, quatre surfaces
 
 La question et le bandeau de la console sont **deux états distincts**, et c'est

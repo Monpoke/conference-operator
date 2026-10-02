@@ -73,6 +73,7 @@ function vue(overrides: Partial<ControlView> = {}): ControlView {
     displayMode: 'loop',
     lastCommand: null,
     screensDisabled: [],
+    features: { wall: true, questions: true },
     sceneRoles: ['LIVE', 'HOLD'],
     relaySourceRoomId: null,
     promptRecordingOnStart: true,

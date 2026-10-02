@@ -129,7 +129,17 @@ ${initialState}
      * VOD. That is why it is allowed to show both, where the capture overlay only
      * shows the question.
      */
-    const message = data.state.liveMessage
+    /*
+     * An urgent screen message comes first of all.
+     *
+     * It is the room's own screen message — from its control app or from the
+     * console — at the \`urgent\` level: an evacuation, a room change. The banner
+     * repeats it over the live scenes, so that it is read even by whoever is
+     * watching the slides rather than the projection's message screen. Never on
+     * the capture overlay: it would be burned into the VOD.
+     */
+    const urgent = data.state.message?.level === 'urgent' ? data.state.message : null
+    const message = urgent ?? data.state.liveMessage
     const question = data.state.question
     const banner = message != null
       ? { text: message.text, level: message.level, label: null }

@@ -14,6 +14,11 @@ export interface WallPageOptions {
    * the 4G of a conference room, well after.
    */
   event?: EventIdentity
+  /**
+   * What the hub left on. One of the two off, its tab goes and the page opens on
+   * the other; both off, the route serves `renderWallClosedPage` instead.
+   */
+  features?: { wall: boolean; questions: boolean }
 }
 
 /**
@@ -37,8 +42,9 @@ const escapeServer = escapeHtml
  * external dependency, and contract calls through a minimal `fetch` — the oRPC
  * protocol over HTTP is a plain `{ json: … }`.
  */
-export function renderWallPage({ roomId, rooms, event }: WallPageOptions): string {
-  const data = JSON.stringify({ roomId, rooms }).replace(/</g, '\\u003c')
+export function renderWallPage({ roomId, rooms, event, features }: WallPageOptions): string {
+  const enabled = features ?? { wall: true, questions: true }
+  const data = JSON.stringify({ roomId, rooms, features: enabled }).replace(/</g, '\\u003c')
   const identity = event ?? DEFAULT_EVENT_IDENTITY
   const name = escapeServer(identity.name)
 
@@ -95,7 +101,7 @@ export function renderWallPage({ roomId, rooms, event }: WallPageOptions): strin
   </div>
 </header>
 
-<div class="tabs my-3.5 flex gap-1.5">
+<div class="tabs my-3.5 flex gap-1.5"${enabled.wall && enabled.questions ? '' : ' hidden'}>
   <button id="tab-wall" class="active">Mur</button>
   <button id="tab-questions">Questions</button>
 </div>
@@ -160,7 +166,7 @@ export function renderWallPage({ roomId, rooms, event }: WallPageOptions): strin
 <script id="data" type="application/json">${data}</script>
 <script>
 (() => {
-  const { roomId, rooms } = JSON.parse(document.getElementById('data').textContent)
+  const { roomId, rooms, features } = JSON.parse(document.getElementById('data').textContent)
   const $ = (id) => document.getElementById(id)
 
   /**
@@ -202,7 +208,7 @@ export function renderWallPage({ roomId, rooms, event }: WallPageOptions): strin
     // was writing to that room.
     $('room').textContent = room
       ? 'Questions — ' + room.name
-      : 'Mur commun à toutes les salles'
+      : features.wall ? 'Mur commun à toutes les salles' : 'Questions au speaker'
     if (value) localStorage.setItem('mur-salle', value)
     // The address follows, so that a shared or reloaded page stays the right one.
     // The query parameter stays \`salle\`: it is in links already shared around.
@@ -258,7 +264,9 @@ export function renderWallPage({ roomId, rooms, event }: WallPageOptions): strin
     : "Projeté sur les écrans de l'événement, après relecture."
 
   setRoom(currentRoom)
-  void refreshWall()
+  // Only one half left on: the page opens on it, with no tab bar to offer the other.
+  if (features.wall) void refreshWall()
+  else { toggle(false); void refreshQuestions() }
   // The day moves on while the page stays open on a phone left on a table:
   // without a re-read, it would announce the talk from an hour ago.
   setInterval(() => void refreshTalk(), 60_000)
@@ -464,6 +472,30 @@ export function renderWallPage({ roomId, rooms, event }: WallPageOptions): strin
   setInterval(() => { if (!$('view-wall').hidden) refreshWall() }, 15_000)
 })()
 </script>
+</body>
+</html>`
+}
+
+/**
+ * The wall and the questions both off: said plainly, on the address the QR codes
+ * already printed or projected still point to.
+ */
+export function renderWallClosedPage(event?: EventIdentity): string {
+  const name = escapeServer((event ?? DEFAULT_EVENT_IDENTITY).name)
+  return `<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10121a">
+<title>${name}</title>
+<style>${TAILWIND_CSS}</style>
+</head>
+<body class="mx-auto max-w-[620px] bg-canvas p-8 font-sans text-text">
+  <h1 class="text-[21px] font-bold">${name}</h1>
+  <p class="mt-4 text-sm leading-relaxed text-dim" data-role="closed">
+    Le mur et les questions du public ne sont pas ouverts pour cet événement.
+  </p>
 </body>
 </html>`
 }

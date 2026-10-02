@@ -39,6 +39,22 @@ function stub(): { calls: Call[]; client: unknown } {
         rooms: { list: note('rooms/list', ROOMS) },
         messages: {
           send: note('messages/send', { ok: true }),
+          urgentProof: note('messages/urgentProof', { method: 'password', fresh: false }),
+          screens: note('messages/screens', {
+            current: [
+              {
+                roomId: 'track-1',
+                roomName: 'Track #1',
+                action: 'shown',
+                text: 'Pause café',
+                level: 'info',
+                source: 'regie',
+                expiresAt: null,
+                occurredAt: new Date().toISOString(),
+              },
+            ],
+            log: [],
+          }),
         },
         overlay: {
           history: note('overlay/history', []),
@@ -50,10 +66,13 @@ function stub(): { calls: Call[]; client: unknown } {
   }
 }
 
-async function mountView(): Promise<{ calls: Call[]; wrapper: ReturnType<typeof mount> }> {
+async function mountView(
+  permissions: string[] = ['message:send', 'message:urgent'],
+): Promise<{ calls: Call[]; wrapper: ReturnType<typeof mount> }> {
   const fake = stub()
   const session = useSessionStore()
   session.client = fake.client as never
+  session.permissions = new Set(permissions)
   const wrapper = mount(MessagesView, { attachTo: document.body })
   await useMessagesStore().load()
   await flushPromises()
@@ -185,5 +204,45 @@ describe('messages view', () => {
 
     await wrapper.get('#msg-room').setValue('track-1')
     expect(wrapper.get('#banner-target').text()).toContain('Track #1')
+  })
+})
+
+describe('urgent messages and the room screens', () => {
+  it('asks the password again before an urgent message, and sends it along', async () => {
+    const { calls, wrapper } = await mountView()
+
+    await wrapper.get('#msg-text').setValue('Évacuez par la sortie B')
+    await wrapper.get('#msg-level').setValue('urgent')
+    await wrapper.get('#btn-send-message').trigger('click')
+    await flushPromises()
+
+    expect(calls.some((call) => call.path === 'messages/send')).toBe(false)
+    const field = document.querySelector<HTMLInputElement>('#urgent-password')
+    expect(field).not.toBeNull()
+
+    field!.value = 'control-password-2026'
+    field!.dispatchEvent(new Event('input'))
+    field!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+    await flushPromises()
+
+    expect(calls.find((call) => call.path === 'messages/send')?.input).toMatchObject({
+      level: 'urgent',
+      password: 'control-password-2026',
+    })
+    wrapper.unmount()
+  })
+
+  it('does not offer urgent to an account without the right', async () => {
+    const { wrapper } = await mountView(['message:send'])
+    const levels = wrapper.get('#msg-level').findAll('option').map((option) => option.element.value)
+    expect(levels).not.toContain('urgent')
+    wrapper.unmount()
+  })
+
+  it("shows what the rooms' screens say, the control apps' messages included", async () => {
+    const { wrapper } = await mountView()
+    expect(wrapper.get('#screens-current').text()).toContain('Pause café')
+    expect(wrapper.get('#screens-current').text()).toContain('régie')
+    wrapper.unmount()
   })
 })

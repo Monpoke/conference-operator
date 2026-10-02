@@ -193,6 +193,8 @@ export const controlActionSchema = z.discriminatedUnion('action', [
     text: z.string().min(1).max(500),
     level: z.enum(['info', 'warning', 'urgent']),
     ttlSeconds: z.number().int().positive().max(3600).nullable(),
+    /** The control app's PIN, set on the hub: asked for an `urgent` message only. */
+    pin: z.string().max(20).optional(),
   }),
   /** Takes the message off the room's screen. */
   z.object({ action: z.literal('screen.message.clear') }),
@@ -237,6 +239,8 @@ export interface ControlTarget {
   forgetCommands(): Promise<void>
   showScreenMessage(text: string, level: 'info' | 'warning' | 'urgent', ttlSeconds: number | null): void
   clearScreenMessage(): void
+  /** `null` when the PIN lets an urgent message through; otherwise why not. */
+  checkUrgentPin(pin: string | undefined): string | null
   setAiredQuestion(text: string | null, author: string | null): void
   refreshQuestions(): Promise<void>
   configureRoom(patch: RoomConfigPatch): Promise<void>
@@ -403,9 +407,16 @@ export async function runControlAction(
       case 'notification.dismiss':
         target.dismissNotification(action.id)
         return { ok: true }
-      case 'screen.message':
+      case 'screen.message': {
+        // Urgent takes over the room, the live banner and the hall screen: the PIN
+        // set on the hub, checked here — see `pin.ts`.
+        if (action.level === 'urgent') {
+          const refusal = target.checkUrgentPin(action.pin)
+          if (refusal != null) return { ok: false, message: refusal, detail: { reason: 'pin' } }
+        }
         target.showScreenMessage(action.text, action.level, action.ttlSeconds)
         return { ok: true, message: 'Message affiché à l’écran' }
+      }
       case 'screen.message.clear':
         target.clearScreenMessage()
         return { ok: true, message: 'Message retiré' }

@@ -24,11 +24,13 @@ import {
   DEFAULT_EVENT_IDENTITY,
   roomConfigSchema,
   roomPinsSchema,
+  roomFeaturesSchema,
   roomScreenListSchema,
   socialLinkSchema,
   vodSyncSchema,
   type EventIdentity,
   type RoomConfig,
+  type RoomFeatures,
   type RoomPins,
   type RoomScreen,
   type SocialLink,
@@ -51,12 +53,25 @@ function readSocialLinks(raw: string | null): SocialLink[] {
   }
 }
 
-/** What the room may show: what the hub withdrew. */
+/**
+ * What the room may show and do, as the hub decided: the withdrawn screens, the
+ * wall and the questions, and the PIN an urgent message asks for.
+ *
+ * One cached record because it is read in one breath — "what is this room allowed
+ * right now?" — and it must answer with the hub unreachable.
+ */
 export interface RoomScreens {
   disabled: RoomScreen[]
+  features: RoomFeatures
+  /** Hashed (see the hub's `pin.ts`); `null`: no PIN set, urgent messages refused. */
+  urgentPinHash: string | null
 }
 
-const NO_SCREEN_RESTRICTION: RoomScreens = { disabled: [] }
+const NO_SCREEN_RESTRICTION: RoomScreens = {
+  disabled: [],
+  features: { wall: true, questions: true },
+  urgentPinHash: null,
+}
 
 /**
  * The offered screens, read back from the local cache.
@@ -64,13 +79,18 @@ const NO_SCREEN_RESTRICTION: RoomScreens = { disabled: [] }
  * Tolerant like the accounts, and the fallback is deliberately "nothing
  * withdrawn": a cache we can no longer read must leave the operator every screen
  * rather than take some away with nothing on the page to say why. A screen this
- * version no longer knows is dropped, not a reason to forget the others.
+ * version no longer knows is dropped, not a reason to forget the others. A cache
+ * written before the wall switch or the PIN existed reads as "on" and "none".
  */
 function readScreens(raw: string | null): RoomScreens {
   if (raw == null) return NO_SCREEN_RESTRICTION
   try {
     const parsed = z
-      .object({ disabled: roomScreenListSchema.default([]) })
+      .object({
+        disabled: roomScreenListSchema.default([]),
+        features: roomFeaturesSchema.default({ wall: true, questions: true }),
+        urgentPinHash: z.string().nullable().default(null),
+      })
       .safeParse(JSON.parse(raw))
     return parsed.success ? parsed.data : NO_SCREEN_RESTRICTION
   } catch {

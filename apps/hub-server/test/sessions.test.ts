@@ -223,6 +223,8 @@ describe('hub settings', () => {
       // No screen withdrawn: an edition that has set nothing is offered every
       // screen.
       screensDisabled: [],
+      wallEnabled: true,
+      questionsEnabled: true,
       // Nothing about the event is set at the start: the hub derives its name from
       // the imported program, and that is what makes the product agnostic. These
       // fields only serve to contradict the upstream export.
@@ -248,6 +250,8 @@ describe('hub settings', () => {
       programSourceUrl: null,
       socialLinks: [],
       screensDisabled: [],
+      wallEnabled: true,
+      questionsEnabled: true,
       eventName: null,
       eventShortName: null,
       openFeedbackProjectId: null,

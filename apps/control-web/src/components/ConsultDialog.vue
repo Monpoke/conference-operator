@@ -3,6 +3,7 @@ import type { DisplayPayload } from '@conference-operator/contract'
 import { Button, Dialog } from '@conference-operator/components'
 import { timelinePosition } from '@conference-operator/program/selectors'
 import { computed } from 'vue'
+import { featuresOf } from '../lib/features.js'
 import { otherRooms } from '../lib/rooms.js'
 import { CONSULT_TABS, useConsultStore, type ConsultTab } from '../stores/consult.js'
 import { useKeyboardLayer } from '../stores/keyboard.js'
@@ -22,6 +23,11 @@ const props = defineProps<{ payload: DisplayPayload; nowMs: number }>()
 
 const consult = useConsultStore()
 const programs = useProgramsStore()
+
+/** The questions tab goes when the hub turned the questions off. */
+const tabs = computed(() =>
+  featuresOf(props.payload).questions ? CONSULT_TABS : CONSULT_TABS.filter((name) => name !== 'questions'),
+)
 
 /*
  * An empty layer, and that is all that is asked of it.
@@ -56,7 +62,7 @@ const followable = computed(() => otherRooms(props.payload, programs.rooms))
   <Dialog v-model:open="consult.open" title="Consultation" width="full">
     <div class="mb-3 flex flex-wrap items-center gap-1.5 border-b border-edge pb-3">
       <Button
-        v-for="name in CONSULT_TABS"
+        v-for="name in tabs"
         :key="name"
         variant="tab"
         size="small"
@@ -102,7 +108,10 @@ const followable = computed(() => otherRooms(props.payload, programs.rooms))
 
       <RoomsTab v-else-if="consult.tab === 'rooms'" :payload="payload" :now-ms="nowMs" />
 
-      <QuestionsTab v-else :payload="payload" />
+      <QuestionsTab v-else-if="featuresOf(payload).questions" :payload="payload" />
+      <div v-else class="text-xs text-dim" data-role="questions-off">
+        Les questions du public ne sont pas ouvertes pour cet événement.
+      </div>
     </div>
   </Dialog>
 </template>

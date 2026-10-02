@@ -23,9 +23,29 @@ export interface Room {
   name: string
 }
 
+/** A room screen's message, as the room reported it. See `screenMessageEntrySchema`. */
+export interface ScreenMessage {
+  roomId: string
+  roomName: string | null
+  action: 'shown' | 'cleared'
+  text: string | null
+  level: 'info' | 'warning' | 'urgent' | null
+  source: 'regie' | 'hub' | null
+  expiresAt: string | null
+  occurredAt: string
+}
+
+export interface UrgentProof {
+  method: 'password' | 'sso'
+  fresh: boolean
+}
+
 export const useMessagesStore = defineStore('messages', () => {
   const rooms = ref<Room[]>([])
   const banners = ref<BannerPass[]>([])
+  /** What each room's screen says right now, and the recent reports. */
+  const onScreens = ref<ScreenMessage[]>([])
+  const screenLog = ref<ScreenMessage[]>([])
 
   /** `null` means every room — the hub's own convention for `roomId`. */
   const target = ref<string>('')
@@ -50,8 +70,11 @@ export const useMessagesStore = defineStore('messages', () => {
     level: 'info' | 'warning' | 'urgent'
     audience: 'operator' | 'audience'
     minutes: number | null
+    /** An urgent message's proof, when the account has a password. */
+    password?: string
   }): Promise<void> {
     await session.client.rpc.messages.send({
+      ...(input.password != null ? { password: input.password } : {}),
       roomId: targetRoom(),
       text: input.text,
       level: input.level,
@@ -67,9 +90,34 @@ export const useMessagesStore = defineStore('messages', () => {
     })
   }
 
-  async function showBanner(message: Banner): Promise<void> {
-    await session.client.rpc.overlay.show({ roomId: targetRoom(), message, ttlSeconds: null })
+  async function showBanner(message: Banner, password?: string): Promise<void> {
+    await session.client.rpc.overlay.show({
+      roomId: targetRoom(),
+      message,
+      ttlSeconds: null,
+      ...(password != null ? { password } : {}),
+    })
     await load()
+  }
+
+  /** How the signed-in operator confirms an urgent message. */
+  async function urgentProof(): Promise<UrgentProof> {
+    return (await session.client.rpc.messages.urgentProof()) as UrgentProof
+  }
+
+  /**
+   * The room screens' messages — the control apps' as well as the console's.
+   *
+   * Polled by the view: the rooms report them through their outbox, a few
+   * seconds after the fact, and nothing is pushed to the console for them.
+   */
+  async function loadScreens(): Promise<void> {
+    const result = (await session.client.rpc.messages.screens({ limit: 30 })) as {
+      current: ScreenMessage[]
+      log: ScreenMessage[]
+    }
+    onScreens.value = result.current
+    screenLog.value = result.log
   }
 
   async function hideBanner(): Promise<void> {
@@ -80,6 +128,10 @@ export const useMessagesStore = defineStore('messages', () => {
   return {
     rooms,
     banners,
+    onScreens,
+    screenLog,
+    loadScreens,
+    urgentProof,
     target,
     targetRoom,
     load,

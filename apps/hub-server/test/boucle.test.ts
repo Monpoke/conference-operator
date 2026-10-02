@@ -321,7 +321,7 @@ describe('the loop over the wire', () => {
     expect(state.agenda).toEqual([])
     expect(state.plannings.map((p: { roomId: string }) => p.roomId)).toEqual([TRACK_1, 'track-2-mf-1092', 'hands-on'])
     // The page fetches its state again, with the same key and the same screen.
-    expect(html).toContain(`boucle.suivre("/boucle/apercu/etat?salle=global&cle=${key}", 20000)`)
+    expect(html).toContain(`boucle.suivre("/boucle/apercu/etat?salle=global&cle=${key}", 5000)`)
     const feed = await fetch(`${origin}/boucle/apercu/etat?salle=global&cle=${key}`)
     expect(feed.status).toBe(200)
     expect(((await feed.json()) as { plannings: unknown[] }).plannings).toHaveLength(3)

@@ -238,7 +238,13 @@ export class HubLink {
         // The offered screens, cached in the same breath: the control app reads
         // them to build its menu, the loop to skip what was withdrawn, and both
         // have to work with the hub unreachable.
-        screens: { disabled: result.screensDisabled },
+        // The wall and questions switches and the urgent PIN go with them: same
+        // question ("what may this room do?"), same need to answer offline.
+        screens: {
+          disabled: result.screensDisabled,
+          features: result.features,
+          urgentPinHash: result.urgentPinHash,
+        },
         // The event's name comes down with the rest and stays cached: the pages
         // must title themselves correctly at the next start, an unreachable hub
         // included.

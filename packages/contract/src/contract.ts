@@ -16,6 +16,7 @@ import {
   hubSettingsPatchSchema,
   notifLevelsSchema,
   roomConfigPatchSchema,
+  roomFeaturesSchema,
   roomConfigSchema,
   roomStreamPatchSchema,
   roomStreamSchema,
@@ -96,6 +97,24 @@ const catalogueSponsorSchema = z.object({
  * `numeros`, `politique`…). Renaming them would break a room already in the
  * field, and this repository does not change the protocol version lightly.
  */
+
+/**
+ * A message on a room's screen, as the room reported it (`screen.message`).
+ *
+ * Whoever wrote it: the room's own control app, or the console. `cleared` rows
+ * carry no text — the screen went back to something else.
+ */
+export const screenMessageEntrySchema = z.object({
+  roomId: roomIdSchema,
+  roomName: z.string().nullable(),
+  action: z.enum(['shown', 'cleared']),
+  text: z.string().nullable(),
+  level: z.enum(['info', 'warning', 'urgent']).nullable(),
+  source: z.enum(['regie', 'hub']).nullable(),
+  expiresAt: isoDateTimeSchema.nullable(),
+  occurredAt: isoDateTimeSchema,
+})
+export type ScreenMessageEntry = z.infer<typeof screenMessageEntrySchema>
 
 /** What a public surface needs to know about a talk. */
 const sessionPreviewSchema = z.object({
@@ -427,6 +446,8 @@ export const contract = {
           message: bannerSchema,
           /** Display duration. `null` = until it is removed. */
           ttlSeconds: z.number().int().positive().max(3600).nullable().default(null),
+          /** An `urgent` banner is confirmed like an urgent message: see `messages.send`. */
+          password: z.string().max(200).optional(),
         }),
       )
       .output(z.object({ ok: z.boolean() })),
@@ -578,9 +599,44 @@ export const contract = {
           target: z.enum(['operator', 'audience']),
           /** Display duration. `null` = until replaced. */
           ttlSeconds: z.number().int().positive().max(3600).nullable(),
+          /**
+           * The sender's password, for an `urgent` message: it takes the
+           * `message:urgent` right **and** a fresh proof of identity. An account
+           * signed in through Google has no password here — for it, the proof is
+           * a session opened less than five minutes ago (see `urgentProof`).
+           */
+          password: z.string().max(200).optional(),
         }),
       )
       .output(z.object({ ok: z.boolean() })),
+
+    /**
+     * How an urgent message will be confirmed for the signed-in operator: by
+     * password, or by signing in again through the identity provider.
+     */
+    urgentProof: oc.output(
+      z.object({
+        method: z.enum(['password', 'sso']),
+        /** SSO only: the current session is recent enough to send without signing in again. */
+        fresh: z.boolean(),
+      }),
+    ),
+
+    /**
+     * What the room screens say, and what they said.
+     *
+     * `current`: one entry per room showing a message right now — the last one it
+     * reported, not expired. `log`: the most recent reports, newest first, from
+     * the control apps and the console alike.
+     */
+    screens: oc
+      .input(z.object({ limit: z.number().int().min(1).max(200).default(50) }))
+      .output(
+        z.object({
+          current: z.array(screenMessageEntrySchema),
+          log: z.array(screenMessageEntrySchema),
+        }),
+      ),
   },
 
   /**
@@ -620,6 +676,11 @@ export const contract = {
         resolved: eventIdentitySchema,
         /** What the imported program alone would give, settings ignored. */
         derived: eventIdentitySchema,
+        /**
+         * The public wall and the questions, on or off: every console view that
+         * links to them reads it here, without needing `settings:read`.
+         */
+        features: roomFeaturesSchema.default({ wall: true, questions: true }),
       }),
     ),
   },
@@ -644,6 +705,20 @@ export const contract = {
   settings: {
     get: oc.output(hubSettingsSchema),
     update: oc.input(hubSettingsPatchSchema).output(hubSettingsSchema),
+    /**
+     * The control app's PIN, asked by the room machines for an urgent message.
+     *
+     * Apart from `get`/`update` on purpose: those hand the settings to the console
+     * whole, and the hash has no business on a page. The console only learns
+     * whether one is set; the rooms receive the hash at sync.
+     */
+    urgentPin: {
+      status: oc.output(z.object({ set: z.boolean() })),
+      /** `null` clears it — and the rooms then refuse urgent messages. */
+      set: oc
+        .input(z.object({ pin: z.string().regex(/^\d{4,12}$/).nullable() }))
+        .output(z.object({ set: z.boolean() })),
+    },
   },
 
   /**

@@ -369,6 +369,13 @@ export type NotifLevels = z.infer<typeof notifLevelsSchema>
  * overruns and the room is applauding. The grace period is configurable: five
  * minutes suit a 50-minute format, far less a 20-minute lightning talk.
  */
+/** What the hub left on for this edition, as the rooms receive it. */
+export const roomFeaturesSchema = z.object({
+  wall: z.boolean(),
+  questions: z.boolean(),
+})
+export type RoomFeatures = z.infer<typeof roomFeaturesSchema>
+
 export const hubSettingsSchema = z.object({
   /**
    * Event name, **if the imported program has to be contradicted**.
@@ -438,6 +445,23 @@ export const hubSettingsSchema = z.object({
    * never what a room is *doing*.
    */
   screensDisabled: roomScreenListSchema.pipe(z.array(roomScreenSchema).max(40)).default([]),
+  /**
+   * The public wall: the `/mur` page's message form, and what feeds it.
+   *
+   * Off, the page no longer offers to write, the hub refuses the posts, and the
+   * rooms drop every way in — the wall screen, the QR code, the link in the
+   * control app. The social wall of the loop (walls.io, partner posts) is
+   * something else and stays.
+   */
+  wallEnabled: z.boolean().default(true),
+  /**
+   * Audience questions: the `/mur` page's questions tab, the votes, and the
+   * control app's "question on air".
+   *
+   * Separate from the wall: an event may well want questions without an open
+   * message board, and the other way round.
+   */
+  questionsEnabled: z.boolean().default(true),
   /**
    * Bucket the rushes land in. `null` = none, and nothing leaves.
    *
@@ -618,6 +642,23 @@ export const syncResultSchema = z.object({
    * means "nothing forced".
    */
   pins: roomPinsSchema.default({}),
+  /**
+   * The public wall and the audience questions, on or off for this edition.
+   *
+   * Cached like the rest: a room started with the hub unreachable must not offer
+   * a wall the hub turned off yesterday. An older hub that does not send it
+   * means "both on", which is what it did.
+   */
+  features: roomFeaturesSchema.default({ wall: true, questions: true }),
+  /**
+   * The control app's PIN, hashed — what an urgent message from the room asks
+   * for. See `pin-hash` on the hub.
+   *
+   * Sent down hashed and checked on the machine, so that a room cut off from the
+   * hub can still sound the alarm: that is precisely when it may be needed.
+   * `null`: no PIN set, and the room refuses urgent messages.
+   */
+  urgentPinHash: z.string().max(200).nullable().default(null),
 })
 
 /** Hub view of a room, fed by the heartbeats — the supervision screen. */

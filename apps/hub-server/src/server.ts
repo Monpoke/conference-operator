@@ -42,7 +42,7 @@ import {
 } from './services/social.js'
 import { WallsIoConfig, wallsioSource } from './services/wallsio.js'
 import { migrateLegacyMur } from './services/legacy-mur.js'
-import { renderWallPage } from './pages/wall-page.js'
+import { renderWallClosedPage, renderWallPage } from './pages/wall-page.js'
 import { previewPayload, renderBouclePreview } from './pages/boucle-preview.js'
 import { availableFonts, buildVodHabillage, readFont, renderVodDocument, resolveFontsFolder } from '@conference-operator/projector/server'
 import { requirePermission, resolveOperator } from './context.js'
@@ -516,8 +516,13 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
    */
   app.get<{ Querystring: { salle?: string } }>('/mur', async (request, reply) => {
     reply.header('content-type', 'text/html; charset=utf-8')
+    const settings = services.settings.get()
+    if (!settings.wallEnabled && !settings.questionsEnabled) {
+      return reply.send(renderWallClosedPage(services.identity.get()))
+    }
     return reply.send(
       renderWallPage({
+        features: { wall: settings.wallEnabled, questions: settings.questionsEnabled },
         roomId: request.query.salle ?? null,
         rooms: services.rooms.list().map((room) => ({ id: room.id, name: room.name })),
         // Injected at render time rather than requested by the page: it is the

@@ -22,6 +22,8 @@ import type { Program } from '@conference-operator/program'
 import type { HubDatabase } from '../db.js'
 
 const SETTINGS_KEY = 'hub'
+/** Kept apart from the settings: `settings.get` hands those to the console whole. */
+const URGENT_PIN_KEY = 'urgent-pin'
 
 /**
  * The hub's settings.
@@ -94,6 +96,28 @@ export class SettingsService {
       .onConflictDoUpdate({ target: hubSetting.key, set: values })
       .run()
     return next
+  }
+
+  /** The control app's PIN, hashed — `null` when none is set. Never sent to a page. */
+  urgentPinHash(): string | null {
+    const row = this.db.select().from(hubSetting).where(eq(hubSetting.key, URGENT_PIN_KEY)).get()
+    if (row == null) return null
+    const value = JSON.parse(row.valueJson) as unknown
+    return typeof value === 'string' && value !== '' ? value : null
+  }
+
+  /** Sets the hash, or clears it with `null`. */
+  setUrgentPinHash(hash: string | null): void {
+    if (hash == null) {
+      this.db.delete(hubSetting).where(eq(hubSetting.key, URGENT_PIN_KEY)).run()
+      return
+    }
+    const values = { key: URGENT_PIN_KEY, valueJson: JSON.stringify(hash), updatedAt: new Date().toISOString() }
+    this.db
+      .insert(hubSetting)
+      .values(values)
+      .onConflictDoUpdate({ target: hubSetting.key, set: values })
+      .run()
   }
 }
 

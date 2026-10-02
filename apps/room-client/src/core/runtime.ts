@@ -469,8 +469,16 @@ export class RoomRuntime extends EventEmitter {
   }
 
   /** A display switch asked for locally by the operator. */
+  /**
+   * Leaving the message screen takes the message down with it.
+   *
+   * It used to stay in the state, unseen: the control app kept saying "À
+   * l'écran", the hub was told nothing had changed, and an urgent message went on
+   * showing on the live banner long after the room had moved on.
+   */
   async setDisplayMode(mode: DisplayMode): Promise<void> {
-    this.patch({ mode })
+    if (mode !== 'message' && this.display.message != null) this.patch({ mode, message: null })
+    else this.patch({ mode })
   }
 
   async setSceneRole(role: SceneRole): Promise<void> {
@@ -586,7 +594,7 @@ export class RoomRuntime extends EventEmitter {
          * hub's. Staleness is a completely different filter: it is judged on
          * `issuedAt`, before arriving here.
          */
-        this.showMessage(payload.text, payload.level, command.ttlSeconds ?? null)
+        this.showMessage(payload.text, payload.level, command.ttlSeconds ?? null, 'hub')
         // The control app must also know what is being projected at its end.
         this.notify({
           level: payload.level === 'urgent' ? 'warning' : 'info',
@@ -855,13 +863,19 @@ export class RoomRuntime extends EventEmitter {
    *
    * The display time runs from now: see `message.broadcast`.
    */
-  showMessage(text: string, level: BroadcastMessage['level'], ttlSeconds: number | null): void {
+  showMessage(
+    text: string,
+    level: BroadcastMessage['level'],
+    ttlSeconds: number | null,
+    source: 'regie' | 'hub' = 'regie',
+  ): void {
     this.patch({
       mode: 'message',
       message: {
         text,
         level,
         expiresAtMs: ttlSeconds == null ? null : this.correctedNow() + ttlSeconds * 1000,
+        source,
       },
     })
   }
@@ -884,8 +898,9 @@ export class RoomRuntime extends EventEmitter {
 
     if (message?.expiresAtMs != null && now > message.expiresAtMs) {
       // Back to the waiting loop: it is the room's default screen, and the one one
-      // wants to fall back on when a message clears by itself.
-      this.patch({ message: null, mode: 'loop' })
+      // wants to fall back on when a message clears by itself — but only if the
+      // screen was showing it, like `clearMessage`.
+      this.patch(this.display.mode === 'message' ? { message: null, mode: 'loop' } : { message: null })
     }
     // The banner expires by itself, but brings nothing back: it had substituted
     // for nothing, it simply withdraws from the picture.

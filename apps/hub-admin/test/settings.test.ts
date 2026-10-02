@@ -87,6 +87,14 @@ function stub(options: {
             calls.push({ path: 'settings/update', input })
             return { ...settings }
           },
+          // Whether a PIN is set — never the PIN, nor its hash.
+          urgentPin: {
+            status: note('settings/urgentPin/status', { set: false }),
+            set: async (input: unknown) => {
+              calls.push({ path: 'settings/urgentPin/set', input })
+              return { set: (input as { pin: string | null }).pin != null }
+            },
+          },
         },
         event: {
           identity: note('event/identity', {
@@ -511,5 +519,36 @@ describe('panneau Diffusion', () => {
     await flushPromises()
 
     expect(lastSetStream(calls)).toEqual({ roomId: 'track-1', rtmpUrl: '', streamKey: null })
+  })
+})
+
+describe('public wall, questions and the control app PIN', () => {
+  it('sends both switches together', async () => {
+    const { wrapper, calls } = await mountView()
+    await wrapper.get('#questions-enabled').setValue(false)
+    await wrapper.get('#btn-features').trigger('click')
+    await flushPromises()
+
+    expect(calls.find((call) => call.path === 'settings/update')?.input).toEqual({
+      wallEnabled: true,
+      questionsEnabled: false,
+    })
+  })
+
+  it('sets the PIN, refuses one too short, and never shows it back', async () => {
+    const { wrapper, calls } = await mountView()
+    expect(wrapper.get('#pin-state').text()).toContain('Aucun code')
+
+    await wrapper.get('#urgent-pin').setValue('12')
+    await wrapper.get('#btn-pin-save').trigger('click')
+    await flushPromises()
+    expect(calls.some((call) => call.path === 'settings/urgentPin/set')).toBe(false)
+
+    await wrapper.get('#urgent-pin').setValue('4821')
+    await wrapper.get('#btn-pin-save').trigger('click')
+    await flushPromises()
+    expect(calls.find((call) => call.path === 'settings/urgentPin/set')?.input).toEqual({ pin: '4821' })
+    expect((wrapper.get('#urgent-pin').element as HTMLInputElement).value).toBe('')
+    expect(wrapper.get('#pin-state').text()).toContain('Un code est défini')
   })
 })

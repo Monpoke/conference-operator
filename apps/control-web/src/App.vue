@@ -37,6 +37,7 @@ import { useSessionStore } from './stores/session.js'
 import { useLockStore } from './stores/lock.js'
 import { useVodStore } from './stores/vod.js'
 import { readDock } from './boot.js'
+import { withdrawnScreens } from './lib/features.js'
 
 /**
  * The control app, served from two places.
@@ -317,7 +318,7 @@ useKeyboardLayer(
             scene: that is what lets it be driven with nothing added between a phone
             and the room machine. Short of two modes — see the panel.
           -->
-          <ScreenPanel :mode="payload.state.mode" :disabled="payload.screensDisabled" :remote="true" />
+          <ScreenPanel :mode="payload.state.mode" :disabled="withdrawnScreens(payload)" :remote="true" />
           <ProjectionPanel
             :scene-role="payload.state.sceneRole"
             :relay-source-room-id="payload.diagnostics?.relaySourceRoomId ?? null"
@@ -388,7 +389,7 @@ useKeyboardLayer(
       </div>
 
       <div class="flex flex-col gap-2.5 lg:min-h-0 lg:overflow-y-auto">
-        <ScreenPanel :mode="payload.state.mode" :disabled="payload.screensDisabled" />
+        <ScreenPanel :mode="payload.state.mode" :disabled="withdrawnScreens(payload)" />
         <ProjectionPanel
           :scene-role="payload.state.sceneRole"
           :relay-source-room-id="payload.diagnostics?.relaySourceRoomId ?? null"

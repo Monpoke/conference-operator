@@ -151,7 +151,10 @@ export interface DisplayServerOptions {
    * fallback is the one that does not silently remove a button from an
    * operator's console.
    */
-  screens?: () => { disabled: DisplayPayload['screensDisabled'] }
+  screens?: () => {
+    disabled: DisplayPayload['screensDisabled']
+    features?: { wall: boolean; questions: boolean }
+  }
   /** The event's identity, read back from the local cache on every send. */
   event?: () => DisplayPayload['eventIdentity']
   /**
@@ -264,11 +267,14 @@ export class DisplayServer {
     const state = this.options.runtime.state()
     const roomName = this.options.roomName?.() ?? null
     const diagnostics = this.options.control?.diagnostics() ?? null
-    const wall = this.wallFor(state.roomId)
+    const screens = this.options.screens?.() ?? { disabled: [] }
+    const features = screens.features ?? { wall: true, questions: true }
+    // The QR code and the link lead to `/mur`: with both halves off, the hub serves
+    // a closed page there, and no room should send anybody to it.
+    const wall = features.wall || features.questions ? this.wallFor(state.roomId) : null
     const feedback = this.feedbackFor(state.currentSession?.id ?? null)
     const pairing = this.options.pairing?.() ?? null
     const socialLinks = this.options.socialLinks?.() ?? []
-    const screens = this.options.screens?.() ?? { disabled: [] }
     const eventIdentity = this.options.event?.() ?? DEFAULT_EVENT_IDENTITY
     const boucle = this.boucleFor(cached, eventIdentity.shortName)
     const socialWall = this.socialWallFor()
@@ -287,6 +293,7 @@ export class DisplayServer {
         otherRooms: [],
         socialLinks,
         screensDisabled: screens.disabled,
+        features,
         boucle,
         agenda: [],
         plannings: [],
@@ -313,6 +320,7 @@ export class DisplayServer {
       otherRooms: this.otherRooms(program, state.roomId),
       socialLinks,
       screensDisabled: screens.disabled,
+      features,
       boucle,
       agenda: state.roomId == null
         ? []

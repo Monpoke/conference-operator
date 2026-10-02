@@ -39,6 +39,17 @@ export interface RawCapture {
   finInconnue: boolean
 }
 
+/** A `screen.message` event, with where and when it happened. */
+export interface ScreenMessageReport {
+  roomId: string
+  occurredAt: string
+  action: 'shown' | 'cleared'
+  text: string | null
+  level: 'info' | 'warning' | 'urgent' | null
+  source: 'regie' | 'hub' | null
+  expiresAt: string | null
+}
+
 export class IngestService {
   /**
    * The last command outcome each room reported.
@@ -154,6 +165,42 @@ export class IngestService {
   /** The last command outcome the room reported, `null` if it never did. */
   lastCommand(roomId: string): RemoteCommandOutcome | null {
     return this.outcomes.get(roomId) ?? null
+  }
+
+  /**
+   * The screen messages the rooms reported, newest first.
+   *
+   * Read off the ingested events rather than projected into `room_state`: the
+   * log is the events themselves, and the current state is the last of each
+   * room's — a message carries its own expiry, so nothing has to clear it.
+   */
+  screenMessages(limit: number): ScreenMessageReport[] {
+    return this.db
+      .select()
+      .from(ingestEvent)
+      .where(eq(ingestEvent.type, 'screen.message'))
+      .orderBy(desc(ingestEvent.occurredAt), desc(ingestEvent.seq))
+      .limit(limit)
+      .all()
+      .map((row) => ({
+        roomId: row.roomId,
+        occurredAt: row.occurredAt,
+        ...(JSON.parse(row.payloadJson) as Omit<ScreenMessageReport, 'roomId' | 'occurredAt'>),
+      }))
+  }
+
+  /** What each room's screen says right now: its last report, shown and not expired. */
+  currentScreenMessages(nowMs: number): ScreenMessageReport[] {
+    const latest = new Map<string, ScreenMessageReport>()
+    // A room's last report is among the most recent ones; 500 covers a day of
+    // three rooms changing their message every few minutes.
+    for (const report of this.screenMessages(500)) {
+      if (!latest.has(report.roomId)) latest.set(report.roomId, report)
+    }
+    return [...latest.values()].filter(
+      (report) =>
+        report.action === 'shown' && (report.expiresAt == null || Date.parse(report.expiresAt) > nowMs),
+    )
   }
 
   /** The room's projected state, as the watchers would read it. */

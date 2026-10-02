@@ -18,7 +18,8 @@ export const ACCESS_STATEMENTS = {
   /** Talks' lifecycle. `session` is taken: Better Auth names its sign-in sessions that way. */
   talk: ['read', 'run', 'override'],
   overlay: ['read', 'show'],
-  message: ['read', 'send'],
+  /** `urgent`: a message that takes over the screens — its own right, and a fresh proof. */
+  message: ['read', 'send', 'urgent'],
   wall: ['moderate'],
   regie: ['view', 'command'],
   vod: ['read', 'manage'],
@@ -75,7 +76,7 @@ export const ACCESS_ROLES = {
     device: ['read', 'manage'],
     talk: ['read', 'run', 'override'],
     overlay: ['read', 'show'],
-    message: ['read', 'send'],
+    message: ['read', 'send', 'urgent'],
     wall: ['moderate'],
     regie: ['view', 'command'],
     vod: ['read', 'manage'],
@@ -123,6 +124,19 @@ export const ACCESS_ROLES = {
     message: ['read'],
     push: ['subscribe'],
   },
+  /**
+   * Urgent messages, on top of another group.
+   *
+   * Groups add up: given to a moderator or a mobile control operator, this is
+   * what lets them send an urgent message — and only that — without making them
+   * an admin. Each urgent message still asks for a fresh proof of identity.
+   */
+  urgence: {
+    program: ['read'],
+    room: ['read'],
+    message: ['read', 'send', 'urgent'],
+    push: ['subscribe'],
+  },
   readonly: READS,
 } as const satisfies Record<string, AccessGrant>
 
@@ -139,6 +153,7 @@ export const ROLE_LABELS: Record<AccessRole, string> = {
   moderation: 'Modération',
   regieMobile: 'Régie mobile',
   synthese: "Synthèse d'état",
+  urgence: 'Messages urgents',
   readonly: 'Lecture seule',
 }
 

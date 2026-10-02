@@ -297,6 +297,46 @@ async function saveAutoEnd(): Promise<void> {
   }
 }
 
+// — Public wall & questions —
+const wallOn = ref(true)
+const questionsOn = ref(true)
+
+watch(
+  settings,
+  (value) => {
+    if (value == null) return
+    wallOn.value = value.wallEnabled ?? true
+    questionsOn.value = value.questionsEnabled ?? true
+  },
+  { immediate: true },
+)
+
+async function saveFeatures(): Promise<void> {
+  try {
+    await store.update({ wallEnabled: wallOn.value, questionsEnabled: questionsOn.value })
+    toast.say('Réglages enregistrés')
+  } catch {
+    /* already reported */
+  }
+}
+
+// — Control app PIN (urgent messages from a room) —
+const pin = ref('')
+
+async function savePin(clear: boolean): Promise<void> {
+  if (!clear && !/^\d{4,12}$/.test(pin.value)) {
+    toast.say('Le code doit faire 4 à 12 chiffres')
+    return
+  }
+  try {
+    await store.setUrgentPin(clear ? null : pin.value)
+    pin.value = ''
+    toast.say(clear ? 'Code supprimé : les salles refuseront les messages urgents' : 'Code enregistré')
+  } catch {
+    /* already reported */
+  }
+}
+
 // — Storage —
 const bucket = useSeededField(() => storage.value?.bucket ?? '', 'vod-bucket')
 const prefix = useSeededField(() => storage.value?.prefix ?? '', 'vod-prefix')
@@ -906,6 +946,61 @@ async function confirmRemoveIntegration(): Promise<void> {
       <Hint class="mt-2">
         Slack, Mattermost ou webhook JSON : les mêmes avis que les notifications, filtrés par famille.
       </Hint>
+    </Panel>
+
+    <Panel title="Mur public & questions">
+      <div class="flex items-center gap-3 border-b border-edge pb-3">
+        <div class="flex-1">
+          <strong class="mb-[3px] block text-sm">Mur public</strong>
+          <span class="text-xs text-dim">
+            Le formulaire de message de la page /mur. Désactivé, la page ne le propose plus et la
+            régie retire ses boutons. Le mur social de la boucle (walls.io) n'est pas concerné.
+          </span>
+        </div>
+        <input id="wall-enabled" v-model="wallOn" type="checkbox" class="w-auto" />
+      </div>
+      <div class="flex items-center gap-3 pt-3">
+        <div class="flex-1">
+          <strong class="mb-[3px] block text-sm">Questions du public</strong>
+          <span class="text-xs text-dim">
+            L'onglet Questions de /mur, les votes et la « question à l'antenne » en régie.
+          </span>
+        </div>
+        <input id="questions-enabled" v-model="questionsOn" type="checkbox" class="w-auto" />
+      </div>
+      <Hint class="mt-2">
+        Les deux désactivés : /mur affiche une page fermée et les écrans ne montrent plus de QR code
+        vers le mur. Les salles l'appliquent à leur prochaine synchronisation.
+      </Hint>
+      <Button id="btn-features" variant="primary" class="mt-3 w-full" @click="saveFeatures">
+        Enregistrer
+      </Button>
+    </Panel>
+
+    <Panel title="Code PIN régie (messages urgents)">
+      <Hint id="pin-state" class="mt-0 mb-3">
+        <template v-if="store.urgentPinSet">Un code est défini.</template>
+        <template v-else>
+          Aucun code : les régies de salle refusent les messages urgents.
+        </template>
+        Demandé par la régie locale d'une salle pour afficher un message urgent — il est vérifié sur
+        le poste, même sans hub.
+      </Hint>
+      <label for="urgent-pin">Nouveau code (4 à 12 chiffres)</label>
+      <input
+        id="urgent-pin"
+        v-model="pin"
+        type="password"
+        inputmode="numeric"
+        autocomplete="new-password"
+        class="w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text"
+      />
+      <div class="mt-3 flex gap-2">
+        <Button id="btn-pin-save" variant="primary" class="flex-1" @click="savePin(false)">
+          Enregistrer le code
+        </Button>
+        <Button v-if="store.urgentPinSet" id="btn-pin-clear" @click="savePin(true)">Supprimer</Button>
+      </div>
     </Panel>
 
     <Panel title="Clôture automatique">

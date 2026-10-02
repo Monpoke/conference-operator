@@ -5,6 +5,7 @@ import { time, timeAgo } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
 import { useConferencesStore } from '../stores/conferences.js'
+import { useFeaturesStore } from '../stores/features.js'
 import { slotRemaining, useOperationsStore, type RoomStatus } from '../stores/operations.js'
 
 /**
@@ -15,6 +16,9 @@ import { slotRemaining, useOperationsStore, type RoomStatus } from '../stores/op
  * reading to understand that a room is in trouble.
  */
 const store = useOperationsStore()
+// The "mur ↗" link goes when the hub closed both the wall and the questions.
+const features = useFeaturesStore()
+void features.load()
 const { rooms, globalBreak } = storeToRefs(store)
 
 /**
@@ -155,6 +159,7 @@ const globalDetail = computed(() => {
               {{ onBreak(room) ? 'BREAK' : 'BREAK à venir' }}
             </Badge>
             <a
+              v-if="features.wall || features.questions"
               class="shrink-0 text-[13px] text-brand no-underline"
               target="_blank"
               rel="noopener"

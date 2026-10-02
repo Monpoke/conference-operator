@@ -318,6 +318,8 @@ describe('talk lifecycle', () => {
       // No screen withdrawn: an edition that has set nothing is offered
       // everything the binary knows how to draw.
       screensDisabled: [],
+      wallEnabled: true,
+      questionsEnabled: true,
       programSourceUrl: null,
       // Nothing about the event is set by default: the hub derives it from the
       // imported program, and that is what makes the repository agnostic.

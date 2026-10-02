@@ -796,6 +796,7 @@ export function payloadFromView(view: ControlView, nowMs: number): DisplayPayloa
      * console.
      */
     screensDisabled: view.screensDisabled,
+    features: view.features,
     // The loop is drawn on the room's machine, never on a phone.
     boucle: null,
     agenda: [],

@@ -142,6 +142,22 @@ export const useSessionStore = defineStore('session', () => {
    * the current address: the round trip drops any query string anyway, and the
    * one address worth landing on is the one somebody would have typed.
    */
+  /**
+   * Back through Google to the page one is on — an urgent message's proof.
+   *
+   * The hub accepts an SSO account's urgent message on a session opened in the
+   * last few minutes; this opens one. The page keeps its own draft across the
+   * round trip, which drops any query string.
+   */
+  async function reauthWithGoogle(): Promise<void> {
+    const result = await hubAuth.googleUrl(globalThis.location.pathname)
+    if (!result.ok) {
+      error.value = result.message
+      return
+    }
+    globalThis.location.assign(result.url)
+  }
+
   async function signInWithGoogle(): Promise<void> {
     error.value = null
     const result = await hubAuth.googleUrl('/admin')
@@ -220,6 +236,7 @@ export const useSessionStore = defineStore('session', () => {
     resume,
     signIn,
     signInWithGoogle,
+    reauthWithGoogle,
     signOut,
   }
 })

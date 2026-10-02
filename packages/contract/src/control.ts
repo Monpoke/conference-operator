@@ -12,7 +12,7 @@ import {
   audioInputSchema,
 } from './primitives.js'
 import { eventIdentitySchema } from './event-identity.js'
-import { sessionStatusSchema } from './room-state.js'
+import { roomFeaturesSchema, sessionStatusSchema } from './room-state.js'
 import { remoteCommandOutcomeSchema } from './events.js'
 
 /**
@@ -203,6 +203,12 @@ export const controlViewSchema = z.object({
    * first-hand — no heartbeat delay.
    */
   screensDisabled: roomScreenListSchema.default([]),
+
+  /**
+   * The public wall and the questions, on or off — first-hand, like the list
+   * above. The phone hides the same buttons as the room's own control app.
+   */
+  features: roomFeaturesSchema.default({ wall: true, questions: true }),
 
   /**
    * The OBS-A roles actually mapped for this room.

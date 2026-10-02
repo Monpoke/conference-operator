@@ -38,6 +38,11 @@ export interface BroadcastMessage {
   level: 'info' | 'warning' | 'urgent'
   /** Absolute expiry: a command caught up late does not reappear. */
   expiresAtMs: number | null
+  /**
+   * Who put it there: the room's own control app, or the hub's console. Told to
+   * the hub with the message (`screen.message`); absent on a banner.
+   */
+  source?: 'regie' | 'hub'
 }
 
 /**
@@ -505,6 +510,12 @@ export interface DisplayPayload {
    * every payload the hub builds, where it means "no".
    */
   dockConnected?: boolean
+  /**
+   * The public wall and the audience questions, on or off for this edition. The
+   * control app hides their buttons when off. Absent — an older room, the hub's
+   * own pages — means both on.
+   */
+  features?: { wall: boolean; questions: boolean }
 }
 
 /**
@@ -608,6 +619,8 @@ export const FIELDS_BY_VIEW: Record<DisplayView, readonly (keyof DisplayPayload)
     'screensDisabled',
     // The dock's presence: the machine's window offers server mode on it.
     'dockConnected',
+    // The wall and questions switches: the control app hides what is off.
+    'features',
   ],
 }
 

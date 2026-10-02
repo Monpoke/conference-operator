@@ -13,8 +13,11 @@ import {
 } from '@conference-operator/components'
 import { timeAgo } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
-import { computed, ref, watch } from 'vue'
-import { useMessagesStore } from '../stores/messages.js'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import UrgentConfirmDialog from '../components/UrgentConfirmDialog.vue'
+import { useMessagesStore, type UrgentProof } from '../stores/messages.js'
+import { useSessionStore } from '../stores/session.js'
+import { useFeaturesStore } from '../stores/features.js'
 
 /**
  * What the hub addresses to the rooms.
@@ -29,14 +32,25 @@ import { useMessagesStore } from '../stores/messages.js'
  * banner went to "the rooms chosen above" without naming them.
  */
 const store = useMessagesStore()
-const { rooms, banners, target } = storeToRefs(store)
-const toast = useToast()
+const features = useFeaturesStore()
+void features.load()
 
-const LEVELS = [
+/** The "Questions" template points the room at the wall: gone with the questions. */
+const templates = computed(() =>
+  BANNER_TEMPLATES.filter((template) => template.name !== 'Questions' || features.questions),
+)
+const { rooms, banners, target, onScreens, screenLog } = storeToRefs(store)
+const toast = useToast()
+const session = useSessionStore()
+const canUrgent = computed(() => session.can('message:urgent'))
+
+const ALL_LEVELS = [
   { value: 'info', label: 'Info' },
   { value: 'warning', label: 'Important' },
   { value: 'urgent', label: 'Urgent' },
 ]
+/** Urgent is its own right: not offered to an account without it — the hub refuses it anyway. */
+const LEVELS = computed(() => ALL_LEVELS.filter((option) => option.value !== 'urgent' || canUrgent.value))
 
 const recipients = computed(() => [
   { value: '', label: 'Toutes les salles' },
@@ -77,9 +91,113 @@ const bannerLevel = ref<'info' | 'warning' | 'urgent'>('info')
 /** Changing room changes the history being consulted. */
 watch(target, () => void store.load())
 
+// — Urgent: confirmed by who sends it (see `UrgentConfirmDialog`) —
+const urgentOpen = ref(false)
+const urgentProof = ref<UrgentProof | null>(null)
+/** What the urgent dialog would send: a message, or a banner. */
+const urgentKind = ref<'message' | 'banner'>('message')
+const urgentText = computed(() => (urgentKind.value === 'message' ? text.value : bannerText.value))
+const urgentSummary = computed(() =>
+  urgentKind.value === 'banner'
+    ? `Bandeau urgent sur ${target.value === '' ? 'toutes les salles' : targetName.value}, par-dessus le live.`
+    : toAudience.value
+      ? `Projeté en urgence sur ${screens.value}, sur le bandeau live et sur l'écran global du hall.`
+      : `Alerte urgente dans la régie de ${target.value === '' ? 'toutes les salles' : targetName.value}.`,
+)
+
+async function askUrgent(kind: 'message' | 'banner'): Promise<void> {
+  urgentKind.value = kind
+  urgentProof.value = null
+  urgentOpen.value = true
+  try {
+    urgentProof.value = await store.urgentProof()
+  } catch {
+    urgentOpen.value = false
+  }
+}
+
+async function confirmUrgent(password: string | undefined): Promise<void> {
+  if (urgentKind.value === 'banner') await deliverBanner(password)
+  else await deliver(password)
+}
+
+/**
+ * Through the provider and back, the draft kept for the way back.
+ *
+ * In `sessionStorage`: it is this tab's, and dies with it. The page reopens the
+ * dialog on return, with the fields as they were.
+ */
+const DRAFT = 'messages.urgent-draft'
+
+function reauth(): void {
+  const draft = {
+    kind: urgentKind.value,
+    target: target.value,
+    text: text.value,
+    level: level.value,
+    audience: audience.value,
+    minutes: minutesInput.value,
+    bannerText: bannerText.value,
+    bannerLevel: bannerLevel.value,
+  }
+  try {
+    globalThis.sessionStorage.setItem(DRAFT, JSON.stringify(draft))
+  } catch {
+    // No storage: the draft is lost, the operator will retype it.
+  }
+  void session.reauthWithGoogle()
+}
+
+function restoreDraft(): void {
+  let raw: string | null = null
+  try {
+    raw = globalThis.sessionStorage.getItem(DRAFT)
+    globalThis.sessionStorage.removeItem(DRAFT)
+  } catch {
+    return
+  }
+  if (raw == null) return
+  const draft = JSON.parse(raw) as {
+    kind: 'message' | 'banner'
+    target: string
+    text: string
+    level: 'info' | 'warning' | 'urgent'
+    audience: 'operator' | 'audience'
+    minutes: string
+    bannerText: string
+    bannerLevel: 'info' | 'warning' | 'urgent'
+  }
+  target.value = draft.target
+  text.value = draft.text
+  level.value = draft.level
+  audience.value = draft.audience
+  minutesInput.value = draft.minutes
+  bannerText.value = draft.bannerText
+  bannerLevel.value = draft.bannerLevel
+  void askUrgent(draft.kind)
+}
+
+// The room screens: polled, they come up through the rooms' outbox.
+let screensTimer: ReturnType<typeof setInterval> | null = null
+onMounted(() => {
+  restoreDraft()
+  void store.loadScreens().catch(() => {})
+  screensTimer = setInterval(() => void store.loadScreens().catch(() => {}), 10_000)
+})
+onBeforeUnmount(() => {
+  if (screensTimer != null) clearInterval(screensTimer)
+})
+
+const LEVEL_LABELS: Record<string, string> = { info: 'Info', warning: 'Important', urgent: 'Urgent' }
+const SOURCE_LABELS: Record<string, string> = { regie: 'régie', hub: 'console' }
+
 function send(): void {
   if (text.value.trim().length === 0) {
     toast.fail('Renseignez un message')
+    return
+  }
+  if (level.value === 'urgent') {
+    void askUrgent('message')
     return
   }
   if (toAudience.value) {
@@ -89,7 +207,7 @@ function send(): void {
   void deliver()
 }
 
-async function deliver(): Promise<void> {
+async function deliver(password?: string): Promise<void> {
   const minutes = Number(minutesInput.value)
   try {
     await store.send({
@@ -97,9 +215,11 @@ async function deliver(): Promise<void> {
       level: level.value,
       audience: audience.value,
       minutes: Number.isFinite(minutes) && minutes > 0 ? minutes : null,
+      ...(password != null ? { password } : {}),
     })
     text.value = ''
     toast.say('Message envoyé')
+    void store.loadScreens().catch(() => {})
   } catch {
     // Already reported by the client's error hook.
   }
@@ -121,12 +241,31 @@ async function showBanner(): Promise<void> {
     toast.fail('Renseignez un texte')
     return
   }
+  if (bannerLevel.value === 'urgent') {
+    void askUrgent('banner')
+    return
+  }
+  await deliverBanner()
+}
+
+async function deliverBanner(password?: string): Promise<void> {
   try {
-    await store.showBanner({ text: bannerText.value.trim(), level: bannerLevel.value })
+    await store.showBanner({ text: bannerText.value.trim(), level: bannerLevel.value }, password)
     toast.say('Bandeau affiché')
   } catch {
     /* already reported */
   }
+}
+
+/** Putting a past banner back: an urgent one goes through the confirmation again. */
+function replay(message: Banner): void {
+  if (message.level === 'urgent') {
+    bannerText.value = message.text
+    bannerLevel.value = message.level
+    void askUrgent('banner')
+    return
+  }
+  void store.showBanner(message)
 }
 
 async function hideBanner(): Promise<void> {
@@ -226,7 +365,7 @@ async function hideBanner(): Promise<void> {
 
       <div id="banner-templates" class="mb-[11px] flex flex-wrap gap-1.5">
         <Button
-          v-for="template in BANNER_TEMPLATES"
+          v-for="template in templates"
           :key="template.name"
           size="small"
           @click="applyTemplate(template.message)"
@@ -283,13 +422,73 @@ async function hideBanner(): Promise<void> {
           <Badge v-if="past.visible" variant="running">en cours</Badge>
           <Button
             size="small"
-            @click="past.visible ? hideBanner() : store.showBanner(past.message)"
+            @click="past.visible ? hideBanner() : replay(past.message)"
           >
             {{ past.visible ? 'Masquer' : 'Remettre' }}
           </Button>
         </div>
       </div>
     </Panel>
+
+    <!--
+      What the room screens say: the control apps' messages as well as the
+      console's, reported by the rooms a few seconds after the fact.
+    -->
+    <Panel>
+      <h2 class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+        À l'écran dans les salles
+      </h2>
+      <div id="screens-current">
+        <Empty v-if="onScreens.length === 0">Aucun message projeté en ce moment.</Empty>
+        <div
+          v-for="entry in onScreens"
+          :key="entry.roomId"
+          class="flex items-center gap-3 border-t border-edge py-3 first:border-t-0"
+          :data-room="entry.roomId"
+        >
+          <div class="flex-1">
+            <strong class="mb-[3px] block text-sm break-words">{{ entry.text }}</strong>
+            <span class="text-xs text-dim">
+              {{ entry.roomName ?? entry.roomId }} · depuis la {{ SOURCE_LABELS[entry.source ?? 'regie'] }}
+              · {{ timeAgo(entry.occurredAt) }}
+            </span>
+          </div>
+          <Badge :variant="entry.level === 'urgent' ? 'alert' : entry.level === 'warning' ? 'warning' : 'neutral'">
+            {{ LEVEL_LABELS[entry.level ?? 'info'] }}
+          </Badge>
+        </div>
+      </div>
+
+      <h3 class="mt-3.5 mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+        Journal des écrans
+      </h3>
+      <div id="screens-log">
+        <Empty v-if="screenLog.length === 0">Aucun message d'écran pour le moment.</Empty>
+        <div
+          v-for="(entry, index) in screenLog"
+          :key="`${entry.roomId}-${entry.occurredAt}-${index}`"
+          class="border-t border-edge py-2 text-xs first:border-t-0"
+        >
+          <span class="text-dim">{{ timeAgo(entry.occurredAt) }} · {{ entry.roomName ?? entry.roomId }} ·</span>
+          <template v-if="entry.action === 'shown'">
+            <strong class="text-text">{{ entry.text }}</strong>
+            <span class="text-dim">
+              ({{ LEVEL_LABELS[entry.level ?? 'info'] }}, {{ SOURCE_LABELS[entry.source ?? 'regie'] }})
+            </span>
+          </template>
+          <span v-else class="text-dim">retiré de l'écran</span>
+        </div>
+      </div>
+    </Panel>
+
+    <UrgentConfirmDialog
+      v-model:open="urgentOpen"
+      :proof="urgentProof"
+      :summary="urgentSummary"
+      :text="urgentText"
+      @confirm="confirmUrgent"
+      @reauth="reauth"
+    />
 
     <ConfirmDialog
       v-model:open="confirmOpen"

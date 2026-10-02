@@ -59,6 +59,29 @@ describe('live banner', () => {
     expect(document.body.dataset.level).toBe('urgent')
   })
 
+  it("repeats the room's urgent screen message, before the console's banner", () => {
+    // An evacuation said on the projection must be read by whoever watches the
+    // slides too.
+    mountBanner({
+      state: {
+        message: { text: 'Évacuez par la sortie B', level: 'urgent', expiresAtMs: null },
+        liveMessage: { text: 'Reprise dans 5 minutes', level: 'info', expiresAtMs: null },
+        question: null,
+      },
+    } as unknown as DisplayPayload)
+
+    expect(document.getElementById('text')?.textContent).toBe('Évacuez par la sortie B')
+    expect(document.body.dataset.level).toBe('urgent')
+  })
+
+  it('leaves an ordinary screen message to the projection', () => {
+    mountBanner({
+      state: { message: { text: 'Pause café', level: 'info', expiresAtMs: null }, liveMessage: null, question: null },
+    } as unknown as DisplayPayload)
+
+    expect(document.body.dataset.banner).toBe('hidden')
+  })
+
   it('keeps a genuinely transparent background', () => {
     // OBS composites this page over the video: an opaque background would hide
     // the whole talk.

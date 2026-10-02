@@ -65,11 +65,52 @@ export async function renderBouclePreview(services: Services, options: BouclePre
     preview: true,
     fonts: { base: options.fonts.base, files: availableFonts(options.fonts.folder) },
     after: [
-      options.flux ? `boucle.suivre(${JSON.stringify(options.flux)}, 20000)` : '',
+      // The hall screen every five seconds: it relays the rooms' urgent messages,
+      // and twenty seconds is long when the message is "evacuate".
+      options.flux
+        ? `boucle.suivre(${JSON.stringify(options.flux)}, ${options.roomId === SALLE_GLOBALE ? 5000 : 20000})`
+        : '',
       // Held on one scene: no transition, the loop paused there.
       options.scene == null ? '' : `boucle.pause(); boucle.allerA(${Math.max(1, Math.trunc(options.scene))}, 'cut')`,
     ].filter(Boolean).join(';') || undefined,
   })
+}
+
+/**
+ * What is urgent in the rooms, for the hall screen.
+ *
+ * The rooms' own urgent messages — from their control apps or from the console —
+ * as they reported them (`screen.message`), still on and not expired. A text shown
+ * in every room is said once, as is: it was sent to the whole event. Otherwise each
+ * one is prefixed with the rooms it concerns, because in the hall "evacuate" means
+ * nothing without saying where.
+ */
+export function hallUrgentMessage(
+  services: Services,
+): { text: string; level: 'urgent'; expiresAtMs: number | null } | null {
+  const reports = services.ingest
+    .currentScreenMessages(services.clock.now())
+    .filter((report) => report.level === 'urgent' && report.text != null)
+  if (reports.length === 0) return null
+
+  const rooms = services.rooms.list()
+  const names = new Map(rooms.map((room) => [room.id, room.name]))
+  const byText = new Map<string, string[]>()
+  for (const report of reports) {
+    byText.set(report.text!, [...(byText.get(report.text!) ?? []), report.roomId])
+  }
+  const lines = [...byText].map(([text, roomIds]) =>
+    roomIds.length >= rooms.length
+      ? text
+      : `${roomIds.map((id) => names.get(id) ?? id).join(', ')} — ${text}`,
+  )
+  const expiries = reports.map((report) => (report.expiresAt == null ? null : Date.parse(report.expiresAt)))
+  return {
+    text: lines.join(' · '),
+    level: 'urgent',
+    // The screen polls again long before; the soonest expiry is only a ceiling.
+    expiresAtMs: expiries.includes(null) ? null : Math.min(...(expiries as number[])),
+  }
 }
 
 /**
@@ -108,10 +149,12 @@ export async function previewPayload(services: Services, options: BouclePreviewO
   const { current, next } = timelinePosition(slots, now)
   const pause = breakOfSlots(slots, now)
 
+  const urgent = global ? hallUrgentMessage(services) : null
   const payload = {
     state: {
-      mode: 'loop',
-      message: null,
+      // The hall screen gives way to what is urgent in the rooms; see below.
+      mode: urgent == null ? 'loop' : 'message',
+      message: urgent,
       liveMessage: null,
       question: null,
       sceneRole: 'HOLD',

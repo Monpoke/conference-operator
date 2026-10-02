@@ -370,7 +370,7 @@ describe('message on the screen', () => {
     const wrapper = mount(MessagePanel, { props: { message: null } })
 
     await wrapper.get('#message-text').setValue('Pause de 10 minutes')
-    await wrapper.get('#message-level').setValue('urgent')
+    await wrapper.get('#message-level').setValue('warning')
     await wrapper.get('#message-duration').setValue('5')
     await wrapper.get('#message-text').trigger('keydown.enter')
     await flushPromises()
@@ -378,10 +378,40 @@ describe('message on the screen', () => {
     expect(calls[0]?.body).toEqual({
       action: 'screen.message',
       text: 'Pause de 10 minutes',
-      level: 'urgent',
+      level: 'warning',
       ttlSeconds: 300,
     })
     expect((wrapper.get('#message-text').element as HTMLInputElement).value).toBe('Pause de 10 minutes')
+  })
+
+  it('asks for the PIN before an urgent message, and sends it along', async () => {
+    const calls = stubFetch()
+    const wrapper = mount(MessagePanel, { props: { message: null }, attachTo: document.body })
+
+    await wrapper.get('#message-text').setValue('Évacuez la salle par la sortie B')
+    await wrapper.get('#message-level').setValue('urgent')
+    await wrapper.get('#btn-message').trigger('click')
+    await flushPromises()
+
+    // Nothing leaves before the PIN: the dialog is up instead.
+    expect(calls).toEqual([])
+    const field = document.querySelector<HTMLInputElement>('#urgent-pin')
+    expect(field).not.toBeNull()
+    expect(document.body.textContent).toContain('Évacuez la salle par la sortie B')
+
+    field!.value = '4821'
+    field!.dispatchEvent(new Event('input'))
+    field!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
+    await flushPromises()
+
+    expect(calls[0]?.body).toEqual({
+      action: 'screen.message',
+      text: 'Évacuez la salle par la sortie B',
+      level: 'urgent',
+      ttlSeconds: null,
+      pin: '4821',
+    })
+    wrapper.unmount()
   })
 
   it('stays up until withdrawn by default', async () => {

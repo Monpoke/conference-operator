@@ -255,6 +255,12 @@ export const boucleSchema = z.object({
        * no longer caps the page.
        */
       remplir: z.boolean().default(true),
+      /**
+       * Seconds a page stays up before the next one fades in, the wall still on
+       * screen. `0` = one page per pass of the loop (held by the operator, the
+       * page then turns with the wall's duration).
+       */
+      dureePage: z.number().int().min(0).max(120).default(0),
     })
     .default({
       titre: 'Le mur Cloud Nord',
@@ -263,6 +269,7 @@ export const boucleSchema = z.object({
       sponsoriseTous: 0,
       bandeau: true,
       remplir: true,
+      dureePage: 0,
     }),
   conduite: z
     .object({

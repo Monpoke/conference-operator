@@ -34,6 +34,10 @@ l'opérateur a l'application ouverte et rien d'autre.
    la console** la ramène à tout moment, et elle revient d'elle-même une
    dizaine de secondes après la fermeture d'OBS. Le mode serveur est aussi dans
    le menu **Écrans**.
+
+   Fermer la régie pendant un enregistrement ou une diffusion demande une
+   confirmation : OBS continuerait sans personne pour le piloter (ni marqueurs,
+   ni arrêt propre, ni envoi des rushs). **Annuler** est le choix par défaut.
 3. Au premier lancement, la régie demande **quelle salle dessert ce poste**.
    Choisir la bonne : la console la retrouvera pré-sélectionnée.
 4. La régie affiche ensuite un **code d'appairage**. Le donner à la personne qui

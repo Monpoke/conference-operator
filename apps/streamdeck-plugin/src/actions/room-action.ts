@@ -7,6 +7,7 @@ import streamDeck, {
   type WillAppearEvent,
 } from '@elgato/streamdeck'
 import { decide, faceOf, pressOf, type ButtonFace, type ButtonSettings } from '../core/buttons.js'
+import { keyImage } from '../core/images.js'
 import { sendAction } from '../core/regie.js'
 import { runTalkSteps } from '@conference-operator/room-state/talk-flow'
 import type { RoomLink } from '../room-link.js'
@@ -115,11 +116,16 @@ export abstract class RoomAction extends SingletonAction<JsonObject> {
   }
 
   private async paint(action: KeyAction<JsonObject>): Promise<void> {
-    const face: ButtonFace = faceOf(this.settingsOf(action.id), this.room.state(), Date.now())
-    const key = `${face.title}|${face.on}|${face.offline}`
+    const settings = this.settingsOf(action.id)
+    const payload = this.room.state()
+    const face: ButtonFace = faceOf(settings, payload, Date.now())
+    // The picture follows what the key does — see `core/images.ts`.
+    const image = keyImage(settings, face, payload)
+    const key = `${face.title}|${face.on}|${face.offline}|${image}`
     if (this.painted.get(action.id) === key) return
     this.painted.set(action.id, key)
     await action.setState(face.on ? 1 : 0)
+    await action.setImage(image)
     await action.setTitle(face.title)
   }
 }

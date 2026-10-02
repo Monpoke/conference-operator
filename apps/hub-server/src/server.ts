@@ -15,6 +15,8 @@ import { createSecretBox } from './secrets.js'
 import { router } from './router.js'
 import type { HubContext, Services } from './context.js'
 import { AssetStore } from './services/assets.js'
+import { GitSourceService } from './services/git-source.js'
+import { ThemeStore } from './services/themes.js'
 import { ProgramService } from './services/program.js'
 import { AuditService } from './services/audit.js'
 import { CommandService } from './services/commands.js'
@@ -44,7 +46,15 @@ import { WallsIoConfig, wallsioSource } from './services/wallsio.js'
 import { migrateLegacyMur } from './services/legacy-mur.js'
 import { renderWallClosedPage, renderWallPage } from './pages/wall-page.js'
 import { previewPayload, renderBouclePreview } from './pages/boucle-preview.js'
-import { availableFonts, buildVodHabillage, readFont, renderVodDocument, resolveFontsFolder } from '@conference-operator/projector/server'
+import {
+  availableFonts,
+  buildVodHabillage,
+  readFont,
+  renderVodDocument,
+  resolveFontsFolder,
+  resolveThemesFolder,
+  type ThemeSource,
+} from '@conference-operator/projector/server'
 import { requirePermission, resolveOperator } from './context.js'
 import {
   developmentAssets,
@@ -101,6 +111,9 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
    * an outing to the internet.
    */
   const assets = new AssetStore(orm, join(dirname(config.databasePath), 'assets'))
+  // The theme packages, in the same place and for the same reason.
+  // An in-memory hub keeps them in memory: it leaves nothing on disk.
+  const themes = new ThemeStore(config.databasePath === ':memory:' ? null : join(dirname(config.databasePath), 'themes'))
   const clock = mutableClock(config.simulatedTime ?? null)
   const changes = new RoomChanges()
   const touch = (roomId: string | null) => changes.touch(roomId)
@@ -111,6 +124,8 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     audit,
     programs,
     assets,
+    themes,
+    gitSource: new GitSourceService(orm, secretBox),
     // Keyed off the hub's own secret: the stream keys are encrypted at rest
     // with material the deployment already has to hold and already has to
     // keep — one more secret to provision would be one more to lose.
@@ -229,6 +244,17 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
         ? 'projet OpenFeedback : surcharges de salle effacées, le réglage du hub fait foi'
         : 'projet OpenFeedback repris depuis une salle vers les réglages du hub',
     )
+  }
+
+  /*
+   * The themes shipped with the code (Cloud Nord's, in `themes/`), kept so the
+   * console can choose them — idempotent, a package already kept is not written
+   * again. Then a hub whose loop predates themes keeps the look it projected.
+   */
+  const seeded = services.themes.seed(resolveThemesFolder(), (message) => app.log.warn(message))
+  const adoptedTheme = settings.adoptLegacyTheme(seeded.find((theme) => theme.id === 'cloudnord') ?? null)
+  if (adoptedTheme != null) {
+    app.log.info({ theme: adoptedTheme.nom, sha: adoptedTheme.sha }, 'thème de la boucle repris : celui que le hub projetait avant les thèmes')
   }
 
   const legacyMur = migrateLegacyMur(orm, settings, services.wall)
@@ -573,6 +599,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       heure: query.heure ?? null,
       jour: query.jour ?? null,
       fonts: { folder: fontsFolder, base: '/boucle/polices' },
+      theme: currentTheme(),
     }
   }
 
@@ -609,6 +636,39 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     return reply.send(await previewPayload(services, apercuOptions(request.query)))
   })
 
+  /** The theme the loop wears, its files served below. `null`: the default one. */
+  function currentTheme(): ThemeSource | null {
+    const chosen = services.settings.get().boucle.theme
+    const loaded = chosen == null ? null : services.themes.load(chosen.sha)
+    return loaded == null ? null : { bundle: loaded.bundle, base: `/boucle/theme/${chosen!.sha}`, sha: chosen!.sha }
+  }
+
+  /**
+   * A theme package, by its sha: what the rooms fetch at sync, and the console's
+   * export. Public like the images — the sha is not guessed, and what it holds is
+   * what every screen shows. Never changes under its sha: cached for good.
+   */
+  app.get<{ Params: { file: string } }>('/boucle/theme/:file', async (request, reply) => {
+    const sha = /^([0-9a-f]{64})\.zip$/.exec(request.params.file)?.[1]
+    const zip = sha == null ? null : services.themes.zip(sha)
+    if (zip == null) return reply.status(404).send({ error: 'thème absent du hub' })
+    const info = services.themes.info(sha!)
+    reply.header('content-type', 'application/zip')
+    reply.header('content-disposition', `attachment; filename="${info?.id ?? 'theme'}-${info?.version ?? sha!.slice(0, 8)}.zip"`)
+    reply.header('cache-control', 'public, max-age=31536000, immutable')
+    return reply.send(zip)
+  })
+
+  /** A theme's fonts and images, for the preview and the VOD's — nothing else of the package is served. */
+  app.get<{ Params: { sha: string; '*': string } }>('/boucle/theme/:sha/*', async (request, reply) => {
+    const file = services.themes.file(request.params.sha, request.params['*'])
+    if (file == null) return reply.status(404).send({ error: 'fichier absent du thème' })
+    reply.header('content-type', file.type)
+    reply.header('cache-control', 'public, max-age=31536000, immutable')
+    reply.header('x-content-type-options', 'nosniff')
+    return reply.send(Buffer.from(file.bytes))
+  })
+
   /** The loop's typefaces, for the preview — the allow-list is in `readFont`. */
   app.get<{ Params: { file: string } }>('/boucle/polices/:file', async (request, reply) => {
     const font = await readFont(fontsFolder, request.params.file)
@@ -641,6 +701,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       clip: request.query.clip === 'outro' ? 'outro' : 'intro',
       habillage: services.montage.habillageFor(request.params.sessionId),
       fonts: fontsFolder == null ? undefined : { base: '/boucle/polices', files: availableFonts(fontsFolder) },
+      theme: currentTheme(),
     }))
   })
 
@@ -1222,5 +1283,6 @@ function vodHabillageFor(services: Services, publicUrl: string, sessionId: strin
       const local = services.assets.previewUrl(ref)
       return local == null ? (/^https?:\/\//.test(ref) ? ref : null) : base + local
     },
+    themeUrl: (sha) => `${base}/boucle/theme/${sha}.zip`,
   })
 }

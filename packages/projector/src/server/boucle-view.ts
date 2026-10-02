@@ -27,6 +27,8 @@ export interface BoucleSources {
   localize: (ref: string | null) => string | null
   /** A QR code already drawn for this address, or `null` while it is being drawn. */
   qr: (url: string) => string | null
+  /** The sha of the theme the room holds and wears. Absent: the default theme. */
+  themeSha?: string | null
 }
 
 /**
@@ -52,6 +54,7 @@ export function buildBoucleView(sources: BoucleSources): BoucleView {
   const { url: _feedbackUrl, ...feedbacks } = boucle.feedbacks
 
   return {
+    theme: sources.themeSha ?? null,
     logoUrl: localize(boucle.logo ?? program?.event.logoUrl ?? null),
     logoAvecNom: boucle.logoAvecNom,
     accueil: boucle.accueil,

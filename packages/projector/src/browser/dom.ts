@@ -40,9 +40,10 @@ export function texteRiche(p: HTMLElement, texte: string): void {
 export const initiales = (nom: string): string =>
   nom.split(/[\s-]+/).filter(Boolean).slice(0, 2).map((m) => m[0]!.toUpperCase()).join('')
 
-const TEINTES = ['#5e17eb', '#b01fd6', '#1f8fb0', '#2c2ca4', '#b44c70', '#c77414']
+/** The theme's six avatar shades (`--avatar-0` to `--avatar-5`), one per name, always the same. */
+const TEINTES = 6
 export const teinte = (nom: string): string =>
-  TEINTES[[...nom].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % TEINTES.length]!
+  `var(--avatar-${[...nom].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % TEINTES})`
 
 export const pluriel = (n: number, mot: string): string =>
   `${n.toLocaleString('fr-FR')} ${mot}${n > 1 ? 's' : ''}`

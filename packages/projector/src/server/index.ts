@@ -15,6 +15,34 @@ export {
   type AvailableFont,
   type FontFamily,
 } from './fonts.js'
+export { DEFAULT_THEME } from './default-theme.js'
+export {
+  rebaseCss,
+  rebaseSvg,
+  themeDecor,
+  themeFontFaces,
+  themeOrDefault,
+  themeOverlayFill,
+  themeStyle,
+  themeTokens,
+  type ThemeSource,
+} from './theme.js'
+export {
+  checkThemeCss,
+  checkThemeSvg,
+  parseThemePackage,
+  readThemeFolder,
+  resolveThemesFolder,
+  shippedThemeFolders,
+  THEME_FILE_TYPES,
+  THEME_MAX_BYTES,
+  themeFileType,
+  ThemePackageError,
+  themeSha,
+  unzipTheme,
+  zipTheme,
+  type ThemeFiles,
+} from './theme-package.js'
 export { renderProjectorDocument, type ProjectorDocumentOptions } from './page.js'
 export { renderVodDocument, type VodDocumentOptions } from './vod-page.js'
 export { buildVodHabillage, type VodHabillageSources } from './vod-habillage.js'

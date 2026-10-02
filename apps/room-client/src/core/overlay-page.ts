@@ -1,3 +1,4 @@
+import { themeOrDefault, themeOverlayFill, themeTokens, type ThemeSource } from '@conference-operator/projector/server'
 import { OBS_ON_AIR_CSS, OBS_ON_AIR_JS } from './obs-browser.js'
 import { STREAM_PATCH_JS } from './stream-patch.js'
 
@@ -18,6 +19,8 @@ import { STREAM_PATCH_JS } from './stream-patch.js'
  */
 export interface OverlayPageOptions {
   initialPayload?: unknown
+  /** The event's colours, and possibly its own frame. `null`: the default theme. */
+  theme?: ThemeSource | null
 }
 
 export function renderOverlayPage(options: OverlayPageOptions = {}): string {
@@ -34,11 +37,14 @@ export function renderOverlayPage(options: OverlayPageOptions = {}): string {
 <style>${OBS_ON_AIR_CSS}
 </style>
 <style>
+${themeTokens(themeOrDefault(options.theme).bundle)}
+</style>
+<style>
   :root {
-    --c1: #00c8ff;   /* cyan */
-    --c2: #7b2ff7;   /* violet */
-    --c3: #e0245e;   /* the stripes' red */
-    --muted: #aab4e8;
+    /* The theme's overlay tokens (--overlay-*), under the names this page uses. */
+    --c1: var(--overlay-1);
+    --c2: var(--overlay-2);
+    --muted: var(--overlay-discret);
   }
   /* Any rule setting \`display\` would otherwise beat the \`hidden\` attribute. */
   [hidden] { display: none !important; }
@@ -58,15 +64,15 @@ export function renderOverlayPage(options: OverlayPageOptions = {}): string {
   #brand { display: flex; align-items: center; gap: 18px; height: 64px; }
   #logo { height: 64px; width: auto; display: block; }
   #event-name { font-size: 52px; font-weight: 900; letter-spacing: .5px; line-height: 1; white-space: nowrap;
-                background: linear-gradient(90deg, #fff 40%, #cfd8ff); -webkit-background-clip: text;
+                background: linear-gradient(90deg, #fff 40%, var(--overlay-titre)); -webkit-background-clip: text;
                 background-clip: text; color: transparent; }
-  #date { font-size: 22px; font-weight: 700; letter-spacing: .5px; color: #e8ecff; }
+  #date { font-size: 22px; font-weight: 700; letter-spacing: .5px; color: var(--overlay-date); }
   #date:empty { display: none; }
 
   /* Talk card under the webcam, hidden outside talks. */
   #card { box-sizing: border-box; padding: 28px 30px; display: flex; flex-direction: column;
-          border-radius: 22px; background: rgba(8, 12, 40, .72); border: 2px solid rgba(123, 47, 247, .55);
-          box-shadow: 0 0 30px rgba(123, 47, 247, .25) inset; overflow: hidden;
+          border-radius: 22px; background: rgba(var(--overlay-carte-rgb), .72); border: 2px solid rgba(var(--overlay-2-rgb), .55);
+          box-shadow: 0 0 30px rgba(var(--overlay-2-rgb), .25) inset; overflow: hidden;
           opacity: 0; transition: opacity .4s ease; }
   body[data-card="visible"] #card { opacity: 1; }
   /* Category on the label row, to leave the height to the title. */
@@ -100,66 +106,35 @@ export function renderOverlayPage(options: OverlayPageOptions = {}): string {
               opacity: 0; transform: translateY(16px); transition: opacity .35s ease, transform .35s ease; }
   body[data-question="visible"] #question { opacity: 1; transform: none; }
   #question .bar { width: 10px; border-radius: 5px 0 0 5px; background: linear-gradient(180deg, var(--c1), var(--c2)); }
-  #question .body { border-radius: 0 8px 8px 0; background: rgba(8, 12, 40, .9); padding: 16px 24px; }
+  #question .body { border-radius: 0 8px 8px 0; background: rgba(var(--overlay-carte-rgb), .9); padding: 16px 24px; }
   #question .label { margin-bottom: 6px; }
   #question-text { font-size: 28px; font-weight: 700; line-height: 1.25; }
   #question-author { margin-top: 6px; font-size: 21px; color: var(--muted); }
 
   #footer { left: 40px; width: 1840px; top: 1000px; height: 50px; align-items: center;
-            justify-content: center; gap: 28px; font-size: 22px; font-weight: 500; color: #dfe5ff; }
+            justify-content: center; gap: 28px; font-size: 22px; font-weight: 500; color: var(--overlay-pied); }
   #footer .network { color: var(--muted); font-weight: 400; margin-right: 8px; }
   #footer .dot-sep { color: var(--muted); }
   #footer b { font-weight: 900; background: linear-gradient(90deg, var(--c1), var(--c2));
               -webkit-background-clip: text; background-clip: text; color: transparent; }
 </style>
 </head>
-<body data-card="hidden" data-question="hidden">
+<body data-card="hidden" data-question="hidden" data-theme="${options.theme?.sha ?? ''}">
 ${initialState}
 <div id="stage">
 <svg id="bg" width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="gBg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2a1650"/>
-      <stop offset=".45" stop-color="#141a48"/>
-      <stop offset="1" stop-color="#071236"/>
-    </linearGradient>
     <linearGradient id="gAccent" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#00c8ff"/>
-      <stop offset="1" stop-color="#7b2ff7"/>
+      <stop offset="0" style="stop-color: var(--overlay-1)"/>
+      <stop offset="1" style="stop-color: var(--overlay-2)"/>
     </linearGradient>
-    <linearGradient id="gAccentV" x1="0" y1="1" x2="1" y2="0">
-      <stop offset="0" stop-color="#00c8ff"/>
-      <stop offset="1" stop-color="#b026ff"/>
-    </linearGradient>
-    <radialGradient id="gGlow" cx=".5" cy=".5" r=".5">
-      <stop offset="0" stop-color="#7b2ff7" stop-opacity=".45"/>
-      <stop offset="1" stop-color="#7b2ff7" stop-opacity="0"/>
-    </radialGradient>
-    <pattern id="stripes" width="28" height="28" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-      <rect width="10" height="28" fill="#e0245e"/>
-    </pattern>
     <filter id="blur"><feGaussianBlur stdDeviation="3"/></filter>
     <clipPath id="holes"><path id="holesPath" clip-rule="evenodd" d=""/></clipPath>
-    <clipPath id="cTL"><circle cx="70" cy="40" r="150"/></clipPath>
-    <clipPath id="cBR"><circle cx="1890" cy="1070" r="115"/></clipPath>
   </defs>
 
-  <!-- Decor clipped so the slides and webcam areas stay transparent. -->
+  <!-- Decor clipped so the slides and webcam areas stay transparent: the theme's, or the default frame. -->
   <g clip-path="url(#holes)">
-    <rect width="1920" height="1080" fill="url(#gBg)"/>
-    <circle cx="300" cy="120" r="420" fill="url(#gGlow)"/>
-    <circle cx="1700" cy="980" r="480" fill="url(#gGlow)"/>
-    <rect x="-100" y="-120" width="340" height="320" fill="url(#stripes)" clip-path="url(#cTL)" opacity=".9"/>
-    <rect x="1680" y="880" width="340" height="320" fill="url(#stripes)" clip-path="url(#cBR)" opacity=".9"/>
-    <circle cx="1850" cy="20" r="110" fill="url(#gAccentV)"/>
-    <ellipse cx="1830" cy="40" rx="190" ry="95" fill="none" stroke="#b026ff" stroke-width="3" opacity=".7" transform="rotate(20 1830 40)"/>
-    <circle cx="10" cy="1075" r="70" fill="url(#gAccentV)"/>
-    <circle cx="40" cy="1080" r="120" fill="none" stroke="#00c8ff" stroke-width="2" opacity=".5"/>
-    <circle cx="330" cy="1040" r="16" fill="url(#gAccentV)"/>
-    <circle cx="235" cy="1050" r="10" fill="url(#gAccentV)"/>
-    <circle cx="1620" cy="1040" r="12" fill="url(#gAccentV)"/>
-    <circle cx="1690" cy="95" r="14" fill="url(#gAccentV)"/>
-    <circle cx="260" cy="95" r="9" fill="url(#gAccentV)"/>
+    ${themeOverlayFill(options.theme)}
   </g>
 
   <!-- Glowing frames around the holes. -->
@@ -385,13 +360,18 @@ ${initialState}
   if (embedded) { currentState = JSON.parse(embedded.textContent); render(currentState) }
 
 ${STREAM_PATCH_JS}
+  // Another theme: its colours and frame are baked into the page — it reloads to wear them.
+  const otherTheme = (state) => state.boucle != null && (state.boucle.theme ?? '') !== (document.body.dataset.theme ?? '')
   if (typeof EventSource !== 'undefined' && !window.__PREVIEW__) {
     const stream = new EventSource('/display/state?vue=overlay&partiel=1')
     stream.onmessage = (event) => {
-      currentState = JSON.parse(event.data); render(currentState)
+      currentState = JSON.parse(event.data)
+      if (otherTheme(currentState)) return location.reload()
+      render(currentState)
     }
     stream.addEventListener("patch", (event) => {
       currentState = applyStreamPatch(currentState, JSON.parse(event.data))
+      if (otherTheme(currentState)) return location.reload()
       render(currentState)
     })
   }

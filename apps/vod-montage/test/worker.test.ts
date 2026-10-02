@@ -72,6 +72,7 @@ describe('a talk the program does not know', () => {
     speakers: [],
     merci: 'Merci',
     sponsorPages: [],
+    theme: null,
   }
 
   it('takes its title and speakers from the take', () => {

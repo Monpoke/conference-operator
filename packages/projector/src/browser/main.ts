@@ -66,6 +66,11 @@ export function demarrer(): void {
   let courant: Data | null = null
 
   const recevoir = (data: Data) => {
+    // Another theme: its colours, typefaces and decor are baked into the page — it reloads to wear them.
+    if (!window.__PREVIEW__ && data.boucle != null && (data.boucle.theme ?? '') !== (document.body.dataset.theme ?? '')) {
+      location.reload()
+      return
+    }
     const premier = courant == null
     courant = data
     regie.recevoir(data)

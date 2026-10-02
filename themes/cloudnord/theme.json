@@ -1,0 +1,83 @@
+{
+  "apiVersion": 1,
+  "id": "cloudnord",
+  "nom": "Cloud Nord",
+  "version": "2026.1",
+  "auteur": "Cloud Nord",
+  "couleurs": {
+    "violet": "#5e17eb",
+    "magenta": "#d420f8",
+    "cyan": "#20d0dc",
+    "orange": "#ffbd59",
+    "creme": "#f4f0e4",
+    "marine": "#2c2ca4",
+    "rose": "#c868b4",
+    "bulle-debut": "#e21bfb",
+    "bulle-milieu": "#8a6cf0",
+    "bulle-fin": "#14d3dc",
+    "nuit": "#1b0f55",
+    "vague-rose": "#ff8bf5",
+    "vague-ciel": "#8ef4ff",
+    "merci-ombre-1": "#e0585c",
+    "merci-ombre-2": "#b44c70",
+    "seance": "#1e106e",
+    "pastille-encours": "#140850",
+    "ciel-pale": "#c6f3f7",
+    "sur-orange": "#2a1470",
+    "orange-fonce": "#c77414",
+    "carte-fond": "#ffffff",
+    "carte-texte": "#1d1747",
+    "carte-discret": "#6b6590",
+    "carte-filet": "#e6e2f3",
+    "ombre": "#1a0c5a",
+    "barre": "#120940",
+    "urgent": "#7a1420",
+    "vod-ombre": "#110c46",
+    "avatar-0": "#5e17eb",
+    "avatar-1": "#b01fd6",
+    "avatar-2": "#1f8fb0",
+    "avatar-3": "#2c2ca4",
+    "avatar-4": "#b44c70",
+    "avatar-5": "#c77414",
+    "overlay-1": "#00c8ff",
+    "overlay-2": "#7b2ff7",
+    "overlay-accent": "#b026ff",
+    "overlay-rayures": "#e0245e",
+    "overlay-discret": "#aab4e8",
+    "overlay-titre": "#cfd8ff",
+    "overlay-date": "#e8ecff",
+    "overlay-pied": "#dfe5ff",
+    "overlay-carte": "#080c28",
+    "overlay-fond-1": "#2a1650",
+    "overlay-fond-2": "#141a48",
+    "overlay-fond-3": "#071236"
+  },
+  "fond": "linear-gradient(80deg, #9d3bdc 0%, #7636c8 25%, #5032b6 50%, #2a2ea4 75%, #112b99 100%)",
+  "polices": {
+    "roles": {
+      "titre": "\"Peace Sans\", \"Arial Black\", \"Segoe UI Black\", sans-serif",
+      "texte": "\"Open Sans\", \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif",
+      "accueil": "\"Gagalin\", \"Luckiest Guy\", \"Peace Sans\", \"Arial Black\", sans-serif",
+      "script": "\"Bukhari Script\", \"Pacifico\", \"Segoe Script\", \"Brush Script MT\", cursive"
+    },
+    "fichiers": [
+      { "famille": "Peace Sans", "graisse": 400, "fichier": "fonts/PeaceSans.otf" },
+      { "famille": "Luckiest Guy", "graisse": 400, "fichier": "fonts/LuckiestGuy.ttf" },
+      { "famille": "Pacifico", "graisse": 400, "fichier": "fonts/Pacifico.ttf" }
+    ]
+  },
+  "decor": {
+    "svg": "decor.svg",
+    "bulles": [
+      { "x": 511, "y": 337, "taille": 80, "duree": 9 },
+      { "x": 455, "y": 397, "taille": 40, "duree": 7, "delai": -3 },
+      { "x": 173, "y": 552, "taille": 40, "duree": 8, "delai": -5 },
+      { "x": 584, "y": 829, "taille": 64, "duree": 10, "delai": -2 },
+      { "x": 1234, "y": 774, "taille": 40, "duree": 8, "delai": -6 },
+      { "x": 1466, "y": 226, "taille": 28, "duree": 7, "delai": -1 },
+      { "x": 1679, "y": 422, "taille": 28, "duree": 9, "delai": -4 },
+      { "x": 1575, "y": 476, "taille": 64, "duree": 11, "delai": -7 },
+      { "x": 1639, "y": 563, "taille": 22, "duree": 6, "delai": -2 }
+    ]
+  }
+}

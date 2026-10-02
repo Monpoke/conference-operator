@@ -33,7 +33,7 @@ body:not(.pret) #clip { visibility: hidden; }
   background: var(--c, var(--cyan));
   color: #fff;
   font: 800 32px var(--f-texte);
-  box-shadow: 0 6px 0 rgba(27, 15, 85, .35);
+  box-shadow: 0 6px 0 rgba(var(--nuit-rgb), .35);
 }
 .vod-categorie[hidden] { display: none; }
 .vod-titre {
@@ -62,13 +62,13 @@ body:not(.pret) #clip { visibility: hidden; }
   border-radius: 50%;
   border: 8px solid #fff;
   background: #fff;
-  box-shadow: 0 0 0 8px var(--magenta), 0 18px 40px rgba(17, 12, 70, .45);
+  box-shadow: 0 0 0 8px var(--magenta), 0 18px 40px rgba(var(--vod-ombre-rgb), .45);
   font: 800 calc(var(--photo) * .34) var(--f-titre);
   color: #fff;
 }
 .vod-photo img { width: 100%; height: 100%; object-fit: cover; }
 .vod-nom { margin-top: 10px; font: 800 40px / 1.1 var(--f-texte); }
-.vod-societe { font: 700 30px / 1.2 var(--f-texte); color: #c6f3f7; }
+.vod-societe { font: 700 30px / 1.2 var(--f-texte); color: var(--ciel-pale); }
 
 /* ---------- Outro ---------- */
 .vod-outro { display: flex; flex-direction: column; align-items: center; padding: 70px var(--marge) 60px; }

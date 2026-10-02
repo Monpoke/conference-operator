@@ -44,6 +44,7 @@ import {
   wallsIoStatusSchema,
 } from './wall.js'
 import { imageRefSchema, sponsorPageSchema } from './boucle.js'
+import { gitImportSchema, gitSourceSchema, gitSourceStatusSchema, themeInfoSchema } from './theme.js'
 import {
   storageCheckSchema,
   vodFolderSchema,
@@ -772,6 +773,39 @@ export const contract = {
     previews: oc
       .input(z.object({ refs: z.array(z.string().max(600)).max(200) }))
       .output(z.record(z.string(), z.string().nullable())),
+    /**
+     * The theme packages the hub keeps, for the console to choose among. The
+     * choice itself is a loop setting (`boucle.theme`), saved like the others.
+     */
+    themes: oc.output(z.array(themeInfoSchema)),
+    /**
+     * Imports a theme package (the zip of `theme.json` and its files), checked
+     * whole: a package refused says every reason why. Importing the same content
+     * twice gives the same theme.
+     */
+    importTheme: oc
+      .input(z.object({ base64: z.string().min(1).max(11_500_000) }))
+      .output(themeInfoSchema),
+    /** The Git repository the console imports from, if one is set. */
+    gitSource: oc.output(gitSourceStatusSchema.nullable()),
+    /**
+     * Sets the Git source (`null` removes it). `jeton`: a new token, `null` to
+     * remove it, absent to keep the one sealed on the hub.
+     */
+    setGitSource: oc
+      .input(z.object({ source: gitSourceSchema.nullable(), jeton: z.string().min(1).max(400).nullable().optional() }))
+      .output(gitSourceStatusSchema.nullable()),
+    /**
+     * Reads the source's folder on its branch now, and imports what is asked:
+     * the theme (`theme.json` — when the screens wear that theme already, same
+     * id, they move to the new version) and the loop's content (`boucle.json` —
+     * the sections it names replace the hub's, then stay editable here).
+     */
+    importGit: oc
+      .input(z.object({ theme: z.boolean(), contenu: z.boolean() }))
+      .output(gitImportSchema.extend({ porte: z.boolean() })),
+    /** Forgets a package. The theme the screens wear cannot be removed. */
+    removeTheme: oc.input(z.object({ sha: z.string().regex(/^[0-9a-f]{64}$/) })).output(z.object({ ok: z.literal(true) })),
   },
 
   ingest: {

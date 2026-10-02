@@ -1,14 +1,16 @@
 import type { VodClip, VodHabillage } from '@conference-operator/contract'
 import { PROJECTOR_CSS } from '../generated/projector.js'
 import { VOD_CSS, VOD_JS } from '../generated/vod.js'
-import { decorMarkup } from '../markup.js'
 import { fontFaces, type AvailableFont } from './fonts.js'
+import { themeDecor, themeStyle, type ThemeSource } from './theme.js'
 
 export interface VodDocumentOptions {
   clip: VodClip
   habillage: VodHabillage
   /** The typefaces present, and where they are served from (or data URIs). */
   fonts?: { base: string; files: AvailableFont[] }
+  /** The look the room projected. `null`: the default theme. */
+  theme?: ThemeSource | null
   /**
    * `true`: nothing plays on its own, the renderer sets each frame's instant
    * through `window.__vod.figer(ms)`. `false`: the console's preview, played
@@ -37,6 +39,7 @@ export function renderVodDocument(options: VodDocumentOptions): string {
 <title>${options.clip === 'intro' ? 'Intro' : 'Outro'} — ${escapeHtml(options.habillage.talk.title)}</title>
 <style>
 ${fonts}
+${themeStyle(options.theme)}
 ${PROJECTOR_CSS}
 ${VOD_CSS}
 </style>
@@ -44,7 +47,7 @@ ${VOD_CSS}
 <body data-clip="${options.clip}">
 <script id="vod-donnees" type="application/json">${donnees}</script>
 <div id="stage">
-${decorMarkup()}
+${themeDecor(options.theme)}
   <div id="clip"></div>
   <div id="stinger"></div>
   <div id="noir"></div>

@@ -5,6 +5,7 @@ import { DEFAULT_AUDIO, measureLoudness, talkAudioChain, type AudioOptions, type
 import type { Chrome } from './chrome.js'
 import { FFMPEG, run } from './ffmpeg.js'
 import { inlineImages } from './images.js'
+import { themeForCapture } from './theme.js'
 import { assembledMs, assemblyArgs } from './montage.js'
 import { DEFAULT_FORMAT, renderClip, type ClipFormat } from './rendu.js'
 
@@ -56,11 +57,13 @@ export async function renderClips(options: {
   const log = options.log ?? (() => {})
   const habillage = await inlineImages(options.habillage, (ref, error) =>
     log(`image illisible, remplacée par le nom : ${ref} (${error instanceof Error ? error.message : String(error)})`))
+  const theme = await themeForCapture(options.habillage.theme, options.workDir, (error) =>
+    log(`thème illisible, clips au thème par défaut (${error instanceof Error ? error.message : String(error)})`))
   const format = options.format ?? DEFAULT_FORMAT
   const intro = join(options.workDir, 'intro.mp4')
   const outro = join(options.workDir, 'outro.mp4')
-  const i = await renderClip({ chrome: options.chrome, clip: 'intro', habillage, format, jingle: options.jingle, lufs: options.lufs, output: intro, workDir: options.workDir })
-  const o = await renderClip({ chrome: options.chrome, clip: 'outro', habillage, format, jingle: null, output: outro, workDir: options.workDir })
+  const i = await renderClip({ chrome: options.chrome, clip: 'intro', habillage, theme, format, jingle: options.jingle, lufs: options.lufs, output: intro, workDir: options.workDir })
+  const o = await renderClip({ chrome: options.chrome, clip: 'outro', habillage, theme, format, jingle: null, output: outro, workDir: options.workDir })
   return { intro: { file: intro, durationMs: i.durationMs }, outro: { file: outro, durationMs: o.durationMs } }
 }
 
@@ -100,16 +103,19 @@ export async function monter(options: MontageOptions): Promise<MontageResult> {
   const habillage = await inlineImages(options.habillage, (ref, error) =>
     log(`image illisible, remplacée par le nom : ${ref} (${error instanceof Error ? error.message : String(error)})`))
 
+  const theme = await themeForCapture(options.habillage.theme, options.workDir, (error) =>
+    log(`thème illisible, clips au thème par défaut (${error instanceof Error ? error.message : String(error)})`))
+
   const introFile = join(options.workDir, 'intro.mp4')
   const outroFile = join(options.workDir, 'outro.mp4')
   step('intro', 0)
   const intro = await renderClip({
-    chrome: options.chrome, clip: 'intro', habillage, format, jingle: options.jingle, lufs: audioOptions.lufs, output: introFile,
+    chrome: options.chrome, clip: 'intro', habillage, theme, format, jingle: options.jingle, lufs: audioOptions.lufs, output: introFile,
     workDir: options.workDir, onProgress: (f) => step('intro', f),
   })
   step('outro', 0)
   const outro = await renderClip({
-    chrome: options.chrome, clip: 'outro', habillage, format, jingle: null, output: outroFile,
+    chrome: options.chrome, clip: 'outro', habillage, theme, format, jingle: null, output: outroFile,
     workDir: options.workDir, onProgress: (f) => step('outro', f),
   })
 

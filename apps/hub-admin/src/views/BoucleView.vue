@@ -4,12 +4,14 @@ import AnnoncesPanel from '../components/boucle/AnnoncesPanel.vue'
 import ConduitePanel from '../components/boucle/ConduitePanel.vue'
 import DureesPanel from '../components/boucle/DureesPanel.vue'
 import FeedbacksPanel from '../components/boucle/FeedbacksPanel.vue'
+import GitPanel from '../components/boucle/GitPanel.vue'
 import IdentityPanel from '../components/boucle/IdentityPanel.vue'
 import MerciPanel from '../components/boucle/MerciPanel.vue'
 import MessagesPanel from '../components/boucle/MessagesPanel.vue'
 import PlanningsPanel from '../components/boucle/PlanningsPanel.vue'
 import PreviewPanel from '../components/boucle/PreviewPanel.vue'
 import SponsorPagesPanel from '../components/boucle/SponsorPagesPanel.vue'
+import ThemePanel from '../components/boucle/ThemePanel.vue'
 import WallsioPanel from '../components/boucle/WallsioPanel.vue'
 
 /**
@@ -28,6 +30,8 @@ import WallsioPanel from '../components/boucle/WallsioPanel.vue'
     <div class="col-span-full">
       <PreviewPanel />
     </div>
+    <ThemePanel />
+    <GitPanel />
     <DureesPanel />
     <IdentityPanel />
     <MessagesPanel />

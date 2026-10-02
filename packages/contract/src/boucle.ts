@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { themeRefSchema } from './theme.js'
 
 /**
  * The welcome loop's own content: everything the room screens show that the
@@ -144,6 +145,11 @@ export const boucleSchema = z.object({
    * then shows it alone, rather than followed by the name a second time.
    */
   logoAvecNom: z.boolean().default(false),
+  /**
+   * The look the screens wear — colours, typefaces, decor — a package the hub
+   * keeps (see ./theme.ts). `null` = the default theme, built into the code.
+   */
+  theme: themeRefSchema.nullable().default(null),
   accueil: z.object({ texte: z.string().max(60) }).default({ texte: 'Bienvenue à' }),
   /** Bottom right of some scenes. `null` removes it. */
   signature: z
@@ -345,6 +351,12 @@ export interface BoucleLogo {
  * in its cache.
  */
 export interface BoucleView {
+  /**
+   * The sha of the theme the room wears — the one it holds, not only the one
+   * chosen. Baked into the page when it loads: when it changes, the page reloads.
+   * `null` = the default theme.
+   */
+  theme: string | null
   logoUrl: string | null
   /** The logo already spells the event's name: the overlay does not repeat it. */
   logoAvecNom: boolean

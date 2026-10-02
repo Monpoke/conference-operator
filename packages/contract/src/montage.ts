@@ -52,6 +52,11 @@ export const vodHabillageSchema = z.object({
   merci: z.string(),
   /** The loop's sponsor pages. Empty: the outro only thanks, without logos. */
   sponsorPages: z.array(vodSponsorPageSchema),
+  /**
+   * The loop's theme, which the intro and outro wear too: where the worker
+   * fetches its package. `null` = the default theme.
+   */
+  theme: z.object({ sha: z.string().regex(/^[0-9a-f]{64}$/), url: z.string() }).nullable().default(null),
 })
 export type VodHabillage = z.infer<typeof vodHabillageSchema>
 

@@ -11,7 +11,7 @@ import { toString } from 'qrcode'
 import { agendaForRoom, normalizeProgram, sessionsForRoom } from '@conference-operator/program'
 import { commentSchema, DEFAULT_BOUCLE, resolveEventIdentity, type Boucle } from '@conference-operator/contract'
 import { BOUCLE } from '@conference-operator/projector'
-import { planningsFor } from '@conference-operator/projector/server'
+import { parseThemePackage, planningsFor, readThemeFolder, type ThemeSource } from '@conference-operator/projector/server'
 import { renderProjectorPage } from '../src/core/display-page.js'
 import { boucleQrUrls, buildBoucleView, buildWallCards } from '../src/core/boucle-view.js'
 import { availableFonts, resolveFontsFolder } from '../src/core/fonts.js'
@@ -20,6 +20,12 @@ import { renderOverlayLivePage } from '../src/core/overlay-live-page.js'
 import type { DisplayPayload } from '../src/core/display-server.js'
 
 const outDir = resolve(process.argv[2] ?? './preview')
+
+/** `--theme <folder>`: the pages wear that theme (`themes/cloudnord`) rather than the default one. */
+const themeArg = process.argv.indexOf('--theme')
+const themeFolder = themeArg === -1 ? null : resolve(process.argv[themeArg + 1]!)
+const theme: ThemeSource | null =
+  themeFolder == null ? null : { bundle: parseThemePackage(readThemeFolder(themeFolder)), base: `file://${themeFolder}` }
 const TRACK_1 = 'track-1-teilhard-de-chardin'
 const AT = Date.parse('2026-10-30T10:20:00.000Z') // 11:20 in Paris, mid-talk
 
@@ -385,13 +391,13 @@ const checkerboard =
   'linear-gradient(-45deg,#2a2a33 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#2a2a33 75%),' +
   'linear-gradient(-45deg,transparent 75%,#2a2a33 75%);background-size:40px 40px;' +
   'background-position:0 0,0 20px,20px -20px,-20px 0;background-color:#1d1d22}</style>'
-const overlay = renderOverlayPage({ initialPayload: base })
+const overlay = renderOverlayPage({ theme, initialPayload: base })
   .replace('<body ', `<script>window.__PREVIEW__ = true</script>${checkerboard}<body `)
 writeFileSync(join(outDir, 'overlay-recording.html'), overlay)
 console.log(`written ${join(outDir, 'overlay-recording.html')}`)
 
 /** The same overlay with an audience question on air, to check both cards together. */
-const overlayQuestion = renderOverlayPage({
+const overlayQuestion = renderOverlayPage({ theme,
   initialPayload: {
     ...base,
     state: {
@@ -408,7 +414,7 @@ writeFileSync(join(outDir, 'overlay-recording-question.html'), overlayQuestion)
 console.log(`written ${join(outDir, 'overlay-recording-question.html')}`)
 
 /** The same overlay with a two-speaker talk. */
-const overlayDuo = renderOverlayPage({
+const overlayDuo = renderOverlayPage({ theme,
   initialPayload: {
     ...base,
     state: {
@@ -438,7 +444,7 @@ const weight = (s: { name: string; company: string | null }) => s.name.length + 
 const longestSpeakers = [...new Map(talks.flatMap((t) => t.speakers).map((s) => [s.name, s])).values()]
   .sort((a, b) => weight(b) - weight(a))
   .slice(0, 2)
-const overlayLong = renderOverlayPage({
+const overlayLong = renderOverlayPage({ theme,
   initialPayload: {
     ...base,
     state: {
@@ -496,6 +502,7 @@ console.log(`written ${join(outDir, 'overlay-live-banner.html')}`)
 const fontsFolder = resolveFontsFolder()
 function preview(payload: DisplayPayload, scene: number | null): string {
   const html = renderProjectorPage({
+    theme,
     initialPayload: payload,
     fonts: fontsFolder == null ? undefined : { base: `file://${fontsFolder}`, files: availableFonts(fontsFolder) },
   })

@@ -11,13 +11,15 @@ export interface VodHabillageSources {
   /** The program the talk was given in. `null`: only the sidecar is known. */
   program: Program | null
   /** The loop's settings — the console's logo and sponsor pages. */
-  boucle: Pick<Boucle, 'logo' | 'sponsorPages' | 'merciSponsors'> | null
+  boucle: (Pick<Boucle, 'logo' | 'sponsorPages' | 'merciSponsors'> & Partial<Pick<Boucle, 'theme'>>) | null
   /** The take's sidecar: what the room knew when it recorded. */
   sidecar: Pick<Sidecar, 'sessionId' | 'title' | 'speakers' | 'category'>
   /** The event's name as the console shows it (identity setting over program). */
   eventName: string | null
   /** An image's address for the renderer, or `null` to show the name instead. */
   localize: (ref: string | null) => string | null
+  /** Where a theme package is fetched from, by its sha. Absent: the default theme. */
+  themeUrl?: (sha: string) => string
 }
 
 const MAX_SPEAKERS = 6
@@ -63,6 +65,7 @@ export function buildVodHabillage(sources: VodHabillageSources): VodHabillage {
     speakers: speakers.slice(0, MAX_SPEAKERS),
     merci: boucle?.merciSponsors || 'Merci à nos sponsors',
     sponsorPages: onceEach(pages, logo),
+    theme: boucle?.theme == null || sources.themeUrl == null ? null : { sha: boucle.theme.sha, url: sources.themeUrl(boucle.theme.sha) },
   }
 }
 

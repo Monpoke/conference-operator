@@ -2922,6 +2922,11 @@ les mêmes gestes (`POST /control/action`). Rien n'a changé côté poste ni hub
   de montrer un enregistrement qui s'est peut-être arrêté.
 - **Pas de message urgent** : il demande le PIN régie, qui n'a pas sa place en
   clair dans une touche.
+- **L'image d'une touche dit ce qu'elle fait** (`src/core/images.ts`, peinte à
+  l'exécution) : ▶ démarrer, ■ terminer, ● enregistrer puis ■ pendant
+  l'enregistrement, crochet ouvrant ou fermant pour les marques, micro barré
+  quand il est coupé, un pictogramme par scène et par écran. Planche de toutes
+  les variantes : `npx tsx scripts/contact-sheet.ts <dossier>`.
 - Les décisions vivent dans `src/core/` (testées sans Stream Deck) ; la couche
   du SDK Elgato (v3, Node 24, Stream Deck 7.1 et plus) ne fait que peindre et
   envoyer. Paquet : `TARGETS="streamdeck" pnpm build:local`.

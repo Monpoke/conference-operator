@@ -94,7 +94,6 @@ describe('what a press sends', () => {
 
   it('holds back ending the talk and cutting the stream the same way', () => {
     expect(decide({ kind: 'session', which: 'end' }, payload(), 'short')).toHaveProperty('hint')
-    expect(decide({ kind: 'session', which: 'end' }, payload(), 'long')).toEqual({ gesture: { action: 'session.end' } })
     expect(decide({ kind: 'stream' }, payload({ streaming: true }), 'short')).toHaveProperty('hint')
   })
 
@@ -137,5 +136,54 @@ describe('small helpers', () => {
     expect(normalizeBase('')).toBe('http://127.0.0.1:7788')
     expect(normalizeBase('192.168.1.20:7788/')).toBe('http://192.168.1.20:7788')
     expect(normalizeBase('http://localhost:7790')).toBe('http://localhost:7790')
+  })
+})
+
+describe("the talk key follows the control app's sequence", () => {
+  const SLOT = NOW + 5 * 60_000
+  /** A room with a talk five minutes away, and OBS-B idle unless told otherwise. */
+  function talkRoom(patch: Record<string, unknown> = {}, recording = false, config: Record<string, unknown> | null = null) {
+    return payload(
+      {
+        targetSession: { id: 'talk-1', title: 'Le futur du cloud', startsAtMs: SLOT, endsAtMs: SLOT + 45 * 60_000 },
+        pinnedSessionId: null,
+        serverTimeOffsetMs: 0,
+        ...patch,
+      },
+      { recording: { active: recording, startedAtMs: null, markers: 0, editing: { startMs: null, endMs: null } }, config },
+    )
+  }
+  const gestures = (decision: unknown) =>
+    (decision as { steps: { gesture: Record<string, unknown> }[] }).steps.map((step) => step.gesture)
+
+  it('records first when nothing records, then starts, then switches the scene', () => {
+    expect(gestures(decide({ kind: 'session', which: 'start' }, talkRoom(), 'short', NOW))).toEqual([
+      { action: 'recording.start' },
+      { action: 'session.start' },
+      { action: 'scene.set', role: 'LIVE' },
+    ])
+  })
+
+  it('starts without recording when the key is set so, or when the room does not ask', () => {
+    expect(gestures(decide({ kind: 'session', which: 'start-norec' }, talkRoom(), 'short', NOW))[0]).toEqual({ action: 'session.start' })
+    const noGuard = talkRoom({}, false, { promptRecordingOnStart: false, sceneOnStart: 'HOLD' })
+    expect(gestures(decide({ kind: 'session', which: 'start' }, noGuard, 'short', NOW))).toEqual([
+      { action: 'session.start' },
+      { action: 'scene.set', role: 'HOLD' },
+    ])
+  })
+
+  it('asks a long press for a start very early, and says so on the key', () => {
+    const early = talkRoom({ targetSession: { id: 'talk-1', title: 'X', startsAtMs: NOW + 90 * 60_000, endsAtMs: null } })
+    expect(faceOf({ kind: 'session', which: 'start' }, early, NOW).title).toBe('En avance\n1 h 30')
+    expect(decide({ kind: 'session', which: 'start' }, early, 'short', NOW)).toEqual({ hint: 'Maintenir : très en avance' })
+    expect(decide({ kind: 'session', which: 'start' }, early, 'long', NOW)).toHaveProperty('steps')
+  })
+
+  it('stops the take with the end when the room says so', () => {
+    expect(gestures(decide({ kind: 'session', which: 'end' }, talkRoom({}, true), 'long', NOW))).toEqual([
+      { action: 'recording.stop' },
+      { action: 'session.end' },
+    ])
   })
 })

@@ -1,18 +1,24 @@
 import { remaining, time } from '@conference-operator/format'
+import {
+  earlyByMs as earlyOf,
+  endAsksStopRecording,
+  endEarly,
+  endSteps,
+  leftMs as leftOf,
+  runTalkSteps,
+  startAsksRecording,
+  startSteps,
+  startTooEarly,
+  talkSettings,
+  type TalkFlowInput,
+} from '@conference-operator/room-state/talk-flow'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useActionsStore, type ActionResult } from './actions.js'
 import { useRoomStore } from './room.js'
 
-/**
- * Past this, a start stops being "a little early" and becomes a targeting error.
- *
- * A quarter of an hour: that is the program's widest gap, and therefore the limit
- * below which starting the next talk is a normal gesture — one finished early,
- * the speaker is plugged in, the room is full. Beyond it, one is almost always
- * aiming at something other than what one thinks.
- */
-export const TOO_EARLY_MS = 15 * 60_000
+// The rule lives in the shared flow; re-exported for whoever read it from here.
+export { TOO_EARLY_MS } from '@conference-operator/room-state/talk-flow'
 
 /**
  * Starting and ending, with whatever gets in the way.
@@ -48,36 +54,29 @@ export const useTalkStore = defineStore('talk', () => {
     () => pinnedSessionId.value != null && pinnedSessionId.value === session.value?.id,
   )
 
-  /**
-   * The start settings, defaults included.
-   *
-   * The defaults live in the contract, where the hub applies them. The page
-   * repeats them for a state received before that setting: reading a missing
-   * field as "do nothing" would silently disable a guard, which is exactly what
-   * it is meant to prevent. A null value, on the other hand, stays an explicit
-   * choice.
-   */
-  const settings = computed(() => {
-    const config = room.payload?.diagnostics?.config
-    return {
-      warn: config?.promptRecordingOnStart !== false,
-      warnOnStop: config?.promptRecordingOnStop !== false,
-      scene: config?.sceneOnStart === undefined ? 'LIVE' : config.sceneOnStart,
-    }
-  })
-
-  /** How early against the slot, or `null` with no talk to drive. */
-  const earlyByMs = computed(() =>
-    session.value == null ? null : session.value.startsAtMs - room.now,
-  )
-
-  /** What is left of the slot, or `null` on a slot with no end time. */
-  const leftMs = computed(() =>
-    session.value?.endsAtMs == null ? null : session.value.endsAtMs - room.now,
-  )
-
   /** What OBS-B is really doing, observed and not assumed. */
   const recording = computed(() => room.payload?.diagnostics?.recording?.active === true)
+
+  /**
+   * The room as the shared flow reads it (`room-state/talk-flow`): the same
+   * questions and the same steps as every other surface that starts a talk.
+   */
+  const flow = computed<TalkFlowInput>(() => ({
+    nowMs: room.now,
+    target: session.value,
+    pinnedSessionId: pinnedSessionId.value,
+    recording: recording.value,
+    config: room.payload?.diagnostics?.config ?? null,
+  }))
+
+  /** The start settings, defaults included — see `talkSettings`. */
+  const settings = computed(() => talkSettings(flow.value.config))
+
+  /** How early against the slot, or `null` with no talk to drive. */
+  const earlyByMs = computed(() => earlyOf(flow.value))
+
+  /** What is left of the slot, or `null` on a slot with no end time. */
+  const leftMs = computed(() => leftOf(flow.value))
 
   const tooEarlyDetail = computed(() => {
     const target = session.value
@@ -120,8 +119,7 @@ export const useTalkStore = defineStore('talk', () => {
    * same question twice to the one person who knows it best.
    */
   function askStart(): void {
-    const early = earlyByMs.value
-    if (forced.value || early == null || early <= TOO_EARLY_MS) {
+    if (!startTooEarly(flow.value)) {
       void start()
       return
     }
@@ -131,30 +129,17 @@ export const useTalkStore = defineStore('talk', () => {
   /** Second guard: the VOD, which cannot be made good in the evening. */
   async function start(): Promise<void> {
     tooEarlyOpen.value = false
-    if (settings.value.warn && !recording.value) {
-      // The question only makes sense beforehand: once the talk has started, a
-      // recording begun now will always miss the first few minutes.
+    if (startAsksRecording(flow.value)) {
       recordingOpen.value = true
       return
     }
     await launch(false)
   }
 
-  /** @param record Start the recording first, then the talk. */
+  /** @param record Start the recording first, then the talk — see `startSteps`. */
   async function launch(record: boolean): Promise<void> {
     recordingOpen.value = false
-    if (record) {
-      const result = await actions.act({ action: 'recording.start' })
-      // The recording first, and only if it starts: beginning anyway would make
-      // the warning a lie the next time round.
-      if (!result.ok) return
-    }
-    await actions.act({ action: 'session.start' })
-
-    // After the start: the scene follows the talk, and a switch with no talk
-    // started would leave the room on air over nothing.
-    const role = settings.value.scene
-    if (role) await actions.act({ action: 'scene.set', role })
+    await runTalkSteps(startSteps(flow.value, record), (gesture) => actions.act(gesture))
   }
 
   /**
@@ -165,8 +150,7 @@ export const useTalkStore = defineStore('talk', () => {
    * cannot be early — nothing to ask.
    */
   function askEnd(): void {
-    const left = leftMs.value
-    if (left == null || left <= 0) {
+    if (!endEarly(flow.value)) {
       void end()
       return
     }
@@ -182,23 +166,17 @@ export const useTalkStore = defineStore('talk', () => {
    */
   async function end(): Promise<void> {
     endEarlyOpen.value = false
-    if (settings.value.warnOnStop && recording.value) {
+    if (endAsksStopRecording(flow.value)) {
       stopRecordingOpen.value = true
       return
     }
     await finish(false)
   }
 
-  /** @param stop Stop the take first, then end the talk. */
+  /** @param stop Stop the take first, then end the talk — see `endSteps`. */
   async function finish(stop: boolean): Promise<void> {
     stopRecordingOpen.value = false
-    if (stop) {
-      const result = await actions.act({ action: 'recording.stop' })
-      // The stop first, and only if it succeeds: ending anyway would leave the
-      // take running with nothing ever raising it again.
-      if (!result.ok) return
-    }
-    await actions.act({ action: 'session.end' })
+    await runTalkSteps(endSteps(stop), (gesture) => actions.act(gesture))
   }
 
   /** Putting it back as upcoming, when "Terminer" was a mistake. */

@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./state-machine-page": "./src/state-machine-page.ts",
-    "./browser": "./src/browser.ts"
+    "./browser": "./src/browser.ts",
+    "./talk-flow": "./src/talk-flow.ts"
   },
   "scripts": {
     "build": "node scripts/build-browser.mjs",

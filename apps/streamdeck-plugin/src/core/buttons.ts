@@ -1,4 +1,14 @@
 import type { DisplayPayload } from '@conference-operator/contract/room-display'
+import {
+  earlyByMs,
+  endAsksStopRecording,
+  endSteps,
+  startAsksRecording,
+  startSteps,
+  startTooEarly,
+  type TalkFlowInput,
+  type TalkStep,
+} from '@conference-operator/room-state/talk-flow'
 
 /**
  * What each kind of button shows, and what it sends — as pure functions.
@@ -28,8 +38,32 @@ export type Press = 'short' | 'long'
  */
 export const LONG_PRESS_MS = 1_000
 
-/** What a press asks for: a gesture for the room, or a hint to show instead. */
-export type Decision = { gesture: Record<string, unknown> } | { hint: string } | null
+/**
+ * What a press asks for: a gesture for the room, a sequence of them — the
+ * talk's start or end, the control app's very steps — or a hint to show instead.
+ */
+export type Decision = { gesture: Record<string, unknown> } | { steps: TalkStep[] } | { hint: string } | null
+
+/**
+ * The room as the shared talk flow reads it (`room-state/talk-flow`): the same
+ * guards and the same steps as the control app's "Commencer" and "Terminer".
+ */
+export function flowOf(payload: DisplayPayload, nowMs: number): TalkFlowInput {
+  const target = payload.state.targetSession
+  return {
+    nowMs: nowMs + (payload.state.serverTimeOffsetMs ?? 0),
+    target: target == null ? null : { id: target.id, startsAtMs: target.startsAtMs, endsAtMs: target.endsAtMs ?? null },
+    pinnedSessionId: payload.state.pinnedSessionId ?? null,
+    recording: payload.diagnostics?.recording?.active === true,
+    config: payload.diagnostics?.config ?? null,
+  }
+}
+
+/** `1 h 05` / `12 min` — how early, on a key. */
+function early(ms: number): string {
+  const minutes = Math.round(ms / 60_000)
+  return minutes >= 60 ? `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, '0')}` : `${minutes} min`
+}
 
 export type ButtonSettings =
   | { kind: 'scene'; role?: string }
@@ -39,7 +73,7 @@ export type ButtonSettings =
   | { kind: 'mark'; mark?: 'debut' | 'fin' | 'chapitre' }
   | { kind: 'stream' }
   | { kind: 'mic'; input?: string }
-  | { kind: 'session'; which?: 'start' | 'end' }
+  | { kind: 'session'; which?: 'start' | 'start-norec' | 'end' }
   | { kind: 'message-clear' }
   | { kind: 'status' }
 
@@ -174,8 +208,12 @@ export function faceOf(
       }
     }
     case 'session': {
-      const title = state.currentSession?.title
-      const label = settings.which === 'end' ? 'Terminer' : 'Démarrer'
+      if (settings.which !== 'end' && startTooEarly(flowOf(payload, nowMs))) {
+        // Said on the key before the press: the long press is what confirms it.
+        return { title: `En avance\n${early(earlyByMs(flowOf(payload, nowMs)) ?? 0)}`, on: false, offline: false }
+      }
+      const title = (settings.which === 'end' ? state.currentSession : state.targetSession)?.title
+      const label = settings.which === 'end' ? 'Terminer' : settings.which === 'start-norec' ? 'Sans enreg.' : 'Démarrer'
       return { title: title == null ? label : `${label}\n${fit(title, 9, 2)}`, on: state.currentSession != null, offline: false }
     }
     case 'message-clear':
@@ -199,7 +237,12 @@ export function faceOf(
  * What a press sends. The risky gestures — stop the recording, end the talk, cut
  * the stream — only go on a long press; a short one shows how to do it instead.
  */
-export function decide(settings: ButtonSettings, payload: DisplayPayload | null, press: Press): Decision {
+export function decide(
+  settings: ButtonSettings,
+  payload: DisplayPayload | null,
+  press: Press,
+  nowMs: number = Date.now(),
+): Decision {
   if (payload == null) return { hint: 'Poste de salle injoignable' }
   const { state } = payload
   const hold = (gesture: Record<string, unknown>, what: string): Decision =>
@@ -232,10 +275,21 @@ export function decide(settings: ButtonSettings, payload: DisplayPayload | null,
       if (isMuted == null) return { hint: 'Source inconnue' }
       return { gesture: { action: 'audio.mute', input: settings.input, muted: !isMuted } }
     }
-    case 'session':
-      return settings.which === 'end'
-        ? hold({ action: 'session.end' }, 'terminer la conférence')
-        : { gesture: { action: 'session.start' } }
+    case 'session': {
+      const flow = flowOf(payload, nowMs)
+      if (settings.which === 'end') {
+        // Always held: ending is the gesture next to starting, and it is final.
+        // The take goes with it when the room's guard says so — left running, the
+        // next talk would be written into the same file.
+        if (press !== 'long') return { hint: 'Maintenir pour terminer la conférence' }
+        return { steps: endSteps(endAsksStopRecording(flow)) }
+      }
+      if (startTooEarly(flow) && press !== 'long') return { hint: 'Maintenir : très en avance' }
+      // "Enregistrer et commencer", the control app's safe answer, unless the key
+      // was set to start without recording — a choice made beforehand, not a reflex.
+      const record = settings.which !== 'start-norec' && startAsksRecording(flow)
+      return { steps: startSteps(flow, record) }
+    }
     case 'message-clear':
       return state.message == null ? null : { gesture: { action: 'screen.message.clear' } }
     case 'status':

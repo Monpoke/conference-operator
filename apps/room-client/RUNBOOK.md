@@ -119,7 +119,10 @@ Sur le poste de salle, avec l'application Stream Deck **7.1 ou plus** :
    autre port — à régler dans le panneau de la touche Statut.
 
 Arrêter l'enregistrement, terminer la conférence et couper le direct
-**se maintiennent une seconde**. Une seule touche pour passer de **Direct** à
+**se maintiennent une seconde**. La touche **Conférence** fait comme le bouton
+« Commencer » de la régie : elle lance l'enregistrement s'il ne tourne pas, puis
+la conférence, puis la scène ; très en avance, elle l'affiche et demande un appui
+long. Pour une salle sans VOD, régler la touche sur « Démarrer sans enregistrer ». Une seule touche pour passer de **Direct** à
 **Habillage** et retour : l'action **Bascule de scène**.
 
 ## Déroulé d'un talk

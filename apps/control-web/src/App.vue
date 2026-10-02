@@ -17,6 +17,7 @@ import ControlHeader from './components/ControlHeader.vue'
 import RoomsStrip from './components/RoomsStrip.vue'
 import RoomSelect from './components/RoomSelect.vue'
 import ScreenPanel from './components/ScreenPanel.vue'
+import ServerModeOffer from './components/ServerModeOffer.vue'
 import SignInScreen from './components/SignInScreen.vue'
 import LockBanner from './components/LockBanner.vue'
 import LockVeil from './components/LockVeil.vue'
@@ -364,6 +365,9 @@ useKeyboardLayer(
       @open="consult.show($event)"
       @config="config.show()"
     />
+
+    <!-- Never in the dock itself: it is the dock that makes this window redundant. -->
+    <ServerModeOffer v-if="!dock" :dock-connected="payload.dockConnected === true" />
 
     <RoomsStrip :payload="payload" :now-ms="room.now" @open="consult.follow($event)" />
 

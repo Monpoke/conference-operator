@@ -609,6 +609,129 @@ describe('the pages OBS follows', () => {
   })
 })
 
+describe('the OBS dock', () => {
+  const OBS_UA =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/127.0.0.0 Safari/537.36 OBS/32.2.2'
+  const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/127.0.0.0'
+
+  /** Opens the state stream with this query, and keeps it open until aborted. */
+  async function follow(query: string, userAgent = BROWSER_UA): Promise<AbortController> {
+    const abort = new AbortController()
+    const response = await fetch(`${origin}/display/state?${query}`, {
+      headers: { 'user-agent': userAgent },
+      signal: abort.signal,
+    })
+    await response.body!.getReader().read()
+    return abort
+  }
+
+  /** The `/display/dock` stream's messages, as they arrive. */
+  async function watchDock(): Promise<{ seen: boolean[]; abort: AbortController }> {
+    const abort = new AbortController()
+    const response = await fetch(`${origin}/display/dock`, { signal: abort.signal })
+    const reader = response.body!.getReader()
+    const seen: boolean[] = []
+    const decoder = new TextDecoder()
+    void (async () => {
+      try {
+        for (;;) {
+          const { value, done } = await reader.read()
+          if (done) return
+          for (const match of decoder.decode(value).matchAll(/data: (.*)\n/g)) {
+            seen.push((JSON.parse(match[1]!) as { connected: boolean }).connected)
+          }
+        }
+      } catch {
+        // Aborted by the test.
+      }
+    })()
+    await vi.waitFor(() => expect(seen.length).toBeGreaterThan(0))
+    return { seen, abort }
+  }
+
+  const dockOf = async (): Promise<boolean | undefined> =>
+    ((await (await fetch(`${origin}/display/data`)).json()) as DisplayPayload).dockConnected
+
+  it('sees a dock announced by the page, and by OBS itself', async () => {
+    expect(server.dockConnected()).toBe(false)
+
+    const announced = await follow('vue=regie&partiel=1&dock=1')
+    expect(server.dockConnected()).toBe(true)
+    announced.abort()
+    await vi.waitFor(() => expect(server.dockConnected()).toBe(false))
+
+    // A dock set up without `?dock`: OBS's user agent gives it away.
+    const silent = await follow('vue=regie&partiel=1', OBS_UA)
+    expect(server.dockConnected()).toBe(true)
+    silent.abort()
+    await vi.waitFor(() => expect(server.dockConnected()).toBe(false))
+  })
+
+  it('does not take a plain control app or an OBS screen for a dock', async () => {
+    const control = await follow('vue=regie&partiel=1')
+    const projector = await follow('vue=projecteur&partiel=1', OBS_UA)
+    try {
+      expect(server.dockConnected()).toBe(false)
+    } finally {
+      control.abort()
+      projector.abort()
+    }
+  })
+
+  it('tells the control apps and the server-mode pages when a dock comes and goes', async () => {
+    expect(await dockOf()).toBe(false)
+
+    const dock = await watchDock()
+    try {
+      expect(dock.seen).toEqual([false])
+      const first = await follow('vue=regie&partiel=1&dock=1')
+      const second = await follow('vue=regie&partiel=1&dock=1')
+      await vi.waitFor(() => expect(dock.seen).toEqual([false, true]))
+      expect(await dockOf()).toBe(true)
+
+      // One dock leaving while another stays is no news.
+      first.abort()
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(dock.seen).toEqual([false, true])
+      second.abort()
+      await vi.waitFor(() => expect(dock.seen).toEqual([false, true, false]))
+    } finally {
+      dock.abort.abort()
+    }
+  })
+
+  it('pushes the news on the control app stream', async () => {
+    const abort = new AbortController()
+    const response = await fetch(`${origin}/display/state?vue=regie&partiel=1`, { signal: abort.signal })
+    const reader = response.body!.getReader()
+    const decoder = new TextDecoder()
+    // The opening snapshot may arrive in several chunks: read up to its end.
+    let received = ''
+    while (!received.endsWith('\n\n')) received += decoder.decode((await reader.read()).value)
+    expect(received).toContain('"dockConnected":false')
+
+    const dock = await follow('vue=regie&partiel=1&dock=1')
+    try {
+      let patch = ''
+      while (!patch.includes('"dockConnected":true')) patch += decoder.decode((await reader.read()).value)
+      expect(patch).toContain('event: patch')
+    } finally {
+      dock.abort()
+      abort.abort()
+    }
+  })
+
+  it('serves the server-mode page', async () => {
+    const response = await fetch(`${origin}/regie/serveur`)
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/html')
+    const html = await response.text()
+    expect(html).toContain('Mode serveur')
+    expect(html).toContain('href="/regie?console"')
+    expect(html).toContain("new EventSource('/display/dock')")
+  })
+})
+
 describe('social wall display counts', () => {
   it('hands the posts the screen put on air to the room, and refuses a malformed report', async () => {
     const reported: Record<string, number>[] = []

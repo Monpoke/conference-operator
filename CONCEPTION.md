@@ -2315,6 +2315,34 @@ Ce qui reste visible en permanence est ce qui déclenche une décision :
   Ce que seul le hub sait — démarré, terminé, en dépassement — arrive par le
   chemin décrit ci-dessous.
 
+### Dock OBS et mode serveur
+
+La régie se charge aussi dans un **dock OBS** (`/regie?dock`) : l'opérateur
+pilote alors à côté du programme, et la fenêtre de la machine fait doublon. Elle
+ne peut pas pour autant disparaître : c'est elle qui fait tourner la salle, et
+la fermer veut toujours dire « on éteint ».
+
+- **Détection.** Le serveur local compte les abonnés du flux d'état ouverts en
+  dock : `dock=1` sur `/display/state` (envoyé par la page quand l'adresse porte
+  `?dock`), ou une `/regie` chargée par OBS lui-même — l'agent utilisateur
+  `OBS/x.y` rattrape un dock configuré sans `?dock`. La présence descend dans la
+  charge utile de la régie (`dockConnected`) et sur un petit flux à part,
+  `/display/dock`.
+- **Proposé, jamais imposé.** La fenêtre de la machine affiche un bandeau « Un
+  dock OBS pilote cette salle » : **Passer en mode serveur** ou **Rester sur la
+  console**. Rien ne change sous les yeux de l'opérateur parce qu'un dock s'est
+  ouvert ailleurs. Écarter vaut pour l'onglet ; un dock qui part remet la
+  question à zéro.
+- **Mode serveur** (`/regie/serveur`, aussi dans le menu **Écrans**) : une page
+  sans Vue ni flux d'état, qui ne suit que `/display/dock`. La console ne se
+  rend plus, et le VU-mètre se coupe avec elle — OBS-B cesse d'envoyer ses
+  niveaux. Un bouton **Afficher la console** la ramène (`/regie?console`, qui ne
+  repropose pas aussitôt le mode serveur).
+- **Retour automatique.** Dock disparu depuis dix secondes — OBS fermé ou
+  planté — : la console revient d'elle-même. Le délai absorbe un dock qui se
+  recharge ou une machine qui redémarre ; l'opérateur ne doit jamais rester sans
+  régie du tout.
+
 ### Quand la page elle-même décroche
 
 Deux pannes différentes, et une seule se voyait. La pastille de l'en-tête dit si

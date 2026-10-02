@@ -382,8 +382,12 @@ describe('screens menu', () => {
     await wrapper.get('[data-role="btn-screens"]').trigger('click')
 
     // Opening the projection in the control window would replace the commands with
-    // the room screen, in the middle of an intervention.
-    for (const link of wrapper.findAll('a')) expect(link.attributes('target')).toBe('_blank')
+    // the room screen, in the middle of an intervention. Server mode is the one
+    // exception, and on purpose: replacing this window is all it does.
+    const screens = wrapper.findAll('a').filter((link) => link.attributes('href') !== '/regie/serveur')
+    expect(screens.length).toBeGreaterThan(0)
+    for (const link of screens) expect(link.attributes('target')).toBe('_blank')
+    expect(wrapper.get('a[href="/regie/serveur"]').attributes('target')).toBeUndefined()
   })
 
   it('copies the whole address, not the path it lists', async () => {

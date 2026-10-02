@@ -33,6 +33,7 @@ import { otherRoomsFor, planningsFor } from '@conference-operator/projector/serv
 import { availableFonts, readFont, resolveFontsFolder } from './fonts.js'
 import { renderOverlayPage } from './overlay-page.js'
 import { renderOverlayLivePage } from './overlay-live-page.js'
+import { renderServerModePage } from './server-mode-page.js'
 import {
   developmentAssets,
   productionAssets,
@@ -91,6 +92,11 @@ interface StreamSubscriber {
   partial: boolean
   /** Opened by an OBS Browser Source, whose user agent carries `OBS/<version>`. */
   fromObs: boolean
+  /**
+   * A control app docked in OBS: `dock=1` on the stream, or a `/regie` that OBS
+   * itself loaded — the user agent covers a dock configured without `?dock`.
+   */
+  dock: boolean
   last: Record<string, string>
   /** The last sub-fields sent, per merged field. */
   lastParts: Record<string, Record<string, string>>
@@ -195,6 +201,8 @@ export class DisplayServer {
   private readonly app: FastifyInstance
   private readonly clients = new Set<StreamSubscriber>()
   private readonly levelSubscribers = new Set<(body: string) => void>()
+  /** The server-mode pages, told when a dock comes or goes. */
+  private readonly dockSubscribers = new Set<(body: string) => void>()
   /**
    * How to hang up on each open stream, one entry per connected page.
    *
@@ -284,6 +292,7 @@ export class DisplayServer {
         plannings: [],
         socialWall,
         eventIdentity,
+        dockConnected: this.dockConnected(),
       }
     }
 
@@ -313,7 +322,24 @@ export class DisplayServer {
       plannings: planningsFor(program, state.roomId, this.options.boucle?.() ?? null, this.options.runtime.correctedNow()),
       socialWall,
       eventIdentity,
+      dockConnected: this.dockConnected(),
     }
+  }
+
+  /** At least one control app docked in OBS is following the room. */
+  dockConnected(): boolean {
+    for (const client of this.clients) if (client.dock) return true
+    return false
+  }
+
+  /**
+   * A dock came or went: the control apps learn it through their stream, the
+   * server-mode pages through theirs.
+   */
+  private dockChanged(): void {
+    this.broadcast()
+    const body = JSON.stringify({ connected: this.dockConnected() })
+    for (const write of this.dockSubscribers) write(body)
   }
 
   /**
@@ -670,6 +696,21 @@ export class DisplayServer {
   private registerRoutes(): void {
     this.app.get('/health', async () => ({ ok: true }))
 
+    /**
+     * The control window in server mode: the room keeps running behind it, the
+     * dock in OBS does the steering, and this page renders next to nothing.
+     */
+    this.app.get('/regie/serveur', async (_request, reply) => {
+      reply.header('content-type', 'text/html; charset=utf-8')
+      reply.header('cache-control', 'no-store')
+      return reply.send(
+        renderServerModePage({
+          roomName: this.options.roomName?.() ?? null,
+          eventName: this.options.event?.().name ?? null,
+        }),
+      )
+    })
+
     this.app.get('/display/projector', async (_request, reply) => {
       reply.header('content-type', 'text/html; charset=utf-8')
       // The state is embedded: no blank screen when the Browser Source reloads.
@@ -907,14 +948,14 @@ export class DisplayServer {
      * stay frozen and that has no build step — that is exactly the property we
      * want. The stream is one-way anyway.
      */
-    this.app.get<{ Querystring: { vue?: string; partiel?: string } }>('/display/state', (request, reply) => {
+    this.app.get<{ Querystring: { vue?: string; partiel?: string; dock?: string } }>('/display/state', (request, reply) => {
       reply.raw.writeHead(200, {
         'content-type': 'text/event-stream',
         'cache-control': 'no-cache, no-transform',
         connection: 'keep-alive',
       })
 
-      const query = request.query as { vue?: string; partiel?: string } | undefined
+      const query = request.query as { vue?: string; partiel?: string; dock?: string } | undefined
       const requested = query?.vue
       const view: DisplayView | null =
         requested === 'projecteur' || requested === 'overlay' || requested === 'bandeau' || requested === 'regie'
@@ -929,10 +970,12 @@ export class DisplayServer {
       // `EventSource` reconnection, with no resume logic to write.
       const { fields, parts } = this.serializedFields()
       const keys = DisplayServer.viewKeys(fields, view)
+      const fromObs = /\bOBS\/\d/.test(request.headers['user-agent'] ?? '')
       const subscriber: StreamSubscriber = {
         view,
         partial: query?.partiel === '1',
-        fromObs: /\bOBS\/\d/.test(request.headers['user-agent'] ?? ''),
+        fromObs,
+        dock: view === 'regie' && (query?.dock === '1' || fromObs),
         last: {},
         lastParts: {},
         write,
@@ -942,7 +985,10 @@ export class DisplayServer {
         if (parts[key] != null) subscriber.lastParts[key] = parts[key]
       }
       write(null, DisplayServer.assemble(fields, keys))
+      // The first dock is news for the machine's window; the second is not.
+      const firstDock = subscriber.dock && !this.dockConnected()
       this.clients.add(subscriber)
+      if (firstDock) this.dockChanged()
 
       // A regular heartbeat: keeps the connection open through the proxies and
       // reveals a dead page rather than leaving it frozen in silence. It is now an
@@ -951,8 +997,11 @@ export class DisplayServer {
 
       const hangUp = (): void => {
         clearInterval(heartbeat)
-        this.clients.delete(subscriber)
+        // Called twice on a close (see `/display/audio`): only the pass that really
+        // took the subscriber out may announce the dock's departure.
+        const removed = this.clients.delete(subscriber)
         this.openStreams.delete(hangUp)
+        if (removed && subscriber.dock && !this.dockConnected()) this.dockChanged()
         // Ends the response, which is what `app.close()` is waiting for. Harmless
         // when the page hung up first: the stream is already finished.
         reply.raw.end()
@@ -1007,6 +1056,39 @@ export class DisplayServer {
         // With no subscriber left, OBS-B must stop sending its VU meter fifty
         // times a second.
         if (removed && this.levelSubscribers.size === 0) this.options.onLevelsRequested?.(false)
+        reply.raw.end()
+      }
+      this.openStreams.add(hangUp)
+
+      request.raw.on('close', hangUp)
+    })
+
+    /**
+     * Whether a dock is driving the room, for the server-mode page.
+     *
+     * A stream of its own rather than the state's: that page exists precisely to
+     * stop receiving the room's whole state. `{ connected }` on opening, then at
+     * every change.
+     */
+    this.app.get('/display/dock', (request, reply) => {
+      reply.raw.writeHead(200, {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache, no-transform',
+        connection: 'keep-alive',
+      })
+
+      const write = (body: string): void => {
+        reply.raw.write(`data: ${body}\n\n`)
+      }
+      write(JSON.stringify({ connected: this.dockConnected() }))
+      this.dockSubscribers.add(write)
+
+      const heartbeat = setInterval(() => reply.raw.write(': ping\n\n'), 10_000)
+
+      const hangUp = (): void => {
+        clearInterval(heartbeat)
+        this.dockSubscribers.delete(write)
+        this.openStreams.delete(hangUp)
         reply.raw.end()
       }
       this.openStreams.add(hangUp)

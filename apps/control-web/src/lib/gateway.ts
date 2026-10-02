@@ -82,13 +82,18 @@ export interface StateStream {
  */
 export function localGateway(
   open: (url: string) => StateStream = (url) => new EventSource(url),
+  /**
+   * Opened in an OBS dock: said to the machine, whose own window then offers to
+   * step aside into server mode.
+   */
+  dock = false,
 ): ControlGateway {
   let stream: StateStream | null = null
 
   return {
     start(sink) {
       if (stream != null) return
-      stream = open('/display/state?vue=regie&partiel=1')
+      stream = open(`/display/state?vue=regie&partiel=1${dock ? '&dock=1' : ''}`)
 
       stream.onopen = () => sink.onOutage(false)
       stream.onerror = () => sink.onOutage(true)

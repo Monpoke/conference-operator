@@ -27,6 +27,13 @@ l'opérateur a l'application ouverte et rien d'autre.
    entière dans le presse-papiers — c'est ce qui se colle dans le champ d'une
    Browser Source OBS — et **Ouvrir**. Le menu reste ouvert après une copie :
    les sources de captation se montent l'une après l'autre.
+
+   Si la régie est pilotée depuis un **dock OBS** (adresse `/regie?dock`), la
+   fenêtre propose de passer en **mode serveur** : elle reste ouverte — la
+   fermer arrête toujours la salle — mais n'affiche plus la console. **Afficher
+   la console** la ramène à tout moment, et elle revient d'elle-même une
+   dizaine de secondes après la fermeture d'OBS. Le mode serveur est aussi dans
+   le menu **Écrans**.
 3. Au premier lancement, la régie demande **quelle salle dessert ce poste**.
    Choisir la bonne : la console la retrouvera pré-sélectionnée.
 4. La régie affiche ensuite un **code d'appairage**. Le donner à la personne qui

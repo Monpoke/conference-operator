@@ -4,16 +4,12 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 /**
- * The loop's typefaces, served by the machine itself.
- *
- * The reference design is set in Peace Sans (titles), Gagalin (the welcome),
- * Bukhari Script ("Merci beaucoup !") and Open Sans. The repository is open
- * source and ships only free typefaces: Peace Sans and Open Sans (SIL OFL 1.1)
- * as designed; Gagalin and Bukhari Script, whose licences forbid redistributing
- * them — and, for Bukhari, broadcasting it — give way to Luckiest Guy (Apache
- * 2.0) and Pacifico (SIL OFL 1.1), the closest free faces. The files and their
- * licences live in `apps/room-client/assets/fonts/`, packaged with the client
- * and read from the same folder by the hub's preview.
+ * The loop's base typefaces, served by the machine itself: Open Sans (SIL OFL
+ * 1.1), the texts' face and the whole default theme's. An event's own faces —
+ * Cloud Nord's Peace Sans, Luckiest Guy and Pacifico — travel with its theme
+ * (see ./theme.ts). The files and their licences live in
+ * `apps/room-client/assets/fonts/`, packaged with the client and read from the
+ * same folder by the hub's preview.
  *
  * Only the files that are there are declared: an `@font-face` pointing at a
  * missing file, with `font-display: block`, would hide the text for three
@@ -28,9 +24,6 @@ export interface FontFamily {
 }
 
 export const LOOP_FONTS: FontFamily[] = [
-  { family: 'Peace Sans', weight: 400, names: ['PeaceSans'] },
-  { family: 'Luckiest Guy', weight: 400, names: ['LuckiestGuy', 'LuckiestGuy-Regular'] },
-  { family: 'Pacifico', weight: 400, names: ['Pacifico', 'Pacifico-Regular'] },
   { family: 'Open Sans', weight: 700, names: ['OpenSans-Bold'] },
   { family: 'Open Sans', weight: 800, names: ['OpenSans-ExtraBold'] },
 ]

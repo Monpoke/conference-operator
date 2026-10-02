@@ -1,4 +1,4 @@
-import { renderProjectorDocument, type AvailableFont } from '@conference-operator/projector/server'
+import { renderProjectorDocument, type AvailableFont, type ThemeSource } from '@conference-operator/projector/server'
 
 import { OBS_ON_AIR_CSS, OBS_ON_AIR_JS } from './obs-browser.js'
 import { STREAM_PATCH_JS } from './stream-patch.js'
@@ -32,6 +32,8 @@ export interface ProjectorPageOptions {
   initialPayload?: unknown
   /** The typefaces present on the machine, and where they are served from. */
   fonts?: { base: string; files: AvailableFont[] }
+  /** The event's look, from the hub. `null`: the default theme. */
+  theme?: ThemeSource | null
 }
 
 export function renderProjectorPage(options: ProjectorPageOptions = {}): string {

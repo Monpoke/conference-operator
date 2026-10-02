@@ -1,12 +1,15 @@
 import { PROJECTOR_CSS, PROJECTOR_JS } from '../generated/projector.js'
 import { projectorBody } from '../markup.js'
 import { fontFaces, type AvailableFont } from './fonts.js'
+import { themeStyle, type ThemeSource } from './theme.js'
 
 export interface ProjectorDocumentOptions {
   /** The state embedded in the page, rendered before any connection. */
   initialPayload?: unknown
   /** The typefaces present, and where they are served from. */
   fonts?: { base: string; files: AvailableFont[] }
+  /** The look worn — colours, typefaces, decor. `null`: the default theme. */
+  theme?: ThemeSource | null
   /** CSS added after the page's own — the room's OBS rules. */
   css?: string
   /** Scripts run before the page's — the room's OBS and stream helpers. */
@@ -42,13 +45,14 @@ export function renderProjectorDocument(options: ProjectorDocumentOptions = {}):
 <title>Écran de salle</title>
 <style>
 ${fonts}
+${themeStyle(options.theme)}
 ${PROJECTOR_CSS}
 ${options.css ?? ''}
 </style>
 </head>
 <body data-mode="loop" data-connectivity="OFFLINE">
 ${initialState}
-${projectorBody()}
+${projectorBody(options.theme)}
 ${preview}
 ${scripts}
 <script>${PROJECTOR_JS}</script>

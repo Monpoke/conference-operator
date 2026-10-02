@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "@conference-operator/contract": "workspace:*",
-    "@conference-operator/program": "workspace:*"
+    "@conference-operator/program": "workspace:*",
+    "fflate": "0.8.2"
   },
   "devDependencies": {
     "esbuild": "0.28.2",

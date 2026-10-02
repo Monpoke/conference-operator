@@ -5,15 +5,6 @@
  * band. Same stage, same px, same palette — nothing here overrides the reference.
  */
 
-/* The free stand-ins for the reference's two non-free faces (see
-   packages/projector/src/server/fonts.ts): Luckiest Guy for Gagalin, Pacifico
-   for Bukhari Script. The originals stay first in line, for a machine that
-   has them installed under a licence of its own. */
-:root {
-  --f-accueil: "Gagalin", "Luckiest Guy", "Peace Sans", "Arial Black", sans-serif;
-  --f-script: "Bukhari Script", "Pacifico", "Segoe Script", "Brush Script MT", cursive;
-}
-
 /* The event's logo is the one image of the frame that may be missing. */
 #logo[hidden] { display: none; }
 
@@ -38,7 +29,7 @@
 .bb-etat { flex: none; display: flex; align-items: center; gap: 18px; }
 .bb-etat .pastille { font: 700 24px var(--f-texte); }
 .bb-etat .pastille[hidden] { display: none; }
-.pastille-pause { background: var(--orange); color: #2a1470; }
+.pastille-pause { background: var(--orange); color: var(--sur-orange); }
 .pastille-pause.a-venir { background: rgba(255, 255, 255, .22); color: var(--orange); }
 /* Discreet on purpose: it speaks to the technician, not to the room. */
 .bb-lien { width: 16px; height: 16px; border-radius: 50%; background: #f2b33d; }
@@ -50,16 +41,16 @@ body[data-connectivity="OFFLINE"] .bb-lien { background: #ef5a5a; }
 .salles { display: grid; grid-template-columns: repeat(var(--n, 2), minmax(0, 1fr)); gap: 32px; align-content: center; }
 .salle .carte-tete { grid-template-columns: minmax(0, 1fr) auto; margin-bottom: 18px; }
 .salle-nom { font-size: 30px; font-weight: 800; color: var(--violet); }
-.salle-heure { font: 800 40px var(--f-texte); color: #c77414; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.salle-heure { font: 800 40px var(--f-texte); color: var(--orange-fonce); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .salle-heure.maintenant { color: var(--violet); }
 .salle-titre { font-size: 40px; font-weight: 800; line-height: 1.18; }
-.salle-qui { margin-top: 14px; font-size: 26px; font-weight: 700; color: #6b6590; }
+.salle-qui { margin-top: 14px; font-size: 26px; font-weight: 700; color: var(--carte-discret); }
 
 /* ---------- "Nos réseaux" ---------- */
 .reseaux { display: flex; flex-wrap: wrap; align-content: center; justify-content: center; gap: 40px 48px; }
 .reseau { min-width: 520px; padding: 36px 48px 40px; text-align: center; }
 .reseau-nom { font: 800 30px var(--f-texte); letter-spacing: .12em; text-transform: uppercase; color: var(--violet); }
-.reseau-compte { margin-top: 14px; font: 800 64px / 1.05 var(--f-texte); color: #1d1747; overflow-wrap: anywhere; }
+.reseau-compte { margin-top: 14px; font: 800 64px / 1.05 var(--f-texte); color: var(--carte-texte); overflow-wrap: anywhere; }
 
 /* ---------- Programme: the day in one column, walking round ---------- */
 .scroller { overflow: hidden; }
@@ -95,7 +86,7 @@ body[data-connectivity="OFFLINE"] .bb-lien { background: #ef5a5a; }
 @keyframes beat { from { scale: 1.035; } to { scale: 1; } }
 
 /* ---------- The console's message, on screen ---------- */
-.message.urgent { padding: 60px; border-radius: 28px; background: rgba(122, 20, 32, .88); }
+.message.urgent { padding: 60px; border-radius: 28px; background: rgba(var(--urgent-rgb), .88); }
 .message.warning .message-texte { color: var(--orange); }
 
 /* ---------- The running talk's feedback QR ---------- */
@@ -182,7 +173,7 @@ body:not(.sans-barre-bas) .bande-droite[data-horloge] { display: none; }
   padding: .12em .6em .18em;
   font: 800 30px var(--f-texte);
   background: var(--orange);
-  color: #2a1470;
+  color: var(--sur-orange);
 }
 
 /* ---------- The preview on a phone ----------
@@ -203,7 +194,7 @@ body.pivote #stage { transform: translate(-50%, -50%) rotate(90deg) scale(var(--
   padding: 10px 18px;
   border: 0;
   border-radius: 999px;
-  background: rgba(18, 9, 64, .88);
+  background: rgba(var(--barre-rgb), .88);
   color: #fff;
   font: 700 15px var(--f-texte);
   transition: opacity .6s ease;

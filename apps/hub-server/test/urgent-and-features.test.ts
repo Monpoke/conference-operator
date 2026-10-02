@@ -197,6 +197,39 @@ describe('the room screens, reported back', () => {
     expect(log.map((entry) => entry.action)).toEqual(['shown', 'cleared', 'shown'])
   })
 
+  it("believes the room's heartbeat over a removal that never came", async () => {
+    hub.services.ingest.push(TRACK_1, [
+      screenEvent(TRACK_1, { action: 'shown', text: 'Pause de 5 minutes !', level: 'urgent', expiresAt: null, source: 'regie' }),
+    ])
+    expect(((await rpc('messages/screens', { limit: 10 })).body.json as { current: unknown[] }).current).toHaveLength(1)
+
+    // The room says its screen is back on the loop: the message is gone, whatever
+    // the last report claimed.
+    seq += 1
+    hub.services.ingest.push(TRACK_1, [
+      {
+        id: `01HZZZZZZZZZZZZZZZZZZZZZ${String(seq).padStart(2, '0')}`,
+        roomId: TRACK_1,
+        seq,
+        occurredAt: new Date().toISOString(),
+        monotonicMs: seq * 1000,
+        delivery: 'best-effort',
+        payload: {
+          type: 'room.heartbeat',
+          connectivity: 'ONLINE',
+          sceneRole: null,
+          recording: false,
+          streaming: false,
+          outboxDepth: 0,
+          programContentHash: null,
+          displayMode: 'loop',
+        },
+      },
+    ])
+    expect(((await rpc('messages/screens', { limit: 10 })).body.json as { current: unknown[] }).current).toEqual([])
+    expect(hallUrgentMessage(hub.services)).toBeNull()
+  })
+
   it('drops an expired message from what is on screen', async () => {
     const past = new Date(Date.now() - 60_000).toISOString()
     hub.services.ingest.push(TRACK_1, [

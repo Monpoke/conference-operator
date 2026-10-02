@@ -19,7 +19,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "build": "node scripts/build.mjs",
-    "pack": "node scripts/build.mjs && streamdeck pack io.github.monpoke.conference-operator.sdPlugin --output release --force"
+    "pack": "node scripts/build.mjs && node scripts/pack.mjs"
   },
   "dependencies": {
     "@conference-operator/contract": "workspace:*",

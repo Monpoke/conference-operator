@@ -140,9 +140,8 @@ if wants streamdeck; then
   # The manifest wants four numbers: the release's three, then 0.
   SD_VERSION="$(echo "$VERSION" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+').0"
   pnpm --filter @conference-operator/streamdeck-plugin build
-  pnpm --filter @conference-operator/streamdeck-plugin exec streamdeck pack \
-    io.github.monpoke.conference-operator.sdPlugin --output release --force \
-    --version "$SD_VERSION" --no-update-check
+  # From a copy: `pack --version` rewrites the manifest it packs.
+  pnpm --filter @conference-operator/streamdeck-plugin exec node scripts/pack.mjs "$SD_VERSION"
 fi
 
 DIGEST=""

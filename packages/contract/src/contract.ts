@@ -44,6 +44,7 @@ import {
   wallsIoStatusSchema,
 } from './wall.js'
 import { imageRefSchema, sponsorPageSchema } from './boucle.js'
+import { themeInfoSchema } from './theme.js'
 import {
   storageCheckSchema,
   vodFolderSchema,
@@ -760,6 +761,21 @@ export const contract = {
     previews: oc
       .input(z.object({ refs: z.array(z.string().max(600)).max(200) }))
       .output(z.record(z.string(), z.string().nullable())),
+    /**
+     * The theme packages the hub keeps, for the console to choose among. The
+     * choice itself is a loop setting (`boucle.theme`), saved like the others.
+     */
+    themes: oc.output(z.array(themeInfoSchema)),
+    /**
+     * Imports a theme package (the zip of `theme.json` and its files), checked
+     * whole: a package refused says every reason why. Importing the same content
+     * twice gives the same theme.
+     */
+    importTheme: oc
+      .input(z.object({ base64: z.string().min(1).max(11_500_000) }))
+      .output(themeInfoSchema),
+    /** Forgets a package. The theme the screens wear cannot be removed. */
+    removeTheme: oc.input(z.object({ sha: z.string().regex(/^[0-9a-f]{64}$/) })).output(z.object({ ok: z.literal(true) })),
   },
 
   ingest: {

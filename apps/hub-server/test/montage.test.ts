@@ -27,6 +27,7 @@ const HABILLAGE: VodHabillage = {
   speakers: [],
   merci: 'Merci à nos sponsors',
   sponsorPages: [],
+  theme: null,
 }
 
 let db: HubDatabase

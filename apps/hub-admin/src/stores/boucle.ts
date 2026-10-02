@@ -3,6 +3,7 @@ import {
   type Boucle,
   type SponsorPage,
   type SponsorRef,
+  type ThemeInfo,
 } from '@conference-operator/contract'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
@@ -30,6 +31,8 @@ export interface Catalogue {
   pagesParDefaut: SponsorPage[]
 }
 
+/** A theme package, at most — the hub's ceiling. */
+const MAX_THEME_BYTES = 8 * 1024 * 1024
 /** A reference is at most this long once in base64 — the contract's ceiling. */
 const MAX_BASE64 = 3_000_000
 /** The side an uploaded image is reduced to: twice what a 1920 stage shows of a logo. */
@@ -44,14 +47,18 @@ export const useBoucleStore = defineStore('boucle', () => {
   const previews = ref<Record<string, string | null>>({})
   /** Bumped on every save: the preview reloads on it. */
   const revision = ref(0)
+  /** The theme packages the hub keeps. Which one the screens wear is `boucle.theme`. */
+  const themes = ref<ThemeInfo[]>([])
 
   const session = useSessionStore()
 
   async function load(): Promise<void> {
-    const [settings, catalogueData] = await Promise.all([
+    const [settings, catalogueData, themeList] = await Promise.all([
       session.client.rpc.settings.get(),
       session.client.rpc.boucle.catalogue(),
+      session.client.rpc.boucle.themes(),
     ])
+    themes.value = themeList
     boucle.value = settings.boucle
     openFeedbackProjectId.value = settings.openFeedbackProjectId ?? null
     catalogue.value = catalogueData
@@ -101,6 +108,22 @@ export const useBoucleStore = defineStore('boucle', () => {
     return reference
   }
 
+  /**
+   * Sends a theme package to the hub, which checks it whole: a refusal lists
+   * every reason, reported by the client like any refusal.
+   */
+  async function importTheme(file: Blob): Promise<ThemeInfo> {
+    if (file.size > MAX_THEME_BYTES) throw new ImageRefused('Thème trop lourd : 8 Mo au plus')
+    const info = await session.client.rpc.boucle.importTheme({ base64: await toBase64(file) })
+    themes.value = await session.client.rpc.boucle.themes()
+    return info
+  }
+
+  async function removeTheme(sha: string): Promise<void> {
+    await session.client.rpc.boucle.removeTheme({ sha })
+    themes.value = themes.value.filter((theme) => theme.sha !== sha)
+  }
+
   /** Where to show a reference from — the address itself while the hub has not said. */
   function previewOf(reference: string | null): string | null {
     if (reference == null) return null
@@ -119,6 +142,9 @@ export const useBoucleStore = defineStore('boucle', () => {
     saveSections,
     revision,
     upload,
+    themes,
+    importTheme,
+    removeTheme,
     previewOf,
   }
 })

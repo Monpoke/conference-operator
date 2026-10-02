@@ -32,6 +32,8 @@ export {
   checkThemeSvg,
   parseThemePackage,
   readThemeFolder,
+  resolveThemesFolder,
+  shippedThemeFolders,
   THEME_FILE_TYPES,
   THEME_MAX_BYTES,
   themeFileType,

@@ -11,7 +11,8 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "theme:pack": "tsx scripts/theme-pack.ts"
   },
   "dependencies": {
     "@conference-operator/contract": "workspace:*",

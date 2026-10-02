@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { implement, withEventMeta } from '@orpc/server'
 import { ORPCError } from '@orpc/server'
+import { THEME_MAX_BYTES, ThemePackageError } from '@conference-operator/projector/server'
 import { CONTROL_WATCH_FLOOR_MS } from '@conference-operator/contract'
 import { hashPin } from './pin.js'
 import { requireUrgentProof, urgentProofOf } from './urgent-proof.js'
@@ -1121,6 +1122,12 @@ export const router = os.router({
     update: os.settings.update
       .use(operatorCan('settings:update'))
       .handler(({ input, context }) => {
+        // A theme the hub does not keep would leave every room on the default one,
+        // saying nothing: refused here, where the console can say why.
+        const theme = input.boucle?.theme
+        if (theme != null && context.services.themes.info(theme.sha) == null) {
+          throw new ORPCError('BAD_REQUEST', { message: 'Ce thème n\'est plus sur le hub : importez-le à nouveau' })
+        }
         const settings = context.services.settings.update(input)
         /**
          * The loop's images, in the background — as at a program import.
@@ -1182,6 +1189,34 @@ export const router = os.router({
         ]),
       ),
     ),
+
+    themes: os.boucle.themes.use(operatorCan('settings:read')).handler(({ context }) => context.services.themes.list()),
+
+    importTheme: os.boucle.importTheme
+      .use(operatorCan('settings:update'))
+      .handler(({ input, context }) => {
+        const zip = Buffer.from(input.base64, 'base64')
+        if (zip.byteLength === 0 || zip.byteLength > THEME_MAX_BYTES) {
+          throw new ORPCError('BAD_REQUEST', { message: `Thème trop lourd : ${THEME_MAX_BYTES / 1024 / 1024} Mo au plus` })
+        }
+        try {
+          return context.services.themes.import(zip)
+        } catch (error) {
+          if (!(error instanceof ThemePackageError)) throw error
+          // Every reason at once: the organiser fixes the package in one go.
+          throw new ORPCError('BAD_REQUEST', { message: `Thème refusé :\n${error.problems.join('\n')}`, data: { problems: error.problems } })
+        }
+      }),
+
+    removeTheme: os.boucle.removeTheme
+      .use(operatorCan('settings:update'))
+      .handler(({ input, context }) => {
+        if (context.services.settings.get().boucle.theme?.sha === input.sha) {
+          throw new ORPCError('BAD_REQUEST', { message: 'Ce thème est celui des écrans : choisissez-en un autre avant de le supprimer' })
+        }
+        context.services.themes.remove(input.sha)
+        return { ok: true as const }
+      }),
   },
 
   ingest: {

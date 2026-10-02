@@ -8,6 +8,7 @@ import {
   type SessionState,
   type SessionStateView,
   type SessionStatus,
+  type ThemeRef,
 } from '@conference-operator/contract'
 import {
   isDecisionApplicable,
@@ -96,6 +97,30 @@ export class SettingsService {
       .onConflictDoUpdate({ target: hubSetting.key, set: values })
       .run()
     return next
+  }
+
+  /**
+   * A hub whose loop settings predate themes keeps the look it projected.
+   *
+   * Before themes there was one look, Cloud Nord's, built into the code: a hub
+   * with settings saved then — and so no `boucle.theme` written — wore it. It gets
+   * the shipped Cloud Nord theme chosen, once; a fresh hub, with no settings yet,
+   * starts on the default theme. Every save writes the key, so this never runs
+   * twice. Returns the theme adopted, or `null`.
+   */
+  adoptLegacyTheme(theme: ThemeRef | null): ThemeRef | null {
+    if (theme == null) return null
+    const row = this.db.select().from(hubSetting).where(eq(hubSetting.key, SETTINGS_KEY)).get()
+    if (row == null) return null
+    let raw: { boucle?: Record<string, unknown> }
+    try {
+      raw = JSON.parse(row.valueJson) as typeof raw
+    } catch {
+      return null
+    }
+    if (raw.boucle != null && 'theme' in raw.boucle) return null
+    this.update({ boucle: { theme: { id: theme.id, nom: theme.nom, sha: theme.sha } } })
+    return theme
   }
 
   /** The control app's PIN, hashed — `null` when none is set. Never sent to a page. */

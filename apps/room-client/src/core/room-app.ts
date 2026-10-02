@@ -3,6 +3,7 @@ import { PROTOCOL_VERSION, type BroadcastMessage } from '@conference-operator/co
 import { UrgentPinGate } from './pin.js'
 import { join } from 'node:path'
 import { AssetCache } from './assets.js'
+import { ThemeCache } from './themes.js'
 import { DisplayServer, displayViewOf } from './display-server.js'
 import { HubLink } from './hub-link.js'
 import { ObsController } from './obs.js'
@@ -200,6 +201,8 @@ export interface RoomAppOptions {
 export class RoomApp implements ControlTarget {
   readonly store: LocalStore
   readonly assets: AssetCache
+  /** The loop's theme packages, fetched from the hub at sync and kept for offline. */
+  readonly themes: ThemeCache
   readonly runtime: RoomRuntime
   readonly display: DisplayServer
   private link: HubLink | null = null
@@ -285,6 +288,7 @@ export class RoomApp implements ControlTarget {
   constructor(private readonly options: RoomAppOptions) {
     this.store = new LocalStore(join(options.dataDir, 'salle.db'))
     this.assets = new AssetCache(this.store, join(options.dataDir, 'assets'), options.hubOrigin)
+    this.themes = new ThemeCache(join(options.dataDir, 'themes'), options.hubOrigin)
     this.runtime = new RoomRuntime(
       this.store,
       {
@@ -375,6 +379,9 @@ export class RoomApp implements ControlTarget {
       screens: () => this.store.settings().screens,
       event: () => this.store.settings().event,
       boucle: () => this.store.settings().boucle,
+      // The theme chosen on the hub, once the room holds it; the default one until then.
+      theme: () => this.themes.source(this.store.settings().boucle.theme),
+      themeFile: (sha, path) => this.themes.file(sha, path),
       socialWall: () => this.store.settings().wall,
       // The partners' figures: through the outbox, which holds them across an outage.
       onWallImpressions: (counts) => this.emit({ type: 'wall.impressions', counts }),
@@ -912,6 +919,11 @@ export class RoomApp implements ControlTarget {
       const loopImages = await this.assets.prefetchUrls(boucleImageRefs(this.store.settings().boucle))
       if (loopImages.failed.length > 0) {
         this.store.log('warn', 'images de la boucle', { echecs: loopImages.failed.length })
+      }
+      // The loop's theme, before the screen is told: the page reloads into it.
+      const theme = this.store.settings().boucle.theme
+      if ((await this.themes.ensure(theme)) === 'echec') {
+        this.store.log('warn', 'thème de la boucle', { theme: theme?.nom, sha: theme?.sha })
       }
       this.display.refreshBoucle()
       await this.syncWall()

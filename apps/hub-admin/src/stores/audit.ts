@@ -128,6 +128,8 @@ const ACTIONS: Record<string, string> = {
   'messages.send': 'Message envoyé',
   'settings.update': 'Réglages modifiés',
   'boucle.uploadImage': 'Image de la boucle envoyée',
+  'boucle.importTheme': 'Thème de la boucle importé',
+  'boucle.removeTheme': 'Thème de la boucle supprimé',
   'wallsio.setToken': 'Jeton walls.io modifié',
   'rooms.setStream': 'Diffusion configurée',
   'rooms.resync': 'Resynchronisation demandée',

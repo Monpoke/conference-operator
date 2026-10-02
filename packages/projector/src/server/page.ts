@@ -50,7 +50,7 @@ ${PROJECTOR_CSS}
 ${options.css ?? ''}
 </style>
 </head>
-<body data-mode="loop" data-connectivity="OFFLINE">
+<body data-mode="loop" data-connectivity="OFFLINE" data-theme="${options.theme?.sha ?? ''}">
 ${initialState}
 ${projectorBody(options.theme)}
 ${preview}

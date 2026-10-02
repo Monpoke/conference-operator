@@ -11,6 +11,7 @@ import {
   otherRoomsFor,
   planningsFor,
   renderProjectorDocument,
+  type ThemeSource,
 } from '@conference-operator/projector/server'
 import type { Services } from '../context.js'
 
@@ -31,6 +32,8 @@ export interface BouclePreviewOptions {
   jour?: string | null
   /** Where the typefaces are, and the address they are served from. */
   fonts: { folder: string | null; base: string }
+  /** The theme the rooms wear, served by the hub. `null`: the default one. */
+  theme?: ThemeSource | null
   /**
    * Where the page fetches its state again, every twenty seconds — the public
    * and global screens stay on for hours. `null` = drawn once (a console
@@ -64,6 +67,7 @@ export async function renderBouclePreview(services: Services, options: BouclePre
     initialPayload: await previewPayload(services, options),
     preview: true,
     fonts: { base: options.fonts.base, files: availableFonts(options.fonts.folder) },
+    theme: options.theme,
     after: [
       // The hall screen every five seconds: it relays the rooms' urgent messages,
       // and twenty seconds is long when the message is "evacuate".

@@ -10,6 +10,7 @@ import MessagesPanel from '../components/boucle/MessagesPanel.vue'
 import PlanningsPanel from '../components/boucle/PlanningsPanel.vue'
 import PreviewPanel from '../components/boucle/PreviewPanel.vue'
 import SponsorPagesPanel from '../components/boucle/SponsorPagesPanel.vue'
+import ThemePanel from '../components/boucle/ThemePanel.vue'
 import WallsioPanel from '../components/boucle/WallsioPanel.vue'
 
 /**
@@ -28,6 +29,7 @@ import WallsioPanel from '../components/boucle/WallsioPanel.vue'
     <div class="col-span-full">
       <PreviewPanel />
     </div>
+    <ThemePanel />
     <DureesPanel />
     <IdentityPanel />
     <MessagesPanel />

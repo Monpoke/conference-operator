@@ -2,7 +2,7 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { VodClip, VodHabillage } from '@conference-operator/contract'
-import { availableFonts, renderVodDocument, resolveFontsFolder } from '@conference-operator/projector/server'
+import { availableFonts, renderVodDocument, resolveFontsFolder, type ThemeSource } from '@conference-operator/projector/server'
 import type { Chrome } from './chrome.js'
 import { FFMPEG, start, write } from './ffmpeg.js'
 
@@ -77,6 +77,8 @@ export interface RenderClipOptions {
   clip: VodClip
   /** Images already inlined (`inlineImages`): nothing is fetched during capture. */
   habillage: VodHabillage
+  /** The loop's theme, laid out in the work folder (`themeForCapture`). `null`: the default one. */
+  theme?: ThemeSource | null
   format?: ClipFormat
   /** An audio file under the clip, or `null` for silence. */
   jingle?: string | null
@@ -102,6 +104,7 @@ export async function renderClip(options: RenderClipOptions): Promise<{ duration
     clip: options.clip,
     habillage: options.habillage,
     capture: true,
+    theme: options.theme ?? null,
     fonts: folder == null ? undefined : { base: pathToFileURL(folder).href, files: availableFonts(folder) },
   })
   const page = join(options.workDir, `${options.clip}.html`)

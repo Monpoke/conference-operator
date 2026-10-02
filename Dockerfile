@@ -147,6 +147,9 @@ COPY apps/hub-server/ apps/hub-server/
 # The loop's typefaces, for the console's preview of the room screen: the hub
 # serves the same files the rooms do (`/boucle/polices/…`).
 COPY apps/room-client/assets/fonts/ apps/room-client/assets/fonts/
+# The themes shipped with the code (Cloud Nord's): kept by the hub at start-up,
+# for the console to choose — see `ThemeStore.seed`.
+COPY themes/ themes/
 
 # The two bundles, built in the previous stage. The hub serves them, it does not
 # import them: that is what lets `pnpm typecheck` and `pnpm test` never trigger a

@@ -1,6 +1,7 @@
 import { ORPCError } from '@orpc/server'
 import type { Auth } from './auth.js'
 import type { AssetStore } from './services/assets.js'
+import type { ThemeStore } from './services/themes.js'
 import type { ProgramService } from './services/program.js'
 import type { AuditService } from './services/audit.js'
 import type { CommandService } from './services/commands.js'
@@ -35,6 +36,8 @@ export interface Services {
   audit: AuditService
   programs: ProgramService
   assets: AssetStore
+  /** The loop's theme packages, beside the images. */
+  themes: ThemeStore
   rooms: RoomService
   devices: DeviceService
   commands: CommandService

@@ -29,7 +29,7 @@ import type { InputLevel } from './obs.js'
 import type { DisplayState, RoomRuntime } from './runtime.js'
 import { renderProjectorPage } from './display-page.js'
 import { boucleQrUrls, buildBoucleView, buildWallCards } from './boucle-view.js'
-import { otherRoomsFor, planningsFor } from '@conference-operator/projector/server'
+import { otherRoomsFor, planningsFor, type ThemeSource } from '@conference-operator/projector/server'
 import { availableFonts, readFont, resolveFontsFolder } from './fonts.js'
 import { renderOverlayPage } from './overlay-page.js'
 import { renderOverlayLivePage } from './overlay-live-page.js'
@@ -164,6 +164,12 @@ export interface DisplayServerOptions {
    * scenes the program alone can fill.
    */
   boucle?: () => Boucle
+  /**
+   * The theme the room holds for the loop, and its files. Absent, or `null`: the
+   * default theme — a test, a preview, or a theme not fetched yet.
+   */
+  theme?: () => ThemeSource | null
+  themeFile?: (sha: string, path: string) => { bytes: Uint8Array; type: string } | null
   /**
    * The social wall's posts, read back from the local cache.
    *
@@ -364,7 +370,8 @@ export class DisplayServer {
     const settings = this.options.boucle?.()
     if (settings == null) return null
     const project = this.options.roomConfig?.()?.openFeedbackProjectId ?? null
-    const key = JSON.stringify([settings, cached?.contentHash ?? null, project, shortName, this.qrGeneration])
+    const themeSha = this.options.theme?.()?.sha ?? null
+    const key = JSON.stringify([settings, cached?.contentHash ?? null, project, shortName, this.qrGeneration, themeSha])
     if (key === this.boucleKey && this.boucleCache != null) return this.boucleCache
     this.boucleKey = key
     this.boucleCache = buildBoucleView({
@@ -374,6 +381,7 @@ export class DisplayServer {
       eventShortName: shortName,
       localize: (ref) => this.options.assets.localizeRef(ref),
       qr: (url) => this.qrFor(url),
+      themeSha,
     })
     return this.boucleCache
   }
@@ -728,8 +736,18 @@ export class DisplayServer {
           // Read at every load: a typeface dropped in the folder shows at the
           // next reload of the Browser Source, without restarting the room.
           fonts: { base: '/fonts', files: availableFonts(this.fontsFolder) },
+          theme: this.options.theme?.() ?? null,
         }),
       )
+    })
+
+    /** The theme's fonts and images — nothing else of the package is served. Never changes under its sha. */
+    this.app.get<{ Params: { sha: string; '*': string } }>('/display/theme/:sha/*', async (request, reply) => {
+      const file = this.options.themeFile?.(request.params.sha, request.params['*']) ?? null
+      if (file == null) return reply.status(404).send({ error: 'fichier absent du thème' })
+      reply.header('content-type', file.type)
+      reply.header('cache-control', 'public, max-age=31536000, immutable')
+      return reply.send(Buffer.from(file.bytes))
     })
 
     /** The loop's typefaces — the allow-list is in `readFont`. */
@@ -752,7 +770,7 @@ export class DisplayServer {
 
     this.app.get('/display/overlay', async (_request, reply) => {
       reply.header('content-type', 'text/html; charset=utf-8')
-      return reply.send(renderOverlayPage({ initialPayload: this.payload() }))
+      return reply.send(renderOverlayPage({ initialPayload: this.payload(), theme: this.options.theme?.() ?? null }))
     })
 
     this.registerControl()

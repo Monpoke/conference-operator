@@ -17,6 +17,7 @@
     "release": "bash scripts/tag-release.sh",
     "reset:dev": "bash scripts/reset-dev.sh",
     "test": "turbo run test",
+    "theme:pack": "pnpm --filter @conference-operator/projector theme:pack",
     "typecheck": "turbo run typecheck"
   },
   "devDependencies": {

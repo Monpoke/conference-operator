@@ -14,6 +14,8 @@ import { DEFAULT_THEME } from './default-theme.js'
 /** A theme and the address its files (fonts, images) are served from. */
 export interface ThemeSource {
   bundle: ThemeBundle
+  /** The package's sha, when it is one: the page says which theme it wears, and reloads when told another. */
+  sha?: string
   /** No trailing slash: `/display/theme/<sha>`, `file:///…/themes/cloudnord`. */
   base: string
 }

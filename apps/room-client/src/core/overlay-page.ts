@@ -119,7 +119,7 @@ ${themeTokens(themeOrDefault(options.theme).bundle)}
               -webkit-background-clip: text; background-clip: text; color: transparent; }
 </style>
 </head>
-<body data-card="hidden" data-question="hidden">
+<body data-card="hidden" data-question="hidden" data-theme="${options.theme?.sha ?? ''}">
 ${initialState}
 <div id="stage">
 <svg id="bg" width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">
@@ -360,13 +360,18 @@ ${initialState}
   if (embedded) { currentState = JSON.parse(embedded.textContent); render(currentState) }
 
 ${STREAM_PATCH_JS}
+  // Another theme: its colours and frame are baked into the page — it reloads to wear them.
+  const otherTheme = (state) => state.boucle != null && (state.boucle.theme ?? '') !== (document.body.dataset.theme ?? '')
   if (typeof EventSource !== 'undefined' && !window.__PREVIEW__) {
     const stream = new EventSource('/display/state?vue=overlay&partiel=1')
     stream.onmessage = (event) => {
-      currentState = JSON.parse(event.data); render(currentState)
+      currentState = JSON.parse(event.data)
+      if (otherTheme(currentState)) return location.reload()
+      render(currentState)
     }
     stream.addEventListener("patch", (event) => {
       currentState = applyStreamPatch(currentState, JSON.parse(event.data))
+      if (otherTheme(currentState)) return location.reload()
       render(currentState)
     })
   }

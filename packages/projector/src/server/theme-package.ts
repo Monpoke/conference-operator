@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
-import { readdirSync, readFileSync, statSync } from 'node:fs'
-import { join, relative, sep } from 'node:path'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { dirname, join, relative, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { unzipSync, zipSync } from 'fflate'
 import { cheminThemeSchema, themeManifestSchema, type ThemeBundle } from '@conference-operator/contract'
 
@@ -209,4 +210,32 @@ export function readThemeFolder(folder: string): ThemeFiles {
   }
   walk(folder)
   return files
+}
+
+/**
+ * The folder of the themes shipped with the code (`themes/` at the repository's
+ * root: Cloud Nord's), searched like the fonts: `THEMES_DIR`, or found by walking
+ * up — from its sources under `tsx`, or from the hub's image, which copies the
+ * repository as is.
+ */
+export function resolveThemesFolder(): string | null {
+  const configured = process.env.THEMES_DIR
+  if (configured && existsSync(configured)) return configured
+  let directory = dirname(fileURLToPath(import.meta.url))
+  for (;;) {
+    const candidate = join(directory, 'themes')
+    if (existsSync(candidate) && existsSync(join(directory, 'pnpm-workspace.yaml'))) return candidate
+    const parent = dirname(directory)
+    if (parent === directory) return null
+    directory = parent
+  }
+}
+
+/** The themes shipped in a folder, one per sub-folder holding a `theme.json`. */
+export function shippedThemeFolders(folder: string | null): string[] {
+  if (folder == null) return []
+  return readdirSync(folder)
+    .sort()
+    .map((name) => join(folder, name))
+    .filter((path) => existsSync(join(path, 'theme.json')))
 }

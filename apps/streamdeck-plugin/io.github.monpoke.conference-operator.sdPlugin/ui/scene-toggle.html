@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Bascule de scène</title>
+<!-- sdpi-components: the settings controls the Elgato template uses. Loaded on opening the panel. -->
+<script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+</head>
+<body>
+<sdpi-item label="Scène 1">
+  <sdpi-select setting="a" default="LIVE">
+    <option value="LIVE">Direct</option>
+    <option value="HOLD">Habillage</option>
+    <option value="RELAY">Relais</option>
+    <option value="TALK">Talk (hors régie)</option>
+    <option value="CAM_ONLY">Caméra (hors régie)</option>
+    <option value="SLIDES_ONLY">Slides (hors régie)</option>
+  </sdpi-select>
+</sdpi-item>
+<sdpi-item label="Scène 2">
+  <sdpi-select setting="b" default="HOLD">
+    <option value="LIVE">Direct</option>
+    <option value="HOLD">Habillage</option>
+    <option value="RELAY">Relais</option>
+    <option value="TALK">Talk (hors régie)</option>
+    <option value="CAM_ONLY">Caméra (hors régie)</option>
+    <option value="SLIDES_ONLY">Slides (hors régie)</option>
+  </sdpi-select>
+</sdpi-item>
+<p>Chaque appui envoie l'autre scène que celle à l'antenne. La touche s'allume quand la scène 1 est à l'antenne.</p>
+</body>
+</html>

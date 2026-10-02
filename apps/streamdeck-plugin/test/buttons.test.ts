@@ -33,6 +33,18 @@ describe('what a key shows', () => {
     expect(faceOf({ kind: 'scene', role: 'HOLD' }, payload(), NOW)).toMatchObject({ title: 'Habillage', on: true })
   })
 
+  it('toggles from what is really on air, and says which scene that is', () => {
+    expect(faceOf({ kind: 'scene-toggle' }, payload({ sceneRole: 'LIVE' }), NOW)).toMatchObject({ title: 'Direct', on: true })
+    expect(faceOf({ kind: 'scene-toggle' }, payload({ sceneRole: 'HOLD' }), NOW)).toMatchObject({ title: 'Habillage', on: false })
+    expect(decide({ kind: 'scene-toggle' }, payload({ sceneRole: 'LIVE' }), 'short')).toEqual({
+      gesture: { action: 'scene.set', role: 'HOLD' },
+    })
+    // Neither of the two on air (a relay): back to the first.
+    expect(decide({ kind: 'scene-toggle' }, payload({ sceneRole: 'RELAY' }), 'short')).toEqual({
+      gesture: { action: 'scene.set', role: 'LIVE' },
+    })
+  })
+
   it('lights the scene and the screen the room is really on', () => {
     expect(faceOf({ kind: 'scene', role: 'LIVE' }, payload({ sceneRole: 'LIVE' }), NOW).on).toBe(true)
     expect(faceOf({ kind: 'scene', role: 'LIVE' }, payload(), NOW).on).toBe(false)

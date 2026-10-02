@@ -33,6 +33,7 @@ export type Decision = { gesture: Record<string, unknown> } | { hint: string } |
 
 export type ButtonSettings =
   | { kind: 'scene'; role?: string }
+  | { kind: 'scene-toggle'; a?: string; b?: string }
   | { kind: 'display'; mode?: string }
   | { kind: 'recording' }
   | { kind: 'mark'; mark?: 'debut' | 'fin' | 'chapitre' }
@@ -126,6 +127,17 @@ export function faceOf(
         on: settings.role != null && state.sceneRole === settings.role,
         offline: false,
       }
+    case 'scene-toggle': {
+      const [a, b] = togglePair(settings)
+      const current = state.sceneRole
+      const label = (role: string) => SCENE_LABELS[role] ?? role
+      return {
+        // What is on air, said plainly; anything else on air — a relay — shows both.
+        title: current === a || current === b ? fit(label(current)) : `${label(a)}\n/ ${label(b)}`,
+        on: current === a,
+        offline: false,
+      }
+    }
     case 'display':
       return {
         title: fit(settings.mode == null ? 'Écran ?' : (DISPLAY_LABELS[settings.mode] ?? settings.mode)),
@@ -196,6 +208,12 @@ export function decide(settings: ButtonSettings, payload: DisplayPayload | null,
   switch (settings.kind) {
     case 'scene':
       return settings.role == null ? { hint: 'Choisir une scène' } : { gesture: { action: 'scene.set', role: settings.role } }
+    case 'scene-toggle': {
+      // The other one than what is **really** on air — not what this key last sent:
+      // a switch made from the control app must not leave the key one step behind.
+      const [a, b] = togglePair(settings)
+      return { gesture: { action: 'scene.set', role: state.sceneRole === a ? b : a } }
+    }
     case 'display':
       return settings.mode == null ? { hint: 'Choisir un écran' } : { gesture: { action: 'display.set', mode: settings.mode } }
     case 'recording':
@@ -223,6 +241,11 @@ export function decide(settings: ButtonSettings, payload: DisplayPayload | null,
     case 'status':
       return null
   }
+}
+
+/** The two scenes a toggle alternates between: Direct and Habillage unless set otherwise. */
+function togglePair(settings: { a?: string; b?: string }): [string, string] {
+  return [settings.a ?? 'LIVE', settings.b ?? 'HOLD']
 }
 
 /** Short or long, from how long the key was held. */

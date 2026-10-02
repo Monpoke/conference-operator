@@ -2900,7 +2900,9 @@ les mêmes gestes (`POST /control/action`). Rien n'a changé côté poste ni hub
 - **Les touches montrent ce que fait la salle**, pas ce qu'elles ont fait : une
   scène basculée depuis la régie, la console ou un téléphone allume la touche
   correspondante. Un seul flux pour tout le Stream Deck, pas un par touche.
-- **Neuf touches** : scène, écran de salle, enregistrement (avec sa durée),
+- **Dix touches** : scène, bascule de scène (Direct ⇄ Habillage, d'après la
+  scène réellement à l'antenne — jamais décalée par une bascule faite ailleurs),
+  écran de salle, enregistrement (avec sa durée),
   marque (début, fin, chapitre — ✓ quand la marque est posée), direct, source
   audio, conférence (démarrer / terminer), retirer le message, statut (OBS-A,
   OBS-B, hub).

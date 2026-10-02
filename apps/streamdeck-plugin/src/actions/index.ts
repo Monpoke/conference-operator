@@ -7,6 +7,11 @@ export class SceneAction extends RoomAction {
   readonly kind = 'scene' as const
 }
 
+export class SceneToggleAction extends RoomAction {
+  override readonly manifestId = `${PLUGIN_UUID}.scene-toggle`
+  readonly kind = 'scene-toggle' as const
+}
+
 export class DisplayAction extends RoomAction {
   override readonly manifestId = `${PLUGIN_UUID}.display`
   readonly kind = 'display' as const
@@ -49,6 +54,7 @@ export class StatusAction extends RoomAction {
 
 export const ACTION_CLASSES = [
   SceneAction,
+  SceneToggleAction,
   DisplayAction,
   RecordingAction,
   MarkAction,

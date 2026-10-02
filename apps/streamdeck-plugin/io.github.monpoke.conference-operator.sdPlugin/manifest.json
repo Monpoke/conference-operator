@@ -53,6 +53,30 @@
       "PropertyInspectorPath": "ui/scene.html"
     },
     {
+      "UUID": "io.github.monpoke.conference-operator.scene-toggle",
+      "Name": "Bascule de scène",
+      "Tooltip": "Alterne entre deux scènes (Direct / Habillage) — d'après la scène réellement à l'antenne",
+      "Icon": "imgs/actions/scene-toggle/icon",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/scene-toggle/off",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        },
+        {
+          "Image": "imgs/actions/scene-toggle/on",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ],
+      "DisableAutomaticStates": true,
+      "UserTitleEnabled": false,
+      "PropertyInspectorPath": "ui/scene-toggle.html"
+    },
+    {
       "UUID": "io.github.monpoke.conference-operator.display",
       "Name": "Écran de salle",
       "Tooltip": "Change ce que montre l'écran de la salle",

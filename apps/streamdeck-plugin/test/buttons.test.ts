@@ -28,6 +28,11 @@ describe('what a key shows', () => {
     expect(faceOf({ kind: 'recording' }, null, NOW)).toMatchObject({ offline: true, on: false })
   })
 
+  it("names the scenes as the control app's Projection panel does", () => {
+    expect(faceOf({ kind: 'scene', role: 'LIVE' }, payload(), NOW).title).toBe('Direct')
+    expect(faceOf({ kind: 'scene', role: 'HOLD' }, payload(), NOW)).toMatchObject({ title: 'Habillage', on: true })
+  })
+
   it('lights the scene and the screen the room is really on', () => {
     expect(faceOf({ kind: 'scene', role: 'LIVE' }, payload({ sceneRole: 'LIVE' }), NOW).on).toBe(true)
     expect(faceOf({ kind: 'scene', role: 'LIVE' }, payload(), NOW).on).toBe(false)

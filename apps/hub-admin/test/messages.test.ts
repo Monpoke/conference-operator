@@ -39,7 +39,7 @@ function stub(): { calls: Call[]; client: unknown } {
         rooms: { list: note('rooms/list', ROOMS) },
         messages: {
           send: note('messages/send', { ok: true }),
-          urgentProof: note('messages/urgentProof', { method: 'password', fresh: false }),
+          urgentProof: note('messages/urgentProof', { password: true, sso: false, fresh: false }),
           clear: note('messages/clear', { ok: true }),
           screens: note('messages/screens', {
             current: [

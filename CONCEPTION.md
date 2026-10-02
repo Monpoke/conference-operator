@@ -2069,12 +2069,13 @@ Ce qui a changé :
 part** (`message:urgent` — groupe admin et groupe « Messages urgents », qui
 s'ajoute à un autre) :
 
-- **console**, compte à mot de passe : le mot de passe est ressaisi, vérifié par
-  Better Auth (`verifyPassword`) ;
-- **console**, compte Google (SSO) : pas de mot de passe sur le hub — la preuve
-  est une session ouverte il y a moins de cinq minutes. « Se reconnecter » renvoie
-  chez le fournisseur et revient sur la page, le brouillon intact
-  (`sessionStorage`) ;
+- **console** : l'une ou l'autre preuve, selon ce que le compte permet — le
+  **mot de passe** ressaisi (vérifié par Better Auth, `verifyPassword`), ou, pour
+  un compte lié à Google, une **session ouverte il y a moins de cinq minutes**.
+  Une connexion SSO récente suffit donc, même sur un compte qui a aussi un mot de
+  passe (provisionné puis lié à Google, il ne le connaît souvent pas). Sinon,
+  « Se reconnecter » renvoie chez le fournisseur et revient sur la page, le
+  brouillon intact (`sessionStorage`) ;
 - **régie locale** : elle n'a pas de compte. Elle demande le **code PIN régie**
   défini au hub (Réglages), descendu haché (scrypt) à la synchronisation et
   vérifié **sur le poste** — l'alarme doit pouvoir partir hub coupé. Pas de code

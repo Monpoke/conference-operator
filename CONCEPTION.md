@@ -2062,7 +2062,9 @@ Ce qui a changé :
   captation** : il serait gravé dans la VOD.
 - **L'écran global du hall** (`/boucle/apercu?salle=global`) passe en message
   dès qu'une salle affiche un urgent, préfixé du nom des salles concernées — sans
-  préfixe quand toutes affichent le même texte (envoyé à tout l'événement). Il
+  préfixe quand la console l'a envoyé à toutes les salles (ou que toutes affichent
+  le même texte) : c'est la façon d'envoyer qui compte, pas le nombre de postes
+  allumés pour le rapporter. Il
   se relit toutes les 5 s au lieu de 20.
 
 **Un urgent se confirme par une preuve d'identité fraîche, et c'est un droit à

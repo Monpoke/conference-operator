@@ -130,6 +130,8 @@ const ACTIONS: Record<string, string> = {
   'boucle.uploadImage': 'Image de la boucle envoyée',
   'boucle.importTheme': 'Thème de la boucle importé',
   'boucle.removeTheme': 'Thème de la boucle supprimé',
+  'boucle.setGitSource': 'Dépôt Git de la boucle réglé',
+  'boucle.importGit': 'Import depuis le dépôt Git',
   'wallsio.setToken': 'Jeton walls.io modifié',
   'rooms.setStream': 'Diffusion configurée',
   'rooms.resync': 'Resynchronisation demandée',

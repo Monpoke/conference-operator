@@ -1,6 +1,7 @@
 import { ORPCError } from '@orpc/server'
 import type { Auth } from './auth.js'
 import type { AssetStore } from './services/assets.js'
+import type { GitSourceService } from './services/git-source.js'
 import type { ThemeStore } from './services/themes.js'
 import type { ProgramService } from './services/program.js'
 import type { AuditService } from './services/audit.js'
@@ -38,6 +39,8 @@ export interface Services {
   assets: AssetStore
   /** The loop's theme packages, beside the images. */
   themes: ThemeStore
+  /** The Git repository the console imports a theme and the loop's content from. */
+  gitSource: GitSourceService
   rooms: RoomService
   devices: DeviceService
   commands: CommandService

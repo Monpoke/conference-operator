@@ -3,6 +3,8 @@ import {
   type Boucle,
   type SponsorPage,
   type SponsorRef,
+  type GitSource,
+  type GitSourceStatus,
   type ThemeInfo,
 } from '@conference-operator/contract'
 import { defineStore } from 'pinia'
@@ -49,6 +51,8 @@ export const useBoucleStore = defineStore('boucle', () => {
   const revision = ref(0)
   /** The theme packages the hub keeps. Which one the screens wear is `boucle.theme`. */
   const themes = ref<ThemeInfo[]>([])
+  /** The Git repository the console imports from. `null`: none set. */
+  const gitSource = ref<GitSourceStatus | null>(null)
 
   const session = useSessionStore()
 
@@ -59,6 +63,7 @@ export const useBoucleStore = defineStore('boucle', () => {
       session.client.rpc.boucle.themes(),
     ])
     themes.value = themeList
+    gitSource.value = await session.client.rpc.boucle.gitSource()
     boucle.value = settings.boucle
     openFeedbackProjectId.value = settings.openFeedbackProjectId ?? null
     catalogue.value = catalogueData
@@ -119,6 +124,27 @@ export const useBoucleStore = defineStore('boucle', () => {
     return info
   }
 
+  /** `jeton`: a new one, `null` to remove it, `undefined` to keep the hub's. */
+  async function setGitSource(source: GitSource | null, jeton: string | null | undefined): Promise<void> {
+    gitSource.value = await session.client.rpc.boucle.setGitSource({ source, jeton })
+  }
+
+  /**
+   * Imports from the repository now. What came in is laid down at once — a theme
+   * in the list, the loop's sections in the panels — and the preview reloads.
+   */
+  async function importGit(asked: { theme: boolean; contenu: boolean }) {
+    try {
+      const result = await session.client.rpc.boucle.importGit(asked)
+      await load()
+      revision.value += 1
+      return result
+    } finally {
+      // The last attempt, failed or not, is what the panel shows.
+      gitSource.value = await session.client.rpc.boucle.gitSource()
+    }
+  }
+
   async function removeTheme(sha: string): Promise<void> {
     await session.client.rpc.boucle.removeTheme({ sha })
     themes.value = themes.value.filter((theme) => theme.sha !== sha)
@@ -144,6 +170,9 @@ export const useBoucleStore = defineStore('boucle', () => {
     upload,
     themes,
     importTheme,
+    gitSource,
+    setGitSource,
+    importGit,
     removeTheme,
     previewOf,
   }

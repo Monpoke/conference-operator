@@ -65,6 +65,11 @@ export class ThemeStore {
     return this.#keep(unzipTheme(zip))
   }
 
+  /** A package already unzipped — a folder of a Git repository. */
+  importFiles(files: ThemeFiles): ThemeInfo {
+    return this.#keep(files)
+  }
+
   /** The themes shipped with the code (`themes/`), kept if they are not already. */
   seed(folder: string | null, log: (message: string) => void = () => {}): ThemeInfo[] {
     const seeded: ThemeInfo[] = []

@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto'
 import { implement, withEventMeta } from '@orpc/server'
 import { ORPCError } from '@orpc/server'
 import { THEME_MAX_BYTES, ThemePackageError } from '@conference-operator/projector/server'
+import { GitImportError } from './services/git-source.js'
+import { looksLike, MAX_UPLOAD_BYTES, UPLOAD_EXTENSIONS } from './services/image-upload.js'
 import { CONTROL_WATCH_FLOOR_MS } from '@conference-operator/contract'
 import { hashPin } from './pin.js'
 import { requireUrgentProof, urgentProofOf } from './urgent-proof.js'
@@ -1206,6 +1208,46 @@ export const router = os.router({
           // Every reason at once: the organiser fixes the package in one go.
           throw new ORPCError('BAD_REQUEST', { message: `Thème refusé :\n${error.problems.join('\n')}`, data: { problems: error.problems } })
         }
+      }),
+
+    gitSource: os.boucle.gitSource.use(operatorCan('settings:read')).handler(({ context }) => context.services.gitSource.status()),
+
+    setGitSource: os.boucle.setGitSource
+      .use(operatorCan('settings:update'))
+      .handler(({ input, context }) => context.services.gitSource.set(input.source, input.jeton)),
+
+    /**
+     * An import, run while the operator waits: a small repository comes in a few
+     * seconds, and the console shows what came in — or why nothing did.
+     */
+    importGit: os.boucle.importGit
+      .use(operatorCan('settings:update'))
+      .handler(async ({ input, context }) => {
+        const { services } = context
+        let imported: Awaited<ReturnType<typeof services.gitSource.import>>
+        try {
+          imported = await services.gitSource.import(input, {
+            importTheme: (files) => services.themes.importFiles(files),
+            storeImage: (ref, bytes, contentType) => services.assets.store(ref, bytes, contentType),
+          })
+        } catch (error) {
+          if (!(error instanceof GitImportError)) throw error
+          throw new ORPCError('BAD_REQUEST', { message: error.message })
+        }
+        const boucle: Record<string, unknown> = { ...(imported.patch?.boucle ?? {}) }
+        // A new version of the theme the screens wear: they wear it now.
+        const worn = services.settings.get().boucle.theme
+        const theme = imported.theme
+        const porte = theme != null && worn != null && worn.id === theme.id && worn.sha !== theme.sha
+        if (porte) boucle.theme = { id: theme.id, nom: theme.nom, sha: theme.sha }
+        if (Object.keys(boucle).length > 0) {
+          const settings = services.settings.update({ boucle })
+          void services.assets
+            .prefetchUrls(boucleImageRefs(settings.boucle))
+            .catch((cause: unknown) => console.error('Images de la boucle :', readableCause(cause)))
+          services.commands.publish(null, { type: 'settings.changed' }, 3600)
+        }
+        return { ...imported.result, porte }
       }),
 
     removeTheme: os.boucle.removeTheme
@@ -2572,36 +2614,3 @@ export type Router = typeof router
  * An uploaded image, decoded. The console reduces it before sending, so this
  * only stops a file sent as is by mistake — or by something else than the console.
  */
-const MAX_UPLOAD_BYTES = 2.5 * 1024 * 1024
-
-const UPLOAD_EXTENSIONS = {
-  'image/png': 'png',
-  'image/jpeg': 'jpg',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
-  'image/svg+xml': 'svg',
-} as const
-
-/**
- * Whether the bytes are the image they claim to be — by their first bytes.
- *
- * Not a validation of the image: a check that a PDF or a zip renamed `.png`
- * does not end up on the room screens as a broken frame.
- */
-function looksLike(contentType: keyof typeof UPLOAD_EXTENSIONS, bytes: Buffer): boolean {
-  const starts = (...signature: number[]) => signature.every((byte, index) => bytes[index] === byte)
-  switch (contentType) {
-    case 'image/png':
-      return starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)
-    case 'image/jpeg':
-      return starts(0xff, 0xd8, 0xff)
-    case 'image/gif':
-      return bytes.subarray(0, 4).toString('latin1') === 'GIF8'
-    case 'image/webp':
-      return bytes.subarray(0, 4).toString('latin1') === 'RIFF' && bytes.subarray(8, 12).toString('latin1') === 'WEBP'
-    case 'image/svg+xml': {
-      const text = bytes.toString('utf8').replace(/^\uFEFF/, '').trimStart()
-      return text.startsWith('<') && text.includes('<svg')
-    }
-  }
-}

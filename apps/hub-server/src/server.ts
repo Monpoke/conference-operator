@@ -15,6 +15,7 @@ import { createSecretBox } from './secrets.js'
 import { router } from './router.js'
 import type { HubContext, Services } from './context.js'
 import { AssetStore } from './services/assets.js'
+import { GitSourceService } from './services/git-source.js'
 import { ThemeStore } from './services/themes.js'
 import { ProgramService } from './services/program.js'
 import { AuditService } from './services/audit.js'
@@ -124,6 +125,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     programs,
     assets,
     themes,
+    gitSource: new GitSourceService(orm, secretBox),
     // Keyed off the hub's own secret: the stream keys are encrypted at rest
     // with material the deployment already has to hold and already has to
     // keep — one more secret to provision would be one more to lose.

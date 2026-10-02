@@ -200,3 +200,43 @@ export const themeInfoSchema = themeRefSchema.extend({
   taille: z.number().int(),
 })
 export type ThemeInfo = z.infer<typeof themeInfoSchema>
+
+/**
+ * A Git repository the console imports from, on demand: one folder of one
+ * branch, fetched whole without its history (small repositories). The folder
+ * may hold a theme (`theme.json` and its files), the loop's content
+ * (`boucle.json`), or both — each imported by its own action.
+ */
+export const gitSourceSchema = z.object({
+  url: z.url().max(400).refine((value) => value.startsWith('https://'), { message: 'adresse https:// attendue' }),
+  branche: z
+    .string()
+    .min(1)
+    .max(120)
+    .regex(/^[A-Za-z0-9._/-]+$/, 'nom de branche attendu')
+    .refine((value) => !value.split('/').includes('..'), { message: 'nom de branche attendu' }),
+  /** The folder, from the repository's root. Empty: the root itself. */
+  dossier: z.union([z.literal(''), cheminThemeSchema]).default(''),
+})
+export type GitSource = z.infer<typeof gitSourceSchema>
+
+/** What an import from Git did. */
+export const gitImportSchema = z.object({
+  le: z.string(),
+  commit: z.string().nullable(),
+  /** The theme imported, by its sha — `null` when the theme was not asked for. */
+  theme: z.string().nullable(),
+  /** The loop's sections replaced — `null` when the content was not asked for. */
+  sections: z.array(z.string()).nullable(),
+  erreur: z.string().nullable(),
+})
+export type GitImport = z.infer<typeof gitImportSchema>
+
+/** The Git source as the console sees it: never the token, only whether there is one. */
+export const gitSourceStatusSchema = gitSourceSchema.extend({
+  jetonDefini: z.boolean(),
+  /** The token's last four characters, to recognise it. */
+  jetonIndice: z.string().nullable(),
+  derniere: gitImportSchema.nullable(),
+})
+export type GitSourceStatus = z.infer<typeof gitSourceStatusSchema>

@@ -68,6 +68,7 @@ function stub(boucle: Boucle = DEFAULT_BOUCLE) {
       boucle: {
         // The hub's theme packages: none here.
         themes: async () => [],
+        gitSource: async () => null,
         catalogue: async () => {
           calls.push({ path: 'boucle/catalogue', input: undefined })
           return { sponsors: [APE, ZEPHYRA], pagesParDefaut: DEFAULT_PAGES }

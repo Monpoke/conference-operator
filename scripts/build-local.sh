@@ -7,6 +7,7 @@
 #   REGISTRY=… VERSION=1.2.0 pnpm build:local
 #   REGISTRY=… PUSH=1 pnpm build:local          — also pushes the image
 #   REGISTRY=… TARGETS="linux image" pnpm build:local
+#   REGISTRY=… TARGETS="streamdeck" pnpm build:local — the Stream Deck plugin
 #   REGISTRY=… pnpm build:local k8s             — image, pushed, StatefulSet patched
 #
 # The registry is read from the environment and nowhere else: nothing is written
@@ -130,6 +131,20 @@ if wants windows; then
   (cd apps/room-client/release && sha256sum ./*.exe | sed 's|  \./|  |' > SHA256SUMS-windows.txt)
 fi
 
+# The Stream Deck plugin: one `.streamDeckPlugin`, a double click installs it on
+# the room machine. Not in the default targets — a room without a Stream Deck has
+# no use for it.
+if wants streamdeck; then
+  pnpm install --frozen-lockfile
+  rm -rf apps/streamdeck-plugin/release
+  # The manifest wants four numbers: the release's three, then 0.
+  SD_VERSION="$(echo "$VERSION" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+').0"
+  pnpm --filter @conference-operator/streamdeck-plugin build
+  pnpm --filter @conference-operator/streamdeck-plugin exec streamdeck pack \
+    io.github.monpoke.conference-operator.sdPlugin --output release --force \
+    --version "$SD_VERSION" --no-update-check
+fi
+
 DIGEST=""
 
 if wants image; then
@@ -176,6 +191,10 @@ echo
 if wants linux || wants windows; then
   echo "Paquets : apps/room-client/release/"
   ls -1 apps/room-client/release/ | grep -E '\.(exe|AppImage|tar\.gz|txt)$' | sed 's/^/  /'
+fi
+if wants streamdeck; then
+  echo "Stream Deck : apps/streamdeck-plugin/release/"
+  ls -1 apps/streamdeck-plugin/release/ | sed 's/^/  /'
 fi
 if wants image; then
   echo "Image   : $IMAGE$([[ "${PUSH:-0}" == "1" ]] && echo " (poussée)")"

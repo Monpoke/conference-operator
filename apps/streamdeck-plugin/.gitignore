@@ -1,0 +1,4 @@
+# Built by `pnpm build` / `pnpm pack`: never committed.
+io.github.monpoke.conference-operator.sdPlugin/bin/
+io.github.monpoke.conference-operator.sdPlugin/logs/
+release/

@@ -1,0 +1,35 @@
+{
+  "name": "@conference-operator/streamdeck-plugin",
+  "version": "0.0.0",
+  "description": "Plugin Stream Deck : piloter la régie de salle depuis les boutons, avec l'état réel affiché dessus.",
+  "author": {
+    "name": "Pierre Bourgeois",
+    "email": "contact@pierrebourgeois.fr"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/Monpoke/conference-operator",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Monpoke/conference-operator.git",
+    "directory": "apps/streamdeck-plugin"
+  },
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build": "node scripts/build.mjs",
+    "pack": "node scripts/build.mjs && streamdeck pack io.github.monpoke.conference-operator.sdPlugin --output release --force"
+  },
+  "dependencies": {
+    "@conference-operator/contract": "workspace:*",
+    "@elgato/streamdeck": "3.0.1"
+  },
+  "devDependencies": {
+    "@elgato/cli": "1.10.1",
+    "@types/node": "26.4.1",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2",
+    "vitest": "5.0.0"
+  }
+}

@@ -2889,6 +2889,32 @@ En `dev:headless`, ou depuis un navigateur, il n'y a pas de sélecteur à ouvrir
 et le champ reste à remplir à la main : un bouton qui ne répond pas coûte plus
 qu'un champ.
 
+## Stream Deck
+
+Un plugin Stream Deck (`apps/streamdeck-plugin`, identifiant
+`io.github.monpoke.conference-operator`) pilote la régie depuis les touches.
+**C'est un client de plus du poste de salle**, comme la régie et le dock : il
+suit l'état par le même flux (`/display/state?vue=regie&partiel=1`) et envoie
+les mêmes gestes (`POST /control/action`). Rien n'a changé côté poste ni hub.
+
+- **Les touches montrent ce que fait la salle**, pas ce qu'elles ont fait : une
+  scène basculée depuis la régie, la console ou un téléphone allume la touche
+  correspondante. Un seul flux pour tout le Stream Deck, pas un par touche.
+- **Neuf touches** : scène, écran de salle, enregistrement (avec sa durée),
+  marque (début, fin, chapitre — ✓ quand la marque est posée), direct, source
+  audio, conférence (démarrer / terminer), retirer le message, statut (OBS-A,
+  OBS-B, hub).
+- **Les gestes sans retour se maintiennent une seconde** : arrêter
+  l'enregistrement, terminer la conférence, couper le direct. Un appui bref
+  l'explique sur la touche au lieu de le faire.
+- **Poste injoignable** : toutes les touches passent « hors ligne » plutôt que
+  de montrer un enregistrement qui s'est peut-être arrêté.
+- **Pas de message urgent** : il demande le PIN régie, qui n'a pas sa place en
+  clair dans une touche.
+- Les décisions vivent dans `src/core/` (testées sans Stream Deck) ; la couche
+  du SDK Elgato (v3, Node 24, Stream Deck 7.1 et plus) ne fait que peindre et
+  envoyer. Paquet : `TARGETS="streamdeck" pnpm build:local`.
+
 ## Niveaux audio en régie
 
 Le panneau « Niveaux audio » de la régie affiche les vumètres des entrées

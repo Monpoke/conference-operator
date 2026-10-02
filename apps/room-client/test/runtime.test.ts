@@ -362,6 +362,41 @@ describe('applying the commands', () => {
   })
 })
 
+describe("the control app's own message", () => {
+  it('takes the screen, then clears itself when its time is up', () => {
+    const runtime = makeRuntime()
+    runtime.showMessage('Pause de 10 minutes', 'warning', 60)
+    expect(runtime.state()).toMatchObject({
+      mode: 'message',
+      message: { text: 'Pause de 10 minutes', level: 'warning', expiresAtMs: clockMs + 60_000 },
+    })
+
+    clockMs += 61_000
+    runtime.expireMessage()
+    expect(runtime.state()).toMatchObject({ mode: 'loop', message: null })
+  })
+
+  it('stays up with no duration, until withdrawn', () => {
+    const runtime = makeRuntime()
+    runtime.showMessage('Bienvenue', 'info', null)
+    clockMs += 3_600_000
+    runtime.expireMessage()
+    expect(runtime.state().mode).toBe('message')
+
+    runtime.clearMessage()
+    expect(runtime.state()).toMatchObject({ mode: 'loop', message: null })
+  })
+
+  it('does not drag the screen back to the loop once it moved on', async () => {
+    const runtime = makeRuntime()
+    runtime.showMessage('Bienvenue', 'info', null)
+    await runtime.setDisplayMode('countdown')
+
+    runtime.clearMessage()
+    expect(runtime.state()).toMatchObject({ mode: 'countdown', message: null })
+  })
+})
+
 describe('state observed on OBS', () => {
   it('is authoritative over the local state', () => {
     const runtime = makeRuntime()

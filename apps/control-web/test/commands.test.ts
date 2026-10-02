@@ -353,10 +353,10 @@ describe('audio sources', () => {
   })
 })
 
-describe('message to the console', () => {
+describe('message on the screen', () => {
   it('sends no empty message, nor whitespace', async () => {
     const calls = stubFetch()
-    const wrapper = mount(MessagePanel)
+    const wrapper = mount(MessagePanel, { props: { message: null } })
 
     await wrapper.get('#message-text').setValue('   ')
     await wrapper.get('#btn-message').trigger('click')
@@ -365,21 +365,47 @@ describe('message to the console', () => {
     expect(calls).toEqual([])
   })
 
-  it('leaves with its level, and clears the field', async () => {
+  it('leaves with its level and duration, and keeps the field', async () => {
     const calls = stubFetch()
-    const wrapper = mount(MessagePanel)
+    const wrapper = mount(MessagePanel, { props: { message: null } })
 
-    await wrapper.get('#message-text').setValue('Le micro coupe')
+    await wrapper.get('#message-text').setValue('Pause de 10 minutes')
     await wrapper.get('#message-level').setValue('urgent')
+    await wrapper.get('#message-duration').setValue('5')
     await wrapper.get('#message-text').trigger('keydown.enter')
     await flushPromises()
 
     expect(calls[0]?.body).toEqual({
-      action: 'message.send',
-      text: 'Le micro coupe',
+      action: 'screen.message',
+      text: 'Pause de 10 minutes',
       level: 'urgent',
+      ttlSeconds: 300,
     })
-    expect((wrapper.get('#message-text').element as HTMLInputElement).value).toBe('')
+    expect((wrapper.get('#message-text').element as HTMLInputElement).value).toBe('Pause de 10 minutes')
+  })
+
+  it('stays up until withdrawn by default', async () => {
+    const calls = stubFetch()
+    const wrapper = mount(MessagePanel, { props: { message: null } })
+
+    await wrapper.get('#message-text').setValue('Bienvenue')
+    await wrapper.get('#btn-message').trigger('click')
+    await flushPromises()
+
+    expect(calls[0]?.body).toMatchObject({ action: 'screen.message', ttlSeconds: null })
+  })
+
+  it('withdraws only what is up', async () => {
+    const calls = stubFetch()
+    const idle = mount(MessagePanel, { props: { message: null } })
+    expect(idle.get('#btn-message-clear').attributes('disabled')).toBeDefined()
+
+    const shown = mount(MessagePanel, { props: { message: { text: 'Bienvenue' } } })
+    expect(shown.get('#message-current').text()).toContain('Bienvenue')
+    await shown.get('#btn-message-clear').trigger('click')
+    await flushPromises()
+
+    expect(calls[0]?.body).toEqual({ action: 'screen.message.clear' })
   })
 })
 

@@ -120,7 +120,6 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     ingest: new IngestService(
       orm,
       touch,
-      () => changes.messageArrived(),
       (roomId, outcome) => audit.outcome(roomId, outcome.seq, outcome.ok, outcome.message),
     ),
     wall: new WallService(orm),

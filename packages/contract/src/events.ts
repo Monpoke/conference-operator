@@ -116,11 +116,11 @@ export const roomEventPayloadSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     /**
-     * Message from a room to the console.
+     * Obsolete: a room no longer writes to the console.
      *
-     * Goes through the outbox, so `required`: a call for help sent during a
-     * network outage must arrive, even late. That is exactly the moment it is
-     * needed most.
+     * Still accepted so that a room on an older version drains its outbox: the
+     * batch is validated whole, and a single unknown event would block every
+     * report behind it. The hub stores it and nothing reads it.
      */
     type: z.literal('room.message'),
     text: z.string().min(1).max(500),

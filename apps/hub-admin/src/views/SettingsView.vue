@@ -191,7 +191,7 @@ const SCREENS: { value: string; label: string; hint: string }[] = [
     hint: "Le second passage de l'agenda, au milieu de la boucle. Retirer l'agenda retire aussi le rappel.",
   },
   { value: 'countdown', label: 'Compte à rebours', hint: 'Le temps restant sur le créneau.' },
-  { value: 'message', label: 'Message', hint: 'La bannière saisie en régie.' },
+  { value: 'message', label: 'Message', hint: 'La bannière saisie en régie ou envoyée depuis la console.' },
   { value: 'feedback', label: 'Notez le talk', hint: 'Le QR code OpenFeedback du talk en cours.' },
   { value: 'wall', label: 'Mur & questions', hint: 'Les messages du public, modérés en régie.' },
   { value: 'question', label: 'Question choisie', hint: 'Une question du public, en grand.' },

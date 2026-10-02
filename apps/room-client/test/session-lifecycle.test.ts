@@ -793,22 +793,23 @@ describe('exchanging messages', () => {
     )
   }, 40_000)
 
-  it('reports a message from the room to the console', async () => {
-    await fetch(`${control}/control/action`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'message.send', text: "Besoin d'aide en salle", level: 'urgent' }),
-    })
-    // Goes through the outbox: time for the batch to leave.
-    await sleep(3_000)
+  it('puts the operator\'s own message on the room screen, and takes it down', async () => {
+    const act = (body: unknown) =>
+      fetch(`${control}/control/action`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
 
-    const received = await rpcAdmin('messages/fromRooms', { limit: 10 })
-    const messages = received.body.json as unknown as { text: string; roomName: string; level: string }[]
-    expect(messages[0]).toMatchObject({
-      text: "Besoin d'aide en salle",
-      level: 'urgent',
-      roomName: 'Track #1 - Teilhard de Chardin',
-    })
+    await act({ action: 'screen.message', text: 'Pause de 10 minutes', level: 'info', ttlSeconds: null })
+    let payload = await view()
+    expect(payload.state.mode).toBe('message')
+    expect(payload.state.message).toMatchObject({ text: 'Pause de 10 minutes', level: 'info', expiresAtMs: null })
+
+    await act({ action: 'screen.message.clear' })
+    payload = await view()
+    expect(payload.state.mode).toBe('loop')
+    expect(payload.state.message).toBeNull()
   }, 40_000)
 
   it('reserves sending to operators', async () => {

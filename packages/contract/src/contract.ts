@@ -97,17 +97,6 @@ const catalogueSponsorSchema = z.object({
  * field, and this repository does not change the protocol version lightly.
  */
 
-/** A message a room wrote to the console. */
-const roomMessageSchema = z.object({
-  id: z.string(),
-  roomId: roomIdSchema,
-  roomName: z.string().nullable(),
-  text: z.string(),
-  level: z.enum(['info', 'warning', 'urgent']),
-  occurredAt: isoDateTimeSchema,
-  receivedAt: isoDateTimeSchema,
-})
-
 /** What a public surface needs to know about a talk. */
 const sessionPreviewSchema = z.object({
   id: sessionIdSchema,
@@ -574,10 +563,9 @@ export const contract = {
   },
 
   /**
-   * Message exchange between the console and the rooms.
+   * Messages from the console to the rooms: to the operator, or on the screen.
    *
-   * Two distinct directions: the console broadcasts a command (immediate, with a
-   * TTL), a room reports through its outbox (durable, survives an outage).
+   * One direction only: a command, immediate, with a TTL.
    */
   messages: {
     /** Sends a message. `roomId` null = every room. */
@@ -593,21 +581,6 @@ export const contract = {
         }),
       )
       .output(z.object({ ok: z.boolean() })),
-
-    /** Messages reported by the rooms, most recent first. */
-    fromRooms: oc
-      .input(z.object({ limit: z.number().int().min(1).max(200).default(50) }))
-      .output(z.array(roomMessageSchema)),
-
-    /**
-     * The same list, pushed: at opening, then each time a room writes.
-     *
-     * The whole list rather than the new message alone: a console that missed a
-     * push during a reconnection catches up on the next one without asking.
-     */
-    watch: oc
-      .input(z.object({ limit: z.number().int().min(1).max(200).default(50) }))
-      .output(eventIterator(z.array(roomMessageSchema))),
   },
 
   /**

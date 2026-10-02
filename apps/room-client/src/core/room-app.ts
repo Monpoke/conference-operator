@@ -2246,17 +2246,13 @@ export class RoomApp implements ControlTarget {
     this.runtime.setSessionStatus(state.sessionId, state.status)
   }
 
-  /**
-   * Sends a message to the console.
-   *
-   * Goes through the outbox: a call for help issued during a network outage will
-   * arrive anyway, late — and that is precisely the moment one needs it most.
-   */
-  sendMessage(text: string, level: 'info' | 'warning' | 'urgent'): void {
-    this.emit({ type: 'room.message', text, level })
-    // Now rather than at the pump's next tick: the console shows it live.
-    this.wakeUplink()
-    this.runtime.notify({ level: 'info', text: `Envoyé à la console : ${text}` })
+  /** The operator's own message, on the room's screen. */
+  showScreenMessage(text: string, level: 'info' | 'warning' | 'urgent', ttlSeconds: number | null): void {
+    this.runtime.showMessage(text, level, ttlSeconds)
+  }
+
+  clearScreenMessage(): void {
+    this.runtime.clearMessage()
   }
 
   /**

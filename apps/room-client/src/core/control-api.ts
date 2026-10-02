@@ -182,12 +182,20 @@ export const controlActionSchema = z.discriminatedUnion('action', [
    * projection setting would cost a VOD.
    */
   z.object({ action: z.literal('obs.connect'), instance: obsInstanceSchema }),
-  /** A message from the room to the console. */
+  /**
+   * A message the operator puts on the room's screen.
+   *
+   * Same bounds as the hub's `messages.send`: the screen shows it in the same
+   * banner, whoever typed it. A null `ttlSeconds` keeps it up until withdrawn.
+   */
   z.object({
-    action: z.literal('message.send'),
+    action: z.literal('screen.message'),
     text: z.string().min(1).max(500),
     level: z.enum(['info', 'warning', 'urgent']),
+    ttlSeconds: z.number().int().positive().max(3600).nullable(),
   }),
+  /** Takes the message off the room's screen. */
+  z.object({ action: z.literal('screen.message.clear') }),
 ])
 export type ControlAction = z.infer<typeof controlActionSchema>
 
@@ -227,7 +235,8 @@ export interface ControlTarget {
   dismissNotification(id: string): void
   clearLog(): void
   forgetCommands(): Promise<void>
-  sendMessage(text: string, level: 'info' | 'warning' | 'urgent'): void
+  showScreenMessage(text: string, level: 'info' | 'warning' | 'urgent', ttlSeconds: number | null): void
+  clearScreenMessage(): void
   setAiredQuestion(text: string | null, author: string | null): void
   refreshQuestions(): Promise<void>
   configureRoom(patch: RoomConfigPatch): Promise<void>
@@ -394,9 +403,12 @@ export async function runControlAction(
       case 'notification.dismiss':
         target.dismissNotification(action.id)
         return { ok: true }
-      case 'message.send':
-        target.sendMessage(action.text, action.level)
-        return { ok: true, message: 'Message envoyé à la console' }
+      case 'screen.message':
+        target.showScreenMessage(action.text, action.level, action.ttlSeconds)
+        return { ok: true, message: 'Message affiché à l’écran' }
+      case 'screen.message.clear':
+        target.clearScreenMessage()
+        return { ok: true, message: 'Message retiré' }
       case 'room.configure':
         await target.configureRoom(action.patch)
         return { ok: true, message: 'Configuration enregistrée' }

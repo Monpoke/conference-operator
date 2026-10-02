@@ -23,23 +23,6 @@ interface Call {
 
 const ROOMS = [{ id: 'track-1', name: 'Track #1' }]
 
-/** Pushes a list down the fake stream, as the hub does when a room writes. */
-let push: (list: unknown[]) => void = () => {}
-
-/** A stream that stays open until the page leaves, and yields what `push` sends. */
-function watchStub(calls: Call[]) {
-  return async (input: unknown, options?: { signal?: AbortSignal }) => {
-    calls.push({ path: 'messages/watch', input })
-    return (async function* () {
-      while (options?.signal?.aborted !== true) {
-        yield await new Promise<unknown[]>((resolve) => {
-          push = resolve
-        })
-      }
-    })()
-  }
-}
-
 function stub(): { calls: Call[]; client: unknown } {
   const calls: Call[] = []
   const note =
@@ -55,9 +38,7 @@ function stub(): { calls: Call[]; client: unknown } {
       rpc: {
         rooms: { list: note('rooms/list', ROOMS) },
         messages: {
-          fromRooms: note('messages/fromRooms', []),
           send: note('messages/send', { ok: true }),
-          watch: watchStub(calls),
         },
         overlay: {
           history: note('overlay/history', []),
@@ -196,26 +177,6 @@ describe('messages view', () => {
 
     const sent = calls.find((call) => call.path === 'messages/send')
     expect((sent?.input as { target: unknown }).target).toBe('audience')
-    wrapper.unmount()
-  })
-
-  it('shows a room message as soon as the hub pushes it', async () => {
-    const { wrapper } = await mountView()
-
-    push([
-      {
-        id: 'm1',
-        roomId: 'track-1',
-        roomName: 'Track #1',
-        text: 'Micro HS',
-        level: 'urgent',
-        receivedAt: new Date().toISOString(),
-      },
-    ])
-    await flushPromises()
-
-    expect(wrapper.get('#messages-received').text()).toContain('Micro HS')
-    expect(wrapper.get('#messages-live').text()).toContain('En direct')
     wrapper.unmount()
   })
 

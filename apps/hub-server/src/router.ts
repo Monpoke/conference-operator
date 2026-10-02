@@ -983,23 +983,6 @@ export const router = os.router({
       return { ok: true }
     }),
 
-    fromRooms: os.messages.fromRooms
-      .use(operatorCan('message:read'))
-      .handler(({ input, context }) => roomMessages(context.services, input.limit)),
-
-    /**
-     * Subscribed **before** the first read, as `regie.watch` is: a message landing
-     * between the two would otherwise wait for the next one to show.
-     */
-    watch: os.messages.watch
-      .use(operatorCan('message:read'))
-      .handler(async function* ({ input, context, signal }) {
-        const arrivals = context.services.changes.watchMessages(signal)
-        yield roomMessages(context.services, input.limit)
-        for await (const _arrival of arrivals) {
-          yield roomMessages(context.services, input.limit)
-        }
-      }),
   },
 
   clock: {
@@ -2510,13 +2493,4 @@ function looksLike(contentType: keyof typeof UPLOAD_EXTENSIONS, bytes: Buffer): 
       return text.startsWith('<') && text.includes('<svg')
     }
   }
-}
-
-/** The rooms' messages, each with the name its room goes by today. */
-function roomMessages(services: HubContext['services'], limit: number) {
-  const rooms = new Map(services.rooms.list().map((room) => [room.id, room.name] as const))
-  return services.ingest.messagesFromRooms(limit).map((message) => ({
-    ...message,
-    roomName: rooms.get(message.roomId) ?? null,
-  }))
 }

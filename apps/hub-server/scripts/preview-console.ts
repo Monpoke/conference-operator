@@ -83,10 +83,6 @@ const RESPONSES: Record<string, unknown> = {
     { id: 'c-1', source: 'bluesky', author: 'Camille', text: 'Belle démo sur les Event Iterators, merci !', createdAt: '2026-10-30T10:05:00.000Z' },
     { id: 'c-2', source: 'form', author: 'Sacha', text: 'Les slides seront-elles partagées après la conf ?', createdAt: '2026-10-30T10:07:30.000Z' },
   ],
-  'messages/fromRooms': [
-    { id: 'm-1', roomId: ROOMS[1]!.id, roomName: ROOMS[1]!.name, text: 'Micro cravate HS, on passe sur le micro main', level: 'warning', at: '2026-10-30T10:03:00.000Z' },
-    { id: 'm-2', roomId: ROOMS[0]!.id, roomName: ROOMS[0]!.name, text: 'Speaker arrivé, tout est prêt', level: 'info', at: '2026-10-30T09:58:00.000Z' },
-  ],
   'sessions/states': [
     // `remainingMs` comes from the hub: it is the hub that holds the authoritative
     // time, and that time can be simulated. The preview must therefore supply it,

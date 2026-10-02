@@ -1,7 +1,6 @@
 import { EventEmitter } from 'node:events'
 
 const CHANNEL = 'change'
-const MESSAGES = 'room-message'
 
 /**
  * How long a burst is left to settle before the watchers recompose.
@@ -37,17 +36,6 @@ export class RoomChanges {
   }
 
   /**
-   * A room has written to the console.
-   *
-   * A channel of its own rather than `touch`: every heartbeat touches its room,
-   * so a console listening to `touch` would re-read the messages every two
-   * seconds per room — for nothing, nearly every time.
-   */
-  messageArrived(): void {
-    this.emitter.emit(MESSAGES, null)
-  }
-
-  /**
    * One wake-up per settled burst, for one room.
    *
    * **Subscribed at call time**, not on the first `next()`: the caller reads the
@@ -59,11 +47,6 @@ export class RoomChanges {
    */
   watch(roomId: string, signal?: AbortSignal): AsyncIterableIterator<void> {
     return this.listen(CHANNEL, (target) => target == null || target === roomId, signal)
-  }
-
-  /** One wake-up per settled burst of messages from the rooms, same rules as `watch`. */
-  watchMessages(signal?: AbortSignal): AsyncIterableIterator<void> {
-    return this.listen(MESSAGES, () => true, signal)
   }
 
   private listen(

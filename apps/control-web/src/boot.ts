@@ -71,3 +71,16 @@ export function readScope(document: Document): BootScope {
     return LOCALE
   }
 }
+
+/**
+ * The OBS dock mode: `?dock` in the address.
+ *
+ * An OBS browser dock is a narrow pane next to the program, not a window of its
+ * own: the VU meter repeats OBS's own audio mixer a few centimetres away, and
+ * costs a stream for nothing. Read from the address rather than guessed from
+ * `window.obsstudio` — the address is what the operator types once in the dock's
+ * settings, and it says the same thing in a browser opened to check it.
+ */
+export function readDock(search: string): boolean {
+  return new URLSearchParams(search).has('dock')
+}

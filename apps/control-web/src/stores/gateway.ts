@@ -149,6 +149,10 @@ export const useGatewayStore = defineStore('gateway', () => {
    * Back button returns to the choice rather than leaving. Two states do not
    * justify a router — `pushState` and `popstate` are enough, and `vue-router`
    * does not go into a bundle a room machine also serves.
+   *
+   * The query string rides along: it is the page's display options (`?dock`),
+   * set once in the OBS dock's settings — losing it on the first room change
+   * would hand the dock back the full layout at its next reload.
    */
   function choose(room: string | null, push = true): void {
     if (room === roomId.value) return
@@ -157,7 +161,7 @@ export const useGatewayStore = defineStore('gateway', () => {
     // keeping it would flash a veil for the duration of the first poll.
     currentLock.value = null
     roomId.value = room
-    if (push) globalThis.history.pushState({}, '', controlPath(room))
+    if (push) globalThis.history.pushState({}, '', controlPath(room) + globalThis.location.search)
     if (sink != null) open(sink, opening)
   }
 

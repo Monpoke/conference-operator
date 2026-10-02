@@ -35,6 +35,7 @@ import { useRoomStore } from './stores/room.js'
 import { useSessionStore } from './stores/session.js'
 import { useLockStore } from './stores/lock.js'
 import { useVodStore } from './stores/vod.js'
+import { readDock } from './boot.js'
 
 /**
  * The control app, served from two places.
@@ -66,6 +67,9 @@ const config = useConfigStore()
 const programs = useProgramsStore()
 const vod = useVodStore()
 
+/** Docked in OBS: no VU meter, OBS's mixer is right beside it. See `readDock`. */
+const dock = readDock(globalThis.location.search)
+
 /**
  * The operator's groups, remotely only.
  *
@@ -93,7 +97,7 @@ onMounted(() => {
    * the mobile layout does not mount.
    */
   if (!gateway.remote) {
-    audio.connect()
+    if (!dock) audio.connect()
     host.start()
     return
   }
@@ -363,15 +367,23 @@ useKeyboardLayer(
 
     <RoomsStrip :payload="payload" :now-ms="room.now" @open="consult.follow($event)" />
 
+    <!--
+      `min-h-0` on the columns only from `lg`, where each one scrolls on its own.
+
+      Below it they are rows of a single scrolling column, and a row allowed down
+      to zero gets squeezed into the window's height: its panels then overflowed
+      onto the next row, buttons hidden underneath — which is exactly what an OBS
+      dock, narrower than 1024 px, showed.
+    -->
     <main
       class="grid min-h-0 gap-2.5 overflow-y-auto p-2.5 lg:grid-cols-3 lg:overflow-hidden"
     >
-      <div class="flex min-h-0 flex-col gap-2.5 lg:overflow-y-auto">
+      <div class="flex flex-col gap-2.5 lg:min-h-0 lg:overflow-y-auto">
         <TalkPanel :payload="payload" :now-ms="room.now" />
         <DiagnosticsPanel :payload="payload" />
       </div>
 
-      <div class="flex min-h-0 flex-col gap-2.5 lg:overflow-y-auto">
+      <div class="flex flex-col gap-2.5 lg:min-h-0 lg:overflow-y-auto">
         <ScreenPanel :mode="payload.state.mode" :disabled="payload.screensDisabled" />
         <ProjectionPanel
           :scene-role="payload.state.sceneRole"
@@ -382,7 +394,7 @@ useKeyboardLayer(
         <MessagePanel />
       </div>
 
-      <div class="flex min-h-0 flex-col gap-2.5 lg:overflow-y-auto">
+      <div class="flex flex-col gap-2.5 lg:min-h-0 lg:overflow-y-auto">
         <CapturePanel
           ref="capture"
           :recording="payload.diagnostics?.recording ?? null"
@@ -398,7 +410,7 @@ useKeyboardLayer(
           :inputs="payload.state.audioInputs ?? []"
           :offline="obsOffline.A && obsOffline.B"
         />
-        <LevelMeters />
+        <LevelMeters v-if="!dock" />
       </div>
     </main>
 

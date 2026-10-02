@@ -5,6 +5,7 @@ import { formatLogLine } from '../core/console-log.js'
 import { createMockObsTransport } from '../core/obs-mock.js'
 import { modeOffset, readMode } from '../core/mode.js'
 import { decideOpening, windowTitleFor } from '../core/window-opening.js'
+import { closingWarning } from '../core/closing-guard.js'
 import { loadOrCreateClientId } from './identity.js'
 import { createSecretVault } from './secrets.js'
 import { resolveHubAddress } from './hub-address.js'
@@ -149,6 +150,7 @@ async function main(): Promise<void> {
   const displayUrl = await room.startDisplay()
   const control = openControlWindow(`${displayUrl}/regie`)
   wireScreenOpenings(control, displayUrl)
+  guardClosing(control, () => room.diagnostics().obs)
   // The second launch the lock above turned away: bring forward the window the
   // operator was looking for rather than leaving their double-click unanswered.
   app.on('second-instance', () => {
@@ -214,6 +216,37 @@ function displayPort(): number | undefined {
     return undefined
   }
   return port
+}
+
+/**
+ * Closing the control window while OBS records or streams: asked first.
+ *
+ * That close quits the room, and OBS carries on with nobody driving it — see
+ * `closing-guard.ts`. A native dialog, modal to the window, rather than a page
+ * modal: it holds in server mode too, and whatever state the page is in.
+ * "Annuler" is the default and the Escape key: a reflex Enter must not close.
+ */
+function guardClosing(window: BrowserWindow, obs: () => Parameters<typeof closingWarning>[0]): void {
+  let confirmed = false
+  window.on('close', (event) => {
+    if (confirmed) return
+    const warning = closingWarning(obs())
+    if (warning == null) return
+    event.preventDefault()
+    const choice = dialog.showMessageBoxSync(window, {
+      type: 'warning',
+      title: 'Régie de salle — OBS en cours',
+      message: warning.message,
+      detail: warning.detail,
+      buttons: ['Annuler', 'Fermer quand même'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    })
+    if (choice !== 1) return
+    confirmed = true
+    window.close()
+  })
 }
 
 /**

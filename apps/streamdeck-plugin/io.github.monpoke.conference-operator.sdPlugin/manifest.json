@@ -1,0 +1,245 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+  "Name": "Conference Operator — Régie",
+  "Version": "0.0.2.0",
+  "Author": "Pierre Bourgeois",
+  "Description": "Piloter la régie de salle de Conference Operator depuis un Stream Deck, avec l'état réel affiché sur les touches.",
+  "URL": "https://github.com/Monpoke/conference-operator",
+  "Category": "Conference Operator — Régie",
+  "CategoryIcon": "imgs/plugin/category",
+  "Icon": "imgs/plugin/icon",
+  "CodePath": "bin/plugin.js",
+  "SDKVersion": 3,
+  "Software": {
+    "MinimumVersion": "7.1"
+  },
+  "OS": [
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    },
+    {
+      "Platform": "mac",
+      "MinimumVersion": "12"
+    }
+  ],
+  "Nodejs": {
+    "Version": "24"
+  },
+  "UUID": "io.github.monpoke.conference-operator",
+  "Actions": [
+    {
+      "UUID": "io.github.monpoke.conference-operator.scene",
+      "Name": "Scène",
+      "Tooltip": "Bascule OBS-A sur une scène — allumée quand elle est à l'antenne",
+      "Icon": "imgs/actions/scene/icon",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/scene/off",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        },
+        {
+          "Image": "imgs/actions/scene/on",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ],
+      "DisableAutomaticStates": true,
+      "UserTitleEnabled": false,
+      "PropertyInspectorPath": "ui/scene.html"
+    },
+    {
+      "UUID": "io.github.monpoke.conference-operator.display",
+      "Name": "Écran de salle",
+      "Tooltip": "Change ce que montre l'écran de la salle",
+      "Icon": "imgs/actions/display/icon",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/display/off",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        },
+        {
+          "Image": "imgs/actions/display/on",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ],
+      "DisableAutomaticStates": true,
+      "UserTitleEnabled": false,
+      "PropertyInspectorPath": "ui/display.html"
+    },
+    {
+      "UUID": "io.github.monpoke.conference-operator.recording",
+      "Name": "Enregistrement",
+      "Tooltip": "Démarre l'enregistrement ; maintenir pour l'arrêter",
+      "Icon": "imgs/actions/recording/icon",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/recording/off",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        },
+        {
+          "Image": "imgs/actions/recording/on",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ],
+      "DisableAutomaticStates": true,
+      "UserTitleEnabled": false
+    },
+    {
+      "UUID": "io.github.monpoke.conference-operator.mark",
+      "Name": "Marque",
+      "Tooltip": "Pose une marque de montage (début, fin) ou un chapitre",
+      "Icon": "imgs/actions/mark/icon",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/mark/off",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        },
+        {
+          "Image": "imgs/actions/mark/on",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ],
+      "DisableAutomaticStates": true,
+      "UserTitleEnabled": false,
+      "PropertyInspectorPath": "ui/mark.html"
+    },
+    {
+      "UUID": "io.github.monpoke.conference-operator.stream",
+      "Name": "Direct",
+      "Tooltip": "Lance le direct ; maintenir pour le couper",
+      "Icon": "imgs/actions/stream/icon",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/stream/off",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        },
+        {
+          "Image": "imgs/actions/stream/on",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ],
+      "DisableAutomaticStates": true,
+      "UserTitleEnabled": false
+    },
+    {
+      "UUID": "io.github.monpoke.conference-operator.mic",
+      "Name": "Source audio",
+      "Tooltip": "Coupe ou rétablit une source sur les deux OBS",
+      "Icon": "imgs/actions/mic/icon",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/mic/off",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        },
+        {
+          "Image": "imgs/actions/mic/on",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ],
+      "DisableAutomaticStates": true,
+      "UserTitleEnabled": false,
+      "PropertyInspectorPath": "ui/mic.html"
+    },
+    {
+      "UUID": "io.github.monpoke.conference-operator.session",
+      "Name": "Conférence",
+      "Tooltip": "Démarre la conférence, ou la termine (maintenir)",
+      "Icon": "imgs/actions/session/icon",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/session/off",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        },
+        {
+          "Image": "imgs/actions/session/on",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ],
+      "DisableAutomaticStates": true,
+      "UserTitleEnabled": false,
+      "PropertyInspectorPath": "ui/session.html"
+    },
+    {
+      "UUID": "io.github.monpoke.conference-operator.message-clear",
+      "Name": "Retirer le message",
+      "Tooltip": "Retire le message affiché à l'écran de la salle",
+      "Icon": "imgs/actions/message-clear/icon",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/message-clear/off",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        },
+        {
+          "Image": "imgs/actions/message-clear/on",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ],
+      "DisableAutomaticStates": true,
+      "UserTitleEnabled": false
+    },
+    {
+      "UUID": "io.github.monpoke.conference-operator.status",
+      "Name": "Statut",
+      "Tooltip": "OBS-A, OBS-B et le hub — et l'adresse du poste de salle",
+      "Icon": "imgs/actions/status/icon",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/status/off",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        },
+        {
+          "Image": "imgs/actions/status/on",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ],
+      "DisableAutomaticStates": true,
+      "UserTitleEnabled": false,
+      "PropertyInspectorPath": "ui/status.html"
+    }
+  ]
+}

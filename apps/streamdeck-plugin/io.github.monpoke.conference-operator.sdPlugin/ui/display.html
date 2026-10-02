@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Écran de salle</title>
+<!-- sdpi-components: the settings controls the Elgato template uses. Loaded on opening the panel. -->
+<script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+</head>
+<body>
+<sdpi-item label="Écran">
+  <sdpi-select setting="mode" default="loop">
+    <option value="loop">Boucle</option>
+    <option value="countdown">Compte à rebours</option>
+    <option value="message">Message</option>
+    <option value="programme">Programme</option>
+    <option value="agenda">Agenda</option>
+    <option value="sponsors">Sponsors</option>
+    <option value="feedback">Notez le talk</option>
+    <option value="question">Question choisie</option>
+    <option value="wall">Mur & questions</option>
+    <option value="wallsio">Mur social</option>
+    <option value="live">Live</option>
+  </sdpi-select>
+</sdpi-item>
+</body>
+</html>

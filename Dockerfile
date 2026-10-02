@@ -59,6 +59,7 @@ COPY apps/hub-admin/package.json apps/hub-admin/
 COPY apps/hub-server/package.json apps/hub-server/
 COPY apps/control-web/package.json apps/control-web/
 COPY apps/room-client/package.json apps/room-client/
+COPY apps/streamdeck-plugin/package.json apps/streamdeck-plugin/
 COPY apps/vod-montage/package.json apps/vod-montage/
 COPY packages/contract/package.json packages/contract/
 COPY packages/db/package.json packages/db/
@@ -115,6 +116,7 @@ COPY apps/hub-admin/package.json apps/hub-admin/
 COPY apps/hub-server/package.json apps/hub-server/
 COPY apps/control-web/package.json apps/control-web/
 COPY apps/room-client/package.json apps/room-client/
+COPY apps/streamdeck-plugin/package.json apps/streamdeck-plugin/
 COPY apps/vod-montage/package.json apps/vod-montage/
 COPY packages/contract/package.json packages/contract/
 COPY packages/db/package.json packages/db/

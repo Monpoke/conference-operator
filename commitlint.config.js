@@ -40,6 +40,7 @@ export default {
         'projector', // packages/projector: the room screen, shared with the hub's preview
         'control', // apps/control-web
         'room-client',
+        'streamdeck', // apps/streamdeck-plugin
         'ui',
         'vod', // the recording chain, spanning the hub, the room and the contract
         'deps',

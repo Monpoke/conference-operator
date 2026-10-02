@@ -105,6 +105,22 @@ l'opérateur a l'application ouverte et rien d'autre.
 
 ---
 
+## Stream Deck (facultatif)
+
+Sur le poste de salle, avec l'application Stream Deck **7.1 ou plus** :
+
+1. Double-cliquer `io.github.monpoke.conference-operator.streamDeckPlugin`. La
+   catégorie **Conference Operator — Régie** apparaît dans la liste des actions.
+2. Glisser les touches voulues ; régler chacune dans son panneau (la scène,
+   l'écran, la marque, la source audio…). L'ouverture d'un panneau charge ses
+   contrôles depuis Internet.
+3. La touche **Statut** doit afficher OBS-A ✓, OBS-B ✓ et Hub ✓. « hors ligne »
+   sur toutes les touches : la régie n'est pas lancée, ou le poste écoute sur un
+   autre port — à régler dans le panneau de la touche Statut.
+
+Arrêter l'enregistrement, terminer la conférence et couper le direct
+**se maintiennent une seconde**.
+
 ## Déroulé d'un talk
 
 | Moment | Geste |

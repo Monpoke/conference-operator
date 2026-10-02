@@ -189,7 +189,16 @@ export class IngestService {
       }))
   }
 
-  /** What each room's screen says right now: its last report, shown and not expired. */
+  /**
+   * What each room's screen says right now: its last report, shown and not
+   * expired — **and the room's heartbeat agreeing** that its screen is on a message.
+   *
+   * The heartbeat is the arbiter because it is repeated every ten seconds: a
+   * "cleared" that never came — a room restarted with its message gone, a version
+   * that left the message behind on a mode change — must not leave a ghost on the
+   * console and on the hall screen. A room whose heartbeat says nothing of its
+   * screen (`null`) is taken at its last report.
+   */
   currentScreenMessages(nowMs: number): ScreenMessageReport[] {
     const latest = new Map<string, ScreenMessageReport>()
     // A room's last report is among the most recent ones; 500 covers a day of
@@ -197,10 +206,21 @@ export class IngestService {
     for (const report of this.screenMessages(500)) {
       if (!latest.has(report.roomId)) latest.set(report.roomId, report)
     }
-    return [...latest.values()].filter(
-      (report) =>
-        report.action === 'shown' && (report.expiresAt == null || Date.parse(report.expiresAt) > nowMs),
+    const modes = new Map(
+      this.db
+        .select({ roomId: roomState.roomId, displayMode: roomState.displayMode })
+        .from(roomState)
+        .all()
+        .map((row) => [row.roomId, row.displayMode]),
     )
+    return [...latest.values()].filter((report) => {
+      const mode = modes.get(report.roomId) ?? null
+      return (
+        report.action === 'shown' &&
+        (report.expiresAt == null || Date.parse(report.expiresAt) > nowMs) &&
+        (mode == null || mode === 'message')
+      )
+    })
   }
 
   /** The room's projected state, as the watchers would read it. */

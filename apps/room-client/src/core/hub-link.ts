@@ -4,6 +4,7 @@ import { RPCLink } from '@orpc/client/websocket'
 import type { ContractRouterClient } from '@orpc/contract'
 import {
   contract,
+  knownCommand,
   type Command,
   type Connectivity,
   type ExecutionMode,
@@ -365,7 +366,18 @@ export class HubLink {
           void this.sync()
         }
 
-        for await (const command of iterator) {
+        for await (const streamed of iterator) {
+          const command = knownCommand(streamed)
+          if (command == null) {
+            // A command from a later version: set aside — marked so it is not sent
+            // again — rather than failing the stream and every command behind it.
+            store.markApplied(streamed.seq, streamed.payload.type)
+            this.options.onLog?.('warn', 'commande du hub inconnue de cette version, ignorée', {
+              seq: streamed.seq,
+              type: streamed.payload.type,
+            })
+            continue
+          }
           const issue = await runtime.applyCommand(command)
           if (issue.applied) this.options.onCommandApplied?.(command)
           else {

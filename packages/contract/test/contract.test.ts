@@ -517,3 +517,24 @@ describe('message exchange', () => {
     expect(DELIVERY_BY_EVENT['room.message']).toBe('required')
   })
 })
+
+describe('the command stream, across versions', () => {
+  it('lets a command of an unknown type through, and says it is not one to apply', async () => {
+    const { streamedCommandSchema, knownCommand } = await import('../src/commands.js')
+    const future = streamedCommandSchema.parse({
+      seq: 9,
+      issuedAt: '2026-10-02T20:00:00.000Z',
+      ttlSeconds: null,
+      payload: { type: 'something.later', anything: 1 },
+    })
+    expect(knownCommand(future)).toBeNull()
+
+    const known = streamedCommandSchema.parse({
+      seq: 10,
+      issuedAt: '2026-10-02T20:00:00.000Z',
+      ttlSeconds: 60,
+      payload: { type: 'message.clear', from: null },
+    })
+    expect(knownCommand(known)?.payload).toEqual({ type: 'message.clear', from: null })
+  })
+})

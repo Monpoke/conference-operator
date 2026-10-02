@@ -1,7 +1,7 @@
 import { eventIterator, oc } from '@orpc/contract'
 import { z } from 'zod'
 import { programSchema } from '@conference-operator/program'
-import { bannerSchema, commandSchema } from './commands.js'
+import { bannerSchema, commandSchema, streamedCommandSchema } from './commands.js'
 import { envelopeSchema, ingestResultSchema } from './events.js'
 import {
   isoDateTimeSchema,
@@ -427,7 +427,8 @@ export const contract = {
      * resumption after an outage goes through `lastEventId`, not through an input
      * parameter.
      */
-    commands: oc.output(eventIterator(commandSchema)),
+    // Unknown types let through: an older room sets them aside instead of losing the stream.
+    commands: oc.output(eventIterator(streamedCommandSchema)),
   },
 
   /**

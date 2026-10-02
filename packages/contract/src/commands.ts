@@ -305,6 +305,27 @@ export const commandSchema = z.object({
 export type Command = z.infer<typeof commandSchema>
 
 /**
+ * A command as the stream carries it: known, **or of a type this version does
+ * not know yet**.
+ *
+ * Validated against `commandSchema` alone, a command added in a later version
+ * failed the whole stream on an older room: the room reconnected from its last
+ * applied command, was sent the same one again, and stayed cut off from every
+ * command after it until updated. Now the stream lets it through, and the room
+ * sets it aside (`isKnownCommand`) and carries on.
+ */
+export const streamedCommandSchema = commandSchema.extend({
+  payload: z.union([commandPayloadSchema, z.looseObject({ type: z.string() })]),
+})
+export type StreamedCommand = z.infer<typeof streamedCommandSchema>
+
+/** The streamed command, as this version can apply it — or `null` for an unknown type. */
+export function knownCommand(command: StreamedCommand): Command | null {
+  const parsed = commandSchema.safeParse(command)
+  return parsed.success ? parsed.data : null
+}
+
+/**
  * Validity window of mobile control gestures, per command.
  *
  * They live in the contract because both sides read them: the hub to stamp what

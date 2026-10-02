@@ -5,7 +5,7 @@ import { createORPCClient } from '@orpc/client'
 import { RPCLink as FetchLink } from '@orpc/client/fetch'
 import { RPCLink as WsLink } from '@orpc/client/websocket'
 import type { ContractRouterClient } from '@orpc/contract'
-import { contract, type Command } from '@conference-operator/contract'
+import { contract, type StreamedCommand } from '@conference-operator/contract'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createHub, type Hub } from '../src/server.js'
 import { provisionOperator } from '../src/operators.js'
@@ -234,7 +234,7 @@ describe('hub end to end', () => {
     const deviceHeaders = await pairRoomDevice()
     const room = wsClient(deviceHeaders)
 
-    const received: Command[] = []
+    const received: StreamedCommand[] = []
     const iterator = await room.rooms.commands()
     const consumer = (async () => {
       for await (const command of iterator) {
@@ -328,7 +328,7 @@ describe('resynchronizing the rooms', () => {
   it('sends the request down to the targeted room', async () => {
     const headers = await pairRoomDevice()
     const room = wsClient(headers)
-    const received: Command[] = []
+    const received: StreamedCommand[] = []
     const stream = (async () => {
       for await (const command of await room.rooms.commands()) {
         received.push(command)
@@ -459,7 +459,7 @@ describe('correcting a slot\'s kind', () => {
   it('tells the rooms, corrected program to back it up', async () => {
     const headers = await pairRoomDevice()
     const room = wsClient(headers)
-    const received: Command[] = []
+    const received: StreamedCommand[] = []
     const stream = (async () => {
       for await (const command of await room.rooms.commands()) {
         received.push(command)
@@ -727,7 +727,7 @@ describe('swapping talks and forcing one', () => {
 
   it('tells every room the whole map of pins', async () => {
     const room = wsClient(await pairRoomDevice())
-    const received: Command[] = []
+    const received: StreamedCommand[] = []
     const stream = (async () => {
       for await (const command of await room.rooms.commands()) {
         received.push(command)

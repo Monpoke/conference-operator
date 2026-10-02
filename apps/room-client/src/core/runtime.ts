@@ -191,6 +191,18 @@ export class RoomRuntime extends EventEmitter {
    * complete payload for nothing.
    */
   private patch(patch: Partial<DisplayState>): void {
+    /*
+     * Leaving the message screen takes the message down — whatever moved the mode.
+     *
+     * Held here rather than in \`setDisplayMode\` alone: the hub's \`display.set\`,
+     * the session's automatic screens and the expiry all set the mode too. One of
+     * them forgetting left a message nobody saw in the state — the control app
+     * kept saying "À l'écran", an urgent one stayed on the live banner, and the hub
+     * was never told it had gone.
+     */
+    if (patch.mode != null && patch.mode !== 'message' && !('message' in patch) && this.display.message != null) {
+      patch = { ...patch, message: null }
+    }
     const current = this.display as unknown as Record<string, unknown>
     const changed = Object.entries(patch).some(
       ([key, value]) => JSON.stringify(current[key] ?? null) !== JSON.stringify(value ?? null),
@@ -469,16 +481,9 @@ export class RoomRuntime extends EventEmitter {
   }
 
   /** A display switch asked for locally by the operator. */
-  /**
-   * Leaving the message screen takes the message down with it.
-   *
-   * It used to stay in the state, unseen: the control app kept saying "À
-   * l'écran", the hub was told nothing had changed, and an urgent message went on
-   * showing on the live banner long after the room had moved on.
-   */
+  /** Leaving the message screen takes the message down with it: see \`patch\`. */
   async setDisplayMode(mode: DisplayMode): Promise<void> {
-    if (mode !== 'message' && this.display.message != null) this.patch({ mode, message: null })
-    else this.patch({ mode })
+    this.patch({ mode })
   }
 
   async setSceneRole(role: SceneRole): Promise<void> {

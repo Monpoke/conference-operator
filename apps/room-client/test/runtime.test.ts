@@ -416,6 +416,14 @@ describe("the control app's own message", () => {
     expect(runtime.state().notifications.map((n) => n.text).join(' ')).toContain('Message retiré par la console')
   })
 
+  it("goes down too when the hub moves the screen", async () => {
+    // The path that used to forget it: the console's screen change.
+    const runtime = makeRuntime()
+    runtime.showMessage('Pause de 5 minutes !', 'urgent', null)
+    await runtime.applyCommand(command({ type: 'display.set', mode: 'loop' }))
+    expect(runtime.state()).toMatchObject({ mode: 'loop', message: null })
+  })
+
   it('says who wrote it', () => {
     const runtime = makeRuntime()
     runtime.showMessage('Bienvenue', 'info', null)

@@ -122,7 +122,8 @@ export function localGateway(
       try {
         const response = await fetch('/control/action', {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          // From the dock, said: the machine's window switches to server mode on it.
+          headers: { 'content-type': 'application/json', ...(dock ? { 'x-regie-dock': '1' } : {}) },
           body: JSON.stringify(gesture),
         })
         return (await response.json()) as ActionResult

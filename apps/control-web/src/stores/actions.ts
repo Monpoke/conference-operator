@@ -85,12 +85,19 @@ export const useActionsStore = defineStore('actions', () => {
 
   /** Commands in flight, per action. Used to disarm a button for the gesture's duration. */
   const pending = ref(0)
+  /**
+   * Gestures made from this page. The machine's window reads it to stay on the
+   * console once its operator uses it — a dock acting elsewhere then switches
+   * nothing.
+   */
+  const gestures = ref(0)
 
   async function act(
     gesture: Record<string, unknown>,
     options: ActOptions = {},
   ): Promise<ActionResult> {
     pending.value += 1
+    gestures.value += 1
     try {
       /*
        * The transport lives in the gateway; here we keep only what is seen.
@@ -115,5 +122,5 @@ export const useActionsStore = defineStore('actions', () => {
     }
   }
 
-  return { pending, act }
+  return { pending, gestures, act }
 })

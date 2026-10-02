@@ -368,7 +368,11 @@ useKeyboardLayer(
     />
 
     <!-- Never in the dock itself: it is the dock that makes this window redundant. -->
-    <ServerModeOffer v-if="!dock" :dock-connected="payload.dockConnected === true" />
+    <ServerModeOffer
+      v-if="!dock"
+      :dock-connected="payload.dockConnected === true"
+      :dock-acted-at="payload.dockActedAt ?? null"
+    />
 
     <RoomsStrip :payload="payload" :now-ms="room.now" @open="consult.follow($event)" />
 

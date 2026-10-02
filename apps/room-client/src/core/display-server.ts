@@ -204,6 +204,8 @@ export class DisplayServer {
   private readonly app: FastifyInstance
   private readonly clients = new Set<StreamSubscriber>()
   private readonly levelSubscribers = new Set<(body: string) => void>()
+  /** When the OBS dock last sent a gesture; see `DisplayPayload.dockActedAt`. */
+  private dockActedAt: number | null = null
   /** The server-mode pages, told when a dock comes or goes. */
   private readonly dockSubscribers = new Set<(body: string) => void>()
   /**
@@ -300,6 +302,7 @@ export class DisplayServer {
         socialWall,
         eventIdentity,
         dockConnected: this.dockConnected(),
+        dockActedAt: this.dockActedAt,
       }
     }
 
@@ -331,6 +334,7 @@ export class DisplayServer {
       socialWall,
       eventIdentity,
       dockConnected: this.dockConnected(),
+      dockActedAt: this.dockActedAt,
     }
   }
 
@@ -785,6 +789,8 @@ export class DisplayServer {
         return reply.status(400).send({ ok: false, message: 'Action inconnue ou mal formée' })
       }
       const outcome = await runControlAction(this.options.control, parsed.data)
+      // A gesture from the OBS dock: the machine's window learns the dock is in use.
+      if (request.headers['x-regie-dock'] === '1') this.dockActedAt = Date.now()
       // The state may have changed: we push again immediately rather than waiting a
       // tick.
       this.broadcast()

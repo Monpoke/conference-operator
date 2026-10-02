@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../src/App.vue'
 import { readDock } from '../src/boot.js'
+import { useActionsStore } from '../src/stores/actions.js'
 import { useRoomStore } from '../src/stores/room.js'
 import { payload } from './fixtures.js'
 
@@ -166,5 +167,54 @@ describe('the server-mode offer', () => {
     const list = wrapper.find('[data-role="screens-list"]')
     expect(list.find('a[href="/regie/serveur"]').exists()).toBe(false)
     expect(list.find('a[href="/regie"]').exists()).toBe(false)
+  })
+})
+
+describe('server mode by itself, once the dock acts', () => {
+  afterEach(() => {
+    globalThis.sessionStorage.clear()
+    vi.restoreAllMocks()
+  })
+
+  async function windowWith(dockActedAt: number | null): Promise<ReturnType<typeof vi.spyOn>> {
+    const assign = vi.spyOn(globalThis.location, 'assign').mockImplementation(() => {})
+    globalThis.history.replaceState({}, '', '/regie')
+    useRoomStore().seed({ ...payload(), dockConnected: true, dockActedAt })
+    mounted.push(mount(App, { attachTo: document.body }))
+    await flushPromises()
+    return assign
+  }
+
+  it('tells the machine a gesture comes from the dock', async () => {
+    const sent: { headers?: HeadersInit }[] = []
+    vi.stubGlobal('fetch', async (_url: string, init: { headers?: HeadersInit }) => {
+      sent.push(init)
+      return new Response('{"ok":true}', { headers: { 'content-type': 'application/json' } })
+    })
+    await mountAt('/regie?dock')
+    await useActionsStore().act({ action: 'display.set', mode: 'loop' })
+    expect(sent.at(-1)?.headers).toMatchObject({ 'x-regie-dock': '1' })
+  })
+
+  it('switches the window when the dock acts', async () => {
+    const assign = await windowWith(null)
+    useRoomStore().seed({ ...payload(), dockConnected: true, dockActedAt: 1_000 })
+    await flushPromises()
+    expect(assign).toHaveBeenCalledWith('/regie/serveur')
+  })
+
+  it('stays on the console once the window itself was used', async () => {
+    const assign = await windowWith(null)
+    await useActionsStore().act({ action: 'display.set', mode: 'loop' })
+    useRoomStore().seed({ ...payload(), dockConnected: true, dockActedAt: 1_000 })
+    await flushPromises()
+    expect(assign).not.toHaveBeenCalled()
+  })
+
+  it('does not bounce back out on a gesture older than the page', async () => {
+    const assign = await windowWith(500)
+    useRoomStore().seed({ ...payload(), dockConnected: true, dockActedAt: 500 })
+    await flushPromises()
+    expect(assign).not.toHaveBeenCalled()
   })
 })

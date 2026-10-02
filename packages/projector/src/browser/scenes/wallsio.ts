@@ -159,6 +159,8 @@ export function wallsio(el: HTMLElement): Scene {
     const anim = mur.animate([{ opacity: 1 }, { opacity: 0 }], { duration: FONDU, easing: 'ease-in', fill: 'forwards' })
     fondu = { anim, depuis: Date.now() }
     anim.onfinish = () => finirFondu(data)
+    // Always cancelled once done with: its `finished` then rejects, and nobody waits on it.
+    anim.finished.catch(() => {})
   }
 
   /** Faded out: the next page is laid, then fades in. Once only. */

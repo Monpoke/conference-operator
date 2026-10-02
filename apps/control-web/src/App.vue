@@ -391,7 +391,7 @@ useKeyboardLayer(
           :obs="payload.diagnostics?.obs.A ?? null"
           :offline="obsOffline.A"
         />
-        <MessagePanel />
+        <MessagePanel :message="payload.state.message" />
       </div>
 
       <div class="flex flex-col gap-2.5 lg:min-h-0 lg:overflow-y-auto">

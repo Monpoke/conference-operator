@@ -42,7 +42,8 @@ const PROGRAMME: Command = { value: 'programme', label: 'Programme' }
 /**
  * The two modes that display something chosen elsewhere.
  *
- * `message` shows the banner typed in the Message panel, `question` the question
+ * `message` shows the banner typed in the « Message à l'écran » panel (or sent
+ * from the console), `question` the question
  * picked in the room control app's moderation — neither is offered remotely.
  * Offering them anyway would give a button that takes over the room's screen to
  * project "Aucune question affichée" in front of the audience: the gesture would

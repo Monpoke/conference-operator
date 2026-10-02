@@ -2052,13 +2052,20 @@ montrer l'un sans risquer l'autre.
 |---|---|---|
 | `/display/overlay` (OBS-B, VOD) | **oui** | jamais |
 | `/display/overlay-live` (OBS-A, salle) | oui | oui, prioritaire |
-| `/display/projector` mode « Question choisie » | oui, en grand | non — il a son propre mode « Message » |
+| `/display/projector` mode « Question choisie » | oui, en grand | non — il a son propre mode « Message », que la régie peut aussi remplir |
 | `/regie` | la liste, et celle à l'antenne | zone Signalements |
 
 La question à l'antenne est **rattachée à la conférence pilotée** : elle tombe
 d'elle-même au talk suivant. Sans ça, elle resterait incrustée dans l'habillage
 de captation pendant que le speaker d'après s'installe — gravée dans sa VOD,
 adressée à quelqu'un d'autre.
+
+La régie n'écrit plus à la console : ce canal ne servait pas. Son panneau
+« Message à l'écran » remplit la même bannière que le message « au public » de
+la console (mode « Message » du projecteur), avec une durée ou jusqu'à retrait,
+et un bouton « Retirer ». L'événement `room.message` reste accepté par le hub,
+puis ignoré : un poste plus ancien doit pouvoir vider sa file de remontée, qui
+est validée lot par lot.
 
 Côté console, onglet **Messages**, panneau « Bandeau live » : cinq modèles prêts
 à envoyer (questions, pause, micro, retard, enregistrement) qui **remplissent le
@@ -2663,7 +2670,7 @@ lance une autre. Le rattrapage d'une clôture posée par erreur avant l'heure se
 fait alors depuis la console du hub, qui liste chaque conférence avec son
 « Remettre à venir ».
 
-Les **signalements** — fin de talk à côté, message parti à la console, hub
+Les **signalements** — fin de talk à côté, message de la console, hub
 rejoint — s'affichent en bandeau sous le flux et **s'effacent seuls au bout de
 30 secondes** : un bandeau qui ne part pas cesse d'être lu, et la régie
 finissait la journée avec cinq signalements périmés au-dessus des commandes. La

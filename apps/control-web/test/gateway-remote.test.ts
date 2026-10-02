@@ -153,7 +153,8 @@ describe('translating a control gesture', () => {
       'vod.upload',
       'room.configure',
       'obs.connect',
-      'message.send',
+      'screen.message',
+      'screen.message.clear',
     ]) {
       expect(translate({ action }, view())).toBeNull()
     }

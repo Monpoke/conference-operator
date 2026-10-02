@@ -465,7 +465,7 @@ describe('IngestService', () => {
         outputPath: '/rushes/x.mkv', durationMs: 1000, sidecarWritten: true,
       }),
       envelope('01N3AAAAAAAAAAAAAAAAAAAAAA', 3, {
-        type: 'room.message', text: 'micro HS', level: 'warning',
+        type: 'obs.connection', obs: 'B', connected: false, unresolvedRoles: [],
       }),
     ])
 
@@ -474,7 +474,7 @@ describe('IngestService', () => {
     expect(erased).toBe(2)
     expect(ingest.captations(TRACK_1)).toEqual([])
     // A day's diagnosis has nothing to do with the rushes: it stays.
-    expect(ingest.messagesFromRooms()).toHaveLength(1)
+    expect(ingest.eventsFor(TRACK_1).map((event) => event.type)).toEqual(['obs.connection'])
   })
 
   it('discards a malformed event without blocking the others', () => {
@@ -484,18 +484,29 @@ describe('IngestService', () => {
 
     const outcome = ingest.push(TRACK_1, [
       { id: 'not-a-ulid', roomId: TRACK_1, seq: 1, payload: { type: 'inconnu' } },
-      envelope('01CCCCCCCCCCCCCCCCCCCCCCCC', 2, { type: 'room.message', text: 'ok', level: 'info' }),
+      envelope('01CCCCCCCCCCCCCCCCCCCCCCCC', 2, { type: 'obs.connection', obs: 'A', connected: true, unresolvedRoles: [] }),
     ])
 
     expect(outcome.rejected).toEqual([{ id: 'not-a-ulid', reason: 'invalid-schema' }])
     expect(outcome.acked).toEqual(['01CCCCCCCCCCCCCCCCCCCCCCCC'])
   })
 
+  it('still drains an obsolete room message, so an older room is not blocked', () => {
+    // A room no longer writes to the console; one on an older version may still
+    // hold such a message in its outbox, and the rest of its batch behind it.
+    const rooms = new RoomService(db, testSecrets)
+    seedRoom(rooms)
+    const outcome = new IngestService(db).push(TRACK_1, [
+      envelope('01EEEEEEEEEEEEEEEEEEEEEEEE', 1, { type: 'room.message', text: 'micro HS', level: 'warning' }),
+    ])
+    expect(outcome.acked).toEqual(['01EEEEEEEEEEEEEEEEEEEEEEEE'])
+  })
+
   it('refuses an event stamped for another room', () => {
     const rooms = new RoomService(db, testSecrets)
     seedRoom(rooms)
     const outcome = new IngestService(db).push(TRACK_1, [
-      envelope('01DDDDDDDDDDDDDDDDDDDDDDDD', 1, { type: 'room.message', text: 'x', level: 'info' }, 'track-2'),
+      envelope('01DDDDDDDDDDDDDDDDDDDDDDDD', 1, { type: 'obs.connection', obs: 'A', connected: true, unresolvedRoles: [] }, 'track-2'),
     ])
     expect(outcome.rejected).toEqual([{ id: '01DDDDDDDDDDDDDDDDDDDDDDDD', reason: 'unknown-room' }])
   })

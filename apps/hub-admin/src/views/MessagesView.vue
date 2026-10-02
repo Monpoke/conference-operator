@@ -13,7 +13,7 @@ import {
 } from '@conference-operator/components'
 import { timeAgo } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useMessagesStore } from '../stores/messages.js'
 
 /**
@@ -29,7 +29,7 @@ import { useMessagesStore } from '../stores/messages.js'
  * banner went to "the rooms chosen above" without naming them.
  */
 const store = useMessagesStore()
-const { rooms, received, banners, target, live } = storeToRefs(store)
+const { rooms, banners, target } = storeToRefs(store)
 const toast = useToast()
 
 const LEVELS = [
@@ -76,9 +76,6 @@ const bannerLevel = ref<'info' | 'warning' | 'urgent'>('info')
 
 /** Changing room changes the history being consulted. */
 watch(target, () => void store.load())
-
-onMounted(() => void store.follow())
-onBeforeUnmount(() => store.unfollow())
 
 function send(): void {
   if (text.value.trim().length === 0) {
@@ -291,33 +288,6 @@ async function hideBanner(): Promise<void> {
             {{ past.visible ? 'Masquer' : 'Remettre' }}
           </Button>
         </div>
-      </div>
-    </Panel>
-
-    <Panel>
-      <div class="mb-2.5 flex items-center gap-2">
-        <h2 class="mb-0 flex-1 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
-          Reçus des salles
-        </h2>
-        <span id="messages-live" class="flex items-center gap-1.5 text-xs text-dim">
-          <span class="size-2 rounded-full" :class="live ? 'bg-ok' : 'bg-warn'" />
-          {{ live ? 'En direct' : 'Reconnexion…' }}
-        </span>
-      </div>
-      <div id="messages-received">
-        <Empty v-if="received.length === 0">Aucun message des salles.</Empty>
-        <article
-          v-for="message in received"
-          :key="message.id"
-          class="mb-2.5 rounded-[9px] border border-edge p-3 last:mb-0"
-        >
-          <div class="mb-1.5 flex items-center gap-2 text-xs text-dim">
-            <Badge class="px-1.5 py-0.5 text-[10px] tracking-[.08em]">{{ message.level }}</Badge>
-            <span>{{ message.roomName ?? message.roomId }}</span>
-            <span>{{ timeAgo(message.receivedAt) }}</span>
-          </div>
-          <p class="text-sm leading-snug break-words">{{ message.text }}</p>
-        </article>
       </div>
     </Panel>
 

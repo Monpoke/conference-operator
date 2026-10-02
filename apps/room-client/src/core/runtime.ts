@@ -586,15 +586,7 @@ export class RoomRuntime extends EventEmitter {
          * hub's. Staleness is a completely different filter: it is judged on
          * `issuedAt`, before arriving here.
          */
-        this.patch({
-          mode: 'message',
-          message: {
-            text: payload.text,
-            level: payload.level,
-            expiresAtMs:
-              command.ttlSeconds == null ? null : this.correctedNow() + command.ttlSeconds * 1000,
-          },
-        })
+        this.showMessage(payload.text, payload.level, command.ttlSeconds ?? null)
         // The control app must also know what is being projected at its end.
         this.notify({
           level: payload.level === 'urgent' ? 'warning' : 'info',
@@ -856,6 +848,33 @@ export class RoomRuntime extends EventEmitter {
       // The phone knows what it asked for: OBS's reason is what it lacks.
       this.reportRemote(command, false, cause.message)
     })
+  }
+
+  /**
+   * Puts a message on the room's screen, from the hub or from the control app.
+   *
+   * The display time runs from now: see `message.broadcast`.
+   */
+  showMessage(text: string, level: BroadcastMessage['level'], ttlSeconds: number | null): void {
+    this.patch({
+      mode: 'message',
+      message: {
+        text,
+        level,
+        expiresAtMs: ttlSeconds == null ? null : this.correctedNow() + ttlSeconds * 1000,
+      },
+    })
+  }
+
+  /**
+   * Takes the message down by hand.
+   *
+   * Back to the loop only if the screen was showing it: an operator who already
+   * moved on to the countdown is not sent back to the loop by tidying up.
+   */
+  clearMessage(): void {
+    if (this.display.mode === 'message') this.patch({ message: null, mode: 'loop' })
+    else if (this.display.message != null) this.patch({ message: null })
   }
 
   /** Removes a message whose TTL has run out. To be called on a clock tick. */

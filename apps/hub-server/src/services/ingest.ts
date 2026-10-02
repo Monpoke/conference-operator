@@ -53,8 +53,6 @@ export class IngestService {
     private readonly db: HubDatabase,
     /** A batch was applied: whoever watches this room recomposes its view. */
     private readonly onChange: (roomId: string | null) => void = () => {},
-    /** A new `room.message` was stored — a replayed one does not count. */
-    private readonly onRoomMessage: () => void = () => {},
     /** A room reported what became of a command it was sent: the audit completes its entry. */
     private readonly onCommandOutcome: (roomId: string, outcome: RemoteCommandOutcome) => void = () => {},
   ) {}
@@ -103,7 +101,6 @@ export class IngestService {
     }
 
     const before = this.projected(roomId)
-    let newMessage = false
     this.db.transaction((tx) => {
       for (const envelope of valid) {
         const inserted = tx
@@ -125,7 +122,6 @@ export class IngestService {
         if (inserted.length === 0) outcome.duplicates.push(envelope.id)
         else {
           outcome.acked.push(envelope.id)
-          if (envelope.payload.type === 'room.message') newMessage = true
           // Counted here, with the event, and only when it is new: a replay adds nothing.
           if (envelope.payload.type === 'wall.impressions') {
             addImpressions(tx, envelope.roomId, envelope.occurredAt, envelope.payload.counts)
@@ -152,7 +148,6 @@ export class IngestService {
     // After the commit, never inside: a watcher woken mid-transaction would read
     // the state from before.
     if (outcomeMoved || this.moved(before, this.projected(roomId))) this.onChange(roomId)
-    if (newMessage) this.onRoomMessage()
     return outcome
   }
 
@@ -359,40 +354,6 @@ export class IngestService {
       .where(eq(ingestEvent.roomId, roomId))
       .orderBy(asc(ingestEvent.seq))
       .all()
-  }
-
-  /**
-   * Messages sent by the rooms.
-   *
-   * Read from the ingestion log rather than a dedicated table: they arrive
-   * through the outbox, so a call for help sent during an outage is already kept
-   * and dated — duplicating the storage would bring nothing.
-   */
-  messagesFromRooms(limit = 50) {
-    return this.db
-      .select({
-        id: ingestEvent.id,
-        roomId: ingestEvent.roomId,
-        payloadJson: ingestEvent.payloadJson,
-        occurredAt: ingestEvent.occurredAt,
-        receivedAt: ingestEvent.receivedAt,
-      })
-      .from(ingestEvent)
-      .where(eq(ingestEvent.type, 'room.message'))
-      .orderBy(desc(ingestEvent.receivedAt))
-      .limit(limit)
-      .all()
-      .map((row) => {
-        const payload = JSON.parse(row.payloadJson) as { text: string; level: string }
-        return {
-          id: row.id,
-          roomId: row.roomId,
-          text: payload.text,
-          level: payload.level as 'info' | 'warning' | 'urgent',
-          occurredAt: row.occurredAt,
-          receivedAt: row.receivedAt,
-        }
-      })
   }
 }
 

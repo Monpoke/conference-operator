@@ -212,6 +212,8 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   shortcutName: Régie de salle
+  # The default folder, `room-control` rather than `@conference-operatorroom-client`.
+  include: build/installer.nsh
 
 # Native modules: NOTHING TO REBUILD, and that is deliberate.
 #

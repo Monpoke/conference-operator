@@ -602,9 +602,9 @@ export const contract = {
           ttlSeconds: z.number().int().positive().max(3600).nullable(),
           /**
            * The sender's password, for an `urgent` message: it takes the
-           * `message:urgent` right **and** a fresh proof of identity. An account
-           * signed in through Google has no password here — for it, the proof is
-           * a session opened less than five minutes ago (see `urgentProof`).
+           * `message:urgent` right **and** a fresh proof of identity — this
+           * password, or, for an account linked to Google, a session opened less
+           * than five minutes ago (see `urgentProof`).
            */
           password: z.string().max(200).optional(),
         }),
@@ -625,8 +625,11 @@ export const contract = {
      */
     urgentProof: oc.output(
       z.object({
-        method: z.enum(['password', 'sso']),
-        /** SSO only: the current session is recent enough to send without signing in again. */
+        /** The account has a password on the hub: typing it again is a proof. */
+        password: z.boolean(),
+        /** The account is linked to the identity provider: signing in again there is a proof. */
+        sso: z.boolean(),
+        /** SSO: the current session is recent enough to send without signing in again. */
         fresh: z.boolean(),
       }),
     ),

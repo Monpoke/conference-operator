@@ -90,7 +90,8 @@ afterEach(async () => {
 
 describe('an urgent message', () => {
   it('asks the password again, and refuses a wrong one', async () => {
-    expect((await rpc('messages/urgentProof', undefined)).body.json).toEqual({ method: 'password', fresh: false })
+    // A password account, signed in a moment ago: the session is not an SSO proof.
+    expect((await rpc('messages/urgentProof', undefined)).body.json).toMatchObject({ password: true, sso: false })
 
     expect((await rpc('messages/send', urgent)).status).toBe(403)
     expect((await rpc('messages/send', { ...urgent, password: 'not-it' })).status).toBe(403)

@@ -36,7 +36,8 @@ export interface ScreenMessage {
 }
 
 export interface UrgentProof {
-  method: 'password' | 'sso'
+  password: boolean
+  sso: boolean
   fresh: boolean
 }
 

@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@conference-operator/contract": "workspace:*",
+    "@conference-operator/room-state": "workspace:*",
     "@elgato/streamdeck": "3.0.1"
   },
   "devDependencies": {

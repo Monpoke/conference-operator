@@ -524,6 +524,9 @@ importers:
       '@conference-operator/contract':
         specifier: workspace:*
         version: link:../../packages/contract
+      '@conference-operator/room-state':
+        specifier: workspace:*
+        version: link:../../packages/room-state
       '@elgato/streamdeck':
         specifier: 3.0.1
         version: 3.0.1

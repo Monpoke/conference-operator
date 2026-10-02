@@ -8,6 +8,7 @@ import streamDeck, {
 } from '@elgato/streamdeck'
 import { decide, faceOf, pressOf, type ButtonFace, type ButtonSettings } from '../core/buttons.js'
 import { sendAction } from '../core/regie.js'
+import { runTalkSteps } from '@conference-operator/room-state/talk-flow'
 import type { RoomLink } from '../room-link.js'
 
 /** The SDK's settings type (from `@elgato/utils`, which it does not re-export). */
@@ -80,6 +81,22 @@ export abstract class RoomAction extends SingletonAction<JsonObject> {
       await ev.action.showAlert()
       this.painted.delete(ev.action.id)
       setTimeout(() => void this.paint(ev.action), 1_500)
+      return
+    }
+    if ('steps' in decision) {
+      // The talk's sequence: a failed guard (the recording not starting, the take
+      // not stopping) stops the rest, as in the control app.
+      let failure: string | null = null
+      const held = await runTalkSteps(decision.steps, async (gesture) => {
+        const outcome = await sendAction(this.room.base(), gesture)
+        if (!outcome.ok && failure == null) failure = outcome.message
+        return outcome
+      })
+      if (held && failure == null) await ev.action.showOk()
+      else {
+        streamDeck.logger.warn(`séquence de conférence interrompue : ${failure ?? 'refus'}`)
+        await ev.action.showAlert()
+      }
       return
     }
     const outcome = await sendAction(this.room.base(), decision.gesture)

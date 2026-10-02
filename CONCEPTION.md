@@ -2906,6 +2906,15 @@ les mêmes gestes (`POST /control/action`). Rien n'a changé côté poste ni hub
   marque (début, fin, chapitre — ✓ quand la marque est posée), direct, source
   audio, conférence (démarrer / terminer), retirer le message, statut (OBS-A,
   OBS-B, hub).
+- **La touche Conférence suit la séquence de la régie**, partagée dans
+  `room-state/talk-flow` (mêmes questions, mêmes étapes, des deux côtés) :
+  démarrer enregistre d'abord si rien n'enregistre et que le garde-fou de la
+  salle le demande (« Enregistrer et commencer »), puis démarre, puis bascule sur
+  la scène de démarrage ; un enregistrement qui ne part pas arrête tout. Très en
+  avance (plus d'un quart d'heure, talk non forcé) : la touche l'affiche et
+  demande un appui long. « Démarrer sans enregistrer » est une variante réglée
+  dans le panneau, pas un geste. Terminer arrête aussi la captation si le
+  garde-fou d'arrêt le demande.
 - **Les gestes sans retour se maintiennent une seconde** : arrêter
   l'enregistrement, terminer la conférence, couper le direct. Un appui bref
   l'explique sur la touche au lieu de le faire.

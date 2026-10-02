@@ -47,6 +47,28 @@ export class CommandService {
    * Removals (`message: null`) are not history — you do not put "nothing" back on
    * air — but the most recent one says **which** banner is still shown.
    */
+  /**
+   * The texts the console sent to **every** room's screen — the most recent ones.
+   *
+   * What makes a message event-wide is how it was sent, not how many rooms report
+   * it: a room switched off, or a hub knowing more rooms than have a machine, must
+   * not turn "the whole event" into "this room".
+   */
+  eventWideTexts(limit = 50): Set<string> {
+    const texts = new Set<string>()
+    for (const row of this.db
+      .select()
+      .from(command)
+      .where(and(eq(command.type, 'message.broadcast'), isNull(command.roomId)))
+      .orderBy(desc(command.seq))
+      .limit(limit)
+      .all()) {
+      const payload = JSON.parse(row.payloadJson) as { text?: string; target?: string }
+      if (payload.target === 'audience' && payload.text != null) texts.add(payload.text)
+    }
+    return texts
+  }
+
   pastBanners(roomId: string | null, limit: number): {
     seq: number
     roomId: string | null

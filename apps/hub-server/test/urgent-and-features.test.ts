@@ -239,7 +239,7 @@ describe('the room screens, reported back', () => {
     expect(((await rpc('messages/screens', { limit: 10 })).body.json as { current: unknown[] }).current).toEqual([])
   })
 
-  it('relays what is urgent to the hall screen, saying where', () => {
+  it('relays what is urgent to the hall screen, saying where', async () => {
     const rooms = hub.services.rooms.list()
     expect(hallUrgentMessage(hub.services)).toBeNull()
 
@@ -248,6 +248,23 @@ describe('the room screens, reported back', () => {
     ])
     const one = hallUrgentMessage(hub.services)
     expect(one?.text).toBe(`${rooms.find((room) => room.id === TRACK_1)!.name} — Évacuez`)
+
+    // Sent to every room from the console: said once, even if only one room has a
+    // machine running to report it.
+    await rpc('messages/send', {
+      roomId: null,
+      text: 'Fin de la journée',
+      level: 'info',
+      target: 'audience',
+      ttlSeconds: null,
+    })
+    hub.services.ingest.push(TRACK_1, [
+      screenEvent(TRACK_1, { action: 'shown', text: 'Fin de la journée', level: 'urgent', expiresAt: null, source: 'hub' }),
+    ])
+    expect(hallUrgentMessage(hub.services)?.text).toBe('Fin de la journée')
+    hub.services.ingest.push(TRACK_1, [
+      screenEvent(TRACK_1, { action: 'shown', text: 'Évacuez', level: 'urgent', expiresAt: null, source: 'regie' }),
+    ])
 
     // The same text in every room: sent to the whole event, said once.
     for (const room of rooms.filter((candidate) => candidate.id !== TRACK_1)) {

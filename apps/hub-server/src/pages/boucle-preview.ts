@@ -80,10 +80,11 @@ export async function renderBouclePreview(services: Services, options: BouclePre
  * What is urgent in the rooms, for the hall screen.
  *
  * The rooms' own urgent messages — from their control apps or from the console —
- * as they reported them (`screen.message`), still on and not expired. A text shown
- * in every room is said once, as is: it was sent to the whole event. Otherwise each
- * one is prefixed with the rooms it concerns, because in the hall "evacuate" means
- * nothing without saying where.
+ * as they reported them (`screen.message`), still on and not expired. A text the
+ * console sent to every room — or that every room shows — is said once, as is: it
+ * concerns the whole event, however many rooms happen to have a machine running.
+ * Otherwise each one is prefixed with the rooms it concerns, because in the hall
+ * "evacuate" means nothing without saying where.
  */
 export function hallUrgentMessage(
   services: Services,
@@ -99,8 +100,9 @@ export function hallUrgentMessage(
   for (const report of reports) {
     byText.set(report.text!, [...(byText.get(report.text!) ?? []), report.roomId])
   }
+  const eventWide = services.commands.eventWideTexts()
   const lines = [...byText].map(([text, roomIds]) =>
-    roomIds.length >= rooms.length
+    eventWide.has(text) || roomIds.length >= rooms.length
       ? text
       : `${roomIds.map((id) => names.get(id) ?? id).join(', ')} — ${text}`,
   )

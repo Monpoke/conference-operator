@@ -179,6 +179,23 @@ const act = async (payload: unknown) => {
 
 const state = async () => (await (await fetch(`${control}/display/data`)).json()) as DisplayPayload
 
+describe('gestures from the OBS dock', () => {
+  it("are told to the machine's window, and the window's own are not", async () => {
+    expect((await state()).dockActedAt ?? null).toBeNull()
+
+    await act({ action: 'display.set', mode: 'loop' })
+    expect((await state()).dockActedAt ?? null).toBeNull()
+
+    const before = Date.now()
+    await fetch(`${control}/control/action`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-regie-dock': '1' },
+      body: JSON.stringify({ action: 'display.set', mode: 'loop' }),
+    })
+    expect((await state()).dockActedAt).toBeGreaterThanOrEqual(before)
+  })
+})
+
 describe('control window', () => {
   it('serves a page that does not leave its own origin', async () => {
     const html = await (await fetch(`${control}/regie`)).text()

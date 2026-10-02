@@ -511,6 +511,13 @@ export interface DisplayPayload {
    */
   dockConnected?: boolean
   /**
+   * When the dock last did something — a gesture sent from the OBS dock, in ms.
+   *
+   * The machine's window reads it to step aside into server mode by itself: a
+   * dock that acts is a dock in use. `null` until the dock acts.
+   */
+  dockActedAt?: number | null
+  /**
    * The public wall and the audience questions, on or off for this edition. The
    * control app hides their buttons when off. Absent — an older room, the hub's
    * own pages — means both on.
@@ -619,6 +626,8 @@ export const FIELDS_BY_VIEW: Record<DisplayView, readonly (keyof DisplayPayload)
     'screensDisabled',
     // The dock's presence: the machine's window offers server mode on it.
     'dockConnected',
+    // The dock's last gesture: the window switches to server mode by itself.
+    'dockActedAt',
     // The wall and questions switches: the control app hides what is off.
     'features',
   ],

@@ -1026,6 +1026,15 @@ export const router = os.router({
       return { ok: true }
     }),
 
+    clear: os.messages.clear.use(operatorCan('message:send')).handler(({ input, context }) => {
+      if (input.roomId != null && context.services.rooms.get(input.roomId) == null) {
+        throw new ORPCError('NOT_FOUND', { message: `Salle inconnue : ${input.roomId}` })
+      }
+      // A minute: a removal caught up later must not take down a message shown since.
+      context.services.commands.publish(input.roomId, { type: 'message.clear', from: context.operator.email }, 60)
+      return { ok: true }
+    }),
+
     urgentProof: os.messages.urgentProof
       .use(operatorCan('message:send'))
       .handler(({ context }) => urgentProofOf(context)),

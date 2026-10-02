@@ -33,7 +33,8 @@ l'opérateur a l'application ouverte et rien d'autre.
    fermer arrête toujours la salle — mais n'affiche plus la console. **Afficher
    la console** la ramène à tout moment, et elle revient d'elle-même une
    dizaine de secondes après la fermeture d'OBS. Le mode serveur est aussi dans
-   le menu **Écrans**.
+   le menu **Écrans**. Dès qu'une action est faite depuis le dock, la fenêtre y
+   passe d'elle-même — sauf si elle a elle-même servi depuis l'arrivée du dock.
 
    Fermer la régie pendant un enregistrement ou une diffusion demande une
    confirmation : OBS continuerait sans personne pour le piloter (ni marqueurs,

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Button } from '@conference-operator/components'
 import { ref, watch } from 'vue'
+import { useActionsStore } from '../stores/actions.js'
 
 /**
  * The offer to step aside when an OBS dock drives the room.
@@ -16,7 +17,7 @@ import { ref, watch } from 'vue'
  * `?console` — or the offer would follow straight on the way back. A dock that
  * leaves resets it: the next dock is a new question.
  */
-const props = defineProps<{ dockConnected: boolean }>()
+const props = defineProps<{ dockConnected: boolean; dockActedAt?: number | null }>()
 
 const DISMISSED = 'regie.mode-serveur.ecarte'
 
@@ -40,12 +41,38 @@ function writeDismissed(value: boolean): void {
 
 const dismissed = ref(readDismissed())
 
+/**
+ * Server mode by itself, once the dock acts.
+ *
+ * A dock that sends gestures is a dock in use, and this window then renders for
+ * nobody. Three things hold it on the console all the same:
+ * - the operator declined, or came back from server mode by its button;
+ * - **this window was used** — a gesture made here since the dock arrived: two
+ *   people may well drive together, and the window must not vanish under a hand;
+ * - the dock's gesture predates this page: coming back to the console must not
+ *   bounce straight back out on an old one.
+ */
+const actions = useActionsStore()
+let ownGesturesAtReset = actions.gestures
+const seenAtLoad = props.dockActedAt ?? null
+
+watch(
+  () => props.dockActedAt ?? null,
+  (actedAt) => {
+    if (actedAt == null || actedAt === seenAtLoad) return
+    if (dismissed.value || actions.gestures !== ownGesturesAtReset) return
+    enter()
+  },
+)
+
 watch(
   () => props.dockConnected,
   (connected) => {
     if (connected) return
     dismissed.value = false
     writeDismissed(false)
+    // The next dock is a new question, for the automatic switch too.
+    ownGesturesAtReset = actions.gestures
   },
 )
 

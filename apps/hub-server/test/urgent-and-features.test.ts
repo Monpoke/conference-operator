@@ -166,6 +166,18 @@ describe('the public wall and the questions switches', () => {
   })
 })
 
+describe("taking a screen's message down from the console", () => {
+  it('sends the room a removal, short-lived, signed by its author', async () => {
+    expect((await rpc('messages/clear', { roomId: TRACK_1 })).status).toBe(200)
+    expect((await rpc('messages/clear', { roomId: 'nowhere' })).status).toBe(404)
+    const backlog = hub.services.commands.backlog(TRACK_1, 0)
+    expect(backlog.at(-1)).toMatchObject({
+      ttlSeconds: 60,
+      payload: { type: 'message.clear', from: ADMIN.email },
+    })
+  })
+})
+
 describe('the room screens, reported back', () => {
   it('shows what each screen says now, and the log of what they said', async () => {
     const later = new Date(Date.now() + 10 * 60_000).toISOString()

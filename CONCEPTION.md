@@ -2080,6 +2080,12 @@ s'ajoute à un autre) :
   vérifié **sur le poste** — l'alarme doit pouvoir partir hub coupé. Pas de code
   défini : la salle refuse les urgents. Cinq erreurs bloquent une minute.
 
+**La console retire un message d'écran**, qui qu'il l'ait mis — régie ou
+console : « Retirer » sur chaque salle de « À l'écran dans les salles », ou
+« Tout retirer ». Commande `message.clear` à durée de vie d'une minute, pour qu'un
+retrait rattrapé en retard n'emporte pas un message affiché depuis ; la régie
+est prévenue de qui a retiré.
+
 Le bandeau urgent de la console (`overlay.show`) suit la même règle. Ni le mot de
 passe ni le PIN n'entrent au journal d'audit (`redactSecrets`).
 
@@ -2402,6 +2408,21 @@ la fermer veut toujours dire « on éteint ».
   rend plus, et le VU-mètre se coupe avec elle — OBS-B cesse d'envoyer ses
   niveaux. Un bouton **Afficher la console** la ramène (`/regie?console`, qui ne
   repropose pas aussitôt le mode serveur).
+- **Bascule automatique quand le dock agit.** Un geste envoyé depuis le dock
+  (en-tête `x-regie-dock`) est publié à la fenêtre (`dockActedAt`), qui passe
+  alors d'elle-même en mode serveur : un dock qui agit est un dock utilisé.
+  **Sauf si la fenêtre a servi** — un geste fait depuis elle depuis l'arrivée du
+  dock la garde sur la console, deux personnes pouvant piloter ensemble —, si
+  l'opérateur a écarté la proposition ou est revenu par « Afficher la console »,
+  ou si le geste du dock précède le chargement de la page. Un dock qui part remet
+  ces règles à zéro.
+- **Bascule automatique quand le dock agit.** Un geste envoyé depuis le dock
+  (en-tête `x-regie-dock`) est publié à la fenêtre (`dockActedAt`), qui passe
+  alors d'elle-même en mode serveur : un dock qui agit est un dock utilisé.
+  **Sauf si la fenêtre a servi** depuis l'arrivée du dock — deux personnes
+  peuvent piloter ensemble —, si l'opérateur a écarté la proposition ou est
+  revenu par « Afficher la console », ou si le geste précède le chargement de la
+  page. Un dock qui part remet ces règles à zéro.
 - **Retour automatique.** Dock disparu depuis dix secondes — OBS fermé ou
   planté — : la console revient d'elle-même. Le délai absorbe un dock qui se
   recharge ou une machine qui redémarre ; l'opérateur ne doit jamais rester sans

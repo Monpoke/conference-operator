@@ -40,6 +40,7 @@ function stub(): { calls: Call[]; client: unknown } {
         messages: {
           send: note('messages/send', { ok: true }),
           urgentProof: note('messages/urgentProof', { method: 'password', fresh: false }),
+          clear: note('messages/clear', { ok: true }),
           screens: note('messages/screens', {
             current: [
               {
@@ -243,6 +244,14 @@ describe('urgent messages and the room screens', () => {
     const { wrapper } = await mountView()
     expect(wrapper.get('#screens-current').text()).toContain('Pause café')
     expect(wrapper.get('#screens-current').text()).toContain('régie')
+    wrapper.unmount()
+  })
+
+  it("takes a room screen's message down, whoever put it up", async () => {
+    const { calls, wrapper } = await mountView()
+    await wrapper.get('[data-role="btn-screen-clear-track-1"]').trigger('click')
+    await flushPromises()
+    expect(calls).toContainEqual({ path: 'messages/clear', input: { roomId: 'track-1' } })
     wrapper.unmount()
   })
 })

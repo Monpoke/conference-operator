@@ -602,6 +602,17 @@ export class RoomRuntime extends EventEmitter {
         })
         break
       }
+      case 'message.clear': {
+        if (this.display.message == null) break
+        const removed = this.display.message.text
+        this.clearMessage()
+        // The control app sees its screen change: it must know who did it.
+        this.notify({
+          level: 'info',
+          text: `Message retiré par la console${payload.from == null ? '' : ` (${payload.from})`} — ${removed}`,
+        })
+        break
+      }
       case 'overlay.set':
         // The banner touches neither the screen mode nor the scene: it overlays,
         // and the room carries on with exactly what it was doing.

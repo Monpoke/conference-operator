@@ -188,6 +188,23 @@ onBeforeUnmount(() => {
   if (screensTimer != null) clearInterval(screensTimer)
 })
 
+/**
+ * Taking a screen's message down, whoever put it up.
+ *
+ * The room reports the removal through its outbox: the list is re-read a few
+ * seconds later rather than trimmed here, so that it keeps saying what the
+ * screens really show.
+ */
+async function clearScreen(roomId: string | null): Promise<void> {
+  try {
+    await store.clearScreen(roomId)
+    toast.say(roomId == null ? 'Retrait demandé à toutes les salles' : `Retrait demandé à ${roomName(roomId)}`)
+    setTimeout(() => void store.loadScreens().catch(() => {}), 3_000)
+  } catch {
+    /* already reported */
+  }
+}
+
 const LEVEL_LABELS: Record<string, string> = { info: 'Info', warning: 'Important', urgent: 'Urgent' }
 const SOURCE_LABELS: Record<string, string> = { regie: 'régie', hub: 'console' }
 
@@ -435,9 +452,20 @@ async function hideBanner(): Promise<void> {
       console's, reported by the rooms a few seconds after the fact.
     -->
     <Panel>
-      <h2 class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
-        À l'écran dans les salles
-      </h2>
+      <div class="mb-2.5 flex flex-wrap items-center gap-2">
+        <h2 class="mb-0 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+          À l'écran dans les salles
+        </h2>
+        <Button
+          v-if="onScreens.length > 1"
+          id="btn-screens-clear-all"
+          size="small"
+          class="ml-auto"
+          @click="clearScreen(null)"
+        >
+          Tout retirer
+        </Button>
+      </div>
       <div id="screens-current">
         <Empty v-if="onScreens.length === 0">Aucun message projeté en ce moment.</Empty>
         <div
@@ -456,6 +484,9 @@ async function hideBanner(): Promise<void> {
           <Badge :variant="entry.level === 'urgent' ? 'alert' : entry.level === 'warning' ? 'warning' : 'neutral'">
             {{ LEVEL_LABELS[entry.level ?? 'info'] }}
           </Badge>
+          <Button size="small" :data-role="`btn-screen-clear-${entry.roomId}`" @click="clearScreen(entry.roomId)">
+            Retirer
+          </Button>
         </div>
       </div>
 

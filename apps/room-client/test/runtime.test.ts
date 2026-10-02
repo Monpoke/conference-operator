@@ -407,6 +407,15 @@ describe("the control app's own message", () => {
     expect(runtime.state()).toMatchObject({ mode: 'countdown', message: null })
   })
 
+  it("comes down on the console's word, whoever put it up", async () => {
+    const runtime = makeRuntime()
+    runtime.showMessage('Pause café', 'info', null)
+    await runtime.applyCommand(command({ type: 'message.clear', from: 'regie@cloudnord.fr' }))
+    expect(runtime.state()).toMatchObject({ mode: 'loop', message: null })
+    // The control app sees its screen change, and who did it.
+    expect(runtime.state().notifications.map((n) => n.text).join(' ')).toContain('Message retiré par la console')
+  })
+
   it('says who wrote it', () => {
     const runtime = makeRuntime()
     runtime.showMessage('Bienvenue', 'info', null)

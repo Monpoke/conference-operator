@@ -120,6 +120,11 @@ export const useMessagesStore = defineStore('messages', () => {
     screenLog.value = result.log
   }
 
+  /** Takes a room screen's message down — `null`: every room's. */
+  async function clearScreen(roomId: string | null): Promise<void> {
+    await session.client.rpc.messages.clear({ roomId })
+  }
+
   async function hideBanner(): Promise<void> {
     await session.client.rpc.overlay.hide({ roomId: targetRoom() })
     await load()
@@ -132,6 +137,7 @@ export const useMessagesStore = defineStore('messages', () => {
     screenLog,
     loadScreens,
     urgentProof,
+    clearScreen,
     target,
     targetRoom,
     load,

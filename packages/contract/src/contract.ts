@@ -611,6 +611,14 @@ export const contract = {
       .output(z.object({ ok: z.boolean() })),
 
     /**
+     * Takes the message off a room's screen — or every room's, with `null` —
+     * whoever put it there: the room's control app or the console.
+     */
+    clear: oc
+      .input(z.object({ roomId: roomIdSchema.nullable() }))
+      .output(z.object({ ok: z.boolean() })),
+
+    /**
      * How an urgent message will be confirmed for the signed-in operator: by
      * password, or by signing in again through the identity provider.
      */

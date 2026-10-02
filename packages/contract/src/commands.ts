@@ -124,6 +124,16 @@ export const commandPayloadSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     /**
+     * Takes the room screen's message down, whoever put it there — the console's
+     * "Retirer". The screen goes back to the loop, as with the control app's own
+     * button. Sent with a short TTL: a removal caught up late must not take down
+     * a message shown since.
+     */
+    type: z.literal('message.clear'),
+    from: z.string().max(80).nullable().default(null),
+  }),
+  z.object({
+    /**
      * Banner on the live scenes.
      *
      * Not to be confused with `message.broadcast`, which **takes over** the room

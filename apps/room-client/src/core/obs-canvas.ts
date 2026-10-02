@@ -6,6 +6,7 @@ import type {
   ObsControllerEvent,
   ObsTransport,
 } from './obs.js'
+import { streamCounters, type OutputStatus } from './obs.js'
 
 /**
  * The capture, inside the projection's OBS.
@@ -29,6 +30,14 @@ import type {
 
 /** The vendor name the plugin registers with obs-websocket. */
 export const CANVAS_VENDOR = 'aitum-vertical-canvas'
+
+/**
+ * The name the plugin gives a stream output inside OBS, where `GetOutputStatus`
+ * finds it: `vertical_canvas_stream`, then `_<name>` when the output has one.
+ */
+export function canvasStreamOutputName(name: string | undefined): string {
+  return name != null && name !== '' ? `vertical_canvas_stream_${name}` : 'vertical_canvas_stream'
+}
 
 export interface CanvasObsOptions {
   /**
@@ -60,17 +69,6 @@ interface CanvasSettings {
   current_scene?: string
   record?: { path?: string; extension?: string }
   stream?: { outputs?: { name?: string; server?: string; has_key?: boolean; enabled?: boolean }[] }
-}
-
-/** One of the plugin's stream outputs, as `stream_status` reports it. */
-interface CanvasStreamOutput {
-  name?: string
-  enabled?: boolean
-  active?: boolean
-  bytes?: number
-  total_frames?: number
-  dropped_frames?: number
-  congestion?: number
 }
 
 /** OBS's own default: a take per second, never twice the same name. */
@@ -458,9 +456,14 @@ export class CanvasObsController implements ObsCapture {
   /**
    * The canvas's stream counters, cumulative like OBS's own.
    *
+   * Asked of obs-websocket's own `GetOutputStatus`, the plugin's outputs being
+   * ordinary OBS outputs: its maintainers would rather not duplicate that request
+   * (Aitum/obs-vertical-canvas#31). Their names come from `get_settings`.
+   *
    * The first **active** output, because that is the one being watched: the plugin
    * can carry several, disabled ones included, and averaging them would describe a
-   * stream nobody is receiving.
+   * stream nobody is receiving. An output that never started does not exist in OBS
+   * yet — its lookup fails, and it is skipped like an idle one.
    */
   async streamStatus(): Promise<{
     outputBytes: number
@@ -468,14 +471,16 @@ export class CanvasObsController implements ObsCapture {
     totalFrames: number
     congestion: number
   }> {
-    const { outputs } = await this.vendor<{ outputs?: CanvasStreamOutput[] }>('stream_status')
-    const output = (outputs ?? []).find((candidate) => candidate.active === true)
-    return {
-      outputBytes: output?.bytes ?? 0,
-      skippedFrames: output?.dropped_frames ?? 0,
-      totalFrames: output?.total_frames ?? 0,
-      congestion: Math.min(1, Math.max(0, output?.congestion ?? 0)),
+    const settings = await this.vendor<CanvasSettings>('get_settings')
+    const transport = this.options.transport()
+    for (const output of settings.stream?.outputs ?? []) {
+      if (transport == null || output.enabled === false) continue
+      const status = (await transport
+        .call('GetOutputStatus', { outputName: canvasStreamOutputName(output.name) })
+        .catch(() => null)) as OutputStatus | null
+      if (status?.outputActive === true) return streamCounters(status)
     }
+    return streamCounters(null)
   }
 
   private roleOf(sceneName: string): SceneRole | null {

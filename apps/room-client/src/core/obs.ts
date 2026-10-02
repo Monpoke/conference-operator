@@ -142,6 +142,30 @@ export interface AudioSource {
 
 export { DB_FLOOR, type InputLevel }
 
+/** What `GetStreamStatus` and `GetOutputStatus` both answer, reduced to what we read. */
+export interface OutputStatus {
+  outputActive?: boolean
+  outputBytes?: number
+  outputSkippedFrames?: number
+  outputTotalFrames?: number
+  outputCongestion?: number
+}
+
+/** An output's counters as `streamStatus` hands them on, congestion kept within bounds. */
+export function streamCounters(status: OutputStatus | null | undefined): {
+  outputBytes: number
+  skippedFrames: number
+  totalFrames: number
+  congestion: number
+} {
+  return {
+    outputBytes: status?.outputBytes ?? 0,
+    skippedFrames: status?.outputSkippedFrames ?? 0,
+    totalFrames: status?.outputTotalFrames ?? 0,
+    congestion: Math.min(1, Math.max(0, status?.outputCongestion ?? 0)),
+  }
+}
+
 /** OBS's linear multiplier towards bounded dBFS. */
 export function multiplierToDb(mul: number): number {
   if (!Number.isFinite(mul) || mul <= 0) return DB_FLOOR
@@ -904,18 +928,7 @@ export class ObsController implements ObsCapture {
     totalFrames: number
     congestion: number
   }> {
-    const status = (await this.options.transport.call('GetStreamStatus')) as {
-      outputBytes?: number
-      outputSkippedFrames?: number
-      outputTotalFrames?: number
-      outputCongestion?: number
-    }
-    return {
-      outputBytes: status.outputBytes ?? 0,
-      skippedFrames: status.outputSkippedFrames ?? 0,
-      totalFrames: status.outputTotalFrames ?? 0,
-      congestion: Math.min(1, Math.max(0, status.outputCongestion ?? 0)),
-    }
+    return streamCounters((await this.options.transport.call('GetStreamStatus')) as OutputStatus)
   }
 
   private roleOf(sceneName: string): SceneRole | null {

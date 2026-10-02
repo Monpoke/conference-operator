@@ -76,10 +76,14 @@ function fit(text: string, width = 9, lines = 3): string {
 
 const MARK_LABELS = { debut: 'Début', fin: 'Fin', chapitre: 'Chapitre' } as const
 
-/** The OBS-A scene roles, as the control app names them. Shared with the settings panels. */
+/**
+ * The OBS-A scene roles, named as the control app's Projection panel names them —
+ * "Direct" and "Habillage" there, so here too: the operator must find on the key
+ * the word they press in the control app.
+ */
 export const SCENE_LABELS: Record<string, string> = {
-  LIVE: 'Live',
-  HOLD: 'Attente',
+  LIVE: 'Direct',
+  HOLD: 'Habillage',
   TALK: 'Talk',
   CAM_ONLY: 'Caméra',
   SLIDES_ONLY: 'Slides',

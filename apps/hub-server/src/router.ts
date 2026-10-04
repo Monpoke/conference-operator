@@ -1244,10 +1244,11 @@ export const router = os.router({
           throw new ORPCError('BAD_REQUEST', { message: error.message })
         }
         const boucle: Record<string, unknown> = { ...(imported.patch?.boucle ?? {}) }
-        // A new version of the theme the screens wear: they wear it now.
+        // The theme imported from the repository is the one the screens wear:
+        // importing it is choosing it. `porte` says whether that changed anything.
         const worn = services.settings.get().boucle.theme
         const theme = imported.theme
-        const porte = theme != null && worn != null && worn.id === theme.id && worn.sha !== theme.sha
+        const porte = theme != null && worn?.sha !== theme.sha
         if (porte) boucle.theme = { id: theme.id, nom: theme.nom, sha: theme.sha }
         if (Object.keys(boucle).length > 0) {
           const settings = services.settings.update({ boucle })

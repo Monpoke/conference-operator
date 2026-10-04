@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,7 +9,9 @@ import type { ContractRouterClient } from '@orpc/contract'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_BOUCLE, contract, hubSettingsPatchSchema } from '@conference-operator/contract'
 import { openHubDatabase } from '../src/db.js'
+import { createSecretBox } from '../src/secrets.js'
 import { AssetStore } from '../src/services/assets.js'
+import { GitSourceService } from '../src/services/git-source.js'
 import { SettingsService } from '../src/services/sessions.js'
 import { createHub, type Hub } from '../src/server.js'
 import { provisionOperator } from '../src/operators.js'
@@ -363,6 +365,30 @@ describe('the loop over the wire', () => {
     expect(sync.boucle.merciSponsors).toBe('Merci\nà eux')
     expect(sync.boucle.messages).toEqual(DEFAULT_BOUCLE.messages)
   }, 20_000)
+
+  it('puts the theme imported from Git on the screens', async () => {
+    // The repository: Cloud Nord's folder, then a new version of it. The fetch
+    // is faked; the import, the store and the choice are the hub's own.
+    const repo = join(dir, 'repo')
+    cpSync(join(fileURLToPath(new URL('../../../themes/cloudnord', import.meta.url))), repo, { recursive: true })
+    hub.services.gitSource = new GitSourceService(openHubDatabase(':memory:').orm, createSecretBox('git-'.padEnd(48, 'x')), async ({ dir: into }) => {
+      cpSync(repo, into, { recursive: true })
+      return 'abc1234'
+    })
+    await admin.boucle.setGitSource({ source: { url: 'https://forge.exemple/habillage.git', branche: 'main', dossier: '' } })
+
+    const first = await admin.boucle.importGit({ theme: true, contenu: false })
+    expect(first.porte).toBe(true)
+    expect((await admin.settings.get()).boucle.theme?.sha).toBe(first.theme)
+    // The same content again: already worn, nothing to change.
+    expect((await admin.boucle.importGit({ theme: true, contenu: false })).porte).toBe(false)
+
+    const manifest = JSON.parse(readFileSync(join(repo, 'theme.json'), 'utf8')) as { version: string }
+    writeFileSync(join(repo, 'theme.json'), JSON.stringify({ ...manifest, version: '2026.2' }))
+    const second = await admin.boucle.importGit({ theme: true, contenu: false })
+    expect(second.porte).toBe(true)
+    expect((await admin.settings.get()).boucle.theme?.sha).toBe(second.theme)
+  })
 
   async function pairRoom(): Promise<Record<string, string>> {
     const codeResponse = await fetch(`${origin}/api/auth/device/code`, {

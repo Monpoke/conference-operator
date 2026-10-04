@@ -169,6 +169,17 @@ describe('what the form sends', () => {
     expect(patch.fileSlug).toBe(null)
     expect(patch.recordingRoot).toBe(null)
   })
+
+  it('names the watched microphone, or leaves it to the capture devices', () => {
+    room({ microSurveille: 'Micro HF' })
+    const config = useConfigStore()
+    config.show()
+    expect(config.draft!.microSurveille).toBe('Micro HF')
+    expect((config.patch() as { microSurveille: unknown }).microSurveille).toBe('Micro HF')
+
+    config.draft!.microSurveille = ''
+    expect((config.patch() as { microSurveille: unknown }).microSurveille).toBe(null)
+  })
 })
 
 describe('saving', () => {

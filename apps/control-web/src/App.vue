@@ -10,6 +10,7 @@ import DiagnosticsPanel from './components/DiagnosticsPanel.vue'
 import LevelMeters from './components/LevelMeters.vue'
 import AudioInputsPanel from './components/AudioInputsPanel.vue'
 import MessagePanel from './components/MessagePanel.vue'
+import AudioAlerts from './components/AudioAlerts.vue'
 import NotificationStack from './components/NotificationStack.vue'
 import PairingVeil from './components/PairingVeil.vue'
 import ProjectionPanel from './components/ProjectionPanel.vue'
@@ -364,6 +365,9 @@ useKeyboardLayer(
       @open="consult.show($event)"
       @config="config.show()"
     />
+
+    <!-- The capture watchdog's alerts: held while they last, the dock's too. -->
+    <AudioAlerts :alerts="payload.state.audioAlerts ?? []" :now-ms="room.now" />
 
     <!-- Never in the dock itself: it is the dock that makes this window redundant. -->
     <ServerModeOffer

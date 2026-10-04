@@ -11,6 +11,13 @@ import ObsConfigBlock from './ObsConfigBlock.vue'
 
 const props = defineProps<{ payload: DisplayPayload }>()
 
+/** OBS's audio sources, for the watched microphone — the one set kept even when OBS is away. */
+const audioSources = computed(() => {
+  const names = (props.payload.state.audioInputs ?? []).map((input) => input.name)
+  const chosen = config.draft?.microSurveille
+  return chosen && !names.includes(chosen) ? [...names, chosen] : names
+})
+
 const config = useConfigStore()
 const actions = useActionsStore()
 const gateway = useGatewayStore()
@@ -240,6 +247,18 @@ const FIELD =
           </select>
           <p class="mt-0.5 text-[11px] text-dim">
             Sans elle, l’habillage reste à l’écran pendant les premières phrases.
+          </p>
+        </div>
+        <div class="mt-2">
+          <label class="mb-0.5 block text-xs text-dim" for="cfg-micro-surveille">
+            Micro surveillé pendant l’enregistrement
+          </label>
+          <select id="cfg-micro-surveille" v-model="config.draft.microSurveille" :class="FIELD">
+            <option value="">Automatique — les micros et cartes son d’OBS-B</option>
+            <option v-for="input in audioSources" :key="input" :value="input">{{ input }}</option>
+          </select>
+          <p class="mt-0.5 text-[11px] text-dim">
+            Coupé, silencieux ou saturé pendant un talk enregistré : la régie et le hub l’affichent.
           </p>
         </div>
       </Panel>

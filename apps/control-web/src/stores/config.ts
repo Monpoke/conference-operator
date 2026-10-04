@@ -48,6 +48,8 @@ export interface ConfigDraft {
   promptRecordingOnStart: boolean
   promptRecordingOnStop: boolean
   sceneOnStart: string
+  /** The source the capture watchdog listens to. Empty: OBS-B's capture devices. */
+  microSurveille: string
 }
 
 /**
@@ -113,6 +115,7 @@ export const useConfigStore = defineStore('config', () => {
       promptRecordingOnStart: current.promptRecordingOnStart !== false,
       promptRecordingOnStop: current.promptRecordingOnStop !== false,
       sceneOnStart: current.sceneOnStart ?? '',
+      microSurveille: current.microSurveille ?? '',
     }
   }
 
@@ -281,6 +284,7 @@ export const useConfigStore = defineStore('config', () => {
       promptRecordingOnStart: form.promptRecordingOnStart,
       promptRecordingOnStop: form.promptRecordingOnStop,
       sceneOnStart: form.sceneOnStart === '' ? null : form.sceneOnStart,
+      microSurveille: form.microSurveille === '' ? null : form.microSurveille,
     }
   }
 

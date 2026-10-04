@@ -3,6 +3,8 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import VodView from '../src/views/VodView.vue'
 import { progress, useVodStore } from '../src/stores/vod.js'
+import { useMontageStore } from '../src/stores/montage.js'
+import { useConferencesStore } from '../src/stores/conferences.js'
 import { useSessionStore } from '../src/stores/session.js'
 
 /**
@@ -38,7 +40,7 @@ function stub(uploads: unknown[]): { calls: Call[]; client: unknown } {
       token: { read: () => 'jeton', write: () => {}, clear: () => {} },
       rpc: {
         rooms: { list: note('rooms/list', ROOMS) },
-        vod: { uploads: note('vod/uploads', uploads), request: note('vod/request', { ok: true }) },
+        vod: { uploads: note('vod/uploads', uploads), request: note('vod/request', { ok: true }), conference: note('vod/conference', null) },
       },
     },
   }
@@ -168,5 +170,29 @@ describe('vue VOD', () => {
       path: 'vod/request',
       input: { roomId: 'track-1', file: null },
     })
+  })
+})
+
+describe('a cut to validate, from a phone', () => {
+  it('opens the talk\'s VOD folder straight from the montage', async () => {
+    await mountView()
+    const job = {
+      id: 'job-1', sessionId: 'talk-1', title: 'Le talk', state: 'a-valider', tentatives: 1,
+      erreur: null, worker: null, marquesManquantes: [], progression: null,
+    }
+    useMontageStore().jobs = [job, { ...job, id: 'job-2', sessionId: 'talk-2', state: 'termine' }] as never
+    useConferencesStore().planning = {
+      timezone: 'Europe/Paris',
+      sessions: [{ id: 'talk-1', title: 'Le talk', roomId: 'track-1', startsAt: '2026-10-30T09:00:00Z', endsAt: '2026-10-30T09:40:00Z', speakers: [] }],
+    } as never
+    await flushPromises()
+
+    // Only the cut waiting for its validation offers the gesture.
+    const buttons = document.querySelectorAll('[data-valider]')
+    expect([...buttons].map((button) => button.getAttribute('data-valider'))).toEqual(['talk-1'])
+
+    ;(buttons[0] as HTMLElement).click()
+    await flushPromises()
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Le talk')
   })
 })

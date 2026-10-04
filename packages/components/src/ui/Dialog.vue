@@ -57,8 +57,14 @@ const WIDTHS = {
   <DialogRoot v-model:open="open">
     <DialogPortal>
       <DialogOverlay class="fixed inset-0 z-50 bg-black/65" />
+      <!--
+        On a phone, the whole screen: a dialog floating at 90 % of a viewport the
+        browser's bars keep resizing left its buttons out of reach, and « Fermer »
+        at the bottom of a long folder meant scrolling it all. `dvh` follows the
+        bars; the content scrolls between a fixed title and fixed buttons.
+      -->
       <DialogContent
-        class="fixed top-1/2 left-1/2 z-50 max-h-[90vh] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-edge bg-surface p-4"
+        class="fixed top-1/2 left-1/2 z-50 flex max-h-[90dvh] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-edge bg-surface max-sm:inset-0 max-sm:h-dvh max-sm:max-h-none max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0"
         :class="WIDTHS[width ?? 'normal']"
         @open-auto-focus="
           /*
@@ -73,16 +79,18 @@ const WIDTHS = {
           }
         "
       >
-        <h2 class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+        <h2 class="shrink-0 px-4 pt-4 pb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
           <DialogTitle>{{ title }}</DialogTitle>
         </h2>
-        <DialogDescription v-if="description != null" class="mb-2.5 text-sm text-dim">
-          {{ description }}
-        </DialogDescription>
+        <div class="min-h-0 flex-1 overflow-y-auto px-4" data-role="dialog-body">
+          <DialogDescription v-if="description != null" class="mb-2.5 text-sm text-dim">
+            {{ description }}
+          </DialogDescription>
 
-        <slot />
+          <slot />
+        </div>
 
-        <div class="mt-3.5 flex justify-end gap-1.5">
+        <div class="flex shrink-0 flex-wrap justify-end gap-1.5 border-t border-edge px-4 py-3 max-sm:pb-[max(.75rem,env(safe-area-inset-bottom))]">
           <slot name="actions" />
           <DialogClose
             class="cursor-pointer rounded-lg border border-edge bg-surface2 px-3 py-2 text-[13px] font-semibold text-text"

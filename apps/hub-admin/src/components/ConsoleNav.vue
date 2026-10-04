@@ -58,7 +58,8 @@ function revealCurrent(): void {
   })
 }
 onMounted(revealCurrent)
-watch(() => route.meta.view, revealCurrent)
+// The tabs arrive with the operator's rights, after the first render: reveal again then.
+watch([() => route.meta.view, () => views.value.length], revealCurrent)
 </script>
 
 <template>

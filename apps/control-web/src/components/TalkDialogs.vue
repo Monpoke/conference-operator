@@ -35,6 +35,7 @@ useKeyboardLayer(() => ({}), () => talk.tooEarlyOpen)
 useKeyboardLayer(() => ({}), () => talk.endEarlyOpen)
 useKeyboardLayer(() => ({}), () => talk.recordingOpen)
 useKeyboardLayer(() => ({}), () => talk.stopRecordingOpen)
+useKeyboardLayer(() => ({}), () => talk.stopTakeOpen)
 </script>
 
 <template>
@@ -99,6 +100,32 @@ useKeyboardLayer(() => ({}), () => talk.stopRecordingOpen)
         @click="talk.finish(false)"
       >
         Terminer sans arrêter
+      </button>
+    </template>
+  </ConfirmDialog>
+
+  <!--
+    The other way round: the take stopped while the talk is not over. The button
+    is under the hand all talk long, and a VOD cut before the end is found out
+    at editing time. "Terminer et arrêter" does both, in the order of the end.
+  -->
+  <ConfirmDialog
+    v-model:open="talk.stopTakeOpen"
+    tone="warn"
+    title="Arrêter l'enregistrement ?"
+    :detail="talk.stopTakeDetail"
+    cancel-label="Annuler"
+    confirm-label="Arrêter l'enregistrement"
+    @confirm="talk.stopTake()"
+  >
+    <template v-if="talk.targetStatus === 'running'" #other>
+      <button
+        type="button"
+        class="cursor-pointer rounded-lg border border-edge bg-surface2 px-3 py-2 text-[13px] font-semibold text-text"
+        data-role="terminer-et-arreter"
+        @click="talk.stopTakeOpen = false; talk.finish(true)"
+      >
+        Terminer et arrêter
       </button>
     </template>
   </ConfirmDialog>

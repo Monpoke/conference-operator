@@ -700,3 +700,64 @@ describe('the forced talk, on the panel', () => {
     wrapper.unmount()
   })
 })
+
+/**
+ * The other way round: the take stopped on its own while the talk is not over.
+ * The button is under the hand all talk long, and a VOD cut before the end is
+ * found out at editing time.
+ */
+describe('stopping the take before the talk is over', () => {
+  function takeRunning(status: 'running' | 'ended' | null): void {
+    roomAt(START_MS + 10 * 60_000)
+    const room = useRoomStore()
+    const target = room.payload!.state.targetSession!
+    if (status != null) room.payload!.state.sessionStates = { [target.id]: status }
+    room.payload!.diagnostics!.recording = {
+      active: true,
+      markers: 0,
+      startedAtMs: START_MS,
+      startedAtCorrectedMs: null,
+      editing: NO_EDITING_MARKS,
+    }
+  }
+
+  it('asks first while the talk runs, and stops nothing before the answer', async () => {
+    takeRunning('running')
+    const talkStore = useTalkStore()
+    talkStore.askStopRecording()
+    await flushPromises()
+
+    expect(talkStore.stopTakeOpen).toBe(true)
+    expect(actions()).toEqual([])
+    expect(talkStore.stopTakeDetail).toContain("n'est pas marquée comme terminée")
+
+    await talkStore.stopTake()
+    expect(actions()).toEqual(['recording.stop'])
+    expect(talkStore.stopTakeOpen).toBe(false)
+  })
+
+  it('asks too for a talk not started yet', async () => {
+    takeRunning(null)
+    const talkStore = useTalkStore()
+    talkStore.askStopRecording()
+    expect(talkStore.stopTakeOpen).toBe(true)
+    expect(talkStore.stopTakeDetail).toContain("n'a pas encore commencé")
+  })
+
+  it('stops at once once the talk is marked as ended', async () => {
+    takeRunning('ended')
+    const talkStore = useTalkStore()
+    talkStore.askStopRecording()
+    await flushPromises()
+    expect(talkStore.stopTakeOpen).toBe(false)
+    expect(actions()).toEqual(['recording.stop'])
+  })
+
+  it('can end the talk and stop, in the order of the end', async () => {
+    takeRunning('running')
+    const talkStore = useTalkStore()
+    talkStore.askStopRecording()
+    await talkStore.finish(true)
+    expect(actions()).toEqual(['recording.stop', 'session.end'])
+  })
+})

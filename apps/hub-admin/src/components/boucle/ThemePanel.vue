@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { ThemeInfo } from '@conference-operator/contract'
-import { Button, Panel, useToast } from '@conference-operator/components'
+import { Button, ConfirmDialog, Panel, useToast } from '@conference-operator/components'
 import { useDraft } from '../../composables/draft.js'
 import { ImageRefused, useBoucleStore } from '../../stores/boucle.js'
 import SaveBar from './SaveBar.vue'
@@ -63,7 +63,20 @@ async function pick(event: Event): Promise<void> {
   }
 }
 
-async function remove(theme: ThemeInfo): Promise<void> {
+/** The theme about to be removed, while the confirmation is open. */
+const toRemove = ref<ThemeInfo | null>(null)
+const confirming = computed({
+  get: () => toRemove.value != null,
+  set: (open: boolean) => {
+    if (!open) toRemove.value = null
+  },
+})
+
+/** Removing is for good: the package leaves the hub, and its export with it. */
+async function remove(): Promise<void> {
+  const theme = toRemove.value
+  toRemove.value = null
+  if (theme == null) return
   try {
     await store.removeTheme(theme.sha)
     if (draft.value?.sha === theme.sha) draft.value.sha = worn.value
@@ -112,7 +125,7 @@ async function remove(theme: ThemeInfo): Promise<void> {
             size="small"
             variant="danger"
             title="Supprimer ce thème du hub"
-            @click="remove(theme)"
+            @click.prevent="toRemove = theme"
           >×</Button>
         </label>
       </div>
@@ -126,5 +139,18 @@ async function remove(theme: ThemeInfo): Promise<void> {
 
       <SaveBar id="boucle-theme-enregistrer" :dirty="dirty" @save="save" />
     </div>
+
+    <ConfirmDialog
+      v-model:open="confirming"
+      :title="`Supprimer le thème « ${toRemove?.nom ?? ''} » ?`"
+      confirm-label="Supprimer"
+      danger
+      @confirm="remove"
+    >
+      <p id="boucle-theme-suppression">
+        Le paquet <strong>{{ toRemove?.nom }}</strong> (v{{ toRemove?.version }}) quitte le hub : il ne pourra plus être
+        choisi ni exporté. Pour le retrouver, il faudra l'importer à nouveau.
+      </p>
+    </ConfirmDialog>
   </Panel>
 </template>

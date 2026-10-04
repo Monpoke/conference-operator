@@ -7,7 +7,8 @@ règle dans la console, vue Boucle. Les deux peuvent venir d'un dossier, import�
 - en `.zip` depuis la console (panneau « Thème ») — le thème seul ;
 - depuis un dépôt Git (panneau « Dépôt Git ») : une branche, un sous-dossier, un jeton
   d'accès si le dépôt est privé. Thème et contenu s'y importent chacun par son bouton,
-  à la demande : rien ne se synchronise tout seul.
+  à la demande : rien ne se synchronise tout seul. Un thème importé ainsi devient
+  aussitôt celui des écrans.
 
 Sans thème choisi, les écrans portent le thème par défaut, intégré au code.
 

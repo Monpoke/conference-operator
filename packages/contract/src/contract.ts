@@ -797,9 +797,9 @@ export const contract = {
       .output(gitSourceStatusSchema.nullable()),
     /**
      * Reads the source's folder on its branch now, and imports what is asked:
-     * the theme (`theme.json` — when the screens wear that theme already, same
-     * id, they move to the new version) and the loop's content (`boucle.json` —
-     * the sections it names replace the hub's, then stay editable here).
+     * the theme (`theme.json` — it becomes the one the screens wear; `porte`
+     * says whether that changed it) and the loop's content (`boucle.json` — the
+     * sections it names replace the hub's, then stay editable here).
      */
     importGit: oc
       .input(z.object({ theme: z.boolean(), contenu: z.boolean() }))

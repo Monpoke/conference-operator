@@ -73,7 +73,7 @@ async function importer(what: 'theme' | 'contenu'): Promise<void> {
     const result = await store.importGit({ theme: what === 'theme', contenu: what === 'contenu' })
     const commit = result.commit?.slice(0, 7) ?? '?'
     if (what === 'theme') {
-      toast.say(result.porte ? `Thème mis à jour sur les écrans (${commit})` : `Thème importé (${commit}) — choisissez-le dans « Thème »`)
+      toast.say(result.porte ? `Thème importé et mis sur les écrans (${commit})` : `Thème déjà sur les écrans, inchangé (${commit})`)
     } else {
       toast.say(`Contenu importé (${commit}) : ${result.sections?.length ?? 0} section(s)`)
     }
@@ -154,8 +154,8 @@ function exporter(): void {
           </Button>
         </div>
         <p class="mb-[11px] text-xs text-dim">
-          Le contenu remplace les sections que nomme <code>boucle.json</code> ; les autres restent telles quelles. Le
-          thème, s'il est déjà sur les écrans, y passe à la nouvelle version.
+          Le thème importé devient celui des écrans. Le contenu remplace les sections que nomme
+          <code>boucle.json</code> ; les autres restent telles quelles.
         </p>
 
         <p v-if="derniere != null" id="boucle-git-derniere" class="mb-[11px] text-xs" :class="derniere.erreur ? 'text-alert' : 'text-dim'">

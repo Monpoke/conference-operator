@@ -337,3 +337,12 @@ describe('audience question on the capture', () => {
     expect(document.body.dataset.question).toBe('visible')
   })
 })
+
+describe("the website's address in the footer", () => {
+  it('is one plain colour, the theme\'s — white unless a theme says otherwise', () => {
+    const html = renderOverlayPage({})
+    expect(html).toContain('#footer b { font-weight: 900; color: var(--overlay-site); }')
+    expect(html).not.toMatch(/#footer b \{[^}]*background-clip/)
+    expect(html).toContain('--overlay-site: #ffffff;')
+  })
+})

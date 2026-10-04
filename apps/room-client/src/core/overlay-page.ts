@@ -115,8 +115,9 @@ ${themeTokens(themeOrDefault(options.theme).bundle)}
             justify-content: center; gap: 28px; font-size: 22px; font-weight: 500; color: var(--overlay-pied); }
   #footer .network { color: var(--muted); font-weight: 400; margin-right: 8px; }
   #footer .dot-sep { color: var(--muted); }
-  #footer b { font-weight: 900; background: linear-gradient(90deg, var(--c1), var(--c2));
-              -webkit-background-clip: text; background-clip: text; color: transparent; }
+  /* The website's address: one plain colour, the theme's (white by default) — a
+     gradient across the letters read badly once the VOD is compressed. */
+  #footer b { font-weight: 900; color: var(--overlay-site); }
 </style>
 </head>
 <body data-card="hidden" data-question="hidden" data-theme="${options.theme?.sha ?? ''}">

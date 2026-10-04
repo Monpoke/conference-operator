@@ -57,6 +57,7 @@ export const DEFAULT_THEME: ThemeBundle = {
       'overlay-titre': '#dbe4ff',
       'overlay-date': '#e7ecf5',
       'overlay-pied': '#e2e8f0',
+      'overlay-site': '#ffffff',
       'overlay-carte': '#0b1220',
       'overlay-fond-1': '#1b2440',
       'overlay-fond-2': '#141b30',

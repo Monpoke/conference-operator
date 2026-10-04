@@ -361,8 +361,63 @@ jobs:
             apps/room-client/release/*.AppImage
             apps/room-client/release/*.tar.gz
 
+  # The Stream Deck plugin: one `.streamDeckPlugin`, a double click installs it
+  # on the room machine. Built from the same commit and carrying the same number
+  # as the installer it drives — the plugin speaks to the room's local API.
+  streamdeck:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # pnpm 12 cannot go through corepack: see ci.yml.
+      - run: npm install -g pnpm@12.4.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The manifest wants four numbers: the release's three, then 0 — a
+      # pre-release keeps its three (`1.2.0-rc.1` packs as `1.2.0.0`).
+      - id: version
+        shell: bash
+        run: |
+          number="${GITHUB_REF_NAME#v}"
+          echo "number=${number}" >> "$GITHUB_OUTPUT"
+          echo "manifest=$(echo "${number}" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+').0" >> "$GITHUB_OUTPUT"
+
+      # `pack.mjs` packs a copy: the committed manifest keeps its version.
+      - run: |
+          pnpm --filter @conference-operator/streamdeck-plugin build
+          pnpm --filter @conference-operator/streamdeck-plugin exec node scripts/pack.mjs ${{ steps.version.outputs.manifest }}
+
+      # Named after the version, like the installers, then fingerprinted.
+      - working-directory: apps/streamdeck-plugin/release
+        run: |
+          mv io.github.monpoke.conference-operator.streamDeckPlugin regie-streamdeck-${{ steps.version.outputs.number }}.streamDeckPlugin
+          sha256sum *.streamDeckPlugin | tee SHA256SUMS-streamdeck.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: room-control-streamdeck-${{ steps.version.outputs.number }}
+          path: |
+            apps/streamdeck-plugin/release/*.streamDeckPlugin
+            apps/streamdeck-plugin/release/SHA256SUMS-streamdeck.txt
+          retention-days: 90
+
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: apps/streamdeck-plugin/release/*.streamDeckPlugin
+
   release:
-    needs: [image, image-montage, installer, installer-linux]
+    needs: [image, image-montage, installer, installer-linux, streamdeck]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -483,6 +538,18 @@ jobs:
 
           \`\`\`bash
           gh attestation verify oci://${image} --repo ${GITHUB_REPOSITORY}
+          \`\`\`
+
+          ## Le plugin Stream Deck
+
+          \`regie-streamdeck-${version}.streamDeckPlugin\` : un double-clic sur la machine
+          de salle l'installe dans l'application Stream Deck. Les touches pilotent la
+          régie de la salle et affichent son état réel — à installer avec la régie
+          de la même version, dont il parle l'API locale.
+
+          \`\`\`bash
+          sha256sum -c SHA256SUMS-streamdeck.txt
+          gh attestation verify regie-streamdeck-${version}.streamDeckPlugin --repo ${GITHUB_REPOSITORY}
           \`\`\`
 
           ## La régie de salle

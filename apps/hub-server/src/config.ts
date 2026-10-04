@@ -36,22 +36,25 @@ const configSchema = z.object({
   /** Public base of the hub, used by Better Auth and the device verification URI. */
   publicUrl: z.url().default('http://localhost:8787'),
   /**
-   * The console's development server, proxied by the hub.
-   *
-   * Read in dev mode only, and only as long as no bundle has been built. The
-   * direction of the proxy — the hub in front of Vite — is imposed by Better
+   * The console's development server, proxied by the hub — in dev mode, and only
+   * when given. Absent, the hub serves the console's bundle, dev mode or not: a
+   * hub deployed in development (a cluster, for its clock and its resets) has no
+   * Vite beside it, and proxying one that is not there left the console blank.
+   * The direction of the proxy — the hub in front of Vite — is imposed by Better
    * Auth's cookies and by `/sw.js`'s scope; see `server.ts`.
    */
-  viteOrigin: z.url().default('http://127.0.0.1:5173'),
+  viteOrigin: z.url().optional(),
   /**
    * The control app's development server, proxied by the hub.
+   *
+   * Like `viteOrigin`: proxied only when given, the bundle otherwise.
    *
    * Distinct from `viteOrigin`: these are two applications, two ports, and they
    * are developed together — a demo room plugged into a local hub. The same Vite
    * server serves the control app to the room machine and to the hub; both serve
    * it under `/regie/`, so the same `base` suits both.
    */
-  regieViteOrigin: z.url().default('http://127.0.0.1:5174'),
+  regieViteOrigin: z.url().optional(),
   authSecret: z.string().min(32, 'BETTER_AUTH_SECRET doit faire au moins 32 caractères'),
   /** URL of the "conference-center" export imported by default. */
   programSourceUrl: z.url().optional(),

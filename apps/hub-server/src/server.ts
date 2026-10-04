@@ -751,6 +751,14 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
    * saves copying it by hand from a control screen at the other end of the room.
    */
   const dev = config.mode === 'dev'
+  /*
+   * Vite, for a developer's machine: in dev mode **and** with its origin given.
+   * Dev mode alone is a hub's clock and resets — a hub deployed in development
+   * serves its built console like any other, there is no Vite beside it.
+   */
+  const consoleFromVite = dev && config.viteOrigin != null
+  const controlFromVite = dev && config.regieViteOrigin != null
+  const anyVite = consoleFromVite || controlFromVite
   /**
    * Notifications service worker, served at the root.
    *
@@ -806,7 +814,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
    * disappear. The names carry a fingerprint, hence `immutable` — which is what
    * removes the 45 kB of CSS re-downloaded on every navigation.
    */
-  if (!dev && bundle != null) {
+  if (!consoleFromVite && bundle != null) {
     await app.register(fastifyStatic, {
       root: join(bundle.folder, 'assets'),
       prefix: '/admin/assets/',
@@ -817,7 +825,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     })
   }
 
-  if (!dev && controlBundle != null) {
+  if (!controlFromVite && controlBundle != null) {
     await app.register(fastifyStatic, {
       root: join(controlBundle.folder, 'assets'),
       prefix: '/regie/assets/',
@@ -847,10 +855,10 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
    * inspect a page it sees as production. A `dist/` is an artefact; `MODE=dev` is
    * an intent.
    */
-  if (dev) {
+  if (anyVite) {
     const before = app.server.listenerCount('upgrade')
-    await app.register(fastifyProxy, {
-      upstream: config.viteOrigin,
+    if (consoleFromVite) await app.register(fastifyProxy, {
+      upstream: config.viteOrigin!,
       prefix: '/admin/',
       rewritePrefix: '/admin/',
       websocket: true,
@@ -874,8 +882,8 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
      * itself — that is where the scope boot payload lives, and Vite knows nothing
      * about it.
      */
-    await app.register(fastifyProxy, {
-      upstream: config.regieViteOrigin,
+    if (controlFromVite) await app.register(fastifyProxy, {
+      upstream: config.regieViteOrigin!,
       prefix: `${CONTROL_PATH}/`,
       rewritePrefix: `${CONTROL_PATH}/`,
       websocket: true,
@@ -928,7 +936,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       // Never `immutable` on the shell: an updated console that never reaches an
       // operator's machine is worse than re-downloading it.
       reply.header('cache-control', 'no-store')
-      if (bundle == null && !dev) {
+      if (bundle == null && !consoleFromVite) {
         /*
          * The bundle is missing, and there is no template behind it any more.
          *
@@ -949,7 +957,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
           event: services.identity.get(),
           google: config.googleClientId == null ? null : { domain: config.googleHostedDomain! },
           version: config.version,
-          assets: dev ? developmentAssets() : productionAssets(bundle!.manifest),
+          assets: consoleFromVite ? developmentAssets() : productionAssets(bundle!.manifest),
         }),
       )
     })
@@ -974,7 +982,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     // it names changes from one address to the next.
     reply.header('cache-control', 'no-store')
 
-    if (controlBundle == null && !dev) {
+    if (controlBundle == null && !controlFromVite) {
       /*
        * The bundle is missing, and there is no template behind it.
        *
@@ -996,7 +1004,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
         rooms: services.rooms.list().map((room) => ({ id: room.id, name: room.name })),
         google: config.googleClientId == null ? null : { domain: config.googleHostedDomain! },
         version: config.version,
-        assets: dev
+        assets: controlFromVite
           ? developmentControlAssets()
           : productionControlAssets(controlBundle!.manifest),
       }),
@@ -1037,7 +1045,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
        * came for. Elsewhere, nothing else is listening — a socket left open would
        * leak.
        */
-      if (!dev) socket.destroy()
+      if (!anyVite) socket.destroy()
       return
     }
     const headers = headersOf(request.headers)

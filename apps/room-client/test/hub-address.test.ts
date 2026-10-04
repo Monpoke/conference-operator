@@ -51,7 +51,7 @@ describe('normalizing the typed address', () => {
 
 describe('address dictated from outside', () => {
   it("reads --hub by prefix: a package's argv and an `electron` one differ", () => {
-    expect(imposedAddress(['Régie de salle.exe', '--hub=http://hub:8787'], {})).toEqual({
+    expect(imposedAddress(['room-control.exe', '--hub=http://hub:8787'], {})).toEqual({
       value: 'http://hub:8787',
       source: 'argument',
     })

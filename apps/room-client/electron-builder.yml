@@ -3,17 +3,23 @@
 # What the product displays — window titles, screens, public wall — comes from the
 # hub and follows the imported event; nothing here needs to change from one
 # edition to the next. These three lines name the software installed on the room
-# machine, and `appId` in particular is not renamed lightly: Electron derives the
-# `userData` folder from it, hence the local database — the programme cache and an
-# unflushed outbound queue.
+# machine, and neither `appId` nor `productName` is renamed lightly: `appId`
+# keys the Windows installation, and `productName` is the application's name at
+# run time — Electron derives the `userData` folder from it, hence the local
+# database: the programme cache and an unflushed outbound queue. A room installed
+# under another name keeps its old folder, which the new build no longer reads: it
+# comes up unpaired, and has to be approved again from the console.
 #
-# It was renamed once, when the software stopped being named after the event that
-# first ran it (`fr.cloudnord.roomclient`). A room installed before that keeps its
-# old folder, which the new build no longer reads: it comes up unpaired, and has
-# to be approved again from the console. Nothing is lost that a pairing does not
-# rebuild — but it has to be done before the day, not in front of a room.
+# `productName` is `room-control`, not « Régie de salle », because it is also a
+# path: the folder the `deb` installs into (`/opt/<productName>`, with no option
+# to choose it), the Windows executable, the `userData` folder. A path follows
+# the same rule as the code (see `artifactName` below). The product keeps its
+# name everywhere anyone reads it — window titles, set in the code, the shortcut
+# and Start menu (`nsis.shortcutName`), the programs list
+# (`nsis.uninstallDisplayName`), the Linux menu (`linux.desktop`). It was
+# renamed before any room had been installed under the old name.
 appId: fr.conference-operator.roomclient
-productName: Régie de salle
+productName: room-control
 copyright: Conference Operator
 
 directories:
@@ -196,21 +202,23 @@ linux:
   # reads it on a machine that boots straight into the application, but leaving it
   # out makes electron-builder guess.
   category: AudioVideo
-  # `productName` would give a binary called `Régie de salle` — a space and an
-  # accent to quote at every invocation, in a shell, over SSH, in a systemd unit.
-  # The product keeps its name where it is read; here, it is a command, and a
-  # command is code.
+  # The command, spelled out although it is `productName` already: it is what a
+  # shell, SSH session or systemd unit types, and must not follow a rename.
   executableName: room-control
   # And names the `.desktop` entry after it — `room-control.desktop` rather than
   # the default `Régie de salle.desktop`, a filename with a space and an accent
   # for the same reasons as above.
   #
   # It does not fully settle window association: the entry carries
-  # `StartupWMClass=Régie de salle`, which is what Electron reports under X11, so
+  # `StartupWMClass=room-control`, which is what Electron reports under X11, so
   # the launcher and the window match there. Under Wayland the association goes
   # through an `app_id` the main process would have to declare — application
   # work, not packaging, and nothing a room notices today.
   syncDesktopName: true
+  # The name the menu shows — `productName` otherwise, a command name.
+  desktop:
+    entry:
+      Name: Régie de salle
 
 deb:
   # The package name `apt` knows it by — `apt remove room-control` — rather than
@@ -222,12 +230,8 @@ deb:
   # sentence that fpm puts on the line below.
   synopsis: Régie de salle d’une conférence
   packageCategory: video
-  # The application lands in `/opt/Régie de salle`, space and accent included:
-  # electron-builder derives that folder from `productName` and offers no option
-  # for it. Renaming the product to get `/opt/room-control` would rename the
-  # application, hence its `userData` folder — every room unpaired. The package's
-  # scripts quote the path; what anyone types is `room-control`, linked into
-  # `/usr/bin`.
+  # The application lands in `/opt/room-control` — `productName`, see the top of
+  # this file — and `room-control` is linked into `/usr/bin`.
 
 nsis:
   oneClick: false
@@ -235,6 +239,8 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   shortcutName: Régie de salle
+  # The programs list — `${productName} ${version}` otherwise, a command name.
+  uninstallDisplayName: Régie de salle ${version}
   # The default folder, `room-control` rather than `@conference-operatorroom-client`.
   include: build/installer.nsh
 

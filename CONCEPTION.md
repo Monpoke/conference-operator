@@ -461,14 +461,15 @@ rien n'y renvoie plus à l'édition qui l'a fait naître. Ce qui garde le nom de
 Cloud Nord relève de l'exemple : ce README, le RUNBOOK, les jeux d'essai et les
 scripts de prévisualisation décrivent l'édition sur laquelle tout a été éprouvé.
 
-**L'`appId` a changé une fois, et ça se paie.** Electron en dérive le dossier
-`userData`, donc la base locale d'une machine de salle : son cache de programme
-et sa file de remontée non vidée. Une salle installée avant ce renommage garde
-son ancien dossier, que la nouvelle version ne lit plus — elle démarre non
-appairée et doit être réapprouvée dans la console. Rien qui ne se reconstruise
-en appairant à nouveau, mais c'est un geste d'avant-veille, pas du jour J. C'est
-aussi pourquoi l'`appId` ne se renomme pas à la légère : la prochaine fois
-coûtera la même chose.
+**Le nom de l'application ne se renomme pas à la légère.** Electron dérive le
+dossier `userData` du `productName` — la base locale d'une machine de salle :
+son cache de programme et sa file de remontée non vidée. Une salle installée
+sous un autre nom garde son ancien dossier, que la nouvelle version ne lit plus :
+elle démarre non appairée et doit être réapprouvée dans la console. Rien qui ne
+se reconstruise en appairant à nouveau, mais c'est un geste d'avant-veille, pas
+du jour J. L'`appId` (`fr.conference-operator.roomclient`), lui, identifie
+l'installation Windows. Les deux ont été fixés — `productName` à `room-control`
+— avant qu'aucune salle ne soit installée sous les anciens.
 
 Le reste de ce README décrit l'édition 2026 parce que c'est celle sur laquelle
 tout a été éprouvé ; les chemins, identifiants de track et horaires cités sont
@@ -1336,6 +1337,13 @@ dans une unité systemd, et se retrouve dans une URL de release ; c'est du code,
 pas un libellé. Les mots viennent du glossaire de [CONTRIBUTING](CONTRIBUTING.md)
 — *régie* donne `control`, *salle* donne `room` — et pas d'une traduction
 improvisée par paquet.
+
+Le `productName` lui-même est `room-control` : c'est aussi un chemin — le
+dossier `/opt/room-control` où s'installe le `deb`, que electron-builder en
+dérive sans option pour le choisir, l'exécutable Windows, le dossier
+`userData`. « Régie de salle » est posé là où on le lit : `nsis.shortcutName`,
+`nsis.uninstallDisplayName`, `linux.desktop`, et les titres de fenêtre, fixés
+dans le code.
 
 Les paquets Linux pèsent **96 Mo** (AppImage) et **115 Mo** (`tar.gz`) : le même
 contenu, la première en squashfs compressé, la seconde en gzip.

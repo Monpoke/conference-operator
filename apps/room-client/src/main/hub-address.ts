@@ -44,7 +44,7 @@ const SOURCE_LABELS: Record<ImposedAddress['source'], string> = {
  * An address dictated from outside, reading nothing from disk.
  *
  * Read by prefix rather than by position: `electron dist/main.cjs --hub=…` in
- * development and `Régie de salle.exe --hub=…` on the machine do not have the
+ * development and `room-control.exe --hub=…` on the machine do not have the
  * same `argv[1]`, and counting the arguments would have broken on one of the two.
  */
 export function imposedAddress(

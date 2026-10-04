@@ -39,7 +39,7 @@ seraient plus les pages servies ferait perdre exactement ce qui rendait ces
 fichiers utiles. On les relit donc en les lançant :
 
 ```bash
-pnpm --filter @conference-operator/hub-admin dev   # puis MODE=dev pnpm dev côté hub
+pnpm --filter @conference-operator/hub-admin dev   # puis VITE_ORIGIN=http://127.0.0.1:5173 MODE=dev pnpm dev côté hub
 
 # La régie a besoin d'une salle derrière elle : le poste proxifie Vite, jamais
 # l'inverse — c'est lui qui porte le flux d'état, les actions et le vumètre.
@@ -48,7 +48,7 @@ REGIE_VITE_ORIGIN=http://127.0.0.1:5174 pnpm --filter @conference-operator/room-
 
 # La régie **mobile** est la même application, servie par le hub sur /regie.
 # Le même serveur Vite convient : les deux hôtes la servent sous /regie/.
-REGIE_VITE_ORIGIN=http://127.0.0.1:5174 MODE=dev pnpm --filter @conference-operator/hub-server dev
+VITE_ORIGIN=http://127.0.0.1:5173 REGIE_VITE_ORIGIN=http://127.0.0.1:5174 MODE=dev pnpm --filter @conference-operator/hub-server dev
 ```
 
 Les deux portées se relisent séparément, et il le faut : la disposition mobile

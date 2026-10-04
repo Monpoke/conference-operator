@@ -20,7 +20,8 @@ import { createHub, type Hub } from '../src/server.js'
 let hub: Hub
 let port: number
 
-async function start(mode: 'dev' | 'production'): Promise<void> {
+/** `vite`: the two development servers given, so that the proxies are mounted. */
+async function start(mode: 'dev' | 'production', vite = mode === 'dev'): Promise<void> {
   hub = await createHub({
     port: 0,
     host: '127.0.0.1',
@@ -29,6 +30,7 @@ async function start(mode: 'dev' | 'production'): Promise<void> {
     authSecret: 'test-secret-'.padEnd(48, 'x'),
     logLevel: 'fatal',
     mode,
+    ...(vite ? { viteOrigin: 'http://127.0.0.1:5173', regieViteOrigin: 'http://127.0.0.1:5174' } : {}),
   })
   await hub.app.listen({ port: 0, host: '127.0.0.1' })
   const address = hub.app.server.address()
@@ -68,5 +70,23 @@ describe('WebSocket upgrade', () => {
     // Nothing else is listening: a socket left open would leak.
     await start('production')
     expect(await attempt('/inconnu')).toBe('cut')
+  })
+})
+
+describe('a hub in development with no Vite beside it', () => {
+  it('serves its built console rather than proxying a server that is not there', async () => {
+    // A cluster in development: the clock and the resets, not a developer's Vite.
+    await start('dev', false)
+    const response = await fetch(`http://127.0.0.1:${port}/admin`)
+    const html = await response.text()
+    expect(html).not.toContain('@vite/client')
+    // The bundle when built; a plain word otherwise — never a proxy error.
+    expect([200, 503]).toContain(response.status)
+  })
+
+  it('cuts an address with no recipient, as in production', async () => {
+    await start('dev', false)
+    expect(await attempt('/inconnu')).toBe('cut')
+    expect(await attempt('/ws')).toBe('open')
   })
 })

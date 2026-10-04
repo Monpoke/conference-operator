@@ -227,7 +227,7 @@ survivre à une base recréée.
 | Variable | Rôle | Défaut |
 |---|---|---|
 | `SIMULATED_TIME` | Place **tout le système** à un instant de l'événement ; les salles s'alignent sur l'heure du hub, rien à régler de leur côté | — |
-| `VITE_ORIGIN` / `REGIE_VITE_ORIGIN` | Serveurs Vite de la console et de la régie | `…:5173` / `…:5174` |
+| `VITE_ORIGIN` / `REGIE_VITE_ORIGIN` | Serveurs Vite de la console et de la régie, relayés par le hub. Absents, le hub sert les bundles compilés — même en `MODE=dev`, comme un hub de dev déployé sur un cluster | — |
 
 `CLOCK_CONTROL` n'existe plus : le réglage de l'heure depuis la console suit
 `MODE`. La laisser dans un `.env` ne fait rien, et le hub le dit.

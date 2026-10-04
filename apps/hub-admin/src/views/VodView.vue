@@ -77,7 +77,8 @@ async function requestAll(): Promise<void> {
     id="vod-view"
     class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] gap-3.5"
   >
-    <Panel title="Téléversements">
+    <!-- Across the width, like the montages: a table of five columns needs it. -->
+    <Panel title="Téléversements" class="col-span-full">
       <div class="mb-2 flex flex-wrap gap-1.5">
         <select
           id="vod-room"
@@ -126,7 +127,7 @@ async function requestAll(): Promise<void> {
                   L'erreur du stockage est reprise telle quelle : « AccessDenied »
                   est le seul mot qu'on puisse porter à qui tient le bucket.
                 -->
-                <div v-if="upload.lastError != null" class="text-[11px] text-alert">
+                <div v-if="upload.lastError != null" class="text-[11px] text-alert max-md:line-clamp-2" :title="upload.lastError">
                   {{ upload.lastError }}
                 </div>
               </td>
@@ -139,7 +140,7 @@ async function requestAll(): Promise<void> {
               <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:order-3 max-md:text-dim">
                 {{ progress(upload) }} %{{ rate(upload) }}
               </td>
-              <td class="border-t border-edge py-[9px] align-middle max-md:order-5 max-md:border-t-0 max-md:py-0 max-md:empty:hidden">
+              <td class="border-t border-edge py-[9px] align-middle max-md:order-3 max-md:ml-auto max-md:border-t-0 max-md:py-0 max-md:empty:hidden">
                 <Button
                   v-if="upload.state !== 'termine'"
                   size="small"

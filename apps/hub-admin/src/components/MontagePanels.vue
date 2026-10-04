@@ -4,6 +4,8 @@ import { DEPLOYMENT_WORKER_ID, type MontageJobView } from '@conference-operator/
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import { MONTAGE_STATES, describe, useMontageStore } from '../stores/montage.js'
+import { useConferencesStore, type PlannedSession } from '../stores/conferences.js'
+import VodFolderDialog from './VodFolderDialog.vue'
 
 /**
  * The VODs' montage: what the workers are editing, and who they are.
@@ -18,6 +20,28 @@ const toast = useToast()
 
 /** Cuts waiting for somebody: nothing goes out for these talks until they are looked at. */
 const toValidate = computed(() => jobs.value.filter((job) => job.state === 'a-valider').length)
+
+/**
+ * The talk's VOD folder, opened from here.
+ *
+ * The cut is validated in it, and from a phone the way there — Conférences, the
+ * VOD column, « captation » — was three screens for one gesture. The folder is
+ * the same one the Conferences page opens.
+ */
+const conferences = useConferencesStore()
+const folderOpen = ref(false)
+const folderSession = ref<PlannedSession | null>(null)
+const zone = computed(() => conferences.planning?.timezone ?? 'Europe/Paris')
+async function openFolder(sessionId: string): Promise<void> {
+  if (conferences.planning == null) await conferences.load()
+  const session = conferences.planning?.sessions.find((candidate) => candidate.id === sessionId) ?? null
+  if (session == null) {
+    toast.fail('Ce talk n’est plus au programme : son dossier ne s’ouvre que depuis Conférences.')
+    return
+  }
+  folderSession.value = session
+  folderOpen.value = true
+}
 
 const nom = ref('')
 /** The token just created — shown once, here, and never again. */
@@ -57,8 +81,8 @@ async function copyToken(): Promise<void> {
 <template>
   <Panel title="Montages" class="col-span-full">
     <p v-if="toValidate > 0" id="montage-a-valider" class="mb-2 text-sm text-warn">
-      {{ toValidate }} coupe{{ toValidate > 1 ? 's' : '' }} à valider — dans le dossier VOD du talk
-      (Conférences → colonne VOD → « captation »).
+      {{ toValidate }} coupe{{ toValidate > 1 ? 's' : '' }} à valider — « Valider » ouvre le dossier VOD
+      du talk, comme Conférences → colonne VOD → « captation ».
     </p>
     <div class="overflow-x-auto">
       <!--
@@ -90,7 +114,13 @@ async function copyToken(): Promise<void> {
           >
             <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:basis-full max-md:font-semibold">
               {{ job.title ?? job.sessionId }}
-              <div v-if="job.erreur != null && job.state !== 'termine'" class="text-[11px]" :class="job.state === 'echoue' ? 'text-alert' : 'text-dim'">
+              <!-- Two lines on a phone: a storage path fills the screen; the whole message stays on hover. -->
+              <div
+                v-if="job.erreur != null && job.state !== 'termine'"
+                class="text-[11px] font-normal break-all max-md:line-clamp-2"
+                :class="job.state === 'echoue' ? 'text-alert' : 'text-dim'"
+                :title="job.erreur"
+              >
                 {{ job.erreur }}
               </div>
             </td>
@@ -105,7 +135,18 @@ async function copyToken(): Promise<void> {
               {{ describe(job) }}
             </td>
             <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0 text-dim max-md:empty:hidden">{{ job.worker ?? '' }}</td>
-            <td class="border-t border-edge py-[9px] align-middle whitespace-nowrap max-md:basis-full max-md:border-t-0 max-md:py-0 max-md:pt-1">
+            <!-- On a phone the buttons close the state's line, rather than a line of their own. -->
+            <td class="border-t border-edge py-[9px] align-middle whitespace-nowrap max-md:ml-auto max-md:border-t-0 max-md:py-0">
+              <Button
+                v-if="job.state === 'a-valider'"
+                size="small"
+                variant="primary"
+                class="mr-1"
+                :data-valider="job.sessionId"
+                @click="openFolder(job.sessionId)"
+              >
+                Valider
+              </Button>
               <Button v-if="job.state === 'termine'" size="small" @click="attempt(() => store.download(job.id), '')">
                 Télécharger
               </Button>
@@ -136,6 +177,8 @@ async function copyToken(): Promise<void> {
       reprendre à la main, ou à relancer après correction.
     </Hint>
   </Panel>
+
+  <VodFolderDialog v-model:open="folderOpen" :session="folderSession" :timezone="zone" />
 
   <Panel title="Workers de montage">
     <ul id="montage-workers" class="mb-2 text-sm">

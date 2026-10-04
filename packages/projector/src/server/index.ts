@@ -31,6 +31,7 @@ export {
   checkThemeCss,
   checkThemeSvg,
   parseThemePackage,
+  pickThemeFiles,
   readThemeFolder,
   resolveThemesFolder,
   shippedThemeFolders,

@@ -165,6 +165,27 @@ describe('a room with a single OBS', () => {
     await vi.waitFor(() => expect(room.runtime.state().audioAlerts).toEqual([]), { timeout: 5_000 })
   }, 30_000)
 
+  it('keeps its theme while a take is recorded, and wears the new one after', async () => {
+    await start()
+    const worn = () => (room as unknown as { wornTheme(): { sha: string } | null }).wornTheme()
+    const notices = () => room.runtime.state().notifications.map((notice) => notice.text)
+    expect(worn()).toBeNull()
+
+    await room.startRecording()
+    await settle()
+    // The hub chooses a theme in the middle of the take.
+    const theme = { id: 'cloudnord', nom: 'Cloud Nord', sha: 'c'.repeat(64) }
+    const settings = room.store.settings()
+    vi.spyOn(room.store, 'settings').mockReturnValue({ ...settings, boucle: { ...settings.boucle, theme } })
+    ;(room as unknown as { followTheme(): void }).followTheme()
+    expect(worn()).toBeNull()
+    expect(notices()).toContain("Thème « Cloud Nord » en attente : il sera appliqué à la fin de l'enregistrement")
+
+    await room.stopRecording()
+    await vi.waitFor(() => expect(worn()?.sha).toBe(theme.sha))
+    expect(notices()).toContain("Thème « Cloud Nord » appliqué, l'enregistrement étant terminé")
+  }, 30_000)
+
   it('records the talk, renames the master and writes its sidecar', async () => {
     await start()
 

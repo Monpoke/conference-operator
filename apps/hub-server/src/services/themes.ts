@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { themeInfoSchema, type ThemeBundle, type ThemeInfo } from '@conference-operator/contract'
 import {
   parseThemePackage,
+  pickThemeFiles,
   readThemeFolder,
   shippedThemeFolders,
   themeFileType,
@@ -83,7 +84,9 @@ export class ThemeStore {
     return seeded
   }
 
-  #keep(files: ThemeFiles): ThemeInfo {
+  #keep(folder: ThemeFiles): ThemeInfo {
+    // Only the theme's own files: a repository's folder or a full export carries the content beside it.
+    const files = pickThemeFiles(folder)
     const { manifest } = parseThemePackage(files)
     const zip = zipTheme(files)
     const sha = themeSha(zip)

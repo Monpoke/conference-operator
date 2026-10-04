@@ -49,7 +49,7 @@ import { hostMonitor, type HostLoad } from './host.js'
 import { Uploads, type VodCandidate, type HubVod, type UploadsView } from './upload.js'
 import { nextTalk } from '@conference-operator/room-state'
 import { sessionsForRoom } from '@conference-operator/program'
-import type { ExecutionMode, RoomConfigPatch, RoomEventPayload } from '@conference-operator/contract'
+import type { ExecutionMode, RoomConfigPatch, RoomEventPayload, ThemeRef } from '@conference-operator/contract'
 
 /** A room's configuration in the local cache, as the hub pushed it. */
 type RoomConfigCache = NonNullable<ReturnType<LocalStore['settings']>['config']>
@@ -246,6 +246,14 @@ export class RoomApp implements ControlTarget {
   private watchdogTick: NodeJS.Timeout | null = null
   /** Listens to the microphone while a talk is recorded — see audio-watchdog.ts. */
   private readonly watchdog = new AudioWatchdog((alerts) => this.onAudioAlerts(alerts))
+/**
+   * The theme the room wears, which is not always the one chosen: a theme
+   * changed while a take is recorded waits for the take to end. `undefined` =
+   * not decided yet (the first page served decides it).
+   */
+  private worn: ThemeRef | null | undefined = undefined
+  /** The theme announced as waiting, so as to say it once. */
+  private announcedPending: string | null = null
   /** What OBS-B was last asked about its levels: `null` = not asked since it connected. */
   private levelsAsked: boolean | null = null
   private heartbeat: NodeJS.Timeout | null = null
@@ -379,7 +387,7 @@ export class RoomApp implements ControlTarget {
       event: () => this.store.settings().event,
       boucle: () => this.store.settings().boucle,
       // The theme chosen on the hub, once the room holds it; the default one until then.
-      theme: () => this.themes.source(this.store.settings().boucle.theme),
+      theme: () => this.themes.source(this.wornTheme()),
       themeFile: (sha, path) => this.themes.file(sha, path),
       socialWall: () => this.store.settings().wall,
       // The partners' figures: through the outbox, which holds them across an outage.
@@ -891,6 +899,8 @@ export class RoomApp implements ControlTarget {
   private async syncEverything(full = false): Promise<boolean> {
     if (this.link == null) return false
     const result = await this.link.sync({ full })
+    // Closed while the hub answered: its base is closed too, there is nothing left to update.
+    if (this.abort.signal.aborted) return false
     const roomId = this.store.settings().roomId
     if (roomId != null) {
       await this.display
@@ -903,6 +913,7 @@ export class RoomApp implements ControlTarget {
         // After the sync, not before: downloading the assets must never delay the
         // program's display.
         const report = await this.assets.prefetch(cached.program)
+        if (this.abort.signal.aborted) return false
         this.options.onLog?.('info', 'assets préchargés', report)
 
         /*
@@ -925,14 +936,18 @@ export class RoomApp implements ControlTarget {
       // The loop's own images — uploaded logos, post photos — after the program's:
       // the loop shows the sponsor's name in its circle until they arrive.
       const loopImages = await this.assets.prefetchUrls(boucleImageRefs(this.store.settings().boucle))
+      if (this.abort.signal.aborted) return false
       if (loopImages.failed.length > 0) {
         this.store.log('warn', 'images de la boucle', { echecs: loopImages.failed.length })
       }
       // The loop's theme, before the screen is told: the page reloads into it.
       const theme = this.store.settings().boucle.theme
-      if ((await this.themes.ensure(theme)) === 'echec') {
+      const fetched = await this.themes.ensure(theme)
+      if (this.abort.signal.aborted) return false
+      if (fetched === 'echec') {
         this.store.log('warn', 'thème de la boucle', { theme: theme?.nom, sha: theme?.sha })
       }
+      this.followTheme()
       this.display.refreshBoucle()
       await this.syncWall()
     }
@@ -1569,6 +1584,11 @@ export class RoomApp implements ControlTarget {
         break
       case 'recording':
         this.runtime.observeCapture({ recording: event.active })
+        // The take over, a theme chosen meanwhile is worn now: the pages reload into it.
+        if (!event.active) {
+          this.followTheme()
+          this.display.refreshBoucle()
+        }
         // OBS ended the take on an error — a full disk, an encoder that gave up.
         // It goes into the room's log, which the Diagnostic panel reads back.
         if (event.error != null) {
@@ -1662,6 +1682,42 @@ export class RoomApp implements ControlTarget {
     void this.obsB.setVolumeMeters(wanted).catch(() => {
       this.levelsAsked = null
       this.options.onLog?.('warn', "OBS-B n'a pas accepté l'abonnement aux niveaux audio")
+    })
+  }
+
+/**
+   * The theme to wear now: the one the hub chose — unless a take is being
+   * recorded. Then the room keeps the one it wore when the take started, until
+   * it ends: the projection and the capture overlay would otherwise change look
+   * in the middle of a recorded talk, and the VOD with them. Each room decides
+   * for itself — one records, the next one does not.
+   */
+  private wornTheme(): ThemeRef | null {
+    const chosen = this.store.settings().boucle.theme
+    if (this.worn === undefined || this.runtime.state().recording !== true) this.worn = chosen
+    return this.worn
+  }
+
+  /**
+   * A theme chosen during a take: said once to the control app, then applied
+   * when the take ends — the pages reload into it by themselves.
+   */
+  private followTheme(): void {
+    const chosen = this.store.settings().boucle.theme
+    const worn = this.wornTheme()
+    if (chosen?.sha === worn?.sha) {
+      if (this.announcedPending != null) {
+        this.announcedPending = null
+        this.runtime.notify({ level: 'info', text: `Thème « ${chosen?.nom ?? 'par défaut'} » appliqué, l'enregistrement étant terminé` })
+      }
+      return
+    }
+    const key = chosen?.sha ?? 'defaut'
+    if (this.announcedPending === key) return
+    this.announcedPending = key
+    this.runtime.notify({
+      level: 'info',
+      text: `Thème « ${chosen?.nom ?? 'par défaut'} » en attente : il sera appliqué à la fin de l'enregistrement`,
     })
   }
 

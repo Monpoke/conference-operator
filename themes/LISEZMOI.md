@@ -35,9 +35,14 @@ fautif en listant toutes ses raisons.
 ## `boucle.json`
 
 Les sections de la boucle, sous les noms de la console (`accueil`, `messages`,
-`annonces`, `sponsorPages`, `merciSponsors`, `conduite`, `feedbacks`…). Le plus simple
-pour commencer : « Exporter le contenu » dans le panneau « Dépôt Git », qui écrit celui
-du hub.
+`annonces`, `sponsorPages`, `merciSponsors`, `conduite`, `feedbacks`…).
+
+**Sauvegarder ce qui a été modifié dans la console** : « Exporter la configuration
+(.zip) » dans le panneau « Dépôt Git ». L'archive contient `boucle.json`, les images
+déposées dans la console (dans `images/`, les références `hub-image:…` remplacées par
+leur chemin) et le thème porté. Il suffit de la décompresser dans le sous-dossier du
+dépôt et de committer : elle se réimporte telle quelle, sur ce hub ou un autre. C'est
+aussi le plus simple pour démarrer un dépôt.
 
 À l'import, **les sections présentes remplacent celles du hub, les autres restent** ;
 tout reste modifiable dans la console ensuite, jusqu'au prochain import. Un `logo` peut

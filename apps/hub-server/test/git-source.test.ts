@@ -1,8 +1,12 @@
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { boucleSchema } from '@conference-operator/contract'
+import { readThemeFolder, unzipTheme } from '@conference-operator/projector/server'
 import { openHubDatabase, type HubDatabase } from '../src/db.js'
+import { exportConfiguration } from '../src/services/config-export.js'
 import { createSecretBox } from '../src/secrets.js'
 import { GitImportError, GitSourceService, type Cloner } from '../src/services/git-source.js'
 import { ThemeStore } from '../src/services/themes.js'
@@ -118,5 +122,43 @@ describe('an import', () => {
     })
     await expect(unreachable.import({ theme: true, contenu: false }, targets())).rejects.toThrow(GitImportError)
     expect(unreachable.status()?.derniere?.erreur).toBe('Dépôt illisible (main) : HTTP Error: 401 Unauthorized')
+  })
+})
+
+describe('the configuration saved to the repository', () => {
+  it('comes back as it left: the theme, the content, the images dropped in the console', async () => {
+    const theme = themes.importFiles(readThemeFolder(CLOUDNORD))
+    const logo = `hub-image:${createHash('sha256').update(PNG).digest('hex')}.png`
+    const boucle = boucleSchema.parse({
+      logo,
+      merciSponsors: 'Merci à nos\nPartenaires',
+      theme: { id: theme.id, nom: theme.nom, sha: theme.sha },
+      lienPublic: 'jamais-dans-le-depot-000000000',
+    })
+    const { zip, missing } = await exportConfiguration({
+      boucle,
+      image: async (ref) => (ref === logo ? { bytes: PNG, contentType: 'image/png' } : null),
+      theme: themes.load(theme.sha)!.files,
+    })
+    expect(missing).toEqual([])
+
+    // Unzipped into the repository's folder, committed, imported back.
+    rmSync(join(repo, 'edition-2026'), { recursive: true })
+    for (const [path, bytes] of unzipTheme(zip)) {
+      mkdirSync(dirname(join(repo, 'edition-2026', path)), { recursive: true })
+      writeFileSync(join(repo, 'edition-2026', path), bytes)
+    }
+    const saved = JSON.parse(readFileSync(join(repo, 'edition-2026', 'boucle.json'), 'utf8')) as Record<string, unknown>
+    expect(saved.logo).toMatch(/^images\/[0-9a-f]{16}\.png$/)
+    expect(saved).not.toHaveProperty('lienPublic')
+    expect(saved).not.toHaveProperty('theme')
+
+    const service = new GitSourceService(db, box, fakeClone())
+    service.set(source, undefined)
+    const into = targets()
+    const imported = await service.import({ theme: true, contenu: true }, into)
+    expect(imported.theme?.sha).toBe(theme.sha)
+    expect(imported.patch!.boucle!.logo).toBe(logo)
+    expect(imported.patch!.boucle!.merciSponsors).toBe('Merci à nos\nPartenaires')
   })
 })

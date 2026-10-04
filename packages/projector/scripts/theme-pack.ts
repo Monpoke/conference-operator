@@ -9,7 +9,7 @@
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { parseThemePackage, readThemeFolder, ThemePackageError, themeSha, zipTheme } from '../src/server/index.js'
+import { parseThemePackage, pickThemeFiles, readThemeFolder, ThemePackageError, themeSha, zipTheme } from '../src/server/index.js'
 
 // Run through pnpm, from the package: the paths given are the caller's.
 const from = (path: string) => resolve(process.env.INIT_CWD ?? process.cwd(), path)
@@ -19,7 +19,8 @@ if (folder == null) {
   process.exit(2)
 }
 
-const files = readThemeFolder(from(folder))
+// The theme's own files: a repository's folder may carry the loop's content beside it.
+const files = pickThemeFiles(readThemeFolder(from(folder)))
 try {
   const { manifest } = parseThemePackage(files)
   const zip = zipTheme(files)

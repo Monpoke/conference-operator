@@ -15,6 +15,7 @@ import { createSecretBox } from './secrets.js'
 import { router } from './router.js'
 import type { HubContext, Services } from './context.js'
 import { AssetStore } from './services/assets.js'
+import { exportConfiguration } from './services/config-export.js'
 import { GitSourceService } from './services/git-source.js'
 import { ThemeStore } from './services/themes.js'
 import { ProgramService } from './services/program.js'
@@ -657,6 +658,33 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     reply.header('content-disposition', `attachment; filename="${info?.id ?? 'theme'}-${info?.version ?? sha!.slice(0, 8)}.zip"`)
     reply.header('cache-control', 'public, max-age=31536000, immutable')
     return reply.send(zip)
+  })
+
+  /**
+   * The loop's whole configuration — content, images dropped in the console, the
+   * theme worn — as a folder to commit in its Git repository: what the « Dépôt
+   * Git » panel imports back. Behind the operator's session, like the settings.
+   */
+  app.get('/boucle/export.zip', async (request, reply) => {
+    try {
+      const { operator } = await resolveOperator(contextFrom(auth, services, headersOf(request.headers)))
+      requirePermission(operator, 'settings:read')
+    } catch {
+      return reply.status(401).send({ error: 'connectez-vous à la console' })
+    }
+    const boucle = services.settings.get().boucle
+    const { zip, missing } = await exportConfiguration({
+      boucle,
+      image: (ref) => services.assets.read(services.assets.keyOf(ref)),
+      theme: boucle.theme == null ? null : (services.themes.load(boucle.theme.sha)?.files ?? null),
+    })
+    const day = new Date(services.clock.now()).toISOString().slice(0, 10)
+    reply.header('content-type', 'application/zip')
+    reply.header('content-disposition', `attachment; filename="configuration-boucle-${day}.zip"`)
+    reply.header('cache-control', 'no-store')
+    // Images the hub lost stay as references in `boucle.json`: said, not hidden.
+    reply.header('x-images-manquantes', String(missing.length))
+    return reply.send(Buffer.from(zip))
   })
 
   /** A theme's fonts and images, for the preview and the VOD's — nothing else of the package is served. */

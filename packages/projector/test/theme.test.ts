@@ -5,6 +5,7 @@ import { THEME_COULEURS } from '@conference-operator/contract'
 import {
   DEFAULT_THEME,
   parseThemePackage,
+  pickThemeFiles,
   readThemeFolder,
   renderProjectorDocument,
   renderVodDocument,
@@ -130,5 +131,34 @@ describe('a package from the console', () => {
     const theme = { bundle, base: '/display/theme/abc' }
     expect(themeStyle(theme)).toContain('url("/display/theme/abc/images/fond.png")')
     expect(themeDecor(theme)).toContain('href="/display/theme/abc/images/fond.png"')
+  })
+})
+
+describe("a repository's folder", () => {
+  it('gives its theme only: the content beside it does not change the theme', () => {
+    const folder = new Map([
+      ...readThemeFolder(CLOUDNORD),
+      ['boucle.json', strToU8('{"merciSponsors":"Merci"}')],
+      ['images/sponsor.png', new Uint8Array([137, 80, 78, 71])],
+      ['notes.md', strToU8('# notes')],
+    ])
+    const picked = pickThemeFiles(folder)
+    expect([...picked.keys()].sort()).toEqual([...readThemeFolder(CLOUDNORD).keys()].sort())
+
+    // A slogan corrected in the content: the same theme, the same sha.
+    const corrected = new Map([...folder, ['boucle.json', strToU8('{"merciSponsors":"Merci à tous"}')]])
+    expect(themeSha(zipTheme(pickThemeFiles(corrected)))).toBe(themeSha(zipTheme(picked)))
+  })
+
+  it('keeps the images its stylesheet and its decor point at', () => {
+    const picked = pickThemeFiles(files({
+      'theme.json': manifest({ css: 'theme.css', decor: { svg: 'decor.svg' } }),
+      'theme.css': '.accueil { background: url(images/fond.png) }',
+      'decor.svg': '<svg><image href="images/motif.png"/></svg>',
+      'images/fond.png': 'x',
+      'images/motif.png': 'y',
+      'images/sponsor.png': 'z',
+    }))
+    expect([...picked.keys()].sort()).toEqual(['decor.svg', 'images/fond.png', 'images/motif.png', 'theme.css', 'theme.json'])
   })
 })

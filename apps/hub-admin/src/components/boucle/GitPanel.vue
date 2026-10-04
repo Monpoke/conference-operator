@@ -84,17 +84,6 @@ async function importer(what: 'theme' | 'contenu'): Promise<void> {
   }
 }
 
-/** The loop's content as it stands, as a `boucle.json` to start the repository from. */
-function exporter(): void {
-  if (store.boucle == null) return
-  const { theme: _theme, lienPublic: _lien, ...content } = store.boucle
-  const blob = new Blob([`${JSON.stringify(content, null, 2)}\n`], { type: 'application/json' })
-  const link = document.createElement('a')
-  link.href = URL.createObjectURL(blob)
-  link.download = 'boucle.json'
-  link.click()
-  URL.revokeObjectURL(link.href)
-}
 </script>
 
 <template>
@@ -166,10 +155,22 @@ function exporter(): void {
         </p>
       </template>
 
+      <!--
+        The whole configuration as the hub holds it — boucle.json, the images
+        dropped here, the theme worn — to unzip into the repository's folder and
+        commit: the save, and the start of a repository. A link: the hub builds it.
+      -->
       <div class="mt-auto pt-2">
-        <Button id="boucle-git-exporter" size="small" title="Le contenu actuel, pour démarrer le dépôt" @click="exporter">
-          Exporter le contenu (boucle.json)
-        </Button>
+        <a
+          id="boucle-git-exporter"
+          href="/boucle/export.zip"
+          download
+          class="inline-flex items-center rounded-md border border-edge px-2.5 py-1 text-xs text-text no-underline hover:border-brand"
+          title="Contenu, images déposées et thème : à décompresser dans le dossier du dépôt, puis à committer"
+        >Exporter la configuration (.zip)</a>
+        <p class="mt-1 text-[11px] text-dim">
+          Pour sauvegarder dans le dépôt ce qui a été modifié ici : à décompresser dans le sous-dossier, puis à committer.
+        </p>
       </div>
     </div>
   </Panel>

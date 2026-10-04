@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { unzipSync, zipSync } from 'fflate'
-import { cheminThemeSchema, themeManifestSchema, type ThemeBundle } from '@conference-operator/contract'
+import { cheminThemeSchema, themeManifestSchema, type ThemeBundle, type ThemeManifest } from '@conference-operator/contract'
 
 /**
  * A theme package: `theme.json` and the files it names, zipped.
@@ -238,4 +238,48 @@ export function shippedThemeFolders(folder: string | null): string[] {
     .sort()
     .map((name) => join(folder, name))
     .filter((path) => existsSync(join(path, 'theme.json')))
+}
+
+/**
+ * The theme's own files, out of a folder that may hold more.
+ *
+ * A repository's folder carries the loop's content beside its theme
+ * (`boucle.json`, the images of the sponsor pages): zipped whole as the theme,
+ * a corrected slogan would change the theme's sha — and every room would reload
+ * into a « new » theme for a text. Kept: `theme.json`, the files it names (its
+ * stylesheet, its SVGs, its fonts), the files those reference, and the notes
+ * beside the fonts — their licences, which must travel with them. A folder
+ * whose manifest cannot be read is left whole: the check that follows says why.
+ */
+export function pickThemeFiles(files: ThemeFiles): ThemeFiles {
+  let manifest: ThemeManifest
+  try {
+    manifest = themeManifestSchema.parse(JSON.parse(new TextDecoder().decode(files.get('theme.json'))))
+  } catch {
+    return files
+  }
+  const kept = new Set<string>(['theme.json'])
+  const named = [manifest.css, manifest.decor.svg, manifest.overlay.svg].filter((path): path is string => path != null)
+  for (const path of named) kept.add(path)
+  const fontFolders = new Set<string>()
+  for (const font of manifest.polices.fichiers) {
+    kept.add(font.fichier)
+    fontFolders.add(font.fichier.includes('/') ? font.fichier.slice(0, font.fichier.lastIndexOf('/') + 1) : '')
+  }
+  // What the stylesheet and the SVGs point at.
+  for (const path of named) {
+    const bytes = files.get(path)
+    if (bytes == null) continue
+    const text = new TextDecoder().decode(bytes)
+    for (const match of text.matchAll(/url\(\s*(['"]?)([^'")]+)\1\s*\)|\b(?:xlink:)?href\s*=\s*(["'])([^"']*)\3/gi)) {
+      const target = (match[2] ?? match[4] ?? '').trim()
+      if (files.has(target)) kept.add(target)
+    }
+  }
+  // The licences beside the fonts.
+  for (const path of files.keys()) {
+    const folder = path.includes('/') ? path.slice(0, path.lastIndexOf('/') + 1) : ''
+    if (fontFolders.has(folder) && folder !== '' && /\.(txt|md)$/i.test(path)) kept.add(path)
+  }
+  return new Map([...files].filter(([path]) => kept.has(path)))
 }

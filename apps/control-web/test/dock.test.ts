@@ -15,22 +15,26 @@ import { payload } from './fixtures.js'
  */
 
 let streams: string[]
+let closed: string[]
 const mounted: { unmount: () => void }[] = []
 
 beforeEach(() => {
   setActivePinia(createPinia())
   streams = []
+  closed = []
   vi.stubGlobal(
     'EventSource',
     class {
       onopen: unknown = null
       onerror: unknown = null
       onmessage: unknown = null
-      constructor(url: string) {
+      constructor(private readonly url: string) {
         streams.push(url)
       }
       addEventListener(): void {}
-      close(): void {}
+      close(): void {
+        closed.push(this.url)
+      }
     },
   )
   vi.stubGlobal(
@@ -61,6 +65,11 @@ describe('the dock mode', () => {
     expect(readDock('?docking')).toBe(false)
   })
 
+  it('is recognised in OBS, as the room\'s server does', () => {
+    expect(readDock('', 'Mozilla/5.0 (Windows NT 10.0) Chrome/127.0 OBS/31.0.2')).toBe(true)
+    expect(readDock('', 'Mozilla/5.0 (Windows NT 10.0) Chrome/127.0 Safari/537.36')).toBe(false)
+  })
+
   it('drops the VU meter, and its stream with it', async () => {
     const wrapper = await mountAt('/regie?dock')
 
@@ -73,6 +82,39 @@ describe('the dock mode', () => {
 
     expect(wrapper.find('[data-role="levels"]').exists()).toBe(true)
     expect(streams).toContain('/display/audio')
+  })
+})
+
+describe('the VU meter\'s stream', () => {
+  let state: DocumentVisibilityState = 'visible'
+  beforeEach(() => {
+    state = 'visible'
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state })
+  })
+  afterEach(() => {
+    Reflect.deleteProperty(document, 'visibilityState')
+  })
+  const show = (next: DocumentVisibilityState) => {
+    state = next
+    document.dispatchEvent(new Event('visibilitychange'))
+  }
+
+  it('closes while the window is hidden, and opens again when it is back', async () => {
+    await mountAt('/regie')
+    expect(streams.filter((url) => url === '/display/audio')).toHaveLength(1)
+
+    // Minimised, behind OBS: nobody reads the meters, OBS stops metering.
+    show('hidden')
+    expect(closed).toContain('/display/audio')
+
+    show('visible')
+    expect(streams.filter((url) => url === '/display/audio')).toHaveLength(2)
+  })
+
+  it('does not open at all in a window that starts hidden', async () => {
+    state = 'hidden'
+    await mountAt('/regie')
+    expect(streams).not.toContain('/display/audio')
   })
 })
 

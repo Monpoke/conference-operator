@@ -306,6 +306,27 @@ describe('VU meter', () => {
     }
   })
 
+  it('meters nothing for an OBS dock', async () => {
+    // OBS's own mixer is beside the dock: a dock left on `/regie` would keep OBS
+    // metering for nobody.
+    const demandes: boolean[] = []
+    const local = new DisplayServer({
+      runtime,
+      assets,
+      program: () => store.activeProgram(),
+      onLevelsRequested: (actif) => demandes.push(actif),
+      port: 0,
+    })
+    const url = await local.listen()
+    try {
+      const response = await fetch(`${url}/display/audio`, { headers: { 'user-agent': 'Mozilla/5.0 OBS/31.0.2' } })
+      expect(response.status).toBe(204)
+      expect(demandes).toEqual([])
+    } finally {
+      await local.close()
+    }
+  })
+
   it('does not reopen the subscription for a second control app', async () => {
     const demandes: boolean[] = []
     const local = new DisplayServer({

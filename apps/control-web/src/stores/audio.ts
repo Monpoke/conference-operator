@@ -21,7 +21,8 @@ interface Peak {
  *
  * Separate for two reasons: the cadence — ten messages a second against a few an
  * hour for the state — and the fact that only the control app uses them. Closing
- * the page is enough to cut the subscription on OBS.
+ * the stream is enough to cut the subscription on OBS: the VU meter opens it
+ * only while it is on screen (see LevelMeters.vue).
  */
 export const useAudioStore = defineStore('audio', () => {
   const inputs = ref<InputLevel[]>([])
@@ -54,9 +55,13 @@ export const useAudioStore = defineStore('audio', () => {
     }
   }
 
+  /** Closed, the meters go back to waiting: what they showed is no longer true. */
   function disconnect(): void {
     stream?.close()
     stream = null
+    waiting.value = true
+    inputs.value = []
+    peaks.value = {}
   }
 
   return { inputs, waiting, peaks, apply, connect, disconnect }

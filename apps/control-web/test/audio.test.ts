@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import LevelMeters from '../src/components/LevelMeters.vue'
 import { PEAK_HOLD_MS, useAudioStore } from '../src/stores/audio.js'
 
@@ -15,6 +15,11 @@ const INPUT = { name: 'Micro HF', channels: [{ magnitude: -30, peak: -28 }] }
 
 beforeEach(() => {
   setActivePinia(createPinia())
+  // The panel opens its own stream once on screen; the tests feed the store directly.
+  vi.stubGlobal('EventSource', class {
+    onmessage: unknown = null
+    close(): void {}
+  })
 })
 
 describe('peak hold', () => {

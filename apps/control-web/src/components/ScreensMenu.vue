@@ -2,7 +2,7 @@
 import type { DisplayPayload } from '@conference-operator/contract'
 import { Button } from '@conference-operator/components'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { readDock } from '../boot.js'
+import { currentDock } from '../boot.js'
 
 /**
  * The locally served screens.
@@ -30,7 +30,7 @@ const open = ref(false)
  * In an OBS dock, this page in another window would open inside OBS, and server
  * mode has nothing to free: the dock already is the light way to drive the room.
  */
-const dock = readDock(globalThis.location.search)
+const dock = currentDock()
 const screens = dock ? SCREENS.filter((entry) => entry[0] !== '/regie') : SCREENS
 
 /**

@@ -39,6 +39,16 @@ const DEFAULT_PAGES = [
   },
 ]
 
+const ANCIEN = {
+  id: 'ancien',
+  nom: 'Ancien thème',
+  sha: 'a'.repeat(64),
+  version: '1',
+  auteur: null,
+  importeLe: '2026-10-01T08:00:00.000Z',
+  taille: 1024,
+}
+
 function stub(boucle: Boucle = DEFAULT_BOUCLE) {
   const calls: Call[] = []
   // Held like the hub: section by section.
@@ -66,9 +76,13 @@ function stub(boucle: Boucle = DEFAULT_BOUCLE) {
         ],
       },
       boucle: {
-        // The hub's theme packages: none here.
-        themes: async () => [],
+        // The hub's theme packages: one, not worn (the default theme is).
+        themes: async () => [ANCIEN],
         gitSource: async () => null,
+        removeTheme: async (input: { sha: string }) => {
+          calls.push({ path: 'boucle/removeTheme', input })
+          return { ok: true }
+        },
         catalogue: async () => {
           calls.push({ path: 'boucle/catalogue', input: undefined })
           return { sponsors: [APE, ZEPHYRA], pagesParDefaut: DEFAULT_PAGES }
@@ -308,6 +322,23 @@ describe('matching a sponsor', () => {
     expect(findSponsor(ref('nova atelier'), catalogue)).toBe(APE)
     expect(findSponsor(ref('Zéphyra'), catalogue)).toBe(ZEPHYRA)
     expect(findSponsor(ref('MTG'), catalogue)).toBeNull()
+  })
+})
+
+describe('removing a theme', () => {
+  it('asks first, then removes it once confirmed', async () => {
+    const { calls, wrapper } = await mountView()
+    await wrapper.get('[data-theme="ancien"] button').trigger('click')
+    await flushPromises()
+    expect(document.body.textContent).toContain('Supprimer le thème « Ancien thème » ?')
+    expect(calls.filter((call) => call.path === 'boucle/removeTheme')).toHaveLength(0)
+
+    const confirm = [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Supprimer') && button.title === '')
+    confirm!.click()
+    await flushPromises()
+    expect(calls.filter((call) => call.path === 'boucle/removeTheme')).toEqual([
+      { path: 'boucle/removeTheme', input: { sha: ANCIEN.sha } },
+    ])
   })
 })
 

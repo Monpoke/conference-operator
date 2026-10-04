@@ -63,19 +63,22 @@ async function pick(event: Event): Promise<void> {
   }
 }
 
-/** The theme about to be removed, while the confirmation is open. */
+/**
+ * The theme the confirmation asks about, and whether it is open — two states,
+ * not one: `ConfirmDialog` closes itself *before* it says « confirmed », so a
+ * theme forgotten on close would already be gone when the answer arrives.
+ */
 const toRemove = ref<ThemeInfo | null>(null)
-const confirming = computed({
-  get: () => toRemove.value != null,
-  set: (open: boolean) => {
-    if (!open) toRemove.value = null
-  },
-})
+const confirming = ref(false)
+
+function askRemove(theme: ThemeInfo): void {
+  toRemove.value = theme
+  confirming.value = true
+}
 
 /** Removing is for good: the package leaves the hub, and its export with it. */
 async function remove(): Promise<void> {
   const theme = toRemove.value
-  toRemove.value = null
   if (theme == null) return
   try {
     await store.removeTheme(theme.sha)
@@ -125,7 +128,7 @@ async function remove(): Promise<void> {
             size="small"
             variant="danger"
             title="Supprimer ce thème du hub"
-            @click.prevent="toRemove = theme"
+            @click.prevent="askRemove(theme)"
           >×</Button>
         </label>
       </div>

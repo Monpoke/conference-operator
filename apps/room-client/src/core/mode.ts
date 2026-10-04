@@ -1,36 +1,32 @@
-import type { ExecutionMode } from '@conference-operator/contract'
-
 /**
- * The room's execution mode.
+ * What the machine's environment says, before any hub answers.
  *
- * A single switch in front of the development conveniences, instead of one
- * variable per convenience. Two reasons, and the second counts more than the
- * first.
+ * The room has **no execution mode of its own**: it takes the hub's (see
+ * `RoomApp.mode()`), and stays in production as long as no hub has answered.
+ * A room machine used to carry `MODE=dev` in its shortcut; plugged into the
+ * event's hub, it then simulated OBS and accepted wiping its rushes while the
+ * hub ran a real day — two machines disagreeing on what was at stake. Now the
+ * hub alone says it, and a room cannot be more « dev » than its hub.
  *
- * 1. On the day, what has to be checked fits on one line.
- * 2. The development settings apply **only** in this mode. An `OBS_MOCK=1`
- *    forgotten in a shortcut is a whole day filmed by an OBS instance that does
- *    not exist — the failure is discovered at editing time, when there is nothing
- *    left to catch up.
+ * What stays local is what only the machine can decide, for a development
+ * bench: simulating OBS (`OBS_SIMULE=1`) — a real room plugged into the dev
+ * hub must still drive its real OBS — and, on such a bench only, a simulated
+ * local time to work with no hub (`HEURE_SIMULEE`).
  *
- * The default is `production`: the default must be the dangerous case, not the
- * comfortable one.
- *
- * The environment variable names (`MODE`, `OBS_MOCK`, `OBS_REEL`,
- * `HEURE_SIMULEE`) are a frozen contract with the machines' shortcuts.
+ * The default is the dangerous case, not the comfortable one: real OBS, real
+ * time. The environment variable names are a frozen contract with the
+ * machines' shortcuts.
  */
 export interface RoomMode {
-  mode: ExecutionMode
-  /** OBS simulated rather than two real instances. */
+  /** OBS simulated rather than real instances: a development bench. */
   obsSimulated: boolean
-  /** A simulated local time, to develop with no hub. */
+  /** A simulated local time, to develop with no hub. Only with OBS simulated. */
   simulatedTime: string | null
   /**
    * The settings present in the environment and left without effect, with why.
    *
    * Neutralized noisily, and with their reason: a bare "ignored" would send one
-   * looking in the wrong place, and the two causes — reserved for development, or
-   * gone — are not fixed the same way.
+   * looking in the wrong place.
    */
   ignores: IgnoredSetting[]
 }
@@ -40,30 +36,28 @@ export interface IgnoredSetting {
   reason: string
 }
 
-export function readMode(env: NodeJS.ProcessEnv = process.env): RoomMode {
-  const dev = env.MODE === 'dev'
+/**
+ * @param simulateObsByDefault The development script's default — it exists to
+ *   run a room with no OBS; `OBS_REEL=1` then plugs it into real ones. The room
+ *   application has no such default: `OBS_SIMULE=1`, said on purpose.
+ */
+export function readMode(env: NodeJS.ProcessEnv = process.env, simulateObsByDefault = false): RoomMode {
   const ignores: IgnoredSetting[] = []
 
-  // Obsolete in both modes: in development, OBS is simulated by default. Finding
-  // it in a shortcut means someone is counting on it.
-  if (truthy(env.OBS_MOCK)) {
-    ignores.push({
-      variable: 'OBS_MOCK',
-      reason: 'remplacé par MODE=dev, qui simule OBS par défaut (OBS_REEL=1 pour de vraies instances)',
-    })
+  if ((env.MODE ?? '') !== '') {
+    ignores.push({ variable: 'MODE', reason: 'le mode de la salle est hérité du hub (production tant qu\u2019il ne répond pas)' })
   }
-  if (!dev && (env.HEURE_SIMULEE ?? '') !== '') {
-    ignores.push({ variable: 'HEURE_SIMULEE', reason: 'réservé au mode développement (MODE=dev)' })
+  if (truthy(env.OBS_MOCK)) {
+    ignores.push({ variable: 'OBS_MOCK', reason: 'remplacé par OBS_SIMULE=1' })
+  }
+  const obsSimulated = simulateObsByDefault ? env.OBS_REEL !== '1' : truthy(env.OBS_SIMULE)
+  if (!obsSimulated && (env.HEURE_SIMULEE ?? '') !== '') {
+    ignores.push({ variable: 'HEURE_SIMULEE', reason: 'réservé à un banc de développement (OBS_SIMULE=1)' })
   }
 
   return {
-    mode: dev ? 'dev' : 'production',
-    // Simulated by default in development: it is the common case, and demanding
-    // one more variable for the common case is paid for in oversights. `OBS_REEL`
-    // is never reported in production: without effect, but what it asks for is
-    // precisely what happens, and warning would sow doubt.
-    obsSimulated: dev && env.OBS_REEL !== '1',
-    simulatedTime: dev ? (env.HEURE_SIMULEE ?? null) : null,
+    obsSimulated,
+    simulatedTime: obsSimulated ? (env.HEURE_SIMULEE ?? null) : null,
     ignores,
   }
 }

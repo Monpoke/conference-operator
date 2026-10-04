@@ -157,14 +157,6 @@ export interface RoomAppOptions {
    */
   roomId?: string
   /**
-   * The room's execution mode.
-   *
-   * Decided by the entry point, which reads the environment — the application core
-   * does not read `process.env`, and that is what makes it testable. See
-   * `core/mode`.
-   */
-  mode?: ExecutionMode
-  /**
    * The room's time source.
    *
    * Used in development, to place oneself in the middle of the event. Goes through
@@ -804,6 +796,18 @@ export class RoomApp implements ControlTarget {
     await this.repair('Poste déconnecté depuis la configuration')
   }
 
+  /**
+   * The room's execution mode: its hub's.
+   *
+   * Production as long as no hub has answered since start-up — the dangerous
+   * case is the default, never the comfortable one. Then the mode the hub last
+   * stated: a hub briefly out of reach does not turn a development bench back
+   * into production mid-session. See `core/mode` for what stays local.
+   */
+  mode(): ExecutionMode {
+    return this.hubMode === 'dev' ? 'dev' : 'production'
+  }
+
   /** Connects the hub: synchronizes then consumes the commands in the background. */
   async connectHub(token: string): Promise<void> {
     this.link = new HubLink({
@@ -816,13 +820,9 @@ export class RoomApp implements ControlTarget {
       onHubMode: (mode) => {
         if (mode === this.hubMode) return
         this.hubMode = mode
-        const ours = this.options.mode ?? 'production'
-        if (mode !== ours) {
-          this.options.onLog?.('error', 'MODES DIVERGENTS entre la salle et le hub', {
-            room: ours,
-            hub: mode,
-          })
-        }
+        // The room takes the hub's mode: said once, when it changes.
+        if (mode === 'dev') this.options.onLog?.('warn', 'MODE DÉVELOPPEMENT, hérité du hub — à ne pas laisser le jour J')
+        else this.options.onLog?.('info', 'mode production, hérité du hub')
       },
       /*
        * Said once per change, not on every sync: the badge stays in the header for
@@ -1500,7 +1500,7 @@ export class RoomApp implements ControlTarget {
       // the time spent in front of the screen. In production, monotonic time stays
       // the only judge — a clock resynchronization mid-talk must not lengthen the
       // talk.
-      followsClock: (this.options.mode ?? 'production') === 'dev',
+      followsClock: () => this.mode() === 'dev',
       onLog: this.options.onLog,
     })
 
@@ -2077,7 +2077,7 @@ export class RoomApp implements ControlTarget {
    * emptying it entirely is not a gesture one recovers from.
    */
   async resetVod(): Promise<number> {
-    if (this.options.mode !== 'dev') {
+    if (this.mode() !== 'dev') {
       this.options.onLog?.(
         'error',
         'remise à zéro des rushes refusée : cette salle n\u2019est pas en mode développement',
@@ -2505,7 +2505,7 @@ export class RoomApp implements ControlTarget {
       questions: this.questions,
       questionsRefreshedAt: this.questionsAt,
       questionsSession: this.questionsSession,
-      mode: { room: this.options.mode ?? 'production', hub: this.hubMode },
+      mode: { room: this.mode(), hub: this.hubMode },
       protocol: { room: PROTOCOL_VERSION, hub: this.hubProtocol },
       rooms: this.roomStatuses,
       roomsRefreshedAt: this.roomStatusesAt,

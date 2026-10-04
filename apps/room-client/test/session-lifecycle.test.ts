@@ -207,6 +207,12 @@ async function operatorClient(): Promise<ContractRouterClient<typeof contract>> 
 }
 
 describe('lifecycle driven from the control app', () => {
+  it("takes the hub's development mode", () => {
+    // No MODE on the room: the hub says it, and the room follows.
+    expect(room.mode()).toBe('dev')
+    expect(room.diagnostics().mode).toEqual({ room: 'dev', hub: 'dev' })
+  })
+
   it('starts and ends the running talk', async () => {
     const session = room.runtime.state().currentSession!
     expect(session.title).toContain('HoneySwamp')

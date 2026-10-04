@@ -87,13 +87,12 @@ async function main(): Promise<void> {
   for (const { variable, reason } of MODE.ignores) {
     console.error(formatLogLine('error', `${variable} ignoré : ${reason}`))
   }
-  if (MODE.mode === 'dev') {
-    console.warn(formatLogLine('warn', 'MODE DÉVELOPPEMENT — à ne pas laisser le jour J'))
+  if (MODE.obsSimulated) {
+    console.warn(formatLogLine('warn', 'OBS SIMULÉ — banc de développement, à ne pas laisser le jour J'))
   }
 
   const room = new RoomApp({
     dataDir,
-    mode: MODE.mode,
     hubOrigin,
     clientId,
     roomId: process.env.ROOM_ID,

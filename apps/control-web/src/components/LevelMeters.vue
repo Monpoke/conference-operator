@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { DB_FLOOR } from '@conference-operator/contract'
 import { Panel } from '@conference-operator/components'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useAudioStore } from '../stores/audio.js'
 
 /**
@@ -23,6 +24,51 @@ function width(db: number): string {
 }
 
 const audio = useAudioStore()
+
+/**
+ * The stream is open only while the meters are seen.
+ *
+ * OBS sends its levels fifty times a second, and only while somebody listens:
+ * the room's control window stays open all day, minimised or behind OBS, and
+ * listening there for nobody kept OBS metering — and the room pushing ten
+ * messages a second — for the whole day. So: the page visible (a minimised
+ * window or a background tab is not) and the panel on screen (scrolled out of
+ * a narrow layout, it is not). Either one lost, the stream closes; both back,
+ * it opens again.
+ */
+const root = ref<HTMLElement | null>(null)
+let visible = typeof document === 'undefined' || document.visibilityState !== 'hidden'
+let onScreen = true
+let observer: IntersectionObserver | null = null
+
+function follow(): void {
+  if (visible && onScreen) audio.connect()
+  else audio.disconnect()
+}
+
+function onVisibility(): void {
+  visible = document.visibilityState !== 'hidden'
+  follow()
+}
+
+onMounted(() => {
+  document.addEventListener('visibilitychange', onVisibility)
+  // No observer (an old engine): the panel counts as on screen, as before.
+  if (typeof IntersectionObserver !== 'undefined' && root.value != null) {
+    observer = new IntersectionObserver((entries) => {
+      onScreen = entries.some((entry) => entry.isIntersecting)
+      follow()
+    })
+    observer.observe(root.value)
+  }
+  follow()
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', onVisibility)
+  observer?.disconnect()
+  audio.disconnect()
+})
 </script>
 
 <template>
@@ -31,7 +77,7 @@ const audio = useAudioStore()
       Niveaux audio — OBS&nbsp;B
     </h2>
 
-    <div class="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto" data-role="levels">
+    <div ref="root" class="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto" data-role="levels">
       <!--
         "En attente" and "aucune entrée" do not mean the same thing: the first is
         an OBS we have not heard yet, the second an OBS that answers and has

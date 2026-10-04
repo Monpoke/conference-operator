@@ -1,8 +1,9 @@
 import { streamHealthBetween, type StreamSample } from './stream-health.js'
-import { PROTOCOL_VERSION, type BroadcastMessage } from '@conference-operator/contract'
+import { PROTOCOL_VERSION, type AudioAlert, type BroadcastMessage } from '@conference-operator/contract'
 import { UrgentPinGate } from './pin.js'
 import { join } from 'node:path'
 import { AssetCache } from './assets.js'
+import { AudioWatchdog, watchedInputs } from './audio-watchdog.js'
 import { ThemeCache } from './themes.js'
 import { DisplayServer, displayViewOf } from './display-server.js'
 import { HubLink } from './hub-link.js'
@@ -249,6 +250,12 @@ export class RoomApp implements ControlTarget {
   private knownRoot: string | null = null
   private readonly abort = new AbortController()
   private tick: NodeJS.Timeout | null = null
+  /** The capture watchdog's own second: its samples last five. */
+  private watchdogTick: NodeJS.Timeout | null = null
+  /** Listens to the microphone while a talk is recorded — see audio-watchdog.ts. */
+  private readonly watchdog = new AudioWatchdog((alerts) => this.onAudioAlerts(alerts))
+  /** What OBS-B was last asked about its levels: `null` = not asked since it connected. */
+  private levelsAsked: boolean | null = null
   private heartbeat: NodeJS.Timeout | null = null
   private roomsTimer: NodeJS.Timeout | null = null
   /** The mode the hub announced at the last sync. `null` until it has answered. */
@@ -391,9 +398,7 @@ export class RoomApp implements ControlTarget {
         // With no OBS-B connected, we only keep the intent: the subscription will be
         // set at connection time, otherwise opening the control app before OBS would
         // leave the VU meter silent until the page is reloaded.
-        void this.obsB?.setVolumeMeters(active).catch(() => {
-          this.options.onLog?.('warn', "OBS-B n'a pas accepté l'abonnement au vumètre")
-        })
+        this.applyLevels()
       },
       hostLoad: this.hostLoad,
       port: options.displayPort ?? 7788,
@@ -641,6 +646,9 @@ export class RoomApp implements ControlTarget {
       this.runtime.expireMessage()
       this.runtime.expireNotifications()
     }, 5_000)
+
+    // The capture watchdog, every second: it decides when a sample starts and ends.
+    this.watchdogTick = setInterval(() => this.watchCapture(), 1_000)
 
     /**
      * Shipping the rushes back, in the background.
@@ -1431,7 +1439,10 @@ export class RoomApp implements ControlTarget {
              * projects: not passing them on left the control app's VU meter flat
              * on a room that was perfectly audible.
              */
-            if (this.obsB?.sharesHost === true) this.levels.push(event.inputs)
+            if (this.obsB?.sharesHost === true) {
+              this.levels.push(event.inputs)
+              this.watchdog.push(event.inputs)
+            }
             break
           case 'audio-inputs':
             this.observeAudioInputs('A', event.inputs)
@@ -1545,6 +1556,7 @@ export class RoomApp implements ControlTarget {
     switch (event.type) {
       case 'audio':
         this.levels.push(event.inputs)
+        this.watchdog.push(event.inputs)
         break
       /*
        * OBS has split the take: the capture carries on in another container.
@@ -1617,9 +1629,10 @@ export class RoomApp implements ControlTarget {
           connected: true,
           unresolvedRoles: event.unresolvedRoles,
         })
-        // Reapplies the VU meter subscription: a control app opened before OBS,
-        // or during a reconnection, must find its levels back by itself.
-        if (this.levelsRequested) void this.obsB?.setVolumeMeters(true).catch(() => {})
+        // Reapplies the levels subscription: a control app opened before OBS, or a
+        // sample under way during a reconnection, must find its levels back by itself.
+        this.levelsAsked = null
+        this.applyLevels()
         break
       case 'audio-inputs':
         this.observeAudioInputs('B', event.inputs)
@@ -1635,6 +1648,49 @@ export class RoomApp implements ControlTarget {
       default:
         break
     }
+  }
+
+  /**
+   * OBS-B meters its levels for the VU meter on screen, or for a sample of the
+   * capture watchdog — never otherwise: fifty messages a second, on the machine
+   * that encodes.
+   */
+  private applyLevels(): void {
+    const wanted = this.levelsRequested || this.watchdog.listening()
+    if (this.obsB == null || wanted === this.levelsAsked) return
+    this.levelsAsked = wanted
+    void this.obsB.setVolumeMeters(wanted).catch(() => {
+      this.levelsAsked = null
+      this.options.onLog?.('warn', "OBS-B n'a pas accepté l'abonnement aux niveaux audio")
+    })
+  }
+
+  /** One second of the capture watchdog: while a talk is recorded, is the microphone heard? */
+  private watchCapture(): void {
+    const active = this.runtime.state().recording === true && this.runtime.currentSessionStatus() === 'running'
+    const named = this.store.settings().config?.microSurveille ?? null
+    this.watchdog.tick(Date.now(), {
+      active,
+      inputs: active ? watchedInputs(this.obsB?.audioInputs() ?? [], named) : [],
+    })
+    this.applyLevels()
+  }
+
+  /**
+   * The watchdog heard something change: held on the control app's screen while
+   * it lasts, announced once when it starts, and told to the hub, whose console
+   * and notifications take it from there.
+   */
+  private onAudioAlerts(alerts: AudioAlert[]): void {
+    const before = new Set((this.runtime.state().audioAlerts ?? []).map((alert) => `${alert.kind}:${alert.input}`))
+    this.runtime.observeAudioAlerts(alerts)
+    for (const alert of alerts) {
+      if (before.has(`${alert.kind}:${alert.input}`)) continue
+      const text = audioAlertText(alert)
+      this.runtime.notify({ level: 'warning', text })
+      this.store.log('warn', text, { source: alert.input, alerte: alert.kind })
+    }
+    this.emit({ type: 'audio.alerts', alerts }, 'audio.alerts')
   }
 
   /** Starts recording the running talk. */
@@ -2474,6 +2530,7 @@ export class RoomApp implements ControlTarget {
       },
       sceneRoles: config.sceneRoles,
       displayPort: config.displayPort,
+      microSurveille: config.microSurveille ?? null,
       recordingRoot: config.recordingRoot,
       fileSlug: config.fileSlug,
       relaySourceRoomId: config.relaySourceRoomId,
@@ -2525,6 +2582,7 @@ export class RoomApp implements ControlTarget {
     if (this.roomsTimer != null) clearInterval(this.roomsTimer)
     if (this.heartbeat != null) clearInterval(this.heartbeat)
     if (this.tick != null) clearInterval(this.tick)
+    if (this.watchdogTick != null) clearInterval(this.watchdogTick)
     if (this.wallTimer != null) clearInterval(this.wallTimer)
     if (this.obsPagesTimer != null) clearTimeout(this.obsPagesTimer)
     await this.link?.close()
@@ -2567,3 +2625,12 @@ function nodeRecordingFs() {
     },
   }
 }
+
+/** What the control app and the log say of a capture alert. */
+const AUDIO_ALERT_TEXT: Record<AudioAlert['kind'], (input: string) => string> = {
+  muet: (input) => `Micro « ${input} » coupé dans OBS-B pendant l'enregistrement`,
+  silence: (input) => `Micro « ${input} » silencieux pendant l'enregistrement — batterie, câble, récepteur ?`,
+  saturation: (input) => `Micro « ${input} » saturé : le son de la VOD sera abîmé`,
+}
+
+export const audioAlertText = (alert: AudioAlert): string => AUDIO_ALERT_TEXT[alert.kind](alert.input)

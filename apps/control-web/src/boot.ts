@@ -73,14 +73,20 @@ export function readScope(document: Document): BootScope {
 }
 
 /**
- * The OBS dock mode: `?dock` in the address.
+ * The OBS dock mode: `?dock` in the address, or a page OBS itself opened.
  *
  * An OBS browser dock is a narrow pane next to the program, not a window of its
  * own: the VU meter repeats OBS's own audio mixer a few centimetres away, and
- * costs a stream for nothing. Read from the address rather than guessed from
- * `window.obsstudio` — the address is what the operator types once in the dock's
- * settings, and it says the same thing in a browser opened to check it.
+ * costs a stream for nothing. The address is what the operator types once in the
+ * dock's settings, and it says the same thing in a browser opened to check it.
+ * OBS's user agent counts too — the room's server already reads it so — so that
+ * a dock set to `/regie` without `?dock` does not meter for nothing either.
  */
-export function readDock(search: string): boolean {
-  return new URLSearchParams(search).has('dock')
+export function readDock(search: string, userAgent = ''): boolean {
+  return new URLSearchParams(search).has('dock') || /\bOBS\/\d/.test(userAgent)
+}
+
+/** This page's dock mode, from its address and its user agent. */
+export function currentDock(): boolean {
+  return readDock(globalThis.location?.search ?? '', globalThis.navigator?.userAgent ?? '')
 }

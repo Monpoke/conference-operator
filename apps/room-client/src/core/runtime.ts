@@ -3,6 +3,7 @@ import {
   NOTIFICATION_TTL_MS,
   isCommandExpired,
   type AiredQuestion,
+  type AudioAlert,
   type BroadcastMessage,
   type Comment,
   type Command,
@@ -165,6 +166,7 @@ export class RoomRuntime extends EventEmitter {
       recording: false,
       streaming: false,
       audioInputs: [],
+      audioAlerts: [],
       comments: [],
       sessionStates: {},
       notifications: [],
@@ -332,6 +334,11 @@ export class RoomRuntime extends EventEmitter {
     if (JSON.stringify(next) === JSON.stringify(this.display.audioInputs)) return false
     this.patch({ audioInputs: next })
     return true
+  }
+
+  /** The capture watchdog's alerts, held on screen while they last. */
+  observeAudioAlerts(alerts: AudioAlert[]): void {
+    this.patch({ audioAlerts: alerts })
   }
 
   /**

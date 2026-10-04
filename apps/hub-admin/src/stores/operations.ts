@@ -26,6 +26,14 @@ export interface RoomStatus {
   obs?: { A: ObsLink; B: ObsLink }
   /** The stream's health, measured between two samples while it runs. */
   streamHealth?: StreamHealth | null
+  /** The capture watchdog's alerts: a microphone muted, silent or clipping while recorded. */
+  audioAlerts?: AudioAlert[]
+}
+
+export interface AudioAlert {
+  kind: 'muet' | 'silence' | 'saturation'
+  input: string
+  since: string
 }
 
 export interface ObsLink {

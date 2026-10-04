@@ -1051,6 +1051,14 @@ export class DisplayServer {
      * page is enough to cut the subscription at OBS.
      */
     this.app.get('/display/audio', (request, reply) => {
+      /*
+       * Not to an OBS dock: OBS's own mixer is beside it, and a dock left on
+       * `/regie` would keep OBS metering all day for nobody. The control app no
+       * longer asks from a dock; this holds for one that predates it.
+       */
+      if (/\bOBS\/\d/.test(request.headers['user-agent'] ?? '')) {
+        return reply.status(204).send()
+      }
       reply.raw.writeHead(200, {
         'content-type': 'text/event-stream',
         'cache-control': 'no-cache, no-transform',

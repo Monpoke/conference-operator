@@ -955,6 +955,7 @@ describe('la diffusion réglée depuis le hub', () => {
         promptRecordingOnStart: true,
         promptRecordingOnStop: true,
         sceneOnStart: 'LIVE',
+        microSurveille: null,
       },
     })
   }

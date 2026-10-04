@@ -1,6 +1,6 @@
 import { roomBreak, roomPosition, stateOfSlots, type SessionStatuses } from '@conference-operator/room-state'
 import { sessionsForRoom } from '@conference-operator/program'
-import type { RoomStatus } from '@conference-operator/contract'
+import type { AudioAlert, RoomStatus } from '@conference-operator/contract'
 import type { Services } from './context.js'
 import type { PushPayload } from './services/push.js'
 
@@ -76,6 +76,8 @@ interface RoomView {
   conference: string
   /** Each OBS instance: connected or not, `null` = never said. */
   obs: { A: boolean | null; B: boolean | null }
+  /** The capture alerts, by `kind:input`. */
+  audio: Map<string, AudioAlert>
 }
 
 /** A talk's title, for a readable notice. `null` outside the program. */
@@ -89,6 +91,18 @@ const OBS_CUT_BODY = {
   A: 'La régie ne bascule plus les scènes projetées.',
   B: "La régie ne pilote plus l'enregistrement ni la diffusion.",
 } as const
+
+const AUDIO_ALERT_TITLE: Record<AudioAlert['kind'], string> = {
+  muet: 'coupé',
+  silence: 'silencieux',
+  saturation: 'saturé',
+}
+
+const AUDIO_ALERT_BODY: Record<AudioAlert['kind'], string> = {
+  muet: "Coupé dans OBS-B pendant l'enregistrement : la VOD n'aura pas de voix.",
+  silence: "Plus aucun son pendant l'enregistrement : batterie, câble ou récepteur ?",
+  saturation: "Le son sature pendant l'enregistrement : la VOD sera abîmée.",
+}
 
 export class SupervisionWatch {
   private readonly views = new Map<string, RoomView>()
@@ -135,6 +149,7 @@ export class SupervisionWatch {
         connectivity: room.connectivity,
         conference: room.conference,
         obs: { A: room.obs?.A.connected ?? null, B: room.obs?.B.connected ?? null },
+        audio: new Map((room.audioAlerts ?? []).map((alert) => [`${alert.kind}:${alert.input}`, alert])),
       })
       if (!first && before != null) {
         notices.push(...this.roomNotices(room, before))
@@ -204,7 +219,7 @@ export class SupervisionWatch {
         },
       ]
     }
-    return this.obsNotices(room, before)
+    return [...this.obsNotices(room, before), ...this.audioNotices(room, before)]
   }
 
   /**
@@ -247,6 +262,43 @@ export class SupervisionWatch {
           level: 'tout',
         })
       }
+    }
+    return notices
+  }
+
+  /**
+   * A microphone muted, silent or clipping while a talk is recorded — or back.
+   *
+   * Essential: the VOD is being lost while nobody in the room may notice, and the
+   * one who gets the notice can call the room. One tag per microphone and kind:
+   * « silencieux » must not erase an unread « saturé ». The relief, like a room
+   * coming back, is for whoever wants to follow everything.
+   */
+  private audioNotices(room: RoomStatus, before: RoomView): PushPayload[] {
+    if (room.connectivity !== 'ONLINE' || before.connectivity !== 'ONLINE') return []
+    const now = new Map((room.audioAlerts ?? []).map((alert) => [`${alert.kind}:${alert.input}`, alert]))
+    const notices: PushPayload[] = []
+    for (const [key, alert] of now) {
+      if (before.audio.has(key)) continue
+      notices.push({
+        title: `${room.name} · micro « ${alert.input} » ${AUDIO_ALERT_TITLE[alert.kind]}`,
+        body: AUDIO_ALERT_BODY[alert.kind],
+        tag: `audio-${room.roomId}-${key}`,
+        view: 'exploitation',
+        family: 'technique',
+        level: 'essentiel',
+      })
+    }
+    for (const [key, alert] of before.audio) {
+      if (now.has(key)) continue
+      notices.push({
+        title: `${room.name} · micro « ${alert.input} » rétabli`,
+        body: "La salle l'entend de nouveau normalement.",
+        tag: `audio-${room.roomId}-${key}`,
+        view: 'exploitation',
+        family: 'technique',
+        level: 'tout',
+      })
     }
     return notices
   }

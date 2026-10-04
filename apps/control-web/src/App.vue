@@ -10,6 +10,7 @@ import DiagnosticsPanel from './components/DiagnosticsPanel.vue'
 import LevelMeters from './components/LevelMeters.vue'
 import AudioInputsPanel from './components/AudioInputsPanel.vue'
 import MessagePanel from './components/MessagePanel.vue'
+import AudioAlerts from './components/AudioAlerts.vue'
 import NotificationStack from './components/NotificationStack.vue'
 import PairingVeil from './components/PairingVeil.vue'
 import ProjectionPanel from './components/ProjectionPanel.vue'
@@ -36,7 +37,7 @@ import { useRoomStore } from './stores/room.js'
 import { useSessionStore } from './stores/session.js'
 import { useLockStore } from './stores/lock.js'
 import { useVodStore } from './stores/vod.js'
-import { readDock } from './boot.js'
+import { currentDock } from './boot.js'
 import { withdrawnScreens } from './lib/features.js'
 
 /**
@@ -70,7 +71,7 @@ const programs = useProgramsStore()
 const vod = useVodStore()
 
 /** Docked in OBS: no VU meter, OBS's mixer is right beside it. See `readDock`. */
-const dock = readDock(globalThis.location.search)
+const dock = currentDock()
 
 /**
  * The operator's groups, remotely only.
@@ -99,7 +100,6 @@ onMounted(() => {
    * the mobile layout does not mount.
    */
   if (!gateway.remote) {
-    if (!dock) audio.connect()
     host.start()
     return
   }
@@ -111,7 +111,6 @@ onBeforeUnmount(() => {
   removeHistory?.()
   removeLeave?.()
   host.stop()
-  audio.disconnect()
   room.disconnect()
   clock.stop()
 })
@@ -367,6 +366,9 @@ useKeyboardLayer(
       @config="config.show()"
     />
 
+    <!-- The capture watchdog's alerts: held while they last, the dock's too. -->
+    <AudioAlerts :alerts="payload.state.audioAlerts ?? []" :now-ms="room.now" />
+
     <!-- Never in the dock itself: it is the dock that makes this window redundant. -->
     <ServerModeOffer
       v-if="!dock"
@@ -419,7 +421,7 @@ useKeyboardLayer(
           :inputs="payload.state.audioInputs ?? []"
           :offline="obsOffline.A && obsOffline.B"
         />
-        <LevelMeters v-if="!dock" />
+        <LevelMeters v-if="!dock && !gateway.remote" />
       </div>
     </main>
 

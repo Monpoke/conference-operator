@@ -87,6 +87,27 @@ describe('supervision watch', () => {
     expect(back[0]).toMatchObject({ title: 'Track #1 · OBS-A revenu', level: 'tout' })
   })
 
+  it('reports a microphone lost while recording, then back', () => {
+    const watch = new SupervisionWatch()
+    watch.pass([ROOM()])
+    const silent = { kind: 'silence' as const, input: 'Micro HF', since: '2026-10-30T10:17:30.000Z' }
+
+    const lost = watch.pass([ROOM({ audioAlerts: [silent] })])
+    expect(lost).toEqual([
+      expect.objectContaining({
+        title: 'Track #1 · micro « Micro HF » silencieux',
+        tag: 'audio-track-1-silence:Micro HF',
+        family: 'technique',
+        level: 'essentiel',
+      }),
+    ])
+    // Said once: the alert lasting is no news.
+    expect(watch.pass([ROOM({ audioAlerts: [silent] })])).toEqual([])
+
+    const back = watch.pass([ROOM({ audioAlerts: [] })])
+    expect(back[0]).toMatchObject({ title: 'Track #1 · micro « Micro HF » rétabli', level: 'tout' })
+  })
+
   it('says nothing about OBS on a room that goes quiet, nor about an OBS never reached', () => {
     const watch = new SupervisionWatch()
     watch.pass([ROOM({ obs: OBS(true, null) })])

@@ -169,6 +169,13 @@
       "when": 1790680949143,
       "tag": "0023_pink_la_nuit",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1791112036607,
+      "tag": "0024_typical_the_professor",
+      "breakpoints": true
     }
   ]
 }

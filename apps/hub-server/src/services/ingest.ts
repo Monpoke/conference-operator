@@ -532,6 +532,9 @@ function projectionFor(payload: RoomEventPayload): Record<string, unknown> {
       return payload.obs === 'A'
         ? { obsAConnected: payload.connected, obsAMissingRoles: JSON.stringify(payload.unresolvedRoles) }
         : { obsBConnected: payload.connected, obsBMissingRoles: JSON.stringify(payload.unresolvedRoles) }
+    // The room sends its alerts whole, an empty list when all is well again.
+    case 'audio.alerts':
+      return { audioAlerts: JSON.stringify(payload.alerts) }
     case 'stream.telemetry':
       return {
         streamBitrateKbps: Math.round(payload.bitrateKbps),

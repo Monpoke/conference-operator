@@ -1257,6 +1257,16 @@ export const contract = {
            * it had had no effect.
            */
           prises: z.number().int().nonnegative().default(0),
+          /**
+           * Montage jobs forgotten — their step, their error, their cut. The edited
+           * videos themselves went with the prefix.
+           */
+          montages: z.number().int().nonnegative().default(0),
+          /**
+           * Log entries forgotten: the uploads requested and the montages handled
+           * from the console. The reset's own entry is written after, and stays.
+           */
+          journal: z.number().int().nonnegative().default(0),
         }),
       ),
 

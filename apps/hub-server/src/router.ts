@@ -158,6 +158,13 @@ const NOT_AUDITED = new Set([
 const READS_ONLY = /:(read|view|list|get)$/
 
 /**
+ * The log entries the reset erases: the gestures about takes — uploads asked
+ * for, montages relaunched, cancelled, validated — and the previous resets.
+ * Not the workers' creation or revocation: that is configuration, and it stays.
+ */
+const RESET_FORGETS = ['vod.request', 'vod.reset', 'montage.relancer', 'montage.annuler', 'montage.valider'] as const
+
+/**
  * What the log must never hold in clear: the control app's PIN, the password
  * that confirms an urgent message. The entry keeps the gesture, not the secret.
  */
@@ -1827,6 +1834,11 @@ export const router = os.router({
         // talk's VOD folder keeps listing captures whose files have just been
         // erased, and the reset looks like it had no effect.
         const takes = context.services.ingest.forgetCaptures()
+        // And what was done with them: the montages and their errors, the log's
+        // entries about uploads and montages. Left standing, they describe takes
+        // that no longer exist.
+        const montages = context.services.montage.forgetAll()
+        const journal = context.services.audit.forget(RESET_FORGETS)
         const rooms = context.services.rooms.list()
         for (const room of rooms) {
           context.services.commands.publish(
@@ -1836,7 +1848,7 @@ export const router = os.router({
           )
         }
         // `salles` and `prises` are contract fields: they do not get renamed.
-        return { ...erased, salles: rooms.length, prises: takes }
+        return { ...erased, salles: rooms.length, prises: takes, montages, journal }
       })
     }),
 

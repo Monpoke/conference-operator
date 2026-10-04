@@ -319,9 +319,13 @@ export class MontageService {
   }
 
   heartbeat(worker: Worker, lease: MontageLease, etape: MontageEtape, pourcent: number): { ok: boolean; annule: boolean; bail: string } {
-    const job = this.job(lease.jobId)
-    this.checkLease(worker, job, lease)
     const bail = new Date(this.now().getTime() + LEASE_MS).toISOString()
+    // A job that no longer exists was erased by the reset, under a worker still
+    // rendering it: told it is cancelled, the worker stops there instead of
+    // rendering for nothing — and a worker of any version understands that answer.
+    const job = this.db.select().from(montageJob).where(eq(montageJob.id, lease.jobId)).get()
+    if (job == null) return { ok: false, annule: true, bail }
+    this.checkLease(worker, job, lease)
     if (job.state !== 'en-cours') return { ok: false, annule: job.state === 'annule', bail: job.leaseUntil ?? bail }
     this.db
       .update(montageJob)
@@ -531,6 +535,18 @@ export class MontageService {
   /** What the talk's intro and outro will show — the console previews it. */
   habillageFor(sessionId: string): VodHabillage {
     return this.habillage(sessionId)
+  }
+
+  /**
+   * Forgets every job, with its step, its error and its cut. **The reset only.**
+   *
+   * The edited videos went with the storage's prefix: a job left standing would
+   * show a montage done, or failed, of takes that no longer exist — and the
+   * console would look as if the reset had not happened. The workers stay: they
+   * are configuration, not history. Returns how many jobs went.
+   */
+  forgetAll(): number {
+    return this.db.delete(montageJob).run().changes
   }
 
   list(sessionId: string | null): MontageJobView[] {

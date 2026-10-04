@@ -135,6 +135,18 @@ export class AuditService {
     return { items, total, page, pageSize: q.pageSize }
   }
 
+  /**
+   * Forgets the entries of these actions, whatever their age. **The reset only.**
+   *
+   * Requests to upload, montages relaunched or validated: gestures about takes the
+   * reset has just erased, which the log would go on listing beside a VOD folder
+   * now empty. Returns how many entries went.
+   */
+  forget(actions: readonly string[]): number {
+    if (actions.length === 0) return 0
+    return this.db.delete(auditLog).where(inArray(auditLog.action, [...actions])).run().changes
+  }
+
   /** Forgets what is older than the retention. Returns how many entries went. */
   purge(): number {
     const cutoff = new Date(this.now() - AUDIT_RETENTION_DAYS * 24 * 3_600_000).toISOString()

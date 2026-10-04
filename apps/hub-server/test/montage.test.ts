@@ -262,6 +262,29 @@ describe('a worker that dies', () => {
   })
 })
 
+describe('the reset', () => {
+  it('forgets every job, and keeps the workers', async () => {
+    const worker = montage.fromToken(montage.createWorker('w', null).token)!
+    montage.enqueue({ sessionId: 'sess-1', roomId: TRACK_1, sidecarUploadId: await uploaded(SIDECAR, 'sidecar') })
+    montage.enqueue({ sessionId: 'sess-2', roomId: TRACK_1, sidecarUploadId: await uploaded('autre.json', 'sidecar', 'sess-2') })
+    montage.claim(worker)
+
+    expect(montage.forgetAll()).toBe(2)
+    expect(montage.list(null)).toEqual([])
+    expect(montage.workers().map((w) => w.nom)).toEqual(['w'])
+  })
+
+  it('tells a worker still rendering an erased job that it is cancelled', async () => {
+    // Not an error it would fail the job on: the job is gone, and rendering on
+    // would only end in a refusal at the upload.
+    const worker = montage.fromToken(montage.createWorker('w', null).token)!
+    montage.enqueue({ sessionId: 'sess-1', roomId: TRACK_1, sidecarUploadId: await uploaded(SIDECAR, 'sidecar') })
+    const claim = montage.claim(worker)!
+    montage.forgetAll()
+    expect(montage.heartbeat(worker, claim, 'assemblage', 50)).toMatchObject({ ok: false, annule: true })
+  })
+})
+
 describe('analysis, then montage', () => {
   const side = (source: 'marque' | 'regie', deplacementMs = -800) => ({ source, calee: true, deplacementMs })
   const analysis = (confiance: 'haute' | 'moyenne' | 'basse') => ({

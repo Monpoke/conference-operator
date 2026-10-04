@@ -22,6 +22,9 @@ export interface ResetReport {
   objets: number
   multiparts: number
   salles: number
+  prises: number
+  montages: number
+  journal: number
 }
 
 export const useDevStore = defineStore('dev', () => {

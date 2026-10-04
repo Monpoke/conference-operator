@@ -227,6 +227,15 @@ describe('reading it', () => {
     expect((await rpc('audit/page', {}, mobile)).status).toBe(403)
   })
 
+  it('forgets the actions it is told to, and only those', () => {
+    // The reset's sweep: the gestures about the erased takes go, the rest stays.
+    for (const action of ['vod.request', 'montage.valider', 'montage.workers.create', 'rooms.resync']) {
+      hub.services.audit.record({ actor: OPERATOR.email, action, roomId: null, input: {}, ok: true })
+    }
+    expect(hub.services.audit.forget(['vod.request', 'montage.valider'])).toBe(2)
+    expect(entries().map((entry) => entry.action).sort()).toEqual(['montage.workers.create', 'rooms.resync'])
+  })
+
   it(`forgets what is older than ${AUDIT_RETENTION_DAYS} days, on the hub's clock`, async () => {
     await rpc('rooms/resync', { roomId: TRACK_1 })
     hub.services.clock.setSimulated(

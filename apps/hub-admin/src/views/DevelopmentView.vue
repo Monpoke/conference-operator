@@ -78,6 +78,7 @@ async function confirmReset(): Promise<void> {
     resetOpen.value = false
     toast.say(
       `${report.objets} objet(s) supprimé(s), ${report.multiparts} téléversement(s) abandonné(s), ` +
+        `${report.montages} montage(s) et ${report.journal} ligne(s) de journal oubliés, ` +
         `${report.salles} salle(s) prévenue(s).`,
     )
   } catch {
@@ -193,8 +194,9 @@ async function confirmReset(): Promise<void> {
         <strong>Irréversible.</strong> Les objets du préfixe sont supprimés chez le stockage,
         chaque salle efface ses rushes, leurs sidecars et ses verdicts de relecture, et le hub
         oublie ce qu'il savait des prises — sans quoi le dossier VOD des conférences continuerait
-        de lister des captations dont plus aucun fichier n'existe. Rien de tout cela ne se
-        rattrape.
+        de lister des captations dont plus aucun fichier n'existe. Il oublie aussi les
+        téléversements, les montages avec leurs erreurs, et les lignes du journal qui les
+        concernent. Rien de tout cela ne se rattrape.
       </p>
       <div class="mt-3">
         <label class="mb-[5px] block text-xs text-dim" for="reset-word">

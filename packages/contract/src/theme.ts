@@ -75,6 +75,8 @@ export const THEME_COULEURS = [
   'overlay-titre',
   'overlay-date',
   'overlay-pied',
+  // The website's address in the overlay's footer: plain, to be read in a VOD.
+  'overlay-site',
   'overlay-carte',
   'overlay-fond-1',
   'overlay-fond-2',

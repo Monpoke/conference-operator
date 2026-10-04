@@ -461,14 +461,15 @@ rien n'y renvoie plus à l'édition qui l'a fait naître. Ce qui garde le nom de
 Cloud Nord relève de l'exemple : ce README, le RUNBOOK, les jeux d'essai et les
 scripts de prévisualisation décrivent l'édition sur laquelle tout a été éprouvé.
 
-**L'`appId` a changé une fois, et ça se paie.** Electron en dérive le dossier
-`userData`, donc la base locale d'une machine de salle : son cache de programme
-et sa file de remontée non vidée. Une salle installée avant ce renommage garde
-son ancien dossier, que la nouvelle version ne lit plus — elle démarre non
-appairée et doit être réapprouvée dans la console. Rien qui ne se reconstruise
-en appairant à nouveau, mais c'est un geste d'avant-veille, pas du jour J. C'est
-aussi pourquoi l'`appId` ne se renomme pas à la légère : la prochaine fois
-coûtera la même chose.
+**Le nom de l'application ne se renomme pas à la légère.** Electron dérive le
+dossier `userData` du `productName` — la base locale d'une machine de salle :
+son cache de programme et sa file de remontée non vidée. Une salle installée
+sous un autre nom garde son ancien dossier, que la nouvelle version ne lit plus :
+elle démarre non appairée et doit être réapprouvée dans la console. Rien qui ne
+se reconstruise en appairant à nouveau, mais c'est un geste d'avant-veille, pas
+du jour J. L'`appId` (`fr.conference-operator.roomclient`), lui, identifie
+l'installation Windows. Les deux ont été fixés — `productName` à `room-control`
+— avant qu'aucune salle ne soit installée sous les anciens.
 
 Le reste de ce README décrit l'édition 2026 parce que c'est celle sur laquelle
 tout a été éprouvé ; les chemins, identifiants de track et horaires cités sont
@@ -1306,21 +1307,26 @@ avant, en nommant les ports essayés.
 
 ```bash
 pnpm --filter @conference-operator/room-client package:win     # NSIS x64
-pnpm --filter @conference-operator/room-client package:linux   # AppImage + tar.gz x64
+pnpm --filter @conference-operator/room-client package:linux   # AppImage + tar.gz + deb x64
 ```
 
 Bundle esbuild du processus principal puis electron-builder. Les migrations du
 schéma local voyagent dans `resources/` — le client les y cherche en priorité,
 et retombe sur le monorepo en développement.
 
-**Deux formats sous Linux, et pas par symétrie.** L'AppImage est l'équivalent
-un-fichier de l'installeur : on la copie, `chmod +x`, on lance. Elle réclame
-FUSE 2, qu'Ubuntu n'installe plus par défaut depuis la 22.04 —
-`--appimage-extract-and-run` s'en passe, mais c'est une chose à savoir avant le
-jour J, pas à découvrir devant une salle. Le `tar.gz` ignore FUSE : on extrait,
-on lance `room-control`. C'est le format qui ne peut pas échouer, et c'est ce
-qui autorise l'autre à être le format commode. Pas de `deb` : il s'installe pour
-tout le système, demande root et lie le paquet à une famille de distributions.
+**Trois formats sous Linux, et pas par symétrie.** L'AppImage est l'équivalent
+un-fichier de l'installeur : on la copie, `chmod +x`, on lance. Elle embarque son
+propre lanceur FUSE 3 (`toolsets.appimage`) et ne réclame donc pas le FUSE 2
+qu'Ubuntu n'installe plus par défaut depuis la 22.04. Le `tar.gz` ignore FUSE :
+on extrait, on lance `room-control`. C'est le format qui ne peut pas échouer, et
+c'est ce qui autorise l'autre à être le format commode. Le `deb` sert les
+machines Debian ou Ubuntu que l'équipe garde d'un événement à l'autre :
+`apt install ./room-control-1.2.0.deb` tire les bibliothèques d'Electron, met
+l'application au menu et `room-control` dans le PATH, et la version suivante
+s'installe par-dessus. Il demande root et s'installe pour tout le système — ce
+que les deux autres évitent, et qui les garde pour une machine prêtée. Passer
+d'un format à l'autre garde l'appairage : même application, même nom, même
+dossier `userData`.
 
 **Les fichiers portent des noms anglais** — `room-control-1.2.0.exe`,
 `room-control-1.2.0.AppImage`, et l'exécutable `room-control` — là où le produit
@@ -1331,6 +1337,13 @@ dans une unité systemd, et se retrouve dans une URL de release ; c'est du code,
 pas un libellé. Les mots viennent du glossaire de [CONTRIBUTING](CONTRIBUTING.md)
 — *régie* donne `control`, *salle* donne `room` — et pas d'une traduction
 improvisée par paquet.
+
+Le `productName` lui-même est `room-control` : c'est aussi un chemin — le
+dossier `/opt/room-control` où s'installe le `deb`, que electron-builder en
+dérive sans option pour le choisir, l'exécutable Windows, le dossier
+`userData`. « Régie de salle » est posé là où on le lit : `nsis.shortcutName`,
+`nsis.uninstallDisplayName`, `linux.desktop`, et les titres de fenêtre, fixés
+dans le code.
 
 Les paquets Linux pèsent **96 Mo** (AppImage) et **115 Mo** (`tar.gz`) : le même
 contenu, la première en squashfs compressé, la seconde en gzip.
@@ -3137,7 +3150,7 @@ porte :
 |---|---|---|
 | Hub | `ghcr.io/monpoke/conference-operator/hub` | image `linux/amd64`, taguée `1.2.0`, `1.2` et `latest` |
 | Régie de salle, Windows | pièces jointes de la release | `room-control-1.2.0.exe` et `SHA256SUMS-windows.txt` |
-| Régie de salle, Linux | pièces jointes de la release | `room-control-1.2.0.AppImage`, `.tar.gz` et `SHA256SUMS-linux.txt` |
+| Régie de salle, Linux | pièces jointes de la release | `room-control-1.2.0.AppImage`, `.tar.gz`, `.deb` et `SHA256SUMS-linux.txt` |
 | Manifestes Kubernetes | pièces jointes de la release | `manifests-1.2.0.tar.gz`, l'image y est déjà épinglée |
 
 **Un tag, un couple.** Le hub et le client de salle parlent le même contrat

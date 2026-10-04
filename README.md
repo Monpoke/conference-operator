@@ -55,14 +55,17 @@ fichier d'empreintes par plateforme. Vérifier avant de recopier :
 
 ```bash
 sha256sum -c SHA256SUMS-windows.txt   # room-control-<version>.exe
-sha256sum -c SHA256SUMS-linux.txt     # room-control-<version>.AppImage et .tar.gz
+sha256sum -c SHA256SUMS-linux.txt     # room-control-<version>.AppImage, .tar.gz et .deb
 ```
 
 Sous Windows, l'installeur NSIS s'installe pour l'utilisateur courant. Sous
 Linux, l'AppImage se copie et se lance telle quelle (`chmod +x`), sans rien à
 installer d'abord : elle embarque son propre lanceur FUSE 3. L'archive `tar.gz`
 reste là pour une machine qui n'a pas `/dev/fuse` du tout — on l'extrait et on
-lance `room-control`.
+lance `room-control`. Sur une machine Debian ou Ubuntu gardée d'un événement à
+l'autre, le `.deb` s'installe pour tout le système
+(`sudo apt install ./room-control-<version>.deb`) : entrée de menu, commande
+`room-control`, et la version suivante s'installe par-dessus.
 
 Au premier lancement, la machine demande l'adresse du hub, puis affiche son code
 d'appairage. **Faire les postes avant le jour J**, pas devant une salle qui

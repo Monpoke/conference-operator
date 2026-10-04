@@ -109,7 +109,22 @@ l'opérateur a l'application ouverte et rien d'autre.
 
 Sur le poste de salle, avec l'application Stream Deck **7.1 ou plus** :
 
-1. Double-cliquer `io.github.monpoke.conference-operator.streamDeckPlugin`. La
+Sous Linux, où Elgato ne publie pas d'application, c'est **OpenDeck** qui fait
+tourner le plugin : l'installer depuis l'onglet *Plugins* de ses réglages. Il le
+lance avec le Node.js de la machine — **Node.js 24** à installer d'abord (celui
+des dépôts Ubuntu 24.04 est trop ancien), avec mise :
+
+```bash
+curl https://mise.run | sh                 # si mise n'est pas déjà là
+~/.local/bin/mise use -g node@24
+echo 'eval "$(~/.local/bin/mise activate bash --shims)"' >> ~/.profile
+```
+
+`~/.profile` et pas `~/.bashrc` : OpenDeck, lancé depuis le menu, ne passe par
+aucun terminal. Se déconnecter et se reconnecter, puis `node --version` doit
+répondre `v24.…`.
+
+1. Double-cliquer `regie-streamdeck-<version>.streamDeckPlugin`. La
    catégorie **Conference Operator — Régie** apparaît dans la liste des actions.
 2. Glisser les touches voulues ; régler chacune dans son panneau (la scène,
    l'écran, la marque, la source audio…). L'ouverture d'un panneau charge ses

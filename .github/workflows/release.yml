@@ -341,10 +341,10 @@ jobs:
             --linux --publish never \
             -c.extraMetadata.version=${{ steps.version.outputs.number }}
 
-      # Two files, so `sha256sum` writes both lines at once — and reads back with
-      # `sha256sum -c` from the folder they were copied into.
+      # Three files, so `sha256sum` writes every line at once — and reads back
+      # with `sha256sum -c` from the folder they were copied into.
       - working-directory: apps/room-client/release
-        run: sha256sum *.AppImage *.tar.gz | tee SHA256SUMS-linux.txt
+        run: sha256sum *.AppImage *.tar.gz *.deb | tee SHA256SUMS-linux.txt
 
       - uses: actions/upload-artifact@v4
         with:
@@ -352,6 +352,7 @@ jobs:
           path: |
             apps/room-client/release/*.AppImage
             apps/room-client/release/*.tar.gz
+            apps/room-client/release/*.deb
             apps/room-client/release/SHA256SUMS-linux.txt
           retention-days: 90
 
@@ -360,6 +361,7 @@ jobs:
           subject-path: |
             apps/room-client/release/*.AppImage
             apps/room-client/release/*.tar.gz
+            apps/room-client/release/*.deb
 
   # The Stream Deck plugin: one `.streamDeckPlugin`, a double click installs it
   # on the room machine. Built from the same commit and carrying the same number
@@ -555,7 +557,7 @@ jobs:
           ## La régie de salle
 
           La même application en deux paquets : **installeur NSIS x64** pour
-          Windows, **AppImage et tar.gz x64** pour Linux. Vérifier l'empreinte
+          Windows, **AppImage, tar.gz et deb x64** pour Linux. Vérifier l'empreinte
           avant de recopier un fichier :
 
           \`\`\`bash
@@ -568,7 +570,10 @@ jobs:
           propre lanceur FUSE 3, et ne réclame donc plus le \`libfuse2\` qu'Ubuntu
           n'installe plus par défaut depuis la 22.04. L'archive \`tar.gz\` reste
           là pour une machine sans \`/dev/fuse\` : on l'extrait et on lance
-          \`room-control\`.
+          \`room-control\`. Sur une machine Debian ou Ubuntu que l'équipe garde
+          d'un événement à l'autre, le \`.deb\` s'installe avec
+          \`sudo apt install ./room-control-${version}.deb\` : menu, commande
+          \`room-control\`, et la version suivante s'installe par-dessus.
 
           Et, avec le réseau et la \`gh\` CLI, de quel dépôt et de quel commit
           ils sortent — ce que l'empreinte seule ne dit pas :
@@ -576,6 +581,7 @@ jobs:
           \`\`\`bash
           gh attestation verify room-control-${version}.exe --repo ${GITHUB_REPOSITORY}
           gh attestation verify room-control-${version}.AppImage --repo ${GITHUB_REPOSITORY}
+          gh attestation verify room-control-${version}.deb --repo ${GITHUB_REPOSITORY}
           \`\`\`
 
           ⚠️ Cette provenance **n'est pas une signature de code** : le binaire

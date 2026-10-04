@@ -1306,21 +1306,26 @@ avant, en nommant les ports essayés.
 
 ```bash
 pnpm --filter @conference-operator/room-client package:win     # NSIS x64
-pnpm --filter @conference-operator/room-client package:linux   # AppImage + tar.gz x64
+pnpm --filter @conference-operator/room-client package:linux   # AppImage + tar.gz + deb x64
 ```
 
 Bundle esbuild du processus principal puis electron-builder. Les migrations du
 schéma local voyagent dans `resources/` — le client les y cherche en priorité,
 et retombe sur le monorepo en développement.
 
-**Deux formats sous Linux, et pas par symétrie.** L'AppImage est l'équivalent
-un-fichier de l'installeur : on la copie, `chmod +x`, on lance. Elle réclame
-FUSE 2, qu'Ubuntu n'installe plus par défaut depuis la 22.04 —
-`--appimage-extract-and-run` s'en passe, mais c'est une chose à savoir avant le
-jour J, pas à découvrir devant une salle. Le `tar.gz` ignore FUSE : on extrait,
-on lance `room-control`. C'est le format qui ne peut pas échouer, et c'est ce
-qui autorise l'autre à être le format commode. Pas de `deb` : il s'installe pour
-tout le système, demande root et lie le paquet à une famille de distributions.
+**Trois formats sous Linux, et pas par symétrie.** L'AppImage est l'équivalent
+un-fichier de l'installeur : on la copie, `chmod +x`, on lance. Elle embarque son
+propre lanceur FUSE 3 (`toolsets.appimage`) et ne réclame donc pas le FUSE 2
+qu'Ubuntu n'installe plus par défaut depuis la 22.04. Le `tar.gz` ignore FUSE :
+on extrait, on lance `room-control`. C'est le format qui ne peut pas échouer, et
+c'est ce qui autorise l'autre à être le format commode. Le `deb` sert les
+machines Debian ou Ubuntu que l'équipe garde d'un événement à l'autre :
+`apt install ./room-control-1.2.0.deb` tire les bibliothèques d'Electron, met
+l'application au menu et `room-control` dans le PATH, et la version suivante
+s'installe par-dessus. Il demande root et s'installe pour tout le système — ce
+que les deux autres évitent, et qui les garde pour une machine prêtée. Passer
+d'un format à l'autre garde l'appairage : même application, même nom, même
+dossier `userData`.
 
 **Les fichiers portent des noms anglais** — `room-control-1.2.0.exe`,
 `room-control-1.2.0.AppImage`, et l'exécutable `room-control` — là où le produit
@@ -3137,7 +3142,7 @@ porte :
 |---|---|---|
 | Hub | `ghcr.io/monpoke/conference-operator/hub` | image `linux/amd64`, taguée `1.2.0`, `1.2` et `latest` |
 | Régie de salle, Windows | pièces jointes de la release | `room-control-1.2.0.exe` et `SHA256SUMS-windows.txt` |
-| Régie de salle, Linux | pièces jointes de la release | `room-control-1.2.0.AppImage`, `.tar.gz` et `SHA256SUMS-linux.txt` |
+| Régie de salle, Linux | pièces jointes de la release | `room-control-1.2.0.AppImage`, `.tar.gz`, `.deb` et `SHA256SUMS-linux.txt` |
 | Manifestes Kubernetes | pièces jointes de la release | `manifests-1.2.0.tar.gz`, l'image y est déjà épinglée |
 
 **Un tag, un couple.** Le hub et le client de salle parlent le même contrat

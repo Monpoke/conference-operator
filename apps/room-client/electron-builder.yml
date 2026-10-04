@@ -138,7 +138,7 @@ win:
   # when packaging from Linux either.
   signAndEditExecutable: true
 
-# The same application, for a room machine that does not run Windows. Two formats
+# The same application, for a room machine that does not run Windows. Three formats
 # rather than one, and not for symmetry:
 #
 #  - **AppImage** is the one-file equivalent of the installer — copy it, `chmod
@@ -148,10 +148,14 @@ win:
 #  - **tar.gz** mounts nothing at all. Extract, run `room-control`. It stays the
 #    format that cannot fail — a machine with no `/dev/fuse` at all, a container,
 #    a filesystem mounted `nosuid` where no FUSE launcher will help.
-#
-# No `deb`: it installs system-wide, asks for root, and ties the package to one
-# family of distributions — three things a machine prepared before the event does
-# not need.
+#  - **deb** is for the Debian and Ubuntu machines a team keeps from one event to
+#    the next: `apt install ./room-control-<v>.deb` pulls the libraries Electron
+#    needs, puts the application in the menu and `room-control` on the PATH, and
+#    the next version installs over it — `apt remove room-control` takes it away.
+#    It asks for root and installs system-wide, which the two others do not: they
+#    stay the formats for a borrowed machine. Switching between the three keeps
+#    the pairing: the same application, under the same name, in the same
+#    `userData` folder.
 # Which AppImage toolchain packages the Linux build — and the reason a room on a
 # current distribution can start the result at all.
 #
@@ -186,6 +190,8 @@ linux:
       arch: [x64]
     - target: tar.gz
       arch: [x64]
+    - target: deb
+      arch: [x64]
   # The freedesktop category, from which the desktop entry is derived. Nothing
   # reads it on a machine that boots straight into the application, but leaving it
   # out makes electron-builder guess.
@@ -205,6 +211,23 @@ linux:
   # through an `app_id` the main process would have to declare — application
   # work, not packaging, and nothing a room notices today.
   syncDesktopName: true
+
+deb:
+  # The package name `apt` knows it by — `apt remove room-control` — rather than
+  # one derived from the npm name, `@conference-operator/room-client`. The same
+  # word as the command, for the same reasons.
+  packageName: room-control
+  # The one line `apt show` and a package manager list. Left unset, it is the
+  # first line of the description — empty here, the description being one long
+  # sentence that fpm puts on the line below.
+  synopsis: Régie de salle d’une conférence
+  packageCategory: video
+  # The application lands in `/opt/Régie de salle`, space and accent included:
+  # electron-builder derives that folder from `productName` and offers no option
+  # for it. Renaming the product to get `/opt/room-control` would rename the
+  # application, hence its `userData` folder — every room unpaired. The package's
+  # scripts quote the path; what anyone types is `room-control`, linked into
+  # `/usr/bin`.
 
 nsis:
   oneClick: false

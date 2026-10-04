@@ -86,6 +86,8 @@ export const roomState = sqliteTable('room_state', {
   streamHealthAt: text('stream_health_at'),
   /** The audio sources and their mute state per OBS instance, as a JSON array. */
   audioInputs: text('audio_inputs').notNull().default('[]'),
+  /** The capture watchdog's alerts, as the room last reported them — a JSON array. */
+  audioAlerts: text('audio_alerts').notNull().default('[]'),
 })
 
 /**

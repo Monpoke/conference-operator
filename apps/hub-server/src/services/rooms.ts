@@ -9,6 +9,7 @@ import {
   type RoomStream,
   type RoomStreamPatch,
   type StreamTarget,
+  audioAlertSchema,
   audioInputSchema,
   sceneRoleSchema,
   type SceneRole,
@@ -56,6 +57,17 @@ function audioInputsOf(json: string | null | undefined) {
   if (json == null) return []
   try {
     const parsed = audioInputSchema.array().safeParse(JSON.parse(json))
+    return parsed.success ? parsed.data : []
+  } catch {
+    return []
+  }
+}
+
+/** The capture alerts stored as JSON. Malformed reads as "none": an alert must not crash a view. */
+function audioAlertsOf(json: string | null | undefined) {
+  if (json == null) return []
+  try {
+    const parsed = audioAlertSchema.array().safeParse(JSON.parse(json))
     return parsed.success ? parsed.data : []
   } catch {
     return []
@@ -383,6 +395,7 @@ export class RoomService {
           recording: state?.recording ?? false,
           streaming: state?.streaming ?? false,
           audioInputs: audioInputsOf(state?.audioInputs),
+          audioAlerts: audioAlertsOf(state?.audioAlerts),
           outboxDepth: state?.outboxDepth ?? 0,
           programContentHash: state?.programContentHash ?? null,
           obs: {

@@ -272,6 +272,21 @@ describe('IngestService', () => {
     expect(status().streamHealth).toBeNull()
   })
 
+  it('holds the capture alerts the room reports, until it says all is well', () => {
+    const rooms = new RoomService(db, testSecrets)
+    seedRoom(rooms)
+    const ingest = new IngestService(db)
+    const status = () => rooms.statuses().find((room) => room.roomId === TRACK_1)!
+    expect(status().audioAlerts).toEqual([])
+
+    const alert = { kind: 'silence' as const, input: 'Micro HF', since: '2026-10-30T10:17:30.000Z' }
+    ingest.push(TRACK_1, [envelope('01NNNNNNNNNNNNNNNNNNNNNNNN', 1, { type: 'audio.alerts', alerts: [alert] })])
+    expect(status().audioAlerts).toEqual([alert])
+
+    ingest.push(TRACK_1, [envelope('01PPPPPPPPPPPPPPPPPPPPPPPP', 2, { type: 'audio.alerts', alerts: [] })])
+    expect(status().audioAlerts).toEqual([])
+  })
+
   it('wakes whoever watches the room once the batch is applied', () => {
     /*
      * The mobile control app's return path: without this signal the room's report

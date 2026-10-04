@@ -90,6 +90,17 @@ function streamHealth(room: RoomStatus): { text: string; variant: 'neutral' | 'w
     : { text: [rate, ...worries].join(' · '), variant: 'warning' }
 }
 
+/**
+ * The capture watchdog's alerts, as the room reported them: a microphone muted,
+ * silent or clipping while a talk is recorded. Red: the VOD is being lost. Only
+ * for a room that answers — what a silent room last said is no longer true.
+ */
+const AUDIO_ALERT_WORD = { muet: 'coupé', silence: 'silencieux', saturation: 'saturé' } as const
+function audioIssues(room: RoomStatus): string[] {
+  if (room.connectivity !== 'ONLINE') return []
+  return (room.audioAlerts ?? []).map((alert) => `Micro « ${alert.input} » ${AUDIO_ALERT_WORD[alert.kind]}`)
+}
+
 function remaining(room: RoomStatus): ReturnType<typeof slotRemaining> {
   return onBreak(room) ? null : slotRemaining(room.currentSession?.remainingMs)
 }
@@ -210,6 +221,15 @@ const globalDetail = computed(() => {
               :variant="issue.variant"
             >
               {{ issue.text }}
+            </Badge>
+            <Badge
+              v-for="issue in audioIssues(room)"
+              :key="issue"
+              class="px-1.5 py-0.5 text-[11px] tracking-normal normal-case"
+              variant="alert"
+              data-role="audio-alert"
+            >
+              {{ issue }}
             </Badge>
             <Badge
               v-if="streamHealth(room) != null"

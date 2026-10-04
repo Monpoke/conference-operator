@@ -337,6 +337,9 @@ describe('from footage to storage', () => {
     // The sidecar follows, under the same key bar the extension: editing finds
     // title, speakers and markers again without going back through the hub.
     const sidecarKey = key?.replace(/\.[^.]+$/, '.json')
+    // It goes up once the footage is done, never before: wait for it rather than
+    // read the storage in the same breath — on a loaded machine (CI), it lost.
+    await until(async () => storage.objects.has(sidecarKey as string))
     expect(storage.objects.has(sidecarKey as string)).toBe(true)
     const sidecar = JSON.parse(String(storage.objects.get(sidecarKey as string))) as {
       title: string

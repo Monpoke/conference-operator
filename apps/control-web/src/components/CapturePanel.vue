@@ -5,6 +5,7 @@ import { Button, Key, Panel } from '@conference-operator/components'
 import { shortDuration } from '@conference-operator/format'
 import { computed, ref } from 'vue'
 import { useActionsStore } from '../stores/actions.js'
+import { useTalkStore } from '../stores/talk.js'
 import RecordingTimer from './RecordingTimer.vue'
 import SimulatedBadge from './SimulatedBadge.vue'
 
@@ -43,6 +44,7 @@ const props = defineProps<{
 const emit = defineEmits<{ vod: [] }>()
 
 const actions = useActionsStore()
+const talk = useTalkStore()
 const label = ref('')
 
 const active = computed(() => props.recording?.active === true)
@@ -50,7 +52,9 @@ const active = computed(() => props.recording?.active === true)
 function toggleRecording(): void {
   // The `r` shortcut does not go through the disabled button.
   if (props.offline) return
-  void actions.act({ action: active.value ? 'recording.stop' : 'recording.start' })
+  // Stopping asks first while the talk is not marked as ended — see `askStopRecording`.
+  if (active.value) talk.askStopRecording()
+  else void actions.act({ action: 'recording.start' })
 }
 
 /**

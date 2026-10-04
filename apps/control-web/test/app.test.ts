@@ -110,12 +110,29 @@ describe('the page\'s shortcuts', () => {
     expect(calls.at(-1)?.body).toEqual({ action: 'recording.start' })
   })
 
-  it('stops the one that is running', async () => {
+  it('stops the one that is running — after asking, while the talk is not over', async () => {
     await mountApp({ active: true, markers: 0, startedAtMs: 0, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS })
 
     press('r')
     await flushPromises()
+    // The talk aimed at is not marked as ended: the question first, nothing sent.
+    expect(calls.some((call) => (call.body as { action?: string } | null)?.action === 'recording.stop')).toBe(false)
+    expect(document.body.textContent).toContain("Arrêter l'enregistrement ?")
 
+    press('y')
+    await flushPromises()
+    expect(calls.at(-1)?.body).toEqual({ action: 'recording.stop' })
+  })
+
+  it('stops at once once the talk is marked as ended', async () => {
+    const wrapper = await mountApp({ active: true, markers: 0, startedAtMs: 0, startedAtCorrectedMs: null, editing: NO_EDITING_MARKS })
+    const room = useRoomStore()
+    const target = room.payload!.state.targetSession
+    if (target != null) room.payload!.state.sessionStates = { [target.id]: 'ended' }
+    await wrapper.vm.$nextTick()
+
+    press('r')
+    await flushPromises()
     expect(calls.at(-1)?.body).toEqual({ action: 'recording.stop' })
   })
 

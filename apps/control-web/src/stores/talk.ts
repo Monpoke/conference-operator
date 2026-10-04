@@ -41,6 +41,8 @@ export const useTalkStore = defineStore('talk', () => {
   const recordingOpen = ref(false)
   const endEarlyOpen = ref(false)
   const stopRecordingOpen = ref(false)
+  /** Stopping the take of a talk not marked as ended: asked first. */
+  const stopTakeOpen = ref(false)
   /** The list of the room's talks, to force one or swap two. */
   const forceOpen = ref(false)
 
@@ -68,6 +70,13 @@ export const useTalkStore = defineStore('talk', () => {
     recording: recording.value,
     config: room.payload?.diagnostics?.config ?? null,
   }))
+
+  /** Where the talk aimed at stands: `null` with nothing to drive, `scheduled` until started. */
+  const targetStatus = computed(() => {
+    const id = session.value?.id
+    if (id == null) return null
+    return room.payload?.state.sessionStates?.[id] ?? 'scheduled'
+  })
 
   /** The start settings, defaults included — see `talkSettings`. */
   const settings = computed(() => talkSettings(flow.value.config))
@@ -179,6 +188,36 @@ export const useTalkStore = defineStore('talk', () => {
     await runTalkSteps(endSteps(stop), (gesture) => actions.act(gesture))
   }
 
+  /**
+   * Stopping the take, with a guard while the talk is not over.
+   *
+   * The counterpart of the end's question: ending a talk offers to stop the
+   * take, and stopping the take of a talk still running — or not even started —
+   * asks first. The button sits under the operator's hand all talk long, and a
+   * take cut in the middle is a VOD with no end, discovered at editing time.
+   * Between two talks, or once the talk is marked as ended, nothing to ask.
+   */
+  function askStopRecording(): void {
+    if (!recording.value || targetStatus.value == null || targetStatus.value === 'ended') {
+      void stopTake()
+      return
+    }
+    stopTakeOpen.value = true
+  }
+
+  async function stopTake(): Promise<void> {
+    stopTakeOpen.value = false
+    await actions.act({ action: 'recording.stop' })
+  }
+
+  const stopTakeDetail = computed(() => {
+    const target = session.value
+    if (target == null) return ''
+    return targetStatus.value === 'running'
+      ? `« ${target.title} » n'est pas marquée comme terminée : la VOD s'arrêtera ici, sans la fin du talk.`
+      : `« ${target.title} » n'a pas encore commencé : arrêter maintenant laisse le talk sans enregistrement.`
+  })
+
   /** Putting it back as upcoming, when "Terminer" was a mistake. */
   async function reset(): Promise<void> {
     await actions.act({ action: 'session.reset' })
@@ -211,6 +250,11 @@ export const useTalkStore = defineStore('talk', () => {
     recordingOpen,
     endEarlyOpen,
     stopRecordingOpen,
+    stopTakeOpen,
+    targetStatus,
+    stopTakeDetail,
+    askStopRecording,
+    stopTake,
     forceOpen,
     settings,
     recording,

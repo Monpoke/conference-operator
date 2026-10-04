@@ -148,8 +148,8 @@ leur langue, et une valeur figée ne se renomme pas « au passage » :
   `duree` ;
 - **les ids du DOM que la coquille sert** : `etat-initial`, `regie-portee`,
   `regie-root`, `console-boot` ;
-- **les variables d'environnement** : `MODE`, `OBS_MOCK`, `OBS_REEL`,
-  `HEURE_SIMULEE`, `HUB_ORIGIN`, `ROOM_ID`, `REGIE_VITE_ORIGIN`, `DATA_DIR`,
+- **les variables d'environnement** : `MODE` (hub), `OBS_SIMULE`, `OBS_MOCK`,
+  `OBS_REEL`, `HEURE_SIMULEE`, `HUB_ORIGIN`, `ROOM_ID`, `REGIE_VITE_ORIGIN`, `DATA_DIR`,
   `DISPLAY_PORT` ;
 - **les fichiers écrits sur disque par une salle** : `salle.db`, `client-id`,
   `jeton`, `hub`, `assets`, `enregistrements`, `.controles-vod.json`,

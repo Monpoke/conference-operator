@@ -358,14 +358,14 @@ fi
 if [ "$ROOM_COUNT" -eq 0 ]; then
   :
 elif [ "$ELECTRON" -eq 1 ]; then
-  # An explicit `MODE=dev`, and it is the difference that costs dearly.
+  # An explicit `OBS_SIMULE=1`, and it is the difference that costs dearly.
   #
-  # `dev-headless.ts` puts itself into development — that is what it is for.
+  # `dev-headless.ts` simulates OBS by default — that is what it is for.
   # Electron's main process, on the other hand, reads the raw environment: without
-  # this variable it starts in production, waits for two real OBS instances, and
-  # shows no warning to say so.
+  # this variable it waits for two real OBS instances, and shows no warning to say
+  # so. The mode itself is the hub's: this one is in development.
   start apps/room-client \
-    MODE=dev HUB_ORIGIN="$HUB_ORIGIN" ROOM_ID="$ROOM_1" REGIE_VITE_ORIGIN="$VITE_CONTROL" \
+    OBS_SIMULE="$([ "${OBS_REEL:-}" = 1 ] && echo 0 || echo 1)" HUB_ORIGIN="$HUB_ORIGIN" ROOM_ID="$ROOM_1" REGIE_VITE_ORIGIN="$VITE_CONTROL" \
     node_modules/.bin/electron dist/main.cjs
 else
   start apps/room-client \

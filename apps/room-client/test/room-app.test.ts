@@ -252,6 +252,24 @@ describe('room machine, full start-up', () => {
     }
   }, 30_000)
 
+  it('stays in production until the hub answers, then takes its mode', async () => {
+    room = makeApp()
+    await room.startDisplay()
+    // No hub yet: the dangerous case is the default.
+    expect(room.mode()).toBe('production')
+    const token = await room.ensurePaired()
+    await room.connectHub(token!)
+    expect(room.mode()).toBe('production')
+    expect(room.diagnostics().mode).toEqual({ room: 'production', hub: 'production' })
+  }, 30_000)
+
+  it('stays in production when no hub answers', async () => {
+    room = makeApp('http://127.0.0.1:9')
+    await room.startDisplay()
+    expect(room.mode()).toBe('production')
+    expect(room.diagnostics().mode).toEqual({ room: 'production', hub: null })
+  }, 30_000)
+
   it('caches the assets so the screen no longer depends on the network', async () => {
     room = makeApp()
     await room.startDisplay()

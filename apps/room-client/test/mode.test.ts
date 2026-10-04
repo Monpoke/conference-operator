@@ -2,72 +2,59 @@ import { describe, expect, it } from 'vitest'
 import { modeOffset, readMode } from '../src/core/mode.js'
 
 /**
- * The room's run mode.
+ * What the machine's environment still decides.
  *
- * The guard that counts: development conveniences apply **only** in `MODE=dev`.
- * An `OBS_MOCK=1` left behind in a shortcut means a whole day filmed by an OBS
- * instance that does not exist, and the failure is discovered at editing time —
- * when there is nothing left to salvage.
+ * The room's execution mode is its hub's (see `RoomApp.mode()`): nothing here
+ * can make a room « dev ». What stays local is the development bench — OBS
+ * simulated, and on such a bench only, a local simulated time. The guard that
+ * counts: real OBS and real time unless asked, an `OBS_MOCK=1` left behind in a
+ * shortcut means a whole day filmed by an OBS instance that does not exist.
  */
-describe('room mode', () => {
-  it('is in production when nothing is asked for', () => {
+describe('the machine environment', () => {
+  it('drives real OBS, on real time, when nothing is asked for', () => {
     // The default must be the dangerous case, not the comfortable one.
-    expect(readMode({})).toEqual({
-      mode: 'production',
-      obsSimulated: false,
-      simulatedTime: null,
-      ignores: [],
-    })
+    expect(readMode({})).toEqual({ obsSimulated: false, simulatedTime: null, ignores: [] })
   })
 
-  it('neutralises the development settings outside dev mode', () => {
-    const mode = readMode({ HEURE_SIMULEE: '2026-10-30T10:20:00Z' })
-
-    expect(mode.obsSimulated).toBe(false)
-    expect(mode.simulatedTime).toBeNull()
-    // And says so, with the reason: somebody believes they have set something.
-    expect(mode.ignores).toEqual([
-      { variable: 'HEURE_SIMULEE', reason: 'réservé au mode développement (MODE=dev)' },
-    ])
-  })
-
-  it('reports OBS_MOCK as obsolete, in both modes', () => {
-    // It no longer does anything anywhere: in development, OBS is simulated by
-    // default. Finding it in a shortcut means somebody is counting on it — and
-    // counting on a simulated OBS on the day costs the day.
-    for (const env of [{ OBS_MOCK: '1' }, { MODE: 'dev', OBS_MOCK: '1' }]) {
-      expect(readMode(env).ignores).toContainEqual({
-        variable: 'OBS_MOCK',
-        reason: 'remplacé par MODE=dev, qui simule OBS par défaut (OBS_REEL=1 pour de vraies instances)',
+  it('no longer decides the mode: MODE is the hub\'s now, and said ignored', () => {
+    for (const value of ['dev', 'production']) {
+      expect(readMode({ MODE: value }).ignores).toContainEqual({
+        variable: 'MODE',
+        reason: 'le mode de la salle est hérité du hub (production tant qu\u2019il ne répond pas)',
       })
     }
+    // And it simulates nothing on its own any more.
+    expect(readMode({ MODE: 'dev' }).obsSimulated).toBe(false)
   })
 
-  it('is alarmed neither by an OBS_REEL nor by an OBS_MOCK at zero', () => {
-    // `OBS_REEL` has no effect in production, but what it asks for is exactly
-    // what happens: warning would sow doubt for nothing.
-    expect(readMode({ OBS_REEL: '1' }).ignores).toEqual([])
-    expect(readMode({ OBS_MOCK: '0' }).ignores).toEqual([])
+  it('simulates OBS when the bench says so', () => {
+    expect(readMode({ OBS_SIMULE: '1' }).obsSimulated).toBe(true)
+    expect(readMode({ OBS_SIMULE: '0' }).obsSimulated).toBe(false)
+    expect(readMode({ OBS_MOCK: '1' }).ignores).toContainEqual({ variable: 'OBS_MOCK', reason: 'remplacé par OBS_SIMULE=1' })
   })
 
-  it('simulates OBS by default in development', () => {
-    // The common case in development; requiring one more variable for the common
-    // case is paid for in forgotten shortcuts.
-    expect(readMode({ MODE: 'dev' }).obsSimulated).toBe(true)
-    expect(readMode({ MODE: 'dev', OBS_REEL: '1' }).obsSimulated).toBe(false)
+  it('simulates OBS by default in the development script, unless OBS_REEL', () => {
+    expect(readMode({}, true).obsSimulated).toBe(true)
+    expect(readMode({ OBS_REEL: '1' }, true).obsSimulated).toBe(false)
   })
 
-  it('accepts a simulated local time in development', () => {
-    const mode = readMode({ MODE: 'dev', HEURE_SIMULEE: '2026-10-30T10:20:00Z' })
-
-    expect(mode.simulatedTime).toBe('2026-10-30T10:20:00Z')
-    expect(mode.ignores).toEqual([])
+  it('keeps a simulated local time for a bench, and refuses it on a real room', () => {
+    expect(readMode({ OBS_SIMULE: '1', HEURE_SIMULEE: '2026-10-30T10:20:00Z' })).toEqual({
+      obsSimulated: true,
+      simulatedTime: '2026-10-30T10:20:00Z',
+      ignores: [],
+    })
+    const real = readMode({ HEURE_SIMULEE: '2026-10-30T10:20:00Z' })
+    expect(real.simulatedTime).toBeNull()
+    expect(real.ignores).toEqual([
+      { variable: 'HEURE_SIMULEE', reason: 'réservé à un banc de développement (OBS_SIMULE=1)' },
+    ])
   })
 })
 
 describe("the room's simulated time", () => {
   it('shifts nothing when nothing is simulated', () => {
-    expect(modeOffset(readMode({ MODE: 'dev' }))).toBe(0)
+    expect(modeOffset(readMode({ OBS_SIMULE: '1' }))).toBe(0)
   })
 
   it('returns an offset, and not a replacement clock', () => {
@@ -80,7 +67,7 @@ describe("the room's simulated time", () => {
      */
     const base = () => Date.parse('2026-08-21T18:00:00Z')
     const offset = modeOffset(
-      readMode({ MODE: 'dev', HEURE_SIMULEE: '2026-10-30T10:20:00Z' }),
+      readMode({ OBS_SIMULE: '1', HEURE_SIMULEE: '2026-10-30T10:20:00Z' }),
       base,
     )
 
@@ -91,7 +78,7 @@ describe("the room's simulated time", () => {
   })
 
   it('refuses an unreadable time rather than starting off wrong', () => {
-    expect(() => modeOffset(readMode({ MODE: 'dev', HEURE_SIMULEE: 'hier soir' }))).toThrow(
+    expect(() => modeOffset(readMode({ OBS_SIMULE: '1', HEURE_SIMULEE: 'hier soir' }))).toThrow(
       /illisible/,
     )
   })

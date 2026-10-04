@@ -21,19 +21,16 @@ const dataDir = resolve(process.env.DATA_DIR ?? './.local-data')
 const port = Number(process.env.DISPLAY_PORT ?? 7788)
 
 /**
- * This script serves development: it puts itself in that mode.
- *
- * Without this default, one would have to write `MODE=dev` in front of every
- * launch to get what this script alone knows how to do. `MODE=production` stays
- * possible, and it is then a real room with no Electron — a real case on a machine
- * with no graphical interface.
+ * This script serves development: OBS is simulated by default (`OBS_REEL=1` for
+ * real instances). The room's mode is its hub's, as everywhere — a hub started by
+ * `pnpm dev:hub` is in development.
  *
  * The local simulated time serves to develop **with no hub**: as soon as a hub
  * answers, it is its time that wins. To run through an event day, set
  * `SIMULATED_TIME` on the hub rather than here — otherwise the two clocks diverge
  * and everything that compares them starts lying.
  */
-const mode = readMode({ MODE: 'dev', ...process.env })
+const mode = readMode(process.env, true)
 for (const { variable, reason } of mode.ignores) {
   console.error(formatLogLine('error', `${variable} ignoré : ${reason}`))
 }
@@ -56,7 +53,6 @@ const tokenPath = join(dataDir, 'jeton')
 
 const room = new RoomApp({
   dataDir,
-  mode: mode.mode,
   // `ROOM_ID` short-circuits the choice screen, for a provisioned machine.
   roomId: process.env.ROOM_ID,
   // Fill in to develop the rebuilt control app with hot reloading:
@@ -103,7 +99,7 @@ console.log(`  Salle démarrée — machine ${clientId}`)
 console.log(`  Régie       ${local}/regie`)
 console.log(`  Projection  ${local}/display/projector`)
 console.log(`  Habillage   ${local}/display/overlay`)
-console.log(`  Mode        ${mode.mode}`)
+console.log(`  Mode        ${room.mode()} (celui du hub, production tant qu'il ne répond pas)`)
 console.log(`  OBS         ${mode.obsSimulated ? 'SIMULÉ' : 'réel (obs-websocket)'}`)
 console.log('')
 

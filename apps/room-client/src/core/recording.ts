@@ -52,7 +52,7 @@ export interface RecordingDeps {
    * The start and the end already followed the corrected clock: only the duration
    * stayed on real time, and it is that disagreement this lifts.
    */
-  followsClock?: boolean
+  followsClock?: boolean | (() => boolean)
   onLog?: (level: 'info' | 'warn' | 'error', message: string, context?: unknown) => void
 }
 
@@ -142,6 +142,12 @@ export class RecordingSession {
 
   constructor(private readonly deps: RecordingDeps) {}
 
+  /** Read when asked: the room's mode is its hub's, known once the hub has answered. */
+  private followsClock(): boolean {
+    const follows = this.deps.followsClock
+    return typeof follows === 'function' ? follows() : follows === true
+  }
+
   get active(): boolean {
     return this.startedAtMs != null
   }
@@ -173,7 +179,7 @@ export class RecordingSession {
    * followed the simulated day — two figures for the same recording, again.
    */
   get correctedStartedAt(): number | null {
-    return this.deps.followsClock === true ? this.startedAtCorrectedMs : null
+    return this.followsClock() ? this.startedAtCorrectedMs : null
   }
 
   /**
@@ -252,7 +258,7 @@ export class RecordingSession {
    */
   private elapsedMs(): number {
     if (this.startedAtMs == null) return 0
-    if (this.deps.followsClock === true && this.startedAtCorrectedMs != null) {
+    if (this.followsClock() && this.startedAtCorrectedMs != null) {
       return Math.max(0, this.deps.correctedNow() - this.startedAtCorrectedMs)
     }
     return Math.max(0, this.deps.now() - this.startedAtMs)

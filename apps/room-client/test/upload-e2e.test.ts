@@ -628,10 +628,12 @@ describe('resetting the footage', () => {
    * bringing up a second full chain — hub, pairing, OBS — to exercise two lines
    * of guard.
    */
-  function inDevelopment(): RoomApp {
-    ;(room as unknown as { options: { mode: string } }).options.mode = 'dev'
+  /** The room takes its hub's mode: these tests set the one it last heard. */
+  function withHubMode(mode: 'dev' | 'production'): RoomApp {
+    ;(room as unknown as { hubMode: string }).hubMode = mode
     return room
   }
+  const inDevelopment = () => withHubMode('dev')
 
   async function filesPresent(): Promise<string[]> {
     const { readdir } = await import('node:fs/promises')
@@ -647,8 +649,8 @@ describe('resetting the footage', () => {
     await recordATalk()
     const before = await filesPresent()
 
-    // `room` is brought up with no mode: that is, in production, the default.
-    expect(await room.resetVod()).toBe(0)
+    // A room plugged into a hub in production is in production itself.
+    expect(await withHubMode('production').resetVod()).toBe(0)
     expect(await filesPresent()).toEqual(before)
   })
 

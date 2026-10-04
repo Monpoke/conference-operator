@@ -81,11 +81,16 @@ Node 24 ou plus, et pnpm par corepack (la version exacte est figée par
 corepack enable && pnpm install
 ```
 
-`MODE=dev` est **l'unique interrupteur** devant les commodités de développement,
-de chaque côté : OBS simulé, heure réglable depuis la console, remise à zéro des
-données. Le défaut est `production` — le défaut doit être le cas dangereux, pas
-le cas confortable — et en production ces réglages sont **ignorés même s'ils
-sont renseignés**, bruyamment.
+`MODE=dev` **sur le hub** est l'unique interrupteur devant les commodités de
+développement : heure réglable depuis la console, remise à zéro des données. Les
+salles **héritent du mode du hub** — elles restent en production tant qu'aucun hub
+n'a répondu — et ne peuvent donc jamais être plus « dev » que lui. Le défaut est
+`production` — le défaut doit être le cas dangereux, pas le cas confortable — et
+en production ces réglages sont **ignorés même s'ils sont renseignés**,
+bruyamment.
+
+Seule la simulation d'OBS reste un choix de la machine (`OBS_SIMULE=1`) : une
+vraie salle branchée sur le hub de dev pilote toujours ses vrais OBS.
 
 **1. Le hub**
 
@@ -135,7 +140,7 @@ Avec Electron, pour les fenêtres, le menu « Écrans » et le sélecteur de dos
 VOD :
 
 ```bash
-MODE=dev HUB_ORIGIN=http://localhost:8787 pnpm --filter @conference-operator/room-client dev
+OBS_SIMULE=1 HUB_ORIGIN=http://localhost:8787 pnpm --filter @conference-operator/room-client dev
 ```
 
 **3. Ou tout d'un seul terminal.** Deux salles sont nécessaires dès qu'on touche
@@ -240,17 +245,18 @@ ou un script de provisionnement.
 | `DISPLAY_PORT` | Port du serveur local — à changer si quelque chose l'occupe déjà sur le poste | `7788` |
 | `DATA_DIR` | Dossier de données en mode headless. Sous Electron, c'est le dossier applicatif du système | `./.local-data` |
 
-**Développement** — `MODE=dev` seulement.
+**Banc de développement.** Le mode de la salle n'est pas une variable : c'est
+celui du hub (production tant qu'il ne répond pas).
 
 | Variable | Rôle | Défaut |
 |---|---|---|
-| `MODE` | `dev` simule OBS (scènes, enregistrement, diffusion, canvas vertical) et écrit un vrai fichier à l'arrêt | `production` |
-| `HEURE_SIMULEE` | Heure locale, pour développer **sans hub**. Dès qu'un hub répond, son heure remplace la valeur | — |
-| `OBS_REEL` | Parle à de vraies instances OBS plutôt qu'au simulateur | — |
+| `OBS_SIMULE` | `1` simule OBS (scènes, enregistrement, diffusion, canvas vertical) et écrit un vrai fichier à l'arrêt. Le script `dev-headless` le fait par défaut | — |
+| `OBS_REEL` | Pour `dev-headless` seulement : de vraies instances OBS plutôt que le simulateur | — |
+| `HEURE_SIMULEE` | Heure locale, pour développer **sans hub**, sur un banc à OBS simulé. Dès qu'un hub répond, son heure remplace la valeur | — |
 | `REGIE_VITE_ORIGIN` | Sert la régie depuis Vite au lieu du bundle compilé | — |
 
-`OBS_MOCK` n'existe plus : la simulation d'OBS suit `MODE`. Comme
-`CLOCK_CONTROL`, la laisser traîner ne fait rien, et la salle le dit.
+`MODE` et `OBS_MOCK` n'ont plus d'effet sur une salle : la laisser traîner ne
+fait rien, et la salle le dit au démarrage.
 
 Une salle peut tourner sur **un seul OBS** : dans le ⚙ de la régie, le bloc
 « OBS-B — captation » propose « OBS-B dédié » ou « Canvas vertical d'OBS-A ». Le

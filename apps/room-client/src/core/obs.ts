@@ -134,10 +134,22 @@ export type ObsControllerEvent =
    */
   | { type: 'program-repaired'; sceneName: string; sources: string[]; repaired: boolean }
 
+/**
+ * An audio input device, whatever the platform: `wasapi_input_capture` (Windows),
+ * `coreaudio_input_capture` (macOS), `pulse_input_capture`, `alsa_input_capture`
+ * (Linux). The `_output_capture` kinds are the desktop audio: not a microphone.
+ */
+export const isCaptureDevice = (kind: string | undefined): boolean => kind != null && /_input_capture$/.test(kind)
+
 /** An OBS source that carries audio, and whether it is muted. */
 export interface AudioSource {
   name: string
   muted: boolean
+  /**
+   * A capture device — a microphone, a sound card's input — rather than the
+   * desktop audio or a media file: what the capture watchdog listens to.
+   */
+  capture?: boolean
 }
 
 export { DB_FLOOR, type InputLevel }
@@ -348,7 +360,7 @@ export class ObsController implements ObsCapture {
       // Authoritative, like the scene: a mute made in OBS itself shows too.
       this.publishAudioSources(
         this.audioSources.map((source) =>
-          source.name === inputName ? { name: inputName, muted: inputMuted } : source,
+          source.name === inputName ? { ...source, muted: inputMuted } : source,
         ),
       )
     })
@@ -506,11 +518,11 @@ export class ObsController implements ObsCapture {
    */
   async refreshAudioInputs(): Promise<void> {
     const { inputs } = (await this.options.transport.call('GetInputList')) as {
-      inputs?: { inputName: string }[]
+      inputs?: { inputName: string; inputKind?: string }[]
     }
     const routed = await this.routedInputs()
     const found: AudioSource[] = []
-    for (const { inputName } of inputs ?? []) {
+    for (const { inputName, inputKind } of inputs ?? []) {
       try {
         const { inputMuted } = (await this.options.transport.call('GetInputMute', { inputName })) as {
           inputMuted?: boolean
@@ -518,7 +530,7 @@ export class ObsController implements ObsCapture {
         if (typeof inputMuted !== 'boolean') continue
         if (routed != null && !routed.has(inputName)) continue
         if (!(await this.carriesSound(inputName))) continue
-        found.push({ name: inputName, muted: inputMuted })
+        found.push({ name: inputName, muted: inputMuted, ...(isCaptureDevice(inputKind) ? { capture: true } : {}) })
       } catch {
         /* no audio on this source: nothing to mute */
       }

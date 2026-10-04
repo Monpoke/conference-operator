@@ -9,6 +9,7 @@ import {
   sessionIdSchema,
   ulidSchema,
   connectivitySchema,
+  audioAlertSchema,
   audioInputSchema,
 } from './primitives.js'
 import { vodConsentSchema } from './vod.js'
@@ -199,6 +200,15 @@ export const roomEventPayloadSchema = z.discriminatedUnion('type', [
     expiresAt: isoDateTimeSchema.nullable(),
     source: z.enum(['regie', 'hub']).nullable(),
   }),
+  /**
+   * The capture watchdog's alerts, whole, each time they change — an empty list
+   * says all is well again. Collapsed like the stream's telemetry: only the last
+   * one matters.
+   */
+  z.object({
+    type: z.literal('audio.alerts'),
+    alerts: z.array(audioAlertSchema).max(32),
+  }),
   z.object({
     type: z.literal('stream.telemetry'),
     bitrateKbps: z.number().nonnegative(),
@@ -249,6 +259,7 @@ export const DELIVERY_BY_EVENT: Record<RoomEventType, z.infer<typeof deliverySch
   'screen.message': 'required',
   'room.heartbeat': 'best-effort',
   'stream.telemetry': 'best-effort',
+  'audio.alerts': 'best-effort',
 }
 
 /** Final rejection reasons: the event leaves the queue instead of blocking it. */

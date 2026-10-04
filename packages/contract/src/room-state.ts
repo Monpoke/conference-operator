@@ -13,6 +13,7 @@ import {
   roomScreenSchema,
   sceneRoleSchema,
   sessionIdSchema,
+  audioAlertSchema,
   audioInputSchema,
 } from './primitives.js'
 import { DEFAULT_VOD_POLICY, vodPolicySchema, vodSyncSchema } from './vod.js'
@@ -156,6 +157,12 @@ export const roomConfigSchema = z.object({
    */
   promptRecordingOnStop: z.boolean().default(true),
   /**
+   * The source the capture watchdog listens to while a talk is recorded.
+   * `null`: every capture device of OBS-B (microphones, sound cards) — not the
+   * desktop audio, nor a media file.
+   */
+  microSurveille: z.string().max(200).nullable().default(null),
+  /**
    * Scene taken automatically on "Start".
    *
    * Launching the talk and going on air are two gestures that belong together;
@@ -211,6 +218,7 @@ export const roomConfigPatchSchema = z
     promptRecordingOnStart: z.boolean(),
     promptRecordingOnStop: z.boolean(),
     sceneOnStart: sceneRoleSchema.nullable(),
+    microSurveille: z.string().max(200).nullable(),
   })
   .partial()
 export type RoomConfigPatch = z.infer<typeof roomConfigPatchSchema>
@@ -682,6 +690,8 @@ export const roomStatusSchema = z.object({
   streaming: z.boolean(),
   /** The audio sources and their mute state, as the last heartbeat carried them. */
   audioInputs: z.array(audioInputSchema).default([]),
+  /** The room's capture alerts, as it last reported them. */
+  audioAlerts: z.array(audioAlertSchema).default([]),
   /**
    * The room's screen, as it reported it. `null` = never said.
    *

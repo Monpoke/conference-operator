@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createHub, type Hub } from '@conference-operator/hub-server/server'
 import { provisionOperator } from '@conference-operator/hub-server/operators'
 import { createORPCClient } from '@orpc/client'
@@ -141,6 +141,29 @@ describe('a room with a single OBS', () => {
     expect(diagnostics.obs.B?.scenes).toContain('Talk — caméra + slides')
     expect(diagnostics.obs.B?.unresolvedRoles).toEqual([])
   }, 20_000)
+
+  it('warns the control app of a microphone muted while the talk is recorded', async () => {
+    await start()
+    // A talk under way: the only moment a dead microphone costs a VOD.
+    vi.spyOn(room.runtime, 'currentSessionStatus').mockReturnValue('running')
+    await room.startRecording()
+    await settle()
+    expect(room.runtime.state().audioAlerts).toEqual([])
+    await vi.waitFor(() => expect(room.runtime.state().audioInputs.map((input) => input.name)).toContain('Micro cravate'))
+
+    await room.setAudioMute('Micro cravate', true)
+    await vi.waitFor(
+      () => expect(room.runtime.state().audioAlerts).toEqual([{ kind: 'muet', input: 'Micro cravate', since: expect.any(String) }]),
+      { timeout: 5_000 },
+    )
+    expect(room.runtime.state().notifications.map((notice) => notice.text)).toContain(
+      "Micro « Micro cravate » coupé dans OBS-B pendant l'enregistrement",
+    )
+
+    // Unmuted, the alert goes; the take stopped, nothing is watched any more.
+    await room.setAudioMute('Micro cravate', false)
+    await vi.waitFor(() => expect(room.runtime.state().audioAlerts).toEqual([]), { timeout: 5_000 })
+  }, 30_000)
 
   it('records the talk, renames the master and writes its sidecar', async () => {
     await start()

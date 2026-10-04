@@ -209,6 +209,7 @@ const base: DisplayPayload = {
       promptRecordingOnStart: true,
       promptRecordingOnStop: true,
       sceneOnStart: 'LIVE',
+      microSurveille: null,
       // The preview shows the installed machine, the one that can open a picker.
       canBrowse: true,
     },

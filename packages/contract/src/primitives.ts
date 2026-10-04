@@ -192,3 +192,20 @@ export const audioInputSchema = z.object({
   muted: z.object({ A: z.boolean().nullable(), B: z.boolean().nullable() }),
 })
 export type AudioInput = z.infer<typeof audioInputSchema>
+
+/**
+ * A capture problem the room heard while recording a talk.
+ *
+ * - `muet`: the microphone is muted in OBS-B — the recording has no voice;
+ * - `silence`: it is not muted, yet nothing comes in (a dead battery, a cable,
+ *   a receiver switched off);
+ * - `saturation`: it comes in too loud, and clips.
+ *
+ * `since`: when the room first heard it, for « depuis 2 min ».
+ */
+export const audioAlertSchema = z.object({
+  kind: z.enum(['muet', 'silence', 'saturation']),
+  input: z.string().min(1).max(200),
+  since: isoDateTimeSchema,
+})
+export type AudioAlert = z.infer<typeof audioAlertSchema>

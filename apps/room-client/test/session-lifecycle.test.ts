@@ -280,6 +280,11 @@ describe('lifecycle driven from the control app', () => {
   }, 40_000)
 
   it('has nothing left to drive once the day is over', async () => {
+    // OBS's microphones arrive just after the connection, and the heartbeat they
+    // send aligns the room's clock on the hub's: wait for it, or it would undo
+    // the jump below.
+    await vi.waitFor(() => expect(room.runtime.state().audioInputs.length).toBeGreaterThan(0))
+    await sleep(500)
     // After the last talk there is no target left: there, the refusal is right.
     room.runtime.setClockOffset(Date.parse('2026-10-31T12:00:00Z') - Date.now())
     room.runtime.refreshSessions()

@@ -12,7 +12,7 @@ import type {
 import type { SceneRoleMap, SessionStatus } from './room-state.js'
 import type { Comment, WallCard } from './wall.js'
 import type { VodConsentRecord } from './vod.js'
-import type { AudioInput } from './primitives.js'
+import type { AudioAlert, AudioInput } from './primitives.js'
 
 /**
  * What a room says about itself, and what its pages read from it.
@@ -109,6 +109,11 @@ export interface DisplayState {
    * assumed — a mute asked for shows once OBS has confirmed it.
    */
   audioInputs: AudioInput[]
+  /**
+   * What the room's capture watchdog hears wrong, while a talk is recorded —
+   * empty when all is well. Held while it lasts, unlike a notification.
+   */
+  audioAlerts?: AudioAlert[]
   /**
    * Latest approved messages. Bounded: a wall that scrolls endlessly becomes
    * unreadable from ten metres, and the client's memory does not have to keep
@@ -250,6 +255,8 @@ export interface VisibleConfig {
   promptRecordingOnStart: boolean
   /** Offer on "End" to stop the capture that is still running. */
   promptRecordingOnStop: boolean
+  /** The source the capture watchdog listens to. `null`: OBS-B's capture devices. */
+  microSurveille?: string | null
   /** Scene taken automatically on "Start". `null` = no switch. */
   sceneOnStart: string | null
   /**

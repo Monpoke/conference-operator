@@ -114,10 +114,11 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
    * microphone breathes, the ambience stays low, and the foldback is silent: three
    * cases one wants to tell apart at a glance on the screen.
    */
-  const AUDIO_INPUTS: { name: string; base: number; amplitude: number; channels: number }[] = [
-    { name: 'Micro cravate', base: -18, amplitude: 10, channels: 1 },
-    { name: 'Ambiance salle', base: -38, amplitude: 6, channels: 2 },
-    { name: 'Retour régie', base: -60, amplitude: 0, channels: 2 },
+  const AUDIO_INPUTS: { name: string; base: number; amplitude: number; channels: number; kind: string }[] = [
+    { name: 'Micro cravate', base: -18, amplitude: 10, channels: 1, kind: 'wasapi_input_capture' },
+    { name: 'Ambiance salle', base: -38, amplitude: 6, channels: 2, kind: 'wasapi_input_capture' },
+    // The desktop audio, not a microphone: silent on purpose, the watchdog leaves it alone.
+    { name: 'Retour régie', base: -60, amplitude: 0, channels: 2, kind: 'wasapi_output_capture' },
   ]
   /** The same sources on A and B, as in the rooms: the microphones feed both. */
   const muted = new Map(AUDIO_INPUTS.map((input) => [input.name, false]))
@@ -359,9 +360,21 @@ export function createMockObsTransport(options: MockObsOptions): ObsTransport {
           // answer about their mute.
           return {
             inputs: [
-              ...AUDIO_INPUTS.map((input) => ({ inputName: input.name })),
+              ...AUDIO_INPUTS.map((input) => ({ inputName: input.name, inputKind: input.kind })),
               { inputName: 'Navigateur habillage' },
             ],
+          }
+
+        // The global devices, as OBS's audio settings name them: heard without
+        // being in a scene, so the room keeps them (see `routedInputs`).
+        case 'GetSpecialInputs':
+          return {
+            desktop1: 'Retour régie',
+            desktop2: null,
+            mic1: 'Micro cravate',
+            mic2: 'Ambiance salle',
+            mic3: null,
+            mic4: null,
           }
 
         case 'GetInputMute': {

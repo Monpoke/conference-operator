@@ -279,8 +279,15 @@ export function sansOfQuery(value: string | undefined): Sans {
   }
 }
 
-/** Hidden rather than removed: the band keeps its layout, the message stays centred. */
-const cssSans = (sans: Sans | undefined): string | undefined =>
-  sans == null || sans.bandeau.length === 0
-    ? undefined
-    : `${sans.bandeau.map((partie) => `#barre-bas ${PARTIES_BANDEAU[partie]}`).join(', ')} { visibility: hidden; }`
+/**
+ * Hidden rather than removed: the band keeps its layout. Without what comes
+ * next, the message moves to the band's middle — left where it was, it would
+ * leave the band's left half empty.
+ */
+const cssSans = (sans: Sans | undefined): string | undefined => {
+  if (sans == null || sans.bandeau.length === 0) return undefined
+  const hidden = `${sans.bandeau.map((partie) => `#barre-bas ${PARTIES_BANDEAU[partie]}`).join(', ')} { visibility: hidden; }`
+  return sans.bandeau.includes('a-suivre')
+    ? `${hidden}\n#barre-bas .bb-partage { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }`
+    : hidden
+}

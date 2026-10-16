@@ -1,5 +1,5 @@
 import { toString as qrSvg } from 'qrcode'
-import type { DisplayPayload } from '@conference-operator/contract'
+import { roomScreenSchema, type DisplayPayload, type RoomScreen } from '@conference-operator/contract'
 import { agendaForRoom, DEFAULT_TIMEZONE, sessionsForRoom } from '@conference-operator/program'
 import { timelinePosition } from '@conference-operator/program/selectors'
 import { breakOfSlots } from '@conference-operator/room-state'
@@ -30,6 +30,13 @@ export interface BouclePreviewOptions {
    */
   heure?: string | null
   jour?: string | null
+  /**
+   * What this preview alone leaves out, on top of the console's withdrawn
+   * screens — a hall screen recorded as a video cannot show the live wall, nor
+   * what comes next, nor the time. Nothing is set on the hub: the rooms keep
+   * showing them.
+   */
+  sans?: Sans
   /** Where the typefaces are, and the address they are served from. */
   fonts: { folder: string | null; base: string }
   /** The theme the rooms wear, served by the hub. `null`: the default one. */
@@ -66,6 +73,7 @@ export async function renderBouclePreview(services: Services, options: BouclePre
   return renderProjectorDocument({
     initialPayload: await previewPayload(services, options),
     preview: true,
+    css: cssSans(options.sans),
     fonts: { base: options.fonts.base, files: availableFonts(options.fonts.folder) },
     theme: options.theme,
     after: [
@@ -197,7 +205,7 @@ export async function previewPayload(services: Services, options: BouclePreviewO
     pairing: null,
     otherRooms: program == null ? [] : otherRoomsFor(program, roomId, now),
     socialLinks: settings.socialLinks,
-    screensDisabled: settings.screensDisabled,
+    screensDisabled: [...new Set([...settings.screensDisabled, ...(options.sans?.ecrans ?? [])])],
     eventIdentity: identity,
     boucle,
     agenda: program == null || roomId == null
@@ -249,3 +257,30 @@ export function previewTime(
   const asIfUtc = Date.UTC(+shown.year!, +shown.month! - 1, +shown.day!, +shown.hour!, +shown.minute!)
   return guess - (asIfUtc - guess)
 }
+
+/** Parts of the bottom band a preview can leave out: both are only true live. */
+const PARTIES_BANDEAU = { 'a-suivre': '.bb-prochain', horloge: '.bb-horloge' } as const
+type PartieBandeau = keyof typeof PARTIES_BANDEAU
+
+export interface Sans {
+  ecrans: RoomScreen[]
+  bandeau: PartieBandeau[]
+}
+
+/**
+ * `?sans=wallsio,a-suivre,horloge` read as screens and parts of the band: what
+ * this version does not know is dropped, like a stored list (`roomScreenListSchema`).
+ */
+export function sansOfQuery(value: string | undefined): Sans {
+  const items = (value ?? '').split(',').map((item) => item.trim())
+  return {
+    ecrans: items.filter((item): item is RoomScreen => roomScreenSchema.safeParse(item).success),
+    bandeau: items.filter((item): item is PartieBandeau => Object.hasOwn(PARTIES_BANDEAU, item)),
+  }
+}
+
+/** Hidden rather than removed: the band keeps its layout, the message stays centred. */
+const cssSans = (sans: Sans | undefined): string | undefined =>
+  sans == null || sans.bandeau.length === 0
+    ? undefined
+    : `${sans.bandeau.map((partie) => `#barre-bas ${PARTIES_BANDEAU[partie]}`).join(', ')} { visibility: hidden; }`

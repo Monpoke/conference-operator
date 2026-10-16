@@ -349,6 +349,10 @@ describe('the loop over the wire', () => {
     const headers = { authorization: `Bearer ${await signIn()}` }
     const html = await (await fetch(`${origin}/boucle/apercu?salle=global&sans=a-suivre,horloge`, { headers })).text()
     expect(html).toContain('#barre-bas .bb-prochain, #barre-bas .bb-horloge { visibility: hidden; }')
+    // Nothing on the left any more: the message moves to the middle.
+    expect(html).toContain('#barre-bas .bb-partage { position: absolute; left: 50%;')
+    const clockOnly = await (await fetch(`${origin}/boucle/apercu?salle=global&sans=horloge`, { headers })).text()
+    expect(clockOnly).not.toContain('#barre-bas .bb-partage {')
     const plain = await (await fetch(`${origin}/boucle/apercu?salle=global`, { headers })).text()
     expect(plain).not.toContain('#barre-bas .bb-prochain,')
   })

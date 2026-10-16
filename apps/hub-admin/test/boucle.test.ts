@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import BoucleView from '../src/views/BoucleView.vue'
-import { ImageRefused, findSponsor, prepareImage, useBoucleStore } from '../src/stores/boucle.js'
+import { ImageRefused, absentSponsors, findSponsor, placeSponsor, prepareImage, useBoucleStore } from '../src/stores/boucle.js'
 import { useSessionStore } from '../src/stores/session.js'
 
 /**
@@ -303,6 +303,25 @@ describe('the sponsor pages', () => {
     expect(badge(1).text()).toBe('absent du programme')
   })
 
+  it('flag a program sponsor no page holds, and add it to its tier\'s page', async () => {
+    const onlyApe = [{ ...DEFAULT_PAGES[0]!, rangs: [{ taille: 1, logos: [DEFAULT_PAGES[0]!.rangs[0]!.logos[0]!] }] }]
+    const { calls, wrapper } = await mountView({ ...DEFAULT_BOUCLE, sponsorPages: onlyApe })
+
+    const absent = wrapper.get('[data-role="absent-sponsors"]')
+    expect(absent.findAll('[data-absent]').map((item) => item.attributes('data-absent'))).toEqual([ZEPHYRA.key])
+    await absent.get('[data-action="add-absent"]').trigger('click')
+    expect(wrapper.find('[data-role="absent-sponsors"]').exists()).toBe(false)
+
+    await wrapper.get('#btn-boucle-pages').trigger('click')
+    await flushPromises()
+    expect(updates(calls)[0]!.sponsorPages).toEqual(DEFAULT_PAGES)
+  })
+
+  it('say nothing of absent sponsors while automatic', async () => {
+    const { wrapper } = await mountView()
+    expect(wrapper.find('[data-role="absent-sponsors"]').exists()).toBe(false)
+  })
+
   it('refuse to save a logo with no sponsor', async () => {
     const { calls, wrapper } = await mountView({ ...DEFAULT_BOUCLE, sponsorPages: DEFAULT_PAGES })
 
@@ -311,6 +330,35 @@ describe('the sponsor pages', () => {
     await flushPromises()
 
     expect(updates(calls)).toEqual([])
+  })
+})
+
+describe('placing an absent sponsor', () => {
+  const LIMITS = { pages: 8, rows: 4, logos: 12 }
+  const logo = (sponsor: string) => ({ sponsor, nom: null, logo: null, echelle: 0.8 })
+  const SILVER = { key: 'https://silver.test', name: 'Silver Co', website: null, logoPreview: null, tiers: ['Silver'] }
+  const defaults = [
+    DEFAULT_PAGES[0]!,
+    { titre: 'Silver', duree: null, rangs: [{ taille: 1, logos: [{ ...logo(SILVER.key), echelle: 0.6 }] }] },
+  ]
+
+  it('is found by name too, like the rooms find it', () => {
+    expect(absentSponsors([{ ...DEFAULT_PAGES[0]!, rangs: [{ taille: 1, logos: [logo('nova atelier')] }] }], [APE, ZEPHYRA]))
+      .toEqual([ZEPHYRA])
+  })
+
+  it('opens a new row past four logos', () => {
+    const pages = [{ titre: '', duree: null, rangs: [{ taille: 1.2, logos: ['a', 'b', 'c', 'd'].map(logo) }] }]
+    expect(placeSponsor(pages, ZEPHYRA, defaults, LIMITS)).toBe(0)
+    expect(pages[0]!.rangs).toHaveLength(2)
+    expect(pages[0]!.rangs[1]).toEqual({ taille: 1.2, logos: [logo(ZEPHYRA.key)] })
+  })
+
+  it('adds its tier\'s page when the layout has none, with the automatic circle', () => {
+    const pages = [DEFAULT_PAGES[0]!]
+    expect(placeSponsor(pages, SILVER, defaults, LIMITS)).toBe(1)
+    expect(pages[1]).toEqual({ titre: 'Silver', duree: null, rangs: [{ taille: 1, logos: [{ ...logo(SILVER.key), echelle: 0.6 }] }] })
+    expect(placeSponsor([DEFAULT_PAGES[0]!], SILVER, defaults, { ...LIMITS, pages: 1 })).toBeNull()
   })
 })
 

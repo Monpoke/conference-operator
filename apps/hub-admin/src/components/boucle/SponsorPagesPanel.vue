@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { DUREES_PAR_DEFAUT, MAX_SPONSOR_PAGES, type SponsorPage, type SponsorRef } from '@conference-operator/contract'
+import { computed } from 'vue'
 import { Button, Empty, Panel, useToast } from '@conference-operator/components'
 import { useDraft } from '../../composables/draft.js'
-import { findSponsor, useBoucleStore } from '../../stores/boucle.js'
+import { absentSponsors, findSponsor, placeSponsor, useBoucleStore, type CatalogueSponsor } from '../../stores/boucle.js'
 import ListControls from './ListControls.vue'
 import SaveBar from './SaveBar.vue'
 import SponsorPicker from './SponsorPicker.vue'
@@ -14,7 +15,8 @@ import { BOX, FIELD, SMALL } from './ui.js'
  * Automatic is one page per tier of the program, rows of four at most — and it
  * follows the program: a sponsor added upstream appears without anybody coming
  * here. Laid out by hand, the pages are the organiser's, and a sponsor gone from
- * the program is flagged rather than silently dropped.
+ * the program is flagged rather than silently dropped — as is one the program
+ * gained since, which no page holds.
  */
 const store = useBoucleStore()
 const toast = useToast()
@@ -41,6 +43,19 @@ function customise(): void {
 
 function automatic(): void {
   if (draft.value != null) draft.value.sponsorPages = null
+}
+
+/** The program's sponsors no page holds, while the pages are laid out by hand. */
+const absents = computed(() =>
+  draft.value?.sponsorPages == null ? [] : absentSponsors(draft.value.sponsorPages, store.catalogue.sponsors),
+)
+
+function addAbsent(sponsor: CatalogueSponsor): void {
+  if (draft.value?.sponsorPages == null) return
+  const page = placeSponsor(draft.value.sponsorPages, sponsor, store.catalogue.pagesParDefaut, {
+    pages: MAX_SPONSOR_PAGES, rows: MAX_ROWS, logos: MAX_LOGOS,
+  })
+  if (page == null) toast.fail(`Plus de place pour ${sponsor.name} : retirez un logo ou une page`)
 }
 
 function nameOf(logo: SponsorRef): string {
@@ -97,6 +112,28 @@ async function save(): Promise<void> {
       </template>
 
       <template v-else>
+        <div
+          v-if="absents.length > 0"
+          class="mb-2 rounded-lg border border-warn p-2.5 text-[13px]"
+          data-role="absent-sponsors"
+        >
+          <p class="mb-1.5">
+            <strong>Sponsors du programme absents des pages</strong>
+            <span class="text-dim"> — ajoutés au programme depuis la mise en page, ils ne passent pas à l'écran.</span>
+          </p>
+          <ul class="flex flex-wrap gap-1.5">
+            <li
+              v-for="sponsor in absents"
+              :key="sponsor.key"
+              class="flex items-center gap-1.5 rounded-lg bg-surface2 p-1 pl-2"
+              :data-absent="sponsor.key"
+            >
+              {{ sponsor.name }}
+              <span class="text-dim">({{ sponsor.tiers.join(', ') }})</span>
+              <Button size="small" data-action="add-absent" @click="addAbsent(sponsor)">Ajouter</Button>
+            </li>
+          </ul>
+        </div>
         <div
           v-for="(page, pageIndex) in draft.sponsorPages"
           :key="pageIndex"

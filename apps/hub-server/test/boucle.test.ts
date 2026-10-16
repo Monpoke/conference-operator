@@ -330,6 +330,29 @@ describe('the loop over the wire', () => {
     expect((await fetch(`${origin}/boucle/apercu/etat?salle=global`)).status).toBe(401)
   })
 
+  it('leaves screens out of one preview without withdrawing them on the hub', async () => {
+    importProgram()
+    const key = 'Pk9-public_key_for_the_loop_2026'
+    await admin.settings.update({ boucle: { lienPublic: key }, screensDisabled: ['rooms'] })
+    const html = await (await fetch(`${origin}/boucle/apercu?cle=${key}&salle=global&sans=wallsio,inconnu,event-feedback`)).text()
+    const state = JSON.parse(html.match(/<script id="etat-initial" type="application\/json">(.*?)<\/script>/)![1]!)
+    expect(state.screensDisabled).toEqual(['rooms', 'wallsio', 'event-feedback'])
+    // The refetched state leaves them out too.
+    expect(html).toContain(`boucle.suivre("/boucle/apercu/etat?salle=global&cle=${key}&sans=wallsio%2Cinconnu%2Cevent-feedback", 5000)`)
+    const feed = await (await fetch(`${origin}/boucle/apercu/etat?salle=global&cle=${key}&sans=wallsio`)).json() as { screensDisabled: string[] }
+    expect(feed.screensDisabled).toEqual(['rooms', 'wallsio'])
+    expect(hub.services.settings.get().screensDisabled).toEqual(['rooms'])
+  })
+
+  it('hides what comes next and the time from the bottom band when asked', async () => {
+    importProgram()
+    const headers = { authorization: `Bearer ${await signIn()}` }
+    const html = await (await fetch(`${origin}/boucle/apercu?salle=global&sans=a-suivre,horloge`, { headers })).text()
+    expect(html).toContain('#barre-bas .bb-prochain, #barre-bas .bb-horloge { visibility: hidden; }')
+    const plain = await (await fetch(`${origin}/boucle/apercu?salle=global`, { headers })).text()
+    expect(plain).not.toContain('#barre-bas .bb-prochain,')
+  })
+
   it('does not refetch a preview drawn at a set time', async () => {
     importProgram()
     const html = await (await fetch(`${origin}/boucle/apercu?heure=10:00`, {

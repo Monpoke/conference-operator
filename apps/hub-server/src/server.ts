@@ -46,7 +46,7 @@ import {
 import { WallsIoConfig, wallsioSource } from './services/wallsio.js'
 import { migrateLegacyMur } from './services/legacy-mur.js'
 import { renderWallClosedPage, renderWallPage } from './pages/wall-page.js'
-import { previewPayload, renderBouclePreview } from './pages/boucle-preview.js'
+import { previewPayload, renderBouclePreview, sansOfQuery } from './pages/boucle-preview.js'
 import {
   availableFonts,
   buildVodHabillage,
@@ -568,12 +568,15 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
    * frames it and reloads it after a save. Behind the operator's session, like
    * the settings it shows — `?salle=` picks the room, `?scene=` holds one scene,
    * `?heure=` (and `?jour=`) draws it at another time than the hub's, and
-   * `?salle=global` is the hall's screen: the whole program, no room of its own. With
+   * `?salle=global` is the hall's screen: the whole program, no room of its own,
+   * `?sans=wallsio,a-suivre,horloge` leaves screens and parts of the bottom band
+   * out of this preview alone (a hall screen recorded as a video cannot show the
+   * live wall, what comes next, nor the time). With
    * `?cle=` and the key of the public link set in the console, no session is
    * asked: that address is the one shared with the public.
    */
   const fontsFolder = resolveFontsFolder()
-  type ApercuQuery = { salle?: string; scene?: string; heure?: string; jour?: string; cle?: string }
+  type ApercuQuery = { salle?: string; scene?: string; heure?: string; jour?: string; cle?: string; sans?: string }
 
   /**
    * May this request see the preview? An operator allowed to read the settings,
@@ -599,6 +602,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       scene: Number.isFinite(scene) ? scene : null,
       heure: query.heure ?? null,
       jour: query.jour ?? null,
+      sans: sansOfQuery(query.sans),
       fonts: { folder: fontsFolder, base: '/boucle/polices' },
       theme: currentTheme(),
     }
@@ -625,7 +629,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     const flux = request.query.heure
       ? null
       : `/boucle/apercu/etat?${new URLSearchParams(
-          Object.entries({ salle: request.query.salle, cle: request.query.cle }).filter((entry): entry is [string, string] => entry[1] != null),
+          Object.entries({ salle: request.query.salle, cle: request.query.cle, sans: request.query.sans }).filter((entry): entry is [string, string] => entry[1] != null),
         ).toString()}`
     return reply.send(await renderBouclePreview(services, { ...apercuOptions(request.query), flux }))
   })

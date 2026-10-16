@@ -270,6 +270,55 @@ export function findSponsor(placement: SponsorRef, sponsors: CatalogueSponsor[])
   )
 }
 
+/**
+ * The program's sponsors that no page holds — a partner added upstream after the
+ * pages were laid out by hand, which nothing would otherwise show. In program
+ * order, matched like the rooms match a placement (`findSponsor`).
+ */
+export function absentSponsors(pages: SponsorPage[], sponsors: CatalogueSponsor[]): CatalogueSponsor[] {
+  const placed = new Set(
+    pages.flatMap((page) => page.rangs.flatMap((row) => row.logos))
+      .map((logo) => findSponsor(logo, sponsors)?.key)
+      .filter((key) => key != null),
+  )
+  return sponsors.filter((sponsor) => !placed.has(sponsor.key))
+}
+
+/**
+ * Places a sponsor on the page of its tier, in place, and says where.
+ *
+ * Its tier's page is the one the automatic layout puts it on, recognised by its
+ * title — the first tier's has none. Failing that, the page is added with that
+ * title. The logo goes at the end of the last row while it holds fewer than
+ * four, the automatic layout's width, on a new row otherwise; the circle's
+ * size is the automatic one. `null`: no room left for it.
+ */
+export function placeSponsor(
+  pages: SponsorPage[],
+  sponsor: CatalogueSponsor,
+  defaults: SponsorPage[],
+  limits: { pages: number; rows: number; logos: number },
+): number | null {
+  const ownPage = defaults.find((page) =>
+    page.rangs.some((row) => row.logos.some((logo) => logo.sponsor === sponsor.key)))
+  const placement = ownPage?.rangs.flatMap((row) => row.logos).find((logo) => logo.sponsor === sponsor.key)
+  const logo: SponsorRef = { sponsor: sponsor.key, nom: null, logo: null, echelle: placement?.echelle ?? 0.8 }
+  const titre = ownPage?.titre ?? ''
+  let index = pages.findIndex((page) => page.titre.trim() === titre.trim())
+  if (index < 0) {
+    if (pages.length >= limits.pages) return null
+    pages.push({ titre, duree: null, rangs: [{ taille: 1, logos: [] }] })
+    index = pages.length - 1
+  }
+  const page = pages[index]!
+  const last = page.rangs.at(-1)
+  if (last != null && last.logos.length < 4) last.logos.push(logo)
+  else if (page.rangs.length < limits.rows) page.rangs.push({ taille: last?.taille ?? 1, logos: [logo] })
+  else if (last != null && last.logos.length < limits.logos) last.logos.push(logo)
+  else return null
+  return index
+}
+
 /** Moves an item of a list by one place, in place. Out of bounds does nothing. */
 export function move<T>(list: T[], index: number, delta: -1 | 1): void {
   const target = index + delta

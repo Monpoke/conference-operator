@@ -4,6 +4,7 @@ import type { Config } from './config.js'
 import { z } from 'zod'
 import { HubFeed, ImageCache, ViewReporter, hubReader, hubViewsSender, type FeedState, type Log } from './hub.js'
 import { CONTENT_SECURITY_POLICY, MUR_VIDE, faviconVersion, renderFavicon, renderPage } from './page.js'
+import { MOTS_CONTENT_SECURITY_POLICY, compterMots, renderMots, type Mot } from './mots.js'
 import { RateLimiter } from './rate-limit.js'
 
 export interface MurPublicServer {
@@ -53,6 +54,17 @@ export async function startMurPublic(
     const etag = state?.etag ?? null
     if (rendered == null || rendered.etag !== etag) rendered = { etag, html: renderPage(state?.data ?? MUR_VIDE, config.reseaux) }
     return rendered.html
+  }
+  // The words counted once per wall received, not once per visit.
+  let comptes: { etag: string | null; mots: Mot[]; json: string; html: string } | null = null
+  const mots = (state: FeedState | null) => {
+    const etag = state?.etag ?? null
+    if (comptes == null || comptes.etag !== etag) {
+      const data = state?.data ?? MUR_VIDE
+      const liste = compterMots(data.posts)
+      comptes = { etag, mots: liste, json: JSON.stringify(liste), html: renderMots(data, liste) }
+    }
+    return comptes
   }
 
   const server = createServer((request, response) => {
@@ -121,6 +133,17 @@ export async function startMurPublic(
         // Asked again on every visit: the posts are in it.
         'cache-control': 'no-cache',
       }, request)
+    }
+
+    if (path === '/mots') {
+      return send(response, 200, 'text/html; charset=utf-8', mots(feed.state).html, {
+        'content-security-policy': MOTS_CONTENT_SECURITY_POLICY,
+        'cache-control': 'no-cache',
+      }, request)
+    }
+
+    if (path === '/mots.json') {
+      return send(response, 200, 'application/json', mots(feed.state).json, { 'cache-control': 'public, max-age=30' }, request)
     }
 
     if (path === '/favicon.svg') {

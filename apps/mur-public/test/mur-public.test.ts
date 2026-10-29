@@ -8,6 +8,7 @@ import { createHub, type Hub } from '@conference-operator/hub-server/server'
 import { loadConfig } from '../src/config.js'
 import { ImageCache } from '../src/hub.js'
 import { byteRange, clientAddress, startMurPublic, type MurPublicServer } from '../src/server.js'
+import { compterMots } from '../src/mots.js'
 
 const PHOTO = 'https://cdn.exemple/photo.jpg'
 
@@ -286,6 +287,30 @@ describe('the wall’s videos', () => {
   it('may play on the page: its policy lets media come from its own origin', async () => {
     const response = await fetch(`${(await start()).url}/`)
     expect(response.headers.get('content-security-policy')).toContain("media-src 'self'")
+  })
+})
+
+describe('the words of the wall', () => {
+  it('counts what is said, not the little words, links or bare numbers', () => {
+    const mots = compterMots([
+      { text: "Rejoignez-nous à #CloudNord2026 : une journée sur l'IA et Kubernetes https://cloudnord.fr/programme" },
+      { text: 'Kubernetes, encore Kubernetes, et vos questions sur l’IA en 2026 ! 42 places' },
+    ])
+    expect(mots[0]).toEqual({ mot: 'kubernetes', n: 3 })
+    expect(mots.map((m) => m.mot)).toEqual(expect.arrayContaining(['#cloudnord2026', 'journée', '2026', 'questions', 'places']))
+    for (const vide of ['une', 'et', 'vos', 'sur', 'https', 'cloudnord.fr', '42', 'ia']) expect(mots.map((m) => m.mot)).not.toContain(vide)
+  })
+
+  it('has a page of its own, with its own policy, and its JSON', async () => {
+    hub.services.wall.post({ source: 'wallsio', author: 'Cloud Nord', text: 'Kubernetes Kubernetes souveraineté', externalId: 'mots-1' })
+    hub.services.wall.publishScreen()
+    const service = await start()
+    const page = await fetch(`${service.url}/mots`)
+    expect(page.status).toBe(200)
+    expect(page.headers.get('content-security-policy')).toMatch(/script-src 'sha256-/)
+    expect(await page.text()).toContain('Les mots du mur')
+    const json = (await (await fetch(`${service.url}/mots.json`)).json()) as { mot: string; n: number }[]
+    expect(json[0]).toEqual({ mot: 'kubernetes', n: 2 })
   })
 })
 

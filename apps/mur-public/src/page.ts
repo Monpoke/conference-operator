@@ -446,7 +446,7 @@ function barre(data: MurPublic): string {
 }
 
 /** The theme's tokens as custom properties. Values are the contract's: colours and CSS values already checked. */
-function variables(theme: MurPublic['theme']): string {
+export function variables(theme: MurPublic['theme']): string {
   const lignes: string[] = []
   for (const [nom, valeur] of Object.entries(theme.couleurs)) if (/^[a-z0-9-]+$/.test(nom)) lignes.push(`--c-${nom}:${valeur};`)
   for (const [role, valeur] of Object.entries(theme.polices)) if (/^[a-z0-9-]+$/.test(role)) lignes.push(`--f-${role}:${valeur};`)

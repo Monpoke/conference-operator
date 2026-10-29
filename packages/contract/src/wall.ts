@@ -46,6 +46,8 @@ export const commentSchema = z.object({
   authorSubtitle: z.string().max(120).nullable().default(null),
   avatar: imageRefSchema.nullable().default(null),
   image: imageRefSchema.nullable().default(null),
+  /** A short looping video (LinkedIn via walls.io); `image` is then its still. */
+  video: imageRefSchema.nullable().default(null),
   permalink: z.string().max(600).nullable().default(null),
   /** The network named at the foot of the card: "Instagram", "LinkedIn"… */
   network: z.string().max(30).nullable().default(null),
@@ -85,9 +87,16 @@ export type WallListInput = z.input<typeof wallListInputSchema>
 export const moderatedPostSchema = commentSchema.extend({
   /** In the social wall the rooms hold right now. */
   onScreen: z.boolean(),
+  /** Deactivated by its source (walls.io): off the wall unless forced. */
+  inactiveAtSource: z.boolean(),
+  /** Shown although its source deactivated it: the console's decision. */
+  forcedOnScreen: z.boolean(),
   /** Times a room put it on air, every room and day together. */
   impressions: z.number().int().nonnegative(),
   lastShownAt: isoDateTimeSchema.nullable(),
+  /** Times it was seen on the public social page (`apps/mur-public`), every day together. */
+  onlineViews: z.number().int().nonnegative(),
+  lastSeenOnlineAt: isoDateTimeSchema.nullable(),
 })
 export type ModeratedPost = z.infer<typeof moderatedPostSchema>
 
@@ -127,6 +136,8 @@ export interface WallCard {
   avatarUrl: string | null
   text: string
   imageUrl: string | null
+  /** Plays muted, on a loop, over `imageUrl` as its still. `null` = none, or not held yet. */
+  videoUrl: string | null
   /** The network at the foot of the card; `null` = none named. */
   network: string | null
   /** When it was posted, for "25 min". */
@@ -163,6 +174,11 @@ export const wallsIoStatusSchema = z.object({
   lastError: z.string().nullable(),
   /** Posts from walls.io currently on the wall. */
   imported: z.number().int().nonnegative(),
+  /** Reads stopped from the console. */
+  paused: z.boolean().default(false),
+  /** Failed reads in a row, and when the next one is tried: backing off. */
+  failures: z.number().int().nonnegative().default(0),
+  retryAt: isoDateTimeSchema.nullable().default(null),
 })
 export type WallsIoStatus = z.infer<typeof wallsIoStatusSchema>
 

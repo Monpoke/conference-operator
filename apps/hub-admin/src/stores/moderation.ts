@@ -32,9 +32,16 @@ export interface WallPost {
   sponsor: { key: string | null; name: string; logo: string | null } | null
   /** In the social wall the rooms hold right now. */
   onScreen: boolean
+  /** Deactivated by walls.io: off the wall unless forced. */
+  inactiveAtSource: boolean
+  /** Shown although walls.io deactivated it. */
+  forcedOnScreen: boolean
   /** Times a room put it on air. */
   impressions: number
   lastShownAt: string | null
+  /** Times it was seen on the public social page. */
+  onlineViews: number
+  lastSeenOnlineAt: string | null
 }
 
 /** A post written in the console. `id` = the one being edited. */
@@ -134,6 +141,11 @@ export const useModerationStore = defineStore('moderation', () => {
     await load()
   }
 
+  async function forceOnScreen(id: string, forced: boolean): Promise<void> {
+    await session.client.rpc.wall.forceOnScreen({ id, forced })
+    await load()
+  }
+
   async function savePost(draft: HubPostDraft): Promise<void> {
     await session.client.rpc.wall.save(draft)
     await load()
@@ -141,6 +153,6 @@ export const useModerationStore = defineStore('moderation', () => {
 
   return {
     view, query, page, items, total, counts, loading, sponsors,
-    load, loadSponsors, show, search, goTo, moderate, feature, savePost,
+    load, loadSponsors, show, search, goTo, moderate, feature, forceOnScreen, savePost,
   }
 })

@@ -376,6 +376,48 @@ describe('display counts', () => {
   })
 })
 
+describe('a post walls.io deactivated', () => {
+  const fromWallsIo = (active: boolean) =>
+    wall.post({ source: 'wallsio', author: 'Cloud Nord', text: 'Rendez-vous le 30 !', externalId: 'w-1', active })
+
+  it('stays off the wall until the console shows it, and leaves when given back', () => {
+    const post = fromWallsIo(false)
+    wall.publishScreen()
+    expect(wall.screen().posts.map((p) => p.id)).not.toContain(post.id)
+    expect(wall.list({ view: 'approved' }).items[0]).toMatchObject({ id: post.id, onScreen: false, inactiveAtSource: true, forcedOnScreen: false })
+
+    const before = wall.screen().revision
+    expect(wall.setForcedOnScreen(post.id, true)).not.toBeNull()
+    expect(wall.screen().posts.map((p) => p.id)).toContain(post.id)
+    // The rooms see it moved.
+    expect(wall.screen().revision).not.toBe(before)
+    expect(wall.list({ view: 'approved' }).items[0]).toMatchObject({ onScreen: true, inactiveAtSource: true, forcedOnScreen: true })
+
+    wall.setForcedOnScreen(post.id, false)
+    expect(wall.screen().posts.map((p) => p.id)).not.toContain(post.id)
+  })
+
+  it('stays shown when walls.io says so again: the console has the last word', () => {
+    const post = fromWallsIo(true)
+    wall.setForcedOnScreen(post.id, true)
+    // walls.io deactivates it at the next poll.
+    expect(fromWallsIo(false).id).toBe(post.id)
+    wall.publishScreen()
+    expect(wall.screen().posts.map((p) => p.id)).toContain(post.id)
+  })
+
+  it('never brings back a post hidden in the console', () => {
+    const post = fromWallsIo(false)
+    wall.setForcedOnScreen(post.id, true)
+    wall.moderate(post.id, 'reject', 'regie@cloudnord.fr')
+    expect(wall.screen().posts.map((p) => p.id)).not.toContain(post.id)
+  })
+
+  it('is refused for a post the hub does not hold', () => {
+    expect(wall.setForcedOnScreen('inconnu', true)).toBeNull()
+  })
+})
+
 describe("a post's own address", () => {
   it('is rebuilt from what Bluesky and X give', () => {
     expect(sourcePermalink('bluesky', 'at://did:plc:abc123/app.bsky.feed.post/3kxyz', 'alice.bsky.social')).toBe(

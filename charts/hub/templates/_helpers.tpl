@@ -77,6 +77,22 @@ vod-montage
 {{- end -}}
 
 {{/*
+La page publique du mur social.
+*/}}
+{{- define "hub.murPublicName" -}}
+mur-public
+{{- end -}}
+
+{{- define "hub.murPublicImage" -}}
+{{- $repo := .Values.murPublic.image.repository -}}
+{{- if .Values.murPublic.image.digest -}}
+{{- printf "%s@%s" $repo .Values.murPublic.image.digest -}}
+{{- else -}}
+{{- printf "%s:%s" $repo (default .Chart.AppVersion .Values.murPublic.image.tag) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Le secret qui porte le jeton partagé, et la clé sous laquelle il le porte.
 */}}
 {{- define "hub.montageSecretName" -}}

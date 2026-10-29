@@ -622,6 +622,7 @@ describe('the social wall', () => {
     avatarUrl: null,
     text: `Post ${id} #CloudNord2026`,
     imageUrl: null,
+    videoUrl: null,
     network: 'Instagram',
     postedAt: new Date(AT - 10 * 60_000).toISOString(),
     featured: false,

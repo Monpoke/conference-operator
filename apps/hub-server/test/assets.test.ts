@@ -88,6 +88,29 @@ describe('the hub as an image store', () => {
     expect(file?.contentType).toBe('image/png')
   })
 
+  it('refuses a file past its ceiling instead of filling the volume, and names it', async () => {
+    const huge = 'https://cdn.exemple/video-geante.mp4'
+    const fetchImpl = vi.fn(async () =>
+      new Response('x', { status: 200, headers: { 'content-type': 'video/mp4', 'content-length': String(64 * 1024 * 1024) } }),
+    ) as unknown as typeof fetch
+
+    const report = await assets.prefetchUrls([huge], fetchImpl)
+
+    expect(report.failed).toEqual([{ url: huge, reason: 'fichier trop lourd (64 Mo, 30 Mo au plus)' }])
+    expect(await assets.read(hashOf(huge))).toBeNull()
+  })
+
+  it('keeps a wall video like an image, with its type', async () => {
+    const video = 'https://dms.licdn.com/playlist/vid/v2/abc/mp4-720p-30fp-crf28/def/0/123?e=1793869200'
+    const fetchImpl = vi.fn(async () =>
+      new Response('MP4', { status: 200, headers: { 'content-type': 'video/mp4' } }),
+    ) as unknown as typeof fetch
+
+    await assets.prefetchUrls([video], fetchImpl)
+
+    expect(await assets.read(hashOf(video))).toMatchObject({ contentType: 'video/mp4' })
+  })
+
   it('answers nothing for a hash it does not hold', async () => {
     expect(await assets.read(hashOf('https://cdn.exemple/jamais-vue.png'))).toBeNull()
   })

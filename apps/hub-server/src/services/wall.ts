@@ -19,7 +19,7 @@ import {
   type WallListView,
   type WallSnapshot,
 } from '@conference-operator/contract'
-import { comment, commentImpression, question, questionVote } from '@conference-operator/db/hub'
+import { comment, commentImpression, commentOnlineView, question, questionVote } from '@conference-operator/db/hub'
 import type { HubDatabase, HubTransaction } from '../db.js'
 
 const CHANNEL = 'wall'
@@ -109,6 +109,8 @@ export interface PostInput {
   authorSubtitle?: string | null
   avatar?: string | null
   image?: string | null
+  /** A short looping video; `image` is its still. Read for the trusted sources only. */
+  video?: string | null
   permalink?: string | null
   network?: string | null
   postedAt?: string | null
@@ -159,7 +161,29 @@ export class WallService {
   ) {
     this.emitter.setMaxListeners(256)
     this.refreshSnapshot()
+    // The posts that came in without their author's picture before the hub knew to lend it.
+    this.inheritAvatars()
     this.screenSnapshot = this.computeScreen()
+  }
+
+  /**
+   * Lends a trusted post with no avatar its author's latest one, on the same
+   * network. walls.io stopped sending LinkedIn pages' pictures (`external_image`
+   * is `null` since October 2026) while the hub still holds the one it had: an
+   * event's own page should not turn into initials halfway through. Returns how
+   * many posts got one.
+   */
+  inheritAvatars(seq?: number): number {
+    const sameAuthor = sql`from ${comment} as donneur
+      where donneur.source = ${comment.source} and donneur.author = ${comment.author}
+        and donneur.network is ${comment.network} and donneur.avatar is not null`
+    const result = this.db.run(sql`update ${comment}
+      set avatar = (select donneur.avatar ${sameAuthor} order by donneur.seq desc limit 1),
+          updated_at = ${new Date().toISOString()}
+      where ${comment.source} in ('wallsio') and ${comment.avatar} is null
+        ${seq == null ? sql`` : sql`and ${comment.seq} = ${seq}`}
+        and exists (select 1 ${sameAuthor})`)
+    return result.changes
   }
 
   /**
@@ -213,6 +237,9 @@ export class WallService {
       .returning()
       .get()
 
+    if (trusted && row.avatar == null && this.inheritAvatars(row.seq) > 0) {
+      return { comment: toComment(this.db.select().from(comment).where(eq(comment.seq, row.seq)).get()!), outcome: 'created' }
+    }
     return { comment: toComment(row), outcome: 'created' }
   }
 
@@ -228,11 +255,15 @@ export class WallService {
     existing: typeof comment.$inferSelect,
     input: PostInput,
   ): { comment: Comment; outcome: PostOutcome } {
-    const next = sourceFields(input)
+    // A picture the source no longer gives is kept: walls.io dropping it must not turn the post into initials.
+    const fields = sourceFields(input)
+    // A video once held is kept: walls.io signs LinkedIn's links again and again, the video stays the same.
+    const next = { ...fields, avatar: fields.avatar ?? existing.avatar, video: existing.video ?? fields.video }
     const text = input.text.trim().slice(0, 1500)
     const unchanged =
       existing.text === text &&
       existing.image === next.image &&
+      existing.video === next.video &&
       existing.avatar === next.avatar &&
       existing.sourceActive === next.sourceActive &&
       existing.sourcePinned === next.sourcePinned
@@ -323,6 +354,22 @@ export class WallService {
     return toComment(row)
   }
 
+  /**
+   * Shows a post its source deactivated, or gives it back to the source's word.
+   * walls.io's later answers leave this alone, like `status`.
+   */
+  setForcedOnScreen(id: string, forced: boolean): Comment | null {
+    const row = this.db
+      .update(comment)
+      .set({ forcedOnScreen: forced, updatedAt: new Date().toISOString() })
+      .where(eq(comment.id, id))
+      .returning()
+      .get()
+    if (row == null) return null
+    this.publishScreen()
+    return toComment(row)
+  }
+
   /** The social wall as the rooms fetch it: from memory. */
   screen(): WallSnapshot {
     return this.screenSnapshot
@@ -360,7 +407,10 @@ export class WallService {
   }
 
   private computeScreen(): WallSnapshot {
-    const onScreen = and(eq(comment.status, 'approved'), eq(comment.sourceActive, true))
+    const onScreen = and(
+      eq(comment.status, 'approved'),
+      or(eq(comment.sourceActive, true), eq(comment.forcedOnScreen, true)),
+    )
     const isFeatured = or(
       eq(comment.featured, true),
       eq(comment.sourcePinned, true),
@@ -431,14 +481,19 @@ export class WallService {
       .all()
 
     const shown = this.impressions(rows.map((row) => row.id))
+    const seen = this.onlineViews(rows.map((row) => row.id))
     const onScreen = new Set(this.screenSnapshot.posts.map((post) => post.id))
     const items = readable(
       rows,
       (row): ModeratedPost => ({
         ...toComment(row),
         onScreen: onScreen.has(row.id),
+        inactiveAtSource: !row.sourceActive,
+        forcedOnScreen: row.forcedOnScreen,
         impressions: shown.get(row.id)?.count ?? 0,
         lastShownAt: shown.get(row.id)?.lastShownAt ?? null,
+        onlineViews: seen.get(row.id)?.count ?? 0,
+        lastSeenOnlineAt: seen.get(row.id)?.lastSeenAt ?? null,
       }),
       'comment',
       this.warned,
@@ -461,6 +516,54 @@ export class WallService {
       .groupBy(commentImpression.commentId)
       .all()
     return new Map(rows.map((row) => [row.id, { count: row.count ?? 0, lastShownAt: row.lastShownAt }]))
+  }
+
+  /** Times each post was seen on the public page, every day together. */
+  onlineViews(ids: readonly string[]): Map<string, { count: number; lastSeenAt: string | null }> {
+    if (ids.length === 0) return new Map()
+    const rows = this.db
+      .select({
+        id: commentOnlineView.commentId,
+        count: sum(commentOnlineView.count).mapWith(Number),
+        lastSeenAt: max(commentOnlineView.lastSeenAt),
+      })
+      .from(commentOnlineView)
+      .where(inArray(commentOnlineView.commentId, [...ids]))
+      .groupBy(commentOnlineView.commentId)
+      .all()
+    return new Map(rows.map((row) => [row.id, { count: row.count ?? 0, lastSeenAt: row.lastSeenAt }]))
+  }
+
+  /**
+   * Adds what the public page's visitors saw. Only the posts the hub holds: the
+   * service checks the ids against the wall it serves, this keeps a stray one
+   * from leaving a counter behind. Returns the views kept.
+   */
+  addOnlineViews(counts: Record<string, number>, at: string): number {
+    const ids = Object.keys(counts)
+    if (ids.length === 0) return 0
+    const known = new Set(
+      this.db.select({ id: comment.id }).from(comment).where(inArray(comment.id, ids)).all().map((row) => row.id),
+    )
+    const day = at.slice(0, 10)
+    let kept = 0
+    this.db.transaction((tx) => {
+      for (const [commentId, n] of Object.entries(counts)) {
+        if (!known.has(commentId)) continue
+        kept += n
+        tx.insert(commentOnlineView)
+          .values({ commentId, day, count: n, lastSeenAt: at })
+          .onConflictDoUpdate({
+            target: [commentOnlineView.commentId, commentOnlineView.day],
+            set: {
+              count: sql`${commentOnlineView.count} + ${n}`,
+              lastSeenAt: sql`max(${commentOnlineView.lastSeenAt}, ${at})`,
+            },
+          })
+          .run()
+      }
+    })
+    return kept
   }
 
   pending(source?: CommentSource): Comment[] {
@@ -718,6 +821,7 @@ function toComment(row: typeof comment.$inferSelect): Comment {
     authorSubtitle: row.authorSubtitle,
     avatar: row.avatar,
     image: row.image,
+    video: row.video,
     permalink: safePermalink(row.permalink) ?? sourcePermalink(row.source, row.externalId, row.authorHandle),
     network: row.network,
     postedAt: row.postedAt,
@@ -779,6 +883,7 @@ function sourceFields(input: PostInput) {
     authorSubtitle: input.authorSubtitle?.slice(0, 120) ?? null,
     avatar: valid(imageRefSchema, input.avatar),
     image: valid(imageRefSchema, input.image),
+    video: valid(imageRefSchema, input.video),
     permalink: safePermalink(input.permalink),
     network: input.network?.slice(0, 30) ?? null,
     postedAt: valid(isoDateTimeSchema, input.postedAt),

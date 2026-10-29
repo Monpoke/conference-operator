@@ -1,0 +1,1 @@
+ALTER TABLE `comment` ADD `video` text;

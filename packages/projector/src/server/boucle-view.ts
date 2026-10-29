@@ -98,6 +98,7 @@ export function buildWallCards(posts: readonly Comment[], localize: (ref: string
     avatarUrl: localize(post.avatar),
     text: post.text,
     imageUrl: localize(post.image),
+    videoUrl: localize(post.video),
     network: post.network ?? NETWORK_BY_SOURCE[post.source] ?? null,
     postedAt: post.postedAt ?? post.createdAt,
     featured: post.featured,

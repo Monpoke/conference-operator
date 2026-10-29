@@ -38,7 +38,20 @@ export function carte(p: WallCard, now: number): HTMLElement {
     texteRiche(texte, p.text)
     article.append(texte)
   }
-  if (p.imageUrl) {
+  if (p.videoUrl) {
+    // A short loop, muted, the still as its poster: the card keeps the photo's place.
+    article.classList.add('avec-image')
+    const video = document.createElement('video')
+    video.className = 'carte-image'
+    video.src = p.videoUrl
+    if (p.imageUrl) video.setAttribute('poster', p.imageUrl)
+    video.muted = true
+    video.loop = true
+    video.autoplay = true
+    video.playsInline = true
+    video.preload = 'auto'
+    article.append(video)
+  } else if (p.imageUrl) {
     article.classList.add('avec-image')
     const img = new Image()
     img.src = p.imageUrl

@@ -1142,6 +1142,17 @@ export class DisplayServer {
       reply.header('content-type', asset.contentType ?? 'application/octet-stream')
       // Content-addressed: never rewritten, so cacheable indefinitely.
       reply.header('cache-control', 'public, max-age=31536000, immutable')
+      reply.header('accept-ranges', 'bytes')
+      // The wall's videos are read by ranges, as a browser reads any video.
+      const range = byteRange(request.headers.range, asset.bytes.byteLength)
+      if (range === 'invalide') {
+        reply.header('content-range', `bytes */${asset.bytes.byteLength}`)
+        return reply.status(416).send()
+      }
+      if (range != null) {
+        reply.header('content-range', `bytes ${range.start}-${range.end}/${asset.bytes.byteLength}`)
+        return reply.status(206).send(asset.bytes.subarray(range.start, range.end + 1))
+      }
       return reply.send(asset.bytes)
     })
   }
@@ -1263,4 +1274,18 @@ export class DisplayServer {
     this.levelSubscribers.clear()
     await this.app.close()
   }
+}
+
+/**
+ * One `Range: bytes=…` over a file of `size` bytes, as `{ start, end }` (inclusive);
+ * `null` without one, or for several (the whole file answers them); `'invalide'`
+ * past the end. The same as mur-public's: the apps share no code by import.
+ */
+export function byteRange(header: string | undefined, size: number): { start: number; end: number } | null | 'invalide' {
+  const match = header == null ? null : /^bytes=(\d*)-(\d*)$/.exec(header.trim())
+  if (match == null || (match[1] === '' && match[2] === '')) return null
+  const [start, end] = match[1] === ''
+    ? [Math.max(0, size - Number(match[2])), size - 1]
+    : [Number(match[1]), match[2] === '' ? size - 1 : Math.min(Number(match[2]), size - 1)]
+  return start > end || start >= size ? 'invalide' : { start, end }
 }

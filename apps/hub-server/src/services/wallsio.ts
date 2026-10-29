@@ -25,11 +25,19 @@ const FIELDS = [
   'external_image_cdn',
   'post_image',
   'post_image_cdn',
+  'post_video',
   'is_pinned',
   'status',
   'permalink',
   'created_timestamp',
 ].join(',')
+
+/**
+ * Moves when `FIELDS` gains a field: the next poll reads the latest posts again
+ * from scratch, so that the posts already held get it too — `/posts/changed`
+ * only names a post walls.io changed. 2: `post_video`.
+ */
+const FIELDS_VERSION = 2
 
 /**
  * The link's own state, apart from the hub settings.
@@ -46,8 +54,28 @@ const storedSchema = z.object({
   cursor: z.number().int().nullable().default(null),
   lastPollAt: z.string().nullable().default(null),
   lastError: z.string().nullable().default(null),
+  /** The `FIELDS_VERSION` the cursor was read with: older, the cursor is set aside once. */
+  fieldsVersion: z.number().int().default(1),
+  /** Stopped from the console: no call to walls.io until it is resumed. */
+  paused: z.boolean().default(false),
+  /** Failed reads in a row, and when the next one may be tried: the backoff. */
+  failures: z.number().int().nonnegative().default(0),
+  retryAt: z.string().nullable().default(null),
 })
 type Stored = z.infer<typeof storedSchema>
+
+/**
+ * After a failed read, the wait before the next one: 1 min, then twice as long
+ * each time, 15 min at most. walls.io's own `Retry-After` wins when longer. A
+ * refused token or a rate limit gains nothing from a call every 30 seconds.
+ */
+const BACKOFF_BASE_MS = 60_000
+const BACKOFF_MAX_MS = 15 * 60_000
+
+export function backoffDelay(failures: number, retryAfterMs: number | null = null): number {
+  const exponential = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** Math.max(0, failures - 1))
+  return Math.max(exponential, Math.min(retryAfterMs ?? 0, BACKOFF_MAX_MS * 4))
+}
 
 export class WallsIoConfig {
   constructor(
@@ -73,19 +101,45 @@ export class WallsIoConfig {
       tokenHint: token == null ? null : token.slice(-4),
       cursor: null,
       lastError: null,
+      failures: 0,
+      retryAt: null,
     })
   }
 
-  cursor(): number | null {
-    return this.read().cursor
+  paused(): boolean {
+    return this.read().paused
   }
 
-  /** What a poll ended on: where to resume, and how it went. */
-  record(outcome: { cursor?: number; error: string | null; at: string }): void {
+  /** Stops or resumes the reads. Resuming tries at once, whatever the backoff said. */
+  setPaused(paused: boolean): void {
+    this.write(paused ? { paused } : { paused, failures: 0, retryAt: null })
+  }
+
+  /** When the next read may be tried after failures; `null` = now. */
+  retryAt(): string | null {
+    return this.read().retryAt
+  }
+
+  /** Where to resume; `null` = read the latest posts afresh — a new token, or fields the posts held lack. */
+  cursor(): number | null {
+    const stored = this.read()
+    return stored.fieldsVersion < FIELDS_VERSION ? null : stored.cursor
+  }
+
+  /**
+   * What a poll ended on: where to resume, and how it went. A failure pushes the
+   * next attempt back (`backoffDelay`); a success clears the count.
+   */
+  record(outcome: { cursor?: number; error: string | null; at: string; retryAfterMs?: number | null }): void {
+    const failures = outcome.error == null ? 0 : this.read().failures + 1
     this.write({
-      ...(outcome.cursor != null ? { cursor: outcome.cursor } : {}),
+      ...(outcome.cursor != null ? { cursor: outcome.cursor, fieldsVersion: FIELDS_VERSION } : {}),
       lastPollAt: outcome.at,
       lastError: outcome.error,
+      failures,
+      retryAt: outcome.error == null
+        ? null
+        : new Date(Date.parse(outcome.at) + backoffDelay(failures, outcome.retryAfterMs ?? null)).toISOString(),
     })
   }
 
@@ -98,6 +152,9 @@ export class WallsIoConfig {
       lastPollAt: stored.lastPollAt,
       lastError: stored.lastError,
       imported,
+      paused: stored.paused,
+      failures: stored.failures,
+      retryAt: stored.retryAt,
     }
   }
 
@@ -129,6 +186,7 @@ const postSchema = z.looseObject({
   external_image_cdn: z.string().nullish(),
   post_image: z.string().nullish(),
   post_image_cdn: z.string().nullish(),
+  post_video: z.string().nullish(),
   is_pinned: z.boolean().nullish(),
   status: z.boolean().nullish(),
   permalink: z.string().nullish(),
@@ -175,6 +233,9 @@ export function wallsioSource(options: {
     if (response.status === 401 || response.status === 403) {
       throw new Error('jeton walls.io refusé : vérifiez-le dans les réglages')
     }
+    if (response.status === 429) {
+      throw new ApiRefusal('walls.io limite les lectures : nouvel essai plus tard', retryAfterMs(response.headers.get('retry-after'), now()))
+    }
     if (!response.ok) throw new Error(`walls.io a répondu ${response.status}`)
     return responseSchema.parse(await response.json())
   }
@@ -183,7 +244,10 @@ export function wallsioSource(options: {
     id: 'wallsio',
     async poll() {
       const token = options.config.token()
-      if (token == null) return []
+      if (token == null || options.config.paused()) return []
+      // Backing off: no call before the time the last failure set.
+      const retryAt = options.config.retryAt()
+      if (retryAt != null && Date.parse(retryAt) > now()) return []
       const at = new Date(now()).toISOString()
       try {
         const cursor = options.config.cursor()
@@ -216,18 +280,39 @@ export function wallsioSource(options: {
         options.config.record({ cursor: next, error: null, at })
         return posts.map(toPostInput).filter((post): post is PostInput => post != null)
       } catch (cause) {
-        options.config.record({ error: (cause as Error).message, at })
+        options.config.record({
+          error: (cause as Error).message,
+          at,
+          retryAfterMs: cause instanceof ApiRefusal ? cause.retryAfterMs : null,
+        })
         throw cause
       }
     },
   }
 }
 
+/** walls.io asked us to slow down (429), and maybe said for how long. */
+class ApiRefusal extends Error {
+  constructor(message: string, readonly retryAfterMs: number | null) {
+    super(message)
+  }
+}
+
+/** `Retry-After`, in seconds or as a date. */
+function retryAfterMs(header: string | null, nowMs: number): number | null {
+  if (header == null) return null
+  const seconds = Number(header)
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000)
+  const at = Date.parse(header)
+  return Number.isFinite(at) ? Math.max(0, at - nowMs) : null
+}
+
 function toPostInput(post: z.infer<typeof postSchema>): PostInput | null {
   const text = htmlToText(post.comment ?? '')
   const image = post.post_image_cdn || post.post_image || null
+  const video = post.post_video || null
   // Nothing to draw: a card with neither words nor picture.
-  if (text.length === 0 && image == null) return null
+  if (text.length === 0 && image == null && video == null) return null
   const handle = post.external_name?.trim() || null
   return {
     source: 'wallsio',
@@ -237,6 +322,7 @@ function toPostInput(post: z.infer<typeof postSchema>): PostInput | null {
     text,
     avatar: post.external_image_cdn || post.external_image || null,
     image,
+    video,
     permalink: post.permalink ?? null,
     network: networkName(post.type),
     postedAt: post.created_timestamp != null ? new Date(post.created_timestamp * 1000).toISOString() : null,

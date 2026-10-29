@@ -137,6 +137,20 @@ export type Planning = z.infer<typeof planningSchema>
 export const lienPublicSchema = z.string().regex(/^[A-Za-z0-9_-]{24,64}$/)
 export const dureeSceneSchema = z.enum(Object.keys(DUREES_PAR_DEFAUT) as [DureeScene, ...DureeScene[]])
 
+/**
+ * A link of the public page's menu. `http(s)` only: it becomes an `<a href>` on a
+ * public page, where a `javascript:` would run in every visitor's browser.
+ */
+/** The networks the public page can offer to post on. */
+export const reseauPartageSchema = z.enum(['bluesky', 'mastodon', 'x', 'linkedin'])
+export type ReseauPartage = z.infer<typeof reseauPartageSchema>
+
+export const menuLinkSchema = z.object({
+  libelle: z.string().trim().min(1).max(40),
+  url: z.string().trim().max(300).regex(/^https?:\/\/[^\s]+$/, 'adresse http(s) attendue'),
+})
+export type MenuLink = z.infer<typeof menuLinkSchema>
+
 export const boucleSchema = z.object({
   /** Logo top left of every scene and large on the welcome. `null` = the program's. */
   logo: imageRefSchema.nullable().default(null),
@@ -245,6 +259,12 @@ export const boucleSchema = z.object({
     .object({
       titre: z.string().max(60).default('Le mur Cloud Nord'),
       hashtag: z.string().max(40).default('#CloudNord2026'),
+      /**
+       * The public page's line under the hashtag (`apps/mur-public`). `{hashtag}`
+       * stands for the hashtag; empty, the page's own sentence. Not drawn in the
+       * rooms.
+       */
+      accroche: z.string().max(240).default(''),
       /** Cards on a page, the featured one included. */
       parPage: z.number().int().min(3).max(6).default(5),
       /**
@@ -267,15 +287,30 @@ export const boucleSchema = z.object({
        * page then turns with the wall's duration).
        */
       dureePage: z.number().int().min(0).max(120).default(0),
+      /**
+       * The public page's menu (`apps/mur-public`): the event site's links, in a
+       * row on a wide screen, behind a burger on a phone. Empty: no menu. Not
+       * drawn in the rooms.
+       */
+      menu: z.array(menuLinkSchema).max(12).default([]),
+      /**
+       * The public page's « Publier sur … » buttons, in this order. The service's
+       * own list (`RESEAUX`) still caps them: a network the hub does not follow
+       * gets no button whatever is ticked here.
+       */
+      reseaux: z.array(reseauPartageSchema).max(4).default(['bluesky', 'mastodon', 'x', 'linkedin']),
     })
     .default({
       titre: 'Le mur Cloud Nord',
       hashtag: '#CloudNord2026',
+      accroche: '',
       parPage: 5,
       sponsoriseTous: 0,
       bandeau: true,
       remplir: true,
       dureePage: 0,
+      menu: [],
+      reseaux: ['bluesky', 'mastodon', 'x', 'linkedin'],
     }),
   conduite: z
     .object({
@@ -317,9 +352,12 @@ export const DEFAULT_BOUCLE: Boucle = boucleSchema.parse({})
  * Every image the social wall's posts name — the hub downloads them, the rooms
  * cache them, like the loop's logos.
  */
-export function wallImageRefs(posts: readonly { avatar: string | null; image: string | null; sponsor: { logo: string | null } | null }[]): string[] {
+export function wallImageRefs(
+  posts: readonly { avatar: string | null; image: string | null; video?: string | null; sponsor: { logo: string | null } | null }[],
+): string[] {
   const refs: (string | null)[] = []
-  for (const post of posts) refs.push(post.avatar, post.image, post.sponsor?.logo ?? null)
+  // The videos too: what the screens play must be held like what they show.
+  for (const post of posts) refs.push(post.avatar, post.image, post.video ?? null, post.sponsor?.logo ?? null)
   return [...new Set(refs.filter((ref): ref is string => ref != null))]
 }
 

@@ -237,6 +237,19 @@ describe('local display server', () => {
     expect(response.headers.get('cache-control')).toContain('immutable')
   })
 
+  it('serves a wall video by ranges, as the projector reads it', async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response('0123456789', { status: 200, headers: { 'content-type': 'video/mp4' } }),
+    ) as unknown as typeof fetch
+    const ref = await assets.fetchOne('https://dms.licdn.com/playlist/vid/v2/abc/0/1?e=1', fetchImpl)
+
+    const part = await fetch(`${origin}${ref.localUrl}`, { headers: { range: 'bytes=4-' } })
+    expect(part.status).toBe(206)
+    expect(part.headers.get('content-range')).toBe('bytes 4-9/10')
+    expect(part.headers.get('content-type')).toBe('video/mp4')
+    expect(await part.text()).toBe('456789')
+  })
+
   it('answers 404 on a missing asset rather than blocking the render', async () => {
     expect((await fetch(`${origin}/assets/${'0'.repeat(64)}`)).status).toBe(404)
   })

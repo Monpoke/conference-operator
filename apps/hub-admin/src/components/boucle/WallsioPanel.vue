@@ -1,16 +1,24 @@
 <script setup lang="ts">
 import { viewPath } from '@conference-operator/contract'
-import { Panel, useToast } from '@conference-operator/components'
+import { Button, Panel, useToast } from '@conference-operator/components'
 import { useDraft } from '../../composables/draft.js'
 import { useBoucleStore } from '../../stores/boucle.js'
 import SaveBar from './SaveBar.vue'
-import { FIELD, LABEL } from './ui.js'
+import { FIELD, LABEL, SMALL } from './ui.js'
 
 /**
  * How the social wall's page is laid out. Its posts are not set here: they
  * come from walls.io, from the audience, and from the partner posts written in
  * Modération.
  */
+/** In the page's order: what is ticked keeps it, whatever the order of the clicks. */
+const RESEAUX = [
+  { id: 'bluesky', nom: 'Bluesky' },
+  { id: 'mastodon', nom: 'Mastodon' },
+  { id: 'x', nom: 'X' },
+  { id: 'linkedin', nom: 'LinkedIn' },
+] as const
+
 const store = useBoucleStore()
 const toast = useToast()
 const moderationPath = viewPath('moderation')
@@ -23,6 +31,11 @@ async function save(): Promise<void> {
   try {
     await store.save('wallsio', {
       ...draft.value,
+      reseaux: RESEAUX.map((reseau) => reseau.id).filter((id) => (draft.value!.reseaux ?? []).includes(id)),
+      // A row left half-filled is dropped rather than refused: the panel saves what is complete.
+      menu: (draft.value.menu ?? [])
+        .map((lien) => ({ libelle: lien.libelle.trim(), url: lien.url.trim() }))
+        .filter((lien) => lien.libelle !== '' && lien.url !== ''),
       parPage: Math.min(6, Math.max(3, Math.round(Number(draft.value.parPage) || 5))),
       sponsoriseTous: Math.min(30, Math.max(0, Math.round(Number(draft.value.sponsoriseTous) || 0))),
       dureePage: Math.min(120, Math.max(0, Math.round(Number(draft.value.dureePage) || 0))),
@@ -53,6 +66,17 @@ async function save(): Promise<void> {
         <label :class="LABEL" for="boucle-wallsio-hashtag">Hashtag</label>
         <input id="boucle-wallsio-hashtag" v-model="draft.hashtag" maxlength="40" :class="FIELD" />
       </template>
+      <label :class="LABEL" for="boucle-wallsio-accroche">
+        Phrase d'accroche de la page publique — <code>{hashtag}</code> y met le hashtag ; vide, la phrase
+        par défaut
+      </label>
+      <input
+        id="boucle-wallsio-accroche"
+        v-model="draft.accroche"
+        maxlength="240"
+        placeholder="Publiez avec {hashtag} : votre post apparaît ici, et sur les écrans des salles une fois relu."
+        :class="FIELD"
+      />
       <label class="mb-2 flex items-center gap-2 text-sm">
         <input id="boucle-wallsio-remplir" v-model="draft.remplir" type="checkbox" class="w-auto" />
         Remplir la page — des posts courts laissent la place à d'autres posts
@@ -92,7 +116,43 @@ async function save(): Promise<void> {
         max="30"
         :class="FIELD"
       />
-            <SaveBar id="btn-boucle-wallsio" :dirty="dirty" @save="save" />
+      <p :class="LABEL">Boutons « Publier sur … » de la page publique</p>
+      <div id="boucle-wallsio-reseaux" class="mb-[11px] flex flex-wrap gap-x-4 gap-y-1">
+        <label v-for="reseau in RESEAUX" :key="reseau.id" class="flex items-center gap-1.5 text-sm" :data-reseau="reseau.id">
+          <input v-model="draft.reseaux" type="checkbox" :value="reseau.id" class="w-auto" />
+          {{ reseau.nom }}
+        </label>
+      </div>
+      <p :class="LABEL">
+        Menu de la page publique — les liens du site de l'événement, en ligne sur grand écran et
+        derrière un menu burger sur téléphone (12 au plus, adresses en http(s)) ; vide, pas de menu
+      </p>
+      <div id="boucle-wallsio-menu" class="mb-2 flex flex-col gap-1.5">
+        <!-- Two rows per link, the address across the panel: it holds in a narrow column as on a phone. -->
+        <div
+          v-for="(lien, index) in draft.menu"
+          :key="index"
+          class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 border-b border-edge pb-1.5"
+          :data-menu-link="index"
+        >
+          <input v-model="lien.libelle" maxlength="40" placeholder="Programme" aria-label="Libellé du lien" :class="SMALL" class="w-full" />
+          <Button variant="danger" size="small" title="Retirer ce lien" @click="draft.menu.splice(index, 1)">×</Button>
+          <input
+            v-model="lien.url"
+            maxlength="300"
+            placeholder="https://…"
+            aria-label="Adresse du lien"
+            :class="SMALL"
+            class="col-span-2 w-full"
+          />
+        </div>
+        <div>
+          <Button id="btn-boucle-wallsio-menu-add" size="small" :disabled="draft.menu.length >= 12" @click="draft.menu.push({ libelle: '', url: '' })">
+            Ajouter un lien
+          </Button>
+        </div>
+      </div>
+      <SaveBar id="btn-boucle-wallsio" :dirty="dirty" @save="save" />
     </div>
   </Panel>
 </template>

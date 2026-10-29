@@ -321,7 +321,7 @@ describe('applying the commands', () => {
           {
             id: 'c-1', source: 'wallsio', author: 'Anne', authorHandle: null, text: 'Bonjour',
             status: 'approved', roomId: null, sessionId: null, createdAt: '2026-10-30T10:00:00.000Z',
-            authorSubtitle: null, avatar: null, image: null, permalink: null, network: 'Instagram',
+            authorSubtitle: null, avatar: null, image: null, video: null, permalink: null, network: 'Instagram',
             postedAt: null, featured: true, pinned: false, sponsor: null,
           },
         ],

@@ -21,6 +21,8 @@ import {
   type StorageCheck,
 } from '../stores/settings.js'
 import { useWallsIoStore } from '../stores/wallsio.js'
+import { useMurPublicStore } from '../stores/murPublic.js'
+import { useSauvegardeStore, type RestaurationReport } from '../stores/sauvegarde.js'
 
 /**
  * What is set once, and holds for the day.
@@ -266,6 +268,83 @@ async function saveWallsIoToken(token: string | null): Promise<void> {
     /* already reported */
   } finally {
     wallsIoBusy.value = false
+  }
+}
+
+async function toggleWallsIoPause(): Promise<void> {
+  const paused = !(wallsIoStatus.value?.paused ?? false)
+  wallsIoBusy.value = true
+  try {
+    const status = await wallsIo.setPaused(paused)
+    if (paused) toast.say('Lecture de walls.io en pause : le mur garde ses posts')
+    else if (status.lastError != null) toast.fail(status.lastError)
+    else toast.say('Lecture de walls.io reprise')
+  } catch {
+    /* already reported */
+  } finally {
+    wallsIoBusy.value = false
+  }
+}
+
+function clockTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+}
+
+// — Public page's token —
+/** Shown once, right after it is created, then gone with the page. */
+const murPublic = useMurPublicStore()
+const { status: murPublicStatus } = storeToRefs(murPublic)
+const murPublicToken = ref<string | null>(null)
+const murPublicBusy = ref(false)
+onMounted(() => {
+  void murPublic.load().catch(() => {})
+})
+
+async function createMurPublicToken(): Promise<void> {
+  if (murPublicStatus.value?.hasToken && !confirm('Remplacer le jeton ? L’ancien cesse aussitôt de fonctionner : il faudra mettre le nouveau dans le secret du service mur-public.')) return
+  murPublicBusy.value = true
+  try {
+    murPublicToken.value = await murPublic.createToken()
+  } catch {
+    /* already reported */
+  } finally {
+    murPublicBusy.value = false
+  }
+}
+
+async function removeMurPublicToken(): Promise<void> {
+  murPublicBusy.value = true
+  try {
+    await murPublic.removeToken()
+    murPublicToken.value = null
+    toast.say('Jeton du mur public retiré : les vues en ligne ne sont plus comptées')
+  } catch {
+    /* already reported */
+  } finally {
+    murPublicBusy.value = false
+  }
+}
+
+// — Backup —
+const sauvegarde = useSauvegardeStore()
+const restoring = ref(false)
+const restored = ref<RestaurationReport | null>(null)
+
+async function restoreBackup(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (file == null) return
+  if (!confirm(`Restaurer « ${file.name} » sur ce hub ? Les réglages, salles, programme, posts de la console et comptes de la sauvegarde remplacent ceux qui portent le même nom ici.`)) return
+  restoring.value = true
+  try {
+    restored.value = await sauvegarde.restore(file)
+    toast.say('Sauvegarde restaurée')
+    await store.load()
+  } catch (cause) {
+    toast.fail((cause as Error).message)
+  } finally {
+    restoring.value = false
   }
 }
 
@@ -840,7 +919,11 @@ async function confirmRemoveIntegration(): Promise<void> {
         <template v-if="wallsIoStatus?.hasToken">
           {{ wallsIoStatus.imported }} post(s) walls.io sur le mur<template v-if="wallsIoStatus.lastPollAt">
             — dernière lecture {{ timeAgo(wallsIoStatus.lastPollAt) }}</template>.
+          <strong v-if="wallsIoStatus.paused" data-role="walls-io-paused">Lecture en pause.</strong>
           <span v-if="wallsIoStatus.lastError" class="text-alert">{{ wallsIoStatus.lastError }}</span>
+          <span v-if="!wallsIoStatus.paused && wallsIoStatus.retryAt" data-role="walls-io-retry">
+            — {{ wallsIoStatus.failures }} échec(s) de suite, prochain essai à {{ clockTime(wallsIoStatus.retryAt) }}.
+          </span>
         </template>
         <template v-else>Sans jeton, le mur social montre les messages du public et les posts partenaires.</template>
       </p>
@@ -863,6 +946,96 @@ async function confirmRemoveIntegration(): Promise<void> {
         >
           Retirer le jeton
         </Button>
+        <Button
+          v-if="wallsIoStatus?.hasToken"
+          id="btn-walls-io-pause"
+          size="small"
+          :disabled="wallsIoBusy"
+          @click="toggleWallsIoPause"
+        >
+          {{ wallsIoStatus.paused ? 'Reprendre la lecture' : 'Mettre en pause la lecture' }}
+        </Button>
+      </div>
+    </Panel>
+
+    <Panel title="Mur social — page publique">
+      <p class="mb-2 text-[13px] text-dim">
+        La page publique du mur compte les posts que ses visiteurs ont vus (une carte visible
+        au moins une seconde, une fois par visite) et les envoie au hub, à côté des affichages
+        en salle. Le service s'identifie avec ce jeton, à mettre dans son secret
+        (<code>HUB_TOKEN</code>). Le hub n'en garde qu'une empreinte : il n'est montré qu'une fois.
+      </p>
+      <p id="mur-public-status" class="mb-3 text-[13px] text-dim">
+        <template v-if="murPublicStatus?.hasToken">
+          Jeton enregistré (…{{ murPublicStatus.tokenHint }})<template v-if="murPublicStatus.lastReportAt">
+            — dernier envoi de vues {{ timeAgo(murPublicStatus.lastReportAt) }}</template
+          ><template v-else> — aucun envoi de vues pour l'instant</template>.
+        </template>
+        <template v-else>Sans jeton, la page fonctionne mais ses vues ne sont pas comptées.</template>
+      </p>
+      <div v-if="murPublicToken" class="mb-3">
+        <label class="mb-[5px] block text-xs text-dim" for="mur-public-token">
+          Nouveau jeton — copiez-le maintenant, il ne sera plus affiché
+        </label>
+        <input
+          id="mur-public-token"
+          :value="murPublicToken"
+          readonly
+          class="w-full rounded-lg border border-edge bg-canvas px-3 py-2 font-mono text-sm text-text"
+          @focus="($event.target as HTMLInputElement).select()"
+        />
+      </div>
+      <div class="flex gap-2">
+        <Button id="btn-mur-public-token" variant="primary" size="small" :disabled="murPublicBusy" @click="createMurPublicToken">
+          {{ murPublicStatus?.hasToken ? 'Remplacer le jeton' : 'Créer un jeton' }}
+        </Button>
+        <Button
+          v-if="murPublicStatus?.hasToken"
+          id="btn-mur-public-clear"
+          size="small"
+          :disabled="murPublicBusy"
+          @click="removeMurPublicToken"
+        >
+          Retirer le jeton
+        </Button>
+      </div>
+    </Panel>
+
+    <Panel title="Sauvegarde de la configuration">
+      <p class="mb-2 text-[13px] text-dim">
+        Tout ce qu'il faut pour repartir sur un hub neuf : réglages et boucle, salles, programme et ses
+        corrections, posts écrits ou mis en avant dans la console, comptes opérateurs, images et thèmes.
+        Pas les données du jour (statistiques, journaux, messages du public) ni les appairages des machines.
+        Le fichier contient les empreintes des mots de passe : gardez-le comme un secret.
+      </p>
+      <div class="flex flex-wrap items-center gap-2">
+        <a
+          id="btn-sauvegarde-export"
+          href="/sauvegarde/export.json"
+          download
+          class="inline-flex items-center rounded-md border border-edge px-2.5 py-1 text-xs text-text no-underline hover:border-brand"
+        >Télécharger la sauvegarde</a>
+        <label
+          for="sauvegarde-fichier"
+          class="inline-flex cursor-pointer items-center rounded-md border border-edge px-2.5 py-1 text-xs text-text hover:border-brand"
+          :class="restoring ? 'pointer-events-none opacity-50' : ''"
+        >{{ restoring ? 'Restauration…' : 'Restaurer une sauvegarde…' }}</label>
+        <input id="sauvegarde-fichier" type="file" accept="application/json,.json" class="hidden" @change="restoreBackup" />
+      </div>
+      <div v-if="restored" id="sauvegarde-rapport" class="mt-3 text-[13px] text-dim">
+        <p>
+          Restauré : {{ Object.values(restored.lignes).reduce((a, b) => a + b, 0) }} éléments,
+          {{ restored.fichiers.images }} image(s), {{ restored.fichiers.themes }} fichier(s) de thème.
+        </p>
+        <p v-if="restored.comptesIgnores.length">
+          Comptes déjà présents, gardés tels quels : {{ restored.comptesIgnores.join(', ') }}.
+        </p>
+        <div v-if="restored.aRessaisir.length" class="text-alert">
+          À ressaisir (chiffrés avec la clé de l'ancien hub) :
+          <ul class="ml-4 list-disc">
+            <li v-for="item in restored.aRessaisir" :key="item">{{ item }}</li>
+          </ul>
+        </div>
       </div>
     </Panel>
 

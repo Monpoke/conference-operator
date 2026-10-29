@@ -11,6 +11,7 @@ import type { DeviceService, RoomService } from './services/rooms.js'
 import type { QuestionService, WallService } from './services/wall.js'
 import type { WallsIoConfig } from './services/wallsio.js'
 import type { RateLimiter } from './services/rate-limit.js'
+import type { MurPublicAccessService, MurPublicService } from './services/mur-public.js'
 import type { PushService } from './services/push.js'
 import type { IntegrationService } from './services/integrations.js'
 import type { VodService } from './services/vod.js'
@@ -58,6 +59,10 @@ export interface Services {
   log: HubLog
   questions: QuestionService
   limiter: RateLimiter
+  /** The public social page's feed, read by the `mur-public` service. */
+  murPublic: MurPublicService
+  /** The `mur-public` service's token, for the views of the public page it reports. */
+  murPublicAccess: MurPublicAccessService
   sessions: SessionStateService
   /**
    * The mobile control lock: who is driving which room from a phone.
@@ -197,7 +202,7 @@ export interface ActorContext extends HubContext {
 }
 
 /** Bearer token presented by the caller, whoever it is. */
-function bearer(context: HubContext): string | null {
+export function bearer(context: HubContext): string | null {
   const header = context.headers.get('authorization')
   if (header == null) return null
   const [scheme, value] = header.split(' ')

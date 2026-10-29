@@ -1,0 +1,1 @@
+ALTER TABLE `comment` ADD `forced_on_screen` integer DEFAULT false NOT NULL;

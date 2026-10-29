@@ -14,6 +14,10 @@ export interface WallsIoStatus {
   lastPollAt: string | null
   lastError: string | null
   imported: number
+  paused: boolean
+  /** Failed reads in a row; the next one is tried at `retryAt`. */
+  failures: number
+  retryAt: string | null
 }
 
 export const useWallsIoStore = defineStore('wallsio', () => {
@@ -30,5 +34,10 @@ export const useWallsIoStore = defineStore('wallsio', () => {
     return status.value
   }
 
-  return { status, load, setToken }
+  async function setPaused(paused: boolean): Promise<WallsIoStatus> {
+    status.value = (await session.client.rpc.wallsio.setPaused({ paused })) as WallsIoStatus
+    return status.value
+  }
+
+  return { status, load, setToken, setPaused }
 })

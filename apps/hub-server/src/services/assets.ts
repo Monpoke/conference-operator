@@ -188,8 +188,16 @@ export class AssetStore {
   private async fetchOne(url: string, fetchImpl: typeof fetch): Promise<void> {
     const response = await fetchImpl(url, { signal: AbortSignal.timeout(this.timeoutMs) })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    const announced = Number(response.headers.get('content-length'))
+    if (Number.isFinite(announced) && announced > MAX_ASSET_BYTES) {
+      await response.body?.cancel()
+      throw new Error(`fichier trop lourd (${Math.round(announced / 1048576)} Mo, ${MAX_ASSET_BYTES / 1048576} Mo au plus)`)
+    }
 
     const bytes = Buffer.from(await response.arrayBuffer())
+    if (bytes.byteLength > MAX_ASSET_BYTES) {
+      throw new Error(`fichier trop lourd (${Math.round(bytes.byteLength / 1048576)} Mo, ${MAX_ASSET_BYTES / 1048576} Mo au plus)`)
+    }
     const sha256 = this.keyOf(url)
     const target = this.fileFor(sha256, url)
 
@@ -227,6 +235,18 @@ export class AssetStore {
       .values({ sha256, sourceUrl, ...values })
       .onConflictDoUpdate({ target: asset.sha256, set: values })
       .run()
+    if (outcome.failureReason == null) this.#held += 1
+  }
+
+  #held = 0
+
+  /**
+   * Moves each time an image comes in. What is built from "which images the hub
+   * holds" and kept (the public wall's feed) keys on it: an image arriving after
+   * its post must not leave the post drawn without it.
+   */
+  get generation(): number {
+    return this.#held
   }
 }
 
@@ -243,6 +263,13 @@ export class AssetStore {
  * the type the server announced. Unknown extensions get no type rather than a
  * guessed one: a browser sniffs better than this list would.
  */
+/**
+ * The heaviest file the hub keeps: a poster, a logo, a wall video run to a few
+ * megabytes. Past this, a download is refused and named as a failure rather than
+ * left to fill the volume.
+ */
+const MAX_ASSET_BYTES = 30 * 1024 * 1024
+
 function contentTypeFor(path: string): string | null {
   const types: Record<string, string> = {
     '.png': 'image/png',

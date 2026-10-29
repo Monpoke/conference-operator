@@ -43,6 +43,7 @@ import {
   wallSnapshotSchema,
   wallsIoStatusSchema,
 } from './wall.js'
+import { murPublicAccessSchema, murPublicSchema, onlineViewsInputSchema } from './mur-public.js'
 import { imageRefSchema, sponsorPageSchema } from './boucle.js'
 import { gitImportSchema, gitSourceSchema, gitSourceStatusSchema, themeInfoSchema } from './theme.js'
 import {
@@ -855,6 +856,17 @@ export const contract = {
     recent: oc
       .input(z.object({ limit: z.number().int().min(1).max(30).default(12) }))
       .output(z.array(commentSchema)),
+    /**
+     * The social wall as the public page (`apps/mur-public`) shows it. **Public**
+     * and rate-limited: the same posts the rooms project, the theme's colours and
+     * the hashtag to post with. Only that service asks, every few seconds.
+     */
+    public: oc.output(murPublicSchema),
+    /**
+     * What the public page's visitors saw, from the `mur-public` service: its
+     * token (`mp_…`, created in the console) as a bearer, nothing else opens it.
+     */
+    onlineViews: oc.input(onlineViewsInputSchema).output(z.object({ ok: z.boolean() })),
     /** Moderation queue, all sources together. Admin. */
     pending: oc
       .input(z.object({ source: commentSourceSchema.optional() }))
@@ -883,6 +895,13 @@ export const contract = {
     feature: oc
       .input(z.object({ id: z.string(), featured: z.boolean() }))
       .output(z.object({ ok: z.boolean() })),
+    /**
+     * Shows a post its source deactivated (walls.io), or gives it back to the
+     * source's word. Admin.
+     */
+    forceOnScreen: oc
+      .input(z.object({ id: z.string(), forced: z.boolean() }))
+      .output(z.object({ ok: z.boolean() })),
     /** Writes a post from the console — a partner's, or one of the event. Admin. */
     save: oc.input(hubPostInputSchema).output(commentSchema),
   },
@@ -893,12 +912,26 @@ export const contract = {
    * Apart from `settings` because of the token: the settings travel whole to
    * every console that reads them, and this one must never come back.
    */
+  /**
+   * The `mur-public` service's token, for the views it reports. Admin.
+   *
+   * `createToken` is the only answer that ever carries the token: the hub keeps
+   * its hash, and a new one replaces the old.
+   */
+  murPublic: {
+    status: oc.output(murPublicAccessSchema),
+    createToken: oc.output(z.object({ token: z.string(), status: murPublicAccessSchema })),
+    removeToken: oc.output(murPublicAccessSchema),
+  },
+
   wallsio: {
     status: oc.output(wallsIoStatusSchema),
     /** `null` removes the token: the wall stops fetching, what it holds stays. */
     setToken: oc
       .input(z.object({ token: z.string().trim().min(8).max(200).nullable() }))
       .output(wallsIoStatusSchema),
+    /** Stops the reads, or resumes them at once. What the wall holds stays. */
+    setPaused: oc.input(z.object({ paused: z.boolean() })).output(wallsIoStatusSchema),
   },
 
   /**

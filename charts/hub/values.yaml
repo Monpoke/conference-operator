@@ -248,6 +248,71 @@ montage:
   affinity: {}
   podAnnotations: {}
 
+# La page publique du mur social (`apps/mur-public`), sur son propre domaine.
+#
+# Ce que les salles projettent, lisible sans compte : les publications, en direct,
+# aux couleurs du thème actif, et des boutons pour publier avec le hashtag du mur
+# social (console → Boucle → Mur social, `boucle.wallsio.hashtag`). Le public ne parle qu'à elle ; elle lit le hub par son
+# service, toutes les cinq secondes, quel que soit le nombre de visiteurs.
+murPublic:
+  enabled: false
+
+  image:
+    repository: ghcr.io/monpoke/conference-operator/mur-public
+    # Vide = l'`appVersion` du chart, comme le hub : elle parle son contrat.
+    tag: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+
+  ingress:
+    # Requis : le domaine, ex. social.cloudnord.fr. Son DNS pointe sur l'ingress.
+    host: ""
+    # Vides = ceux de l'ingress du hub.
+    className: ""
+    annotations: {}
+    tls:
+      enabled: true
+      # Vide = `mur-public-tls`.
+      secretName: ""
+
+  # Les réseaux proposés pour publier : ceux que le hub suit vraiment (Bluesky et
+  # Mastodon avec le hashtag, X avec son jeton, LinkedIn par walls.io).
+  reseaux: [bluesky, mastodon, x, linkedin]
+
+  # Par adresse de visiteur, « capacité/par seconde ». Généreux : toute une salle
+  # derrière le même WiFi partage une adresse, et tout est servi de la mémoire.
+  # Taillé pour 300 personnes sur une adresse qui ouvrent la page ensemble :
+  # 2 pages et ~36 photos chacune, puis un rafraîchissement toutes les 15 s.
+  limitePages: "1000/50"
+  limiteImages: "12000/300"
+  # Proxys devant qui ajoutent à `X-Forwarded-For` : l'ingress, 1.
+  proxyHops: 1
+
+  # Les vues en ligne : le jeton créé dans la console (Réglages → Mur social —
+  # page publique), lu dans un secret existant. Vide = la page marche, ses vues ne
+  # sont pas comptées.
+  #   kubectl create secret generic mur-public-jeton --from-literal=token=mp_…
+  jeton:
+    secretName: ""
+    key: token
+
+  # Toute autre variable (voir apps/mur-public/src/config.ts).
+  #   extra:
+  #     POLL_SECONDS: "10"
+  extra: {}
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      memory: 256Mi
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+
 # Ce qui n'est pas un réglage, et pourquoi
 #
 # `replicas` n'existe pas dans ces values, et ce n'est pas un oubli. Le hub garde

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WallCard } from '@conference-operator/contract'
 import type { Data } from '../src/browser/scene.js'
 import { wallsio } from '../src/browser/scenes/wallsio.js'
+import { carte } from '../src/browser/scenes/carte.js'
 
 /**
  * The social wall's pages: which posts each one holds, and what it reports as
@@ -17,6 +18,7 @@ const post = (id: string, extra: Partial<WallCard> = {}): WallCard => ({
   avatarUrl: null,
   text: `texte ${id}`,
   imageUrl: null,
+  videoUrl: null,
   network: null,
   postedAt: '2026-10-30T09:00:00Z',
   featured: false,
@@ -202,5 +204,23 @@ describe('the social wall', () => {
     vi.setSystemTime(new Date('2026-10-30T09:00:24Z'))
     scene.tick!(wall, 0)
     expect(shown(el)).toEqual(['a', 'b', 'c'])
+  })
+})
+
+describe('a wall card with a video', () => {
+  it('plays it muted, on a loop, over its still — and keeps the photo’s place', () => {
+    const article = carte(post('v', { videoUrl: '/assets/video', imageUrl: '/assets/still' }), Date.parse('2026-10-30T10:00:00Z'))
+    const video = article.querySelector('video')!
+    expect(video.getAttribute('src')).toBe('/assets/video')
+    expect(video.getAttribute('poster')).toBe('/assets/still')
+    expect(video.muted && video.loop && video.autoplay).toBe(true)
+    expect(video.classList.contains('carte-image')).toBe(true)
+    expect(article.querySelector('img.carte-image')).toBeNull()
+  })
+
+  it('stays a photo without one', () => {
+    const article = carte(post('p', { imageUrl: '/assets/still' }), Date.parse('2026-10-30T10:00:00Z'))
+    expect(article.querySelector('video')).toBeNull()
+    expect(article.querySelector('img.carte-image')?.getAttribute('src')).toBe('/assets/still')
   })
 })

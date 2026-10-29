@@ -55,6 +55,7 @@ import { S3Error } from './services/s3.js'
 import { roomStatuses } from './supervision.js'
 import {
   authorOf,
+  bearer,
   publicIdentity,
   resolveActor,
   resolveClaim,
@@ -1462,6 +1463,28 @@ export const router = os.router({
       return context.services.wall.approved(null).slice(-input.limit).reverse()
     }),
 
+    /** Public too: the wall the rooms project, for the `mur-public` service. Its own bucket. */
+    public: os.wall.public.handler(({ context }) => {
+      if (!context.services.murPublic.limiter.take(publicIdentity(context))) {
+        throw new ORPCError('TOO_MANY_REQUESTS', { message: 'Trop de lectures coup sur coup.' })
+      }
+      return context.services.murPublic.current()
+    }),
+
+    /**
+     * The public page's views, from the `mur-public` service. Its token alone
+     * opens it: an open door here would let anyone inflate the counts.
+     */
+    onlineViews: os.wall.onlineViews.handler(({ input, context }) => {
+      if (!context.services.murPublicAccess.verify(bearer(context))) {
+        throw new ORPCError('UNAUTHORIZED', { message: 'Jeton du mur public inconnu ou remplacé : en créer un dans la console' })
+      }
+      const at = new Date(context.services.clock.now()).toISOString()
+      context.services.wall.addOnlineViews(input.counts, at)
+      context.services.murPublicAccess.reported(at)
+      return { ok: true }
+    }),
+
     feed: os.wall.feed.handler(async function* ({ input, context, lastEventId, signal }) {
       for await (const entry of context.services.wall.stream(
         input.roomId,
@@ -1524,6 +1547,17 @@ export const router = os.router({
       return { ok: true }
     }),
 
+    forceOnScreen: os.wall.forceOnScreen.use(operatorCan('wall:moderate')).handler(({ input, context }) => {
+      const updated = context.services.wall.setForcedOnScreen(input.id, input.forced)
+      if (updated == null) throw new ORPCError('NOT_FOUND', { message: 'Message introuvable' })
+      context.services.log('info', input.forced ? 'mur social : post affiché malgré sa source' : 'mur social : post rendu à sa source', {
+        id: updated.id,
+        source: updated.source,
+        par: context.operator.email,
+      })
+      return { ok: true }
+    }),
+
     /**
      * A post written in the console. Its images are fetched **before** it is
      * saved: the rooms are told about it right after, and a post whose photo the
@@ -1542,6 +1576,28 @@ export const router = os.router({
         par: context.operator.email,
       })
       return saved
+    }),
+  },
+
+  /**
+   * The `mur-public` service's token. Shown once, by `createToken`; the hub
+   * keeps its hash, and nothing logs it.
+   */
+  murPublic: {
+    status: os.murPublic.status
+      .use(operatorCan('settings:read'))
+      .handler(({ context }) => context.services.murPublicAccess.status()),
+
+    createToken: os.murPublic.createToken.use(operatorCan('settings:update')).handler(({ context }) => {
+      const token = context.services.murPublicAccess.create()
+      context.services.log('info', 'mur public : jeton créé', { jeton: `…${token.slice(-4)}`, par: context.operator.email })
+      return { token, status: context.services.murPublicAccess.status() }
+    }),
+
+    removeToken: os.murPublic.removeToken.use(operatorCan('settings:update')).handler(({ context }) => {
+      context.services.murPublicAccess.remove()
+      context.services.log('info', 'mur public : jeton retiré', { par: context.operator.email })
+      return context.services.murPublicAccess.status()
     }),
   },
 
@@ -1566,6 +1622,16 @@ export const router = os.router({
       // Polled now rather than at the next tick: the console shows straight away
       // whether the token works. Its failure is in the status, not an error here.
       await context.services.wallsIo.kick().catch(() => undefined)
+      return context.services.wallsIo.config.status(context.services.wall.countOnScreen('wallsio'))
+    }),
+
+    setPaused: os.wallsio.setPaused.use(operatorCan('settings:update')).handler(async ({ input, context }) => {
+      context.services.wallsIo.config.setPaused(input.paused)
+      context.services.log('info', input.paused ? 'walls.io : lecture mise en pause' : 'walls.io : lecture reprise', {
+        par: context.operator.email,
+      })
+      // Resumed: read now, the console shows at once whether walls.io answers.
+      if (!input.paused) await context.services.wallsIo.kick().catch(() => undefined)
       return context.services.wallsIo.config.status(context.services.wall.countOnScreen('wallsio'))
     }),
   },

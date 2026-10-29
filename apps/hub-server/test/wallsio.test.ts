@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
-import { hubSetting } from '@conference-operator/db/hub'
+import { comment, hubSetting } from '@conference-operator/db/hub'
 import { openHubDatabase, type HubDatabase } from '../src/db.js'
 import { WallService } from '../src/services/wall.js'
 import { SocialIngestor } from '../src/services/social.js'
 import { SettingsService } from '../src/services/sessions.js'
-import { WallsIoConfig, wallsioSource } from '../src/services/wallsio.js'
+import { WallsIoConfig, backoffDelay, wallsioSource } from '../src/services/wallsio.js'
 import { migrateLegacyMur } from '../src/services/legacy-mur.js'
 import { testSecrets } from './helpers/secrets.js'
 
@@ -125,6 +125,68 @@ describe('walls.io source', () => {
     config.setToken('un-autre-jeton-1234')
     expect(config.cursor()).toBeNull()
   })
+
+  it('makes no call while paused from the console, and reads again once resumed', async () => {
+    config.setToken(TOKEN)
+    config.setPaused(true)
+    const { fetchImpl } = fakeApi({ status: 'success', data: [post('1')] })
+    const source = wallsioSource({ config, fetchImpl, now: () => NOW })
+
+    expect(await source.poll()).toEqual([])
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(config.status(0).paused).toBe(true)
+
+    config.setPaused(false)
+    expect((await source.poll()).map((entry) => entry.externalId)).toEqual(['1'])
+  })
+
+  it('backs off after failures, longer each time, and starts again on a success', async () => {
+    config.setToken(TOKEN)
+    let now = NOW
+    const { fetchImpl } = fakeApi(
+      new Response('panne', { status: 500 }),
+      new Response('panne', { status: 500 }),
+      { status: 'success', data: [post('1')] },
+    )
+    const source = wallsioSource({ config, fetchImpl, now: () => now })
+
+    await expect(source.poll()).rejects.toThrow(/500/)
+    expect(config.status(0)).toMatchObject({ failures: 1, retryAt: new Date(NOW + 60_000).toISOString() })
+    // Thirty seconds on, the ingestor's next tick: no call yet.
+    now = NOW + 30_000
+    expect(await source.poll()).toEqual([])
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+
+    now = NOW + 60_000
+    await expect(source.poll()).rejects.toThrow(/500/)
+    expect(config.status(0)).toMatchObject({ failures: 2, retryAt: new Date(now + 120_000).toISOString() })
+
+    now += 120_000
+    expect(await source.poll()).toHaveLength(1)
+    expect(config.status(0)).toMatchObject({ failures: 0, retryAt: null, lastError: null })
+  })
+
+  it('waits as long as walls.io asks when it limits the reads', async () => {
+    config.setToken(TOKEN)
+    const { fetchImpl } = fakeApi(new Response('trop', { status: 429, headers: { 'retry-after': '600' } }))
+
+    await expect(wallsioSource({ config, fetchImpl, now: () => NOW }).poll()).rejects.toThrow(/limite les lectures/)
+    expect(config.status(0).retryAt).toBe(new Date(NOW + 600_000).toISOString())
+  })
+
+  it('never waits more than a quarter of an hour on its own, and not at all once resumed or given a new token', () => {
+    expect([1, 2, 3, 4, 5, 6, 10].map((failures) => backoffDelay(failures) / 60_000)).toEqual([1, 2, 4, 8, 15, 15, 15])
+
+    config.setToken(TOKEN)
+    config.record({ error: 'panne', at: new Date(NOW).toISOString() })
+    config.setPaused(true)
+    config.setPaused(false)
+    expect(config.status(0)).toMatchObject({ failures: 0, retryAt: null })
+
+    config.record({ error: 'panne', at: new Date(NOW).toISOString() })
+    config.setToken('un-autre-jeton-1234')
+    expect(config.status(0)).toMatchObject({ failures: 0, retryAt: null })
+  })
 })
 
 describe('the social wall', () => {
@@ -238,6 +300,84 @@ describe('what the hub says it did', () => {
 
     // Whatever was said, the token never was.
     expect(JSON.stringify(logs)).not.toContain(TOKEN)
+  })
+})
+
+describe('a walls.io video', () => {
+  const LIEN = (signature: string) => `https://dms.licdn.com/playlist/vid/v2/abc/mp4-720p/def/0/1?e=${signature}`
+
+  it('comes in with its post, its still kept as the image', async () => {
+    config.setToken(TOKEN)
+    const { fetchImpl, calls } = fakeApi({
+      status: 'success',
+      data: [post('v1', { post_video: LIEN('1'), post_image_cdn: 'https://img-li-cdn.walls.io/v1' }), post('v2', { comment: '', post_image_cdn: null, post_video: LIEN('2') })],
+    })
+    const posts = await wallsioSource({ config, fetchImpl, now: () => NOW }).poll()
+
+    expect(calls[0]?.searchParams.get('fields')).toContain('post_video')
+    expect(posts[0]).toMatchObject({ video: LIEN('1'), image: 'https://img-li-cdn.walls.io/v1' })
+    // A video alone is something to draw.
+    expect(posts[1]).toMatchObject({ externalId: 'v2', video: LIEN('2'), image: null })
+    const stored = wall.post(posts[0]!)
+    expect(stored.video).toBe(LIEN('1'))
+  })
+
+  it('keeps the link it holds when walls.io signs it again', () => {
+    const first = wall.post({ source: 'wallsio', author: 'Cloud Nord', text: 'Vidéo', externalId: 'v1', video: LIEN('1') })
+    // Another signature, the same video: nothing to download again, nothing to move.
+    expect(wall.ingest({ source: 'wallsio', author: 'Cloud Nord', text: 'Vidéo', externalId: 'v1', video: LIEN('2') }).outcome).toBe('known')
+    wall.publishScreen()
+    expect(wall.screen().posts.find((entry) => entry.id === first.id)?.video).toBe(LIEN('1'))
+  })
+
+  it('reaches the posts already held: the cursor is set aside once, for the new field', () => {
+    config.setToken(TOKEN)
+    config.record({ cursor: 42, error: null, at: new Date(NOW).toISOString() })
+    expect(config.cursor()).toBe(42)
+    // A hub that read walls.io before the videos.
+    const row = db.select().from(hubSetting).where(eq(hubSetting.key, 'wallsio')).get()!
+    db.update(hubSetting).set({ valueJson: JSON.stringify({ ...JSON.parse(row.valueJson), fieldsVersion: 1 }) }).where(eq(hubSetting.key, 'wallsio')).run()
+
+    expect(config.cursor()).toBeNull()
+    config.record({ cursor: 43, error: null, at: new Date(NOW).toISOString() })
+    expect(config.cursor()).toBe(43)
+  })
+})
+
+describe('an author walls.io sends without a picture', () => {
+  const linkedin = (id: string, avatar: string | null, author = 'Cloud Nord') =>
+    wall.post({ source: 'wallsio', author, text: `Post ${id}`, externalId: id, avatar, network: 'LinkedIn' })
+
+  it('wears the picture the hub already holds for that author on that network', () => {
+    linkedin('1', 'https://img-li-cdn.walls.io/cloud-nord+linkedin+default')
+    const later = linkedin('2', null)
+    expect(later.avatar).toBe('https://img-li-cdn.walls.io/cloud-nord+linkedin+default')
+    // Another author, or the same name elsewhere, lends nothing.
+    expect(linkedin('3', null, 'Quelqu’un').avatar).toBeNull()
+    expect(wall.post({ source: 'wallsio', author: 'Cloud Nord', text: 'Insta', externalId: '4', avatar: null, network: 'Instagram' }).avatar).toBeNull()
+  })
+
+  it('keeps its picture when walls.io later sends the post without one', () => {
+    const post = linkedin('1', 'https://img-li-cdn.walls.io/cloud-nord+linkedin+default')
+    wall.post({ source: 'wallsio', author: 'Cloud Nord', text: 'Post 1 corrigé', externalId: '1', avatar: null, network: 'LinkedIn' })
+    wall.publishScreen()
+    expect(wall.screen().posts.find((entry) => entry.id === post.id)).toMatchObject({
+      text: 'Post 1 corrigé',
+      avatar: 'https://img-li-cdn.walls.io/cloud-nord+linkedin+default',
+    })
+  })
+
+  it('gets it back for the posts stored before, once the hub restarts', () => {
+    linkedin('1', null)
+    linkedin('2', 'https://img-li-cdn.walls.io/cloud-nord+linkedin+default')
+    // A post stored by an older hub, without the picture it could have borrowed.
+    db.update(comment).set({ avatar: null }).where(eq(comment.externalId, '1')).run()
+
+    const restarted = new WallService(db)
+    expect(restarted.screen().posts.map((entry) => entry.avatar)).toEqual([
+      'https://img-li-cdn.walls.io/cloud-nord+linkedin+default',
+      'https://img-li-cdn.walls.io/cloud-nord+linkedin+default',
+    ])
   })
 })
 

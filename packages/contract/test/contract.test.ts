@@ -18,6 +18,7 @@ import {
   sessionStateSchema,
   sessionStateViewSchema,
   isCommandExpired,
+  menuLinkSchema,
   roomEventPayloadSchema,
   sceneRoleMapSchema,
   syncResultSchema,
@@ -149,6 +150,8 @@ describe('contract surface', () => {
       // Editing the VODs: a queue the hub holds, workers hosted anywhere take
       // from it with their own token, and only ever get signed addresses.
       'montage',
+      // The public page's token: the views it reports are counted only from it.
+      'murPublic',
       // A surface of its own, and not one more mode on the room screen: the
       // banner overlays the video where a screen message replaces everything.
       'overlay',
@@ -460,11 +463,14 @@ describe('message exchange', () => {
     expect(stored.boucle.wallsio).toEqual({
       titre: 'Le mur',
       hashtag: '#CloudNord2026',
+      accroche: '',
       parPage: 5,
       sponsoriseTous: 0,
       bandeau: true,
       remplir: true,
       dureePage: 0,
+      menu: [],
+      reseaux: ['bluesky', 'mastodon', 'x', 'linkedin'],
     })
     expect('wallsIoUrl' in stored).toBe(false)
   })
@@ -536,5 +542,17 @@ describe('the command stream, across versions', () => {
       payload: { type: 'message.clear', from: null },
     })
     expect(knownCommand(known)?.payload).toEqual({ type: 'message.clear', from: null })
+  })
+})
+
+describe('the public page’s menu', () => {
+  it('takes web addresses only: a link there is clicked by every visitor', () => {
+    expect(menuLinkSchema.parse({ libelle: ' Programme ', url: 'https://cloudnord.fr/schedule' })).toEqual({
+      libelle: 'Programme',
+      url: 'https://cloudnord.fr/schedule',
+    })
+    expect(menuLinkSchema.safeParse({ libelle: 'Piège', url: 'javascript:alert(1)' }).success).toBe(false)
+    expect(menuLinkSchema.safeParse({ libelle: 'Piège', url: 'data:text/html,x' }).success).toBe(false)
+    expect(menuLinkSchema.safeParse({ libelle: '', url: 'https://cloudnord.fr' }).success).toBe(false)
   })
 })

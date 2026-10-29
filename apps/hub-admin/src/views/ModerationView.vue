@@ -131,6 +131,15 @@ async function feature(post: WallPost, featured: boolean): Promise<void> {
   }
 }
 
+async function forceOnScreen(post: WallPost, forced: boolean): Promise<void> {
+  try {
+    await store.forceOnScreen(post.id, forced)
+    toast.say(forced ? 'Post affiché malgré walls.io.' : 'Post rendu à walls.io : il quitte les écrans.')
+  } catch {
+    /* already reported */
+  }
+}
+
 /** The post's own address — only an `http(s)` one: a link is a door into the operator's session. */
 function linkOf(post: WallPost): string | null {
   return post.permalink != null && /^https?:\/\//i.test(post.permalink) ? post.permalink : null
@@ -143,10 +152,18 @@ function linkLabel(post: WallPost): string {
   return 'voir le post'
 }
 
+/** The rooms and the public page apart: a phone scrolling past is not a room screen. */
 function shown(post: WallPost): string {
-  if (post.impressions === 0) return 'jamais affiché'
-  const times = `${post.impressions.toLocaleString('fr-FR')} affichage${post.impressions > 1 ? 's' : ''}`
-  return post.lastShownAt == null ? times : `${times} · dernier ${timeAgo(post.lastShownAt)}`
+  if (post.impressions === 0 && post.onlineViews === 0) return 'jamais affiché'
+  const parts: string[] = []
+  if (post.impressions > 0) {
+    const times = `${post.impressions.toLocaleString('fr-FR')} affichage${post.impressions > 1 ? 's' : ''} en salle`
+    parts.push(post.lastShownAt == null ? times : `${times} · dernier ${timeAgo(post.lastShownAt)}`)
+  }
+  if (post.onlineViews > 0) {
+    parts.push(`${post.onlineViews.toLocaleString('fr-FR')} vue${post.onlineViews > 1 ? 's' : ''} en ligne`)
+  }
+  return parts.join(' · ')
 }
 
 // — Writing a post: folded away until asked for —
@@ -410,9 +427,25 @@ async function savePost(): Promise<void> {
               <Badge v-else-if="post.pinned" class="px-1.5 py-0.5 text-[10px] tracking-[.08em]">épinglé sur walls.io</Badge>
               <Badge v-else-if="post.featured && post.status === 'approved'" class="px-1.5 py-0.5 text-[10px] tracking-[.08em]">en avant</Badge>
               <Badge
-                v-if="post.status === 'approved' && !post.onScreen"
+                v-if="post.status === 'approved' && post.inactiveAtSource && post.forcedOnScreen"
                 class="px-1.5 py-0.5 text-[10px] tracking-[.08em]"
-                title="Trop ancien pour la mosaïque, ou retiré par walls.io"
+                data-role="forced"
+                title="walls.io l'a désactivé, la console l'affiche quand même"
+              >
+                affiché malgré walls.io
+              </Badge>
+              <Badge
+                v-else-if="post.status === 'approved' && post.inactiveAtSource"
+                class="px-1.5 py-0.5 text-[10px] tracking-[.08em]"
+                data-role="inactive-at-source"
+                title="walls.io l'a masqué ou ne l'a pas approuvé : il ne part pas sur les écrans"
+              >
+                masqué sur walls.io
+              </Badge>
+              <Badge
+                v-else-if="post.status === 'approved' && !post.onScreen"
+                class="px-1.5 py-0.5 text-[10px] tracking-[.08em]"
+                title="Trop ancien pour la mosaïque"
               >
                 hors écran
               </Badge>
@@ -460,6 +493,22 @@ async function savePost(): Promise<void> {
                 @click="feature(post, false)"
               >
                 Remettre dans le fil
+              </Button>
+              <Button
+                v-if="post.inactiveAtSource && !post.forcedOnScreen"
+                size="small"
+                data-role="force"
+                @click="forceOnScreen(post, true)"
+              >
+                Afficher malgré walls.io
+              </Button>
+              <Button
+                v-else-if="post.forcedOnScreen"
+                size="small"
+                data-role="unforce"
+                @click="forceOnScreen(post, false)"
+              >
+                Rendre à walls.io
               </Button>
               <Button v-if="post.source === 'hub'" size="small" data-role="edit" @click="edit(post)">
                 Modifier

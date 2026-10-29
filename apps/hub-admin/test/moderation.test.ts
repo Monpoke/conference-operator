@@ -64,6 +64,7 @@ function fakeClient(posts: unknown[]): { calls: Call[]; client: ReturnType<typeo
           sponsors: note('wall/sponsors', () => SPONSORS),
           moderate: note('wall/moderate', () => ({ ok: true })),
           feature: note('wall/feature', () => ({ ok: true })),
+          forceOnScreen: note('wall/forceOnScreen', () => ({ ok: true })),
           save: note('wall/save', () => ({})),
         },
         boucle: {
@@ -93,6 +94,10 @@ const MESSAGE = {
   onScreen: false,
   impressions: 0,
   lastShownAt: null,
+  onlineViews: 0,
+  lastSeenOnlineAt: null,
+  inactiveAtSource: false,
+  forcedOnScreen: false,
 }
 
 const POST = {
@@ -249,12 +254,41 @@ describe('moderation view', () => {
   })
 
   it('says how many times a post was put on air', async () => {
-    const { wrapper } = mountView([POST, { ...POST, id: 'neuf', impressions: 0, lastShownAt: null }])
+    const { wrapper } = mountView([
+      POST,
+      { ...POST, id: 'neuf', impressions: 0, lastShownAt: null },
+      { ...POST, id: 'en-ligne', impressions: 0, lastShownAt: null, onlineViews: 7, lastSeenOnlineAt: '2026-10-30T10:40:00Z' },
+    ])
     await useModerationStore().show('approved')
     await flushPromises()
 
     expect(wrapper.get(`[data-post="${POST.id}"] [data-role="impressions"]`).text()).toContain('42 affichages')
     expect(wrapper.get('[data-post="neuf"] [data-role="impressions"]').text()).toBe('jamais affiché')
+    // Seen on the public page only: its views, apart from the rooms'.
+    const online = wrapper.get('[data-post="en-ligne"] [data-role="impressions"]').text()
+    expect(online).toContain('7 vues')
+    expect(online).not.toContain('affichage')
+  })
+
+  it('shows a post walls.io deactivated, and gives it back', async () => {
+    const masque = { ...POST, id: 'masque', onScreen: false, inactiveAtSource: true }
+    const force = { ...POST, id: 'force', inactiveAtSource: true, forcedOnScreen: true }
+    const { calls, wrapper } = mountView([POST, masque, force])
+    await useModerationStore().show('approved')
+    await flushPromises()
+
+    // An ordinary post offers neither: walls.io has it on.
+    expect(wrapper.find(`[data-post="${POST.id}"] [data-role="force"]`).exists()).toBe(false)
+    expect(wrapper.find('[data-post="masque"] [data-role="inactive-at-source"]').exists()).toBe(true)
+    expect(wrapper.find('[data-post="force"] [data-role="forced"]').exists()).toBe(true)
+
+    await wrapper.get('[data-post="masque"] [data-role="force"]').trigger('click')
+    await flushPromises()
+    expect(calls).toContainEqual({ path: 'wall/forceOnScreen', input: { id: 'masque', forced: true } })
+
+    await wrapper.get('[data-post="force"] [data-role="unforce"]').trigger('click')
+    await flushPromises()
+    expect(calls).toContainEqual({ path: 'wall/forceOnScreen', input: { id: 'force', forced: false } })
   })
 
   it('puts a post forward, and hides one from the screens', async () => {

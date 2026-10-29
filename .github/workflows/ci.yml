@@ -80,7 +80,8 @@ jobs:
             --set secret.betterAuthSecret=ci-secret-ci-secret-ci-secret-ci-secret
           )
           helm lint charts/hub "${values[@]}"
-          helm template hub charts/hub "${values[@]}" --set montage.enabled=true > /dev/null
+          helm template hub charts/hub "${values[@]}" --set montage.enabled=true \
+            --set murPublic.enabled=true --set murPublic.ingress.host=social.ci.invalid > /dev/null
 
   # The pull request's commit messages, against `commitlint.config.js`.
   #

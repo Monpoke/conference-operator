@@ -145,8 +145,21 @@ function stub(options: {
           setToken: async (input: unknown) => {
             calls.push({ path: 'wallsio/setToken', input })
             const { token } = input as { token: string | null }
-            return { hasToken: token != null, tokenHint: token?.slice(-4) ?? null, lastPollAt: null, lastError: null, imported: 3 }
+            return { hasToken: token != null, tokenHint: token?.slice(-4) ?? null, lastPollAt: null, lastError: null, imported: 3, paused: false, failures: 0, retryAt: null }
           },
+          setPaused: async (input: unknown) => {
+            calls.push({ path: 'wallsio/setPaused', input })
+            const { paused } = input as { paused: boolean }
+            return { hasToken: true, tokenHint: 'abcd', lastPollAt: null, lastError: null, imported: 3, paused, failures: 0, retryAt: null }
+          },
+        },
+        murPublic: {
+          status: note('murPublic/status', { hasToken: false, tokenHint: null, lastReportAt: null }),
+          createToken: note('murPublic/createToken', {
+            token: 'mp_jeton-tout-neuf-9876',
+            status: { hasToken: true, tokenHint: '9876', lastReportAt: null },
+          }),
+          removeToken: note('murPublic/removeToken', { hasToken: false, tokenHint: null, lastReportAt: null }),
         },
         vod: {
           status: note('vod/status', options.storage === null ? { configure: false, politique: STORAGE.politique } : { ...STORAGE, ...(options.storage ?? {}) }),
@@ -361,6 +374,56 @@ describe('settings view', () => {
     expect((wrapper.get('#walls-io-token').element as HTMLInputElement).value).toBe('')
     expect(wrapper.get('#walls-io-token').attributes('placeholder')).toContain('…1234')
     expect(wrapper.html()).not.toContain('jeton-walls-io-1234')
+  })
+
+  it('pauses the walls.io reads, then resumes them', async () => {
+    const { calls, wrapper } = await mountView({ wallsIoToken: true })
+    await wrapper.get('#btn-walls-io-pause').trigger('click')
+    await flushPromises()
+    expect(calls).toContainEqual({ path: 'wallsio/setPaused', input: { paused: true } })
+    expect(wrapper.find('[data-role="walls-io-paused"]').exists()).toBe(true)
+
+    await wrapper.get('#btn-walls-io-pause').trigger('click')
+    await flushPromises()
+    expect(calls).toContainEqual({ path: 'wallsio/setPaused', input: { paused: false } })
+    expect(wrapper.find('[data-role="walls-io-paused"]').exists()).toBe(false)
+  })
+
+  it('shows the public page’s new token once, for the service’s secret', async () => {
+    const { calls, wrapper } = await mountView()
+    expect(wrapper.find('#mur-public-token').exists()).toBe(false)
+
+    await wrapper.get('#btn-mur-public-token').trigger('click')
+    await flushPromises()
+
+    expect(calls.map((call) => call.path)).toContain('murPublic/createToken')
+    expect((wrapper.get('#mur-public-token').element as HTMLInputElement).value).toBe('mp_jeton-tout-neuf-9876')
+    expect(wrapper.get('#mur-public-status').text()).toContain('…9876')
+  })
+
+  it('restores a backup and says what is left to type again', async () => {
+    const sent: { url: string; init: RequestInit }[] = []
+    vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+      sent.push({ url, init })
+      return new Response(
+        JSON.stringify({ lignes: { room: 3 }, comptesIgnores: [], fichiers: { images: 2, themes: 1 }, aRessaisir: ['Jeton walls.io'] }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    })
+    vi.stubGlobal('confirm', () => true)
+    const { wrapper } = await mountView()
+    expect(wrapper.get('#btn-sauvegarde-export').attributes('href')).toBe('/sauvegarde/export.json')
+
+    const input = wrapper.get('#sauvegarde-fichier')
+    const file = new File(['{"format":"conference-operator/sauvegarde"}'], 'sauvegarde.json', { type: 'application/json' })
+    Object.defineProperty(input.element, 'files', { value: [file] })
+    await input.trigger('change')
+    await flushPromises()
+
+    expect(sent[0]?.url).toBe('/sauvegarde/import')
+    expect(sent[0]?.init.method).toBe('POST')
+    expect(wrapper.get('#sauvegarde-rapport').text()).toContain('Jeton walls.io')
+    vi.unstubAllGlobals()
   })
 
   it('converts the rate shown in kB/s into bytes', async () => {

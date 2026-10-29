@@ -1,0 +1,162 @@
+{{- if .Values.murPublic.enabled }}
+{{- if not .Values.murPublic.ingress.host }}
+{{- fail "murPublic.ingress.host est requis : le domaine de la page publique (ex. social.cloudnord.fr)." }}
+{{- end }}
+# La page publique du mur social, sur son propre domaine. Elle lit le hub par son
+# service, dans le cluster, toutes les quelques secondes — le public ne parle
+# qu'à elle. Sans état : un redémarrage relit le hub.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hub.murPublicName" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "hub.murPublicName" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+    app.kubernetes.io/part-of: {{ include "hub.name" . }}
+spec:
+  # Une seule : le rate limit est en mémoire, deux répliques doubleraient la limite.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "hub.murPublicName" . }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "hub.murPublicName" . }}
+      {{- with .Values.murPublic.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: {{ include "hub.murPublicName" . }}
+          image: {{ include "hub.murPublicImage" . | quote }}
+          imagePullPolicy: {{ .Values.murPublic.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: HUB_URL
+              value: {{ printf "http://%s:%v" (include "hub.name" .) .Values.service.port | quote }}
+            - name: PORT
+              value: "8080"
+            - name: RESEAUX
+              value: {{ join "," .Values.murPublic.reseaux | quote }}
+            - name: LIMITE_PAGES
+              value: {{ .Values.murPublic.limitePages | quote }}
+            - name: LIMITE_IMAGES
+              value: {{ .Values.murPublic.limiteImages | quote }}
+            - name: PROXY_HOPS
+              value: {{ .Values.murPublic.proxyHops | quote }}
+            {{- with .Values.murPublic.jeton.secretName }}
+            # Le jeton créé dans la console, pour compter les vues en ligne.
+            - name: HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.murPublic.jeton.key }}
+            {{- end }}
+            {{- range $key, $value := .Values.murPublic.extra }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /sante
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /sante
+              port: http
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            {{- toYaml .Values.murPublic.resources | nindent 12 }}
+          volumeMounts:
+            # tsx compile dans un cache : le reste du système de fichiers est en lecture seule.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+      {{- with .Values.murPublic.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.murPublic.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.murPublic.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hub.murPublicName" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "hub.murPublicName" . }}
+    app.kubernetes.io/part-of: {{ include "hub.name" . }}
+spec:
+  selector:
+    app.kubernetes.io/name: {{ include "hub.murPublicName" . }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "hub.murPublicName" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "hub.murPublicName" . }}
+    app.kubernetes.io/part-of: {{ include "hub.name" . }}
+  {{- with (default .Values.ingress.annotations .Values.murPublic.ingress.annotations) }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with (default .Values.ingress.className .Values.murPublic.ingress.className) }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- if .Values.murPublic.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.murPublic.ingress.host | quote }}
+      secretName: {{ default (printf "%s-tls" (include "hub.murPublicName" .)) .Values.murPublic.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.murPublic.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "hub.murPublicName" . }}
+                port:
+                  name: http
+{{- end }}

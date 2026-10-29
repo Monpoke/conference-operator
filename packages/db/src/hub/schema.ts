@@ -185,6 +185,14 @@ export const comment = sqliteTable(
      */
     sourcePinned: integer('source_pinned', { mode: 'boolean' }).notNull().default(false),
     sourceActive: integer('source_active', { mode: 'boolean' }).notNull().default(true),
+    /**
+     * Shown although the source deactivated it: the console's decision, which a
+     * later answer from walls.io leaves alone. On screen = `status = 'approved'`
+     * **and** (`source_active` **or** this).
+     */
+    forcedOnScreen: integer('forced_on_screen', { mode: 'boolean' }).notNull().default(false),
+    /** A short looping video the source gives with the post; `image` is its still. */
+    video: text('video'),
     /** A partner's post: « Partenaire » on screen, with its logo. */
     sponsorName: text('sponsor_name'),
     sponsorLogo: text('sponsor_logo'),
@@ -249,6 +257,26 @@ export const commentImpression = sqliteTable(
     primaryKey({ columns: [table.commentId, table.roomId, table.day] }),
     index('comment_impression_comment_idx').on(table.commentId),
   ],
+)
+
+/**
+ * How many times a post was seen on the public social page (`apps/mur-public`):
+ * one counter per post and day, apart from the rooms' — a phone scrolling past a
+ * card is not a room screen showing it.
+ *
+ * A card counts once per page load, when it stays at least a second in view; the
+ * service adds up its visitors' counts and reports them every half minute. `day`
+ * is the UTC date of the report.
+ */
+export const commentOnlineView = sqliteTable(
+  'comment_online_view',
+  {
+    commentId: text('comment_id').notNull(),
+    day: text('day').notNull(),
+    count: integer('count').notNull().default(0),
+    lastSeenAt: text('last_seen_at').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.commentId, table.day] })],
 )
 
 /** One vote per device and per question, without requiring a user account. */
@@ -789,6 +817,7 @@ export const hubSchema = {
   command,
   comment,
   commentImpression,
+  commentOnlineView,
   question,
   questionVote,
   sessionOverride,

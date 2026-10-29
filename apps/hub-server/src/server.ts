@@ -25,6 +25,8 @@ import { IngestService } from './services/ingest.js'
 import { DeviceService, RoomService } from './services/rooms.js'
 import { QuestionService, WallService } from './services/wall.js'
 import { RateLimiter } from './services/rate-limit.js'
+import { MurPublicAccessService, MurPublicService } from './services/mur-public.js'
+import { SauvegardeError, SauvegardeService } from './services/sauvegarde.js'
 import { ControlService } from './services/control.js'
 import { PinService } from './services/pins.js'
 import { RoomChanges } from './services/changes.js'
@@ -120,6 +122,8 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   const touch = (roomId: string | null) => changes.touch(roomId)
 
   const secretBox = createSecretBox(config.authSecret)
+  const wall = new WallService(orm)
+  const identity = new EventIdentityService(settings, programs)
   const audit = new AuditService(orm, () => clock.now())
   const services: Services = {
     audit,
@@ -138,7 +142,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       touch,
       (roomId, outcome) => audit.outcome(roomId, outcome.seq, outcome.ok, outcome.message),
     ),
-    wall: new WallService(orm),
+    wall,
     // The token is sealed with the same box as the stream keys. `kick` is bound
     // once the ingestor exists, below.
     wallsIo: { config: new WallsIoConfig(orm, secretBox), kick: async () => undefined },
@@ -148,8 +152,10 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     // Five posts in a row then one every ten seconds: enough to post normally,
     // not enough to drown the moderation queue.
     limiter: new RateLimiter({ capacity: 5, refillPerSecond: 0.1 }),
+    murPublic: new MurPublicService({ wall, assets, themes, settings, identity }),
+    murPublicAccess: new MurPublicAccessService(orm),
     settings,
-    identity: new EventIdentityService(settings, programs),
+    identity,
     sessions: new SessionStateService(orm, settings, () => clock.now(), touch),
     regie: new ControlService(orm, () => clock.now(), touch),
     pins: new PinService(orm, touch),
@@ -689,6 +695,66 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     // Images the hub lost stay as references in `boucle.json`: said, not hidden.
     reply.header('x-images-manquantes', String(missing.length))
     return reply.send(Buffer.from(zip))
+  })
+
+  /**
+   * The hub's whole configuration, to survive a reset: settings, rooms, program,
+   * the console's posts, accounts, images and themes (`services/sauvegarde.ts`).
+   * It carries the accounts' password hashes: `settings:update`, like restoring.
+   */
+  const sauvegarde = new SauvegardeService({
+    sqlite,
+    imagesDir: config.databasePath === ':memory:' ? null : join(dirname(config.databasePath), 'assets'),
+    themesDir: config.databasePath === ':memory:' ? null : join(dirname(config.databasePath), 'themes'),
+    open: (sealed) => secretBox.open(sealed),
+    now: () => new Date(services.clock.now()),
+  })
+  const operatorFor = async (request: { headers: Record<string, string | string[] | undefined> }) => {
+    try {
+      const { operator } = await resolveOperator(contextFrom(auth, services, headersOf(request.headers)))
+      requirePermission(operator, 'settings:update')
+      return operator
+    } catch {
+      return null
+    }
+  }
+
+  app.get('/sauvegarde/export.json', async (request, reply) => {
+    const operator = await operatorFor(request)
+    if (operator == null) return reply.status(401).send({ error: 'connectez-vous à la console avec le droit de modifier les réglages' })
+    const backup = sauvegarde.export()
+    services.audit.record({ actor: operator.email, action: 'sauvegarde.export', roomId: null, input: null, ok: true })
+    const stamp = backup.creeLe.slice(0, 16).replace(':', 'h')
+    reply.header('content-type', 'application/json; charset=utf-8')
+    reply.header('content-disposition', `attachment; filename="sauvegarde-hub-${stamp}.json"`)
+    reply.header('cache-control', 'no-store')
+    return reply.send(JSON.stringify(backup))
+  })
+
+  // A JSON body only: a page from another origin cannot send one without a preflight the hub never answers.
+  // The body is read here, from the raw stream: the hub removes Fastify's parsers for oRPC.
+  app.post('/sauvegarde/import', async (request, reply) => {
+    const operator = await operatorFor(request)
+    if (operator == null) return reply.status(401).send({ error: 'connectez-vous à la console avec le droit de modifier les réglages' })
+    const text = await readBody(request.raw, SAUVEGARDE_MAX_BYTES)
+    if (text == null) return reply.status(413).send({ error: `Sauvegarde trop lourde : ${SAUVEGARDE_MAX_BYTES / 1024 / 1024} Mo au plus` })
+    let body: unknown
+    try {
+      body = JSON.parse(text)
+    } catch {
+      return reply.status(400).send({ error: 'Fichier non reconnu : ce n’est pas du JSON.' })
+    }
+    try {
+      const report = sauvegarde.restore(body)
+      services.wall.publishScreen()
+      services.audit.record({ actor: operator.email, action: 'sauvegarde.import', roomId: null, input: report.lignes, ok: true })
+      services.log('info', 'sauvegarde restaurée', { par: operator.email, ...report })
+      return reply.send(report)
+    } catch (cause) {
+      const message = cause instanceof SauvegardeError ? cause.message : `Restauration impossible : ${(cause as Error).message}`
+      services.audit.record({ actor: operator.email, action: 'sauvegarde.import', roomId: null, input: null, ok: false, error: message })
+      return reply.status(cause instanceof SauvegardeError ? 400 : 500).send({ error: message })
+    }
   })
 
   /** A theme's fonts and images, for the preview and the VOD's — nothing else of the package is served. */
@@ -1277,9 +1343,20 @@ function headersOf(raw: Record<string, string | string[] | undefined>): Headers 
 
 /** Fastify → standard `Request`, the only format Better Auth's handler understands. */
 /** A request's body, whole: for the few the hub has to read before handing on. */
-async function readBody(stream: NodeJS.ReadableStream): Promise<string> {
+/** A whole backup, images and themes included: a few tens of megabytes in practice. */
+const SAUVEGARDE_MAX_BYTES = 256 * 1024 * 1024
+
+async function readBody(stream: NodeJS.ReadableStream): Promise<string>
+async function readBody(stream: NodeJS.ReadableStream, max: number): Promise<string | null>
+async function readBody(stream: NodeJS.ReadableStream, max = Infinity): Promise<string | null> {
   const chunks: Buffer[] = []
-  for await (const chunk of stream) chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk)
+  let size = 0
+  for await (const chunk of stream) {
+    const bytes = typeof chunk === 'string' ? Buffer.from(chunk) : chunk
+    size += bytes.byteLength
+    if (size > max) return null
+    chunks.push(bytes)
+  }
   return Buffer.concat(chunks).toString('utf8')
 }
 

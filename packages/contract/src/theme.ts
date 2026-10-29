@@ -95,7 +95,7 @@ export const couleurThemeSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'couleur
  * that could close the rule or fetch from elsewhere — the rooms are offline,
  * and the page takes nothing it did not ship.
  */
-const valeurCssSchema = z
+export const valeurCssSchema = z
   .string()
   .min(1)
   .max(400)

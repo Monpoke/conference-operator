@@ -105,6 +105,7 @@ const SCRIPT = `(() => {
     img.src = '/images/' + cle
     img.alt = alt
     img.decoding = 'async'
+    img.loading = 'lazy'
     if (classe) img.className = classe
     // A photo that arrives changes its card's height: the columns are laid again.
     img.addEventListener('load', planifier)
@@ -197,14 +198,23 @@ const SCRIPT = `(() => {
   // rebuilds it nor fetches its images again. Rebuilt only when the post changed.
   const cartes = new Map()
   let enOrdre = []
+  // By waves: the first posts, then the next ones as the reader nears the end.
+  // A card not drawn yet fetches nothing — neither its photo nor its video.
+  const VAGUE = 12
+  let visibles = VAGUE
+  let total = 0
   function rendre(premier) {
     const suivantes = new Map()
-    enOrdre = state.posts.slice().sort(ordre).map((p) => {
+    const tries = state.posts.slice().sort(ordre)
+    total = tries.length
+    // Known before being drawn: a post reached by scrolling is not a new one.
+    const nouveaux = premier ? new Set() : new Set(tries.filter((p) => !vus.has(p.id)).map((p) => p.id))
+    for (const p of tries) vus.add(p.id)
+    enOrdre = tries.slice(0, visibles).map((p) => {
       const signature = JSON.stringify(p)
       const connue = cartes.get(p.id)
       const element = connue && connue.signature === signature ? connue.element : carte(p)
-      if (!premier && !vus.has(p.id)) element.classList.add('nouveau')
-      vus.add(p.id)
+      if (nouveaux.has(p.id)) element.classList.add('nouveau')
       suivantes.set(p.id, { signature, element })
       if (observateur) observateur.observe(element)
       return element
@@ -219,7 +229,19 @@ const SCRIPT = `(() => {
     for (const [id, entree] of suivantes) cartes.set(id, entree)
     $('vide').hidden = enOrdre.length > 0
     disposer()
+    suite.hidden = visibles >= total
   }
+
+  const suite = $('suite')
+  const vague = new IntersectionObserver((entrees) => {
+    if (!entrees.some((e) => e.isIntersecting) || visibles >= total) return
+    visibles += VAGUE
+    rendre(false)
+    // Still in sight (a tall screen, short posts): observed afresh, the next wave follows.
+    vague.unobserve(suite)
+    vague.observe(suite)
+  }, { rootMargin: '0px 0px 400px 0px' })
+  vague.observe(suite)
 
   // Masonry: as many columns as the width holds, each card into the shortest
   // one so far. No holes under the short posts, and the newest stay on top.
@@ -626,6 +648,7 @@ export function renderPage(data: MurPublic, reseaux: readonly Reseau[]): string 
   </header>
   <p class="etat" id="etat" role="status" aria-live="polite"></p>
   <main class="mur" id="mur" aria-label="Publications"></main>
+  <p class="vide" id="suite" aria-hidden="true" hidden>Chargement des publications suivantes…</p>
   <p class="vide" id="vide" hidden>Rien encore sur le mur : soyez la première ou le premier à publier.</p>
   <noscript><p class="vide">Cette page a besoin de JavaScript pour afficher les publications.</p></noscript>
 </div>

@@ -376,6 +376,28 @@ describe('display counts', () => {
   })
 })
 
+describe('the wall’s order and age', () => {
+  const jours = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString()
+  const publie = (id: string, il_y_a: number) =>
+    wall.post({ source: 'wallsio', author: 'Cloud Nord', text: id, externalId: id, postedAt: jours(il_y_a) })
+
+  it('puts the latest published first, whatever order walls.io gave them in', () => {
+    publie('recent', 2)
+    publie('ancien', 371)
+    publie('moyen', 20)
+    wall.publishScreen()
+    expect(wall.screen().posts.map((post) => post.text)).toEqual(['recent', 'moyen', 'ancien'])
+  })
+
+  it('leaves out what is older than the age set in the console', () => {
+    const limite = new WallService(db, 50, undefined, () => 90)
+    publie('recent', 2)
+    publie('ancien', 371)
+    limite.publishScreen()
+    expect(limite.screen().posts.map((post) => post.text)).toEqual(['recent'])
+  })
+})
+
 describe('a post walls.io deactivated', () => {
   const fromWallsIo = (active: boolean) =>
     wall.post({ source: 'wallsio', author: 'Cloud Nord', text: 'Rendez-vous le 30 !', externalId: 'w-1', active })

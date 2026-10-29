@@ -33,6 +33,12 @@ import { carte } from './carte.js'
  * the loop — a new page only if it still has its whole time before the wall
  * leaves — and, held by the operator, every `dureePage` or the wall's duration.
  */
+/** The scrolling wall: its columns, its posts at most, its speed in px/s. */
+const COLONNES_DEFILEMENT = 5
+const MAX_DEFILEMENT = 30
+/** Each screenful holds this long unless the console sets a page duration, in s; then slides over, in ms. */
+const DUREE_PAGE_DEFILEMENT = 15
+const GLISSE_PAGE = 900
 /** Cards on a filled page at most: every one laid is measured. */
 const MAX_REMPLIES = 12
 /** The fade of a page turning in place, each way, in ms. */
@@ -49,6 +55,7 @@ export function wallsio(el: HTMLElement): Scene {
       <div class="mur-col"></div>
       <div class="mur-col"></div>
     </div>
+    <div class="contenu defile"><div class="defile-piste"></div></div>
     <p class="vide" hidden>Aucun post sur le mur pour le moment.</p>`
   const titre = el.querySelector<HTMLElement>('[data-titre]')!
   const hashtag = el.querySelector<HTMLElement>('[data-hashtag]')!
@@ -56,6 +63,35 @@ export function wallsio(el: HTMLElement): Scene {
   const avant = el.querySelector<HTMLElement>('.mur-avant')!
   const vide = el.querySelector<HTMLElement>('.vide')!
   const cols = [...el.querySelectorAll<HTMLElement>('.mur-col')]
+  const defile = el.querySelector<HTMLElement>('.defile')!
+  const piste = el.querySelector<HTMLElement>('.defile-piste')!
+  /** `defilement`: the whole wall in small cards, scrolling from the latest. */
+  let enDefilement = false
+  let glisse: Animation | null = null
+  /** How far down the wall the screen is, in px; and when it last moved. */
+  let decalage = 0
+  let pasA = 0
+  /** Posts seen in this pass of the scrolling wall: each counted once. */
+  const vusCePassage = new Set<string>()
+  const idDe = new WeakMap<Element, string>()
+  // A card counts as seen once on screen; a video plays only there.
+  const regard =
+    typeof IntersectionObserver === 'undefined'
+      ? null
+      : new IntersectionObserver((entrees) => {
+          for (const e of entrees) {
+            const video = e.target.querySelector('video')
+            if (video) {
+              if (e.isIntersecting) video.play().catch(() => {})
+              else video.pause()
+            }
+            const id = idDe.get(e.target)
+            if (e.isIntersecting && id != null && el.classList.contains('is-live') && !vusCePassage.has(id)) {
+              vusCePassage.add(id)
+              compterAffichages([id])
+            }
+          }
+        }, { threshold: 0.5 })
   let posts: WallCard[] = []
   let parPage = 5
   /** One sponsored post every this many posts; 0 = partners lead the page, like any featured post. */
@@ -188,6 +224,107 @@ export function wallsio(el: HTMLElement): Scene {
     fondu = null
   }
 
+  /**
+   * The videos of the cards about to go: stopped and emptied. A `<video>` merely
+   * taken out of the page keeps its buffers until the collector comes by — and
+   * the wall is redrawn at each new post, all day long, on the room's machine.
+   */
+  function liberer(): void {
+    for (const v of piste.querySelectorAll('video')) {
+      v.pause()
+      v.removeAttribute('src')
+      v.load()
+    }
+  }
+
+  /** The dense wall: the latest posts first, in as many columns as fit, once. */
+  function poserDefilement(): void {
+    arreterGlisse()
+    regard?.disconnect()
+    liberer()
+    const bloc = document.createElement('div')
+    bloc.className = 'defile-bloc'
+    const colonnes = Array.from({ length: COLONNES_DEFILEMENT }, () => {
+      const c = document.createElement('div')
+      c.className = 'defile-col'
+      bloc.append(c)
+      return c
+    })
+    piste.replaceChildren(bloc)
+    const hauteur = (c: HTMLElement) => c.offsetHeight
+    for (const post of posts.slice(0, MAX_DEFILEMENT)) {
+      // The shortest column; laid out nowhere (off screen), each in turn.
+      const col = colonnes.reduce((a, c) =>
+        hauteur(c) < hauteur(a) || (hauteur(c) === hauteur(a) && c.childElementCount < a.childElementCount) ? c : a)
+      const c = carte(post, now)
+      const video = c.querySelector('video')
+      if (video) {
+        // Its still until it comes on screen: nothing fetched, nothing decoded before.
+        video.removeAttribute('autoplay')
+        video.preload = 'none'
+      }
+      col.append(c)
+      idDe.set(c, post.id)
+      regard?.observe(c)
+    }
+    affiches = []
+  }
+
+  /** The wall's height; 0 = it holds on the screen, and does not move. */
+  function hauteurMur(): number {
+    const bloc = piste.firstElementChild as HTMLElement | null
+    const distance = bloc?.offsetHeight ?? 0
+    return distance > defile.clientHeight ? distance : 0
+  }
+
+  function poserA(y: number): void {
+    decalage = y
+    piste.style.transform = y > 0 ? `translateY(-${y}px)` : ''
+  }
+
+  /** At the top (the latest posts), or where it was when redrawn on screen. */
+  function lancerGlisse(t: number, depuis = 0): void {
+    arreterGlisse()
+    const distance = hauteurMur()
+    poserA(distance > 0 ? depuis % distance : 0)
+    pasA = t
+  }
+
+  /**
+   * One screenful further down, in one short slide — still the rest of the time,
+   * which costs the machine far less than a wall always moving. The last screen
+   * lines up with the wall's foot; from there, back to the top.
+   */
+  function pageSuivante(t: number): void {
+    const distance = hauteurMur()
+    pasA = t
+    if (distance === 0 || glisse != null) return
+    const depuis = decalage
+    const ecran = defile.clientHeight
+    const vers = depuis + ecran >= distance ? 0 : Math.min(depuis + ecran, distance - ecran)
+    piste.dataset.page = String(Number(piste.dataset.page ?? 0) + 1)
+    piste.dataset.vers = String(vers)
+    const fin = () => poserA(vers)
+    if (!peutAnimer()) { fin(); return }
+    glisse = piste.animate([{ transform: `translateY(-${depuis}px)` }, { transform: `translateY(-${vers}px)` }], {
+      duration: GLISSE_PAGE,
+      easing: 'cubic-bezier(.65, 0, .35, 1)',
+      fill: 'forwards',
+    })
+    const anim = glisse
+    anim.onfinish = () => {
+      fin()
+      anim.cancel()
+      if (glisse === anim) glisse = null
+    }
+    anim.finished.catch(() => {})
+  }
+
+  function arreterGlisse(): void {
+    glisse?.cancel()
+    glisse = null
+  }
+
   const scene: Scene = {
     el,
     cle: (data: Data) => [data.socialWall, data.boucle?.wallsio],
@@ -195,7 +332,8 @@ export function wallsio(el: HTMLElement): Scene {
     rendre(data: Data) {
       const c = data.boucle?.wallsio
       ecrire(titre, c?.titre ?? '')
-      ecrire(hashtag, c?.hashtag ?? '')
+      ecrire(hashtag, c?.texteDroite || c?.hashtag || '')
+      hashtag.classList.toggle('est-texte', Boolean(c?.texteDroite))
       parPage = c?.parPage ?? 5
       sponsoriseTous = c?.sponsoriseTous ?? 0
       remplir = c?.remplir ?? true
@@ -204,17 +342,39 @@ export function wallsio(el: HTMLElement): Scene {
       vide.hidden = posts.length > 0
       now = maintenant(data)
       arreterFondu()
+      enDefilement = c?.affichage === 'defilement'
+      el.classList.toggle('en-defilement', enDefilement)
+      if (enDefilement) {
+        // Redrawn on screen (a new post): the wall goes on from where it was.
+        const ou = decalage
+        poserDefilement()
+        if (el.classList.contains('is-live')) lancerGlisse(now, ou)
+        else poserA(0)
+        return
+      }
+      arreterGlisse()
+      regard?.disconnect()
+      liberer()
+      piste.replaceChildren()
       page()
       // Redrawn in place, the new page does not pop in front of the room.
       apparaitre()
     },
     entre(data: Data) {
+      // Each pass starts again from the latest posts.
+      if (enDefilement) { vusCePassage.clear(); lancerGlisse(maintenant(data)); return }
       compterAffichages(affiches)
       entreA = maintenant(data)
       // Laid off screen a whole loop ago: its time starts now.
       poseA = entreA
     },
     quitte(data: Data) {
+      if (enDefilement) {
+        arreterGlisse()
+        // Off screen, nothing plays.
+        for (const v of piste.querySelectorAll('video')) v.pause()
+        return
+      }
       arreterFondu()
       now = maintenant(data)
       page()
@@ -227,6 +387,13 @@ export function wallsio(el: HTMLElement): Scene {
      * (`quitte`).
      */
     tick(data: Data) {
+      // The dense wall moves down a screenful once it has had its time.
+      if (enDefilement) {
+        const t = maintenant(data)
+        const pause = (data.boucle?.wallsio?.dureePage || DUREE_PAGE_DEFILEMENT) * 1000
+        if (pasA > 0 && el.classList.contains('is-live') && t - pasA >= pause) pageSuivante(t)
+        return
+      }
       // A fade under way ends, wherever the wall is: `tourner` lays nothing off screen.
       if (fondu != null) { tourner(data); return }
       const t = maintenant(data)

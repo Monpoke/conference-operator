@@ -299,6 +299,18 @@ export const boucleSchema = z.object({
        * gets no button whatever is ticked here.
        */
       reseaux: z.array(reseauPartageSchema).max(4).default(['bluesky', 'mastodon', 'x', 'linkedin']),
+      /**
+       * The oldest post the wall shows, in days since it was published; `0` = no
+       * limit. On the screens and the public page alike.
+       */
+      ageMaxJours: z.number().int().min(0).max(3650).default(0),
+      /**
+       * How the screens lay the wall: `pages` of a few cards turning in place, or
+       * `defilement` — many smaller cards, the wall scrolling slowly from the latest.
+       */
+      affichage: z.enum(['pages', 'defilement']).default('pages'),
+      /** Shown top right of the wall instead of the hashtag (the public page's address…); empty = the hashtag. */
+      texteDroite: z.string().max(60).default(''),
     })
     .default({
       titre: 'Le mur Cloud Nord',
@@ -311,6 +323,9 @@ export const boucleSchema = z.object({
       dureePage: 0,
       menu: [],
       reseaux: ['bluesky', 'mastodon', 'x', 'linkedin'],
+      ageMaxJours: 0,
+      affichage: 'pages',
+      texteDroite: '',
     }),
   conduite: z
     .object({

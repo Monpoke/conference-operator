@@ -122,7 +122,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   const touch = (roomId: string | null) => changes.touch(roomId)
 
   const secretBox = createSecretBox(config.authSecret)
-  const wall = new WallService(orm)
+  const wall = new WallService(orm, undefined, undefined, () => settings.get().boucle.wallsio.ageMaxJours)
   const identity = new EventIdentityService(settings, programs)
   const audit = new AuditService(orm, () => clock.now())
   const services: Services = {

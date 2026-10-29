@@ -158,6 +158,12 @@ export class WallService {
     private readonly db: HubDatabase,
     private readonly snapshotSize = 50,
     private readonly warn: UnreadableRow = warnUnreadable,
+    /**
+     * The oldest post the wall still shows, in days (`boucle.wallsio.ageMaxJours`),
+     * read at each computation; 0 = no limit. Last year's posts read again from
+     * walls.io must not come back on the screens.
+     */
+    private readonly ageMaxDays: () => number = () => 0,
   ) {
     this.emitter.setMaxListeners(256)
     this.refreshSnapshot()
@@ -407,9 +413,13 @@ export class WallService {
   }
 
   private computeScreen(): WallSnapshot {
+    // Published at the source, else received: the order and the age go by when it was said.
+    const publishedAt = sql`coalesce(${comment.postedAt}, ${comment.createdAt})`
+    const ageMax = this.ageMaxDays()
     const onScreen = and(
       eq(comment.status, 'approved'),
       or(eq(comment.sourceActive, true), eq(comment.forcedOnScreen, true)),
+      ageMax > 0 ? sql`${publishedAt} >= ${new Date(Date.now() - ageMax * 86_400_000).toISOString()}` : undefined,
     )
     const isFeatured = or(
       eq(comment.featured, true),
@@ -420,7 +430,7 @@ export class WallService {
       .select()
       .from(comment)
       .where(and(onScreen, isFeatured))
-      .orderBy(desc(comment.seq))
+      .orderBy(desc(publishedAt), desc(comment.seq))
       .limit(SCREEN_FEATURED_MAX)
       .all()
     const latest = this.db
@@ -432,7 +442,7 @@ export class WallService {
           featured.length > 0 ? notInArray(comment.seq, featured.map((row) => row.seq)) : undefined,
         ),
       )
-      .orderBy(desc(comment.seq))
+      .orderBy(desc(publishedAt), desc(comment.seq))
       .limit(SCREEN_LATEST_MAX)
       .all()
     const posts = this.comments([...featured, ...latest])

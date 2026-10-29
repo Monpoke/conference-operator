@@ -471,6 +471,9 @@ describe('message exchange', () => {
       dureePage: 0,
       menu: [],
       reseaux: ['bluesky', 'mastodon', 'x', 'linkedin'],
+      ageMaxJours: 0,
+      affichage: 'pages',
+      texteDroite: '',
     })
     expect('wallsIoUrl' in stored).toBe(false)
   })

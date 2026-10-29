@@ -39,6 +39,7 @@ async function save(): Promise<void> {
       parPage: Math.min(6, Math.max(3, Math.round(Number(draft.value.parPage) || 5))),
       sponsoriseTous: Math.min(30, Math.max(0, Math.round(Number(draft.value.sponsoriseTous) || 0))),
       dureePage: Math.min(120, Math.max(0, Math.round(Number(draft.value.dureePage) || 0))),
+      ageMaxJours: Math.min(3650, Math.max(0, Math.round(Number(draft.value.ageMaxJours) || 0))),
     })
     reset()
     toast.say('Mur social enregistré')
@@ -114,6 +115,25 @@ async function save(): Promise<void> {
         type="number"
         min="0"
         max="30"
+        :class="FIELD"
+      />
+      <label :class="LABEL" for="boucle-wallsio-age-max">
+        Âge maximal d'un post, en jours (0 : sans limite) — au-delà, il quitte les écrans et la page publique
+      </label>
+      <input id="boucle-wallsio-age-max" v-model.number="draft.ageMaxJours" type="number" min="0" max="3650" :class="FIELD" />
+      <label :class="LABEL" for="boucle-wallsio-affichage">Affichage sur les écrans de salle</label>
+      <select id="boucle-wallsio-affichage" v-model="draft.affichage" :class="FIELD">
+        <option value="pages">Pages — quelques posts, la page tourne</option>
+        <option value="defilement">Mur dense — beaucoup de posts, un écran après l'autre depuis les plus récents (durée d'une page, 15 s par défaut)</option>
+      </select>
+      <label :class="LABEL" for="boucle-wallsio-texte-droite">
+        Texte en haut à droite du mur (vide : le hashtag)
+      </label>
+      <input
+        id="boucle-wallsio-texte-droite"
+        v-model="draft.texteDroite"
+        maxlength="60"
+        placeholder="Tout le mur sur social.cloudnord.fr"
         :class="FIELD"
       />
       <p :class="LABEL">Boutons « Publier sur … » de la page publique</p>

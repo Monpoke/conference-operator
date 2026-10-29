@@ -28,7 +28,7 @@ const post = (id: string, extra: Partial<WallCard> = {}): WallCard => ({
 
 const sponsored = (id: string) => post(id, { featured: true, sponsor: { name: id, logoUrl: null } })
 
-type Wall = { parPage?: number; sponsoriseTous?: number; bandeau?: boolean; remplir?: boolean; dureePage?: number }
+type Wall = { parPage?: number; sponsoriseTous?: number; bandeau?: boolean; remplir?: boolean; dureePage?: number; affichage?: 'pages' | 'defilement'; texteDroite?: string }
 
 /** Capped at `parPage` unless said otherwise: no layout here, a filled page would take every post. */
 const data = (posts: WallCard[], wall: Wall = {}, mode = 'boucle'): Data =>
@@ -44,6 +44,8 @@ const data = (posts: WallCard[], wall: Wall = {}, mode = 'boucle'): Data =>
         bandeau: wall.bandeau ?? true,
         remplir: wall.remplir ?? false,
         dureePage: wall.dureePage ?? 0,
+        affichage: wall.affichage ?? 'pages',
+        texteDroite: wall.texteDroite ?? '',
       },
       durees: {},
     },
@@ -222,5 +224,89 @@ describe('a wall card with a video', () => {
     const article = carte(post('p', { imageUrl: '/assets/still' }), Date.parse('2026-10-30T10:00:00Z'))
     expect(article.querySelector('video')).toBeNull()
     expect(article.querySelector('img.carte-image')?.getAttribute('src')).toBe('/assets/still')
+  })
+})
+
+describe('the scrolling wall', () => {
+  const many = Array.from({ length: 50 }, (_, i) => post(`p${i}`))
+
+  it('lays many posts, the latest first, once — and turns no page', () => {
+    const el = document.createElement('div')
+    document.body.append(el)
+    const scene = wallsio(el)
+    scene.rendre(data(many, { affichage: 'defilement' }))
+
+    expect(el.classList.contains('en-defilement')).toBe(true)
+    const blocs = el.querySelectorAll('.defile-bloc')
+    expect(blocs).toHaveLength(1)
+    expect(blocs[0]!.querySelectorAll('.carte')).toHaveLength(30)
+    expect(blocs[0]!.querySelector<HTMLElement>('.defile-col .carte')?.dataset.post).toBe('p0')
+    expect(el.querySelectorAll('.mur .carte')).toHaveLength(0)
+    el.remove()
+  })
+
+  it('moves a screenful further down once a page has had its time, still in between', () => {
+    const el = document.createElement('div')
+    document.body.append(el)
+    const scene = wallsio(el)
+    const d = data(many, { affichage: 'defilement', dureePage: 6 })
+    scene.rendre(d)
+    // No layout here: the wall's height and the screen's, as a projector would measure them.
+    Object.defineProperty(el.querySelector('.defile-bloc')!, 'offsetHeight', { value: 2000 })
+    Object.defineProperty(el.querySelector('.defile')!, 'clientHeight', { value: 900 })
+    el.classList.add('is-live')
+    scene.entre!(d)
+    const piste = el.querySelector<HTMLElement>('.defile-piste')!
+
+    vi.advanceTimersByTime(5_000)
+    scene.tick!(d, 0)
+    expect(piste.dataset.page).toBeUndefined()
+    vi.advanceTimersByTime(1_000)
+    scene.tick!(d, 0)
+    expect(piste.dataset.page).toBe('1')
+    expect(piste.dataset.vers).toBe('900')
+    // The last screen lines up with the wall's foot, then back to the top.
+    const suivante = (attendu: string) => {
+      vi.advanceTimersByTime(6_000)
+      piste.getAnimations?.().forEach((a) => a.finish())
+      scene.tick!(d, 0)
+      expect(piste.dataset.vers).toBe(attendu)
+    }
+    suivante('1100')
+    suivante('0')
+    el.remove()
+  })
+
+  it('empties the videos of the cards it redraws: no buffers left behind all day', () => {
+    const el = document.createElement('div')
+    const scene = wallsio(el)
+    const avecVideo = [post('v', { videoUrl: '/assets/video', imageUrl: '/assets/still' }), ...many]
+    scene.rendre(data(avecVideo, { affichage: 'defilement' }))
+    const video = el.querySelector('video')!
+    expect(video.preload).toBe('none')
+    scene.rendre(data(avecVideo, { affichage: 'defilement', texteDroite: 'autre' }))
+    expect(video.getAttribute('src')).toBeNull()
+    expect(el.querySelector('video')).not.toBe(video)
+  })
+
+  it('goes back to pages when the console says so', () => {
+    const el = document.createElement('div')
+    const scene = wallsio(el)
+    scene.rendre(data(many, { affichage: 'defilement' }))
+    scene.rendre(data(many))
+    expect(el.classList.contains('en-defilement')).toBe(false)
+    expect(el.querySelectorAll('.defile-bloc')).toHaveLength(0)
+    expect(el.querySelectorAll('.mur .carte').length).toBeGreaterThan(0)
+  })
+})
+
+describe('the wall’s top right', () => {
+  it('shows the text set in the console, else the hashtag', () => {
+    const el = document.createElement('div')
+    const scene = wallsio(el)
+    scene.rendre(data([post('a')], { texteDroite: 'Tout le mur sur social.cloudnord.fr' }))
+    expect(el.querySelector('[data-hashtag]')?.textContent).toContain('Tout le mur sur social.cloudnord.fr')
+    scene.rendre(data([post('a')]))
+    expect(el.querySelector('[data-hashtag]')?.textContent).toContain('#test')
   })
 })

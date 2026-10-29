@@ -66,6 +66,7 @@ function fakeClient(posts: unknown[]): { calls: Call[]; client: ReturnType<typeo
           feature: note('wall/feature', () => ({ ok: true })),
           forceOnScreen: note('wall/forceOnScreen', () => ({ ok: true })),
           save: note('wall/save', () => ({})),
+          stats: note('wall/stats', () => STATS),
         },
         boucle: {
           previews: note('boucle/previews', () => ({})),
@@ -111,6 +112,20 @@ const POST = {
   lastShownAt: '2026-10-30T10:30:00Z',
 }
 
+const STATS = {
+  generatedAt: '2026-10-30T10:30:00Z',
+  posts: {
+    total: 3,
+    byNetwork: [{ label: 'Instagram', count: 2 }, { label: 'form', count: 1 }],
+    byDay: [{ day: '2026-10-30', count: 3 }],
+    byMedia: { video: 1, photo: 1, text: 1 },
+  },
+  impressions: { total: 42, top: [{ id: 'p1', author: 'Bruno', network: 'Instagram', text: 'La salle est pleine', count: 42 }] },
+  onlineViews: { total: 0, top: [] },
+  wallsio: null,
+  wallsioError: 'Aucun jeton walls.io : à régler dans Réglages.',
+}
+
 function mountView(posts: unknown[]): { calls: Call[]; wrapper: ReturnType<typeof mount> } {
   const fake = fakeClient(posts)
   const session = useSessionStore()
@@ -131,6 +146,24 @@ beforeEach(() => {
 })
 
 describe('moderation view', () => {
+  it('opens the figures in place of the lists, walls.io’s failure said in words', async () => {
+    const { wrapper, calls } = mountView([])
+    await wrapper.get('#wall-tab-stats').trigger('click')
+    await flushPromises()
+
+    expect(calls.some((call) => call.path === 'wall/stats')).toBe(true)
+    expect(wrapper.find('#wall-posts').exists()).toBe(false)
+    expect(wrapper.get('[data-stat="impressions"]').text()).toContain('42')
+    expect(wrapper.get('[data-block="networks"]').text()).toContain('Public (formulaire)')
+    expect(wrapper.get('[data-block="top-impressions"]').text()).toContain('La salle est pleine')
+    expect(wrapper.get('[data-role="wallsio-error"]').text()).toContain('Aucun jeton')
+    expect(wrapper.find('[data-role="interactions"]').exists()).toBe(true)
+
+    await wrapper.get('#wall-tab-pending').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('#wall-stats').exists()).toBe(false)
+  })
+
   it('says there is nothing to review rather than leave a blank', async () => {
     const { wrapper } = mountView([])
     await useModerationStore().load()

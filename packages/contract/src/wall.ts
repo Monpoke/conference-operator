@@ -182,6 +182,74 @@ export const wallsIoStatusSchema = z.object({
 })
 export type WallsIoStatus = z.infer<typeof wallsIoStatusSchema>
 
+/** A figure under a name: a network, a language. */
+export const wallStatsCountSchema = z.object({
+  label: z.string(),
+  count: z.number().int().nonnegative(),
+})
+export type WallStatsCount = z.infer<typeof wallStatsCountSchema>
+
+/** A post among the most shown: enough to recognise it. */
+export const wallStatsTopPostSchema = z.object({
+  id: z.string(),
+  author: z.string(),
+  network: z.string().nullable(),
+  /** The first words of its text. */
+  text: z.string(),
+  count: z.number().int().nonnegative(),
+})
+export type WallStatsTopPost = z.infer<typeof wallStatsTopPostSchema>
+
+export const WALL_STATS_TOP = 10
+
+/**
+ * What walls.io says of the wall, read from its API. Likes, shares and replies
+ * are not in it: walls.io only shows them in its own dashboard.
+ */
+export const wallsIoStatsSchema = z.object({
+  fetchedAt: isoDateTimeSchema,
+  /** Posts on the walls.io wall, per network. */
+  posts: z.object({ total: z.number().int().nonnegative(), byNetwork: z.array(wallStatsCountSchema) }),
+  /** Distinct authors, per network. */
+  authors: z.object({ total: z.number().int().nonnegative(), byNetwork: z.array(wallStatsCountSchema) }),
+  /** Over the latest posts read (`sampled`). */
+  sentiment: z.object({
+    positive: z.number().int().nonnegative(),
+    neutral: z.number().int().nonnegative(),
+    negative: z.number().int().nonnegative(),
+    unknown: z.number().int().nonnegative(),
+  }),
+  languages: z.array(wallStatsCountSchema),
+  sampled: z.number().int().nonnegative(),
+})
+export type WallsIoStats = z.infer<typeof wallsIoStatsSchema>
+
+/** The social wall in figures: the hub's posts and displays, and walls.io's own. */
+export const wallStatsSchema = z.object({
+  generatedAt: isoDateTimeSchema,
+  /** The published posts (`approved`), every source together. */
+  posts: z.object({
+    total: z.number().int().nonnegative(),
+    /** The network the card names, else the source. Largest first. */
+    byNetwork: z.array(wallStatsCountSchema),
+    /** Day of publication at the source, Europe/Paris (`YYYY-MM-DD`), in order. */
+    byDay: z.array(z.object({ day: z.string(), count: z.number().int().nonnegative() })),
+    byMedia: z.object({
+      video: z.number().int().nonnegative(),
+      photo: z.number().int().nonnegative(),
+      text: z.number().int().nonnegative(),
+    }),
+  }),
+  /** Times a room screen put a post on air. */
+  impressions: z.object({ total: z.number().int().nonnegative(), top: z.array(wallStatsTopPostSchema) }),
+  /** Times a post was seen on the public social page. */
+  onlineViews: z.object({ total: z.number().int().nonnegative(), top: z.array(wallStatsTopPostSchema) }),
+  /** `null` = not read: no token, paused, or walls.io failed (`wallsioError`). */
+  wallsio: wallsIoStatsSchema.nullable(),
+  wallsioError: z.string().nullable(),
+})
+export type WallStats = z.infer<typeof wallStatsSchema>
+
 export const questionSchema = z.object({
   id: z.string(),
   roomId: roomIdSchema,

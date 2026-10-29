@@ -10,6 +10,7 @@ import type { IngestService } from './services/ingest.js'
 import type { DeviceService, RoomService } from './services/rooms.js'
 import type { QuestionService, WallService } from './services/wall.js'
 import type { WallsIoConfig } from './services/wallsio.js'
+import type { WallStatsService } from './services/wall-stats.js'
 import type { RateLimiter } from './services/rate-limit.js'
 import type { MurPublicAccessService, MurPublicService } from './services/mur-public.js'
 import type { PushService } from './services/push.js'
@@ -52,6 +53,8 @@ export interface Services {
    * polls now — a token just typed should show it works without waiting.
    */
   wallsIo: { config: WallsIoConfig; kick: () => Promise<unknown> }
+  /** The wall in figures: the hub's tables, and walls.io's API kept five minutes. */
+  wallStats: WallStatsService
   /**
    * The hub's log, for what the procedures do out of sight — the social wall
    * served to a room, a post hidden. Fastify's, bound once the server exists.

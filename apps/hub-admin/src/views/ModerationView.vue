@@ -5,6 +5,7 @@ import { timeAgo } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ImageField from '../components/boucle/ImageField.vue'
+import WallStats from '../components/WallStats.vue'
 import { FIELD, LABEL, orNull } from '../components/boucle/ui.js'
 import { useBoucleStore } from '../stores/boucle.js'
 import {
@@ -86,7 +87,11 @@ onBeforeUnmount(() => {
   if (typing != null) clearTimeout(typing)
 })
 
+/** The figures, in place of the lists: read when opened, not on every visit. */
+const showingStats = ref(false)
+
 async function showView(next: WallView): Promise<void> {
+  showingStats.value = false
   try {
     await store.show(next)
   } catch {
@@ -379,16 +384,29 @@ async function savePost(): Promise<void> {
             variant="tab"
             size="small"
             role="tab"
-            :aria-selected="view === tab.id"
-            :active="view === tab.id"
+            :aria-selected="!showingStats && view === tab.id"
+            :active="!showingStats && view === tab.id"
             class="flex-1 md:flex-none"
             @click="showView(tab.id)"
           >
             {{ tab.label }}
             <span class="ml-1 text-xs text-dim" :data-count="tab.id">{{ counts[tab.id] }}</span>
           </Button>
+          <Button
+            id="wall-tab-stats"
+            variant="tab"
+            size="small"
+            role="tab"
+            :aria-selected="showingStats"
+            :active="showingStats"
+            class="flex-1 md:flex-none"
+            @click="showingStats = true"
+          >
+            Statistiques
+          </Button>
         </div>
         <input
+          v-if="!showingStats"
           id="wall-search"
           v-model="search"
           type="search"
@@ -399,7 +417,9 @@ async function savePost(): Promise<void> {
         />
       </div>
 
-      <div id="wall-posts" class="mt-3.5" :data-view="view">
+      <WallStats v-if="showingStats" />
+
+      <div v-else id="wall-posts" class="mt-3.5" :data-view="view">
         <Empty v-if="items.length === 0 && !loading">
           {{ search.trim() === '' ? EMPTY[view] : 'Aucun post ne correspond à la recherche.' }}
         </Empty>
@@ -451,7 +471,8 @@ async function savePost(): Promise<void> {
               </Badge>
               <span class="font-medium text-text">{{ post.author }}</span>
               <span v-if="post.network">{{ post.network }}</span>
-              <span>{{ timeAgo(post.createdAt) }}</span>
+              <!-- When it was said, not when the hub read it: a hub read afresh would date everything "5 h ago". -->
+              <span :title="`Reçu par le hub ${timeAgo(post.createdAt)}`">{{ timeAgo(post.postedAt ?? post.createdAt) }}</span>
               <!-- Where it was written: to read the thread, see the image full size, before deciding. -->
               <a
                 v-if="linkOf(post) != null"
@@ -527,7 +548,7 @@ async function savePost(): Promise<void> {
       </div>
 
       <nav
-        v-if="pages > 1"
+        v-if="!showingStats && pages > 1"
         id="wall-pages"
         class="mt-1 flex items-center justify-between gap-2"
         aria-label="Pages"

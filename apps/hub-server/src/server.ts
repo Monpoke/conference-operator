@@ -46,6 +46,7 @@ import {
   type SocialSource,
 } from './services/social.js'
 import { WallsIoConfig, wallsioSource } from './services/wallsio.js'
+import { WallStatsService } from './services/wall-stats.js'
 import { migrateLegacyMur } from './services/legacy-mur.js'
 import { renderWallClosedPage, renderWallPage } from './pages/wall-page.js'
 import { previewPayload, renderBouclePreview, sansOfQuery } from './pages/boucle-preview.js'
@@ -125,6 +126,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   const wall = new WallService(orm, undefined, undefined, () => settings.get().boucle.wallsio.ageMaxJours)
   const identity = new EventIdentityService(settings, programs)
   const audit = new AuditService(orm, () => clock.now())
+  const wallsIoConfig = new WallsIoConfig(orm, secretBox)
   const services: Services = {
     audit,
     programs,
@@ -145,7 +147,8 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     wall,
     // The token is sealed with the same box as the stream keys. `kick` is bound
     // once the ingestor exists, below.
-    wallsIo: { config: new WallsIoConfig(orm, secretBox), kick: async () => undefined },
+    wallsIo: { config: wallsIoConfig, kick: async () => undefined },
+    wallStats: new WallStatsService({ db: orm, config: wallsIoConfig }),
     // Bound to Fastify's log once the server exists, below.
     log: () => undefined,
     questions: new QuestionService(orm),

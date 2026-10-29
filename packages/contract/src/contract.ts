@@ -41,6 +41,7 @@ import {
   wallListInputSchema,
   wallListSchema,
   wallSnapshotSchema,
+  wallStatsSchema,
   wallsIoStatusSchema,
 } from './wall.js'
 import { murPublicAccessSchema, murPublicSchema, onlineViewsInputSchema } from './mur-public.js'
@@ -886,6 +887,12 @@ export const contract = {
      * Admin.
      */
     list: oc.input(wallListInputSchema).output(wallListSchema),
+    /**
+     * The wall in figures: posts per network, day and medium, displays in the
+     * rooms and online, and what walls.io's API says. walls.io failing never
+     * fails it: its part comes back `null`, with why. Admin.
+     */
+    stats: oc.output(wallStatsSchema),
     /**
      * The program's partners a sponsored post can be attached to — the loop's
      * catalogue, for a moderator who does not read the settings. Admin.

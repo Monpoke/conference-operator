@@ -31,7 +31,7 @@ const LABELS: Record<string, string> = {
   exploitation: 'Exploitation',
   appairage: 'Appairage',
   conferences: 'Conférences',
-  moderation: 'Modération',
+  moderation: 'Mur social',
   messages: 'Messages',
   vod: 'VOD',
   boucle: 'Boucle',

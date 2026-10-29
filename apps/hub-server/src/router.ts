@@ -150,6 +150,7 @@ const NOT_AUDITED = new Set([
   'wall.pending',
   'wall.onScreen',
   'wall.list',
+  'wall.stats',
   'wall.sponsors',
   'push.publicKey',
   'program.controleOpenFeedback',
@@ -1531,6 +1532,10 @@ export const router = os.router({
     list: os.wall.list
       .use(operatorCan('wall:moderate'))
       .handler(({ input, context }) => context.services.wall.list(input)),
+
+    stats: os.wall.stats
+      .use(operatorCan('wall:moderate'))
+      .handler(({ context }) => context.services.wallStats.stats()),
 
     sponsors: os.wall.sponsors
       .use(operatorCan('wall:moderate'))

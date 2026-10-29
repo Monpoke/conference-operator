@@ -53,7 +53,7 @@ async function save(): Promise<void> {
   <Panel title="Mur social">
     <div v-if="draft != null" id="boucle-wallsio" class="flex flex-1 flex-col">
       <p class="mb-2 text-[13px] text-dim">
-        Les posts se gèrent dans <a :href="moderationPath" class="text-brand underline">Modération</a>
+        Les posts se gèrent dans <a :href="moderationPath" class="text-brand underline">Mur social</a>
         (mise en avant, posts sponsorisés et leurs affichages), le jeton walls.io dans
         <a :href="settingsPath" class="text-brand underline">Réglages</a>.
       </p>

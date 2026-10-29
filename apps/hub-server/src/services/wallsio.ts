@@ -8,7 +8,7 @@ import { htmlToText, type SocialSource } from './social.js'
 import type { PostInput } from './wall.js'
 
 const SETTING_KEY = 'wallsio'
-const API = 'https://api.walls.io/v1'
+export const API = 'https://api.walls.io/v1'
 
 /**
  * What the posts are asked for with: what the card draws, and what says whether
@@ -347,7 +347,7 @@ const NETWORKS: Record<string, string> = {
 }
 
 /** walls.io's `type`, as the card's foot names it. */
-function networkName(type: string | null | undefined): string | null {
+export function networkName(type: string | null | undefined): string | null {
   if (type == null || type === '') return null
   const key = type.toLowerCase()
   return NETWORKS[key] ?? key.charAt(0).toUpperCase() + key.slice(1)

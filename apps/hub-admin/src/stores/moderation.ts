@@ -1,3 +1,4 @@
+import type { WallStats } from '@conference-operator/contract'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { CatalogueSponsor } from './boucle.js'
@@ -21,6 +22,8 @@ export interface WallPost {
   source: string
   status: WallView
   createdAt: string
+  /** Published at the source; `null` = not given, `createdAt` stands in. */
+  postedAt?: string | null
   authorSubtitle: string | null
   avatar: string | null
   image: string | null
@@ -69,6 +72,9 @@ export const useModerationStore = defineStore('moderation', () => {
   const loading = ref(false)
   /** The program's partners a sponsored post can be attached to. */
   const sponsors = ref<CatalogueSponsor[]>([])
+  /** The wall in figures; `null` until first read. */
+  const stats = ref<WallStats | null>(null)
+  const statsLoading = ref(false)
 
   const session = useSessionStore()
 
@@ -102,6 +108,15 @@ export const useModerationStore = defineStore('moderation', () => {
 
   async function loadSponsors(): Promise<void> {
     sponsors.value = await session.client.rpc.wall.sponsors()
+  }
+
+  async function loadStats(): Promise<void> {
+    statsLoading.value = true
+    try {
+      stats.value = await session.client.rpc.wall.stats()
+    } finally {
+      statsLoading.value = false
+    }
   }
 
   async function show(next: WallView): Promise<void> {
@@ -152,7 +167,7 @@ export const useModerationStore = defineStore('moderation', () => {
   }
 
   return {
-    view, query, page, items, total, counts, loading, sponsors,
-    load, loadSponsors, show, search, goTo, moderate, feature, forceOnScreen, savePost,
+    view, query, page, items, total, counts, loading, sponsors, stats, statsLoading,
+    load, loadSponsors, loadStats, show, search, goTo, moderate, feature, forceOnScreen, savePost,
   }
 })

@@ -86,6 +86,8 @@ beforeEach(async () => {
     logLevel: 'fatal',
     devicePollInterval: '1s',
   })
+  // The program's day: the tests look for a talk to drive, and real time moves past it.
+  hub.services.clock.setSimulated('2026-10-30T10:20:00.000Z')
   await hub.app.listen({ port: 0, host: '127.0.0.1' })
   const address = hub.app.server.address()
   origin = `http://127.0.0.1:${typeof address === 'object' && address != null ? address.port : 0}`

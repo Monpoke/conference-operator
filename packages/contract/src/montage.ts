@@ -166,6 +166,25 @@ export const montageRegieSchema = z.object({
 export type MontageRegie = z.infer<typeof montageRegieSchema>
 
 
+/**
+ * What the published videos are made of, set in the console. Ceilings: a take
+ * below them keeps its own format, nothing is ever scaled up or interpolated.
+ */
+export const montageSortieSchema = z.object({
+  /** Picture height, width following the take's proportions. */
+  hauteur: z.union([z.literal(720), z.literal(1080), z.literal(1440), z.literal(2160)]),
+  /** Frames per second. */
+  fps: z.union([z.literal(25), z.literal(30), z.literal(50), z.literal(60)]),
+  /** x264 constant quality: lower is better, and larger. */
+  crf: z.number().int().min(16).max(30),
+})
+export type MontageSortie = z.infer<typeof montageSortieSchema>
+export const DEFAULT_MONTAGE_SORTIE: MontageSortie = { hauteur: 1080, fps: 30, crf: 20 }
+
+/** Who really spoke, when the program is wrong. See `HubSettings.montageOrateurs`. */
+export const montageOrateurSchema = z.object({ name: z.string().min(1).max(120), company: z.string().max(120).nullable() })
+export type MontageOrateur = z.infer<typeof montageOrateurSchema>
+
 /** A job as the console shows it. */
 export const montageJobViewSchema = z.object({
   id: z.string(),
@@ -194,6 +213,8 @@ export const montageJobViewSchema = z.object({
   /** What was done to the sound, once edited. */
   audio: montageAudioSchema.nullable(),
   erreur: z.string().nullable(),
+  /** Running, and its worker has not called for this long: it is probably dead. */
+  silencieuxDepuisMs: z.number().int().nonnegative().nullable().default(null),
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
   finishedAt: isoDateTimeSchema.nullable(),
@@ -231,6 +252,13 @@ export const montageClaimSchema = z.object({
   regie: montageRegieSchema.nullable(),
   /** For the montage: the validated cut. */
   coupe: montageCoupeSchema.nullable(),
+  /** The published format. Absent from an older hub. */
+  sortie: montageSortieSchema.default(DEFAULT_MONTAGE_SORTIE),
+  /**
+   * The speakers were corrected after the take: the card burnt into the rush is
+   * wrong, and is drawn again over it. `null`: the rush is right as it is.
+   */
+  cadre: z.object({ salle: z.string().nullable() }).nullable().default(null),
 })
 export type MontageClaim = z.infer<typeof montageClaimSchema>
 

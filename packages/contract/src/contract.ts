@@ -58,6 +58,7 @@ import {
   uploadViewSchema,
 } from './vod.js'
 import {
+  montageOrateurSchema,
   markerRoleSchema,
   montageAnalyseSchema,
   montageAudioSchema,
@@ -140,6 +141,10 @@ const planningSessionSchema = sessionPreviewSchema.extend({
   roomName: z.string().nullable(),
   /** `break` = slot with no speaker: welcome, break, lunch. */
   kind: z.enum(['talk', 'break']),
+  /** In a room nobody records: a missing rush is expected here, not a problem. */
+  sansCaptation: z.boolean().default(false),
+  /** The speakers set for its video, when the program is wrong. */
+  orateursVideo: z.array(montageOrateurSchema).nullable().default(null),
   /**
    * "Rate this talk" link on OpenFeedback.
    *
@@ -1408,7 +1413,9 @@ export const contract = {
      * back to the queue a little later, and the attempt does not count.
      */
     fail: oc
-      .input(montageLeaseSchema.extend({ raison: z.string().max(4_000), reessayer: z.boolean().default(false) }))
+      .input(montageLeaseSchema.extend({ raison: z.string().max(4_000), reessayer: z.boolean(),
+          /** The worker was killed on this job: the attempt counts, or it would loop forever. */
+          compter: z.boolean().default(false) }))
       .output(z.object({ ok: z.boolean() })),
 
     /** The jobs, a talk's or all of them. Admin. */
@@ -1428,6 +1435,11 @@ export const contract = {
         z.object({
           analyse: montageAnalyseSchema.nullable(),
           fichiers: z.array(z.object({ nom: z.string(), url: z.url() })),
+          /**
+           * The take's files, to listen at any cut — the excerpts only cover the
+           * proposed one. Empty when the sidecar cannot be read.
+           */
+          prise: z.array(z.object({ url: z.url(), offsetMs: z.number().int().nonnegative() })).default([]),
         }),
       ),
 

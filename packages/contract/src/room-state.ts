@@ -17,7 +17,7 @@ import {
   audioInputSchema,
 } from './primitives.js'
 import { DEFAULT_VOD_POLICY, vodPolicySchema, vodSyncSchema } from './vod.js'
-import { montageAutoSchema } from './montage.js'
+import { DEFAULT_MONTAGE_SORTIE, montageAutoSchema, montageOrateurSchema, montageSortieSchema } from './montage.js'
 import { boucleSchema, DEFAULT_BOUCLE } from './boucle.js'
 
 /**
@@ -489,6 +489,18 @@ export const hubSettingsSchema = z.object({
   vodPolitique: vodPolicySchema.default(DEFAULT_VOD_POLICY),
   /** When an analysed cut is edited without anybody validating it. See `montageAutoSchema`. */
   montageAuto: montageAutoSchema.default('si-confiance-haute'),
+  /** The published videos' format. See `montageSortieSchema`. */
+  montageSortie: montageSortieSchema.default(DEFAULT_MONTAGE_SORTIE),
+  /**
+   * The speakers of a talk whose program entry is wrong, by session: two people
+   * spoke, one was announced. For the videos only: the rooms keep the program.
+   */
+  montageOrateurs: z.record(sessionIdSchema, z.array(montageOrateurSchema).min(1).max(6)).default({}),
+  /**
+   * The rooms nobody records — hands-on workshops. A hub setting: it changes how
+   * the console reads a missing rush, and nothing of what a room does.
+   */
+  sallesSansCaptation: z.array(roomIdSchema).default([]),
   /**
    * The welcome loop's own content — texts, sponsor pages, posts, QR addresses.
    * See `boucleSchema`. Defaults to the reference loop.

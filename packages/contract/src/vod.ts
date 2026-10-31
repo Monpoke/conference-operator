@@ -329,6 +329,7 @@ export const vodStatutSchema = z.enum([
   'a-valider',
   'prete',
   'erreur',
+  'sans-captation',
 ])
 export type VodStatut = z.infer<typeof vodStatutSchema>
 

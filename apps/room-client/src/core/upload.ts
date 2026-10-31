@@ -104,8 +104,12 @@ export type { UploadRow, UploadsView }
 /** Signed parts asked for at once. Enough not to chatter, not enough to expire. */
 const PART_BATCH = 5
 
-/** Beyond this we stop replaying a file: something is wrong, and it has to be seen. */
-const MAX_ATTEMPTS = 8
+/**
+ * From here a file reads as failed: something is wrong, and it has to be seen. It
+ * goes on being retried at the longest delay all the same: the end of a network or
+ * storage outage must not leave a rush behind, with nobody to notice it.
+ */
+const FAILED_AFTER_ATTEMPTS = 8
 
 export class Uploads {
   private timer: NodeJS.Timeout | null = null
@@ -159,7 +163,8 @@ export class Uploads {
       const row = this.row(candidate.file)
       if (row?.state === 'termine') continue
       this.cancelled.delete(candidate.file)
-      this.upsert(candidate, { manuel: true, state: 'attente', nextAttemptAt: this.nowIso() })
+      // A fresh start: somebody asked, the delay and the failures so far no longer count.
+      this.upsert(candidate, { manuel: true, state: 'attente', nextAttemptAt: this.nowIso(), attempts: 0, lastError: null })
       queued += 1
     }
     if (queued > 0) {
@@ -253,7 +258,7 @@ export class Uploads {
       .where(and(ne(televersement.state, 'termine'), ne(televersement.state, 'abandonne')))
       .orderBy(asc(televersement.demandeA))
       .all()
-      .filter((row) => row.nextAttemptAt <= now && row.attempts < MAX_ATTEMPTS)
+      .filter((row) => row.nextAttemptAt <= now)
 
     for (const row of [...queued].sort((a, b) => Number(b.manuel) - Number(a.manuel))) {
       const candidate = byFile.get(row.file)
@@ -387,14 +392,14 @@ export class Uploads {
     this.db
       .update(televersement)
       .set({
-        state: attempts >= MAX_ATTEMPTS ? 'echoue' : 'attente',
+        state: attempts >= FAILED_AFTER_ATTEMPTS ? 'echoue' : 'attente',
         attempts,
         lastError: cause.message.slice(0, 300),
         nextAttemptAt: new Date(this.nowMs + delay).toISOString(),
       })
       .where(eq(televersement.file, file))
       .run()
-    this.deps.onLog?.(attempts >= MAX_ATTEMPTS ? 'error' : 'warn', 'téléversement en échec', {
+    this.deps.onLog?.(attempts >= FAILED_AFTER_ATTEMPTS ? 'error' : 'warn', 'téléversement en échec', {
       file,
       attempts,
       message: cause.message,

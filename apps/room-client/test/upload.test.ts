@@ -220,6 +220,39 @@ describe('uploading footage', () => {
     expect(log.begin.at(-1)?.file).toBe(ONE_TAKE.sidecar?.file)
   })
 
+  it('keeps retrying a failed file at the longest delay, and starts afresh when asked', async () => {
+    const { hub } = fakeHub()
+    let at = Date.parse('2026-10-30T12:00:00Z')
+    let refused = true
+    let tries = 0
+    const m = rig(hub, {
+      now: () => at,
+      sendPart: async () => {
+        tries += 1
+        if (refused) throw new Error('the storage refused the part (HTTP 503)')
+        return '"etag"'
+      },
+    })
+    await requestAndWait(m, ONE_TAKE.file)
+    const eleven = 11 * 60_000
+    for (let attempt = 0; attempt < 9; attempt += 1) {
+      at += eleven
+      await m.uploads.pass()
+    }
+    expect(m.uploads.view().entries[0]?.state).toBe('echoue')
+    expect(tries).toBe(10)
+
+    // Inside the delay, nothing is tried: this is what spares a failing storage.
+    await m.uploads.pass()
+    expect(tries).toBe(10)
+
+    // Asked by hand, it goes at once, without waiting for the delay.
+    refused = false
+    await requestAndWait(m, ONE_TAKE.file)
+    expect(tries).toBeGreaterThan(10)
+    expect(m.uploads.view().entries[0]?.error).toBeNull()
+  })
+
   it('does not upload the sidecar when the footage failed', async () => {
     const { hub, log } = fakeHub()
     const m = rig(hub, {

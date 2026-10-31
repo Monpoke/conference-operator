@@ -7,6 +7,10 @@ l'opérateur a l'application ouverte et rien d'autre.
 
 ## Mise en route (à faire la veille, pas le jour J)
 
+Tant que **Régie de salle** est ouverte, le poste ne se met pas en veille et
+l'écran ne s'éteint pas. Cela ne couvre ni un capot rabattu, ni une mise en veille
+demandée à la main : sur un portable, régler l'action du capot sur « ne rien faire ».
+
 1. Brancher capture HDMI, caméra, projecteur. Lancer **OBS-A** puis **OBS-B**.
 2. Lancer **Régie de salle**.
 

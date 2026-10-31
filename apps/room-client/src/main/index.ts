@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, dialog, safeStorage, screen, shell } from 'electron'
+import { app, BrowserWindow, dialog, powerSaveBlocker, safeStorage, screen, shell } from 'electron'
 import { RoomApp } from '../core/room-app.js'
 import { formatLogLine } from '../core/console-log.js'
 import { createMockObsTransport } from '../core/obs-mock.js'
@@ -50,6 +50,16 @@ async function main(): Promise<void> {
   }
 
   await app.whenReady()
+
+  /**
+   * The machine stays awake for as long as the room runs.
+   *
+   * `prevent-display-sleep`, the stronger of the two: the projector goes on showing
+   * the room's screen, and the machine does not suspend under OBS. Taken before
+   * everything else, because a screen waiting for its hub must not go black either.
+   * Never released: the system drops it with the process.
+   */
+  powerSaveBlocker.start('prevent-display-sleep')
 
   /**
    * The close latch, set before the first window.

@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ORPCError } from '@orpc/client'
@@ -7,7 +7,7 @@ import type { MontageClaim, VodHabillage } from '@conference-operator/contract'
 import { loadConfig } from '../src/config.js'
 import type { Hub } from '../src/hub.js'
 import { uploadParts } from '../src/transfer.js'
-import { completeFromSidecar, processJob } from '../src/worker.js'
+import { completeFromSidecar, processJob, releaseInterrupted } from '../src/worker.js'
 
 describe('a lease lost to another worker', () => {
   afterEach(() => {
@@ -49,6 +49,22 @@ describe('a lease lost to another worker', () => {
     expect(lines).toContain('bail perdu : le montage a été repris par un autre worker')
     // Nothing of the take is kept once the job is dropped.
     expect(await readdir(workDir)).toEqual([])
+    await rm(workDir, { recursive: true, force: true })
+  })
+})
+
+describe('a worker restarted in the middle of a job', () => {
+  it('gives the job back as a counted attempt, and leaves the rest alone', async () => {
+    const workDir = await mkdtemp(join(tmpdir(), 'reprise-'))
+    await mkdir(join(workDir, 'job-1'))
+    await writeFile(join(workDir, 'job-1', 'bail.json'), JSON.stringify({ jobId: 'job-1', bailId: 'bail-1' }))
+    await mkdir(join(workDir, 'autre'))
+    const fail = vi.fn(async () => ({ ok: true }))
+
+    await releaseInterrupted({ hub: { montage: { fail } } as unknown as Hub, workDir, log: () => {} })
+
+    expect(fail).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'job-1', bailId: 'bail-1', reessayer: true, compter: true }))
+    expect(await readdir(workDir)).toEqual(['autre'])
     await rm(workDir, { recursive: true, force: true })
   })
 })

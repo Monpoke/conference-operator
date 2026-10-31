@@ -11,7 +11,7 @@ import { join } from 'node:path'
 import { launchChrome, type Chrome } from './chrome.js'
 import { loadConfig } from './config.js'
 import { connectHub } from './hub.js'
-import { processJob, type Log } from './worker.js'
+import { processJob, releaseInterrupted, type Log } from './worker.js'
 
 const log: Log = (level, message, context) => {
   const line = JSON.stringify({ time: new Date().toISOString(), level, msg: message, ...context })
@@ -61,6 +61,7 @@ async function closeBrowser(): Promise<void> {
 }
 
 log('info', 'worker de montage démarré', { hub: config.hubUrl, jingle: config.jingle ?? null })
+await releaseInterrupted({ hub, workDir: config.workDir, log })
 
 while (!stopping) {
   let claim

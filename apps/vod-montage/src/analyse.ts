@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import type { CutSide, CutSource, MontageAudio, MontageCoupe, Sidecar } from '@conference-operator/contract'
 import { linearPossible, measureLoudness, NEAR_SILENT_LUFS, rmsFrames, type AudioOptions, type Loudness, type Segment } from './audio.js'
-import { silencesOf, snapCut, snapEnd, snapStart, type Frame, type Silence, type Snapped } from './coupe.js'
+import { LATE_SPEECH_MS, LEAD_MS, silencesOf, snapCut, snapEnd, snapStart, tailPause, type Frame, type Silence, type Snapped } from './coupe.js'
 import { cutFromMarkers, probe, takeFiles, type Probe } from './montage.js'
 
 /**
@@ -89,7 +89,15 @@ export function speechEdge(frames: readonly Frame[], floorDb: number, which: 'fi
 export function judge(
   debut: CutSide,
   fin: CutSide,
-  context: { durationMs: number; regieAuto: boolean; disagreeMs: number | null },
+  context: {
+    durationMs: number
+    regieAuto: boolean
+    disagreeMs: number | null
+    /** The start moved this far to where the speech begins. */
+    debutRetardeMs?: number | null
+    /** A long pause shortly before the end: the talk may have stopped there. */
+    pauseFinale?: { atMs: number; durationMs: number } | null
+  },
 ): { confiance: Confiance; raisons: string[] } {
   const raisons: string[] = []
   const describe = (side: CutSide, name: string) => {
@@ -104,6 +112,9 @@ export function judge(
     if (side.source === 'manuel') return 'haute'
     if (side.source === 'marque') return side.calee && Math.abs(side.deplacementMs) < 2_000 ? 'haute' : 'moyenne'
     if (side.source === 'regie') return context.regieAuto ? 'basse' : 'moyenne'
+    // The take stops on « Terminer », so the end is nearly always heard, not
+    // marked: on the validated cuts, that alone says nothing against it.
+    if (side.source === 'parole') return 'moyenne'
     return 'basse'
   }
   const levels: Confiance[] = ['basse', 'moyenne', 'haute']
@@ -111,6 +122,15 @@ export function judge(
 
   if (context.durationMs < MIN_TALK_MS) {
     raisons.push(`durée courte : ${Math.round(context.durationMs / 60_000)} min`)
+    confiance = 'basse'
+  }
+  if (context.debutRetardeMs != null) {
+    raisons.push(`aucune parole au début : coupe avancée de ${Math.round(context.debutRetardeMs / 1000)} s jusqu’aux premiers mots`)
+    confiance = 'basse'
+  }
+  if (context.pauseFinale != null) {
+    const at = context.pauseFinale.atMs / 1000
+    raisons.push(`pause de ${Math.round(context.pauseFinale.durationMs / 1000)} s à ${Math.floor(at / 60)}:${String(Math.floor(at % 60)).padStart(2, '0')} : le talk s’arrête peut-être là (questions, applaudissements)`)
     confiance = 'basse'
   }
   if (context.disagreeMs != null && context.disagreeMs > DISAGREE_MS) {
@@ -201,8 +221,24 @@ export async function analyser(options: {
   const start = await side('debut')
   const end = await side('fin')
   const raw = { startMs: start.ms, endMs: end.ms }
-  const cut = snapCut(raw, start.snapped, end.snapped)
-  const crossed = cut === raw && (start.snapped?.calee || end.snapped?.calee)
+  const snappedCut = snapCut(raw, start.snapped, end.snapped)
+
+  // The surest source says when the slot began, not when somebody spoke: a talk
+  // that starts in silence keeps that silence otherwise, whatever the source.
+  let cut = snappedCut
+  let debutRetardeMs: number | null = null
+  let pauseFinale: { atMs: number; durationMs: number } | null = null
+  if (hasAudio) {
+    const head = await frames(0, Math.min(takeMs, SPEECH_SCAN_MS))
+    const edge = speechEdge(head, silencesOf(head).floorDb, 'first')
+    if (edge != null && edge - LEAD_MS > snappedCut.startMs + LATE_SPEECH_MS && edge < snappedCut.endMs - MIN_TALK_MS) {
+      debutRetardeMs = Math.round(edge - LEAD_MS - snappedCut.startMs)
+      cut = { startMs: edge - LEAD_MS, endMs: snappedCut.endMs }
+    }
+    const tail = await frames(Math.max(0, takeMs - SPEECH_SCAN_MS), takeMs)
+    pauseFinale = tailPause(tail, silencesOf(tail).floorDb, cut.endMs)
+  }
+  const crossed = snappedCut === raw && (start.snapped?.calee || end.snapped?.calee)
   const sideOf = (s: typeof start, finalMs: number): CutSide => ({
     source: s.source,
     calee: !crossed && (s.snapped?.calee ?? false),
@@ -211,7 +247,7 @@ export async function analyser(options: {
   const coupe: MontageCoupe = {
     debutMs: Math.round(cut.startMs),
     finMs: Math.round(cut.endMs),
-    debut: sideOf(start, cut.startMs),
+    debut: debutRetardeMs == null ? sideOf(start, cut.startMs) : { source: 'parole', calee: false, deplacementMs: 0 },
     fin: sideOf(end, cut.endMs),
   }
 
@@ -223,6 +259,8 @@ export async function analyser(options: {
     durationMs: coupe.finMs - coupe.debutMs,
     regieAuto: regie?.auto ?? false,
     disagreeMs: disagreements.length > 0 ? Math.max(...disagreements) : null,
+    debutRetardeMs,
+    pauseFinale,
   })
 
   let loudness: Loudness | null = null

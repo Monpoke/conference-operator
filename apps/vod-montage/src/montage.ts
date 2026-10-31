@@ -1,6 +1,6 @@
-import type { Sidecar } from '@conference-operator/contract'
+import type { MontageSortie, Sidecar } from '@conference-operator/contract'
 import { FFPROBE, output } from './ffmpeg.js'
-import type { ClipFormat } from './rendu.js'
+import { fpsValue, type ClipFormat } from './rendu.js'
 
 /** What ffprobe says of a file, as far as the assembly needs it. */
 export interface Probe {
@@ -44,6 +44,20 @@ function usableFps(rate: string | undefined): string | null {
 }
 
 const even = (n: number) => n - (n % 2)
+
+/**
+ * The published format: the take's, under the ceilings set in the console.
+ * Never above the take: scaling up or inventing frames adds weight, not picture.
+ */
+export function sortieFormat(take: ClipFormat, sortie: MontageSortie): ClipFormat {
+  const scaled = take.height > sortie.hauteur
+  return {
+    ...take,
+    width: scaled ? even(Math.round((take.width * sortie.hauteur) / take.height)) : take.width,
+    height: scaled ? sortie.hauteur : take.height,
+    fps: fpsValue(take.fps) > sortie.fps ? String(sortie.fps) : take.fps,
+  }
+}
 
 /** The take's files, in order, with where each starts in the take. */
 export interface TakeFile {
@@ -91,6 +105,13 @@ export function cutFromMarkers(
   return { startMs: Math.max(0, startMs), endMs: Math.min(takeMs, endMs), missing }
 }
 
+/** Where the talk's card sits in the rush, and the image to lay over it. */
+export interface CadrePlan {
+  file: string
+  x: number
+  y: number
+}
+
 /** The crossfade between the three pieces, in seconds. */
 export const CROSSFADE_S = 0.5
 
@@ -102,11 +123,15 @@ export interface AssemblyPlan {
     hasAudio: boolean
     startMs: number
     endMs: number
+    /** The speakers' card drawn again over the one burnt into the rush. */
+    cadre?: CadrePlan
     /** The talk's own sound filters — high-pass, compression, one gain (`audio.ts`). */
     audioFilter?: string
   }
   outro: { file: string; durationMs: number }
   format: ClipFormat
+  /** x264 constant quality. */
+  crf?: number
   output: string
 }
 
@@ -131,6 +156,8 @@ export function assemblyArgs(plan: AssemblyPlan): string[] {
   const outroIndex = n + 1
   const silenceIndex = n + 2
   if (!take.hasAudio) inputs.push('-f', 'lavfi', '-i', `anullsrc=r=${format.sampleRate}:cl=stereo`)
+  const cadreIndex = silenceIndex + (take.hasAudio ? 0 : 1)
+  if (take.cadre != null) inputs.push('-i', take.cadre.file)
 
   const talkAudio = (i: number) => (take.hasAudio ? `[${i + 1}:a]` : `[${silenceIndex}:a]`)
   const filters: string[] = []
@@ -146,7 +173,10 @@ export function assemblyArgs(plan: AssemblyPlan): string[] {
   }
   const talkS = (take.endMs - take.startMs) / 1000
   filters.push(
-    `[tv]trim=start=${s(take.startMs)}:end=${s(take.endMs)},setpts=PTS-STARTPTS,${video}[t_v]`,
+    take.cadre == null
+      ? `[tv]trim=start=${s(take.startMs)}:end=${s(take.endMs)},setpts=PTS-STARTPTS,${video}[t_v]`
+      : `[tv]trim=start=${s(take.startMs)}:end=${s(take.endMs)},setpts=PTS-STARTPTS[t_e];` +
+        `[t_e][${cadreIndex}:v]overlay=${take.cadre.x}:${take.cadre.y}:eof_action=repeat,${video}[t_v]`,
     `[ta]atrim=start=${s(take.startMs)}:end=${s(take.endMs)},asetpts=PTS-STARTPTS,${take.audioFilter ? `${take.audioFilter},` : ''}${audio}[t_a]`,
     `[0:v]${video}[i_v]`,
     `[0:a]${audio}[i_a]`,
@@ -168,7 +198,7 @@ export function assemblyArgs(plan: AssemblyPlan): string[] {
     ...inputs,
     '-filter_complex', filters.join(';'),
     '-map', '[v]', '-map', '[a]',
-    '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '-r', format.fps,
+    '-c:v', 'libx264', '-preset', 'medium', '-crf', String(plan.crf ?? 20), '-pix_fmt', 'yuv420p', '-r', format.fps,
     '-c:a', 'aac', '-b:a', '192k', '-ar', String(format.sampleRate), '-ac', '2',
     '-movflags', '+faststart',
     plan.output,

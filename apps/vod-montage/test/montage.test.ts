@@ -1,3 +1,6 @@
+import { cadreHtml, cadrePlacement } from '../src/cadre.js'
+import { sortieFormat } from '../src/montage.js'
+import { progressFraction } from '../src/ffmpeg.js'
 import { describe, expect, it } from 'vitest'
 import type { Marker } from '@conference-operator/contract'
 import { assembledMs, assemblyArgs, cutFromMarkers, takeFiles, type AssemblyPlan } from '../src/montage.js'
@@ -89,5 +92,55 @@ describe('a clip’s encoding', () => {
   it('writes silence when there is no jingle', () => {
     expect(clipEncodeArgs({ format: DEFAULT_FORMAT, durationMs: 8_000, jingle: null, output: 'outro.mp4' }))
       .toContain('anullsrc=r=48000:cl=stereo')
+  })
+})
+
+describe('the published format', () => {
+  const take = { width: 1920, height: 1080, fps: '60', sampleRate: 48_000 }
+
+  it('brings a take down to the ceilings', () => {
+    expect(sortieFormat(take, { hauteur: 720, fps: 30, crf: 20 })).toEqual({ ...take, width: 1280, height: 720, fps: '30' })
+  })
+
+  it('never goes above the take', () => {
+    const small = { ...take, width: 1280, height: 720, fps: '30000/1001' }
+    expect(sortieFormat(small, { hauteur: 1080, fps: 60, crf: 20 })).toEqual(small)
+  })
+})
+
+describe('the assembly’s progress', () => {
+  it('reads ffmpeg’s output time against the video’s length', () => {
+    expect(progressFraction('out_time_us=30000000', 60_000)).toBe(0.5)
+    expect(progressFraction('out_time_us=90000000', 60_000)).toBe(1)
+    expect(progressFraction('out_time_us=N/A', 60_000)).toBeNull()
+    expect(progressFraction('frame=12', 60_000)).toBeNull()
+  })
+})
+
+describe('the speakers’ card drawn again', () => {
+  const plan = {
+    intro: { file: 'i.mp4', durationMs: 4000 },
+    take: { files: ['r.mp4'], hasAudio: true, startMs: 0, endMs: 60000, cadre: cadrePlacement(1920, 'c.png') },
+    outro: { file: 'o.mp4', durationMs: 4000 },
+    format: { width: 1920, height: 1080, fps: '30', sampleRate: 48000 },
+    output: 'out.mp4',
+  }
+
+  it('lays the card on the talk alone', () => {
+    const args = assemblyArgs(plan)
+    expect(args).toContain('c.png')
+    const graph = args[args.indexOf('-filter_complex') + 1]!
+    expect(graph).toContain('[t_e][3:v]overlay=1506:556:eof_action=repeat')
+  })
+
+  it('follows the rush’s size', () => {
+    expect(cadrePlacement(1280, 'c.png')).toMatchObject({ x: 1004, y: 371 })
+  })
+
+  it('escapes what it writes', () => {
+    const habillage = { talk: { title: '<b>', category: null, color: null }, speakers: [{ name: 'A & B', company: null, photoUrl: null }] } as never
+    const html = cadreHtml({ habillage, salle: null, theme: null })
+    expect(html).toContain('A &amp; B')
+    expect(html).not.toContain('<b>')
   })
 })

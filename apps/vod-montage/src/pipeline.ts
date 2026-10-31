@@ -1,12 +1,13 @@
 import { join } from 'node:path'
-import type { MontageAudio, MontageCoupe, Sidecar, VodHabillage } from '@conference-operator/contract'
+import type { MontageAudio, MontageCoupe, Sidecar, VodHabillage, MontageSortie } from '@conference-operator/contract'
 import { analyser, audioReport, prepareTake, type Regie } from './analyse.js'
 import { DEFAULT_AUDIO, measureLoudness, talkAudioChain, type AudioOptions, type Loudness } from './audio.js'
 import type { Chrome } from './chrome.js'
-import { FFMPEG, run } from './ffmpeg.js'
+import { renderCadre } from './cadre.js'
+import { runWithProgress } from './ffmpeg.js'
 import { inlineImages } from './images.js'
 import { themeForCapture } from './theme.js'
-import { assembledMs, assemblyArgs } from './montage.js'
+import { assembledMs, assemblyArgs, sortieFormat } from './montage.js'
 import { DEFAULT_FORMAT, renderClip, type ClipFormat } from './rendu.js'
 
 /** Where a montage stands — what the hub shows in the console. */
@@ -23,6 +24,10 @@ export interface MontageOptions {
   output: string
   /** Loudness and filters of the talk's sound. */
   audio?: AudioOptions
+  /** The published format, from the console. Absent: the take's own. */
+  sortie?: MontageSortie
+  /** The speakers were corrected: their card is drawn again over the rush's. */
+  cadre?: { salle: string | null } | null
   /**
    * The cut to edit on — validated in the console. Absent: analysed here,
    * from the marks (then the room's buttons, then the words heard).
@@ -98,7 +103,7 @@ export async function monter(options: MontageOptions): Promise<MontageResult> {
     for (const raison of analysed.raisons) log(raison)
   }
   const audio = loudness == null ? null : audioReport(loudness, audioOptions)
-  const format = take.format
+  const format = options.sortie == null ? take.format : sortieFormat(take.format, options.sortie)
 
   const habillage = await inlineImages(options.habillage, (ref, error) =>
     log(`image illisible, remplacée par le nom : ${ref} (${error instanceof Error ? error.message : String(error)})`))
@@ -119,8 +124,13 @@ export async function monter(options: MontageOptions): Promise<MontageResult> {
     workDir: options.workDir, onProgress: (f) => step('outro', f),
   })
 
+  const cadre = options.cadre == null
+    ? undefined
+    : await renderCadre({ chrome: options.chrome, habillage, salle: options.cadre.salle, theme, takeWidth: take.format.width, workDir: options.workDir })
+
   step('assemblage', 0)
   const plan = {
+    crf: options.sortie?.crf,
     intro: { file: introFile, durationMs: intro.durationMs },
     take: {
       files: take.segments.map((segment) => segment.path),
@@ -128,6 +138,7 @@ export async function monter(options: MontageOptions): Promise<MontageResult> {
       startMs: coupe.debutMs,
       endMs: coupe.finMs,
       audioFilter: take.hasAudio ? talkAudioChain(audioOptions, loudness) : undefined,
+      cadre,
     },
     outro: { file: outroFile, durationMs: outro.durationMs },
     format,
@@ -135,7 +146,7 @@ export async function monter(options: MontageOptions): Promise<MontageResult> {
   }
   log(`coupe ${fmt(coupe.debutMs)} → ${fmt(coupe.finMs)}, ${format.width}×${format.height} à ${format.fps} i/s` +
     (audio == null ? ', sans son' : `, son ${audio.lufsAvant.toFixed(1)} → ${audio.lufsApres ?? audio.lufsAvant.toFixed(1)} LUFS`))
-  await run(FFMPEG, assemblyArgs(plan))
+  await runWithProgress(assemblyArgs(plan), assembledMs(plan), (fraction) => step('assemblage', fraction))
   step('assemblage', 1)
   const missingMarks = (['debut', 'fin'] as const).filter((which) => coupe[which].source !== 'marque')
   return { output: options.output, durationMs: assembledMs(plan), missingMarks, coupe, audio }

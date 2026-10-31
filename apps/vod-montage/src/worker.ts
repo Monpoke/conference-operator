@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, stat } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import type { MontageClaim, MontageEtape, Sidecar, VodHabillage } from '@conference-operator/contract'
 import type { Chrome } from './chrome.js'
@@ -31,6 +31,36 @@ export function leaseLost(error: unknown): boolean {
   return (error as { code?: unknown } | null)?.code === 'CONFLICT'
 }
 
+/** The lease of the job in hand, on disk: what a restarted worker gives back. */
+const LEASE_FILE = 'bail.json'
+
+/**
+ * At startup, gives back what the previous process was killed holding.
+ *
+ * A worker runs one job at a time, so a job folder still here at startup is one
+ * nobody is working on — short of memory, usually. Without this the console shows
+ * it running until its lease lapses. The attempt counts: a job that kills its
+ * worker every time must end up failed, not loop.
+ */
+export async function releaseInterrupted(options: { hub: Hub; workDir: string; log: Log }): Promise<void> {
+  const { hub, workDir, log } = options
+  for (const entry of await readdir(workDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const dir = join(workDir, entry.name)
+    const raw = await readFile(join(dir, LEASE_FILE), 'utf8').catch(() => null)
+    if (raw == null) continue
+    const lease = JSON.parse(raw) as { jobId: string; bailId: string }
+    try {
+      await hub.montage.fail({ ...lease, raison: 'worker arrêté en plein montage (mémoire ?)', reessayer: true, compter: true })
+      log('warn', 'montage interrompu rendu au hub', { jobId: lease.jobId })
+    } catch (error) {
+      // The hub out of reach, or the lease gone: its expiry takes over.
+      log('warn', 'montage interrompu non rendu', { jobId: lease.jobId, error: message(error) })
+    }
+    await rm(dir, { recursive: true, force: true })
+  }
+}
+
 /** A heartbeat every minute, well inside the hub's ten-minute lease. */
 const HEARTBEAT_MS = 60_000
 
@@ -54,6 +84,7 @@ export async function processJob(options: {
   // longer the job's current one.
   const lease = { jobId: claim.jobId, bailId: claim.bailId }
   await mkdir(jobDir, { recursive: true })
+  await writeFile(join(jobDir, LEASE_FILE), JSON.stringify(lease))
 
   let etape: MontageEtape = 'telechargement'
   let pourcent = 0
@@ -141,6 +172,8 @@ export async function processJob(options: {
       folder: jobDir,
       jingle: config.jingle ?? null,
       audio: config.audio,
+      sortie: claim.sortie,
+      cadre: claim.cadre,
       workDir: jobDir,
       output,
       onStep: report,

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { judge, regieOffsetMs, speechEdge } from '../src/analyse.js'
 import { DEFAULT_AUDIO, linearPossible, parseFrames, parseLoudnorm, talkAudioChain, windowInputs } from '../src/audio.js'
 import { locate } from '../src/apercus.js'
-import { noiseFloor, silences, silencesOf, snapCut, snapEnd, snapStart, type Frame } from '../src/coupe.js'
+import { noiseFloor, silences, silencesOf, snapCut, snapEnd, snapStart, tailPause, type Frame } from '../src/coupe.js'
 
 /** 50 ms frames: speech (-20 dB) for 3 s, pause (-60 dB) for 1 s, from `fromMs` to `toMs`. */
 function speech(fromMs: number, toMs: number): Frame[] {
@@ -109,11 +109,46 @@ describe('a take without marks', () => {
   })
 })
 
+describe('a long pause near the end', () => {
+  const frames = (spans: [number, number][], toMs: number): Frame[] => {
+    const out: Frame[] = []
+    for (let ms = 0; ms < toMs; ms += 50) out.push({ ms, db: spans.some(([a, b]) => ms >= a && ms < b) ? -20 : -60 })
+    return out
+  }
+
+  it('finds where the talk may have stopped, and how long the pause lasts', () => {
+    const found = tailPause(frames([[0, 100_000], [107_000, 130_000]], 130_000), -60, 130_000)
+    expect(found).toEqual({ atMs: 100_000, durationMs: 7_000 })
+  })
+
+  it('ignores a breath, and a demo long before the end', () => {
+    expect(tailPause(frames([[0, 100_000], [100_500, 130_000]], 130_000), -60, 130_000)).toBeNull()
+    expect(tailPause(frames([[0, 10_000], [20_000, 300_000]], 300_000), -60, 300_000)).toBeNull()
+  })
+
+  it('reads nothing past the end of the cut', () => {
+    expect(tailPause(frames([[0, 100_000], [110_000, 120_000]], 120_000), -60, 100_000)).toBeNull()
+  })
+})
+
 describe('the confidence of a cut', () => {
   const side = (source: 'marque' | 'regie' | 'parole' | 'prise', calee = true, deplacementMs = -800) => ({ source, calee, deplacementMs })
 
   it('is high for two marks snapped close by', () => {
     expect(judge(side('marque'), side('marque', true, 900), { durationMs: 40 * 60_000, regieAuto: false, disagreeMs: null }).confiance).toBe('haute')
+  })
+
+  it('is medium for an end only heard: the take stops on the room’s button', () => {
+    expect(judge(side('regie'), side('parole', false, 0), { durationMs: 40 * 60_000, regieAuto: false, disagreeMs: null }).confiance).toBe('moyenne')
+    expect(judge(side('regie'), side('prise', false, 0), { durationMs: 40 * 60_000, regieAuto: false, disagreeMs: null }).confiance).toBe('basse')
+  })
+
+  it('drops when the start moved to the first words, or a pause precedes the end', () => {
+    const context = { durationMs: 40 * 60_000, regieAuto: false, disagreeMs: null }
+    expect(judge(side('parole'), side('parole'), { ...context, debutRetardeMs: 24_000 }).confiance).toBe('basse')
+    const paused = judge(side('regie'), side('parole'), { ...context, pauseFinale: { atMs: 1_075_000, durationMs: 6_000 } })
+    expect(paused.confiance).toBe('basse')
+    expect(paused.raisons.at(-1)).toContain('17:55')
   })
 
   it('is medium from the room’s buttons, low if the schedule closed the talk', () => {

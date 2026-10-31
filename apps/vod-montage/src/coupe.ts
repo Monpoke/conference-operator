@@ -135,3 +135,44 @@ export function snapCut(
   const endMs = end?.ms ?? cut.endMs
   return endMs > startMs ? { startMs, endMs } : cut
 }
+
+/** Speech found later than the proposed start by more than this: the start moves to it. */
+export const LATE_SPEECH_MS = 3_000
+/** A pause this long, close to the end, may be where the talk really stopped. */
+export const TAIL_PAUSE_MS = 5_000
+/** Only a pause this close to the end is worth a look: a demo earlier on is no ending. */
+export const TAIL_SPAN_MS = 120_000
+/** Above the floor by this much, as `speechEdge` reads speech in `analyse.ts`. */
+const SPEECH_MARGIN_DB = 10
+/** Shorter gaps than this are the speaker's breath: they do not break a stretch of speech. */
+const SPEECH_BRIDGE_MS = 1_000
+
+/**
+ * The earliest long pause in the last two minutes before the end, or `null`.
+ *
+ * A hint for whoever validates, never a cut: on real takes no length of pause
+ * tells a finished talk from a speaker reading a slide. At 4-5 s it would have
+ * cut up to 17 s of content; from 8 s up it no longer found anything.
+ */
+export function tailPause(
+  frames: readonly Frame[],
+  floorDb: number,
+  endMs: number,
+  frameMs = FRAME_MS,
+): { atMs: number; durationMs: number } | null {
+  const threshold = floorDb + SPEECH_MARGIN_DB
+  const spans: { startMs: number; endMs: number }[] = []
+  for (const frame of frames) {
+    if (frame.ms >= endMs || frame.db <= threshold) continue
+    const last = spans.at(-1)
+    if (last != null && frame.ms - last.endMs <= SPEECH_BRIDGE_MS) last.endMs = frame.ms + frameMs
+    else spans.push({ startMs: frame.ms, endMs: frame.ms + frameMs })
+  }
+  for (let i = 0; i + 1 < spans.length; i++) {
+    const durationMs = spans[i + 1]!.startMs - spans[i]!.endMs
+    if (durationMs >= TAIL_PAUSE_MS && spans[i]!.endMs > endMs - TAIL_SPAN_MS) {
+      return { atMs: spans[i]!.endMs, durationMs }
+    }
+  }
+  return null
+}

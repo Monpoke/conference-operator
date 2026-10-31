@@ -38,6 +38,51 @@ export async function run(binary: string, args: string[]): Promise<void> {
   await running.done
 }
 
+/** How far `-progress` says the output is, from one of its lines; `null` for the others. */
+export function progressFraction(line: string, totalMs: number): number | null {
+  const match = /^out_time_us=(\d+)/.exec(line.trim())
+  if (match == null || totalMs <= 0) return null
+  return Math.min(1, Number(match[1]) / 1000 / totalMs)
+}
+
+/**
+ * ffmpeg with its progress reported, `totalMs` being the output's length.
+ *
+ * What `onProgress` throws — the job cancelled, its lease lost — kills ffmpeg and
+ * comes back from here: otherwise it would run on for nothing.
+ */
+export function runWithProgress(args: string[], totalMs: number, onProgress: (fraction: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(FFMPEG, ['-progress', 'pipe:1', '-nostats', ...args], { stdio: ['ignore', 'pipe', 'pipe'] })
+    let tail = ''
+    let pending = ''
+    let thrown: unknown = null
+    child.stderr.on('data', (chunk: Buffer) => {
+      tail = (tail + chunk.toString()).slice(-4_000)
+    })
+    child.stdout.on('data', (chunk: Buffer) => {
+      const lines = (pending + chunk.toString()).split('\n')
+      pending = lines.pop() ?? ''
+      for (const line of lines) {
+        const fraction = progressFraction(line, totalMs)
+        if (fraction == null || thrown != null) continue
+        try {
+          onProgress(fraction)
+        } catch (error) {
+          thrown = error
+          child.kill('SIGKILL')
+        }
+      }
+    })
+    child.on('error', (error) => reject(new Error(`${FFMPEG} introuvable : ${error.message}`)))
+    child.on('close', (code) => {
+      if (thrown != null) reject(thrown)
+      else if (code === 0) resolve()
+      else reject(new Error(`${FFMPEG} a échoué (code ${code}) :\n${tail.trim().split('\n').slice(-8).join('\n')}`))
+    })
+  })
+}
+
 /** Runs a tool and returns its stdout — ffprobe's JSON. */
 export function output(binary: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {

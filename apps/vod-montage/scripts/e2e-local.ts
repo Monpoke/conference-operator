@@ -216,7 +216,7 @@ try {
     if (analysed?.state !== 'a-valider' || analysed.analyse == null) throw new Error(`analyse : job ${analysed?.state} ${analysed?.erreur ?? ''}`)
     const { analyse } = analysed
     say(`analyse : ${analyse.proposition.debutMs} → ${analyse.proposition.finMs} ms, confiance ${analyse.confiance} — ${analyse.raisons.join(' · ')}`)
-    const files = hub.services.montage.analysisView(analysed.id).fichiers
+    const files = (await hub.services.montage.analysisView(analysed.id)).fichiers
     for (const { nom } of files) {
       if (![...objects.keys()].some((key) => key.endsWith(`/${nom}`))) throw new Error(`aperçu ${nom} absent du stockage`)
     }

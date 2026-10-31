@@ -57,10 +57,18 @@ COPY apps/room-client/assets/fonts/ apps/room-client/assets/fonts/
 
 FROM ${BASE_IMAGE} AS runtime
 
+# `fonts-liberation`: Arial's metrics, what the rooms' overlay was drawn in — the
+# speakers' card drawn again has to match it (`cadre.ts`).
 # `fonts-dejavu-core`: a fallback face for a speaker's name in a script the
 # loop's typefaces lack. `ca-certificates`: the hub and the storage over HTTPS.
+#
+# Two layers on purpose: together they weigh 360 MB compressed, and a proxy that
+# cuts an upload after 60 s (Traefik's default read timeout) never lets that through.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends chromium ffmpeg fonts-dejavu-core ca-certificates \
+ && apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core fonts-liberation ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends chromium \
  && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production \

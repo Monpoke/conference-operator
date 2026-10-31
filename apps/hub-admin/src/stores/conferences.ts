@@ -1,4 +1,4 @@
-import type { VodStatut } from '@conference-operator/contract'
+import type { MontageOrateur, VodStatut } from '@conference-operator/contract'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useSessionStore } from './session.js'
@@ -28,6 +28,10 @@ export interface PlannedSession {
   roomName?: string | null
   title: string
   kind: string
+  /** In a room nobody records. */
+  sansCaptation?: boolean
+  /** The speakers set for its video, when the program is wrong. */
+  orateursVideo?: MontageOrateur[] | null
   speakers: string[]
   startsAt: string
   endsAt?: string | null
@@ -61,6 +65,18 @@ export interface FeedbackCheck {
   talksConnus?: number | null
   manquants: { title: string; feedbackId: string }[]
 }
+
+/** « Nom | Société », one person a line; blank lines ignored, the company optional. */
+export function parseOrateurs(text: string): MontageOrateur[] {
+  return text
+    .split('\n')
+    .map((line) => line.split('|').map((part) => part.trim()))
+    .filter(([name]) => name != null && name !== '')
+    .map(([name, company]) => ({ name: name!, company: company == null || company === '' ? null : company }))
+}
+
+export const formatOrateurs = (orateurs: readonly MontageOrateur[]): string =>
+  orateurs.map((person) => (person.company == null ? person.name : `${person.name} | ${person.company}`)).join('\n')
 
 export const useConferencesStore = defineStore('conferences', () => {
   const states = ref<SessionState[]>([])
@@ -102,6 +118,16 @@ export const useConferencesStore = defineStore('conferences', () => {
     states.value = sessionStates as SessionState[]
     hasActiveProgram.value = (snapshots as { active?: boolean }[]).some((s) => s.active === true)
     planning.value = plan as Planning
+  }
+
+  /** The speakers of a talk's video; none gives it back to the program. */
+  async function setOrateursVideo(sessionId: string, orateurs: MontageOrateur[]): Promise<void> {
+    const { montageOrateurs } = (await session.client.rpc.settings.get()) as { montageOrateurs?: Record<string, MontageOrateur[]> }
+    const next = { ...(montageOrateurs ?? {}) }
+    if (orateurs.length === 0) delete next[sessionId]
+    else next[sessionId] = orateurs
+    await session.client.rpc.settings.update({ montageOrateurs: next })
+    await load()
   }
 
   /** Start, end, put back as upcoming — the lifecycle table decides. */
@@ -186,6 +212,7 @@ export const useConferencesStore = defineStore('conferences', () => {
     vodFolder,
     requestVod,
     vodStatuts,
+    setOrateursVideo,
   }
 })
 

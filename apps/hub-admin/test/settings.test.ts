@@ -189,6 +189,33 @@ beforeEach(() => {
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} })
 })
 
+describe('format des vidéos montées', () => {
+  it('saves one choice at once, keeping the others', async () => {
+    const { calls, wrapper } = await mountView({ settings: { montageSortie: { hauteur: 1080, fps: 30, crf: 23 } } })
+    await wrapper.get('#sortie-fps').setValue('60')
+    await flushPromises()
+    expect(calls).toContainEqual({
+      path: expect.stringContaining('settings'),
+      input: { montageSortie: { hauteur: 1080, fps: 60, crf: 23 } },
+    })
+  })
+})
+
+describe('salles sans captation', () => {
+  it('saves the tick at once, keeping the other rooms', async () => {
+    const { calls, wrapper } = await mountView({ settings: { sallesSansCaptation: ['hands-on'] } })
+    const box = wrapper.get('[data-sans-captation="track-1"]')
+    expect((box.element as HTMLInputElement).checked).toBe(false)
+
+    await box.setValue(true)
+    await flushPromises()
+    expect(calls).toContainEqual({
+      path: expect.stringContaining('settings'),
+      input: { sallesSansCaptation: ['hands-on', 'track-1'] },
+    })
+  })
+})
+
 describe('vide contre absent', () => {
   it('hands an emptied field back to the deduction rather than pin it', () => {
     // Without that distinction the setting could never be released again: the name

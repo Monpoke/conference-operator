@@ -296,6 +296,7 @@ const VOD_TONES: Record<VodStatut, string> = {
   'a-valider': 'border-warn bg-warn-soft text-warn',
   prete: 'border-ok bg-ok-soft text-ok',
   erreur: 'border-alert bg-alert-soft text-alert',
+  'sans-captation': 'text-dim',
 }
 
 function vodOf(session: PlannedSession): { statut: VodStatut; detail: string } {

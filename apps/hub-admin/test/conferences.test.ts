@@ -1,3 +1,4 @@
+import { formatOrateurs, parseOrateurs } from '../src/stores/conferences.js'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -145,6 +146,16 @@ beforeEach(() => {
   document.body.innerHTML = ''
   setActivePinia(createPinia())
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} })
+})
+
+describe('orateurs de la vidéo', () => {
+  it('reads one person a line, the company optional', () => {
+    expect(parseOrateurs(' Audric DUCHET | Techsys \n\nNicolas TONDEUR')).toEqual([
+      { name: 'Audric DUCHET', company: 'Techsys' },
+      { name: 'Nicolas TONDEUR', company: null },
+    ])
+    expect(formatOrateurs(parseOrateurs('A | B\nC'))).toBe('A | B\nC')
+  })
 })
 
 describe('place in the day', () => {

@@ -3,7 +3,7 @@ import { Button, Dialog, Hint, useToast } from '@conference-operator/components'
 import { time } from '@conference-operator/format'
 import { computed, ref, watch } from 'vue'
 import { UPLOAD_STATES, progress, type Upload } from '../stores/vod.js'
-import { useConferencesStore, type PlannedSession } from '../stores/conferences.js'
+import { formatOrateurs, parseOrateurs, useConferencesStore, type PlannedSession } from '../stores/conferences.js'
 import type { MontageJobView } from '@conference-operator/contract'
 import { MONTAGE_STATES, describe, useMontageStore } from '../stores/montage.js'
 import CoupeValidation from './CoupeValidation.vue'
@@ -153,6 +153,25 @@ const consent = computed<{ text: string; tone: string }>(() => {
     : { text: `Refusée par le conférencier, à ${when}. Ne pas publier.`, tone: 'text-alert' }
 })
 
+/** Who really spoke: the intro, the outro and the card burnt into the rush follow it. */
+const orateursText = ref('')
+watch(
+  () => props.session?.id,
+  () => {
+    orateursText.value = formatOrateurs(props.session?.orateursVideo ?? [])
+  },
+  { immediate: true },
+)
+async function saveOrateurs(): Promise<void> {
+  if (props.session == null) return
+  try {
+    await store.setOrateursVideo(props.session.id, parseOrateurs(orateursText.value))
+    toast.say('Orateurs de la vidéo enregistrés : à appliquer avec « Remonter »')
+  } catch {
+    /* already reported by the client's error hook */
+  }
+}
+
 async function relaunchMontage(sessionId: string): Promise<void> {
   try {
     montage.value = await montages.relaunch(sessionId)
@@ -189,6 +208,14 @@ function uploadState(row: Upload): { label: string; tone: string } {
     <div id="vod-body" class="mt-3">
       <p v-if="loading" class="text-dim">Lecture…</p>
       <p v-else-if="error !== ''" class="text-alert">{{ error }}</p>
+
+      <Hint
+        v-else-if="folder != null && session?.sansCaptation && folder.captations.length === 0 && folder.televersements.length === 0"
+        data-role="vod-sans-captation"
+      >
+        Pas de captation prévue dans cette salle : rien à attendre ici. Cela se change dans
+        <strong>Réglages → Stockage</strong>.
+      </Hint>
 
       <template v-else-if="folder != null">
         <!--
@@ -329,6 +356,18 @@ function uploadState(row: Upload): { label: string; tone: string } {
         <h3 class="mt-3.5 mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
           Montage
         </h3>
+
+        <label class="mb-2 block text-xs text-dim" for="vod-orateurs">
+          Orateurs de la vidéo, si le programme se trompe (un par ligne : Nom | Société)
+        </label>
+        <textarea
+          id="vod-orateurs"
+          v-model="orateursText"
+          rows="2"
+          class="mb-1.5 w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text"
+          :placeholder="session?.speakers.join('\n')"
+        />
+        <Button size="small" class="mb-3" data-role="vod-orateurs-save" @click="saveOrateurs">Enregistrer les orateurs</Button>
 
         <p class="mb-1.5 text-sm" data-role="vod-montage">
           <template v-if="montage == null">

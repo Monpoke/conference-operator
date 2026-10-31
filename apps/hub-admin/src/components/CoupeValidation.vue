@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { Button, useToast } from '@conference-operator/components'
 import type { MontageAnalyse, MontageJobView } from '@conference-operator/contract'
-import { computed, ref, watch } from 'vue'
-import { parseTimecode, timecode, useMontageStore } from '../stores/montage.js'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { parseTimecode, partAt, timecode, useMontageStore, type TakePart } from '../stores/montage.js'
 
 /**
  * Checking a cut before it is edited.
@@ -20,6 +20,7 @@ const toast = useToast()
 
 const analyse = ref<MontageAnalyse | null>(null)
 const files = ref<Record<string, string>>({})
+const prise = ref<TakePart[]>([])
 const error = ref('')
 const debutMs = ref(0)
 const finMs = ref(0)
@@ -27,16 +28,26 @@ const debutText = ref('')
 const finText = ref('')
 const saving = ref(false)
 
+const player = ref<HTMLAudioElement | null>(null)
+const listening = ref<'debut' | 'fin' | null>(null)
+/** Where the sound is, in the take: drawn on the waveform. */
+const positionMs = ref<number | null>(null)
+let partIndex = -1
+let stopAtMs = 0
+
 watch(
   () => props.job.id,
   async (jobId) => {
+    stopListening()
     analyse.value = null
+    prise.value = []
     error.value = ''
     try {
       const view = await store.analysis(jobId)
       if (props.job.id !== jobId) return
       analyse.value = view.analyse
       files.value = Object.fromEntries(view.fichiers.map((file) => [file.nom, file.url]))
+      prise.value = view.prise
       if (view.analyse != null) reset(view.analyse)
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : 'Lecture impossible.'
@@ -53,6 +64,7 @@ function reset(value: MontageAnalyse): void {
 }
 
 function set(which: 'debut' | 'fin', ms: number): void {
+  stopListening()
   const takeMs = analyse.value?.takeMs ?? Number.POSITIVE_INFINITY
   const clamped = Math.round(Math.min(takeMs, Math.max(0, ms)))
   if (which === 'debut') {
@@ -108,6 +120,78 @@ const moved = computed(() => {
   return { debut: Math.abs(debutMs.value - proposal.debutMs) > 5_000, fin: Math.abs(finMs.value - proposal.finMs) > 5_000 }
 })
 
+/* ---------- Listening at the cut chosen ---------- */
+/** On each side of the cut: enough to hear a sentence begin or end. */
+const LISTEN_MS = 5_000
+
+/** Plays the take from `ms`: its own file, at its own place in that file. */
+function playFrom(ms: number): void {
+  const audio = player.value
+  const index = partAt(prise.value, ms)
+  if (audio == null || index < 0) return
+  partIndex = index
+  const part = prise.value[index]!
+  audio.addEventListener(
+    'loadedmetadata',
+    () => {
+      audio.currentTime = (ms - part.offsetMs) / 1000
+    },
+    { once: true },
+  )
+  audio.src = part.url
+  audio.load()
+  // Inside the click, not after the load: a browser refuses to start sound later
+  // on. Nothing is heard before the metadata, so the seek above comes first.
+  audio.play().catch(() => {
+    // Stopped before it started is no failure: the listening has moved on.
+    if (listening.value != null) failListening()
+  })
+}
+
+function listen(side: 'debut' | 'fin'): void {
+  if (listening.value === side) {
+    stopListening()
+    return
+  }
+  stopListening()
+  const at = side === 'debut' ? debutMs.value : finMs.value
+  const from = Math.max(0, at - LISTEN_MS)
+  stopAtMs = Math.min(analyse.value?.takeMs ?? at + LISTEN_MS, at + LISTEN_MS)
+  listening.value = side
+  positionMs.value = from
+  playFrom(from)
+}
+
+function stopListening(): void {
+  listening.value = null
+  positionMs.value = null
+  player.value?.pause()
+}
+
+function failListening(): void {
+  stopListening()
+  toast.fail('Lecture du rush impossible : rouvrir le dossier pour une adresse fraîche, ou vérifier le format du fichier.')
+}
+
+function onTime(): void {
+  const audio = player.value
+  const part = prise.value[partIndex]
+  if (audio == null || part == null || listening.value == null) return
+  const at = part.offsetMs + audio.currentTime * 1000
+  positionMs.value = at
+  if (at >= stopAtMs) stopListening()
+}
+
+/** A take split by OBS goes on in its next file. */
+function onEnded(): void {
+  if (listening.value == null) return
+  const next = prise.value[partIndex + 1]
+  if (next != null && next.offsetMs < stopAtMs) playFrom(next.offsetMs)
+  else stopListening()
+}
+
+onBeforeUnmount(stopListening)
+
 const STILLS = { debut: ['−2 s', 'coupe', '+2 s', '+5 s'], fin: ['−5 s', '−2 s', 'coupe', '+2 s'] } as const
 const CONFIDENCE_TONE: Record<string, string> = { haute: 'text-ok', moyenne: 'text-warn', basse: 'text-alert' }
 
@@ -156,6 +240,12 @@ async function validate(): Promise<void> {
         <div class="pointer-events-none absolute inset-y-0 right-0 bg-black/55" :style="{ width: `${100 - percent(finMs)}%` }" />
         <div class="pointer-events-none absolute inset-y-0 w-0.5 bg-ok" :style="{ left: `${percent(debutMs)}%` }" />
         <div class="pointer-events-none absolute inset-y-0 w-0.5 bg-alert" :style="{ left: `${percent(finMs)}%` }" />
+        <div
+          v-if="positionMs != null"
+          class="pointer-events-none absolute inset-y-0 w-px bg-text"
+          data-role="listen-position"
+          :style="{ left: `${percent(positionMs)}%` }"
+        />
       </div>
       <p class="mt-1 text-[11px] text-dim">
         Prise de {{ timecode(analyse.takeMs) }} — glisser un repère, ou cliquer pour y amener le plus proche.
@@ -184,12 +274,24 @@ async function validate(): Promise<void> {
             <figcaption class="text-center text-[10px] text-dim">{{ label }}</figcaption>
           </figure>
         </div>
+        <Button
+          v-if="prise.length > 0"
+          size="small"
+          class="mt-1.5"
+          :data-listen="side"
+          :aria-pressed="listening === side"
+          @click="listen(side)"
+        >
+          {{ listening === side ? 'Arrêter' : `Écouter la coupe (${timecode(side === 'debut' ? debutMs : finMs)}, ±5 s)` }}
+        </Button>
         <audio v-if="files[`${side}.mp3`]" :src="files[`${side}.mp3`]" controls preload="none" class="mt-1 w-full" />
         <p class="text-[11px]" :class="moved[side] ? 'text-warn' : 'text-dim'">
-          <template v-if="moved[side]">Extrait pris autour de la coupe proposée, plus de celle-ci.</template>
+          <template v-if="moved[side]">Ce lecteur reste sur la coupe proposée : « Écouter la coupe » lit celle que vous avez choisie.</template>
           <template v-else>La coupe proposée tombe à {{ side === 'debut' ? '5' : '10' }} s de l’extrait.</template>
         </p>
       </div>
+
+      <audio ref="player" preload="none" class="hidden" @timeupdate="onTime" @ended="onEnded" @error="failListening" />
 
       <div class="mt-3 flex flex-wrap gap-1.5">
         <Button size="small" variant="primary" :disabled="saving" @click="validate">Valider et monter</Button>

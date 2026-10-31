@@ -39,7 +39,7 @@ export const useMontageStore = defineStore('montage', () => {
   }
 
   /** What the analysis proposed, with read addresses for its files (an hour). */
-  async function analysis(jobId: string): Promise<{ analyse: MontageAnalyse | null; fichiers: { nom: string; url: string }[] }> {
+  async function analysis(jobId: string): Promise<{ analyse: MontageAnalyse | null; fichiers: { nom: string; url: string }[]; prise: TakePart[] }> {
     return await session.client.rpc.montage.analyse({ jobId })
   }
 
@@ -71,6 +71,21 @@ export const useMontageStore = defineStore('montage', () => {
   return { jobs, workers, load, forSession, relaunch, cancel, download, analysis, validate, createWorker, revokeWorker }
 })
 
+/** One file of a take, and where it starts in it. */
+export interface TakePart {
+  url: string
+  offsetMs: number
+}
+
+/** The file holding `ms` of the take: the last one starting at or before it. */
+export function partAt(parts: readonly TakePart[], ms: number): number {
+  let found = -1
+  for (const [index, part] of parts.entries()) {
+    if (part.offsetMs <= ms) found = index
+  }
+  return found
+}
+
 /** What a job's state says, and in what colour. */
 export const MONTAGE_STATES: Record<string, { label: string; tone: string }> = {
   attente: { label: 'en attente', tone: 'text-dim' },
@@ -99,6 +114,9 @@ export function minutes(ms: number | null): string {
 
 /** Where a job stands, in one line. */
 export function describe(job: MontageJobView): string {
+  if (job.state === 'en-cours' && job.silencieuxDepuisMs != null) {
+    return `sans nouvelles du worker depuis ${Math.round(job.silencieuxDepuisMs / 60_000)} min : il repartira de lui-même`
+  }
   if (job.state === 'en-cours' && job.etape != null) return `${MONTAGE_ETAPES[job.etape] ?? job.etape} · ${job.pourcent} %`
   if (job.state === 'attente' && job.pasAvant != null) return 'attend ses rushes'
   if (job.state === 'a-valider' && job.analyse != null) return `coupe proposée, confiance ${job.analyse.confiance}`

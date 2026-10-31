@@ -67,6 +67,11 @@ describe('time left in the slot', () => {
 })
 
 describe('vue exploitation', () => {
+  it('links each room to its speaker screen', async () => {
+    const wrapper = await mountView()
+    expect(wrapper.get('[data-room="track-1"] a[href="/orateur/track-1"]').text()).toContain('retour orateur')
+  })
+
   it('carries the word beside the colour', async () => {
     const wrapper = await mountView()
     // A status dot alone cannot be read by someone who does not tell the tints

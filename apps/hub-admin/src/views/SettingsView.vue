@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Badge, Button, ConfirmDialog, Empty, Hint, Panel, useToast } from '@conference-operator/components'
 import { timeAgo } from '@conference-operator/format'
+import { DEFAULT_MONTAGE_SORTIE, type MontageSortie } from '@conference-operator/contract'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import IntegrationDialog from '../components/IntegrationDialog.vue'
@@ -448,6 +449,28 @@ watch(
   },
   { immediate: true },
 )
+
+/** Saved on the tick: the periodic refresh would otherwise undo it before « Enregistrer ». */
+/** Saved on the choice, like the rooms below; it applies to the next montage taken. */
+const sortie = computed<MontageSortie>(() => settings.value?.montageSortie ?? DEFAULT_MONTAGE_SORTIE)
+async function setSortie(patch: Partial<MontageSortie>): Promise<void> {
+  try {
+    await store.update({ montageSortie: { ...sortie.value, ...patch } })
+    toast.say('Format de sortie enregistré')
+  } catch {
+    /* already reported */
+  }
+}
+
+async function setSansCaptation(roomId: string, none: boolean): Promise<void> {
+  const others = (settings.value?.sallesSansCaptation ?? []).filter((id) => id !== roomId)
+  try {
+    await store.update({ sallesSansCaptation: none ? [...others, roomId] : others })
+    toast.say(none ? 'Salle sans captation' : 'Captation prévue dans cette salle')
+  } catch {
+    /* already reported */
+  }
+}
 
 async function saveStorage(): Promise<void> {
   try {
@@ -1294,6 +1317,60 @@ async function confirmRemoveIntegration(): Promise<void> {
           <option value="toujours">Toujours : aucune coupe ne se valide</option>
         </select>
       </div>
+
+      <!-- Des plafonds : un rush en dessous garde son format, rien n'est agrandi. -->
+      <fieldset class="mt-3" data-role="montage-sortie">
+        <legend class="mb-[5px] text-xs text-dim">Format des vidéos montées (au plus)</legend>
+        <div class="grid grid-cols-3 gap-2">
+          <select
+            id="sortie-hauteur"
+            aria-label="Définition"
+            :value="sortie.hauteur"
+            class="w-full rounded-lg border border-edge bg-canvas px-2 py-2 text-sm text-text"
+            @change="setSortie({ hauteur: Number(($event.target as HTMLSelectElement).value) as MontageSortie['hauteur'] })"
+          >
+            <option v-for="h in [720, 1080, 1440, 2160]" :key="h" :value="h">{{ h }}p</option>
+          </select>
+          <select
+            id="sortie-fps"
+            aria-label="Cadence"
+            :value="sortie.fps"
+            class="w-full rounded-lg border border-edge bg-canvas px-2 py-2 text-sm text-text"
+            @change="setSortie({ fps: Number(($event.target as HTMLSelectElement).value) as MontageSortie['fps'] })"
+          >
+            <option v-for="f in [25, 30, 50, 60]" :key="f" :value="f">{{ f }} i/s</option>
+          </select>
+          <select
+            id="sortie-qualite"
+            aria-label="Qualité"
+            :value="sortie.crf"
+            class="w-full rounded-lg border border-edge bg-canvas px-2 py-2 text-sm text-text"
+            @change="setSortie({ crf: Number(($event.target as HTMLSelectElement).value) })"
+          >
+            <option :value="18">Haute (lourde)</option>
+            <option :value="20">Standard</option>
+            <option :value="23">Légère</option>
+          </select>
+        </div>
+        <p class="mt-1 text-[11px] text-dim">
+          Vaut pour les prochains montages. Plus de définition et de cadence demandent
+          plus de mémoire au worker.
+        </p>
+      </fieldset>
+
+      <!-- Ne descend pas aux salles : seule la lecture d'un rush manquant change. -->
+      <fieldset class="mt-3" data-role="salles-sans-captation">
+        <legend class="mb-[5px] text-xs text-dim">Salles sans captation</legend>
+        <label v-for="room in rooms" :key="room.id" class="flex items-center gap-2 py-0.5 text-sm">
+          <input
+            type="checkbox"
+            :data-sans-captation="room.id"
+            :checked="settings?.sallesSansCaptation?.includes(room.id) ?? false"
+            @change="setSansCaptation(room.id, ($event.target as HTMLInputElement).checked)"
+          >
+          {{ room.name }}
+        </label>
+      </fieldset>
 
       <div class="mt-3 flex gap-1.5">
         <Button id="btn-vod-save" variant="primary" size="small" @click="saveStorage">

@@ -178,6 +178,14 @@ const globalDetail = computed(() => {
             >
               mur ↗
             </a>
+            <a
+              class="shrink-0 text-[13px] text-brand no-underline"
+              target="_blank"
+              rel="noopener"
+              :href="`/orateur/${encodeURIComponent(room.roomId)}`"
+            >
+              retour orateur ↗
+            </a>
           </div>
 
           <!-- What is playing: the first thing one comes to check. -->

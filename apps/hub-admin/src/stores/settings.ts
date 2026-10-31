@@ -1,3 +1,4 @@
+import type { MontageSortie } from '@conference-operator/contract'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useSessionStore } from './session.js'
@@ -27,6 +28,10 @@ export interface Settings {
   vodPrefix?: string | null
   /** When an analysed cut is edited without anybody validating it. */
   montageAuto?: 'jamais' | 'si-confiance-haute' | 'toujours'
+  /** The rooms nobody records: a missing rush is expected there. */
+  sallesSansCaptation?: string[]
+  /** The published videos' format. */
+  montageSortie?: MontageSortie
 }
 
 export interface SocialLink {

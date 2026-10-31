@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { Button, Hint, Panel, useToast } from '@conference-operator/components'
 import { storeToRefs } from 'pinia'
-import { computed, watch } from 'vue'
-import { UPLOAD_STATES, progress, useVodStore, type Upload } from '../stores/vod.js'
+import { computed, ref, watch } from 'vue'
+import {
+  ETATS,
+  UPLOAD_STATES,
+  countByEtat,
+  progress,
+  useVodStore,
+  type Upload,
+} from '../stores/vod.js'
 import MontagePanels from '../components/MontagePanels.vue'
 
 /**
@@ -12,7 +19,7 @@ import MontagePanels from '../components/MontagePanels.vue'
  * before dismantling a room, while its disk is still plugged in.
  */
 const store = useVodStore()
-const { uploads, rooms, room } = storeToRefs(store)
+const { conferences, rooms, room } = storeToRefs(store)
 const toast = useToast()
 
 const roomOptions = computed(() => [
@@ -21,6 +28,49 @@ const roomOptions = computed(() => [
 ])
 
 watch(room, () => void store.load())
+
+/** Files are unfolded on demand, and stay so across the periodic refresh. */
+const unfolded = ref(new Set<string>())
+function toggle(key: string): void {
+  if (!unfolded.value.delete(key)) unfolded.value.add(key)
+}
+
+/** By default, only what still asks for attention: the list shrinks as the day goes. */
+const onlyToHandle = ref(true)
+const shown = computed(() =>
+  onlyToHandle.value
+    ? conferences.value.filter((row) => row.etat === 'a-reprendre' || row.etat === 'en-cours')
+    : conferences.value,
+)
+
+const counts = computed(() => countByEtat(conferences.value))
+const summary = computed(() => {
+  const { 'a-reprendre': toResume, 'en-cours': running, 'a-venir': upcoming, complet: complete } = counts.value
+  const parts = [
+    `${conferences.value.length} conférence${conferences.value.length > 1 ? 's' : ''}`,
+    `${complete} complète${complete > 1 ? 's' : ''}`,
+    `${toResume} à reprendre`,
+    `${running} en cours`,
+    `${upcoming} à venir`,
+  ]
+  const none = counts.value['sans-captation']
+  if (none > 0) parts.push(`${none} sans captation`)
+  return parts.join(' · ')
+})
+
+/** The question asked before dismantling a room, answered for the room chosen. */
+const verdict = computed<{ text: string; tone: string } | null>(() => {
+  const name = rooms.value.find((candidate) => candidate.id === room.value)?.name
+  if (name == null || conferences.value.length === 0) return null
+  const { 'a-reprendre': toResume, 'en-cours': running, 'a-venir': upcoming } = counts.value
+  if (toResume > 0) {
+    return { text: `${name} : ${toResume} conférence${toResume > 1 ? 's' : ''} à reprendre`, tone: 'text-alert' }
+  }
+  if (running > 0) return { text: `${name} : ${running} en cours, à attendre`, tone: '' }
+  if (upcoming > 0) return { text: `${name} : ${upcoming} à venir`, tone: 'text-dim' }
+  if (counts.value.complet === 0) return { text: `${name} : pas de captation prévue`, tone: 'text-dim' }
+  return { text: `${name} : tout est rentré`, tone: 'text-ok' }
+})
 
 function stateOf(upload: Upload): { label: string; tone: string } {
   return UPLOAD_STATES[upload.state] ?? { label: upload.state, tone: '' }
@@ -77,7 +127,7 @@ async function requestAll(): Promise<void> {
     id="vod-view"
     class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] gap-3.5"
   >
-    <!-- Across the width, like the montages: a table of five columns needs it. -->
+    <!-- Across the width, like the montages: a table of six columns needs it. -->
     <Panel title="Téléversements" class="col-span-full">
       <div class="mb-2 flex flex-wrap gap-1.5">
         <select
@@ -92,64 +142,113 @@ async function requestAll(): Promise<void> {
         <Button id="btn-vod-retry" size="small" @click="requestAll">Tout relancer</Button>
       </div>
 
+      <p id="vod-summary" class="mb-2 text-sm text-dim">
+        <strong v-if="verdict != null" id="vod-verdict" class="mr-2 font-semibold" :class="verdict.tone">{{ verdict.text }}</strong>
+        <span>{{ summary }}</span>
+      </p>
+
+      <label class="mb-2 flex w-fit items-center gap-2 text-sm">
+        <input id="vod-only-to-handle" v-model="onlyToHandle" type="checkbox">
+        À traiter seulement
+      </label>
+
       <div class="overflow-x-auto">
         <!--
-          Under 768 px an upload is a card, as on the Conferences page: room,
-          state and progress, then the file across the width, then the button.
-          Same markup, other classes: the table stays a table beyond.
+          Under 768 px a talk is a card, as on the Conferences page: its title
+          across the width, then the room, the state, the files and the button. Same
+          markup, other classes: the table stays a table beyond.
         -->
         <table class="w-full border-collapse text-[13px] max-md:block">
           <thead class="max-md:hidden">
             <tr class="text-[11px] tracking-[.08em] text-dim uppercase">
+              <th class="pr-2.5 pb-2 text-left font-semibold">Conférence</th>
               <th class="pr-2.5 pb-2 text-left font-semibold">Salle</th>
-              <th class="pr-2.5 pb-2 text-left font-semibold">Fichier</th>
               <th class="pr-2.5 pb-2 text-left font-semibold">État</th>
-              <th class="pr-2.5 pb-2 text-left font-semibold">Avancement</th>
+              <th class="pr-2.5 pb-2 text-left font-semibold">Fichiers</th>
+              <th class="pr-2.5 pb-2 text-left font-semibold">Détail</th>
               <th class="pb-2"></th>
             </tr>
           </thead>
           <tbody id="vod-rows" class="max-md:block">
-            <tr v-if="uploads.length === 0" class="max-md:block">
-              <td colspan="5" class="py-3.5 text-dim max-md:block">Aucun téléversement.</td>
+            <tr v-if="conferences.length === 0" class="max-md:block">
+              <td colspan="6" class="py-3.5 text-dim max-md:block">Aucun téléversement.</td>
             </tr>
-            <tr
-              v-for="upload in uploads"
-              :key="`${upload.roomId}/${upload.file}`"
-              :data-upload="upload.file"
-              class="max-md:flex max-md:flex-wrap max-md:items-baseline max-md:gap-x-2.5 max-md:gap-y-1 max-md:border-t max-md:border-edge max-md:py-2.5"
-            >
-              <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:order-1 max-md:font-semibold">
-                {{ upload.roomName ?? upload.roomId }}
-              </td>
-              <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0 font-mono text-[11px] max-md:order-4 max-md:basis-full max-md:break-all">
-                {{ upload.file }}
-                <!--
-                  L'erreur du stockage est reprise telle quelle : « AccessDenied »
-                  est le seul mot qu'on puisse porter à qui tient le bucket.
-                -->
-                <div v-if="upload.lastError != null" class="text-[11px] text-alert max-md:line-clamp-2" :title="upload.lastError">
-                  {{ upload.lastError }}
-                </div>
-              </td>
-              <td
-                class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:order-2"
-                :class="stateOf(upload).tone"
+            <tr v-else-if="shown.length === 0" class="max-md:block">
+              <td colspan="6" class="py-3.5 text-dim max-md:block">Rien à traiter pour l'instant.</td>
+            </tr>
+            <template v-for="row in shown" :key="row.key">
+              <tr
+                :data-conference="row.key"
+                class="max-md:flex max-md:flex-wrap max-md:items-baseline max-md:gap-x-2.5 max-md:gap-y-1 max-md:border-t max-md:border-edge max-md:py-2.5"
               >
-                {{ stateOf(upload).label }}
-              </td>
-              <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:order-3 max-md:text-dim">
-                {{ progress(upload) }} %{{ rate(upload) }}
-              </td>
-              <td class="border-t border-edge py-[9px] align-middle max-md:order-3 max-md:ml-auto max-md:border-t-0 max-md:py-0 max-md:empty:hidden">
-                <Button
-                  v-if="upload.state !== 'termine'"
-                  size="small"
-                  @click="requestUpload(upload.roomId, upload.file)"
-                >
-                  Relancer
-                </Button>
-              </td>
-            </tr>
+                <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:basis-full max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:font-semibold">
+                  {{ row.title }}
+                </td>
+                <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:text-dim">
+                  {{ row.roomName }}
+                </td>
+                <td data-role="etat" class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0" :class="ETATS[row.etat].tone">
+                  {{ ETATS[row.etat].label }}
+                </td>
+                <td data-role="files" class="border-t border-edge py-[9px] pr-2.5 align-middle tabular-nums max-md:border-t-0 max-md:py-0 max-md:pr-0">
+                  {{ row.files.length }}<span class="md:hidden"> fichier{{ row.files.length > 1 ? 's' : '' }}</span>
+                </td>
+                <td data-role="detail" class="border-t border-edge py-[9px] pr-2.5 align-middle text-dim max-md:basis-full max-md:border-t-0 max-md:py-0 max-md:pr-0">
+                  {{ row.detail }}
+                </td>
+                <td class="border-t border-edge py-[9px] text-right align-middle max-md:ml-auto max-md:border-t-0 max-md:py-0 max-md:empty:hidden">
+                  <Button
+                    v-if="row.files.length > 0"
+                    size="small"
+                    :aria-expanded="unfolded.has(row.key)"
+                    data-role="toggle-files"
+                    @click="toggle(row.key)"
+                  >
+                    {{ unfolded.has(row.key) ? 'Masquer' : 'Détails' }}
+                  </Button>
+                  <!-- Nothing named here: the room alone knows what its disk holds. -->
+                  <Button
+                    v-else-if="row.etat === 'a-reprendre' && row.roomId != null"
+                    size="small"
+                    data-role="request-room"
+                    @click="requestUpload(row.roomId, null)"
+                  >
+                    Demander à la salle
+                  </Button>
+                </td>
+              </tr>
+              <tr v-if="unfolded.has(row.key) && row.files.length > 0" class="max-md:block">
+                <td colspan="6" class="pb-2 max-md:block">
+                  <div
+                    v-for="upload in row.files"
+                    :key="`${upload.roomId}/${upload.file}`"
+                    :data-upload="upload.file"
+                    class="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 border-t border-edge py-1.5 pl-3"
+                  >
+                    <div class="min-w-0 flex-1 basis-64 font-mono text-[11px] break-all">
+                      {{ upload.file }}
+                      <!--
+                        L'erreur du stockage est reprise telle quelle : « AccessDenied »
+                        est le seul mot qu'on puisse porter à qui tient le bucket.
+                      -->
+                      <div v-if="upload.lastError != null" class="text-alert" :title="upload.lastError">
+                        {{ upload.lastError }}
+                      </div>
+                    </div>
+                    <span class="text-dim">{{ upload.roomName ?? upload.roomId }}</span>
+                    <span :class="stateOf(upload).tone">{{ stateOf(upload).label }}</span>
+                    <span class="text-dim">{{ progress(upload) }} %{{ rate(upload) }}</span>
+                    <Button
+                      v-if="upload.state !== 'termine'"
+                      size="small"
+                      @click="requestUpload(upload.roomId, upload.file)"
+                    >
+                      Relancer
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            </template>
           </tbody>
         </table>
       </div>

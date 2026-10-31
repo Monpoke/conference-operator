@@ -62,6 +62,9 @@ beforeEach(async () => {
     publicUrl: 'http://127.0.0.1',
     authSecret: 'test-secret-'.padEnd(48, 'x'),
     logLevel: 'fatal',
+    // The program's day: the tests look for a talk to drive, and real time moves past it.
+    mode: 'dev',
+    simulatedTime: '2026-10-30T10:20:00.000Z',
   })
   await provisionOperator(hub.auth, OPERATOR)
   await provisionOperator(hub.auth, OTHER)

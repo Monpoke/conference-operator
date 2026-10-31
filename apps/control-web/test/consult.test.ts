@@ -2,6 +2,7 @@ import { useToast } from '@conference-operator/components'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import ConsultDialog from '../src/components/ConsultDialog.vue'
 import DiagnosticsPanel from '../src/components/DiagnosticsPanel.vue'
 import NotificationStack from '../src/components/NotificationStack.vue'
 import QuestionsTab from '../src/components/QuestionsTab.vue'
@@ -10,6 +11,7 @@ import RoomsTab from '../src/components/RoomsTab.vue'
 import Timeline from '../src/components/Timeline.vue'
 import type { Session } from '@conference-operator/program'
 import { stripEntry } from '../src/lib/rooms.js'
+import { useConsultStore } from '../src/stores/consult.js'
 import { useProgramsStore } from '../src/stores/programs.js'
 import { START_MS, END_MS, obsState, payload, talk } from './fixtures.js'
 
@@ -443,5 +445,28 @@ describe('diagnostics', () => {
   it('offers nothing to clear when the log is empty', () => {
     const wrapper = mount(DiagnosticsPanel, { props: { payload: payload() } })
     expect(wrapper.find('[data-action="log.clear"]').exists()).toBe(false)
+  })
+})
+
+describe('the other room tab', () => {
+  it('offers each neighbouring room as a button, with no native list', async () => {
+    const view = neighbour()
+    const consult = useConsultStore()
+    consult.show('other')
+    const wrapper = mount(ConsultDialog, {
+      props: { payload: view, nowMs: START_MS },
+      attachTo: document.body,
+    })
+    await flushPromises()
+
+    const choice = document.querySelector('[data-role="other-room-choice"]')
+    expect(choice?.querySelector('select')).toBeNull()
+    expect(choice?.querySelector('[data-room="track-1"]')).toBeNull()
+
+    choice?.querySelector<HTMLButtonElement>('[data-room="track-2"]')?.click()
+    await flushPromises()
+
+    expect(consult.followed).toBe('track-2')
+    wrapper.unmount()
   })
 })

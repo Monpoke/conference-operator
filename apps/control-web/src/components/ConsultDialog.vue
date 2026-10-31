@@ -72,16 +72,26 @@ const followable = computed(() => otherRooms(props.payload, programs.rooms))
       >
         {{ LABELS[name] }}
       </Button>
-      <select
+      <!--
+        Buttons, not a `<select>`: in an OBS dock the native dropdown opens empty
+        even though the rooms are known.
+      -->
+      <div
         v-if="consult.tab === 'other'"
-        class="max-w-[220px] rounded-lg border border-edge bg-canvas px-3 py-2 text-[13px] text-text focus:border-brand focus:outline-none"
+        class="flex flex-wrap items-center gap-1.5"
         data-role="other-room-choice"
-        :value="consult.followed ?? ''"
-        @change="consult.follow(($event.target as HTMLSelectElement).value)"
       >
-        <option value="">Choisir une salle…</option>
-        <option v-for="room in followable" :key="room.id" :value="room.id">{{ room.name }}</option>
-      </select>
+        <Button
+          v-for="room in followable"
+          :key="room.id"
+          size="small"
+          :active="consult.followed === room.id"
+          :data-room="room.id"
+          @click="consult.follow(room.id)"
+        >
+          {{ room.name }}
+        </Button>
+      </div>
     </div>
 
     <div class="max-h-[62vh] overflow-y-auto">

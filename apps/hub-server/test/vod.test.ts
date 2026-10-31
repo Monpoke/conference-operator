@@ -278,6 +278,28 @@ describe('opening and resuming', () => {
     expect(sidecar.mode).toBe('direct')
   })
 
+  it('opens a new multipart once the old one was abandoned or is gone', async () => {
+    const fake = fakeS3()
+    const vod = service(fake.transport)
+    const openings = () => fake.calls.filter((c) => c.method === 'POST' && c.url.includes('uploads=')).length
+
+    const plan = await vod.begin(A_RUSH)
+    await vod.abort(TRACK_1, plan.uploadId, 'annulé en régie')
+    const again = await vod.begin(A_RUSH)
+    if (again.mode !== 'multipart') throw new Error('unexpected')
+    expect(openings()).toBe(2)
+    expect(again.recues).toEqual([])
+
+    const gone: S3Transport = async (url, options) =>
+      options.method === 'POST' && !url.includes('uploads=')
+        ? { status: 404, body: '<Error><Code>NoSuchUpload</Code><Message>x</Message></Error>' }
+        : fake.transport(url, options)
+    const dead = service(gone)
+    await expect(dead.complete(TRACK_1, plan.uploadId)).rejects.toThrow()
+    await dead.begin(A_RUSH)
+    expect(openings()).toBe(3)
+  })
+
   it('resumes where the room stopped, without reopening a multipart', async () => {
     const fake = fakeS3()
     const vod = service(fake.transport)

@@ -476,6 +476,7 @@ export const router = os.router({
       const lived = new Map(
         context.services.sessions.states(null).map((state) => [state.sessionId, state]),
       )
+      const sansCaptation = new Set(context.services.settings.get().sallesSansCaptation)
 
       return {
         contentHash: snapshot.contentHash,
@@ -497,6 +498,8 @@ export const router = os.router({
                 ? null
                 : (room?.name ?? programRoomNames.get(session.roomId) ?? session.roomId),
             kind: session.kind,
+            sansCaptation: session.roomId != null && sansCaptation.has(session.roomId),
+            orateursVideo: context.services.settings.get().montageOrateurs[session.id] ?? null,
             // No link on a break: nobody rates a lunch, and a dead QR code
             // scanned by the audience costs more than an empty cell.
             feedbackUrl:
@@ -794,7 +797,7 @@ export const router = os.router({
         )) {
           // A command caught up out of time is discarded on the hub side too:
           // the client would filter it anyway, so we may as well not send it.
-          if (isExpiredNow(command)) continue
+          if (isCommandExpired(command, context.services.clock.now())) continue
           // The event id carries the `seq`: it is what the client will send back
           // as `lastEventId` on reconnection.
           yield withEventMeta(command, { id: String(command.seq) })
@@ -1829,6 +1832,7 @@ export const router = os.router({
       const sessions = context.services.programs.active()?.program.sessions ?? []
       const vod = context.services.vod
       const rooms = new Map(context.services.rooms.list().map((room) => [room.id, room.name]))
+      const sansCaptation = new Set(context.services.settings.get().sallesSansCaptation)
       const byRoom = new Map<string, { takes: RawCapture[]; lived: ReturnType<HubContext['services']['sessions']['states']> }>()
       const ofRoom = (roomId: string) => {
         let entry = byRoom.get(roomId)
@@ -1852,6 +1856,7 @@ export const router = os.router({
               captations,
               televersements: vod == null ? [] : vod.forSession(session.id, (id) => rooms.get(id) ?? null),
               montage: context.services.montage.list(session.id)[0] ?? null,
+              sansCaptation: session.roomId != null && sansCaptation.has(session.roomId),
             }),
           }
         })
@@ -2015,7 +2020,7 @@ export const router = os.router({
 
     fail: os.montage.fail.use(workerOnly).handler(({ input, context }) =>
       onMontage(context, async () => {
-        await context.services.montage.fail(context.worker, input, input.raison, input.reessayer)
+        await context.services.montage.fail(context.worker, input, input.raison, input.reessayer, input.compter)
         return { ok: true }
       }),
     ),
@@ -2695,10 +2700,6 @@ function parseSeq(lastEventId: string | undefined): number {
   if (lastEventId == null) return 0
   const seq = Number.parseInt(lastEventId, 10)
   return Number.isFinite(seq) && seq > 0 ? seq : 0
-}
-
-function isExpiredNow(command: Command): boolean {
-  return isCommandExpired(command, Date.now())
 }
 
 export type Router = typeof router

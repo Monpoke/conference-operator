@@ -354,6 +354,10 @@ export class VodService {
     return this.client().presignPut(key, SIGNATURE_TTL_S)
   }
 
+  readText(key: string): Promise<string> {
+    return this.client().readText(key)
+  }
+
   presignGet(key: string, filename?: string): string {
     return this.client().presignGet(key, SIGNATURE_TTL_S, filename)
   }
@@ -484,7 +488,9 @@ export class VodService {
       existing.sizeBytes === input.sizeBytes &&
       existing.s3UploadId != null &&
       existing.partSizeBytes === partSize &&
-      existing.state !== 'termine'
+      existing.state !== 'termine' &&
+      // Abandoning aborts the multipart at the storage: there is nothing left to resume.
+      existing.state !== 'abandonne'
 
     if (resumable && existing != null) {
       this.db
@@ -607,11 +613,20 @@ export class VodService {
   async complete(roomId: string, uploadId: string): Promise<string> {
     const row = this.row(roomId, uploadId)
     if (row.s3UploadId != null) {
-      await this.client().completeMultipart(
-        row.objectKey,
-        row.s3UploadId,
-        this.partsFrom(row.partsJson),
-      )
+      try {
+        await this.client().completeMultipart(row.objectKey, row.s3UploadId, this.partsFrom(row.partsJson))
+      } catch (cause) {
+        // Gone from the storage: every retry would ask for the same dead upload
+        // again. Forgotten here, the room's next attempt opens a new one.
+        if (cause instanceof S3Error && cause.code === 'NoSuchUpload') {
+          this.db
+            .update(vodUpload)
+            .set({ state: 'abandonne', s3UploadId: null, partsJson: '[]', bytesSent: 0, lastError: 'envoi disparu du stockage : à reprendre', finishedAt: this.nowIso() })
+            .where(eq(vodUpload.id, row.id))
+            .run()
+        }
+        throw cause
+      }
     }
     this.db
       .update(vodUpload)

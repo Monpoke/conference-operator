@@ -2,7 +2,7 @@ import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify'
 import fastifyProxy from '@fastify/http-proxy'
 import fastifyStatic from '@fastify/static'
 import { dirname, join } from 'node:path'
-import { consolePaths, CONTROL_PATH, controlRoomIdFromPath, type VodHabillage } from '@conference-operator/contract'
+import { consolePaths, CONTROL_PATH, controlRoomIdFromPath, type MontageOrateur, type VodHabillage } from '@conference-operator/contract'
 import { WebSocketServer, type WebSocket as NodeWebSocket } from 'ws'
 import { RPCHandler as FastifyRPCHandler } from '@orpc/server/fastify'
 import { RPCHandler as WebSocketRPCHandler } from '@orpc/server/websocket'
@@ -26,6 +26,8 @@ import { DeviceService, RoomService } from './services/rooms.js'
 import { QuestionService, WallService } from './services/wall.js'
 import { RateLimiter } from './services/rate-limit.js'
 import { MurPublicAccessService, MurPublicService } from './services/mur-public.js'
+import { renderSpeakerPage, speakerView, type SpeakerPayload } from './pages/speaker-page.js'
+import { sessionsForRoom } from '@conference-operator/program'
 import { SauvegardeError, SauvegardeService } from './services/sauvegarde.js'
 import { ControlService } from './services/control.js'
 import { PinService } from './services/pins.js'
@@ -177,7 +179,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     montage: new MontageService(
       orm,
       () => services.vod,
-      (sessionId) => vodHabillageFor(services, config.publicUrl, sessionId),
+      (sessionId) => withOrateurs(vodHabillageFor(services, config.publicUrl, sessionId), settings.get().montageOrateurs[sessionId]),
       () => new Date(clock.now()),
       (level, message, context) => services.log(level, message, context),
       (sessionId) => programs.active()?.program.sessions.find((session) => session.id === sessionId)?.title ?? null,
@@ -189,6 +191,13 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
         return { startedAt: lived.startedAt, endedAt: lived.endedAt, auto: lived.decidedBy === 'auto', decalageMs: null }
       },
       () => settings.get().montageAuto,
+      () => settings.get().montageSortie,
+      (sessionId) => {
+        if (settings.get().montageOrateurs[sessionId] == null) return null
+        const session = programs.active()?.program.sessions.find((candidate) => candidate.id === sessionId)
+        const roomId = session?.roomId
+        return { salle: roomId == null ? null : (services.rooms.get(roomId)?.name ?? null) }
+      },
     ),
     clock,
     mode: config.mode,
@@ -567,6 +576,61 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
         event: services.identity.get(),
       }),
     )
+  })
+
+  /** A room's speaker screen state, on the hub's clock. `null`: a room nobody knows. */
+  function speakerPayload(roomId: string): { roomName: string; timezone: string; payload: SpeakerPayload } | null {
+    const snapshot = services.programs.active()
+    const roomName =
+      services.rooms.get(roomId)?.name ?? snapshot?.program.rooms.find((room) => room.id === roomId)?.name
+    if (roomName == null) return null
+
+    const serverTimeMs = services.clock.now()
+    const statuses = Object.fromEntries(
+      services.sessions.states(roomId).map((state) => [state.sessionId, state.status]),
+    )
+    return {
+      roomName,
+      timezone: snapshot?.program.timezone ?? 'Europe/Paris',
+      payload: {
+        serverTimeMs,
+        view: speakerView(
+          snapshot == null ? [] : sessionsForRoom(snapshot.program, roomId),
+          serverTimeMs,
+          statuses,
+          services.pins.get(roomId),
+        ),
+      },
+    }
+  }
+
+  /**
+   * The speaker's return screen, one address per room.
+   *
+   * Public, like `rooms.current`: these titles are already projected, and a screen
+   * on stage has nobody to sign it in.
+   */
+  app.get<{ Params: { roomId: string } }>('/orateur/:roomId', async (request, reply) => {
+    const found = speakerPayload(request.params.roomId)
+    if (found == null) return reply.status(404).send({ error: 'salle inconnue' })
+    reply.header('content-type', 'text/html; charset=utf-8')
+    reply.header('cache-control', 'no-store')
+    return reply.send(
+      renderSpeakerPage({
+        roomName: found.roomName,
+        eventName: services.identity.get().name,
+        timezone: found.timezone,
+        stateUrl: `/orateur/${encodeURIComponent(request.params.roomId)}/etat`,
+        initial: found.payload,
+      }),
+    )
+  })
+
+  app.get<{ Params: { roomId: string } }>('/orateur/:roomId/etat', async (request, reply) => {
+    const found = speakerPayload(request.params.roomId)
+    if (found == null) return reply.status(404).send({ error: 'salle inconnue' })
+    reply.header('cache-control', 'no-store')
+    return reply.send(found.payload)
   })
 
   /**
@@ -1391,6 +1455,16 @@ function toWebRequest(
  * A talk the program does not know gets an empty title: the worker completes
  * it from the take's sidecar, which it reads anyway.
  */
+/** The speakers set in the console, over the program's. A photo follows its person's name. */
+function withOrateurs(habillage: VodHabillage, orateurs: MontageOrateur[] | undefined): VodHabillage {
+  if (orateurs == null) return habillage
+  const photos = new Map(habillage.speakers.map((person) => [person.name.toLowerCase(), person.photoUrl]))
+  return {
+    ...habillage,
+    speakers: orateurs.map((person) => ({ ...person, photoUrl: photos.get(person.name.toLowerCase()) ?? null })),
+  }
+}
+
 function vodHabillageFor(services: Services, publicUrl: string, sessionId: string): VodHabillage {
   const base = publicUrl.replace(/\/+$/, '')
   return buildVodHabillage({

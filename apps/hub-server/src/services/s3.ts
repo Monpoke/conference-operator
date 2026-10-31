@@ -472,6 +472,11 @@ export class S3Client {
    * several hundred objects. This gesture empties a development prefix, not a
    * warehouse.
    */
+  /** A small text object, read by the hub itself: a take's sidecar. */
+  async readText(key: string): Promise<string> {
+    return await this.call({ method: 'GET', path: this.path(key) })
+  }
+
   async deleteObject(key: string): Promise<void> {
     await this.call({ method: 'DELETE', path: this.path(key) })
   }

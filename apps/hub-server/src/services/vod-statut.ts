@@ -8,6 +8,8 @@ export interface VodStatutSources {
   televersements: { state: UploadState }[]
   /** Its latest montage, if one was ever asked. */
   montage: { state: MontageState } | null
+  /** In a room nobody records. */
+  sansCaptation?: boolean
 }
 
 /**
@@ -19,7 +21,7 @@ export interface VodStatutSources {
  * wherever it happened — an upload or a montage that gave up waits for someone,
  * and that someone reads the list, not the logs.
  */
-export function vodStatut({ captations, televersements, montage }: VodStatutSources): {
+export function vodStatut({ captations, televersements, montage, sansCaptation = false }: VodStatutSources): {
   statut: VodStatut
   detail: string
 } {
@@ -52,5 +54,7 @@ export function vodStatut({ captations, televersements, montage }: VodStatutSour
   if (captations.length > 0) {
     return { statut: 'sur-la-machine', detail: 'Rush sur la machine de la salle, pas encore téléversé' }
   }
+  // Last: a file that arrives anyway is still reported as such.
+  if (sansCaptation) return { statut: 'sans-captation', detail: 'Pas de captation prévue dans cette salle' }
   return { statut: 'aucune', detail: 'Aucune captation' }
 }

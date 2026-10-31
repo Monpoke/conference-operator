@@ -409,7 +409,14 @@ describe('correcting a slot\'s kind', () => {
 
     const before = (await admin.program.planning()).sessions.find((s) => s.id === TALK)!
     expect(before.kind).toBe('talk')
+    expect(before.sansCaptation).toBe(false)
     expect(before.feedbackUrl).toEqual(expect.any(String))
+
+    // A room declared without capture: the planning and the statuses both say so.
+    await admin.settings.update({ sallesSansCaptation: [before.roomId!] })
+    expect((await admin.program.planning()).sessions.find((s) => s.id === TALK)!.sansCaptation).toBe(true)
+    expect((await admin.vod.statuts()).find((s) => s.sessionId === TALK)!.statut).toBe('sans-captation')
+    await admin.settings.update({ sallesSansCaptation: [] })
     expect(before.overriddenAs).toBeNull()
 
     await admin.sessions.override({ sessionId: TALK, action: 'break' })

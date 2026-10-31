@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { and, desc, eq, inArray, isNull, lt } from 'drizzle-orm'
 import { ulid } from 'ulid'
-import { DEPLOYMENT_WORKER_ID } from '@conference-operator/contract'
+import { DEFAULT_MONTAGE_SORTIE, DEPLOYMENT_WORKER_ID } from '@conference-operator/contract'
 import type {
   MontageAnalyse,
   MontageAuto,
@@ -11,6 +11,7 @@ import type {
   MontageEtape,
   MontagePhase,
   MontageRegie,
+  MontageSortie,
   MontageJobView,
   MontageLease,
   MontageState,
@@ -41,6 +42,8 @@ export const LEASE_MS = 10 * 60_000
 export const RETRY_DELAY_MS = 10 * 60_000
 /** Beyond this, a job that keeps killing its workers is failed, not retried forever. */
 export const MAX_ATTEMPTS = 3
+/** Three missed heartbeats: the console says so, well before the lease lapses. */
+export const SILENCE_MS = 3 * 60_000
 /** S3 caps a multipart at 10,000 parts; the part size grows with the file past that. */
 const MIN_PART_BYTES = 16 * 1024 * 1024
 const MAX_PARTS = 9_000
@@ -93,6 +96,10 @@ export class MontageService {
     private readonly regieFor: (sessionId: string, roomId: string) => MontageRegie | null = () => null,
     /** When an analysed cut goes on without anybody validating it. */
     private readonly montageAuto: () => MontageAuto = () => 'si-confiance-haute',
+    /** The published videos' format. */
+    private readonly montageSortie: () => MontageSortie = () => DEFAULT_MONTAGE_SORTIE,
+    /** The card to draw again when the talk's speakers were corrected; `null` otherwise. */
+    private readonly cadreFor: (sessionId: string) => MontageClaim['cadre'] = () => null,
   ) {}
 
   /* ---------- Workers ---------- */
@@ -292,6 +299,8 @@ export class MontageService {
         phase,
         regie: phase === 'analyse' ? this.regieFor(job.sessionId, job.roomId) : null,
         coupe: phase === 'montage' ? parseJson<MontageCoupe>(job.coupeJson) : null,
+        sortie: this.montageSortie(),
+        cadre: phase === 'montage' ? this.cadreFor(job.sessionId) : null,
       }
     }
     return null
@@ -401,12 +410,26 @@ export class MontageService {
     return job.outputKey
   }
 
-  async fail(worker: Worker, lease: MontageLease, raison: string, reessayer: boolean): Promise<void> {
+  async fail(worker: Worker, lease: MontageLease, raison: string, reessayer: boolean, compter = false): Promise<void> {
     const jobId = lease.jobId
     const job = this.job(jobId)
     this.checkLease(worker, job, lease)
     if (job.state !== 'en-cours') return
     await this.abortOutput(job)
+    if (reessayer && compter) {
+      // The worker died on this job, perhaps because of it: offered again at
+      // once, but a job that keeps killing its workers ends up failed.
+      if (job.tentatives >= MAX_ATTEMPTS) {
+        this.finish(jobId, 'echoue', `${raison} (${job.tentatives} fois de suite)`)
+        return
+      }
+      this.db
+        .update(montageJob)
+        .set({ state: 'attente', workerId: null, leaseUntil: null, etape: null, pourcent: 0, erreur: raison, updatedAt: this.iso() })
+        .where(eq(montageJob.id, jobId))
+        .run()
+      return
+    }
     if (reessayer) {
       // Not the job's fault: the attempt does not count.
       this.db
@@ -482,12 +505,51 @@ export class MontageService {
   /* ---------- Console ---------- */
 
   /** What the analysis proposed, with read addresses for its files. */
-  analysisView(jobId: string): { analyse: MontageAnalyse | null; fichiers: { nom: string; url: string }[] } {
+  async analysisView(jobId: string): Promise<{
+    analyse: MontageAnalyse | null
+    fichiers: { nom: string; url: string }[]
+    prise: { url: string; offsetMs: number }[]
+  }> {
     const job = this.job(jobId)
     const analyse = parseJson<MontageAnalyse>(job.analyseJson)
     const vod = this.vod()
-    if (analyse == null || vod == null || !vod.ready()) return { analyse, fichiers: [] }
-    return { analyse, fichiers: analyse.artefacts.map((nom) => ({ nom, url: vod.presignGet(this.artefactKey(job, nom)) })) }
+    if (analyse == null || vod == null || !vod.ready()) return { analyse, fichiers: [], prise: [] }
+    return {
+      analyse,
+      fichiers: analyse.artefacts.map((nom) => ({ nom, url: vod.presignGet(this.artefactKey(job, nom)) })),
+      prise: await this.takeForListening(job, vod),
+    }
+  }
+
+  /**
+   * The take's files with where each starts in it, as its sidecar names them.
+   *
+   * Listening is an extra: a sidecar that cannot be read leaves the excerpts and
+   * the validation usable, so it is logged rather than thrown.
+   */
+  private async takeForListening(job: typeof montageJob.$inferSelect, vod: VodService): Promise<{ url: string; offsetMs: number }[]> {
+    const sidecarRow = vod.upload(job.sidecarUploadId)
+    if (sidecarRow == null) return []
+    try {
+      const sidecar = JSON.parse(await vod.readText(sidecarRow.objectKey)) as {
+        videoFile?: string | null
+        segments?: { file: string; offsetMs: number }[]
+      }
+      const parts = sidecar.segments != null && sidecar.segments.length > 0
+        ? [...sidecar.segments].sort((a, b) => a.offsetMs - b.offsetMs)
+        : sidecar.videoFile == null ? [] : [{ file: sidecar.videoFile, offsetMs: 0 }]
+      const folder = folderOf(sidecarRow.file)
+      return parts.flatMap(({ file, offsetMs }) => {
+        const row = vod.uploadedFile(job.roomId, folder + file)
+        return row == null || row.kind !== 'rush' ? [] : [{ url: vod.presignGet(row.objectKey), offsetMs }]
+      })
+    } catch (cause) {
+      this.onLog('warn', 'side-car illisible pour l’écoute de la coupe', {
+        jobId: job.id,
+        message: cause instanceof Error ? cause.message : String(cause),
+      })
+      return []
+    }
   }
 
   /**
@@ -662,6 +724,13 @@ export class MontageService {
     return vod
   }
 
+  /** Every call about a running job touches `updatedAt`: its age is the worker's silence. */
+  private silence(row: JobRow): number | null {
+    if (row.state !== 'en-cours') return null
+    const age = this.now().getTime() - Date.parse(row.updatedAt)
+    return age >= SILENCE_MS ? age : null
+  }
+
   private view(row: JobRow): MontageJobView {
     const worker = row.workerId == null
       ? null
@@ -686,6 +755,7 @@ export class MontageService {
       valideePar: row.valideePar,
       audio: parseJson<MontageAudio>(row.audioJson),
       erreur: row.erreur,
+      silencieuxDepuisMs: this.silence(row),
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       finishedAt: row.finishedAt,

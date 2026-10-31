@@ -49,4 +49,10 @@ describe('where a talk s capture stands', () => {
       'sur-le-stockage',
     )
   })
+
+  it('expects nothing from a room nobody records, unless something arrives', () => {
+    const none = { captations: [], televersements: [], montage: null, sansCaptation: true }
+    expect(vodStatut(none).statut).toBe('sans-captation')
+    expect(vodStatut({ ...none, captations: [{ enCours: false }] }).statut).toBe('sur-la-machine')
+  })
 })

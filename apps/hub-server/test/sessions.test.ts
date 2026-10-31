@@ -238,6 +238,9 @@ describe('hub settings', () => {
       // `vodPolitique` is a contract field: it does not get renamed.
       vodPolitique: DEFAULT_VOD_POLICY,
       montageAuto: 'si-confiance-haute',
+      montageSortie: { hauteur: 1080, fps: 30, crf: 20 },
+      montageOrateurs: {},
+      sallesSansCaptation: [],
       // The reference loop, until the console lays out another.
       boucle: DEFAULT_BOUCLE,
     })
@@ -259,6 +262,9 @@ describe('hub settings', () => {
       vodPrefix: null,
       vodPolitique: DEFAULT_VOD_POLICY,
       montageAuto: 'si-confiance-haute',
+      montageSortie: { hauteur: 1080, fps: 30, crf: 20 },
+      montageOrateurs: {},
+      sallesSansCaptation: [],
       boucle: DEFAULT_BOUCLE,
     })
     expect(settings.get().autoEndGraceMinutes).toBe(15)

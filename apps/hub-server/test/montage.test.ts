@@ -5,7 +5,7 @@ import { openHubDatabase, type HubDatabase } from '../src/db.js'
 import { RoomService } from '../src/services/rooms.js'
 import { SettingsService } from '../src/services/sessions.js'
 import { VodService } from '../src/services/vod.js'
-import { DEPLOYMENT_WORKER_ID, LEASE_MS, MAX_ATTEMPTS, MontageError, MontageService } from '../src/services/montage.js'
+import { DEPLOYMENT_WORKER_ID, LEASE_MS, MAX_ATTEMPTS, MontageError, MontageService, SILENCE_MS } from '../src/services/montage.js'
 import type { S3Transport } from '../src/services/s3.js'
 import { testSecrets } from './helpers/secrets.js'
 
@@ -35,9 +35,11 @@ let vod: VodService
 let clock: Date
 let montage: MontageService
 let calls: { url: string; method: string; body?: string }[]
+let sidecarBody: string | null
 
 const fakeS3: S3Transport = async (url, options) => {
   calls.push({ url, method: options.method, body: options.body })
+  if (options.method === 'GET' && url.includes('.json')) return { status: sidecarBody == null ? 404 : 200, body: sidecarBody ?? '<Error><Code>NoSuchKey</Code></Error>' }
   if (url.includes('uploads=') && options.method === 'POST') {
     return { status: 200, body: '<InitiateMultipartUploadResult><UploadId>m1</UploadId></InitiateMultipartUploadResult>' }
   }
@@ -58,6 +60,7 @@ beforeEach(() => {
   })
   settings.update({ vodBucket: 'rushes', vodPrefix: 'cn26' })
   calls = []
+  sidecarBody = null
   clock = new Date('2026-10-30T18:00:00.000Z')
   vod = new VodService(db, settings, KEYS, 30, () => clock.toISOString(), () => {}, fakeS3)
   montage = new MontageService(db, () => vod, () => HABILLAGE, () => clock)
@@ -359,9 +362,71 @@ describe('analysis, then montage', () => {
     const [upload] = montage.artefactUploads(worker, claim, ['forme.png'])
     expect(upload!.url).toContain(`/rushes/cn26/montages/2026-10-30/${TRACK_1}/2026-10-30_1100_honeyswamp.analyse/${claim.jobId}/forme.png`)
     montage.analysisDone(worker, claim, analysis('basse'))
-    const view = montage.analysisView(claim.jobId)
+    const view = await montage.analysisView(claim.jobId)
     expect(view.fichiers.map((f) => f.nom)).toEqual(['forme.png', 'debut.mp3'])
     expect(view.fichiers[0]!.url).toContain('X-Amz-Signature=')
+  })
+
+  it('hands the published format to the worker, and says when it falls silent', async () => {
+    const { worker, claim } = await analysing()
+    expect(claim.sortie).toEqual({ hauteur: 1080, fps: 30, crf: 20 })
+    expect(montage.list(null)[0]!.silencieuxDepuisMs).toBeNull()
+
+    clock = new Date(clock.getTime() + SILENCE_MS)
+    expect(montage.list(null)[0]!.silencieuxDepuisMs).toBe(SILENCE_MS)
+    montage.heartbeat(worker, claim, 'assemblage', 10)
+    expect(montage.list(null)[0]!.silencieuxDepuisMs).toBeNull()
+  })
+
+  it('asks for the card drawn again only on the montage of a corrected talk', async () => {
+    const corrected = new MontageService(db, () => vod, () => HABILLAGE, () => clock, undefined, undefined, undefined, undefined, undefined, () => ({ salle: 'Amphi' }))
+    const worker = corrected.fromToken(corrected.createWorker('Mac', null).token)!
+    corrected.enqueue({ sessionId: 'sess-1', roomId: TRACK_1, sidecarUploadId: await uploaded(SIDECAR, 'sidecar') })
+    expect(corrected.claim(worker)!.cadre).toBeNull()
+  })
+
+  it('offers again at once a job its worker died on, until it has killed too many', async () => {
+    const { worker, claim } = await analysing()
+    await montage.fail(worker, claim, 'worker arrêté', true, true)
+    expect(montage.list(null)[0]).toMatchObject({ state: 'attente', tentatives: 1, pasAvant: null, erreur: 'worker arrêté' })
+
+    for (const expected of ['attente', 'echoue']) {
+      const next = montage.claim(worker)!
+      await montage.fail(worker, next, 'worker arrêté', true, true)
+      expect(montage.list(null)[0]!.state).toBe(expected)
+    }
+  })
+
+  it('gives the console the take to listen at any cut, split or not', async () => {
+    const { worker, claim } = await analysing()
+    montage.analysisDone(worker, claim, analysis('basse'))
+
+    await uploaded(RUSH, 'rush')
+    sidecarBody = JSON.stringify({ videoFile: '2026-10-30_1100_honeyswamp.mkv' })
+    expect((await montage.analysisView(claim.jobId)).prise).toEqual([
+      { url: expect.stringContaining('honeyswamp.mkv'), offsetMs: 0 },
+    ])
+
+    await uploaded('2026-10-30/track1/suite.mkv', 'rush')
+    sidecarBody = JSON.stringify({
+      videoFile: '2026-10-30_1100_honeyswamp.mkv',
+      segments: [
+        { file: 'suite.mkv', offsetMs: 60_000 },
+        { file: '2026-10-30_1100_honeyswamp.mkv', offsetMs: 0 },
+      ],
+    })
+    const { prise } = await montage.analysisView(claim.jobId)
+    expect(prise.map((part) => part.offsetMs)).toEqual([0, 60_000])
+    expect(prise[1]!.url).toContain('suite.mkv')
+  })
+
+  it('keeps the view when the sidecar cannot be read', async () => {
+    const { worker, claim } = await analysing()
+    montage.analysisDone(worker, claim, analysis('basse'))
+
+    const view = await montage.analysisView(claim.jobId)
+    expect(view.prise).toEqual([])
+    expect(view.fichiers).toHaveLength(2)
   })
 
   it('analyses a new take again rather than reuse the old one’s cut', async () => {

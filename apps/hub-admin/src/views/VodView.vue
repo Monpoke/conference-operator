@@ -259,7 +259,8 @@ async function requestAll(): Promise<void> {
                 class="max-md:flex max-md:flex-wrap max-md:items-baseline max-md:gap-x-2.5 max-md:gap-y-1 max-md:border-t max-md:border-edge max-md:py-2.5"
               >
                 <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:basis-full max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:font-semibold">
-                  {{ row.title }}
+                  <span v-if="row.key.startsWith('sans-conference/')" class="text-warn italic" data-sans-conference>{{ row.title }}</span>
+                  <template v-else>{{ row.title }}</template>
                 </td>
                 <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:text-dim">
                   {{ row.roomName }}

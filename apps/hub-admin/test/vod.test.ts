@@ -370,6 +370,12 @@ describe('the montages in the list', () => {
     expect(lines[0]?.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('42')
   })
 
+  it('sets apart the files attached to no talk', async () => {
+    const { wrapper } = await mountView([{ ...IN_PROGRESS, sessionId: null }], [TALK])
+    await flushPromises()
+    expect(wrapper.get('[data-sans-conference]').text()).toBe('Sans conférence')
+  })
+
   it('pauses the renders, and says what it leaves running', async () => {
     const { wrapper } = await mountView([], [TALK])
     const store = useMontageStore()

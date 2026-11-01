@@ -76,7 +76,7 @@ import {
   integrationUpdateSchema,
   integrationViewSchema,
 } from './integrations.js'
-import { roomIncidentSchema, statistiquesSchema } from './statistiques.js'
+import { roomIncidentSchema, statistiquesSchema, statistiquesVotesSchema } from './statistiques.js'
 import { auditEntrySchema, auditPageQuerySchema, auditPageSchema, auditQuerySchema } from './audit.js'
 
 /** A partner of the program, as the console chooses it. */
@@ -1082,6 +1082,8 @@ export const contract = {
   statistiques: {
     /** The edition in figures, one row per talk: the page filters and totals them. Admin. */
     bilan: oc.output(statistiquesSchema),
+    /** The audience's votes, read from OpenFeedback and kept a few minutes. Admin. */
+    votes: oc.output(statistiquesVotesSchema),
   },
 
   audit: {

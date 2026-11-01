@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { OpenFeedbackCheck } from '@conference-operator/contract'
+import type { OpenFeedbackCheck, StatistiquesVotes } from '@conference-operator/contract'
 
 /**
  * Checking that the "rate this talk" links lead somewhere.
@@ -155,5 +155,115 @@ export async function checkOpenFeedback(
         ? 'Tous les créneaux ont leur page chez OpenFeedback.'
         : 'Ces créneaux n’ont pas de page chez OpenFeedback : leur lien et leur QR ' +
           'mènent à une page vide. Corrigez leur identifiant depuis le planning.',
+  }
+}
+
+const projectVoteItemsSchema = z.object({
+  fields: z.object({
+    voteItems: z.object({
+      arrayValue: z.object({
+        values: z.array(z.object({
+          mapValue: z.object({
+            fields: z.object({
+              id: z.object({ stringValue: z.string() }),
+              name: z.object({ stringValue: z.string() }).optional(),
+              type: z.object({ stringValue: z.string() }),
+              position: z.object({ integerValue: z.string() }).optional(),
+            }),
+          }),
+        })).default([]),
+      }),
+    }).optional(),
+  }),
+})
+
+const sessionVotesSchema = z.object({
+  documents: z.array(z.object({
+    name: z.string(),
+    fields: z.record(z.string(), z.object({
+      integerValue: z.string().optional(),
+      mapValue: z.object({ fields: z.record(z.string(), z.unknown()).optional() }).optional(),
+    }).loose()).default({}),
+  })).optional(),
+  nextPageToken: z.string().optional(),
+})
+
+async function readJson(fetchImpl: typeof fetch, url: URL | string): Promise<unknown> {
+  const response = await fetchImpl(url, { signal: AbortSignal.timeout(TIMEOUT_MS) })
+  if (!response.ok) throw new Error(`OpenFeedback a répondu ${response.status}`)
+  return response.json()
+}
+
+/**
+ * The votes of each talk, with the criteria they were cast on.
+ *
+ * A talk nobody voted on has no document: it reads as zero. Only the count of the
+ * written comments is kept, see `statistiquesVotesSchema`.
+ */
+export async function readOpenFeedbackVotes(
+  projectId: string,
+  talks: { sessionId: string; feedbackId: string }[],
+  options: OpenFeedbackOptions = {},
+): Promise<Pick<StatistiquesVotes, 'criteres' | 'talks'>> {
+  const fetchImpl = options.fetchImpl ?? fetch
+  const root = `${options.base ?? BASE}/${encodeURIComponent(projectId.trim())}`
+  const items = projectVoteItemsSchema
+    .parse(await readJson(fetchImpl, root))
+    .fields.voteItems?.arrayValue.values.map((value) => value.mapValue.fields) ?? []
+  const counted = items
+    .filter((item) => item.type.stringValue === 'boolean')
+    .sort((a, b) => Number(a.position?.integerValue ?? 0) - Number(b.position?.integerValue ?? 0))
+  const countedIds = new Set(counted.map((item) => item.id.stringValue))
+  const writtenIds = new Set(items.filter((item) => item.type.stringValue === 'text').map((item) => item.id.stringValue))
+
+  const documents = new Map<string, NonNullable<z.infer<typeof sessionVotesSchema>['documents']>[number]['fields']>()
+  let pageToken: string | undefined
+  do {
+    const url = new URL(`${root}/sessionVotes`)
+    url.searchParams.set('pageSize', '300')
+    if (pageToken != null) url.searchParams.set('pageToken', pageToken)
+    const page = sessionVotesSchema.parse(await readJson(fetchImpl, url))
+    for (const document of page.documents ?? []) documents.set(documentId(document.name), document.fields)
+    pageToken = page.nextPageToken
+  } while (pageToken != null)
+
+  return {
+    criteres: counted.map((item) => ({ id: item.id.stringValue, nom: item.name?.stringValue ?? item.id.stringValue })),
+    talks: talks.map(({ sessionId, feedbackId }) => {
+      const votes: Record<string, number> = {}
+      let commentaires = 0
+      for (const [id, value] of Object.entries(documents.get(feedbackId) ?? {})) {
+        if (countedIds.has(id)) votes[id] = Math.max(0, Number(value.integerValue ?? 0))
+        if (writtenIds.has(id)) commentaires += Object.keys(value.mapValue?.fields ?? {}).length
+      }
+      return { sessionId, votes, commentaires }
+    }),
+  }
+}
+
+/** OpenFeedback is asked again after this long, not on every visit. */
+export const OPENFEEDBACK_VOTES_TTL_MS = 5 * 60_000
+
+/** Keeps the last reading: when OpenFeedback fails, the page shows it and says so. */
+export class OpenFeedbackVotesService {
+  #last: { projectId: string; at: number; result: StatistiquesVotes } | null = null
+
+  constructor(
+    private readonly options: OpenFeedbackOptions = {},
+    private readonly now: () => number = Date.now,
+  ) {}
+
+  async read(projectId: string | null, talks: { sessionId: string; feedbackId: string }[]): Promise<StatistiquesVotes> {
+    if (projectId == null) return { criteres: [], talks: [], luA: null, erreur: 'Aucun projet OpenFeedback réglé sur ce hub.' }
+    const last = this.#last?.projectId === projectId ? this.#last : null
+    if (last != null && this.now() - last.at < OPENFEEDBACK_VOTES_TTL_MS) return last.result
+    try {
+      const result = { ...(await readOpenFeedbackVotes(projectId, talks, this.options)), luA: new Date(this.now()).toISOString(), erreur: null }
+      this.#last = { projectId, at: this.now(), result }
+      return result
+    } catch (cause) {
+      const erreur = `OpenFeedback n'a pas pu être lu : ${(cause as Error).message}`
+      return last == null ? { criteres: [], talks: [], luA: null, erreur } : { ...last.result, erreur }
+    }
   }
 }

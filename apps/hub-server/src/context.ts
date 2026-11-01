@@ -11,6 +11,7 @@ import type { DeviceService, RoomService } from './services/rooms.js'
 import type { QuestionService, WallService } from './services/wall.js'
 import type { WallsIoConfig } from './services/wallsio.js'
 import type { WallStatsService } from './services/wall-stats.js'
+import type { OpenFeedbackVotesService } from './services/openfeedback.js'
 import type { IncidentsService, StatistiquesService } from './services/statistiques.js'
 import type { RateLimiter } from './services/rate-limit.js'
 import type { MurPublicAccessService, MurPublicService } from './services/mur-public.js'
@@ -58,6 +59,7 @@ export interface Services {
   wallStats: WallStatsService
   statistiques: StatistiquesService
   incidents: IncidentsService
+  openFeedbackVotes: OpenFeedbackVotesService
   /**
    * The hub's log, for what the procedures do out of sight — the social wall
    * served to a room, a post hidden. Fastify's, bound once the server exists.

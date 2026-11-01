@@ -63,3 +63,23 @@ export const roomIncidentSchema = z.object({
   detail: z.string().nullable(),
 })
 export type RoomIncident = z.infer<typeof roomIncidentSchema>
+
+/**
+ * The audience's votes on OpenFeedback, read apart: the rest of the page works
+ * without them, and without a network.
+ *
+ * Written comments are counted, never carried: they are meant for the speakers,
+ * and each comes with its author's identifier.
+ */
+export const statistiquesVotesSchema = z.object({
+  criteres: z.array(z.object({ id: z.string(), nom: z.string() })),
+  talks: z.array(z.object({
+    sessionId: z.string(),
+    votes: z.record(z.string(), z.number().int().nonnegative()),
+    commentaires: z.number().int().nonnegative(),
+  })),
+  luA: z.string().nullable(),
+  /** Why nothing, or nothing recent, could be read. */
+  erreur: z.string().nullable(),
+})
+export type StatistiquesVotes = z.infer<typeof statistiquesVotesSchema>

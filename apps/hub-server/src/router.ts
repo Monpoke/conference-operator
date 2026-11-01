@@ -1674,6 +1674,15 @@ export const router = os.router({
   },
 
   statistiques: {
+    votes: os.statistiques.votes.use(operatorCan('vod:read')).handler(({ context }) => {
+      const sessions = context.services.programs.active()?.program.sessions ?? []
+      return context.services.openFeedbackVotes.read(
+        filled(context.services.settings.get().openFeedbackProjectId),
+        sessions
+          .filter((session) => session.kind !== 'break')
+          .map((session) => ({ sessionId: session.id, feedbackId: session.feedbackId?.trim() || session.id })),
+      )
+    }),
     bilan: os.statistiques.bilan.use(operatorCan('vod:read')).handler(({ context }) => {
       const program = context.services.programs.active()?.program
       return context.services.statistiques.bilan({

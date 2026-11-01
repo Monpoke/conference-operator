@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkOpenFeedback } from '../src/services/openfeedback.js'
+import { OPENFEEDBACK_VOTES_TTL_MS, OpenFeedbackVotesService, checkOpenFeedback, readOpenFeedbackVotes } from '../src/services/openfeedback.js'
 
 /**
  * The check on the "rate this talk" links.
@@ -168,5 +168,54 @@ describe('OpenFeedback check', () => {
         }),
       }),
     ).rejects.toThrow('500')
+  })
+})
+
+describe('the votes of the talks', () => {
+  const item = (id: string, type: string, position: number) => ({ mapValue: { fields: { id: { stringValue: id }, name: { stringValue: id.toUpperCase() }, type: { stringValue: type }, position: { integerValue: String(position) } } } })
+  const answers = {
+    '/projects/p': { body: { fields: { voteItems: { arrayValue: { values: [item('b', 'boolean', 1), item('a', 'boolean', 0), item('c', 'text', 2)] } } } } },
+    '/projects/p/sessionVotes': { body: { documents: [{
+      name: 'x/sessionVotes/fb1',
+      fields: {
+        a: { integerValue: '3' },
+        b: { integerValue: '-1' },
+        c: { mapValue: { fields: { m1: { mapValue: { fields: { text: { stringValue: 'SECRET' }, userId: { stringValue: 'U1' } } } } } } },
+        ancien: { integerValue: '9' },
+      },
+    }] } },
+  }
+
+  it('reads the criteria in order, a talk without votes as zero, and leaves the comments behind', async () => {
+    const result = await readOpenFeedbackVotes('p', [{ sessionId: 's1', feedbackId: 'fb1' }, { sessionId: 's2', feedbackId: 'fb2' }], { base: BASE, fetchImpl: hubFirestore(answers) })
+    expect(result.criteres).toEqual([{ id: 'a', nom: 'A' }, { id: 'b', nom: 'B' }])
+    expect(result.talks).toEqual([{ sessionId: 's1', votes: { a: 3, b: 0 }, commentaires: 1 }, { sessionId: 's2', votes: {}, commentaires: 0 }])
+    expect(JSON.stringify(result)).not.toMatch(/SECRET|U1/)
+  })
+
+  it('keeps a reading for a while, and shows the last one with the reason when OpenFeedback fails', async () => {
+    let at = 0
+    let calls = 0
+    let healthy = true
+    const firestore = hubFirestore(answers)
+    const fetchImpl = (async (...args: Parameters<typeof fetch>) => {
+      calls += 1
+      return healthy ? firestore(...args) : new Response('{}', { status: 503 })
+    }) as typeof fetch
+    const service = new OpenFeedbackVotesService({ base: BASE, fetchImpl }, () => at)
+    const talks = [{ sessionId: 's1', feedbackId: 'fb1' }]
+    await service.read('p', talks)
+    const afterFirst = calls
+    await service.read('p', talks)
+    expect(calls).toBe(afterFirst)
+    healthy = false
+    at = OPENFEEDBACK_VOTES_TTL_MS
+    const stale = await service.read('p', talks)
+    expect(stale.talks[0]?.votes.a).toBe(3)
+    expect(stale.erreur).toContain('503')
+  })
+
+  it('says when no project is set', async () => {
+    expect((await new OpenFeedbackVotesService().read(null, [])).erreur).not.toBeNull()
   })
 })

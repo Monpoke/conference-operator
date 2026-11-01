@@ -51,6 +51,7 @@ import {
 } from './services/social.js'
 import { WallsIoConfig, wallsioSource } from './services/wallsio.js'
 import { WallStatsService } from './services/wall-stats.js'
+import { OpenFeedbackVotesService } from './services/openfeedback.js'
 import { IncidentsService, StatistiquesService } from './services/statistiques.js'
 import { migrateLegacyMur } from './services/legacy-mur.js'
 import { renderWallClosedPage, renderWallPage } from './pages/wall-page.js'
@@ -157,6 +158,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     wallStats: new WallStatsService({ db: orm, config: wallsIoConfig }),
     statistiques: new StatistiquesService(orm),
     incidents: new IncidentsService(orm),
+    openFeedbackVotes: new OpenFeedbackVotesService(),
     // Bound to Fastify's log once the server exists, below.
     log: () => undefined,
     questions: new QuestionService(orm),

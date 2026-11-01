@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, isNull, lt, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm'
+import { and, count, desc, eq, inArray, isNull, lt, or, sql, type SQL, type SQLWrapper, gte } from 'drizzle-orm'
 import {
   AUDIT_RETENTION_DAYS,
   auditPageQuerySchema,
@@ -161,8 +161,12 @@ function matching(q: {
   q: string
   actions: string[]
   rooms: string[]
+  depuis?: string | null
+  avant?: string | null
 }): SQL | undefined {
   return and(
+    q.depuis == null ? undefined : gte(auditLog.at, q.depuis),
+    q.avant == null ? undefined : lt(auditLog.at, q.avant),
     q.roomId == null ? undefined : eq(auditLog.roomId, q.roomId),
     q.actor == null ? undefined : eq(auditLog.actor, q.actor),
     searching(q.q, q.actions, q.rooms),

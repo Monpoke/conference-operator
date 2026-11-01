@@ -55,6 +55,9 @@ export const auditQuerySchema = z.object({
    */
   actions: z.array(z.string().min(1).max(80)).max(200).default([]),
   rooms: z.array(z.string().min(1).max(200)).max(200).default([]),
+  /** The day looked at, as the console's clock reads it: from `depuis`, up to `avant` excluded. */
+  depuis: isoDateTimeSchema.nullable().default(null),
+  avant: isoDateTimeSchema.nullable().default(null),
   /** The page before this entry: the list reads newest first. */
   beforeId: z.number().int().positive().nullable().default(null),
   limit: z.number().int().min(1).max(1000).default(200),

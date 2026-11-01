@@ -190,6 +190,19 @@ describe('reading it', () => {
     expect(nobody).toEqual([])
   })
 
+  it('keeps to the day asked for, its last instant excluded', async () => {
+    await rpc('rooms/resync', { roomId: TRACK_1 })
+    const at = entries()[0]!.at
+    const window = (depuis: string, avant: string) =>
+      rpc('audit/page', { depuis, avant }).then((answer) => (answer.body.json as AuditPage).total)
+    const ms = Date.parse(at)
+    const iso = (delta: number) => new Date(ms + delta).toISOString()
+
+    expect(await window(iso(-1000), iso(1000))).toBeGreaterThanOrEqual(1)
+    expect(await window(iso(1000), iso(2000))).toBe(0)
+    expect(await window(iso(-2000), at)).toBe(0)
+  })
+
   it('serves numbered pages, with how many entries match', async () => {
     for (let i = 0; i < 25; i++) await rpc('rooms/resync', { roomId: TRACK_1 })
 

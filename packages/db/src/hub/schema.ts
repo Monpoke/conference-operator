@@ -632,6 +632,18 @@ export const integration = sqliteTable('integration', {
 })
 
 /**
+ * A page opening edited videos to whoever has its address and its password: one
+ * talk, or the whole edition when `session_id` is null.
+ */
+export const videoPartage = sqliteTable('video_partage', {
+  id: text('id').primaryKey(),
+  sessionId: text('session_id'),
+  motDePasseHash: text('mot_de_passe_hash').notNull(),
+  createdBy: text('created_by'),
+  createdAt: text('created_at').notNull(),
+})
+
+/**
  * Uploads of the rushes to the S3 storage.
  *
  * The hub keeps the register because it holds the keys: it is the one that opens
@@ -835,4 +847,5 @@ export const hubSchema = {
   auditLog,
   montageWorker,
   montageJob,
+  videoPartage,
 }

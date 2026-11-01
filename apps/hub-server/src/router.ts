@@ -1669,6 +1669,19 @@ export const router = os.router({
     }),
   },
 
+  statistiques: {
+    bilan: os.statistiques.bilan.use(operatorCan('vod:read')).handler(({ context }) => {
+      const program = context.services.programs.active()?.program
+      return context.services.statistiques.bilan({
+        sessions: program?.sessions ?? [],
+        roomName: (roomId) => context.services.rooms.get(roomId)?.name ?? program?.rooms.find((room) => room.id === roomId)?.name ?? null,
+        sallesSansCaptation: context.services.settings.get().sallesSansCaptation,
+        sponsorTiers: program?.sponsorTiers ?? [],
+        timezone: program?.timezone ?? 'Europe/Paris',
+      })
+    }),
+  },
+
   /**
    * Slack, Mattermost, webhook: operators only — an address posts in a channel.
    */

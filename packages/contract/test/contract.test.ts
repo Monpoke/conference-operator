@@ -166,7 +166,8 @@ describe('contract surface', () => {
       'settings',
       // Shipping the rushes back: the hub holds the storage keys and signs
       // addresses, the room uploads. No secret goes down to a room.
-      'vod',
+       'statistiques',
+     'vod',
       'wall',
       // The walls.io link: apart from `settings` because its token never comes back.
       'wallsio',

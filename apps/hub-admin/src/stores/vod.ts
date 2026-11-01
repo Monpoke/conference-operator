@@ -7,7 +7,7 @@ import { useSessionStore } from './session.js'
  * Bringing the takes home.
  *
  * To be looked at **before dismantling a room**: it is the last moment its disk is
- * still plugged in. Footage that is not here is nowhere else but in Lille.
+ * still plugged in. Footage that is not here exists only on that disk.
  */
 export interface Upload {
   roomId: string

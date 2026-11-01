@@ -6,7 +6,7 @@ import { timeFormatter } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 import { dayKeyOf, dayOptions } from '../stores/days.js'
-import { planningGrid, PX_PER_MINUTE } from '../stores/planning-grid.js'
+import { planningGrid, PX_PER_MINUTE, horaireReel } from '../stores/planning-grid.js'
 import { latestByTake, montagePath, useMontageStore } from '../stores/montage.js'
 import FeedbackIdDialog from '../components/FeedbackIdDialog.vue'
 import VodFolderDialog from '../components/VodFolderDialog.vue'
@@ -477,6 +477,10 @@ async function select(session: PlannedSession): Promise<void> {
               >
                 <span v-if="slot.heightPx >= 18" class="flex shrink-0 items-baseline gap-1.5 text-[11px] tabular-nums text-dim" :class="slot.heightPx < 40 ? 'order-last' : 'w-full'">
                   {{ hour(slot.session.startsAt) }}
+                  <!-- On the hour's row: a twenty-minute talk would lose its title to a row of its own. -->
+                  <span v-if="slot.heightPx >= 40 && slot.session.kind !== 'break' && horaireReel(slot.session, hour) != null" class="whitespace-nowrap text-text" :data-reel="slot.session.id">
+                    → {{ horaireReel(slot.session, hour)!.heures }}<template v-if="horaireReel(slot.session, hour)!.retard != null"> · <span :class="horaireReel(slot.session, hour)!.enRetard ? 'font-semibold text-warn' : 'text-dim'">{{ horaireReel(slot.session, hour)!.retard }}</span></template>
+                  </span>
                   <span v-if="placeOf(slot.session) === 'en-cours' && slot.heightPx >= 40" class="font-semibold text-brand">en ce moment</span>
                   <span
                     v-if="stateOf(slot.session.id) != null && stateOf(slot.session.id)!.status === 'running'"

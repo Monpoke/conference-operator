@@ -4,7 +4,7 @@ import { synthese, syntheseVotes, talksCsv, votesDuTalk } from '../src/stores/st
 
 const TALK: StatistiqueTalk = {
   sessionId: 'a', title: 'A', roomId: 'r', roomName: 'R', startsAt: '2026-10-30T09:00:00Z', endsAt: null, retardMs: 600_000, depassementMs: null,
-  auto: false, tenue: true, sansCaptation: false, rush: 'rentre', rushOctets: 10, lufs: -40, truePeak: -8, lra: 6, confiance: 'basse',
+  auto: false, tenue: true, sansCaptation: false, rush: 'televerse', rushOctets: 10, lufs: -40, truePeak: -8, lra: 6, confiance: 'basse',
   alertesSaturation: 2, alertesSilence: 0, montages: ['termine'], videoMs: 60_000, consentement: 'accorde',
 }
 
@@ -13,7 +13,7 @@ describe('the figures of the talks in view', () => {
     const s = synthese([TALK, { ...TALK, sessionId: 'b', retardMs: null, lufs: null, auto: true, rush: 'manquant', rushOctets: 0, montages: [], videoMs: 0 }])
     expect(s.retard).toEqual({ valeur: 600_000, sur: 1 })
     expect(s.lufs).toEqual({ valeur: -40, sur: 1 })
-    expect(s).toMatchObject({ prevus: 2, enRetard: 1, autos: 1, rushManquants: 1, rushRentres: 1, videos: 1 })
+    expect(s).toMatchObject({ prevus: 2, enRetard: 1, autos: 1, rushManquants: 1, rushTeleverses: 1, videos: 1 })
   })
 
   it('does not expect a rush from a room nobody records', () => {

@@ -216,7 +216,7 @@ describe('une ligne par conférence', () => {
     const { wrapper } = await mountView([{ ...IN_PROGRESS, state: 'termine' }, SIDECAR], [TALK])
     await wrapper.get('#vod-room').setValue('track-1')
     await flushPromises()
-    expect(wrapper.get('#vod-verdict').text()).toBe('Track #1 : tout est rentré')
+    expect(wrapper.get('#vod-verdict').text()).toBe('Track #1 : tout est téléversé')
   })
 
   it('keeps the list usable when the programme cannot be read', async () => {

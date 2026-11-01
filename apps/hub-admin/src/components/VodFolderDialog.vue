@@ -12,7 +12,7 @@ import { MONTAGE_STATES, cutMinutes, describe, latestByTake, montagePath, useMon
  *
  * Two halves that do not say the same thing: what the **control app** recorded,
  * and what the **storage** received. Confusing the two makes people believe
- * footage is safe because it exists on a disk in Lille.
+ * footage is safe because it exists on a room's disk.
  */
 interface Capture {
   obs: string

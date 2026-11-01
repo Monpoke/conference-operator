@@ -29,7 +29,7 @@ export function synthese(talks: readonly StatistiqueTalk[]) {
     depassement: moyenne(talks.map((talk) => talk.depassementMs)),
     autos: talks.filter((talk) => talk.auto).length,
     rushAttendus: attendus.length,
-    rushRentres: attendus.filter((talk) => talk.rush === 'rentre').length,
+    rushTeleverses: attendus.filter((talk) => talk.rush === 'televerse').length,
     rushManquants: attendus.filter((talk) => talk.rush === 'manquant' || talk.rush === 'echec').length,
     octets: talks.reduce((sum, talk) => sum + talk.rushOctets, 0),
     lufs: moyenne(talks.map((talk) => talk.lufs)),

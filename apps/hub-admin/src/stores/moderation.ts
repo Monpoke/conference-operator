@@ -62,6 +62,20 @@ export interface HubPostDraft {
 
 export const PAGE_SIZE = 20
 
+/** Days listed one by one in the wall's figures: a wall collects posts for months. */
+export const JOURS_DETAILLES = 7
+
+/** The busiest days, in calendar order, and all the others on one line. */
+export function joursResumes<T extends { count: number }>(days: readonly T[]): { detail: T[]; autres: { jours: number; count: number } | null } {
+  if (days.length <= JOURS_DETAILLES) return { detail: [...days], autres: null }
+  const gardes = new Set([...days].sort((a, b) => b.count - a.count).slice(0, JOURS_DETAILLES))
+  const reste = days.filter((day) => !gardes.has(day))
+  return {
+    detail: days.filter((day) => gardes.has(day)),
+    autres: { jours: reste.length, count: reste.reduce((sum, day) => sum + day.count, 0) },
+  }
+}
+
 export const useModerationStore = defineStore('moderation', () => {
   const view = ref<WallView>('pending')
   const query = ref('')

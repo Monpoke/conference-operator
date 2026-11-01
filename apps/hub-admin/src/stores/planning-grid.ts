@@ -5,6 +5,27 @@
  * of twenty-seven rows could only tell by reading its first column.
  */
 
+/** From this at the start, a talk reads as late. */
+const RETARD_VISIBLE_MS = 5 * 60_000
+
+/**
+ * What really happened in a slot, for its cell: the hours, then how late it started.
+ * `null` before it starts. A start left to the time rule has no delay to show: its
+ * hour says nothing of the room.
+ */
+export function horaireReel(
+  session: { startsAt: string; startedAt?: string | null; endedAt?: string | null; decidedBy?: string | null },
+  hour: (iso: string) => string,
+): { heures: string; retard: string | null; enRetard: boolean } | null {
+  if (session.startedAt == null) return null
+  const heures = `${hour(session.startedAt)}–${session.endedAt == null ? '…' : hour(session.endedAt)}`
+  if (session.decidedBy === 'auto') return { heures, retard: null, enRetard: false }
+  const ms = Date.parse(session.startedAt) - Date.parse(session.startsAt)
+  const minutes = Math.round(Math.abs(ms) / 60_000)
+  const retard = minutes === 0 ? "à l'heure" : `${ms > 0 ? '+' : '−'}${minutes} min`
+  return { heures, retard, enRetard: ms >= RETARD_VISIBLE_MS }
+}
+
 export const PX_PER_MINUTE = 2.6
 /** Shorter than this, a slot's title could no longer be read. */
 const MIN_SLOT_PX = 30

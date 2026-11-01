@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ModerationView from '../src/views/ModerationView.vue'
-import { useModerationStore } from '../src/stores/moderation.js'
+import { joursResumes, useModerationStore } from '../src/stores/moderation.js'
 import { useSessionStore } from '../src/stores/session.js'
 
 /**
@@ -124,6 +124,7 @@ const STATS = {
   onlineViews: { total: 0, top: [] },
   wallsio: null,
   wallsioError: 'Aucun jeton walls.io : à régler dans Réglages.',
+  adressePublique: 'https://mur.example/',
 }
 
 function mountView(posts: unknown[]): { calls: Call[]; wrapper: ReturnType<typeof mount> } {
@@ -154,6 +155,7 @@ describe('moderation view', () => {
     expect(calls.some((call) => call.path === 'wall/stats')).toBe(true)
     expect(wrapper.find('#wall-posts').exists()).toBe(false)
     expect(wrapper.get('[data-stat="impressions"]').text()).toContain('42')
+    expect(wrapper.get('#wall-stats-mots').attributes('href')).toBe('https://mur.example/mots')
     expect(wrapper.get('[data-block="networks"]').text()).toContain('Public (formulaire)')
     expect(wrapper.get('[data-block="top-impressions"]').text()).toContain('La salle est pleine')
     expect(wrapper.get('[data-role="wallsio-error"]').text()).toContain('Aucun jeton')
@@ -434,5 +436,20 @@ describe('moderation view', () => {
 
     const sent = calls.find((call) => call.path === 'wall/save')?.input as Record<string, unknown>
     expect(sent).toMatchObject({ author: 'Cloud Nord', sponsor: null })
+  })
+})
+
+describe('the wall figures by day', () => {
+  const day = (n: number, count: number) => ({ day: `2026-10-${String(n).padStart(2, '0')}`, count })
+
+  it('leaves a short list alone', () => {
+    expect(joursResumes([day(1, 1), day(2, 2)])).toEqual({ detail: [day(1, 1), day(2, 2)], autres: null })
+  })
+
+  it('keeps the busiest days in calendar order, and the rest on one line', () => {
+    const days = Array.from({ length: 10 }, (_, i) => day(i + 1, i === 0 ? 50 : i))
+    const { detail, autres } = joursResumes(days)
+    expect(detail.map((entry) => entry.day)).toEqual(['2026-10-01', '2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10'])
+    expect(autres).toEqual({ jours: 3, count: 1 + 2 + 3 })
   })
 })

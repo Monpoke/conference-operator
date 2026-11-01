@@ -59,7 +59,7 @@ const hour = (iso: string) =>
   new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: zone.value }).format(new Date(iso))
 
 const RUSH: Record<StatistiqueTalk['rush'], { label: string; tone: string }> = {
-  rentre: { label: 'rentré', tone: 'text-ok' },
+  televerse: { label: 'téléversé', tone: 'text-ok' },
   'en-cours': { label: 'en cours', tone: 'text-brand' },
   echec: { label: 'en échec', tone: 'text-alert' },
   manquant: { label: 'manquant', tone: 'text-warn' },
@@ -124,12 +124,12 @@ const HEAD = 'cursor-pointer pr-3 pb-2 text-left font-semibold whitespace-nowrap
       <dl id="stats-bilan" class="flex flex-wrap gap-x-10 gap-y-3 border-b border-edge pb-3.5">
         <div><dt class="text-xs text-dim">Talks tenus</dt><dd class="text-2xl font-semibold tabular-nums">{{ s.tenus }} <span class="text-sm font-normal text-dim">/ {{ s.prevus }}</span></dd></div>
         <div><dt class="text-xs text-dim">Retard moyen</dt><dd class="text-2xl font-semibold tabular-nums">{{ minutes(s.retard.valeur) }}</dd></div>
-        <div><dt class="text-xs text-dim">Rushs rentrés</dt><dd class="text-2xl font-semibold tabular-nums">{{ s.rushRentres }} <span class="text-sm font-normal text-dim">/ {{ s.rushAttendus }}</span></dd></div>
+        <div><dt class="text-xs text-dim">Rushs téléversés</dt><dd class="text-2xl font-semibold tabular-nums">{{ s.rushTeleverses }} <span class="text-sm font-normal text-dim">/ {{ s.rushAttendus }}</span></dd></div>
         <div><dt class="text-xs text-dim">Vidéos prêtes</dt><dd class="text-2xl font-semibold tabular-nums">{{ s.videos }} <span class="text-sm font-normal text-dim">· {{ hours(s.videoMs) }}</span></dd></div>
       </dl>
 
       <Hint v-if="s.rushManquants > 0" id="stats-manquants" class="mt-0 text-warn">
-        {{ s.rushManquants }} rush{{ s.rushManquants > 1 ? 's' : '' }} jamais rentré{{ s.rushManquants > 1 ? 's' : '' }} : ces talks manquent aux chiffres du son et des vidéos.
+        {{ s.rushManquants }} rush{{ s.rushManquants > 1 ? 's' : '' }} jamais téléversé{{ s.rushManquants > 1 ? 's' : '' }} : ces talks manquent aux chiffres du son et des vidéos.
       </Hint>
 
       <div class="grid grid-cols-[repeat(auto-fit,minmax(min(280px,100%),1fr))] gap-3.5">
@@ -141,7 +141,7 @@ const HEAD = 'cursor-pointer pr-3 pb-2 text-left font-semibold whitespace-nowrap
         </Panel>
 
         <Panel title="Captation">
-          <div :class="ROW"><span>Volume rentré</span><strong class="tabular-nums">{{ fileSize(s.octets) }}</strong></div>
+          <div :class="ROW"><span>Volume téléversé</span><strong class="tabular-nums">{{ fileSize(s.octets) }}</strong></div>
           <div :class="ROW"><span>Niveau moyen des rushs</span><strong class="tabular-nums">{{ db(s.lufs.valeur, 'LUFS') }}</strong></div>
           <div :class="ROW"><span>Pic le plus haut</span><strong class="tabular-nums">{{ db(s.piresPics, 'dB') }}</strong></div>
           <div :class="ROW"><span>Alertes saturation / silence</span><strong class="tabular-nums">{{ s.saturation }} / {{ s.silence }}</strong></div>

@@ -4,7 +4,8 @@ import { Button, Empty, Hint, StableLabel } from '@conference-operator/component
 import { timeAgo } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted } from 'vue'
-import { useModerationStore } from '../stores/moderation.js'
+import { viewPath } from '@conference-operator/contract'
+import { joursResumes, useModerationStore } from '../stores/moderation.js'
 
 /**
  * The social wall in figures: what the hub holds and what the rooms and the
@@ -34,9 +35,16 @@ const dayLabel = (day: string) => DAY.format(new Date(`${day}T00:00:00Z`))
 const networks = computed<WallStatsCount[]>(() =>
   (stats.value?.posts.byNetwork ?? []).map((entry) => ({ ...entry, label: SOURCES[entry.label] ?? entry.label })),
 )
-const days = computed<WallStatsCount[]>(() =>
-  (stats.value?.posts.byDay ?? []).map((entry) => ({ label: dayLabel(entry.day), count: entry.count })),
-)
+const days = computed<WallStatsCount[]>(() => {
+  const { detail, autres } = joursResumes(stats.value?.posts.byDay ?? [])
+  const rows = detail.map((entry) => ({ label: dayLabel(entry.day), count: entry.count }))
+  return autres == null ? rows : [...rows, { label: `${autres.jours} autres jours`, count: autres.count }]
+})
+const motsUrl = computed(() => {
+  const base = stats.value?.adressePublique
+  return base == null ? null : `${base.replace(/\/+$/, '')}/mots`
+})
+const bouclePath = viewPath('boucle')
 const media = computed<WallStatsCount[]>(() => {
   const split = stats.value?.posts.byMedia
   if (split == null) return []
@@ -73,6 +81,10 @@ function topLine(post: WallStatsTopPost): string {
       <p class="m-0 text-xs text-dim">
         <template v-if="stats">Calculé {{ timeAgo(stats.generatedAt) }}</template>
       </p>
+      <a v-if="motsUrl != null" id="wall-stats-mots" :href="motsUrl" target="_blank" rel="noopener" class="ml-auto text-sm text-brand underline">Voir le mur de mots</a>
+      <p v-else-if="stats" id="wall-stats-mots-absent" class="m-0 ml-auto text-xs text-dim">
+        Mur de mots : renseignez l'adresse de la page publique dans <a :href="bouclePath" class="text-brand underline">Boucle</a>.
+      </p>
       <Button id="btn-wall-stats-refresh" size="small" :disabled="statsLoading" @click="refresh">
         <StableLabel :current="statsLoading ? 'Lecture…' : 'Actualiser'" :labels="['Lecture…', 'Actualiser']" />
       </Button>
@@ -104,7 +116,7 @@ function topLine(post: WallStatsTopPost): string {
         <section
           v-for="block in [
             { id: 'networks', title: 'Par réseau', rows: networks },
-            { id: 'days', title: 'Par jour', rows: days },
+            { id: 'days', title: 'Jours les plus actifs', rows: days },
             { id: 'media', title: 'Vidéo / photo / texte', rows: media },
           ]"
           :key="block.id"

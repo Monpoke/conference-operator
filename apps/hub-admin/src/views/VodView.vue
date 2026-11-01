@@ -68,7 +68,7 @@ const zone = computed(() => planning.value?.timezone ?? 'Europe/Paris')
 const day = ref('')
 const days = computed(() => dayOptions(conferences.value.map((row) => row.startsAt), zone.value))
 /*
- * The summary and the verdict above keep counting every day: « tout est rentré »
+ * The summary and the verdict above keep counting every day: « tout est téléversé »
  * must not be read from a filter that hides another day's missing rush.
  */
 const shown = computed(() =>
@@ -107,7 +107,7 @@ const verdict = computed<{ text: string; tone: string } | null>(() => {
   if (running > 0) return { text: `${name} : ${running} en cours, à attendre`, tone: '' }
   if (upcoming > 0) return { text: `${name} : ${upcoming} à venir`, tone: 'text-dim' }
   if (counts.value.complet === 0) return { text: `${name} : pas de captation prévue`, tone: 'text-dim' }
-  return { text: `${name} : tout est rentré`, tone: 'text-ok' }
+  return { text: `${name} : tout est téléversé`, tone: 'text-ok' }
 })
 
 function stateOf(upload: Upload): { label: string; tone: string } {
@@ -326,8 +326,8 @@ async function requestAll(): Promise<void> {
 
       <Hint id="vod-hint">
         À regarder <strong>avant de démonter une salle</strong> : c'est le dernier
-        moment où son disque est encore branché. Un rush qui n'est pas ici n'est
-        nulle part ailleurs qu'à Lille.
+        moment où son disque est encore branché. Un rush qui n'est pas ici n'existe
+        que sur le disque de sa salle.
       </Hint>
     </Panel>
   </div>

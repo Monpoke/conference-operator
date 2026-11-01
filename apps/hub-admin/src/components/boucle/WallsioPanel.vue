@@ -33,6 +33,7 @@ async function save(): Promise<void> {
       ...draft.value,
       reseaux: RESEAUX.map((reseau) => reseau.id).filter((id) => (draft.value!.reseaux ?? []).includes(id)),
       // A row left half-filled is dropped rather than refused: the panel saves what is complete.
+      adressePublique: draft.value.adressePublique?.trim() || null,
       menu: (draft.value.menu ?? [])
         .map((lien) => ({ libelle: lien.libelle.trim(), url: lien.url.trim() }))
         .filter((lien) => lien.libelle !== '' && lien.url !== ''),
@@ -134,6 +135,15 @@ async function save(): Promise<void> {
         v-model="draft.texteDroite"
         maxlength="60"
         placeholder="Tout le mur sur social.cloudnord.fr"
+        :class="FIELD"
+      />
+      <label :class="LABEL" for="boucle-wallsio-adresse">Adresse de la page publique</label>
+      <input
+        id="boucle-wallsio-adresse"
+        v-model="draft.adressePublique"
+        type="url"
+        maxlength="300"
+        placeholder="https://social.cloudnord.fr"
         :class="FIELD"
       />
       <p :class="LABEL">Boutons « Publier sur … » de la page publique</p>

@@ -63,7 +63,7 @@ export async function renderClips(options: {
   const habillage = await inlineImages(options.habillage, (ref, error) =>
     log(`image illisible, remplacée par le nom : ${ref} (${error instanceof Error ? error.message : String(error)})`))
   const theme = await themeForCapture(options.habillage.theme, options.workDir, (error) =>
-    log(`thème illisible, clips au thème par défaut (${error instanceof Error ? error.message : String(error)})`))
+    log(`thème illisible, nouvel essai (${error instanceof Error ? error.message : String(error)})`))
   const format = options.format ?? DEFAULT_FORMAT
   const intro = join(options.workDir, 'intro.mp4')
   const outro = join(options.workDir, 'outro.mp4')
@@ -109,7 +109,7 @@ export async function monter(options: MontageOptions): Promise<MontageResult> {
     log(`image illisible, remplacée par le nom : ${ref} (${error instanceof Error ? error.message : String(error)})`))
 
   const theme = await themeForCapture(options.habillage.theme, options.workDir, (error) =>
-    log(`thème illisible, clips au thème par défaut (${error instanceof Error ? error.message : String(error)})`))
+    log(`thème illisible, nouvel essai (${error instanceof Error ? error.message : String(error)})`))
 
   const introFile = join(options.workDir, 'intro.mp4')
   const outroFile = join(options.workDir, 'outro.mp4')

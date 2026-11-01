@@ -253,6 +253,10 @@ const SCRIPT = `(() => {
       colonnes.push(el('div', 'colonne'))
       hauteurs.push(0)
     }
+    // Emptied for an instant, the wall would make the page shorter than where the
+    // reader is, and the browser would bring them back up: its height is held meanwhile.
+    const position = window.scrollY
+    mur.style.minHeight = mur.offsetHeight + 'px'
     mur.replaceChildren(...colonnes)
     for (const element of enOrdre) {
       let plusCourte = 0
@@ -260,6 +264,8 @@ const SCRIPT = `(() => {
       colonnes[plusCourte].append(element)
       hauteurs[plusCourte] += element.offsetHeight + ECART
     }
+    mur.style.minHeight = ''
+    if (window.scrollY !== position) window.scrollTo(0, position)
   }
   let prevu = null
   function planifier() {

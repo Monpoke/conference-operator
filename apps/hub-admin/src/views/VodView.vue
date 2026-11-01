@@ -38,7 +38,19 @@ function toggle(key: string): void {
 }
 
 const montages = useMontageStore()
-const { jobs } = storeToRefs(montages)
+const { jobs, enPause } = storeToRefs(montages)
+const running = computed(() => jobs.value.some((job) => job.state === 'en-cours'))
+const queued = computed(() => jobs.value.filter((job) => job.state === 'attente').length)
+
+async function togglePause(): Promise<void> {
+  const next = !enPause.value
+  try {
+    await montages.setPause(next)
+    toast.say(next ? 'Rendus en pause' : 'Rendus repris')
+  } catch {
+    /* already reported by the client's error hook */
+  }
+}
 /** Each talk's takes, with where their video stands. */
 const takesOf = computed(() => {
   const bySession = new Map<string, MontageJobView[]>()
@@ -181,6 +193,17 @@ async function requestAll(): Promise<void> {
         {{ toValidate.length }} coupe{{ toValidate.length > 1 ? 's' : '' }} à valider —
         <a :href="montagePath(firstToValidate.sessionId, firstToValidate.sidecarUploadId)" class="underline">commencer</a>
       </p>
+      <div class="mb-2 flex flex-wrap items-center gap-2 text-sm" data-role="montage-pause">
+        <Button id="btn-montage-pause" size="small" :aria-pressed="enPause" @click="togglePause">
+          {{ enPause ? 'Reprendre les rendus' : 'Mettre les rendus en pause' }}
+        </Button>
+        <span v-if="enPause" class="text-warn">
+          En pause{{ running ? ' : le montage en cours se termine, rien d’autre ne démarre' : ' : aucun montage ne démarre' }}{{ queued > 0 ? ` · ${queued} en attente` : '' }}
+        </span>
+        <span v-else-if="running || queued > 0" class="text-dim">
+          {{ running ? 'Un montage en cours' : 'Aucun montage en cours' }}{{ queued > 0 ? ` · ${queued} en attente` : '' }}
+        </span>
+      </div>
       <label class="mb-2 flex w-fit items-center gap-2 text-sm">
         <input id="vod-only-to-handle" v-model="onlyToHandle" type="checkbox">
         À traiter seulement

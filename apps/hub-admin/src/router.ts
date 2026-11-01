@@ -86,7 +86,7 @@ const routes: RouteRecordRaw[] = [
       view: 'vod',
       // The uploads and the montages side by side: a talk's rushes arrive, then its video.
       refresh: async () => {
-        await Promise.all([useVodStore().load(), useMontageStore().load()])
+        await Promise.all([useVodStore().load(), useMontageStore().load(), useMontageStore().loadPause()])
       },
       intervalMs: 10_000,
     },

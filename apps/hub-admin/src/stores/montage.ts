@@ -13,6 +13,7 @@ import { useSessionStore } from './session.js'
 export const useMontageStore = defineStore('montage', () => {
   const jobs = ref<MontageJobView[]>([])
   const workers = ref<MontageWorkerView[]>([])
+  const enPause = ref(false)
   const session = useSessionStore()
 
   async function load(): Promise<void> {
@@ -26,6 +27,14 @@ export const useMontageStore = defineStore('montage', () => {
 
   async function forSession(sessionId: string): Promise<MontageJobView[]> {
     return await session.client.rpc.montage.list({ sessionId })
+  }
+
+  async function loadPause(): Promise<void> {
+    enPause.value = (await session.client.rpc.montage.enPause()).enPause
+  }
+
+  async function setPause(value: boolean): Promise<void> {
+    enPause.value = (await session.client.rpc.montage.pause({ enPause: value })).enPause
   }
 
   async function relaunch(sessionId: string, jobId?: string): Promise<MontageJobView> {
@@ -69,7 +78,7 @@ export const useMontageStore = defineStore('montage', () => {
     await load()
   }
 
-  return { jobs, workers, load, forSession, relaunch, cancel, download, analysis, validate, createWorker, revokeWorker }
+  return { jobs, workers, enPause, loadPause, setPause, load, forSession, relaunch, cancel, download, analysis, validate, createWorker, revokeWorker }
 })
 
 /** One file of a take, and where it starts in it. */

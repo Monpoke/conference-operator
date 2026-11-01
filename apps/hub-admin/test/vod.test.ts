@@ -356,6 +356,22 @@ describe('the montages in the list', () => {
   }
   const TALK = { id: 'talk-1', title: 'Le talk', roomId: 'track-1', kind: 'talk', startsAt: '2026-10-30T09:00:00Z', endsAt: '2026-10-30T10:00:00Z' }
 
+  it('pauses the renders, and says what it leaves running', async () => {
+    const { wrapper } = await mountView([], [TALK])
+    const store = useMontageStore()
+    store.jobs = [{ ...JOB, state: 'en-cours' }] as never
+    const setPause = vi.spyOn(store, 'setPause').mockImplementation(async (value) => {
+      store.enPause = value
+    })
+    await flushPromises()
+    await wrapper.get('#btn-montage-pause').trigger('click')
+    await flushPromises()
+
+    expect(setPause).toHaveBeenCalledWith(true)
+    expect(wrapper.get('[data-role="montage-pause"]').text()).toContain('le montage en cours se termine')
+    expect(wrapper.get('#btn-montage-pause').text()).toBe('Reprendre les rendus')
+  })
+
   it('links each take to its own page, and tells two takes apart', async () => {
     await mountView([], [TALK])
     useMontageStore().jobs = [{ ...JOB, id: 'job-2', sidecarUploadId: 'side-2', coupe: { debutMs: 0, finMs: 2760000 } }, JOB] as never

@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
-import { relayMedia } from '../src/services/media-relay.js'
+import { chunkedRange, relayMedia, RELAY_CHUNK_BYTES } from '../src/services/media-relay.js'
 
 describe('relaying a take to the montage page', () => {
+  it('never asks for more than one chunk at a time', () => {
+    expect(chunkedRange('bytes=0-')).toBe(`bytes=0-${RELAY_CHUNK_BYTES - 1}`)
+    expect(chunkedRange(undefined)).toBe(`bytes=0-${RELAY_CHUNK_BYTES - 1}`)
+    expect(chunkedRange('bytes=100-', 50)).toBe('bytes=100-149')
+    expect(chunkedRange('bytes=100-120', 50)).toBe('bytes=100-120')
+    expect(chunkedRange('bytes=100-900', 50)).toBe('bytes=100-149')
+  })
+
   it('asks the storage for the range the browser asked for, and hands back its answer', async () => {
     const fetcher = vi.fn(async () => new Response('abc', {
       status: 206,

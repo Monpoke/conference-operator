@@ -1,3 +1,4 @@
+import type { RoomIncident } from '@conference-operator/contract'
 import { duration } from '@conference-operator/format'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
@@ -66,19 +67,26 @@ export const useOperationsStore = defineStore('operations', () => {
   const session = useSessionStore()
   const notifications = useNotificationsStore()
 
+  const incidents = ref<RoomIncident[]>([])
+
   async function load(): Promise<void> {
     const [statuses, sharedBreak] = await Promise.all([
       session.client.rpc.rooms.statuses(),
       session.client.rpc.program.globalBreak(),
     ])
     rooms.value = statuses as RoomStatus[]
+    // Apart: an operator who cannot read them keeps the dashboard.
+    void Promise.resolve()
+      .then(() => session.client.rpc.incidents.list())
+      .then((list) => { incidents.value = list })
+      .catch(() => undefined)
     globalBreak.value = sharedBreak as GlobalBreak | null
     // Observe after setting the state: an alert compares the previous round with
     // the current one, and this is the only place that knows both.
     notifications.observeRooms(rooms.value)
   }
 
-  return { rooms, globalBreak, load }
+  return { incidents, rooms, globalBreak, load }
 })
 
 /**

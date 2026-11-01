@@ -19,7 +19,7 @@ const store = useOperationsStore()
 // The "mur ↗" link goes when the hub closed both the wall and the questions.
 const features = useFeaturesStore()
 void features.load()
-const { rooms, globalBreak } = storeToRefs(store)
+const { rooms, globalBreak, incidents } = storeToRefs(store)
 
 /**
  * The event's time zone, when it is known.
@@ -267,6 +267,19 @@ const globalDetail = computed(() => {
             · {{ room.connectivity.toLowerCase() }} · vu {{ timeAgo(room.lastSeenAt) }}
           </div>
         </div>
+      </div>
+    </Panel>
+
+    <Panel class="col-span-full" title="Erreurs des régies" data-role="incidents">
+      <Empty v-if="incidents.length === 0">Aucune erreur remontée par les salles.</Empty>
+      <div v-for="(incident, index) in incidents.slice(0, 30)" v-else :key="`${incident.occurredAt}-${index}`" class="border-t border-edge py-2 text-sm first:border-t-0" data-incident>
+        <div class="flex flex-wrap items-baseline gap-x-2">
+          <span class="tabular-nums text-dim">{{ new Date(incident.occurredAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) }}</span>
+          <strong>{{ rooms.find((room) => room.roomId === incident.roomId)?.name ?? incident.roomId }}</strong>
+          <span :class="incident.niveau === 'error' ? 'text-alert' : 'text-warn'">{{ incident.message }}</span>
+        </div>
+        <div v-if="incident.fichier != null" class="font-mono text-[11px] break-all text-dim">{{ incident.fichier }}</div>
+        <div v-if="incident.detail != null" class="text-xs break-all text-dim">{{ incident.detail }}</div>
       </div>
     </Panel>
   </div>

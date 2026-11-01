@@ -178,6 +178,9 @@ defineExpose({ focus, zoomBy })
       <Button size="small" data-zoom="all" @click="view = { ...whole }">Toute la prise</Button>
       <Button size="small" data-focus="debut" @click="focus(debutMs)">Autour du début</Button>
       <Button size="small" data-focus="fin" @click="focus(finMs)">Autour de la fin</Button>
+      <span class="min-w-0 flex-1 truncate pl-2 text-[11px] text-dim max-md:hidden" title="Molette : zoom · Glisser : se déplacer · Clic : placer la lecture · Espace : lecture · ← → : 1 s (Maj : 0,1 s) · I / O : début / fin ici">
+        Molette : zoom · Glisser : se déplacer · Clic : lecture · Espace · ← → · I / O : début / fin ici
+      </span>
       <span class="ml-auto text-[11px] tabular-nums text-dim" data-role="timeline-view">
         ×{{ zoom }} · {{ timecode(view.fromMs) }} → {{ timecode(view.toMs) }}
       </span>
@@ -186,7 +189,7 @@ defineExpose({ focus, zoomBy })
     <!-- The whole take, the part in view framed: where one is, and a way to go elsewhere. -->
     <div
       ref="overview"
-      class="relative h-7 cursor-pointer touch-none overflow-hidden rounded bg-canvas select-none"
+      class="relative h-5 cursor-pointer touch-none overflow-hidden rounded bg-canvas select-none"
       data-role="timeline-overview"
       @pointerdown="moveWindow"
       @pointermove="moveWindow"
@@ -207,7 +210,7 @@ defineExpose({ focus, zoomBy })
 
     <div
       ref="main"
-      class="relative h-28 cursor-text touch-none overflow-hidden rounded bg-canvas select-none"
+      class="relative h-24 cursor-text touch-none overflow-hidden rounded bg-canvas select-none"
       data-role="timeline-main"
       @pointerdown="press"
       @pointermove="move"

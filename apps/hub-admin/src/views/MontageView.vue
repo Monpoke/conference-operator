@@ -64,7 +64,18 @@ onMounted(async () => {
   else if (statut != null) consent.value = { text: 'Diffusion refusée par le conférencier : ne pas publier', tone: 'text-alert' }
   else consent.value = { text: 'Diffusion : réponse du conférencier inconnue', tone: 'text-warn' }
 })
+/* What the console's header leaves: the page fits the screen, and only its side column scrolls. */
+const root = ref<HTMLElement | null>(null)
+const topPx = ref(130)
+function measure(): void {
+  if (root.value != null) topPx.value = Math.max(0, root.value.getBoundingClientRect().top + window.scrollY)
+}
+onMounted(() => {
+  measure()
+  window.addEventListener('resize', measure)
+})
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', measure)
   window.removeEventListener('keydown', onKey)
   player.value?.pause()
 })
@@ -322,7 +333,7 @@ const FIELD = 'mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 tex
 </script>
 
 <template>
-  <div id="montage-view" class="flex flex-col gap-3">
+  <div id="montage-view" ref="root" class="flex flex-col gap-3 lg:h-[calc(100dvh-var(--montage-top,130px)-16px)] lg:min-h-[600px]" :style="{ '--montage-top': `${topPx}px` }">
     <header class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
       <a href="/admin/vod" class="text-sm text-brand underline" data-role="montage-retour">VOD</a>
       <h1 class="text-lg font-semibold">{{ job?.habillagePrise?.title ?? session?.title ?? job?.title ?? 'Montage' }}</h1>
@@ -353,12 +364,12 @@ const FIELD = 'mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 tex
     </p>
 
     <template v-else>
-      <div class="grid items-start gap-3.5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
-        <section class="min-w-0">
+      <div class="grid gap-3.5 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] lg:grid-rows-[minmax(0,1fr)]">
+        <section class="flex min-w-0 flex-col lg:min-h-0">
           <video
             ref="player"
             preload="metadata"
-            class="aspect-video max-h-[max(220px,calc(100dvh-500px))] w-full rounded-lg bg-black"
+            class="aspect-video w-full rounded-lg bg-black object-contain lg:aspect-auto lg:min-h-0 lg:flex-1"
             :src="parts.length > 0 ? partUrl(0) : undefined"
             @loadedmetadata="partIndex = partIndex < 0 ? 0 : partIndex"
             @play="playing = true"
@@ -381,7 +392,7 @@ const FIELD = 'mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 tex
             <label class="flex items-center gap-1.5 text-xs text-dim">
               Gain
               <input v-model.number="gainDb" data-role="gain" type="range" min="0" max="30" step="1" class="w-24">
-              <span class="w-11 tabular-nums text-text">+{{ gainDb }} dB</span>
+              <span class="w-12 whitespace-nowrap tabular-nums text-text">+{{ gainDb }} dB</span>
             </label>
             <label class="flex items-center gap-1.5 text-xs text-dim">
               Vitesse
@@ -395,7 +406,7 @@ const FIELD = 'mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 tex
           <p v-if="parts.length === 0" class="mt-1 text-xs text-warn">Le rush de cette prise n’a pas pu être lu : la coupe reste réglable sur l’audiogramme.</p>
         </section>
 
-        <aside class="flex min-w-0 flex-col gap-3">
+        <aside class="flex min-w-0 flex-col gap-3 lg:min-h-0 lg:overflow-y-auto">
           <Panel title="Décision">
             <p class="text-sm">
               Confiance <strong :class="CONFIDENCE_TONE[analyse.confiance]">{{ analyse.confiance }}</strong>
@@ -460,7 +471,7 @@ const FIELD = 'mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 tex
       </div>
 
       <!-- At the foot of the screen, always in reach: everything above serves what is decided here. -->
-      <section class="bottom-0 z-20 rounded-xl lg:sticky border border-edge bg-surface p-3" aria-label="Coupe">
+      <section class="shrink-0 rounded-xl border border-edge bg-surface p-3" aria-label="Coupe">
         <div class="mb-2 flex flex-wrap items-end gap-x-5 gap-y-2">
           <div v-for="side in (['debut', 'fin'] as const)" :key="side" class="flex flex-wrap items-end gap-1" :data-cut="side">
             <label class="text-xs font-semibold" :class="side === 'debut' ? 'text-ok' : 'text-alert'">
@@ -500,9 +511,6 @@ const FIELD = 'mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 tex
           @fin="set('fin', $event)"
           @seek="goTo($event, playing)"
         />
-        <p class="mt-1.5 text-[11px] text-dim max-md:hidden">
-          Molette : zoom · Glisser : se déplacer · Clic : placer la lecture · Espace : lecture · ← → : 1 s (Maj : 0,1 s) · I / O : début / fin ici
-        </p>
       </section>
     </template>
   </div>

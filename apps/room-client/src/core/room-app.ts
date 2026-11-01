@@ -1,3 +1,4 @@
+import { incidentReporter } from './incident.js'
 import { streamHealthBetween, type StreamSample } from './stream-health.js'
 import { PROTOCOL_VERSION, type AudioAlert, type BroadcastMessage } from '@conference-operator/contract'
 import { UrgentPinGate } from './pin.js'
@@ -180,6 +181,8 @@ export interface RoomAppOptions {
    */
   version?: string | null
 }
+
+const reportUploadIncident = incidentReporter('televersement')
 
 /**
  * The complete assembly of a room machine.
@@ -429,7 +432,11 @@ export class RoomApp implements ControlTarget {
       // Read back from the cache on every send, like the rest: a CA corrected on the
       // hub takes effect at the next sync, without touching the room machine.
       caCert: () => this.store.settings().vod?.caCert ?? null,
-      onLog: this.options.onLog,
+      onLog: (level, message, context) => {
+        this.options.onLog?.(level, message, context)
+        const incident = reportUploadIncident(level, message, context)
+        if (incident != null) this.emit(incident)
+      },
     })
   }
 

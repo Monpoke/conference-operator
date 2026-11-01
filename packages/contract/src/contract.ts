@@ -1423,6 +1423,10 @@ export const contract = {
     /** Queues the talk's latest take again — after a new mark, a new logo. Admin. */
     relancer: oc.input(z.object({ sessionId: sessionIdSchema, jobId: z.string().optional() })).output(montageJobViewSchema),
 
+    /** Whether the workers may take new montages. Read and set in the VOD page. Admin. */
+    enPause: oc.output(z.object({ enPause: z.boolean() })),
+    pause: oc.input(z.object({ enPause: z.boolean() })).output(z.object({ enPause: z.boolean() })),
+
     annuler: oc.input(z.object({ jobId: z.string() })).output(z.object({ ok: z.boolean() })),
 
     /** What the analysis proposed, with read addresses for its files. Admin. */

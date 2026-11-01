@@ -201,6 +201,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
         return { salle: prise.salle ?? salleOf(services, sessionId) }
       },
       (sidecarUploadId) => settings.get().montageHabillages[sidecarUploadId] ?? null,
+      () => settings.get().montagePause,
     ),
     clock,
     mode: config.mode,

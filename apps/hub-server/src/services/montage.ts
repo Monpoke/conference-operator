@@ -103,6 +103,8 @@ export class MontageService {
     private readonly cadreFor: (sessionId: string, sidecarUploadId: string) => MontageClaim['cadre'] = () => null,
     /** What the console set for a take's video. */
     private readonly habillagePrise: (sidecarUploadId: string) => MontageHabillagePrise | null = () => null,
+    /** Paused in the console: the workers wait, whatever is queued. */
+    private readonly enPause: () => boolean = () => false,
   ) {}
 
   /* ---------- Workers ---------- */
@@ -259,6 +261,7 @@ export class MontageService {
   claim(worker: Worker): MontageClaim | null {
     const vod = this.requireVod()
     this.expireLeases()
+    if (this.enPause()) return null
     const now = this.iso()
     const candidates = this.db
       .select()

@@ -336,6 +336,7 @@ describe('talk lifecycle', () => {
       vodPolitique: DEFAULT_VOD_POLICY,
       montageAuto: 'si-confiance-haute',
       montageSortie: { hauteur: 1080, fps: 30, crf: 20 },
+      montagePause: false,
       montageHabillages: {},
       sallesSansCaptation: [],
       // The reference loop, as designed: a fresh hub shows it without any setting.

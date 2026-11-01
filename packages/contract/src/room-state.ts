@@ -491,6 +491,8 @@ export const hubSettingsSchema = z.object({
   montageAuto: montageAutoSchema.default('si-confiance-haute'),
   /** The published videos' format. See `montageSortieSchema`. */
   montageSortie: montageSortieSchema.default(DEFAULT_MONTAGE_SORTIE),
+  /** No worker takes a new montage. The one under way goes on to its end. */
+  montagePause: z.boolean().default(false),
   /**
    * What a take's video shows when the program is wrong for it, by the take's
    * sidecar upload. For the videos only: the rooms keep the program.

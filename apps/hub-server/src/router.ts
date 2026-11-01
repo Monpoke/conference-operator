@@ -2028,6 +2028,14 @@ export const router = os.router({
       context.services.montage.list(input.sessionId),
     ),
 
+    enPause: os.montage.enPause.use(operatorCan('vod:read')).handler(({ context }) => ({
+      enPause: context.services.settings.get().montagePause,
+    })),
+
+    pause: os.montage.pause.use(operatorCan('vod:manage')).handler(({ input, context }) => ({
+      enPause: context.services.settings.update({ montagePause: input.enPause }).montagePause,
+    })),
+
     relancer: os.montage.relancer.use(operatorCan('vod:manage')).handler(({ input, context }) =>
       onMontage(context, () => context.services.montage.relaunch(input.sessionId, input.jobId)),
     ),

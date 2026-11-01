@@ -385,6 +385,16 @@ describe('analysis, then montage', () => {
     expect(corrected.claim(worker)!.cadre).toBeNull()
   })
 
+  it('starts nothing new while paused, and takes the queue up again after', async () => {
+    let paused = true
+    const held = new MontageService(db, () => vod, () => HABILLAGE, () => clock, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => paused)
+    const worker = held.fromToken(held.createWorker('Mac', null).token)!
+    held.enqueue({ sessionId: 'sess-1', roomId: TRACK_1, sidecarUploadId: await uploaded(SIDECAR, 'sidecar') })
+    expect(held.claim(worker)).toBeNull()
+    paused = false
+    expect(held.claim(worker)?.sessionId).toBe('sess-1')
+  })
+
   it('keeps two takes of a talk as two videos, each with its own card', async () => {
     const first = await uploaded(SIDECAR, 'sidecar')
     const second = await uploaded(SIDECAR.replace('.json', '-b.json'), 'sidecar')

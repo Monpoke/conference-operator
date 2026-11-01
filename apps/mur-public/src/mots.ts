@@ -58,63 +58,90 @@ export function compterMots(posts: readonly { text: string }[], limite = MAX_MOT
 
 /**
  * Lays the cloud out: the most frequent word in the middle, the others along a
- * spiral, each where it overlaps none already placed; one in five upright. A
- * word with no room left is tried again smaller, rather than dropped — the
- * event's hashtag must not go missing for being long. Laid again when the
- * window changes size, and when `/mots.json` says the words changed (asked
- * every minute).
+ * spiral, each against the real shape of those already placed, some upright or
+ * tilted. A word with no room left is tried again smaller, rather than dropped:
+ * the event's hashtag must not go missing for being long. Laid again when the
+ * window changes size, and when `/mots.json` says the words changed (asked every
+ * minute).
  */
 const SCRIPT = `(() => {
   const zone = document.getElementById('nuage')
   let mots = JSON.parse(document.getElementById('mots').textContent || '[]')
   let signature = JSON.stringify(mots)
   const hash = (s) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h) }
+  const CELLULE = 3
+  const ANGLES = [0, 0, 0, 0, 0, 0, 90, -90, 90, -45, 45]
+  const toile = document.createElement('canvas')
+  const ctx = toile.getContext('2d', { willReadFrequently: true })
+  // The word's real shape, in cells around its centre: a tilted word only takes
+  // what its letters cover, and others can sit in the corners of its box.
+  function forme(mot, px, angle, police) {
+    const fonte = '600 ' + px + 'px ' + police
+    ctx.font = fonte
+    const cote = Math.ceil(Math.max(ctx.measureText(mot).width, px * 1.3)) + 8
+    toile.width = toile.height = cote
+    ctx.font = fonte
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.translate(cote / 2, cote / 2)
+    ctx.rotate(angle * Math.PI / 180)
+    ctx.fillText(mot, 0, 0)
+    const pixels = ctx.getImageData(0, 0, cote, cote).data
+    const cellules = new Set()
+    for (let y = 0; y < cote; y++) {
+      for (let x = 0; x < cote; x++) {
+        if (pixels[(y * cote + x) * 4 + 3] < 64) continue
+        const cx = Math.floor((x - cote / 2) / CELLULE), cy = Math.floor((y - cote / 2) / CELLULE)
+        for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) cellules.add((cx + dx) + ',' + (cy + dy))
+      }
+    }
+    return [...cellules].map((c) => c.split(',').map(Number))
+  }
   function poser() {
     zone.replaceChildren()
     const W = zone.clientWidth, H = zone.clientHeight
     if (mots.length === 0 || W === 0 || H === 0) return
+    const cols = Math.ceil(W / CELLULE), rows = Math.ceil(H / CELLULE)
+    const grille = new Uint8Array(cols * rows)
+    const police = getComputedStyle(zone).fontFamily
     const max = mots[0].n, min = mots[mots.length - 1].n
-    const grand = Math.max(28, Math.min(W, H) / 6.5)
-    const places = []
-    const ecart = 3
-    mots.forEach((m, i) => {
-      const span = document.createElement('span')
-      span.className = 'mot'
-      span.textContent = m.mot
-      span.title = m.mot + ' : ' + m.n
-      const taille = 13 + (grand - 13) * Math.sqrt((m.n - min) / ((max - min) || 1))
-      span.style.color = 'var(--mot-' + (hash(m.mot) % 8) + ')'
-      if (i > 0 && hash(m.mot) % 5 === 0) span.classList.add('debout')
-      span.style.visibility = 'hidden'
-      zone.append(span)
-      for (const echelle of [1, 0.8, 0.64, 0.5]) {
-        if (taille * echelle < 11) break
-        span.style.fontSize = Math.round(taille * echelle) + 'px'
-        if (placer(span)) return
+    const grand = Math.max(28, Math.min(W, H) / 5)
+    const rapport = W / H
+    const limite = Math.max(cols, rows)
+    function trouver(cellules) {
+      const libre = (x, y) => cellules.every(([dx, dy]) => {
+        const cx = x + dx, cy = y + dy
+        return cx >= 2 && cy >= 2 && cx < cols - 2 && cy < rows - 2 && !grille[cy * cols + cx]
+      })
+      for (let a = 0, r = 0; r < limite; a += 1.5 / Math.max(r, 1), r = 0.4 * a) {
+        const x = Math.round(cols / 2 + r * Math.cos(a) * Math.max(1, rapport))
+        const y = Math.round(rows / 2 + r * Math.sin(a) * Math.max(1, 1 / rapport))
+        if (libre(x, y)) return [x, y]
       }
-      span.remove()
-    })
-    function placer(span) {
-      const w = span.offsetWidth, h = span.offsetHeight
-      const rapport = W / H
-      for (let t = 0; t < 6000; t++) {
-        const angle = t * 0.25
-        const r = 1.6 * angle
-        const x = W / 2 + r * Math.cos(angle) * rapport - w / 2
-        const y = H / 2 + r * Math.sin(angle) - h / 2
-        if (x < 0 || y < 0 || x + w > W || y + h > H) { if (r > Math.max(W, H)) break; continue }
-        let libre = true
-        for (const p of places) {
-          if (x < p.x + p.w + ecart && x + w + ecart > p.x && y < p.y + p.h + ecart && y + h + ecart > p.y) { libre = false; break }
-        }
-        if (!libre) continue
-        places.push({ x, y, w, h })
-        span.style.transform = 'translate(' + Math.round(x) + 'px,' + Math.round(y) + 'px)'
-        span.style.visibility = ''
-        return true
-      }
-      return false
+      return null
     }
+    mots.forEach((m, i) => {
+      const taille = 12 + (grand - 12) * Math.pow((m.n - min) / ((max - min) || 1), 0.85)
+      // The longest big words stay flat: tilted, a hashtag would cross the whole cloud.
+      const angle = i === 0 || (m.mot.length > 9 && taille > grand / 2) ? 0 : ANGLES[hash(m.mot) % ANGLES.length]
+      for (const echelle of [1, 0.85, 0.7, 0.55, 0.42, 0.3]) {
+        const px = Math.round(taille * echelle)
+        if (px < 11) break
+        const cellules = forme(m.mot, px, angle, police)
+        const place = trouver(cellules)
+        if (place == null) continue
+        for (const [dx, dy] of cellules) grille[(place[1] + dy) * cols + place[0] + dx] = 1
+        const span = document.createElement('span')
+        span.className = 'mot'
+        span.textContent = m.mot
+        span.title = m.mot + ' : ' + m.n
+        span.style.color = 'var(--mot-' + (hash(m.mot) % 10) + ')'
+        span.style.fontSize = px + 'px'
+        span.style.transform = 'translate(' + (place[0] * CELLULE) + 'px,' + (place[1] * CELLULE) + 'px) translate(-50%,-50%) rotate(' + angle + 'deg)'
+        zone.append(span)
+        return
+      }
+    })
   }
   let attente = null
   addEventListener('resize', () => { clearTimeout(attente); attente = setTimeout(poser, 200) })
@@ -164,18 +191,17 @@ export function renderMots(data: MurPublic, mots: readonly Mot[]): string {
     --c-nuit:#10121a; --c-creme:#f8f9fa; --c-violet:#3b5bdb; --c-magenta:#7048e8; --c-cyan:#15aabf; --c-orange:#fcc419;
     --f-texte:system-ui, sans-serif;
     ${variables(data.theme)}
-    --mot-0:var(--c-creme); --mot-1:var(--c-cyan); --mot-2:var(--c-orange); --mot-3:#a5b4fc;
-    --mot-4:#f783ac; --mot-5:#8ce99a; --mot-6:#ffd8a8; --mot-7:#99e9f2;
+    --mot-0:#5b6ce8; --mot-1:#3fc1b8; --mot-2:#f5a623; --mot-3:#9aa1a6; --mot-4:#1890ff;
+    --mot-5:#37c978; --mot-6:#e0604f; --mot-7:#a78fd8; --mot-8:#c94f9f; --mot-9:#12a88f;
   }
-  html, body { margin: 0; height: 100%; background: var(--fond, var(--c-nuit)); color: var(--c-creme); font-family: var(--f-texte); }
+  html, body { margin: 0; height: 100%; background: #fff; color: var(--c-nuit); font-family: var(--f-texte); }
   body { display: flex; flex-direction: column; }
   header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 18px 24px 6px; }
   h1 { margin: 0; font-size: clamp(20px, 3vw, 32px); }
-  header a { color: var(--c-creme); font-weight: 700; }
-  .hashtag { color: var(--c-orange); font-weight: 800; }
+  header a { color: var(--c-nuit); font-weight: 700; }
+  .hashtag { color: var(--c-violet); font-weight: 800; }
   #nuage { position: relative; flex: 1; margin: 8px 16px 16px; overflow: hidden; }
-  .mot { position: absolute; left: 0; top: 0; white-space: nowrap; font-weight: 800; line-height: 1; cursor: default; }
-  .mot.debout { writing-mode: vertical-rl; }
+  .mot { position: absolute; left: 0; top: 0; white-space: nowrap; font-weight: 600; line-height: 1; cursor: default; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 </style>
 </head>

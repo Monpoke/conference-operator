@@ -327,14 +327,14 @@ const showsVodTag = (session: PlannedSession) =>
 
 /** Where a slot stands, read from its colour across the whole day. */
 const PLACE_TONES = {
-  'a-venir': 'border-edge bg-surface',
-  'en-cours': 'border-brand bg-[color-mix(in_oklab,var(--color-brand)_22%,var(--color-surface))]',
-  passe: 'border-ok/40 bg-ok-soft',
+  'a-venir': 'border-dim/50 bg-surface',
+  'en-cours': 'border-brand bg-[color-mix(in_oklab,var(--color-brand)_28%,var(--color-surface))]',
+  passe: 'border-ok/70 bg-ok-soft',
 } as const
 const BREAK_TONES = {
-  'a-venir': 'border-dashed border-edge text-dim',
+  'a-venir': 'border-dashed border-dim/50 text-dim',
   'en-cours': 'border-dashed border-brand text-dim',
-  passe: 'border-dashed border-edge/60 text-dim opacity-60',
+  passe: 'border-dashed border-ok/50 text-dim',
 } as const
 const LEGEND = [
   { label: 'À venir', tone: PLACE_TONES['a-venir'] },
@@ -443,12 +443,12 @@ async function select(session: PlannedSession): Promise<void> {
           </div>
 
           <div v-for="column in day.columns" :key="column.key" class="min-w-0 max-lg:mb-4" :data-room="column.key">
-            <h3 class="sticky top-0 z-10 flex h-7 items-center truncate bg-canvas text-[11px] font-semibold tracking-[.08em] text-dim uppercase">
+            <h3 class="sticky top-0 z-10 flex h-7 items-center truncate bg-canvas text-[11px] font-semibold tracking-[.08em] text-text uppercase">
               {{ column.name }}
             </h3>
             <div class="relative flex flex-col gap-1 lg:block" :style="{ '--day-h': `${day.heightPx}px` }">
               <div class="pointer-events-none absolute inset-0 max-lg:hidden lg:h-[var(--day-h)]" aria-hidden="true">
-                <div v-for="tick in day.hours" :key="tick.ms" class="absolute inset-x-0 border-t border-edge/50" :style="{ top: `${tick.topPx}px` }" />
+                <div v-for="tick in day.hours" :key="tick.ms" class="absolute inset-x-0 border-t border-edge" :style="{ top: `${tick.topPx}px` }" />
               </div>
               <div class="max-lg:hidden lg:h-[var(--day-h)]" aria-hidden="true" />
               <div

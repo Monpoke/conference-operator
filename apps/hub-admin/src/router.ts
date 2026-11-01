@@ -7,6 +7,8 @@ import PairingView from './views/PairingView.vue'
 import SettingsView from './views/SettingsView.vue'
 import VodView from './views/VodView.vue'
 import MontageView from './views/MontageView.vue'
+import StatisticsView from './views/StatisticsView.vue'
+import { useStatistiquesStore } from './stores/statistiques.js'
 import ModerationView from './views/ModerationView.vue'
 import AccessView from './views/AccessView.vue'
 import BoucleView from './views/BoucleView.vue'
@@ -97,6 +99,12 @@ const routes: RouteRecordRaw[] = [
     component: MontageView,
     props: (route) => ({ sessionId: route.params.sessionId, prise: route.query.prise ?? null }),
     meta: { view: 'vod', refresh: () => useMontageStore().load(), intervalMs: 10_000 },
+  },
+  {
+    path: viewPath('statistiques'),
+    name: 'statistiques',
+    component: StatisticsView,
+    meta: { view: 'statistiques', refresh: () => useStatistiquesStore().load(), intervalMs: 60_000 },
   },
   {
     path: viewPath('conferences'),

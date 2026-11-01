@@ -535,6 +535,13 @@ export class MontageService {
     }
   }
 
+  /** A fresh read address for one of the take's files, or `null` when it has none. */
+  async takePartUrl(jobId: string, index: number): Promise<string | null> {
+    const vod = this.vod()
+    if (vod == null || !vod.ready()) return null
+    return (await this.takeForListening(this.job(jobId), vod))[index]?.url ?? null
+  }
+
   /**
    * The take's files with where each starts in it, as its sidecar names them.
    *

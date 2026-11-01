@@ -269,6 +269,7 @@ describe('the loop over the wire', () => {
     importProgram()
     const talk = 'cmq3nx20102h901ppuyjkennd'
     expect((await fetch(`${origin}/montage/apercu/${talk}`)).status).toBe(401)
+    expect((await fetch(`${origin}/montage/prise/job/0`)).status).toBe(401)
 
     await admin.settings.update({ boucle: { merciSponsors: 'Merci à nos partenaires' } })
     const headers = { authorization: `Bearer ${await signIn()}` }

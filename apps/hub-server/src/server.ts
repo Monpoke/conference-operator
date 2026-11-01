@@ -1,3 +1,5 @@
+import { Readable } from 'node:stream'
+import { relayMedia } from './services/media-relay.js'
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify'
 import fastifyProxy from '@fastify/http-proxy'
 import fastifyStatic from '@fastify/static'
@@ -878,6 +880,30 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       fonts: fontsFolder == null ? undefined : { base: '/boucle/polices', files: availableFonts(fontsFolder) },
       theme: currentTheme(),
     }))
+  })
+
+  /**
+   * A take's file for the montage page, from the hub's own address.
+   *
+   * Behind the operator's session: a rush is not public until it is validated.
+   */
+  app.get<{ Params: { jobId: string; index: string } }>('/montage/prise/:jobId/:index', async (request, reply) => {
+    try {
+      const { operator } = await resolveOperator(contextFrom(auth, services, headersOf(request.headers)))
+      requirePermission(operator, 'vod:read')
+    } catch {
+      return reply.status(401).send({ error: 'session requise' })
+    }
+    const index = Number(request.params.index)
+    const url = Number.isInteger(index) && index >= 0
+      ? await services.montage.takePartUrl(request.params.jobId, index).catch(() => null)
+      : null
+    if (url == null) return reply.status(404).send({ error: 'fichier inconnu' })
+    const media = await relayMedia(url, request.headers.range)
+    reply.status(media.status)
+    reply.headers(media.headers)
+    reply.header('cache-control', 'no-store')
+    return reply.send(media.body == null ? '' : Readable.fromWeb(media.body as never))
   })
 
   /**

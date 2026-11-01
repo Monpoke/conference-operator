@@ -86,7 +86,10 @@ const now = computed(() =>
   planning.value == null ? Date.now() : Date.parse(planning.value.serverTime),
 )
 
+/** What the room did first: a talk started late or ended early follows the facts, not the program. */
 function placeOf(session: PlannedSession): 'a-venir' | 'en-cours' | 'passe' {
+  if (session.endedAt != null) return 'passe'
+  if (session.startedAt != null) return 'en-cours'
   return placeInDay(session, now.value)
 }
 
@@ -326,6 +329,26 @@ const selectedState = computed(() => (selectedId.value == null ? null : stateOf(
 /** A talk still running that the program no longer lists must stay within reach. */
 const orphans = computed(() => states.value.filter((state) => !(planning.value?.sessions ?? []).some((session) => session.id === state.sessionId)))
 const isCapturable = (session: PlannedSession) => session.kind !== 'break' && session.sharedFrom == null
+/** A room nobody records has nothing to report: the tag would only add noise to its column. */
+const showsVodTag = (session: PlannedSession) =>
+  isCapturable(session) && session.sansCaptation !== true && vodOf(session).statut !== 'sans-captation'
+
+/** Where a slot stands, read from its colour across the whole day. */
+const PLACE_TONES = {
+  'a-venir': 'border-edge bg-surface',
+  'en-cours': 'border-brand bg-[color-mix(in_oklab,var(--color-brand)_22%,var(--color-surface))]',
+  passe: 'border-ok/40 bg-ok-soft',
+} as const
+const BREAK_TONES = {
+  'a-venir': 'border-dashed border-edge text-dim',
+  'en-cours': 'border-dashed border-brand text-dim',
+  passe: 'border-dashed border-edge/60 text-dim opacity-60',
+} as const
+const LEGEND = [
+  { label: 'À venir', tone: PLACE_TONES['a-venir'] },
+  { label: 'En cours', tone: PLACE_TONES['en-cours'] },
+  { label: 'Terminé', tone: PLACE_TONES.passe },
+]
 
 const montages = useMontageStore()
 const selectedTakes = ref<{ path: string; label: string }[]>([])
@@ -403,6 +426,12 @@ async function select(session: PlannedSession): Promise<void> {
         règle dans <strong>Réglages → L'événement</strong>.
       </Hint>
 
+      <ul v-if="slots.length > 0" class="mb-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-dim" data-role="legende">
+        <li v-for="item in LEGEND" :key="item.label" class="flex items-center gap-1.5">
+          <span class="inline-block size-3 rounded-sm border" :class="item.tone" aria-hidden="true" />{{ item.label }}
+        </li>
+      </ul>
+
       <Empty v-if="!hasActiveProgram || planning == null || planning.sessions.length === 0">
         Aucun programme actif. Il s'importe depuis les réglages.
       </Empty>
@@ -443,9 +472,7 @@ async function select(session: PlannedSession): Promise<void> {
                 class="flex w-full min-w-0 overflow-hidden rounded-lg border px-2 text-left text-[13px] transition-colors hover:border-brand focus-visible:outline-2 focus-visible:outline-brand lg:absolute lg:inset-x-0 lg:top-[var(--top)] lg:h-[var(--h)]"
                 :class="[
                   slot.heightPx < 40 ? 'flex-row items-center gap-1.5 py-0 text-xs' : 'flex-col items-start py-1',
-                  slot.session.kind === 'break' ? 'border-dashed border-edge bg-transparent text-dim' : 'border-edge bg-surface',
-                  placeOf(slot.session) === 'en-cours' ? 'border-brand bg-surface2' : '',
-                  placeOf(slot.session) === 'passe' ? 'opacity-60' : '',
+                  slot.session.kind === 'break' ? BREAK_TONES[placeOf(slot.session)] : PLACE_TONES[placeOf(slot.session)],
                   selectedId === slot.session.id ? 'z-[6] ring-2 ring-brand' : '',
                 ]"
                 :style="{ '--top': `${slot.topPx}px`, '--h': `${slot.heightPx}px` }"
@@ -456,7 +483,7 @@ async function select(session: PlannedSession): Promise<void> {
                 :title="slot.heightPx < 18 ? `${hour(slot.session.startsAt)} ${slot.session.title}` : undefined"
                 @click="select(slot.session)"
               >
-                <span v-if="slot.heightPx >= 18" class="flex shrink-0 items-baseline gap-1.5 text-[11px] tabular-nums text-dim" :class="slot.heightPx < 40 ? '' : 'w-full'">
+                <span v-if="slot.heightPx >= 18" class="flex shrink-0 items-baseline gap-1.5 text-[11px] tabular-nums text-dim" :class="slot.heightPx < 40 ? 'order-last' : 'w-full'">
                   {{ hour(slot.session.startsAt) }}
                   <span v-if="placeOf(slot.session) === 'en-cours' && slot.heightPx >= 40" class="font-semibold text-brand">en ce moment</span>
                   <span
@@ -464,18 +491,19 @@ async function select(session: PlannedSession): Promise<void> {
                     class="ml-auto"
                     :class="remaining(stateOf(slot.session.id)!).tone"
                   >{{ remaining(stateOf(slot.session.id)!).text }}</span>
-                </span>
-                <span v-if="slot.heightPx >= 18" class="min-w-0 font-semibold" :class="[slot.session.kind === 'break' ? 'font-normal' : '', slot.heightPx < 76 ? 'truncate' : 'line-clamp-2', slot.heightPx < 40 ? 'flex-1' : 'w-full']" :title="slot.session.title">{{ slot.session.title }}</span>
-                <span v-if="slot.heightPx >= 76 && slot.session.speakers.length > 0" class="w-full truncate text-xs text-dim">{{ slot.session.speakers.join(', ') }}</span>
-                <span v-if="slot.heightPx >= 60" class="mt-auto flex flex-wrap items-center gap-1 pt-0.5">
+                  <!-- With the hour and not below the text: a twenty-minute talk has no room for a second row. -->
                   <span
-                    v-if="isCapturable(slot.session)"
-                    class="rounded border border-edge px-1.5 text-[10px] leading-4"
-                    :class="VOD_TONES[vodOf(slot.session).statut]"
+                    v-if="showsVodTag(slot.session)"
+                    class="rounded border border-edge px-1 text-[10px] leading-4"
+                    :class="[VOD_TONES[vodOf(slot.session).statut], stateOf(slot.session.id)?.status === 'running' ? '' : 'ml-auto']"
                     :data-vod-session="slot.session.id"
                     :data-vod-statut="vodOf(slot.session).statut"
                     :title="vodOf(slot.session).detail"
                   >VOD</span>
+                </span>
+                <span v-if="slot.heightPx >= 18" class="min-w-0 font-semibold" :class="[slot.session.kind === 'break' ? 'font-normal' : '', slot.heightPx < 76 ? 'truncate' : 'line-clamp-2', slot.heightPx < 40 ? 'flex-1' : 'w-full']" :title="slot.session.title">{{ slot.session.title }}</span>
+                <span v-if="slot.heightPx >= 76 && slot.session.speakers.length > 0" class="w-full truncate text-xs text-dim">{{ slot.session.speakers.join(', ') }}</span>
+                <span v-if="slot.heightPx >= 60 && (slot.session.movedTo != null || isPinned(slot.session))" class="mt-auto flex flex-wrap items-center gap-1 pt-0.5">
                   <Badge v-if="slot.session.movedTo != null" variant="warning" class="px-1.5 py-0 text-[10px]" :data-moved="slot.session.id" :title="`Occupe le créneau de ${titleOf(slot.session.movedTo)}`">Déplacée</Badge>
                   <Badge v-if="isPinned(slot.session)" variant="alert" class="px-1.5 py-0 text-[10px]" :data-pinned="slot.session.id" title="Forcée en cours dans sa salle, quelle que soit l'heure">Forcée</Badge>
                 </span>

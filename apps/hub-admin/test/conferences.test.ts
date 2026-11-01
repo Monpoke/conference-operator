@@ -478,6 +478,29 @@ describe('conferences view', () => {
     expect(wrapper.find('[data-slot="pause-1"] a').exists()).toBe(false)
   })
 
+  it('colours a slot with where it stands', async () => {
+    const { wrapper } = await mountView({
+      sessions: [TALK, { ...OTHER, startsAt: '2026-10-30T11:00:00Z', endsAt: '2026-10-30T12:00:00Z' }],
+      serverTime: '2026-10-30T09:20:00Z',
+    })
+    expect(wrapper.get('[data-slot="talk-1"]').classes()).toContain('border-brand')
+    expect(wrapper.get('[data-slot="talk-2"]').classes()).toContain('bg-surface')
+  })
+
+  it('follows what the room did rather than the program', async () => {
+    const { wrapper } = await mountView({
+      sessions: [{ ...TALK, startedAt: '2026-10-30T09:01:00Z', endedAt: '2026-10-30T09:10:00Z' }],
+      serverTime: '2026-10-30T09:20:00Z',
+    })
+    expect(wrapper.get('[data-slot="talk-1"]').attributes('data-when')).toBe('passe')
+  })
+
+  it('shows no capture tag in a room nobody records', async () => {
+    const { wrapper } = await mountView({ sessions: [{ ...TALK, sansCaptation: true }, OTHER] })
+    expect(wrapper.find('[data-vod-session="talk-1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-vod-session="talk-2"]').exists()).toBe(true)
+  })
+
   it('offers no take on a break', async () => {
     const { wrapper } = await mountView({ sessions: [TALK, PAUSE] })
 

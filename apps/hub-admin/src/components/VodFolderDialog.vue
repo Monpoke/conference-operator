@@ -3,10 +3,9 @@ import { Button, Dialog, Hint, useToast } from '@conference-operator/components'
 import { time } from '@conference-operator/format'
 import { computed, ref, watch } from 'vue'
 import { UPLOAD_STATES, progress, type Upload } from '../stores/vod.js'
-import { formatOrateurs, habillageFromForm, useConferencesStore, type PlannedSession } from '../stores/conferences.js'
+import { useConferencesStore, type PlannedSession } from '../stores/conferences.js'
 import type { MontageJobView } from '@conference-operator/contract'
-import { MONTAGE_STATES, cutMinutes, describe, useMontageStore } from '../stores/montage.js'
-import CoupeValidation from './CoupeValidation.vue'
+import { MONTAGE_STATES, cutMinutes, describe, latestByTake, montagePath, useMontageStore } from '../stores/montage.js'
 
 /**
  * Where a talk's capture stands.
@@ -38,48 +37,15 @@ interface Folder {
 }
 
 const open = defineModel<boolean>('open', { required: true })
-const props = defineProps<{
-  session: PlannedSession | null
-  timezone: string
-  /** The take to open on, when the talk has several: its latest otherwise. */
-  prise?: string | null
-}>()
+const props = defineProps<{ session: PlannedSession | null; timezone: string }>()
 
 const store = useConferencesStore()
 const toast = useToast()
 
 const folder = ref<Folder | null>(null)
-/** The talk's latest montage, if any. */
-const montage = ref<MontageJobView | null>(null)
-/** One per take, oldest first: a talk's takes can be separate videos. */
+/** One per take: their montage has its own page. */
 const prises = ref<MontageJobView[]>([])
 const montages = useMontageStore()
-/** The cut of a montage already done, opened again. */
-const reviewing = ref(false)
-
-/** The newest job of each take. `forSession` gives them newest first. */
-function latestByTake(jobs: MontageJobView[]): MontageJobView[] {
-  const seen = new Map<string, MontageJobView>()
-  for (const job of jobs) if (!seen.has(job.sidecarUploadId)) seen.set(job.sidecarUploadId, job)
-  return [...seen.values()].reverse()
-}
-
-function show(job: MontageJobView): void {
-  prises.value = prises.value.some((other) => other.sidecarUploadId === job.sidecarUploadId)
-    ? prises.value.map((other) => (other.sidecarUploadId === job.sidecarUploadId ? job : other))
-    : [...prises.value, job]
-  montage.value = job
-}
-
-function priseLabel(job: MontageJobView, index: number): string {
-  const minutes = cutMinutes(job)
-  return minutes == null ? `Prise ${index + 1}` : `Prise ${index + 1} · ${minutes} min`
-}
-
-function onValidated(job: MontageJobView): void {
-  show(job)
-  reviewing.value = false
-}
 const error = ref('')
 const loading = ref(false)
 
@@ -88,7 +54,6 @@ watch(
   async ([ouvert, id]) => {
     if (!ouvert || id == null) return
     folder.value = null
-    reviewing.value = false
     error.value = ''
     loading.value = true
     try {
@@ -103,7 +68,6 @@ watch(
       if (!open.value || props.session?.id !== id) return
       folder.value = response
       prises.value = latestByTake(jobs)
-      montage.value = prises.value.find((job) => job.sidecarUploadId === props.prise) ?? prises.value.at(-1) ?? null
     } catch (cause) {
       if (!open.value || props.session?.id !== id) return
       error.value = cause instanceof Error ? cause.message : 'Lecture impossible.'
@@ -179,59 +143,6 @@ const consent = computed<{ text: string; tone: string }>(() => {
     ? { text: `Accordée par le conférencier, à ${when}.`, tone: 'text-ok' }
     : { text: `Refusée par le conférencier, à ${when}. Ne pas publier.`, tone: 'text-alert' }
 })
-
-/** What this take's video shows: the intro, the outro and the card burnt into the rush follow it. */
-const habillage = ref({ title: '', category: '', color: '', salle: '', speakers: '' })
-watch(
-  () => montage.value?.sidecarUploadId,
-  () => {
-    const prise = montage.value?.habillagePrise
-    habillage.value = {
-      title: prise?.title ?? '',
-      category: prise?.category ?? '',
-      color: prise?.color ?? '',
-      salle: prise?.salle ?? '',
-      speakers: formatOrateurs(prise?.speakers ?? []),
-    }
-  },
-  { immediate: true },
-)
-async function saveHabillage(): Promise<void> {
-  if (montage.value == null) return
-  try {
-    const prise = habillageFromForm(habillage.value)
-    await store.setHabillagePrise(montage.value.sidecarUploadId, prise)
-    montage.value = { ...montage.value, habillagePrise: prise }
-    show(montage.value)
-    toast.say('Habillage enregistré : il s’applique au prochain montage de cette prise')
-  } catch {
-    /* already reported by the client's error hook */
-  }
-}
-
-async function relaunchMontage(sessionId: string): Promise<void> {
-  try {
-    show(await montages.relaunch(sessionId, montage.value?.id))
-    toast.say('Montage relancé')
-  } catch {
-    /* already reported by the client's error hook */
-  }
-}
-
-async function downloadMontage(jobId: string): Promise<void> {
-  try {
-    await montages.download(jobId)
-  } catch {
-    /* already reported by the client's error hook */
-  }
-}
-
-/** The intro, the outro or the card as the worker will capture them. */
-const previewUrl = (clip: 'intro' | 'outro' | 'cadre') => {
-  if (props.session == null) return '#'
-  const prise = montage.value == null ? '' : `&prise=${encodeURIComponent(montage.value.sidecarUploadId)}`
-  return `/montage/apercu/${encodeURIComponent(props.session.id)}?clip=${clip}${prise}`
-}
 
 function uploadState(row: Upload): { label: string; tone: string } {
   return UPLOAD_STATES[row.state] ?? { label: row.state, tone: '' }
@@ -388,98 +299,22 @@ function uploadState(row: Upload): { label: string; tone: string } {
           </Button>
         </div>
 
-        <!--
-          Last, because it comes last: the rushes arrive, then the video is
-          edited from them. The previews are the pages the worker captures —
-          what is checked here is what goes into the video.
-        -->
         <h3 class="mt-3.5 mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
           Montage
         </h3>
-
-        <div v-if="prises.length > 1" class="mb-3 flex flex-wrap gap-1.5" data-role="vod-prises">
-          <Button
-            v-for="(job, index) in prises"
-            :key="job.sidecarUploadId"
-            size="small"
-            :active="job.sidecarUploadId === montage?.sidecarUploadId"
-            @click="montage = job"
-          >
-            {{ priseLabel(job, index) }}
-          </Button>
-        </div>
-
-        <details v-if="montage != null" class="mb-3" :open="montage.habillagePrise != null" data-role="vod-habillage">
-          <summary class="cursor-pointer text-xs text-dim">
-            Habillage de cette vidéo, si le programme ne convient pas{{ montage.habillagePrise != null ? ' (personnalisé)' : '' }}
-          </summary>
-          <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <label class="block text-xs text-dim sm:col-span-2">Titre
-              <input v-model="habillage.title" data-field="title" class="mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text" :placeholder="session?.title">
-            </label>
-            <label class="block text-xs text-dim">Catégorie
-              <input v-model="habillage.category" data-field="category" class="mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text">
-            </label>
-            <label class="block text-xs text-dim">Couleur de la catégorie
-              <input v-model="habillage.color" data-field="color" class="mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text" placeholder="#9cc160">
-            </label>
-            <label class="block text-xs text-dim sm:col-span-2">Salle
-              <input v-model="habillage.salle" data-field="salle" class="mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text" :placeholder="session?.roomName ?? ''">
-            </label>
-            <label class="block text-xs text-dim sm:col-span-2">Orateurs (un par ligne : Nom | Société)
-              <textarea v-model="habillage.speakers" data-field="speakers" rows="2" class="mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text" :placeholder="session?.speakers.join('\n')" />
-            </label>
-          </div>
-          <Button size="small" class="mt-2" data-role="vod-habillage-save" @click="saveHabillage">Enregistrer l’habillage</Button>
-          <p class="mt-1 text-[11px] text-dim">Un champ vide reprend le programme. Dès qu’un champ est rempli, le cadre est redessiné sur toute la vidéo. Enregistrer avant d’ouvrir les aperçus.</p>
-        </details>
-
-        <p class="mb-1.5 text-sm" data-role="vod-montage">
-          <template v-if="montage == null">
-            <span class="text-dim">Pas encore monté — il se met en file quand la prise arrive dans le stockage.</span>
-          </template>
-          <template v-else>
-            <span :class="MONTAGE_STATES[montage.state]?.tone">{{ MONTAGE_STATES[montage.state]?.label ?? montage.state }}</span>
-            <template v-if="describe(montage) !== ''"> · {{ describe(montage) }}</template>
-            <span v-if="montage.erreur != null && montage.state === 'echoue'" class="block text-[11px] text-alert">
-              {{ montage.erreur }}
-            </span>
-          </template>
+        <p v-if="prises.length === 0" class="text-sm text-dim" data-role="vod-montage">
+          Pas encore de montage : il se met en file quand la prise arrive dans le stockage.
         </p>
-
-        <div class="flex flex-wrap gap-1.5">
-          <a :href="previewUrl('intro')" target="_blank" rel="noopener" class="text-sm text-brand underline">Aperçu de l’intro</a>
-          <a :href="previewUrl('outro')" target="_blank" rel="noopener" class="text-sm text-brand underline">Aperçu de l’outro</a>
-          <a :href="previewUrl('cadre')" target="_blank" rel="noopener" class="text-sm text-brand underline" data-role="vod-apercu-cadre">Aperçu du cadre</a>
-        </div>
-        <!--
-          La coupe proposée, à valider ici : d'office quand elle attend, sur
-          demande pour un montage déjà fait ou en échec — une marque corrigée
-          après coup se reprend ici, sans repasser par la régie.
-        -->
-        <CoupeValidation
-          v-if="montage != null && montage.analyse != null && (montage.state === 'a-valider' || reviewing)"
-          :job="montage"
-          @validated="onValidated"
-        />
-        <div class="mt-1.5 flex flex-wrap gap-1.5">
-          <Button v-if="montage?.state === 'termine'" size="small" @click="downloadMontage(montage.id)">
-            Télécharger la vidéo
-          </Button>
-          <Button
-            v-if="montage != null && montage.analyse != null && (montage.state === 'termine' || montage.state === 'echoue') && !reviewing"
-            size="small"
-            @click="reviewing = true"
-          >
-            Revoir la coupe
-          </Button>
-          <Button
-            v-if="session != null && folder.stockageConfigure && folder.televersements.some((row) => row.kind === 'sidecar' && row.state === 'termine')"
-            size="small"
-            @click="relaunchMontage(session.id)"
-          >
-            {{ montage == null ? 'Monter' : 'Remonter' }}
-          </Button>
+        <div
+          v-for="(job, index) in prises"
+          :key="job.sidecarUploadId"
+          class="flex flex-wrap items-baseline gap-x-2.5 border-t border-edge py-2 text-sm first:border-t-0"
+          data-role="vod-montage"
+        >
+          <span v-if="prises.length > 1">Prise {{ index + 1 }}<template v-if="cutMinutes(job) != null"> · {{ cutMinutes(job) }} min</template></span>
+          <span :class="MONTAGE_STATES[job.state]?.tone">{{ MONTAGE_STATES[job.state]?.label ?? job.state }}</span>
+          <span v-if="describe(job) !== ''" class="text-dim">{{ describe(job) }}</span>
+          <a :href="montagePath(job.sessionId, job.sidecarUploadId)" class="ml-auto text-brand underline" data-role="vod-ouvrir-montage">Ouvrir le montage</a>
         </div>
       </template>
     </div>

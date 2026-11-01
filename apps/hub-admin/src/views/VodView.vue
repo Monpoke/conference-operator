@@ -10,7 +10,8 @@ import {
   useVodStore,
   type Upload,
 } from '../stores/vod.js'
-import MontagePanels from '../components/MontagePanels.vue'
+import { MONTAGE_STATES, cutMinutes, latestByTake, montagePath, useMontageStore } from '../stores/montage.js'
+import type { MontageJobView } from '@conference-operator/contract'
 
 /**
  * Uploads of the takes.
@@ -35,13 +36,28 @@ function toggle(key: string): void {
   if (!unfolded.value.delete(key)) unfolded.value.add(key)
 }
 
+const montages = useMontageStore()
+const { jobs } = storeToRefs(montages)
+/** Each talk's takes, with where their video stands. */
+const takesOf = computed(() => {
+  const bySession = new Map<string, MontageJobView[]>()
+  for (const job of jobs.value) bySession.set(job.sessionId, [...(bySession.get(job.sessionId) ?? []), job])
+  return new Map([...bySession].map(([sessionId, list]) => [sessionId, latestByTake(list)]))
+})
+const toValidate = computed(() => jobs.value.filter((job) => job.state === 'a-valider'))
+const firstToValidate = computed(() => toValidate.value.at(-1) ?? null)
+const asksForAttention = (sessionId: string) =>
+  takesOf.value.get(sessionId)?.some((job) => ['a-valider', 'echoue', 'attente', 'en-cours'].includes(job.state)) ?? false
+
 /** By default, only what still asks for attention: the list shrinks as the day goes. */
 const onlyToHandle = ref(true)
 const shown = computed(() =>
   onlyToHandle.value
-    ? conferences.value.filter((row) => row.etat === 'a-reprendre' || row.etat === 'en-cours')
+    ? conferences.value.filter((row) => row.etat === 'a-reprendre' || row.etat === 'en-cours' || asksForAttention(row.key))
     : conferences.value,
 )
+
+const stateOfJob = (job: MontageJobView) => MONTAGE_STATES[job.state] ?? { label: job.state, tone: '' }
 
 const counts = computed(() => countByEtat(conferences.value))
 const summary = computed(() => {
@@ -128,7 +144,7 @@ async function requestAll(): Promise<void> {
     class="grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] gap-3.5"
   >
     <!-- Across the width, like the montages: a table of six columns needs it. -->
-    <Panel title="Téléversements" class="col-span-full">
+    <Panel title="Talks" class="col-span-full">
       <div class="mb-2 flex flex-wrap gap-1.5">
         <select
           id="vod-room"
@@ -147,6 +163,10 @@ async function requestAll(): Promise<void> {
         <span>{{ summary }}</span>
       </p>
 
+      <p v-if="firstToValidate != null" id="montage-a-valider" class="mb-2 text-sm text-warn">
+        {{ toValidate.length }} coupe{{ toValidate.length > 1 ? 's' : '' }} à valider —
+        <a :href="montagePath(firstToValidate.sessionId, firstToValidate.sidecarUploadId)" class="underline">commencer</a>
+      </p>
       <label class="mb-2 flex w-fit items-center gap-2 text-sm">
         <input id="vod-only-to-handle" v-model="onlyToHandle" type="checkbox">
         À traiter seulement
@@ -166,15 +186,16 @@ async function requestAll(): Promise<void> {
               <th class="pr-2.5 pb-2 text-left font-semibold">État</th>
               <th class="pr-2.5 pb-2 text-left font-semibold">Fichiers</th>
               <th class="pr-2.5 pb-2 text-left font-semibold">Détail</th>
+              <th class="pr-2.5 pb-2 text-left font-semibold">Montage</th>
               <th class="pb-2"></th>
             </tr>
           </thead>
           <tbody id="vod-rows" class="max-md:block">
             <tr v-if="conferences.length === 0" class="max-md:block">
-              <td colspan="6" class="py-3.5 text-dim max-md:block">Aucun téléversement.</td>
+              <td colspan="7" class="py-3.5 text-dim max-md:block">Aucun téléversement.</td>
             </tr>
             <tr v-else-if="shown.length === 0" class="max-md:block">
-              <td colspan="6" class="py-3.5 text-dim max-md:block">Rien à traiter pour l'instant.</td>
+              <td colspan="7" class="py-3.5 text-dim max-md:block">Rien à traiter pour l'instant.</td>
             </tr>
             <template v-for="row in shown" :key="row.key">
               <tr
@@ -195,6 +216,19 @@ async function requestAll(): Promise<void> {
                 </td>
                 <td data-role="detail" class="border-t border-edge py-[9px] pr-2.5 align-middle text-dim max-md:basis-full max-md:border-t-0 max-md:py-0 max-md:pr-0">
                   {{ row.detail }}
+                </td>
+                <td data-role="montages" class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:basis-full max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:empty:hidden">
+                  <a
+                    v-for="job in takesOf.get(row.key) ?? []"
+                    :key="job.sidecarUploadId"
+                    :href="montagePath(job.sessionId, job.sidecarUploadId)"
+                    class="block underline underline-offset-2"
+                    :class="stateOfJob(job).tone"
+                    :data-montage="job.id"
+                    :data-valider="job.state === 'a-valider' ? job.sessionId : undefined"
+                  >
+                    {{ stateOfJob(job).label }}<span v-if="cutMinutes(job) != null" class="text-dim" data-role="montage-duree"> · {{ cutMinutes(job) }} min</span>
+                  </a>
                 </td>
                 <td class="border-t border-edge py-[9px] text-right align-middle max-md:ml-auto max-md:border-t-0 max-md:py-0 max-md:empty:hidden">
                   <Button
@@ -218,7 +252,7 @@ async function requestAll(): Promise<void> {
                 </td>
               </tr>
               <tr v-if="unfolded.has(row.key) && row.files.length > 0" class="max-md:block">
-                <td colspan="6" class="pb-2 max-md:block">
+                <td colspan="7" class="pb-2 max-md:block">
                   <div
                     v-for="upload in row.files"
                     :key="`${upload.roomId}/${upload.file}`"
@@ -259,7 +293,5 @@ async function requestAll(): Promise<void> {
         nulle part ailleurs qu'à Lille.
       </Hint>
     </Panel>
-
-    <MontagePanels />
   </div>
 </template>

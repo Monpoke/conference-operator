@@ -5,6 +5,7 @@ import { DEFAULT_MONTAGE_SORTIE, type MontageSortie } from '@conference-operator
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import IntegrationDialog from '../components/IntegrationDialog.vue'
+import MontageWorkersPanel from '../components/MontageWorkersPanel.vue'
 import { useSeededField } from '../composables/seededField.js'
 import { checkSocialLinks, type SocialField, type SocialRowError } from '../composables/socialLinks.js'
 import {
@@ -1227,6 +1228,8 @@ async function confirmRemoveIntegration(): Promise<void> {
         Enregistrer
       </Button>
     </Panel>
+
+    <MontageWorkersPanel />
 
     <Panel title="Stockage">
       <Hint id="vod-state" class="mt-0 mb-3">

@@ -1,3 +1,4 @@
+import { viewPath } from '@conference-operator/contract'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { MontageAnalyse, MontageJobView, MontageWorkerView } from '@conference-operator/contract'
@@ -39,7 +40,7 @@ export const useMontageStore = defineStore('montage', () => {
   }
 
   /** What the analysis proposed, with read addresses for its files (an hour). */
-  async function analysis(jobId: string): Promise<{ analyse: MontageAnalyse | null; fichiers: { nom: string; url: string }[]; prise: TakePart[] }> {
+  async function analysis(jobId: string): Promise<{ analyse: MontageAnalyse | null; fichiers: { nom: string; url: string }[]; prise: TakePart[]; niveaux: { frameMs: number; db: number[] } | null }> {
     return await session.client.rpc.montage.analyse({ jobId })
   }
 
@@ -114,6 +115,19 @@ export function minutes(ms: number | null): string {
 
 /** Where a job stands, in one line. */
 /** A take's length once cut, in minutes: what tells two takes of a talk apart. */
+/** The newest job of each take, oldest take first. `jobs` comes newest first. */
+export function latestByTake(jobs: readonly MontageJobView[]): MontageJobView[] {
+  const seen = new Map<string, MontageJobView>()
+  for (const job of jobs) if (!seen.has(job.sidecarUploadId)) seen.set(job.sidecarUploadId, job)
+  return [...seen.values()].reverse()
+}
+
+/** The page where a take's montage is done. */
+export function montagePath(sessionId: string, prise?: string | null): string {
+  const base = `${viewPath('vod')}/montage/${encodeURIComponent(sessionId)}`
+  return prise == null ? base : `${base}?prise=${encodeURIComponent(prise)}`
+}
+
 export function cutMinutes(job: MontageJobView): number | null {
   const cut = job.coupe ?? job.analyse?.proposition
   return cut == null ? null : Math.round((cut.finMs - cut.debutMs) / 60000)

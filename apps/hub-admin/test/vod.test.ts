@@ -349,44 +349,22 @@ describe('dossier d’une salle sans captation', () => {
   })
 })
 
-describe('a cut to validate, from a phone', () => {
-  it('opens the talk\'s VOD folder straight from the montage', async () => {
-    await mountView()
-    const job = {
-      id: 'job-1', sessionId: 'talk-1', title: 'Le talk', state: 'a-valider', tentatives: 1,
-      erreur: null, worker: null, marquesManquantes: [], progression: null,
-    }
-    useMontageStore().jobs = [job, { ...job, id: 'job-2', sessionId: 'talk-2', state: 'termine' }] as never
-    useConferencesStore().planning = {
-      timezone: 'Europe/Paris',
-      sessions: [{ id: 'talk-1', title: 'Le talk', roomId: 'track-1', startsAt: '2026-10-30T09:00:00Z', endsAt: '2026-10-30T09:40:00Z', speakers: [] }],
-    } as never
+describe('the montages in the list', () => {
+  const JOB = {
+    id: 'job-1', sessionId: 'talk-1', sidecarUploadId: 'side-1', title: 'Le talk', state: 'a-valider', tentatives: 1,
+    erreur: null, worker: null, marquesManquantes: [], coupe: { debutMs: 0, finMs: 480000 },
+  }
+  const TALK = { id: 'talk-1', title: 'Le talk', roomId: 'track-1', kind: 'talk', startsAt: '2026-10-30T09:00:00Z', endsAt: '2026-10-30T10:00:00Z' }
+
+  it('links each take to its own page, and tells two takes apart', async () => {
+    await mountView([], [TALK])
+    useMontageStore().jobs = [{ ...JOB, id: 'job-2', sidecarUploadId: 'side-2', coupe: { debutMs: 0, finMs: 2760000 } }, JOB] as never
     await flushPromises()
 
-    // Only the cut waiting for its validation offers the gesture.
-    const buttons = document.querySelectorAll('[data-valider]')
-    expect([...buttons].map((button) => button.getAttribute('data-valider'))).toEqual(['talk-1'])
-
-    ;(buttons[0] as HTMLElement).click()
-    await flushPromises()
-    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Le talk')
-  })
-
-  it('relaunches the take of its own line, and tells two takes apart', async () => {
-    await mountView()
-    const job = {
-      id: 'job-1', sessionId: 'talk-1', title: 'Le talk', state: 'a-valider', tentatives: 1,
-      erreur: null, worker: null, marquesManquantes: [], progression: null, coupe: { debutMs: 0, finMs: 480000 },
-    }
-    const store = useMontageStore()
-    store.jobs = [job, { ...job, id: 'job-2', coupe: { debutMs: 0, finMs: 2760000 } }] as never
-    const relaunch = vi.spyOn(store, 'relaunch').mockResolvedValue(job as never)
-    await flushPromises()
-
-    const line = document.querySelector('[data-montage="job-1"]')!
-    expect(line.querySelector('[data-role="montage-duree"]')?.textContent).toContain('8 min')
-    expect(document.querySelector('[data-montage="job-2"] [data-role="montage-duree"]')?.textContent).toContain('46 min')
-    ;([...line.querySelectorAll('button')].find((button) => button.textContent?.includes('Relancer')) as HTMLElement).click()
-    expect(relaunch).toHaveBeenCalledWith('talk-1', 'job-1')
+    const first = document.querySelector('[data-montage="job-1"]') as HTMLAnchorElement
+    expect(first.getAttribute('href')).toBe('/admin/vod/montage/talk-1?prise=side-1')
+    expect(first.textContent).toContain('8 min')
+    expect(document.querySelector('[data-montage="job-2"]')?.textContent).toContain('46 min')
+    expect(document.querySelector('#montage-a-valider')?.textContent).toContain('2 coupes')
   })
 })

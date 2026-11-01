@@ -6,6 +6,7 @@ import MessagesView from './views/MessagesView.vue'
 import PairingView from './views/PairingView.vue'
 import SettingsView from './views/SettingsView.vue'
 import VodView from './views/VodView.vue'
+import MontageView from './views/MontageView.vue'
 import ModerationView from './views/ModerationView.vue'
 import AccessView from './views/AccessView.vue'
 import BoucleView from './views/BoucleView.vue'
@@ -91,6 +92,13 @@ const routes: RouteRecordRaw[] = [
     },
   },
   {
+    path: `${viewPath('vod')}/montage/:sessionId`,
+    name: 'montage',
+    component: MontageView,
+    props: (route) => ({ sessionId: route.params.sessionId, prise: route.query.prise ?? null }),
+    meta: { view: 'vod', refresh: () => useMontageStore().load(), intervalMs: 10_000 },
+  },
+  {
     path: viewPath('conferences'),
     name: 'conferences',
     component: ConferencesView,
@@ -113,7 +121,12 @@ const routes: RouteRecordRaw[] = [
       // Two stores, one round: the integrations' last status is what an operator
       // comes back to this page to read.
       refresh: async () => {
-        await Promise.all([useSettingsStore().load(), useIntegrationsStore().load()])
+        await Promise.all([
+          useSettingsStore().load(),
+          useIntegrationsStore().load(),
+          // Read by whoever may see the videos: its absence must not hold the settings back.
+          useMontageStore().load().catch(() => undefined),
+        ])
       },
       intervalMs: 10_000,
     },

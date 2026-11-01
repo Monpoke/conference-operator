@@ -58,7 +58,6 @@ import {
   uploadViewSchema,
 } from './vod.js'
 import {
-  montageOrateurSchema,
   markerRoleSchema,
   montageAnalyseSchema,
   montageAudioSchema,
@@ -143,8 +142,6 @@ const planningSessionSchema = sessionPreviewSchema.extend({
   kind: z.enum(['talk', 'break']),
   /** In a room nobody records: a missing rush is expected here, not a problem. */
   sansCaptation: z.boolean().default(false),
-  /** The speakers set for its video, when the program is wrong. */
-  orateursVideo: z.array(montageOrateurSchema).nullable().default(null),
   /**
    * "Rate this talk" link on OpenFeedback.
    *
@@ -1424,7 +1421,7 @@ export const contract = {
       .output(z.array(montageJobViewSchema)),
 
     /** Queues the talk's latest take again — after a new mark, a new logo. Admin. */
-    relancer: oc.input(z.object({ sessionId: sessionIdSchema })).output(montageJobViewSchema),
+    relancer: oc.input(z.object({ sessionId: sessionIdSchema, jobId: z.string().optional() })).output(montageJobViewSchema),
 
     annuler: oc.input(z.object({ jobId: z.string() })).output(z.object({ ok: z.boolean() })),
 

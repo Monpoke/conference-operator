@@ -181,14 +181,30 @@ export const montageSortieSchema = z.object({
 export type MontageSortie = z.infer<typeof montageSortieSchema>
 export const DEFAULT_MONTAGE_SORTIE: MontageSortie = { hauteur: 1080, fps: 30, crf: 20 }
 
-/** Who really spoke, when the program is wrong. See `HubSettings.montageOrateurs`. */
+/** Who really spoke, when the program is wrong. */
 export const montageOrateurSchema = z.object({ name: z.string().min(1).max(120), company: z.string().max(120).nullable() })
 export type MontageOrateur = z.infer<typeof montageOrateurSchema>
+
+/**
+ * What one take's video shows instead of the program. By take and not by talk:
+ * two takes of one slot can be two different videos. `null`: as the program says.
+ */
+export const montageHabillagePriseSchema = z.object({
+  title: z.string().min(1).max(200).nullable().default(null),
+  category: z.string().min(1).max(60).nullable().default(null),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().default(null),
+  salle: z.string().min(1).max(120).nullable().default(null),
+  speakers: z.array(montageOrateurSchema).min(1).max(6).nullable().default(null),
+})
+export type MontageHabillagePrise = z.infer<typeof montageHabillagePriseSchema>
 
 /** A job as the console shows it. */
 export const montageJobViewSchema = z.object({
   id: z.string(),
   sessionId: sessionIdSchema,
+  /** The take it edits: what its video's dressing is kept under. */
+  sidecarUploadId: z.string(),
+  habillagePrise: montageHabillagePriseSchema.nullable().default(null),
   /** The talk's title in the active program; `null` for a talk it does not know. */
   title: z.string().nullable(),
   roomId: roomIdSchema,
@@ -255,7 +271,7 @@ export const montageClaimSchema = z.object({
   /** The published format. Absent from an older hub. */
   sortie: montageSortieSchema.default(DEFAULT_MONTAGE_SORTIE),
   /**
-   * The speakers were corrected after the take: the card burnt into the rush is
+   * The take's dressing was set in the console: the card burnt into the rush is
    * wrong, and is drawn again over it. `null`: the rush is right as it is.
    */
   cadre: z.object({ salle: z.string().nullable() }).nullable().default(null),

@@ -10,7 +10,7 @@ import {
   useVodStore,
   type Upload,
 } from '../stores/vod.js'
-import { MONTAGE_STATES, cutMinutes, latestByTake, montagePath, useMontageStore } from '../stores/montage.js'
+import { MONTAGE_STATES, cutMinutes, describe, latestByTake, montagePath, useMontageStore } from '../stores/montage.js'
 import type { MontageJobView } from '@conference-operator/contract'
 import { dayKeyOf, dayOptions } from '../stores/days.js'
 
@@ -41,6 +41,7 @@ const montages = useMontageStore()
 const { jobs, enPause } = storeToRefs(montages)
 const running = computed(() => jobs.value.some((job) => job.state === 'en-cours'))
 const queued = computed(() => jobs.value.filter((job) => job.state === 'attente').length)
+const inProgress = computed(() => jobs.value.filter((job) => job.state === 'en-cours'))
 
 async function togglePause(): Promise<void> {
   const next = !enPause.value
@@ -201,9 +202,27 @@ async function requestAll(): Promise<void> {
           En pause{{ running ? ' : le montage en cours se termine, rien d’autre ne démarre' : ' : aucun montage ne démarre' }}{{ queued > 0 ? ` · ${queued} en attente` : '' }}
         </span>
         <span v-else-if="running || queued > 0" class="text-dim">
-          {{ running ? 'Un montage en cours' : 'Aucun montage en cours' }}{{ queued > 0 ? ` · ${queued} en attente` : '' }}
+          {{ inProgress.length > 1 ? `${inProgress.length} montages en cours` : running ? 'Un montage en cours' : 'Aucun montage en cours' }}{{ queued > 0 ? ` · ${queued} en attente` : '' }}
         </span>
       </div>
+      <ul v-if="inProgress.length > 0" id="montages-en-cours" class="m-0 mb-3 flex list-none flex-col gap-2 p-0">
+        <li v-for="job in inProgress" :key="job.id" class="rounded-lg border border-edge p-2.5 text-sm" :data-montage-en-cours="job.id">
+          <div class="flex flex-wrap items-baseline justify-between gap-x-3">
+            <a :href="montagePath(job.sessionId, job.sidecarUploadId)" class="min-w-0 font-semibold underline-offset-2 hover:underline">{{ job.title ?? job.sessionId }}</a>
+            <span class="text-xs text-dim" :class="job.silencieuxDepuisMs != null ? 'text-warn' : ''" data-role="avancee">{{ describe(job) }}</span>
+          </div>
+          <div
+            class="mt-1.5 h-2 rounded-full bg-surface2"
+            role="progressbar"
+            :aria-label="`Avancée du montage : ${job.title ?? job.sessionId}`"
+            :aria-valuenow="job.pourcent"
+            aria-valuemin="0"
+            aria-valuemax="100"
+          >
+            <div class="h-2 rounded-full transition-[width] duration-500" :class="job.silencieuxDepuisMs != null ? 'bg-warn' : 'bg-brand'" :style="{ width: `${job.pourcent}%` }" />
+          </div>
+        </li>
+      </ul>
       <label class="mb-2 flex w-fit items-center gap-2 text-sm">
         <input id="vod-only-to-handle" v-model="onlyToHandle" type="checkbox">
         À traiter seulement

@@ -356,6 +356,20 @@ describe('the montages in the list', () => {
   }
   const TALK = { id: 'talk-1', title: 'Le talk', roomId: 'track-1', kind: 'talk', startsAt: '2026-10-30T09:00:00Z', endsAt: '2026-10-30T10:00:00Z' }
 
+  it('shows each running montage with its stage and progress, and only those', async () => {
+    const { wrapper } = await mountView([], [TALK])
+    useMontageStore().jobs = [
+      { ...JOB, id: 'j1', state: 'en-cours', etape: 'assemblage', pourcent: 42, title: 'Mon talk', silencieuxDepuisMs: null },
+      { ...JOB, id: 'j2', state: 'attente' },
+    ] as never
+    await flushPromises()
+    const lines = wrapper.findAll('[data-montage-en-cours]')
+    expect(lines).toHaveLength(1)
+    expect(lines[0]?.text()).toContain('Mon talk')
+    expect(lines[0]?.get('[data-role="avancee"]').text()).toBe('assemblage · 42 %')
+    expect(lines[0]?.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('42')
+  })
+
   it('pauses the renders, and says what it leaves running', async () => {
     const { wrapper } = await mountView([], [TALK])
     const store = useMontageStore()

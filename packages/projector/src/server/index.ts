@@ -1,3 +1,4 @@
+export { CADRE_CARD, CADRE_MARGIN, cadreHtml } from './cadre-page.js'
 /**
  * What the servers of the page share — the room machine that projects it, the
  * hub that previews it: the loop's content resolved for the screen, the other

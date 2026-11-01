@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button, Hint, Panel, useToast } from '@conference-operator/components'
+import { Button, Hint, Panel, useToast, StableLabel } from '@conference-operator/components'
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import {
@@ -195,7 +195,7 @@ async function requestAll(): Promise<void> {
       </p>
       <div class="mb-2 flex flex-wrap items-center gap-2 text-sm" data-role="montage-pause">
         <Button id="btn-montage-pause" size="small" :aria-pressed="enPause" @click="togglePause">
-          {{ enPause ? 'Reprendre les rendus' : 'Mettre les rendus en pause' }}
+          <StableLabel :current="enPause ? 'Reprendre les rendus' : 'Mettre les rendus en pause'" :labels="['Reprendre les rendus', 'Mettre les rendus en pause']" />
         </Button>
         <span v-if="enPause" class="text-warn">
           En pause{{ running ? ' : le montage en cours se termine, rien d’autre ne démarre' : ' : aucun montage ne démarre' }}{{ queued > 0 ? ` · ${queued} en attente` : '' }}
@@ -275,7 +275,7 @@ async function requestAll(): Promise<void> {
                     data-role="toggle-files"
                     @click="toggle(row.key)"
                   >
-                    {{ unfolded.has(row.key) ? 'Masquer' : 'Détails' }}
+                    <StableLabel :current="unfolded.has(row.key) ? 'Masquer' : 'Détails'" :labels="['Masquer', 'Détails']" />
                   </Button>
                   <!-- Nothing named here: the room alone knows what its disk holds. -->
                   <Button

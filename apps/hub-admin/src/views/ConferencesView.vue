@@ -1,14 +1,6 @@
 <script setup lang="ts">
 import { isTransitionAllowed } from '@conference-operator/room-state'
-import {
-  Badge,
-  Button,
-  ConfirmDialog,
-  Empty,
-  Hint,
-  Panel,
-  useToast,
-} from '@conference-operator/components'
+import { Badge, Button, ConfirmDialog, Empty, Hint, Panel, useToast, StableLabel } from '@conference-operator/components'
 import type { VodStatut } from '@conference-operator/contract'
 import { timeFormatter } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
@@ -583,7 +575,7 @@ async function select(session: PlannedSession): Promise<void> {
               :data-feedback-session="selected.id"
               :title="selected.feedbackIdOverride != null ? 'Identifiant OpenFeedback corrigé' : 'Identifiant OpenFeedback'"
               @click="openFeedback(selected!)"
-            >{{ selected.feedbackIdOverride != null ? 'Identifiant ✱' : 'Identifiant' }}</Button>
+            ><StableLabel :current="selected.feedbackIdOverride != null ? 'Identifiant ✱' : 'Identifiant'" :labels="['Identifiant ✱', 'Identifiant']" /></Button>
           </div>
         </div>
 

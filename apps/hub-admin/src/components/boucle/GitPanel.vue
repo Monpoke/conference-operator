@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Button, Panel, useToast } from '@conference-operator/components'
+import { Button, Panel, useToast, StableLabel } from '@conference-operator/components'
 import { useBoucleStore } from '../../stores/boucle.js'
 import { FIELD, LABEL, SUBTITLE } from './ui.js'
 
@@ -128,7 +128,7 @@ async function importer(what: 'theme' | 'contenu'): Promise<void> {
       </div>
       <div class="mb-[11px]">
         <Button id="boucle-git-enregistrer" size="small" variant="primary" :disabled="busy != null" @click="saveSource">
-          {{ busy === 'source' ? '…' : 'Enregistrer le dépôt' }}
+          <StableLabel :current="busy === 'source' ? '…' : 'Enregistrer le dépôt'" :labels="['…', 'Enregistrer le dépôt']" />
         </Button>
       </div>
 
@@ -136,10 +136,10 @@ async function importer(what: 'theme' | 'contenu'): Promise<void> {
         <h3 :class="SUBTITLE">Importer</h3>
         <div class="mb-1.5 flex flex-wrap gap-1.5">
           <Button id="boucle-git-theme" size="small" :disabled="busy != null || touched" @click="importer('theme')">
-            {{ busy === 'theme' ? 'Import…' : 'Le thème' }}
+            <StableLabel :current="busy === 'theme' ? 'Import…' : 'Le thème'" :labels="['Import…', 'Le thème']" />
           </Button>
           <Button id="boucle-git-contenu" size="small" :disabled="busy != null || touched" @click="importer('contenu')">
-            {{ busy === 'contenu' ? 'Import…' : 'Le contenu de la boucle' }}
+            <StableLabel :current="busy === 'contenu' ? 'Import…' : 'Le contenu de la boucle'" :labels="['Import…', 'Le contenu de la boucle']" />
           </Button>
         </div>
         <p class="mb-[11px] text-xs text-dim">

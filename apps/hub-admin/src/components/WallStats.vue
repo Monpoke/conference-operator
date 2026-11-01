@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { WallStatsCount, WallStatsTopPost } from '@conference-operator/contract'
-import { Button, Empty, Hint } from '@conference-operator/components'
+import { Button, Empty, Hint, StableLabel } from '@conference-operator/components'
 import { timeAgo } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted } from 'vue'
@@ -74,7 +74,7 @@ function topLine(post: WallStatsTopPost): string {
         <template v-if="stats">Calculé {{ timeAgo(stats.generatedAt) }}</template>
       </p>
       <Button id="btn-wall-stats-refresh" size="small" :disabled="statsLoading" @click="refresh">
-        {{ statsLoading ? 'Lecture…' : 'Actualiser' }}
+        <StableLabel :current="statsLoading ? 'Lecture…' : 'Actualiser'" :labels="['Lecture…', 'Actualiser']" />
       </Button>
     </div>
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button, Panel, useToast } from '@conference-operator/components'
+import { Button, Panel, useToast, StableLabel } from '@conference-operator/components'
 import type { MontageAnalyse, MontageJobView } from '@conference-operator/contract'
 import { storeToRefs } from 'pinia'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -380,7 +380,7 @@ const FIELD = 'mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 tex
           />
           <div class="mt-2 flex flex-wrap items-center gap-1.5">
             <Button size="small" variant="primary" data-role="lecture" :disabled="parts.length === 0" @click="toggle">
-              {{ playing ? 'Pause' : 'Lecture' }}
+              <StableLabel :current="playing ? 'Pause' : 'Lecture'" :labels="['Pause', 'Lecture']" />
             </Button>
             <Button size="small" @click="goTo(positionMs - 5000, playing)">−5 s</Button>
             <Button size="small" @click="goTo(positionMs + 5000, playing)">+5 s</Button>
@@ -422,7 +422,7 @@ const FIELD = 'mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 tex
 
             <div class="mt-3 flex flex-wrap gap-1.5">
               <Button v-if="canValidate" size="small" variant="primary" data-role="valider" :disabled="saving" @click="validate">
-                {{ job?.state === 'a-valider' ? 'Valider et monter' : 'Remonter avec cette coupe' }}
+                <StableLabel :current="job?.state === 'a-valider' ? 'Valider et monter' : 'Remonter avec cette coupe'" :labels="['Valider et monter', 'Remonter avec cette coupe']" />
               </Button>
               <Button size="small" data-role="proposition" @click="reset(analyse)">Revenir à la proposition</Button>
               <Button v-if="job?.state === 'termine'" size="small" data-role="telecharger" @click="attempt(() => montages.download(job!.id), '')">Télécharger</Button>

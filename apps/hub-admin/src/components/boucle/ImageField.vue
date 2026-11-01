@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button, useToast } from '@conference-operator/components'
+import { Button, useToast, StableLabel } from '@conference-operator/components'
 import { computed, ref, watch } from 'vue'
 import { ImageRefused, useBoucleStore } from '../../stores/boucle.js'
 import { LABEL, SMALL, orNull } from './ui.js'
@@ -89,7 +89,7 @@ async function pick(event: Event): Promise<void> {
         @change="pick"
       />
       <Button size="small" :disabled="busy" title="Déposer un fichier" @click="fileInput?.click()">
-        {{ busy ? '…' : 'Fichier' }}
+        <StableLabel :current="busy ? '…' : 'Fichier'" :labels="['…', 'Fichier']" />
       </Button>
       <Button v-if="model != null" size="small" variant="danger" title="Retirer l'image" @click="model = null">
         ×

@@ -1,16 +1,6 @@
 <script setup lang="ts">
 import { BANNER_TEMPLATES, type Banner } from '@conference-operator/contract'
-import {
-  Badge,
-  Button,
-  ConfirmDialog,
-  Empty,
-  Field,
-  Hint,
-  Panel,
-  Select,
-  useToast,
-} from '@conference-operator/components'
+import { Badge, Button, ConfirmDialog, Empty, Field, Hint, Panel, Select, useToast, StableLabel } from '@conference-operator/components'
 import { timeAgo } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -441,7 +431,7 @@ async function hideBanner(): Promise<void> {
             size="small"
             @click="past.visible ? hideBanner() : replay(past.message)"
           >
-            {{ past.visible ? 'Masquer' : 'Remettre' }}
+            <StableLabel :current="past.visible ? 'Masquer' : 'Remettre'" :labels="['Masquer', 'Remettre']" />
           </Button>
         </div>
       </div>

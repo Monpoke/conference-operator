@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { ThemeInfo } from '@conference-operator/contract'
-import { Button, ConfirmDialog, Panel, useToast } from '@conference-operator/components'
+import { Button, ConfirmDialog, Panel, useToast, StableLabel } from '@conference-operator/components'
 import { useDraft } from '../../composables/draft.js'
 import { ImageRefused, useBoucleStore } from '../../stores/boucle.js'
 import SaveBar from './SaveBar.vue'
@@ -136,7 +136,7 @@ async function remove(): Promise<void> {
       <input ref="fileInput" type="file" accept=".zip,application/zip" class="hidden" data-upload="boucle-theme" @change="pick" />
       <div class="mb-[11px]">
         <Button id="boucle-theme-importer" size="small" :disabled="busy" @click="fileInput?.click()">
-          {{ busy ? 'Import…' : 'Importer un thème (.zip)' }}
+          <StableLabel :current="busy ? 'Import…' : 'Importer un thème (.zip)'" :labels="['Import…', 'Importer un thème (.zip)']" />
         </Button>
       </div>
 

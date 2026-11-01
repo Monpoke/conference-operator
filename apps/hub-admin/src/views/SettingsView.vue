@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Badge, Button, ConfirmDialog, Empty, Hint, Panel, useToast } from '@conference-operator/components'
+import { Badge, Button, ConfirmDialog, Empty, Hint, Panel, useToast, StableLabel } from '@conference-operator/components'
 import { timeAgo } from '@conference-operator/format'
 import { DEFAULT_MONTAGE_SORTIE, type MontageSortie } from '@conference-operator/contract'
 import { storeToRefs } from 'pinia'
@@ -977,7 +977,7 @@ async function confirmRemoveIntegration(): Promise<void> {
           :disabled="wallsIoBusy"
           @click="toggleWallsIoPause"
         >
-          {{ wallsIoStatus.paused ? 'Reprendre la lecture' : 'Mettre en pause la lecture' }}
+          <StableLabel :current="wallsIoStatus.paused ? 'Reprendre la lecture' : 'Mettre en pause la lecture'" :labels="['Reprendre la lecture', 'Mettre en pause la lecture']" />
         </Button>
       </div>
     </Panel>
@@ -1011,7 +1011,7 @@ async function confirmRemoveIntegration(): Promise<void> {
       </div>
       <div class="flex gap-2">
         <Button id="btn-mur-public-token" variant="primary" size="small" :disabled="murPublicBusy" @click="createMurPublicToken">
-          {{ murPublicStatus?.hasToken ? 'Remplacer le jeton' : 'Créer un jeton' }}
+          <StableLabel :current="murPublicStatus?.hasToken ? 'Remplacer le jeton' : 'Créer un jeton'" :labels="['Remplacer le jeton', 'Créer un jeton']" />
         </Button>
         <Button
           v-if="murPublicStatus?.hasToken"
@@ -1128,7 +1128,7 @@ async function confirmRemoveIntegration(): Promise<void> {
           </p>
           <div class="mt-1.5 flex gap-1.5">
             <Button size="small" :disabled="testing === item.id" @click="testIntegration(item)">
-              {{ testing === item.id ? 'Envoi…' : 'Tester' }}
+              <StableLabel :current="testing === item.id ? 'Envoi…' : 'Tester'" :labels="['Envoi…', 'Tester']" />
             </Button>
             <Button size="small" @click="openIntegration(item)">Modifier</Button>
             <Button variant="danger" size="small" @click="askRemoveIntegration(item)">Supprimer</Button>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ACCESS_ROLE_NAMES, ROLE_LABELS, parseRoles, type AccessRole } from '@conference-operator/contract'
-import { Badge, Button, Empty, Field, Hint, Panel, useToast } from '@conference-operator/components'
+import { Badge, Button, Empty, Field, Hint, Panel, useToast, StableLabel } from '@conference-operator/components'
 import { createHubAdmin, type AdminResult, type HubUser } from '@conference-operator/hub-client'
 import { computed, onMounted, ref } from 'vue'
 import { useSessionStore } from '../stores/session.js'
@@ -160,7 +160,7 @@ async function create(): Promise<void> {
           <div class="ml-auto flex gap-1.5">
             <Button size="small" @click="resetPassword(user)">Mot de passe</Button>
             <Button v-if="!isSelf(user)" size="small" @click="toggleBan(user)">
-              {{ user.banned === true ? 'Réactiver' : 'Désactiver' }}
+              <StableLabel :current="user.banned === true ? 'Réactiver' : 'Désactiver'" :labels="['Réactiver', 'Désactiver']" />
             </Button>
           </div>
         </div>

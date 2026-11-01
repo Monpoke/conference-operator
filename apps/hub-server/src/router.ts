@@ -170,7 +170,7 @@ const RESET_FORGETS = ['vod.request', 'vod.reset', 'montage.relancer', 'montage.
  * What the log must never hold in clear: the control app's PIN, the password
  * that confirms an urgent message. The entry keeps the gesture, not the secret.
  */
-const SECRET_FIELDS = new Set(['pin', 'password'])
+const SECRET_FIELDS = new Set(['pin', 'password', 'motDePasse'])
 
 export function redactSecrets(input: unknown): unknown {
   if (input == null || typeof input !== 'object' || Array.isArray(input)) return input
@@ -1669,6 +1669,20 @@ export const router = os.router({
     }),
   },
 
+  partages: {
+    list: os.partages.list.use(operatorCan('vod:read')).handler(({ context }) => context.services.partages.list(sessionTitle(context))),
+    create: os.partages.create.use(operatorCan('vod:manage')).handler(({ input, context }) =>
+      context.services.partages.create(
+        { sessionId: input.sessionId, motDePasse: input.motDePasse, createdBy: context.operator?.email ?? null },
+        sessionTitle(context),
+      ),
+    ),
+    remove: os.partages.remove.use(operatorCan('vod:manage')).handler(({ input, context }) => {
+      context.services.partages.remove(input.id)
+      return { ok: true as const }
+    }),
+  },
+
   incidents: {
     list: os.incidents.list.use(operatorCan('room:read')).handler(({ context }) => context.services.incidents.list()),
   },
@@ -2450,6 +2464,12 @@ function attachCapture(
  * lets it through: that is how an OpenFeedback project "set to nothing" silently
  * overwrote the fallback and produced `https://openfeedback.io///…` addresses.
  */
+/** A talk's title in the active program. */
+function sessionTitle(context: Pick<HubContext, 'services'>): (sessionId: string) => string | null {
+  const sessions = context.services.programs.active()?.program.sessions ?? []
+  return (sessionId) => sessions.find((session) => session.id === sessionId)?.title ?? null
+}
+
 function filled(value: string | null | undefined): string | null {
   const clean = value?.trim() ?? ''
   return clean === '' ? null : clean

@@ -1,4 +1,4 @@
-import { randomBytes, scryptSync } from 'node:crypto'
+import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 
 /**
  * The control app's PIN, hashed for the rooms.
@@ -19,6 +19,14 @@ export function hashPin(pin: string): string {
   const salt = randomBytes(16)
   const hash = scryptSync(pin, salt, KEY_LENGTH, { N: COST })
   return `scrypt$${COST}$${salt.toString('base64')}$${hash.toString('base64')}`
+}
+
+/** Whether this secret is the one `hashPin` hashed. */
+export function verifyPin(pin: string, stored: string): boolean {
+  const [, cost, salt, hash] = stored.split('$')
+  if (cost == null || salt == null || hash == null) return false
+  const expected = Buffer.from(hash, 'base64')
+  return timingSafeEqual(scryptSync(pin, Buffer.from(salt, 'base64'), expected.length, { N: Number(cost) }), expected)
 }
 
 /** 4 to 12 digits: typed on a control machine's keyboard, in a hurry. */

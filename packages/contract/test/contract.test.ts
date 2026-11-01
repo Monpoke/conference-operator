@@ -156,7 +156,8 @@ describe('contract surface', () => {
       // A surface of its own, and not one more mode on the room screen: the
       // banner overlays the video where a screen message replaces everything.
       'overlay',
-      'program',
+       'partages',
+     'program',
       // Notifications that survive closing the console: supervision gets watched
       // on a phone tucked in a pocket.
       'push',

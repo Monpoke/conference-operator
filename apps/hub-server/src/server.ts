@@ -51,6 +51,8 @@ import {
 } from './services/social.js'
 import { WallsIoConfig, wallsioSource } from './services/wallsio.js'
 import { WallStatsService } from './services/wall-stats.js'
+import { PartagesService } from './services/partages.js'
+import { partageRoutes } from './partage-routes.js'
 import { OpenFeedbackVotesService } from './services/openfeedback.js'
 import { IncidentsService, StatistiquesService } from './services/statistiques.js'
 import { migrateLegacyMur } from './services/legacy-mur.js'
@@ -159,6 +161,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     statistiques: new StatistiquesService(orm),
     incidents: new IncidentsService(orm),
     openFeedbackVotes: new OpenFeedbackVotesService(),
+    partages: new PartagesService(orm, config.publicUrl),
     // Bound to Fastify's log once the server exists, below.
     log: () => undefined,
     questions: new QuestionService(orm),
@@ -529,6 +532,8 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     })
     if (!matched) await reply.status(404).send({ error: 'procédure inconnue' })
   })
+
+  void app.register(partageRoutes(services, config.publicUrl))
 
   app.get('/health', async () => ({ ok: true, serverTime: new Date().toISOString() }))
 

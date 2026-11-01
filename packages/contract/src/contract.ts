@@ -76,6 +76,7 @@ import {
   integrationUpdateSchema,
   integrationViewSchema,
 } from './integrations.js'
+import { partageCreationSchema, partageVideoSchema } from './partages.js'
 import { roomIncidentSchema, statistiquesSchema, statistiquesVotesSchema } from './statistiques.js'
 import { auditEntrySchema, auditPageQuerySchema, auditPageSchema, auditQuerySchema } from './audit.js'
 
@@ -1074,6 +1075,13 @@ export const contract = {
    * The audit log: what operators did through the hub. Newest first, a page at a
    * time. Reserved to `audit:read` — who did what is not everyone's to read.
    */
+  partages: {
+    /** The pages opening edited videos to outsiders. */
+    list: oc.output(z.array(partageVideoSchema)),
+    create: oc.input(partageCreationSchema).output(partageVideoSchema),
+    remove: oc.input(z.object({ id: z.string() })).output(z.object({ ok: z.literal(true) })),
+  },
+
   incidents: {
     /** What the rooms reported going wrong, newest first. Admin. */
     list: oc.output(z.array(roomIncidentSchema)),

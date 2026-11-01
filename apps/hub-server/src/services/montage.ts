@@ -11,6 +11,7 @@ import type {
   MontageEtape,
   MontagePhase,
   MontageRegie,
+  MontageHabillagePrise,
   MontageSortie,
   MontageJobView,
   MontageLease,
@@ -87,7 +88,7 @@ export class MontageService {
     /** `null` when no storage is configured: nothing can be edited then. */
     private readonly vod: () => VodService | null,
     /** What a talk's intro and outro show, resolved from the active program. */
-    private readonly habillage: (sessionId: string) => VodHabillage,
+    private readonly habillage: (sessionId: string, sidecarUploadId?: string | null) => VodHabillage,
     private readonly now: () => Date = () => new Date(),
     private readonly onLog: (level: 'info' | 'warn', message: string, context?: object) => void = () => {},
     /** The talk's title in the active program, for the console's list. */
@@ -98,8 +99,10 @@ export class MontageService {
     private readonly montageAuto: () => MontageAuto = () => 'si-confiance-haute',
     /** The published videos' format. */
     private readonly montageSortie: () => MontageSortie = () => DEFAULT_MONTAGE_SORTIE,
-    /** The card to draw again when the talk's speakers were corrected; `null` otherwise. */
-    private readonly cadreFor: (sessionId: string) => MontageClaim['cadre'] = () => null,
+    /** The card to draw again when the take's dressing was set; `null` otherwise. */
+    private readonly cadreFor: (sessionId: string, sidecarUploadId: string) => MontageClaim['cadre'] = () => null,
+    /** What the console set for a take's video. */
+    private readonly habillagePrise: (sidecarUploadId: string) => MontageHabillagePrise | null = () => null,
   ) {}
 
   /* ---------- Workers ---------- */
@@ -206,11 +209,15 @@ export class MontageService {
    * replaces the one still waiting rather than editing both. A job already
    * being rendered is left to finish; the new take waits behind it.
    */
-  enqueue(input: { sessionId: string; roomId: string; sidecarUploadId: string }): MontageJobView {
+  enqueue(input: { sessionId: string; roomId: string; sidecarUploadId: string }, thisTakeOnly = false): MontageJobView {
     const waiting = this.db
       .select()
       .from(montageJob)
-      .where(and(eq(montageJob.sessionId, input.sessionId), eq(montageJob.state, 'attente')))
+      .where(and(
+        eq(montageJob.sessionId, input.sessionId),
+        eq(montageJob.state, 'attente'),
+        thisTakeOnly ? eq(montageJob.sidecarUploadId, input.sidecarUploadId) : undefined,
+      ))
       .get()
     if (waiting != null) {
       this.db
@@ -294,13 +301,13 @@ export class MontageService {
         sessionId: job.sessionId,
         roomId: job.roomId,
         sidecarUrl: vod.presignGet(sidecar.objectKey),
-        habillage: this.habillage(job.sessionId),
+        habillage: this.habillage(job.sessionId, job.sidecarUploadId),
         bail,
         phase,
         regie: phase === 'analyse' ? this.regieFor(job.sessionId, job.roomId) : null,
         coupe: phase === 'montage' ? parseJson<MontageCoupe>(job.coupeJson) : null,
         sortie: this.montageSortie(),
-        cadre: phase === 'montage' ? this.cadreFor(job.sessionId) : null,
+        cadre: phase === 'montage' ? this.cadreFor(job.sessionId, job.sidecarUploadId) : null,
       }
     }
     return null
@@ -595,8 +602,8 @@ export class MontageService {
   }
 
   /** What the talk's intro and outro will show — the console previews it. */
-  habillageFor(sessionId: string): VodHabillage {
-    return this.habillage(sessionId)
+  habillageFor(sessionId: string, sidecarUploadId?: string | null): VodHabillage {
+    return this.habillage(sessionId, sidecarUploadId)
   }
 
   /**
@@ -620,8 +627,20 @@ export class MontageService {
     return rows.map((row) => this.view(row))
   }
 
-  /** Edits the talk's latest take again — after a mark was corrected, a logo changed. */
-  async relaunch(sessionId: string): Promise<MontageJobView> {
+  /**
+   * Edits a take again — after a mark was corrected, a logo changed. The talk's
+   * latest, unless a job names another: a talk's takes can be separate videos.
+   */
+  async relaunch(sessionId: string, jobId?: string): Promise<MontageJobView> {
+    if (jobId != null) {
+      const job = this.job(jobId)
+      if (job.sessionId !== sessionId) throw new MontageError('NOT_FOUND', `montage inconnu : ${jobId}`)
+      for (const active of this.db.select().from(montageJob)
+        .where(and(eq(montageJob.sidecarUploadId, job.sidecarUploadId), inArray(montageJob.state, ['attente', 'en-cours']))).all()) {
+        await this.cancel(active.id)
+      }
+      return this.enqueue({ sessionId, roomId: job.roomId, sidecarUploadId: job.sidecarUploadId }, true)
+    }
     const vod = this.requireVod()
     const sidecar = vod.latestSidecar(sessionId)
     if (sidecar == null) {
@@ -738,6 +757,8 @@ export class MontageService {
     return {
       id: row.id,
       sessionId: row.sessionId,
+      sidecarUploadId: row.sidecarUploadId,
+      habillagePrise: this.habillagePrise(row.sidecarUploadId),
       title: this.titleOf(row.sessionId),
       roomId: row.roomId,
       state: row.state as MontageState,

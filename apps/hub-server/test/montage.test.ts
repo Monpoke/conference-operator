@@ -385,6 +385,21 @@ describe('analysis, then montage', () => {
     expect(corrected.claim(worker)!.cadre).toBeNull()
   })
 
+  it('keeps two takes of a talk as two videos, each with its own card', async () => {
+    const first = await uploaded(SIDECAR, 'sidecar')
+    const second = await uploaded(SIDECAR.replace('.json', '-b.json'), 'sidecar')
+    const dressed = new MontageService(db, () => vod, () => HABILLAGE, () => clock, undefined, undefined, undefined, undefined, undefined,
+      (_session, take) => (take === first ? { salle: 'Amphi' } : null))
+    dressed.enqueue({ sessionId: 'sess-1', roomId: TRACK_1, sidecarUploadId: first })
+    const other = dressed.enqueue({ sessionId: 'sess-1', roomId: TRACK_1, sidecarUploadId: second }, true)
+    expect(dressed.list('sess-1')).toHaveLength(2)
+
+    // Editing one again leaves the other where it is.
+    const again = await dressed.relaunch('sess-1', other.id)
+    expect(again.sidecarUploadId).toBe(second)
+    expect(dressed.list('sess-1').filter((job) => job.state === 'attente').map((job) => job.sidecarUploadId).sort()).toEqual([first, second].sort())
+  })
+
   it('offers again at once a job its worker died on, until it has killed too many', async () => {
     const { worker, claim } = await analysing()
     await montage.fail(worker, claim, 'worker arrêté', true, true)

@@ -239,7 +239,7 @@ describe('hub settings', () => {
       vodPolitique: DEFAULT_VOD_POLICY,
       montageAuto: 'si-confiance-haute',
       montageSortie: { hauteur: 1080, fps: 30, crf: 20 },
-      montageOrateurs: {},
+      montageHabillages: {},
       sallesSansCaptation: [],
       // The reference loop, until the console lays out another.
       boucle: DEFAULT_BOUCLE,
@@ -263,7 +263,7 @@ describe('hub settings', () => {
       vodPolitique: DEFAULT_VOD_POLICY,
       montageAuto: 'si-confiance-haute',
       montageSortie: { hauteur: 1080, fps: 30, crf: 20 },
-      montageOrateurs: {},
+      montageHabillages: {},
       sallesSansCaptation: [],
       boucle: DEFAULT_BOUCLE,
     })

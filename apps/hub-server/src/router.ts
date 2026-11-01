@@ -499,7 +499,6 @@ export const router = os.router({
                 : (room?.name ?? programRoomNames.get(session.roomId) ?? session.roomId),
             kind: session.kind,
             sansCaptation: session.roomId != null && sansCaptation.has(session.roomId),
-            orateursVideo: context.services.settings.get().montageOrateurs[session.id] ?? null,
             // No link on a break: nobody rates a lunch, and a dead QR code
             // scanned by the audience costs more than an empty cell.
             feedbackUrl:
@@ -2030,7 +2029,7 @@ export const router = os.router({
     ),
 
     relancer: os.montage.relancer.use(operatorCan('vod:manage')).handler(({ input, context }) =>
-      onMontage(context, () => context.services.montage.relaunch(input.sessionId)),
+      onMontage(context, () => context.services.montage.relaunch(input.sessionId, input.jobId)),
     ),
 
     annuler: os.montage.annuler.use(operatorCan('vod:manage')).handler(({ input, context }) =>

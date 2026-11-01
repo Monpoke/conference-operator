@@ -2,7 +2,7 @@ import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify'
 import fastifyProxy from '@fastify/http-proxy'
 import fastifyStatic from '@fastify/static'
 import { dirname, join } from 'node:path'
-import { consolePaths, CONTROL_PATH, controlRoomIdFromPath, type MontageOrateur, type VodHabillage } from '@conference-operator/contract'
+import { consolePaths, CONTROL_PATH, controlRoomIdFromPath, type MontageHabillagePrise, type VodHabillage } from '@conference-operator/contract'
 import { WebSocketServer, type WebSocket as NodeWebSocket } from 'ws'
 import { RPCHandler as FastifyRPCHandler } from '@orpc/server/fastify'
 import { RPCHandler as WebSocketRPCHandler } from '@orpc/server/websocket'
@@ -55,6 +55,7 @@ import { previewPayload, renderBouclePreview, sansOfQuery } from './pages/boucle
 import {
   availableFonts,
   buildVodHabillage,
+  cadreHtml,
   readFont,
   renderVodDocument,
   resolveFontsFolder,
@@ -179,7 +180,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     montage: new MontageService(
       orm,
       () => services.vod,
-      (sessionId) => withOrateurs(vodHabillageFor(services, config.publicUrl, sessionId), settings.get().montageOrateurs[sessionId]),
+      (sessionId, sidecarUploadId) => withPrise(vodHabillageFor(services, config.publicUrl, sessionId), sidecarUploadId == null ? null : settings.get().montageHabillages[sidecarUploadId]),
       () => new Date(clock.now()),
       (level, message, context) => services.log(level, message, context),
       (sessionId) => programs.active()?.program.sessions.find((session) => session.id === sessionId)?.title ?? null,
@@ -192,12 +193,12 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       },
       () => settings.get().montageAuto,
       () => settings.get().montageSortie,
-      (sessionId) => {
-        if (settings.get().montageOrateurs[sessionId] == null) return null
-        const session = programs.active()?.program.sessions.find((candidate) => candidate.id === sessionId)
-        const roomId = session?.roomId
-        return { salle: roomId == null ? null : (services.rooms.get(roomId)?.name ?? null) }
+      (sessionId, sidecarUploadId) => {
+        const prise = settings.get().montageHabillages[sidecarUploadId]
+        if (prise == null) return null
+        return { salle: prise.salle ?? salleOf(services, sessionId) }
       },
+      (sidecarUploadId) => settings.get().montageHabillages[sidecarUploadId] ?? null,
     ),
     clock,
     mode: config.mode,
@@ -848,7 +849,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
    * montage — the same page the worker captures frame by frame. Behind the
    * operator's session: the talk's content is public, but the page is a tool.
    */
-  app.get<{ Params: { sessionId: string }; Querystring: { clip?: string } }>('/montage/apercu/:sessionId', async (request, reply) => {
+  app.get<{ Params: { sessionId: string }; Querystring: { clip?: string; prise?: string } }>('/montage/apercu/:sessionId', async (request, reply) => {
     reply.header('content-type', 'text/html; charset=utf-8')
     reply.header('cache-control', 'no-store')
     try {
@@ -862,9 +863,18 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
           '<a href="/admin/vod">console</a> pour voir l\'aperçu du montage.</body></html>',
       )
     }
+    const { prise } = request.query
+    const habillage = services.montage.habillageFor(request.params.sessionId, prise)
+    if (request.query.clip === 'cadre') {
+      return reply.send(cadreHtml({
+        habillage,
+        salle: (prise == null ? null : settings.get().montageHabillages[prise]?.salle) ?? salleOf(services, request.params.sessionId),
+        theme: currentTheme(),
+      }))
+    }
     return reply.send(renderVodDocument({
       clip: request.query.clip === 'outro' ? 'outro' : 'intro',
-      habillage: services.montage.habillageFor(request.params.sessionId),
+      habillage,
       fonts: fontsFolder == null ? undefined : { base: '/boucle/polices', files: availableFonts(fontsFolder) },
       theme: currentTheme(),
     }))
@@ -1455,14 +1465,27 @@ function toWebRequest(
  * A talk the program does not know gets an empty title: the worker completes
  * it from the take's sidecar, which it reads anyway.
  */
-/** The speakers set in the console, over the program's. A photo follows its person's name. */
-function withOrateurs(habillage: VodHabillage, orateurs: MontageOrateur[] | undefined): VodHabillage {
-  if (orateurs == null) return habillage
+/** What the console set for a take, over the program. A photo follows its person's name. */
+function withPrise(habillage: VodHabillage, prise: MontageHabillagePrise | null | undefined): VodHabillage {
+  if (prise == null) return habillage
   const photos = new Map(habillage.speakers.map((person) => [person.name.toLowerCase(), person.photoUrl]))
   return {
     ...habillage,
-    speakers: orateurs.map((person) => ({ ...person, photoUrl: photos.get(person.name.toLowerCase()) ?? null })),
+    talk: {
+      title: prise.title ?? habillage.talk.title,
+      category: prise.category ?? habillage.talk.category,
+      color: prise.color ?? habillage.talk.color,
+    },
+    speakers: prise.speakers == null
+      ? habillage.speakers
+      : prise.speakers.map((person) => ({ ...person, photoUrl: photos.get(person.name.toLowerCase()) ?? null })),
   }
+}
+
+/** The room a talk is in, as its card names it. */
+function salleOf(services: Services, sessionId: string): string | null {
+  const roomId = services.programs.active()?.program.sessions.find((session) => session.id === sessionId)?.roomId
+  return roomId == null ? null : (services.rooms.get(roomId)?.name ?? null)
 }
 
 function vodHabillageFor(services: Services, publicUrl: string, sessionId: string): VodHabillage {

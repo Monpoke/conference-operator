@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DisplayPayload } from '@conference-operator/contract'
-import { Button } from '@conference-operator/components'
+import { Button, StableLabel } from '@conference-operator/components'
 import { time } from '@conference-operator/format'
 import { computed } from 'vue'
 import { useActionsStore } from '../stores/actions.js'
@@ -81,7 +81,7 @@ function isOnAir(text: string): boolean {
           })
         "
       >
-        {{ isOnAir(question.text) ? 'À l’antenne' : 'Afficher' }}
+        <StableLabel :current="isOnAir(question.text) ? 'À l’antenne' : 'Afficher'" :labels="['À l’antenne', 'Afficher']" />
       </Button>
     </div>
   </div>

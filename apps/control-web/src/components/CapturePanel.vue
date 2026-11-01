@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ControlDiagnostics, MarkerRole, ObsState } from '@conference-operator/contract'
 import { NO_EDITING_MARKS } from '@conference-operator/contract'
-import { Button, Key, Panel } from '@conference-operator/components'
+import { Button, Key, Panel, StableLabel } from '@conference-operator/components'
 import { shortDuration } from '@conference-operator/format'
 import { computed, ref } from 'vue'
 import { useActionsStore } from '../stores/actions.js'
@@ -190,7 +190,7 @@ defineExpose({ toggleRecording, mark, anchor })
         :title="streamTitle"
         @click="toggleStream()"
       >
-        {{ streaming ? 'Arrêter la diffusion' : 'Diffuser' }}
+        <StableLabel :current="streaming ? 'Arrêter la diffusion' : 'Diffuser'" :labels="['Arrêter la diffusion', 'Diffuser']" />
       </Button>
     </div>
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DisplayPayload } from '@conference-operator/contract'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Button, Key } from '@conference-operator/components'
+import { Button, Key, StableLabel } from '@conference-operator/components'
 import { useGatewayStore } from '../stores/gateway.js'
 import { useHostStore } from '../stores/host.js'
 import CpuIndicator from './CpuIndicator.vue'
@@ -176,7 +176,7 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', syncFulls
       :aria-label="fullscreen ? 'Quitter le plein écran' : 'Plein écran'"
       @click="toggleFullscreen()"
     >
-      {{ fullscreen ? '🗗' : '⛶' }}
+      <StableLabel :current="fullscreen ? '🗗' : '⛶'" :labels="['🗗', '⛶']" />
     </Button>
 
     <div v-if="remote !== true" class="flex shrink-0 items-center gap-1.5">

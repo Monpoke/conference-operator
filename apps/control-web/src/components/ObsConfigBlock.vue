@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { VisibleConfig, ObsInstance, ObsState } from '@conference-operator/contract'
-import { Button, Panel } from '@conference-operator/components'
+import { Button, Panel, StableLabel } from '@conference-operator/components'
 import { computed, ref } from 'vue'
 import { ROLES, type ConfigDraft } from '../stores/config.js'
 import SimulatedBadge from './SimulatedBadge.vue'
@@ -140,7 +140,7 @@ const FIELD =
         "
         @click="emit('connect')"
       >
-        {{ connected ? 'Reconnecter' : 'Connecter' }}
+        <StableLabel :current="connected ? 'Reconnecter' : 'Connecter'" :labels="['Reconnecter', 'Connecter']" />
       </Button>
     </div>
 

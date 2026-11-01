@@ -16,7 +16,7 @@ export interface Mot {
 }
 
 /** How many words the cloud holds at most: past that, they are too small to read. */
-export const MAX_MOTS = 200
+export const MAX_MOTS = 250
 
 /**
  * Words that say nothing on their own, French and English: without them, « une »,
@@ -70,6 +70,7 @@ const SCRIPT = `(() => {
   let signature = JSON.stringify(mots)
   const hash = (s) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h) }
   const CELLULE = 3
+  const MIN_PX = 9
   const ANGLES = [0, 0, 0, 0, 0, 0, 90, -90, 90, -45, 45]
   const toile = document.createElement('canvas')
   const ctx = toile.getContext('2d', { willReadFrequently: true })
@@ -97,16 +98,12 @@ const SCRIPT = `(() => {
     }
     return [...cellules].map((c) => c.split(',').map(Number))
   }
-  function poser() {
-    zone.replaceChildren()
-    const W = zone.clientWidth, H = zone.clientHeight
-    if (mots.length === 0 || W === 0 || H === 0) return
+  // One pass at a given size of the biggest word: the words it found room for.
+  function essai(grand, W, H, police) {
     const cols = Math.ceil(W / CELLULE), rows = Math.ceil(H / CELLULE)
     const grille = new Uint8Array(cols * rows)
-    const police = getComputedStyle(zone).fontFamily
     const max = mots[0].n, min = mots[mots.length - 1].n
-    const grand = Math.max(28, Math.min(W, H) / 5)
-    const rapport = W / H
+    const petit = Math.max(MIN_PX, grand / 7)
     const limite = Math.max(cols, rows)
     function trouver(cellules) {
       const libre = (x, y) => cellules.every(([dx, dy]) => {
@@ -114,34 +111,54 @@ const SCRIPT = `(() => {
         return cx >= 2 && cy >= 2 && cx < cols - 2 && cy < rows - 2 && !grille[cy * cols + cx]
       })
       for (let a = 0, r = 0; r < limite; a += 1.5 / Math.max(r, 1), r = 0.4 * a) {
-        const x = Math.round(cols / 2 + r * Math.cos(a) * Math.max(1, rapport))
-        const y = Math.round(rows / 2 + r * Math.sin(a) * Math.max(1, 1 / rapport))
+        // A spiral with square turns: a round one leaves the corners empty.
+        const carre = Math.max(Math.abs(Math.cos(a)), Math.abs(Math.sin(a)))
+        const x = Math.round(cols / 2 + r * Math.cos(a) / carre)
+        const y = Math.round(rows / 2 + r * Math.sin(a) / carre)
         if (libre(x, y)) return [x, y]
       }
       return null
     }
+    const places = []
     mots.forEach((m, i) => {
-      const taille = 12 + (grand - 12) * Math.pow((m.n - min) / ((max - min) || 1), 0.85)
+      const taille = petit + (grand - petit) * Math.pow((m.n - min) / ((max - min) || 1), 0.85)
       // The longest big words stay flat: tilted, a hashtag would cross the whole cloud.
       const angle = i === 0 || (m.mot.length > 9 && taille > grand / 2) ? 0 : ANGLES[hash(m.mot) % ANGLES.length]
-      for (const echelle of [1, 0.85, 0.7, 0.55, 0.42, 0.3]) {
+      for (const echelle of [1, 0.85, 0.7, 0.55, 0.42]) {
         const px = Math.round(taille * echelle)
-        if (px < 11) break
+        if (px < MIN_PX) break
         const cellules = forme(m.mot, px, angle, police)
         const place = trouver(cellules)
         if (place == null) continue
         for (const [dx, dy] of cellules) grille[(place[1] + dy) * cols + place[0] + dx] = 1
-        const span = document.createElement('span')
-        span.className = 'mot'
-        span.textContent = m.mot
-        span.title = m.mot + ' : ' + m.n
-        span.style.color = 'var(--mot-' + (hash(m.mot) % 10) + ')'
-        span.style.fontSize = px + 'px'
-        span.style.transform = 'translate(' + (place[0] * CELLULE) + 'px,' + (place[1] * CELLULE) + 'px) translate(-50%,-50%) rotate(' + angle + 'deg)'
-        zone.append(span)
+        places.push({ m, px, angle, x: place[0] * CELLULE, y: place[1] * CELLULE })
         return
       }
     })
+    return places
+  }
+  function poser() {
+    zone.replaceChildren()
+    const W = zone.clientWidth, H = zone.clientHeight
+    if (mots.length === 0 || W === 0 || H === 0) return
+    const police = getComputedStyle(zone).fontFamily
+    // Smaller and smaller until every word fits, rather than leaving words out.
+    let retenu = []
+    for (const part of [5.5, 7, 9, 11, 14]) {
+      const places = essai(Math.max(24, Math.min(W, H) / part), W, H, police)
+      if (places.length > retenu.length) retenu = places
+      if (retenu.length === mots.length) break
+    }
+    for (const { m, px, angle, x, y } of retenu) {
+      const span = document.createElement('span')
+      span.className = 'mot'
+      span.textContent = m.mot
+      span.title = m.mot + ' : ' + m.n
+      span.style.color = 'var(--mot-' + (hash(m.mot) % 10) + ')'
+      span.style.fontSize = px + 'px'
+      span.style.transform = 'translate(' + x + 'px,' + y + 'px) translate(-50%,-50%) rotate(' + angle + 'deg)'
+      zone.append(span)
+    }
   }
   let attente = null
   addEventListener('resize', () => { clearTimeout(attente); attente = setTimeout(poser, 200) })
@@ -190,24 +207,26 @@ export function renderMots(data: MurPublic, mots: readonly Mot[]): string {
   :root {
     --c-nuit:#10121a; --c-creme:#f8f9fa; --c-violet:#3b5bdb; --c-magenta:#7048e8; --c-cyan:#15aabf; --c-orange:#fcc419;
     --f-texte:system-ui, sans-serif;
+    --fond:var(--c-nuit);
     ${variables(data.theme)}
-    --mot-0:#5b6ce8; --mot-1:#3fc1b8; --mot-2:#f5a623; --mot-3:#9aa1a6; --mot-4:#1890ff;
-    --mot-5:#37c978; --mot-6:#e0604f; --mot-7:#a78fd8; --mot-8:#c94f9f; --mot-9:#12a88f;
+    --mot-0:#8c9bff; --mot-1:#5fe0d5; --mot-2:#ffc145; --mot-3:#c5cbd0; --mot-4:#5cb4ff;
+    --mot-5:#62e39b; --mot-6:#ff8a78; --mot-7:#c4afee; --mot-8:#f183c8; --mot-9:#f8f9fa;
   }
-  html, body { margin: 0; height: 100%; background: #fff; color: var(--c-nuit); font-family: var(--f-texte); }
-  body { display: flex; flex-direction: column; }
+  html { background: var(--c-nuit); }
+  html, body { margin: 0; min-height: 100%; color: var(--c-creme); font-family: var(--f-texte); }
+  body { min-height: 100dvh; background: var(--fond); background-attachment: fixed; }
   header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 18px 24px 6px; }
   h1 { margin: 0; font-size: clamp(20px, 3vw, 32px); }
-  header a { color: var(--c-nuit); font-weight: 700; }
-  .hashtag { color: var(--c-violet); font-weight: 800; }
-  #nuage { position: relative; flex: 1; margin: 8px 16px 16px; overflow: hidden; }
+  header a { color: var(--c-creme); font-weight: 700; }
+  .hashtag { color: var(--c-orange); font-weight: 800; }
+  #nuage { position: relative; width: min(100% - 16px, 100dvh - 96px); aspect-ratio: 1; margin: 4px auto 12px; overflow: hidden; }
   .mot { position: absolute; left: 0; top: 0; white-space: nowrap; font-weight: 600; line-height: 1; cursor: default; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 </style>
 </head>
 <body>
 <header>
-  <h1>Les mots du mur ${data.hashtag ? `<span class="hashtag">${escapeHtml(data.hashtag)}</span>` : ''}</h1>
+  <h1>Les mots du mur ${data.hashtag ? `<span class="hashtag">${escapeHtml(data.hashtag.startsWith('#') ? data.hashtag : `#${data.hashtag}`)}</span>` : ''}</h1>
   <a href="/">Retour au mur</a>
 </header>
 <main id="nuage" aria-label="Les mots les plus présents sur le mur, les plus fréquents en plus grand"></main>

@@ -27,8 +27,8 @@ export const useMontageStore = defineStore('montage', () => {
     return await session.client.rpc.montage.list({ sessionId })
   }
 
-  async function relaunch(sessionId: string): Promise<MontageJobView> {
-    const job = await session.client.rpc.montage.relancer({ sessionId })
+  async function relaunch(sessionId: string, jobId?: string): Promise<MontageJobView> {
+    const job = await session.client.rpc.montage.relancer({ sessionId, jobId })
     await load()
     return job
   }
@@ -113,6 +113,12 @@ export function minutes(ms: number | null): string {
 }
 
 /** Where a job stands, in one line. */
+/** A take's length once cut, in minutes: what tells two takes of a talk apart. */
+export function cutMinutes(job: MontageJobView): number | null {
+  const cut = job.coupe ?? job.analyse?.proposition
+  return cut == null ? null : Math.round((cut.finMs - cut.debutMs) / 60000)
+}
+
 export function describe(job: MontageJobView): string {
   if (job.state === 'en-cours' && job.silencieuxDepuisMs != null) {
     return `sans nouvelles du worker depuis ${Math.round(job.silencieuxDepuisMs / 60_000)} min : il repartira de lui-même`

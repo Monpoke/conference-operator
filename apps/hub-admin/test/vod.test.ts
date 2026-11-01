@@ -371,4 +371,22 @@ describe('a cut to validate, from a phone', () => {
     await flushPromises()
     expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Le talk')
   })
+
+  it('relaunches the take of its own line, and tells two takes apart', async () => {
+    await mountView()
+    const job = {
+      id: 'job-1', sessionId: 'talk-1', title: 'Le talk', state: 'a-valider', tentatives: 1,
+      erreur: null, worker: null, marquesManquantes: [], progression: null, coupe: { debutMs: 0, finMs: 480000 },
+    }
+    const store = useMontageStore()
+    store.jobs = [job, { ...job, id: 'job-2', coupe: { debutMs: 0, finMs: 2760000 } }] as never
+    const relaunch = vi.spyOn(store, 'relaunch').mockResolvedValue(job as never)
+    await flushPromises()
+
+    const line = document.querySelector('[data-montage="job-1"]')!
+    expect(line.querySelector('[data-role="montage-duree"]')?.textContent).toContain('8 min')
+    expect(document.querySelector('[data-montage="job-2"] [data-role="montage-duree"]')?.textContent).toContain('46 min')
+    ;([...line.querySelectorAll('button')].find((button) => button.textContent?.includes('Relancer')) as HTMLElement).click()
+    expect(relaunch).toHaveBeenCalledWith('talk-1', 'job-1')
+  })
 })

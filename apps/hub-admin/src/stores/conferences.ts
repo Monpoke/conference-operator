@@ -1,4 +1,4 @@
-import type { MontageOrateur, VodStatut } from '@conference-operator/contract'
+import type { MontageHabillagePrise, MontageOrateur, VodStatut } from '@conference-operator/contract'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { useSessionStore } from './session.js'
@@ -31,7 +31,6 @@ export interface PlannedSession {
   /** In a room nobody records. */
   sansCaptation?: boolean
   /** The speakers set for its video, when the program is wrong. */
-  orateursVideo?: MontageOrateur[] | null
   speakers: string[]
   startsAt: string
   endsAt?: string | null
@@ -73,6 +72,20 @@ export function parseOrateurs(text: string): MontageOrateur[] {
     .map((line) => line.split('|').map((part) => part.trim()))
     .filter(([name]) => name != null && name !== '')
     .map(([name, company]) => ({ name: name!, company: company == null || company === '' ? null : company }))
+}
+
+/** The take's form as the hub keeps it. Everything empty: back to the program. */
+export function habillageFromForm(form: { title: string; category: string; color: string; salle: string; speakers: string }): MontageHabillagePrise | null {
+  const orNull = (text: string) => (text.trim() === '' ? null : text.trim())
+  const speakers = parseOrateurs(form.speakers)
+  const prise = {
+    title: orNull(form.title),
+    category: orNull(form.category),
+    color: orNull(form.color),
+    salle: orNull(form.salle),
+    speakers: speakers.length === 0 ? null : speakers,
+  }
+  return Object.values(prise).every((value) => value == null) ? null : prise
 }
 
 export const formatOrateurs = (orateurs: readonly MontageOrateur[]): string =>
@@ -120,14 +133,13 @@ export const useConferencesStore = defineStore('conferences', () => {
     planning.value = plan as Planning
   }
 
-  /** The speakers of a talk's video; none gives it back to the program. */
-  async function setOrateursVideo(sessionId: string, orateurs: MontageOrateur[]): Promise<void> {
-    const { montageOrateurs } = (await session.client.rpc.settings.get()) as { montageOrateurs?: Record<string, MontageOrateur[]> }
-    const next = { ...(montageOrateurs ?? {}) }
-    if (orateurs.length === 0) delete next[sessionId]
-    else next[sessionId] = orateurs
-    await session.client.rpc.settings.update({ montageOrateurs: next })
-    await load()
+  /** What one take's video shows; `null` gives it back to the program. */
+  async function setHabillagePrise(sidecarUploadId: string, prise: MontageHabillagePrise | null): Promise<void> {
+    const { montageHabillages } = (await session.client.rpc.settings.get()) as { montageHabillages?: Record<string, MontageHabillagePrise> }
+    const next = { ...(montageHabillages ?? {}) }
+    if (prise == null) delete next[sidecarUploadId]
+    else next[sidecarUploadId] = prise
+    await session.client.rpc.settings.update({ montageHabillages: next })
   }
 
   /** Start, end, put back as upcoming — the lifecycle table decides. */
@@ -212,7 +224,7 @@ export const useConferencesStore = defineStore('conferences', () => {
     vodFolder,
     requestVod,
     vodStatuts,
-    setOrateursVideo,
+    setHabillagePrise,
   }
 })
 

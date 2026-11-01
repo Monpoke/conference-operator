@@ -3,7 +3,7 @@ import { Button, Field, Hint, Panel, useToast } from '@conference-operator/compo
 import { DEPLOYMENT_WORKER_ID, type MontageJobView } from '@conference-operator/contract'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
-import { MONTAGE_STATES, describe, useMontageStore } from '../stores/montage.js'
+import { MONTAGE_STATES, describe, useMontageStore, cutMinutes } from '../stores/montage.js'
 import { useConferencesStore, type PlannedSession } from '../stores/conferences.js'
 import VodFolderDialog from './VodFolderDialog.vue'
 
@@ -31,8 +31,9 @@ const toValidate = computed(() => jobs.value.filter((job) => job.state === 'a-va
 const conferences = useConferencesStore()
 const folderOpen = ref(false)
 const folderSession = ref<PlannedSession | null>(null)
+const folderPrise = ref<string | null>(null)
 const zone = computed(() => conferences.planning?.timezone ?? 'Europe/Paris')
-async function openFolder(sessionId: string): Promise<void> {
+async function openFolder(sessionId: string, prise: string): Promise<void> {
   if (conferences.planning == null) await conferences.load()
   const session = conferences.planning?.sessions.find((candidate) => candidate.id === sessionId) ?? null
   if (session == null) {
@@ -40,6 +41,7 @@ async function openFolder(sessionId: string): Promise<void> {
     return
   }
   folderSession.value = session
+  folderPrise.value = prise
   folderOpen.value = true
 }
 
@@ -114,6 +116,7 @@ async function copyToken(): Promise<void> {
           >
             <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:basis-full max-md:font-semibold">
               {{ job.title ?? job.sessionId }}
+              <span v-if="cutMinutes(job) != null" class="font-normal text-dim" data-role="montage-duree"> · {{ cutMinutes(job) }} min</span>
               <!-- Two lines on a phone: a storage path fills the screen; the whole message stays on hover. -->
               <div
                 v-if="job.erreur != null && job.state !== 'termine'"
@@ -143,7 +146,7 @@ async function copyToken(): Promise<void> {
                 variant="primary"
                 class="mr-1"
                 :data-valider="job.sessionId"
-                @click="openFolder(job.sessionId)"
+                @click="openFolder(job.sessionId, job.sidecarUploadId)"
               >
                 Valider
               </Button>
@@ -162,7 +165,7 @@ async function copyToken(): Promise<void> {
                 v-else
                 size="small"
                 class="ml-1"
-                @click="attempt(() => store.relaunch(job.sessionId), 'Montage relancé')"
+                @click="attempt(() => store.relaunch(job.sessionId, job.id), 'Montage relancé')"
               >
                 Relancer
               </Button>
@@ -178,7 +181,7 @@ async function copyToken(): Promise<void> {
     </Hint>
   </Panel>
 
-  <VodFolderDialog v-model:open="folderOpen" :session="folderSession" :timezone="zone" />
+  <VodFolderDialog v-model:open="folderOpen" :session="folderSession" :prise="folderPrise" :timezone="zone" />
 
   <Panel title="Workers de montage">
     <ul id="montage-workers" class="mb-2 text-sm">

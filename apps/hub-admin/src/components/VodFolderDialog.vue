@@ -3,9 +3,9 @@ import { Button, Dialog, Hint, useToast } from '@conference-operator/components'
 import { time } from '@conference-operator/format'
 import { computed, ref, watch } from 'vue'
 import { UPLOAD_STATES, progress, type Upload } from '../stores/vod.js'
-import { formatOrateurs, parseOrateurs, useConferencesStore, type PlannedSession } from '../stores/conferences.js'
+import { formatOrateurs, habillageFromForm, useConferencesStore, type PlannedSession } from '../stores/conferences.js'
 import type { MontageJobView } from '@conference-operator/contract'
-import { MONTAGE_STATES, describe, useMontageStore } from '../stores/montage.js'
+import { MONTAGE_STATES, cutMinutes, describe, useMontageStore } from '../stores/montage.js'
 import CoupeValidation from './CoupeValidation.vue'
 
 /**
@@ -38,7 +38,12 @@ interface Folder {
 }
 
 const open = defineModel<boolean>('open', { required: true })
-const props = defineProps<{ session: PlannedSession | null; timezone: string }>()
+const props = defineProps<{
+  session: PlannedSession | null
+  timezone: string
+  /** The take to open on, when the talk has several: its latest otherwise. */
+  prise?: string | null
+}>()
 
 const store = useConferencesStore()
 const toast = useToast()
@@ -46,12 +51,33 @@ const toast = useToast()
 const folder = ref<Folder | null>(null)
 /** The talk's latest montage, if any. */
 const montage = ref<MontageJobView | null>(null)
+/** One per take, oldest first: a talk's takes can be separate videos. */
+const prises = ref<MontageJobView[]>([])
 const montages = useMontageStore()
 /** The cut of a montage already done, opened again. */
 const reviewing = ref(false)
 
-function onValidated(job: MontageJobView): void {
+/** The newest job of each take. `forSession` gives them newest first. */
+function latestByTake(jobs: MontageJobView[]): MontageJobView[] {
+  const seen = new Map<string, MontageJobView>()
+  for (const job of jobs) if (!seen.has(job.sidecarUploadId)) seen.set(job.sidecarUploadId, job)
+  return [...seen.values()].reverse()
+}
+
+function show(job: MontageJobView): void {
+  prises.value = prises.value.some((other) => other.sidecarUploadId === job.sidecarUploadId)
+    ? prises.value.map((other) => (other.sidecarUploadId === job.sidecarUploadId ? job : other))
+    : [...prises.value, job]
   montage.value = job
+}
+
+function priseLabel(job: MontageJobView, index: number): string {
+  const minutes = cutMinutes(job)
+  return minutes == null ? `Prise ${index + 1}` : `Prise ${index + 1} · ${minutes} min`
+}
+
+function onValidated(job: MontageJobView): void {
+  show(job)
   reviewing.value = false
 }
 const error = ref('')
@@ -76,7 +102,8 @@ watch(
        */
       if (!open.value || props.session?.id !== id) return
       folder.value = response
-      montage.value = jobs[0] ?? null
+      prises.value = latestByTake(jobs)
+      montage.value = prises.value.find((job) => job.sidecarUploadId === props.prise) ?? prises.value.at(-1) ?? null
     } catch (cause) {
       if (!open.value || props.session?.id !== id) return
       error.value = cause instanceof Error ? cause.message : 'Lecture impossible.'
@@ -153,20 +180,30 @@ const consent = computed<{ text: string; tone: string }>(() => {
     : { text: `Refusée par le conférencier, à ${when}. Ne pas publier.`, tone: 'text-alert' }
 })
 
-/** Who really spoke: the intro, the outro and the card burnt into the rush follow it. */
-const orateursText = ref('')
+/** What this take's video shows: the intro, the outro and the card burnt into the rush follow it. */
+const habillage = ref({ title: '', category: '', color: '', salle: '', speakers: '' })
 watch(
-  () => props.session?.id,
+  () => montage.value?.sidecarUploadId,
   () => {
-    orateursText.value = formatOrateurs(props.session?.orateursVideo ?? [])
+    const prise = montage.value?.habillagePrise
+    habillage.value = {
+      title: prise?.title ?? '',
+      category: prise?.category ?? '',
+      color: prise?.color ?? '',
+      salle: prise?.salle ?? '',
+      speakers: formatOrateurs(prise?.speakers ?? []),
+    }
   },
   { immediate: true },
 )
-async function saveOrateurs(): Promise<void> {
-  if (props.session == null) return
+async function saveHabillage(): Promise<void> {
+  if (montage.value == null) return
   try {
-    await store.setOrateursVideo(props.session.id, parseOrateurs(orateursText.value))
-    toast.say('Orateurs de la vidéo enregistrés : à appliquer avec « Remonter »')
+    const prise = habillageFromForm(habillage.value)
+    await store.setHabillagePrise(montage.value.sidecarUploadId, prise)
+    montage.value = { ...montage.value, habillagePrise: prise }
+    show(montage.value)
+    toast.say('Habillage enregistré : il s’applique au prochain montage de cette prise')
   } catch {
     /* already reported by the client's error hook */
   }
@@ -174,7 +211,7 @@ async function saveOrateurs(): Promise<void> {
 
 async function relaunchMontage(sessionId: string): Promise<void> {
   try {
-    montage.value = await montages.relaunch(sessionId)
+    show(await montages.relaunch(sessionId, montage.value?.id))
     toast.say('Montage relancé')
   } catch {
     /* already reported by the client's error hook */
@@ -189,9 +226,12 @@ async function downloadMontage(jobId: string): Promise<void> {
   }
 }
 
-/** The intro or outro as the worker will capture it, playing. */
-const previewUrl = (clip: 'intro' | 'outro') =>
-  props.session == null ? '#' : `/montage/apercu/${encodeURIComponent(props.session.id)}?clip=${clip}`
+/** The intro, the outro or the card as the worker will capture them. */
+const previewUrl = (clip: 'intro' | 'outro' | 'cadre') => {
+  if (props.session == null) return '#'
+  const prise = montage.value == null ? '' : `&prise=${encodeURIComponent(montage.value.sidecarUploadId)}`
+  return `/montage/apercu/${encodeURIComponent(props.session.id)}?clip=${clip}${prise}`
+}
 
 function uploadState(row: Upload): { label: string; tone: string } {
   return UPLOAD_STATES[row.state] ?? { label: row.state, tone: '' }
@@ -357,17 +397,42 @@ function uploadState(row: Upload): { label: string; tone: string } {
           Montage
         </h3>
 
-        <label class="mb-2 block text-xs text-dim" for="vod-orateurs">
-          Orateurs de la vidéo, si le programme se trompe (un par ligne : Nom | Société)
-        </label>
-        <textarea
-          id="vod-orateurs"
-          v-model="orateursText"
-          rows="2"
-          class="mb-1.5 w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text"
-          :placeholder="session?.speakers.join('\n')"
-        />
-        <Button size="small" class="mb-3" data-role="vod-orateurs-save" @click="saveOrateurs">Enregistrer les orateurs</Button>
+        <div v-if="prises.length > 1" class="mb-3 flex flex-wrap gap-1.5" data-role="vod-prises">
+          <Button
+            v-for="(job, index) in prises"
+            :key="job.sidecarUploadId"
+            size="small"
+            :active="job.sidecarUploadId === montage?.sidecarUploadId"
+            @click="montage = job"
+          >
+            {{ priseLabel(job, index) }}
+          </Button>
+        </div>
+
+        <details v-if="montage != null" class="mb-3" :open="montage.habillagePrise != null" data-role="vod-habillage">
+          <summary class="cursor-pointer text-xs text-dim">
+            Habillage de cette vidéo, si le programme ne convient pas{{ montage.habillagePrise != null ? ' (personnalisé)' : '' }}
+          </summary>
+          <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label class="block text-xs text-dim sm:col-span-2">Titre
+              <input v-model="habillage.title" data-field="title" class="mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text" :placeholder="session?.title">
+            </label>
+            <label class="block text-xs text-dim">Catégorie
+              <input v-model="habillage.category" data-field="category" class="mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text">
+            </label>
+            <label class="block text-xs text-dim">Couleur de la catégorie
+              <input v-model="habillage.color" data-field="color" class="mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text" placeholder="#9cc160">
+            </label>
+            <label class="block text-xs text-dim sm:col-span-2">Salle
+              <input v-model="habillage.salle" data-field="salle" class="mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text" :placeholder="session?.roomName ?? ''">
+            </label>
+            <label class="block text-xs text-dim sm:col-span-2">Orateurs (un par ligne : Nom | Société)
+              <textarea v-model="habillage.speakers" data-field="speakers" rows="2" class="mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text" :placeholder="session?.speakers.join('\n')" />
+            </label>
+          </div>
+          <Button size="small" class="mt-2" data-role="vod-habillage-save" @click="saveHabillage">Enregistrer l’habillage</Button>
+          <p class="mt-1 text-[11px] text-dim">Un champ vide reprend le programme. Dès qu’un champ est rempli, le cadre est redessiné sur toute la vidéo. Enregistrer avant d’ouvrir les aperçus.</p>
+        </details>
 
         <p class="mb-1.5 text-sm" data-role="vod-montage">
           <template v-if="montage == null">
@@ -385,6 +450,7 @@ function uploadState(row: Upload): { label: string; tone: string } {
         <div class="flex flex-wrap gap-1.5">
           <a :href="previewUrl('intro')" target="_blank" rel="noopener" class="text-sm text-brand underline">Aperçu de l’intro</a>
           <a :href="previewUrl('outro')" target="_blank" rel="noopener" class="text-sm text-brand underline">Aperçu de l’outro</a>
+          <a :href="previewUrl('cadre')" target="_blank" rel="noopener" class="text-sm text-brand underline" data-role="vod-apercu-cadre">Aperçu du cadre</a>
         </div>
         <!--
           La coupe proposée, à valider ici : d'office quand elle attend, sur

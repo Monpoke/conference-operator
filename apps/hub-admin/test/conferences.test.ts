@@ -1,4 +1,4 @@
-import { formatOrateurs, parseOrateurs } from '../src/stores/conferences.js'
+import { formatOrateurs, habillageFromForm, parseOrateurs } from '../src/stores/conferences.js'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -146,6 +146,18 @@ beforeEach(() => {
   document.body.innerHTML = ''
   setActivePinia(createPinia())
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} })
+})
+
+describe('habillage d’une prise', () => {
+  const empty = { title: '', category: '', color: '', salle: '', speakers: '' }
+  it('goes back to the program when nothing is filled in', () => {
+    expect(habillageFromForm({ ...empty, title: '  ' })).toBeNull()
+  })
+  it('keeps only what was filled in', () => {
+    expect(habillageFromForm({ ...empty, title: ' Mot d’accueil ', speakers: 'A | B' })).toEqual({
+      title: 'Mot d’accueil', category: null, color: null, salle: null, speakers: [{ name: 'A', company: 'B' }],
+    })
+  })
 })
 
 describe('orateurs de la vidéo', () => {

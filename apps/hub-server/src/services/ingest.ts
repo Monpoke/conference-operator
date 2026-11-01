@@ -535,6 +535,9 @@ function projectionFor(payload: RoomEventPayload): Record<string, unknown> {
     // The room sends its alerts whole, an empty list when all is well again.
     case 'audio.alerts':
       return { audioAlerts: JSON.stringify(payload.alerts) }
+    // Kept in the event log alone: it says nothing of the room's state.
+    case 'room.incident':
+      return {}
     case 'stream.telemetry':
       return {
         streamBitrateKbps: Math.round(payload.bitrateKbps),

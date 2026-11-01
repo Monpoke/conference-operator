@@ -76,7 +76,7 @@ import {
   integrationUpdateSchema,
   integrationViewSchema,
 } from './integrations.js'
-import { statistiquesSchema } from './statistiques.js'
+import { roomIncidentSchema, statistiquesSchema } from './statistiques.js'
 import { auditEntrySchema, auditPageQuerySchema, auditPageSchema, auditQuerySchema } from './audit.js'
 
 /** A partner of the program, as the console chooses it. */
@@ -1074,6 +1074,11 @@ export const contract = {
    * The audit log: what operators did through the hub. Newest first, a page at a
    * time. Reserved to `audit:read` — who did what is not everyone's to read.
    */
+  incidents: {
+    /** What the rooms reported going wrong, newest first. Admin. */
+    list: oc.output(z.array(roomIncidentSchema)),
+  },
+
   statistiques: {
     /** The edition in figures, one row per talk: the page filters and totals them. Admin. */
     bilan: oc.output(statistiquesSchema),

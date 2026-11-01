@@ -1669,6 +1669,10 @@ export const router = os.router({
     }),
   },
 
+  incidents: {
+    list: os.incidents.list.use(operatorCan('room:read')).handler(({ context }) => context.services.incidents.list()),
+  },
+
   statistiques: {
     bilan: os.statistiques.bilan.use(operatorCan('vod:read')).handler(({ context }) => {
       const program = context.services.programs.active()?.program

@@ -51,3 +51,15 @@ export const statistiquesSchema = z.object({
   timezone: z.string(),
 })
 export type Statistiques = z.infer<typeof statistiquesSchema>
+
+/** What a room reported going wrong, newest first. */
+export const roomIncidentSchema = z.object({
+  roomId: z.string(),
+  occurredAt: z.string(),
+  niveau: z.enum(['warn', 'error']),
+  source: z.string(),
+  message: z.string(),
+  fichier: z.string().nullable(),
+  detail: z.string().nullable(),
+})
+export type RoomIncident = z.infer<typeof roomIncidentSchema>

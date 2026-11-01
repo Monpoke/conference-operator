@@ -143,7 +143,8 @@ describe('contract surface', () => {
       // The event's identity, read-only: what the hub decided for the name shown
       // everywhere, and what it would derive with no setting.
       'event',
-      'ingest',
+       'incidents',
+     'ingest',
       // The same notices, sent to a team: Slack, Mattermost, generic webhook.
       'integrations',
       'messages',

@@ -1,6 +1,6 @@
-import type { StatistiqueTalk, Statistiques } from '@conference-operator/contract'
+import type { RoomIncident, StatistiqueTalk, Statistiques } from '@conference-operator/contract'
 import { auditLog, ingestEvent, montageJob, question, sessionConsent, sessionState, vodUpload } from '@conference-operator/db/hub'
-import { eq } from 'drizzle-orm'
+import { desc, eq } from 'drizzle-orm'
 import type { HubDatabase } from '../db.js'
 
 /**
@@ -129,5 +129,34 @@ export class StatistiquesService {
       audit: { actions: audit.length, refusees: audit.filter((entry) => !entry.ok).length },
       questions: this.db.select({ id: question.id }).from(question).all().length,
     })
+  }
+}
+
+/** How far back the console reads the rooms' incidents. */
+const INCIDENTS_SHOWN = 200
+
+export class IncidentsService {
+  constructor(private readonly db: HubDatabase) {}
+
+  list(): RoomIncident[] {
+    return this.db
+      .select({ roomId: ingestEvent.roomId, occurredAt: ingestEvent.occurredAt, payload: ingestEvent.payloadJson })
+      .from(ingestEvent)
+      .where(eq(ingestEvent.type, 'room.incident'))
+      .orderBy(desc(ingestEvent.occurredAt))
+      .limit(INCIDENTS_SHOWN)
+      .all()
+      .map((row) => {
+        const event = JSON.parse(row.payload) as Omit<RoomIncident, 'roomId' | 'occurredAt'>
+        return {
+          roomId: row.roomId,
+          occurredAt: row.occurredAt,
+          niveau: event.niveau,
+          source: event.source,
+          message: event.message,
+          fichier: event.fichier ?? null,
+          detail: event.detail ?? null,
+        }
+      })
   }
 }

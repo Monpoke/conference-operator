@@ -209,6 +209,18 @@ export const roomEventPayloadSchema = z.discriminatedUnion('type', [
     type: z.literal('audio.alerts'),
     alerts: z.array(audioAlertSchema).max(32),
   }),
+  /**
+   * Something went wrong on the machine, for the hub to show: a failure kept in the
+   * room's own log is one nobody reads until the machine is back on a desk.
+   */
+  z.object({
+    type: z.literal('room.incident'),
+    niveau: z.enum(['warn', 'error']),
+    source: z.string().min(1).max(40),
+    message: z.string().min(1).max(300),
+    fichier: z.string().max(400).nullable().default(null),
+    detail: z.string().max(500).nullable().default(null),
+  }),
   z.object({
     type: z.literal('stream.telemetry'),
     bitrateKbps: z.number().nonnegative(),
@@ -246,6 +258,7 @@ export type Envelope = z.infer<typeof envelopeSchema>
  * it again on every `enqueue`.
  */
 export const DELIVERY_BY_EVENT: Record<RoomEventType, z.infer<typeof deliverySchema>> = {
+  'room.incident': 'required',
   'scene.changed': 'required',
   'recording.started': 'required',
   'recording.stopped': 'required',

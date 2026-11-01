@@ -3,6 +3,12 @@
  * the take is in view, and what each pixel of it shows.
  */
 
+/** The gain that brings a take to what its video will sound like, within what the page offers. */
+export function listeningGainDb(lufs: number | null | undefined, targetLufs = -16, maxDb = 30): number {
+  if (lufs == null) return 0
+  return Math.min(maxDb, Math.max(0, Math.round(targetLufs - lufs)))
+}
+
 export interface TimelineView {
   fromMs: number
   toMs: number

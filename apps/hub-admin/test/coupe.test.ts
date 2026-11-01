@@ -5,7 +5,7 @@ import MontageView from '../src/views/MontageView.vue'
 import { useConferencesStore } from '../src/stores/conferences.js'
 import { partAt, useMontageStore } from '../src/stores/montage.js'
 import { useSessionStore } from '../src/stores/session.js'
-import { centredOn, levelScale, levelsFor, tickStep, zoomAround } from '../src/stores/timeline.js'
+import { centredOn, levelScale, levelsFor, listeningGainDb, tickStep, zoomAround } from '../src/stores/timeline.js'
 
 /** The montage's page: the whole take to hear, and a cut placed on it. */
 const SIDE = { source: 'parole', calee: false, deplacementMs: 0 }
@@ -71,7 +71,7 @@ describe('la lecture de la prise', () => {
 
     await wrapper.get('[data-listen="fin"]').trigger('click')
     const video = wrapper.get('video').element as HTMLVideoElement
-    expect(video.src).toBe('https://s3.test/b.mp4')
+    expect(new URL(video.src).pathname).toBe('/montage/prise/job-1/1')
     video.dispatchEvent(new Event('loadedmetadata'))
     // 02:30 less five seconds, counted from the second file's start at 01:40.
     expect(video.currentTime).toBe(45)
@@ -83,7 +83,7 @@ describe('la lecture de la prise', () => {
     await wrapper.get('[data-role="lecture"]').trigger('click')
     const video = wrapper.get('video')
     await video.trigger('ended')
-    expect((video.element as HTMLVideoElement).src).toBe('https://s3.test/b.mp4')
+    expect(new URL((video.element as HTMLVideoElement).src).pathname).toBe('/montage/prise/job-1/1')
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(2)
   })
 
@@ -116,6 +116,15 @@ describe('la coupe', () => {
     without.wrapper.unmount()
     const withLevels = await mountPage({ niveaux: { frameMs: 50, db: [-60, -30] } })
     expect(withLevels.wrapper.find('[data-role="timeline-sans-niveaux"]').exists()).toBe(false)
+  })
+})
+
+describe('le gain d’écoute', () => {
+  it('starts at what the video will sound like, within what the page offers', () => {
+    expect(listeningGainDb(-39.5)).toBe(24)
+    expect(listeningGainDb(-60)).toBe(30)
+    expect(listeningGainDb(-10)).toBe(0)
+    expect(listeningGainDb(null)).toBe(0)
   })
 })
 

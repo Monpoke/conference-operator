@@ -17,7 +17,7 @@ import {
   useMontageStore,
   type TakePart,
 } from '../stores/montage.js'
-import type { Niveaux } from '../stores/timeline.js'
+import { listeningGainDb, type Niveaux } from '../stores/timeline.js'
 
 /**
  * A take's montage: hear it, place its cut, say what its video shows, send it.
@@ -112,6 +112,7 @@ watch(
       partIndex = -1
       niveaux.value = view.niveaux ?? null
       if (view.analyse != null) reset(view.analyse)
+      gainDb.value = listeningGainDb(view.analyse?.audio?.lufsAvant)
     } catch (cause) {
       analysisError.value = cause instanceof Error ? cause.message : 'Lecture impossible.'
     }
@@ -158,6 +159,41 @@ watch(volume, (value) => {
   if (player.value != null) player.value.volume = value
 })
 
+/*
+ * Rushes are recorded far too low for their video: the element's volume stops at
+ * the rush's own level, so the sound goes through a gain, and a limiter for the
+ * applause that a gain of 25 dB would otherwise throw at the listener.
+ */
+const gainDb = ref(0)
+let audio: { context: AudioContext; gain: GainNode; element: HTMLVideoElement } | null = null
+const toLinear = (db: number) => 10 ** (db / 20)
+
+function connectSound(): void {
+  const video = player.value
+  if (video == null || typeof AudioContext === 'undefined') return
+  if (audio?.element !== video) {
+    const context = audio?.context ?? new AudioContext()
+    const source = context.createMediaElementSource(video)
+    const gain = context.createGain()
+    const limiter = context.createDynamicsCompressor()
+    limiter.threshold.value = -3
+    limiter.knee.value = 0
+    limiter.ratio.value = 20
+    limiter.attack.value = 0.003
+    limiter.release.value = 0.1
+    source.connect(gain).connect(limiter).connect(context.destination)
+    audio = { context, gain, element: video }
+  }
+  audio.gain.gain.value = toLinear(gainDb.value)
+  void audio.context.resume()
+}
+watch(gainDb, (value) => {
+  if (audio != null) audio.gain.gain.value = toLinear(value)
+})
+
+/** The take's file, from the hub: the only address whose sound the page may amplify. */
+const partUrl = (index: number) => `/montage/prise/${encodeURIComponent(job.value?.id ?? '')}/${index}`
+
 /** Goes to `ms` of the take: its own file, at its own place in that file. */
 function goTo(ms: number, thenPlay: boolean): void {
   const video = player.value
@@ -175,10 +211,11 @@ function goTo(ms: number, thenPlay: boolean): void {
       video.currentTime = local
       video.playbackRate = speed.value
     }, { once: true })
-    video.src = part.url
+    video.src = partUrl(index)
     video.load()
   }
   // Inside the click, not after the load: a browser refuses to start sound later on.
+  if (thenPlay) connectSound()
   if (thenPlay) video.play().catch(() => undefined)
 }
 
@@ -322,7 +359,7 @@ const FIELD = 'mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 tex
             ref="player"
             preload="metadata"
             class="aspect-video max-h-[max(220px,calc(100dvh-500px))] w-full rounded-lg bg-black"
-            :src="parts[0]?.url"
+            :src="parts.length > 0 ? partUrl(0) : undefined"
             @loadedmetadata="partIndex = partIndex < 0 ? 0 : partIndex"
             @play="playing = true"
             @pause="playing = false"
@@ -340,6 +377,11 @@ const FIELD = 'mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 tex
             <label class="ml-auto flex items-center gap-1.5 text-xs text-dim">
               Volume
               <input v-model.number="volume" type="range" min="0" max="1" step="0.05" class="w-20">
+            </label>
+            <label class="flex items-center gap-1.5 text-xs text-dim">
+              Gain
+              <input v-model.number="gainDb" data-role="gain" type="range" min="0" max="30" step="1" class="w-24">
+              <span class="w-11 tabular-nums text-text">+{{ gainDb }} dB</span>
             </label>
             <label class="flex items-center gap-1.5 text-xs text-dim">
               Vitesse

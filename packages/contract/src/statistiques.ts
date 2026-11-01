@@ -21,7 +21,7 @@ export const statistiqueTalkSchema = z.object({
   auto: z.boolean(),
   tenue: z.boolean(),
   sansCaptation: z.boolean(),
-  rush: z.enum(['rentre', 'en-cours', 'echec', 'manquant', 'sans-objet']),
+  rush: z.enum(['televerse', 'en-cours', 'echec', 'manquant', 'sans-objet']),
   rushOctets: z.number().int().nonnegative(),
   /** The room's measures on the kept cut. `null`: not analysed. */
   lufs: z.number().nullable(),

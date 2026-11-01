@@ -65,10 +65,10 @@ export class WallStatsService {
     this.now = options.now ?? Date.now
   }
 
-  async stats(): Promise<WallStats> {
+  async stats(adressePublique: string | null = null): Promise<WallStats> {
     const local = this.local()
     const remote = await this.wallsio()
-    return { generatedAt: new Date(this.now()).toISOString(), ...local, ...remote }
+    return { generatedAt: new Date(this.now()).toISOString(), ...local, ...remote, adressePublique }
   }
 
   private local(): Pick<WallStats, 'posts' | 'impressions' | 'onlineViews'> {

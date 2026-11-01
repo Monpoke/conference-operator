@@ -247,6 +247,8 @@ export const wallStatsSchema = z.object({
   /** `null` = not read: no token, paused, or walls.io failed (`wallsioError`). */
   wallsio: wallsIoStatsSchema.nullable(),
   wallsioError: z.string().nullable(),
+  /** Where the public page lives, `null` when not set in the loop's settings. */
+  adressePublique: z.string().nullable(),
 })
 export type WallStats = z.infer<typeof wallStatsSchema>
 

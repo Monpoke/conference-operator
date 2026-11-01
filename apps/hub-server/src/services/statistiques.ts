@@ -40,7 +40,7 @@ interface AnalysedAudio {
 
 function rushOf(files: StatSources['uploads'], sansCaptation: boolean): StatistiqueTalk['rush'] {
   const rushes = files.filter((file) => file.kind === 'rush')
-  if (rushes.some((file) => file.state === 'termine')) return 'rentre'
+  if (rushes.some((file) => file.state === 'termine')) return 'televerse'
   if (rushes.some((file) => file.state === 'en-cours' || file.state === 'attente')) return 'en-cours'
   if (rushes.length > 0) return 'echec'
   return sansCaptation ? 'sans-objet' : 'manquant'

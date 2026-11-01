@@ -1537,7 +1537,7 @@ export const router = os.router({
 
     stats: os.wall.stats
       .use(operatorCan('wall:moderate'))
-      .handler(({ context }) => context.services.wallStats.stats()),
+      .handler(({ context }) => context.services.wallStats.stats(context.services.settings.get().boucle.wallsio.adressePublique)),
 
     sponsors: os.wall.sponsors
       .use(operatorCan('wall:moderate'))

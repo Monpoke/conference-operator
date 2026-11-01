@@ -470,6 +470,7 @@ describe('message exchange', () => {
       titre: 'Le mur',
       hashtag: '#CloudNord2026',
       accroche: '',
+      adressePublique: null,
       parPage: 5,
       sponsoriseTous: 0,
       bandeau: true,

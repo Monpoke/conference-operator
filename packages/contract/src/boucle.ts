@@ -265,6 +265,8 @@ export const boucleSchema = z.object({
        * rooms.
        */
       accroche: z.string().max(240).default(''),
+      /** Where the public page is served, for the console's links to it. The hub cannot guess it. */
+      adressePublique: z.string().trim().max(300).regex(/^https?:\/\/[^\s]+$/, 'adresse http(s) attendue').nullable().default(null),
       /** Cards on a page, the featured one included. */
       parPage: z.number().int().min(3).max(6).default(5),
       /**
@@ -316,6 +318,7 @@ export const boucleSchema = z.object({
       titre: 'Le mur Cloud Nord',
       hashtag: '#CloudNord2026',
       accroche: '',
+      adressePublique: null,
       parPage: 5,
       sponsoriseTous: 0,
       bandeau: true,

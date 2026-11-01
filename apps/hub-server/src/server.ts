@@ -2,7 +2,7 @@ import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify'
 import fastifyProxy from '@fastify/http-proxy'
 import fastifyStatic from '@fastify/static'
 import { dirname, join } from 'node:path'
-import { consolePaths, CONTROL_PATH, controlRoomIdFromPath, type MontageHabillagePrise, type VodHabillage } from '@conference-operator/contract'
+import { consolePaths, viewPath, CONTROL_PATH, controlRoomIdFromPath, type MontageHabillagePrise, type VodHabillage } from '@conference-operator/contract'
 import { WebSocketServer, type WebSocket as NodeWebSocket } from 'ws'
 import { RPCHandler as FastifyRPCHandler } from '@orpc/server/fastify'
 import { RPCHandler as WebSocketRPCHandler } from '@orpc/server/websocket'
@@ -941,6 +941,9 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
    * its module is only loaded on demand.
    */
   const consoleRoutes = consolePaths(dev)
+  /** A talk's montage page: the console's too, one address per talk. */
+  const MONTAGE_ROUTE = `${viewPath('vod')}/montage/:sessionId`
+  const montagePagePrefix = `${viewPath('vod')}/montage/`
 
   /*
    * The mobile control app: the same bundle a room machine serves.
@@ -1013,7 +1016,8 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       // takes what Vite knows how to render.
       httpMethods: ['GET'],
       preHandler: (request, reply, done) => {
-        if (consoleRoutes.includes(request.url.split('?')[0] ?? '')) {
+        const asked = request.url.split('?')[0] ?? ''
+        if (consoleRoutes.includes(asked) || asked.startsWith(montagePagePrefix)) {
           return reply.callNotFound()
         }
         done()
@@ -1077,7 +1081,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     })
   }
 
-  for (const path of consoleRoutes) {
+  for (const path of [...consoleRoutes, MONTAGE_ROUTE]) {
     app.get(path, async (_request, reply) => {
       reply.header('content-type', 'text/html; charset=utf-8')
       // Never `immutable` on the shell: an updated console that never reaches an

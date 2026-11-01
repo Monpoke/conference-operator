@@ -1,4 +1,4 @@
-import type { StatistiqueTalk, Statistiques } from '@conference-operator/contract'
+import type { StatistiqueTalk, Statistiques, StatistiquesVotes } from '@conference-operator/contract'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useSessionStore } from './session.js'
@@ -62,10 +62,37 @@ const cell = (value: string | number | null) => {
 const toMinutes = (ms: number | null) => (ms == null ? null : Math.round(ms / 60_000))
 
 /** One line per talk, for the association's assessment. Semicolons: the French spreadsheet's separator. */
-export function talksCsv(talks: readonly StatistiqueTalk[]): string {
-  const head = ['Début prévu', 'Talk', 'Salle', 'Retard (min)', 'Écart de fin (min)', 'Rush', 'Niveau (LUFS)', 'Pic (dB)', 'Alertes saturation', 'Alertes silence', 'Montage', 'Vidéo (min)', 'Diffusion']
-  const rows = talks.map((talk) => [talk.startsAt, talk.title, talk.roomName, toMinutes(talk.retardMs), toMinutes(talk.depassementMs), talk.rush, talk.lufs, talk.truePeak, talk.alertesSaturation, talk.alertesSilence, talk.montages.at(-1) ?? null, toMinutes(talk.videoMs), talk.consentement])
+export function talksCsv(talks: readonly StatistiqueTalk[], votes: StatistiquesVotes | null = null): string {
+  const criteres = votes?.criteres ?? []
+  const head = ['Début prévu', 'Talk', 'Salle', 'Retard (min)', 'Écart de fin (min)', 'Rush', 'Niveau (LUFS)', 'Pic (dB)', 'Alertes saturation', 'Alertes silence', 'Montage', 'Vidéo (min)', 'Diffusion', 'Votes', ...criteres.map((critere) => critere.nom), 'Commentaires']
+  const rows = talks.map((talk) => {
+    const lu = votes?.talks.find((candidate) => candidate.sessionId === talk.sessionId) ?? null
+    return [talk.startsAt, talk.title, talk.roomName, toMinutes(talk.retardMs), toMinutes(talk.depassementMs), talk.rush, talk.lufs, talk.truePeak, talk.alertesSaturation, talk.alertesSilence, talk.montages.at(-1) ?? null, toMinutes(talk.videoMs), talk.consentement, votesDuTalk(votes, talk.sessionId), ...criteres.map((critere) => (lu == null ? null : lu.votes[critere.id] ?? 0)), lu?.commentaires ?? null]
+  })
   return [head, ...rows].map((row) => row.map(cell).join(';')).join('\n')
+}
+
+/** Votes cast on a talk, every criterion together. `null`: not read. A voter may tick several. */
+export function votesDuTalk(votes: StatistiquesVotes | null, sessionId: string): number | null {
+  const lu = votes?.talks.find((talk) => talk.sessionId === sessionId)
+  return lu == null ? null : Object.values(lu.votes).reduce((sum, count) => sum + count, 0)
+}
+
+/** The votes of the talks in view. */
+export function syntheseVotes(talks: readonly StatistiqueTalk[], votes: StatistiquesVotes) {
+  const vus = new Set(talks.map((talk) => talk.sessionId))
+  const lus = votes.talks.filter((talk) => vus.has(talk.sessionId))
+  const premiers = talks
+    .map((talk) => ({ sessionId: talk.sessionId, title: talk.title, votes: votesDuTalk(votes, talk.sessionId) ?? 0 }))
+    .filter((talk) => talk.votes > 0)
+    .sort((a, b) => b.votes - a.votes)
+  return {
+    total: premiers.reduce((sum, talk) => sum + talk.votes, 0),
+    sur: premiers.length,
+    commentaires: lus.reduce((sum, talk) => sum + talk.commentaires, 0),
+    criteres: votes.criteres.map((critere) => ({ ...critere, nombre: lus.reduce((sum, talk) => sum + (talk.votes[critere.id] ?? 0), 0) })),
+    premiers: premiers.slice(0, 3),
+  }
 }
 
 export const useStatistiquesStore = defineStore('statistiques', () => {
@@ -76,5 +103,10 @@ export const useStatistiquesStore = defineStore('statistiques', () => {
     data.value = await session.client.rpc.statistiques.bilan()
   }
 
-  return { data, load }
+  const votes = ref<StatistiquesVotes | null>(null)
+  async function loadVotes(): Promise<void> {
+    votes.value = await session.client.rpc.statistiques.votes()
+  }
+
+  return { data, votes, load, loadVotes }
 })

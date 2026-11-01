@@ -7,7 +7,7 @@ import { computed, onMounted, ref } from 'vue'
 import { dayKeyOf, dayOptions } from '../stores/days.js'
 import { MONTAGE_STATES, montagePath } from '../stores/montage.js'
 import { useSessionStore } from '../stores/session.js'
-import { RETARD_NOTABLE_MS, synthese, talksCsv, useStatistiquesStore } from '../stores/statistiques.js'
+import { RETARD_NOTABLE_MS, synthese, syntheseVotes, talksCsv, useStatistiquesStore, votesDuTalk } from '../stores/statistiques.js'
 
 /**
  * The edition in figures, for the assessment afterwards.
@@ -16,12 +16,13 @@ import { RETARD_NOTABLE_MS, synthese, talksCsv, useStatistiquesStore } from '../
  * home is missing from the sound figures, and must not pass for a good one.
  */
 const store = useStatistiquesStore()
-const { data } = storeToRefs(store)
+const { data, votes } = storeToRefs(store)
 const session = useSessionStore()
 
 const wall = ref<WallStats | null>(null)
 onMounted(() => {
   void store.load().catch(() => undefined)
+  void store.loadVotes().catch(() => undefined)
   void Promise.resolve()
     .then(() => session.client.rpc.wall.stats())
     .then((stats) => { wall.value = stats })
@@ -45,6 +46,7 @@ const talks = computed(() =>
   ),
 )
 const s = computed(() => synthese(talks.value))
+const v = computed(() => (votes.value == null ? null : syntheseVotes(talks.value, votes.value)))
 
 const minutes = (ms: number | null) => {
   if (ms == null) return '—'
@@ -64,7 +66,7 @@ const RUSH: Record<StatistiqueTalk['rush'], { label: string; tone: string }> = {
   'sans-objet': { label: 'sans captation', tone: 'text-dim' },
 }
 
-type Sort = 'startsAt' | 'retardMs' | 'depassementMs' | 'lufs' | 'alertesSaturation'
+type Sort = 'startsAt' | 'retardMs' | 'depassementMs' | 'lufs' | 'alertesSaturation' | 'votes'
 const sort = ref<Sort>('startsAt')
 const ascending = ref(true)
 function sortBy(column: Sort): void {
@@ -77,8 +79,8 @@ function sortBy(column: Sort): void {
 const sorted = computed(() => {
   const direction = ascending.value ? 1 : -1
   return [...talks.value].sort((a, b) => {
-    const left = a[sort.value]
-    const right = b[sort.value]
+    const left = sort.value === 'votes' ? votesDuTalk(votes.value, a.sessionId) : a[sort.value]
+    const right = sort.value === 'votes' ? votesDuTalk(votes.value, b.sessionId) : b[sort.value]
     // What was not measured stays last, whichever way the column is read.
     if (left == null) return right == null ? 0 : 1
     if (right == null) return -1
@@ -88,7 +90,7 @@ const sorted = computed(() => {
 const ariaSort = (column: Sort) => (sort.value !== column ? 'none' : ascending.value ? 'ascending' : 'descending')
 
 function exportCsv(): void {
-  const url = URL.createObjectURL(new Blob([talksCsv(sorted.value)], { type: 'text/csv;charset=utf-8' }))
+  const url = URL.createObjectURL(new Blob([talksCsv(sorted.value, votes.value)], { type: 'text/csv;charset=utf-8' }))
   const link = document.createElement('a')
   link.href = url
   link.download = 'statistiques-talks.csv'
@@ -162,7 +164,22 @@ const HEAD = 'cursor-pointer pr-3 pb-2 text-left font-semibold whitespace-nowrap
           </template>
           <p v-else class="text-sm text-dim">Statistiques du mur non disponibles avec ce compte.</p>
           <div :class="ROW"><span>Questions du public</span><strong class="tabular-nums">{{ data.questions }}</strong></div>
-          <p class="mt-1.5 text-xs text-dim">Toute l'édition, quels que soient les filtres. Les notes OpenFeedback ne sont pas sur le hub.</p>
+          <p class="mt-1.5 text-xs text-dim">Toute l'édition, quels que soient les filtres.</p>
+        </Panel>
+
+        <Panel title="Votes OpenFeedback" data-role="votes">
+          <p v-if="votes == null" class="text-sm text-dim">Lecture des votes…</p>
+          <template v-else>
+            <template v-if="v != null && votes.luA != null">
+              <div :class="ROW"><span>Votes</span><strong class="tabular-nums">{{ v.total }}</strong></div>
+              <div v-for="critere in v.criteres" :key="critere.id" :class="ROW"><span>{{ critere.nom }}</span><span class="tabular-nums">{{ critere.nombre }}</span></div>
+              <div :class="ROW"><span>Commentaires écrits</span><strong class="tabular-nums">{{ v.commentaires }}</strong></div>
+              <p v-if="v.premiers.length > 0" class="mt-2 text-xs text-dim">Les plus votés</p>
+              <div v-for="talk in v.premiers" :key="talk.sessionId" :class="ROW"><span class="min-w-0 truncate" :title="talk.title">{{ talk.title }}</span><span class="tabular-nums">{{ talk.votes }}</span></div>
+              <p class="mt-1.5 text-xs text-dim">Sur {{ v.sur }} talks ayant reçu un vote. Une personne peut cocher plusieurs critères : ce ne sont pas des votants. Lu à {{ hour(votes.luA) }}.</p>
+            </template>
+            <p v-if="votes.erreur != null" id="stats-votes-erreur" class="mt-1.5 text-sm text-warn">{{ votes.erreur }}</p>
+          </template>
         </Panel>
 
         <Panel title="Sponsors">
@@ -190,6 +207,7 @@ const HEAD = 'cursor-pointer pr-3 pb-2 text-left font-semibold whitespace-nowrap
                 <th class="pr-3 pb-2 text-left font-semibold">Rush</th>
                 <th :class="HEAD" :aria-sort="ariaSort('lufs')" @click="sortBy('lufs')">LUFS</th>
                 <th :class="HEAD" :aria-sort="ariaSort('alertesSaturation')" @click="sortBy('alertesSaturation')">Saturation</th>
+                <th :class="HEAD" :aria-sort="ariaSort('votes')" @click="sortBy('votes')">Votes</th>
                 <th class="pb-2 text-left font-semibold">Montage</th>
               </tr>
             </thead>
@@ -203,6 +221,7 @@ const HEAD = 'cursor-pointer pr-3 pb-2 text-left font-semibold whitespace-nowrap
                 <td class="border-t border-edge py-2 pr-3 whitespace-nowrap" :class="RUSH[talk.rush].tone">{{ RUSH[talk.rush].label }}</td>
                 <td class="border-t border-edge py-2 pr-3 whitespace-nowrap tabular-nums">{{ talk.lufs == null ? '—' : talk.lufs.toFixed(1).replace('.', ',') }}</td>
                 <td class="border-t border-edge py-2 pr-3 tabular-nums">{{ talk.alertesSaturation }}</td>
+                <td class="border-t border-edge py-2 pr-3 tabular-nums">{{ votesDuTalk(votes, talk.sessionId) ?? '—' }}</td>
                 <td class="border-t border-edge py-2 whitespace-nowrap">
                   <a v-if="talk.montages.length > 0" :href="montagePath(talk.sessionId)" class="underline underline-offset-2" :class="MONTAGE_STATES[talk.montages.at(-1)!]?.tone">{{ MONTAGE_STATES[talk.montages.at(-1)!]?.label ?? talk.montages.at(-1) }}</a>
                   <span v-else class="text-dim">—</span>

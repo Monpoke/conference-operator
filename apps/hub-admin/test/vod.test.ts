@@ -376,6 +376,20 @@ describe('the montages in the list', () => {
     expect(wrapper.get('[data-sans-conference]').text()).toBe('Sans conférence')
   })
 
+  it('plays a finished video from the list, and offers it for no other', async () => {
+    const { wrapper } = await mountView([{ ...IN_PROGRESS, sessionId: TALK.id }], [TALK])
+    const store = useMontageStore()
+    const watch = vi.spyOn(store, 'watch').mockResolvedValue()
+    store.jobs = [
+      { ...JOB, id: 'fini', sessionId: TALK.id, sidecarUploadId: 'a', state: 'termine' },
+      { ...JOB, id: 'attend', sessionId: TALK.id, sidecarUploadId: 'b', state: 'attente' },
+    ] as never
+    await flushPromises()
+    expect(wrapper.find('[data-regarder="attend"]').exists()).toBe(false)
+    await wrapper.get('[data-regarder="fini"]').trigger('click')
+    expect(watch).toHaveBeenCalledWith('fini')
+  })
+
   it('pauses the renders, and says what it leaves running', async () => {
     const { wrapper } = await mountView([], [TALK])
     const store = useMontageStore()

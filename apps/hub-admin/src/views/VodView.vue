@@ -43,6 +43,11 @@ const running = computed(() => jobs.value.some((job) => job.state === 'en-cours'
 const queued = computed(() => jobs.value.filter((job) => job.state === 'attente').length)
 const inProgress = computed(() => jobs.value.filter((job) => job.state === 'en-cours'))
 
+function watchVideo(jobId: string): void {
+  // A failure is already reported by the hub client.
+  void montages.watch(jobId).catch(() => undefined)
+}
+
 async function togglePause(): Promise<void> {
   const next = !enPause.value
   try {
@@ -275,17 +280,25 @@ async function requestAll(): Promise<void> {
                   {{ row.detail }}
                 </td>
                 <td data-role="montages" class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:basis-full max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:empty:hidden">
-                  <a
-                    v-for="job in takesOf.get(row.key) ?? []"
-                    :key="job.sidecarUploadId"
-                    :href="montagePath(job.sessionId, job.sidecarUploadId)"
-                    class="block underline underline-offset-2"
-                    :class="stateOfJob(job).tone"
-                    :data-montage="job.id"
-                    :data-valider="job.state === 'a-valider' ? job.sessionId : undefined"
-                  >
-                    {{ stateOfJob(job).label }}<span v-if="cutMinutes(job) != null" class="text-dim" data-role="montage-duree"> · {{ cutMinutes(job) }} min</span>
-                  </a>
+                  <div v-for="job in takesOf.get(row.key) ?? []" :key="job.sidecarUploadId" class="flex items-center gap-1.5">
+                    <a
+                      :href="montagePath(job.sessionId, job.sidecarUploadId)"
+                      class="underline underline-offset-2"
+                      :class="stateOfJob(job).tone"
+                      :data-montage="job.id"
+                      :data-valider="job.state === 'a-valider' ? job.sessionId : undefined"
+                    >
+                      {{ stateOfJob(job).label }}<span v-if="cutMinutes(job) != null" class="text-dim" data-role="montage-duree"> · {{ cutMinutes(job) }} min</span>
+                    </a>
+                    <Button
+                      v-if="job.state === 'termine'"
+                      size="small"
+                      :aria-label="`Regarder la vidéo : ${row.title}`"
+                      title="Regarder la vidéo"
+                      :data-regarder="job.id"
+                      @click="watchVideo(job.id)"
+                    >▶</Button>
+                  </div>
                 </td>
                 <td class="border-t border-edge py-[9px] text-right align-middle max-md:ml-auto max-md:border-t-0 max-md:py-0 max-md:empty:hidden">
                   <Button

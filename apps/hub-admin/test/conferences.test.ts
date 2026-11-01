@@ -16,6 +16,7 @@ import {
   type PlannedSession,
 } from '../src/stores/conferences.js'
 import { useSessionStore } from '../src/stores/session.js'
+import { useMontageStore } from '../src/stores/montage.js'
 
 /**
  * Talks and schedule.
@@ -607,5 +608,23 @@ describe('conferences view', () => {
     // "I did not do that" is the first question asked in front of this row.
     await wrapper.get('[data-slot="talk-1"]').trigger('click')
     expect(wrapper.get('[data-session="talk-1"]').text()).toContain('regie@cloudnord.fr')
+  })
+})
+
+describe('watching a video from the program', () => {
+  it('offers the finished takes of the selected talk, and no other', async () => {
+    const { wrapper } = await mountView()
+    const store = useMontageStore()
+    const job = { sessionId: 'talk-1', marquesManquantes: [] }
+    vi.spyOn(store, 'forSession').mockResolvedValue([
+      { ...job, id: 'fini', sidecarUploadId: 'a', state: 'termine' },
+      { ...job, id: 'attend', sidecarUploadId: 'b', state: 'attente' },
+    ] as never)
+    const watch = vi.spyOn(store, 'watch').mockResolvedValue()
+    await wrapper.get('[data-slot="talk-1"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-regarder="attend"]').exists()).toBe(false)
+    await wrapper.get('[data-regarder="fini"]').trigger('click')
+    expect(watch).toHaveBeenCalledWith('fini')
   })
 })

@@ -344,9 +344,11 @@ const LEGEND = [
 
 const montages = useMontageStore()
 const selectedTakes = ref<{ path: string; label: string }[]>([])
+const selectedVideos = ref<{ jobId: string; label: string }[]>([])
 async function select(session: PlannedSession): Promise<void> {
   selectedId.value = session.id
   selectedTakes.value = []
+  selectedVideos.value = []
   if (!isCapturable(session)) return
   const jobs = await montages.forSession(session.id).catch(() => [])
   if (selectedId.value !== session.id) return
@@ -355,6 +357,9 @@ async function select(session: PlannedSession): Promise<void> {
     path: montagePath(session.id, job.sidecarUploadId),
     label: takes.length > 1 ? `Ouvrir le montage, prise ${index + 1}` : 'Ouvrir le montage',
   }))
+  selectedVideos.value = takes.flatMap((job, index) =>
+    job.state === 'termine' ? [{ jobId: job.id, label: takes.length > 1 ? `▶ Regarder la prise ${index + 1}` : '▶ Regarder' }] : [],
+  )
 }
 </script>
 
@@ -563,6 +568,14 @@ async function select(session: PlannedSession): Promise<void> {
           <h3 class="mb-1.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">Vidéo</h3>
           <p class="text-sm" :class="VOD_TONES[vodOf(selected).statut]" data-role="detail-vod">{{ vodOf(selected).detail }}</p>
           <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <Button
+              v-for="video in selectedVideos"
+              :key="video.jobId"
+              size="small"
+              variant="primary"
+              :data-regarder="video.jobId"
+              @click="montages.watch(video.jobId).catch(() => undefined)"
+            >{{ video.label }}</Button>
             <Button size="small" :data-vod-open="selected.id" @click="openVod(selected!)">Captation et fichiers</Button>
             <a v-for="take in selectedTakes" :key="take.path" :href="take.path" class="text-sm text-brand underline" data-role="detail-montage">{{ take.label }}</a>
           </div>

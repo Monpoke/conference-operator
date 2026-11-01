@@ -516,15 +516,22 @@ export class MontageService {
     analyse: MontageAnalyse | null
     fichiers: { nom: string; url: string }[]
     prise: { url: string; offsetMs: number }[]
+    niveaux: { frameMs: number; db: number[] } | null
   }> {
     const job = this.job(jobId)
     const analyse = parseJson<MontageAnalyse>(job.analyseJson)
     const vod = this.vod()
-    if (analyse == null || vod == null || !vod.ready()) return { analyse, fichiers: [], prise: [] }
+    if (analyse == null || vod == null || !vod.ready()) return { analyse, fichiers: [], prise: [], niveaux: null }
     return {
       analyse,
       fichiers: analyse.artefacts.map((nom) => ({ nom, url: vod.presignGet(this.artefactKey(job, nom)) })),
       prise: await this.takeForListening(job, vod),
+      niveaux: analyse.artefacts.includes('niveaux.json')
+        ? await vod.readText(this.artefactKey(job, 'niveaux.json')).then((text) => JSON.parse(text) as { frameMs: number; db: number[] }).catch((cause: unknown) => {
+            this.onLog('warn', 'niveaux illisibles', { jobId, error: String(cause) })
+            return null
+          })
+        : null,
     }
   }
 

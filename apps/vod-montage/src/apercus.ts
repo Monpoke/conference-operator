@@ -1,6 +1,8 @@
+import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { MontageCoupe } from '@conference-operator/contract'
-import { windowInputs, type Segment } from './audio.js'
+import { rmsFrames, windowInputs, type Segment } from './audio.js'
+import { FRAME_MS, type Frame } from './coupe.js'
 import { FFMPEG, run } from './ffmpeg.js'
 
 /**
@@ -29,6 +31,11 @@ export function locate(segments: readonly Segment[], ms: number): { path: string
     if (ms >= segment.offsetMs && ms < segment.offsetMs + segment.durationMs) return { path: segment.path, localMs: ms - segment.offsetMs }
   }
   return null
+}
+
+/** The level to draw and zoom on: one whole dB per frame, nothing below the floor of what is heard. */
+export function niveauxOf(frames: readonly Frame[]): { frameMs: number; db: number[] } {
+  return { frameMs: FRAME_MS, db: frames.map((frame) => (Number.isFinite(frame.db) ? Math.max(-90, Math.round(frame.db)) : -90)) }
 }
 
 /** The files, written into `dir`; returns their names — those that could be made. */
@@ -61,6 +68,13 @@ export async function makeApercus(options: {
       '-filter_complex', `${whole.join},aformat=channel_layouts=mono,dynaudnorm=f=250:g=15,showwavespic=s=1600x200:colors=0x8b5cf6:scale=sqrt[w]`,
       '-map', '[w]', '-frames:v', '1',
     ])
+    try {
+      const frames = await rmsFrames(segments, 0, takeMs, join(dir, 'niveaux.txt'))
+      await writeFile(join(dir, 'niveaux.json'), JSON.stringify(niveauxOf(frames)))
+      made.push('niveaux.json')
+    } catch (error) {
+      options.log?.(`niveaux impossibles : ${error instanceof Error ? error.message : String(error)}`)
+    }
   }
 
   for (const side of ['debut', 'fin'] as const) {

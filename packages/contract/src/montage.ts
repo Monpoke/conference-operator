@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { isoDateTimeSchema, roomIdSchema, sessionIdSchema } from './primitives.js'
 
 /** An analysis file's name: a short slug and one of three kinds. */
-export const ARTEFACT_NAME = /^[a-z0-9-]{1,40}\.(png|jpg|mp3)$/
+export const ARTEFACT_NAME = /^[a-z0-9-]{1,40}\.(png|jpg|mp3|json)$/
 
 /**
  * What the intro and the outro of a published talk show.

@@ -167,3 +167,10 @@ describe('the confidence of a cut', () => {
     expect(judge(side('marque'), side('marque'), { durationMs: 40 * 60_000, regieAuto: false, disagreeMs: 5 * 60_000 }).confiance).toBe('moyenne')
   })
 })
+
+describe('les niveaux de la prise', () => {
+  it('keeps one whole dB per frame, silence at the floor', async () => {
+    const { niveauxOf } = await import('../src/apercus.js')
+    expect(niveauxOf([{ ms: 0, db: -31.6 }, { ms: 50, db: Number.NEGATIVE_INFINITY }, { ms: 100, db: -120 }])).toEqual({ frameMs: 50, db: [-32, -90, -90] })
+  })
+})

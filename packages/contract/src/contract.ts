@@ -1437,6 +1437,11 @@ export const contract = {
            * proposed one. Empty when the sidecar cannot be read.
            */
           prise: z.array(z.object({ url: z.url(), offsetMs: z.number().int().nonnegative() })).default([]),
+          /**
+           * The whole take's level, frame by frame, to zoom on. `null`: analysed
+           * before these were kept, the waveform image is all there is.
+           */
+          niveaux: z.object({ frameMs: z.number().int().positive(), db: z.array(z.number().int()) }).nullable().default(null),
         }),
       ),
 

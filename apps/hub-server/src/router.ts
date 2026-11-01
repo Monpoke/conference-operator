@@ -2080,7 +2080,7 @@ export const router = os.router({
     ),
 
     telecharger: os.montage.telecharger.use(operatorCan('vod:read')).handler(({ input, context }) =>
-      onMontage(context, () => ({ url: context.services.montage.downloadUrl(input.jobId) })),
+      onMontage(context, () => ({ url: context.services.montage.downloadUrl(input.jobId, input.lire) })),
     ),
 
     habillage: os.montage.habillage.use(operatorCan('vod:read')).handler(({ input, context }) => {

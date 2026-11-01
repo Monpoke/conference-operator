@@ -425,6 +425,7 @@ const FIELD = 'mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 tex
                 <StableLabel :current="job?.state === 'a-valider' ? 'Valider et monter' : 'Remonter avec cette coupe'" :labels="['Valider et monter', 'Remonter avec cette coupe']" />
               </Button>
               <Button size="small" data-role="proposition" @click="reset(analyse)">Revenir à la proposition</Button>
+              <Button v-if="job?.state === 'termine'" size="small" data-role="regarder" @click="attempt(() => montages.watch(job!.id), '')">Regarder</Button>
               <Button v-if="job?.state === 'termine'" size="small" data-role="telecharger" @click="attempt(() => montages.download(job!.id), '')">Télécharger</Button>
               <Button
                 v-if="job?.state === 'attente' || job?.state === 'en-cours'"

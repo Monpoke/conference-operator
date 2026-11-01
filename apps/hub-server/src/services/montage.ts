@@ -678,12 +678,13 @@ export class MontageService {
     return true
   }
 
-  downloadUrl(jobId: string): string {
+  downloadUrl(jobId: string, lire = false): string {
     const job = this.job(jobId)
     if (job.state !== 'termine' || job.outputKey == null) {
       throw new MontageError('PRECONDITION_FAILED', 'ce montage n’est pas terminé')
     }
-    return this.requireVod().presignGet(job.outputKey, job.outputKey.split('/').pop())
+    // Without a file name, the address sets no attachment: the browser plays the video.
+    return this.requireVod().presignGet(job.outputKey, lire ? undefined : job.outputKey.split('/').pop())
   }
 
   /* ---------- Internals ---------- */

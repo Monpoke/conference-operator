@@ -1472,8 +1472,8 @@ export const contract = {
       .input(z.object({ jobId: z.string(), debutMs: z.number().int().nonnegative(), finMs: z.number().int().positive() }))
       .output(montageJobViewSchema),
 
-    /** A signed address to download the edited video. Admin. */
-    telecharger: oc.input(z.object({ jobId: z.string() })).output(z.object({ url: z.url() })),
+    /** A signed address to download the edited video, or to `lire` it in the browser. Admin. */
+    telecharger: oc.input(z.object({ jobId: z.string(), lire: z.boolean().default(false) })).output(z.object({ url: z.url() })),
 
     /** What the intro and outro of a talk will show. Admin — the console's preview. */
     habillage: oc.input(z.object({ sessionId: sessionIdSchema })).output(vodHabillageSchema),

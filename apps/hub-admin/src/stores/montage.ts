@@ -66,6 +66,12 @@ export const useMontageStore = defineStore('montage', () => {
     window.open(url, '_blank', 'noopener')
   }
 
+  /** Plays the edited video in a new tab, through the same kind of address. */
+  async function watch(jobId: string): Promise<void> {
+    const { url } = await session.client.rpc.montage.telecharger({ jobId, lire: true })
+    window.open(url, '_blank', 'noopener')
+  }
+
   /** Creates a worker; the token is returned once and never shown again. */
   async function createWorker(nom: string): Promise<string> {
     const created = await session.client.rpc.montage.workers.create({ nom })
@@ -78,7 +84,7 @@ export const useMontageStore = defineStore('montage', () => {
     await load()
   }
 
-  return { jobs, workers, enPause, loadPause, setPause, load, forSession, relaunch, cancel, download, analysis, validate, createWorker, revokeWorker }
+  return { jobs, workers, enPause, loadPause, setPause, load, forSession, relaunch, cancel, download, watch, analysis, validate, createWorker, revokeWorker }
 })
 
 /** One file of a take, and where it starts in it. */

@@ -488,6 +488,7 @@ describe('the edited video', () => {
     const done = montage.list('sess-1')[0]!
     expect(done).toMatchObject({ state: 'termine', marquesManquantes: ['debut'], durationMs: 3_000_000, outputKey: key })
     expect(montage.downloadUrl(done.id)).toContain('response-content-disposition=')
+    expect(montage.downloadUrl(done.id, true)).not.toContain('response-content-disposition=')
   })
 
   it('can be edited again from the talk’s latest take', async () => {

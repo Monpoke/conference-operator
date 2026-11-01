@@ -70,14 +70,15 @@ const SCRIPT = `(() => {
   let signature = JSON.stringify(mots)
   const hash = (s) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h) }
   const CELLULE = 3
-  const MIN_PX = 9
-  const ANGLES = [0, 0, 0, 0, 0, 0, 90, -90, 90, -45, 45]
+  const MIN_PX = 10
+  const ANGLES = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 90, -90, 90, -90, 45, -45, 22.5, -22.5, 67.5, -67.5]
+  const SVG = 'http://www.w3.org/2000/svg'
   const toile = document.createElement('canvas')
   const ctx = toile.getContext('2d', { willReadFrequently: true })
   // The word's real shape, in cells around its centre: a tilted word only takes
   // what its letters cover, and others can sit in the corners of its box.
-  function forme(mot, px, angle, police) {
-    const fonte = '600 ' + px + 'px ' + police
+  function forme(mot, px, angle, police, poids) {
+    const fonte = poids + ' ' + px + 'px ' + police
     ctx.font = fonte
     const cote = Math.ceil(Math.max(ctx.measureText(mot).width, px * 1.3)) + 8
     toile.width = toile.height = cote
@@ -103,62 +104,77 @@ const SCRIPT = `(() => {
     const cols = Math.ceil(W / CELLULE), rows = Math.ceil(H / CELLULE)
     const grille = new Uint8Array(cols * rows)
     const max = mots[0].n, min = mots[mots.length - 1].n
-    const petit = Math.max(MIN_PX, grand / 7)
     const limite = Math.max(cols, rows)
+    const fx = cols / limite, fy = rows / limite
     function trouver(cellules) {
       const libre = (x, y) => cellules.every(([dx, dy]) => {
         const cx = x + dx, cy = y + dy
         return cx >= 2 && cy >= 2 && cx < cols - 2 && cy < rows - 2 && !grille[cy * cols + cx]
       })
       for (let a = 0, r = 0; r < limite; a += 1.5 / Math.max(r, 1), r = 0.4 * a) {
-        // A spiral with square turns: a round one leaves the corners empty.
+        // A spiral with the frame's own shape and square turns: a round one leaves the corners empty.
         const carre = Math.max(Math.abs(Math.cos(a)), Math.abs(Math.sin(a)))
-        const x = Math.round(cols / 2 + r * Math.cos(a) / carre)
-        const y = Math.round(rows / 2 + r * Math.sin(a) / carre)
+        const x = Math.round(cols / 2 + r * fx * Math.cos(a) / carre)
+        const y = Math.round(rows / 2 + r * fy * Math.sin(a) / carre)
         if (libre(x, y)) return [x, y]
       }
       return null
     }
     const places = []
     mots.forEach((m, i) => {
-      const taille = petit + (grand - petit) * Math.pow((m.n - min) / ((max - min) || 1), 0.85)
+      const taille = 12 + (grand - 12) * Math.pow((m.n - min) / ((max - min) || 1), 0.7)
       // The longest big words stay flat: tilted, a hashtag would cross the whole cloud.
       const angle = i === 0 || (m.mot.length > 9 && taille > grand / 2) ? 0 : ANGLES[hash(m.mot) % ANGLES.length]
       for (const echelle of [1, 0.85, 0.7, 0.55, 0.42]) {
         const px = Math.round(taille * echelle)
         if (px < MIN_PX) break
-        const cellules = forme(m.mot, px, angle, police)
+        const poids = px >= 64 ? 700 : px >= 36 ? 600 : 500
+        const cellules = forme(m.mot, px, angle, police, poids)
         const place = trouver(cellules)
         if (place == null) continue
         for (const [dx, dy] of cellules) grille[(place[1] + dy) * cols + place[0] + dx] = 1
-        places.push({ m, px, angle, x: place[0] * CELLULE, y: place[1] * CELLULE })
+        places.push({ m, px, poids, angle, x: place[0] * CELLULE, y: place[1] * CELLULE })
         return
       }
     })
     return places
   }
+  // A frame of fixed size, drawn at the page's scale: the same cloud on any wide
+  // screen. Upright on a phone, where a wide frame would shrink it too far.
+  let couche = null
   function poser() {
+    const debout = zone.clientWidth < 600
+    if (debout === couche && zone.firstChild != null && zone.dataset.signature === signature) return
+    couche = debout
+    zone.dataset.signature = signature
     zone.replaceChildren()
-    const W = zone.clientWidth, H = zone.clientHeight
-    if (mots.length === 0 || W === 0 || H === 0) return
+    if (mots.length === 0 || zone.clientWidth === 0) return
+    const W = debout ? 700 : 1045, H = debout ? 1050 : 700
     const police = getComputedStyle(zone).fontFamily
     // Smaller and smaller until every word fits, rather than leaving words out.
     let retenu = []
-    for (const part of [5.5, 7, 9, 11, 14]) {
-      const places = essai(Math.max(24, Math.min(W, H) / part), W, H, police)
+    for (const grand of [100, 85, 72, 60, 50]) {
+      const places = essai(grand, W, H, police)
       if (places.length > retenu.length) retenu = places
       if (retenu.length === mots.length) break
     }
-    for (const { m, px, angle, x, y } of retenu) {
-      const span = document.createElement('span')
-      span.className = 'mot'
-      span.textContent = m.mot
-      span.title = m.mot + ' : ' + m.n
-      span.style.color = 'var(--mot-' + (hash(m.mot) % 10) + ')'
-      span.style.fontSize = px + 'px'
-      span.style.transform = 'translate(' + x + 'px,' + y + 'px) translate(-50%,-50%) rotate(' + angle + 'deg)'
-      zone.append(span)
+    const svg = document.createElementNS(SVG, 'svg')
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H)
+    for (const { m, px, poids, angle, x, y } of retenu) {
+      const texte = document.createElementNS(SVG, 'text')
+      const titre = document.createElementNS(SVG, 'title')
+      titre.textContent = m.mot + ' : ' + m.n
+      texte.append(titre, m.mot)
+      texte.setAttribute('class', 'mot')
+      texte.setAttribute('text-anchor', 'middle')
+      texte.setAttribute('dominant-baseline', 'central')
+      texte.setAttribute('font-size', String(px))
+      texte.setAttribute('font-weight', String(poids))
+      texte.setAttribute('transform', 'translate(' + x + ',' + y + ') rotate(' + angle + ')')
+      texte.style.fill = 'var(--mot-' + (hash(m.mot) % 10) + ')'
+      svg.append(texte)
     }
+    zone.append(svg)
   }
   let attente = null
   addEventListener('resize', () => { clearTimeout(attente); attente = setTimeout(poser, 200) })
@@ -219,8 +235,9 @@ export function renderMots(data: MurPublic, mots: readonly Mot[]): string {
   h1 { margin: 0; font-size: clamp(20px, 3vw, 32px); }
   header a { color: var(--c-creme); font-weight: 700; }
   .hashtag { color: var(--c-orange); font-weight: 800; }
-  #nuage { position: relative; width: min(100% - 16px, 100dvh - 96px); aspect-ratio: 1; margin: 4px auto 12px; overflow: hidden; }
-  .mot { position: absolute; left: 0; top: 0; white-space: nowrap; font-weight: 600; line-height: 1; cursor: default; }
+  #nuage { width: min(100% - 16px, (100dvh - 96px) * 1.49); margin: 4px auto 12px; }
+  #nuage svg { display: block; width: 100%; height: auto; }
+  .mot { opacity: .95; cursor: default; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 </style>
 </head>

@@ -12,6 +12,7 @@ import {
 } from '../stores/vod.js'
 import { MONTAGE_STATES, cutMinutes, latestByTake, montagePath, useMontageStore } from '../stores/montage.js'
 import type { MontageJobView } from '@conference-operator/contract'
+import { dayKeyOf, dayOptions } from '../stores/days.js'
 
 /**
  * Uploads of the takes.
@@ -20,7 +21,7 @@ import type { MontageJobView } from '@conference-operator/contract'
  * before dismantling a room, while its disk is still plugged in.
  */
 const store = useVodStore()
-const { conferences, rooms, room } = storeToRefs(store)
+const { conferences, rooms, room, planning } = storeToRefs(store)
 const toast = useToast()
 
 const roomOptions = computed(() => [
@@ -51,10 +52,19 @@ const asksForAttention = (sessionId: string) =>
 
 /** By default, only what still asks for attention: the list shrinks as the day goes. */
 const onlyToHandle = ref(true)
+const zone = computed(() => planning.value?.timezone ?? 'Europe/Paris')
+const day = ref('')
+const days = computed(() => dayOptions(conferences.value.map((row) => row.startsAt), zone.value))
+/*
+ * The summary and the verdict above keep counting every day: « tout est rentré »
+ * must not be read from a filter that hides another day's missing rush.
+ */
 const shown = computed(() =>
-  onlyToHandle.value
-    ? conferences.value.filter((row) => row.etat === 'a-reprendre' || row.etat === 'en-cours' || asksForAttention(row.key))
-    : conferences.value,
+  conferences.value.filter(
+    (row) =>
+      (day.value === '' || (row.startsAt != null && dayKeyOf(row.startsAt, zone.value) === day.value)) &&
+      (!onlyToHandle.value || row.etat === 'a-reprendre' || row.etat === 'en-cours' || asksForAttention(row.key)),
+  ),
 )
 
 const stateOfJob = (job: MontageJobView) => MONTAGE_STATES[job.state] ?? { label: job.state, tone: '' }
@@ -154,6 +164,10 @@ async function requestAll(): Promise<void> {
           <option v-for="room in roomOptions" :key="room.value" :value="room.value">
             {{ room.label }}
           </option>
+        </select>
+        <select id="vod-day" v-model="day" class="min-w-[130px] rounded-lg border border-edge bg-canvas px-3 py-2.5 text-sm text-text" aria-label="Jour affiché">
+          <option value="">Tous les jours</option>
+          <option v-for="option in days" :key="option.value" :value="option.value">{{ option.label }}</option>
         </select>
         <Button id="btn-vod-retry" size="small" @click="requestAll">Tout relancer</Button>
       </div>

@@ -1,6 +1,7 @@
 import type { AuditEntry } from '@conference-operator/contract'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { dayBounds } from './days.js'
 import { useSessionStore } from './session.js'
 
 /**
@@ -29,6 +30,8 @@ export const useAuditStore = defineStore('audit', () => {
   const rooms = ref<Room[]>([])
   const room = ref<string>('')
   const actor = ref<string>('')
+  /** `AAAA-MM-JJ`, or `''` for every day. */
+  const day = ref<string>('')
   /** Everyone seen so far: the person filter offers them. */
   const actors = ref<string[]>([])
 
@@ -45,6 +48,8 @@ export const useAuditStore = defineStore('audit', () => {
     return {
       roomId: room.value === '' ? null : room.value,
       actor: actor.value === '' ? null : actor.value,
+      depuis: dayBounds(day.value)?.depuis ?? null,
+      avant: dayBounds(day.value)?.avant ?? null,
       q,
       actions: q === '' ? [] : Object.keys(ACTIONS).filter((key) => fold(ACTIONS[key]!).includes(wanted)),
       rooms: q === '' ? [] : rooms.value.filter((r) => fold(r.name).includes(wanted)).map((r) => r.id),
@@ -108,7 +113,8 @@ export const useAuditStore = defineStore('audit', () => {
     }
   }
 
-  return { entries, total, page, query, rooms, room, actor, actors, load, goTo, search, reload, everything }
+  return { entries, total, page, query, rooms, room,
+    day, actor, actors, load, goTo, search, reload, everything }
 })
 
 /** The procedures, in the operator's words. */

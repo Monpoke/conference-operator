@@ -13,6 +13,7 @@ import type { VodStatut } from '@conference-operator/contract'
 import { timeFormatter } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
+import { dayKeyOf, dayOptions } from '../stores/days.js'
 import { planningGrid, PX_PER_MINUTE } from '../stores/planning-grid.js'
 import { latestByTake, montagePath, useMontageStore } from '../stores/montage.js'
 import FeedbackIdDialog from '../components/FeedbackIdDialog.vue'
@@ -51,9 +52,13 @@ const zone = computed(() => planning.value?.timezone ?? 'Europe/Paris')
 const hour = (iso: string | null | undefined): string =>
   iso == null ? '—' : timeFormatter(zone.value).format(new Date(iso))
 
+const day = ref('')
+const planningDays = computed(() => dayOptions((planning.value?.sessions ?? []).map((session) => session.startsAt), zone.value))
 const slots = computed(() =>
   (planning.value?.sessions ?? []).filter(
-    (session) => room.value === '' || session.roomId === room.value,
+    (session) =>
+      (room.value === '' || session.roomId === room.value) &&
+      (day.value === '' || dayKeyOf(session.startsAt, zone.value) === day.value),
   ),
 )
 
@@ -351,6 +356,10 @@ async function select(session: PlannedSession): Promise<void> {
           <option value="">Toutes les salles</option>
           <option v-for="option in planning?.rooms ?? []" :key="option.id" :value="option.id">{{ option.name }}</option>
         </select>
+        <select id="planning-day" v-model="day" class="w-auto rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text" aria-label="Jour affiché">
+          <option value="">Tous les jours</option>
+          <option v-for="option in planningDays" :key="option.value" :value="option.value">{{ option.label }}</option>
+        </select>
         <Button id="btn-check-feedback" size="small" :disabled="checking" @click="checkLinks">Vérifier les liens</Button>
         <span v-if="decisions > 0" id="planning-decisions" class="text-xs text-warn">
           {{ decisions }} décision{{ decisions > 1 ? 's' : '' }} en vigueur
@@ -397,7 +406,7 @@ async function select(session: PlannedSession): Promise<void> {
       <Empty v-if="!hasActiveProgram || planning == null || planning.sessions.length === 0">
         Aucun programme actif. Il s'importe depuis les réglages.
       </Empty>
-      <Empty v-else-if="slots.length === 0">Aucun créneau dans cette salle.</Empty>
+      <Empty v-else-if="slots.length === 0">Aucun créneau pour ce choix de salle et de jour.</Empty>
 
       <div v-for="day in days" v-else :key="day.key" class="mb-5" :data-day="day.key">
         <h2 v-if="severalDays" class="mb-2 text-sm font-semibold">{{ day.key }}</h2>

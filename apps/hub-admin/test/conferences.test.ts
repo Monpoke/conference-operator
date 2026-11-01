@@ -1,3 +1,4 @@
+import { dayBounds, dayOptions } from '../src/stores/days.js'
 import { planningGrid, PX_PER_MINUTE } from '../src/stores/planning-grid.js'
 import { formatOrateurs, habillageFromForm, parseOrateurs } from '../src/stores/conferences.js'
 import { flushPromises, mount } from '@vue/test-utils'
@@ -341,6 +342,26 @@ describe('emergency gestures', () => {
       path: 'sessions/pin',
       input: { roomId: 'track-2', sessionId: null },
     })
+  })
+})
+
+describe('the day filter', () => {
+  it('reads the day in the event s zone, in order, once each', () => {
+    const options = dayOptions(['2026-10-31T08:00:00Z', '2026-10-29T23:30:00Z', '2026-10-30T09:00:00Z', null], 'Europe/Paris')
+    expect(options.map((option) => option.value)).toEqual(['2026-10-30', '2026-10-31'])
+  })
+
+  it('shows only the slots of the day chosen', async () => {
+    const { wrapper } = await mountView({ sessions: [TALK, { ...OTHER, startsAt: '2026-10-31T09:00:00Z', endsAt: '2026-10-31T10:00:00Z' }] })
+    await wrapper.get('#planning-day').setValue('2026-10-31')
+    expect(wrapper.find('[data-slot="talk-1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-slot="talk-2"]').exists()).toBe(true)
+  })
+
+  it('bounds a typed date to one whole day', () => {
+    const bounds = dayBounds('2026-10-30')!
+    expect(Date.parse(bounds.avant) - Date.parse(bounds.depuis)).toBe(86_400_000)
+    expect(dayBounds('')).toBeNull()
   })
 })
 

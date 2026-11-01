@@ -14,7 +14,7 @@ import { PAGE_SIZE, actionLabel, resultOf, toCsv, useAuditStore } from '../store
  * remembers changing.
  */
 const store = useAuditStore()
-const { entries, total, page, rooms, room, actor, actors } = storeToRefs(store)
+const { entries, total, page, rooms, room, day, actor, actors } = storeToRefs(store)
 const toast = useToast()
 const exporting = ref(false)
 
@@ -27,7 +27,7 @@ const actorOptions = computed(() => [
   ...actors.value.map((email) => ({ value: email, label: email })),
 ])
 
-watch([room, actor], () => void store.reload().catch(() => {}))
+watch([room, day, actor], () => void store.reload().catch(() => {}))
 
 // The search leaves once typing pauses, not on every key.
 const search = ref(store.query)
@@ -41,7 +41,7 @@ onBeforeUnmount(() => {
 })
 
 const pages = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)))
-const filtered = computed(() => search.value.trim() !== '' || room.value !== '' || actor.value !== '')
+const filtered = computed(() => search.value.trim() !== '' || room.value !== '' || day.value !== '' || actor.value !== '')
 
 const roomName = (id: string) => rooms.value.find((room) => room.id === id)?.name ?? id
 
@@ -97,6 +97,7 @@ const ROW =
             {{ option.label }}
           </option>
         </select>
+        <input id="journal-day" v-model="day" type="date" aria-label="Jour" :class="FILTER">
         <select id="journal-actor" v-model="actor" :class="FILTER">
           <option v-for="option in actorOptions" :key="option.value" :value="option.value">
             {{ option.label }}

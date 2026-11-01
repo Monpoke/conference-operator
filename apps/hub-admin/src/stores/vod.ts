@@ -72,7 +72,7 @@ export const useVodStore = defineStore('vod', () => {
     await load()
   }
 
-  return { uploads, rooms, room, conferences, load, request }
+  return { uploads, rooms, room, planning, conferences, load, request }
 })
 
 /** What an upload state says, and in what colour. */

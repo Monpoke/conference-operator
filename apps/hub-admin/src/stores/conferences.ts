@@ -106,8 +106,6 @@ export const useConferencesStore = defineStore('conferences', () => {
   /** Read from the planning, never kept apart: a pin lifts itself on the hub side. */
   const pins = computed<Record<string, string>>(() => planning.value?.pins ?? {})
 
-  /** Collapsed by default — see `ConferencesView`. */
-  const actionsShown = ref(false)
 
   const session = useSessionStore()
 
@@ -211,7 +209,6 @@ export const useConferencesStore = defineStore('conferences', () => {
     planning,
     hasActiveProgram,
     room,
-    actionsShown,
     load,
     decide,
     override,

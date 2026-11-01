@@ -128,7 +128,7 @@ function refresh(): void {
 <template>
   <SignInScreen v-if="!signedIn" />
 
-  <div v-else id="console" class="mx-auto min-h-dvh max-w-[1180px] p-3 sm:p-5">
+  <div v-else id="console" class="mx-auto min-h-dvh max-w-[1600px] p-3 sm:p-5">
     <header class="flex flex-wrap items-center gap-3 pb-3">
       <h1
         id="console-title"

@@ -1,3 +1,4 @@
+import { planningGrid, PX_PER_MINUTE } from '../src/stores/planning-grid.js'
 import { formatOrateurs, habillageFromForm, parseOrateurs } from '../src/stores/conferences.js'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -266,7 +267,7 @@ describe('swap partners', () => {
 describe('emergency gestures', () => {
   it('swaps two talks and reads the program back from the hub', async () => {
     const { calls, wrapper } = await mountView({ sessions: [TALK, OTHER] })
-    await wrapper.get('#btn-planning-actions').trigger('click')
+    await wrapper.get('[data-slot="talk-1"]').trigger('click')
 
     await wrapper.get('[data-swap-session="talk-1"]').setValue('talk-2')
     await flushPromises()
@@ -282,7 +283,7 @@ describe('emergency gestures', () => {
     const { wrapper } = await mountView({
       sessions: [{ ...TALK, startedAt: '2026-10-30T09:01:00Z' }, OTHER],
     })
-    await wrapper.get('#btn-planning-actions').trigger('click')
+    await wrapper.get('[data-slot="talk-1"]').trigger('click')
 
     const menu = wrapper.get('[data-swap-session="talk-1"]')
     expect(menu.attributes('disabled')).toBeDefined()
@@ -300,8 +301,6 @@ describe('emergency gestures', () => {
 
   it('gives the slots back to the program only once confirmed', async () => {
     const { calls, wrapper } = await mountView({ sessions: [{ ...TALK, movedTo: 'talk-2' }, OTHER] })
-    await wrapper.get('#btn-planning-actions').trigger('click')
-
     await wrapper.get('#btn-reset-slots').trigger('click')
     await flushPromises()
     expect(calls.filter((call) => call.path === 'sessions/resetSlots')).toHaveLength(0)
@@ -316,7 +315,7 @@ describe('emergency gestures', () => {
 
   it('forces a talk in its room, and lifts it', async () => {
     const { calls, wrapper } = await mountView({ sessions: [TALK, OTHER] })
-    await wrapper.get('#btn-planning-actions').trigger('click')
+    await wrapper.get('[data-slot="talk-2"]').trigger('click')
 
     await wrapper.get('[data-pin-session="talk-2"]').trigger('click')
     await flushPromises()
@@ -331,7 +330,7 @@ describe('emergency gestures', () => {
       sessions: [TALK, OTHER],
       pins: { 'track-2': 'talk-2' },
     })
-    await wrapper.get('#btn-planning-actions').trigger('click')
+    await wrapper.get('[data-slot="talk-2"]').trigger('click')
 
     expect(wrapper.get('[data-pinned="talk-2"]').text()).toContain('Forcée')
     expect(wrapper.find('[data-pin-session="talk-2"]').exists()).toBe(false)
@@ -342,6 +341,42 @@ describe('emergency gestures', () => {
       path: 'sessions/pin',
       input: { roomId: 'track-2', sessionId: null },
     })
+  })
+})
+
+describe('the planning grid', () => {
+  it('places the talks of a room by their hour, height being their length', () => {
+    const [day] = planningGrid(
+      [
+        { id: 'a', roomId: 'r1', startsAt: '2026-10-30T09:00:00Z', endsAt: '2026-10-30T10:00:00Z' },
+        { id: 'b', roomId: 'r2', startsAt: '2026-10-30T09:30:00Z', endsAt: '2026-10-30T09:35:00Z' },
+      ],
+      [{ id: 'r1', name: 'Un' }, { id: 'r2', name: 'Deux' }],
+      () => 'jour',
+    )
+    expect(day!.columns.map((column) => column.name)).toEqual(['Un', 'Deux'])
+    expect(day!.columns[0]!.slots[0]).toMatchObject({ topPx: 0, heightPx: 60 * PX_PER_MINUTE - 3 })
+    expect(day!.columns[1]!.slots[0]!.topPx).toBe(30 * PX_PER_MINUTE)
+    // Five minutes stay readable.
+    expect(day!.columns[1]!.slots[0]!.heightPx).toBe(30)
+  })
+
+  it('never lets a short slot run under the next one', () => {
+    const [day] = planningGrid(
+      [
+        { id: 'pause', roomId: 'r', startsAt: '2026-10-30T09:45:00Z', endsAt: '2026-10-30T09:50:00Z' },
+        { id: 'talk', roomId: 'r', startsAt: '2026-10-30T09:50:00Z', endsAt: '2026-10-30T10:40:00Z' },
+      ],
+      [{ id: 'r', name: 'Salle' }],
+      () => 'jour',
+    )
+    const [pause, talk] = day!.columns[0]!.slots
+    expect(pause!.topPx + pause!.heightPx).toBeLessThanOrEqual(talk!.topPx)
+  })
+
+  it('never loses a slot whose room the program does not name', () => {
+    const [day] = planningGrid([{ id: 'a', roomId: null, startsAt: '2026-10-30T09:00:00Z' }], [], () => 'jour')
+    expect(day!.columns.map((column) => column.name)).toEqual(['Sans salle'])
   })
 })
 
@@ -362,33 +397,31 @@ describe('conferences view', () => {
     expect(row.text()).toContain('en ce moment')
   })
 
-  it('collapses the action column, and says how many decisions are in force', async () => {
+  it('says how many decisions are in force, and keeps the gestures in the talk s detail', async () => {
     const { wrapper } = await mountView({
       sessions: [TALK, { ...PAUSE, overriddenAs: 'talk' }],
     })
 
-    // It is the only column that writes, among six that read, and its decision
-    // propagates all the way to the projected QR codes.
     expect(wrapper.find('[data-session-action]').exists()).toBe(false)
-    expect(wrapper.get('#btn-planning-actions').text()).toContain('1 décision')
+    expect(wrapper.get('#planning-decisions').text()).toContain('1 décision')
 
-    await wrapper.get('#btn-planning-actions').trigger('click')
-    expect(wrapper.find('[data-session-action]').exists()).toBe(true)
+    await wrapper.get('[data-slot="talk-1"]').trigger('click')
+    expect(wrapper.find('[data-session-action="talk-1"]').exists()).toBe(true)
   })
 
   it('does not offer to decide a break inherited from another room', async () => {
     const { wrapper } = await mountView({ sessions: [INHERITED] })
-    await wrapper.get('#btn-planning-actions').trigger('click')
+    await wrapper.get('[data-slot="pause-2"]').trigger('click')
 
     // It is the original slot that gets corrected, and the projection follows: a
     // menu on the copy would suggest two independent decisions.
-    expect(wrapper.get('[data-slot="pause-2"]').text()).toContain('héritée')
+    expect(wrapper.get('[data-role="detail-talk"]').text()).toContain('héritée')
     expect(wrapper.find('[data-session-action="pause-2"]').exists()).toBe(false)
   })
 
   it('saves a decision and reads the program back from the hub', async () => {
     const { calls, wrapper } = await mountView()
-    await wrapper.get('#btn-planning-actions').trigger('click')
+    await wrapper.get('[data-slot="talk-1"]').trigger('click')
 
     await wrapper.get('[data-session-action="talk-1"]').setValue('break')
     await flushPromises()
@@ -404,7 +437,7 @@ describe('conferences view', () => {
 
   it('does not leave the menu on a decision the hub refused', async () => {
     const { calls, wrapper } = await mountView({ overrideError: 'Programme verrouillé' })
-    await wrapper.get('#btn-planning-actions').trigger('click')
+    await wrapper.get('[data-slot="talk-1"]').trigger('click')
 
     await wrapper.get('[data-session-action="talk-1"]').setValue('break')
     await flushPromises()
@@ -458,18 +491,16 @@ describe('conferences view', () => {
     const { wrapper } = await mountView({
       sessions: [{ ...TALK, feedbackIdOverride: 'vue-et-les-regies' }],
     })
-    await wrapper.get('#btn-planning-actions').trigger('click')
+    await wrapper.get('[data-slot="talk-1"]').trigger('click')
 
     expect(wrapper.get('[data-feedback-session="talk-1"]').text()).toContain('✱')
   })
 
-  it('hides the feedback identifier until the slots are being edited', async () => {
+  it('keeps the feedback identifier in the talk s detail', async () => {
     const { wrapper } = await mountView({ sessions: [TALK] })
 
-    // Correcting the identifier is a change to the slot, like the actions: it
-    // stays out of the way of whoever only reads the list.
     expect(wrapper.find('[data-feedback-session="talk-1"]').exists()).toBe(false)
-    await wrapper.get('#btn-planning-actions').trigger('click')
+    await wrapper.get('[data-slot="talk-1"]').trigger('click')
     expect(wrapper.find('[data-feedback-session="talk-1"]').exists()).toBe(true)
   })
 
@@ -506,6 +537,7 @@ describe('conferences view', () => {
       ],
     })
 
+    await wrapper.get('[data-slot="talk-1"]').trigger('click')
     const row = wrapper.get('[data-session="talk-1"]')
     // `running`: it can be ended, not started.
     expect(row.text()).toContain('Terminer')
@@ -517,6 +549,7 @@ describe('conferences view', () => {
       states: [{ sessionId: 'talk-1', status: 'running', remainingMs: -180_000 }],
     })
 
+    await wrapper.get('[data-slot="talk-1"]').trigger('click')
     const row = wrapper.get('[data-session="talk-1"]')
     expect(row.text()).toContain('+3 min')
     expect(row.html()).toContain('text-alert')
@@ -528,6 +561,7 @@ describe('conferences view', () => {
     })
 
     // "I did not do that" is the first question asked in front of this row.
+    await wrapper.get('[data-slot="talk-1"]').trigger('click')
     expect(wrapper.get('[data-session="talk-1"]').text()).toContain('regie@cloudnord.fr')
   })
 })

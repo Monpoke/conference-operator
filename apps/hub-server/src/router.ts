@@ -1705,6 +1705,14 @@ export const router = os.router({
       }
       return services.youtube.status()
     }),
+    synchroniser: os.youtube.synchroniser.use(operatorCan('vod:manage')).handler(async ({ input, context }) => {
+      try {
+        await context.services.youtube.syncMetadata(input.jobId)
+      } catch (cause) {
+        throw new ORPCError('BAD_GATEWAY', { message: (cause as Error).message })
+      }
+      return { ok: true as const }
+    }),
     visibilite: os.youtube.visibilite.use(operatorCan('vod:manage')).handler(async ({ input, context }) => {
       const { services } = context
       const job = services.montage.list(null).find((candidate) => candidate.id === input.jobId)

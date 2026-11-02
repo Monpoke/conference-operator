@@ -208,6 +208,27 @@ export class YoutubeService {
     this.#update(jobId, { visibilite })
   }
 
+  /** Gives a video already on the channel the name and description it has now. */
+  async syncMetadata(jobId: string): Promise<void> {
+    const envoi = this.envois().find((candidate) => candidate.jobId === jobId)
+    if (envoi?.videoId == null) throw new Error('Cette vidéo n’est pas encore sur YouTube')
+    const source = this.#options.source(jobId)
+    if (source == null) throw new Error('Cette vidéo n’est plus disponible, ou sa diffusion a été refusée')
+    const { refreshTokenSealed } = this.#stored()
+    if (refreshTokenSealed == null) throw new Error('Chaîne déconnectée')
+    const { access_token: accessToken } = await this.#token({ grant_type: 'refresh_token', refresh_token: this.#open(refreshTokenSealed) })
+    const response = await this.#fetch(`${API}/videos?part=snippet`, {
+      method: 'PUT',
+      headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ id: envoi.videoId, snippet: this.#snippet(source.metadata) }),
+    })
+    if (!response.ok) throw new Error(await youtubeError(response))
+  }
+
+  #snippet(metadata: YoutubeMetadata) {
+    return { title: youtubeTitle(metadata.title), description: metadata.description.replace(/[<>]/g, '').slice(0, 4900), categoryId: '28' }
+  }
+
   /**
    * The channel's playlist: made once, then updated. A video already in it is not
    * added again, and each addition is kept as it goes: a failure halfway resumes there.
@@ -297,7 +318,7 @@ export class YoutubeService {
         'x-upload-content-length': String(size),
       },
       body: JSON.stringify({
-        snippet: { title: youtubeTitle(source.metadata.title), description: source.metadata.description.replace(/[<>]/g, '').slice(0, 4900), categoryId: '28' },
+        snippet: this.#snippet(source.metadata),
         status: { privacyStatus: 'private', selfDeclaredMadeForKids: false },
       }),
     })
@@ -336,5 +357,8 @@ async function youtubeError(response: Response): Promise<string> {
   const body = (await response.json().catch(() => null)) as { error?: { message?: string; errors?: { reason?: string }[] } } | null
   const reason = body?.error?.errors?.[0]?.reason
   if (reason === 'quotaExceeded' || reason === 'uploadLimitExceeded') return 'Quota YouTube atteint : relancez demain'
+  if (reason === 'insufficientPermissions' || response.status === 403 && /scope/i.test(body?.error?.message ?? '')) {
+    return 'Autorisation Google insuffisante : déconnectez puis reconnectez la chaîne dans les réglages'
+  }
   return `YouTube a répondu ${response.status}${body?.error?.message == null ? '' : ` : ${body.error.message}`}`
 }

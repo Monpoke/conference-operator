@@ -11,7 +11,7 @@ interface Call {
 }
 
 /** Google and the storage, as far as the service sees them. */
-function google(overrides: { open?: () => Response; playlist?: () => Response; item?: (body: string) => Response | null } = {}) {
+function google(overrides: { snippet?: () => Response; open?: () => Response; playlist?: () => Response; item?: (body: string) => Response | null } = {}) {
   const calls: Call[] = []
   const impl = (async (input: URL | RequestInfo, init?: RequestInit) => {
     const url = String(input)
@@ -24,6 +24,7 @@ function google(overrides: { open?: () => Response; playlist?: () => Response; i
       return new Response(new Uint8Array(BYTES), { headers: { 'content-length': String(BYTES) } })
     }
     if (url.includes('/videos?part=status')) return Response.json({ id: 'yt-1' })
+    if (url.includes('/videos?part=snippet')) return overrides.snippet?.() ?? Response.json({ id: 'yt-1' })
     if (url.includes('/playlists?')) return init?.method === 'POST' ? Response.json({ id: 'pl-1' }) : overrides.playlist?.() ?? Response.json({ id: 'pl-1' })
     if (url.includes('/playlistItems?')) return overrides.item?.(String(init?.body)) ?? Response.json({ id: 'item' })
     if (url.includes('uploadType=resumable')) {
@@ -139,6 +140,26 @@ describe('sending a video', () => {
     const { service } = await connected(impl)
     await expect(service.syncPlaylist('Édition', false, ['a', 'b'])).rejects.toThrow('500')
     expect(service.status().playlist?.videos).toBe(1)
+  })
+
+  it('gives a sent video its current name, without sending it again', async () => {
+    const { calls, impl } = google()
+    const { service } = await connected(impl)
+    service.enqueue(['job'])
+    await expect.poll(() => service.envois()[0]?.state).toBe('termine')
+    const uploads = calls.filter((call) => call.url.includes('uploadType=resumable')).length
+    await service.syncMetadata('job')
+    const update = calls.find((call) => call.url.includes('/videos?part=snippet'))!
+    expect(JSON.parse(String(update.init?.body))).toMatchObject({ id: 'yt-1', snippet: { title: 'Mon talk', categoryId: '28' } })
+    expect(calls.filter((call) => call.url.includes('uploadType=resumable'))).toHaveLength(uploads)
+  })
+
+  it('says to connect again when Google lacks the right', async () => {
+    const { impl } = google({ snippet: () => Response.json({ error: { message: 'Request had insufficient authentication scopes.', errors: [{ reason: 'insufficientPermissions' }] } }, { status: 403 }) })
+    const { service } = await connected(impl)
+    service.enqueue(['job'])
+    await expect.poll(() => service.envois()[0]?.state).toBe('termine')
+    await expect(service.syncMetadata('job')).rejects.toThrow('reconnectez')
   })
 
   it('cleans a title for YouTube', () => {

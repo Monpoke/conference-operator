@@ -1087,6 +1087,8 @@ export const contract = {
     envoyer: oc.input(z.object({ jobIds: z.array(z.string()).max(500).nullable() })).output(z.array(youtubeEnvoiSchema)),
     /** Makes the playlist, or updates it, and adds the videos on the channel it does not hold yet. */
     playlist: oc.input(z.object({ title: z.string().trim().min(1).max(150), publique: z.boolean() })).output(youtubeStatusSchema),
+    /** Gives a sent video its current name and description, without sending it again. */
+    synchroniser: oc.input(z.object({ jobId: z.string() })).output(z.object({ ok: z.literal(true) })),
     /** Publishes a sent video, or makes it private again. A refused talk stays private. */
     visibilite: oc.input(z.object({ jobId: z.string(), publique: z.boolean() })).output(z.array(youtubeEnvoiSchema)),
   },

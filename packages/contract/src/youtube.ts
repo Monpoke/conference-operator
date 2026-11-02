@@ -17,6 +17,7 @@ export const youtubeEnvoiSchema = z.object({
   jobId: z.string(),
   state: youtubeEnvoiStateSchema,
   videoId: z.string().nullable(),
+  visibilite: z.enum(['private', 'public']),
   octets: z.number().int().nonnegative(),
   taille: z.number().int().nullable(),
   erreur: z.string().nullable(),

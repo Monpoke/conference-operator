@@ -176,7 +176,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
         return {
           url: services.montage.downloadUrl(job.id, true),
           metadata: {
-            title: job.title ?? session?.title ?? job.sessionId,
+            title: job.nomVideo,
             description: [speakers, session?.abstract ?? ''].filter((part) => part !== '').join('\n\n'),
           },
         }
@@ -231,6 +231,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       },
       (sidecarUploadId) => settings.get().montageHabillages[sidecarUploadId] ?? null,
       () => settings.get().montagePause,
+      (sessionId) => programs.active()?.program.sessions.find((session) => session.id === sessionId)?.speakers.map((speaker) => speaker.name) ?? [],
     ),
     clock,
     mode: config.mode,

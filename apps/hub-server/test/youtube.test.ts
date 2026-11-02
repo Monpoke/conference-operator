@@ -23,6 +23,7 @@ function google(overrides: { open?: () => Response } = {}) {
     if (url === 'https://stockage.test/video') {
       return new Response(new Uint8Array(BYTES), { headers: { 'content-length': String(BYTES) } })
     }
+    if (url.includes('/videos?part=status')) return Response.json({ id: 'yt-1' })
     if (url.includes('uploadType=resumable')) {
       return overrides.open?.() ?? new Response(null, { headers: { location: 'https://upload.test/session' } })
     }
@@ -97,6 +98,19 @@ describe('sending a video', () => {
     const { service } = await connected(google().impl, false)
     service.enqueue(['job'])
     await expect.poll(() => service.envois()[0]?.state).toBe('echoue')
+  })
+
+  it('publishes a sent video, and refuses one that is not there yet', async () => {
+    const { calls, impl } = google()
+    const { service } = await connected(impl)
+    await expect(service.setVisibilite('job', true)).rejects.toThrow('pas encore')
+    service.enqueue(['job'])
+    await expect.poll(() => service.envois()[0]?.state).toBe('termine')
+    expect(service.envois()[0]?.visibilite).toBe('private')
+    await service.setVisibilite('job', true)
+    expect(service.envois()[0]?.visibilite).toBe('public')
+    const update = calls.find((call) => call.url.includes('/videos?part=status'))!
+    expect(JSON.parse(String(update.init?.body))).toMatchObject({ id: 'yt-1', status: { privacyStatus: 'public' } })
   })
 
   it('cleans a title for YouTube', () => {

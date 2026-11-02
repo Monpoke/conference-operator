@@ -4,6 +4,7 @@ import { urlForLog } from '../src/log-format.js'
 import { partageContentSecurityPolicy } from '../src/pages/partage-page.js'
 import { redactSecrets } from '../src/router.js'
 import { createHub, type Hub } from '../src/server.js'
+import { fichierVideo, nomVideo } from '../src/services/montage.js'
 import { videosDuPartage } from '../src/services/partages.js'
 
 const job = (id: string, sessionId: string, take: string, state: string, outputKey: string | null = 'k') =>
@@ -111,5 +112,16 @@ describe('a shared page, over HTTP', () => {
     const statuses: number[] = []
     for (let attempt = 0; attempt < 6; attempt++) statuses.push((await post(id, 'mauvais')).status)
     expect(statuses.at(-1)).toBe(429)
+  })
+})
+
+describe('the name of a video', () => {
+  it('is the title then the speakers', () => {
+    expect(nomVideo('Mon talk', ['Alice', 'Bob'])).toBe('Mon talk - Alice, Bob')
+    expect(nomVideo('Mon talk', [])).toBe('Mon talk')
+  })
+
+  it('makes a file name a file system accepts', () => {
+    expect(fichierVideo('Kubernetes : « a/b » ? - Alice')).toBe('Kubernetes « a b » - Alice')
   })
 })

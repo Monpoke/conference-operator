@@ -11,7 +11,8 @@ const AUTH = 'https://accounts.google.com/o/oauth2/v2/auth'
 const TOKEN = 'https://oauth2.googleapis.com/token'
 const API = 'https://www.googleapis.com/youtube/v3'
 const UPLOAD = 'https://www.googleapis.com/upload/youtube/v3/videos'
-const SCOPES = 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly'
+// `youtube` and not `youtube.upload` alone: changing a video's visibility asks for it.
+const SCOPES = 'https://www.googleapis.com/auth/youtube'
 const CONSENT_TTL_MS = 10 * 60_000
 const PROGRESS_EVERY_BYTES = 16 * 1024 * 1024
 
@@ -172,7 +173,7 @@ export class YoutubeService {
       .from(youtubeEnvoi)
       .orderBy(desc(youtubeEnvoi.updatedAt))
       .all()
-      .map((row) => ({ ...row, state: row.state as YoutubeEnvoi['state'] }))
+      .map((row) => ({ ...row, state: row.state as YoutubeEnvoi['state'], visibilite: row.visibilite as YoutubeEnvoi['visibilite'] }))
   }
 
   /** Queues these videos. One waiting or being sent stays as it is; one that failed or was sent goes again. */
@@ -182,10 +183,27 @@ export class YoutubeService {
     for (const jobId of jobIds) {
       const state = current.get(jobId)
       if (state === 'attente' || state === 'en-cours') continue
-      const row = { state: 'attente', videoId: null, octets: 0, taille: null, erreur: null, updatedAt }
+      const row = { state: 'attente', videoId: null, visibilite: 'private', octets: 0, taille: null, erreur: null, updatedAt }
       this.#options.db.insert(youtubeEnvoi).values({ jobId, ...row }).onConflictDoUpdate({ target: youtubeEnvoi.jobId, set: row }).run()
     }
     void this.tick()
+  }
+
+  /** Publishes a video already on the channel, or makes it private again. */
+  async setVisibilite(jobId: string, publique: boolean): Promise<void> {
+    const envoi = this.envois().find((candidate) => candidate.jobId === jobId)
+    if (envoi?.videoId == null) throw new Error('Cette vidéo n’est pas encore sur YouTube')
+    const { refreshTokenSealed } = this.#stored()
+    if (refreshTokenSealed == null) throw new Error('Chaîne déconnectée')
+    const { access_token: accessToken } = await this.#token({ grant_type: 'refresh_token', refresh_token: this.#open(refreshTokenSealed) })
+    const visibilite = publique ? 'public' : 'private'
+    const response = await this.#fetch(`${API}/videos?part=status`, {
+      method: 'PUT',
+      headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ id: envoi.videoId, status: { privacyStatus: visibilite, selfDeclaredMadeForKids: false } }),
+    })
+    if (!response.ok) throw new Error(await youtubeError(response))
+    this.#update(jobId, { visibilite })
   }
 
   /** Sends what waits, one at a time. Resolved once the queue is empty. */

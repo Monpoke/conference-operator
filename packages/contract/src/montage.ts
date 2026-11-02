@@ -207,6 +207,8 @@ export const montageJobViewSchema = z.object({
   habillagePrise: montageHabillagePriseSchema.nullable().default(null),
   /** The talk's title in the active program; `null` for a talk it does not know. */
   title: z.string().nullable(),
+  /** What the video is called everywhere: « Titre du talk - Orateurs », the take's corrections applied. */
+  nomVideo: z.string(),
   roomId: roomIdSchema,
   state: montageStateSchema,
   etape: montageEtapeSchema.nullable(),

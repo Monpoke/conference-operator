@@ -39,19 +39,16 @@ export function partageRoutes(services: Services, publicUrl: string) {
 
     function lines(sessionId: string | null): PartageVideoLine[] {
       const jobs = videosOf(sessionId)
-      const sessions = program()?.sessions ?? []
       const counts = new Map<string, number>()
       for (const job of jobs) counts.set(job.sessionId, (counts.get(job.sessionId) ?? 0) + 1)
       const seen = new Map<string, number>()
       return jobs.map((job) => {
-        const session = sessions.find((candidate) => candidate.id === job.sessionId)
         const prise = (seen.get(job.sessionId) ?? 0) + 1
         seen.set(job.sessionId, prise)
-        const title = job.title ?? session?.title ?? job.sessionId
         return {
           jobId: job.id,
-          title: (counts.get(job.sessionId) ?? 1) > 1 ? `${title} (prise ${prise})` : title,
-          detail: (session?.speakers ?? []).map((speaker) => speaker.name).join(', '),
+          title: (counts.get(job.sessionId) ?? 1) > 1 ? `${job.nomVideo} (prise ${prise})` : job.nomVideo,
+          detail: '',
         }
       })
     }

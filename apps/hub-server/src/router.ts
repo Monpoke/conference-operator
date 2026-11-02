@@ -1691,6 +1691,19 @@ export const router = os.router({
       services.youtube.enqueue(input.jobIds == null ? sendable.filter((id) => !sent.has(id)) : sendable.filter((id) => input.jobIds!.includes(id)))
       return services.youtube.envois()
     }),
+    visibilite: os.youtube.visibilite.use(operatorCan('vod:manage')).handler(async ({ input, context }) => {
+      const { services } = context
+      const job = services.montage.list(null).find((candidate) => candidate.id === input.jobId)
+      if (input.publique && job != null && services.partages.refuses().has(job.sessionId)) {
+        throw new ORPCError('PRECONDITION_FAILED', { message: 'L’orateur a refusé la diffusion de ce talk' })
+      }
+      try {
+        await services.youtube.setVisibilite(input.jobId, input.publique)
+      } catch (cause) {
+        throw new ORPCError('BAD_GATEWAY', { message: (cause as Error).message })
+      }
+      return services.youtube.envois()
+    }),
   },
 
   partages: {

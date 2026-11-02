@@ -1085,6 +1085,8 @@ export const contract = {
     envois: oc.output(z.array(youtubeEnvoiSchema)),
     /** Queues these videos, or with `null` every finished one not on the channel yet. Refused talks never go. */
     envoyer: oc.input(z.object({ jobIds: z.array(z.string()).max(500).nullable() })).output(z.array(youtubeEnvoiSchema)),
+    /** Publishes a sent video, or makes it private again. A refused talk stays private. */
+    visibilite: oc.input(z.object({ jobId: z.string(), publique: z.boolean() })).output(z.array(youtubeEnvoiSchema)),
   },
 
   partages: {

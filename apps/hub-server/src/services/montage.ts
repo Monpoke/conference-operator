@@ -64,6 +64,16 @@ export interface Worker {
   nom: string
 }
 
+/** A video's name, the same on a shared page, on YouTube and in a download. */
+export function nomVideo(title: string, speakers: readonly string[]): string {
+  return speakers.length === 0 ? title : `${title} - ${speakers.join(', ')}`
+}
+
+/** The name as a file: without what a file system refuses. */
+export function fichierVideo(name: string): string {
+  return name.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 180)
+}
+
 /**
  * The worker the deployment declares, under a fixed id.
  *
@@ -105,6 +115,8 @@ export class MontageService {
     private readonly habillagePrise: (sidecarUploadId: string) => MontageHabillagePrise | null = () => null,
     /** Paused in the console: the workers wait, whatever is queued. */
     private readonly enPause: () => boolean = () => false,
+    /** Who speaks in the active program, for a video's name. */
+    private readonly speakersOf: (sessionId: string) => string[] = () => [],
   ) {}
 
   /* ---------- Workers ---------- */
@@ -684,10 +696,18 @@ export class MontageService {
       throw new MontageError('PRECONDITION_FAILED', 'ce montage n’est pas terminé')
     }
     // Without a file name, the address sets no attachment: the browser plays the video.
-    return this.requireVod().presignGet(job.outputKey, lire ? undefined : job.outputKey.split('/').pop())
+    return this.requireVod().presignGet(job.outputKey, lire ? undefined : `${fichierVideo(this.nomVideo(job.sessionId, job.sidecarUploadId))}.mp4`)
   }
 
   /* ---------- Internals ---------- */
+
+  private nomVideo(sessionId: string, sidecarUploadId: string): string {
+    const prise = this.habillagePrise(sidecarUploadId)
+    return nomVideo(
+      prise?.title ?? this.titleOf(sessionId) ?? sessionId,
+      prise?.speakers?.map((speaker) => speaker.name) ?? this.speakersOf(sessionId),
+    )
+  }
 
   /** Leases lapsed: the job goes back to the queue — or fails, after too many attempts. */
   private expireLeases(): void {
@@ -778,6 +798,7 @@ export class MontageService {
       sidecarUploadId: row.sidecarUploadId,
       habillagePrise: this.habillagePrise(row.sidecarUploadId),
       title: this.titleOf(row.sessionId),
+      nomVideo: this.nomVideo(row.sessionId, row.sidecarUploadId),
       roomId: row.roomId,
       state: row.state as MontageState,
       etape: (row.etape as MontageEtape | null) ?? null,

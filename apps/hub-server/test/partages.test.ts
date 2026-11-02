@@ -1,6 +1,7 @@
 import type { MontageJobView } from '@conference-operator/contract'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { urlForLog } from '../src/log-format.js'
+import { partageContentSecurityPolicy } from '../src/pages/partage-page.js'
 import { redactSecrets } from '../src/router.js'
 import { createHub, type Hub } from '../src/server.js'
 import { videosDuPartage } from '../src/services/partages.js'
@@ -23,6 +24,10 @@ describe('the videos of a shared page', () => {
 
   it('opens only its own talk', () => {
     expect(videosDuPartage('b', jobs, new Set()).map((video) => video.id)).toEqual(['autre'])
+  })
+
+  it('lets the player reach the hub\'s address and the storage it redirects to', () => {
+    expect(partageContentSecurityPolicy('https://s3.test')).toContain("media-src 'self' https://s3.test")
   })
 
   it('keeps the password out of the log', () => {

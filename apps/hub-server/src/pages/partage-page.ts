@@ -5,7 +5,8 @@ export function partageContentSecurityPolicy(videoOrigin: string | null): string
   return [
     "default-src 'none'",
     "style-src 'unsafe-inline'",
-    ...(videoOrigin == null ? [] : [`media-src ${videoOrigin}`]),
+    // `'self'` as well: the player's address is the hub's, which redirects to the storage.
+    ...(videoOrigin == null ? [] : [`media-src 'self' ${videoOrigin}`]),
     "form-action 'self'",
     "base-uri 'none'",
     "frame-ancestors 'none'",

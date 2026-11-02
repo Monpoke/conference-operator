@@ -23,7 +23,7 @@ import type { Permission } from './access.js'
  * to its module, which the router must import lazily rather than statically.
  */
 export function consoleViews(dev: boolean): string[] {
-  const views = ['exploitation', 'conferences', 'moderation', 'messages', 'vod', 'statistiques', 'appairage', 'boucle', 'reglages', 'acces', 'journal']
+  const views = ['exploitation', 'conferences', 'moderation', 'messages', 'vod', 'statistiques', 'boucle', 'reglages', 'acces', 'journal']
   return dev ? [...views, 'developpement'] : views
 }
 
@@ -36,7 +36,6 @@ export function consoleViews(dev: boolean): string[] {
  */
 export const VIEW_PERMISSIONS: Record<string, Permission> = {
   exploitation: 'room:read',
-  appairage: 'device:read',
   conferences: 'program:read',
   moderation: 'wall:moderate',
   messages: 'message:read',
@@ -65,7 +64,7 @@ export function viewPath(view: string): string {
  * Here for the same reason as the views: the hub registers these addresses and
  * the console's router declares them. The first one is what `/admin/reglages` opens.
  */
-export const REGLAGES_SECTIONS = ['evenement', 'salles', 'public', 'video', 'systeme'] as const
+export const REGLAGES_SECTIONS = ['evenement', 'salles', 'appairage', 'public', 'video', 'systeme'] as const
 export type ReglagesSection = (typeof REGLAGES_SECTIONS)[number]
 
 /** A section's address. */
@@ -86,7 +85,7 @@ export function bouclePath(section: BoucleSection): string {
  * The pairing address Better Auth imposes.
  *
  * It is the one handed to machines (`/admin/devices?user_code=…`): it does not
- * get renamed, it gets added. It opens the same view as `/admin/appairage`.
+ * get renamed, it gets added. It opens Réglages on its Appairage section.
  *
  * For a router this is an **alias**, never a redirect: rewriting the URL would
  * drop the `user_code` the operator is about to approve, which is the whole
@@ -95,18 +94,19 @@ export function bouclePath(section: BoucleSection): string {
 export const PAIRING_ALIAS = '/admin/devices'
 
 /**
- * The pairing alias travels with the view it opens.
+ * The other doors travel with the view they open.
  *
  * `/admin/devices` is not a view of its own — it is a second door onto
- * `appairage`, and it has to open on the same handler. A door left on another
- * one would send every machine Better Auth redirects to a page that cannot read
- * the code it arrives with, and only the machines: an operator clicking the tab
- * would never see it.
+ * Réglages, and it has to open on the same handler. A door left on another one
+ * would send every machine Better Auth redirects to a page that cannot read the
+ * code it arrives with, and only the machines: an operator using the menu would
+ * never see it. `/admin/appairage` is the former tab: notices and bookmarks
+ * still lead there.
  */
 function aliasPaths(view: string): string[] {
-  if (view === 'reglages') return REGLAGES_SECTIONS.map(reglagesPath)
+  if (view === 'reglages') return [...REGLAGES_SECTIONS.map(reglagesPath), PAIRING_ALIAS, viewPath('appairage')]
   if (view === 'boucle') return BOUCLE_SECTIONS.map(bouclePath)
-  return view === 'appairage' ? [PAIRING_ALIAS] : []
+  return []
 }
 
 /** Every address the hub serves from the console bundle, given the mode. */

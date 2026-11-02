@@ -653,8 +653,8 @@ des exemples, pas des constantes du code.
 
 | Servi par | URL | Usage |
 |---|---|---|
-| hub | `/admin` | Console : supervision. Un onglet par adresse — `/admin/moderation`, `/admin/conferences`, `/admin/appairage`, `/admin/messages`, `/admin/vod`, `/admin/reglages` |
-| hub | `/admin/devices?user_code=…` | L'onglet Appairage, code pré-rempli (lien affiché par la régie) et verdict du code en modale |
+| hub | `/admin` | Console : supervision. Un onglet par adresse — `/admin/moderation`, `/admin/conferences`, `/admin/messages`, `/admin/vod`, `/admin/reglages` |
+| hub | `/admin/devices?user_code=…` | Réglages, section Appairage, code pré-rempli (lien affiché par la régie) et verdict du code en modale |
 | hub | `/mur?salle=<id>` | Mur public (commun à l'événement) et questions de la salle, scanné au QR |
 | hub | `/regie` | Régie mobile : choisir une salle |
 | hub | `/regie/<id>` | Régie mobile : piloter cette salle-là |
@@ -671,7 +671,7 @@ Retour revient sur le précédent au lieu de quitter la console. Le hub sert la
 liste des vues, pas un joker : `/admin/moderationn` répond 404 plutôt que
 d'ouvrir l'exploitation en laissant croire à l'adresse.
 
-L'appairage a sa **page dédiée** dans la console, onglet **Appairage** :
+L'appairage a sa **section** dans la console, **Réglages → Appairage** :
 machines en attente avec leur code, et machines déjà liées. Le geste n'a lieu
 qu'à la mise en route et demande de l'attention — se tromper de salle envoie les
 commandes au mauvais vidéoprojecteur —, alors que la supervision se regarde

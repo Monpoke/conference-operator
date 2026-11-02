@@ -1,9 +1,9 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import { RouterView } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PAIRING_ALIAS, consolePaths, viewPath } from '@conference-operator/contract'
 import { createConsoleRouter } from '../src/router.js'
-import PairingView from '../src/views/PairingView.vue'
 import { usePairingStore } from '../src/stores/pairing.js'
 import { useSessionStore } from '../src/stores/session.js'
 
@@ -66,6 +66,7 @@ async function mountView(
   const fake = stub(options)
   const session = useSessionStore()
   session.client = fake.client as never
+  session.permissions = new Set(['settings:read', 'device:read']) as never
   /*
    * The real router, not a simulated `$route`.
    *
@@ -81,7 +82,7 @@ async function mountView(
       : `${PAIRING_ALIAS}?user_code=${options.userCode}`,
   )
   await router.isReady()
-  const wrapper = mount(PairingView, {
+  const wrapper = mount(RouterView, {
     attachTo: document.body,
     global: { plugins: [router] },
   })
@@ -110,9 +111,9 @@ beforeEach(() => {
 describe('adresse d’appairage', () => {
   it('is served on the same footing as the view it opens', () => {
     /*
-     * `/admin/devices` is not a view: it is a second door onto `appairage`.
+     * `/admin/devices` is not a view: it is a second door onto Réglages.
      * Forgetting to register it would send every machine Better Auth redirects to a
-     * 404 — and only the machines: an operator clicking the tab would never see it.
+     * 404 — and only the machines: an operator using the menu would never see it.
      */
     expect(consolePaths(false)).toContain(PAIRING_ALIAS)
     expect(consolePaths(false)).toContain(viewPath('appairage'))
@@ -227,5 +228,23 @@ describe('vue d’appairage', () => {
     expect(wrapper.get('[data-machine="machine-a"]').text()).toContain('Track #1')
     // A room the hub no longer knows keeps its identifier: better than a blank.
     expect(wrapper.get('[data-machine="machine-c"]').text()).toContain('salle-disparue')
+  })
+})
+
+describe('section d’appairage', () => {
+  it('opens from the former tab, on the section, and counts the machines waiting', async () => {
+    const { wrapper } = await mountView({ pending: [{ clientId: 'machine-1', requestedAt: '2026-10-30T09:00:00Z' }] })
+
+    expect(wrapper.get('#reglages-appairage').attributes('aria-current')).toBe('page')
+    expect(wrapper.get('[data-alerts="appairage"]').text()).toBe('1')
+  })
+
+  it('is not offered to whoever may not read the machines', async () => {
+    const { wrapper } = await mountView()
+    useSessionStore().permissions = new Set(['settings:read']) as never
+    await flushPromises()
+
+    expect(wrapper.find('#reglages-appairage').exists()).toBe(false)
+    expect(wrapper.find('#pairing-view').exists()).toBe(false)
   })
 })

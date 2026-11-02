@@ -1,9 +1,8 @@
-import { BOUCLE_SECTIONS, PAIRING_ALIAS, REGLAGES_SECTIONS, viewPath } from '@conference-operator/contract'
-import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { BOUCLE_SECTIONS, PAIRING_ALIAS, REGLAGES_SECTIONS, reglagesPath, viewPath } from '@conference-operator/contract'
+import { createRouter, createWebHistory, type RouteLocationNormalized, type RouteRecordRaw } from 'vue-router'
 import ConferencesView from './views/ConferencesView.vue'
 import OperationsView from './views/OperationsView.vue'
 import MessagesView from './views/MessagesView.vue'
-import PairingView from './views/PairingView.vue'
 import SettingsView from './views/SettingsView.vue'
 import VodView from './views/VodView.vue'
 import MontageView from './views/MontageView.vue'
@@ -17,6 +16,7 @@ import { useConferencesStore } from './stores/conferences.js'
 import { useOperationsStore } from './stores/operations.js'
 import { useMessagesStore } from './stores/messages.js'
 import { usePairingStore } from './stores/pairing.js'
+import { useSessionStore } from './stores/session.js'
 import { useSettingsStore } from './stores/settings.js'
 import { useIntegrationsStore } from './stores/integrations.js'
 import { useVodStore } from './stores/vod.js'
@@ -41,6 +41,27 @@ declare module 'vue-router' {
   }
 }
 
+const REGLAGES_META = {
+  view: 'reglages',
+  // Several stores, one round: the integrations' last status and the machines
+  // waiting are what an operator comes back to this page to read.
+  refresh: async () => {
+    await Promise.all([
+      useSettingsStore().load(),
+      useIntegrationsStore().load(),
+      // Read by whoever may see the videos: its absence must not hold the settings back.
+      useMontageStore().load().catch(() => undefined),
+      useSessionStore().can('device:read') ? usePairingStore().load() : undefined,
+    ])
+  },
+  intervalMs: 10_000,
+}
+
+function userCodeOf(route: RouteLocationNormalized): string | null {
+  const code = route.query['user_code']
+  return typeof code === 'string' ? code : null
+}
+
 const routes: RouteRecordRaw[] = [
   {
     path: viewPath('moderation'),
@@ -63,23 +84,21 @@ const routes: RouteRecordRaw[] = [
     },
   },
   {
-    path: viewPath('appairage'),
     /*
-     * An **alias**, never a redirect.
+     * Never a redirect.
      *
      * `/admin/devices?user_code=…` is the address Better Auth gives the machines.
-     * Rewriting the URL to `/admin/appairage` would erase the code the operator is
-     * about to approve — on load, that is, at the one moment anybody needs it.
+     * Rewriting the URL would erase the code the operator is about to approve — on
+     * load, that is, at the one moment anybody needs it.
      */
-    alias: PAIRING_ALIAS,
-    name: 'appairage',
-    component: PairingView,
-    meta: {
-      view: 'appairage',
-      refresh: () => usePairingStore().load(),
-      intervalMs: 10_000,
-    },
+    path: PAIRING_ALIAS,
+    name: 'appareils',
+    component: SettingsView,
+    props: (route) => ({ section: 'appairage', userCode: userCodeOf(route) }),
+    meta: REGLAGES_META,
   },
+  // The former tab: notices and bookmarks still lead here.
+  { path: viewPath('appairage'), redirect: reglagesPath('appairage') },
   {
     path: viewPath('vod'),
     name: 'vod',
@@ -126,21 +145,8 @@ const routes: RouteRecordRaw[] = [
     path: `${viewPath('reglages')}/:section(${REGLAGES_SECTIONS.join('|')})?`,
     name: 'reglages',
     component: SettingsView,
-    props: (route) => ({ section: route.params.section || undefined }),
-    meta: {
-      view: 'reglages',
-      // Two stores, one round: the integrations' last status is what an operator
-      // comes back to this page to read.
-      refresh: async () => {
-        await Promise.all([
-          useSettingsStore().load(),
-          useIntegrationsStore().load(),
-          // Read by whoever may see the videos: its absence must not hold the settings back.
-          useMontageStore().load().catch(() => undefined),
-        ])
-      },
-      intervalMs: 10_000,
-    },
+    props: (route) => ({ section: route.params.section || undefined, userCode: userCodeOf(route) }),
+    meta: REGLAGES_META,
   },
   {
     path: viewPath('acces'),

@@ -3,8 +3,7 @@ import { Badge, Button, Dialog, Empty, Panel, useToast } from '@conference-opera
 import { timeAgo } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
 import { onMounted, reactive, ref } from 'vue'
-import { useRoute } from 'vue-router'
-import { requestedRoom, VERDICTS, usePairingStore, type PendingDevice } from '../stores/pairing.js'
+import { requestedRoom, VERDICTS, usePairingStore, type PendingDevice } from '../../stores/pairing.js'
 
 /**
  * Pairing the room machines.
@@ -15,14 +14,14 @@ import { requestedRoom, VERDICTS, usePairingStore, type PendingDevice } from '..
  * modal made them hunt for the right row among others, to redo the gesture they
  * had just checked with their eyes.
  *
- * The code lives in the URL and does not move from it: the route is declared as
- * an alias, and a redirect would erase it on load — that is, at the one moment
- * anybody needs it.
+ * The code lives in the URL and does not move from it: that route is never
+ * redirected, which would erase it on load — at the one moment anybody needs it.
  */
+const props = defineProps<{ userCode?: string | null }>()
+
 const store = usePairingStore()
 const { pending, devices, rooms } = storeToRefs(store)
 const toast = useToast()
-const route = useRoute()
 
 /** Code saisi et salle choisie, par machine en attente. */
 const typed = reactive<Record<string, { code: string; roomId: string }>>({})
@@ -147,8 +146,7 @@ async function revokeMachine(clientId: string): Promise<void> {
 }
 
 onMounted(async () => {
-  const code = route.query['user_code']
-  codeFromUrl.value = typeof code === 'string' && code !== '' ? code : null
+  codeFromUrl.value = props.userCode || null
   if (codeFromUrl.value != null) await qualifier(codeFromUrl.value)
 })
 </script>

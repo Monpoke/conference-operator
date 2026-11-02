@@ -14,11 +14,13 @@ export function settingsAlerts(state: {
   failedImages: number
   streams: RoomStream[]
   urgentPinSet: boolean
+  waitingMachines: number
   wallsIoError: string | null
   storage: StorageStatus | null
   integrations: Integration[]
 }): Record<ReglagesSection, string[]> {
-  const alerts: Record<ReglagesSection, string[]> = { evenement: [], salles: [], public: [], video: [], systeme: [] }
+  const alerts: Record<ReglagesSection, string[]> = { evenement: [], salles: [], appairage: [], public: [], video: [], systeme: [] }
+  if (state.waitingMachines > 0) alerts.appairage.push(`${state.waitingMachines} machine(s) en attente d'appairage`)
   // Before the first answer, everything would read as missing.
   if (!state.loaded) return alerts
 

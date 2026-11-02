@@ -29,7 +29,6 @@ const views = computed(() =>
 const LABELS: Record<string, string> = {
   acces: 'Accès',
   exploitation: 'Exploitation',
-  appairage: 'Appairage',
   conferences: 'Conférences',
   moderation: 'Mur social',
   messages: 'Messages',

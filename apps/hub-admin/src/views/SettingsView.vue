@@ -3,6 +3,7 @@ import { REGLAGES_SECTIONS, reglagesPath, type ReglagesSection } from '@conferen
 import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
 import SectionMenu from '../components/SectionMenu.vue'
+import AppairageSection from '../components/reglages/AppairageSection.vue'
 import EvenementSection from '../components/reglages/EvenementSection.vue'
 import PublicSection from '../components/reglages/PublicSection.vue'
 import SallesSection from '../components/reglages/SallesSection.vue'
@@ -10,6 +11,8 @@ import SystemeSection from '../components/reglages/SystemeSection.vue'
 import VideoSection from '../components/reglages/VideoSection.vue'
 import { settingsAlerts } from '../composables/settingsAlerts.js'
 import { useIntegrationsStore } from '../stores/integrations.js'
+import { usePairingStore } from '../stores/pairing.js'
+import { useSessionStore } from '../stores/session.js'
 import { useSettingsStore } from '../stores/settings.js'
 import { useWallsIoStore } from '../stores/wallsio.js'
 
@@ -20,11 +23,15 @@ import { useWallsIoStore } from '../stores/wallsio.js'
  * Salles must survive a look at Vidéo, and the refresh rule stays where it was:
  * no field rewrites itself while somebody is typing in it (`useSeededField`).
  */
-withDefaults(defineProps<{ section?: ReglagesSection }>(), { section: 'evenement' })
+withDefaults(defineProps<{ section?: ReglagesSection; userCode?: string | null }>(), {
+  section: 'evenement',
+  userCode: null,
+})
 
 const LABELS: Record<ReglagesSection, string> = {
   evenement: 'Événement',
   salles: 'Salles',
+  appairage: 'Appairage',
   public: 'Public',
   video: 'Vidéo',
   systeme: 'Système',
@@ -34,6 +41,10 @@ const store = useSettingsStore()
 const { settings, images, streams, urgentPinSet, storage } = storeToRefs(store)
 const { integrations } = storeToRefs(useIntegrationsStore())
 const { status: wallsIo } = storeToRefs(useWallsIoStore())
+const { pending: waitingMachines } = storeToRefs(usePairingStore())
+// Its right is not the page's: a section it would refuse is not offered.
+const session = useSessionStore()
+const seesMachines = computed(() => session.can('device:read'))
 
 const alerts = computed(() =>
   settingsAlerts({
@@ -41,6 +52,7 @@ const alerts = computed(() =>
     failedImages: images.value.failed.length,
     streams: streams.value,
     urgentPinSet: urgentPinSet.value,
+    waitingMachines: waitingMachines.value.length,
     wallsIoError: wallsIo.value?.hasToken === true ? (wallsIo.value.lastError ?? null) : null,
     storage: storage.value,
     integrations: integrations.value,
@@ -48,7 +60,12 @@ const alerts = computed(() =>
 )
 
 const entries = computed(() =>
-  REGLAGES_SECTIONS.map((id) => ({ id, label: LABELS[id], path: reglagesPath(id), alerts: alerts.value[id] })),
+  REGLAGES_SECTIONS.filter((id) => id !== 'appairage' || seesMachines.value).map((id) => ({
+    id,
+    label: LABELS[id],
+    path: reglagesPath(id),
+    alerts: alerts.value[id],
+  })),
 )
 </script>
 
@@ -59,6 +76,7 @@ const entries = computed(() =>
     <div class="min-w-0">
       <EvenementSection v-show="section === 'evenement'" data-section="evenement" />
       <SallesSection v-show="section === 'salles'" data-section="salles" />
+      <AppairageSection v-if="seesMachines" v-show="section === 'appairage'" data-section="appairage" :user-code="userCode" />
       <PublicSection v-show="section === 'public'" data-section="public" />
       <VideoSection v-show="section === 'video'" data-section="video" />
       <SystemeSection v-show="section === 'systeme'" data-section="systeme" />

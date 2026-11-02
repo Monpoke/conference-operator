@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import {
+  blob,
   index,
   integer,
   primaryKey,
@@ -631,6 +632,16 @@ export const integration = sqliteTable('integration', {
   lastError: text('last_error'),
 })
 
+/** A thumbnail for YouTube: `playlist`, or a montage job's id. Drawn by a worker, sent on the operator's word. */
+export const youtubeVignette = sqliteTable('youtube_vignette', {
+  cle: text('cle').primaryKey(),
+  /** `attente`, `calcul`, `prete`, `envoi`, `envoyee`, `echec`. */
+  state: text('state').notNull(),
+  image: blob('image', { mode: 'buffer' }),
+  erreur: text('erreur'),
+  updatedAt: text('updated_at').notNull(),
+})
+
 /** An edited video's way to the YouTube channel. One line per video: sending it again starts over. */
 export const youtubeEnvoi = sqliteTable('youtube_envoi', {
   jobId: text('job_id').primaryKey(),
@@ -863,4 +874,5 @@ export const hubSchema = {
   montageJob,
   videoPartage,
   youtubeEnvoi,
+  youtubeVignette,
 }

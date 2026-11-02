@@ -1,5 +1,5 @@
 import { DEFAULT_BOUCLE, type Boucle } from '@conference-operator/contract'
-import { flushPromises, mount } from '@vue/test-utils'
+import { RouterLinkStub, flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import BoucleView from '../src/views/BoucleView.vue'
@@ -104,7 +104,7 @@ function stub(boucle: Boucle = DEFAULT_BOUCLE) {
 async function mountView(boucle?: Boucle) {
   const fake = stub(boucle)
   useSessionStore().client = fake.client as never
-  const wrapper = mount(BoucleView, { attachTo: document.body })
+  const wrapper = mount(BoucleView, { attachTo: document.body, global: { stubs: { RouterLink: RouterLinkStub } } })
   await useBoucleStore().load()
   await flushPromises()
   return { calls: fake.calls, wrapper }
@@ -416,5 +416,21 @@ describe('uploading an image', () => {
     await expect(prepareImage(new File(['%PDF'], 'logo.pdf', { type: 'application/pdf' }))).rejects.toBeInstanceOf(
       ImageRefused,
     )
+  })
+})
+
+describe('sections', () => {
+  const shown = (wrapper: ReturnType<typeof mount>): string[] =>
+    wrapper.findAll('[data-section]').filter((node) => (node.element as HTMLElement).style.display !== 'none').map((node) => node.attributes('data-section')!)
+
+  it('shows one section at a time, and the preview with all of them', async () => {
+    const { wrapper } = await mountView()
+    expect(shown(wrapper)).toEqual(['apparence'])
+    expect(wrapper.get('#boucle-apparence').attributes('aria-current')).toBe('page')
+
+    await wrapper.setProps({ section: 'sponsors' })
+    expect(shown(wrapper)).toEqual(['sponsors'])
+    expect(wrapper.find('[data-section] #boucle-apercu').exists()).toBe(false)
+    expect((wrapper.get('#boucle-apercu').element as HTMLElement).closest('[style*="display: none"]')).toBe(null)
   })
 })

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reglagesPath, viewPath } from '@conference-operator/contract'
+import { bouclePath, reglagesPath } from '@conference-operator/contract'
 import { Badge, Button, Empty, Hint, Panel, useToast } from '@conference-operator/components'
 import { timeAgo } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
@@ -39,7 +39,7 @@ const images = useBoucleStore()
 const { view, items, total, counts, page, loading, sponsors } = storeToRefs(store)
 const toast = useToast()
 const settingsPath = reglagesPath('public')
-const bouclePath = viewPath('boucle')
+const boucleContenusPath = bouclePath('contenus')
 
 const SOURCES: Record<string, string> = {
   form: 'public',
@@ -290,7 +290,7 @@ async function savePost(): Promise<void> {
         modère ses posts lui-même ; les masquer ici les retire des écrans, quoi que walls.io dise
         ensuite. Le jeton walls.io se règle dans
         <a :href="settingsPath" class="text-brand underline">Réglages</a>, la fréquence des posts
-        sponsorisés dans <a :href="bouclePath" class="text-brand underline">Boucle</a>.
+        sponsorisés dans <a :href="boucleContenusPath" class="text-brand underline">Boucle</a>.
       </Hint>
 
       <section v-if="composing" id="hub-post" class="mt-3.5 border-t border-edge pt-3.5">

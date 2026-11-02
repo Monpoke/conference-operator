@@ -4,7 +4,7 @@ import { Button, Empty, Hint, StableLabel } from '@conference-operator/component
 import { timeAgo } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted } from 'vue'
-import { viewPath } from '@conference-operator/contract'
+import { bouclePath } from '@conference-operator/contract'
 import { joursResumes, useModerationStore } from '../stores/moderation.js'
 
 /**
@@ -44,7 +44,7 @@ const motsUrl = computed(() => {
   const base = stats.value?.adressePublique
   return base == null ? null : `${base.replace(/\/+$/, '')}/mots`
 })
-const bouclePath = viewPath('boucle')
+const boucleContenusPath = bouclePath('contenus')
 const media = computed<WallStatsCount[]>(() => {
   const split = stats.value?.posts.byMedia
   if (split == null) return []
@@ -83,7 +83,7 @@ function topLine(post: WallStatsTopPost): string {
       </p>
       <a v-if="motsUrl != null" id="wall-stats-mots" :href="motsUrl" target="_blank" rel="noopener" class="ml-auto text-sm text-brand underline">Voir le mur de mots</a>
       <p v-else-if="stats" id="wall-stats-mots-absent" class="m-0 ml-auto text-xs text-dim">
-        Mur de mots : renseignez l'adresse de la page publique dans <a :href="bouclePath" class="text-brand underline">Boucle</a>.
+        Mur de mots : renseignez l'adresse de la page publique dans <a :href="boucleContenusPath" class="text-brand underline">Boucle</a>.
       </p>
       <Button id="btn-wall-stats-refresh" size="small" :disabled="statsLoading" @click="refresh">
         <StableLabel :current="statsLoading ? 'Lecture…' : 'Actualiser'" :labels="['Lecture…', 'Actualiser']" />

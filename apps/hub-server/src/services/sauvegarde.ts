@@ -205,7 +205,7 @@ export class SauvegardeService {
     const wallsio = setting('wallsio')?.tokenSealed
     if (typeof wallsio === 'string' && open(wallsio) == null) out.push('Jeton walls.io (Réglages → Public)')
     const git = setting('gitSource')?.jetonScelle
-    if (typeof git === 'string' && open(git) == null) out.push('Jeton du dépôt Git (Boucle → Dépôt Git)')
+    if (typeof git === 'string' && open(git) == null) out.push('Jeton du dépôt Git (Boucle → Apparence)')
     for (const room of sqlite.prepare('select id, stream_key_enc from room where stream_key_enc is not null').all() as { id: string; stream_key_enc: string }[]) {
       if (open(room.stream_key_enc) == null) out.push(`Clé de diffusion de la salle ${room.id} (Réglages → Salles)`)
     }

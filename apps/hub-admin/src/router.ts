@@ -1,4 +1,4 @@
-import { PAIRING_ALIAS, REGLAGES_SECTIONS, viewPath } from '@conference-operator/contract'
+import { BOUCLE_SECTIONS, PAIRING_ALIAS, REGLAGES_SECTIONS, viewPath } from '@conference-operator/contract'
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import ConferencesView from './views/ConferencesView.vue'
 import OperationsView from './views/OperationsView.vue'
@@ -113,9 +113,10 @@ const routes: RouteRecordRaw[] = [
     meta: { view: 'conferences', refresh: () => useConferencesStore().load(), intervalMs: 10_000 },
   },
   {
-    path: viewPath('boucle'),
+    path: `${viewPath('boucle')}/:section(${BOUCLE_SECTIONS.join('|')})?`,
     name: 'boucle',
     component: BoucleView,
+    props: (route) => ({ section: route.params.section || undefined }),
     // The panels keep their drafts through the refresh: a sponsor page being laid
     // out is not redrawn under the pointer.
     meta: { view: 'boucle', refresh: () => useBoucleStore().load(), intervalMs: 10_000 },

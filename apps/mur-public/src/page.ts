@@ -479,7 +479,7 @@ export function renderFavicon(data: MurPublic, logo: Image | null): string {
 }
 
 /**
- * The line under the hashtag: the console's (Boucle → Mur social), `{hashtag}`
+ * The line under the hashtag: the console's (Boucle → Contenus), `{hashtag}`
  * drawn in bold; empty, the page's own — which needs a hashtag to make sense.
  */
 function phraseAccroche(data: MurPublic): string | null {

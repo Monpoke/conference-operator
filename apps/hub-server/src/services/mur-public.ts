@@ -51,7 +51,7 @@ export class MurPublicService {
     // Held, or nothing: an image the hub has not downloaded yet waits for it.
     const logo = this.held(boucle.logo)
     const event = { name: this.deps.identity.get().name }
-    // The social wall's own, set in the console (Boucle → Mur social) and the
+    // The social wall's own, set in the console (Boucle → Contenus) and the
     // loop's `boucle.json`: the one the rooms show above the posts. Its first
     // word only — it is display text, and a share link needs a hashtag.
     const hashtag = /^#?([\p{L}\p{N}_]+)/u.exec(boucle.wallsio.hashtag.trim())?.[1] ?? null

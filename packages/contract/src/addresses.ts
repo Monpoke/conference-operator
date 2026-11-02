@@ -73,6 +73,15 @@ export function reglagesPath(section: ReglagesSection): string {
   return `${viewPath('reglages')}/${section}`
 }
 
+/** The sections of Boucle, on the same terms. */
+export const BOUCLE_SECTIONS = ['apparence', 'deroule', 'contenus', 'sponsors'] as const
+export type BoucleSection = (typeof BOUCLE_SECTIONS)[number]
+
+/** A section's address. */
+export function bouclePath(section: BoucleSection): string {
+  return `${viewPath('boucle')}/${section}`
+}
+
 /**
  * The pairing address Better Auth imposes.
  *
@@ -96,6 +105,7 @@ export const PAIRING_ALIAS = '/admin/devices'
  */
 function aliasPaths(view: string): string[] {
   if (view === 'reglages') return REGLAGES_SECTIONS.map(reglagesPath)
+  if (view === 'boucle') return BOUCLE_SECTIONS.map(bouclePath)
   return view === 'appairage' ? [PAIRING_ALIAS] : []
 }
 

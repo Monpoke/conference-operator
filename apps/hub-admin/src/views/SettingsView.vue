@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { REGLAGES_SECTIONS, reglagesPath, type ReglagesSection } from '@conference-operator/contract'
 import { storeToRefs } from 'pinia'
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed } from 'vue'
+import SectionMenu from '../components/SectionMenu.vue'
 import EvenementSection from '../components/reglages/EvenementSection.vue'
 import PublicSection from '../components/reglages/PublicSection.vue'
 import SallesSection from '../components/reglages/SallesSection.vue'
@@ -19,7 +20,7 @@ import { useWallsIoStore } from '../stores/wallsio.js'
  * Salles must survive a look at Vidéo, and the refresh rule stays where it was:
  * no field rewrites itself while somebody is typing in it (`useSeededField`).
  */
-const props = withDefaults(defineProps<{ section?: ReglagesSection }>(), { section: 'evenement' })
+withDefaults(defineProps<{ section?: ReglagesSection }>(), { section: 'evenement' })
 
 const LABELS: Record<ReglagesSection, string> = {
   evenement: 'Événement',
@@ -46,48 +47,16 @@ const alerts = computed(() =>
   }),
 )
 
-/** On a phone the menu is one line that scrolls: keep the current section in view. */
-const menu = ref<HTMLElement | null>(null)
-function revealCurrent(): void {
-  void nextTick(() => {
-    menu.value
-      ?.querySelector<HTMLElement>('[aria-current="page"]')
-      ?.scrollIntoView?.({ inline: 'center', block: 'nearest' })
-  })
-}
-onMounted(revealCurrent)
-// The badges arrive after the first render and widen the menu: reveal again then.
-watch([() => props.section, () => Object.values(alerts.value).flat().length], revealCurrent)
+const entries = computed(() =>
+  REGLAGES_SECTIONS.map((id) => ({ id, label: LABELS[id], path: reglagesPath(id), alerts: alerts.value[id] })),
+)
 </script>
 
 <template>
   <div id="settings-view" class="grid gap-3.5 md:grid-cols-[176px_minmax(0,1fr)] md:items-start">
-    <nav
-      ref="menu"
-      aria-label="Sections des réglages"
-      class="flex gap-1 max-md:-mx-1 max-md:overflow-x-auto max-md:px-1 max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden md:sticky md:top-3 md:flex-col"
-    >
-      <RouterLink
-        v-for="entry in REGLAGES_SECTIONS"
-        :id="`reglages-${entry}`"
-        :key="entry"
-        :to="reglagesPath(entry)"
-        class="flex shrink-0 items-center justify-between gap-2 rounded-lg border px-3 py-2 text-[13px] whitespace-nowrap"
-        :class="section === entry ? 'border-edge bg-surface2 text-text' : 'border-transparent text-dim'"
-        :aria-current="section === entry ? 'page' : undefined"
-      >
-        {{ LABELS[entry] }}
-        <span
-          v-if="alerts[entry].length > 0"
-          :data-alerts="entry"
-          :title="alerts[entry].join('\n')"
-          :aria-label="alerts[entry].join(' ; ')"
-          class="rounded-full bg-alert/15 px-1.5 text-[11px] font-semibold text-alert tabular-nums"
-        >{{ alerts[entry].length }}</span>
-      </RouterLink>
-    </nav>
+    <SectionMenu name="reglages" label="Sections des réglages" :entries="entries" :current="section" />
 
-    <div class="max-w-4xl min-w-0">
+    <div class="min-w-0">
       <EvenementSection v-show="section === 'evenement'" data-section="evenement" />
       <SallesSection v-show="section === 'salles'" data-section="salles" />
       <PublicSection v-show="section === 'public'" data-section="public" />

@@ -163,7 +163,14 @@ describe('sending a video', () => {
   })
 
   it('cleans a title for YouTube', () => {
-    expect(youtubeTitle(`<b>${'x'.repeat(200)}`)).toHaveLength(100)
+    expect(youtubeTitle('x'.repeat(200))).toHaveLength(100)
+    const title = 'Comment Développer une application dans un dataspace souverain'
+    expect(youtubeTitle(`${title} - Alice Martin`)).toBe(`${title} - Alice Martin`)
+    expect(youtubeTitle(`${title} - Alice Martin, Bob Durand, Claire Petit, David Roux`)).toBe(`${title} - Alice Martin et al.`)
+    expect(youtubeTitle(`${title}, et ensuite le consommer - Alice Martin`)).toBe(`${title}, et ensuite le consommer`)
+    const tooLong = youtubeTitle(`${'mot '.repeat(40)}- Alice`)
+    expect(tooLong.endsWith('…')).toBe(true)
+    expect(tooLong.length).toBeLessThanOrEqual(100)
     expect(youtubeTitle('<>')).toBe('Vidéo')
   })
 })

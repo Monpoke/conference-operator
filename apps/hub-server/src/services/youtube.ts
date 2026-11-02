@@ -42,9 +42,27 @@ export interface YoutubeOptions {
   log?: (message: string, cause: unknown) => void
 }
 
-/** YouTube's rules: 100 characters, and no angle brackets. */
-export function youtubeTitle(title: string): string {
-  return title.replace(/[<>]/g, '').trim().slice(0, 100) || 'Vidéo'
+const TITLE_MAX = 100
+
+/**
+ * YouTube's rules: 100 characters, and no angle brackets. A name too long loses
+ * its speakers before its title: « Titre - Alice, Bob », then « Titre - Alice et
+ * al. », then the title alone, cut on a word only if it does not fit by itself.
+ */
+export function youtubeTitle(name: string): string {
+  const clean = name.replace(/[<>]/g, '').replace(/\s+/g, ' ').trim()
+  if (clean === '') return 'Vidéo'
+  if (clean.length <= TITLE_MAX) return clean
+  const separator = clean.lastIndexOf(' - ')
+  const title = separator === -1 ? clean : clean.slice(0, separator)
+  const first = separator === -1 ? '' : clean.slice(separator + 3).split(', ')[0]!
+  const shorter = `${title} - ${first} et al.`
+  if (first !== '' && clean.slice(separator + 3).includes(', ') && shorter.length <= TITLE_MAX) return shorter
+  const withFirst = `${title} - ${first}`
+  if (first !== '' && withFirst.length <= TITLE_MAX) return withFirst
+  if (title.length <= TITLE_MAX) return title
+  const cut = title.slice(0, TITLE_MAX - 1)
+  return `${cut.slice(0, cut.lastIndexOf(' ') > 60 ? cut.lastIndexOf(' ') : cut.length).trimEnd()}…`
 }
 
 /**

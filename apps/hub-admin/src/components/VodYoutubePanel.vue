@@ -53,6 +53,24 @@ async function syncTitle(jobId: string): Promise<void> {
   }
 }
 
+const titlesBusy = ref(false)
+async function syncAllTitles(): Promise<void> {
+  titlesBusy.value = true
+  let done = 0
+  try {
+    for (const job of videos.value) {
+      if (envoiOf(job.id)?.state !== 'termine') continue
+      await store.syncMetadata(job.id)
+      done += 1
+    }
+    toast.say(`${done} titres mis à jour sur YouTube`)
+  } catch {
+    toast.say(`Arrêté après ${done} titres mis à jour`)
+  } finally {
+    titlesBusy.value = false
+  }
+}
+
 async function toggleVisibilite(jobId: string): Promise<void> {
   const publique = envoiOf(jobId)?.visibilite !== 'public'
   if (publique && !confirm('Rendre cette vidéo publique ? Tout le monde pourra la voir sur la chaîne. Vérifiez que l’orateur a donné son accord.')) return
@@ -68,8 +86,9 @@ const sending = (jobId: string) => ['attente', 'en-cours'].includes(envoiOf(jobI
       Aucune chaîne connectée : à faire dans <a :href="settingsPath" class="text-brand underline">Réglages</a>.
     </p>
     <template v-else>
-      <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <p class="m-0 text-sm text-dim">Chaîne {{ status.channel ?? 'connectée' }}. Envoi en privé, une vidéo à la fois ; publication ici, vidéo par vidéo.</p>
+      <div class="mb-2 flex flex-wrap items-center gap-2">
+        <p class="m-0 mr-auto text-sm text-dim">Chaîne {{ status.channel ?? 'connectée' }}. Envoi en privé, une vidéo à la fois ; publication ici, vidéo par vidéo.</p>
+        <Button id="btn-youtube-titres" size="small" :disabled="titlesBusy || sent === 0" @click="syncAllTitles">Mettre à jour tous les titres</Button>
         <Button id="btn-youtube-tout" size="small" variant="primary" :disabled="reste === 0" @click="store.send(null).catch(() => undefined)">Tout envoyer ({{ reste }})</Button>
       </div>
       <form id="youtube-playlist" class="mb-2 flex flex-wrap items-center gap-2 border-t border-edge pt-2" @submit.prevent="syncPlaylist">

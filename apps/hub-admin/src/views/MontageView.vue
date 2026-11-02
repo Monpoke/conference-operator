@@ -108,7 +108,7 @@ const saving = ref(false)
 
 const takeMs = computed(() => analyse.value?.takeMs ?? 1)
 const keptMs = computed(() => finMs.value - debutMs.value)
-const canValidate = computed(() => job.value != null && ['a-valider', 'termine', 'echoue'].includes(job.value.state))
+const canValidate = computed(() => job.value != null && ['a-valider', 'termine', 'echoue', 'annule'].includes(job.value.state))
 
 watch(
   () => [job.value?.id, job.value?.phase, job.value?.state === 'attente' || job.value?.state === 'en-cours'] as const,
@@ -373,9 +373,15 @@ const FIELD = 'mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 tex
       Pas encore de montage pour ce talk : il se met en file quand sa prise arrive dans le stockage.
     </p>
     <p v-else-if="analysisError !== ''" class="text-alert">{{ analysisError }}</p>
-    <p v-else-if="analyse == null" class="text-dim" data-role="montage-sans-analyse">
-      Analyse pas encore faite : la coupe se règle ici dès que le worker l’a terminée.
-    </p>
+    <template v-else-if="analyse == null">
+      <p class="text-dim" data-role="montage-sans-analyse">
+        Analyse pas encore faite : la coupe se règle ici dès que le worker l’a terminée.
+      </p>
+      <div v-if="job.state === 'annule' || job.state === 'echoue'" class="mt-2 flex items-center gap-1.5">
+        <Spinner v-if="busy" />
+        <Button size="small" data-role="relancer" :disabled="busy" @click="attempt(() => montages.relaunch(sessionId, job!.id), 'Analyse relancée')">Relancer l’analyse</Button>
+      </div>
+    </template>
 
     <template v-else>
       <div class="grid gap-3.5 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] lg:grid-rows-[minmax(0,1fr)]">

@@ -336,6 +336,14 @@ describe('analysis, then montage', () => {
     expect(montage.analysisDone(worker, claim, analysis('haute')).suite).toBe('validation')
   })
 
+  it('edits again a cancelled montage on the cut set in the console', async () => {
+    const { worker, claim } = await analysing()
+    montage.analysisDone(worker, claim, analysis('basse'))
+    montage.validate(claim.jobId, { debutMs: 120_000, finMs: 2_650_000 }, 'x')
+    expect(await montage.cancel(claim.jobId)).toBe(true)
+    expect(montage.validate(claim.jobId, { debutMs: 120_000, finMs: 2_650_000 }, 'x')).toMatchObject({ state: 'attente', phase: 'montage' })
+  })
+
   it('edits on the cut set in the console, and says which end was moved by hand', async () => {
     const { worker, claim } = await analysing()
     montage.analysisDone(worker, claim, analysis('basse'))

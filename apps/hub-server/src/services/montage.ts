@@ -596,7 +596,7 @@ export class MontageService {
    */
   validate(jobId: string, cut: { debutMs: number; finMs: number }, by: string): MontageJobView {
     const job = this.job(jobId)
-    if (!['a-valider', 'termine', 'echoue'].includes(job.state)) {
+    if (!['a-valider', 'termine', 'echoue', 'annule'].includes(job.state)) {
       throw new MontageError('CONFLICT', `ce montage ne se valide pas dans l’état « ${job.state} »`)
     }
     const analyse = parseJson<MontageAnalyse>(job.analyseJson)

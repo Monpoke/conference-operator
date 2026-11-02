@@ -399,6 +399,22 @@ describe('the montages in the list', () => {
     expect(wrapper.find('[data-montage-en-cours] [data-role="spinner"]').exists()).toBe(false)
   })
 
+  it('relaunches a cancelled montage from the list, and offers it for no running one', async () => {
+    const { wrapper } = await mountView([{ ...IN_PROGRESS, sessionId: TALK.id }], [TALK])
+    const store = useMontageStore()
+    const relaunch = vi.spyOn(store, 'relaunch').mockResolvedValue({} as never)
+    store.jobs = [
+      { ...JOB, id: 'annule', sessionId: TALK.id, sidecarUploadId: 'a', state: 'annule' },
+      { ...JOB, id: 'tourne', sessionId: TALK.id, sidecarUploadId: 'b', state: 'en-cours', nomVideo: 'Mon talk', silencieuxDepuisMs: null },
+    ] as never
+    await flushPromises()
+    await wrapper.get('#vod-rows [data-role="actions"]').trigger('click')
+    expect(wrapper.find('[data-action="relancer-tourne"]').exists()).toBe(false)
+    await wrapper.get('[data-action="relancer-annule"]').trigger('click')
+    await flushPromises()
+    expect(relaunch).toHaveBeenCalledWith(TALK.id, 'annule')
+  })
+
   it('sets apart the files attached to no talk', async () => {
     const { wrapper } = await mountView([{ ...IN_PROGRESS, sessionId: null }], [TALK])
     await flushPromises()

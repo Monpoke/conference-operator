@@ -97,6 +97,9 @@ function actionsOf(row: ConferenceRow): ActionMenuItem[] {
   takes.forEach((job, index) => {
     if (job.state === 'termine') items.push({ key: `regarder-${job.id}`, label: several ? `Regarder la prise ${index + 1}` : 'Regarder la vidéo', run: () => watchVideo(job.id) })
   })
+  takes.forEach((job, index) => {
+    if (job.state === 'annule' || job.state === 'echoue') items.push({ key: `relancer-${job.id}`, label: several ? `Relancer l’analyse de la prise ${index + 1}` : 'Relancer l’analyse', run: () => relaunchMontage(job) })
+  })
   if (takes.length > 0) items.push({ key: 'renommer', label: 'Renommer le talk', run: () => startRename(row) })
   if (several) takes.forEach((job, index) => items.push({ key: `renommer-${job.id}`, label: `Renommer la prise ${index + 1}`, run: () => startRenameTake(job) }))
   if (row.files.length > 0) items.push({ key: 'toggle-files', label: unfolded.value.has(row.key) ? 'Masquer les fichiers' : 'Voir les fichiers', run: () => toggle(row.key) })
@@ -107,6 +110,19 @@ function actionsOf(row: ConferenceRow): ActionMenuItem[] {
 function watchVideo(jobId: string): void {
   // A failure is already reported by the hub client.
   void montages.watch(jobId).catch(() => undefined)
+}
+
+const relaunching = ref(new Set<string>())
+async function relaunchMontage(job: MontageJobView): Promise<void> {
+  relaunching.value.add(job.sessionId)
+  try {
+    await montages.relaunch(job.sessionId, job.id)
+    toast.say('Analyse relancée')
+  } catch {
+    /* already reported by the client's error hook */
+  } finally {
+    relaunching.value.delete(job.sessionId)
+  }
 }
 
 const confirmStore = useConfirmStore()
@@ -389,7 +405,10 @@ async function requestAll(): Promise<void> {
                   </template>
                 </td>
                 <td class="border-t border-edge py-[9px] text-right align-middle max-md:ml-auto max-md:border-t-0 max-md:py-0 max-md:empty:hidden">
-                  <ActionMenu v-if="actionsOf(row).length > 0" :items="actionsOf(row)" :label="`Actions : ${row.title}`" />
+                  <span class="inline-flex items-center gap-1.5">
+                    <Spinner v-if="relaunching.has(row.key)" />
+                    <ActionMenu v-if="actionsOf(row).length > 0" :items="actionsOf(row)" :label="`Actions : ${row.title}`" />
+                  </span>
                 </td>
               </tr>
               <tr v-if="unfolded.has(row.key) && row.files.length > 0" class="max-md:block">

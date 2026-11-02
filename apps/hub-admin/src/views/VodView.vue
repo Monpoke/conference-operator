@@ -11,6 +11,7 @@ import {
   type Upload,
 } from '../stores/vod.js'
 import VodSharesPanel from '../components/VodSharesPanel.vue'
+import VodYoutubePanel from '../components/VodYoutubePanel.vue'
 import { MONTAGE_STATES, cutMinutes, describe, latestByTake, montagePath, useMontageStore } from '../stores/montage.js'
 import type { MontageJobView } from '@conference-operator/contract'
 import { dayKeyOf, dayOptions } from '../stores/days.js'
@@ -366,5 +367,7 @@ async function requestAll(): Promise<void> {
     </Panel>
 
     <VodSharesPanel :talks="conferences.filter((row) => row.startsAt != null)" />
+
+    <VodYoutubePanel :jobs="jobs" />
   </div>
 </template>

@@ -24,6 +24,7 @@ import {
 } from '../stores/settings.js'
 import { useWallsIoStore } from '../stores/wallsio.js'
 import { useMurPublicStore } from '../stores/murPublic.js'
+import YoutubeSettingsPanel from '../components/YoutubeSettingsPanel.vue'
 import { useSauvegardeStore, type RestaurationReport } from '../stores/sauvegarde.js'
 
 /**
@@ -981,6 +982,8 @@ async function confirmRemoveIntegration(): Promise<void> {
         </Button>
       </div>
     </Panel>
+
+    <YoutubeSettingsPanel />
 
     <Panel title="Mur social — page publique">
       <p class="mb-2 text-[13px] text-dim">

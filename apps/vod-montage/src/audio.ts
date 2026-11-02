@@ -33,8 +33,11 @@ export interface AudioOptions {
 
 export const DEFAULT_AUDIO: AudioOptions = { lufs: -16, truePeak: -1.5, highpassHz: 80, compression: 'douce' }
 
-/** Below this, there is no talk to bring up: a muted microphone, an empty track. */
-export const NEAR_SILENT_LUFS = -50
+/**
+ * Below this, there is no talk to bring up: an empty track. EBU R128's absolute
+ * gate: a take well above it, even at -52 LUFS, can hold a faint but real voice.
+ */
+export const NEAR_SILENT_LUFS = -70
 const TARGET_LRA = 11
 
 /** What `loudnorm` measured on the first pass. */

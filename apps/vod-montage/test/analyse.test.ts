@@ -71,8 +71,12 @@ describe('the sound', () => {
     expect(chain).toMatch(/^highpass=f=80,acompressor=.*,loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=-27.31:.*:linear=true$/)
   })
 
-  it('does not bring up a near-silent take', () => {
-    expect(talkAudioChain({ ...DEFAULT_AUDIO, compression: 'non', highpassHz: 0 }, { i: -62, tp: -50, lra: 1, thresh: -72, offset: 0 })).toBe('')
+  it('does not bring up an empty track', () => {
+    expect(talkAudioChain({ ...DEFAULT_AUDIO, compression: 'non', highpassHz: 0 }, { i: -75, tp: -60, lra: 1, thresh: -85, offset: 0 })).toBe('')
+  })
+
+  it('brings up a very faint take', () => {
+    expect(talkAudioChain({ ...DEFAULT_AUDIO, compression: 'non', highpassHz: 0 }, { i: -52.41, tp: -24.88, lra: 7, thresh: -63, offset: 0 })).toMatch(/^loudnorm=I=-16:.*measured_I=-52.41:/)
   })
 
   it('says when one gain would clip', () => {

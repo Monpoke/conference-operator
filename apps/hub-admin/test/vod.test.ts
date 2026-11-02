@@ -6,6 +6,7 @@ import VodFolderDialog from '../src/components/VodFolderDialog.vue'
 import { conferenceRows, countByEtat, progress, useVodStore, type Upload } from '../src/stores/vod.js'
 import { useMontageStore } from '../src/stores/montage.js'
 import { useConferencesStore } from '../src/stores/conferences.js'
+import { useConfirmStore } from '../src/stores/confirm.js'
 import { useSessionStore } from '../src/stores/session.js'
 
 /**
@@ -370,6 +371,32 @@ describe('the montages in the list', () => {
     expect(lines[0]?.text()).toContain('Mon talk')
     expect(lines[0]?.get('[data-role="avancee"]').text()).toBe('assemblage · 42 %')
     expect(lines[0]?.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('42')
+  })
+
+  it('cancels a running montage once confirmed, with a spinner while it runs', async () => {
+    const { wrapper } = await mountView([], [TALK])
+    const store = useMontageStore()
+    store.jobs = [{ ...JOB, id: 'j1', state: 'en-cours', etape: 'assemblage', pourcent: 42, nomVideo: 'Mon talk', silencieuxDepuisMs: null }] as never
+    let finish = () => {}
+    const cancel = vi.spyOn(store, 'cancel').mockImplementation(() => new Promise<void>((resolve) => { finish = resolve }))
+    const ask = vi.spyOn(useConfirmStore(), 'ask').mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+    await flushPromises()
+    const button = wrapper.get('[data-role="annuler-montage"]')
+
+    await button.trigger('click')
+    await flushPromises()
+    expect(cancel).not.toHaveBeenCalled()
+
+    await button.trigger('click')
+    await flushPromises()
+    expect(ask).toHaveBeenCalledTimes(2)
+    expect(cancel).toHaveBeenCalledWith('j1')
+    expect(wrapper.find('[data-montage-en-cours] [data-role="spinner"]').exists()).toBe(true)
+    expect(button.attributes('disabled')).toBeDefined()
+
+    finish()
+    await flushPromises()
+    expect(wrapper.find('[data-montage-en-cours] [data-role="spinner"]').exists()).toBe(false)
   })
 
   it('sets apart the files attached to no talk', async () => {

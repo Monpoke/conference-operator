@@ -4,6 +4,8 @@ import type { MontageAnalyse, MontageJobView } from '@conference-operator/contra
 import { storeToRefs } from 'pinia'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import MontageTimeline from '../components/MontageTimeline.vue'
+import Spinner from '../components/Spinner.vue'
+import { useConfirmStore } from '../stores/confirm.js'
 import { formatOrateurs, habillageFromForm, useConferencesStore } from '../stores/conferences.js'
 import {
   MONTAGE_STATES,
@@ -300,12 +302,16 @@ watch(
   { immediate: true },
 )
 
+const busy = ref(false)
 async function attempt(gesture: () => Promise<unknown>, done: string): Promise<void> {
+  busy.value = true
   try {
     await gesture()
     if (done !== '') toast.say(done)
   } catch {
     /* already reported by the client's error hook */
+  } finally {
+    busy.value = false
   }
 }
 
@@ -318,6 +324,14 @@ const saveHabillage = () =>
 
 const previewUrl = (clip: 'intro' | 'outro' | 'cadre') =>
   `/montage/apercu/${encodeURIComponent(props.sessionId)}?clip=${clip}${job.value == null ? '' : `&prise=${encodeURIComponent(job.value.sidecarUploadId)}`}`
+
+const confirmStore = useConfirmStore()
+async function cancelMontage(): Promise<void> {
+  if (job.value == null) return
+  const { id, nomVideo } = job.value
+  if (!(await confirmStore.ask({ title: 'Annuler ce montage ?', message: `Le montage de « ${nomVideo} » s’arrête et son avancée est perdue. Il faudra le relancer pour obtenir la vidéo.`, confirmLabel: 'Annuler le montage', danger: true }))) return
+  await attempt(() => montages.cancel(id), 'Montage annulé')
+}
 
 async function validate(): Promise<void> {
   if (job.value == null) return
@@ -420,7 +434,8 @@ const FIELD = 'mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 tex
             <p v-if="consent != null" class="mt-1.5 text-xs" :class="consent.tone" data-role="montage-consent">{{ consent.text }}</p>
             <p v-if="job?.erreur != null && job.state === 'echoue'" class="mt-1.5 text-xs break-all text-alert">{{ job.erreur }}</p>
 
-            <div class="mt-3 flex flex-wrap gap-1.5">
+            <div class="mt-3 flex flex-wrap items-center gap-1.5">
+              <Spinner v-if="busy" />
               <Button v-if="canValidate" size="small" variant="primary" data-role="valider" :disabled="saving" @click="validate">
                 <StableLabel :current="job?.state === 'a-valider' ? 'Valider et monter' : 'Remonter avec cette coupe'" :labels="['Valider et monter', 'Remonter avec cette coupe']" />
               </Button>
@@ -431,11 +446,13 @@ const FIELD = 'mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 tex
                 v-if="job?.state === 'attente' || job?.state === 'en-cours'"
                 size="small"
                 variant="danger"
-                @click="attempt(() => montages.cancel(job!.id), 'Montage annulé')"
+                data-role="annuler-montage"
+                :disabled="busy"
+                @click="cancelMontage"
               >
                 Annuler
               </Button>
-              <Button v-else size="small" data-role="relancer" @click="attempt(() => montages.relaunch(sessionId, job!.id), 'Analyse relancée')">Relancer l’analyse</Button>
+              <Button v-else size="small" data-role="relancer" :disabled="busy" @click="attempt(() => montages.relaunch(sessionId, job!.id), 'Analyse relancée')">Relancer l’analyse</Button>
             </div>
             <a
               v-if="nextToValidate != null"

@@ -16,6 +16,8 @@ import type { ConferenceRow } from '../stores/vod.js'
 import YoutubeStatusIcons from '../components/YoutubeStatusIcons.vue'
 import VodSharesPanel from '../components/VodSharesPanel.vue'
 import VodYoutubePanel from '../components/VodYoutubePanel.vue'
+import Spinner from '../components/Spinner.vue'
+import { useConfirmStore } from '../stores/confirm.js'
 import { MONTAGE_STATES, cutMinutes, describe, latestByTake, montagePath, useMontageStore } from '../stores/montage.js'
 import type { MontageJobView } from '@conference-operator/contract'
 import { dayKeyOf, dayOptions } from '../stores/days.js'
@@ -105,6 +107,21 @@ function actionsOf(row: ConferenceRow): ActionMenuItem[] {
 function watchVideo(jobId: string): void {
   // A failure is already reported by the hub client.
   void montages.watch(jobId).catch(() => undefined)
+}
+
+const confirmStore = useConfirmStore()
+const cancelling = ref(new Set<string>())
+async function cancelMontage(job: MontageJobView): Promise<void> {
+  if (!(await confirmStore.ask({ title: 'Annuler ce montage ?', message: `Le montage de « ${job.nomVideo} » s’arrête et son avancée est perdue. Il faudra le relancer pour obtenir la vidéo.`, confirmLabel: 'Annuler le montage', danger: true }))) return
+  cancelling.value.add(job.id)
+  try {
+    await montages.cancel(job.id)
+    toast.say('Montage annulé')
+  } catch {
+    /* already reported by the client's error hook */
+  } finally {
+    cancelling.value.delete(job.id)
+  }
 }
 
 async function togglePause(): Promise<void> {
@@ -273,7 +290,11 @@ async function requestAll(): Promise<void> {
         <li v-for="job in inProgress" :key="job.id" class="rounded-lg border border-edge p-2.5 text-sm" :data-montage-en-cours="job.id">
           <div class="flex flex-wrap items-baseline justify-between gap-x-3">
             <a :href="montagePath(job.sessionId, job.sidecarUploadId)" class="min-w-0 font-semibold underline-offset-2 hover:underline">{{ job.nomVideo }}</a>
-            <span class="text-xs text-dim" :class="job.silencieuxDepuisMs != null ? 'text-warn' : ''" data-role="avancee">{{ describe(job) }}</span>
+            <span class="flex items-center gap-2">
+              <span class="text-xs text-dim" :class="job.silencieuxDepuisMs != null ? 'text-warn' : ''" data-role="avancee">{{ describe(job) }}</span>
+              <Spinner v-if="cancelling.has(job.id)" />
+              <Button size="small" variant="danger" data-role="annuler-montage" :disabled="cancelling.has(job.id)" @click="cancelMontage(job)">Annuler</Button>
+            </span>
           </div>
           <div
             class="mt-1.5 h-2 rounded-full bg-surface2"

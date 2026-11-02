@@ -34,6 +34,7 @@ import {
 import type { RawCapture, ScreenMessageReport } from './services/ingest.js'
 import { checkOpenFeedback } from './services/openfeedback.js'
 import { videosDuPartage } from './services/partages.js'
+import { VIGNETTE_PLAYLIST_CLE } from './services/youtube.js'
 import {
   controlCommand,
   controlRooms,
@@ -1711,6 +1712,43 @@ export const router = os.router({
       } catch (cause) {
         throw new ORPCError('BAD_GATEWAY', { message: (cause as Error).message })
       }
+      return { ok: true as const }
+    }),
+    vignettes: os.youtube.vignettes.use(operatorCan('vod:read')).handler(({ context }) => context.services.youtube.vignettes()),
+    genererVignettes: os.youtube.genererVignettes.use(operatorCan('vod:manage')).handler(({ input, context }) => {
+      const { youtube } = context.services
+      const known = new Set(youtube.vignettes().filter((vignette) => vignette.state !== 'echec').map((vignette) => vignette.cle))
+      const every = [VIGNETTE_PLAYLIST_CLE, ...youtube.envois().filter((envoi) => envoi.videoId != null).map((envoi) => envoi.jobId)]
+      youtube.genererVignettes(input.cles ?? every.filter((cle) => !known.has(cle)))
+      return youtube.vignettes()
+    }),
+    envoyerVignettes: os.youtube.envoyerVignettes.use(operatorCan('vod:manage')).handler(({ context }) => {
+      const { youtube } = context.services
+      void youtube.envoyerVignettes().catch((cause: Error) => context.services.log('warn', 'envoi des vignettes', { message: cause.message }))
+      return youtube.vignettes()
+    }),
+    vignetteClaim: os.youtube.vignetteClaim.use(workerOnly).handler(({ context }) => {
+      const { services } = context
+      const cle = services.youtube.claimVignette()
+      if (cle == null) return null
+      const jobs = services.montage.list(null)
+      const job = cle === VIGNETTE_PLAYLIST_CLE ? jobs.find((candidate) => candidate.state === 'termine') : jobs.find((candidate) => candidate.id === cle)
+      if (job == null) {
+        services.youtube.failVignette(cle, 'Cette vidéo n’existe plus')
+        return null
+      }
+      return {
+        cle,
+        habillage: services.montage.habillageFor(job.sessionId, job.sidecarUploadId),
+        lieu: services.programs.active()?.program.event.locationName ?? null,
+      }
+    }),
+    vignetteRendue: os.youtube.vignetteRendue.use(workerOnly).handler(({ input, context }) => {
+      context.services.youtube.saveVignette(input.cle, Buffer.from(input.imageBase64, 'base64'))
+      return { ok: true as const }
+    }),
+    vignetteEchec: os.youtube.vignetteEchec.use(workerOnly).handler(({ input, context }) => {
+      context.services.youtube.failVignette(input.cle, input.raison)
       return { ok: true as const }
     }),
     visibilite: os.youtube.visibilite.use(operatorCan('vod:manage')).handler(async ({ input, context }) => {

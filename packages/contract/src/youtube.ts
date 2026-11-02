@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { vodHabillageSchema } from './montage.js'
 
 /** The link to the channel. The client's secret and the channel's token never come back. */
 export const youtubeStatusSchema = z.object({
@@ -12,6 +13,24 @@ export const youtubeStatusSchema = z.object({
   redirectUri: z.string(),
 })
 export type YoutubeStatus = z.infer<typeof youtubeStatusSchema>
+
+export const youtubeVignetteSchema = z.object({
+  /** `playlist`, or the montage job's id. */
+  cle: z.string(),
+  state: z.enum(['attente', 'calcul', 'prete', 'envoi', 'envoyee', 'echec']),
+  erreur: z.string().nullable(),
+  updatedAt: z.string(),
+})
+export type YoutubeVignette = z.infer<typeof youtubeVignetteSchema>
+
+/** What a worker draws: a video's thumbnail, or the playlist's. */
+export const vignetteClaimSchema = z.object({
+  cle: z.string(),
+  habillage: vodHabillageSchema,
+  /** The event's place, for the playlist's image. */
+  lieu: z.string().nullable(),
+})
+export type VignetteClaim = z.infer<typeof vignetteClaimSchema>
 
 export const youtubeEnvoiStateSchema = z.enum(['attente', 'en-cours', 'termine', 'echoue'])
 

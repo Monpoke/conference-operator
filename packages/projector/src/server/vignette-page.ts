@@ -30,6 +30,8 @@ const BASE = `
   #stage > :not(#decor) { position: relative; z-index: 1; }
   .evenement { display: flex; align-items: center; gap: 28px; font: 800 44px/1.1 var(--f-texte, system-ui, sans-serif); }
   .evenement img { height: 92px; max-width: 460px; object-fit: contain; }
+  .date { font: 700 44px/1.1 var(--f-texte, system-ui, sans-serif); white-space: nowrap; }
+  .evenement .date { padding-left: 28px; border-left: 4px solid rgba(255,255,255,.55); }
 `
 
 export function vignetteHtml(options: { habillage: VodHabillage; title: string; speakers: readonly { name: string; photoUrl: string | null }[]; theme: ThemeSource | null }): string {
@@ -48,21 +50,25 @@ h1 { margin: auto 0; font: 900 ${vignetteTitleSize(title)}px/1.08 var(--f-titre,
 .photo { width: ${shown.length > 2 ? 104 : 148}px; height: ${shown.length > 2 ? 104 : 148}px; flex: none; border-radius: 50%; object-fit: cover; border: 6px solid #fff; box-sizing: border-box; }
 .photo.vide { display: grid; place-items: center; background: rgba(255,255,255,.18); }
 </style></head><body><div id="stage">${themeDecor(options.theme)}
-<div class="evenement">${habillage.event.logoUrl == null ? escapeHtml(habillage.event.name) : `<img src="${escapeHtml(habillage.event.logoUrl)}" alt="${escapeHtml(habillage.event.name)}">`}</div>
+<div class="evenement">${habillage.event.logoUrl == null ? escapeHtml(habillage.event.name) : `<img src="${escapeHtml(habillage.event.logoUrl)}" alt="${escapeHtml(habillage.event.name)}">`}${habillage.event.date == null ? '' : `<span class="date">${escapeHtml(habillage.event.date)}</span>`}</div>
 <h1>${escapeHtml(title)}</h1>
 <div class="gens">${faces}</div>
 </div></body></html>`
 }
 
-export function vignettePlaylistHtml(options: { eventName: string; logoUrl: string | null; title: string; theme: ThemeSource | null }): string {
+/** The logo says the event: the image adds when and where, and no name twice. */
+export function vignettePlaylistHtml(options: { eventName: string; logoUrl: string | null; date: string | null; lieu: string | null; theme: ThemeSource | null }): string {
+  const { date, lieu } = options
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><style>
 ${themeStyle(options.theme)}
 ${BASE}
-#stage { width: ${VIGNETTE_PLAYLIST.width}px; height: ${VIGNETTE_PLAYLIST.height}px; padding: 90px; align-items: center; justify-content: center; text-align: center; gap: 56px; }
-#stage img { max-width: 760px; max-height: 300px; object-fit: contain; }
-h1 { margin: 0; font: 900 ${options.title.length <= 24 ? 110 : 84}px/1.08 var(--f-titre, var(--f-texte, system-ui, sans-serif)); text-wrap: balance; text-shadow: 0 6px 30px rgba(0,0,0,.35); }
+#stage { width: ${VIGNETTE_PLAYLIST.width}px; height: ${VIGNETTE_PLAYLIST.height}px; padding: 90px; align-items: center; justify-content: center; text-align: center; gap: 44px; }
+#stage img { max-width: 800px; max-height: 300px; object-fit: contain; }
+h1 { margin: 0; font: 900 ${(date ?? '').length <= 16 ? 92 : 76}px/1.08 var(--f-titre, var(--f-texte, system-ui, sans-serif)); text-wrap: balance; text-shadow: 0 6px 30px rgba(0,0,0,.35); }
+.lieu { margin: 0; font: 700 54px/1.15 var(--f-texte, system-ui, sans-serif); text-wrap: balance; }
 </style></head><body><div id="stage">${themeDecor(options.theme)}
-${options.logoUrl == null ? '' : `<img src="${escapeHtml(options.logoUrl)}" alt="${escapeHtml(options.eventName)}">`}
-<h1>${escapeHtml(options.title)}</h1>
+${options.logoUrl == null ? `<h1>${escapeHtml(options.eventName)}</h1>` : `<img src="${escapeHtml(options.logoUrl)}" alt="${escapeHtml(options.eventName)}">`}
+${date == null ? '' : `<h1>${escapeHtml(date)}</h1>`}
+${lieu == null ? '' : `<p class="lieu">${escapeHtml(lieu)}</p>`}
 </div></body></html>`
 }

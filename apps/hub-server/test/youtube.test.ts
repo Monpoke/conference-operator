@@ -11,7 +11,7 @@ interface Call {
 }
 
 /** Google and the storage, as far as the service sees them. */
-function google(overrides: { snippet?: () => Response; open?: () => Response; playlist?: () => Response; item?: (body: string) => Response | null } = {}) {
+function google(overrides: { thumbnail?: () => Response; snippet?: () => Response; open?: () => Response; playlist?: () => Response; item?: (body: string) => Response | null } = {}) {
   const calls: Call[] = []
   const impl = (async (input: URL | RequestInfo, init?: RequestInit) => {
     const url = String(input)
@@ -27,6 +27,8 @@ function google(overrides: { snippet?: () => Response; open?: () => Response; pl
     if (url.includes('/videos?part=snippet')) return overrides.snippet?.() ?? Response.json({ id: 'yt-1' })
     if (url.includes('/playlists?')) return init?.method === 'POST' ? Response.json({ id: 'pl-1' }) : overrides.playlist?.() ?? Response.json({ id: 'pl-1' })
     if (url.includes('/playlistItems?')) return overrides.item?.(String(init?.body)) ?? Response.json({ id: 'item' })
+    if (url.includes('/thumbnails/set')) return overrides.thumbnail?.() ?? Response.json({ items: [] })
+    if (url.includes('/playlistImages')) return Response.json({ id: 'image-1' })
     if (url.includes('uploadType=resumable')) {
       return overrides.open?.() ?? new Response(null, { headers: { location: 'https://upload.test/session' } })
     }
@@ -160,6 +162,48 @@ describe('sending a video', () => {
     service.enqueue(['job'])
     await expect.poll(() => service.envois()[0]?.state).toBe('termine')
     await expect(service.syncMetadata('job')).rejects.toThrow('reconnectez')
+  })
+
+  it('draws a thumbnail once asked, and sends it only when told', async () => {
+    const { calls, impl } = google()
+    const { service } = await connected(impl)
+    service.enqueue(['job'])
+    await expect.poll(() => service.envois()[0]?.state).toBe('termine')
+    service.genererVignettes(['job'])
+    expect(service.claimVignette()).toBe('job')
+    expect(service.claimVignette()).toBeNull()
+    service.saveVignette('job', Buffer.from('jpeg'))
+    expect(service.vignettes()[0]).toMatchObject({ cle: 'job', state: 'prete' })
+    expect(calls.some((call) => call.url.includes('/thumbnails/set'))).toBe(false)
+    await service.envoyerVignettes()
+    expect(service.vignettes()[0]?.state).toBe('envoyee')
+    expect(calls.find((call) => call.url.includes('/thumbnails/set'))!.url).toContain('videoId=yt-1')
+  })
+
+  it('keeps a thumbnail ready, with the reason, when YouTube refuses it', async () => {
+    const { impl } = google({ thumbnail: () => Response.json({ error: { message: 'forbidden' } }, { status: 403 }) })
+    const { service } = await connected(impl)
+    service.enqueue(['job'])
+    await expect.poll(() => service.envois()[0]?.state).toBe('termine')
+    service.genererVignettes(['job'])
+    service.claimVignette()
+    service.saveVignette('job', Buffer.from('jpeg'))
+    await service.envoyerVignettes()
+    expect(service.vignettes()[0]).toMatchObject({ state: 'prete', erreur: expect.stringContaining('403') })
+  })
+
+  it('sends the playlist image once the playlist exists', async () => {
+    const { calls, impl } = google()
+    const { service } = await connected(impl)
+    service.genererVignettes(['playlist'])
+    service.claimVignette()
+    service.saveVignette('playlist', Buffer.from('jpeg'))
+    await service.envoyerVignettes()
+    expect(service.vignettes()[0]?.erreur).toContain('playlist')
+    await service.syncPlaylist('Édition', false, [])
+    await service.envoyerVignettes()
+    expect(service.vignettes()[0]?.state).toBe('envoyee')
+    expect(calls.find((call) => call.url.includes('/playlistImages'))!.init?.method).toBe('POST')
   })
 
   it('cleans a title for YouTube', () => {

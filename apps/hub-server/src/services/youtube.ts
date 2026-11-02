@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
-import type { YoutubeEnvoi, YoutubeStatus } from '@conference-operator/contract'
-import { hubSetting, youtubeEnvoi } from '@conference-operator/db/hub'
-import { desc, eq } from 'drizzle-orm'
+import type { YoutubeEnvoi, YoutubeStatus, YoutubeVignette } from '@conference-operator/contract'
+import { hubSetting, youtubeEnvoi, youtubeVignette } from '@conference-operator/db/hub'
+import { and, asc, desc, eq, lt, or } from 'drizzle-orm'
 import { z } from 'zod'
 import type { HubDatabase } from '../db.js'
 import type { SecretBox } from '../secrets.js'
@@ -11,6 +11,10 @@ const AUTH = 'https://accounts.google.com/o/oauth2/v2/auth'
 const TOKEN = 'https://oauth2.googleapis.com/token'
 const API = 'https://www.googleapis.com/youtube/v3'
 const UPLOAD = 'https://www.googleapis.com/upload/youtube/v3/videos'
+const UPLOAD_ROOT = 'https://www.googleapis.com/upload/youtube/v3'
+/** A worker gone silent gives its thumbnail back after this long. */
+const VIGNETTE_LEASE_MS = 5 * 60_000
+export const VIGNETTE_PLAYLIST_CLE = 'playlist'
 // `youtube` and not `youtube.upload` alone: changing a video's visibility asks for it.
 const SCOPES = 'https://www.googleapis.com/auth/youtube'
 const CONSENT_TTL_MS = 10 * 60_000
@@ -21,7 +25,7 @@ const storedSchema = z.object({
   clientSecretSealed: z.string().nullable().default(null),
   refreshTokenSealed: z.string().nullable().default(null),
   channel: z.string().nullable().default(null),
-  playlist: z.object({ id: z.string(), title: z.string(), publique: z.boolean(), videoIds: z.array(z.string()) }).nullable().default(null),
+  playlist: z.object({ id: z.string(), title: z.string(), publique: z.boolean(), videoIds: z.array(z.string()), imageId: z.string().nullable().default(null) }).nullable().default(null),
 })
 type Stored = z.infer<typeof storedSchema>
 
@@ -79,12 +83,14 @@ export class YoutubeService {
   readonly #now: () => number
   readonly #consents = new Map<string, number>()
   #running = false
+  #sendingVignettes = false
 
   constructor(options: YoutubeOptions) {
     this.#options = options
     this.#fetch = options.fetchImpl ?? fetch
     this.#now = options.now ?? Date.now
     options.db.update(youtubeEnvoi).set({ state: 'attente', octets: 0 }).where(eq(youtubeEnvoi.state, 'en-cours')).run()
+    options.db.update(youtubeVignette).set({ state: 'prete' }).where(eq(youtubeVignette.state, 'envoi')).run()
   }
 
   #stored(): Stored {
@@ -268,7 +274,7 @@ export class YoutubeService {
     if (current == null) {
       const created = await this.#fetch(`${API}/playlists?part=snippet,status`, { method: 'POST', headers, body: JSON.stringify(body) })
       if (!created.ok) throw new Error(await youtubeError(created))
-      current = { id: z.object({ id: z.string() }).parse(await created.json()).id, title, publique, videoIds: [] }
+      current = { id: z.object({ id: z.string() }).parse(await created.json()).id, title, publique, videoIds: [], imageId: null }
     }
     const playlist = { ...current, title, publique }
     this.#store({ playlist })
@@ -283,6 +289,114 @@ export class YoutubeService {
       playlist.videoIds = [...playlist.videoIds, videoId]
       this.#store({ playlist })
     }
+  }
+
+  vignettes(): YoutubeVignette[] {
+    return this.#options.db
+      .select({ cle: youtubeVignette.cle, state: youtubeVignette.state, erreur: youtubeVignette.erreur, updatedAt: youtubeVignette.updatedAt })
+      .from(youtubeVignette)
+      .all()
+      .map((row) => ({ ...row, state: row.state as YoutubeVignette['state'] }))
+  }
+
+  /** Asks for these thumbnails again. One being drawn or sent stays as it is. */
+  genererVignettes(cles: readonly string[]): void {
+    const current = new Map(this.vignettes().map((vignette) => [vignette.cle, vignette.state]))
+    const updatedAt = new Date(this.#now()).toISOString()
+    for (const cle of cles) {
+      const state = current.get(cle)
+      if (state === 'calcul' || state === 'envoi') continue
+      const row = { state: 'attente', image: null, erreur: null, updatedAt }
+      this.#options.db.insert(youtubeVignette).values({ cle, ...row }).onConflictDoUpdate({ target: youtubeVignette.cle, set: row }).run()
+    }
+  }
+
+  /** The next thumbnail for a worker: one waiting, or one whose worker went silent. */
+  claimVignette(): string | null {
+    const stale = new Date(this.#now() - VIGNETTE_LEASE_MS).toISOString()
+    const next = this.#options.db
+      .select({ cle: youtubeVignette.cle })
+      .from(youtubeVignette)
+      .where(or(eq(youtubeVignette.state, 'attente'), and(eq(youtubeVignette.state, 'calcul'), lt(youtubeVignette.updatedAt, stale))))
+      .orderBy(asc(youtubeVignette.updatedAt))
+      .get()
+    if (next == null) return null
+    this.#setVignette(next.cle, { state: 'calcul', erreur: null })
+    return next.cle
+  }
+
+  saveVignette(cle: string, image: Buffer): void {
+    this.#setVignette(cle, { state: 'prete', image, erreur: null })
+  }
+
+  failVignette(cle: string, raison: string): void {
+    this.#setVignette(cle, { state: 'echec', erreur: raison.slice(0, 300) })
+  }
+
+  vignetteImage(cle: string): Buffer | null {
+    return this.#options.db.select({ image: youtubeVignette.image }).from(youtubeVignette).where(eq(youtubeVignette.cle, cle)).get()?.image ?? null
+  }
+
+  #setVignette(cle: string, patch: Partial<typeof youtubeVignette.$inferInsert>): void {
+    this.#options.db.update(youtubeVignette).set({ ...patch, updatedAt: new Date(this.#now()).toISOString() }).where(eq(youtubeVignette.cle, cle)).run()
+  }
+
+  /** Sends every drawn thumbnail, one at a time. Resolved once done; a failure stays on its own line. */
+  async envoyerVignettes(): Promise<void> {
+    if (this.#sendingVignettes) return
+    this.#sendingVignettes = true
+    try {
+      const { refreshTokenSealed } = this.#stored()
+      if (refreshTokenSealed == null) throw new Error('Chaîne déconnectée')
+      const { access_token: accessToken } = await this.#token({ grant_type: 'refresh_token', refresh_token: this.#open(refreshTokenSealed) })
+      const ready = this.vignettes().filter((vignette) => vignette.state === 'prete')
+      for (const { cle } of ready) this.#setVignette(cle, { state: 'envoi' })
+      for (const { cle } of ready) {
+        try {
+          await this.#sendVignette(cle, accessToken)
+          this.#setVignette(cle, { state: 'envoyee', erreur: null })
+        } catch (cause) {
+          this.#options.log?.('vignette YouTube en échec', cause)
+          this.#setVignette(cle, { state: 'prete', erreur: (cause as Error).message.slice(0, 300) })
+        }
+      }
+    } finally {
+      this.#sendingVignettes = false
+    }
+  }
+
+  async #sendVignette(cle: string, accessToken: string): Promise<void> {
+    const image = this.vignetteImage(cle)
+    if (image == null) throw new Error('Image absente')
+    if (cle === VIGNETTE_PLAYLIST_CLE) return this.#sendPlaylistImage(image, accessToken)
+    const videoId = this.envois().find((envoi) => envoi.jobId === cle)?.videoId
+    if (videoId == null) throw new Error('Cette vidéo n’est pas encore sur YouTube')
+    const response = await this.#fetch(`${UPLOAD_ROOT}/thumbnails/set?uploadType=media&videoId=${encodeURIComponent(videoId)}`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'image/jpeg' },
+      body: new Uint8Array(image),
+    })
+    if (!response.ok) throw new Error(await youtubeError(response))
+  }
+
+  async #sendPlaylistImage(image: Buffer, accessToken: string): Promise<void> {
+    const { playlist } = this.#stored()
+    if (playlist == null) throw new Error('Créez d’abord la playlist')
+    const boundary = `vignette${randomBytes(12).toString('hex')}`
+    const meta = JSON.stringify({ ...(playlist.imageId == null ? {} : { id: playlist.imageId }), snippet: { playlistId: playlist.id, type: 'hero' } })
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: image/jpeg\r\n\r\n`),
+      image,
+      Buffer.from(`\r\n--${boundary}--`),
+    ])
+    const response = await this.#fetch(`${UPLOAD_ROOT}/playlistImages?part=snippet&uploadType=multipart`, {
+      method: playlist.imageId == null ? 'POST' : 'PUT',
+      headers: { authorization: `Bearer ${accessToken}`, 'content-type': `multipart/related; boundary=${boundary}` },
+      body: new Uint8Array(body),
+    })
+    if (!response.ok) throw new Error(await youtubeError(response))
+    const { id } = z.object({ id: z.string() }).parse(await response.json())
+    this.#store({ playlist: { ...playlist, imageId: id } })
   }
 
   /** Sends what waits, one at a time. Resolved once the queue is empty. */

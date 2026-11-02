@@ -571,6 +571,13 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     return reply.redirect(`${viewPath('reglages')}?youtube=${issue}`, 303)
   })
 
+  // A thumbnail is made to be public, and its address names a job nobody can guess.
+  app.get('/youtube/vignette/:cle', async (request: FastifyRequest<{ Params: { cle: string } }>, reply) => {
+    const image = services.youtube.vignetteImage(request.params.cle)
+    if (image == null) return reply.status(404).send()
+    return reply.header('content-type', 'image/jpeg').header('cache-control', 'no-store').header('x-content-type-options', 'nosniff').send(image)
+  })
+
   const youtubeSweep = setInterval(() => void services.youtube.tick(), 60_000)
 
   app.get('/health', async () => ({ ok: true, serverTime: new Date().toISOString() }))

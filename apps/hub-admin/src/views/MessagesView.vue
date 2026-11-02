@@ -286,7 +286,8 @@ async function hideBanner(): Promise<void> {
 </script>
 
 <template>
-  <div id="messages-view" class="flex flex-col gap-3.5">
+  <div id="messages-view" class="grid gap-3.5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
+    <div class="flex min-w-0 flex-col gap-3.5">
     <Panel>
       <div class="flex flex-wrap items-end gap-x-4 gap-y-1">
         <div class="w-full max-w-sm">
@@ -409,10 +410,11 @@ async function hideBanner(): Promise<void> {
         modifiable avant envoi.
       </Hint>
 
-      <h3 class="mt-3.5 mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
-        Déjà passés
-      </h3>
-      <div id="banner-history">
+      <details class="mt-3.5">
+      <summary class="cursor-pointer text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+        Déjà passés ({{ banners.length }})
+      </summary>
+      <div id="banner-history" class="mt-2.5">
         <Empty v-if="banners.length === 0">Aucun bandeau diffusé pour le moment.</Empty>
         <div
           v-for="(past, index) in banners"
@@ -435,13 +437,16 @@ async function hideBanner(): Promise<void> {
           </Button>
         </div>
       </div>
+      </details>
     </Panel>
+    </div>
 
     <!--
       What the room screens say: the control apps' messages as well as the
-      console's, reported by the rooms a few seconds after the fact.
+      console's, reported by the rooms a few seconds after the fact. In sight while
+      composing, and first on a phone: taking a mistake off a screen cannot wait.
     -->
-    <Panel>
+    <Panel class="min-w-0 max-lg:order-first lg:sticky lg:top-3">
       <div class="mb-2.5 flex flex-wrap items-center gap-2">
         <h2 class="mb-0 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
           À l'écran dans les salles
@@ -480,10 +485,11 @@ async function hideBanner(): Promise<void> {
         </div>
       </div>
 
-      <h3 class="mt-3.5 mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
-        Journal des écrans
-      </h3>
-      <div id="screens-log">
+      <details class="mt-3.5">
+      <summary class="cursor-pointer text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+        Journal des écrans ({{ screenLog.length }})
+      </summary>
+      <div id="screens-log" class="mt-2.5">
         <Empty v-if="screenLog.length === 0">Aucun message d'écran pour le moment.</Empty>
         <div
           v-for="(entry, index) in screenLog"
@@ -500,6 +506,7 @@ async function hideBanner(): Promise<void> {
           <span v-else class="text-dim">retiré de l'écran</span>
         </div>
       </div>
+      </details>
     </Panel>
 
     <UrgentConfirmDialog

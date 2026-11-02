@@ -176,7 +176,19 @@ async function confirmResync(): Promise<void> {
       <div id="global-detail" class="mt-1 text-xs text-dim">{{ globalDetail }}</div>
     </Panel>
 
-    <Panel class="col-span-full" title="Salles">
+    <Panel class="col-span-full">
+      <div class="mb-2.5 flex flex-wrap items-center gap-2">
+        <h2 class="mb-0 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">Salles</h2>
+        <Button
+          v-if="session.can('room:manage')"
+          id="btn-resync"
+          size="small"
+          class="ml-auto"
+          @click="resyncConfirmation = true"
+        >
+          Resynchroniser…
+        </Button>
+      </div>
       <div
         id="rooms"
         class="grid grid-cols-[repeat(auto-fit,minmax(min(260px,100%),1fr))] gap-2.5"
@@ -313,29 +325,21 @@ async function confirmResync(): Promise<void> {
       </div>
     </Panel>
 
-    <Panel v-if="session.can('room:manage')" class="col-span-full" title="Resynchronisation des salles">
-      <div class="flex flex-wrap items-end gap-2">
-        <div class="min-w-[220px]">
-          <label class="mb-[5px] block text-xs text-dim" for="resync-room">Salle à resynchroniser</label>
-          <select
-            id="resync-room"
-            v-model="resyncRoom"
-            class="w-full rounded-lg border border-edge bg-canvas px-3 py-1.5 text-sm text-text"
-          >
-            <option value="">Toutes les salles</option>
-            <option v-for="room in rooms" :key="room.roomId" :value="room.roomId">{{ room.name }}</option>
-          </select>
-        </div>
-        <Button id="btn-resync" size="small" class="mb-0.5" @click="resyncConfirmation = true">Demander une resynchronisation</Button>
-      </div>
-    </Panel>
-
     <ConfirmDialog
       v-model:open="resyncConfirmation"
       title="Resynchronisation"
       confirm-label="Demander"
       @confirm="confirmResync"
     >
+      <label class="mb-[5px] block text-xs text-dim" for="resync-room">Salle à resynchroniser</label>
+      <select
+        id="resync-room"
+        v-model="resyncRoom"
+        class="mb-3 w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text"
+      >
+        <option value="">Toutes les salles</option>
+        <option v-for="room in rooms" :key="room.roomId" :value="room.roomId">{{ room.name }}</option>
+      </select>
       <span id="resync-text">
         Demander une resynchronisation complète à
         <strong>{{ resyncRoomName ?? 'toutes les salles' }}</strong>.

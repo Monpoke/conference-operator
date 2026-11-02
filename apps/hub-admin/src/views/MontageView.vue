@@ -442,7 +442,7 @@ const FIELD = 'mt-1 w-full rounded-lg border border-edge bg-canvas px-3 py-2 tex
               :href="montagePath(nextToValidate.sessionId, nextToValidate.sidecarUploadId)"
               class="mt-2 inline-block text-sm text-brand underline"
               data-role="suivant"
-            >Coupe suivante à valider : {{ nextToValidate.title ?? nextToValidate.sessionId }}</a>
+            >Coupe suivante à valider : {{ nextToValidate.nomVideo }}</a>
           </Panel>
 
           <Panel title="Habillage de la vidéo">

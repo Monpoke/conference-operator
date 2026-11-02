@@ -52,7 +52,11 @@ const renamingTake = ref<MontageJobView | null>(null)
 const newTitle = ref('')
 const renameBusy = ref(false)
 /** The talk's name as its takes' videos carry it, else the program's. */
-const displayTitle = (row: { key: string; title: string }) => takesOf.value.get(row.key)?.[0]?.habillagePrise?.title ?? row.title
+const displayTitle = (row: { key: string; title: string }) => {
+  // The talk's own line: one take renamed alone leaves it its name.
+  const titles = new Set((takesOf.value.get(row.key) ?? []).map((take) => take.habillagePrise?.title ?? row.title))
+  return titles.size === 1 ? [...titles][0]! : row.title
+}
 function startRename(row: { key: string; title: string }): void {
   renamingTake.value = null
   renaming.value = row.key
@@ -250,13 +254,13 @@ async function requestAll(): Promise<void> {
       <ul v-if="inProgress.length > 0" id="montages-en-cours" class="m-0 mb-3 flex list-none flex-col gap-2 p-0">
         <li v-for="job in inProgress" :key="job.id" class="rounded-lg border border-edge p-2.5 text-sm" :data-montage-en-cours="job.id">
           <div class="flex flex-wrap items-baseline justify-between gap-x-3">
-            <a :href="montagePath(job.sessionId, job.sidecarUploadId)" class="min-w-0 font-semibold underline-offset-2 hover:underline">{{ job.title ?? job.sessionId }}</a>
+            <a :href="montagePath(job.sessionId, job.sidecarUploadId)" class="min-w-0 font-semibold underline-offset-2 hover:underline">{{ job.nomVideo }}</a>
             <span class="text-xs text-dim" :class="job.silencieuxDepuisMs != null ? 'text-warn' : ''" data-role="avancee">{{ describe(job) }}</span>
           </div>
           <div
             class="mt-1.5 h-2 rounded-full bg-surface2"
             role="progressbar"
-            :aria-label="`Avancée du montage : ${job.title ?? job.sessionId}`"
+            :aria-label="`Avancée du montage : ${job.nomVideo}`"
             :aria-valuenow="job.pourcent"
             aria-valuemin="0"
             aria-valuemax="100"

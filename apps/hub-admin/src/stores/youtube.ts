@@ -44,5 +44,9 @@ export const useYoutubeStore = defineStore('youtube', () => {
     envois.value = await session.client.rpc.youtube.visibilite({ jobId, publique })
   }
 
-  return { status, envois, load, setClient, connect, disconnect, send, setVisibilite }
+  async function syncPlaylist(title: string, publique: boolean): Promise<void> {
+    status.value = await session.client.rpc.youtube.playlist({ title, publique })
+  }
+
+  return { status, envois, load, setClient, connect, disconnect, send, setVisibilite, syncPlaylist }
 })

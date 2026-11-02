@@ -359,7 +359,7 @@ describe('the montages in the list', () => {
   it('shows each running montage with its stage and progress, and only those', async () => {
     const { wrapper } = await mountView([], [TALK])
     useMontageStore().jobs = [
-      { ...JOB, id: 'j1', state: 'en-cours', etape: 'assemblage', pourcent: 42, title: 'Mon talk', silencieuxDepuisMs: null },
+      { ...JOB, id: 'j1', state: 'en-cours', etape: 'assemblage', pourcent: 42, nomVideo: 'Mon talk', silencieuxDepuisMs: null },
       { ...JOB, id: 'j2', state: 'attente' },
     ] as never
     await flushPromises()

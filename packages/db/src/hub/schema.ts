@@ -637,6 +637,8 @@ export const youtubeEnvoi = sqliteTable('youtube_envoi', {
   /** `attente`, `en-cours`, `termine`, `echoue`. */
   state: text('state').notNull(),
   videoId: text('video_id'),
+  /** On YouTube: `private` as sent, `public` once published from the console. */
+  visibilite: text('visibilite').notNull().default('private'),
   octets: integer('octets').notNull().default(0),
   taille: integer('taille'),
   erreur: text('erreur'),

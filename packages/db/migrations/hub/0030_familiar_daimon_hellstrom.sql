@@ -1,0 +1,1 @@
+ALTER TABLE `youtube_envoi` ADD `visibilite` text DEFAULT 'private' NOT NULL;

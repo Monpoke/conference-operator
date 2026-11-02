@@ -24,6 +24,7 @@ import {
 } from '../stores/settings.js'
 import { useWallsIoStore } from '../stores/wallsio.js'
 import { useMurPublicStore } from '../stores/murPublic.js'
+import { useConfirmStore } from '../stores/confirm.js'
 import YoutubeSettingsPanel from '../components/YoutubeSettingsPanel.vue'
 import { useSauvegardeStore, type RestaurationReport } from '../stores/sauvegarde.js'
 
@@ -295,6 +296,7 @@ function clockTime(iso: string): string {
 
 // — Public page's token —
 /** Shown once, right after it is created, then gone with the page. */
+const confirmStore = useConfirmStore()
 const murPublic = useMurPublicStore()
 const { status: murPublicStatus } = storeToRefs(murPublic)
 const murPublicToken = ref<string | null>(null)
@@ -304,7 +306,7 @@ onMounted(() => {
 })
 
 async function createMurPublicToken(): Promise<void> {
-  if (murPublicStatus.value?.hasToken && !confirm('Remplacer le jeton ? L’ancien cesse aussitôt de fonctionner : il faudra mettre le nouveau dans le secret du service mur-public.')) return
+  if (murPublicStatus.value?.hasToken && !(await confirmStore.ask({ title: 'Remplacer le jeton ?', message: 'L’ancien cesse aussitôt de fonctionner : il faudra mettre le nouveau dans le secret du service mur-public.', confirmLabel: 'Remplacer', danger: true }))) return
   murPublicBusy.value = true
   try {
     murPublicToken.value = await murPublic.createToken()
@@ -338,7 +340,7 @@ async function restoreBackup(event: Event): Promise<void> {
   const file = input.files?.[0]
   input.value = ''
   if (file == null) return
-  if (!confirm(`Restaurer « ${file.name} » sur ce hub ? Les réglages, salles, programme, posts de la console et comptes de la sauvegarde remplacent ceux qui portent le même nom ici.`)) return
+  if (!(await confirmStore.ask({ title: 'Restaurer cette sauvegarde ?', message: `Restaurer « ${file.name} » sur ce hub ? Les réglages, salles, programme, posts de la console et comptes de la sauvegarde remplacent ceux qui portent le même nom ici.`, confirmLabel: 'Restaurer', danger: true }))) return
   restoring.value = true
   try {
     restored.value = await sauvegarde.restore(file)

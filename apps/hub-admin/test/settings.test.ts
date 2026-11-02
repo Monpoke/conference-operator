@@ -1,3 +1,4 @@
+import { useConfirmStore } from '../src/stores/confirm.js'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -437,7 +438,6 @@ describe('settings view', () => {
         { status: 200, headers: { 'content-type': 'application/json' } },
       )
     })
-    vi.stubGlobal('confirm', () => true)
     const { wrapper } = await mountView()
     expect(wrapper.get('#btn-sauvegarde-export').attributes('href')).toBe('/sauvegarde/export.json')
 
@@ -445,6 +445,8 @@ describe('settings view', () => {
     const file = new File(['{"format":"conference-operator/sauvegarde"}'], 'sauvegarde.json', { type: 'application/json' })
     Object.defineProperty(input.element, 'files', { value: [file] })
     await input.trigger('change')
+    await flushPromises()
+    useConfirmStore().answer(true)
     await flushPromises()
 
     expect(sent[0]?.url).toBe('/sauvegarde/import')

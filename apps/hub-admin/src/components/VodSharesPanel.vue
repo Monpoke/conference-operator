@@ -3,6 +3,7 @@ import { Button, Empty, Hint, Panel, useToast } from '@conference-operator/compo
 import { MOT_DE_PASSE_PARTAGE_MIN } from '@conference-operator/contract'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref } from 'vue'
+import { useConfirmStore } from '../stores/confirm.js'
 import { genererMotDePasse, usePartagesStore } from '../stores/partages.js'
 
 /** The pages that open the edited videos to outsiders, each behind its password. */
@@ -10,6 +11,7 @@ const props = defineProps<{ talks: readonly { key: string; title: string }[] }>(
 const store = usePartagesStore()
 const { partages } = storeToRefs(store)
 const toast = useToast()
+const confirmStore = useConfirmStore()
 
 onMounted(() => void store.load().catch(() => undefined))
 
@@ -41,7 +43,7 @@ async function copy(url: string): Promise<void> {
 }
 
 async function remove(id: string): Promise<void> {
-  if (!confirm('Retirer cette page ? Le lien cessera aussitôt de fonctionner.')) return
+  if (!(await confirmStore.ask({ title: 'Retirer cette page ?', message: 'Le lien cessera aussitôt de fonctionner, y compris pour ceux qui l’ont déjà ouvert.', confirmLabel: 'Retirer', danger: true }))) return
   await store.remove(id).catch(() => undefined)
 }
 

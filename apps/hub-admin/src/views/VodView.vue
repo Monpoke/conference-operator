@@ -11,6 +11,9 @@ import {
   type Upload,
 } from '../stores/vod.js'
 import { renamed, useConferencesStore } from '../stores/conferences.js'
+import ActionMenu, { type ActionMenuItem } from '../components/ActionMenu.vue'
+import type { ConferenceRow } from '../stores/vod.js'
+import YoutubeStatusIcons from '../components/YoutubeStatusIcons.vue'
 import VodSharesPanel from '../components/VodSharesPanel.vue'
 import VodYoutubePanel from '../components/VodYoutubePanel.vue'
 import { MONTAGE_STATES, cutMinutes, describe, latestByTake, montagePath, useMontageStore } from '../stores/montage.js'
@@ -82,6 +85,21 @@ async function saveTitle(sessionId: string): Promise<void> {
   } finally {
     renameBusy.value = false
   }
+}
+
+/** Everything a talk's line can take. */
+function actionsOf(row: ConferenceRow): ActionMenuItem[] {
+  const takes = takesOf.value.get(row.key) ?? []
+  const several = takes.length > 1
+  const items: ActionMenuItem[] = []
+  takes.forEach((job, index) => {
+    if (job.state === 'termine') items.push({ key: `regarder-${job.id}`, label: several ? `Regarder la prise ${index + 1}` : 'Regarder la vidéo', run: () => watchVideo(job.id) })
+  })
+  if (takes.length > 0) items.push({ key: 'renommer', label: 'Renommer le talk', run: () => startRename(row) })
+  if (several) takes.forEach((job, index) => items.push({ key: `renommer-${job.id}`, label: `Renommer la prise ${index + 1}`, run: () => startRenameTake(job) }))
+  if (row.files.length > 0) items.push({ key: 'toggle-files', label: unfolded.value.has(row.key) ? 'Masquer les fichiers' : 'Voir les fichiers', run: () => toggle(row.key) })
+  else if (row.etat === 'a-reprendre' && row.roomId != null) items.push({ key: 'request-room', label: 'Demander à la salle', run: () => requestUpload(row.roomId!, null) })
+  return items
 }
 
 function watchVideo(jobId: string): void {
@@ -313,7 +331,6 @@ async function requestAll(): Promise<void> {
                   </form>
                   <template v-else>
                     {{ displayTitle(row) }}
-                    <button v-if="(takesOf.get(row.key) ?? []).length > 0" type="button" class="ml-1 cursor-pointer text-xs text-brand underline" :data-renommer="row.key" @click="startRename(row)">Renommer</button>
                   </template>
                 </td>
                 <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:text-dim">
@@ -340,15 +357,7 @@ async function requestAll(): Promise<void> {
                     >
                       {{ stateOfJob(job).label }}<span v-if="cutMinutes(job) != null" class="text-dim" data-role="montage-duree"> · {{ cutMinutes(job) }} min</span>
                     </a>
-                    <Button
-                      v-if="job.state === 'termine'"
-                      size="small"
-                      :aria-label="`Regarder la vidéo : ${row.title}`"
-                      title="Regarder la vidéo"
-                      :data-regarder="job.id"
-                      @click="watchVideo(job.id)"
-                    >▶</Button>
-                    <button v-if="(takesOf.get(row.key) ?? []).length > 1 && renamingTake?.id !== job.id" type="button" class="cursor-pointer text-xs text-brand underline" :data-renommer-prise="job.id" @click="startRenameTake(job)">Renommer</button>
+                    <YoutubeStatusIcons v-if="job.state === 'termine'" :job-id="job.id" />
                   </div>
                   <div v-if="(takesOf.get(row.key) ?? []).length > 1" class="mb-1 text-xs text-dim" data-role="nom-video">{{ job.nomVideo }}</div>
                   <form v-if="renamingTake?.id === job.id" class="mb-1 flex flex-wrap items-center gap-1.5" data-role="renommer-prise" @submit.prevent="saveTitle(row.key)">
@@ -359,24 +368,7 @@ async function requestAll(): Promise<void> {
                   </template>
                 </td>
                 <td class="border-t border-edge py-[9px] text-right align-middle max-md:ml-auto max-md:border-t-0 max-md:py-0 max-md:empty:hidden">
-                  <Button
-                    v-if="row.files.length > 0"
-                    size="small"
-                    :aria-expanded="unfolded.has(row.key)"
-                    data-role="toggle-files"
-                    @click="toggle(row.key)"
-                  >
-                    <StableLabel :current="unfolded.has(row.key) ? 'Masquer' : 'Détails'" :labels="['Masquer', 'Détails']" />
-                  </Button>
-                  <!-- Nothing named here: the room alone knows what its disk holds. -->
-                  <Button
-                    v-else-if="row.etat === 'a-reprendre' && row.roomId != null"
-                    size="small"
-                    data-role="request-room"
-                    @click="requestUpload(row.roomId, null)"
-                  >
-                    Demander à la salle
-                  </Button>
+                  <ActionMenu v-if="actionsOf(row).length > 0" :items="actionsOf(row)" :label="`Actions : ${row.title}`" />
                 </td>
               </tr>
               <tr v-if="unfolded.has(row.key) && row.files.length > 0" class="max-md:block">

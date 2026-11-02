@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Badge, Button, Toaster } from '@conference-operator/components'
+import ConfirmHost from './components/ConfirmHost.vue'
 import { storeToRefs } from 'pinia'
 import { CONTROL_PATH, VIEW_PERMISSIONS, consoleViews, viewPath } from '@conference-operator/contract'
 import { computed, onScopeDispose, ref, watch } from 'vue'
@@ -252,4 +253,5 @@ function refresh(): void {
   </div>
 
   <Toaster />
+  <ConfirmHost />
 </template>

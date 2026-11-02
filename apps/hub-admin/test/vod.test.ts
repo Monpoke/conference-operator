@@ -62,7 +62,8 @@ async function mountView(uploads: unknown[] = [], sessions: unknown[] = []): Pro
 
 /** The view folds a talk's files: the file-level gestures are one click away. */
 async function unfold(wrapper: ReturnType<typeof mount>): Promise<void> {
-  await wrapper.get('[data-role="toggle-files"]').trigger('click')
+  await wrapper.get('#vod-rows [data-role="actions"]').trigger('click')
+  await wrapper.get('[data-action="toggle-files"]').trigger('click')
 }
 
 const TALK = {
@@ -265,7 +266,8 @@ describe('vue VOD', () => {
 
   it('asks the room for a talk nothing arrived from', async () => {
     const { calls, wrapper } = await mountView([], [TALK])
-    await wrapper.get('[data-role="request-room"]').trigger('click')
+    await wrapper.get('#vod-rows [data-role="actions"]').trigger('click')
+    await wrapper.get('[data-action="request-room"]').trigger('click')
     await flushPromises()
     expect(calls).toContainEqual({ path: 'vod/request', input: { roomId: 'track-1', file: null } })
   })
@@ -385,8 +387,9 @@ describe('the montages in the list', () => {
       { ...JOB, id: 'attend', sessionId: TALK.id, sidecarUploadId: 'b', state: 'attente' },
     ] as never
     await flushPromises()
-    expect(wrapper.find('[data-regarder="attend"]').exists()).toBe(false)
-    await wrapper.get('[data-regarder="fini"]').trigger('click')
+    await wrapper.get('#vod-rows [data-role="actions"]').trigger('click')
+    expect(wrapper.find('[data-action="regarder-attend"]').exists()).toBe(false)
+    await wrapper.get('[data-action="regarder-fini"]').trigger('click')
     expect(watch).toHaveBeenCalledWith('fini')
   })
 

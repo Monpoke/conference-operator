@@ -16,13 +16,14 @@ onMounted(() => void store.load().catch(() => undefined))
 const cible = ref('')
 const motDePasse = ref('')
 const busy = ref(false)
+const lienDirect = ref<string | null>(null)
 const valide = computed(() => motDePasse.value.length >= MOT_DE_PASSE_PARTAGE_MIN)
 
 async function create(): Promise<void> {
   busy.value = true
   try {
-    await store.create(cible.value === '' ? null : cible.value, motDePasse.value)
-    toast.say('Page créée : notez le mot de passe, il ne sera plus affiché')
+    lienDirect.value = await store.create(cible.value === '' ? null : cible.value, motDePasse.value)
+    motDePasse.value = ''
   } catch {
     /* already reported by the hub client */
   } finally {
@@ -64,15 +65,20 @@ const FIELD = 'rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-te
       <Button id="btn-partage-generer" size="small" @click="motDePasse = genererMotDePasse()">Générer</Button>
       <Button id="btn-partage-creer" size="small" variant="primary" :disabled="!valide || busy" @click="create">Créer la page</Button>
     </div>
+    <div v-if="lienDirect != null" id="partage-lien-direct" class="mb-3 rounded-lg border border-ok bg-ok-soft p-3 text-sm">
+      <p class="m-0 mb-1 font-semibold">Lien avec le mot de passe : à copier maintenant, il ne sera plus affiché.</p>
+      <p class="m-0 mb-2 font-mono text-xs break-all">{{ lienDirect }}</p>
+      <Button id="btn-partage-copier-direct" size="small" @click="copy(lienDirect!)">Copier ce lien</Button>
+    </div>
     <Empty v-if="partages.length === 0">Aucune page de partage.</Empty>
     <div v-for="partage in partages" :key="partage.id" class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-edge py-2 text-sm" :data-partage="partage.id">
       <span class="min-w-0 flex-1 basis-60 font-medium">{{ partage.sessionId == null ? 'Toute l’édition' : partage.title ?? partage.sessionId }}</span>
       <a :href="partage.url" target="_blank" rel="noopener" class="min-w-0 font-mono text-xs break-all text-brand underline">{{ partage.url }}</a>
-      <Button size="small" data-role="copier" @click="copy(partage.url)">Copier le lien</Button>
+      <Button size="small" data-role="copier" title="Sans le mot de passe" @click="copy(partage.url)">Copier le lien</Button>
       <Button size="small" variant="danger" data-role="retirer" @click="remove(partage.id)">Retirer</Button>
     </div>
     <Hint class="mb-0">
-      Le mot de passe n'est jamais conservé en clair : perdu, il faut retirer la page et en créer une autre. Les talks dont l'orateur a refusé la diffusion n'y apparaissent jamais.
+      Le mot de passe n'est jamais conservé en clair : perdu, il faut retirer la page et en créer une autre. Quiconque a le lien avec le mot de passe entre sans rien saisir. Les talks dont l'orateur a refusé la diffusion n'y apparaissent jamais.
     </Hint>
   </Panel>
 </template>

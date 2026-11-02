@@ -5,12 +5,12 @@ import { viewPath } from '@conference-operator/contract'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { latestByTake } from '../stores/montage.js'
-import { ENVOI_LABELS, envoiPourcent, useYoutubeStore } from '../stores/youtube.js'
+import { ENVOI_LABELS, VIGNETTE_LABELS, envoiPourcent, useYoutubeStore } from '../stores/youtube.js'
 
 /** The finished videos and where each stands on the way to the channel. */
 const props = defineProps<{ jobs: readonly MontageJobView[] }>()
 const store = useYoutubeStore()
-const { status, envois } = storeToRefs(store)
+const { status, envois, vignettes } = storeToRefs(store)
 const settingsPath = viewPath('reglages')
 const toast = useToast()
 
@@ -51,6 +51,17 @@ async function syncTitle(jobId: string): Promise<void> {
   } catch {
     /* already reported by the hub client */
   }
+}
+
+const vignetteOf = (cle: string) => vignettes.value.find((vignette) => vignette.cle === cle) ?? null
+const vignetteImage = (cle: string) => {
+  const vignette = vignetteOf(cle)
+  return vignette != null && ['prete', 'envoi', 'envoyee'].includes(vignette.state) ? `/youtube/vignette/${cle}?v=${encodeURIComponent(vignette.updatedAt)}` : null
+}
+const vignettesPretes = computed(() => vignettes.value.filter((vignette) => vignette.state === 'prete').length)
+async function sendVignettes(): Promise<void> {
+  if (!confirm(`Envoyer ${vignettesPretes.value} vignettes sur YouTube ? Elles remplacent celles en place, et sont visibles aussitôt sur les vidéos publiques.`)) return
+  await store.envoyerVignettes().catch(() => undefined)
 }
 
 const titlesBusy = ref(false)
@@ -98,9 +109,27 @@ const sending = (jobId: string) => ['attente', 'en-cours'].includes(envoiOf(jobI
         <Button type="submit" size="small" :disabled="playlistBusy || playlistTitle.trim() === '' || sent === 0"><StableLabel :current="status.playlist == null ? 'Créer la playlist' : 'Mettre à jour la playlist'" :labels="['Créer la playlist', 'Mettre à jour la playlist']" /></Button>
         <a v-if="status.playlist != null" :href="`https://www.youtube.com/playlist?list=${status.playlist.id}`" target="_blank" rel="noopener" class="text-sm text-brand underline" data-role="playlist">Voir ({{ status.playlist.videos }} vidéos)</a>
       </form>
+      <div id="youtube-vignettes" class="mb-2 flex flex-wrap items-center gap-2 border-t border-edge pt-2">
+        <span class="mr-auto text-sm text-dim">Vignettes : vérifiez-les ici, rien ne part sans votre clic.</span>
+        <Button id="btn-vignettes-generer" size="small" :disabled="sent === 0" @click="store.genererVignettes(null).catch(() => undefined)">Générer les vignettes manquantes</Button>
+        <Button id="btn-vignettes-envoyer" size="small" variant="primary" :disabled="vignettesPretes === 0" @click="sendVignettes">Envoyer les vignettes ({{ vignettesPretes }})</Button>
+      </div>
+      <div v-if="vignetteOf('playlist') != null" class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-edge py-2 text-sm" data-vignette="playlist">
+        <img v-if="vignetteImage('playlist') != null" :src="vignetteImage('playlist')!" alt="" class="size-14 rounded object-cover" data-role="apercu">
+        <span class="min-w-0 flex-1 basis-40">Image de la playlist</span>
+        <span :class="VIGNETTE_LABELS[vignetteOf('playlist')!.state].tone" :title="vignetteOf('playlist')!.erreur ?? undefined">{{ VIGNETTE_LABELS[vignetteOf('playlist')!.state].label }}</span>
+        <Button size="small" @click="store.genererVignettes(['playlist']).catch(() => undefined)">Redessiner</Button>
+        <span v-if="vignetteOf('playlist')!.erreur != null" class="basis-full text-xs break-words text-alert">{{ vignetteOf('playlist')!.erreur }}</span>
+      </div>
       <Empty v-if="videos.length === 0">Aucune vidéo terminée.</Empty>
       <div v-for="job in videos" :key="job.id" class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-edge py-2 text-sm" :data-youtube="job.id">
+        <a v-if="vignetteImage(job.id) != null" :href="vignetteImage(job.id)!" target="_blank" rel="noopener" class="flex-none" data-role="apercu"><img :src="vignetteImage(job.id)!" :alt="`Vignette : ${job.nomVideo}`" class="h-14 w-25 rounded object-cover"></a>
         <span class="min-w-0 flex-1 basis-60">{{ job.nomVideo }}</span>
+        <template v-if="vignetteOf(job.id) != null">
+          <span :class="VIGNETTE_LABELS[vignetteOf(job.id)!.state].tone" class="text-xs" :title="vignetteOf(job.id)!.erreur ?? undefined" data-role="vignette">Vignette {{ VIGNETTE_LABELS[vignetteOf(job.id)!.state].label }}</span>
+          <Button size="small" data-role="redessiner" @click="store.genererVignettes([job.id]).catch(() => undefined)">Redessiner</Button>
+          <span v-if="vignetteOf(job.id)!.erreur != null" class="basis-full text-xs break-words text-alert">{{ vignetteOf(job.id)!.erreur }}</span>
+        </template>
         <template v-if="envoiOf(job.id) != null">
           <span :class="ENVOI_LABELS[envoiOf(job.id)!.state].tone" :title="envoiOf(job.id)!.erreur ?? undefined" data-role="etat">
             {{ ENVOI_LABELS[envoiOf(job.id)!.state].label }}<template v-if="envoiOf(job.id)!.state === 'termine'"> ({{ envoiOf(job.id)!.visibilite === 'public' ? 'publique' : 'privée' }})</template><template v-if="envoiOf(job.id)!.state === 'en-cours' && envoiPourcent(envoiOf(job.id)!) != null"> · {{ envoiPourcent(envoiOf(job.id)!) }} %</template>

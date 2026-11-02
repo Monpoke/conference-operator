@@ -1,4 +1,4 @@
-import type { YoutubeEnvoi, YoutubeStatus } from '@conference-operator/contract'
+import type { YoutubeEnvoi, YoutubeStatus, YoutubeVignette } from '@conference-operator/contract'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useSessionStore } from './session.js'
@@ -16,15 +16,26 @@ export function envoiPourcent(envoi: Pick<YoutubeEnvoi, 'octets' | 'taille'>): n
   return Math.min(100, Math.round((envoi.octets / envoi.taille) * 100))
 }
 
+export const VIGNETTE_LABELS: Record<YoutubeVignette['state'], { label: string; tone: string }> = {
+  attente: { label: 'à dessiner', tone: 'text-dim' },
+  calcul: { label: 'en cours de dessin', tone: 'text-brand' },
+  prete: { label: 'prête, pas envoyée', tone: 'text-warn' },
+  envoi: { label: 'envoi…', tone: 'text-brand' },
+  envoyee: { label: 'sur YouTube', tone: 'text-ok' },
+  echec: { label: 'en échec', tone: 'text-alert' },
+}
+
 export const useYoutubeStore = defineStore('youtube', () => {
   const session = useSessionStore()
   const status = ref<YoutubeStatus | null>(null)
   const envois = ref<YoutubeEnvoi[]>([])
+  const vignettes = ref<YoutubeVignette[]>([])
 
   async function load(): Promise<void> {
-    const [nextStatus, nextEnvois] = await Promise.all([session.client.rpc.youtube.status(), session.client.rpc.youtube.envois()])
+    const [nextStatus, nextEnvois, nextVignettes] = await Promise.all([session.client.rpc.youtube.status(), session.client.rpc.youtube.envois(), session.client.rpc.youtube.vignettes()])
     status.value = nextStatus
     envois.value = nextEnvois
+    vignettes.value = nextVignettes
   }
   async function setClient(clientId: string, clientSecret: string): Promise<void> {
     status.value = await session.client.rpc.youtube.setClient({ clientId, clientSecret })
@@ -44,6 +55,12 @@ export const useYoutubeStore = defineStore('youtube', () => {
     envois.value = await session.client.rpc.youtube.visibilite({ jobId, publique })
   }
 
+  async function genererVignettes(cles: string[] | null): Promise<void> {
+    vignettes.value = await session.client.rpc.youtube.genererVignettes({ cles })
+  }
+  async function envoyerVignettes(): Promise<void> {
+    vignettes.value = await session.client.rpc.youtube.envoyerVignettes()
+  }
   async function syncMetadata(jobId: string): Promise<void> {
     await session.client.rpc.youtube.synchroniser({ jobId })
   }
@@ -51,5 +68,5 @@ export const useYoutubeStore = defineStore('youtube', () => {
     status.value = await session.client.rpc.youtube.playlist({ title, publique })
   }
 
-  return { status, envois, load, setClient, connect, disconnect, send, setVisibilite, syncMetadata, syncPlaylist }
+  return { status, envois, vignettes, genererVignettes, envoyerVignettes, load, setClient, connect, disconnect, send, setVisibilite, syncMetadata, syncPlaylist }
 })

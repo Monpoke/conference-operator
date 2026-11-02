@@ -33,10 +33,9 @@ describe('the page of a thumbnail', () => {
     expect(size.width * size.scale).toBe(1280)
   })
 
-  it('gives the playlist the videos\' format, with when and where', async () => {
+  it('gives the playlist the square YouTube asks, with when and where', async () => {
     const { html, size } = await vignettePage({ cle: 'playlist', habillage: HABILLAGE, lieu: 'Université' }, dir)
-    expect(size.width * size.scale).toBe(1280)
-    expect(size.height * size.scale).toBe(720)
+    expect(size.width).toBe(size.height)
     expect(html).toContain('Université')
     expect(html).toContain('30 octobre 2026')
   })

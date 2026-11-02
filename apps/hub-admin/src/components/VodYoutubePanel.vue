@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button, Empty, Panel, StableLabel } from '@conference-operator/components'
+import { Button, Empty, Panel, StableLabel, useToast } from '@conference-operator/components'
 import type { MontageJobView } from '@conference-operator/contract'
 import { viewPath } from '@conference-operator/contract'
 import { storeToRefs } from 'pinia'
@@ -12,6 +12,7 @@ const props = defineProps<{ jobs: readonly MontageJobView[] }>()
 const store = useYoutubeStore()
 const { status, envois } = storeToRefs(store)
 const settingsPath = viewPath('reglages')
+const toast = useToast()
 
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
@@ -40,6 +41,15 @@ async function syncPlaylist(): Promise<void> {
     /* already reported by the hub client */
   } finally {
     playlistBusy.value = false
+  }
+}
+
+async function syncTitle(jobId: string): Promise<void> {
+  try {
+    await store.syncMetadata(jobId)
+    toast.say('Titre mis à jour sur YouTube')
+  } catch {
+    /* already reported by the hub client */
   }
 }
 
@@ -84,6 +94,7 @@ const sending = (jobId: string) => ['attente', 'en-cours'].includes(envoiOf(jobI
             data-role="visibilite"
             @click="toggleVisibilite(job.id)"
           ><StableLabel :current="envoiOf(job.id)!.visibilite === 'public' ? 'Rendre privée' : 'Rendre publique'" :labels="['Rendre privée', 'Rendre publique']" /></Button>
+          <Button v-if="envoiOf(job.id)!.state === 'termine'" size="small" data-role="titre" title="Reprendre le nom et la description actuels, sans renvoyer la vidéo" @click="syncTitle(job.id)">Mettre à jour le titre</Button>
           <span v-if="envoiOf(job.id)!.erreur != null" class="basis-full text-xs break-words text-alert">{{ envoiOf(job.id)!.erreur }}</span>
         </template>
         <Button size="small" :disabled="sending(job.id)" data-role="envoyer" @click="store.send([job.id]).catch(() => undefined)"><StableLabel :current="envoiOf(job.id) == null ? 'Envoyer' : 'Renvoyer'" :labels="['Envoyer', 'Renvoyer']" /></Button>

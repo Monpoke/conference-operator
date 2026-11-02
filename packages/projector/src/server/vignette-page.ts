@@ -12,7 +12,7 @@ const escapeHtml = (text: string): string =>
 
 /** Drawn at this size, captured smaller: 1280×720 is what YouTube asks. */
 export const VIGNETTE = { width: 1920, height: 1080, scale: 2 / 3 }
-export const VIGNETTE_PLAYLIST = { width: 1080, height: 1080, scale: 1 }
+export const VIGNETTE_PLAYLIST = VIGNETTE
 
 /** The longer the title, the smaller: it never overflows, and it stays large. */
 export function vignetteTitleSize(title: string): number {
@@ -63,9 +63,9 @@ export function vignettePlaylistHtml(options: { eventName: string; logoUrl: stri
 ${themeStyle(options.theme)}
 ${BASE}
 #stage { width: ${VIGNETTE_PLAYLIST.width}px; height: ${VIGNETTE_PLAYLIST.height}px; padding: 90px; align-items: center; justify-content: center; text-align: center; gap: 44px; }
-#stage img { max-width: 800px; max-height: 300px; object-fit: contain; }
-h1 { margin: 0; font: 900 ${(date ?? '').length <= 16 ? 92 : 76}px/1.08 var(--f-titre, var(--f-texte, system-ui, sans-serif)); text-wrap: balance; text-shadow: 0 6px 30px rgba(0,0,0,.35); }
-.lieu { margin: 0; font: 700 54px/1.15 var(--f-texte, system-ui, sans-serif); text-wrap: balance; }
+#stage img { max-width: 1000px; max-height: 340px; object-fit: contain; }
+h1 { margin: 0; font: 900 ${(date ?? '').length <= 16 ? 112 : 92}px/1.08 var(--f-titre, var(--f-texte, system-ui, sans-serif)); text-wrap: balance; text-shadow: 0 6px 30px rgba(0,0,0,.35); }
+.lieu { margin: 0; font: 700 60px/1.15 var(--f-texte, system-ui, sans-serif); text-wrap: balance; }
 </style></head><body><div id="stage">${themeDecor(options.theme)}
 ${options.logoUrl == null ? `<h1>${escapeHtml(options.eventName)}</h1>` : `<img src="${escapeHtml(options.logoUrl)}" alt="${escapeHtml(options.eventName)}">`}
 ${date == null ? '' : `<h1>${escapeHtml(date)}</h1>`}

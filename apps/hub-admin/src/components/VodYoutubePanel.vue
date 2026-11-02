@@ -115,7 +115,7 @@ const sending = (jobId: string) => ['attente', 'en-cours'].includes(envoiOf(jobI
         <Button id="btn-vignettes-envoyer" size="small" variant="primary" :disabled="vignettesPretes === 0" @click="sendVignettes">Envoyer les vignettes ({{ vignettesPretes }})</Button>
       </div>
       <div v-if="vignetteOf('playlist') != null" class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-edge py-2 text-sm" data-vignette="playlist">
-        <img v-if="vignetteImage('playlist') != null" :src="vignetteImage('playlist')!" alt="" class="size-14 rounded object-cover" data-role="apercu">
+        <img v-if="vignetteImage('playlist') != null" :src="vignetteImage('playlist')!" alt="" class="h-14 w-25 rounded object-cover" data-role="apercu">
         <span class="min-w-0 flex-1 basis-40">Image de la playlist</span>
         <span :class="VIGNETTE_LABELS[vignetteOf('playlist')!.state].tone" :title="vignetteOf('playlist')!.erreur ?? undefined">{{ VIGNETTE_LABELS[vignetteOf('playlist')!.state].label }}</span>
         <Button size="small" @click="store.genererVignettes(['playlist']).catch(() => undefined)">Redessiner</Button>

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { appearanceOf } from '@conference-operator/room-state'
-import { Badge, Empty, Panel, StatusDot } from '@conference-operator/components'
+import { Badge, Button, ConfirmDialog, Empty, Panel, StatusDot, useToast } from '@conference-operator/components'
 import { time, timeAgo } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useConferencesStore } from '../stores/conferences.js'
 import { useFeaturesStore } from '../stores/features.js'
 import { slotRemaining, useOperationsStore, type RoomStatus } from '../stores/operations.js'
+import { useSessionStore } from '../stores/session.js'
 
 /**
  * The dashboard.
@@ -116,6 +117,35 @@ const globalDetail = computed(() => {
   const minutes = Math.round((Date.parse(edge) - Date.parse(slot.serverTime)) / 60000)
   return `${running ? 'reprise dans ' : 'dans '}${minutes} min · ${roomCount}`
 })
+
+// A troubleshooting gesture, shown only to whoever the hub would let do it.
+const session = useSessionStore()
+const toast = useToast()
+const resyncRoom = ref('')
+const resyncConfirmation = ref(false)
+const resyncRoomName = computed(
+  () => rooms.value.find((room) => room.roomId === resyncRoom.value)?.name ?? null,
+)
+
+async function confirmResync(): Promise<void> {
+  try {
+    const result = await store.resync(resyncRoom.value === '' ? null : resyncRoom.value)
+    /*
+     * The number of rooms targeted, not a "it's off". A hub with no paired room at
+     * all accepts the request with nothing leaving: saying "requested" would then be
+     * exact and misleading.
+     */
+    toast.say(
+      resyncRoomName.value != null
+        ? `Resynchronisation demandée à ${resyncRoomName.value}`
+        : result.rooms === 0
+          ? "Aucune salle sur ce hub : la demande n'atteindra personne"
+          : `Resynchronisation demandée à ${result.rooms} salle(s)`,
+    )
+  } catch {
+    /* already reported */
+  }
+}
 </script>
 
 <template>
@@ -282,5 +312,34 @@ const globalDetail = computed(() => {
         <div v-if="incident.detail != null" class="text-xs break-all text-dim">{{ incident.detail }}</div>
       </div>
     </Panel>
+
+    <Panel v-if="session.can('room:manage')" class="col-span-full" title="Resynchronisation des salles">
+      <div class="flex flex-wrap items-end gap-2">
+        <div class="min-w-[220px]">
+          <label class="mb-[5px] block text-xs text-dim" for="resync-room">Salle à resynchroniser</label>
+          <select
+            id="resync-room"
+            v-model="resyncRoom"
+            class="w-full rounded-lg border border-edge bg-canvas px-3 py-1.5 text-sm text-text"
+          >
+            <option value="">Toutes les salles</option>
+            <option v-for="room in rooms" :key="room.roomId" :value="room.roomId">{{ room.name }}</option>
+          </select>
+        </div>
+        <Button id="btn-resync" size="small" class="mb-0.5" @click="resyncConfirmation = true">Demander une resynchronisation</Button>
+      </div>
+    </Panel>
+
+    <ConfirmDialog
+      v-model:open="resyncConfirmation"
+      title="Resynchronisation"
+      confirm-label="Demander"
+      @confirm="confirmResync"
+    >
+      <span id="resync-text">
+        Demander une resynchronisation complète à
+        <strong>{{ resyncRoomName ?? 'toutes les salles' }}</strong>.
+      </span>
+    </ConfirmDialog>
   </div>
 </template>

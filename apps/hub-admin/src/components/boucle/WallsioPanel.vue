@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { viewPath } from '@conference-operator/contract'
+import { reglagesPath, viewPath } from '@conference-operator/contract'
 import { Button, Panel, useToast } from '@conference-operator/components'
 import { useDraft } from '../../composables/draft.js'
 import { useBoucleStore } from '../../stores/boucle.js'
@@ -22,7 +22,7 @@ const RESEAUX = [
 const store = useBoucleStore()
 const toast = useToast()
 const moderationPath = viewPath('moderation')
-const settingsPath = viewPath('reglages')
+const settingsPath = reglagesPath('public')
 
 const { draft, dirty, reset } = useDraft(() => (store.boucle == null ? null : store.boucle.wallsio))
 

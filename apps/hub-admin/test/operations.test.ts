@@ -28,11 +28,13 @@ const ROOM = {
   breakBadge: null,
 }
 
+const resync = vi.fn(async () => ({ ok: true, rooms: 0 }))
+
 function stub(rooms: unknown[], pause: unknown = null): unknown {
   return {
     token: { read: () => 'jeton', write: () => {}, clear: () => {} },
     rpc: {
-      rooms: { statuses: async () => rooms },
+      rooms: { statuses: async () => rooms, resync },
       program: { globalBreak: async () => pause },
     },
   }
@@ -63,6 +65,34 @@ describe('time left in the slot', () => {
 
   it('says nothing when the hub does not know', () => {
     expect(slotRemaining(null)).toBe(null)
+  })
+})
+
+describe('resynchronisation', () => {
+  const canManage = (): void => {
+    useSessionStore().permissions = new Set(['room:manage']) as never
+  }
+
+  it('is not offered to an operator the hub would refuse', async () => {
+    const wrapper = await mountView()
+    expect(wrapper.find('#btn-resync').exists()).toBe(false)
+  })
+
+  it('asks for confirmation, says what will go out, then requests it', async () => {
+    resync.mockClear()
+    canManage()
+    const wrapper = await mountView()
+
+    await wrapper.get('#btn-resync').trigger('click')
+    await flushPromises()
+    expect(document.querySelector('#resync-text')?.textContent).toContain('toutes les salles')
+    expect(resync).not.toHaveBeenCalled()
+
+    ;(document.querySelector('#resync-text')!
+      .closest('[role="alertdialog"]')!
+      .querySelectorAll('button')[1] as HTMLButtonElement).click()
+    await flushPromises()
+    expect(resync).toHaveBeenCalledWith({ roomId: null })
   })
 })
 

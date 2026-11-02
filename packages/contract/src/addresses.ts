@@ -60,6 +60,20 @@ export function viewPath(view: string): string {
 }
 
 /**
+ * The sections of Réglages, in menu order, each with its own address.
+ *
+ * Here for the same reason as the views: the hub registers these addresses and
+ * the console's router declares them. The first one is what `/admin/reglages` opens.
+ */
+export const REGLAGES_SECTIONS = ['evenement', 'salles', 'public', 'video', 'systeme'] as const
+export type ReglagesSection = (typeof REGLAGES_SECTIONS)[number]
+
+/** A section's address. */
+export function reglagesPath(section: ReglagesSection): string {
+  return `${viewPath('reglages')}/${section}`
+}
+
+/**
  * The pairing address Better Auth imposes.
  *
  * It is the one handed to machines (`/admin/devices?user_code=…`): it does not
@@ -81,6 +95,7 @@ export const PAIRING_ALIAS = '/admin/devices'
  * would never see it.
  */
 function aliasPaths(view: string): string[] {
+  if (view === 'reglages') return REGLAGES_SECTIONS.map(reglagesPath)
   return view === 'appairage' ? [PAIRING_ALIAS] : []
 }
 

@@ -165,7 +165,7 @@ function uploadState(row: Upload): { label: string; tone: string } {
         data-role="vod-sans-captation"
       >
         Pas de captation prévue dans cette salle : rien à attendre ici. Cela se change dans
-        <strong>Réglages → Stockage</strong>.
+        <strong>Réglages → Vidéo</strong>.
       </Hint>
 
       <template v-else-if="folder != null">
@@ -253,7 +253,7 @@ function uploadState(row: Upload): { label: string; tone: string } {
         <Hint v-if="!folder.stockageConfigure">
           Aucun stockage configuré sur ce hub : rien ne peut partir, et « rien de monté » ne veut
           donc rien dire ici. Le stockage se règle dans
-          <strong>Réglages → Rapatriement des rushes</strong>.
+          <strong>Réglages → Vidéo</strong>.
         </Hint>
 
         <template v-else-if="folder.televersements.length === 0">

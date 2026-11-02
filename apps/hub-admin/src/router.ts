@@ -1,4 +1,4 @@
-import { PAIRING_ALIAS, viewPath } from '@conference-operator/contract'
+import { PAIRING_ALIAS, REGLAGES_SECTIONS, viewPath } from '@conference-operator/contract'
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import ConferencesView from './views/ConferencesView.vue'
 import OperationsView from './views/OperationsView.vue'
@@ -121,9 +121,11 @@ const routes: RouteRecordRaw[] = [
     meta: { view: 'boucle', refresh: () => useBoucleStore().load(), intervalMs: 10_000 },
   },
   {
-    path: viewPath('reglages'),
+    // A section that does not exist falls through to the hub, which answers 404.
+    path: `${viewPath('reglages')}/:section(${REGLAGES_SECTIONS.join('|')})?`,
     name: 'reglages',
     component: SettingsView,
+    props: (route) => ({ section: route.params.section || undefined }),
     meta: {
       view: 'reglages',
       // Two stores, one round: the integrations' last status is what an operator

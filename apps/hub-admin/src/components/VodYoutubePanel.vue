@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Button, Empty, Panel, StableLabel, useToast } from '@conference-operator/components'
 import type { MontageJobView } from '@conference-operator/contract'
-import { viewPath } from '@conference-operator/contract'
+import { reglagesPath } from '@conference-operator/contract'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useConfirmStore } from '../stores/confirm.js'
@@ -16,7 +16,7 @@ import YoutubeStatusIcons from './YoutubeStatusIcons.vue'
 const props = defineProps<{ jobs: readonly MontageJobView[] }>()
 const store = useYoutubeStore()
 const { status, envois, vignettes } = storeToRefs(store)
-const settingsPath = viewPath('reglages')
+const settingsPath = reglagesPath('video')
 const toast = useToast()
 const confirmStore = useConfirmStore()
 
@@ -143,7 +143,7 @@ const FIELD = 'rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-te
 <template>
   <Panel id="vod-youtube" title="YouTube" class="col-span-full">
     <p v-if="status?.connected !== true" id="youtube-non-connecte" class="m-0 text-sm text-dim">
-      Aucune chaîne connectée : à faire dans <a :href="settingsPath" class="text-brand underline">Réglages</a>.
+      Aucune chaîne connectée : à faire dans <a :href="settingsPath" class="text-brand underline">Réglages → Vidéo</a>.
     </p>
     <template v-else>
       <p class="m-0 mb-2 text-sm text-dim">Chaîne {{ status.channel ?? 'connectée' }}. Envoi en privé, une vidéo à la fois.</p>

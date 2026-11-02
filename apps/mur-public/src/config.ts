@@ -41,7 +41,7 @@ export const configSchema = z.object({
    */
   limiteVues: limiteSchema.default({ capacity: 600, refillPerSecond: 40 }),
   /**
-   * The token the hub gave in its console (Réglages → Mur social — page publique),
+   * The token the hub gave in its console (Réglages → Public),
    * to report the views. Absent: the page works, the views are not counted.
    */
   hubToken: z.string().trim().startsWith('mp_', 'jeton du mur public attendu (mp_…)').optional(),

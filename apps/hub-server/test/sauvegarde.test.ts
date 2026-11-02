@@ -125,8 +125,8 @@ describe('the hub’s backup', () => {
     expect(restored.status).toBe(200)
     expect(restored.body.comptesIgnores).toEqual(['regie@cloudnord.fr'])
     expect(restored.body.aRessaisir).toEqual([
-      'Jeton walls.io (Réglages → Mur social — walls.io)',
-      `Clé de diffusion de la salle ${TRACK_1} (Réglages → Diffusion)`,
+      'Jeton walls.io (Réglages → Public)',
+      `Clé de diffusion de la salle ${TRACK_1} (Réglages → Salles)`,
     ])
     // The settings came across all the same.
     expect(b.hub.services.settings.get().eventName).toBe('Cloud Nord 2026')

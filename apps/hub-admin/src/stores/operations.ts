@@ -86,7 +86,11 @@ export const useOperationsStore = defineStore('operations', () => {
     notifications.observeRooms(rooms.value)
   }
 
-  return { incidents, rooms, globalBreak, load }
+  async function resync(roomId: string | null): Promise<{ rooms: number }> {
+    return (await session.client.rpc.rooms.resync({ roomId })) as { rooms: number }
+  }
+
+  return { incidents, rooms, globalBreak, load, resync }
 })
 
 /**

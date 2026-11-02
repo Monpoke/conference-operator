@@ -5,7 +5,7 @@ import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify'
 import fastifyProxy from '@fastify/http-proxy'
 import fastifyStatic from '@fastify/static'
 import { dirname, join } from 'node:path'
-import { consolePaths, viewPath, CONTROL_PATH, controlRoomIdFromPath, type MontageHabillagePrise, type VodHabillage } from '@conference-operator/contract'
+import { consolePaths, reglagesPath, viewPath, CONTROL_PATH, controlRoomIdFromPath, type MontageHabillagePrise, type VodHabillage } from '@conference-operator/contract'
 import { WebSocketServer, type WebSocket as NodeWebSocket } from 'ws'
 import { RPCHandler as FastifyRPCHandler } from '@orpc/server/fastify'
 import { RPCHandler as WebSocketRPCHandler } from '@orpc/server/websocket'
@@ -568,7 +568,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
       issue = 'erreur'
       app.log.warn({ message: (cause as Error).message }, 'connexion de la chaîne YouTube')
     }
-    return reply.redirect(`${viewPath('reglages')}?youtube=${issue}`, 303)
+    return reply.redirect(`${reglagesPath('video')}?youtube=${issue}`, 303)
   })
 
   // A thumbnail is made to be public, and its address names a job nobody can guess.

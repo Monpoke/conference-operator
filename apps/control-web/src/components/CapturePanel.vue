@@ -68,7 +68,7 @@ const noTarget = computed(() => props.stream === null && !props.streaming)
 
 const streamTitle = computed(() =>
   noTarget.value
-    ? 'Aucune destination de diffusion pour cette salle : à renseigner sur le hub, dans Réglages › Diffusion'
+    ? 'Aucune destination de diffusion pour cette salle : à renseigner sur le hub, dans Réglages › Salles'
     : (props.stream?.rtmpUrl ?? ''),
 )
 

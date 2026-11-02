@@ -1,5 +1,5 @@
 import { useConfirmStore } from '../src/stores/confirm.js'
-import { flushPromises, mount } from '@vue/test-utils'
+import { RouterLinkStub, flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import SettingsView from '../src/views/SettingsView.vue'
@@ -9,14 +9,13 @@ import { useSessionStore } from '../src/stores/session.js'
 /**
  * The settings.
  *
- * Six panels and one shared constraint: the view refreshes every ten seconds, and
+ * Five sections and one shared constraint: the view refreshes every ten seconds, and
  * no field must rewrite itself while somebody is typing in it. Nothing is more
  * disorienting, and it is invisible on reading — hence the test.
  *
  * Three other decisions are worth holding: "empty" is not "absent", "Réimporter"
- * starts from the saved URL and not from the one on screen, and the resync report
- * gives the number of rooms reached rather than a "sent" that would be accurate on
- * an empty hub.
+ * starts from the saved URL and not from the one on screen, and a section left
+ * keeps what was being typed in it.
  */
 
 interface Call {
@@ -171,14 +170,18 @@ function stub(options: {
   }
 }
 
-async function mountView(options: Parameters<typeof stub>[0] = {}): Promise<{
+async function mountView(options: Parameters<typeof stub>[0] & { section?: string } = {}): Promise<{
   calls: Call[]
   wrapper: ReturnType<typeof mount>
   settings: Record<string, unknown>
 }> {
   const fake = stub(options)
   useSessionStore().client = fake.client as never
-  const wrapper = mount(SettingsView, { attachTo: document.body })
+  const wrapper = mount(SettingsView, {
+    attachTo: document.body,
+    props: { section: options.section as never },
+    global: { stubs: { RouterLink: RouterLinkStub } },
+  })
   await useSettingsStore().load()
   await flushPromises()
   return { calls: fake.calls, wrapper, settings: fake.settings }
@@ -483,29 +486,67 @@ describe('settings view', () => {
     expect(wrapper.get('#vod-state').text()).toContain('aucun bucket')
   })
 
-  it('asks for confirmation before resyncing, and says what will go out', async () => {
+  it('saves the bucket without sending the upload policy', async () => {
     const { calls, wrapper } = await mountView()
 
-    await wrapper.get('#btn-resync').trigger('click')
+    await wrapper.get('#vod-bucket').setValue('autre')
+    await wrapper.get('#btn-vod-bucket').trigger('click')
     await flushPromises()
 
-    expect(document.querySelector('#resync-text')?.textContent).toContain('toutes les salles')
-    expect(calls.filter((call) => call.path === 'rooms/resync')).toHaveLength(0)
+    expect(calls.find((call) => call.path === 'settings/update')?.input).toEqual({ vodBucket: 'autre', vodPrefix: 'cn26' })
   })
 
-  it('says how many rooms the request reached, not that it was sent', async () => {
-    const { calls, wrapper } = await mountView({ resyncRooms: 0 })
+  it('saves the unattended montage on the choice', async () => {
+    const { calls, wrapper } = await mountView()
 
-    await wrapper.get('#btn-resync').trigger('click')
-    await flushPromises()
-    ;(document.querySelector('#resync-text')!
-      .closest('[role="alertdialog"]')!
-      .querySelectorAll('button')[1] as HTMLButtonElement).click()
+    await wrapper.get('#vod-montage-auto').setValue('jamais')
     await flushPromises()
 
-    // A hub with no paired room at all accepts the request with nothing leaving:
-    // "requested" would then be exact and misleading.
-    expect(calls).toContainEqual({ path: 'rooms/resync', input: { roomId: null } })
+    expect(calls.find((call) => call.path === 'settings/update')?.input).toEqual({ montageAuto: 'jamais' })
+  })
+})
+
+describe('sections', () => {
+  const shown = (wrapper: ReturnType<typeof mount>): string[] =>
+    wrapper.findAll('[data-section]').filter((node) => (node.element as HTMLElement).style.display !== 'none').map((node) => node.attributes('data-section')!)
+
+  it('opens on Événement, and shows one section at a time', async () => {
+    const { wrapper } = await mountView()
+    expect(shown(wrapper)).toEqual(['evenement'])
+    expect(wrapper.get('#reglages-evenement').attributes('aria-current')).toBe('page')
+
+    await wrapper.setProps({ section: 'video' })
+    expect(shown(wrapper)).toEqual(['video'])
+    expect(wrapper.get('#reglages-video').attributes('aria-current')).toBe('page')
+  })
+
+  it('keeps what was being typed when the section changes', async () => {
+    const { wrapper } = await mountView({ section: 'salles' })
+    await wrapper.get('#stream-key-track-1').setValue('cle-en-cours')
+
+    await wrapper.setProps({ section: 'video' })
+    await wrapper.setProps({ section: 'salles' })
+
+    expect((wrapper.get('#stream-key-track-1').element as HTMLInputElement).value).toBe('cle-en-cours')
+  })
+
+  it('counts what needs doing in each section, and nothing else', async () => {
+    const { wrapper } = await mountView({
+      streams: [
+        { roomId: 'track-1', name: 'Track #1', rtmpUrl: 'rtmp://live/app', hasKey: false },
+        { roomId: 'track-2', name: 'Track #2', rtmpUrl: '', hasKey: false },
+      ],
+      storage: { configure: false },
+      images: { held: 1, failed: [{ url: 'https://x/y.png', reason: '404', at: '2026-10-30T09:00:00Z' }] },
+    })
+
+    // One half-set stream and the missing PIN; a room with neither does not count.
+    expect(wrapper.get('[data-alerts="salles"]').text()).toBe('2')
+    expect(wrapper.get('[data-alerts="salles"]').attributes('title')).toContain('Track #1')
+    expect(wrapper.get('[data-alerts="evenement"]').text()).toBe('1')
+    expect(wrapper.get('[data-alerts="video"]').text()).toBe('1')
+    expect(wrapper.find('[data-alerts="public"]').exists()).toBe(false)
+    expect(wrapper.find('[data-alerts="systeme"]').exists()).toBe(false)
   })
 })
 

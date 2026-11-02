@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { viewPath } from '@conference-operator/contract'
+import { reglagesPath, viewPath } from '@conference-operator/contract'
 import { Badge, Button, Empty, Hint, Panel, useToast } from '@conference-operator/components'
 import { timeAgo } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
@@ -38,7 +38,7 @@ const store = useModerationStore()
 const images = useBoucleStore()
 const { view, items, total, counts, page, loading, sponsors } = storeToRefs(store)
 const toast = useToast()
-const settingsPath = viewPath('reglages')
+const settingsPath = reglagesPath('public')
 const bouclePath = viewPath('boucle')
 
 const SOURCES: Record<string, string> = {

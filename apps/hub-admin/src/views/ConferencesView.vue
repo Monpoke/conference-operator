@@ -420,7 +420,7 @@ async function select(session: PlannedSession): Promise<void> {
 
       <Hint v-if="planning != null && planning.openFeedbackProjectId == null" id="planning-feedback-hint" class="mt-0 mb-2.5">
         <strong>Aucun projet OpenFeedback réglé</strong> : les salles ne projettent aucun QR « notez ce talk ». Il se
-        règle dans <strong>Réglages → L'événement</strong>.
+        règle dans <strong>Réglages → Événement</strong>.
       </Hint>
 
       <ul v-if="slots.length > 0" class="mb-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-dim" data-role="legende">

@@ -1,6 +1,6 @@
 import { dayBounds, dayOptions } from '../src/stores/days.js'
 import { planningGrid, PX_PER_MINUTE } from '../src/stores/planning-grid.js'
-import { formatOrateurs, habillageFromForm, parseOrateurs } from '../src/stores/conferences.js'
+import { formatOrateurs, habillageFromForm, parseOrateurs, renamed } from '../src/stores/conferences.js'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -626,5 +626,14 @@ describe('watching a video from the program', () => {
     expect(wrapper.find('[data-regarder="attend"]').exists()).toBe(false)
     await wrapper.get('[data-regarder="fini"]').trigger('click')
     expect(watch).toHaveBeenCalledWith('fini')
+  })
+})
+
+describe('renaming a talk', () => {
+  it('keeps the rest of the take\'s corrections, and gives it back to the program when nothing is left', () => {
+    const speakers = [{ name: 'Alice', company: null }]
+    expect(renamed({ title: 'Ancien', category: null, color: null, salle: null, speakers }, ' Nouveau ')).toMatchObject({ title: 'Nouveau', speakers })
+    expect(renamed(null, 'Nouveau')?.title).toBe('Nouveau')
+    expect(renamed({ title: 'Ancien', category: null, color: null, salle: null, speakers: null }, '  ')).toBeNull()
   })
 })

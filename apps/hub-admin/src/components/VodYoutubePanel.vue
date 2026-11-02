@@ -23,6 +23,12 @@ onUnmounted(() => clearInterval(timer))
 const videos = computed(() => latestByTake(props.jobs).filter((job) => job.state === 'termine'))
 const envoiOf = (jobId: string) => envois.value.find((envoi) => envoi.jobId === jobId) ?? null
 const reste = computed(() => videos.value.filter((job) => envoiOf(job.id)?.state !== 'termine').length)
+async function toggleVisibilite(jobId: string): Promise<void> {
+  const publique = envoiOf(jobId)?.visibilite !== 'public'
+  if (publique && !confirm('Rendre cette vidéo publique ? Tout le monde pourra la voir sur la chaîne. Vérifiez que l’orateur a donné son accord.')) return
+  await store.setVisibilite(jobId, publique).catch(() => undefined)
+}
+
 const sending = (jobId: string) => ['attente', 'en-cours'].includes(envoiOf(jobId)?.state ?? '')
 </script>
 
@@ -33,17 +39,24 @@ const sending = (jobId: string) => ['attente', 'en-cours'].includes(envoiOf(jobI
     </p>
     <template v-else>
       <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <p class="m-0 text-sm text-dim">Chaîne {{ status.channel ?? 'connectée' }}. Envoi en privé, une vidéo à la fois.</p>
+        <p class="m-0 text-sm text-dim">Chaîne {{ status.channel ?? 'connectée' }}. Envoi en privé, une vidéo à la fois ; publication ici, vidéo par vidéo.</p>
         <Button id="btn-youtube-tout" size="small" variant="primary" :disabled="reste === 0" @click="store.send(null).catch(() => undefined)">Tout envoyer ({{ reste }})</Button>
       </div>
       <Empty v-if="videos.length === 0">Aucune vidéo terminée.</Empty>
       <div v-for="job in videos" :key="job.id" class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-edge py-2 text-sm" :data-youtube="job.id">
-        <span class="min-w-0 flex-1 basis-60">{{ job.title ?? job.sessionId }}</span>
+        <span class="min-w-0 flex-1 basis-60">{{ job.nomVideo }}</span>
         <template v-if="envoiOf(job.id) != null">
           <span :class="ENVOI_LABELS[envoiOf(job.id)!.state].tone" :title="envoiOf(job.id)!.erreur ?? undefined" data-role="etat">
-            {{ ENVOI_LABELS[envoiOf(job.id)!.state].label }}<template v-if="envoiOf(job.id)!.state === 'en-cours' && envoiPourcent(envoiOf(job.id)!) != null"> · {{ envoiPourcent(envoiOf(job.id)!) }} %</template>
+            {{ ENVOI_LABELS[envoiOf(job.id)!.state].label }}<template v-if="envoiOf(job.id)!.state === 'termine'"> ({{ envoiOf(job.id)!.visibilite === 'public' ? 'publique' : 'privée' }})</template><template v-if="envoiOf(job.id)!.state === 'en-cours' && envoiPourcent(envoiOf(job.id)!) != null"> · {{ envoiPourcent(envoiOf(job.id)!) }} %</template>
           </span>
           <a v-if="envoiOf(job.id)!.videoId != null" :href="`https://youtu.be/${envoiOf(job.id)!.videoId}`" target="_blank" rel="noopener" class="text-brand underline">Voir</a>
+ <Button
+            v-if="envoiOf(job.id)!.state === 'termine'"
+            size="small"
+            :variant="envoiOf(job.id)!.visibilite === 'public' ? 'neutral' : 'primary'"
+            data-role="visibilite"
+            @click="toggleVisibilite(job.id)"
+          ><StableLabel :current="envoiOf(job.id)!.visibilite === 'public' ? 'Rendre privée' : 'Rendre publique'" :labels="['Rendre privée', 'Rendre publique']" /></Button>
           <span v-if="envoiOf(job.id)!.erreur != null" class="basis-full text-xs break-words text-alert">{{ envoiOf(job.id)!.erreur }}</span>
         </template>
         <Button size="small" :disabled="sending(job.id)" data-role="envoyer" @click="store.send([job.id]).catch(() => undefined)"><StableLabel :current="envoiOf(job.id) == null ? 'Envoyer' : 'Renvoyer'" :labels="['Envoyer', 'Renvoyer']" /></Button>

@@ -88,6 +88,12 @@ export function habillageFromForm(form: { title: string; category: string; color
   return Object.values(prise).every((value) => value == null) ? null : prise
 }
 
+/** A take's dressing with another title. Nothing left: back to the program. */
+export function renamed(prise: MontageHabillagePrise | null, title: string): MontageHabillagePrise | null {
+  const next = { category: null, color: null, salle: null, speakers: null, ...prise, title: title.trim() === '' ? null : title.trim() }
+  return Object.values(next).every((value) => value == null) ? null : next
+}
+
 export const formatOrateurs = (orateurs: readonly MontageOrateur[]): string =>
   orateurs.map((person) => (person.company == null ? person.name : `${person.name} | ${person.company}`)).join('\n')
 

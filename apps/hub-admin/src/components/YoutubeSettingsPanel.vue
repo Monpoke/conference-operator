@@ -49,6 +49,6 @@ const FIELD = 'w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm 
       <Button v-else id="btn-youtube-deconnecter" size="small" @click="store.disconnect().catch(() => undefined)">Déconnecter</Button>
       <span v-if="status?.connected" id="youtube-chaine" class="text-sm text-ok">Connectée{{ status.channel == null ? '' : ` : ${status.channel}` }}</span>
     </div>
-    <Hint class="mb-0">Les vidéos sont toujours envoyées en privé : la publication se fait ensuite dans YouTube Studio.</Hint>
+    <Hint class="mb-0">Les vidéos sont toujours envoyées en privé : la publication se fait ensuite, vidéo par vidéo, depuis la page VOD.</Hint>
   </Panel>
 </template>

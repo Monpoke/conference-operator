@@ -6,7 +6,7 @@ import { useSessionStore } from './session.js'
 export const ENVOI_LABELS: Record<YoutubeEnvoi['state'], { label: string; tone: string }> = {
   attente: { label: 'en attente', tone: 'text-dim' },
   'en-cours': { label: 'envoi en cours', tone: 'text-brand' },
-  termine: { label: 'sur YouTube (privée)', tone: 'text-ok' },
+  termine: { label: 'sur YouTube', tone: 'text-ok' },
   echoue: { label: 'en échec', tone: 'text-alert' },
 }
 
@@ -40,5 +40,9 @@ export const useYoutubeStore = defineStore('youtube', () => {
     envois.value = await session.client.rpc.youtube.envoyer({ jobIds })
   }
 
-  return { status, envois, load, setClient, connect, disconnect, send }
+  async function setVisibilite(jobId: string, publique: boolean): Promise<void> {
+    envois.value = await session.client.rpc.youtube.visibilite({ jobId, publique })
+  }
+
+  return { status, envois, load, setClient, connect, disconnect, send, setVisibilite }
 })

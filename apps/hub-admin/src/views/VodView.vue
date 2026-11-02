@@ -10,6 +10,7 @@ import {
   useVodStore,
   type Upload,
 } from '../stores/vod.js'
+import { renamed, useConferencesStore } from '../stores/conferences.js'
 import VodSharesPanel from '../components/VodSharesPanel.vue'
 import VodYoutubePanel from '../components/VodYoutubePanel.vue'
 import { MONTAGE_STATES, cutMinutes, describe, latestByTake, montagePath, useMontageStore } from '../stores/montage.js'
@@ -44,6 +45,40 @@ const { jobs, enPause } = storeToRefs(montages)
 const running = computed(() => jobs.value.some((job) => job.state === 'en-cours'))
 const queued = computed(() => jobs.value.filter((job) => job.state === 'attente').length)
 const inProgress = computed(() => jobs.value.filter((job) => job.state === 'en-cours'))
+
+const conferencesStore = useConferencesStore()
+const renaming = ref<string | null>(null)
+const renamingTake = ref<MontageJobView | null>(null)
+const newTitle = ref('')
+const renameBusy = ref(false)
+/** The talk's name as its takes' videos carry it, else the program's. */
+const displayTitle = (row: { key: string; title: string }) => takesOf.value.get(row.key)?.[0]?.habillagePrise?.title ?? row.title
+function startRename(row: { key: string; title: string }): void {
+  renamingTake.value = null
+  renaming.value = row.key
+  newTitle.value = displayTitle(row)
+}
+function startRenameTake(job: MontageJobView): void {
+  renaming.value = null
+  renamingTake.value = job
+  newTitle.value = job.habillagePrise?.title ?? job.title ?? ''
+}
+/** One take alone, or every take of the talk. */
+async function saveTitle(sessionId: string): Promise<void> {
+  renameBusy.value = true
+  try {
+    const takes = renamingTake.value != null ? [renamingTake.value] : takesOf.value.get(sessionId) ?? []
+    for (const take of takes) await conferencesStore.setHabillagePrise(take.sidecarUploadId, renamed(take.habillagePrise, newTitle.value))
+    await montages.load()
+    renaming.value = null
+    renamingTake.value = null
+    toast.say('Renommé. L’intro des vidéos déjà montées garde l’ancien titre jusqu’au prochain montage.')
+  } catch {
+    /* already reported by the hub client */
+  } finally {
+    renameBusy.value = false
+  }
+}
 
 function watchVideo(jobId: string): void {
   // A failure is already reported by the hub client.
@@ -267,7 +302,15 @@ async function requestAll(): Promise<void> {
               >
                 <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:basis-full max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:font-semibold">
                   <span v-if="row.key.startsWith('sans-conference/')" class="text-warn italic" data-sans-conference>{{ row.title }}</span>
-                  <template v-else>{{ row.title }}</template>
+                  <form v-else-if="renaming === row.key" class="flex flex-wrap items-center gap-1.5" data-role="renommer" @submit.prevent="saveTitle(row.key)">
+                    <input v-model="newTitle" class="min-w-48 flex-1 rounded-lg border border-edge bg-canvas px-2 py-1 text-sm text-text" maxlength="200" aria-label="Nouveau titre du talk">
+                    <Button type="submit" size="small" variant="primary" :disabled="renameBusy">Enregistrer</Button>
+                    <Button type="button" size="small" @click="renaming = null">Annuler</Button>
+                  </form>
+                  <template v-else>
+                    {{ displayTitle(row) }}
+                    <button v-if="(takesOf.get(row.key) ?? []).length > 0" type="button" class="ml-1 cursor-pointer text-xs text-brand underline" :data-renommer="row.key" @click="startRename(row)">Renommer</button>
+                  </template>
                 </td>
                 <td class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:text-dim">
                   {{ row.roomName }}
@@ -282,7 +325,8 @@ async function requestAll(): Promise<void> {
                   {{ row.detail }}
                 </td>
                 <td data-role="montages" class="border-t border-edge py-[9px] pr-2.5 align-middle max-md:basis-full max-md:border-t-0 max-md:py-0 max-md:pr-0 max-md:empty:hidden">
-                  <div v-for="job in takesOf.get(row.key) ?? []" :key="job.sidecarUploadId" class="flex items-center gap-1.5">
+                  <template v-for="job in takesOf.get(row.key) ?? []" :key="job.sidecarUploadId">
+                  <div class="flex flex-wrap items-center gap-1.5">
                     <a
                       :href="montagePath(job.sessionId, job.sidecarUploadId)"
                       class="underline underline-offset-2"
@@ -300,7 +344,15 @@ async function requestAll(): Promise<void> {
                       :data-regarder="job.id"
                       @click="watchVideo(job.id)"
                     >▶</Button>
+                    <button v-if="(takesOf.get(row.key) ?? []).length > 1 && renamingTake?.id !== job.id" type="button" class="cursor-pointer text-xs text-brand underline" :data-renommer-prise="job.id" @click="startRenameTake(job)">Renommer</button>
                   </div>
+                  <div v-if="(takesOf.get(row.key) ?? []).length > 1" class="mb-1 text-xs text-dim" data-role="nom-video">{{ job.nomVideo }}</div>
+                  <form v-if="renamingTake?.id === job.id" class="mb-1 flex flex-wrap items-center gap-1.5" data-role="renommer-prise" @submit.prevent="saveTitle(row.key)">
+                    <input v-model="newTitle" class="min-w-40 flex-1 rounded-lg border border-edge bg-canvas px-2 py-1 text-sm text-text" maxlength="200" aria-label="Nouveau titre de cette vidéo">
+                    <Button type="submit" size="small" variant="primary" :disabled="renameBusy">Enregistrer</Button>
+                    <Button type="button" size="small" @click="renamingTake = null">Annuler</Button>
+                  </form>
+                  </template>
                 </td>
                 <td class="border-t border-edge py-[9px] text-right align-middle max-md:ml-auto max-md:border-t-0 max-md:py-0 max-md:empty:hidden">
                   <Button

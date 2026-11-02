@@ -1,5 +1,6 @@
 import type { MontageJobView } from '@conference-operator/contract'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { urlForLog } from '../src/log-format.js'
 import { redactSecrets } from '../src/router.js'
 import { createHub, type Hub } from '../src/server.js'
 import { videosDuPartage } from '../src/services/partages.js'
@@ -25,6 +26,7 @@ describe('the videos of a shared page', () => {
   })
 
   it('keeps the password out of the log', () => {
+    expect(urlForLog('/partage/a?mdp=secret-123&x=1')).toBe('/partage/a?mdp=***&x=1')
     expect(redactSecrets({ sessionId: null, motDePasse: 'secret-123' })).toEqual({ sessionId: null, motDePasse: '•••' })
   })
 })
@@ -81,6 +83,22 @@ describe('a shared page, over HTTP', () => {
 
     hub.services.partages.remove(id)
     expect((await fetch(`${origin}/partage/${id}`, { headers: { cookie } })).status).toBe(404)
+  })
+
+  it('opens from a link holding the password, and takes it out of the address', async () => {
+    const { id } = hub.services.partages.create({ sessionId: null, motDePasse: 'bon mot/de+passe', createdBy: null }, () => null)
+    const url = `${origin}/partage/${id}?mdp=${encodeURIComponent('bon mot/de+passe')}`
+    const opened = await fetch(url, { redirect: 'manual' })
+    expect(opened.status).toBe(303)
+    expect(opened.headers.get('location')).toBe(`/partage/${id}`)
+    expect(opened.headers.get('set-cookie')).toContain('HttpOnly')
+    expect((await fetch(`${origin}/partage/${id}?mdp=mauvais`, { redirect: 'manual' })).status).toBe(401)
+  })
+
+  it('sends a visitor without the password from a player back to the page', async () => {
+    const { id } = hub.services.partages.create({ sessionId: null, motDePasse: 'bon-mot-de-passe', createdBy: null }, () => null)
+    const answer = await fetch(`${origin}/partage/${id}/regarder/x`, { redirect: 'manual' })
+    expect(answer.status).toBe(303)
   })
 
   it('stops the guesses', async () => {

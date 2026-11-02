@@ -26,8 +26,14 @@ const STYLE = `
   button:hover, .bouton:hover { background: #2a3347; }
   :focus-visible { outline: 3px solid #7f9cff; outline-offset: 2px; }
   .erreur { margin: 0; color: #ff8a9a; font-size: 14px; }
-  article { margin-top: 32px; }
-  video { display: block; width: 100%; aspect-ratio: 16 / 9; margin: 12px 0 10px; border-radius: 10px; background: #000; }
+  article { padding: 18px 0; border-top: 1px solid #262d3f; }
+  article:first-of-type { margin-top: 20px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
+  .principal { background: #3b5bdb; border-color: #3b5bdb; }
+  .principal:hover { background: #4c6ef5; }
+  .retour { margin: 0 0 16px; font-size: 14px; }
+  .retour a { color: #a3abbd; }
+  video { display: block; width: 100%; aspect-ratio: 16 / 9; margin: 16px 0 12px; border-radius: 10px; background: #000; }
 `
 
 function layout(title: string, body: string): string {
@@ -63,19 +69,34 @@ export interface PartageVideoLine {
   detail: string
 }
 
+/** The list: nothing is loaded from the storage until somebody chooses a video. */
 export function renderPartagePage(options: { id: string; title: string; videos: readonly PartageVideoLine[] }): string {
-  const base = `/partage/${encodeURIComponent(options.id)}/video`
+  const base = `/partage/${encodeURIComponent(options.id)}`
   const videos = options.videos.map((video) => {
-    const src = `${base}/${encodeURIComponent(video.jobId)}`
+    const job = encodeURIComponent(video.jobId)
     return `
 <article>
   <h2>${escapeHtml(video.title)}</h2>
   ${video.detail === '' ? '' : `<p class="dim">${escapeHtml(video.detail)}</p>`}
-  <video controls preload="none" src="${src}"></video>
-  <a class="bouton" href="${src}?telecharger=1">Télécharger la vidéo</a>
+  <p class="actions">
+    <a class="bouton principal" href="${base}/regarder/${job}">Regarder</a>
+    <a class="bouton" href="${base}/video/${job}?telecharger=1">Télécharger</a>
+  </p>
 </article>`
   })
   return layout(options.title, `
 <h1>${escapeHtml(options.title)}</h1>
 ${videos.length === 0 ? '<p class="dim">Aucune vidéo disponible pour le moment.</p>' : `<p class="dim">${videos.length} vidéo${videos.length > 1 ? 's' : ''}</p>${videos.join('')}`}`)
+}
+
+/** One video, loaded only when its visitor presses play. */
+export function renderPartageLecteur(options: { id: string; video: PartageVideoLine }): string {
+  const base = `/partage/${encodeURIComponent(options.id)}`
+  const src = `${base}/video/${encodeURIComponent(options.video.jobId)}`
+  return layout(options.video.title, `
+<p class="retour"><a href="${base}">← Toutes les vidéos</a></p>
+<h1>${escapeHtml(options.video.title)}</h1>
+${options.video.detail === '' ? '' : `<p class="dim">${escapeHtml(options.video.detail)}</p>`}
+<video controls preload="none" src="${src}"></video>
+<a class="bouton" href="${src}?telecharger=1">Télécharger la vidéo</a>`)
 }

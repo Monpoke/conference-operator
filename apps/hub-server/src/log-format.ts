@@ -18,10 +18,23 @@ import type { FastifyServerOptions } from 'fastify'
  * every line. `log-format.test.ts` parses the output: a pino that changes how
  * it joins these pieces fails there, not in production.
  */
+/** A shared page's link can hold its password: it stays out of the log. */
+export function urlForLog(url: string): string {
+  return url.replace(/([?&]mdp=)[^&]*/, '$1***')
+}
+
 export function hubLoggerOptions(level: string): Exclude<FastifyServerOptions['logger'], boolean | undefined> {
   return {
     level,
     base: null,
+    serializers: {
+      req: (request: { method: string; url: string; host?: string; ip?: string }) => ({
+        method: request.method,
+        url: urlForLog(request.url),
+        host: request.host,
+        remoteAddress: request.ip,
+      }),
+    },
     timestamp: () => `"time":"${new Date().toISOString()}"`,
     formatters: { level: () => ({}) },
     mixin: (_merge, levelNumber, logger) => ({ level: logger.levels.labels[levelNumber] }),

@@ -1722,9 +1722,9 @@ export const router = os.router({
       youtube.genererVignettes(input.cles ?? every.filter((cle) => !known.has(cle)))
       return youtube.vignettes()
     }),
-    envoyerVignettes: os.youtube.envoyerVignettes.use(operatorCan('vod:manage')).handler(({ context }) => {
+    envoyerVignettes: os.youtube.envoyerVignettes.use(operatorCan('vod:manage')).handler(({ input, context }) => {
       const { youtube } = context.services
-      void youtube.envoyerVignettes().catch((cause: Error) => context.services.log('warn', 'envoi des vignettes', { message: cause.message }))
+      void youtube.envoyerVignettes(input.cles).catch((cause: Error) => context.services.log('warn', 'envoi des vignettes', { message: cause.message }))
       return youtube.vignettes()
     }),
     vignetteClaim: os.youtube.vignetteClaim.use(workerOnly).handler(({ context }) => {

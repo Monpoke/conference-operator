@@ -180,6 +180,19 @@ describe('sending a video', () => {
     expect(calls.find((call) => call.url.includes('/thumbnails/set'))!.url).toContain('videoId=yt-1')
   })
 
+  it('sends only the thumbnails it was asked to', async () => {
+    const { impl } = google()
+    const { service } = await connected(impl)
+    service.genererVignettes(['a', 'b'])
+    service.claimVignette()
+    service.claimVignette()
+    service.saveVignette('a', Buffer.from('jpeg'))
+    service.saveVignette('b', Buffer.from('jpeg'))
+    await service.envoyerVignettes(['b'])
+    expect(service.vignettes().find((vignette) => vignette.cle === 'a')?.state).toBe('prete')
+    expect(service.vignettes().find((vignette) => vignette.cle === 'b')?.erreur).toContain('pas encore')
+  })
+
   it('keeps a thumbnail ready, with the reason, when YouTube refuses it', async () => {
     const { impl } = google({ thumbnail: () => Response.json({ error: { message: 'forbidden' } }, { status: 403 }) })
     const { service } = await connected(impl)

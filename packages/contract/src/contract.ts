@@ -1093,7 +1093,7 @@ export const contract = {
     /** Asks the workers to draw these thumbnails, or with `null` every one still missing. */
     genererVignettes: oc.input(z.object({ cles: z.array(z.string()).max(500).nullable() })).output(z.array(youtubeVignetteSchema)),
     /** Sends the drawn thumbnails to YouTube. Nothing goes without this. */
-    envoyerVignettes: oc.output(z.array(youtubeVignetteSchema)),
+    envoyerVignettes: oc.input(z.object({ cles: z.array(z.string()).max(500).nullable() })).output(z.array(youtubeVignetteSchema)),
     /** The next thumbnail to draw, or `null`. Worker. */
     vignetteClaim: oc.output(vignetteClaimSchema.nullable()),
     vignetteRendue: oc.input(z.object({ cle: z.string(), imageBase64: z.string().min(1).max(20_000_000) })).output(z.object({ ok: z.literal(true) })),

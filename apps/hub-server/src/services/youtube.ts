@@ -341,15 +341,15 @@ export class YoutubeService {
     this.#options.db.update(youtubeVignette).set({ ...patch, updatedAt: new Date(this.#now()).toISOString() }).where(eq(youtubeVignette.cle, cle)).run()
   }
 
-  /** Sends every drawn thumbnail, one at a time. Resolved once done; a failure stays on its own line. */
-  async envoyerVignettes(): Promise<void> {
+  /** Sends these drawn thumbnails, or all of them, one at a time. A failure stays on its own line. */
+  async envoyerVignettes(cles: readonly string[] | null = null): Promise<void> {
     if (this.#sendingVignettes) return
     this.#sendingVignettes = true
     try {
       const { refreshTokenSealed } = this.#stored()
       if (refreshTokenSealed == null) throw new Error('Chaîne déconnectée')
       const { access_token: accessToken } = await this.#token({ grant_type: 'refresh_token', refresh_token: this.#open(refreshTokenSealed) })
-      const ready = this.vignettes().filter((vignette) => vignette.state === 'prete')
+      const ready = this.vignettes().filter((vignette) => vignette.state === 'prete' && (cles == null || cles.includes(vignette.cle)))
       for (const { cle } of ready) this.#setVignette(cle, { state: 'envoi' })
       for (const { cle } of ready) {
         try {

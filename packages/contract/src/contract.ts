@@ -77,6 +77,7 @@ import {
   integrationViewSchema,
 } from './integrations.js'
 import { partageCreationSchema, partageVideoSchema } from './partages.js'
+import { youtubeEnvoiSchema, youtubeStatusSchema } from './youtube.js'
 import { roomIncidentSchema, statistiquesSchema, statistiquesVotesSchema } from './statistiques.js'
 import { auditEntrySchema, auditPageQuerySchema, auditPageSchema, auditQuerySchema } from './audit.js'
 
@@ -1075,6 +1076,17 @@ export const contract = {
    * The audit log: what operators did through the hub. Newest first, a page at a
    * time. Reserved to `audit:read` — who did what is not everyone's to read.
    */
+  youtube: {
+    status: oc.output(youtubeStatusSchema),
+    setClient: oc.input(z.object({ clientId: z.string().trim().min(1).max(300), clientSecret: z.string().trim().min(1).max(300) })).output(youtubeStatusSchema),
+    /** The address to send the operator to, for Google's consent. */
+    connect: oc.output(z.object({ url: z.url() })),
+    disconnect: oc.output(youtubeStatusSchema),
+    envois: oc.output(z.array(youtubeEnvoiSchema)),
+    /** Queues these videos, or with `null` every finished one not on the channel yet. Refused talks never go. */
+    envoyer: oc.input(z.object({ jobIds: z.array(z.string()).max(500).nullable() })).output(z.array(youtubeEnvoiSchema)),
+  },
+
   partages: {
     /** The pages opening edited videos to outsiders. */
     list: oc.output(z.array(partageVideoSchema)),

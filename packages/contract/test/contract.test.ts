@@ -173,6 +173,7 @@ describe('contract surface', () => {
       'wall',
       // The walls.io link: apart from `settings` because its token never comes back.
       'wallsio',
+      'youtube',
     ])
     // The lifecycle is drivable from both sides: room control app and console.
     // `override` corrects the program itself — a lunch break the export calls a

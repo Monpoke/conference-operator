@@ -33,6 +33,7 @@ import {
 } from '@conference-operator/program'
 import type { RawCapture, ScreenMessageReport } from './services/ingest.js'
 import { checkOpenFeedback } from './services/openfeedback.js'
+import { videosDuPartage } from './services/partages.js'
 import {
   controlCommand,
   controlRooms,
@@ -170,7 +171,7 @@ const RESET_FORGETS = ['vod.request', 'vod.reset', 'montage.relancer', 'montage.
  * What the log must never hold in clear: the control app's PIN, the password
  * that confirms an urgent message. The entry keeps the gesture, not the secret.
  */
-const SECRET_FIELDS = new Set(['pin', 'password', 'motDePasse'])
+const SECRET_FIELDS = new Set(['pin', 'password', 'motDePasse', 'clientSecret'])
 
 export function redactSecrets(input: unknown): unknown {
   if (input == null || typeof input !== 'object' || Array.isArray(input)) return input
@@ -1666,6 +1667,29 @@ export const router = os.router({
     unsubscribe: os.push.unsubscribe.use(operatorCan('push:subscribe')).handler(({ input, context }) => {
       context.services.push.unsubscribe(input.endpoint)
       return { ok: true }
+    }),
+  },
+
+  youtube: {
+    status: os.youtube.status.use(operatorCan('vod:read')).handler(({ context }) => context.services.youtube.status()),
+    setClient: os.youtube.setClient.use(operatorCan('settings:update')).handler(({ input, context }) =>
+      context.services.youtube.setClient(input.clientId, input.clientSecret),
+    ),
+    connect: os.youtube.connect.use(operatorCan('settings:update')).handler(({ context }) => {
+      if (context.services.youtube.status().clientId == null) {
+        throw new ORPCError('PRECONDITION_FAILED', { message: 'Renseignez d’abord les identifiants Google' })
+      }
+      return { url: context.services.youtube.consentUrl() }
+    }),
+    disconnect: os.youtube.disconnect.use(operatorCan('settings:update')).handler(({ context }) => context.services.youtube.disconnect()),
+    envois: os.youtube.envois.use(operatorCan('vod:read')).handler(({ context }) => context.services.youtube.envois()),
+    envoyer: os.youtube.envoyer.use(operatorCan('vod:manage')).handler(({ input, context }) => {
+      const { services } = context
+      if (!services.youtube.status().connected) throw new ORPCError('PRECONDITION_FAILED', { message: 'Aucune chaîne YouTube connectée' })
+      const sendable = videosDuPartage(null, services.montage.list(null), services.partages.refuses()).map((job) => job.id)
+      const sent = new Set(services.youtube.envois().filter((envoi) => envoi.state === 'termine').map((envoi) => envoi.jobId))
+      services.youtube.enqueue(input.jobIds == null ? sendable.filter((id) => !sent.has(id)) : sendable.filter((id) => input.jobIds!.includes(id)))
+      return services.youtube.envois()
     }),
   },
 

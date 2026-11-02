@@ -12,6 +12,7 @@ import type { QuestionService, WallService } from './services/wall.js'
 import type { WallsIoConfig } from './services/wallsio.js'
 import type { WallStatsService } from './services/wall-stats.js'
 import type { PartagesService } from './services/partages.js'
+import type { YoutubeService } from './services/youtube.js'
 import type { OpenFeedbackVotesService } from './services/openfeedback.js'
 import type { IncidentsService, StatistiquesService } from './services/statistiques.js'
 import type { RateLimiter } from './services/rate-limit.js'
@@ -62,6 +63,7 @@ export interface Services {
   incidents: IncidentsService
   openFeedbackVotes: OpenFeedbackVotesService
   partages: PartagesService
+  youtube: YoutubeService
   /**
    * The hub's log, for what the procedures do out of sight — the social wall
    * served to a room, a post hidden. Fastify's, bound once the server exists.

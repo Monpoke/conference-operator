@@ -1,3 +1,4 @@
+import type { FastifyRequest } from 'fastify'
 import { Readable } from 'node:stream'
 import { relayMedia } from './services/media-relay.js'
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify'
@@ -51,7 +52,8 @@ import {
 } from './services/social.js'
 import { WallsIoConfig, wallsioSource } from './services/wallsio.js'
 import { WallStatsService } from './services/wall-stats.js'
-import { PartagesService } from './services/partages.js'
+import { PartagesService, videosDuPartage } from './services/partages.js'
+import { YoutubeService } from './services/youtube.js'
 import { partageRoutes } from './partage-routes.js'
 import { OpenFeedbackVotesService } from './services/openfeedback.js'
 import { IncidentsService, StatistiquesService } from './services/statistiques.js'
@@ -162,6 +164,25 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     incidents: new IncidentsService(orm),
     openFeedbackVotes: new OpenFeedbackVotesService(),
     partages: new PartagesService(orm, config.publicUrl),
+    youtube: new YoutubeService({
+      db: orm,
+      box: secretBox,
+      publicUrl: config.publicUrl,
+      source: (jobId) => {
+        const job = videosDuPartage(null, services.montage.list(null), services.partages.refuses()).find((candidate) => candidate.id === jobId)
+        if (job == null) return null
+        const session = services.programs.active()?.program.sessions.find((candidate) => candidate.id === job.sessionId)
+        const speakers = (session?.speakers ?? []).map((speaker) => speaker.name).join(', ')
+        return {
+          url: services.montage.downloadUrl(job.id, true),
+          metadata: {
+            title: job.title ?? session?.title ?? job.sessionId,
+            description: [speakers, session?.abstract ?? ''].filter((part) => part !== '').join('\n\n'),
+          },
+        }
+      },
+      log: (message, cause) => services.log('warn', message, { message: (cause as Error).message }),
+    }),
     // Bound to Fastify's log once the server exists, below.
     log: () => undefined,
     questions: new QuestionService(orm),
@@ -534,6 +555,22 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
   })
 
   void app.register(partageRoutes(services, config.publicUrl))
+
+  // The way back from Google's consent page: the `state` it carries is its guard.
+  app.get('/youtube/retour', async (request: FastifyRequest<{ Querystring: { state?: string; code?: string } }>, reply) => {
+    const { state, code } = request.query
+    let issue = 'ok'
+    try {
+      if (state == null || code == null) throw new Error('autorisation refusée')
+      await services.youtube.complete(state, code)
+    } catch (cause) {
+      issue = 'erreur'
+      app.log.warn({ message: (cause as Error).message }, 'connexion de la chaîne YouTube')
+    }
+    return reply.redirect(`${viewPath('reglages')}?youtube=${issue}`, 303)
+  })
+
+  const youtubeSweep = setInterval(() => void services.youtube.tick(), 60_000)
 
   app.get('/health', async () => ({ ok: true, serverTime: new Date().toISOString() }))
 
@@ -1403,6 +1440,7 @@ export async function createHub(input: ConfigInput): Promise<Hub> {
     if (closed) return
     closed = true
     clearInterval(autoEndSweep)
+    clearInterval(youtubeSweep)
     clearInterval(supervisionTimer)
     clearInterval(auditPurge)
     services.vod?.stopHousekeeping()

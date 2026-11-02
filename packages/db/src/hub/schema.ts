@@ -631,6 +631,18 @@ export const integration = sqliteTable('integration', {
   lastError: text('last_error'),
 })
 
+/** An edited video's way to the YouTube channel. One line per video: sending it again starts over. */
+export const youtubeEnvoi = sqliteTable('youtube_envoi', {
+  jobId: text('job_id').primaryKey(),
+  /** `attente`, `en-cours`, `termine`, `echoue`. */
+  state: text('state').notNull(),
+  videoId: text('video_id'),
+  octets: integer('octets').notNull().default(0),
+  taille: integer('taille'),
+  erreur: text('erreur'),
+  updatedAt: text('updated_at').notNull(),
+})
+
 /**
  * A page opening edited videos to whoever has its address and its password: one
  * talk, or the whole edition when `session_id` is null.
@@ -848,4 +860,5 @@ export const hubSchema = {
   montageWorker,
   montageJob,
   videoPartage,
+  youtubeEnvoi,
 }

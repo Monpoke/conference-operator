@@ -21,6 +21,7 @@ const storedSchema = z.object({
   clientSecretSealed: z.string().nullable().default(null),
   refreshTokenSealed: z.string().nullable().default(null),
   channel: z.string().nullable().default(null),
+  playlist: z.object({ id: z.string(), title: z.string(), publique: z.boolean(), videoIds: z.array(z.string()) }).nullable().default(null),
 })
 type Stored = z.infer<typeof storedSchema>
 
@@ -94,18 +95,19 @@ export class YoutubeService {
       hasSecret: stored.clientSecretSealed != null,
       connected: stored.refreshTokenSealed != null,
       channel: stored.channel,
+      playlist: stored.playlist == null ? null : { id: stored.playlist.id, title: stored.playlist.title, publique: stored.playlist.publique, videos: stored.playlist.videoIds.length },
       redirectUri: this.redirectUri,
     }
   }
 
   setClient(clientId: string, clientSecret: string): YoutubeStatus {
     // Another Google project: the channel's token belonged to the previous one.
-    this.#store({ clientId, clientSecretSealed: this.#options.box.seal(clientSecret), refreshTokenSealed: null, channel: null })
+    this.#store({ clientId, clientSecretSealed: this.#options.box.seal(clientSecret), refreshTokenSealed: null, channel: null, playlist: null })
     return this.status()
   }
 
   disconnect(): YoutubeStatus {
-    this.#store({ refreshTokenSealed: null, channel: null })
+    this.#store({ refreshTokenSealed: null, channel: null, playlist: null })
     return this.status()
   }
 
@@ -204,6 +206,44 @@ export class YoutubeService {
     })
     if (!response.ok) throw new Error(await youtubeError(response))
     this.#update(jobId, { visibilite })
+  }
+
+  /**
+   * The channel's playlist: made once, then updated. A video already in it is not
+   * added again, and each addition is kept as it goes: a failure halfway resumes there.
+   */
+  async syncPlaylist(title: string, publique: boolean, videoIds: readonly string[]): Promise<void> {
+    const { refreshTokenSealed, playlist: known } = this.#stored()
+    if (refreshTokenSealed == null) throw new Error('Chaîne déconnectée')
+    const { access_token: accessToken } = await this.#token({ grant_type: 'refresh_token', refresh_token: this.#open(refreshTokenSealed) })
+    const headers = { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' }
+    const body = { snippet: { title: youtubeTitle(title) }, status: { privacyStatus: publique ? 'public' : 'private' } }
+
+    let current = known
+    if (current != null) {
+      const updated = await this.#fetch(`${API}/playlists?part=snippet,status`, { method: 'PUT', headers, body: JSON.stringify({ id: current.id, ...body }) })
+      // Deleted on YouTube since: made again below.
+      if (updated.status === 404) current = null
+      else if (!updated.ok) throw new Error(await youtubeError(updated))
+    }
+    if (current == null) {
+      const created = await this.#fetch(`${API}/playlists?part=snippet,status`, { method: 'POST', headers, body: JSON.stringify(body) })
+      if (!created.ok) throw new Error(await youtubeError(created))
+      current = { id: z.object({ id: z.string() }).parse(await created.json()).id, title, publique, videoIds: [] }
+    }
+    const playlist = { ...current, title, publique }
+    this.#store({ playlist })
+    for (const videoId of videoIds) {
+      if (playlist.videoIds.includes(videoId)) continue
+      const added = await this.#fetch(`${API}/playlistItems?part=snippet`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ snippet: { playlistId: playlist.id, resourceId: { kind: 'youtube#video', videoId } } }),
+      })
+      if (!added.ok) throw new Error(await youtubeError(added))
+      playlist.videoIds = [...playlist.videoIds, videoId]
+      this.#store({ playlist })
+    }
   }
 
   /** Sends what waits, one at a time. Resolved once the queue is empty. */

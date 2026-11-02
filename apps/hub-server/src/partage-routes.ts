@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { Services } from './context.js'
 import { partageContentSecurityPolicy, renderPartageLecteur, renderPartageLogin, renderPartagePage, type PartageVideoLine } from './pages/partage-page.js'
-import { COOKIE, videosDuPartage } from './services/partages.js'
+import { COOKIE, lignesVideos, videosDuPartage } from './services/partages.js'
 
 const COOKIE_DAYS = 30
 
@@ -37,21 +37,7 @@ export function partageRoutes(services: Services, publicUrl: string) {
         .send(body)
     }
 
-    function lines(sessionId: string | null): PartageVideoLine[] {
-      const jobs = videosOf(sessionId)
-      const counts = new Map<string, number>()
-      for (const job of jobs) counts.set(job.sessionId, (counts.get(job.sessionId) ?? 0) + 1)
-      const seen = new Map<string, number>()
-      return jobs.map((job) => {
-        const prise = (seen.get(job.sessionId) ?? 0) + 1
-        seen.set(job.sessionId, prise)
-        return {
-          jobId: job.id,
-          title: (counts.get(job.sessionId) ?? 1) > 1 ? `${job.nomVideo} (prise ${prise})` : job.nomVideo,
-          detail: '',
-        }
-      })
-    }
+    const lines = (sessionId: string | null): PartageVideoLine[] => lignesVideos(videosOf(sessionId))
 
     /** The password checked, the visitor let in: the address comes back clean, the password out of it. */
     function attempt(request: FastifyRequest, reply: FastifyReply, row: NonNullable<ReturnType<Services['partages']['get']>>, motDePasse: string): FastifyReply {

@@ -11,7 +11,7 @@ interface Call {
 }
 
 /** Google and the storage, as far as the service sees them. */
-function google(overrides: { open?: () => Response } = {}) {
+function google(overrides: { open?: () => Response; playlist?: () => Response; item?: (body: string) => Response | null } = {}) {
   const calls: Call[] = []
   const impl = (async (input: URL | RequestInfo, init?: RequestInit) => {
     const url = String(input)
@@ -24,6 +24,8 @@ function google(overrides: { open?: () => Response } = {}) {
       return new Response(new Uint8Array(BYTES), { headers: { 'content-length': String(BYTES) } })
     }
     if (url.includes('/videos?part=status')) return Response.json({ id: 'yt-1' })
+    if (url.includes('/playlists?')) return init?.method === 'POST' ? Response.json({ id: 'pl-1' }) : overrides.playlist?.() ?? Response.json({ id: 'pl-1' })
+    if (url.includes('/playlistItems?')) return overrides.item?.(String(init?.body)) ?? Response.json({ id: 'item' })
     if (url.includes('uploadType=resumable')) {
       return overrides.open?.() ?? new Response(null, { headers: { location: 'https://upload.test/session' } })
     }
@@ -111,6 +113,32 @@ describe('sending a video', () => {
     expect(service.envois()[0]?.visibilite).toBe('public')
     const update = calls.find((call) => call.url.includes('/videos?part=status'))!
     expect(JSON.parse(String(update.init?.body))).toMatchObject({ id: 'yt-1', status: { privacyStatus: 'public' } })
+  })
+
+  it('makes a playlist once, then only adds what it does not hold', async () => {
+    const { calls, impl } = google()
+    const { service } = await connected(impl)
+    await service.syncPlaylist('Édition', false, ['a', 'b'])
+    expect(service.status().playlist).toEqual({ id: 'pl-1', title: 'Édition', publique: false, videos: 2 })
+    await service.syncPlaylist('Édition 2026', true, ['a', 'b', 'c'])
+    expect(service.status().playlist).toEqual({ id: 'pl-1', title: 'Édition 2026', publique: true, videos: 3 })
+    expect(calls.filter((call) => call.url.includes('/playlists?') && call.init?.method === 'POST')).toHaveLength(1)
+    expect(calls.filter((call) => call.url.includes('/playlistItems?'))).toHaveLength(3)
+  })
+
+  it('makes it again when it was deleted on YouTube', async () => {
+    const { impl } = google({ playlist: () => new Response(null, { status: 404 }) })
+    const { service } = await connected(impl)
+    await service.syncPlaylist('Édition', false, ['a'])
+    await service.syncPlaylist('Édition', false, ['a'])
+    expect(service.status().playlist?.videos).toBe(1)
+  })
+
+  it('keeps what was added when an addition fails', async () => {
+    const { impl } = google({ item: (body) => (body.includes('"b"') ? new Response(null, { status: 500 }) : null) })
+    const { service } = await connected(impl)
+    await expect(service.syncPlaylist('Édition', false, ['a', 'b'])).rejects.toThrow('500')
+    expect(service.status().playlist?.videos).toBe(1)
   })
 
   it('cleans a title for YouTube', () => {

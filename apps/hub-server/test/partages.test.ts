@@ -5,7 +5,7 @@ import { partageContentSecurityPolicy } from '../src/pages/partage-page.js'
 import { redactSecrets } from '../src/router.js'
 import { createHub, type Hub } from '../src/server.js'
 import { fichierVideo, nomVideo } from '../src/services/montage.js'
-import { videosDuPartage } from '../src/services/partages.js'
+import { lignesVideos, videosDuPartage } from '../src/services/partages.js'
 
 const job = (id: string, sessionId: string, take: string, state: string, outputKey: string | null = 'k') =>
   ({ id, sessionId, sidecarUploadId: take, state, outputKey }) as MontageJobView
@@ -119,6 +119,12 @@ describe('the name of a video', () => {
   it('is the title then the speakers', () => {
     expect(nomVideo('Mon talk', ['Alice', 'Bob'])).toBe('Mon talk - Alice, Bob')
     expect(nomVideo('Mon talk', [])).toBe('Mon talk')
+  })
+
+  it('numbers only the takes that nothing else tells apart', () => {
+    const titles = (names: string[]) => lignesVideos(names.map((nomVideo, index) => ({ id: String(index), nomVideo }))).map((line) => line.title)
+    expect(titles(['Mot d’accueil - A', 'Keynote - B'])).toEqual(['Mot d’accueil - A', 'Keynote - B'])
+    expect(titles(['Keynote - B', 'Keynote - B'])).toEqual(['Keynote - B (prise 1)', 'Keynote - B (prise 2)'])
   })
 
   it('makes a file name a file system accepts', () => {

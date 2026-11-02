@@ -6,6 +6,8 @@ export const youtubeStatusSchema = z.object({
   hasSecret: z.boolean(),
   connected: z.boolean(),
   channel: z.string().nullable(),
+  /** The edition's playlist, once made. */
+  playlist: z.object({ id: z.string(), title: z.string(), publique: z.boolean(), videos: z.number().int().nonnegative() }).nullable(),
   /** To declare in the Google project, as an authorised redirect address. */
   redirectUri: z.string(),
 })

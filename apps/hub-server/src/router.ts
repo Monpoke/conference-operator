@@ -1691,6 +1691,20 @@ export const router = os.router({
       services.youtube.enqueue(input.jobIds == null ? sendable.filter((id) => !sent.has(id)) : sendable.filter((id) => input.jobIds!.includes(id)))
       return services.youtube.envois()
     }),
+    playlist: os.youtube.playlist.use(operatorCan('vod:manage')).handler(async ({ input, context }) => {
+      const { services } = context
+      const envois = new Map(services.youtube.envois().map((envoi) => [envoi.jobId, envoi]))
+      const videoIds = videosDuPartage(null, services.montage.list(null), services.partages.refuses()).flatMap((job) => {
+        const envoi = envois.get(job.id)
+        return envoi?.state === 'termine' && envoi.videoId != null ? [envoi.videoId] : []
+      })
+      try {
+        await services.youtube.syncPlaylist(input.title, input.publique, videoIds)
+      } catch (cause) {
+        throw new ORPCError('BAD_GATEWAY', { message: (cause as Error).message })
+      }
+      return services.youtube.status()
+    }),
     visibilite: os.youtube.visibilite.use(operatorCan('vod:manage')).handler(async ({ input, context }) => {
       const { services } = context
       const job = services.montage.list(null).find((candidate) => candidate.id === input.jobId)

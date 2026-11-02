@@ -25,6 +25,18 @@ export function videosDuPartage(
     .reverse()
 }
 
+/** « (prise 2) » only tells apart what nothing else does: takes renamed differently need none. */
+export function lignesVideos(jobs: readonly Pick<MontageJobView, 'id' | 'nomVideo'>[]): { jobId: string; title: string; detail: string }[] {
+  const counts = new Map<string, number>()
+  for (const job of jobs) counts.set(job.nomVideo, (counts.get(job.nomVideo) ?? 0) + 1)
+  const seen = new Map<string, number>()
+  return jobs.map((job) => {
+    const prise = (seen.get(job.nomVideo) ?? 0) + 1
+    seen.set(job.nomVideo, prise)
+    return { jobId: job.id, title: (counts.get(job.nomVideo) ?? 1) > 1 ? `${job.nomVideo} (prise ${prise})` : job.nomVideo, detail: '' }
+  })
+}
+
 export class PartagesService {
   constructor(
     private readonly db: HubDatabase,

@@ -11,6 +11,7 @@ import RoomsTab from '../src/components/RoomsTab.vue'
 import Timeline from '../src/components/Timeline.vue'
 import type { Session } from '@conference-operator/program'
 import { stripEntry } from '../src/lib/rooms.js'
+import { dayKeyOf, openDay } from '../src/lib/days.js'
 import { useConsultStore } from '../src/stores/consult.js'
 import { useProgramsStore } from '../src/stores/programs.js'
 import { START_MS, END_MS, obsState, payload, talk } from './fixtures.js'
@@ -81,6 +82,43 @@ function neighbour(overrides: Record<string, unknown> = {}) {
   programs.sessions = { 'track-2': NEIGHBOUR }
   return view
 }
+
+describe('the day of the program', () => {
+  const DAY = 86_400_000
+  const twoDays = () => {
+    const view = payload()
+    view.sessions = [
+      talk({ id: 'j1', title: 'Jour un', startsAtMs: START_MS, endsAtMs: END_MS, startsAt: new Date(START_MS).toISOString() }),
+      talk({ id: 'j2', title: 'Jour deux', startsAtMs: START_MS + DAY, endsAtMs: END_MS + DAY, startsAt: new Date(START_MS + DAY).toISOString() }),
+    ]
+    return view
+  }
+
+  it("opens on the room's day, and shows another on demand", async () => {
+    const view = twoDays()
+    useConsultStore().show('program')
+    const wrapper = mount(ConsultDialog, { props: { payload: view, nowMs: START_MS }, attachTo: document.body })
+    await flushPromises()
+    const timeline = () => document.querySelector('[data-role="timeline"]')?.textContent ?? ''
+
+    // The days used to run one after the other, 18:30 then 09:00, with nothing between them.
+    expect(timeline()).toContain('Jour un')
+    expect(timeline()).not.toContain('Jour deux')
+
+    document.querySelector<HTMLButtonElement>(`[data-role="consult-days"] [data-day="${dayKeyOf(START_MS + DAY, view.timezone)}"]`)!.click()
+    await flushPromises()
+    expect(timeline()).toContain('Jour deux')
+    expect(timeline()).not.toContain('Jour un')
+    wrapper.unmount()
+  })
+
+  it('opens on the nearest edge outside the event', () => {
+    const days = ['2026-07-02', '2026-07-03']
+    expect(openDay(days, '2026-06-30', null)).toBe('2026-07-02')
+    expect(openDay(days, '2026-07-10', null)).toBe('2026-07-03')
+    expect(openDay(days, '2026-07-02', '2026-07-03')).toBe('2026-07-03')
+  })
+})
 
 describe('what one strip cell says', () => {
   const room = { id: 'track-2', name: 'Track #2', connectivity: 'ONLINE' }

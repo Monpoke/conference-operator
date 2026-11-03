@@ -2,7 +2,8 @@
 import type { DisplayPayload } from '@conference-operator/contract'
 import { Button, Combobox, Dialog } from '@conference-operator/components'
 import { timelinePosition } from '@conference-operator/program/selectors'
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { dayKeyOf, openDay, programDays } from '../lib/days.js'
 import { featuresOf } from '../lib/features.js'
 import { otherRooms } from '../lib/rooms.js'
 import { CONSULT_TABS, useConsultStore, type ConsultTab } from '../stores/consult.js'
@@ -56,6 +57,35 @@ const followedCurrentId = computed(
 )
 
 const followable = computed(() => otherRooms(props.payload, programs.rooms))
+
+/*
+ * The day read, at an event of several.
+ *
+ * The timeline used to run the days one after the other — 18:30, then 09:00 the
+ * next morning — with nothing between them. It opens on the room's own day, the
+ * one being lived, and another can be chosen; every opening comes back to today.
+ */
+const zone = computed(() => props.payload.timezone)
+const today = computed(() => dayKeyOf(props.nowMs, zone.value))
+const listed = computed(() =>
+  consult.tab === 'other' ? followedSessions.value : (props.payload.sessions ?? []),
+)
+const days = computed(() => programDays(listed.value.map((session) => session.startsAt), zone.value))
+const askedDay = ref<string | null>(null)
+watch(
+  () => consult.open,
+  (open) => {
+    if (open) askedDay.value = null
+  },
+)
+const shownDay = computed(() =>
+  openDay(days.value.map((entry) => entry.value), today.value, askedDay.value),
+)
+
+function ofShownDay<T extends { startsAt: string }>(sessions: T[]): T[] {
+  if (days.value.length < 2) return sessions
+  return sessions.filter((session) => dayKeyOf(session.startsAt, zone.value) === shownDay.value)
+}
 </script>
 
 <template>
@@ -80,6 +110,27 @@ const followable = computed(() => otherRooms(props.payload, programs.rooms))
         Typed through, not a row of buttons: with a dozen rooms the row took the
         header. Not a native `<select>` either: it opens empty in an OBS dock.
       -->
+      <!-- Buttons, not a native list: it opens empty in an OBS dock, and an event has two or three days. -->
+      <div
+        v-if="(consult.tab === 'program' || consult.tab === 'other') && days.length > 1"
+        class="flex flex-wrap items-center gap-1 border-l border-edge pl-2"
+        role="group"
+        aria-label="Journée affichée"
+        data-role="consult-days"
+      >
+        <Button
+          v-for="entry in days"
+          :key="entry.value"
+          variant="tab"
+          size="small"
+          :active="entry.value === shownDay"
+          :aria-pressed="entry.value === shownDay"
+          :data-day="entry.value"
+          @click="askedDay = entry.value"
+        >
+          {{ entry.label }}<span v-if="entry.value === today" class="ml-1.5 text-xs font-normal text-dim">aujourd’hui</span>
+        </Button>
+      </div>
       <div v-if="consult.tab === 'other'" class="ml-auto w-[min(22rem,100%)]" data-role="other-room-choice">
         <Combobox
           :model-value="consult.followed"
@@ -95,7 +146,7 @@ const followable = computed(() => otherRooms(props.payload, programs.rooms))
     <div>
       <Timeline
         v-if="consult.tab === 'program'"
-        :sessions="payload.sessions"
+        :sessions="ofShownDay(payload.sessions ?? [])"
         :time-zone="payload.timezone"
         :current-id="payload.state.currentSession?.id ?? null"
         :now-ms="nowMs"
@@ -107,7 +158,7 @@ const followable = computed(() => otherRooms(props.payload, programs.rooms))
         </div>
         <Timeline
           v-else
-          :sessions="followedSessions"
+          :sessions="ofShownDay(followedSessions)"
           :time-zone="payload.timezone"
           :current-id="followedCurrentId"
           :now-ms="nowMs"

@@ -59,8 +59,21 @@ const labelOf = (value: unknown): string =>
  * only that option on the next opening. The term follows the keystrokes and
  * starts empty on every opening.
  */
-function onOpen(open: boolean): void {
-  if (open) search.value = ''
+function onOpen(): void {
+  search.value = ''
+}
+
+/*
+ * Typing over the chosen name, not after it.
+ *
+ * The field shows the option chosen; a click placed the caret at its end and the
+ * next letters were appended to it — « RomarinCoquelicot », which matches
+ * nothing. Selected once Reka has handled the click, the name is replaced by
+ * what is typed.
+ */
+function selectChosen(event: Event): void {
+  const field = event.target as HTMLInputElement
+  if (field.value !== '' && field.value === labelOf(model.value)) requestAnimationFrame(() => field.select())
 }
 </script>
 
@@ -83,7 +96,8 @@ function onOpen(open: boolean): void {
         class="w-full rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text placeholder:text-dim focus:border-brand focus:outline-none"
         data-role="combobox-input"
         @input="search = ($event.target as HTMLInputElement).value"
-        @focus="($event.target as HTMLInputElement).select()"
+        @focus="selectChosen"
+        @click="selectChosen"
       />
     </ComboboxAnchor>
     <ComboboxPortal>

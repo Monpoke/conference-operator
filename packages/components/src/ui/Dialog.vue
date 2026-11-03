@@ -44,6 +44,14 @@ defineProps<{
   /** Read out with the title. Omit rather than repeat the title in other words. */
   description?: string
   width?: 'normal' | 'wide' | 'full'
+  /**
+   * `fixed`: the dialog keeps one height whatever it shows.
+   *
+   * Centred and sized on its content, a dialog whose content changes under the
+   * hand — one room's program after another's — re-centres on every change and
+   * jumps. Fixed, only what is inside scrolls.
+   */
+  height?: 'auto' | 'fixed'
 }>()
 
 const WIDTHS = {
@@ -65,7 +73,7 @@ const WIDTHS = {
       -->
       <DialogContent
         class="fixed top-1/2 left-1/2 z-50 flex max-h-[90dvh] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-edge bg-surface max-sm:inset-0 max-sm:h-dvh max-sm:max-h-none max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0"
-        :class="WIDTHS[width ?? 'normal']"
+        :class="[WIDTHS[width ?? 'normal'], height === 'fixed' ? 'h-[min(85dvh,56rem)]' : '']"
         @open-auto-focus="
           /*
            * Reka focuses the first focusable child. Here that is often a

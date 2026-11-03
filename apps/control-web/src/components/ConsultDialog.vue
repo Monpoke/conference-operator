@@ -59,8 +59,12 @@ const followable = computed(() => otherRooms(props.payload, programs.rooms))
 </script>
 
 <template>
-  <Dialog v-model:open="consult.open" title="Consultation" width="full">
-    <div class="mb-3 flex flex-wrap items-center gap-1.5 border-b border-edge pb-3">
+  <!--
+    One height whatever the tab or the room: a shorter program used to re-centre
+    the dialog, and it jumped under the hand at every room chosen.
+  -->
+  <Dialog v-model:open="consult.open" title="Consultation" width="full" height="fixed">
+    <div class="sticky top-0 z-10 mb-3 flex flex-wrap items-center gap-1.5 border-b border-edge bg-surface pb-3">
       <Button
         v-for="name in tabs"
         :key="name"
@@ -88,7 +92,7 @@ const followable = computed(() => otherRooms(props.payload, programs.rooms))
       </div>
     </div>
 
-    <div class="max-h-[62vh] overflow-y-auto">
+    <div>
       <Timeline
         v-if="consult.tab === 'program'"
         :sessions="payload.sessions"

@@ -9,6 +9,7 @@ import { CONSULT_TABS, useConsultStore, type ConsultTab } from '../stores/consul
 import { useKeyboardLayer } from '../stores/keyboard.js'
 import { useProgramsStore } from '../stores/programs.js'
 import QuestionsTab from './QuestionsTab.vue'
+import RoomPicker from './RoomPicker.vue'
 import RoomsTab from './RoomsTab.vue'
 import Timeline from './Timeline.vue'
 
@@ -60,7 +61,7 @@ const followable = computed(() => otherRooms(props.payload, programs.rooms))
 
 <template>
   <Dialog v-model:open="consult.open" title="Consultation" width="full">
-    <div class="mb-3 flex flex-wrap items-center gap-1.5 border-b border-edge pb-3">
+    <div class="mb-3 flex flex-wrap items-start gap-1.5 border-b border-edge pb-3">
       <Button
         v-for="name in tabs"
         :key="name"
@@ -72,25 +73,12 @@ const followable = computed(() => otherRooms(props.payload, programs.rooms))
       >
         {{ LABELS[name] }}
       </Button>
-      <!--
-        Buttons, not a `<select>`: in an OBS dock the native dropdown opens empty
-        even though the rooms are known.
-      -->
-      <div
-        v-if="consult.tab === 'other'"
-        class="flex flex-wrap items-center gap-1.5"
-        data-role="other-room-choice"
-      >
-        <Button
-          v-for="room in followable"
-          :key="room.id"
-          size="small"
-          :active="consult.followed === room.id"
-          :data-room="room.id"
-          @click="consult.follow(room.id)"
-        >
-          {{ room.name }}
-        </Button>
+      <div v-if="consult.tab === 'other'" class="ml-auto" data-role="other-room-choice">
+        <RoomPicker
+          :rooms="followable"
+          :selected="consult.followed"
+          @choose="consult.follow($event)"
+        />
       </div>
     </div>
 

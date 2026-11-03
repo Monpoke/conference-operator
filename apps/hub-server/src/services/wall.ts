@@ -460,7 +460,8 @@ export class WallService {
   /**
    * One page of a moderation list, searched, with what each post did on screen.
    *
-   * The queue reads oldest first — it is a queue; the others newest first. This
+   * The queue reads oldest first — it is a queue; the others newest first, by when
+   * the post was published at the source (else received), like the screen. This
    * one does go to SQL: it serves the console, a handful of operators, never the
    * audience.
    */
@@ -485,7 +486,11 @@ export class WallService {
       .select()
       .from(comment)
       .where(where(input.view))
-      .orderBy(input.view === 'pending' ? asc(comment.seq) : desc(comment.seq))
+      .orderBy(
+        ...(input.view === 'pending'
+          ? [asc(comment.seq)]
+          : [desc(sql`coalesce(${comment.postedAt}, ${comment.createdAt})`), desc(comment.seq)]),
+      )
       .limit(input.pageSize)
       .offset((page - 1) * input.pageSize)
       .all()

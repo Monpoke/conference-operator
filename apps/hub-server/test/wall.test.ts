@@ -278,6 +278,22 @@ describe('moderation lists', () => {
     expect(wall.list({ view: 'approved' }).items.map((post) => post.text)).toEqual(['récent', 'ancien'])
   })
 
+  it('orders the published by when they were published at the source, not when they came in', () => {
+    const at = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString()
+    for (const [text, days] of [['hier', 1], ['l’an dernier', 371], ['ce mois-ci', 20]] as const) {
+      const posted = wall.post({ source: 'wallsio', author: 'A', text, externalId: text, postedAt: at(days) })
+      wall.moderate(posted.id, 'approve', 'regie@cloudnord.fr')
+    }
+    approved('à l’instant')
+
+    expect(wall.list({ view: 'approved' }).items.map((post) => post.text)).toEqual([
+      'à l’instant',
+      'hier',
+      'ce mois-ci',
+      'l’an dernier',
+    ])
+  })
+
   it('searches the text, the author and the partner, every word', () => {
     approved('Le café est servi', 'Alice')
     approved('Superbe keynote', 'Camille Dupont')

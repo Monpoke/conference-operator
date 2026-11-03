@@ -267,6 +267,36 @@ describe('swap partners', () => {
 })
 
 describe('emergency gestures', () => {
+  it('offers no partner already over by the hub clock', async () => {
+    const early = { ...OTHER, id: 'talk-3', startsAt: '2026-10-30T07:00:00Z', endsAt: '2026-10-30T07:45:00Z' }
+    const { wrapper } = await mountView({ sessions: [TALK, OTHER, early], serverTime: '2026-10-30T08:30:00Z' })
+    await wrapper.get('[data-slot="talk-1"]').trigger('click')
+
+    const offered = wrapper.findAll('[data-swap-session="talk-1"] option').map((option) => option.attributes('value'))
+    expect(offered).toContain('talk-2')
+    expect(offered).not.toContain('talk-3')
+  })
+
+  it('asks before putting a talk back to come', async () => {
+    const { calls, wrapper } = await mountView({
+      sessions: [TALK],
+      states: [{ sessionId: 'talk-1', title: TALK.title, status: 'ended', remainingMs: null, decidedBy: null }],
+    })
+    await wrapper.get('[data-slot="talk-1"]').trigger('click')
+
+    await wrapper.findAll('button').find((button) => button.text() === 'Remettre à venir')!.trigger('click')
+    await flushPromises()
+    // It erases what the room recorded: nothing leaves before the answer.
+    expect(calls.filter((call) => call.path === 'sessions/reset')).toHaveLength(0)
+
+    const confirm = [...document.body.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')].find((button) =>
+      button.textContent?.includes('Remettre à venir'),
+    )
+    confirm!.click()
+    await flushPromises()
+    expect(calls.filter((call) => call.path === 'sessions/reset')).toHaveLength(1)
+  })
+
   it('swaps two talks and reads the program back from the hub', async () => {
     const { calls, wrapper } = await mountView({ sessions: [TALK, OTHER] })
     await wrapper.get('[data-slot="talk-1"]').trigger('click')
@@ -357,6 +387,18 @@ describe('the day filter', () => {
     await wrapper.get('#planning-day').setValue('2026-10-31')
     expect(wrapper.find('[data-slot="talk-1"]').exists()).toBe(false)
     expect(wrapper.find('[data-slot="talk-2"]').exists()).toBe(true)
+  })
+
+  it("opens on the hub's day when the program spans several", async () => {
+    // « Tous les jours » put the running talks under the fold, and a scrolled
+    // screen no longer said which day it showed.
+    const { wrapper } = await mountView({
+      sessions: [TALK, { ...OTHER, startsAt: '2026-10-31T09:00:00Z', endsAt: '2026-10-31T10:00:00Z' }],
+      serverTime: '2026-10-31T08:00:00Z',
+    })
+    expect((wrapper.get('#planning-day').element as HTMLSelectElement).value).toBe('2026-10-31')
+    expect(wrapper.find('[data-slot="talk-1"]').exists()).toBe(false)
+    expect(wrapper.get('#planning-clock').text()).toContain('09:00')
   })
 
   it('bounds a typed date to one whole day', () => {

@@ -200,7 +200,7 @@ function uploadState(row: Upload): { label: string; tone: string } {
 
         <template v-else-if="folder.captations.length === 0">
           <p class="text-warn">
-            Aucune take remontée par {{ folder.roomName ?? folder.roomId }}.
+            Aucune prise remontée par {{ folder.roomName ?? folder.roomId }}.
           </p>
           <Hint>
             Le hub ne lit pas le disque de la régie : il recompose les prises depuis ce que la
@@ -228,8 +228,8 @@ function uploadState(row: Upload): { label: string; tone: string } {
               sans titre, sans intervenants et sans marqueurs.
             -->
             <template v-if="!take.enCours && !take.finInconnue">
-              <template v-if="take.sidecarWritten"> · sidecar écrit</template>
-              <span v-else class="text-warn"> · sans sidecar</span>
+              <template v-if="take.sidecarWritten"> · fiche de montage écrite</template>
+              <span v-else class="text-warn" title="Sans elle, le rush arrive au montage sans titre, sans intervenants et sans marqueurs"> · sans fiche de montage</span>
             </template>
           </div>
           <div class="text-[11px] tabular-nums text-dim">{{ when(take) }}</div>
@@ -241,7 +241,7 @@ function uploadState(row: Upload): { label: string; tone: string } {
           </div>
           <!-- An attachment deduced from the time is a lead, not a fact. -->
           <div v-if="take.rattachement === 'horaire'" class="text-[11px] text-warn">
-            Rattachée à l'heure : la take ne porte aucun créneau, mais elle recouvre celui-ci
+            Rattachée à l'heure : la prise ne porte aucun créneau, mais elle recouvre celui-ci
             dans la même salle.
           </div>
         </div>

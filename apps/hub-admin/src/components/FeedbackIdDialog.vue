@@ -119,7 +119,8 @@ async function save(value_: string | null): Promise<void> {
     </Hint>
 
     <template #actions>
-      <Button id="feedback-reset" size="small" @click="save(null)">
+      <!-- Only when there is a correction to remove: otherwise it did what « Enregistrer » with an empty field does. -->
+      <Button v-if="session?.feedbackIdOverride != null" id="feedback-reset" size="small" @click="save(null)">
         Rendre à l'export
       </Button>
       <Button

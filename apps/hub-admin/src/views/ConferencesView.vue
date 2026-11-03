@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { isTransitionAllowed } from '@conference-operator/room-state'
 import { Badge, Button, ConfirmDialog, Empty, Hint, Panel, useToast, StableLabel } from '@conference-operator/components'
-import type { VodStatut } from '@conference-operator/contract'
+import { reglagesPath, type VodStatut } from '@conference-operator/contract'
 import { timeFormatter } from '@conference-operator/format'
 import { storeToRefs } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { dayKeyOf, dayOptions } from '../stores/days.js'
 import { planningGrid, PX_PER_MINUTE, horaireReel } from '../stores/planning-grid.js'
 import { latestByTake, montagePath, useMontageStore } from '../stores/montage.js'
@@ -61,10 +61,11 @@ const slots = computed(() =>
  */
 const dayFormatter = computed(
   () =>
+    // The day filter's words, `jeu. 2 juil.`: the same day must not be written two ways on one screen.
     new Intl.DateTimeFormat('fr-FR', {
       weekday: 'short',
-      day: '2-digit',
-      month: '2-digit',
+      day: 'numeric',
+      month: 'short',
       timeZone: zone.value,
     }),
 )
@@ -77,6 +78,38 @@ const severalDays = computed(
 const now = computed(() =>
   planning.value == null ? Date.now() : Date.parse(planning.value.serverTime),
 )
+
+/** The hub's time, written out: the red line alone does not say which hour it marks. */
+const hubClock = computed(() => (planning.value == null ? null : hour(planning.value.serverTime)))
+
+/**
+ * The page opens on the hub's day, not on every day.
+ *
+ * At a two-day event « Tous les jours » put the running talks under the fold and
+ * left the reader to guess which day a scrolled screen showed. Once the operator
+ * picks a day, the choice is theirs: a reload of the program must not take it back.
+ */
+const dayTouched = ref(false)
+const todayKey = computed(() => (planning.value == null ? null : dayKeyOf(planning.value.serverTime, zone.value)))
+const todayInProgram = computed(
+  () => todayKey.value != null && planningDays.value.some((option) => option.value === todayKey.value),
+)
+watch(
+  todayInProgram,
+  (inProgram) => {
+    if (inProgram && !dayTouched.value && day.value === '') day.value = todayKey.value!
+  },
+  { immediate: true },
+)
+
+/** Brings the hub's hour into view, switching to its day first if another one is shown. */
+async function goToNow(): Promise<void> {
+  if (todayInProgram.value && day.value !== '' && day.value !== todayKey.value) day.value = todayKey.value!
+  await nextTick()
+  const target =
+    document.querySelector('[data-role="maintenant"]') ?? document.querySelector('[data-when="en-cours"]')
+  target?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+}
 
 /** What the room did first: a talk started late or ended early follows the facts, not the program. */
 function placeOf(session: PlannedSession): 'a-venir' | 'en-cours' | 'passe' {
@@ -131,13 +164,51 @@ function actions(state: SessionState): { label: string; action: 'start' | 'end' 
   return offered
 }
 
-async function act(state: SessionState, action: 'start' | 'end' | 'reset'): Promise<void> {
+/**
+ * A gesture on its way to the hub.
+ *
+ * Every screen follows these gestures: while one travels, the buttons that would
+ * send another wait, rather than let a second click leave behind the first.
+ */
+const busy = ref(false)
+
+async function run(work: () => Promise<void>): Promise<void> {
+  busy.value = true
   try {
-    await store.decide(state.sessionId, action)
-    toast.say('Conférence mise à day')
-  } catch {
-    /* already reported */
+    await work()
+  } finally {
+    busy.value = false
   }
+}
+
+const ACT_SAID = {
+  start: 'Conférence commencée',
+  end: 'Conférence terminée',
+  reset: 'Conférence remise à venir',
+} as const
+
+/** « Remettre à venir » erases what the room recorded: it asks first. */
+const resetTalk = ref<SessionState | null>(null)
+const resetTalkOpen = ref(false)
+
+async function act(state: SessionState, action: 'start' | 'end' | 'reset'): Promise<void> {
+  if (action === 'reset') {
+    resetTalk.value = state
+    resetTalkOpen.value = true
+    return
+  }
+  await decide(state, action)
+}
+
+async function decide(state: SessionState, action: 'start' | 'end' | 'reset'): Promise<void> {
+  await run(async () => {
+    try {
+      await store.decide(state.sessionId, action)
+      toast.say(ACT_SAID[action])
+    } catch {
+      /* already reported */
+    }
+  })
 }
 
 /**
@@ -205,7 +276,14 @@ function titleOf(sessionId: string | null | undefined): string {
 
 /** Among the whole program, not the filtered room: a swap crosses rooms. */
 function partnerGroups(session: PlannedSession): ReturnType<typeof partnersByRoom> {
-  return partnersByRoom(swapPartners(session, planning.value?.sessions ?? [], zone.value))
+  // A slot already over by the hub's clock is no partner: nobody swaps into the past.
+  const partners = swapPartners(session, planning.value?.sessions ?? [], zone.value).filter(
+    (other) => placeOf(other) !== 'passe',
+  )
+  // Rooms in the grid's order, so the menu reads like the columns above it.
+  const order = (planning.value?.rooms ?? []).map((entry) => entry.name)
+  const rank = (name: string) => (order.indexOf(name) === -1 ? order.length : order.indexOf(name))
+  return partnersByRoom(partners).sort((a, b) => rank(a.room) - rank(b.room))
 }
 
 async function changeSwap(session: PlannedSession, menu: HTMLSelectElement): Promise<void> {
@@ -214,12 +292,14 @@ async function changeSwap(session: PlannedSession, menu: HTMLSelectElement): Pro
   // outcome, the result reads in the "Déplacée" badge.
   menu.value = ''
   if (other === '') return
-  try {
-    await store.swap(session.id, other)
-    toast.say(`Créneaux échangés avec « ${titleOf(other)} »`)
-  } catch {
-    /* already reported */
-  }
+  await run(async () => {
+    try {
+      await store.swap(session.id, other)
+      toast.say(`Créneaux échangés avec « ${titleOf(other)} »`)
+    } catch {
+      /* already reported */
+    }
+  })
 }
 
 function isPinned(session: PlannedSession): boolean {
@@ -227,13 +307,16 @@ function isPinned(session: PlannedSession): boolean {
 }
 
 async function changePin(session: PlannedSession, pinned: boolean): Promise<void> {
-  if (session.roomId == null) return
-  try {
-    await store.pin(session.roomId, pinned ? session.id : null)
-    toast.say(pinned ? `« ${session.title} » forcée en salle` : 'Salle rendue à son horaire')
-  } catch {
-    /* already reported */
-  }
+  const roomId = session.roomId
+  if (roomId == null) return
+  await run(async () => {
+    try {
+      await store.pin(roomId, pinned ? session.id : null)
+      toast.say(pinned ? `« ${session.title} » forcée en salle` : 'Salle rendue à son horaire')
+    } catch {
+      /* already reported */
+    }
+  })
 }
 
 const resetOpen = ref(false)
@@ -301,6 +384,20 @@ const VOD_TONES: Record<VodStatut, string> = {
   'sans-captation': 'text-dim',
 }
 
+/** The same states in words, for the legend and for screen readers: a colour is read by nobody. */
+const VOD_LABELS: Record<VodStatut, string> = {
+  aucune: 'pas encore captée',
+  'en-cours': 'enregistrement en cours',
+  'sur-la-machine': 'sur le poste de la salle',
+  televersement: 'téléversement en cours',
+  'sur-le-stockage': 'téléversée',
+  montage: 'montage en cours',
+  'a-valider': 'à valider',
+  prete: 'prête',
+  erreur: 'en erreur',
+  'sans-captation': 'sans captation',
+}
+
 function vodOf(session: PlannedSession): { statut: VodStatut; detail: string } {
   return store.vodStatuts[session.id] ?? { statut: 'aucune', detail: 'Où en est la captation de cette conférence' }
 }
@@ -340,13 +437,60 @@ const LEGEND = [
   { label: 'À venir', tone: PLACE_TONES['a-venir'] },
   { label: 'En cours', tone: PLACE_TONES['en-cours'] },
   { label: 'Terminé', tone: PLACE_TONES.passe },
+  { label: 'Pause', tone: BREAK_TONES['a-venir'] },
 ]
+
+/** Only the video states on screen: ten swatches to decode, eight of them absent, would be noise. */
+const vodLegend = computed(() => {
+  const seen = new Set<VodStatut>()
+  for (const session of slots.value) if (showsVodTag(session)) seen.add(vodOf(session).statut)
+  return (Object.keys(VOD_LABELS) as VodStatut[])
+    .filter((statut) => seen.has(statut))
+    .map((statut) => ({ statut, label: VOD_LABELS[statut], tone: VOD_TONES[statut] }))
+})
+const anyPinned = computed(() => slots.value.some((session) => isPinned(session)))
+
+const PLACE_WORDS = { 'a-venir': 'à venir', 'en-cours': 'en ce moment', passe: 'terminé' } as const
+
+/**
+ * What a slot says to a screen reader: everything the card shows, not only its title.
+ *
+ * The visible card carries its place in the day, its video state and its
+ * Déplacée / Forcée badges; an `aria-label` of hour and title alone erased all of it.
+ */
+function slotName(session: PlannedSession): string {
+  const parts = [hour(session.startsAt), session.title]
+  if (session.roomName != null) parts.push(`salle ${session.roomName}`)
+  parts.push(session.kind === 'break' ? `pause, ${PLACE_WORDS[placeOf(session)]}` : PLACE_WORDS[placeOf(session)])
+  if (session.speakers.length > 0) parts.push(session.speakers.join(', '))
+  if (showsVodTag(session) && vodOf(session).statut !== 'aucune') parts.push(`vidéo ${VOD_LABELS[vodOf(session).statut]}`)
+  if (session.movedTo != null) parts.push('déplacée')
+  if (isPinned(session)) parts.push('forcée')
+  return parts.join(', ')
+}
 
 const montages = useMontageStore()
 const selectedTakes = ref<{ path: string; label: string }[]>([])
 const selectedVideos = ref<{ jobId: string; label: string }[]>([])
+/*
+ * The detail takes the focus when a slot is chosen: it is where the next gesture
+ * is, and a screen reader then reads what was opened. Escape closes it, as the
+ * sheet it becomes on a narrow screen must close — unless a dialog above it is
+ * the one Escape belongs to.
+ */
+const detailHeading = useTemplateRef<HTMLElement>('detailHeading')
+
+function closeOnEscape(event: KeyboardEvent): void {
+  if (event.key !== 'Escape' || selectedId.value == null) return
+  if (document.querySelector('[role="dialog"], [role="alertdialog"]') != null) return
+  selectedId.value = null
+}
+onMounted(() => document.addEventListener('keydown', closeOnEscape))
+onBeforeUnmount(() => document.removeEventListener('keydown', closeOnEscape))
+
 async function select(session: PlannedSession): Promise<void> {
   selectedId.value = session.id
+  void nextTick(() => detailHeading.value?.focus())
   selectedTakes.value = []
   selectedVideos.value = []
   if (!isCapturable(session)) return
@@ -367,6 +511,11 @@ async function select(session: PlannedSession): Promise<void> {
   <div id="conferences-view" class="grid items-start gap-3.5 lg:grid-cols-[minmax(0,1fr)_minmax(340px,400px)]">
     <section class="min-w-0">
       <div class="mb-2.5 flex flex-wrap items-center gap-2">
+        <!-- The day first: it is the morning's first choice, the room comes after. -->
+        <select id="planning-day" v-model="day" class="w-auto rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text" aria-label="Jour affiché" @change="dayTouched = true">
+          <option value="">Tous les jours</option>
+          <option v-for="option in planningDays" :key="option.value" :value="option.value">{{ option.label }}</option>
+        </select>
         <select
           id="planning-room"
           v-model="room"
@@ -376,11 +525,24 @@ async function select(session: PlannedSession): Promise<void> {
           <option value="">Toutes les salles</option>
           <option v-for="option in planning?.rooms ?? []" :key="option.id" :value="option.id">{{ option.name }}</option>
         </select>
-        <select id="planning-day" v-model="day" class="w-auto rounded-lg border border-edge bg-canvas px-3 py-2 text-sm text-text" aria-label="Jour affiché">
-          <option value="">Tous les jours</option>
-          <option v-for="option in planningDays" :key="option.value" :value="option.value">{{ option.label }}</option>
-        </select>
-        <Button id="btn-check-feedback" size="small" :disabled="checking" @click="checkLinks">Vérifier les liens</Button>
+        <Button
+          v-if="todayInProgram"
+          id="btn-maintenant"
+          size="small"
+          title="Faire défiler jusqu'à l'heure du hub"
+          @click="goToNow"
+        >Maintenant</Button>
+        <span v-if="hubClock != null" id="planning-clock" class="text-sm tabular-nums text-dim" title="L'heure du hub, celle que suivent toutes les salles">
+          Heure du hub <strong class="font-semibold text-text">{{ hubClock }}</strong>
+        </span>
+        <Button
+          id="btn-check-feedback"
+          size="small"
+          class="ml-auto"
+          :disabled="checking || planning?.openFeedbackProjectId == null"
+          :title="planning?.openFeedbackProjectId == null ? 'Aucun projet OpenFeedback réglé : rien à vérifier' : 'Vérifier que chaque créneau a sa page OpenFeedback'"
+          @click="checkLinks"
+        >Vérifier les liens</Button>
         <span v-if="decisions > 0" id="planning-decisions" class="text-xs text-warn">
           {{ decisions }} décision{{ decisions > 1 ? 's' : '' }} en vigueur
         </span>
@@ -418,24 +580,30 @@ async function select(session: PlannedSession): Promise<void> {
         </Hint>
       </div>
 
-      <Hint v-if="planning != null && planning.openFeedbackProjectId == null" id="planning-feedback-hint" class="mt-0 mb-2.5">
-        <strong>Aucun projet OpenFeedback réglé</strong> : les salles ne projettent aucun QR « notez ce talk ». Il se
-        règle dans <strong>Réglages → Événement</strong>.
-      </Hint>
-
       <ul v-if="slots.length > 0" class="mb-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-dim" data-role="legende">
         <li v-for="item in LEGEND" :key="item.label" class="flex items-center gap-1.5">
           <span class="inline-block size-3 rounded-sm border" :class="item.tone" aria-hidden="true" />{{ item.label }}
         </li>
+        <li v-if="moved > 0" class="flex items-center gap-1.5">
+          <Badge variant="warning" class="px-1.5 py-0 text-[11px]">Déplacée</Badge>créneau échangé
+        </li>
+        <li v-if="anyPinned" class="flex items-center gap-1.5">
+          <Badge variant="alert" class="px-1.5 py-0 text-[11px]">Forcée</Badge>en cours quelle que soit l'heure
+        </li>
+        <li v-for="item in vodLegend" :key="item.statut" class="flex items-center gap-1.5" :data-legende-vod="item.statut">
+          <span class="rounded border border-edge px-1 text-[11px] leading-4" :class="item.tone">VOD</span>{{ item.label }}
+        </li>
       </ul>
 
       <Empty v-if="!hasActiveProgram || planning == null || planning.sessions.length === 0">
-        Aucun programme actif. Il s'importe depuis les réglages.
+        Aucun programme actif. Il s'importe depuis
+        <RouterLink :to="reglagesPath('evenement')" class="text-brand underline">Réglages → Événement</RouterLink>.
       </Empty>
       <Empty v-else-if="slots.length === 0">Aucun créneau pour ce choix de salle et de jour.</Empty>
 
       <div v-for="day in days" v-else :key="day.key" class="mb-5" :data-day="day.key">
-        <h2 v-if="severalDays" class="mb-2 text-sm font-semibold">{{ day.key }}</h2>
+        <!-- Held at the top with the rooms: a scrolled screen of « Tous les jours » must still say which day it shows. -->
+        <h2 v-if="severalDays" class="sticky top-0 z-[11] flex h-7 items-center bg-canvas text-sm font-semibold">{{ day.key }}</h2>
         <!-- One column per room on a large screen; on a phone, the rooms follow each other as lists. -->
         <div class="lg:grid lg:gap-x-1.5" :style="columnsTemplate(day.columns.length)">
           <div class="relative max-lg:hidden" :style="{ height: `${day.heightPx + 28}px` }" aria-hidden="true">
@@ -448,7 +616,7 @@ async function select(session: PlannedSession): Promise<void> {
           </div>
 
           <div v-for="column in day.columns" :key="column.key" class="min-w-0 max-lg:mb-4" :data-room="column.key">
-            <h3 class="sticky top-0 z-10 flex h-7 items-center truncate bg-canvas text-[11px] font-semibold tracking-[.08em] text-text uppercase">
+            <h3 class="sticky top-0 z-10 flex h-7 items-center truncate bg-canvas text-[11px] font-semibold tracking-[.08em] text-text uppercase" :style="severalDays ? { top: '1.75rem' } : undefined">
               {{ column.name }}
             </h3>
             <div class="relative flex flex-col gap-1 lg:block" :style="{ '--day-h': `${day.heightPx}px` }">
@@ -476,7 +644,7 @@ async function select(session: PlannedSession): Promise<void> {
                 :data-slot="slot.session.id"
                 :data-when="placeOf(slot.session)"
                 :aria-pressed="selectedId === slot.session.id"
-                :aria-label="`${hour(slot.session.startsAt)} ${slot.session.title}`"
+                :aria-label="slotName(slot.session)"
                 :title="slot.heightPx < 18 ? `${hour(slot.session.startsAt)} ${slot.session.title}` : undefined"
                 @click="select(slot.session)"
               >
@@ -514,14 +682,29 @@ async function select(session: PlannedSession): Promise<void> {
         </div>
       </div>
 
+      <!-- Below the grid: a missing setting, not the morning's emergency. -->
+      <Hint v-if="planning != null && planning.openFeedbackProjectId == null" id="planning-feedback-hint" class="mt-0 mb-2.5">
+        <strong>Aucun projet OpenFeedback réglé</strong> : les salles ne projettent aucun QR « notez ce talk ». Il se
+        règle dans <RouterLink :to="reglagesPath('evenement')" class="font-semibold text-brand underline">Réglages → Événement</RouterLink>.
+      </Hint>
+
       <Panel v-if="orphans.length > 0" title="Hors du programme actif" class="mt-3">
         <div v-for="state in orphans" :key="state.sessionId" class="flex flex-wrap items-center gap-2 border-t border-edge py-2 text-sm first:border-t-0" :data-session="state.sessionId">
           <span class="min-w-0 flex-1">{{ state.title ?? state.sessionId }}</span>
           <span :class="remaining(state).tone">{{ remaining(state).text }}</span>
-          <Button v-for="offered in actions(state)" :key="offered.action" size="small" :variant="offered.danger ? 'danger' : 'neutral'" @click="act(state, offered.action)">{{ offered.label }}</Button>
+          <Button v-for="offered in actions(state)" :key="offered.action" size="small" :variant="offered.danger ? 'danger' : 'neutral'" :disabled="busy" @click="act(state, offered.action)">{{ offered.label }}</Button>
         </div>
       </Panel>
     </section>
+
+    <!-- On a narrow screen the detail is a sheet: the veil closes it, as Escape does. -->
+    <div
+      v-if="selected != null"
+      class="fixed inset-0 z-30 bg-black/55 lg:hidden"
+      aria-hidden="true"
+      data-role="voile-detail"
+      @click="selectedId = null"
+    />
 
     <!-- Beside the grid on a computer, it stays in view while the day scrolls; on a phone, it rises from the bottom. -->
     <aside
@@ -535,8 +718,8 @@ async function select(session: PlannedSession): Promise<void> {
 
       <Panel v-else>
         <div class="flex items-start gap-2">
-          <h2 class="min-w-0 flex-1 text-base font-semibold">{{ selected.title }}</h2>
-          <Button size="small" aria-label="Fermer le détail" data-role="fermer-detail" @click="selectedId = null">×</Button>
+          <h2 ref="detailHeading" tabindex="-1" class="min-w-0 flex-1 text-base font-semibold focus:outline-none">{{ selected.title }}</h2>
+          <Button size="small" aria-label="Fermer le détail" data-role="fermer-detail" @click="selectedId = null">Fermer</Button>
         </div>
         <p class="mt-0.5 text-sm text-dim">{{ selected.roomName ?? 'Sans salle' }}<template v-if="selected.speakers.length > 0"> · {{ selected.speakers.join(', ') }}</template></p>
         <p v-if="selected.sharedFrom != null" class="mt-0.5 text-xs text-dim">pause commune, héritée d'une autre salle</p>
@@ -560,7 +743,7 @@ async function select(session: PlannedSession): Promise<void> {
             <span v-if="selectedState.decidedBy != null" class="text-dim">{{ selectedState.decidedBy === 'auto' ? 'auto' : selectedState.decidedBy }}</span>
           </p>
           <div class="mt-2 flex flex-wrap gap-1.5">
-            <Button v-for="offered in actions(selectedState)" :key="offered.action" size="small" :variant="offered.danger ? 'danger' : 'neutral'" @click="act(selectedState!, offered.action)">{{ offered.label }}</Button>
+            <Button v-for="offered in actions(selectedState)" :key="offered.action" size="small" :variant="offered.danger ? 'danger' : 'neutral'" :disabled="busy" @click="act(selectedState!, offered.action)">{{ offered.label }}</Button>
           </div>
         </div>
 
@@ -616,7 +799,7 @@ async function select(session: PlannedSession): Promise<void> {
               <select
                 class="mt-1 block w-full rounded-lg border border-edge bg-canvas px-2 py-1.5 text-sm text-text disabled:opacity-40"
                 :data-swap-session="selected.id"
-                :disabled="swapBlocked(selected) != null || partnerGroups(selected).length === 0"
+                :disabled="busy || swapBlocked(selected) != null || partnerGroups(selected).length === 0"
                 :title="swapBlocked(selected) ?? (partnerGroups(selected).length === 0 ? 'Aucune autre conférence à venir ce jour-là' : 'Échanger salle et horaires avec une autre conférence')"
                 value=""
                 @change="changeSwap(selected!, $event.target as HTMLSelectElement)"
@@ -628,8 +811,8 @@ async function select(session: PlannedSession): Promise<void> {
               </select>
             </label>
             <div v-if="canPin(selected)" class="mt-2">
-              <Button v-if="isPinned(selected)" size="small" :data-unpin-session="selected.id" title="Rendre la salle à son horaire" @click="changePin(selected!, false)">Libérer la salle</Button>
-              <Button v-else size="small" :data-pin-session="selected.id" title="La salle passe sur cette conférence maintenant, quelle que soit l'heure" @click="changePin(selected!, true)">Forcer en cours</Button>
+              <Button v-if="isPinned(selected)" size="small" :disabled="busy" :data-unpin-session="selected.id" title="Rendre la salle à son horaire" @click="changePin(selected!, false)">Libérer la salle</Button>
+              <Button v-else size="small" :disabled="busy" :data-pin-session="selected.id" title="La salle passe sur cette conférence maintenant, quelle que soit l'heure" @click="changePin(selected!, true)">Forcer en cours</Button>
             </div>
           </template>
         </details>
@@ -643,6 +826,15 @@ async function select(session: PlannedSession): Promise<void> {
       confirm-label="Rendre les créneaux"
       danger
       @confirm="confirmResetSlots"
+    />
+    <ConfirmDialog
+      v-model:open="resetTalkOpen"
+      tone="warn"
+      title="Remettre à venir ?"
+      :detail="`« ${resetTalk?.title ?? titleOf(resetTalk?.sessionId)} » repart comme si elle n'avait pas eu lieu : son début et sa fin enregistrés sont effacés, et la salle suit.`"
+      confirm-label="Remettre à venir"
+      danger
+      @confirm="resetTalk != null && decide(resetTalk, 'reset')"
     />
     <FeedbackIdDialog v-model:open="feedbackOpen" :session="feedbackSlot" />
     <VodFolderDialog v-model:open="vodOpen" :session="vodSlot" :timezone="zone" />

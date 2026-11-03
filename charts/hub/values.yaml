@@ -288,8 +288,8 @@ murPublic:
   # Proxys devant qui ajoutent à `X-Forwarded-For` : l'ingress, 1.
   proxyHops: 1
 
-  # Les vues en ligne : le jeton créé dans la console (Réglages → Mur social —
-  # page publique), lu dans un secret existant. Vide = la page marche, ses vues ne
+  # Les vues en ligne : le jeton créé dans la console (Réglages → Public),
+  # lu dans un secret existant. Vide = la page marche, ses vues ne
   # sont pas comptées.
   #   kubectl create secret generic mur-public-jeton --from-literal=token=mp_…
   jeton:

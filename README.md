@@ -5,6 +5,9 @@ salles et la supervision, et une **régie de salle** par machine — écran de
 projection, pilotage d'OBS, remontée des enregistrements. Une salle continue de
 fonctionner réseau coupé ; le hub la rattrape quand il revient.
 
+Après l'événement, le hub suit les vidéos : un worker monte les rushes téléversés,
+puis la console les partage par des pages à mot de passe et les envoie sur YouTube.
+
 Pour le reste — décisions, appairage, OBS, empaquetage, publication —
 [CONCEPTION.md](CONCEPTION.md). Pour tenir une salle le jour J,
 [le RUNBOOK](apps/room-client/RUNBOOK.md).
@@ -29,18 +32,20 @@ L'image pose déjà `MODE=production`, `HOST=0.0.0.0`, `PORT=8787` et
 `DATABASE_PATH=/data/hub.db` : **le volume `/data` est ce qui survit au
 remplacement de l'image**, et c'est la seule chose que le hub écrit. Un
 `HEALTHCHECK` intégré interroge `/health`, qui ne touche ni la base ni le
-programme — il répond tant que Fastify écoute, ce qui est la question qu'un
-orchestrateur pose.
+programme : il répond tant que Fastify écoute.
 
 `PUBLIC_URL` doit être l'**adresse publique**, celle que voit un navigateur
 derrière le proxy HTTPS : Better Auth signe ses cookies avec, et l'URI que
 recopie un opérateur pour appairer une machine en découle.
 
-Sur Kubernetes, les manifestes sont dans [`manifests/`](manifests/) —
-`kubectl apply -k manifests/`, et son README dit ce qu'il faut régler avant et
-pourquoi le hub y tient en une seule réplique.
+Sur Kubernetes, deux voies : le [chart Helm](charts/hub/README.md), qui sait aussi
+déployer le worker de montage et la page publique du mur, ou les
+[manifestes](manifests/README.md) (`kubectl apply -k manifests/`). Le hub y tient
+en une seule réplique ; leurs README disent pourquoi et quoi régler avant.
 
-Le compte opérateur, une fois :
+Le premier compte se crée de deux façons. `INITIAL_ADMIN_EMAIL` et
+`INITIAL_ADMIN_PASSWORD` le créent au démarrage d'un hub sans compte. Sinon, une
+fois :
 
 ```bash
 docker exec -it hub node --import tsx src/cli/operator.ts vous@exemple.fr "Régie" <mot-de-passe>
@@ -72,25 +77,41 @@ d'appairage. **Faire les postes avant le jour J**, pas devant une salle qui
 attend : le binaire Windows n'est pas signé et SmartScreen avertit au premier
 lancement. Ensuite, tout se passe dans [le RUNBOOK](apps/room-client/RUNBOOK.md).
 
-Une version = un couple : l'image et les paquets de régie d'un même tag parlent
-le même contrat. Les mélanger n'est pas prévu.
+Un tag publie un ensemble : les images du hub, du worker de montage et du mur
+public, le chart et les paquets de régie. Ils parlent le même contrat ; mélanger
+deux versions n'est pas prévu.
+
+## Après l'événement
+
+Tout se passe dans la console, onglet **VOD**, une fois le stockage S3 configuré
+et les rushes téléversés par les salles. Le détail est dans
+[« Des rushes aux vidéos publiées »](CONCEPTION.md#des-rushes-aux-vidéos-publiées).
+
+- **Montage** : le worker (`apps/vod-montage`) monte chaque prise. La console peut
+  mettre les rendus en pause, annuler un montage et le relancer.
+- **Partage** : une page `/partage/<id>` par talk ou pour tout l'événement, avec
+  mot de passe, pour regarder et télécharger.
+- **YouTube** : la chaîne se connecte dans **Réglages → Vidéo**. Les vidéos partent
+  en privé.
+
+`/sauvegarde/export.json` (**Réglages → Système**) exporte la configuration du hub :
+à faire avant toute remise à zéro.
 
 ## Démarrer en développement
 
-Node 24 ou plus, et pnpm par corepack (la version exacte est figée par
-`packageManager`).
+Node 24 ou plus, et pnpm 12. Il s'installe par npm, car corepack ne sait plus
+lancer pnpm 12 ; la version vient de `packageManager` dans `package.json`.
 
 ```bash
-corepack enable && pnpm install
+npm install -g pnpm@12.4.1 && pnpm install
 ```
 
 `MODE=dev` **sur le hub** est l'unique interrupteur devant les commodités de
 développement : heure réglable depuis la console, remise à zéro des données. Les
 salles **héritent du mode du hub** — elles restent en production tant qu'aucun hub
 n'a répondu — et ne peuvent donc jamais être plus « dev » que lui. Le défaut est
-`production` — le défaut doit être le cas dangereux, pas le cas confortable — et
-en production ces réglages sont **ignorés même s'ils sont renseignés**,
-bruyamment.
+`production`, où ces réglages sont **ignorés même s'ils sont renseignés**, et le
+hub le dit.
 
 Seule la simulation d'OBS reste un choix de la machine (`OBS_SIMULE=1`) : une
 vraie salle branchée sur le hub de dev pilote toujours ses vrais OBS.
@@ -127,6 +148,7 @@ crée les salles à partir de `event.tracks[]`.
 | Console | <http://localhost:8787/admin> |
 | Mur public | <http://localhost:8787/mur?salle=…> |
 | Régie mobile | <http://localhost:8787/regie> |
+| Écran orateur | <http://localhost:8787/orateur/…> |
 
 **2. Une régie**
 
@@ -176,7 +198,16 @@ dans la console.
 | `PORT` / `HOST` | Écoute | `8787` / `0.0.0.0` |
 | `DATABASE_PATH` | Fichier SQLite du hub — la seule chose qu'il écrit | `./data/hub.db`, `/data/hub.db` dans l'image |
 | `LOG_LEVEL` | Niveau de journal | `info` |
+| `APP_VERSION` | Version affichée par la console. Posée par l'image | `0.0.0-dev` |
 | `PROGRAM_SOURCE_URL` | Export « conference-center ». **Amorce le premier démarrage seulement** — ensuite le réglage de la console fait foi. C'est aussi ce qui **nomme l'événement** partout | — |
+
+**Premier administrateur** — facultatif. Créé au démarrage **si le hub n'a aucun
+compte**, ignoré ensuite. L'adresse et le mot de passe vont par paire.
+
+| Variable | Rôle | Défaut |
+|---|---|---|
+| `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD` | Identifiants ; 12 caractères au moins pour le mot de passe | — |
+| `INITIAL_ADMIN_NAME` | Nom affiché | partie locale de l'adresse |
 
 **Appairage des machines**
 
@@ -213,8 +244,9 @@ survivre à une base recréée.
 | `S3_PREFIX` | Préfixe dans le bucket, pour loger plusieurs éditions sans les mélanger. **Amorce seulement**, même règle ; les barres obliques de tête et de queue sont retirées | — |
 | `S3_REGION` | Entre dans la signature, même quand le fournisseur l'ignore | `us-east-1` |
 | `S3_FORCE_PATH_STYLE` | Adressage `endpoint/bucket/clé`, le seul qui marche sur une IP | `true` |
-| `S3_CA_CERT` | PEM d'une CA interne. Node n'utilise pas le magasin du système. Descendu aux salles au sync : rien à poser sur les machines | — |
+| `S3_CA_CERT` | Chemin d'un fichier PEM de CA interne. Node n'utilise pas le magasin du système. Descendu aux salles au sync : rien à poser sur les machines | — |
 | `VOD_ABANDON_MINUTES` | Abandon d'un téléversement muet, et fermeture de son multipart | `30` |
+| `MONTAGE_WORKER_TOKEN` | Jeton `wt_…` d'un worker déclaré par le déploiement, le même que son `HUB_WORKER_TOKEN`. Absent, seuls les workers créés dans la console existent ; retiré, le worker est révoqué au démarrage suivant | — |
 
 **Mur social** — facultatif ; sans hashtag, rien n'est interrogé.
 
@@ -261,6 +293,40 @@ celui du hub (production tant qu'il ne répond pas).
 `MODE` et `OBS_MOCK` n'ont plus d'effet sur une salle : la laisser traîner ne
 fait rien, et la salle le dit au démarrage.
 
+## Variables d'environnement — services annexes
+
+**Worker de montage** (`apps/vod-montage`). `HUB_URL` et `HUB_WORKER_TOKEN` sont
+obligatoires.
+
+| Variable | Rôle | Défaut |
+|---|---|---|
+| `HUB_URL` | Adresse du hub | — |
+| `HUB_WORKER_TOKEN` | Jeton `wt_…`, créé dans **VOD → Workers de montage** ou déclaré par `MONTAGE_WORKER_TOKEN` | — |
+| `CHROME` | Chromium qui capture les génériques | `chromium` |
+| `MONTAGE_JINGLE` | Son sous l'intro. Absent : silence | — |
+| `WORK_DIR` | Dossier de travail, avec la place pour deux rushes | dossier temporaire |
+| `POLL_SECONDS` | Attente quand la file est vide (5 à 3600) | `30` |
+| `UPLOAD_CONCURRENCY` | Morceaux envoyés à la fois (1 à 16) | `4` |
+| `MONTAGE_LUFS` / `MONTAGE_TRUE_PEAK` | Sonie visée et plafond de crête | `-16` / `-1.5` |
+| `MONTAGE_PASSE_HAUT` | Coupure des graves, en Hz | `80` |
+| `MONTAGE_COMPRESSION` | `non` ou `douce` | `douce` |
+
+**Mur public** (`apps/mur-public`), la page du public sur son propre domaine.
+Seul `HUB_URL` est obligatoire.
+
+| Variable | Rôle | Défaut |
+|---|---|---|
+| `HUB_URL` | Le hub, tel que le service le joint | — |
+| `HUB_TOKEN` | Jeton `mp_…` de **Réglages → Public**. Absent, les vues ne sont pas comptées | — |
+| `PORT` / `HOST` | Écoute | `8080` / `0.0.0.0` |
+| `POLL_SECONDS` / `VUES_SECONDS` | Lecture du hub, envoi des vues | `5` / `30` |
+| `LIMITE_PAGES` / `LIMITE_IMAGES` / `LIMITE_VUES` | Limites par adresse, en `capacité/par seconde` | `1000/50` / `12000/300` / `600/40` |
+| `PROXY_HOPS` | Proxys devant le service qui complètent `X-Forwarded-For` | `1` |
+| `IMAGES_CACHE_MB` | Images gardées en mémoire | `64` |
+| `RESEAUX` | Réseaux proposés pour publier | `bluesky,mastodon,x,linkedin` |
+
+## Une salle à un seul OBS
+
 Une salle peut tourner sur **un seul OBS** : dans le ⚙ de la régie, le bloc
 « OBS-B — captation » propose « OBS-B dédié » ou « Canvas vertical d'OBS-A ». Le
 second efface l'adresse d'OBS-B — c'est elle qui reste la vérité — et la captation
@@ -270,7 +336,7 @@ passe par le canvas vertical du plugin, dans l'OBS qui projette. Le simulateur l
 ## Vérifier
 
 ```bash
-pnpm test          # 1483 tests
+pnpm test
 pnpm typecheck
 pnpm build
 ```
@@ -282,4 +348,7 @@ pnpm build
 | [CONCEPTION.md](CONCEPTION.md) | Décisions, appairage, OBS, écrans, empaquetage, publication |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Conventions de code, langue, tests, messages de commit |
 | [RUNBOOK](apps/room-client/RUNBOOK.md) | Procédures de salle, à l'usage de qui tient la régie |
+| [charts/hub/README.md](charts/hub/README.md) | Déployer par Helm : hub, worker de montage, mur public |
+| [manifests/README.md](manifests/README.md) | Déployer par kustomize |
+| [themes/LISEZMOI.md](themes/LISEZMOI.md) | Écrire et empaqueter un thème |
 | [packages/db/MIGRATIONS.md](packages/db/MIGRATIONS.md) | Migrations scellées |

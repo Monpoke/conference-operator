@@ -8,14 +8,15 @@ quatre cents personnes.
 ## Démarrer
 
 ```bash
-corepack enable && pnpm install
-pnpm test        # 1391 tests
+npm install -g pnpm@12.4.1 && pnpm install
+pnpm test
 pnpm typecheck
 ```
 
-Node 24 ou plus, pnpm 10 (la version exacte est figée par `packageManager`).
-Pour lancer le hub et un client de salle, voir « Lancer le hub » et « Lancer une
-régie » du [README](README.md) — le mode `dev:headless` du client permet de tout faire
+Node 24 ou plus, pnpm 12 (la version exacte est figée par `packageManager` ;
+corepack ne sait plus lancer pnpm 12).
+Pour lancer le hub et un client de salle, voir « Démarrer en développement » du
+[README](README.md) — le mode `dev:headless` du client permet de tout faire
 sans Electron ni OBS, y compris sous WSL ou sur une machine distante.
 
 ## Ce qui se relit à l'œil

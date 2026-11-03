@@ -1,7 +1,8 @@
 # Déployer le hub sur Kubernetes
 
-Ces manifestes déploient **le hub**, et lui seul : l'image publiée par un tag,
-avec sa base et son ingress. Les régies de salle ne se déploient pas — elles
+Ces manifestes déploient **le hub** : l'image publiée par un tag, avec sa base et
+son ingress. Le worker de montage a son manifeste (`vod-montage.yaml`) ; la page
+publique du mur n'existe que dans le [chart](../charts/hub/README.md). Les régies de salle ne se déploient pas — elles
 s'installent depuis la release, sur les machines des salles.
 
 ```bash

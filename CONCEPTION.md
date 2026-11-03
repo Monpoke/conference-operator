@@ -12,13 +12,16 @@ mais **le dépôt ne connaît pas l'événement qu'il sert** : le hub le déduit
 programme importé, et le nom se corrige dans la console — voir
 [Servir un autre événement](#servir-un-autre-événement).
 
-Deux applications :
+Deux applications font tourner l'événement :
 
 - **hub** (cloud) — importe le programme, diffuse salles et commandes, collecte les
   interactions sociales et la télémétrie ;
 - **room-client** (Electron, un par salle) — pilote une ou deux instances OBS, sert
   l'écran de salle, et **fonctionne seul** : réseau coupé, la régie continue et rien
   n'est perdu.
+
+Deux services facultatifs s'y branchent : **vod-montage** monte les vidéos, et
+**mur-public** sert le mur au public sur son propre domaine.
 
 La structure du dépôt est décrite plus bas, et les choix qui ne se devinent pas
 à la lecture du code sont réunis dans « Décisions structurantes ». Pour
@@ -57,6 +60,7 @@ l'image : `npx @mermaid-js/mermaid-cli -i docs/architecture.mmd -o docs/architec
 | 5 | Exploitation : packaging, supervision, runbook | ✅ (répétition à faire) |
 | 6 | Console du hub en Vue 3 — huit vues, socle partagé | ✅ |
 | 7 | Régie mobile — piloter une salle depuis un téléphone, par le hub | ✅ (répétition à faire) |
+| 8 | Après l'événement : montage, pages de partage, envoi sur YouTube | ✅ |
 
 ## Structure
 
@@ -68,11 +72,16 @@ packages/db         schémas Drizzle + migrations (hub et client), helper SQLite
 packages/format     formateurs partagés : durées, instants, tailles, échappement
 packages/hub-client client oRPC typé, côté navigateur : jeton, session expirée
 packages/components composants Vue : primitives Reka retravaillées + design system
+packages/projector  rendu de la projection : scènes, thèmes, intro et outro des vidéos, vignettes
+packages/ui         feuille Tailwind figée des pages servies sans build
 apps/hub-server     Fastify + oRPC + SQLite + Better Auth : programme, salles, commandes, appairage
                     sert /mur (gabarit), la coquille de la console et celle de la régie mobile
 apps/hub-admin      console d'exploitation — Vue 3 + Vite, servie par le hub
 apps/control-web    écran de régie — Vue 3 + Vite, servi par la salle et, en mobile, par le hub
 apps/room-client    Electron — écran de salle, pilotage OBS, appairage, cache local
+apps/vod-montage    worker de montage : ffmpeg et Chromium, dans sa propre image
+apps/mur-public     page publique du mur, sur son domaine : lit le hub, sans état
+apps/streamdeck-plugin  plugin Stream Deck / OpenDeck
 ```
 
 ## Voir l'écran de salle
@@ -653,9 +662,12 @@ des exemples, pas des constantes du code.
 
 | Servi par | URL | Usage |
 |---|---|---|
-| hub | `/admin` | Console : supervision. Un onglet par adresse — `/admin/moderation`, `/admin/conferences`, `/admin/messages`, `/admin/vod`, `/admin/reglages` |
+| hub | `/admin` | Console : supervision. Un onglet par adresse — `/admin/moderation`, `/admin/conferences`, `/admin/messages`, `/admin/vod`, `/admin/statistiques`, `/admin/boucle`, `/admin/reglages`, `/admin/acces`, `/admin/journal`, `/admin/exploitation`. Réglages et Boucle ont une adresse par section (`/admin/reglages/video`, `/admin/boucle/sponsors`) |
 | hub | `/admin/devices?user_code=…` | Réglages, section Appairage, code pré-rempli (lien affiché par la régie) et verdict du code en modale |
 | hub | `/mur?salle=<id>` | Mur public (commun à l'événement) et questions de la salle, scanné au QR |
+| hub | `/orateur/<id>` | Écran orateur de cette salle |
+| hub | `/partage/<id>` | Vidéos partagées, derrière leur mot de passe |
+| mur-public | `/` | Mur du public, sur son propre domaine |
 | hub | `/regie` | Régie mobile : choisir une salle |
 | hub | `/regie/<id>` | Régie mobile : piloter cette salle-là |
 | client | `/regie` | Fenêtre opérateur |
@@ -2967,6 +2979,34 @@ raison de regarder un vumètre.
 Le mode OBS simulé produit trois entrées plausibles (micro, ambiance, retour
 muet), ce qui rend le panneau observable sans salle ni carte son.
 
+## Des rushes aux vidéos publiées
+
+Les salles téléversent leurs rushes dans le stockage S3 avec des adresses signées
+par le hub. Le reste passe par la console, onglet **VOD**.
+
+**Le montage.** `apps/vod-montage` réclame un travail au hub, télécharge les prises,
+coupe sur les silences, capture l'intro et les cartons dans Chromium, assemble avec
+ffmpeg et renvoie la vidéo dans le stockage. Il s'authentifie auprès du hub par un
+jeton `wt_…` ; un jeton de salle n'ouvre pas le montage. Le worker a sa propre image
+parce qu'il lui faut Chromium et ffmpeg, absents de celle du hub.
+
+« Mettre les rendus en pause » laisse finir le montage en cours et n'en démarre pas
+d'autre. Un montage annulé peut être relancé.
+
+**Le partage.** Une page `/partage/<id>` couvre un talk ou tout l'événement. Elle
+montre le dernier montage terminé de chaque prise, à regarder ou à télécharger. Le
+mot de passe s'essaie sous limite de débit, par page et par adresse, puis un cookie
+de 30 jours garde le visiteur connecté. Le lien de la console peut embarquer le mot
+de passe ; la page l'efface alors de l'adresse. **Le refus d'un orateur s'applique
+aussi ici** : une page à mot de passe reste une publication, et son talk en disparaît.
+
+**YouTube.** Les identifiants du client OAuth se saisissent dans **Réglages → Vidéo**,
+avec `<PUBLIC_URL>/youtube/retour` comme adresse de redirection. Le hub envoie les
+vidéos une par une, du stockage à YouTube, sans passer par son disque. Une vidéo part
+**toujours en privé** ; un envoi interrompu repart de zéro après un redémarrage. La
+console change ensuite la visibilité, met à jour le titre, envoie les vignettes et
+tient la playlist.
+
 ## Habillage (Tailwind)
 
 Les six pages servies — écran de salle, habillage captation, régie, console du
@@ -3022,7 +3062,7 @@ pnpm --filter @conference-operator/db generate:hub
 pnpm --filter @conference-operator/db sceller
 ```
 
-Le sceau (`migrations/<jeu>/empreintes.json`) est vérifié par les tests : une
+Le sceau (`migrations/<jeu>/fingerprints.json`) est vérifié par les tests : une
 ligne de base régénérée fait échouer le build au lieu de casser une base au
 démarrage. Supprimer `apps/hub-server/data` reste un dernier recours, réservé à
 une base jetable. Détails : `packages/db/MIGRATIONS.md`.

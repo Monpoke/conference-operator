@@ -27,6 +27,17 @@ helm upgrade --install hub charts/hub \
 
 `values.yaml` documente chaque réglage et la raison de ceux qui n'en sont pas.
 
+## Le mur public
+
+`murPublic.enabled: true` pose la page publique du mur sur son propre domaine,
+donné par `murPublic.ingress.host`, sans lequel l'installation échoue. Elle lit le
+hub par son service dans le cluster ; le public ne parle qu'à elle. Elle n'a pas
+d'état : un redémarrage relit le hub.
+
+Pour compter les vues, créer le jeton dans **Réglages → Public**, le ranger dans un
+secret et nommer ce secret dans `murPublic.jeton.secretName`. Sans jeton, la page
+marche et ses vues ne sont pas comptées.
+
 ## Le worker de montage
 
 `montage.enabled: true` pose un Deployment `vod-montage` à côté du hub. Il

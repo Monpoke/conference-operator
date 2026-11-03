@@ -29,3 +29,10 @@ preview/
 spikes/
 
 .claude/worktrees/
+
+# impeccable (installation locale)
+.claude/agents/
+.claude/skills/impeccable/
+.github/agents/
+.github/hooks/
+.github/skills/

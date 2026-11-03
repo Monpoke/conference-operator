@@ -17,7 +17,7 @@ pnpm --filter @conference-operator/db seal
 
 ## Le sceau
 
-`migrations/<jeu>/empreintes.json` fige le SHA-256 de chaque migration publiée —
+`migrations/<jeu>/fingerprints.json` fige le SHA-256 de chaque migration publiée —
 la même grandeur que Drizzle stocke dans `__drizzle_migrations`. Un test
 (`test/migrations-sealed.test.ts`) échoue si un fichier publié est modifié ou
 supprimé ; une migration *nouvelle* passe sans bruit, puisque c'est le geste
@@ -60,5 +60,5 @@ encore remontés.
 ## En production
 
 Une migration additive s'applique seule au démarrage. Pour un changement
-destructeur, sauvegarder d'abord — le hub est répliqué en continu par Litestream,
-et un `VACUUM INTO` horodaté avant l'opération coûte quelques secondes.
+destructeur, sauvegarder d'abord : un `VACUUM INTO` horodaté coûte quelques
+secondes. Le dépôt ne fournit aucune réplication continue de la base.

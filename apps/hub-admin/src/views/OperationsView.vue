@@ -102,6 +102,94 @@ function audioIssues(room: RoomStatus): string[] {
   return (room.audioAlerts ?? []).map((alert) => `Micro « ${alert.input} » ${AUDIO_ALERT_WORD[alert.kind]}`)
 }
 
+/**
+ * The worst that is true of a room, and what the dot and the card's tint show.
+ *
+ * The talk's state stays in words: a room overrunning with a working capture does
+ * not call for the same gesture as a green dot losing its VOD. `muette` comes
+ * first because it voids the rest: nothing else can be known about that room.
+ * DEGRADED is not silence: real time failed, but the room still answers over HTTP.
+ */
+type RoomHealth = 'muette' | 'panne' | 'attention' | 'normal'
+function health(room: RoomStatus): RoomHealth {
+  if (room.connectivity !== 'ONLINE' && room.connectivity !== 'DEGRADED') return 'muette'
+  const obs = obsIssues(room)
+  if (obs.some((issue) => issue.variant === 'alert') || audioIssues(room).length > 0) return 'panne'
+  if (room.connectivity === 'DEGRADED' || obs.length > 0 || streamHealth(room)?.variant === 'warning') return 'attention'
+  return 'normal'
+}
+
+const HEALTH_DOT = { panne: 'alert', attention: 'warn', normal: 'ok' } as const
+const HEALTH_CARD: Record<RoomHealth, string> = {
+  muette: 'border-alert bg-alert-soft',
+  panne: 'border-alert bg-alert-soft',
+  attention: 'border-warn/50 bg-warn-soft',
+  normal: 'border-edge bg-canvas',
+}
+const HEALTH_WORD: Record<RoomHealth, string> = {
+  muette: 'Salle muette',
+  panne: 'En panne',
+  attention: 'À surveiller',
+  normal: 'Tout va bien',
+}
+
+/** What is wrong, worst first: the first one heads the card, the rest follow it. */
+function problems(room: RoomStatus): string[] {
+  const obs = obsIssues(room)
+  return [
+    ...obs.filter((issue) => issue.variant === 'alert').map((issue) => issue.text),
+    ...audioIssues(room),
+    ...obs.filter((issue) => issue.variant === 'warning').map((issue) => issue.text),
+    ...(room.connectivity === 'DEGRADED' ? ['Liaison dégradée'] : []),
+    ...(streamHealth(room)?.variant === 'warning' ? ['Flux en difficulté'] : []),
+  ]
+}
+
+/**
+ * A talk under way with nothing being recorded. Said, but not a failure: nothing
+ * tells the console that this room was meant to record, and a workshop may not be.
+ */
+const TALK_UNDER_WAY = ['en-cours', 'fin-proche', 'depassement']
+function recordingMissing(room: RoomStatus): boolean {
+  return room.connectivity === 'ONLINE' && !room.recording && !onBreak(room) && TALK_UNDER_WAY.includes(room.conference)
+}
+
+/**
+ * What a silent room said before going quiet: worth knowing, but no longer a
+ * fact. The time left stays out of this: the hub computes it from the programme.
+ */
+function lastContact(room: RoomStatus): string {
+  return [
+    room.recording ? 'REC' : null,
+    room.streaming ? 'LIVE' : null,
+    room.sceneRole,
+    room.outboxDepth > 0 ? `${room.outboxDepth} en file` : null,
+  ]
+    .filter((fact) => fact != null)
+    .join(' · ')
+}
+
+/**
+ * Under 4.5:1 in the light theme, the brand cannot carry small link text on a
+ * card, tinted or not: the underline says "link", the text stays neutral. And a
+ * focus ring of its own, since the cards are also reached by keyboard.
+ */
+const LINK = 'rounded-sm py-1 text-text underline decoration-dim underline-offset-2 pointer-coarse:py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand'
+
+/** The footer's quiet facts. The talk's word only when a problem took the state line. */
+function footer(room: RoomStatus): string {
+  return [
+    problems(room).length > 0 ? appearance(room).word : null,
+    room.connectivity === 'ONLINE' ? 'en ligne' : null,
+    `vu ${timeAgo(room.lastSeenAt)}`,
+  ]
+    .filter((part) => part != null)
+    .join(' · ')
+}
+function missingTone(room: RoomStatus): string {
+  return health(room) === 'normal' ? 'font-semibold text-warn' : 'font-semibold text-text'
+}
+
 function remaining(room: RoomStatus): ReturnType<typeof slotRemaining> {
   return onBreak(room) ? null : slotRemaining(room.currentSession?.remainingMs)
 }
@@ -191,122 +279,120 @@ async function confirmResync(): Promise<void> {
       </div>
       <div
         id="rooms"
-        class="grid grid-cols-[repeat(auto-fit,minmax(min(260px,100%),1fr))] gap-2.5"
+        class="grid grid-cols-[repeat(auto-fit,minmax(min(320px,100%),1fr))] gap-2.5"
       >
         <Empty v-if="rooms.length === 0">Aucune salle déclarée.</Empty>
 
         <div
           v-for="room in rooms"
           :key="room.roomId"
-          class="rounded-xl border border-edge bg-canvas p-3"
+          class="flex min-w-0 flex-col rounded-xl border p-4 [overflow-wrap:anywhere]"
+          :class="HEALTH_CARD[health(room)]"
           :data-room="room.roomId"
+          :data-health="health(room)"
         >
-          <div class="flex items-center gap-2">
-            <StatusDot :state="room.conference" :connectivity="room.connectivity" />
-            <span class="min-w-0 flex-1 truncate font-semibold">{{ room.name }}</span>
+          <div class="flex items-center gap-2.5">
+            <!-- Hollow when silent: the shared vocabulary for "we no longer know". -->
+            <StatusDot
+              v-if="health(room) === 'muette'"
+              class="size-3.5"
+              :state="room.conference"
+              :connectivity="room.connectivity"
+            />
+            <StatusDot v-else class="size-3.5" :level="HEALTH_DOT[health(room) as keyof typeof HEALTH_DOT]" />
+            <!-- Two lines rather than an ellipsis: "Amphi… Track 1" and "Amphi… Track 2" read the same. -->
+            <h3 class="mb-0 line-clamp-2 min-w-0 flex-1 text-xl leading-tight font-semibold" :title="room.name">
+              {{ room.name }}<span class="sr-only"> : {{ HEALTH_WORD[health(room)] }}</span>
+            </h3>
             <Badge
               v-if="room.breakBadge != null"
-              class="px-1.5 py-0.5 text-[11px] tracking-normal"
+              class="shrink-0 px-1.5 py-0.5 text-[11px] tracking-normal"
               :variant="onBreak(room) ? 'neutral' : 'warning'"
             >
               {{ onBreak(room) ? 'BREAK' : 'BREAK à venir' }}
             </Badge>
-            <a
-              v-if="features.wall || features.questions"
-              class="shrink-0 text-[13px] text-brand no-underline"
-              target="_blank"
-              rel="noopener"
-              :href="`/mur?salle=${encodeURIComponent(room.roomId)}`"
-            >
-              mur ↗
-            </a>
-            <a
-              class="shrink-0 text-[13px] text-brand no-underline"
-              target="_blank"
-              rel="noopener"
-              :href="`/orateur/${encodeURIComponent(room.roomId)}`"
-            >
-              retour orateur ↗
-            </a>
-          </div>
-
-          <!-- What is playing: the first thing one comes to check. -->
-          <div class="mt-1.5 text-[13px] leading-snug">
-            <span v-if="onBreak(room)" class="text-dim">—</span>
-            <template v-else-if="room.currentSession != null">
-              {{ room.currentSession.title }}
-            </template>
-            <span v-else class="text-dim">Rien au programme</span>
           </div>
 
           <!--
-            And for how much longer: without it, knowing what is playing does not
-            say whether the room is early, on time, or overrunning.
+            The one answer readable from afar: the worst of what is wrong or, when
+            nothing is, what the talk is doing. Kept mounted: a live region that
+            appears with its text is not always announced. 19 px bold is large text
+            for WCAG, which is what lets the state colours stay readable in light.
           -->
+          <div class="mt-2 text-[1.1875rem] leading-snug font-bold" aria-live="polite">
+            <p v-if="health(room) === 'muette'" class="mb-0 text-text first-letter:uppercase" data-role="silent-room">
+              salle muette<span aria-hidden="true" class="block text-sm font-normal tabular-nums first-letter:uppercase">
+                {{ room.lastSeenAt == null ? 'jamais vue' : `vue il y a ${timeAgo(room.lastSeenAt)}` }}</span>
+            </p>
+            <p v-else-if="problems(room).length > 0" class="mb-0 text-text" data-role="problem">{{ problems(room)[0] }}</p>
+            <p v-else class="mb-0 first-letter:uppercase" :class="appearance(room).text" data-role="talk-state">
+              {{ appearance(room).word }}
+            </p>
+          </div>
+          <ul v-if="problems(room).length > 1" class="mt-0.5 mb-0 list-none p-0 text-sm font-semibold">
+            <li v-for="problem in problems(room).slice(1)" :key="problem" data-role="problem">{{ problem }}</li>
+          </ul>
+
+          <!-- What is playing, and for how much longer: what one comes to check next. -->
+          <div v-if="!onBreak(room)" class="mt-3 text-sm leading-snug">
+            <span v-if="room.currentSession != null" class="line-clamp-2" :title="room.currentSession.title">{{ room.currentSession.title }}</span>
+            <span v-else class="text-dim">Rien au programme</span>
+          </div>
           <div
             v-if="remaining(room) != null"
-            class="mt-0.5 text-xs"
-            :class="remaining(room)!.overrun ? 'text-alert' : 'text-dim'"
+            class="mt-0.5 text-lg leading-tight font-semibold text-text tabular-nums"
           >
             {{ remaining(room)!.text }}
           </div>
 
+          <!-- Telemetry: useful once one is looking at the card, silent from afar. -->
           <div
-            v-if="room.recording || room.streaming || room.sceneRole != null || room.outboxDepth > 0 || obsIssues(room).length > 0"
-            class="mt-2 flex flex-wrap gap-1.5"
+            v-if="health(room) === 'muette' && lastContact(room) !== ''"
+            class="mt-3 text-xs text-text"
+            data-role="last-contact"
           >
-            <Badge v-if="room.recording" class="px-1.5 py-0.5 text-[11px] tracking-normal" variant="alert">
-              ● REC
-            </Badge>
-            <Badge v-if="room.streaming" class="px-1.5 py-0.5 text-[11px] tracking-normal text-ok">
-              ● LIVE
-            </Badge>
-            <Badge v-if="room.sceneRole != null" class="px-1.5 py-0.5 text-[11px] tracking-normal">
-              {{ room.sceneRole }}
-            </Badge>
-            <Badge
-              v-for="issue in obsIssues(room)"
-              :key="issue.text"
-              class="px-1.5 py-0.5 text-[11px] tracking-normal"
-              :variant="issue.variant"
-            >
-              {{ issue.text }}
-            </Badge>
-            <Badge
-              v-for="issue in audioIssues(room)"
-              :key="issue"
-              class="px-1.5 py-0.5 text-[11px] tracking-normal normal-case"
-              variant="alert"
-              data-role="audio-alert"
-            >
-              {{ issue }}
-            </Badge>
-            <Badge
+            Au dernier contact : {{ lastContact(room) }}
+          </div>
+          <div
+            v-else-if="health(room) !== 'muette'"
+            class="mt-3 flex flex-wrap gap-x-2.5 gap-y-0.5 text-xs text-dim empty:hidden"
+            data-role="telemetry"
+          >
+            <span v-if="room.recording">● REC</span>
+            <span v-else-if="recordingMissing(room)" :class="missingTone(room)" data-role="no-recording">Pas d'enregistrement</span>
+            <span v-if="room.streaming">● LIVE</span>
+            <span v-if="room.sceneRole != null">{{ room.sceneRole }}</span>
+            <span
               v-if="streamHealth(room) != null"
-              class="px-1.5 py-0.5 text-[11px] tracking-normal normal-case"
-              :variant="streamHealth(room)!.variant"
+              :class="streamHealth(room)!.variant === 'warning' ? 'font-semibold text-text' : ''"
             >
               {{ streamHealth(room)!.text }}
-            </Badge>
-            <Badge
-              v-if="room.outboxDepth > 0"
-              class="px-1.5 py-0.5 text-[11px] tracking-normal"
-              variant="warning"
-            >
-              {{ room.outboxDepth }} en file
-            </Badge>
+            </span>
+            <span v-if="room.outboxDepth > 0">{{ room.outboxDepth }} en file</span>
           </div>
 
-          <!--
-            The word accompanies the colour: a dot on its own cannot be read by
-            somebody who does not tell the tints apart, and the card is looked at
-            from afar.
-          -->
-          <div class="mt-2 text-xs text-dim">
-            <span :class="appearance(room).text">
-              {{ room.connectivity === 'ONLINE' ? appearance(room).word : 'salle muette' }}
+          <!-- Pushed to the bottom so that the cards of a row line up. -->
+          <div class="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pt-3 text-xs text-dim">
+            <span v-if="health(room) !== 'muette'">{{ footer(room) }}</span>
+            <span class="ml-auto flex gap-3 text-[13px]">
+              <a
+                v-if="features.wall || features.questions"
+                :class="LINK"
+                target="_blank"
+                rel="noopener"
+                :href="`/mur?salle=${encodeURIComponent(room.roomId)}`"
+              >
+                mur ↗
+              </a>
+              <a
+                :class="LINK"
+                target="_blank"
+                rel="noopener"
+                :href="`/orateur/${encodeURIComponent(room.roomId)}`"
+              >
+                retour orateur ↗
+              </a>
             </span>
-            · {{ room.connectivity.toLowerCase() }} · vu {{ timeAgo(room.lastSeenAt) }}
           </div>
         </div>
       </div>

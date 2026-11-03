@@ -109,19 +109,67 @@ describe('vue exploitation', () => {
     expect(wrapper.get('[data-room="track-1"]').text()).toContain('en cours')
   })
 
-  it('separates the talk\'s fill from the room\'s outline', async () => {
-    const wrapper = await mountView([{ ...ROOM, conference: 'depassement', connectivity: 'DEGRADED' }])
+  it('gives the room\'s health to the dot, and the talk\'s state to the words', async () => {
+    const wrapper = await mountView([{ ...ROOM, conference: 'depassement' }])
 
-    // A dot carrying only the connectivity showed a green room while it was
-    // overrunning by ten minutes.
-    const dot = wrapper.get('[data-room="track-1"] .status-dot')
-    expect(dot.classes()).toContain('overrun')
-    expect(dot.classes()).toContain('unsure')
+    const card = wrapper.get('[data-room="track-1"]')
+    expect(card.attributes('data-health')).toBe('normal')
+    expect(card.get('.status-dot').classes()).not.toContain('overrun')
+    expect(card.text()).toContain('dépassement')
+  })
+
+  it('turns the card red when a capture is at risk, whatever the talk is doing', async () => {
+    const obsCut = await mountView([
+      { ...ROOM, obs: { A: { connected: true, missingRoles: [] }, B: { connected: false, missingRoles: [] } } },
+    ])
+    expect(obsCut.get('[data-room="track-1"]').attributes('data-health')).toBe('panne')
+    expect(obsCut.get('[data-room="track-1"] .status-dot').classes()).toContain('offline')
+    obsCut.unmount()
+
+    // Alone on the card: no REC, no scene, nothing else to open the badge row.
+    const mic = await mountView([
+      { ...ROOM, audioAlerts: [{ kind: 'muet', input: 'HF 1', since: '2026-10-30T09:59:00Z' }] },
+    ])
+    expect(mic.get('[data-room="track-1"]').attributes('data-health')).toBe('panne')
+    expect(mic.get('[data-role="problem"]').text()).toContain('HF 1')
+  })
+
+  it('marks what only needs watching, without calling it a failure', async () => {
+    const wrapper = await mountView([
+      { ...ROOM, streaming: true, streamHealth: { bitrateKbps: 900, skippedRatio: 0, congestion: 0.35, at: '2026-10-30T09:59:00Z' } },
+    ])
+    expect(wrapper.get('[data-room="track-1"]').attributes('data-health')).toBe('attention')
+    expect(wrapper.get('[data-room="track-1"] .status-dot').classes()).toContain('degraded')
+  })
+
+  it('does not call a degraded link silent: that room still answers', async () => {
+    const wrapper = await mountView([{ ...ROOM, connectivity: 'DEGRADED' }])
+
+    const card = wrapper.get('[data-room="track-1"]')
+    expect(card.attributes('data-health')).toBe('attention')
+    expect(card.text()).not.toContain('salle muette')
+    expect(card.text()).toContain('en cours')
   })
 
   it('says "salle muette" rather than assert a state that is unknown', async () => {
     const wrapper = await mountView([{ ...ROOM, connectivity: 'OFFLINE' }])
-    expect(wrapper.get('[data-room="track-1"]').text()).toContain('salle muette')
+    const card = wrapper.get('[data-room="track-1"]')
+    expect(card.get('[data-role="silent-room"]').text()).toContain('salle muette')
+    expect(card.attributes('data-health')).toBe('muette')
+    expect(card.get('.status-dot').classes()).toContain('silent')
+  })
+
+  it('no longer presents what a silent room last said as a fact', async () => {
+    const wrapper = await mountView([
+      { ...ROOM, connectivity: 'OFFLINE', recording: true, streaming: true, sceneRole: 'conference' },
+    ])
+
+    const card = wrapper.get('[data-room="track-1"]')
+    expect(card.text()).not.toContain('● REC')
+    expect(card.text()).not.toContain('● LIVE')
+    expect(card.get('[data-role="last-contact"]').text()).toBe('Au dernier contact : REC · LIVE · conference')
+    // Computed by the hub from the programme: still true of a silent room.
+    expect(card.text()).toContain('10 min restantes')
   })
 
   it('does not present a shared slot as a talk', async () => {
@@ -151,8 +199,9 @@ describe('vue exploitation', () => {
 
     const card = wrapper.get('[data-room="track-1"]')
     expect(card.text()).toContain('scène LIVE introuvable')
-    expect(card.text()).toContain('OBS-B coupé')
-    expect(card.html()).toContain('text-alert')
+    // The failure heads the card, ahead of what only needs watching.
+    expect(card.get('[data-role="problem"]').text()).toBe('OBS-B coupé')
+    expect(card.attributes('data-health')).toBe('panne')
   })
 
   it('says nothing about the OBS of a room that no longer answers', async () => {
@@ -189,6 +238,18 @@ describe('vue exploitation', () => {
     expect(card.text()).toContain('● REC')
     expect(card.text()).toContain('● LIVE')
     expect(card.text()).toContain('3 en file')
+  })
+
+  it('says a talk under way is not recorded, without calling the room broken', async () => {
+    const wrapper = await mountView()
+    const card = wrapper.get('[data-room="track-1"]')
+    expect(card.get('[data-role="no-recording"]').text()).toBe("Pas d'enregistrement")
+    expect(card.attributes('data-health')).toBe('normal')
+  })
+
+  it('does not ask for a recording outside a talk', async () => {
+    const wrapper = await mountView([{ ...ROOM, conference: 'aucune' }])
+    expect(wrapper.find('[data-role="no-recording"]').exists()).toBe(false)
   })
 
   it('shows the Global panel only when a shared slot exists', async () => {

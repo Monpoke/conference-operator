@@ -136,15 +136,6 @@ function ofShownDay<T extends { startsAt: string }>(sessions: T[]): T[] {
             @update:model-value="(value) => value != null && (askedDay = value)"
           />
         </div>
-        <Button
-          v-if="shownDay !== today && days.some((entry) => entry.value === today)"
-          variant="tab"
-          size="small"
-          data-role="consult-today"
-          @click="askedDay = today"
-        >
-          Aujourd’hui
-        </Button>
       </div>
       <div v-if="consult.tab === 'other'" class="ml-auto w-[min(22rem,100%)]" data-role="other-room-choice">
         <Combobox

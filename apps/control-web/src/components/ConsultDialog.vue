@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DisplayPayload } from '@conference-operator/contract'
-import { Button, Dialog } from '@conference-operator/components'
+import { Button, Combobox, Dialog } from '@conference-operator/components'
 import { timelinePosition } from '@conference-operator/program/selectors'
 import { computed } from 'vue'
 import { featuresOf } from '../lib/features.js'
@@ -9,7 +9,6 @@ import { CONSULT_TABS, useConsultStore, type ConsultTab } from '../stores/consul
 import { useKeyboardLayer } from '../stores/keyboard.js'
 import { useProgramsStore } from '../stores/programs.js'
 import QuestionsTab from './QuestionsTab.vue'
-import RoomPicker from './RoomPicker.vue'
 import RoomsTab from './RoomsTab.vue'
 import Timeline from './Timeline.vue'
 
@@ -61,7 +60,7 @@ const followable = computed(() => otherRooms(props.payload, programs.rooms))
 
 <template>
   <Dialog v-model:open="consult.open" title="Consultation" width="full">
-    <div class="mb-3 flex flex-wrap items-start gap-1.5 border-b border-edge pb-3">
+    <div class="mb-3 flex flex-wrap items-center gap-1.5 border-b border-edge pb-3">
       <Button
         v-for="name in tabs"
         :key="name"
@@ -73,11 +72,18 @@ const followable = computed(() => otherRooms(props.payload, programs.rooms))
       >
         {{ LABELS[name] }}
       </Button>
-      <div v-if="consult.tab === 'other'" class="ml-auto" data-role="other-room-choice">
-        <RoomPicker
-          :rooms="followable"
-          :selected="consult.followed"
-          @choose="consult.follow($event)"
+      <!--
+        Typed through, not a row of buttons: with a dozen rooms the row took the
+        header. Not a native `<select>` either: it opens empty in an OBS dock.
+      -->
+      <div v-if="consult.tab === 'other'" class="ml-auto w-[min(22rem,100%)]" data-role="other-room-choice">
+        <Combobox
+          :model-value="consult.followed"
+          :options="followable.map((room) => ({ value: room.id, label: room.name, keywords: room.id }))"
+          label="Rechercher une salle"
+          placeholder="Rechercher une salle…"
+          empty="Aucune salle ne correspond."
+          @update:model-value="(id) => id != null && consult.follow(id)"
         />
       </div>
     </div>

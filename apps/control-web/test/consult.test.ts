@@ -458,11 +458,14 @@ describe('the other room tab', () => {
     })
     await flushPromises()
     const choice = document.querySelector('[data-role="other-room-choice"]')!
-    const input = choice.querySelector<HTMLInputElement>('[data-role="room-picker-input"]')!
-    input.dispatchEvent(new Event('focus'))
+    const input = choice.querySelector<HTMLInputElement>('[data-role="combobox-input"]')!
+    input.focus()
     await flushPromises()
     return { consult, wrapper, choice, input }
   }
+
+  /** The list floats in a portal, out of the dialog: it is read from the document. */
+  const options = () => [...document.querySelectorAll<HTMLElement>('[data-option]')]
 
   it('lists the neighbouring rooms in a searchable field, with no native list', async () => {
     const { consult, wrapper, choice } = await openPicker()
@@ -470,37 +473,31 @@ describe('the other room tab', () => {
     // No `<select>`: in an OBS dock the native dropdown opens empty.
     expect(choice.querySelector('select')).toBeNull()
     // A room does not follow itself.
-    expect(choice.querySelector('[data-room="track-1"]')).toBeNull()
+    expect(options().map((option) => option.dataset.option)).toEqual(['track-2'])
+    // Floating, not in the dialog's flow: opening it must not make the dialog grow.
+    expect(choice.querySelector('[data-option]')).toBeNull()
 
-    choice.querySelector('[data-room="track-2"]')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    options()[0]!.click()
     await flushPromises()
 
     expect(consult.followed).toBe('track-2')
     wrapper.unmount()
   })
 
-  it('filters by what is typed, accents and case aside, and picks with Enter', async () => {
-    const { consult, wrapper, choice, input } = await openPicker()
-    const name = choice.querySelector('[data-room="track-2"]')!.textContent!.trim()
+  it('filters by what is typed, accents and case aside', async () => {
+    const { wrapper, input } = await openPicker()
+    const name = options()[0]!.textContent!.trim()
 
     input.value = name.slice(0, 4).toUpperCase().normalize('NFD').replace(/\p{Diacritic}/gu, '')
     input.dispatchEvent(new Event('input'))
     await flushPromises()
-    expect(choice.querySelector('[data-room="track-2"]')).not.toBeNull()
+    expect(options().map((option) => option.dataset.option)).toEqual(['track-2'])
 
     input.value = 'zzz-aucune'
     input.dispatchEvent(new Event('input'))
     await flushPromises()
-    expect(choice.querySelectorAll('[role="option"]')).toHaveLength(0)
-    expect(choice.textContent).toContain('Aucune salle ne correspond.')
-
-    input.value = ''
-    input.dispatchEvent(new Event('input'))
-    await flushPromises()
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-    await flushPromises()
-
-    expect(consult.followed).toBe('track-2')
+    expect(options()).toHaveLength(0)
+    expect(document.body.textContent).toContain('Aucune salle ne correspond.')
     wrapper.unmount()
   })
 })

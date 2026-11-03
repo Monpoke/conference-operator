@@ -15,6 +15,7 @@
 export { cn } from './common/cn.js'
 export { default as Badge } from './common/Badge.vue'
 export { default as Button } from './common/Button.vue'
+export { default as Combobox } from './common/Combobox.vue'
 export { default as Empty } from './common/Empty.vue'
 export { default as Field } from './common/Field.vue'
 export { default as Hint } from './common/Hint.vue'

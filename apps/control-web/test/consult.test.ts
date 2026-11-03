@@ -105,7 +105,10 @@ describe('the day of the program', () => {
     expect(timeline()).toContain('Jour un')
     expect(timeline()).not.toContain('Jour deux')
 
-    document.querySelector<HTMLButtonElement>(`[data-role="consult-days"] [data-day="${dayKeyOf(START_MS + DAY, view.timezone)}"]`)!.click()
+    // A field, not a row of buttons: it holds however many days the event has.
+    document.querySelector<HTMLInputElement>('[data-role="consult-days"] [data-role="combobox-input"]')!.focus()
+    await flushPromises()
+    document.querySelector<HTMLElement>(`[data-option="${dayKeyOf(START_MS + DAY, view.timezone)}"]`)!.click()
     await flushPromises()
     expect(timeline()).toContain('Jour deux')
     expect(timeline()).not.toContain('Jour un')

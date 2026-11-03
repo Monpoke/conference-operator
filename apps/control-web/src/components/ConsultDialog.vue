@@ -71,6 +71,12 @@ const listed = computed(() =>
   consult.tab === 'other' ? followedSessions.value : (props.payload.sessions ?? []),
 )
 const days = computed(() => programDays(listed.value.map((session) => session.startsAt), zone.value))
+const dayOptions = computed(() =>
+  days.value.map((entry) => ({
+    value: entry.value,
+    label: entry.value === today.value ? `${entry.label} · aujourd’hui` : entry.label,
+  })),
+)
 const askedDay = ref<string | null>(null)
 watch(
   () => consult.open,
@@ -110,25 +116,34 @@ function ofShownDay<T extends { startsAt: string }>(sessions: T[]): T[] {
         Typed through, not a row of buttons: with a dozen rooms the row took the
         header. Not a native `<select>` either: it opens empty in an OBS dock.
       -->
-      <!-- Buttons, not a native list: it opens empty in an OBS dock, and an event has two or three days. -->
+      <!--
+        One field however many days: a row of buttons held two or three and broke
+        past that. Typed through and floating, like the room choice — a native
+        list opens empty in an OBS dock.
+      -->
       <div
         v-if="(consult.tab === 'program' || consult.tab === 'other') && days.length > 1"
-        class="flex flex-wrap items-center gap-1 border-l border-edge pl-2"
-        role="group"
-        aria-label="Journée affichée"
+        class="flex items-center gap-1.5 border-l border-edge pl-2"
         data-role="consult-days"
       >
+        <div class="w-60">
+          <Combobox
+            :model-value="shownDay"
+            :options="dayOptions"
+            label="Journée affichée"
+            placeholder="Journée…"
+            empty="Aucune journée ne correspond."
+            @update:model-value="(value) => value != null && (askedDay = value)"
+          />
+        </div>
         <Button
-          v-for="entry in days"
-          :key="entry.value"
+          v-if="shownDay !== today && days.some((entry) => entry.value === today)"
           variant="tab"
           size="small"
-          :active="entry.value === shownDay"
-          :aria-pressed="entry.value === shownDay"
-          :data-day="entry.value"
-          @click="askedDay = entry.value"
+          data-role="consult-today"
+          @click="askedDay = today"
         >
-          {{ entry.label }}<span v-if="entry.value === today" class="ml-1.5 text-xs font-normal text-dim">aujourd’hui</span>
+          Aujourd’hui
         </Button>
       </div>
       <div v-if="consult.tab === 'other'" class="ml-auto w-[min(22rem,100%)]" data-role="other-room-choice">

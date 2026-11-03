@@ -73,7 +73,7 @@ onBeforeUnmount(() => {
 
 <template>
   <Panel class="min-h-0 flex-1">
-    <h2 class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+    <h2 class="mb-2.5 text-xs font-semibold tracking-[.14em] text-dim uppercase">
       Niveaux audio — OBS&nbsp;B
     </h2>
 
@@ -92,12 +92,18 @@ onBeforeUnmount(() => {
         <div class="mb-1 flex items-baseline justify-between gap-2">
           <span class="truncate text-xs">{{ entry.name }}</span>
           <span
-            class="shrink-0 text-[11px] tabular-nums"
-            :class="(audio.peaks[entry.name]?.db ?? DB_FLOOR) > -9 ? 'text-alert' : 'text-dim'"
+            class="shrink-0 text-xs tabular-nums"
+            :class="
+              (audio.peaks[entry.name]?.db ?? DB_FLOOR) <= DB_FLOOR
+                ? 'text-warn'
+                : (audio.peaks[entry.name]?.db ?? DB_FLOOR) > -9
+                  ? 'text-alert'
+                  : 'text-dim'
+            "
           >
             {{
               (audio.peaks[entry.name]?.db ?? DB_FLOOR) <= DB_FLOOR
-                ? '—'
+                ? 'silence'
                 : `${Math.round(audio.peaks[entry.name]!.db)} dB`
             }}
           </span>
@@ -119,7 +125,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <p class="mt-1.5 text-[11px] text-dim">
+    <p class="mt-1.5 text-xs text-dim">
       Vert jusqu'à &minus;20 dB, jaune ensuite, rouge au-delà de &minus;9 dB.
     </p>
   </Panel>

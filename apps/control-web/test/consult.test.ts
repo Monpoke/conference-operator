@@ -244,8 +244,8 @@ describe('questions tab', () => {
 
     // Otherwise one puts it up again, or hunts for which is projected by re-reading
     // the first three — while the speaker waits.
-    expect(wrapper.get('[data-question="q-1"]').text()).toContain('À l’antenne')
-    expect(wrapper.get('[data-question="q-2"]').text()).toContain('Afficher')
+    expect(wrapper.get('[data-question="q-1"]').text()).toContain('Au bandeau')
+    expect(wrapper.get('[data-question="q-2"]').text()).toContain('Mettre au bandeau')
   })
 
   it('puts a question on air, with its author', async () => {

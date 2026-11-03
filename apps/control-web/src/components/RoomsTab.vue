@@ -4,6 +4,7 @@ import { Badge } from '@conference-operator/components'
 import { outlineOf } from '@conference-operator/room-state'
 import { computed } from 'vue'
 import { roomState } from '../lib/rooms.js'
+import { sceneLabel } from '../lib/labels.js'
 import { useProgramsStore } from '../stores/programs.js'
 
 /**
@@ -24,7 +25,7 @@ const rows = computed(() =>
     return {
       id: room.roomId,
       name: room.name,
-      scene: room.sceneRole ?? 'scène inconnue',
+      scene: sceneLabel(room.sceneRole),
       queue: room.outboxDepth > 0 ? `${room.outboxDepth} en attente` : '',
       recording: room.recording,
       dot: `${state.fill}${outlineOf(room.connectivity)}`.trim(),

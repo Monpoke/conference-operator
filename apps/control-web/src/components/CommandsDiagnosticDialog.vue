@@ -62,7 +62,7 @@ async function forget(): Promise<void> {
 
     <p class="mt-3 text-[13px]" :class="verdict.tone" data-role="commands-verdict">{{ verdict.text }}</p>
 
-    <p class="mt-3 text-[11px] leading-relaxed text-dim">
+    <p class="mt-3 text-xs leading-relaxed text-dim">
       Reprendre depuis le début efface la mémoire des commandes déjà appliquées et relit le flux du
       hub depuis sa première. Ce qui a expiré est ignoré ; le reste — prise de main à distance,
       bandeau — est ce que la salle devrait déjà montrer.

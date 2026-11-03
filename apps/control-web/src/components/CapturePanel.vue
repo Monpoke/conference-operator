@@ -39,6 +39,8 @@ const props = defineProps<{
    * does not see OBS.
    */
   offline?: boolean
+  /** A talk runs and nothing records: « Enregistrer » is the gesture of the moment. */
+  urge?: boolean
 }>()
 
 const emit = defineEmits<{ vod: [] }>()
@@ -132,7 +134,7 @@ defineExpose({ toggleRecording, mark, anchor })
 <template>
   <Panel>
     <div class="mb-1.5 flex items-center gap-2">
-      <h2 class="flex-1 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+      <h2 class="flex-1 text-xs font-semibold tracking-[.14em] text-dim uppercase">
         Captation — OBS&nbsp;B<SimulatedBadge :when="obs?.simulated === true" />
       </h2>
       <!--
@@ -141,22 +143,22 @@ defineExpose({ toggleRecording, mark, anchor })
         is not a command for the running talk, and nothing must let it be confused
         with "Enregistrer".
       -->
-      <button
+      <Button
         v-if="remote !== true"
-        type="button"
-        class="shrink-0 cursor-pointer rounded border border-transparent px-1.5 py-0.5 text-[13px] leading-none opacity-60 hover:border-edge hover:opacity-100"
-        aria-label="Vérifier les enregistrements"
+        variant="tab"
+        size="small"
+        class="-my-1.5 shrink-0"
         title="Lister, contrôler et prévisualiser les enregistrements déjà produits"
         data-role="btn-vod"
         @click="emit('vod')"
       >
-        🎞
-      </button>
+        Fichiers<Key>V</Key>
+      </Button>
     </div>
 
     <div v-if="remote !== true" class="mb-2 flex items-baseline gap-2.5">
       <RecordingTimer :recording="recording" :real-ms="realMs" :room-ms="roomMs" />
-      <span class="text-[11px] text-dim" data-role="markers">{{ markers }}</span>
+      <span class="text-xs text-dim" data-role="markers">{{ markers }}</span>
     </div>
 
     <!--
@@ -179,9 +181,11 @@ defineExpose({ toggleRecording, mark, anchor })
         variant="danger"
         :active="active"
         :disabled="offline"
+        :class="urge === true && !active ? 'border-alert ring-2 ring-alert/60' : undefined"
+        :data-urge="urge === true && !active ? '' : undefined"
         @click="toggleRecording()"
       >
-        {{ active ? 'Arrêter' : 'Enregistrer' }}<Key v-if="remote !== true">R</Key>
+        <StableLabel :current="active ? 'Arrêter' : 'Enregistrer'" :labels="['Arrêter', 'Enregistrer']" /><Key v-if="remote !== true">R</Key>
       </Button>
       <Button
         id="btn-stream"

@@ -89,9 +89,14 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', syncFulls
 </script>
 
 <template>
-  <header class="flex items-center gap-3 border-b border-edge bg-surface px-3 py-2">
+  <!--
+    Wraps rather than squeezes: at an OBS dock's width the room's name used to
+    shrink to nothing and « Écrans » left the window. The name is what tells three
+    room windows apart; the buttons move to a second row instead.
+  -->
+  <header class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-edge bg-surface px-3 py-2">
     <div
-      class="cursor-default truncate text-[15px] font-semibold select-none"
+      class="max-w-[18rem] shrink-0 cursor-default truncate text-[15px] font-semibold select-none"
       data-role="room"
       :title="version == null ? undefined : `Version ${version}`"
       @click="versionShown = !versionShown"
@@ -100,7 +105,7 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', syncFulls
     </div>
     <span
       v-if="versionShown && version != null"
-      class="shrink-0 text-[11px] text-dim"
+      class="shrink-0 text-xs text-dim"
       data-role="version"
     >
       v{{ version }}
@@ -192,7 +197,7 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', syncFulls
         title="Configuration de la salle"
         @click="emit('config')"
       >
-        ⚙
+        Configuration
       </Button>
       <ScreensMenu :payload="payload" />
     </div>

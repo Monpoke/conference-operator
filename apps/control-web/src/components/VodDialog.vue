@@ -42,7 +42,7 @@ const timeZone = computed(() => props.timeZone)
 <template>
   <Dialog v-model:open="vod.open" title="🎞 Enregistrements" width="full">
     <div class="mb-2.5 flex flex-wrap items-center gap-2 border-b border-edge pb-2.5">
-      <div class="min-w-0 flex-1 truncate font-mono text-[11px] text-dim" data-role="vod-root">
+      <div class="min-w-0 flex-1 truncate font-mono text-xs text-dim" data-role="vod-root">
         {{ vod.listing?.root ?? '' }}
       </div>
       <div class="shrink-0 text-xs text-dim" data-role="vod-progress">{{ vod.progress }}</div>
@@ -76,7 +76,7 @@ const timeZone = computed(() => props.timeZone)
     -->
     <div
       v-if="vod.manualOnly"
-      class="mb-2.5 border-b border-edge pb-1.5 text-[11px] text-dim"
+      class="mb-2.5 border-b border-edge pb-1.5 text-xs text-dim"
       data-role="vod-manual"
     >
       Téléversement automatique désactivé sur le hub : les envois se font à la main, ⬆ par ligne
@@ -85,7 +85,7 @@ const timeZone = computed(() => props.timeZone)
 
     <div
       v-if="vod.waitReason != null"
-      class="mb-2.5 border-b border-edge pb-1.5 text-[11px] text-warn"
+      class="mb-2.5 border-b border-edge pb-1.5 text-xs text-warn"
       data-role="vod-regulator"
     >
       {{ vod.waitReason }}
@@ -107,7 +107,7 @@ const timeZone = computed(() => props.timeZone)
       <template v-else>
         <div
           v-if="vod.missingTools != null"
-          class="mb-2 rounded-lg border border-warn/40 px-2.5 py-1.5 text-[11px] text-warn"
+          class="mb-2 rounded-lg border border-warn/40 px-2.5 py-1.5 text-xs text-warn"
         >
           {{ vod.missingTools }}
         </div>
@@ -122,7 +122,7 @@ const timeZone = computed(() => props.timeZone)
       </template>
     </div>
 
-    <p class="mt-2.5 border-t border-edge pt-2 text-[11px] text-dim">
+    <p class="mt-2.5 border-t border-edge pt-2 text-xs text-dim">
       « Vérifier » ouvre le conteneur avec ffprobe : pistes présentes, durée réelle contre durée
       chronométrée, débit. Ce qu'aucune sonde ne dit — le mauvais plan, le micro dans la poche —
       reste à l'œil : ✓ et ✕ posent ce verdict-là.

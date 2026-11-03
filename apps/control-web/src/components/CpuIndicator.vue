@@ -162,7 +162,7 @@ const spoken = computed(
     Poste
     <template #extra>
       <div class="mt-2.5 mb-1 flex items-baseline gap-2">
-        <span class="text-[10px] font-semibold tracking-[.12em] text-dim uppercase">
+        <span class="text-[11px] font-semibold tracking-[.12em] text-dim uppercase">
           Mémoire
         </span>
         <span :class="`level-${memory.level}`" class="ml-auto text-xs font-semibold tabular-nums">
@@ -170,7 +170,7 @@ const spoken = computed(
         </span>
       </div>
       <Gauge :percent="memory.percent" :level="memory.level" />
-      <div class="mt-1.5 text-[11px] text-dim">{{ memory.detail }}</div>
+      <div class="mt-1.5 text-xs text-dim">{{ memory.detail }}</div>
     </template>
   </Indicator>
 </template>

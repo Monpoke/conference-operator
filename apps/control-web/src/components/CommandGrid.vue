@@ -36,6 +36,7 @@ const actions = useActionsStore()
       :key="command.value"
       class="leading-tight whitespace-normal"
       :active="command.value === props.current"
+      :aria-pressed="command.value === props.current"
       :data-command="command.value"
       :disabled="props.disabled"
       @click="actions.act(props.build(command.value))"

@@ -129,19 +129,42 @@ function closeAnywhere(): void {
   open.value = false
 }
 
-onMounted(() => document.addEventListener('click', closeAnywhere))
+const trigger = ref<HTMLElement | null>(null)
+
+/** Escape closes the list and hands the focus back to its button, like a native menu. */
+function closeOnEscape(event: KeyboardEvent): void {
+  if (!open.value || event.key !== 'Escape') return
+  open.value = false
+  trigger.value?.querySelector('button')?.focus()
+}
+
+onMounted(() => {
+  document.addEventListener('click', closeAnywhere)
+  document.addEventListener('keydown', closeOnEscape)
+})
 onBeforeUnmount(() => {
   document.removeEventListener('click', closeAnywhere)
+  document.removeEventListener('keydown', closeOnEscape)
   if (clearTimer != null) clearTimeout(clearTimer)
 })
 </script>
 
 <template>
-  <div class="relative">
-    <Button size="small" data-role="btn-screens" @click.stop="open = !open">Écrans ▾</Button>
+  <div ref="trigger" class="relative">
+    <Button
+      size="small"
+      data-role="btn-screens"
+      aria-haspopup="true"
+      :aria-expanded="open"
+      aria-controls="screens-list"
+      @click.stop="open = !open"
+    >
+      Écrans ▾
+    </Button>
     <div
       v-if="open"
-      class="absolute top-[calc(100%+6px)] right-0 z-20 min-w-[380px] rounded-[9px] border border-edge bg-surface p-[5px] shadow-[0_10px_30px_rgba(0,0,0,.45)]"
+      id="screens-list"
+      class="absolute top-[calc(100%+6px)] right-0 z-20 w-[min(420px,calc(100vw-1.5rem))] rounded-[9px] border border-edge bg-surface p-[5px] shadow-[0_10px_30px_rgba(0,0,0,.45)]"
       data-role="screens-list"
     >
       <div
@@ -151,7 +174,7 @@ onBeforeUnmount(() => {
       >
         <div class="min-w-0 flex-1">
           <div class="text-sm text-text">{{ link.title }}</div>
-          <small class="mt-0.5 block text-xs break-all text-dim">{{ link.detail }}</small>
+          <small class="mt-0.5 block text-xs wrap-anywhere text-dim">{{ link.detail }}</small>
         </div>
 
         <!--

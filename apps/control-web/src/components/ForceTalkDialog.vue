@@ -73,9 +73,15 @@ async function exchange(id: string): Promise<void> {
   <Dialog
     v-model:open="talk.forceOpen"
     title="Forcer un talk"
-    description="Forcer change ce que la salle affiche, sans toucher au programme. Échanger inverse deux créneaux dans le programme."
+    description="Forcer change ce que la salle affiche, sans toucher au programme. Échanger inverse, dans le programme, le créneau de la ligne et celui du talk en salle."
     width="wide"
   >
+    <!-- The swap's other half, named once rather than on every row. -->
+    <p v-if="target != null" class="mb-2 text-sm" data-role="force-target">
+      <span class="text-dim">En salle : </span>
+      <span class="tabular-nums">{{ time(target.startsAt, payload.timezone) }}</span>
+      · {{ target.title }}
+    </p>
     <div v-if="rows.length === 0" class="text-sm text-dim" data-role="force-empty">
       Plus aucun talk à venir dans cette salle.
     </div>
@@ -112,13 +118,13 @@ async function exchange(id: string): Promise<void> {
           <Button
             v-if="canSwap(slot)"
             size="small"
-            class="max-w-[260px] truncate"
             data-role="force-swap"
             :title="`Échanger avec « ${target?.title} »`"
+            :aria-label="`Échanger avec « ${target?.title} »`"
             :disabled="actions.pending > 0"
             @click="exchange(slot.id)"
           >
-            Échanger avec « {{ target?.title }} »
+            Échanger
           </Button>
         </div>
       </li>

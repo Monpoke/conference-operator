@@ -135,7 +135,7 @@ describe('expiry', () => {
 
     // Losing a required event in silence would leave a rush the console cannot place.
     const error = store.recentLogs().find((l) => l.level === 'error')
-    expect(error?.message).toContain('obligatoire expiré')
+    expect(error?.message).toContain('pas pu être envoyé au hub à temps')
     expect(error?.contextJson).toContain('talk.marker')
   })
 
@@ -150,7 +150,7 @@ describe('expiry', () => {
     // The diagnostic panel shows only the last lines: one per event would flood it.
     const errors = store.recentLogs().filter((l) => l.level === 'error')
     expect(errors).toHaveLength(1)
-    expect(errors[0]?.message).toContain('3 événements obligatoires expirés')
+    expect(errors[0]?.message).toContain('3 événements obligatoires n’ont pas pu être envoyés')
   })
 })
 

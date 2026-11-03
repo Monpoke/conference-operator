@@ -648,8 +648,19 @@ describe('incomplete room at start-up', () => {
     expect(config.open).toBe(true)
   })
 
-  it('does not reopen the panel the operator has just closed', () => {
+  it('keeps a non-blocking gap to a banner, not the whole screen', () => {
+    // An empty VOD folder leaves the room drivable: the operator came to start a talk.
     const config = configuredRoom({ recordingRoot: null })
+
+    config.checkAtStartup()
+
+    expect(config.open).toBe(false)
+    expect(config.reminder).toBe(true)
+    expect(codes(config)).toEqual(['vod'])
+  })
+
+  it('does not reopen the panel the operator has just closed', () => {
+    const config = configuredRoom({}, { B: obsState({ connected: false }) })
     config.checkAtStartup()
     expect(config.open).toBe(true)
 
@@ -671,7 +682,7 @@ describe('incomplete room at start-up', () => {
     // A room nothing is known about is not a badly configured room.
     expect(config.open).toBe(false)
 
-    configuredRoom({ recordingRoot: null })
+    configuredRoom({}, { B: obsState({ connected: false }) })
     await nextTick()
 
     expect(config.open).toBe(true)

@@ -30,15 +30,16 @@ const entries = computed(() =>
        on a control screen that has none to spare. -->
   <div
     v-if="entries.length > 0"
-    class="flex items-center gap-1.5 overflow-x-auto border-b border-edge bg-surface px-3 py-1.5"
+    class="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-edge bg-surface px-3 py-1.5 [mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)]"
     data-role="rooms-strip"
   >
     <button
       v-for="entry in entries"
       :key="entry.id"
       type="button"
-      class="flex shrink-0 cursor-pointer items-center gap-2 rounded-md border border-edge bg-surface2 px-2.5 py-1 text-xs font-normal"
+      class="flex shrink-0 cursor-pointer items-center gap-2 rounded-md border border-edge bg-surface2 px-2.5 py-1.5 text-xs font-normal focus-visible:outline-2 focus-visible:outline-brand"
       :data-room="entry.id"
+      :title="entry.dot.includes('silent') ? 'Point creux : le hub n’a plus de nouvelles de cette salle' : entry.dot.includes('unsure') ? 'Liaison dégradée avec le hub' : undefined"
       @click="emit('open', entry.id)"
     >
       <!--
@@ -51,7 +52,7 @@ const entries = computed(() =>
       <span class="font-semibold">{{ entry.name }}</span>
       <span
         v-if="entry.breakTag != null"
-        class="shrink-0 rounded bg-canvas px-1.5 py-0.5 text-[11px]"
+        class="shrink-0 rounded bg-canvas px-1.5 py-0.5 text-xs"
         :class="entry.breakTag.tint"
       >
         {{ entry.breakTag.text }}

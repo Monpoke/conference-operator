@@ -140,9 +140,11 @@ useKeyboardLayer(() => ({}), () => talk.stopTakeOpen)
     @confirm="talk.launch(true)"
   >
     <template #other>
+      <!-- Amber, not the cancel's grey: it is the choice that costs the VOD. -->
       <button
         type="button"
-        class="cursor-pointer rounded-lg border border-edge bg-surface2 px-3 py-2 text-[13px] font-semibold text-text"
+        class="cursor-pointer rounded-lg border border-warn/50 bg-transparent px-3 py-2 text-[13px] font-semibold text-warn focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        data-role="commencer-sans-enregistrer"
         @click="talk.launch(false)"
       >
         Commencer sans enregistrer

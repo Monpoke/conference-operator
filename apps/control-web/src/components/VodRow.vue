@@ -169,7 +169,7 @@ function consentIs(statut: string): boolean {
           that is seen before the badge itself.
         -->
         <span
-          class="w-24 shrink-0 rounded border px-1.5 py-px text-center text-[10px] font-semibold tracking-[.08em] uppercase"
+          class="w-24 shrink-0 rounded border px-1.5 py-px text-center text-[11px] font-semibold tracking-[.08em] uppercase"
           :class="badge[1]"
           data-role="vod-badge"
         >
@@ -181,7 +181,7 @@ function consentIs(statut: string): boolean {
         {{ sidecar?.title ?? 'Titre inconnu' }}
         <span v-if="speakers !== ''" class="text-dim"> — {{ speakers }}</span>
       </div>
-      <div class="mt-0.5 text-[11px] text-dim">{{ details }}</div>
+      <div class="mt-0.5 text-xs text-dim">{{ details }}</div>
 
       <!--
         The speaker's answer about the broadcast, on its own line.
@@ -201,7 +201,7 @@ function consentIs(statut: string): boolean {
         leaves the room. A consent that appeared only once given would never be
         given.
       -->
-      <div class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+      <div class="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
         <span class="text-dim">Diffusion YouTube</span>
 
         <template v-if="sessionId != null">
@@ -246,7 +246,7 @@ function consentIs(statut: string): boolean {
       <!-- A red badge with no reason serves nobody. -->
       <div
         v-if="(check?.reasons.length ?? 0) > 0"
-        class="mt-1 text-[11px]"
+        class="mt-1 text-xs"
         :class="check?.status === 'ok' ? 'text-dim' : 'text-warn'"
       >
         {{ check?.reasons.join(' · ') }}
@@ -254,7 +254,7 @@ function consentIs(statut: string): boolean {
 
       <!-- "AccessDenied" is the only word one can carry to whoever holds the
            bucket: translating it would lose the only handle on the problem. -->
-      <div v-if="upload?.error != null" class="mt-1 text-[11px] text-alert">
+      <div v-if="upload?.error != null" class="mt-1 text-xs text-alert">
         Téléversement : {{ upload.error }}
       </div>
     </div>

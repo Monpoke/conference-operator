@@ -14,7 +14,7 @@ defineProps<{
   <section class="flex shrink-0 flex-col rounded-xl border border-edge bg-surface p-4">
     <h2
       v-if="title != null"
-      class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase"
+      class="mb-2.5 text-xs font-semibold tracking-[.14em] text-dim uppercase"
     >
       {{ title }}
     </h2>

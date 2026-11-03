@@ -18,7 +18,7 @@ const diverging = computed(
 <template>
   <span v-if="diverging" class="shrink-0">
     <span
-      class="rounded border border-alert/50 px-1.5 py-px text-[10px] font-semibold tracking-[.08em] text-alert uppercase"
+      class="rounded border border-alert/50 px-1.5 py-px text-[11px] font-semibold tracking-[.08em] text-alert uppercase"
       :title="`La salle parle la version ${protocol?.room} du contrat, le hub la version ${protocol?.hub} : mettez à jour le plus ancien.`"
     >
       protocole hub v{{ protocol?.hub }} · salle v{{ protocol?.room }}

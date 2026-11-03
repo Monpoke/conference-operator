@@ -24,7 +24,7 @@
   --color-warn: #fbbf24;
   --color-alert: #fb7185;
 
-  --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-sans: "Segoe UI", system-ui, -apple-system, "Noto Sans", "DejaVu Sans", sans-serif;
   --font-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, monospace;
 }
 

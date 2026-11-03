@@ -132,13 +132,13 @@ onBeforeUnmount(() => {
     <AlertDialogPortal>
       <AlertDialogOverlay class="fixed inset-0 z-50 bg-black/65" />
       <AlertDialogContent
-        class="fixed top-1/2 left-1/2 z-50 w-[calc(100vw-2rem)] max-w-[440px] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-edge bg-surface p-4"
+        class="fixed top-1/2 left-1/2 z-50 w-[calc(100vw-2rem)] max-w-[640px] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-edge bg-surface p-4"
       >
         <h2
           :class="
             tone === 'warn'
               ? 'mb-1.5 text-[17px] font-semibold text-warn'
-              : 'mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase'
+              : 'mb-2.5 text-xs font-semibold tracking-[.14em] text-dim uppercase'
           "
         >
           <AlertDialogTitle>{{ title }}</AlertDialogTitle>
@@ -150,7 +150,7 @@ onBeforeUnmount(() => {
 
         <div class="mt-3.5 flex flex-wrap justify-end gap-1.5">
           <AlertDialogCancel
-            class="cursor-pointer rounded-lg border border-edge bg-surface2 px-3 py-2 text-[13px] font-semibold text-text"
+            class="cursor-pointer rounded-lg border border-edge bg-surface2 px-3 py-2 text-[13px] font-semibold text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
           >
             {{ cancelLabel ?? 'Annuler' }}<Key v-if="cancelKey != null">{{ cancelKey }}</Key>
           </AlertDialogCancel>
@@ -165,7 +165,7 @@ onBeforeUnmount(() => {
           <slot name="other" />
           <AlertDialogAction
             :disabled="confirmDisabled === true"
-            class="cursor-pointer rounded-lg border px-3 py-2 text-[13px] font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+            class="cursor-pointer rounded-lg border px-3 py-2 text-[13px] font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed disabled:opacity-50"
             :class="
               danger === true
                 ? 'border-alert-edge bg-alert-soft text-text'

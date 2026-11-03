@@ -28,7 +28,7 @@ const instances = computed(() =>
       // spares the reading of "OBS B — déconnecté" as a second machine to go and
       // restart, when there is no second machine.
       canvas: obs?.canvas === true,
-      scene: obs?.currentSceneName ?? 'scène inconnue',
+      scene: obs?.currentSceneName ?? 'scène non remontée',
       // A role that is configured but absent from OBS is visible nowhere else: the
       // switch will fail in the middle of a talk, with no other warning sign.
       missing: obs?.unresolvedRoles ?? [],
@@ -40,13 +40,15 @@ const instances = computed(() =>
 <template>
   <Panel class="min-h-0 flex-1">
     <div class="mb-2.5 flex items-center gap-2">
-      <h2 class="flex-1 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+      <h2 class="flex-1 text-xs font-semibold tracking-[.14em] text-dim uppercase">
         Diagnostic
       </h2>
       <!-- The effect is the answer: the lines disappear, a toast would add nothing. -->
       <Button
         v-if="log.length > 0"
+        variant="tab"
         size="small"
+        class="-my-1.5"
         data-action="log.clear"
         @click="actions.act({ action: 'log.clear' }, { silent: true })"
       >
@@ -77,7 +79,7 @@ const instances = computed(() =>
     </div>
 
     <div
-      class="mt-1.5 flex min-h-0 flex-1 flex-col gap-px overflow-y-auto text-[11px] text-dim"
+      class="mt-1.5 flex min-h-0 flex-1 flex-col gap-px overflow-y-auto text-xs text-dim"
       data-role="log"
     >
       <div

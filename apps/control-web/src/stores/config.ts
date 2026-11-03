@@ -210,12 +210,25 @@ export const useConfigStore = defineStore('config', () => {
   const check = ref<'waiting' | 'armed' | 'done'>('waiting')
   let stopWatchdog: (() => void) | null = null
 
+  /**
+   * What stops the room from being driven: an OBS that is missing or not answering.
+   *
+   * Only these take the whole screen at start-up. An empty VOD folder or an
+   * unmapped role leaves the room drivable, and the operator came to start a
+   * talk, not to read WebSocket addresses: those get a banner instead.
+   */
+  const blocking = computed(() => missing.value.filter((entry) => entry.code.startsWith('obs-')))
+
+  /** The start-up banner for what is missing but not blocking; closed by the operator. */
+  const reminder = ref(false)
+
   function judge(): boolean {
     if (config.value == null) return false
     check.value = 'done'
     stopWatchdog?.()
     stopWatchdog = null
-    if (missing.value.length > 0) show('startup')
+    if (blocking.value.length > 0) show('startup')
+    else if (missing.value.length > 0) reminder.value = true
     return true
   }
 
@@ -361,6 +374,8 @@ export const useConfigStore = defineStore('config', () => {
     online,
     canBrowse,
     missing,
+    blocking,
+    reminder,
     openAtStartup,
     show,
     seed,

@@ -3,6 +3,7 @@ import type { DisplayPayload } from '@conference-operator/contract'
 import { stopwatch } from '@conference-operator/format'
 import { computed } from 'vue'
 import { countdownFor } from '../lib/countdown.js'
+import { lateStartMs } from '../lib/gesture.js'
 
 /** Below this threshold, the end becomes something to watch rather than to know. */
 const NEARLY_OVER_MS = 300_000
@@ -19,6 +20,8 @@ const tint = computed(() => {
   const count = countdown.value
   if (count == null || count.beforeStart) return 'text-dim'
   if (count.ms < 0) return 'text-alert'
+  // The slot is running away and nobody pressed « Commencer »: not a calm white.
+  if (lateStartMs(props.payload, props.atMs) != null) return 'text-warn'
   return count.ms < NEARLY_OVER_MS ? 'text-warn' : 'text-text'
 })
 </script>

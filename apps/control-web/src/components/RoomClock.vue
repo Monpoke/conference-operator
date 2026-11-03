@@ -27,7 +27,7 @@ const shown = computed(() =>
     :class="simulated ? 'text-warn' : ''"
   >
     {{ shown }}
-    <span v-if="simulated" class="text-[10px] font-semibold tracking-[.1em] uppercase opacity-80">
+    <span v-if="simulated" class="text-[11px] font-semibold tracking-[.1em] uppercase opacity-80">
       simulée
     </span>
   </div>

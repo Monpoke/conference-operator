@@ -405,7 +405,18 @@ describe('talk panel', () => {
     expect(wrapper.get('[data-role="talk-detail"]').text()).toContain(
       'Prochaine conférence à',
     )
-    expect(wrapper.get('[data-role="talk-detail"]').text()).toContain('Remettre à venir')
+    // The undo is a button now, not a sentence to click.
+    expect(wrapper.get('[data-role="btn-talk-reset"]').text()).toBe('Remettre à venir')
+  })
+
+  it('says the room is late when the slot started and nobody pressed « Commencer »', () => {
+    const wrapper = mount(TalkPanel, { props: { payload: payload(), nowMs: START_MS + 25 * 60_000 } })
+
+    expect(wrapper.get('[data-role="talk-badge"]').text()).toContain('en retard')
+    expect(wrapper.get('[data-role="talk-detail"]').classes()).toContain('text-warn')
+    expect(wrapper.get('[data-role="countdown"]').classes()).toContain('text-warn')
+    // The gesture of the moment carries the primary weight.
+    expect(wrapper.get('#btn-talk-start').classes()).toContain('bg-brand')
   })
 
   it('paints the overrun in alert: it is what triggers a decision', () => {
@@ -666,7 +677,7 @@ describe('the forced talk, on the panel', () => {
     // The target cannot be swapped with itself.
     expect(rows[0]!.querySelector('[data-role="force-swap"]')).toBeNull()
     const swap = rows[1]!.querySelector<HTMLButtonElement>('[data-role="force-swap"]')!
-    expect(swap.textContent).toContain('Échanger avec « Ce que le flux ne dit pas »')
+    expect(swap.getAttribute('aria-label')).toBe('Échanger avec « Ce que le flux ne dit pas »')
 
     swap.click()
     await flushPromises()

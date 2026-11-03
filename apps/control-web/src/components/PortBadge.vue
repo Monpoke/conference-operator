@@ -28,7 +28,7 @@ const moved = computed(() => props.port != null && props.port.actual !== props.p
   <span v-if="moved" class="shrink-0">
     <span
       data-role="port-fallback"
-      class="rounded border border-warn/50 px-1.5 py-px text-[10px] font-semibold tracking-[.08em] text-warn uppercase"
+      class="rounded border border-warn/50 px-1.5 py-px text-[11px] font-semibold tracking-[.08em] text-warn uppercase"
       :title="`Le port ${port?.wanted} était occupé au démarrage : cette salle sert sur ${port?.actual}. Les sources navigateur d'OBS réglées sur ${port?.wanted} n'affichent pas cette salle — corrigez leur adresse, ou libérez le port ${port?.wanted} et relancez la salle.`"
     >
       port {{ port?.actual }} · {{ port?.wanted }} occupé

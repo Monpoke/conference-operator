@@ -124,7 +124,7 @@ const FIELD =
 <template>
   <Panel class="mb-3">
     <div class="mb-2 flex items-center gap-2">
-      <h3 class="text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+      <h3 class="text-xs font-semibold tracking-[.14em] text-dim uppercase">
         {{ title }}<SimulatedBadge :when="obs?.simulated === true" />
       </h3>
       <span class="flex-1 truncate text-xs" :class="tone" :data-state="instance">{{ status }}</span>
@@ -168,7 +168,7 @@ const FIELD =
           {{ choice.label }}
         </button>
       </div>
-      <p class="mt-1 text-[11px] text-dim">
+      <p class="mt-1 text-xs text-dim">
         {{
           mode === 'canvas'
             ? "Un seul OBS dans la salle : la captation passe par le canvas vertical d'OBS-A, que le plugin fournit. Sans le plugin, rien n'enregistre."
@@ -197,7 +197,7 @@ const FIELD =
         />
         <label
           v-if="config.obs[instance].hasPassword"
-          class="mt-1 flex items-center gap-1.5 text-[11px] text-dim"
+          class="mt-1 flex items-center gap-1.5 text-xs text-dim"
         >
           <input v-model="draft.obs[instance].clearPassword" type="checkbox" />
           retirer le mot de passe

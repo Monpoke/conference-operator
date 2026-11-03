@@ -85,7 +85,7 @@ const FIELD =
       -->
       <div
         v-if="config.missing.length > 0"
-        class="mb-2.5 rounded-lg border border-warn/40 px-2.5 py-2 text-[11px] text-warn"
+        class="mb-2.5 rounded-lg border border-warn/40 px-2.5 py-2 text-xs text-warn"
         data-role="config-missing"
       >
         <p class="font-semibold">
@@ -126,7 +126,7 @@ const FIELD =
               Port de l'écran local
             </label>
             <input id="cfg-port" v-model="config.draft.displayPort" :class="FIELD" />
-            <p class="mt-0.5 text-[11px] text-dim">
+            <p class="mt-0.5 text-xs text-dim">
               Prend effet au prochain démarrage du client.
             </p>
           </div>
@@ -135,7 +135,7 @@ const FIELD =
               Préfixe des fichiers
             </label>
             <input id="cfg-slug" v-model="config.draft.fileSlug" :class="FIELD" />
-            <p class="mt-0.5 text-[11px] text-dim">
+            <p class="mt-0.5 text-xs text-dim">
               Utilisé dans les noms d'enregistrements. Vide : dérivé du nom de la salle.
             </p>
           </div>
@@ -158,7 +158,7 @@ const FIELD =
                 Parcourir…
               </Button>
             </div>
-            <p class="mt-0.5 text-[11px] text-dim">
+            <p class="mt-0.5 text-xs text-dim">
               Où la régie relit les enregistrements (🎞 dans le panneau Captation). Vide : le
               dossier d’OBS-B, qu’elle lui demande. Ce champ ne déplace rien : c’est OBS-B qui
               décide où il écrit.
@@ -172,7 +172,7 @@ const FIELD =
                 {{ room.name }}
               </option>
             </select>
-            <p class="mt-0.5 text-[11px] text-dim">
+            <p class="mt-0.5 text-xs text-dim">
               Active le bouton « Relais » en projection. L'acheminement du flux reste une affaire
               de configuration OBS.
             </p>
@@ -183,7 +183,7 @@ const FIELD =
           v-if="canUnpair"
           class="mt-3.5 flex items-center justify-between gap-4 rounded-lg border border-edge px-3 py-2.5"
         >
-          <p class="text-[11px] leading-relaxed text-dim">
+          <p class="text-xs leading-relaxed text-dim">
             Déconnecter ce poste efface son appairage : il redemandera quelle salle il dessert,
             puis un nouveau code à approuver dans la console. Les enregistrements et la file de
             remontée restent sur la machine.
@@ -197,7 +197,7 @@ const FIELD =
           v-if="canUnpair"
           class="mt-2 flex items-center justify-between gap-4 rounded-lg border border-edge px-3 py-2.5"
         >
-          <p class="text-[11px] leading-relaxed text-dim">
+          <p class="text-xs leading-relaxed text-dim">
             Les gestes de la régie mobile répondent « Fait » mais la salle ne bouge pas ? Le
             diagnostic montre si les commandes du hub arrivent jusqu’ici, et les reprend au besoin.
           </p>
@@ -214,14 +214,14 @@ const FIELD =
           the talk's start puts them where the information exists — it is the only
           instant at which one knows a talk is beginning.
         -->
-        <h3 class="mt-3.5 mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+        <h3 class="mt-3.5 mb-2.5 text-xs font-semibold tracking-[.14em] text-dim uppercase">
           Au démarrage et à la fin d’une conférence
         </h3>
         <label class="flex items-start gap-2 text-sm">
           <input id="cfg-prompt-rec" v-model="config.draft.promptRecordingOnStart" type="checkbox" class="mt-0.5" />
           <span>
             Avertir si l’enregistrement n’est pas lancé
-            <span class="block text-[11px] text-dim">
+            <span class="block text-xs text-dim">
               Une VOD manquante ne se rattrape pas le soir.
             </span>
           </span>
@@ -230,7 +230,7 @@ const FIELD =
           <input id="cfg-prompt-rec-stop" v-model="config.draft.promptRecordingOnStop" type="checkbox" class="mt-0.5" />
           <span>
             Proposer d’arrêter l’enregistrement en terminant
-            <span class="block text-[11px] text-dim">
+            <span class="block text-xs text-dim">
               Sans quoi le talk suivant s’écrit dans le même fichier, sous le titre de celui-ci.
             </span>
           </span>
@@ -245,7 +245,7 @@ const FIELD =
               {{ entry.label }}
             </option>
           </select>
-          <p class="mt-0.5 text-[11px] text-dim">
+          <p class="mt-0.5 text-xs text-dim">
             Sans elle, l’habillage reste à l’écran pendant les premières phrases.
           </p>
         </div>
@@ -257,7 +257,7 @@ const FIELD =
             <option value="">Automatique — les micros et cartes son d’OBS-B</option>
             <option v-for="input in audioSources" :key="input" :value="input">{{ input }}</option>
           </select>
-          <p class="mt-0.5 text-[11px] text-dim">
+          <p class="mt-0.5 text-xs text-dim">
             Coupé, silencieux ou saturé pendant un talk enregistré : la régie et le hub l’affichent.
           </p>
         </div>

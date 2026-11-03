@@ -14,6 +14,8 @@ const props = defineProps<{
   sceneRole: string | null
   /** The relayed room, `null` if the relay is not configured for this room. */
   relaySourceRoomId: string | null
+  /** The relayed room's name, when the hub has told us: an id is not what the operator reads. */
+  relaySourceName?: string | null
   obs: ObsState | null
   /**
    * The roles actually mapped, when the caller knows them.
@@ -41,7 +43,7 @@ const commands = computed<Command[]>(() => {
   const relay: Command[] =
     props.relaySourceRoomId == null
       ? []
-      : [{ value: 'RELAY', label: `Relais → ${props.relaySourceRoomId}` }]
+      : [{ value: 'RELAY', label: `Relais → ${props.relaySourceName ?? props.relaySourceRoomId}` }]
   const all = [...BASE, ...relay]
   // A supplied list **filters**, it does not replace: it says what the room can
   // do, not how it is named nor in what order it is offered.
@@ -51,7 +53,7 @@ const commands = computed<Command[]>(() => {
 
 <template>
   <Panel>
-    <h2 class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+    <h2 class="mb-2.5 text-xs font-semibold tracking-[.14em] text-dim uppercase">
       Projection — OBS&nbsp;A<SimulatedBadge :when="obs?.simulated === true" />
     </h2>
     <p v-if="offline" class="mb-2 text-xs text-warn" data-role="obs-offline">

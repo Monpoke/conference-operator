@@ -57,7 +57,7 @@ function toggle(input: AudioInput): void {
 
 <template>
   <Panel>
-    <h2 class="mb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+    <h2 class="mb-2.5 text-xs font-semibold tracking-[.14em] text-dim uppercase">
       Sources audio — OBS&nbsp;A et B
     </h2>
 
@@ -78,12 +78,15 @@ function toggle(input: AudioInput): void {
       >
         <div class="min-w-0 flex-1">
           <div class="truncate text-sm">{{ input.name }}</div>
-          <div class="text-[11px]" :class="read(input).tone">{{ read(input).word }}</div>
+          <div class="text-xs" :class="read(input).tone">{{ read(input).word }}</div>
         </div>
+        <!--
+          Neutral, not red: red is the take's colour on this screen, and a row of
+          red « Couper » read as three more recording buttons.
+        -->
         <Button
           size="small"
           class="shrink-0"
-          :variant="read(input).muted ? 'danger' : 'neutral'"
           :disabled="offline"
           @click="toggle(input)"
         >

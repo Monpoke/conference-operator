@@ -2,6 +2,7 @@
 import { Panel } from '@conference-operator/components'
 import { computed } from 'vue'
 import CommandGrid, { type Command } from './CommandGrid.vue'
+import { screenLabel } from '../lib/labels.js'
 
 /**
  * What the room sees, in two groups.
@@ -97,8 +98,13 @@ const groups = computed(() => [
 
 <template>
   <Panel title="Écran de salle">
+    <!-- What the audience sees, readable without finding the lit button among nine. -->
+    <p class="-mt-1 mb-2.5 text-sm" data-role="screen-now">
+      <span class="text-dim">À l’écran : </span>
+      <strong class="font-semibold text-text">{{ screenLabel(mode) }}</strong>
+    </p>
     <section v-for="group in groups" :key="group.title" :data-group="group.title" class="not-first:mt-3">
-      <h3 class="mb-1.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+      <h3 class="mb-1.5 text-xs font-semibold tracking-[.14em] text-dim uppercase">
         {{ group.title }}
       </h3>
       <CommandGrid

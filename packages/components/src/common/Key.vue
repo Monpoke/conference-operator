@@ -9,7 +9,7 @@
 
 <template>
   <span
-    class="ml-2 rounded border border-current/30 px-1 py-px text-[10px] font-semibold opacity-60"
+    class="ml-2 rounded border border-current/30 px-1 py-px text-[11px] font-semibold opacity-80"
   >
     <slot />
   </span>

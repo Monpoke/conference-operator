@@ -81,17 +81,17 @@ function isOnAir(text: string): boolean {
           })
         "
       >
-        <StableLabel :current="isOnAir(question.text) ? 'À l’antenne' : 'Afficher'" :labels="['À l’antenne', 'Afficher']" />
+        <StableLabel :current="isOnAir(question.text) ? 'Au bandeau' : 'Mettre au bandeau'" :labels="['Au bandeau', 'Mettre au bandeau']" />
       </Button>
     </div>
   </div>
 
   <!--
-    What "Afficher" does, and what it does not: without saying so, one clicks and
+    What "Mettre au bandeau" does, and what it does not: without saying so, one clicks and
     then looks for the question on the projector.
   -->
-  <p class="mt-2.5 text-[11px] leading-relaxed text-dim">
-    Afficher met la question sur l’habillage de captation — elle part donc dans la VOD — et sur le
+  <p class="mt-2.5 text-xs leading-relaxed text-dim">
+    « Mettre au bandeau » place la question sur l’habillage de captation — elle part donc dans la VOD — et sur le
     bandeau vidéo de la salle. Pour la projeter en grand devant le public, choisir « Question
     choisie » dans Écran de salle.
   </p>

@@ -11,6 +11,7 @@ import LevelMeters from './components/LevelMeters.vue'
 import AudioInputsPanel from './components/AudioInputsPanel.vue'
 import MessagePanel from './components/MessagePanel.vue'
 import AudioAlerts from './components/AudioAlerts.vue'
+import ConfigReminder from './components/ConfigReminder.vue'
 import NotificationStack from './components/NotificationStack.vue'
 import PairingVeil from './components/PairingVeil.vue'
 import ProjectionPanel from './components/ProjectionPanel.vue'
@@ -37,8 +38,11 @@ import { useRoomStore } from './stores/room.js'
 import { useSessionStore } from './stores/session.js'
 import { useLockStore } from './stores/lock.js'
 import { useVodStore } from './stores/vod.js'
+import { useTalkStore } from './stores/talk.js'
 import { currentDock } from './boot.js'
 import { withdrawnScreens } from './lib/features.js'
+import { mutedBeforeTake, primaryGesture } from './lib/gesture.js'
+import { transitionRefusal } from '@conference-operator/room-state'
 
 /**
  * The control app, served from two places.
@@ -69,6 +73,7 @@ const consult = useConsultStore()
 const config = useConfigStore()
 const programs = useProgramsStore()
 const vod = useVodStore()
+const talk = useTalkStore()
 
 /** Docked in OBS: no VU meter, OBS's mixer is right beside it. See `readDock`. */
 const dock = currentDock()
@@ -173,6 +178,36 @@ watchEffect(() => {
  * configured does not show the button, exactly as in the room's own control app.
  * Locally the panel keeps its own rule — the configuration is at hand.
  */
+/** The relayed room by its name, as the hub knows it. */
+const relayName = computed(() => {
+  const id = payload.value?.diagnostics?.relaySourceRoomId
+  if (id == null) return null
+  return payload.value?.diagnostics?.rooms.find((entry) => entry.roomId === id)?.name ?? null
+})
+
+const urgeRecording = computed(
+  () => payload.value != null && primaryGesture(payload.value, room.now) === 'record',
+)
+
+const mutedMics = computed(() =>
+  payload.value == null ? [] : mutedBeforeTake(payload.value, room.now),
+)
+
+/**
+ * « Commencer » and « Terminer » from the keyboard, under the buttons' own rule.
+ *
+ * The same lifecycle table greys the buttons out: a key must not do what the
+ * button refuses, and the guards behind `askStart` / `askEnd` still ask.
+ */
+function talkGesture(action: 'start' | 'end'): void {
+  const target = payload.value?.state.targetSession
+  if (payload.value == null || target == null) return
+  const status = payload.value.state.sessionStates?.[target.id] ?? 'scheduled'
+  if (transitionRefusal(status, action) != null) return
+  if (action === 'start') talk.askStart()
+  else talk.askEnd()
+}
+
 const remoteRoles = computed(() =>
   Object.keys(payload.value?.diagnostics?.config?.sceneRoles.A ?? {}),
 )
@@ -236,6 +271,9 @@ useKeyboardLayer(
     f: () => capture.value?.anchor('fin'),
     s: () => consult.show('rooms'),
     p: () => consult.show('program'),
+    c: () => talkGesture('start'),
+    t: () => talkGesture('end'),
+    v: () => vod.show(),
   }),
   /*
    * Nothing under the pairing veil, and nothing on a phone.
@@ -367,7 +405,12 @@ useKeyboardLayer(
     />
 
     <!-- The capture watchdog's alerts: held while they last, the dock's too. -->
-    <AudioAlerts :alerts="payload.state.audioAlerts ?? []" :now-ms="room.now" />
+    <AudioAlerts
+      :alerts="payload.state.audioAlerts ?? []"
+      :now-ms="room.now"
+      :muted-before-take="mutedMics"
+    />
+    <ConfigReminder />
 
     <!-- Never in the dock itself: it is the dock that makes this window redundant. -->
     <ServerModeOffer
@@ -399,6 +442,7 @@ useKeyboardLayer(
         <ProjectionPanel
           :scene-role="payload.state.sceneRole"
           :relay-source-room-id="payload.diagnostics?.relaySourceRoomId ?? null"
+          :relay-source-name="relayName"
           :obs="payload.diagnostics?.obs.A ?? null"
           :offline="obsOffline.A"
         />
@@ -412,6 +456,7 @@ useKeyboardLayer(
           :streaming="payload.state.streaming === true"
           :obs="payload.diagnostics?.obs.B ?? null"
           :offline="obsOffline.B"
+          :urge="urgeRecording"
           :real-ms="clock.real"
           :room-ms="room.now"
           :stream="payload.diagnostics?.config == null ? undefined : payload.diagnostics.config.stream"

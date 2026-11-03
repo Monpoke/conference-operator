@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { DisplayPayload } from '@conference-operator/contract'
-import { Badge, Button, Panel } from '@conference-operator/components'
+import { Badge, Button, Key, Panel } from '@conference-operator/components'
 import { transitionRefusal } from '@conference-operator/room-state'
 import { duration, time } from '@conference-operator/format'
 import { computed } from 'vue'
 import { nextTalkFor, scheduleGapMs } from '../lib/countdown.js'
+import { lateStartMs, primaryGesture } from '../lib/gesture.js'
 import { useTalkStore } from '../stores/talk.js'
 import Countdown from './Countdown.vue'
 import ForceTalkDialog from './ForceTalkDialog.vue'
@@ -52,8 +53,18 @@ const title = computed(() => {
     : target.title
 })
 
+/** Late to start: said on the badge, as the rooms strip says it to the other rooms. */
+const lateMinutes = computed(() => {
+  const late = lateStartMs(props.payload, props.nowMs)
+  return late == null ? null : Math.floor(late / 60_000)
+})
+
+const primary = computed(() => primaryGesture(props.payload, props.nowMs))
+
 const badge = computed(() =>
-  status.value === 'running'
+  lateMinutes.value != null
+    ? `en retard · ${duration(lateMinutes.value)}`
+    : status.value === 'running'
     ? 'en cours'
     : status.value === 'ended'
       ? 'terminée'
@@ -97,11 +108,13 @@ const detail = computed(() => {
   if (status.value === 'ended') {
     const next = nextTalkFor(props.payload, props.nowMs)
     return next == null
-      ? "Terminée. « Remettre à venir » si c'est une erreur."
-      : `Prochaine conférence à ${time(next.startsAt, props.payload.timezone)}. ` +
-          "« Remettre à venir » si c'est une erreur."
+      ? 'Terminée.'
+      : `Terminée. Prochaine conférence à ${time(next.startsAt, props.payload.timezone)}.`
   }
   if (status.value === 'running') return scheduleWord.value
+  if (lateMinutes.value != null && session.value != null) {
+    return `Prévue à ${time(session.value.startsAt, props.payload.timezone)}, pas encore commencée — ${scheduleWord.value}`
+  }
   return upcoming.value
     ? "Pas encore commencée au programme — « Commencer » reste disponible."
     : scheduleWord.value
@@ -143,7 +156,13 @@ const nextSpeakers = computed(() =>
 <template>
   <Panel>
     <div class="mb-2 flex items-start gap-2">
-      <Badge :class="status" data-role="talk-badge">{{ badge }}</Badge>
+      <Badge
+        :class="lateMinutes == null ? status : undefined"
+        :variant="lateMinutes == null ? undefined : 'warning'"
+        data-role="talk-badge"
+      >
+        {{ badge }}
+      </Badge>
       <Badge v-if="forced" variant="warning" data-role="talk-forced">Forcée</Badge>
       <Button
         v-if="payload.state.pinnedSessionId != null"
@@ -166,24 +185,29 @@ const nextSpeakers = computed(() =>
 
     <Countdown :payload="payload" :at-ms="nowMs" />
 
-    <!--
-      Clicking the detail puts it back as upcoming: it is the gesture's only undo,
-      and it lives where the sentence offers it.
-    -->
     <div
       class="mt-1 text-xs"
-      :class="overrun ? 'text-alert' : 'text-dim'"
+      :class="overrun ? 'text-alert' : lateMinutes != null ? 'text-warn' : 'text-dim'"
       data-role="talk-detail"
-      @click="status === 'ended' && talk.reset()"
     >
       {{ detail }}
     </div>
+    <!-- The only undo of « Terminer »: a real button, reachable from the keyboard. -->
+    <Button
+      v-if="status === 'ended'"
+      size="small"
+      class="mt-1.5 self-start"
+      data-role="btn-talk-reset"
+      @click="talk.reset()"
+    >
+      Remettre à venir
+    </Button>
 
     <div class="mt-2 border-t border-edge pt-2 text-xs text-dim" data-role="next">
       <template v-if="next == null">Plus rien après au programme.</template>
       <template v-else>
-        <span class="text-dim">Suivant</span>
-        <span class="text-text tabular-nums"> {{ time(next.startsAt, payload.timezone) }}</span>
+        <span class="text-dim">Suivant </span>
+        <span class="text-text tabular-nums">{{ time(next.startsAt, payload.timezone) }}</span>
         <span class="text-text"> · {{ next.title }}</span>
         <!--
           On a second line: set beside the title, the names pushed out of the frame
@@ -199,17 +223,19 @@ const nextSpeakers = computed(() =>
         :disabled="refusal('start') != null"
         :title="refusal('start') ?? undefined"
         :active="status === 'running'"
+        :variant="primary === 'start' ? 'primary' : 'neutral'"
         @click="talk.askStart()"
       >
-        Commencer
+        Commencer<Key>C</Key>
       </Button>
       <Button
         id="btn-talk-end"
         :disabled="refusal('end') != null"
         :title="refusal('end') ?? undefined"
+        :variant="primary === 'end' ? 'primary' : 'neutral'"
         @click="talk.askEnd()"
       >
-        Terminer
+        Terminer<Key>T</Key>
       </Button>
     </div>
 
@@ -217,7 +243,7 @@ const nextSpeakers = computed(() =>
     <div class="mt-1.5 text-right">
       <button
         type="button"
-        class="cursor-pointer text-xs text-dim underline-offset-2 hover:text-text hover:underline"
+        class="-mr-1.5 cursor-pointer rounded px-1.5 py-1.5 text-xs text-dim underline-offset-2 hover:text-text hover:underline focus-visible:outline-2 focus-visible:outline-brand"
         data-role="btn-talk-force"
         @click="talk.forceOpen = true"
       >

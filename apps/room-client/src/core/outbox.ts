@@ -231,8 +231,8 @@ export class Outbox {
       if (lost.length > 0) {
         const message =
           lost.length === 1
-            ? 'événement obligatoire expiré sans avoir été remonté'
-            : `${lost.length} événements obligatoires expirés sans avoir été remontés`
+            ? 'un événement obligatoire n’a pas pu être envoyé au hub à temps : il est perdu'
+            : `${lost.length} événements obligatoires n’ont pas pu être envoyés au hub à temps : ils sont perdus`
         this.store.log('error', message, {
           events: lost.map((row) => ({ id: row.id, type: row.type, attempts: row.attempts })),
         }, tx)

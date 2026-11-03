@@ -120,7 +120,7 @@ async function clear(): Promise<void> {
       </div>
     </div>
     <div class="mt-1.5 flex items-center gap-1.5">
-      <p id="message-current" class="min-w-0 flex-1 truncate text-[11px] text-dim">
+      <p id="message-current" class="min-w-0 flex-1 truncate text-xs text-dim">
         {{ props.message == null ? "Aucun message à l'écran" : `À l'écran : ${props.message.text}` }}
       </p>
       <Button

@@ -79,7 +79,7 @@ const WIDTHS = {
           }
         "
       >
-        <h2 class="shrink-0 px-4 pt-4 pb-2.5 text-[11px] font-semibold tracking-[.14em] text-dim uppercase">
+        <h2 class="shrink-0 px-4 pt-4 pb-2.5 text-xs font-semibold tracking-[.14em] text-dim uppercase">
           <DialogTitle>{{ title }}</DialogTitle>
         </h2>
         <div class="min-h-0 flex-1 overflow-y-auto px-4" data-role="dialog-body">
@@ -93,7 +93,7 @@ const WIDTHS = {
         <div class="flex shrink-0 flex-wrap justify-end gap-1.5 border-t border-edge px-4 py-3 max-sm:pb-[max(.75rem,env(safe-area-inset-bottom))]">
           <slot name="actions" />
           <DialogClose
-            class="cursor-pointer rounded-lg border border-edge bg-surface2 px-3 py-2 text-[13px] font-semibold text-text"
+            class="cursor-pointer rounded-lg border border-edge bg-surface2 px-3 py-2 text-[13px] font-semibold text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
           >
             Fermer
           </DialogClose>

@@ -13,7 +13,8 @@ import { cn } from './cn.js'
  */
 const button = cva(
   'cursor-pointer rounded-lg border text-sm font-semibold transition-colors ' +
-    'disabled:cursor-not-allowed disabled:opacity-40',
+    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ' +
+    'disabled:cursor-not-allowed disabled:opacity-50',
   {
     variants: {
       variant: {

@@ -2,6 +2,7 @@ import { useToast } from '@conference-operator/components'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { ActionResult } from '../lib/gateway.js'
+import { sceneLabel, screenLabel } from '../lib/labels.js'
 import { useGatewayStore } from './gateway.js'
 
 export type { ActionResult }
@@ -79,6 +80,22 @@ const REPEATED = new Set([SCENE, 'display.set'])
  * wake-up on the room side, without which a button would spend ten seconds
  * describing the previous state and get pressed a second time.
  */
+/**
+ * The success line in the operator's words.
+ *
+ * The machine answers `Écran : loop` and `Scène : HOLD`: its own identifiers,
+ * next to buttons that say « Boucle entière » and « Habillage ».
+ */
+function said(gesture: Record<string, unknown>, message: string | undefined): string {
+  if (gesture.action === 'display.set' && typeof gesture.mode === 'string') {
+    return `Écran : ${screenLabel(gesture.mode)}`
+  }
+  if (gesture.action === SCENE && typeof gesture.role === 'string') {
+    return `Scène : ${sceneLabel(gesture.role)}`
+  }
+  return message ?? 'Fait'
+}
+
 export const useActionsStore = defineStore('actions', () => {
   const toast = useToast()
   const gateway = useGatewayStore()
@@ -107,8 +124,8 @@ export const useActionsStore = defineStore('actions', () => {
        * the middle of an intervention.
        */
       const result = await gateway.act(gesture)
-      const message = result.message ?? (result.ok ? 'Fait' : 'Échec')
       const action = typeof gesture.action === 'string' ? gesture.action : undefined
+      const message = result.ok ? said(gesture, result.message) : (result.message ?? 'La salle a refusé la commande.')
       const scene = action === SCENE
       const notice = {
         key: options.key ?? (action != null && REPEATED.has(action) ? action : undefined),

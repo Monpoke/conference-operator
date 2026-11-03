@@ -76,17 +76,17 @@ const spoken = computed(
     -->
     <span><slot /></span>
     <div class="tooltip" aria-hidden="true">
-      <div class="text-[10px] font-semibold tracking-[.12em] text-dim uppercase">
+      <div class="text-[11px] font-semibold tracking-[.12em] text-dim uppercase">
         {{ title }}
       </div>
       <div class="mt-1 mb-2 flex items-baseline gap-2">
         <span :class="tint" class="text-[22px] leading-none font-semibold tabular-nums">
           {{ value }}
         </span>
-        <span :class="tint" class="ml-auto text-right text-[11px] font-semibold">{{ label }}</span>
+        <span :class="tint" class="ml-auto text-right text-xs font-semibold">{{ label }}</span>
       </div>
       <Gauge v-if="gauge != null" :percent="gauge" :level="valueLevel ?? level" />
-      <div class="mt-1.5 text-[11px] text-dim">{{ detail }}</div>
+      <div class="mt-1.5 text-xs text-dim">{{ detail }}</div>
       <slot name="extra" />
       <div class="mt-2 border-t border-edge pt-2 text-xs leading-snug text-text">
         {{ verdict }}
